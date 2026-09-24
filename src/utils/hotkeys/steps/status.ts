@@ -15,7 +15,7 @@ export interface StepsStatusContext extends StepsSelectionContext {
  * under the cursor" key, it is bound nowhere else, and it reads as a toggle rather than a move.
  *
  * The handler is the Mindmap's own, so a Goal toggles achieved, a Task cycles todo → in progress →
- * done, and a virtual Habit occurrence goes through the completion guard exactly as it does there.
+ * done, and a Habit occurrence goes through the completion guard exactly as it does there.
  */
 export const STEPS_STATUS_BINDINGS: readonly Binding<StepsStatusContext>[] = [
   {

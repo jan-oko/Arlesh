@@ -20,14 +20,14 @@ export function targetSelectionFor(node: MindmapNode | null | undefined): Target
 /**
  * Nodes a Flow may target — those that can hold a Goal/Task instance. Phase 7.5 further narrows
  * this to targets whose Time Scope satisfies containment. Only a node that draws a row can be a
- * target: a flow stores its target as a row id, which the tree root and a virtual Habit occurrence
+ * target: a flow stores its target as a row id, which the tree root and a Habit occurrence
  * do not have.
  */
 export function flowTargetNodes(tree: MindmapNode): MindmapNode[] {
   const canHoldInstance = new Set(["aspect", "domain", "project", "goal", "task"]);
   const acc: MindmapNode[] = [];
   const walk = (node: MindmapNode): void => {
-    if (node.rowId !== undefined && canHoldInstance.has(node.kind)) acc.push(node);
+    if (node.rowId !== undefined && !isDerivedId(node.rowId) && canHoldInstance.has(node.kind)) acc.push(node);
     node.children.forEach(walk);
   };
   walk(tree);

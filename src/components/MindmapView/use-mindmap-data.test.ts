@@ -2,22 +2,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { invokedCommands } from "@/test/command-mock";
 import { renderHook, waitFor, act } from "@testing-library/react";
-import { buildTree, useMindmapData, injectHabitInstances } from "./use-mindmap-data";
-import type { HabitInstanceChild } from "@/api/flows";
+import { buildTree, useMindmapData, decorateIterationRoots } from "./use-mindmap-data";
+import { occurrenceOrigin, occurrenceRow } from "@/test/occurrence";
+import type { RowId } from "@/api/node-id";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
 import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
 import type { Task } from "@/api/tasks";
 import type { Info } from "@/api/infos";
-import type {
-  Flow, FlowGoal, FlowItemType, FlowTask, HabitInstance, HabitIteration, HabitItemStatus,
-} from "@/api/flows";
-import { NO_CYCLE } from "@/api/flows";
+import type { Flow, FlowGoal, FlowTask } from "@/api/flows";
 import type { MindmapLoad } from "@/api/mindmap";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
-import { testKey } from "@/test/scope-key";
-import type { ScopeKey } from "@/api/scopes";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -104,7 +100,7 @@ describe("buildTree", () => {
     const flowTask = { id: 7, flow_id: 3, title: "S", parent_type: "flow_goal", parent_id: 6, position: 0, is_private: false };
     const root = buildTree([aspect], [goal], [task], [info], [], [flow], [flowGoal], [flowTask]);
 
-    const drawn = new Map<string, number | undefined>();
+    const drawn = new Map<string, RowId | undefined>();
     const visit = (node: MindmapNode): void => {
       drawn.set(node.id, node.rowId);
       node.children.forEach(visit);
@@ -356,11 +352,10 @@ function mindmapEnvelope(overrides: Partial<MindmapLoad> = {}): MindmapLoad {
     spawned_waits: [], infos: [], flows: [],
     flow_goals: [], flow_tasks: [], flow_cycles: [], flow_dependencies: [],
     block_reasons: [], task_dependencies: [], flow_instance_nodes: [], lifecycles: [],
-    habit_instance_children: [],
     habits: flows.map((flow) => ({
       flow_id: flow.id,
       flow_title: flow.title,
-      result: { outcome: "loaded" as const, iterations: [], statuses: [] },
+      result: { outcome: "loaded" as const },
     })),
     ...overrides,
   };
@@ -523,7 +518,7 @@ describe("useMindmapData", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.loadCondition.failedFlows).toEqual([{ id: 7, title: "Standup" }]);
 
-    habits = [{ flow_id: 7, flow_title: "Standup", result: { outcome: "loaded", iterations: [], statuses: [] } }];
+    habits = [{ flow_id: 7, flow_title: "Standup", result: { outcome: "loaded" } }];
     await act(async () => {
       await result.current.reload();
     });
@@ -695,54 +690,30 @@ describe("useMindmapData — mutations", () => {
       });
     });
 
-    it("a habit occurrence takes its child through the attachment path, not a parent link", async () => {
-      // The same gesture as anywhere else — Tab on the selected node — but the parent is virtual,
-      // so there is no row id for `create_task` to hang it from.
-      const flow = {
-        id: 3, title: "Groceries", instance_type: "task" as const,
-        parent_type: "domain", parent_id: 1, target_type: "goal", target_id: 1,
-        flow_duration_n: 1, flow_duration_kind: "day",
-        flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
-        is_habit: true, root_plan_kind: null, root_plan_start: null, root_plan_end: null,
-        verdict_window_n: null, verdict_window_kind: null, position: 0, is_private: false,
-      };
-      const envelope = mindmapEnvelope({
-        domains: [ASPECT], goals: [GOAL], flows: [flow],
-        habits: [{
-          flow_id: 3,
-          flow_title: "Groceries",
-          result: {
-            outcome: "loaded" as const,
-            iterations: [{
-              index: 0, anchor_scope_id: testKey(100), anchor_date: "2026-01-05",
-              window_end: "2026-01-06T00:00:00", status: "active" as const, instances: [],
-            }],
-            statuses: [],
-          },
-        }],
+    it("a habit occurrence takes its child like any parent, by its own row id", async () => {
+      // The same gesture as anywhere else — Tab on the selected node — and the same command: the
+      // occurrence is a row with a UUID id, and the backend hangs the child on that iteration.
+      const occurrence = mkTask({
+        id: "6f1c2d4e-0000-5000-8000-000000000003", title: "Groceries", parent_type: "goal", parent_id: 1,
+        origin: occurrenceOrigin({ habitId: 3, itemType: "flow_root", itemId: 3 }),
       });
+      const envelope = mindmapEnvelope({ domains: [ASPECT], goals: [GOAL], tasks: [occurrence] });
       vi.mocked(invoke).mockImplementation((cmd: string) => {
         if (cmd === "load_mindmap") return Promise.resolve(envelope);
-        if (cmd === "create_habit_instance_child") {
-          return Promise.resolve({ node_type: "task", node_id: 42 });
-        }
+        if (cmd === "create_task") return Promise.resolve(mkTask({ id: 42, title: "buy milk" }));
         return Promise.resolve(null);
       });
       const { result } = await loadedHook();
 
       let returned: { id: string; kind: string } | undefined;
       await act(async () => {
-        returned = await result.current.createNode("habit-3-0-virtual", "task", "task", "buy milk");
+        returned = await result.current.createNode(`task-${String(occurrence.id)}`, "task", "task", "buy milk");
       });
 
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_habit_instance_child", {
-        flowId: 3,
-        instance: { item_type: "flow_root", item_id: 3, iteration_scope_id: testKey(100), cycle_id: 0 },
-        childType: "task",
-        title: "buy milk",
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_task", {
+        request: expect.objectContaining({ title: "buy milk", parent_type: "task", parent_id: occurrence.id }),
       });
       expect(returned?.id).toBe("task-42");
-      expect(returned?.kind).toBe("task");
     });
 
     it("throws for an invalid child kind", async () => {
@@ -1378,686 +1349,83 @@ describe("useMindmapData — mutations", () => {
   });
 });
 
-describe("injectHabitInstances", () => {
-  function mkFlow(overrides: Partial<Flow> = {}): Flow {
+describe("decorateIterationRoots", () => {
+  function mkHabit(overrides: Partial<Flow> = {}): Flow {
     return {
       id: 3, title: "Exercise", instance_type: "task",
       parent_type: "domain", parent_id: 1,
       target_type: "goal", target_id: 5,
       flow_duration_n: 1, flow_duration_kind: "week",
       flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null,
-      is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null,
+      is_habit: true, root_plan_kind: null, root_plan_start: null, root_plan_end: null,
       verdict_window_n: null, verdict_window_kind: null, position: 0, is_private: false, ...overrides,
     };
   }
-  function iter(
-    index: number,
-    status: HabitIteration["status"],
-    instances: HabitInstance[] = [],
-  ): HabitIteration {
-    const day = index + 1;
-    return {
-      index,
-      anchor_scope_id: testKey(100 + index),
-      anchor_date: `2026-01-${String(day).padStart(2, "0")}`,
-      // Day-long windows, so each one ends at the next midnight.
-      window_end: `2026-01-${String(day + 1).padStart(2, "0")}T00:00:00`,
-      status,
-      instances,
-    };
-  }
 
-  /** The reference instant the injection is read at — late enough that every `iter()` has passed. */
-  const NOW = "2026-06-01T00:00:00";
-  /** One occurrence of a flow item, unpaired and inside its window unless overridden. */
-  function inst(
-    itemType: FlowItemType,
-    itemId: number,
-    overrides: Partial<HabitInstance> = {},
-  ): HabitInstance {
+  /** An iteration root as the board builds it from its row: a node carrying the row's `origin`. */
+  function rootNode(kind: "task" | "goal" | "commitment", extra: Partial<MindmapNode> = {}): MindmapNode {
     return {
-      item_type: itemType, item_id: itemId, cycle_id: NO_CYCLE,
-      time_scope: null, plan: null, timing: "active", ...overrides,
+      id: `${kind}-root`, kind, title: "Exercise", position: 0, tagIds: [], children: [],
+      ...occurrenceRow({
+        habitId: 3, itemType: "flow_root", itemId: 3, index: 2,
+        startDate: "2026-01-05", windowEnd: "2026-01-12T00:00:00",
+      }),
+      ...extra,
     };
-  }
-  /** A stored status Modification for one occurrence. */
-  function mod(
-    itemType: HabitItemStatus["item_type"],
-    itemId: number,
-    scopeId: ScopeKey,
-    status: string,
-    cycleId: number = NO_CYCLE,
-  ): HabitItemStatus {
-    return { item_type: itemType, item_id: itemId, iteration_scope_id: scopeId, cycle_id: cycleId, status };
   }
 
   const LABELS = useScopeLabels();
 
-  it("adds a virtual, read-only child per iteration under the flow's target", () => {
-    const root = buildTree(
-      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
-      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
-      [], [],
-    );
-    // The root of iteration 0 (scope 100) is completed; its own status drives the node's glyph.
-    injectHabitInstances(
-      root,
-      [mkFlow()],
-      [[iter(0, "done"), iter(1, "active"), iter(2, "lapsed")]],
-      LABELS, NOW,
-      [], [],
-      [[mod("flow_root", 3, testKey(100), "done")]],
-    );
-
-    const target = root.children[0]?.children[0]; // aspect → goal 5
-    expect(target?.id).toBe("goal-5");
-    const virtuals = target?.children ?? [];
-    expect(virtuals).toHaveLength(3);
-    expect(virtuals.every((n) => n.virtual === true)).toBe(true);
-    // The flow's Duration kind is "week" — the anchor renders as a formatted scope, not a raw date.
-    expect(virtuals[0]?.title).toBe("Exercise W1");
-    expect(virtuals[0]?.status).toBe("done"); // its root instance is completed
-    expect(virtuals[0]?.habitItem).toEqual({ flowId: 3, itemType: "flow_root", itemId: 3, scopeId: testKey(100), cycleId: NO_CYCLE });
-    expect(virtuals[1]?.status).toBe("todo"); // no root completion
-    expect(virtuals[2]?.timing).toBe("lapsed"); // lapsed + uncompleted iterations are dimmed
-    expect(virtuals[2]?.resolution).toBe("missed");
-    expect(virtuals[2]?.archived).toBe(true);
-    expect(virtuals[2]?.id).toBe("habit-3-2-virtual");
-    // No row behind any of them, so `rowIdOf` refuses them — nothing DB-backed can be aimed at one.
-    expect(virtuals.map((n) => n.rowId)).toEqual([undefined, undefined, undefined]);
+  it("draws the root as `{title} {start scope}` and keeps the row's own title for the editor", () => {
+    const root = rootNode("task");
+    decorateIterationRoots(root, [mkHabit()], LABELS, "2026-01-06T09:00:00");
+    expect(root.title).toBe("Exercise W2");
+    expect(root.rowTitle).toBe("Exercise");
   });
 
-  it("tells each iteration node whether its window has passed, and how it ended", () => {
-    const root = buildTree(
-      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
-      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
-      [], [],
-    );
-    // iter(0) closed on the 2nd and iter(1) on the 3rd; "now" is the 2nd at noon, so only the
-    // first has gone. Its root instance is completed, which is what makes it a Done in the tally.
-    injectHabitInstances(
-      root,
-      [mkFlow()],
-      [[iter(0, "done"), iter(1, "active")]],
-      LABELS, "2026-01-02T12:00:00",
-      [], [],
-      [[mod("flow_root", 3, testKey(100), "done")]],
-    );
-
-    const virtuals = root.children[0]?.children[0]?.children ?? [];
-    expect(virtuals[0]?.habitIteration).toEqual({
-      flowId: 3, flowTitle: "Exercise", index: 0, scopeKind: "week", anchorDate: "2026-01-01",
-      windowEnd: "2026-01-02T00:00:00", passed: true, done: true,
+  it("reads where the window sits, whether it has passed and how it ended off the origin", () => {
+    const open = rootNode("task", { status: "todo" });
+    const done = rootNode("task", { id: "task-done", status: "done" });
+    decorateIterationRoots(open, [mkHabit()], LABELS, "2026-01-06T09:00:00");
+    decorateIterationRoots(done, [mkHabit()], LABELS, "2026-02-01T09:00:00");
+    expect(open.habitIteration).toEqual({
+      flowId: 3, flowTitle: "Exercise", index: 2, scopeKind: "week",
+      anchorDate: "2026-01-05", windowEnd: "2026-01-12T00:00:00", passed: false, done: false,
     });
-    expect(virtuals[1]?.habitIteration?.passed).toBe(false);
+    expect(done.habitIteration?.passed).toBe(true);
+    expect(done.habitIteration?.done).toBe(true);
   });
 
-  it("counts a commitment iteration as done only once it was kept", () => {
-    const root = buildTree(
-      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
-      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
-      [], [],
-    );
-    injectHabitInstances(
-      root,
-      [mkFlow({ instance_type: "commitment" })],
-      [[iter(0, "done"), iter(1, "done"), iter(2, "active")]],
-      LABELS, NOW,
-      [], [],
-      [[mod("flow_root", 3, testKey(100), "kept"), mod("flow_root", 3, testKey(101), "broken")]],
-    );
-
-    const virtuals = root.children[0]?.children[0]?.children ?? [];
-    expect(virtuals[0]?.habitIteration?.done).toBe(true);
-    expect(virtuals[1]?.habitIteration?.done).toBe(false);
-  });
-
-  it("archives a commitment Habit's expired iteration without ever calling it missed", () => {
-    // The Verdict Window ran out with no verdict recorded. The chance to say has gone, so the
-    // iteration archives — but nothing concludes an outcome, which is the whole point of the kind:
-    // an unjudged commitment may well have been kept.
-    const root = buildTree(
-      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
-      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
-      [], [],
-    );
-    injectHabitInstances(
-      root,
-      [mkFlow({ instance_type: "commitment", verdict_window_n: 2, verdict_window_kind: "day" })],
-      [[iter(0, "expired"), iter(1, "active")]],
-      LABELS, NOW,
-    );
-
-    const virtuals = root.children[0]?.children[0]?.children ?? [];
-    expect(virtuals[0]?.archived).toBe(true);
-    expect(virtuals[0]?.timing).toBe("lapsed");
-    expect(virtuals[0]?.resolution).toBeUndefined();
-    expect(virtuals[1]?.timing).toBe("active");
-    expect(virtuals[1]?.archived).toBeUndefined();
-  });
-
-  it("falls back to the raw anchor date for a sub-day (Phase) window, which has no scope label", () => {
-    const root = buildTree(
-      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
-      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
-      [], [],
-    );
-    injectHabitInstances(root, [mkFlow({ flow_duration_kind: "exact" })], [[iter(0, "active")]], LABELS, NOW);
-    const virtuals = root.children[0]?.children[0]?.children ?? [];
-    expect(virtuals[0]?.title).toBe("Exercise 2026-01-01");
-  });
-
-  it("attaches iterations under a domain-table (project) target keyed domain-<id>", () => {
-    const root = buildTree(
-      [
-        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: "#e74c3c", status: null, knowledge_base_directory: null, position: 0, is_private: false },
-        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-      ],
-      [], [], [],
-    );
-    injectHabitInstances(root, [mkFlow({ target_type: "project", target_id: 96 })], [[iter(0, "active")]], LABELS, NOW);
-
-    const project = root.children[0]?.children[0]; // aspect → project 96
-    expect(project?.id).toBe("domain-96");
-    expect(project?.children).toHaveLength(1);
-    expect(project?.children[0]?.virtual).toBe(true);
-    expect(project?.children[0]?.color).toBe("#e74c3c"); // inherits the aspect colour like any node
-  });
-
-  // A flow with no explicit Target Node renders its iterations under its parent, derived here
-  // rather than snapshotted into the row at creation — which is what makes a move carry them along.
-  it("falls back to the flow's own parent when it has no Target Node", () => {
-    const root = buildTree(
-      [
-        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-        { id: 96, title: "LOOK", description: null, subtype: "domain", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-      ],
-      [], [], [],
-    );
-    injectHabitInstances(
-      root,
-      [mkFlow({ parent_type: "domain", parent_id: 96, target_type: null, target_id: null })],
-      [[iter(0, "active")]],
-      LABELS, NOW,
-    );
-
-    const parent = root.children[0]?.children[0]; // aspect → domain 96
-    expect(parent?.id).toBe("domain-96");
-    expect(parent?.children).toHaveLength(1);
-    expect(parent?.children[0]?.virtual).toBe(true);
-  });
-
-  // Domains, projects and tags share one table, so a flow can carry `parent_type: "project"` for a
-  // row the tree keys `domain-<id>`. Building the id from the stored type would miss it entirely.
-  it("derives a domain-table parent through its normalised node id", () => {
-    const root = buildTree(
-      [
-        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-        { id: 96, title: "LOOK", description: null, subtype: "domain", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-      ],
-      [], [], [],
-    );
-    injectHabitInstances(
-      root,
-      [mkFlow({ parent_type: "project", parent_id: 96, target_type: null, target_id: null })],
-      [[iter(0, "active")]],
-      LABELS, NOW,
-    );
-
-    expect(root.children[0]?.children[0]?.children).toHaveLength(1);
-  });
-
-  // An explicit target is deliberate, so it wins over the parent — that is what "explicit" buys.
-  it("prefers an explicit Target Node over the flow's parent", () => {
-    const root = buildTree(
-      [
-        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-        { id: 96, title: "LOOK", description: null, subtype: "domain", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-      ],
-      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
-      [], [],
-    );
-    injectHabitInstances(
-      root,
-      [mkFlow({ parent_type: "domain", parent_id: 96, target_type: "goal", target_id: 5 })],
-      [[iter(0, "active")]],
-      LABELS, NOW,
-    );
-
-    expect(root.children[0]?.children.find((n) => n.id === "domain-96")?.children).toHaveLength(0);
-    expect(root.children[0]?.children.find((n) => n.id === "goal-5")?.children).toHaveLength(1);
-  });
-
-  // Last resort, not a meaning of null: the derived parent can be filtered out of the rendered tree,
-  // and the iterations then hang off the flow node itself rather than vanishing.
-  it("falls back to the flow node when the derived parent is not in the rendered tree", () => {
-    const root = buildTree(
-      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
-      [], [], [],
-    );
-    const aspect = root.children[0];
-    aspect?.children.push({ id: "flow-3", kind: "flow", title: "Exercise", position: 0, tagIds: [], children: [] });
-
-    injectHabitInstances(
-      root,
-      [mkFlow({ parent_type: "domain", parent_id: 404, target_type: null, target_id: null })],
-      [[iter(0, "active")]],
-      LABELS, NOW,
-    );
-
-    expect(aspect?.children[0]?.children).toHaveLength(1);
-    expect(aspect?.children[0]?.children[0]?.virtual).toBe(true);
-  });
-
-  it("renders the flow's items as per-item-completable children of each iteration", () => {
-    const root = buildTree(
-      [
-        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: "#0af", status: null, knowledge_base_directory: null, position: 0, is_private: false },
-        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-      ],
-      [], [], [],
-    );
-    const breakfast: FlowTask = { id: 4, flow_id: 3, title: "Breakfast", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
-    const dinner: FlowTask = { id: 5, flow_id: 3, title: "Dinner", parent_type: "flow", parent_id: 3, position: 1, is_private: false };
-    injectHabitInstances(
-      root,
-      [mkFlow({ target_type: "project", target_id: 96 })],
-      [[iter(0, "active", [inst("flow_task", 4), inst("flow_task", 5)])]], // anchor_scope_id = 100
-      LABELS, NOW,
-      [],
-      [breakfast, dinner],
-      [[mod("flow_task", 4, testKey(100), "done")]], // breakfast done
-    );
-
-    const iteration = root.children[0]?.children[0]?.children[0]; // aspect → project → iteration root
-    const items = iteration?.children ?? [];
-    expect(items).toHaveLength(2);
-    expect(items[0]?.title).toBe("Breakfast");
-    expect(items[0]?.status).toBe("done"); // has a completion
-    expect(items[0]?.color).toBe("#0af"); // inherits the aspect colour
-    expect(items[0]?.id).toBe("habititem-flow_task-4-0-0-virtual");
-    expect(items[0]?.rowId).toBeUndefined();
-    expect(items[0]?.habitItem).toEqual({ flowId: 3, itemType: "flow_task", itemId: 4, scopeId: testKey(100), cycleId: NO_CYCLE });
-    expect(items[1]?.title).toBe("Dinner");
-    expect(items[1]?.status).toBe("todo"); // no completion
-  });
-
-  it("archives a past-window iteration's items regardless of done-ness (the original bug report)", () => {
-    // Previously only the undone item lapsed; a done-but-past-window item (and the done root) never
-    // archived at all, so e.g. a "לאכול ארוחות נורמליות" instance with 2/3 done meals stayed visible.
-    const root = buildTree(
-      [
-        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-      ],
-      [], [], [],
-    );
-    const breakfast: FlowTask = { id: 4, flow_id: 3, title: "Breakfast", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
-    const dinner: FlowTask = { id: 5, flow_id: 3, title: "Dinner", parent_type: "flow", parent_id: 3, position: 1, is_private: false };
-    injectHabitInstances(
-      root,
-      [mkFlow({ target_type: "project", target_id: 96 })],
-      // anchor_scope_id = 100 — the whole iteration's window has passed, and its occurrences with it
-      [[iter(0, "lapsed", [
-        inst("flow_task", 4, { timing: "lapsed" }),
-        inst("flow_task", 5, { timing: "lapsed" }),
-      ])]],
-      LABELS, NOW,
-      [],
-      [breakfast, dinner],
-      [[mod("flow_task", 4, testKey(100), "done")]], // breakfast done, root+dinner not
-    );
-
-    const iterationRoot = root.children[0]?.children[0]?.children[0]; // aspect → project → iteration root
-    expect(iterationRoot?.timing).toBe("lapsed");
-    expect(iterationRoot?.resolution).toBe("missed"); // root itself was never completed
-    expect(iterationRoot?.archived).toBe(true);
-
-    const items = iterationRoot?.children ?? [];
-    const breakfastNode = items.find((n) => n.title === "Breakfast");
-    const dinnerNode = items.find((n) => n.title === "Dinner");
-    expect(breakfastNode?.status).toBe("done");
-    expect(breakfastNode?.resolution).toBe("completed"); // done AND past-window
-    expect(breakfastNode?.archived).toBe(true); // archived even though completed, not missed
-    expect(dinnerNode?.status).toBe("todo");
-    expect(dinnerNode?.resolution).toBe("missed");
-    expect(dinnerNode?.archived).toBe(true);
-  });
-
-  it("marks completed goal instances as achieved and open ones as active", () => {
-    const root = buildTree(
-      [
-        { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-        { id: 96, title: "LOOK", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-      ],
-      [], [], [],
-    );
-    const done: FlowGoal = { id: 9, flow_id: 3, title: "Milestone", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
-    const open: FlowGoal = { id: 10, flow_id: 3, title: "Stretch", parent_type: "flow", parent_id: 3, position: 1, is_private: false };
-    injectHabitInstances(
-      root,
-      [mkFlow({ target_type: "project", target_id: 96, instance_type: "goal" })],
-      [[iter(0, "active", [inst("flow_goal", 9), inst("flow_goal", 10)])]], // scope 100
-      LABELS, NOW,
-      [done, open],
-      [],
-      [[mod("flow_root", 3, testKey(100), "done"), mod("flow_goal", 9, testKey(100), "done")]],
-    );
-
-    const iteration = root.children[0]?.children[0]?.children[0]; // root goal instance
-    expect(iteration?.kind).toBe("goal");
-    expect(iteration?.status).toBe("achieved"); // root completed → achieved (not "done")
-    const items = iteration?.children ?? [];
-    expect(items.find((n) => n.title === "Milestone")?.status).toBe("achieved");
-    expect(items.find((n) => n.title === "Stretch")?.status).toBe("active"); // open → active (not "todo")
-  });
-
-  it("nests a flow item under its parent item's instance for the same iteration", () => {
-    const root = buildTree(
-      [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
-      [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
-      [], [],
-    );
-    const routine: FlowGoal = { id: 7, flow_id: 3, title: "Routine", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
-    const pushups: FlowTask = { id: 8, flow_id: 3, title: "Push-ups", parent_type: "flow_goal", parent_id: 7, position: 0, is_private: false };
-    injectHabitInstances(
-      root, [mkFlow()],
-      [[iter(0, "active", [inst("flow_goal", 7), inst("flow_task", 8)])]],
-      LABELS, NOW, [routine], [pushups], [],
-    );
-
-    const iteration = root.children[0]?.children[0]?.children[0]; // aspect → goal 5 → iteration root
-    expect(iteration?.children).toHaveLength(1); // only the goal is a direct child
-    const goalInstance = iteration?.children[0];
-    expect(goalInstance?.title).toBe("Routine");
-    expect(goalInstance?.children[0]?.title).toBe("Push-ups"); // nested under its parent instance
-  });
-
-  it("skips flows with no iterations, and flows whose target, parent and flow node are all absent", () => {
-    const root = buildTree([], [], [], []);
-    injectHabitInstances(root, [mkFlow(), mkFlow({ id: 9, target_type: null, target_id: null })], [[], [iter(0, "active")]], LABELS, NOW);
-    expect(root.children).toHaveLength(0); // nowhere to hang them; nothing injected
-  });
-
-  describe("a flow item's Cycle Scope", () => {
-    function projectRoot(): MindmapNode {
-      return buildTree(
-        [
-          { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-          { id: 96, title: "Days", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-        ],
-        [], [], [],
-      );
+  it("counts a goal root done once achieved, and a commitment root only once kept", () => {
+    const goal = rootNode("goal", { status: "achieved" });
+    const broken = rootNode("commitment", { verdict: "broken" });
+    const kept = rootNode("commitment", { id: "commitment-kept", verdict: "kept" });
+    for (const node of [goal, broken, kept]) {
+      decorateIterationRoots(node, [mkHabit()], LABELS, "2026-02-01T09:00:00");
     }
-    const DAILY = mkFlow({ target_type: "project", target_id: 96, flow_duration_kind: "day" });
-    const stretch: FlowTask = { id: 4, flow_id: 3, title: "Stretch", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
-
-    function inject(iteration: HabitIteration, statuses: HabitItemStatus[] = []): MindmapNode | undefined {
-      const root = projectRoot();
-      injectHabitInstances(root, [DAILY], [[iteration]], LABELS, NOW, [], [stretch], [statuses]);
-      return root.children[0]?.children[0]?.children[0];
-    }
-
-    it("reads Lapsed once its own window has passed, while the iteration is still Active", () => {
-      // The bug: `timing` was hard-coded from the iteration, so a Morning item read Active all day.
-      const iteration = inject(iter(0, "active", [
-        inst("flow_task", 4, { cycle_id: 11, time_scope: { start_id: testKey(70), end_id: testKey(70) }, timing: "lapsed" }),
-      ]));
-      expect(iteration?.timing).toBe("active"); // the day has not passed
-      const item = iteration?.children[0];
-      expect(item?.timing).toBe("lapsed"); // but the morning has
-      expect(item?.resolution).toBe("missed");
-      expect(item?.archived).toBe(true);
-      expect(item?.timeScope).toEqual({ start_id: testKey(70), end_id: testKey(70) }); // stamped like any other node's
-    });
-
-    it("stays Active inside its window even when the iteration around it is much longer", () => {
-      const item = inject(iter(0, "active", [
-        inst("flow_task", 4, { cycle_id: 11, time_scope: { start_id: testKey(70), end_id: testKey(70) } }),
-      ]))?.children[0];
-      expect(item?.timing).toBe("active");
-      expect(item?.archived).not.toBe(true);
-    });
-
-    it("stamps an occurrence whose window has not opened yet as Pending", () => {
-      // The bug: an unopened occurrence was dropped during generation, so no preset could show it
-      // — All included. It is drawn now, and Pending is what says its window has not come.
-      const iteration = inject(iter(0, "active", [
-        inst("flow_task", 4, { cycle_id: 11, time_scope: { start_id: testKey(73), end_id: testKey(73) }, timing: "pending" }),
-      ]));
-      expect(iteration?.timing).toBe("active"); // the iteration itself is unaffected
-      const item = iteration?.children[0];
-      expect(item?.timing).toBe("pending");
-      expect(item?.resolution).toBeUndefined(); // nothing has happened to it yet
-      expect(item?.archived).not.toBe(true);
-    });
-
-    it("draws one node per cycle pair, each with its own window and its own status", () => {
-      // SPEC: "a flow item with N pairs produces N items" — which starting the flow has always
-      // obeyed and the virtual path did not.
-      const iteration = inject(
-        iter(0, "active", [
-          inst("flow_task", 4, { cycle_id: 11, time_scope: { start_id: testKey(70), end_id: testKey(70) }, timing: "lapsed" }),
-          inst("flow_task", 4, { cycle_id: 12, time_scope: { start_id: testKey(73), end_id: testKey(73) }, plan: { start_id: testKey(90), end_id: testKey(91) } }),
-        ]),
-        // Only the morning occurrence is done; the evening one is untouched.
-        [mod("flow_task", 4, testKey(100), "done", 11)],
-      );
-      const items = iteration?.children ?? [];
-      expect(items).toHaveLength(2);
-      expect(items.map((n) => n.id)).toEqual([
-        "habititem-flow_task-4-11-0-virtual",
-        "habititem-flow_task-4-12-0-virtual",
-      ]);
-      expect(items[0]?.status).toBe("done");
-      expect(items[0]?.habitItem?.cycleId).toBe(11);
-      expect(items[1]?.status).toBe("todo"); // the evening one is still to do
-      expect(items[1]?.habitItem?.cycleId).toBe(12);
-      expect(items[1]?.timeScope).toEqual({ start_id: testKey(73), end_id: testKey(73) });
-      expect(items[1]?.plan).toEqual({ start_id: testKey(90), end_id: testKey(91) });
-    });
-
-    it("nests a child item under its parent's first occurrence, and withholds it with the parent", () => {
-      const routine: FlowGoal = { id: 7, flow_id: 3, title: "Routine", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
-      const pushups: FlowTask = { id: 8, flow_id: 3, title: "Push-ups", parent_type: "flow_goal", parent_id: 7, position: 0, is_private: false };
-      const root = projectRoot();
-      injectHabitInstances(
-        root,
-        [mkFlow({ target_type: "project", target_id: 96, instance_type: "goal" })],
-        [[iter(0, "active", [
-          inst("flow_goal", 7, { cycle_id: 11 }),
-          inst("flow_goal", 7, { cycle_id: 12 }),
-          inst("flow_task", 8, { cycle_id: 13 }),
-        ])]],
-        LABELS, NOW, [routine], [pushups], [[]],
-      );
-      const iteration = root.children[0]?.children[0]?.children[0];
-      expect(iteration?.children.map((n) => n.title)).toEqual(["Routine", "Routine"]);
-      expect(iteration?.children[0]?.children.map((n) => n.title)).toEqual(["Push-ups"]);
-      expect(iteration?.children[1]?.children).toHaveLength(0);
-
-      // With the parent's window still shut, the step under it waits too rather than being hoisted.
-      const withheld = projectRoot();
-      injectHabitInstances(
-        withheld,
-        [mkFlow({ target_type: "project", target_id: 96, instance_type: "goal" })],
-        [[iter(0, "active", [inst("flow_task", 8, { cycle_id: 13 })])]],
-        LABELS, NOW, [routine], [pushups], [[]],
-      );
-      expect(withheld.children[0]?.children[0]?.children[0]?.children).toHaveLength(0);
-    });
+    expect(goal.habitIteration?.done).toBe(true);
+    expect(broken.habitIteration?.done).toBe(false);
+    expect(kept.habitIteration?.done).toBe(true);
   });
 
-  describe("added children", () => {
-    /** An aspect holding the goal a flow targets, plus one real task parented on that goal. */
-    function boardWithTask(): MindmapNode {
-      return buildTree(
-        [{ id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false }],
-        [{ id: 5, title: "Fitness", parent_type: "domain", parent_id: 1, status: "active", time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false }],
-        [{ id: 12, title: "Buy milk", parent_type: "goal", parent_id: 5, status: "todo", time_scope: null, plan: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false, archival: "live", agentic: null, asynchronous: false, delegate_to: null }],
-        [],
-      );
-    }
-
-    function attachment(overrides: Partial<HabitInstanceChild> = {}): HabitInstanceChild {
-      return {
-        flow_id: 3, item_type: "flow_root", item_id: 3, iteration_scope_id: testKey(100),
-        cycle_id: NO_CYCLE, child_type: "task", child_id: 12, ...overrides,
-      };
-    }
-
-    it("moves an added child out of the host and under the occurrence it hangs on", () => {
-      const root = boardWithTask();
-      const target = root.children[0]?.children[0];
-      expect(target?.children.map((n) => n.id)).toEqual(["task-12"]);
-
-      injectHabitInstances(
-        root, [mkFlow()], [[iter(0, "active"), iter(1, "active")]], LABELS, NOW,
-        [], [], [[]], [attachment()],
-      );
-
-      const iterations = target?.children.filter((n) => n.virtual === true) ?? [];
-      expect(iterations[0]?.children.map((n) => n.id)).toEqual(["task-12"]);
-      expect(iterations[1]?.children).toHaveLength(0);
-      expect(
-        target?.children.some((n) => n.id === "task-12"),
-        "the child is moved, not copied — it appears under the occurrence and nowhere else",
-      ).toBe(false);
-    });
-
-    it("leaves the child a real, editable node rather than a virtual one", () => {
-      const root = boardWithTask();
-      injectHabitInstances(
-        root, [mkFlow()], [[iter(0, "active")]], LABELS, NOW, [], [], [[]], [attachment()],
-      );
-      const child = root.children[0]?.children[0]?.children[0]?.children[0];
-      expect(child?.id).toBe("task-12");
-      expect(child?.virtual).toBeUndefined();
-      expect(child?.habitItem).toBeUndefined();
-    });
-
-    it("hangs a child on the one occurrence named, cycle pair and all", () => {
-      const root = boardWithTask();
-      injectHabitInstances(
-        root,
-        [mkFlow()],
-        [[iter(0, "active", [inst("flow_task", 4, { cycle_id: 7 }), inst("flow_task", 4, { cycle_id: 8 })])]],
-        LABELS, NOW,
-        [],
-        [{ id: 4, flow_id: 3, title: "Stretch", parent_type: "flow", parent_id: 3, position: 0, is_private: false }],
-        [[]],
-        [attachment({ item_type: "flow_task", item_id: 4, cycle_id: 8 })],
-      );
-      const occurrences = root.children[0]?.children[0]?.children[0]?.children ?? [];
-      expect(occurrences).toHaveLength(2);
-      expect(occurrences[0]?.children).toHaveLength(0);
-      expect(occurrences[1]?.children.map((n) => n.id)).toEqual(["task-12"]);
-    });
-
-    it("skips an attachment whose node is not in the tree rather than inventing one", () => {
-      const root = boardWithTask();
-      injectHabitInstances(
-        root, [mkFlow()], [[iter(0, "active")]], LABELS, NOW, [], [], [[]],
-        [attachment({ child_id: 999 })],
-      );
-      expect(root.children[0]?.children[0]?.children[0]?.children).toHaveLength(0);
-    });
+  it("falls back to the raw start date for a sub-day window, which has no scope label", () => {
+    const root = rootNode("task");
+    decorateIterationRoots(root, [mkHabit({ flow_duration_kind: "exact" })], LABELS, "2026-01-06T09:00:00");
+    expect(root.title).toBe("Exercise 2026-01-05");
+    expect(root.habitIteration?.scopeKind).toBeNull();
   });
 
-  describe("a commitment habit's iterations", () => {
-    function commitmentRoot(): MindmapNode {
-      return buildTree(
-        [
-          { id: 1, title: "Aspect", description: null, subtype: "aspect", parent_id: null, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-          { id: 96, title: "Nights", description: null, subtype: "project", parent_id: 1, color: null, status: null, knowledge_base_directory: null, position: 0, is_private: false },
-        ],
-        [], [], [],
-      );
-    }
-    const NIGHTLY = mkFlow({ title: "Asleep by 23:00", instance_type: "commitment", target_type: "project", target_id: 96, flow_duration_kind: "day" });
-    function inject(
-      root: MindmapNode,
-      iterations: HabitIteration[],
-      statuses: HabitItemStatus[] = [],
-      items: { goals?: FlowGoal[]; tasks?: FlowTask[] } = {},
-    ): MindmapNode | undefined {
-      injectHabitInstances(root, [NIGHTLY], [iterations], LABELS, NOW, items.goals ?? [], items.tasks ?? [], [statuses]);
-      return root.children[0]?.children[0]?.children[0];
-    }
-
-    it("draws the iteration root as a Commitment, not as a task or a goal", () => {
-      const iteration = inject(commitmentRoot(), [iter(0, "active")]);
-      expect(iteration?.kind).toBe("commitment");
-      // No status at all: a Commitment resolves to a Verdict, so there is nothing to cycle.
-      expect(iteration?.status).toBeUndefined();
-      expect(iteration?.verdict).toBe("unresolved");
-    });
-
-    it("reads this iteration's verdict off the slot its Modification stores it in", () => {
-      const kept = inject(commitmentRoot(), [iter(0, "active")], [mod("flow_root", 3, testKey(100), "kept")]);
-      expect(kept?.verdict).toBe("kept");
-      const broken = inject(commitmentRoot(), [iter(0, "active")], [mod("flow_root", 3, testKey(100), "broken")]);
-      expect(broken?.verdict).toBe("broken");
-    });
-
-    it("never reads a task status as a verdict", () => {
-      // `done` is not `kept`. A stale row from before the flow became a commitment habit reads as
-      // what it is — nothing said — rather than being translated into a judgement nobody made.
-      const iteration = inject(commitmentRoot(), [iter(0, "active")], [mod("flow_root", 3, testKey(100), "done")]);
-      expect(iteration?.verdict).toBe("unresolved");
-    });
-
-    it("leaves a past unjudged iteration live and unmissed — nothing concludes a commitment was broken", () => {
-      const iteration = inject(commitmentRoot(), [iter(0, "lapsed")]);
-      expect(iteration?.timing).toBe("lapsed");
-      expect(iteration?.resolution).toBeUndefined(); // a Commitment has no Resolution to derive
-      expect(iteration?.archived).not.toBe(true); // the answer is still owed
-    });
-
-    it("archives an unjudged iteration once its Verdict Window has run out, still unresolved", () => {
-      // Where "the answer is still owed" stops being true. The backend derives `expired` from the
-      // Habit's own Verdict Window, and it wins over the past-and-unjudged rule above — but it
-      // still derives no Resolution and does not touch the Verdict: not having judged something
-      // is part of the record, and it is never a Missed.
-      const iteration = inject(commitmentRoot(), [iter(0, "expired")]);
-      expect(iteration?.archived).toBe(true);
-      expect(iteration?.timing).toBe("lapsed");
-      expect(iteration?.resolution).toBeUndefined();
-      expect(iteration?.verdict).toBe("unresolved");
-    });
-
-    it("archives the steps under an expired iteration with it, and calls none of them missed", () => {
-      // An expired iteration is not `past` — under the Accumulating + Overlapping Consumption a
-      // commitment Habit is fixed to, an unanswered iteration classifies Active until it expires —
-      // so its steps would otherwise read as live work under an archived rule.
-      const charger: FlowTask = { id: 4, flow_id: 3, title: "Phone on charger", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
-      const iteration = inject(commitmentRoot(), [iter(0, "expired", [inst("flow_task", 4)])], [], { tasks: [charger] });
-      const item = iteration?.children[0];
-      expect(item?.archived).toBe(true);
-      expect(item?.resolution).toBeUndefined();
-    });
-
-    it("archives a past iteration once its verdict is in — that one is settled", () => {
-      const iteration = inject(commitmentRoot(), [iter(0, "lapsed")], [mod("flow_root", 3, testKey(100), "broken")]);
-      expect(iteration?.archived).toBe(true);
-      expect(iteration?.verdict).toBe("broken");
-    });
-
-    it("carries the flow's task items as ordinary tasks beneath it", () => {
-      const charger: FlowTask = { id: 4, flow_id: 3, title: "Phone on charger", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
-      const iteration = inject(commitmentRoot(), [iter(0, "active", [inst("flow_task", 4)])], [], { tasks: [charger] });
-      const item = iteration?.children[0];
-      expect(item?.kind).toBe("task"); // a Commitment holds Tasks — the supporting steps
-      expect(item?.status).toBe("todo");
-      expect(item?.verdict).toBeUndefined(); // only the commitment itself carries one
-    });
-
-
-    it("draws no iterations at all for a template holding a goal item, which a Commitment cannot hold", () => {
-      const milestone: FlowGoal = { id: 9, flow_id: 3, title: "Milestone", parent_type: "flow", parent_id: 3, position: 0, is_private: false };
-      const root = commitmentRoot();
-      injectHabitInstances(root, [NIGHTLY], [[iter(0, "active", [inst("flow_goal", 9)])]], LABELS, NOW, [milestone], [], [[]]);
-      expect(root.children[0]?.children[0]?.children).toHaveLength(0);
-    });
+  it("leaves an occurrence below the root, and every stored row, as it is", () => {
+    const item: MindmapNode = {
+      id: "task-item", kind: "task", title: "Stretch", position: 0, tagIds: [], children: [],
+      ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }),
+    };
+    const stored: MindmapNode = { id: "task-1", rowId: 1, kind: "task", title: "Plain", position: 0, tagIds: [], children: [] };
+    const parent: MindmapNode = { id: "root", kind: "domain", title: "", position: 0, tagIds: [], children: [item, stored] };
+    decorateIterationRoots(parent, [mkHabit()], LABELS, "2026-01-06T09:00:00");
+    expect(item.title).toBe("Stretch");
+    expect(item.habitIteration).toBeUndefined();
+    expect(stored.title).toBe("Plain");
+    expect(stored.rowTitle).toBeUndefined();
   });
 });

@@ -26,8 +26,8 @@ beforeEach(() => {
 describe("listTasks", () => {
   it("calls invoke with list_tasks and returns the task array", async () => {
     mockCommandOnce([mockTask]);
-    const result = await listTasks();
-    expect(invoke).toHaveBeenCalledWith("list_tasks");
+    const result = await listTasks("2026-01-05T09:00:00");
+    expect(invoke).toHaveBeenCalledWith("list_tasks", { now: "2026-01-05T09:00:00" });
     expect(result).toEqual([mockTask]);
   });
 });

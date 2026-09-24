@@ -204,9 +204,8 @@ export function useNodeActions({
         .map((id) => findNode(tree, id))
         .filter((node): node is MindmapNode => node !== undefined);
 
-      // A virtual Habit repetition is derived at load time, so there is no row to delete — and the
-      // Habit's template behind it is emphatically not what `Delete` on one occurrence should take
-      // away. It is refused here, in the List View's words (`useListDelete` raises the same key),
+      // A drawn node (a folded run, a wait's check task) has no row to delete — and the Habit's
+      // template behind a folded run is emphatically not what `Delete` on it should take away. It is refused here, in the List View's words (`useListDelete` raises the same key),
       // because one gesture on one kind of node must not read two ways depending on the surface.
       // Refusing this early is the whole point: the guard used to stop at `kind !== "aspect"`, so a
       // repetition raised the confirmation and then reached `rowIdOf`, which refuses a node with no
@@ -284,16 +283,20 @@ export function useNodeActions({
       const targetNode = findNode(tree, targetId);
       if (targetNode === undefined) return;
 
-      // The destination is asked first, and as a node. A folded run of Habit history and a virtual
-      // occurrence both wear a kind that the drop rule would say yes to, and neither has a row for
-      // a moved node's parent link to point at — an occurrence's own children are *attached* to
-      // the iteration when they are created, which a move of an existing row cannot do. Refused
-      // once here rather than once per clipboard entry: one reason, one sentence.
+      // The destination is asked first, and as a node. A folded run of Habit history wears a kind
+      // the drop rule would say yes to, and has no row for a moved node's parent link to point at.
+      // Refused once here rather than once per clipboard entry: one reason, one sentence.
       if (!canAdoptChildren(targetNode)) {
         showToast({ nodeId: targetId, message: t("warnings:pasteOntoRepetitionRefused") });
         return;
       }
       const isCopy = clipboard.operation === CLIPBOARD_OP.COPY;
+      // A Habit occurrence takes a node moved onto it, hung on that one iteration, but a copy is a
+      // stored row made under a stored parent, and there is no copying onto an occurrence.
+      if (isCopy && isOccurrence(targetNode)) {
+        showToast({ nodeId: targetId, message: t("warnings:pasteCopyOntoOccurrenceRefused") });
+        return;
+      }
 
       // Every reason a node is left behind lives in `pasteRefusal`, which the drag-and-drop rule is
       // only one of: an Aspect is fixed wherever you point, a Habit repetition has no row behind it

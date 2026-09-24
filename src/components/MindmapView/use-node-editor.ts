@@ -24,6 +24,7 @@ import {
   setFlowRecurrence, deleteFlowRecurrence, forkFlow, clearHabitModifications,
 } from "@/api/flows";
 import { keyContaining } from "@/utils/scope-key";
+import type { FlowItemType, ForkedTemplate } from "@/api/flows";
 import { withAtomicGesture } from "@/api/gesture";
 import { localNowIso } from "@/utils/local-now";
 import type { Domain } from "@/api/domains";
@@ -46,6 +47,13 @@ import { editorOwnerOf, isUneditableCheck } from "@/utils/editor-owner";
 import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { TASK_STATUS } from "@/utils/status-mapping";
+
+/** A flow item's id on the fork an "Archive & new" save landed on — or its own, with no fork. */
+function forkedItemId(forked: ForkedTemplate | null, type: FlowItemType, id: number): number {
+  if (forked === null) return id;
+  const pairs = type === "flow_goal" ? forked.goals : forked.tasks;
+  return pairs.find(([old]) => old === id)?.[1] ?? id;
+}
 
 export interface EditorModalState {
   nodeId: string;
@@ -377,31 +385,44 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       const flowItem = node.flowItem;
       if (flowItem === undefined) return;
       const dbId = storedId(rowIdOf(node));
-      const patch = { title: data.title, isPrivate: data.isPrivate };
-      if (flowItem.itemType === "flow_goal") {
-        await updateFlowGoal(dbId, patch);
-      } else {
-        await updateFlowTask(dbId, patch);
-      }
-      await setFlowItemCycles(
-        flowItem.flowId,
-        flowItem.itemType,
-        dbId,
-        data.cycles.map((c) => ({
-          scope_kind: c.scopeKind, scope_index: c.scopeIndex,
-          plan_kind: c.planKind, plan_start: c.planStart, plan_end: c.planEnd,
-        })),
-      );
-      for (const dep of data.addedDeps) {
-        await addFlowDependency(flowItem.flowId, flowItem.itemType, dbId, dep.type, dep.id);
-      }
-      for (const dep of data.removedDeps) {
-        await removeFlowDependency(flowItem.itemType, dbId, dep.type, dep.id);
-      }
+      // One gesture for the whole save. The pairs go first: they are what may refuse — a change
+      // that would orphan what occurrences recorded asks the Habit editor's question — and an
+      // "Archive & new" answer moves the rest of the save onto the fork, whose item ids the
+      // backend hands back.
+      await withAtomicGesture(tUndo("gestures.editFlowItem"), async () => {
+        const forked = await setFlowItemCycles(
+          flowItem.flowId,
+          flowItem.itemType,
+          dbId,
+          data.cycles.map((c) => ({
+            scope_kind: c.scopeKind, scope_index: c.scopeIndex,
+            plan_kind: c.planKind, plan_start: c.planStart, plan_end: c.planEnd,
+          })),
+          data.reconcile,
+          // "Archive & new" archives the original as of now, which the backend is told rather
+          // than left to read its own clock.
+          data.reconcile === undefined ? undefined : localNowIso(),
+        );
+        const onto = (type: FlowItemType, id: number): number => forkedItemId(forked, type, id);
+        const flowId = forked?.flow_id ?? flowItem.flowId;
+        const itemId = onto(flowItem.itemType, dbId);
+        const patch = { title: data.title, isPrivate: data.isPrivate, ...data.template };
+        if (flowItem.itemType === "flow_goal") {
+          await updateFlowGoal(itemId, patch);
+        } else {
+          await updateFlowTask(itemId, patch);
+        }
+        for (const dep of data.addedDeps) {
+          await addFlowDependency(flowId, flowItem.itemType, itemId, dep.type, onto(dep.type, dep.id));
+        }
+        for (const dep of data.removedDeps) {
+          await removeFlowDependency(flowItem.itemType, itemId, dep.type, onto(dep.type, dep.id));
+        }
+      });
       await reload();
       setEditorModal(null);
     },
-    [editorModal, reload],
+    [editorModal, reload, tUndo],
   );
 
   const onSimpleSave = useCallback(

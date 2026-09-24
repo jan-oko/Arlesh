@@ -39,7 +39,7 @@ import type { Goal } from "@/api/goals";
 import type { Info } from "@/api/infos";
 import type {
   Flow, CreateFlowRequest, UpdateFlowRequest,
-  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, TargetRef,
+  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, TargetRef, TemplateFields,
 } from "@/api/flows";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep, WaitRef } from "@/utils/tree-layout";
@@ -335,6 +335,19 @@ function contentParentKey(parentType: string, parentId: RowId): string {
   if (parentType === "task") return `task-${parentId}`;
   if (parentType === "commitment") return `commitment-${parentId}`;
   return `domain-${parentId}`;
+}
+
+/** A template item's own fields, as the item editor edits them. */
+function templateFieldsOf(item: FlowGoal | FlowTask): TemplateFields {
+  return {
+    ...(item.delegate_to !== undefined ? { delegate_to: item.delegate_to } : {}),
+    ...(item.agentic !== undefined ? { agentic: item.agentic } : {}),
+    ...(item.asynchronous !== undefined ? { asynchronous: item.asynchronous } : {}),
+    ...(item.archival !== undefined ? { archival: item.archival } : {}),
+    ...(item.beads_id !== undefined ? { beads_id: item.beads_id } : {}),
+    tag_ids: item.tag_ids ?? [],
+    block_reasons: item.block_reasons ?? [],
+  };
 }
 
 /** Node id for a flow item — `flowgoal-<id>` / `flowtask-<id>` (distinct from real goals/tasks). */
@@ -704,8 +717,9 @@ export function buildTree(
         flowScopeKind: owningFlow?.flow_duration_kind ?? null,
         cycles: cyclesByItem.get(id) ?? [],
         dependsOn: depsByItem.get(id) ?? [],
+        template: templateFieldsOf(item),
       },
-      tagIds: [],
+      tagIds: item.tag_ids ?? [],
       children: [],
     });
   };
@@ -874,7 +888,7 @@ function collectLoadConditions(data: MindmapLoad): LoadCondition {
  * The window fields an editor-configured commitment carries, omitted when it named none.
  *
  * Absent is not the same as `null` here: absent inherits the window above, which for an occurrence
- * child is the occurrence's own — the one the attachment already wrote.
+ * child is the occurrence's own — the one the backend gives it when it names none.
  */
 function commitmentWindow(data: CommitmentSaveData): {
   time_scope?: TimeScope;

@@ -1,6 +1,6 @@
 import { hierarchy, tree } from "d3-hierarchy";
 import type { TimeScope } from "@/api/time-scope";
-import type { InstanceType, FlowItemType } from "@/api/flows";
+import type { InstanceType, FlowItemType, TemplateFields } from "@/api/flows";
 import type { Origin, RowId } from "@/api/node-id";
 import { storedId } from "@/api/node-id";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
@@ -126,6 +126,9 @@ export interface FlowItemData {
   flowScopeKind: string | null;
   cycles: FlowCyclePair[];
   dependsOn: FlowItemDep[];
+  /** The template item's own fields — what every occurrence it draws reads unless it says
+   * otherwise (ADR 0008): its delegate, flags, set-aside state, tags and block reasons. */
+  template: TemplateFields;
 }
 
 /**

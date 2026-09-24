@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import {
   cardDrawsGlyph, cardWritesKind, creatableKinds,
@@ -138,7 +139,7 @@ describe("what you can descend into", () => {
   it("opens a virtual Habit occurrence, which takes children through the attachment path", () => {
     const occurrence = node("task", {
       id: "task-9", virtual: true,
-      habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: testKey(3), cycleId: 0 },
+      ...occurrenceRow({ habitId: 1, itemType: "flow_task", itemId: 2, cycleId: 0 }),
     });
     expect(canDescendInto(occurrence)).toBe(true);
   });

@@ -15,12 +15,12 @@ import type { CommitmentListRow, ExpectationListRow, TaskListRow } from "@/utils
 import { flattenCommitmentRows, flattenExpectationRows, flattenTaskRows } from "@/utils/list-data";
 import { useExpectationActions } from "@/hooks/use-expectation-actions";
 import { getErrorMessage } from "@/api/errors";
-import { useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
+import { acknowledged, useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
 import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
 
 interface ListData {
   tree: MindmapNode;
-  /** Every Task row (real, flow-materialized, and virtual Habit instances), unfiltered. */
+  /** Every Task row (stored, flow-materialized, and Habit occurrences), unfiltered. */
   rows: TaskListRow[];
   /** Every Commitment row, unfiltered — the section that sits above the task rows. */
   commitmentRows: CommitmentListRow[];
@@ -35,7 +35,7 @@ interface ListData {
   isLoading: boolean;
   error: string | null;
   reload: () => Promise<void>;
-  /** Cycles a row's status (todo → in_progress → done), or advances a virtual Habit instance. */
+  /** Cycles a row's status (todo → in_progress → done), through the occurrence completion guard. */
   onCycleStatus: (nodeId: string) => void;
   /** The occurrence completion the backend is holding for confirmation, or `null`. */
   occurrencePrompt: OccurrencePrompt | null;
@@ -104,7 +104,7 @@ export function useListData(): ListData {
       const dbId = rowIdOf(node);
       const next = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
       guard(node, async (confirmed) => {
-        const updated = await updateTask(dbId, { status: next }, confirmed);
+        const updated = await updateTask(dbId, { status: next }, ...acknowledged(confirmed));
         // Starting a set-aside task takes it out of the backlog, in the same write and so in the
         // same undo step. The row that comes back says whether it did; it is never assumed.
         if (cameOutOfBacklog(node, updated)) {

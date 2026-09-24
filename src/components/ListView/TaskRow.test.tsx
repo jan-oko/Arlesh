@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import { render, screen, fireEvent } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import TaskRow from "./TaskRow";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import { testKey } from "@/test/scope-key";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/hooks/use-tag-names", () => ({ useTagNames: () => new Map([[7, "urgent"]]) }));
@@ -92,13 +92,13 @@ describe("TaskRow", () => {
     expect(screen.getByLabelText("cycleStatus")).toBeDisabled();
   });
 
-  it("still allows cycling a virtual Habit instance even though it reads as blocked-like", () => {
+  it("gates a blocked Habit occurrence's status exactly as a blocked Task's", () => {
     const habitRow = row({
-      node: n("task-1", "task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: testKey(3), cycleId: 0 } }),
+      node: n("task-1", "task", { status: "todo", ...occurrenceRow({ habitId: 1, itemType: "flow_task", itemId: 2, cycleId: 0 }) }),
       isBlocked: true,
     });
     render(<TaskRow {...baseProps({ row: habitRow })} />);
-    expect(screen.getByLabelText("cycleStatus")).not.toBeDisabled();
+    expect(screen.getByLabelText("cycleStatus")).toBeDisabled();
   });
 
   it("clicking the title opens the editor", () => {

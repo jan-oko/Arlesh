@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, typeAcceptsChildren, isValidDropTarget, computeEditHeight, validParentKinds, isFlowKind, canParentNewTask, canParentNewChild, canParentAnyNewChild, canAdoptChildren, canAdoptExistingChild, TYPED_CHILD_KINDS } from "./node-meta";
 import { ALL_NODE_KINDS } from "./tree-layout";
 import type { MindmapNode } from "./tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
-import { testKey } from "@/test/scope-key";
 
 describe("computeNodeDimensions", () => {
   it("matches getNodeSize height for a short single-word title", () => {
@@ -465,7 +465,7 @@ describe("canParentNewChild", () => {
   const occurrence = (kind: MindmapNode["kind"]) =>
     node(`habit-3-0-virtual`, kind, {
       virtual: true,
-      habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: testKey(100), cycleId: 0 },
+      ...occurrenceRow({ habitId: 3, itemType: "flow_root", itemId: 3, cycleId: 0 }),
     });
 
   const foldedRun = node("habitgroup-3-run", "habit_group", {
@@ -527,10 +527,11 @@ describe("canParentNewChild", () => {
   describe("canAdoptChildren / canAdoptExistingChild", () => {
     // The one node the two predicates disagree about. Attaching writes the child and the link in
     // one call; a move only re-points an existing row's parent, and there is no id to point at.
-    it("lets an occurrence hold a NEW child but not adopt an existing one", () => {
+    it("lets an occurrence hold a new child and adopt a moved one, but no template kind", () => {
       expect(canParentNewChild(occurrence("task"), "task")).toBe(true);
-      expect(canAdoptChildren(occurrence("task"))).toBe(false);
-      expect(canAdoptExistingChild(occurrence("task"), "task")).toBe(false);
+      expect(canAdoptChildren(occurrence("task"))).toBe(true);
+      expect(canAdoptExistingChild(occurrence("task"), "task")).toBe(true);
+      expect(canAdoptExistingChild(occurrence("task"), "flow")).toBe(false);
     });
 
     it("answers the kind rule for an ordinary row, exactly as creating does", () => {

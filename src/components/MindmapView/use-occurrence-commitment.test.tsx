@@ -6,16 +6,15 @@ import { useNodeActions } from "./use-node-actions";
 import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import { findNode } from "@/utils/mindmap-tree";
-import { NO_CYCLE } from "@/api/flows";
 import type { MindmapLoad } from "@/api/mindmap";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { testKey } from "@/test/scope-key";
 
-// Nothing under `@/api` is mocked here, on purpose. The question is what Shift+C on a virtual
-// Habit occurrence actually puts *on the wire*: an occurrence has no row id, so a create that
-// hangs the new node from a parent id can only send rubbish for it. So the seam stubbed is Tauri's
-// IPC entry point itself — the function `invoke` hands the command to — with every hop above it
-// (hotkey action, editor, hook, `src/api`, the Gesture protocol) real.
+// Nothing under `@/api` is mocked here, on purpose. The question is what Shift+C on a Habit
+// occurrence actually puts *on the wire*: the occurrence is a row with a UUID id (ADR 0008), and
+// the new commitment hangs from it by that id like from any other parent. So the seam stubbed is
+// Tauri's IPC entry point itself — the function `invoke` hands the command to — with every hop
+// above it (hotkey action, editor, hook, `src/api`, the Gesture protocol) real.
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
 }));
@@ -42,19 +41,12 @@ declare global {
 }
 
 const FLOW_ID = 3;
-const ITERATION_SCOPE_ID = "day:2026-01-05";
-/** The nightly Habit's first iteration, as `injectHabitInstances` ids it. */
-const OCCURRENCE_ID = `habit-${FLOW_ID}-0-virtual`;
-/** The row `create_habit_instance_child` reports back for the attached commitment. */
+/** The occurrence's row id: a derived row's UUID. */
+const OCCURRENCE_ROW = "6f1c2d4e-0000-5000-8000-000000000003";
+/** The node id the board builds for it, as for any Task row. */
+const OCCURRENCE_ID = `task-${OCCURRENCE_ROW}`;
+/** The row `create_commitment` reports back. */
 const NEW_COMMITMENT_ID = 42;
-
-/** The quadruple that names the occurrence a child is attached to. */
-const INSTANCE = {
-  item_type: "flow_root",
-  item_id: FLOW_ID,
-  iteration_scope_id: ITERATION_SCOPE_ID,
-  cycle_id: NO_CYCLE,
-};
 
 const WINDOW = { start_id: testKey(7), end_id: testKey(9) };
 
@@ -68,7 +60,20 @@ function envelope(): MindmapLoad {
       id: 1, title: "Sleep well", parent_type: "domain", parent_id: 1, status: "active",
       time_scope: null, on_scope_exit: null, tag_ids: [], position: 0, is_private: false,
     }],
-    tasks: [], commitments: [], expectations: [], expectation_checks: [], spawned_waits: [], infos: [],
+    tasks: [{
+      id: OCCURRENCE_ROW, title: "Evening routine", parent_type: "goal", parent_id: 1,
+      status: "todo", time_scope: null, on_scope_exit: null, plan: null, tag_ids: [], position: 0,
+      is_private: false, delegate_to: null, agentic: null, asynchronous: false,
+      archival: "live",
+      origin: {
+        kind: "habit", habit_id: FLOW_ID, item_type: "flow_root", item_id: FLOW_ID, cycle_id: 0,
+        iteration_scope: {
+          index: 0, start_date: "2026-01-05", window_end: "2099-01-01T00:00:00",
+          scope_id: "day:2026-01-05", kind: "day", status: "active",
+        },
+      },
+    }],
+    commitments: [], expectations: [], expectation_checks: [], spawned_waits: [], infos: [],
     flows: [{
       id: FLOW_ID, title: "Evening routine", instance_type: "task",
       parent_type: "domain", parent_id: 1, target_type: "goal", target_id: 1,
@@ -79,25 +84,7 @@ function envelope(): MindmapLoad {
     }],
     flow_goals: [], flow_tasks: [], flow_cycles: [], flow_dependencies: [],
     block_reasons: [], task_dependencies: [], flow_instance_nodes: [], lifecycles: [],
-    habit_instance_children: [],
-    habits: [{
-      flow_id: FLOW_ID,
-      flow_title: "Evening routine",
-      result: {
-        outcome: "loaded",
-        iterations: [{
-          index: 0,
-          anchor_scope_id: ITERATION_SCOPE_ID,
-          anchor_date: "2026-01-05",
-          // Far enough ahead that the iteration is open, so it renders as its own node rather
-          // than folded into a passed-history group.
-          window_end: "2099-01-01T00:00:00",
-          status: "active",
-          instances: [],
-        }],
-        statuses: [],
-      },
-    }],
+    habits: [{ flow_id: FLOW_ID, flow_title: "Evening routine", result: { outcome: "loaded" } }],
   };
 }
 
@@ -110,9 +97,7 @@ const ipc = vi.fn((cmd: string, _args?: unknown): Promise<unknown> => {
   if (cmd === "load_mindmap") return Promise.resolve(envelope());
   if (cmd === "open_gesture") return Promise.resolve("gesture-under-test");
   if (cmd === "list_domains") return Promise.resolve([]);
-  if (cmd === "create_habit_instance_child") {
-    return Promise.resolve({ node_type: "commitment", node_id: NEW_COMMITMENT_ID });
-  }
+  if (cmd === "create_commitment") return Promise.resolve({ id: NEW_COMMITMENT_ID });
   return Promise.resolve(null);
 });
 
@@ -200,7 +185,7 @@ function Harness() {
 }
 
 describe("Shift+C on a Habit occurrence", () => {
-  it("attaches the commitment to the occurrence instead of hanging it from a parent id", async () => {
+  it("hangs the commitment from the occurrence's own row id, like any parent", async () => {
     render(<Harness />);
     await waitFor(() => expect(screen.getByText(SHIFT_C_LABEL)).toBeInTheDocument());
 
@@ -210,27 +195,19 @@ describe("Shift+C on a Habit occurrence", () => {
     });
     fireEvent.click(screen.getByText("save"));
 
-    await waitFor(() => expect(commands()).toContain("create_habit_instance_child"));
-
-    // An occurrence has no row id. `create_commitment` takes a non-optional `parent_id`, so every
-    // way of reaching it from here sends something that is not one — `NaN`, which serialises to
-    // JSON `null`, which comes back as "invalid type: null, expected i64".
-    const strayCreate = ipc.mock.calls.find(([cmd]) => cmd === "create_commitment");
-    expect(
-      strayCreate,
-      `create_commitment reached the IPC boundary with ${JSON.stringify(strayCreate?.[1])}`,
-    ).toBeUndefined();
-
-    expect(wireArgs("create_habit_instance_child")).toEqual({
-      flowId: FLOW_ID,
-      instance: INSTANCE,
-      childType: "commitment",
-      title: "Asleep by 23:00",
+    await waitFor(() => expect(commands()).toContain("create_commitment"));
+    expect(wireArgs("create_commitment")).toEqual({
+      request: {
+        title: "Asleep by 23:00",
+        parent_type: "task",
+        parent_id: OCCURRENCE_ROW,
+        verdict: "unresolved",
+      },
     });
   });
 });
 
-describe("a Commitment attached to a Habit occurrence", () => {
+describe("a Commitment created under a Habit occurrence", () => {
   const save: CommitmentSaveData = {
     title: "Asleep by 23:00",
     verdict: "kept",
@@ -240,7 +217,7 @@ describe("a Commitment attached to a Habit occurrence", () => {
     isPrivate: true,
   };
 
-  async function attach(): Promise<void> {
+  async function create(): Promise<void> {
     const { result } = renderHook(() => useMindmapData());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     await act(async () => {
@@ -248,26 +225,25 @@ describe("a Commitment attached to a Habit occurrence", () => {
     });
   }
 
-  it("carries the fields the editor set onto the attached row", async () => {
-    await attach();
+  it("carries the fields the editor set in the create itself, and the rest after it", async () => {
+    await create();
 
-    expect(wireArgs("update_commitment")).toEqual({
-      id: NEW_COMMITMENT_ID,
+    expect(wireArgs("create_commitment")).toEqual({
       request: {
+        title: "Asleep by 23:00",
+        parent_type: "task",
+        parent_id: OCCURRENCE_ROW,
         verdict: "kept",
         time_scope: WINDOW,
         verdict_window: { n: 2, kind: "day" },
-        is_private: true,
       },
     });
-    expect(wireArgs("add_tag_to_commitment")).toEqual({
-      commitmentId: NEW_COMMITMENT_ID,
-      tagId: 5,
-    });
+    expect(wireArgs("update_commitment")).toEqual({ id: NEW_COMMITMENT_ID, request: { is_private: true } });
+    expect(wireArgs("add_tag_to_commitment")).toEqual({ commitmentId: NEW_COMMITMENT_ID, tagId: 5 });
   });
 
   it("finishes configuring the row before the board reloads, so it never appears half-made", async () => {
-    await attach();
+    await create();
 
     const order = commands();
     const reloads = order.reduce<number[]>((acc, cmd, index) => {
@@ -277,26 +253,6 @@ describe("a Commitment attached to a Habit occurrence", () => {
     expect(reloads).toHaveLength(2);
     expect(order.indexOf("update_commitment")).toBeLessThan(reloads[1] ?? -1);
     expect(order.indexOf("add_tag_to_commitment")).toBeLessThan(reloads[1] ?? -1);
-  });
-});
-
-describe("a Commitment the occurrence's window will not hold", () => {
-  it("takes the attached row back out rather than leaving it for a second Save to duplicate", async () => {
-    refusals.set("update_commitment", "a commitment must sit within its parent's window");
-    const { result } = renderHook(() => useMindmapData());
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-    await expect(
-      result.current.createCommitment(OCCURRENCE_ID, "task", {
-        title: "Asleep by 23:00", verdict: "unresolved", tagIds: [],
-        // A window the occurrence's own day cannot contain — the editor stays open on it, so the
-        // row the attachment already wrote must not survive to be made a second time.
-        timeScope: WINDOW, verdictWindow: null, isPrivate: false,
-      }),
-    ).rejects.toThrow("a commitment must sit within its parent's window");
-
-    expect(wireArgs("delete_commitment")).toEqual({ id: NEW_COMMITMENT_ID });
-    expect(commands().filter((cmd) => cmd === "create_habit_instance_child")).toHaveLength(1);
   });
 });
 

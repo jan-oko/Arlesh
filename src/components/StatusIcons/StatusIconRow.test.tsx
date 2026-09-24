@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import { render } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import StatusIconRow from "./StatusIconRow";
@@ -52,7 +53,7 @@ describe("StatusIconRow", () => {
   });
 
   it("uses the habit tooltip for a virtual habit instance and the flow tooltip otherwise", () => {
-    const habit = node("task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_root", itemId: 1, scopeId: testKey(5), cycleId: 0 } });
+    const habit = node("task", { status: "todo", ...occurrenceRow({ habitId: 1, itemType: "flow_root", itemId: 1, cycleId: 0 }) });
     expect(renderRow(habit)).toEqual(["habitInstance"]);
 
     const started = node("task", { status: "todo", fromFlow: true });

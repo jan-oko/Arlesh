@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import { renderHook, act } from "@testing-library/react";
 import { useNodeActions } from "./use-node-actions";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
@@ -19,7 +20,6 @@ vi.mock("@/api/goals", () => ({
 }));
 
 vi.mock("@/api/flows", () => ({
-  setHabitItemStatus: vi.fn().mockResolvedValue(undefined),
   // The completion guard reads a rejection for the unfinished children it names; a resolved write
   // never reaches it, so every case here answers "not that refusal".
   unfinishedChildren: vi.fn(() => null),
@@ -37,9 +37,7 @@ vi.mock("react-i18next", () => ({
 
 import { updateTask } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
-import { setHabitItemStatus } from "@/api/flows";
 import { fixtureRowId } from "@/test/node-fixture";
-import { testKey } from "@/test/scope-key";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children, ...extra };
@@ -51,19 +49,19 @@ const GOAL_NODE = mkNode("goal-2", "goal", [], { status: "active" });
 const GOAL_ACHIEVED = mkNode("goal-8", "goal", [], { status: "achieved" });
 const ASPECT = mkNode("aspect-1", "aspect");
 const HABIT_ITER = mkNode("habit-3-0-virtual", "task", [], {
-  status: "todo", virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: testKey(100), cycleId: 0 },
+  status: "todo", ...occurrenceRow({ habitId: 3, itemType: "flow_root", itemId: 3, cycleId: 0 }),
 });
 const HABIT_DONE = mkNode("habit-3-1-virtual", "task", [], {
-  status: "done", virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: testKey(101), cycleId: 0 },
+  status: "done", ...occurrenceRow({ habitId: 3, itemType: "flow_root", itemId: 3, cycleId: 0, index: 1 }),
 });
 const HABIT_ITEM = mkNode("habititem-flow_task-4-0-virtual", "task", [], {
-  status: "todo", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: testKey(100), cycleId: 0 },
+  status: "todo", ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4, cycleId: 0 }),
 });
 const HABIT_GOAL_DONE = mkNode("habititem-flow_goal-9-0-virtual", "goal", [], {
-  status: "achieved", virtual: true, habitItem: { flowId: 3, itemType: "flow_goal", itemId: 9, scopeId: testKey(100), cycleId: 0 },
+  status: "achieved", ...occurrenceRow({ habitId: 3, itemType: "flow_goal", itemId: 9, cycleId: 0 }),
 });
 const HABIT_TASK_IP = mkNode("habititem-flow_task-7-0-virtual", "task", [], {
-  status: "in_progress", virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 7, scopeId: testKey(100), cycleId: 0 },
+  status: "in_progress", ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 7, cycleId: 0 }),
 });
 // A task that answered the Agentic question itself, and one that only reads as agentic because an
 // ancestor does — the pair that tells "copy the stored column" apart from "copy what it resolves to".
@@ -187,51 +185,42 @@ describe("useNodeActions — onStatusClick", () => {
     await vi.waitFor(() => expect(updateGoal).toHaveBeenCalledWith(8, { status: "active" }));
   });
 
-  it("advances a todo task-instance root to in_progress (not straight to done)", async () => {
+  it("advances a todo iteration root to in_progress on its own row (not straight to done)", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habit-3-0-virtual"); });
     await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, testKey(100), 0, "in_progress", expect.any(Number), undefined),
+      expect(updateTask).toHaveBeenCalledWith(HABIT_ITER.rowId, { status: "in_progress" }),
     );
-    expect(updateTask).not.toHaveBeenCalled();
   });
 
-  it("cycles a done task-instance root back to todo by clearing its status", async () => {
+  it("cycles a done iteration root back to todo", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habit-3-1-virtual"); });
-    await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, testKey(101), 0, null, expect.any(Number), undefined),
-    );
+    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(HABIT_DONE.rowId, { status: "todo" }));
   });
 
-  it("advances an in_progress task instance to done", async () => {
+  it("advances an in_progress occurrence to done", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_task-7-0-virtual"); });
-    await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 7, testKey(100), 0, "done", expect.any(Number), undefined),
-    );
+    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(HABIT_TASK_IP.rowId, { status: "done" }));
   });
 
-  it("un-achieves a completed goal instance by clearing its status", async () => {
+  it("un-achieves an achieved goal occurrence like any goal", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_goal-9-0-virtual"); });
-    await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_goal", 9, testKey(100), 0, null, expect.any(Number), undefined),
-    );
+    await vi.waitFor(() => expect(updateGoal).toHaveBeenCalledWith(HABIT_GOAL_DONE.rowId, { status: "active" }));
   });
 
-  it("advances a single todo task instance without touching the rest of the iteration", async () => {
+  it("advances one occurrence without touching the rest of the iteration", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_task-4-0-virtual"); });
-    await vi.waitFor(() =>
-      expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_task", 4, testKey(100), 0, "in_progress", expect.any(Number), undefined),
-    );
-    expect(updateTask).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(HABIT_ITEM.rowId, { status: "in_progress" }));
+    expect(updateTask).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -377,16 +366,13 @@ describe("useNodeActions — onDelete", () => {
     });
   });
 
-  it("says both reasons in one toast when a selection holds a repetition and an Aspect", () => {
-    // The store holds a single pending notice, so a selection tripping both rules has to say both
-    // at once or say one of them into nothing.
+  it("refuses a selection holding an Aspect, which is fixed, and says why", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onDelete(["habit-3-0-virtual", "aspect-1", "task-5"]); });
     expect(opts.onRequestDelete).not.toHaveBeenCalled();
     const calls = vi.mocked(opts.showToast).mock.calls;
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.[0].message).toContain("deleteRepetitionRefused");
     expect(calls[0]?.[0].message).toContain("deleteAspectRefused");
   });
 
@@ -397,41 +383,14 @@ describe("useNodeActions — onDelete", () => {
     expect(opts.onRequestDelete).not.toHaveBeenCalled();
   });
 
-  it("refuses a virtual Habit repetition out loud instead of raising the confirmation", () => {
-    // The repetition has no row behind it, so the confirmation used to open on a delete that could
-    // only throw: `rowIdOf` refuses a node with no `rowId`, and the throw surfaced as a generic
-    // "delete failed" inside the dialog. It never gets that far now — and it says the same thing
-    // the List View says, since one gesture on one kind of node must not have two wordings.
+  it("takes a Habit occurrence through the same confirmation — the backend archives it", () => {
+    // An occurrence is a row (ADR 0008). Delete on one archives that repetition rather than taking
+    // anything from the Habit's template, and it is asked for like any other delete.
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
-    act(() => { result.current.onDelete(["habit-3-0-virtual"]); });
-    expect(opts.onRequestDelete).not.toHaveBeenCalled();
-    expect(opts.showToast).toHaveBeenCalledWith({
-      nodeId: "habit-3-0-virtual",
-      message: expect.stringContaining("deleteRepetitionRefused"),
-    });
-  });
-
-  it("refuses a per-item virtual Habit instance too, not just the iteration root", () => {
-    const opts = makeOpts();
-    const { result } = renderHook(() => useNodeActions(opts));
-    act(() => { result.current.onDelete(["habititem-flow_task-4-0-virtual"]); });
-    expect(opts.onRequestDelete).not.toHaveBeenCalled();
-    expect(opts.showToast).toHaveBeenCalledTimes(1);
-  });
-
-  it("refuses the whole selection when a repetition is in it, deleting none of the real nodes", () => {
-    // Not the paste rule of dropping what it cannot take and naming the count: a delete is
-    // destructive where a paste is additive, and the notice would be raised underneath the
-    // confirmation overlay and fade unread.
-    const opts = makeOpts();
-    const { result } = renderHook(() => useNodeActions(opts));
-    act(() => { result.current.onDelete(["task-5", "habit-3-0-virtual", "goal-2"]); });
-    expect(opts.onRequestDelete).not.toHaveBeenCalled();
-    expect(opts.showToast).toHaveBeenCalledWith({
-      nodeId: "habit-3-0-virtual",
-      message: expect.stringContaining("deleteRepetitionRefused"),
-    });
+    act(() => { result.current.onDelete(["task-5", "habititem-flow_task-4-0-virtual"]); });
+    expect(opts.onRequestDelete).toHaveBeenCalledWith(["task-5", "habititem-flow_task-4-0-virtual"]);
+    expect(opts.showToast).not.toHaveBeenCalled();
   });
 
   it("says nothing and deletes normally when the selection is all real nodes", () => {
@@ -516,17 +475,23 @@ describe("useNodeActions — onPaste", () => {
       .toContain("pasteOntoRepetitionRefused");
   });
 
-  it("refuses a paste onto a virtual Habit occurrence, which cannot adopt an existing row", () => {
-    // An occurrence holds children of its own, but they are *attached* when they are created. A
-    // move only re-points a row's parent link, and there is no id here for one to point at.
+  it("moves a cut row onto a Habit occurrence, which hangs it on that iteration", async () => {
     const clipboard = { operation: CLIPBOARD_OP.CUT, nodeIds: ["task-5"] };
     const opts = makeOpts({ clipboard });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("habit-3-0-virtual"); });
-    expect(opts.moveNode).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(opts.moveNode).toHaveBeenCalled());
+  });
+
+  it("refuses a copy onto a Habit occurrence, since a copy is made under a stored row", () => {
+    const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["task-5"] };
+    const opts = makeOpts({ clipboard });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onPaste("habit-3-0-virtual"); });
+    expect(opts.duplicateNode).not.toHaveBeenCalled();
     expect(opts.showToast).toHaveBeenCalledWith({
       nodeId: "habit-3-0-virtual",
-      message: expect.stringContaining("pasteOntoRepetitionRefused"),
+      message: expect.stringContaining("pasteCopyOntoOccurrenceRefused"),
     });
   });
 
@@ -597,7 +562,7 @@ describe("useNodeActions — onPaste", () => {
     expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkippedAspect:1" });
   });
 
-  it("does not paste a virtual (habit-instance) node", async () => {
+  it("does not paste a Habit occurrence, which belongs to its iteration", async () => {
     const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["habit-3-0-virtual"] };
     const opts = makeOpts({ clipboard });
     const { result } = renderHook(() => useNodeActions(opts));
@@ -957,7 +922,7 @@ describe("useNodeActions — onCreateTypedChild", () => {
   // A Habit whose instances are Goals draws its iteration root as a `goal`. That is what made
   // Shift+F on one pass a kind-only check: a Flow may sit under a Goal.
   const GOAL_OCCURRENCE = mkNode("habit-3-0-virtual", "goal", [], {
-    virtual: true, habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: testKey(100), cycleId: 0 },
+    ...occurrenceRow({ habitId: 3, itemType: "flow_root", itemId: 3, cycleId: 0 }),
   });
   const CONTAINER = mkNode("domain-3", "project", [TASK_NODE, GOAL_NODE, COMMITMENT_NODE, TAG, DOMAIN, INFO, FLOW_NODE, GOAL_OCCURRENCE, HABIT_RUN]);
   const TREE = mkNode("root", "domain", [CONTAINER]);

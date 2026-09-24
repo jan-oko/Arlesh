@@ -17,6 +17,15 @@ export interface OccurrencePrompt {
  */
 export type GuardedWrite = (confirmed: boolean) => Promise<void>;
 
+/**
+ * The trailing `confirmed` argument of an update, as a write run by the guard passes it: nothing
+ * on the first attempt, so an ordinary write is the same call it always was, and `true` once the
+ * user has answered the prompt.
+ */
+export function acknowledged(confirmed: boolean): [] | [true] {
+  return confirmed ? [true] : [];
+}
+
 /** Writing a status, with the guard that asks before an occurrence closes over work. */
 export interface OccurrenceCompletion {
   /** The pending confirmation, or `null` when nothing is being asked. */

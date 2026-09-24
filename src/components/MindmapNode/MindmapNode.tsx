@@ -88,7 +88,8 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
       onSelect(node.id);
     }
   }, [node.id, onSelect, onCtrlClick, onShiftClick]);
-  // A virtual node (derived Habit iteration) is read-only: no edit, drag, or context menu.
+  // A virtual node (a folded run, a wait's check task) is read-only: no edit, drag, or context
+  // menu. A Habit occurrence is a row, and takes all three like any other.
   const handleDoubleClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); if (node.virtual === true) return; onDoubleClick(node.id); }, [node.id, node.virtual, onDoubleClick]);
   const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (node.virtual === true) return; setContextMenu({ x: e.clientX, y: e.clientY }); }, [node.virtual]);
   const handleMouseDown = useCallback((e: React.MouseEvent) => { if (e.button !== 0 || node.kind === "aspect" || node.virtual === true) return; onDragStart(node.id, e.clientX, e.clientY); }, [node.id, node.kind, node.virtual, onDragStart]);

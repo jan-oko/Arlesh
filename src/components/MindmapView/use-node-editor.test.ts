@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useNodeEditor } from "./use-node-editor";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
 import { updateTask, scopeContainmentConflicts } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
-import { flowOrigins } from "@/api/flows";
+import { flowOrigins, setFlowItemCycles, updateFlowTask, addFlowDependency } from "@/api/flows";
 import { testKey } from "@/test/scope-key";
 
 vi.mock("@/api/domains", () => ({
@@ -28,8 +29,12 @@ vi.mock("@/api/goals", () => ({
 }));
 vi.mock("@/api/flows", () => ({
   updateFlow: vi.fn(), updateFlowGoal: vi.fn(), updateFlowTask: vi.fn(),
-  setFlowItemCycles: vi.fn(), addFlowDependency: vi.fn(), removeFlowDependency: vi.fn(),
+  setFlowItemCycles: vi.fn().mockResolvedValue(null), addFlowDependency: vi.fn(), removeFlowDependency: vi.fn(),
   flowOrigins: vi.fn().mockResolvedValue([]),
+}));
+vi.mock("@/api/gesture", () => ({
+  withGesture: vi.fn((_name: string, run: () => Promise<unknown>) => run()),
+  withAtomicGesture: vi.fn((_name: string, run: () => Promise<unknown>) => run()),
 }));
 vi.mock("@/api/block-reasons", () => ({
   setBlockReasons: vi.fn().mockResolvedValue(undefined),
@@ -40,8 +45,7 @@ const taskNode: MindmapNode = {
 };
 const virtualHabitItemNode: MindmapNode = {
   id: "habititem-flow_task-4-3-virtual", kind: "task", title: "Breakfast", tagIds: [], position: 0, children: [],
-  virtual: true,
-  habitItem: { flowId: 4, itemType: "flow_task", itemId: 4, scopeId: testKey(26), cycleId: 0 },
+  ...occurrenceRow({ habitId: 4, itemType: "flow_task", itemId: 4, cycleId: 0 }),
 };
 const root: MindmapNode = {
   id: "root", kind: "domain", title: "Arlesh", tagIds: [], position: 0,
@@ -66,17 +70,26 @@ const saveData: TaskSaveData = {
 beforeEach(() => vi.clearAllMocks());
 
 describe("useNodeEditor — double-click", () => {
-  // A virtual Habit instance (root or item) isn't backed by a real Task/Goal row — its Time Scope
-  // is derived from the flow's Duration kind and the item's Cycle, not independently settable.
-  // It carries no `rowId`, so the full editor would have nothing to save against — it must stay a
-  // no-op, like the aspect case.
-  it("does not open an editor for a virtual Habit instance node", () => {
+  // A Habit occurrence is a row like any other (ADR 0008): it opens the same editor, and what it
+  // saves lands on that occurrence alone.
+  it("opens the ordinary editor on a Habit occurrence", () => {
     const reload = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>
       useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], reload }),
     );
     act(() => result.current.onDoubleClick("habititem-flow_task-4-3-virtual"));
-    expect(result.current.editorModal).toBeNull();
+    expect(result.current.editorModal?.nodeId).toBe("habititem-flow_task-4-3-virtual");
+  });
+
+  it("saves an occurrence on its own row without re-clamping its window, which cannot move", async () => {
+    const reload = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useNodeEditor({ tree: root, allTasksAndGoals: [taskNode], reload }),
+    );
+    act(() => result.current.setEditorModal({ nodeId: virtualHabitItemNode.id, node: virtualHabitItemNode }));
+    await act(async () => { await result.current.onTaskSave(saveData); });
+    expect(scopeContainmentConflicts).not.toHaveBeenCalled();
+    expect(updateTask).toHaveBeenCalledWith(virtualHabitItemNode.rowId, expect.objectContaining({ title: "Task" }));
   });
 });
 
@@ -166,5 +179,48 @@ describe("useNodeEditor — delegation", () => {
     const result = setup();
     await act(async () => { await result.current.onTaskSave(saveData); });
     expect(vi.mocked(updateTask).mock.calls[0]?.[1]).not.toHaveProperty("delegate_to");
+  });
+});
+
+describe("useNodeEditor — saving a flow item", () => {
+  const flowTask: MindmapNode = {
+    id: "flowtask-7", rowId: 7, kind: "flow_task", title: "Stretch", tagIds: [], position: 0, children: [],
+    flowItem: {
+      itemType: "flow_task", flowId: 3, flowInstanceType: "task", flowScopeN: 1, flowScopeKind: "day",
+      cycles: [], dependsOn: [], template: {},
+    },
+  };
+
+  it("writes the template's own fields with the title, one save for the whole item", async () => {
+    const reload = vi.fn().mockResolvedValue(undefined);
+    const tree: MindmapNode = { ...root, children: [flowTask] };
+    const { result } = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload }));
+    act(() => result.current.setEditorModal({ nodeId: "flowtask-7", node: flowTask }));
+
+    await act(() => result.current.onFlowItemSave({
+      title: "Stretch well", cycles: [], isPrivate: false, addedDeps: [], removedDeps: [],
+      template: { tag_ids: [4], block_reasons: [], asynchronous: true },
+    }));
+
+    expect(updateFlowTask).toHaveBeenCalledWith(7, expect.objectContaining({
+      title: "Stretch well", tag_ids: [4], block_reasons: [], asynchronous: true,
+    }));
+  });
+
+  it("lands the rest of the save on the fork an Archive & new answer created", async () => {
+    vi.mocked(setFlowItemCycles).mockResolvedValueOnce({ flow_id: 9, goals: [], tasks: [[7, 70], [6, 60]] });
+    const reload = vi.fn().mockResolvedValue(undefined);
+    const tree: MindmapNode = { ...root, children: [flowTask] };
+    const { result } = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload }));
+    act(() => result.current.setEditorModal({ nodeId: "flowtask-7", node: flowTask }));
+
+    await act(() => result.current.onFlowItemSave({
+      title: "Stretch well", cycles: [], isPrivate: false, reconcile: "fork", template: {},
+      addedDeps: [{ type: "flow_task", id: 6 }], removedDeps: [],
+    }));
+
+    expect(setFlowItemCycles).toHaveBeenCalledWith(3, "flow_task", 7, [], "fork", expect.any(String));
+    expect(updateFlowTask).toHaveBeenCalledWith(70, expect.objectContaining({ title: "Stretch well" }));
+    expect(addFlowDependency).toHaveBeenCalledWith(9, "flow_task", 70, "flow_task", 60);
   });
 });

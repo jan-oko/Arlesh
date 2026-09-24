@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import {
   matchesPillGroup, deriveScopeStateTokens, filterTaskList, filterTaskListWithFocus, filterCommitmentList,
   withCurrentPillDimensions,
@@ -124,7 +125,7 @@ describe("filterTaskList", () => {
     const evening = n("evening", "task", {
       status: "todo",
       timing: "pending",
-      habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: testKey(100), cycleId: 12 },
+      ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4, cycleId: 12 }),
     });
     const rows = [row({ node: evening })];
     expect(filterTaskList(rows, sf({ statusMode: "all" }), lf())).toHaveLength(1);
@@ -137,7 +138,7 @@ describe("filterTaskList", () => {
     // The canvas prunes the subtree; a flat list has to walk for it.
     const ancestor = n("evening", "task", {
       timing: "pending",
-      habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: testKey(100), cycleId: 12 },
+      ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4, cycleId: 12 }),
     });
     const rows = [row({ ancestors: [ancestor] })];
     expect(filterTaskList(rows, sf({ statusMode: "all" }), lf())).toHaveLength(1);
@@ -640,10 +641,9 @@ describe("filterCommitmentList", () => {
   it("hides a commitment under a habit occurrence whose window has not opened", () => {
     // habits.md hides an unopened occurrence together with its own subtree, and the band answers
     // that rule like every other surface: the commitment never outlives the occurrence it hangs on.
-    const occurrence = { flowId: 1, itemType: "flow_goal", itemId: 1, scopeId: testKey(1), cycleId: 0 } as const;
     const rows = [
       commitmentRow({
-        ancestors: [n("goal-occurrence", "goal", { status: "active", timing: "pending", habitItem: occurrence })],
+        ancestors: [n("goal-occurrence", "goal", { status: "active", timing: "pending", ...occurrenceRow({ itemType: "flow_goal" }) })],
       }),
     ];
     // All is the one preset that shows the occurrence, so it is the one that keeps the commitment.

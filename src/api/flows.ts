@@ -34,9 +34,9 @@ export interface Flow {
   root_plan_end: number | null;
   // The Verdict Window a commitment Habit's iterations are bounded by: how long past the end of an
   // iteration's own window its verdict may still be recorded, as the same (n, kind) Duration pair a
-  // Commitment carries. Null leaves iterations answerable indefinitely. A virtual iteration has no
-  // commitments row to carry one of its own, and the flow's target is usually a Project or Domain,
-  // which carries none either — so the Habit is where it lives.
+  // Commitment carries. Null leaves iterations answerable indefinitely. Each iteration's Commitment row
+  // reads it from here, and the flow's target is usually a Project or Domain, which carries none
+  // — so the Habit is where it lives.
   verdict_window_n: number | null;
   verdict_window_kind: string | null;
   // Whether this flow is a Habit (has a Recurrence) — derived on read.
@@ -498,16 +498,16 @@ export async function setFlowItemCycles(
   });
 }
 
-/** Whether `error` is the refusal a cycle edit that would orphan recorded edits raises. */
-export function cycleEditOrphans(error: unknown): boolean {
-  return (
-    isWireError(error) &&
-    error.kind === "needs_confirmation" &&
-    typeof error.details === "object" &&
-    error.details !== null &&
-    "reason" in error.details &&
-    error.details.reason === "orphaned_edits"
-  );
+/**
+ * How many iterations a refused cycle edit would orphan the recorded edits of, when `error` is that
+ * refusal; `null` for any other error.
+ */
+export function orphanedEditCount(error: unknown): number | null {
+  if (!isWireError(error) || error.kind !== "needs_confirmation") return null;
+  const details: unknown = error.details;
+  if (typeof details !== "object" || details === null) return null;
+  if (!("reason" in details) || details.reason !== "orphaned_edits") return null;
+  return "iterations" in details && typeof details.iterations === "number" ? details.iterations : null;
 }
 
 export async function addFlowDependency(flowId: number, dependentType: FlowItemType, dependentId: number, dependsOnType: FlowItemType, dependsOnId: number): Promise<void> {

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { canParentNewChild, isValidDropTarget, validTypesForCycling } from "@/utils/node-meta";
 import { pasteRefusal, PASTE_REFUSAL } from "@/utils/paste-refusal";
@@ -7,7 +8,6 @@ import type { FilterState } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER, filterExpectationList, isListOnlyPreset } from "@/utils/list-filter";
 import type { ExpectationListRow, ListFilterState } from "@/utils/list-filter";
 import { flattenExpectationRows } from "@/utils/list-data";
-import { testKey } from "@/test/scope-key";
 
 function n(id: string, kind: NodeKind, over: Partial<MindmapNode> = {}): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children: [], rowId: 1, ...over };
@@ -35,9 +35,9 @@ describe("where a wait may hang", () => {
     expect(validTypesForCycling("info", "expectation")).toEqual(["info"]);
   });
 
-  it("cannot be attached to a Habit occurrence", () => {
-    const occurrence = drawn("habit-1", "task", { habitItem: { flowId: 1, itemType: "flow_task", itemId: 1, scopeId: testKey(1), cycleId: 0 } });
-    expect(canParentNewChild(occurrence, "expectation")).toBe(false);
+  it("hangs on a Habit occurrence as on any Task", () => {
+    const occurrence = drawn("habit-1", "task", { ...occurrenceRow({ habitId: 1, itemType: "flow_task", itemId: 1, cycleId: 0 }) });
+    expect(canParentNewChild(occurrence, "expectation")).toBe(true);
     expect(canParentNewChild(n("task-1", "task"), "expectation")).toBe(true);
   });
 });

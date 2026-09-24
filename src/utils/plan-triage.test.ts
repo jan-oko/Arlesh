@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import {
   effectiveTimeScope, nearestPlannedAncestor, partitionForScope, planRefusal, referencedScopeIds,
   timeScopeWindow,
@@ -206,9 +207,14 @@ describe("partitionForScope", () => {
     expect(panes.parentPlanned).toEqual([]);
   });
 
-  it("triages no virtual Habit occurrence", () => {
-    const habitItem = { flowId: 1, itemType: "flow_task" as const, itemId: 1, scopeId: testKey(1), cycleId: 0 };
-    const rows = [row({ node: node("task-1", { virtual: true, habitItem }) })];
+  it("triages a Habit occurrence like any other Task: it is a row, with a Plan of its own", () => {
+    const rows = [row({ node: node("task-1", { ...occurrenceRow() }) })];
+    const panes = partitionForScope(rows, WEEK, WINDOWS, MONTH_PARENT);
+    expect(panes.unplanned.map((r) => r.node.id)).toEqual(["task-1"]);
+  });
+
+  it("triages no node that draws no row, which has nowhere to write a Plan", () => {
+    const rows = [row({ node: node("check-1", { virtual: true }) })];
     const panes = partitionForScope(rows, WEEK, WINDOWS, MONTH_PARENT);
     expect(panes.unplanned).toEqual([]);
     expect(panes.planned).toEqual([]);

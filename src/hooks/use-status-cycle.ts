@@ -7,7 +7,7 @@ import { GOAL_STATUS, TASK_STATUS } from "@/utils/status-mapping";
 import { cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
-import { useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
+import { acknowledged, useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
 import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
 import { useExpectationActions } from "@/hooks/use-expectation-actions";
 
@@ -74,7 +74,7 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
         const dbId = rowIdOf(node);
         const next = node.status === GOAL_STATUS.ACHIEVED ? GOAL_STATUS.ACTIVE : GOAL_STATUS.ACHIEVED;
         guard(node, async (confirmed) => {
-          await updateGoal(dbId, { status: next }, confirmed);
+          await updateGoal(dbId, { status: next }, ...acknowledged(confirmed));
           await reload();
         }, failed("goal status toggle failed"));
         return;
@@ -83,7 +83,7 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
       const dbId = rowIdOf(node);
       const next = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
       guard(node, async (confirmed) => {
-        const updated = await updateTask(dbId, { status: next }, confirmed);
+        const updated = await updateTask(dbId, { status: next }, ...acknowledged(confirmed));
         // Starting a set-aside task takes it out of the backlog, in the same write and so in the
         // same undo step. The row that comes back says whether it did; it is never assumed.
         if (cameOutOfBacklog(node, updated)) {

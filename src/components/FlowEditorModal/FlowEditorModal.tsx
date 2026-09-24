@@ -12,6 +12,7 @@ import { dayScopeDate } from "@/utils/scope-calendar";
 import { keyStartDate } from "@/utils/scope-key";
 import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
+import ReconcilePrompt from "@/components/ReconcilePrompt/ReconcilePrompt";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import Switch from "@/components/Switch/Switch";
 import RecurrenceField from "./RecurrenceField";
@@ -327,20 +328,11 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   return (
     <EditorModal heading={heading ?? t("editFlow")} onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={() => void handleSave()} saveError={saveError}>
       {reconcilePrompt && (
-        <div className={styles.label}>
-          <span className={styles.depKind}>{t("reconcilePrompt", { count: completionCount })}</span>
-          <div className={styles.statusPills}>
-            <button type="button" className={styles.statusPill} onClick={() => { setReconcilePrompt(false); void doSave("fork"); }}>
-              {t("reconcileFork")}
-            </button>
-            <button type="button" className={styles.statusPill} onClick={() => { setReconcilePrompt(false); void doSave("discard"); }}>
-              {t("reconcileDiscard")}
-            </button>
-            <button type="button" className={styles.statusPill} onClick={() => setReconcilePrompt(false)}>
-              {t("reconcileCancel")}
-            </button>
-          </div>
-        </div>
+        <ReconcilePrompt
+          message={t("reconcilePrompt", { count: completionCount })}
+          onChoose={(choice) => { setReconcilePrompt(false); void doSave(choice); }}
+          onCancel={() => setReconcilePrompt(false)}
+        />
       )}
       <label className={styles.label}>
         {t("fieldTitle")}
