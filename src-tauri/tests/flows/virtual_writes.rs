@@ -476,3 +476,110 @@ async fn a_cycle_edit_that_would_orphan_a_recorded_edit_asks_first() {
     .unwrap();
     assert!(forked.is_some(), "Archive & new lands the edit on a copy");
 }
+
+/// A plain (non-recurring) flow whose one task item carries a tag and a block reason of its own.
+async fn plain_flow_with_template(app: &App) -> (i64, i64) {
+    let flow = flow_commands::create_flow(
+        app.state(),
+        CreateFlowRequest {
+            title: "Release".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let item = flow_commands::create_flow_task(
+        app.state(),
+        CreateFlowItemRequest {
+            flow_id: flow.id,
+            title: "Tag the build".into(),
+            parent_type: "flow".into(),
+            parent_id: flow.id,
+        },
+    )
+    .await
+    .unwrap()
+    .id;
+    flow_commands::update_flow_task(
+        app.state(),
+        item,
+        UpdateFlowItemRequest {
+            template: TemplateUpdate {
+                tag_ids: Some(vec![1]),
+                block_reasons: Some(vec!["waits on CI".into()]),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    (flow.id, item)
+}
+
+#[tokio::test]
+async fn starting_a_flow_gives_its_copies_the_template_fields() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let (flow, _) = plain_flow_with_template(&app).await;
+    flow_commands::start_flow(
+        app.state(),
+        flow,
+        arlesh_lib::flows::model::StartFlowRequest {
+            title: "Ship it".into(),
+            target_type: "aspect".into(),
+            target_id: 1,
+            anchor_date: day(),
+        },
+    )
+    .await
+    .unwrap();
+    let load = board(&pool).await;
+    let copy = load
+        .tasks
+        .iter()
+        .find(|task| task.title == "Tag the build")
+        .expect("the item was started as a Task");
+    assert_eq!(copy.tag_ids, vec![1]);
+    assert!(load
+        .block_reasons
+        .iter()
+        .any(|reason| reason.owner_id == copy.id && reason.reason == "waits on CI"));
+}
+
+#[tokio::test]
+async fn a_copied_flow_item_keeps_its_template_fields_and_a_deleted_one_leaves_none() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let (flow, item) = plain_flow_with_template(&app).await;
+    flow_commands::duplicate_flow_item(
+        app.state(),
+        FlowItemType::FlowTask,
+        item,
+        "flow".into(),
+        flow,
+        5,
+    )
+    .await
+    .unwrap();
+    let items = flow_commands::list_flow_tasks(app.state(), flow)
+        .await
+        .unwrap();
+    assert_eq!(items.len(), 2);
+    assert!(items.iter().all(|item| item.template.tag_ids == vec![1]
+        && item.template.block_reasons == vec!["waits on CI".to_string()]));
+
+    for item in &items {
+        flow_commands::delete_flow_item(app.state(), FlowItemType::FlowTask, item.id)
+            .await
+            .unwrap();
+    }
+    let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM template_tags")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(left, 0, "a deleted item's template rows go with it");
+}
