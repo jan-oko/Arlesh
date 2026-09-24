@@ -2711,19 +2711,18 @@ pub async fn create_instance_child(
         .await?
         .id
         .require_stored()?,
-        "expectation" => {
-            crate::tasks::create_expectation(
-                db,
-                crate::tasks::model::CreateExpectationRequest {
-                    title,
-                    parent_type,
-                    parent_id,
-                    ..Default::default()
-                },
-            )
-            .await?
-            .id
-        }
+        "expectation" => crate::tasks::create_expectation(
+            db,
+            crate::tasks::model::CreateExpectationRequest {
+                title,
+                parent_type,
+                parent_id,
+                ..Default::default()
+            },
+        )
+        .await?
+        .id
+        .require_stored()?,
         _ => {
             db.infos()
                 .create(CreateInfoRequest {

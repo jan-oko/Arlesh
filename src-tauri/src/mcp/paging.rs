@@ -98,7 +98,7 @@ pub enum Section {
 }
 
 /// Every section, in the order pages walk them.
-pub const SECTIONS: [Section; 18] = [
+pub const SECTIONS: [Section; 16] = [
     Section::Domains,
     Section::Goals,
     Section::Tasks,
