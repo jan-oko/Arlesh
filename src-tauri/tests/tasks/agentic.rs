@@ -357,7 +357,8 @@ async fn editing_an_agentic_task_already_in_progress_is_not_a_start() {
 }
 
 #[tokio::test]
-async fn creating_an_agentic_task_already_in_progress_needs_a_spec() {
+async fn creating_a_task_already_in_progress_is_not_a_start() {
+    // The path that does this is a duplicate: a copy of work underway is not the work starting.
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
     let parent = task(
@@ -368,10 +369,10 @@ async fn creating_an_agentic_task_already_in_progress_needs_a_spec() {
     )
     .await;
 
-    let refused = create(
+    let created = create(
         &pool,
         CreateTaskRequest {
-            title: "Started".into(),
+            title: "Underway".into(),
             parent_type: "task".into(),
             parent_id: parent,
             status: Some(TaskStatus::InProgress),
@@ -380,7 +381,7 @@ async fn creating_an_agentic_task_already_in_progress_needs_a_spec() {
     )
     .await;
 
-    assert!(matches!(refused, Err(TaskError::AgenticSpecMissing)));
+    assert!(created.is_ok(), "{created:?}");
 }
 
 #[tokio::test]

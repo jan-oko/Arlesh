@@ -317,7 +317,11 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
             agentic: Some(TaskAgentic::Yes),
             asynchronous: Some(true),
             async_template: None,
-            agentic_brief: None,
+            agentic_brief: Some(arlesh_lib::tasks::model::AgenticBrief {
+                priority: Some(1),
+                spec: "Pour at dawn".into(),
+                ..Default::default()
+            }),
         },
     )
     .await
@@ -354,6 +358,13 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
     assert_ne!(copy.id, task.id);
     assert_eq!(copy.title, "Cast the bell");
     assert_eq!(copy.status, "in_progress");
+    assert_eq!(
+        copy.agentic_brief
+            .as_ref()
+            .map(|brief| (brief.priority, brief.spec.as_str())),
+        Some((Some(1), "Pour at dawn")),
+        "the brief is the task's own, and a copy carries it"
+    );
     assert_eq!(copy.parent_id, target);
     assert_eq!(copy.position, 77);
     assert_eq!(copy.time_scope, Some(at(week)));
