@@ -331,21 +331,6 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           />
         </div>
       )}
-      {/* Beside Asynchronous, and shaped like it: the Agentic control, then — while the task reads
-          as Agentic, its own flag or an inherited one — the brief an agent reads about the work. */}
-      <AgenticField
-        value={agentic}
-        inherited={node.inheritedAgentic === true}
-        onChange={setAgentic}
-        delegatedToAgent={delegatedToAgent}
-        offersDelegate={readsAgentic || delegatedToAgent}
-        onToggleDelegate={() => setDelegate(toggledAgentDelegate(delegate))}
-      />
-      {readsAgentic && (
-        <div role="group" aria-label={t("agenticBriefSection")}>
-          <AgenticBriefFields value={agenticBrief} onChange={setAgenticBrief} />
-        </div>
-      )}
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={virtualBlockers} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <div className={styles.depSection}>
@@ -374,7 +359,29 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           )}
         </div>
       </div>
-      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} />
+      {/* In Advanced: the Agentic control, then — while the task reads as Agentic, its own flag or
+          an inherited one — the brief an agent reads about the work, collapsible on its own.
+          Advanced opens by itself while any of it is engaged: an own flag, a hand-off to the Agent,
+          or a brief already written. */}
+      <EditorAdvanced
+        isPrivate={isPrivate}
+        onPrivateChange={setIsPrivate}
+        startOpen={agentic !== TASK_AGENTIC.INHERIT || delegatedToAgent || (readsAgentic && !isEmptyBrief(agenticBrief))}
+      >
+        <AgenticField
+          value={agentic}
+          inherited={node.inheritedAgentic === true}
+          onChange={setAgentic}
+          delegatedToAgent={delegatedToAgent}
+          offersDelegate={readsAgentic || delegatedToAgent}
+          onToggleDelegate={() => setDelegate(toggledAgentDelegate(delegate))}
+        />
+        {readsAgentic && (
+          <div role="group" aria-label={t("agenticBriefSection")}>
+            <AgenticBriefFields value={agenticBrief} onChange={setAgenticBrief} />
+          </div>
+        )}
+      </EditorAdvanced>
     </EditorModal>
   );
 }

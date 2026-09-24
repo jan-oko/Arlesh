@@ -131,6 +131,10 @@ describe("FlowItemEditorModal", () => {
         cycles: [], dependsOn: [], template: {},
       },
     })} />);
+    // The Agentic control is in Advanced, shut while nothing in it is engaged.
+    expect(screen.queryByRole("button", { name: "agenticYes" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
+    expect(screen.getByRole("button", { name: "agenticYes" })).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "agenticBriefSection" })).not.toBeInTheDocument();
   });
 

@@ -692,14 +692,27 @@ describe("TaskEditorModal — the agentic brief", () => {
     expect(screen.queryByRole("group", { name: "agenticBriefSection" })).not.toBeInTheDocument();
   });
 
+  it("lives in Advanced with the Agentic control, shut while nothing in it is engaged", async () => {
+    await open(mkNode({ inheritedAgentic: true }));
+    expect(screen.queryByRole("button", { name: "agenticYes" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "agenticBriefSection" })).not.toBeInTheDocument();
+  });
+
+  it("opens Advanced by itself while the task is flagged or its brief is written", async () => {
+    await open(mkNode({ agentic: true }));
+    expect(screen.getByRole("button", { name: "agenticYes" })).toBeInTheDocument();
+  });
+
   it("follows the Agentic control as soon as the task is flagged", async () => {
     await open(mkNode());
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
     fireEvent.click(screen.getByRole("button", { name: "agenticYes" }));
     expect(screen.getByRole("group", { name: "agenticBriefSection" })).toBeInTheDocument();
   });
 
   it("is offered on a task that inherits agentic too", async () => {
     await open(mkNode({ inheritedAgentic: true }));
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
     expect(screen.getByRole("group", { name: "agenticBriefSection" })).toBeInTheDocument();
   });
 

@@ -1,6 +1,8 @@
-- **Agentic tasks carry a brief.** In the Task editor the Agentic control now sits beside
-  Asynchronous, and while a task is agentic it is followed by a **Brief**: a priority (P0–P4), the
-  Spec, the Design, the Acceptance criteria and Notes — what an agent reads about the work. The
+- **Agentic tasks carry a brief.** In the Task editor's and the flow item editor's Advanced
+  section, while a task is agentic the Agentic control is followed by a **Brief**, collapsed until
+  you open it: a priority (P0–P4), the Spec, the Design, the Acceptance criteria and Notes — what
+  an agent reads about the work. Advanced opens by itself while the task is marked Agentic or its
+  brief is written. The
   brief belongs to the task and is not inherited, even though the Agentic flag is. An agentic task
   cannot be started without a Spec: moving it to In Progress is refused with a message saying so,
   from the status control, `Enter`, the editor and every view.

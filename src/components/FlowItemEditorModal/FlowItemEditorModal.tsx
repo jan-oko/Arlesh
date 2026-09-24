@@ -228,26 +228,35 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
               label={isAsynchronous ? t("asynchronousOn") : t("asynchronousOff")}
             />
           </div>
-          {/* Beside Asynchronous, as in the Task editor: the Agentic control, then the brief
-              every occurrence reads while the template is marked Agentic. */}
-          <AgenticField
-            value={agentic}
-            inherited={false}
-            onChange={setAgentic}
-            delegatedToAgent={false}
-            offersDelegate={false}
-            onToggleDelegate={() => undefined}
-          />
-          {agentic === TASK_AGENTIC.YES && (
-            <div role="group" aria-label={t("agenticBriefSection")}>
-                  <AgenticBriefFields value={agenticBrief} onChange={setAgenticBrief} />
-            </div>
-          )}
         </>
       )}
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
-      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} />
+      {/* In Advanced, as in the Task editor: the Agentic control, then the brief every occurrence
+          reads while the template is marked Agentic. */}
+      <EditorAdvanced
+        isPrivate={isPrivate}
+        onPrivateChange={setIsPrivate}
+        startOpen={itemType === "flow_task" && (agentic !== TASK_AGENTIC.INHERIT || !isEmptyBrief(agenticBrief))}
+      >
+        {itemType === "flow_task" && (
+          <>
+            <AgenticField
+              value={agentic}
+              inherited={false}
+              onChange={setAgentic}
+              delegatedToAgent={false}
+              offersDelegate={false}
+              onToggleDelegate={() => undefined}
+            />
+            {agentic === TASK_AGENTIC.YES && (
+              <div role="group" aria-label={t("agenticBriefSection")}>
+                <AgenticBriefFields value={agenticBrief} onChange={setAgenticBrief} />
+              </div>
+            )}
+          </>
+        )}
+      </EditorAdvanced>
     </EditorModal>
   );
 }
