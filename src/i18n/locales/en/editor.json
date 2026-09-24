@@ -108,5 +108,14 @@
   "scopeEdit": "Edit",
   "startingPicker": "Starting day",
   "kindHour": "Hour",
-  "kindMinute": "Minute"
+  "kindMinute": "Minute",
+  "agenticBriefSection": "Brief",
+  "agenticPriority": "Priority",
+  "agenticPriorityNone": "None",
+  "agenticPriorityValue": "P{{priority}}",
+  "agenticSpec": "Spec",
+  "agenticSpecHint": "Required before an agentic task can start",
+  "agenticDesign": "Design",
+  "agenticAcceptance": "Acceptance criteria",
+  "agenticNotes": "Notes"
 }

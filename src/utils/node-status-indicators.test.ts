@@ -219,3 +219,10 @@ describe("deriveStatusIndicators — visible to the MCP", () => {
     expect(writable).toEqual(["agentic", "mcp"]);
   });
 });
+
+describe("deriveStatusIndicators — an agent waiting on you", () => {
+  it("marks an agentic wait, and nothing else", () => {
+    expect(types(node("expectation", { agentWaiting: { note: "Red or blue?" } }))).toContain("agentWaiting");
+    expect(types(node("expectation"))).not.toContain("agentWaiting");
+  });
+});

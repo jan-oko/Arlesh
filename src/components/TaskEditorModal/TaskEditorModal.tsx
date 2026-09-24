@@ -7,7 +7,8 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
 import { EXPECTATION_STATUS } from "@/api/expectation-status";
 import type { Domain } from "@/api/domains";
-import type { AsyncTemplate, Delegate, Dependency, TaskAgentic, TaskArchival } from "@/api/tasks";
+import type { AgenticBrief, AsyncTemplate, Delegate, Dependency, TaskAgentic, TaskArchival } from "@/api/tasks";
+import { EMPTY_AGENTIC_BRIEF } from "@/api/tasks";
 import { TASK_AGENTIC, TASK_ARCHIVAL } from "@/api/tasks";
 import { storedAgenticState } from "@/utils/agentic";
 import { isDelegatedToAgent, toggledAgentDelegate } from "@/utils/delegation";
@@ -20,6 +21,7 @@ import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import BeadsIdField from "@/components/EditorModal/BeadsIdField";
 import AgenticField from "./AgenticField";
+import AgenticBriefFields from "./AgenticBriefFields";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import PlanField from "@/components/ScopePicker/PlanField";
@@ -52,6 +54,10 @@ export interface TaskSaveData {
   /** The optional **Expectation template** — the wait finishing the task spawns. `null` when the
    * section is empty, and always `null` when the task is not asynchronous. */
   asyncTemplate: AsyncTemplate | null;
+  /** The task's own **agentic brief**, `null` when the section is empty. Saved whatever the flag
+   * says — the flag can be inherited and come back — and shown only while the task reads as
+   * Agentic. */
+  agenticBrief: AgenticBrief | null;
   /** The task's new delegate, present only when the form changed it — `null` takes it back. Absent
    * says nothing about delegation at all, so a save that never touched it cannot overwrite it. */
   delegate?: Delegate | null;
@@ -85,6 +91,12 @@ interface Props {
   onClose: () => void;
 }
 
+/** Whether the brief says anything at all — an empty one is no brief. */
+function isEmptyBrief(brief: AgenticBrief): boolean {
+  return brief.priority === null && brief.spec.trim() === "" && brief.design.trim() === ""
+    && brief.acceptance.trim() === "" && brief.notes.trim() === "";
+}
+
 /** The section as the form holds it: every field, blank ones included. */
 const EMPTY_TEMPLATE: AsyncTemplate = { title: "", tag_ids: [] };
 
@@ -108,6 +120,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(node.agentic));
   const [isAsynchronous, setIsAsynchronous] = useState(node.asynchronous === true || openAtTemplate);
   const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate>(node.asyncTemplate ?? EMPTY_TEMPLATE);
+  const [agenticBrief, setAgenticBrief] = useState<AgenticBrief>(node.agenticBrief ?? EMPTY_AGENTIC_BRIEF);
   const templateRef = useRef<HTMLDivElement>(null);
   const [delegate, setDelegate] = useState<Delegate | null>(node.delegate ?? null);
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
@@ -181,6 +194,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
             ...asyncTemplate,
             title: asyncTemplate.title.trim() || t("expectation:templateDefaultTitle", { title: title.trim() }),
           },
+          agenticBrief: isEmptyBrief(agenticBrief) ? null : agenticBrief,
           ...(delegate !== (node.delegate ?? null) ? { delegate } : {}),
           isPrivate,
         });
@@ -315,6 +329,22 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           />
         </div>
       )}
+      {/* Beside Asynchronous, and shaped like it: the Agentic control, then — while the task reads
+          as Agentic, its own flag or an inherited one — the brief an agent reads about the work. */}
+      <AgenticField
+        value={agentic}
+        inherited={node.inheritedAgentic === true}
+        onChange={setAgentic}
+        delegatedToAgent={delegatedToAgent}
+        offersDelegate={readsAgentic || delegatedToAgent}
+        onToggleDelegate={() => setDelegate(toggledAgentDelegate(delegate))}
+      />
+      {readsAgentic && (
+        <div role="group" aria-label={t("agenticBriefSection")}>
+          <span className={styles.label}>{t("agenticBriefSection")}</span>
+          <AgenticBriefFields value={agenticBrief} onChange={setAgenticBrief} />
+        </div>
+      )}
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={virtualBlockers} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <div className={styles.depSection}>
@@ -343,20 +373,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           )}
         </div>
       </div>
-      <EditorAdvanced
-        isPrivate={isPrivate}
-        onPrivateChange={setIsPrivate}
-        startOpen={agentic !== TASK_AGENTIC.INHERIT || delegatedToAgent}
-      >
-        <AgenticField
-          value={agentic}
-          inherited={node.inheritedAgentic === true}
-          onChange={setAgentic}
-          delegatedToAgent={delegatedToAgent}
-          offersDelegate={readsAgentic || delegatedToAgent}
-          onToggleDelegate={() => setDelegate(toggledAgentDelegate(delegate))}
-        />
-      </EditorAdvanced>
+      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} />
     </EditorModal>
   );
 }

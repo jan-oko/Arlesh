@@ -863,6 +863,7 @@ export function buildTree(
       delegate: task.delegate_to,
       asynchronous: task.asynchronous,
       asyncTemplate: task.async_template ?? null,
+      agenticBrief: task.agentic_brief ?? null,
       position: task.position,
       isPrivate: task.is_private,
       ...(task.beads_id !== undefined ? { beadsId: task.beads_id } : {}),
@@ -905,6 +906,9 @@ export function buildTree(
       timeScope: expectation.time_scope,
       position: expectation.position,
       isPrivate: expectation.is_private,
+      ...(expectation.agentic === true
+        ? { agentWaiting: { note: expectation.agentic_note ?? null } }
+        : {}),
       tagIds: expectation.tag_ids,
       children: [],
     };

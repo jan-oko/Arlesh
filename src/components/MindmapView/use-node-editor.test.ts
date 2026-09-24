@@ -60,7 +60,7 @@ function setup() {
 const saveData: TaskSaveData = {
   title: "Task", status: "todo", blockReasons: [], tagIds: [],
   addedDeps: [], removedDeps: [], timeScope: { start_id: testKey(1), end_id: testKey(1) },
-  onScopeExit: null, plan: null, archival: "live", agentic: "inherit", asynchronous: false, asyncTemplate: null, isPrivate: false,
+  onScopeExit: null, plan: null, archival: "live", agentic: "inherit", asynchronous: false, asyncTemplate: null, agenticBrief: null, isPrivate: false,
 };
 
 beforeEach(() => vi.clearAllMocks());

@@ -11,6 +11,7 @@ export type StatusIndicatorType =
   | "backlog"
   | "agentic"
   | "asynchronous"
+  | "agentWaiting"
   | "info"
   | "flowInstance"
   | "tags"
@@ -82,6 +83,11 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   // is usually the work done *after* the wait, and badging it would say the opposite.
   if (node.asynchronous === true) {
     indicators.push({ type: "asynchronous" });
+  }
+  // An agentic wait: an agent raised it on the Task it is working and is waiting on the user. The
+  // bot head, because it is the agent that is waiting; the tooltip carries its question.
+  if (node.agentWaiting !== undefined) {
+    indicators.push({ type: "agentWaiting" });
   }
   // No verdict badge. A Commitment's glyph carries its Verdict itself — hollow while the answer
   // is owed, solid once given, cleft when broken, struck through when the Verdict Window ran out

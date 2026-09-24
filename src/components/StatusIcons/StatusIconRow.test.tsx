@@ -64,6 +64,11 @@ describe("StatusIconRow", () => {
     expect(renderRow(info)).toEqual(["a stack trace"]);
   });
 
+  it("says an agent is waiting on an agentic wait", () => {
+    expect(renderRow(node("expectation", { agentWaiting: { note: "Red or blue?" } }))).toEqual(["agentWaitingNote"]);
+    expect(renderRow(node("expectation", { agentWaiting: { note: null } }))).toEqual(["agentWaiting"]);
+  });
+
   it("says the MCP can see a node, and through which root", () => {
     expect(renderRow(node("goal", { status: "active", mcpVisibleVia: "Arlesh" }))).toEqual(["mcpVisible"]);
   });

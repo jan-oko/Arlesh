@@ -352,6 +352,8 @@ fn expectation_row(id: i64, parent_type: &str, parent_id: i64) -> crate::tasks::
         tag_ids: Vec::new(),
         position: id,
         is_private: false,
+        agentic: false,
+        agentic_note: None,
     }
 }
 

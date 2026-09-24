@@ -5,6 +5,7 @@ import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { listAllTaskDependencies } from "@/api/tasks";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import { updateTask } from "@/api/tasks";
+import { getErrorMessage } from "@/api/errors";
 import type { TaskAgentic } from "@/api/tasks";
 import { TASK_STATUS } from "@/utils/status-mapping";
 import { cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
@@ -113,6 +114,10 @@ export function useListData(): ListData {
           showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
         }
         await reload();
+      }).catch((err: unknown) => {
+        // Refused out loud, as the Mindmap's status click is: an Agentic task with no Spec cannot
+        // start, and a refusal nobody sees reads as a click that did nothing.
+        showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
       });
     },
     [tree, reload, setOccurrenceStatus, showToast, t, completeCheck],

@@ -129,6 +129,8 @@ fn an_unrecognised_stored_status_reads_as_pending() {
         time_scope_end_id: Some(test_key(5)),
         time_scope_duration_n: None,
         time_scope_duration_kind: None,
+        agentic: false,
+        agentic_note: None,
     };
     let expectation = Expectation::from(row);
     assert_eq!(expectation.status, ExpectationStatus::Pending);

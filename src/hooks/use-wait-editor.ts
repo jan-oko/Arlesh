@@ -51,6 +51,8 @@ export function useWaitEditor(tree: MindmapNode, reload: () => Promise<void>) {
           ...(data.checkEvery !== null && data.checkStartingDate !== null
             ? { check_starting: dayStartInstant(data.checkStartingDate) } : {}),
           ...(data.timeScope !== null ? { time_scope: data.timeScope } : {}),
+          ...(data.agentic ? { agentic: true } : {}),
+          ...(data.agenticNote !== null ? { agentic_note: data.agenticNote } : {}),
         });
         // What the create request has no field for is written straight after, inside the same
         // Gesture — only when the editor says something other than the defaults.

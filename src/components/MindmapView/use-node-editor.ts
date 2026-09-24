@@ -215,6 +215,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         agentic: data.agentic,
         asynchronous: data.asynchronous,
         async_template: data.asyncTemplate,
+        agentic_brief: data.agenticBrief,
         is_private: data.isPrivate,
         ...(data.delegate !== undefined ? { delegate_to: data.delegate } : {}),
       });
@@ -279,6 +280,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         time_scope: data.timeScope,
         archival: data.archived ? EXPECTATION_ARCHIVAL.ARCHIVED : EXPECTATION_ARCHIVAL.LIVE,
         is_private: data.isPrivate,
+        agentic: data.agentic,
+        agentic_note: data.agenticNote,
       });
       const before = editorModal.node.tagIds;
       for (const tagId of data.tagIds.filter((id) => !before.includes(id))) await addTagToExpectation(dbId, tagId);

@@ -26,6 +26,11 @@ export interface ExpectationSaveData {
   tagIds: number[];
   archived: boolean;
   isPrivate: boolean;
+  /** Whether an agent raised this wait on the Agentic Task above it. Refused by the backend
+   * anywhere but directly under one. */
+  agentic: boolean;
+  /** The agent's question, with the user's answer written beneath it; `null` for none. */
+  agenticNote: string | null;
 }
 
 const STATUSES: readonly ExpectationStatus[] = [EXPECTATION_STATUS.PENDING, EXPECTATION_STATUS.RELEASED];
@@ -66,6 +71,8 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
   const [archived, setArchived] = useState(node.archived === true);
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
+  const [agentic, setAgentic] = useState(node.agentWaiting !== undefined);
+  const [agenticNote, setAgenticNote] = useState(node.agentWaiting?.note ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -77,7 +84,10 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
     setIsSaving(true);
     setSaveError(null);
     try {
-      await onSave({ title: title.trim(), status, checkEvery, checkStartingDate, timeScope, tagIds, archived, isPrivate });
+      await onSave({
+        title: title.trim(), status, checkEvery, checkStartingDate, timeScope, tagIds, archived, isPrivate,
+        agentic, agenticNote: agenticNote.trim() === "" ? null : agenticNote,
+      });
     } catch (err) {
       setSaveError(getErrorMessage(err));
       setIsSaving(false);
@@ -121,6 +131,20 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
           ))}
         </div>
       </div>
+      {/* An agent's question comes first when there is one: it is what the wait is for, and
+          answering it — the answer written beneath, then Released above — is what it asks. */}
+      {agentic && (
+        <label className={styles.label}>
+          {t("expectation:agentNote")}
+          <textarea
+            className={styles.textarea}
+            rows={4}
+            value={agenticNote}
+            placeholder={t("expectation:agentNoteHint")}
+            onChange={(e) => setAgenticNote(e.target.value)}
+          />
+        </label>
+      )}
       <div className={styles.label}>
         {t("editor:fieldTimeScope")}
         <TimeScopeField value={timeScope} onChange={setTimeScope} />
@@ -148,8 +172,9 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
       {allTags !== undefined && domainNames !== undefined && (
         <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       )}
-      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} startOpen={archived}>
+      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} startOpen={archived || agentic}>
         <Switch checked={archived} onChange={setArchived} label={t("expectation:archived")} />
+        <Switch checked={agentic} onChange={setAgentic} label={t("expectation:agentWaiting")} />
       </EditorAdvanced>
     </EditorModal>
   );

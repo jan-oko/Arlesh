@@ -7,7 +7,7 @@ import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
 import type { Delegate } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
-import type { AsyncTemplate } from "@/api/tasks";
+import type { AgenticBrief, AsyncTemplate } from "@/api/tasks";
 import type { CanonicalKind } from "@/utils/scope-ref";
 import { expectationNodeId } from "@/utils/node-uuid";
 
@@ -264,6 +264,14 @@ export interface MindmapNode {
   /** A Task's optional **Expectation template** (Tasks only), kept only while `asynchronous`: while
    * the Task is done, a virtual wait is drawn from it. */
   asyncTemplate?: AsyncTemplate | null;
+  /** The Task's own **agentic brief** (Tasks only): priority, Spec, Design, Acceptance criteria and
+   * Notes — what an agent reads about the work. Never inherited, unlike Agentic; shown while the
+   * Task reads as Agentic. `null` when it has none. */
+  agenticBrief?: AgenticBrief | null;
+  /** Present on an **agentic wait** (Expectations only): one an agent raised on the Agentic Task
+   * it hangs under — "the agent is waiting on you". `note` is its question, and the answer once
+   * the user writes one in. */
+  agentWaiting?: { note: string | null };
   /** The stored Expectations this Task depends on, by row id (Tasks only). */
   expectationDependencyIds?: number[];
   /** Present on the virtual Expectation a **delegated** Task waits on: the Task it belongs to. It

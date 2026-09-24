@@ -62,7 +62,7 @@ describe("useNodeEditor — waits", () => {
     act(() => result.current.setEditorModal({ nodeId: wait.id, node: wait }));
     await act(() => result.current.onExpectationSave({
       title: "wait", status: "pending", checkEvery: null, checkStartingDate: null, timeScope: null,
-      tagIds: [], archived: false, isPrivate: false,
+      tagIds: [], archived: false, isPrivate: false, agentic: false, agenticNote: null,
     }));
     const request = vi.mocked(updateExpectation).mock.calls[0]?.[1];
     expect(request).toHaveProperty("check_every", null);

@@ -24,3 +24,27 @@ describe("ExpectationEditorModal — Check every", () => {
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ checkEvery: null });
   });
 });
+
+describe("ExpectationEditorModal — an agent waiting on you", () => {
+  const ASKED: MindmapNode = { ...WAIT, agentWaiting: { note: "Red or blue for the badge?" } };
+
+  it("shows the agent's question, and saves the answer written beneath it", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<ExpectationEditorModal node={ASKED} onSave={onSave} onClose={vi.fn()} />);
+    const note = screen.getByLabelText("expectation:agentNote");
+    expect(note).toHaveValue("Red or blue for the badge?");
+
+    fireEvent.change(note, { target: { value: "Red or blue for the badge?\nBlue." } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({
+      agentic: true, agenticNote: "Red or blue for the badge?\nBlue.",
+    });
+  });
+
+  it("has no question field on an ordinary wait", () => {
+    render(<ExpectationEditorModal node={WAIT} onSave={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByLabelText("expectation:agentNote")).toBeNull();
+  });
+});

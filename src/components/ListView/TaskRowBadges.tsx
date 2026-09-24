@@ -21,6 +21,8 @@ import styles from "./TaskRowBadges.module.css";
 const R = 6;
 const MUTED = "var(--node-text-muted)";
 const DANGER = "var(--danger)";
+/** An agent waiting on the user is the one badge that asks for something, so it is not muted. */
+const ACCENT = "var(--accent)";
 
 interface Props {
   node: MindmapNode;
@@ -63,6 +65,13 @@ export default function TaskRowBadges({ node, indicators }: Props) {
         return { tooltip: t("backlog"), icon: <BacklogIcon cx={R} cy={R} r={R} color={MUTED} /> };
       case "agentic":
         return { tooltip: t("agentic"), icon: <AgenticIcon cx={R} cy={R} r={R} color={MUTED} /> };
+      case "agentWaiting": {
+        const note = node.agentWaiting?.note ?? null;
+        return {
+          tooltip: note === null ? t("agentWaiting") : t("agentWaitingNote", { note }),
+          icon: <AgenticIcon cx={R} cy={R} r={R} color={ACCENT} />,
+        };
+      }
       case "asynchronous":
         return { tooltip: t("asynchronous"), icon: <AsyncIcon cx={R} cy={R} r={R} color={MUTED} /> };
       case "info":

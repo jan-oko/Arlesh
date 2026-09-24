@@ -51,6 +51,33 @@ export interface AsyncTemplate {
   check_every?: DurationSpec;
 }
 
+/**
+ * A Task's **agentic brief**: what an agent reads about the work, in place of an issue tracker's
+ * entry. The Task's own and never inherited, unlike the Agentic flag. Every text field is plain
+ * text, empty when unset. A Task that reads as Agentic cannot be started without a `spec`.
+ */
+export interface AgenticBrief {
+  /** P0 (most urgent) to P4, as 0–4; null for none. */
+  priority: number | null;
+  spec: string;
+  design: string;
+  acceptance: string;
+  notes: string;
+}
+
+/** The priorities a brief can carry, P0 to P4, as stored. */
+export const AGENTIC_PRIORITIES: readonly number[] = [0, 1, 2, 3, 4];
+
+/** A brief with nothing in it — what the editor starts a Task without one from. */
+export const EMPTY_AGENTIC_BRIEF: AgenticBrief = {
+  priority: null, spec: "", design: "", acceptance: "", notes: "",
+};
+
+/** Whether a brief carries a Spec — anything but whitespace. Mirrors the backend's rule. */
+export function hasSpec(brief: AgenticBrief | null | undefined): boolean {
+  return brief !== null && brief !== undefined && brief.spec.trim() !== "";
+}
+
 export interface Task {
   id: number;
   title: string;
@@ -66,6 +93,9 @@ export interface Task {
   // Its optional Expectation template, only while asynchronous. While the task is done, a virtual
   // wait is drawn from it; without one, nothing is spawned.
   async_template?: AsyncTemplate;
+  // Its own agentic brief, if it has one; kept whatever the flag says, shown while it reads as
+  // Agentic. The backend always sends it; absent reads as none.
+  agentic_brief?: AgenticBrief | null;
   time_scope: TimeScope | null;
   // Present iff time_scope is (inherited with the window otherwise).
   on_scope_exit: OnScopeExit | null;
@@ -92,6 +122,7 @@ export interface CreateTaskRequest {
   agentic?: TaskAgentic;
   asynchronous?: boolean;
   async_template?: AsyncTemplate;
+  agentic_brief?: AgenticBrief;
 }
 
 export interface UpdateTaskRequest {
@@ -106,6 +137,8 @@ export interface UpdateTaskRequest {
   // Absent = leave unchanged, null = no template, value = this template. Dropped unless the task
   // ends up asynchronous.
   async_template?: AsyncTemplate | null;
+  // Absent = leave unchanged, null = no brief, value = this brief.
+  agentic_brief?: AgenticBrief | null;
   // Absent = leave unchanged, null = clear, value = set.
   time_scope?: TimeScope | null;
   // Forced null when the scope is cleared; defaulted to "keep" when a scope is set without one.
