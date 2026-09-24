@@ -153,7 +153,7 @@ async fn a_brief_is_stored_read_back_and_removed() {
     assert_eq!(
         listed
             .iter()
-            .find(|task| task.id == id.into())
+            .find(|task| task.id == arlesh_lib::nodes::id::NodeId::Stored(id))
             .and_then(|task| task.agentic_brief.clone()),
         with_spec("Build it")
     );

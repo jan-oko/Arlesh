@@ -63,6 +63,7 @@ async fn checked_wait(pool: &sqlx::SqlitePool, project: i64) -> Expectation {
             }),
             check_starting: Some(at("2026-07-03T09:00:00")),
             time_scope: None,
+            ..Default::default()
         },
     )
     .await
