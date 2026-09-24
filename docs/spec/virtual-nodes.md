@@ -38,7 +38,11 @@ The few rules that genuinely differ for a derived row key off `origin` and nothi
 
 - **It cannot leave its iteration.** Moving it under another parent, or giving it another window, is
   refused out loud. A request that merely repeats its current parent and window — a full editor save
-  — is not a move.
+  — is not a move. This is deliberate, not a gap: there is **no detach**. An occurrence exists
+  because its Habit recurs, so it has nowhere else to be; turning one into a free-standing stored row
+  would leave the Habit with a hole in an iteration and the row with a history it no longer has. To
+  put the work somewhere else, make a stored Task there (or copy the template item); to change when
+  occurrences fall, edit the template's cycle pairs. Reordering it among its siblings is not a move.
 - **It cannot change kind.** Retyping it is refused; retype its template item instead.
 - **It is never deleted.** `Delete` archives it, as manual archival of a stored node would, and
   giving it a status again brings it back. The Mindmap asks for the delete with the same
@@ -115,6 +119,15 @@ A stored node keeps today's relation tables. A derived node's relations live in 
   rather than vanishing.
 
 ## Templates
+
+**What "the full field set" means.** Every occurrence is a copy of a template drawn afresh on each
+read, so anything an occurrence shows before you touch it has to come from somewhere — the template.
+Before migration 0061 a template item held only a title, its cycle pairs and its dependencies, so an
+occurrence could have a delegate, a tag or a block reason only by being edited one iteration at a
+time. Now a template holds **every field its kind has that is not per-occurrence by nature**: set a
+tag or a delegate on the template once and every occurrence has it; set one on an occurrence and
+only that occurrence differs. What stays per-occurrence is what only one repetition can say — its
+status and when it was resolved, and its archive.
 
 A template item — a Flow's own row for the iteration root, a `flow_goals` or `flow_tasks` row for an
 item — carries the **full schema of its kind** (migration 0061): a task template its delegate, Agentic
