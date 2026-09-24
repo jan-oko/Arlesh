@@ -85,8 +85,9 @@ pub struct OccurrenceKey {
 }
 
 impl OccurrenceKey {
-    /// The canonical spelling: `flow_task:12:week:2026-09-20:3` — item type, item id, the
-    /// iteration's scope key, and the cycle pair.
+    /// The canonical spelling: `flow_task:12:{"kind":"week","date":"2026-09-20"}:3` — item type,
+    /// item id, the iteration's scope key in its canonical text ([`ScopeKey::canonical`]), and the
+    /// cycle pair.
     pub fn node_key(&self) -> String {
         format!(
             "{}:{}:{}:{}",

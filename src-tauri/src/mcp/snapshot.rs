@@ -27,8 +27,11 @@ impl ArleshMcp {
     /// occurrence names the occurrence as its parent.
     ///
     /// Start here. Tasks, goals and commitments carry `time_scope` and `plan` as boundary scope
-    /// ids, and a scope id is its value key — `week:2026-09-20` is the week whose Sunday is the
-    /// 20th, `day:2026-09-23`, `part_of_day:2026-09-23:morning` — so the dates are right there.
+    /// ids, and a scope id is its value key, a JSON object — `{"kind":"week","date":"2026-09-20"}`
+    /// is the week whose Sunday is the 20th, `{"kind":"day","date":"2026-09-23"}`,
+    /// `{"kind":"part_of_day","date":"2026-09-23","part":"morning"}`,
+    /// `{"kind":"exact","start":"2026-09-23T14:00:00","end":"2026-09-23T15:30:00"}` — so the dates
+    /// are right there. A Habit occurrence's `origin.iteration_scope.scope_id` is one too.
     /// `arlesh_scopes` adds labels, end dates and datetime windows if you need them.
     ///
     /// A commitment is a rule held over a window rather than a piece of work: it carries a
