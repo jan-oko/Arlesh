@@ -12,10 +12,10 @@
 -- is in — named by the value key of the scope anchoring the iteration's window (ADR 0009), which
 -- spells the date it starts on — and the cycle pair. The tuple is stored as real columns, because
 -- it is the data. `node_key` is the same tuple spelled as one canonical string
--- (`flow_task:12:day:2026-09-20:3`), a VIRTUAL generated column that the Rust side hashes into the
--- row's UUID-v5 id; SQLite has no SHA-1 of its own. A scope key column that holds an Exact
--- window carries the same generated `*_exact` reference into `exact_scopes` every other keyed
--- column does (migration 0046).
+-- (`flow_task:12:{"kind":"day","date":"2026-09-20"}:3` — the scope key in its canonical JSON
+-- text), a VIRTUAL generated column that the Rust side hashes into the row's UUID-v5 id; SQLite has
+-- no SHA-1 of its own. Every scope key column carries `CHECK (col IS NULL OR json_valid(col))`, as
+-- every keyed column does (migration 0046).
 --
 -- The Task overlay is also where an Expectation's **check tasks** will keep their state
 -- (`origin = 'check'`, keyed by the wait and the instant the check fell due). Those columns are
@@ -85,9 +85,9 @@ CREATE TABLE task_overlays (
     -- Set when the occurrence's block reasons are its own list (in derived_block_reasons), even an
     -- empty one; clear when it reads its template's.
     block_reasons_set INTEGER NOT NULL DEFAULT 0 CHECK (block_reasons_set IN (0, 1)),
-    iteration_scope_exact TEXT GENERATED ALWAYS AS (CASE WHEN iteration_scope LIKE 'exact:%' THEN iteration_scope END) VIRTUAL REFERENCES exact_scopes(id),
-    plan_start_id_exact   TEXT GENERATED ALWAYS AS (CASE WHEN plan_start_id LIKE 'exact:%' THEN plan_start_id END) VIRTUAL REFERENCES exact_scopes(id),
-    plan_end_id_exact     TEXT GENERATED ALWAYS AS (CASE WHEN plan_end_id LIKE 'exact:%' THEN plan_end_id END) VIRTUAL REFERENCES exact_scopes(id),
+    CHECK (iteration_scope IS NULL OR json_valid(iteration_scope)),
+    CHECK (plan_start_id IS NULL OR json_valid(plan_start_id)),
+    CHECK (plan_end_id IS NULL OR json_valid(plan_end_id)),
     CHECK ((origin = 'habit') = (flow_id IS NOT NULL AND item_type IS NOT NULL AND item_id IS NOT NULL
                                  AND iteration_scope IS NOT NULL AND cycle_id IS NOT NULL)),
     CHECK ((origin = 'check') = (wait_key IS NOT NULL AND due_at IS NOT NULL)),
@@ -112,7 +112,7 @@ CREATE TABLE goal_overlays (
     cycle_id          INTEGER NOT NULL DEFAULT 0,
     node_key          TEXT GENERATED ALWAYS AS (
                           item_type || ':' || item_id || ':' || iteration_scope || ':' || cycle_id) VIRTUAL,
-    iteration_scope_exact TEXT GENERATED ALWAYS AS (CASE WHEN iteration_scope LIKE 'exact:%' THEN iteration_scope END) VIRTUAL REFERENCES exact_scopes(id),
+    CHECK (iteration_scope IS NULL OR json_valid(iteration_scope)),
     status            TEXT CHECK (status IN ('active', 'achieved', 'frozen', 'archived')),
     resolved_at       INTEGER,
     tombstone         TEXT CHECK (tombstone IN ('archived', 'missed')),
@@ -137,7 +137,7 @@ CREATE TABLE commitment_overlays (
     cycle_id          INTEGER NOT NULL DEFAULT 0,
     node_key          TEXT GENERATED ALWAYS AS (
                           item_type || ':' || item_id || ':' || iteration_scope || ':' || cycle_id) VIRTUAL,
-    iteration_scope_exact TEXT GENERATED ALWAYS AS (CASE WHEN iteration_scope LIKE 'exact:%' THEN iteration_scope END) VIRTUAL REFERENCES exact_scopes(id),
+    CHECK (iteration_scope IS NULL OR json_valid(iteration_scope)),
     verdict           TEXT CHECK (verdict IN ('kept', 'broken')),
     resolved_at       INTEGER,
     tombstone         TEXT CHECK (tombstone IN ('archived', 'missed')),
@@ -224,8 +224,8 @@ CREATE TABLE derived_children (
     window_end_scope_id TEXT,
     child_type          TEXT NOT NULL CHECK (child_type IN ('task', 'goal', 'commitment', 'info', 'expectation')),
     child_id            INTEGER NOT NULL,
-    window_start_scope_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN window_start_scope_id LIKE 'exact:%' THEN window_start_scope_id END) VIRTUAL REFERENCES exact_scopes(id),
-    window_end_scope_id_exact   TEXT GENERATED ALWAYS AS (CASE WHEN window_end_scope_id LIKE 'exact:%' THEN window_end_scope_id END) VIRTUAL REFERENCES exact_scopes(id),
+    CHECK (window_start_scope_id IS NULL OR json_valid(window_start_scope_id)),
+    CHECK (window_end_scope_id IS NULL OR json_valid(window_end_scope_id)),
     UNIQUE (child_type, child_id)
 );
 CREATE INDEX idx_derived_children_parent ON derived_children (parent_key);

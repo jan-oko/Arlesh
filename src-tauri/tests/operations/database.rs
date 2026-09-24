@@ -240,8 +240,8 @@ async fn migration_0037_keeps_every_delegate_as_a_person_and_every_link() {
     assert!(violations.is_empty(), "{violations:?}");
 }
 
-/// Migration `0046` rewrites every scope reference from a `scopes` row id to the scope's value
-/// key, rebuilding nine tables and carrying their ON DELETE CASCADE dependents aside, then drops
+/// Migration `0046` rewrites every scope reference from a `scopes` row id to the canonical text
+/// of the scope's value key, rebuilding nine tables and carrying their ON DELETE CASCADE dependents aside, then drops
 /// `scopes` (ADR 0009). This seeds a board with every kind of scope and every kind of reference —
 /// a Time Scope, a Plan, a Recurrence, a Habit Modification, an event — plus the tags, links,
 /// dependency edges and wait rows that hang off the rebuilt tables, and checks that each reference
@@ -348,14 +348,18 @@ async fn migration_0046_turns_every_scope_reference_into_its_key_and_keeps_every
         windows,
         vec![
             (
-                key("month:2026-09-01"),
-                key("month:2026-09-01"),
-                key("day:2026-09-23"),
-                key("part_of_day:2026-09-23:night"),
+                key(r#"{"kind":"month","date":"2026-09-01"}"#),
+                key(r#"{"kind":"month","date":"2026-09-01"}"#),
+                key(r#"{"kind":"day","date":"2026-09-23"}"#),
+                key(r#"{"kind":"part_of_day","date":"2026-09-23","part":"night"}"#),
             ),
             (
-                key("exact:2026-09-23T14:00:00/2026-09-23T15:30:00"),
-                key("exact:2026-09-23T14:00:00/2026-09-23T15:30:00"),
+                key(
+                    r#"{"kind":"exact","start":"2026-09-23T14:00:00","end":"2026-09-23T15:30:00"}"#
+                ),
+                key(
+                    r#"{"kind":"exact","start":"2026-09-23T14:00:00","end":"2026-09-23T15:30:00"}"#
+                ),
                 None,
                 None,
             ),
@@ -367,34 +371,35 @@ async fn migration_0046_turns_every_scope_reference_into_its_key_and_keeps_every
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(goal.as_deref(), Some("season:2026-09-01"));
+    assert_eq!(
+        goal.as_deref(),
+        Some(r#"{"kind":"season","date":"2026-09-01"}"#)
+    );
     let event: Option<String> = sqlx::query_scalar("SELECT scope_id FROM events")
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(event.as_deref(), Some("day:2026-09-23"));
+    assert_eq!(
+        event.as_deref(),
+        Some(r#"{"kind":"day","date":"2026-09-23"}"#)
+    );
     let recurrence: String = sqlx::query_scalar("SELECT start_scope_id FROM flow_recurrences")
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(recurrence, "week:2026-09-20");
+    assert_eq!(recurrence, r#"{"kind":"week","date":"2026-09-20"}"#);
     let iteration: String =
         sqlx::query_scalar("SELECT iteration_scope_id FROM habit_instance_modifications")
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(iteration, "week:2026-09-20");
-    let exact: Vec<String> = sqlx::query_scalar("SELECT id FROM exact_scopes")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
-    assert_eq!(exact, ["exact:2026-09-23T14:00:00/2026-09-23T15:30:00"]);
-
-    let scopes_left: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE name = 'scopes'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    assert_eq!(iteration, r#"{"kind":"week","date":"2026-09-20"}"#);
+    let scopes_left: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('scopes', 'exact_scopes')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(scopes_left, 0, "the calendar table is gone");
 
     for table in [

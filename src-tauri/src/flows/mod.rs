@@ -2596,13 +2596,6 @@ pub async fn set_flow_recurrence(
     flow_id: FlowId,
     request: SetRecurrenceRequest,
 ) -> Result<FlowRecurrence, FlowError> {
-    db.scopes()
-        .register_all(
-            [request.start_scope_id]
-                .into_iter()
-                .chain(request.end_scope_id),
-        )
-        .await?;
     db.flows().set_recurrence(flow_id, request).await
 }
 
@@ -2624,7 +2617,6 @@ pub async fn set_iteration_done(
     done: bool,
     resolved_at_ms: i64,
 ) -> Result<(), FlowError> {
-    db.scopes().register(&iteration_scope_id).await?;
     db.flows()
         .set_iteration_done(flow_id, iteration_scope_id, done, resolved_at_ms)
         .await
@@ -3562,7 +3554,7 @@ fn resolve_root_plan(
 /// Resolves every scope a flow materialisation needs into a lookup table, in two rounds per pair:
 /// the Cycle Scope from the window start, then the Cycle Plan from *that scope's* own start date.
 /// Both rounds already live inside [`resolve_pair`]; this walks the pairs. Pure: every scope is
-/// derived from its key, and the writes that store them register any Exact window they name.
+/// derived from its key.
 ///
 /// `cycles` is the *reachable* pair list, not every pair the flow owns: an orphaned item is never
 /// walked, so its pairs are never resolved.

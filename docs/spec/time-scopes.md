@@ -23,20 +23,20 @@ Its **label** is `Week N YYYY`, where N is `week_number()` (`src-tauri/src/scope
 
 ## Scopes are derived
 
-**A canonical scope is never stored.** Season, Month, Week, Day and Part of Day are computed from their value on every read — label, dates and bounds are arithmetic over the kind and the start date, and for a Part of Day the band. Nothing is written when a view, a Habit's iterations or the MCP snapshot needs a scope nobody has used before. Only an **Exact** scope, a window the user chose, is kept as a row (`exact_scopes`), so that references to it keep their integrity; it is written by the save that first stores it and never by a read. See ADR 0009.
+**A scope is never stored.** Season, Month, Week, Day, Part of Day and Exact windows alike are computed from their value on every read — label, dates and bounds are arithmetic over the kind and the start date, the band of a Part of Day, the two datetimes of an Exact window. Nothing is written when a view, a Habit's iterations or the MCP snapshot needs a scope nobody has used before. See ADR 0009.
 
-**A scope's id is its value key**, a canonical string that names the scope's own start:
+**A scope's id is its value key**, a small JSON object tagged by `kind` that names the scope's own start:
 
-| Kind        | Key                                                                 |
-|-------------|---------------------------------------------------------------------|
-| Season      | `season:2026-09-01` — the season's first day                        |
-| Month       | `month:2026-09-01` — the month's first day                          |
-| Week        | `week:2026-09-20` — the week's Sunday                               |
-| Day         | `day:2026-09-23`                                                    |
-| Part of Day | `part_of_day:2026-09-23:morning` — the day the band starts on, then the band |
-| Exact       | `exact:2026-09-23T14:00:00/2026-09-23T15:30:00` — half-open start and end |
+| Kind        | Key                                                                         |
+|-------------|-----------------------------------------------------------------------------|
+| Season      | `{"kind":"season","date":"2026-09-01"}` — the season's first day            |
+| Month       | `{"kind":"month","date":"2026-09-01"}` — the month's first day              |
+| Week        | `{"kind":"week","date":"2026-09-20"}` — the week's Sunday                   |
+| Day         | `{"kind":"day","date":"2026-09-23"}`                                        |
+| Part of Day | `{"kind":"part_of_day","date":"2026-09-23","part":"morning"}` — the day the band starts on, then the band |
+| Exact       | `{"kind":"exact","start":"2026-09-23T14:00:00","end":"2026-09-23T15:30:00"}` — half-open start and end, whole seconds |
 
-A key that does not name its own start — `week:2026-09-23`, a Wednesday — is refused, not snapped: one scope has exactly one spelling, so comparing keys compares scopes. Finding the scope *containing* a date is a separate operation. Every column and wire field that references a scope holds this key, which is why a Task's window reads as dates in a database dump or an MCP snapshot without resolving anything.
+A key that does not name its own start — a week keyed by a Wednesday — is refused, not snapped; so is an Exact window that does not end after it starts. Finding the scope *containing* a date is a separate operation. Keys travel as JSON objects on the wire and are stored as their **canonical text** — `kind` first, the fields in the order above, no whitespace — which is produced in one place on each side and re-derived from the parsed value on every write, so comparing the stored text compares scopes. Every column and wire field that references a scope holds this key, which is why a Task's window reads as dates in a database dump or an MCP snapshot without resolving anything.
 
 **The calendar conventions are code.** Sunday-start weeks, December–February Winter and the 02:00 day boundary are applied at read time, so changing one would reinterpret every past window at once rather than only new ones. They are constants; making any of them configurable means revisiting ADR 0009.
 

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { usePlanScope } from "./use-plan-scope";
 import { useViewStore } from "@/stores/use-view-store";
-import type { Scope } from "@/api/scopes";
+import type { Scope, ScopeKey } from "@/api/scopes";
 import type { ScopeRef } from "@/utils/scope-ref";
 
 vi.mock("@/hooks/use-scope-labels", () => ({ useScopeLabels: () => ({}) }));
@@ -11,7 +11,7 @@ vi.mock("@/utils/scope-format", () => ({ formatScope: (scope: Scope) => scope.la
 /** The cell each ref names, with the dates the backend would give it. */
 function cellFor(ref: ScopeRef): Scope {
   const base = {
-    id: "day:2026-09-22", part: null,
+    id: { kind: "day", date: "2026-09-22" } satisfies ScopeKey, part: null,
     start_datetime: null, end_datetime: null,
   };
   if (ref.kind === "exact") throw new Error("not a cell");

@@ -69,7 +69,7 @@ function envelope(): MindmapLoad {
         kind: "habit", habit_id: FLOW_ID, item_type: "flow_root", item_id: FLOW_ID, cycle_id: 0,
         iteration_scope: {
           index: 0, start_date: "2026-01-05", window_end: "2099-01-01T00:00:00",
-          scope_id: "day:2026-01-05", kind: "day", status: "active",
+          scope_id: { kind: "day", date: "2026-01-05" }, kind: "day", status: "active",
         },
       },
     }],

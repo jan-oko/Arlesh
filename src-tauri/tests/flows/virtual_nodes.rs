@@ -823,18 +823,18 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
          INSERT INTO habit_instance_modifications
             (flow_id, item_type, item_id, iteration_scope_id, cycle_id, status, title,
              blocked_reason, tombstone_kind, resolved_at) VALUES
-            (1, 'flow_root', 1, 'day:2026-01-05', 0, 'done', NULL, NULL, NULL, 100),
-            (1, 'flow_task', 10, 'day:2026-01-05', 0, 'in_progress', 'Own title', 'stuck', NULL, NULL),
-            (1, 'flow_task', 10, 'day:2026-01-06', 0, NULL, NULL, NULL, 'deleted', NULL),
-            (2, 'flow_root', 2, 'day:2026-01-05', 0, 'done', NULL, NULL, NULL, 200),
-            (2, 'flow_task', 11, 'day:2026-01-05', 0, 'done', NULL, NULL, 'missed', 300),
-            (3, 'flow_root', 3, 'day:2026-01-05', 0, 'kept', NULL, NULL, NULL, 400),
-            (3, 'flow_root', 3, 'part_of_day:2026-01-05:evening', 0, 'broken', NULL, NULL, NULL, 500),
-            (3, 'flow_root', 3, 'day:2026-01-06', 0, 'done', NULL, NULL, NULL, 600);
+            (1, 'flow_root', 1, '{\"kind\":\"day\",\"date\":\"2026-01-05\"}', 0, 'done', NULL, NULL, NULL, 100),
+            (1, 'flow_task', 10, '{\"kind\":\"day\",\"date\":\"2026-01-05\"}', 0, 'in_progress', 'Own title', 'stuck', NULL, NULL),
+            (1, 'flow_task', 10, '{\"kind\":\"day\",\"date\":\"2026-01-06\"}', 0, NULL, NULL, NULL, 'deleted', NULL),
+            (2, 'flow_root', 2, '{\"kind\":\"day\",\"date\":\"2026-01-05\"}', 0, 'done', NULL, NULL, NULL, 200),
+            (2, 'flow_task', 11, '{\"kind\":\"day\",\"date\":\"2026-01-05\"}', 0, 'done', NULL, NULL, 'missed', 300),
+            (3, 'flow_root', 3, '{\"kind\":\"day\",\"date\":\"2026-01-05\"}', 0, 'kept', NULL, NULL, NULL, 400),
+            (3, 'flow_root', 3, '{\"kind\":\"part_of_day\",\"date\":\"2026-01-05\",\"part\":\"evening\"}', 0, 'broken', NULL, NULL, NULL, 500),
+            (3, 'flow_root', 3, '{\"kind\":\"day\",\"date\":\"2026-01-06\"}', 0, 'done', NULL, NULL, NULL, 600);
          INSERT INTO tasks (id, title, parent_type, parent_id) VALUES (70, 'Milk', 'project', 1);
          INSERT INTO habit_instance_children
             (flow_id, item_type, item_id, iteration_scope_id, cycle_id, window_end_scope_id,
-             child_type, child_id) VALUES (1, 'flow_root', 1, 'day:2026-01-05', 0, 'day:2026-01-05', 'task', 70);",
+             child_type, child_id) VALUES (1, 'flow_root', 1, '{\"kind\":\"day\",\"date\":\"2026-01-05\"}', 0, '{\"kind\":\"day\",\"date\":\"2026-01-05\"}', 'task', 70);",
     )
     .execute(&pool)
     .await
@@ -853,7 +853,7 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
         tasks,
         vec![
             (
-                "flow_root:1:day:2026-01-05:0".into(),
+                "flow_root:1:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0".into(),
                 Some("done".into()),
                 None,
                 None,
@@ -861,7 +861,7 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
                 0
             ),
             (
-                "flow_task:10:day:2026-01-05:0".into(),
+                "flow_task:10:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0".into(),
                 Some("in_progress".into()),
                 Some("Own title".into()),
                 None,
@@ -869,7 +869,7 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
                 1
             ),
             (
-                "flow_task:10:day:2026-01-06:0".into(),
+                "flow_task:10:{\"kind\":\"day\",\"date\":\"2026-01-06\"}:0".into(),
                 None,
                 None,
                 Some("archived".into()),
@@ -877,7 +877,7 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
                 0
             ),
             (
-                "flow_task:11:day:2026-01-05:0".into(),
+                "flow_task:11:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0".into(),
                 Some("done".into()),
                 None,
                 Some("missed".into()),
@@ -896,7 +896,7 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
     assert_eq!(
         goals,
         vec![(
-            "flow_root:2:day:2026-01-05:0".into(),
+            "flow_root:2:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0".into(),
             Some("achieved".into())
         )],
         "a goal's done is achieved"
@@ -910,9 +910,9 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
     assert_eq!(
         commitments,
         vec![
-            ("flow_root:3:day:2026-01-05:0".into(), Some("kept".into())),
+            ("flow_root:3:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0".into(), Some("kept".into())),
             (
-                "flow_root:3:part_of_day:2026-01-05:evening:0".into(),
+                "flow_root:3:{\"kind\":\"part_of_day\",\"date\":\"2026-01-05\",\"part\":\"evening\"}:0".into(),
                 Some("broken".into())
             ),
         ],
@@ -927,7 +927,10 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
             .unwrap();
     assert_eq!(
         reasons,
-        vec![("flow_task:10:day:2026-01-05:0".into(), "stuck".into())]
+        vec![(
+            "flow_task:10:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0".into(),
+            "stuck".into()
+        )]
     );
 
     let children: Vec<(String, String, i64, Option<String>)> = sqlx::query_as(
@@ -939,10 +942,10 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
     assert_eq!(
         children,
         vec![(
-            "flow_root:1:day:2026-01-05:0".into(),
+            "flow_root:1:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0".into(),
             "task".into(),
             70,
-            Some("day:2026-01-05".into())
+            Some("{\"kind\":\"day\",\"date\":\"2026-01-05\"}".into())
         )]
     );
 

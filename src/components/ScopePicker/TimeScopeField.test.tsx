@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import TimeScopeField from "./TimeScopeField";
 import { getScope } from "@/api/scopes";
-import type { Scope, ScopeKey, ScopeKind } from "@/api/scopes";
+import type { Scope, ScopeKey } from "@/api/scopes";
+import { keyStartDate } from "@/utils/scope-key";
 import type { TimeScope } from "@/api/time-scope";
 
 vi.mock("react-i18next", () => ({
@@ -31,16 +32,14 @@ vi.mock("@/api/scopes", () => ({
   resolveScope: vi.fn(),
 }));
 
-const JUNE: ScopeKey = "month:2026-06-01";
-const AUGUST: ScopeKey = "month:2026-08-01";
+const JUNE: ScopeKey = { kind: "month", date: "2026-06-01" };
+const AUGUST: ScopeKey = { kind: "month", date: "2026-08-01" };
 
 /** The scope a key names, as the backend derives it — kind and start date are in the key. */
 function scopeOf(id: ScopeKey): Scope {
-  const [kind = "month", date = ""] = id.split(":");
-  const kinds: ScopeKind[] = ["season", "month", "week", "day"];
   return {
-    id, kind: kinds.find((candidate) => candidate === kind) ?? "month", label: "",
-    start_date: date, end_date: date,
+    id, kind: id.kind, label: "",
+    start_date: keyStartDate(id), end_date: keyStartDate(id),
     part: null, start_datetime: null, end_datetime: null,
   };
 }
@@ -57,12 +56,12 @@ describe("TimeScopeField — summary", () => {
   });
 
   it("pluralizes the duration summary", () => {
-    render(<TimeScopeField value={{ start_id: "week:2026-06-07", end_id: "week:2026-06-21", duration: { n: 3, kind: "week" } }} onChange={vi.fn()} />);
+    render(<TimeScopeField value={{ start_id: { kind: "week", date: "2026-06-07" }, end_id: { kind: "week", date: "2026-06-21" }, duration: { n: 3, kind: "week" } }} onChange={vi.fn()} />);
     expect(screen.getByText("3 weeks")).toBeInTheDocument();
   });
 
   it("does not pluralize a duration of 1", () => {
-    render(<TimeScopeField value={{ start_id: "week:2026-06-07", end_id: "week:2026-06-07", duration: { n: 1, kind: "week" } }} onChange={vi.fn()} />);
+    render(<TimeScopeField value={{ start_id: { kind: "week", date: "2026-06-07" }, end_id: { kind: "week", date: "2026-06-07" }, duration: { n: 1, kind: "week" } }} onChange={vi.fn()} />);
     expect(screen.getByText("1 week")).toBeInTheDocument();
   });
 
@@ -116,7 +115,7 @@ describe("TimeScopeField — opening view", () => {
   });
 
   it("opens the picker on the day of a Day-scoped value", async () => {
-    render(<TimeScopeField value={{ start_id: "day:2026-09-16", end_id: "day:2026-09-16" }} onChange={vi.fn()} />);
+    render(<TimeScopeField value={{ start_id: { kind: "day", date: "2026-09-16" }, end_id: { kind: "day", date: "2026-09-16" } }} onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "edit scope" }));
     // The week of Wednesday 16 September 2026, not the twelve months of the year.
     await waitFor(() => expect(screen.getByRole("button", { name: "16" })).toBeInTheDocument());

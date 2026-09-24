@@ -24,6 +24,7 @@ import type { TaskListRow } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER, filterTaskList } from "@/utils/list-filter";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { partitionForScope, referencedScopeIds } from "@/utils/plan-triage";
+import { scopeKeyText } from "@/utils/scope-key";
 import { buildPlanSections } from "@/utils/plan-sections";
 import type { PlanSection } from "@/utils/plan-sections";
 import { buildPaneModel } from "@/utils/plan-pane-model";
@@ -118,7 +119,7 @@ export default function PlanView() {
     return ids;
   }, [visibleRows, targetScopeId]);
   const windows = useScopeWindows(scopeIds);
-  const targetWindow = targetScopeId === null ? null : windows.get(targetScopeId) ?? null;
+  const targetWindow = targetScopeId === null ? null : windows.get(scopeKeyText(targetScopeId)) ?? null;
 
   const panes = useMemo(
     () => (targetWindow === null ? NO_PANES : partitionForScope(visibleRows, targetWindow, windows, parents.ids)),
@@ -156,7 +157,7 @@ export default function PlanView() {
 
   const split = useMemo(() => {
     if (!subscopeSplit || targetScopeId === null) return null;
-    const target = scopeRows.get(targetScopeId);
+    const target = scopeRows.get(scopeKeyText(targetScopeId));
     // Until the scope being filled has been read back there is nothing to split by, and the pane
     // draws flat rather than inventing buckets.
     if (target === undefined) return null;

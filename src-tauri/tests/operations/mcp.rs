@@ -11,10 +11,21 @@
 use crate::helpers;
 
 use arlesh_lib::mcp::{params, ArleshMcp};
+use arlesh_lib::scopes::key::ScopeKey;
 use helpers::StoredId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use tauri::Manager;
+
+/// A key as an MCP caller sends it: the same JSON object, through the tool's own parameter type.
+fn param(key: ScopeKey) -> params::ScopeKeyParam {
+    serde_json::from_value(serde_json::to_value(key).unwrap()).unwrap()
+}
+
+/// A key parameter from JSON text.
+fn param_of(text: &str) -> params::ScopeKeyParam {
+    serde_json::from_str(text).unwrap()
+}
 
 /// The structured payload of a successful tool call.
 ///
@@ -61,7 +72,7 @@ async fn scopes_get_returns_what_the_command_returns() {
 
     let result = mcp
         .scopes(Parameters(params::ScopesOperation::Get {
-            id: week.id.to_string(),
+            id: param(week.id),
         }))
         .await
         .unwrap();
@@ -72,7 +83,10 @@ async fn scopes_get_returns_what_the_command_returns() {
         &serde_json::to_value(&expected).unwrap(),
         "scopes.get"
     );
-    assert_eq!(week.id.to_string(), "week:2026-02-01");
+    assert_eq!(
+        week.id.canonical(),
+        r#"{"kind":"week","date":"2026-02-01"}"#
+    );
 }
 
 #[tokio::test]
@@ -83,7 +97,7 @@ async fn scopes_get_on_a_malformed_key_reports_an_invalid_request() {
     // A Wednesday is not the start of a week, so this names no scope.
     let result = mcp
         .scopes(Parameters(params::ScopesOperation::Get {
-            id: "week:2026-02-04".into(),
+            id: param_of(r#"{"kind":"week","date":"2026-02-04"}"#),
         }))
         .await
         .unwrap();
@@ -101,15 +115,17 @@ async fn scopes_resolve_many_resolves_each_id_in_order() {
     let pool = helpers::test_pool().await;
     let mcp = ArleshMcp::new(helpers::session_factory(&pool));
 
-    let ids: Vec<String> = ["week:2026-02-01", "day:2026-02-09", "month:2026-02-01"]
-        .iter()
-        .map(|id| id.to_string())
-        .collect();
+    let ids: Vec<params::ScopeKeyParam> = [
+        r#"{"kind":"week","date":"2026-02-01"}"#,
+        r#"{"kind":"day","date":"2026-02-09"}"#,
+        r#"{"kind":"month","date":"2026-02-01"}"#,
+    ]
+    .iter()
+    .map(|text| param_of(text))
+    .collect();
 
     let result = mcp
-        .scopes(Parameters(params::ScopesOperation::ResolveMany {
-            ids: ids.clone(),
-        }))
+        .scopes(Parameters(params::ScopesOperation::ResolveMany { ids }))
         .await
         .unwrap();
 
@@ -430,8 +446,8 @@ async fn tasks_containment_conflicts_matches_the_command() {
                 node_id: task_id,
             },
             time_scope: params::TimeScope {
-                start_id: scope.id.to_string(),
-                end_id: scope.id.to_string(),
+                start_id: param(scope.id),
+                end_id: param(scope.id),
                 duration: None,
             },
         }))
@@ -868,7 +884,7 @@ async fn scopes_resolve_matches_the_command() {
 
     let result = mcp
         .scopes(Parameters(params::ScopesOperation::Resolve {
-            id: scope.id.to_string(),
+            id: param(scope.id),
         }))
         .await
         .unwrap();
@@ -882,13 +898,13 @@ async fn scopes_resolve_matches_the_command() {
 }
 
 #[tokio::test]
-async fn scopes_resolve_on_an_id_that_is_no_key_reports_an_invalid_request() {
+async fn scopes_resolve_on_an_impossible_date_reports_an_invalid_request() {
     let pool = helpers::test_pool().await;
     let mcp = ArleshMcp::new(helpers::session_factory(&pool));
 
     let result = mcp
         .scopes(Parameters(params::ScopesOperation::Resolve {
-            id: "42".into(),
+            id: param_of(r#"{"kind":"day","date":"2026-02-31"}"#),
         }))
         .await
         .unwrap();
@@ -920,8 +936,8 @@ async fn a_duration_carries_through_to_the_domain_window() {
     // The MCP window types are a separate mirror of the domain ones, so the conversion between
     // them is real code that can drift. A window in duration form is the shape that exercises it.
     let mcp_window = params::TimeScope {
-        start_id: start.id.to_string(),
-        end_id: end.id.to_string(),
+        start_id: param(start.id),
+        end_id: param(end.id),
         duration: Some(params::DurationSpec {
             n: 2,
             kind: "week".into(),

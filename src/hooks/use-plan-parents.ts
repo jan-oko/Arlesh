@@ -1,14 +1,15 @@
 import { useMemo } from "react";
-import type { Scope, ScopeKey } from "@/api/scopes";
+import type { Scope } from "@/api/scopes";
 import { parentRefs } from "@/utils/plan-scope";
-import { keyForRef } from "@/utils/scope-key";
+import { keyForRef, scopeKeyText, type ScopeKeyText } from "@/utils/scope-key";
 
 /** The parent scope(s) of the scope a Plan pass is filling. */
 export interface PlanParents {
   /** Whether the scope has a rung above it at all — `false` exactly for a Season. */
   exists: boolean;
-  /** The parents' keys; empty until the scope itself is known, and always empty for a Season. */
-  ids: ReadonlySet<ScopeKey>;
+  /** The parents' keys, as canonical text; empty until the scope itself is known, and always
+   * empty for a Season. */
+  ids: ReadonlySet<ScopeKeyText>;
 }
 
 /**
@@ -21,6 +22,6 @@ export interface PlanParents {
 export function usePlanParents(scope: Scope | null): PlanParents {
   return useMemo(() => {
     const refs = scope === null ? [] : parentRefs(scope);
-    return { exists: refs.length > 0, ids: new Set(refs.map(keyForRef)) };
+    return { exists: refs.length > 0, ids: new Set(refs.map((ref) => scopeKeyText(keyForRef(ref)))) };
   }, [scope]);
 }

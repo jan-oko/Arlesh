@@ -18,10 +18,13 @@ fn key(item_type: TemplateKind, item_id: i64, iteration: ScopeKey, cycle: i64) -
 #[test]
 fn an_occurrence_key_spells_its_tuple() {
     let occurrence = key(TemplateKind::FlowTask, 12, day("2026-09-20"), 3);
-    assert_eq!(occurrence.node_key(), "flow_task:12:day:2026-09-20:3");
+    assert_eq!(
+        occurrence.node_key(),
+        "flow_task:12:{\"kind\":\"day\",\"date\":\"2026-09-20\"}:3"
+    );
     assert_eq!(
         key(TemplateKind::FlowRoot, 4, day("2026-01-02"), NO_CYCLE).node_key(),
-        "flow_root:4:day:2026-01-02:0"
+        "flow_root:4:{\"kind\":\"day\",\"date\":\"2026-01-02\"}:0"
     );
 }
 
@@ -63,11 +66,11 @@ fn a_malformed_key_does_not_parse() {
     for malformed in [
         "",
         "task:12",
-        "flow_task:12:day:2026-09-20",
-        "flow_task:x:day:2026-09-20:0",
-        "flow_task:12:day:2026-13-40:0",
-        "flow_task:12:day:2026-09-20:zero",
-        "flow_step:12:day:2026-09-20:0",
+        "flow_task:12:{\"kind\":\"day\",\"date\":\"2026-09-20\"}",
+        "flow_task:x:{\"kind\":\"day\",\"date\":\"2026-09-20\"}:0",
+        "flow_task:12:{\"kind\":\"day\",\"date\":\"2026-13-40\"}:0",
+        "flow_task:12:{\"kind\":\"day\",\"date\":\"2026-09-20\"}:zero",
+        "flow_step:12:{\"kind\":\"day\",\"date\":\"2026-09-20\"}:0",
     ] {
         assert_eq!(OccurrenceKey::parse(malformed), None, "{malformed}");
     }
@@ -80,7 +83,7 @@ fn the_id_is_the_hash_of_the_canonical_key() {
     assert_eq!(derived.id(), occurrence.id());
     assert_eq!(
         derived.id(),
-        DerivedId::of_key("flow_task:12:day:2026-09-20:3")
+        DerivedId::of_key("flow_task:12:{\"kind\":\"day\",\"date\":\"2026-09-20\"}:3")
     );
     assert_eq!(derived.node_id(), NodeId::Derived(occurrence.id()));
     assert_eq!(derived.occurrence(), Some(&occurrence));

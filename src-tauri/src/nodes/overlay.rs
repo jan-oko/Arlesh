@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use sqlx::SqliteConnection;
 
 use super::key::{CheckKey, OccurrenceKey};
-use crate::scopes::{error::ScopeError, key::ScopeKey, ScopeOperator};
+use crate::scopes::{error::ScopeError, key::ScopeKey};
 use crate::tasks::model::{AsyncTemplate, ExpectationArchival, ExpectationStatus};
 
 /// One occurrence's Task overlay. Every field inherits when empty.
@@ -258,17 +258,6 @@ impl<'session> OverlayOperator<'session> {
         .await
     }
 
-    /// Records the Exact scopes an overlay row names, so the row's references into
-    /// `exact_scopes` hold (migration 0046). Canonical keys need nothing.
-    async fn register(
-        &mut self,
-        keys: impl IntoIterator<Item = ScopeKey>,
-    ) -> Result<(), ScopeError> {
-        ScopeOperator::new(&mut *self.connection)
-            .register_all(keys)
-            .await
-    }
-
     /// One occurrence's Task overlay, empty when it has none.
     pub async fn task(&mut self, key: &OccurrenceKey) -> Result<TaskOverlay, sqlx::Error> {
         Ok(sqlx::query_as(&format!(
@@ -319,13 +308,6 @@ impl<'session> OverlayOperator<'session> {
                 .await?;
             return Ok(());
         }
-        self.register(
-            [key.iteration]
-                .into_iter()
-                .chain(overlay.plan_start_id)
-                .chain(overlay.plan_end_id),
-        )
-        .await?;
         sqlx::query(
             "INSERT INTO task_overlays
                 (origin, flow_id, item_type, item_id, iteration_scope, cycle_id,
@@ -412,8 +394,6 @@ impl<'session> OverlayOperator<'session> {
         if overlay.is_empty() {
             return Ok(());
         }
-        self.register(overlay.plan_start_id.into_iter().chain(overlay.plan_end_id))
-            .await?;
         sqlx::query(
             "INSERT INTO task_overlays
                 (origin, wait_key, due_at,
@@ -462,7 +442,6 @@ impl<'session> OverlayOperator<'session> {
                 .await?;
             return Ok(());
         }
-        self.register([key.iteration]).await?;
         sqlx::query(
             "INSERT INTO goal_overlays
                 (flow_id, item_type, item_id, iteration_scope, cycle_id, status, resolved_at,
@@ -508,7 +487,6 @@ impl<'session> OverlayOperator<'session> {
                 .await?;
             return Ok(());
         }
-        self.register([key.iteration]).await?;
         sqlx::query(
             "INSERT INTO commitment_overlays
                 (flow_id, item_type, item_id, iteration_scope, cycle_id, verdict, resolved_at,

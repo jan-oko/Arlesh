@@ -74,7 +74,7 @@ describe("a subtree root that is no longer on the board", () => {
         kind: "habit", habit_id: 3, item_type: "flow_root", item_id: 3, cycle_id: 0,
         iteration_scope: {
           index: 4, start_date: "2026-01-05", window_end: "2026-01-06T00:00:00",
-          scope_id: "day:2026-01-05", kind: "day", status: "active",
+          scope_id: { kind: "day", date: "2026-01-05" }, kind: "day", status: "active",
         },
       },
     });

@@ -20,7 +20,7 @@ export function occurrenceOrigin({
     kind: "habit",
     habit_id: habitId,
     iteration_scope: {
-      index, start_date: startDate, window_end: windowEnd, scope_id: `day:${startDate}`,
+      index, start_date: startDate, window_end: windowEnd, scope_id: { kind: "day", date: startDate },
       kind: "day", status: "active",
     },
     item_type: itemType,

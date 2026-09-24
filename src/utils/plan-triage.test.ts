@@ -5,25 +5,25 @@ import {
   timeScopeWindow,
 } from "./plan-triage";
 import type { ScopeWindows } from "./plan-triage";
-import type { ScopeKey } from "@/api/scopes";
 import type { TaskListRow } from "./list-filter";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import { testKey } from "@/test/scope-key";
+import { scopeKeyText, type ScopeKeyText } from "@/utils/scope-key";
 
 // Scope ids used throughout (as `testKey(n)`): 1 = the week being filled, 2 = a Tuesday inside it, 3 = next week,
 // 4 = the month the week starts in, and so the week's parent; 5 = the season above that month.
 const WINDOWS: ScopeWindows = new Map([
-  [testKey(1), { start: "2026-09-20T00:00:00", end: "2026-09-27T00:00:00" }],
-  [testKey(2), { start: "2026-09-22T00:00:00", end: "2026-09-23T00:00:00" }],
-  [testKey(3), { start: "2026-09-27T00:00:00", end: "2026-10-04T00:00:00" }],
-  [testKey(4), { start: "2026-09-01T00:00:00", end: "2026-10-01T00:00:00" }],
-  [testKey(5), { start: "2026-09-01T00:00:00", end: "2026-12-01T00:00:00" }],
+  [scopeKeyText(testKey(1)), { start: "2026-09-20T00:00:00", end: "2026-09-27T00:00:00" }],
+  [scopeKeyText(testKey(2)), { start: "2026-09-22T00:00:00", end: "2026-09-23T00:00:00" }],
+  [scopeKeyText(testKey(3)), { start: "2026-09-27T00:00:00", end: "2026-10-04T00:00:00" }],
+  [scopeKeyText(testKey(4)), { start: "2026-09-01T00:00:00", end: "2026-10-01T00:00:00" }],
+  [scopeKeyText(testKey(5)), { start: "2026-09-01T00:00:00", end: "2026-12-01T00:00:00" }],
 ]);
 
 const WEEK = { start: "2026-09-20T00:00:00", end: "2026-09-27T00:00:00" };
 // The week's parent scope is the month, by id; a Season has none.
-const MONTH_PARENT: ReadonlySet<ScopeKey> = new Set([testKey(4)]);
-const NO_PARENT: ReadonlySet<ScopeKey> = new Set();
+const MONTH_PARENT: ReadonlySet<ScopeKeyText> = new Set([scopeKeyText(testKey(4))]);
+const NO_PARENT: ReadonlySet<ScopeKeyText> = new Set();
 const SEASON = { start: "2026-09-01T00:00:00", end: "2026-12-01T00:00:00" };
 
 function scope(id: number) {
@@ -107,7 +107,7 @@ describe("referencedScopeIds", () => {
         ancestors: [node("task-0", { plan: scope(4) })],
       }),
     ]);
-    expect([...ids].sort()).toEqual([testKey(1), testKey(3), testKey(4)]);
+    expect(ids.map(scopeKeyText).sort()).toEqual([testKey(1), testKey(3), testKey(4)].map(scopeKeyText));
   });
 });
 
@@ -196,7 +196,7 @@ describe("partitionForScope", () => {
   it("offers work planned to either month of a week at a month's edge", () => {
     const edgeWeek = { start: "2026-09-27T00:00:00", end: "2026-10-04T00:00:00" };
     const rows = [row({ node: node("task-1", { plan: scope(4) }) })];
-    const panes = partitionForScope(rows, edgeWeek, WINDOWS, new Set([testKey(4), testKey(6)]));
+    const panes = partitionForScope(rows, edgeWeek, WINDOWS, new Set([scopeKeyText(testKey(4)), scopeKeyText(testKey(6))]));
     expect(panes.parentPlanned.map((r) => r.node.id)).toEqual(["task-1"]);
   });
 

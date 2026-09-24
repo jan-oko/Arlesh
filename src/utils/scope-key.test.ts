@@ -2,55 +2,82 @@ import { describe, expect, it } from "vitest";
 import corpusJson from "@conformance/scope-keys.json";
 import type { PartOfDay } from "@/api/scopes";
 import type { ScopeRef } from "@/utils/scope-ref";
-import { canonicalStart, keyContaining, keyForRef, keyStartDate, refForKey } from "@/utils/scope-key";
+import {
+  canonicalStart, keyContaining, keyForRef, keyStartDate, sameScopeKey, scopeKeyFrom,
+  scopeKeyFromText, scopeKeyText,
+} from "@/utils/scope-key";
 
 /**
- * The value key is spelled in two places — here, to name a cell without a round trip, and in the
- * Rust `ScopeKey`, which the columns hold. `conformance/scope-keys.json` is the one list both
- * replay, so the two spellings cannot drift apart unnoticed.
+ * A key's canonical text is produced in two places — here, to compare keys and index maps without
+ * a round trip, and in the Rust `ScopeKey`, which writes the columns. `conformance/scope-keys.json`
+ * is the one list both replay, so the two cannot drift apart unnoticed.
  */
-interface KeyCase {
+interface Cell {
   kind: string;
   date?: string;
   part?: string;
   start?: string;
   end?: string;
-  key: string;
+}
+
+interface KeyCase {
+  cell: Cell;
+  key: unknown;
+  text: string;
 }
 
 const PARTS: readonly PartOfDay[] = ["premorning", "morning", "noon", "afternoon", "evening", "night"];
 
-function refOf(item: KeyCase): ScopeRef {
-  if (item.kind === "exact" && item.start !== undefined && item.end !== undefined) {
-    return { kind: "exact", start: item.start, end: item.end };
+function refOf(cell: Cell): ScopeRef {
+  if (cell.kind === "exact" && cell.start !== undefined && cell.end !== undefined) {
+    return { kind: "exact", start: cell.start, end: cell.end };
   }
-  const part = PARTS.find((candidate) => candidate === item.part);
-  if (item.kind === "part_of_day" && item.date !== undefined && part !== undefined) {
-    return { kind: "part_of_day", date: item.date, part };
+  const part = PARTS.find((candidate) => candidate === cell.part);
+  if (cell.kind === "part_of_day" && cell.date !== undefined && part !== undefined) {
+    return { kind: "part_of_day", date: cell.date, part };
   }
-  if (item.date === undefined) throw new Error(`malformed corpus case ${item.key}`);
-  switch (item.kind) {
+  if (cell.date === undefined) throw new Error("malformed corpus cell");
+  switch (cell.kind) {
     case "season":
     case "month":
     case "week":
     case "day":
-      return { kind: item.kind, date: item.date };
+      return { kind: cell.kind, date: cell.date };
     default:
-      throw new Error(`malformed corpus case ${item.key}`);
+      throw new Error("malformed corpus cell");
   }
 }
 
 const cases: KeyCase[] = corpusJson.cases;
 
 describe("the shared scope-key corpus", () => {
-  it.each(cases.map((item) => [item.key, item] as const))("spells %s", (_key, item) => {
-    expect(keyForRef(refOf(item))).toBe(item.key);
+  it.each(cases.map((item) => [item.text, item] as const))("writes %s", (text, item) => {
+    const key = keyForRef(refOf(item.cell));
+    expect(scopeKeyText(key)).toBe(text);
+    expect(key).toEqual(item.key);
   });
 
-  it.each(cases.map((item) => [item.key] as const))("reads %s back as its own cell", (key) => {
-    const ref = refForKey(key);
-    expect(ref).not.toBeNull();
-    if (ref !== null) expect(keyForRef(ref)).toBe(key);
+  it.each(cases.map((item) => [item.text] as const))("reads %s back to the same text", (text) => {
+    const key = scopeKeyFromText(text);
+    expect(key).not.toBeNull();
+    if (key !== null) expect(scopeKeyText(key)).toBe(text);
+  });
+});
+
+describe("scopeKeyText", () => {
+  it("writes one text whatever order the key's fields arrived in", () => {
+    const loose = scopeKeyFromText('{ "part": "night", "date": "2026-09-23", "kind": "part_of_day" }');
+    expect(loose).not.toBeNull();
+    if (loose !== null) {
+      expect(scopeKeyText(loose)).toBe('{"kind":"part_of_day","date":"2026-09-23","part":"night"}');
+    }
+  });
+});
+
+describe("sameScopeKey", () => {
+  it("compares keys by value, not by identity", () => {
+    expect(sameScopeKey({ kind: "week", date: "2026-09-20" }, keyContaining("week", "2026-09-23"))).toBe(true);
+    expect(sameScopeKey({ kind: "week", date: "2026-09-20" }, { kind: "day", date: "2026-09-20" })).toBe(false);
   });
 });
 
@@ -63,25 +90,22 @@ describe("canonicalStart", () => {
   });
 });
 
-describe("keyContaining", () => {
-  it("names the scope of a kind holding a date", () => {
-    expect(keyContaining("week", "2026-09-26")).toBe("week:2026-09-20");
-  });
-});
-
-describe("refForKey", () => {
-  it("refuses a string that is no key", () => {
-    for (const raw of ["", "42", "fortnight:2026-09-20", "week:tomorrow", "part_of_day:2026-09-23:dusk", "exact:2026-09-23T14:00:00"]) {
-      expect(refForKey(raw)).toBeNull();
+describe("scopeKeyFrom", () => {
+  it("refuses anything that is no key", () => {
+    for (const raw of [
+      null, 42, "week:2026-09-20", { kind: "fortnight", date: "2026-09-20" }, { kind: "week", date: "tomorrow" },
+      { kind: "part_of_day", date: "2026-09-23", part: "dusk" }, { kind: "exact", start: "2026-09-23T14:00:00" },
+    ]) {
+      expect(scopeKeyFrom(raw)).toBeNull();
     }
+    expect(scopeKeyFromText("not json")).toBeNull();
   });
 });
 
 describe("keyStartDate", () => {
   it("reads the first day of any key", () => {
-    expect(keyStartDate("week:2026-09-20")).toBe("2026-09-20");
-    expect(keyStartDate("part_of_day:2026-09-23:night")).toBe("2026-09-23");
-    expect(keyStartDate("exact:2026-09-23T14:00:00/2026-09-24T01:00:00")).toBe("2026-09-23");
-    expect(keyStartDate("nonsense")).toBeNull();
+    expect(keyStartDate({ kind: "week", date: "2026-09-20" })).toBe("2026-09-20");
+    expect(keyStartDate({ kind: "part_of_day", date: "2026-09-23", part: "night" })).toBe("2026-09-23");
+    expect(keyStartDate({ kind: "exact", start: "2026-09-23T14:00:00", end: "2026-09-24T01:00:00" })).toBe("2026-09-23");
   });
 });

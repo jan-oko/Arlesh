@@ -71,19 +71,6 @@ fn time_scope_columns(
     }
 }
 
-/// Registers the Exact windows among `windows` in `exact_scopes`, so the write that follows can
-/// store their keys. Canonical keys need nothing. Every write of a Time Scope or Plan goes through
-/// here first; a read never does (ADR 0009).
-async fn register_windows<M: SessionMode>(
-    db: &mut Db<M>,
-    windows: [&Option<TimeScope>; 2],
-) -> Result<(), TaskError> {
-    for window in windows.into_iter().flatten() {
-        db.scopes().register_all(window.keys()).await?;
-    }
-    Ok(())
-}
-
 /// The `on_scope_exit` column value for a write: absent (NULL) when the item is unscoped, otherwise
 /// the requested behavior defaulted to `keep` (the UI always supplies an explicit choice; this keeps
 /// the DB invariant "scoped ⟺ on-exit set" satisfied even when a caller omits it).
@@ -1426,7 +1413,6 @@ pub async fn create_goal(
         &request.time_scope,
     )
     .await?;
-    register_windows(db, [&request.time_scope, &None]).await?;
     db.goals().insert(request).await
 }
 
@@ -1468,7 +1454,6 @@ pub async fn update_goal(
         &write.time_scope,
     )
     .await?;
-    register_windows(db, [&write.time_scope, &None]).await?;
     db.goals().update(id, write).await
 }
 
@@ -1514,7 +1499,6 @@ pub async fn create_task(
         &request.plan,
     )
     .await?;
-    register_windows(db, [&request.time_scope, &request.plan]).await?;
     db.tasks().insert(request).await
 }
 
@@ -1566,7 +1550,6 @@ pub async fn update_task(
         &write.plan,
     )
     .await?;
-    register_windows(db, [&write.time_scope, &write.plan]).await?;
     // Nothing else is written for the wait an Asynchronous task spawns: it is derived from the task
     // being done and having a template, so completing and reopening — and undoing either — are
     // just this row's own status change.

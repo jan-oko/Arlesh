@@ -7,8 +7,8 @@ const week = (date: string): ScopeRef => ({ kind: "week", date });
 
 // A selection resolves to value keys, derived on the spot: nothing is asked of the backend and
 // the same cell always names the same scope.
-const JUNE_14 = "week:2026-06-14";
-const JUNE_28 = "week:2026-06-28";
+const JUNE_14 = { kind: "week", date: "2026-06-14" };
+const JUNE_28 = { kind: "week", date: "2026-06-28" };
 
 describe("useScopePicker — single mode", () => {
   it("resolves a single click to a single-scope Time Scope", async () => {

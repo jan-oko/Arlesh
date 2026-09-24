@@ -443,7 +443,6 @@ pub async fn create_commitment(
         &request.time_scope,
     )
     .await?;
-    super::register_windows(db, [&request.time_scope, &None]).await?;
     db.commitments().insert(request).await
 }
 
@@ -469,7 +468,6 @@ pub async fn update_commitment(
         &write.time_scope,
     )
     .await?;
-    super::register_windows(db, [&write.time_scope, &None]).await?;
     db.commitments().update(id, write).await
 }
 

@@ -569,9 +569,6 @@ pub async fn attach(
     child_type: &str,
     child_id: i64,
 ) -> Result<(), FlowError> {
-    db.scopes()
-        .register_all([key.iteration, host.window.start_id, host.window.end_id])
-        .await?;
     db.flows()
         .detach_instance_child(child_type, child_id)
         .await?;

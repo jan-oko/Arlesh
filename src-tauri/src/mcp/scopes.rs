@@ -16,8 +16,9 @@ use crate::scopes::{
 
 #[tool_router(router = scopes_router, vis = "pub(super)")]
 impl ArleshMcp {
-    /// What a scope id does not spell out. A scope id is its value key — `week:2026-09-20` is the
-    /// week whose Sunday is the 20th — so the dates are already in the snapshot.
+    /// What a scope id does not spell out. A scope id is its value key, a JSON object such as
+    /// `{"kind":"week","date":"2026-09-20"}` (the week whose Sunday is the 20th), so the dates are
+    /// already in the snapshot.
     ///
     /// `get` returns the scope with its label and inclusive end date; `resolve` its half-open
     /// `[start, end)` datetime window (a day runs 02:00 → 02:00) and whether it is active now.
@@ -36,14 +37,14 @@ impl ArleshMcp {
         let now = Local::now().naive_local();
         match operation {
             ScopesOperation::Get { id } => {
-                result::respond(id.parse::<ScopeKey>().map(|key| key.scope()))
+                result::respond(ScopeKey::try_from(id).map(|key| key.scope()))
             }
             ScopesOperation::Resolve { id } => {
-                result::respond(id.parse::<ScopeKey>().map(|key| resolve(&key, now)))
+                result::respond(ScopeKey::try_from(id).map(|key| resolve(&key, now)))
             }
             ScopesOperation::ResolveMany { ids } => result::respond(
-                ids.iter()
-                    .map(|id| id.parse::<ScopeKey>().map(|key| resolve(&key, now)))
+                ids.into_iter()
+                    .map(|id| ScopeKey::try_from(id).map(|key| resolve(&key, now)))
                     .collect::<Result<Vec<ResolvedScope>, ScopeError>>(),
             ),
         }

@@ -357,7 +357,11 @@ async fn loading_a_habit_that_needs_new_windows_writes_nothing() {
             .iter()
             .map(|iteration| iteration.to_string())
             .collect::<Vec<_>>(),
-        ["week:2026-01-04", "week:2026-01-18", "week:2026-02-01"],
+        [
+            r#"{"kind":"week","date":"2026-01-04"}"#,
+            r#"{"kind":"week","date":"2026-01-18"}"#,
+            r#"{"kind":"week","date":"2026-02-01"}"#
+        ],
         "each iteration is keyed by the week it starts in"
     );
     assert_eq!(

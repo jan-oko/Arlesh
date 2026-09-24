@@ -146,7 +146,7 @@ fn key(raw: &str) -> ScopeKey {
 #[test]
 fn key_resolution_canonical_day() {
     assert_eq!(
-        key("day:2026-06-20").bounds(),
+        key(r#"{"kind":"day","date":"2026-06-20"}"#).bounds(),
         (dt(2026, 6, 20, 2, 0), dt(2026, 6, 21, 2, 0))
     );
 }
@@ -154,7 +154,7 @@ fn key_resolution_canonical_day() {
 #[test]
 fn key_resolution_part_of_day_night() {
     assert_eq!(
-        key("part_of_day:2026-06-20:night").bounds(),
+        key(r#"{"kind":"part_of_day","date":"2026-06-20","part":"night"}"#).bounds(),
         (dt(2026, 6, 20, 22, 0), dt(2026, 6, 21, 2, 0))
     );
 }
@@ -162,14 +162,15 @@ fn key_resolution_part_of_day_night() {
 #[test]
 fn key_resolution_exact_uses_its_datetimes() {
     assert_eq!(
-        key("exact:2026-06-20T09:30:00/2026-06-22T14:00:00").bounds(),
+        key(r#"{"kind":"exact","start":"2026-06-20T09:30:00","end":"2026-06-22T14:00:00"}"#)
+            .bounds(),
         (dt(2026, 6, 20, 9, 30), dt(2026, 6, 22, 14, 0))
     );
 }
 
 #[test]
 fn resolve_reports_the_window_and_whether_now_is_inside_it() {
-    let day = key("day:2026-06-20");
+    let day = key(r#"{"kind":"day","date":"2026-06-20"}"#);
     let resolved = resolve(&day, dt(2026, 6, 20, 10, 0));
     assert_eq!(resolved.start, "2026-06-20T02:00:00");
     assert_eq!(resolved.end, "2026-06-21T02:00:00");

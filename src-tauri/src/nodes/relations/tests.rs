@@ -4,7 +4,7 @@ use super::*;
 fn an_edge_names_each_end_by_the_id_it_travels_under() {
     let edge = DerivedEdge {
         dependent_id: None,
-        dependent_key: Some("flow_task:1:day:2026-01-05:0".into()),
+        dependent_key: Some("flow_task:1:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0".into()),
         target_type: "task".into(),
         target_id: Some(7),
         target_key: None,
@@ -14,7 +14,7 @@ fn an_edge_names_each_end_by_the_id_it_travels_under() {
     assert_eq!(
         edge.dependent(),
         Some(NodeId::Derived(super::super::id::DerivedId::of_key(
-            "flow_task:1:day:2026-01-05:0"
+            "flow_task:1:{\"kind\":\"day\",\"date\":\"2026-01-05\"}:0"
         )))
     );
     let empty = DerivedEdge {

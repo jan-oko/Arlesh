@@ -1,20 +1,21 @@
 -- Scopes are derived, not stored (ADR 0009, Arlesh-9o1).
 --
--- A canonical scope — Season, Month, Week, Day, Part of Day — is a pure function of its kind and
--- start date (and band), so the `scopes` table, filled in as a side effect of reading, goes. Every
--- column that referenced `scopes(id)` now holds the scope's **value key**, a canonical string:
+-- A scope — Season, Month, Week, Day, Part of Day or Exact window — is a pure function of its value,
+-- so the `scopes` table, filled in as a side effect of reading, goes. Every column that referenced
+-- `scopes(id)` now holds the scope's **value key**: a JSON object tagged by `kind`, stored as its
+-- canonical text — `kind` first, the fields in this order, no whitespace:
 --
---   season:2026-09-01   month:2026-09-01   week:2026-09-20   day:2026-09-23
---   part_of_day:2026-09-23:morning        exact:2026-09-23T14:00:00/2026-09-23T15:30:00
+--   {"kind":"season","date":"2026-09-01"}      {"kind":"month","date":"2026-09-01"}
+--   {"kind":"week","date":"2026-09-20"}        {"kind":"day","date":"2026-09-23"}
+--   {"kind":"part_of_day","date":"2026-09-23","part":"morning"}
+--   {"kind":"exact","start":"2026-09-23T14:00:00","end":"2026-09-23T15:30:00"}
 --
--- Column names keep their `_id`: a scope's id *is* its key. The containment columns on `scopes`
--- (`week_id`, `month_id`, `season_id`, `day_id`) were read by nothing and go with the table.
---
--- Exact windows are real data rather than calendar, so they stay rows, in `exact_scopes`, keyed by
--- the same value key. Every column that can hold a scope key gets a VIRTUAL generated companion,
--- `<column>_exact`, which is the key when it is an exact one and NULL otherwise, with a foreign key
--- into `exact_scopes`: an exact key must be registered before it is stored, exactly as an exact
--- scope row had to exist before. A canonical key needs no row.
+-- `json_object` writes exactly that text: no whitespace, keys in argument order. The Rust
+-- `ScopeKey` writes the same text for every key it stores afterwards, so equality and GROUP BY on
+-- these columns stay equality of scopes. Each column carries `CHECK (col IS NULL OR
+-- json_valid(col))`. Column names keep their `_id`: a scope's id *is* its key. The containment
+-- columns on `scopes` (`week_id`, `month_id`, `season_id`, `day_id`) were read by nothing and go
+-- with the table. Exact windows are values like the rest and keep no row of their own.
 --
 -- The seventeen referencing columns, and the tables they sit in:
 --
@@ -44,35 +45,22 @@
 -- session-scoped anyway (`undo::reset_journal` empties it at every start).
 
 
--- 1. Exact windows keep their rows, keyed by value.
-
-CREATE TABLE exact_scopes (
-    id             TEXT PRIMARY KEY,
-    start_datetime TEXT NOT NULL,
-    end_datetime   TEXT NOT NULL,
-    CHECK (start_datetime < end_datetime),
-    CHECK (id = 'exact:' || start_datetime || '/' || end_datetime)
-);
-
--- 2. Every old scope id, mapped to its value key. A canonical row's start_date is already its
+-- 1. Every old scope id, mapped to its value key. A canonical row's start_date is already its
 --    scope's own start (the Sunday of a week, the 1st of a month or season), which is what the key
---    spells; a part keys on its day and band; an exact window on its two datetimes.
+--    names; a part keys on its day and band; an exact window on its two datetimes.
 
 CREATE TABLE scope_keys (id INTEGER PRIMARY KEY, key TEXT NOT NULL);
 INSERT INTO scope_keys (id, key)
 SELECT id,
        CASE kind
-           WHEN 'part_of_day' THEN 'part_of_day:' || start_date || ':' || part
-           WHEN 'exact'       THEN 'exact:' || start_datetime || '/' || end_datetime
-           ELSE kind || ':' || start_date
+           WHEN 'part_of_day' THEN json_object('kind', kind, 'date', start_date, 'part', part)
+           WHEN 'exact'       THEN json_object('kind', kind, 'start', start_datetime,
+                                               'end', end_datetime)
+           ELSE json_object('kind', kind, 'date', start_date)
        END
   FROM scopes;
 
-INSERT INTO exact_scopes (id, start_datetime, end_datetime)
-SELECT 'exact:' || start_datetime || '/' || end_datetime, start_datetime, end_datetime
-  FROM scopes WHERE kind = 'exact';
-
--- 3. Carry every ON DELETE CASCADE dependent aside, so dropping its parent takes nothing with it.
+-- 2. Carry every ON DELETE CASCADE dependent aside, so dropping its parent takes nothing with it.
 
 CREATE TABLE carry_tags_on_tasks AS SELECT * FROM tags_on_tasks;
 CREATE TABLE carry_task_knowledge_base_links AS SELECT * FROM task_knowledge_base_links;
@@ -96,7 +84,7 @@ DROP TABLE task_dependencies;
 DROP TABLE task_knowledge_base_links;
 DROP TABLE tags_on_tasks;
 
--- 4. Rebuild each referencing table with TEXT keys, rewriting every reference.
+-- 3. Rebuild each referencing table with TEXT keys, rewriting every reference.
 
 CREATE TABLE tasks_new (
     id                       INTEGER PRIMARY KEY,
@@ -122,10 +110,10 @@ CREATE TABLE tasks_new (
     agentic                  INTEGER NULL CHECK (agentic IN (0, 1)),
     asynchronous             INTEGER NOT NULL DEFAULT 0 CHECK (asynchronous IN (0, 1)),
     done_at                  TEXT,
-    time_scope_start_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN time_scope_start_id LIKE 'exact:%' THEN time_scope_start_id END) VIRTUAL REFERENCES exact_scopes(id),
-    time_scope_end_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN time_scope_end_id LIKE 'exact:%' THEN time_scope_end_id END) VIRTUAL REFERENCES exact_scopes(id),
-    plan_start_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN plan_start_id LIKE 'exact:%' THEN plan_start_id END) VIRTUAL REFERENCES exact_scopes(id),
-    plan_end_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN plan_end_id LIKE 'exact:%' THEN plan_end_id END) VIRTUAL REFERENCES exact_scopes(id),
+    CHECK (time_scope_start_id IS NULL OR json_valid(time_scope_start_id)),
+    CHECK (time_scope_end_id IS NULL OR json_valid(time_scope_end_id)),
+    CHECK (plan_start_id IS NULL OR json_valid(plan_start_id)),
+    CHECK (plan_end_id IS NULL OR json_valid(plan_end_id)),
     CHECK (
         (delegate_kind IS NULL     AND delegate_id IS NULL)
      OR (delegate_kind = 'person'  AND delegate_id IS NOT NULL)
@@ -173,8 +161,8 @@ CREATE TABLE goals_new (
     on_scope_exit            TEXT CHECK (on_scope_exit IS NULL OR on_scope_exit IN ('archive', 'keep')),
     is_private               BOOLEAN NOT NULL DEFAULT 0,
     beads_id                 TEXT,
-    time_scope_start_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN time_scope_start_id LIKE 'exact:%' THEN time_scope_start_id END) VIRTUAL REFERENCES exact_scopes(id),
-    time_scope_end_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN time_scope_end_id LIKE 'exact:%' THEN time_scope_end_id END) VIRTUAL REFERENCES exact_scopes(id)
+    CHECK (time_scope_start_id IS NULL OR json_valid(time_scope_start_id)),
+    CHECK (time_scope_end_id IS NULL OR json_valid(time_scope_end_id))
 );
 INSERT INTO goals_new (id, title, parent_type, parent_id, status, position, time_scope_start_id, time_scope_end_id, time_scope_duration_n, time_scope_duration_kind, on_scope_exit, is_private, beads_id)
 SELECT t.id,
@@ -211,8 +199,8 @@ CREATE TABLE commitments_new (
     position                 INTEGER NOT NULL DEFAULT 0,
     is_private               BOOLEAN NOT NULL DEFAULT 0,
     beads_id                 TEXT,
-    time_scope_start_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN time_scope_start_id LIKE 'exact:%' THEN time_scope_start_id END) VIRTUAL REFERENCES exact_scopes(id),
-    time_scope_end_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN time_scope_end_id LIKE 'exact:%' THEN time_scope_end_id END) VIRTUAL REFERENCES exact_scopes(id),
+    CHECK (time_scope_start_id IS NULL OR json_valid(time_scope_start_id)),
+    CHECK (time_scope_end_id IS NULL OR json_valid(time_scope_end_id)),
     CHECK ((verdict_window_n IS NULL) = (verdict_window_kind IS NULL))
 );
 INSERT INTO commitments_new (id, title, parent_type, parent_id, verdict, time_scope_start_id, time_scope_end_id, time_scope_duration_n, time_scope_duration_kind, verdict_window_n, verdict_window_kind, position, is_private, beads_id)
@@ -253,8 +241,8 @@ CREATE TABLE expectations_new (
     check_every_kind         TEXT,
     check_starting           TEXT,
     last_check_at            TEXT,
-    time_scope_start_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN time_scope_start_id LIKE 'exact:%' THEN time_scope_start_id END) VIRTUAL REFERENCES exact_scopes(id),
-    time_scope_end_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN time_scope_end_id LIKE 'exact:%' THEN time_scope_end_id END) VIRTUAL REFERENCES exact_scopes(id),
+    CHECK (time_scope_start_id IS NULL OR json_valid(time_scope_start_id)),
+    CHECK (time_scope_end_id IS NULL OR json_valid(time_scope_end_id)),
     CHECK ((check_every_n IS NULL) = (check_every_kind IS NULL))
 );
 INSERT INTO expectations_new (id, title, parent_type, parent_id, status, archival, position, is_private, time_scope_start_id, time_scope_end_id, time_scope_duration_n, time_scope_duration_kind, check_every_n, check_every_kind, check_starting, last_check_at)
@@ -285,7 +273,7 @@ CREATE TABLE events_new (
     scope_id                 TEXT,
     event_time               TEXT,
     linked_note              TEXT,
-    scope_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN scope_id LIKE 'exact:%' THEN scope_id END) VIRTUAL REFERENCES exact_scopes(id)
+    CHECK (scope_id IS NULL OR json_valid(scope_id))
 );
 INSERT INTO events_new (id, title, scope_id, event_time, linked_note)
 SELECT t.id,
@@ -306,8 +294,8 @@ CREATE TABLE flow_recurrences_new (
     consumption_kind         TEXT NOT NULL CHECK (consumption_kind IN ('destructive', 'accumulating')),
     blocking_mode            TEXT CHECK (blocking_mode IN ('overlapping', 'blocking')),
     catchup_policy           TEXT CHECK (catchup_policy IN ('all_pending', 'next', 'latest')),
-    start_scope_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN start_scope_id LIKE 'exact:%' THEN start_scope_id END) VIRTUAL REFERENCES exact_scopes(id),
-    end_scope_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN end_scope_id LIKE 'exact:%' THEN end_scope_id END) VIRTUAL REFERENCES exact_scopes(id),
+    CHECK (start_scope_id IS NULL OR json_valid(start_scope_id)),
+    CHECK (end_scope_id IS NULL OR json_valid(end_scope_id)),
     CHECK ((gap_n IS NULL) = (gap_kind IS NULL)),
     CHECK ((consumption_kind = 'accumulating') = (blocking_mode IS NOT NULL)),
     CHECK (catchup_policy IS NULL OR blocking_mode = 'blocking'),
@@ -338,7 +326,7 @@ CREATE TABLE habit_instance_modifications_new (
     blocked_reason           TEXT,
     tombstone_kind           TEXT CHECK (tombstone_kind IN ('deleted', 'archived', 'missed')),
     resolved_at              INTEGER,
-    iteration_scope_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN iteration_scope_id LIKE 'exact:%' THEN iteration_scope_id END) VIRTUAL REFERENCES exact_scopes(id),
+    CHECK (iteration_scope_id IS NULL OR json_valid(iteration_scope_id)),
     UNIQUE (item_type, item_id, iteration_scope_id, cycle_id)
 );
 INSERT INTO habit_instance_modifications_new (id, flow_id, item_type, item_id, iteration_scope_id, cycle_id, status, title, blocked_reason, tombstone_kind, resolved_at)
@@ -367,7 +355,7 @@ CREATE TABLE habit_instance_dependencies_new (
     depends_on_type          TEXT NOT NULL CHECK (depends_on_type IN ('flow_goal', 'flow_task')),
     depends_on_id            INTEGER NOT NULL,
     added                    INTEGER NOT NULL CHECK (added IN (0, 1)),
-    iteration_scope_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN iteration_scope_id LIKE 'exact:%' THEN iteration_scope_id END) VIRTUAL REFERENCES exact_scopes(id),
+    CHECK (iteration_scope_id IS NULL OR json_valid(iteration_scope_id)),
     UNIQUE (iteration_scope_id, dependent_type, dependent_id, depends_on_type, depends_on_id)
 );
 INSERT INTO habit_instance_dependencies_new (id, flow_id, iteration_scope_id, dependent_type, dependent_id, depends_on_type, depends_on_id, added)
@@ -394,8 +382,8 @@ CREATE TABLE habit_instance_children_new (
     window_end_scope_id      TEXT NOT NULL,
     child_type               TEXT NOT NULL CHECK (child_type IN ('task', 'goal', 'commitment', 'info')),
     child_id                 INTEGER NOT NULL,
-    iteration_scope_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN iteration_scope_id LIKE 'exact:%' THEN iteration_scope_id END) VIRTUAL REFERENCES exact_scopes(id),
-    window_end_scope_id_exact TEXT GENERATED ALWAYS AS (CASE WHEN window_end_scope_id LIKE 'exact:%' THEN window_end_scope_id END) VIRTUAL REFERENCES exact_scopes(id),
+    CHECK (iteration_scope_id IS NULL OR json_valid(iteration_scope_id)),
+    CHECK (window_end_scope_id IS NULL OR json_valid(window_end_scope_id)),
     UNIQUE (child_type, child_id)
 );
 INSERT INTO habit_instance_children_new (id, flow_id, item_type, item_id, iteration_scope_id, cycle_id, window_end_scope_id, child_type, child_id)
@@ -415,7 +403,7 @@ CREATE INDEX idx_habit_children_instance
     ON habit_instance_children (item_type, item_id, iteration_scope_id, cycle_id);
 CREATE INDEX idx_habit_children_flow ON habit_instance_children (flow_id);
 
--- 5. The dependents, from their own unchanged definitions.
+-- 4. The dependents, from their own unchanged definitions.
 
 CREATE TABLE tags_on_tasks (
     task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -506,7 +494,7 @@ CREATE TABLE tags_on_expectations (
 INSERT INTO tags_on_expectations SELECT * FROM carry_tags_on_expectations;
 DROP TABLE carry_tags_on_expectations;
 
--- 6. The calendar is derived from here on.
+-- 5. The calendar is derived from here on.
 
 DROP TABLE scope_keys;
 DROP TABLE scopes;

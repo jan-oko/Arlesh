@@ -70,11 +70,13 @@ kind holds except the Habit's own template kinds (a Flow, a flow item).
 A Habit occurrence's value key is **(template item, iteration scope, cycle pair)** — the template
 item being the flow itself for an iteration's root, or one of its items, and the iteration scope
 being the **scope key** its window is anchored on ([Time scopes](time-scopes.md)). It is spelled as
-one canonical string, `flow_task:12:day:2026-09-20:3` (item type, item id, scope key, cycle pair —
-`0` for the root and for an item that declares no pairs), which is what the UUID is hashed from, what
-the overlay tables generate as their `node_key` column, and what the relation tables store. A scope
-key is a value, not a row, so the key is true without anything being written to name it; an Exact
-iteration scope's key is registered in `exact_scopes`, as every stored Exact key is.
+one canonical string, `flow_task:12:{"kind":"day","date":"2026-09-20"}:3` (item type, item id,
+the scope key in its **canonical JSON text**, cycle pair — `0` for the root and for an item that
+declares no pairs), which is what the UUID is hashed from, what the overlay tables generate as their
+`node_key` column, and what the relation tables store. The scope key's text is the one
+`ScopeKey::canonical` writes, so two spellings of one scope can never hash to two ids. A scope key is
+a value, not a row — an Exact window included — so the key is true without anything being written
+to name it. On the wire, `origin.iteration_scope.scope_id` is the key as its JSON object.
 
 ## Overlays
 
