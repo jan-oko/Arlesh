@@ -1249,21 +1249,21 @@ async fn undoing_a_completed_check_reopens_it_and_redo_completes_it_again() {
     .expect("create the wait");
 
     open_gesture(&app).await;
-    arlesh_lib::commands::expectations::complete_expectation_check(app.state(), wait.id)
+    arlesh_lib::commands::expectations::complete_expectation_check(app.state(), wait.id.sid())
         .await
         .expect("complete the check");
     close_gesture(&app).await;
-    assert_eq!(completed_checks(&pool, wait.id).await, 1);
+    assert_eq!(completed_checks(&pool, wait.id.sid()).await, 1);
 
     undo(&app).await.expect("there is something to undo");
     assert_eq!(
-        completed_checks(&pool, wait.id).await,
+        completed_checks(&pool, wait.id.sid()).await,
         0,
         "undo reopens the check"
     );
     redo(&app).await.expect("there is something to redo");
     assert_eq!(
-        completed_checks(&pool, wait.id).await,
+        completed_checks(&pool, wait.id.sid()).await,
         1,
         "and redo completes it again"
     );

@@ -176,10 +176,13 @@ async fn completing_a_check_records_it_and_moves_the_next_one_interval_on() {
     let wait = expectation(&pool, "project", project, Some(every(3, "day"))).await;
 
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let checked =
-        complete_expectation_check(&mut db, ExpectationId(wait.id), at("2026-07-09T18:00:00"))
-            .await
-            .unwrap();
+    let checked = complete_expectation_check(
+        &mut db,
+        ExpectationId(wait.id.sid()),
+        at("2026-07-09T18:00:00"),
+    )
+    .await
+    .unwrap();
     db.commit().await.unwrap();
     assert_eq!(checked.last_check_at, Some(at("2026-07-09T18:00:00")));
     assert_eq!(checked.status, ExpectationStatus::Pending);
@@ -206,7 +209,7 @@ async fn completing_a_check_records_it_and_moves_the_next_one_interval_on() {
     // Released, it is not checked on any more, and a check aimed at it says so.
     update(
         &pool,
-        wait.id,
+        wait.id.sid(),
         UpdateExpectationRequest {
             status: Some(ExpectationStatus::Released),
             ..Default::default()
@@ -214,9 +217,12 @@ async fn completing_a_check_records_it_and_moves_the_next_one_interval_on() {
     )
     .await;
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let refused =
-        complete_expectation_check(&mut db, ExpectationId(wait.id), at("2026-07-12T09:00:00"))
-            .await;
+    let refused = complete_expectation_check(
+        &mut db,
+        ExpectationId(wait.id.sid()),
+        at("2026-07-12T09:00:00"),
+    )
+    .await;
     assert!(matches!(refused, Err(TaskError::NoCheckDue)));
     drop(db);
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
@@ -240,7 +246,7 @@ async fn reopening_the_latest_check_brings_it_back_and_the_next_goes() {
     let wait = expectation(&pool, "project", project, Some(every(3, "day"))).await;
     for day in ["2026-07-04T10:00:00", "2026-07-08T10:00:00"] {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        complete_expectation_check(&mut db, ExpectationId(wait.id), at(day))
+        complete_expectation_check(&mut db, ExpectationId(wait.id.sid()), at(day))
             .await
             .unwrap();
         db.commit().await.unwrap();
@@ -260,12 +266,20 @@ async fn reopening_the_latest_check_brings_it_back_and_the_next_goes() {
 
     // Only the latest can be taken back.
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let older =
-        reopen_expectation_check(&mut db, ExpectationId(wait.id), at("2026-07-03T09:00:00")).await;
+    let older = reopen_expectation_check(
+        &mut db,
+        ExpectationId(wait.id.sid()),
+        at("2026-07-03T09:00:00"),
+    )
+    .await;
     assert!(matches!(older, Err(TaskError::CheckNotReopenable)));
-    reopen_expectation_check(&mut db, ExpectationId(wait.id), at("2026-07-07T10:00:00"))
-        .await
-        .unwrap();
+    reopen_expectation_check(
+        &mut db,
+        ExpectationId(wait.id.sid()),
+        at("2026-07-07T10:00:00"),
+    )
+    .await
+    .unwrap();
     db.commit().await.unwrap();
 
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
@@ -288,7 +302,7 @@ async fn the_lifecycle_entries_time_the_next_check_and_carry_the_archive() {
     let archived = expectation(&pool, "project", project, None).await;
     update(
         &pool,
-        archived.id,
+        archived.id.sid(),
         UpdateExpectationRequest {
             archival: Some(ExpectationArchival::Archived),
             ..Default::default()
@@ -307,16 +321,22 @@ async fn the_lifecycle_entries_time_the_next_check_and_carry_the_archive() {
             .unwrap()
     };
     // The first check was due on the 3rd, so on the 10th it is overdue.
-    assert_eq!(entry("expectation_check", late.id).timing, Timing::Lapsed);
     assert_eq!(
-        entry("expectation_check", late.id).resolution,
+        entry("expectation_check", late.id.sid()).timing,
+        Timing::Lapsed
+    );
+    assert_eq!(
+        entry("expectation_check", late.id.sid()).resolution,
         Some(Resolution::Overdue)
     );
     // The wait's own entry times its (absent) Time Scope and carries its archive.
-    assert_eq!(entry("expectation", late.id).timing, Timing::Active);
-    assert_eq!(entry("expectation", archived.id).timing, Timing::Active);
+    assert_eq!(entry("expectation", late.id.sid()).timing, Timing::Active);
     assert_eq!(
-        entry("expectation", archived.id).archival,
+        entry("expectation", archived.id.sid()).timing,
+        Timing::Active
+    );
+    assert_eq!(
+        entry("expectation", archived.id.sid()).archival,
         Archival::Archived
     );
 }
@@ -327,7 +347,7 @@ async fn deleting_an_expectation_takes_its_notes_and_the_edges_aimed_at_it() {
     let project = make_project(&pool).await;
     let task_id = task(&pool, "project", project).await;
     let wait = expectation(&pool, "project", project, None).await;
-    depend(&pool, task_id, wait.id).await;
+    depend(&pool, task_id, wait.id.sid()).await;
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     db.infos()
         .create(CreateInfoRequest {
@@ -339,12 +359,12 @@ async fn deleting_an_expectation_takes_its_notes_and_the_edges_aimed_at_it() {
         })
         .await
         .unwrap();
-    delete_expectation(&mut db, ExpectationId(wait.id))
+    delete_expectation(&mut db, ExpectationId(wait.id.sid()))
         .await
         .unwrap();
     db.commit().await.unwrap();
 
-    assert_eq!(inbound_edges(&pool, wait.id).await, 0);
+    assert_eq!(inbound_edges(&pool, wait.id.sid()).await, 0);
     let notes: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM infos WHERE parent_type = 'expectation'")
             .fetch_one(&pool)
@@ -361,7 +381,7 @@ async fn deleting_a_task_takes_the_expectation_beneath_it() {
     let parent = task(&pool, "project", project).await;
     let dependent = task(&pool, "project", project).await;
     let wait = expectation(&pool, "task", parent, None).await;
-    depend(&pool, dependent, wait.id).await;
+    depend(&pool, dependent, wait.id.sid()).await;
 
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     delete_task(&mut db, TaskId(parent)).await.unwrap();
@@ -369,12 +389,12 @@ async fn deleting_a_task_takes_the_expectation_beneath_it() {
 
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
     assert!(matches!(
-        db.expectations().get(ExpectationId(wait.id)).await,
+        db.expectations().get(ExpectationId(wait.id.sid())).await,
         Err(TaskError::ExpectationNotFound(_))
     ));
     // The pool holds one connection: give it back before asking on another.
     drop(db);
-    assert_eq!(inbound_edges(&pool, wait.id).await, 0);
+    assert_eq!(inbound_edges(&pool, wait.id.sid()).await, 0);
 }
 
 #[tokio::test]
@@ -394,7 +414,11 @@ async fn retyping_a_task_to_a_goal_carries_its_expectation_across() {
     db.commit().await.unwrap();
 
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    let moved = db.expectations().get(ExpectationId(wait.id)).await.unwrap();
+    let moved = db
+        .expectations()
+        .get(ExpectationId(wait.id.sid()))
+        .await
+        .unwrap();
     assert_eq!(moved.parent_type, "goal");
     assert_eq!(moved.parent_id, goal.id);
 }
@@ -416,7 +440,11 @@ async fn retyping_a_task_to_a_tag_strands_its_expectation_up_to_the_parent() {
     db.commit().await.unwrap();
 
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    let moved = db.expectations().get(ExpectationId(wait.id)).await.unwrap();
+    let moved = db
+        .expectations()
+        .get(ExpectationId(wait.id.sid()))
+        .await
+        .unwrap();
     assert_eq!(moved.parent_type, "project");
     assert_eq!(moved.parent_id, project);
 }
@@ -438,7 +466,11 @@ async fn retyping_a_task_to_an_info_deletes_a_stranded_expectation_when_asked() 
     db.commit().await.unwrap();
 
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    assert!(db.expectations().get(ExpectationId(wait.id)).await.is_err());
+    assert!(db
+        .expectations()
+        .get(ExpectationId(wait.id.sid()))
+        .await
+        .is_err());
 }
 
 #[tokio::test]
@@ -487,7 +519,7 @@ async fn moving_an_expectation_rewrites_its_parent_link() {
     let wait = expectation(&pool, "project", project, None).await;
     update(
         &pool,
-        wait.id,
+        wait.id.sid(),
         UpdateExpectationRequest {
             parent_type: Some("task".into()),
             parent_id: Some(parent.into()),
@@ -499,7 +531,11 @@ async fn moving_an_expectation_rewrites_its_parent_link() {
     )
     .await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    let moved = db.expectations().get(ExpectationId(wait.id)).await.unwrap();
+    let moved = db
+        .expectations()
+        .get(ExpectationId(wait.id.sid()))
+        .await
+        .unwrap();
     assert_eq!(
         (moved.parent_type.as_str(), moved.parent_id.sid()),
         ("task", parent)
@@ -533,7 +569,7 @@ async fn a_wait_carries_tags_and_a_time_scope_of_its_own() {
     let wait = expectation(&pool, "project", project, None).await;
     update(
         &pool,
-        wait.id,
+        wait.id.sid(),
         UpdateExpectationRequest {
             time_scope: Some(Some(window.clone())),
             ..Default::default()
@@ -542,14 +578,18 @@ async fn a_wait_carries_tags_and_a_time_scope_of_its_own() {
     .await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
     db.expectations()
-        .add_tag(ExpectationId(wait.id), tag)
+        .add_tag(ExpectationId(wait.id.sid()), tag)
         .await
         .unwrap();
-    let read = db.expectations().get(ExpectationId(wait.id)).await.unwrap();
+    let read = db
+        .expectations()
+        .get(ExpectationId(wait.id.sid()))
+        .await
+        .unwrap();
     assert_eq!(read.tag_ids, [tag]);
     assert_eq!(read.time_scope, Some(window));
     db.expectations()
-        .remove_tag(ExpectationId(wait.id), tag)
+        .remove_tag(ExpectationId(wait.id.sid()), tag)
         .await
         .unwrap();
     let listed = db.expectations().list().await.unwrap();
@@ -630,9 +670,12 @@ async fn no_check_task_exists_before_starting_and_none_can_be_completed() {
     drop(db);
 
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let early =
-        complete_expectation_check(&mut db, ExpectationId(wait.id), at("2026-07-19T12:00:00"))
-            .await;
+    let early = complete_expectation_check(
+        &mut db,
+        ExpectationId(wait.id.sid()),
+        at("2026-07-19T12:00:00"),
+    )
+    .await;
     assert!(matches!(early, Err(TaskError::NoCheckDue)));
 }
 
@@ -646,9 +689,13 @@ async fn an_explicit_null_in_the_payload_stops_the_checks() {
         serde_json::json!({ "title": "Reviewer replies", "check_every": null }),
     )
     .unwrap();
-    update(&pool, wait.id, request).await;
+    update(&pool, wait.id.sid(), request).await;
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    let read = db.expectations().get(ExpectationId(wait.id)).await.unwrap();
+    let read = db
+        .expectations()
+        .get(ExpectationId(wait.id.sid()))
+        .await
+        .unwrap();
     assert!(read.check_every.is_none());
     assert!(derive_wait_windows(&mut db, at("2026-07-20T09:00:00"))
         .await
