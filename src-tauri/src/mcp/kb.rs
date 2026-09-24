@@ -6,7 +6,7 @@ use rmcp::{
     tool, tool_router,
 };
 
-use super::{access, params::KbOperation, result, ArleshMcp};
+use super::{access, params::KbOperation, result, result::attempt, ArleshMcp};
 use crate::{access::model::AccessLevel, knowledge_base::model::PersonId};
 
 #[tool_router(router = kb_router, vis = "pub(super)")]
@@ -32,14 +32,8 @@ impl ArleshMcp {
             Err(error) => return result::failed(error),
         };
 
-        let map = match crate::access::access_map(&mut db).await {
-            Ok(map) => map,
-            Err(error) => return result::failed(error),
-        };
-        let references = match db.access().knowledge_base_references().await {
-            Ok(references) => references,
-            Err(error) => return result::failed(error),
-        };
+        let map = attempt!(crate::access::access_map(&mut db).await);
+        let references = attempt!(db.access().knowledge_base_references().await);
         let visible = access::visible_knowledge_base(&references, &map);
         let sees = |entity: &str, id: i64| visible.contains(&(entity.to_string(), id));
 

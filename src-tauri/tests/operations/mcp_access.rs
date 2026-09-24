@@ -559,3 +559,96 @@ async fn an_agent_cannot_raise_a_wait_where_it_cannot_write() {
         .expect("count waits");
     assert_eq!(waits, 0);
 }
+
+/// A daily task Habit under `project`, from the snapshot's own day, with one item `item`.
+async fn daily_habit(app: &App<MockRuntime>, project: i64, item: &str) {
+    use arlesh_lib::commands::flows as flow_commands;
+    use arlesh_lib::flows::model::{
+        BlockingMode, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, InstanceType,
+        SetRecurrenceRequest,
+    };
+
+    let flow = flow_commands::create_flow(
+        app.state(),
+        CreateFlowRequest {
+            title: format!("{item} habit"),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "project".into(),
+            parent_id: project,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("day".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("create habit");
+    flow_commands::create_flow_task(
+        app.state(),
+        CreateFlowItemRequest {
+            flow_id: flow.id,
+            title: item.into(),
+            parent_type: "flow".into(),
+            parent_id: flow.id,
+        },
+    )
+    .await
+    .expect("create habit item");
+    flow_commands::set_flow_recurrence(
+        app.state(),
+        flow.id,
+        SetRecurrenceRequest {
+            start_scope_id: arlesh_lib::scopes::key::ScopeKey::day(now().date()),
+            gap_n: None,
+            gap_kind: None,
+            end_scope_id: None,
+            consumption_kind: ConsumptionKind::Accumulating,
+            blocking_mode: Some(BlockingMode::Overlapping),
+            catchup_policy: None,
+        },
+    )
+    .await
+    .expect("make it recur");
+}
+
+#[tokio::test]
+async fn a_habits_occurrences_are_visible_only_inside_a_root() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let board = board(&app).await;
+    daily_habit(&app, board.inside, "Inside chore").await;
+    daily_habit(&app, board.outside, "Outside chore").await;
+    add_root(&app, NodeTable::Domain, board.inside).await;
+
+    let payload = snapshot(&mcp(&pool)).await;
+
+    let derived: Vec<&str> = payload["tasks"]
+        .as_array()
+        .expect("tasks")
+        .iter()
+        .filter(|task| task["id"].is_string())
+        .filter_map(|task| task["title"].as_str())
+        .collect();
+    assert!(
+        derived.contains(&"Inside chore"),
+        "an occurrence under a root is a row like any other: {derived:?}"
+    );
+    assert!(
+        !payload.to_string().contains("Outside chore"),
+        "an occurrence outside every root is left out, with its lifecycle and every other entry"
+    );
+    assert_eq!(
+        payload["lifecycles"]
+            .as_array()
+            .expect("lifecycles")
+            .iter()
+            .filter(|lifecycle| lifecycle["node_id"].is_string())
+            .count(),
+        payload["tasks"]
+            .as_array()
+            .expect("tasks")
+            .iter()
+            .filter(|task| task["id"].is_string())
+            .count(),
+        "every visible occurrence keeps its lifecycle and no hidden one's survives"
+    );
+}

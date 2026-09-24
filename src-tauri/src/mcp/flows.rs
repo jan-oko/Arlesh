@@ -10,7 +10,7 @@ use rmcp::{
     tool, tool_router,
 };
 
-use super::{access, params::FlowsOperation, result, ArleshMcp};
+use super::{access, params::FlowsOperation, result, result::attempt, ArleshMcp};
 use crate::{
     access::model::AccessLevel,
     flows::model::{FlowId, TargetRef},
@@ -39,10 +39,7 @@ impl ArleshMcp {
             Err(error) => return result::failed(error),
         };
 
-        let map = match crate::access::access_map(&mut db).await {
-            Ok(map) => map,
-            Err(error) => return result::failed(error),
-        };
+        let map = attempt!(crate::access::access_map(&mut db).await);
 
         match operation {
             FlowsOperation::Get { id } => {
@@ -71,20 +68,14 @@ impl ArleshMcp {
                     return access::refuse(&hidden.node_type, hidden.node_id, AccessLevel::Read);
                 }
                 let refs: Vec<TargetRef> = nodes.into_iter().map(Into::into).collect();
-                let origins = match db.flows().origins(refs).await {
-                    Ok(origins) => origins,
-                    Err(error) => return result::failed(error),
-                };
+                let origins = attempt!(db.flows().origins(refs).await);
                 let mut visible = Vec::with_capacity(origins.len());
                 for origin in origins {
-                    let flow = match db
-                        .access()
-                        .flow_of_instance_node(&origin.node_type, origin.node_id)
-                        .await
-                    {
-                        Ok(flow) => flow,
-                        Err(error) => return result::failed(error),
-                    };
+                    let flow = attempt!(
+                        db.access()
+                            .flow_of_instance_node(&origin.node_type, origin.node_id)
+                            .await
+                    );
                     if flow.is_some_and(|flow_id| access::reads(&map, "flow", flow_id)) {
                         visible.push(origin);
                     }

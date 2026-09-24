@@ -6,7 +6,7 @@ use rmcp::{
     tool, tool_router,
 };
 
-use super::{access, params::TasksOperation, result, ArleshMcp};
+use super::{access, params::TasksOperation, result, result::attempt, ArleshMcp};
 use crate::{
     access::model::AccessLevel,
     tasks::model::{TaskId, TimeScope},
@@ -37,10 +37,7 @@ impl ArleshMcp {
             Err(error) => return result::failed(error),
         };
 
-        let map = match crate::access::access_map(&mut db).await {
-            Ok(map) => map,
-            Err(error) => return result::failed(error),
-        };
+        let map = attempt!(crate::access::access_map(&mut db).await);
 
         match operation {
             TasksOperation::Get { id } => {
@@ -48,14 +45,8 @@ impl ArleshMcp {
                     return access::refuse("task", id, AccessLevel::Read);
                 }
                 let mut found =
-                    match crate::tasks::get_task_with_blockers(&mut db, TaskId(id)).await {
-                        Ok(found) => found,
-                        Err(error) => return result::failed(error),
-                    };
-                let dependencies = match db.tasks().list_dependencies(TaskId(id)).await {
-                    Ok(dependencies) => dependencies,
-                    Err(error) => return result::failed(error),
-                };
+                    attempt!(crate::tasks::get_task_with_blockers(&mut db, TaskId(id)).await);
+                let dependencies = attempt!(db.tasks().list_dependencies(TaskId(id)).await);
                 access::restrict_task(&mut found.task, &map);
                 access::restrict_block_reasons(&mut found.block_reasons, &dependencies, &map);
                 result::ok(found)
@@ -64,10 +55,7 @@ impl ArleshMcp {
                 if !access::reads(&map, &node.node_type, node.node_id) {
                     return access::refuse(&node.node_type, node.node_id, AccessLevel::Read);
                 }
-                let window = match TimeScope::try_from(time_scope) {
-                    Ok(window) => window,
-                    Err(error) => return result::failed(error),
-                };
+                let window = attempt!(TimeScope::try_from(time_scope));
                 match crate::tasks::conflicts_for_new_time_scope(
                     &mut db,
                     &node.node_type,

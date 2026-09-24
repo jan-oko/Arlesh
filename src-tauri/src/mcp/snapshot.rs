@@ -11,7 +11,9 @@ use super::{
     access,
     paging::{self, Cursor, Section, SectionItems, PAGE_BUDGET, SECTIONS},
     params::SnapshotOperation,
-    result, ArleshMcp,
+    result,
+    result::attempt,
+    ArleshMcp,
 };
 use crate::mindmap::model::MindmapLoad;
 
@@ -124,10 +126,7 @@ impl ArleshMcp {
         // view does — a Frozen Project above a root still drops its subtree — and the roots then
         // decide which of what survived the MCP may see. The other order would hand the filter
         // a forest whose rooted subtrees hang from parents it cannot find, and it drops those.
-        let map = match crate::access::access_map(&mut db).await {
-            Ok(map) => map,
-            Err(error) => return result::failed(error),
-        };
+        let map = attempt!(crate::access::access_map(&mut db).await);
         access::restrict_snapshot(&mut load, &map);
 
         if let Err(error) = db.commit().await {

@@ -12,7 +12,7 @@ use rmcp::{
     tool, tool_router,
 };
 
-use super::{access, params::WaitsOperation, result, ArleshMcp};
+use super::{access, params::WaitsOperation, result, result::attempt, ArleshMcp};
 use crate::{
     access::model::AccessLevel, tasks::model::CreateExpectationRequest, undo::model::WriteSource,
 };
@@ -53,17 +53,11 @@ impl ArleshMcp {
             Ok(db) => db,
             Err(error) => return result::failed(error),
         };
-        let map = match crate::access::access_map(&mut db).await {
-            Ok(map) => map,
-            Err(error) => return result::failed(error),
-        };
+        let map = attempt!(crate::access::access_map(&mut db).await);
         if !access::permits(&map, "task", task_id, AccessLevel::Write) {
             return access::refuse("task", task_id, AccessLevel::Write);
         }
-        let user_source = match db.undo().set_source(WriteSource::Mcp).await {
-            Ok(previous) => previous,
-            Err(error) => return result::failed(error),
-        };
+        let user_source = attempt!(db.undo().set_source(WriteSource::Mcp).await);
 
         let created = crate::tasks::create_expectation(
             &mut db,
@@ -77,10 +71,7 @@ impl ArleshMcp {
             },
         )
         .await;
-        let wait = match created {
-            Ok(wait) => wait,
-            Err(error) => return result::failed(error),
-        };
+        let wait = attempt!(created);
 
         if let Err(error) = db.undo().set_source(user_source).await {
             return result::failed(error);

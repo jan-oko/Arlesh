@@ -16,7 +16,9 @@ use rmcp::{
 use super::{
     access,
     params::{BeadsLink, BeadsNode, BeadsOperation},
-    result, ArleshMcp,
+    result,
+    result::attempt,
+    ArleshMcp,
 };
 use crate::{
     access::model::AccessLevel,
@@ -83,10 +85,7 @@ impl ArleshMcp {
         };
         // Checked inside the write's own transaction, so a root removed a moment ago cannot let
         // this write through on a stale answer.
-        let map = match crate::access::access_map(&mut db).await {
-            Ok(map) => map,
-            Err(error) => return result::failed(error),
-        };
+        let map = attempt!(crate::access::access_map(&mut db).await);
         if !access::permits(&map, &link.node_type, node_id, AccessLevel::Write) {
             return access::refuse(&link.node_type, node_id, AccessLevel::Write);
         }

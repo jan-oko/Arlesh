@@ -69,3 +69,15 @@ pub(super) fn not_permitted(message: impl Into<String>) -> Result<CallToolResult
         WireError::not_permitted(message),
     )?))
 }
+
+/// Unwraps a domain outcome inside a tool, or returns from the tool with it as a failed result —
+/// the `?` a tool cannot use, since its error arm is reserved for transport failures.
+macro_rules! attempt {
+    ($outcome:expr) => {
+        match $outcome {
+            Ok(value) => value,
+            Err(error) => return $crate::mcp::result::failed(error),
+        }
+    };
+}
+pub(super) use attempt;
