@@ -11,6 +11,7 @@ import type { Scope } from "@/api/scopes";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
 import type { CanonicalKind } from "@/utils/scope-ref";
 import { seasonOf, weekNumber } from "@/utils/scope-calendar";
+import { sameScopeKey } from "@/utils/scope-key";
 
 function parseDate(iso: string): { day: number; month: number; year: number } {
   const [year, month, day] = iso.split("-").map(Number);
@@ -75,7 +76,8 @@ export function formatScopeCore(kind: CanonicalKind, date: string, labels: Scope
 
 /** Formats a boundaries range (same-kind endpoints), factoring out a shared year as a suffix. */
 export function formatScopeRange(start: Scope, end: Scope, labels: ScopeLabelFns): string {
-  if (start.id === end.id) return formatScope(start, labels);
+  // Keys are values: two reads of the same scope are equal objects, never the same one.
+  if (sameScopeKey(start.id, end.id)) return formatScope(start, labels);
   if (start.kind !== end.kind || start.kind === "exact" || start.kind === "part_of_day") {
     return `${formatScope(start, labels)}-${formatScope(end, labels)}`;
   }

@@ -1,0 +1,1 @@
+- **A window of one scope reads once.** A Time Scope or Plan whose start and end are the same scope showed it twice, as "2026-09-24 morning-2026-09-24 morning". It now shows once, everywhere a window is written: the editors, the List View badges, the Steps cards and the status tooltips.

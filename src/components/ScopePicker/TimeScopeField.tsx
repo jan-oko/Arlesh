@@ -111,8 +111,8 @@ export default function TimeScopeField({ value, onChange, defaultForm = "boundar
   return (
     <div className={styles.field}>
       <div className={styles.summaryRow}>
-        <span className={styles.summary}>{summary}</span>
-        {lockedReason !== undefined && <span className={styles.summary}>{lockedReason}</span>}
+        {/* A locked window says why on hover, not in a second line beside it. */}
+        <span className={styles.summary} {...(lockedReason !== undefined ? { title: lockedReason } : {})}>{summary}</span>
         {lockedReason === undefined && (
           <button type="button" className={styles.button} onClick={() => setOpen((current) => !current)}>
             {open ? "close" : "edit scope"}

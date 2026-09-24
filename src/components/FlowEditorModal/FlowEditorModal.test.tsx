@@ -162,11 +162,14 @@ describe("FlowEditorModal — save", () => {
     );
   });
 
-  it("plans the root into the whole flow window with its Planned toggle", async () => {
+  it("plans the root into the whole flow window from the Plan dropdown's instance-scope option", async () => {
     render(<FlowEditorModal {...defaultProps} />);
-    fireEvent.click(screen.getByRole("button", { name: "cyclePlanned" }));
-    // The finer-plan picker gives way: the root is planned into the window itself.
-    expect(screen.queryByRole("combobox", { name: "cyclePlanKind" })).not.toBeInTheDocument();
+    const plan = screen.getByRole("combobox", { name: "cyclePlanKind" });
+    // One section: the dropdown carries the whole-window option, and there is no separate pill.
+    expect(screen.queryByRole("button", { name: "cyclePlanned" })).not.toBeInTheDocument();
+    fireEvent.change(plan, { target: { value: "week" } });
+    // The whole window has no cells to pick.
+    expect(screen.queryByRole("button", { name: "kindWeek 1" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(
@@ -175,11 +178,11 @@ describe("FlowEditorModal — save", () => {
     );
   });
 
-  it("opens a root planned into the whole window with its toggle pressed, and turning it off unplans it", async () => {
+  it("opens a root planned into the whole window on the instance-scope option, and No plan unplans it", async () => {
     render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { ...mkFlow().flow!, rootPlanKind: "week", rootPlanStart: 1, rootPlanEnd: 2 } })} />);
-    const toggle = screen.getByRole("button", { name: "cyclePlanned" });
-    expect(toggle).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(toggle);
+    const plan = screen.getByRole("combobox", { name: "cyclePlanKind" });
+    expect(plan).toHaveValue("week");
+    fireEvent.change(plan, { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(

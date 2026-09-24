@@ -30,7 +30,7 @@ interface Props {
  * Edits the flow **root**'s relative Cycle Plan — a plan window inside the flow window, in relative
  * terms ("Day 3 of the flow window"). Shown only for a task-instance flow with a Span window (the
  * root's own scope is the window, so unlike a flow item there is no cycle-scope grid, only the plan).
- * Its **Planned** toggle plans the root into the whole flow window instead.
+ * The dropdown's "{kind} (instance scope)" option plans the root into the whole flow window.
  */
 export default function RootPlanField({ flowScopeN, flowScopeKind, value, onChange }: Props) {
   const { t } = useTranslation("editor");
@@ -44,20 +44,10 @@ export default function RootPlanField({ flowScopeN, flowScopeKind, value, onChan
   }
   const windowN = flowScopeN;
   const windowKind = flowScopeKind;
-  // Planned into the whole flow window: the window's own kind, 1..n — the "Planned" toggle.
+  // Planned into the whole flow window: the window's own kind, 1..n — the dropdown's
+  // "{kind} (instance scope)" option.
   const whole = planKind === windowKind;
   const count = planKind !== "" && !whole ? cycleScopeCellCount(windowN, windowKind, planKind) : 0;
-
-  function togglePlanned() {
-    if (whole) {
-      changeKind("");
-      return;
-    }
-    setPlanKind(windowKind);
-    setStart(1);
-    setEnd(windowN);
-    emit(windowKind, 1, windowN);
-  }
 
   function emit(kind: string, s: number | null, e: number | null) {
     onChange(kind !== "" && s !== null ? { kind, start: s, end: e ?? s } : null);
@@ -65,6 +55,12 @@ export default function RootPlanField({ flowScopeN, flowScopeKind, value, onChan
 
   function changeKind(kind: string) {
     setPlanKind(kind);
+    if (kind === windowKind) {
+      setStart(1);
+      setEnd(windowN);
+      emit(kind, 1, windowN);
+      return;
+    }
     setStart(null);
     setEnd(null);
     emit(kind, null, null);
@@ -85,23 +81,16 @@ export default function RootPlanField({ flowScopeN, flowScopeKind, value, onChan
 
   return (
     <div>
-      <button
-        type="button"
-        aria-pressed={whole}
-        className={`${styles.statusPill}${whole ? ` ${styles.statusPillActive}` : ""}`}
-        onClick={togglePlanned}
+      <select
+        aria-label={t("cyclePlanKind")}
+        className={`${styles.control} ${styles.select}`}
+        value={planKind}
+        onChange={(e) => changeKind(e.target.value)}
       >
-        {t("cyclePlanned")}
-      </button>
-      {!whole && (
-        <label className={styles.label}>
-          {t("cyclePlanKind")}
-          <select className={`${styles.control} ${styles.select}`} value={planKind} onChange={(e) => changeKind(e.target.value)}>
-            <option value="">{t("cyclePlanNone")}</option>
-            {planKinds.map((kind) => <option key={kind} value={kind}>{kindLabel(t, kind)}</option>)}
-          </select>
-        </label>
-      )}
+        <option value="">{t("cyclePlanNone")}</option>
+        <option value={windowKind}>{t("cyclePlanInstanceScope", { kind: kindLabel(t, windowKind) })}</option>
+        {planKinds.map((kind) => <option key={kind} value={kind}>{kindLabel(t, kind)}</option>)}
+      </select>
       {planKind !== "" && !whole && (
         <div className={styles.statusPills}>
           {Array.from({ length: count }, (_, i) => i + 1).map((index) => {
