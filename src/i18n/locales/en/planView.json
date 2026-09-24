@@ -35,7 +35,6 @@
   "unbackloggedMany": "{{count}} planned into {{scope}} are no longer in the Backlog.",
   "plannedOutside": "{{scope}} reaches outside the scope you are filling, so what you planned there has left this pane.",
   "moveFailed": "“{{title}}” could not be moved: {{message}}",
-  "noPath": "Directly under the root",
   "subscopePartial": "partial · {{start}} – {{end}}",
   "subscopeEmpty": "Nothing planned here",
   "paneOptions": "{{pane}} options",
