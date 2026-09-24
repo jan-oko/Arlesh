@@ -63,6 +63,8 @@ struct ExpectationRow {
     check_every_n: Option<i64>,
     check_every_kind: Option<String>,
     check_starting: Option<String>,
+    agentic: bool,
+    agentic_note: Option<String>,
     /// The latest completed check's time, from `wait_checks` — not the retired column of the
     /// same meaning (0045).
     checked_at: Option<String>,
@@ -100,6 +102,8 @@ impl From<ExpectationRow> for Expectation {
             tag_ids: Vec::new(),
             position: row.position,
             is_private: row.is_private,
+            agentic: row.agentic,
+            agentic_note: row.agentic_note,
         }
     }
 }
@@ -129,6 +133,14 @@ struct ExpectationWrite {
     position: i64,
     /// Final privacy flag.
     is_private: bool,
+    /// Final agentic flag.
+    agentic: bool,
+    /// Final agentic note.
+    agentic_note: Option<String>,
+    /// Whether this write makes the wait agentic or moves an agentic one, and so has to be under an
+    /// agentic Task. Not every write to an agentic wait: releasing one whose Task has since stopped
+    /// reading as Agentic must still go through.
+    places_agentic_wait: bool,
 }
 
 impl ExpectationWrite {
@@ -141,7 +153,10 @@ impl ExpectationWrite {
         let (parent_type, parent_id) = reparent
             .clone()
             .unwrap_or((stored.parent_type, stored.parent_id));
+        let agentic = request.agentic.unwrap_or(stored.agentic);
+        let places_agentic_wait = agentic && (!stored.agentic || reparent.is_some());
         Self {
+            places_agentic_wait,
             reparent,
             parent_type,
             parent_id,
@@ -165,6 +180,11 @@ impl ExpectationWrite {
             ),
             position: request.position.unwrap_or(stored.position),
             is_private: request.is_private.unwrap_or(stored.is_private),
+            agentic,
+            agentic_note: match request.agentic_note {
+                Some(new_note) => new_note,
+                None => stored.agentic_note,
+            },
         }
     }
 }
@@ -200,8 +220,8 @@ impl<'session> ExpectationOperator<'session> {
             "INSERT INTO expectations
                 (title, parent_type, parent_id, check_every_n, check_every_kind, check_starting,
                  position, time_scope_start_id, time_scope_end_id, time_scope_duration_n,
-                 time_scope_duration_kind)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 time_scope_duration_kind, agentic, agentic_note)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -214,6 +234,8 @@ impl<'session> ExpectationOperator<'session> {
         .bind(ts_end)
         .bind(ts_n)
         .bind(&ts_kind)
+        .bind(request.agentic)
+        .bind(&request.agentic_note)
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -324,7 +346,7 @@ impl<'session> ExpectationOperator<'session> {
             "UPDATE expectations SET title=?, status=?, archival=?,
                 check_every_n=?, check_every_kind=?, check_starting=?, position=?, is_private=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
-                time_scope_duration_kind=? WHERE id=?",
+                time_scope_duration_kind=?, agentic=?, agentic_note=? WHERE id=?",
         )
         .bind(&write.title)
         .bind(write.status.as_str())
@@ -338,6 +360,8 @@ impl<'session> ExpectationOperator<'session> {
         .bind(ts_end)
         .bind(ts_n)
         .bind(&ts_kind)
+        .bind(write.agentic)
+        .bind(&write.agentic_note)
         .bind(id.0)
         .execute(&mut *self.connection)
         .await?;
@@ -376,6 +400,9 @@ pub async fn create_expectation(
         &request.time_scope,
     )
     .await?;
+    if request.agentic {
+        super::agentic::require_agentic_parent(db, &request.parent_type, request.parent_id).await?;
+    }
     db.expectations().insert(request, now()).await
 }
 
@@ -398,6 +425,9 @@ pub async fn update_expectation(
         &write.time_scope,
     )
     .await?;
+    if write.places_agentic_wait {
+        super::agentic::require_agentic_parent(db, &write.parent_type, write.parent_id).await?;
+    }
     db.expectations().update(id, write).await
 }
 

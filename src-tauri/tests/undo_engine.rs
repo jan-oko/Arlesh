@@ -188,6 +188,7 @@ fn task_request(parent_type: &str, parent_id: i64, title: &str) -> CreateTaskReq
         agentic: None,
         asynchronous: None,
         async_template: None,
+        agentic_brief: None,
     }
 }
 
@@ -1224,6 +1225,7 @@ async fn undoing_a_completed_check_reopens_it_and_redo_completes_it_again() {
             check_starting: chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
                 .and_then(|date| date.and_hms_opt(2, 0, 0)),
             time_scope: None,
+            ..Default::default()
         },
     )
     .await

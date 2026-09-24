@@ -338,6 +338,7 @@ async fn clone_task(
             // the copy is the same action. Dropping it would be the same silent discard.
             asynchronous: Some(original.asynchronous),
             async_template: original.async_template.clone(),
+            agentic_brief: original.agentic_brief.clone(),
         },
     )
     .await?;

@@ -93,6 +93,7 @@ async fn expectation(
             check_starting: check_every.as_ref().map(|_| at("2026-07-03T09:00:00")),
             check_every,
             time_scope: None,
+            ..Default::default()
         },
     )
     .await
@@ -583,6 +584,7 @@ async fn a_wait_whose_window_escapes_its_parents_is_refused() {
             check_every: None,
             check_starting: None,
             time_scope: Some(august),
+            ..Default::default()
         },
     )
     .await;
@@ -604,6 +606,7 @@ async fn no_check_task_exists_before_starting_and_none_can_be_completed() {
             check_every: Some(every(2, "day")),
             check_starting: Some(at("2026-07-20T02:00:00")),
             time_scope: None,
+            ..Default::default()
         },
     )
     .await

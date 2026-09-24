@@ -85,6 +85,7 @@ async fn create_task(app: &App<MockRuntime>, project_id: i64, title: &str) -> i6
             agentic: None,
             asynchronous: None,
             async_template: None,
+            agentic_brief: None,
         },
     )
     .await

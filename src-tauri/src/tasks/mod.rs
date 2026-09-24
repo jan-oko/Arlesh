@@ -10,6 +10,7 @@
 //! instead — [`create_task`], [`update_task`], [`delete_task`], [`get_task_with_blockers`] and
 //! their goal and commitment counterparts. See [`Db`]'s `# Where an operation lives`.
 
+mod agentic;
 mod ancestry;
 pub mod commitments;
 pub mod error;
@@ -35,7 +36,7 @@ pub use expectations::{
     complete_expectation_check, create_expectation, delete_expectation, reopen_expectation_check,
     update_expectation, ExpectationOperator,
 };
-use model::{AsyncTemplate, CommitmentId, ExpectationId, ExpectationStatus};
+use model::{AgenticBrief, AsyncTemplate, CommitmentId, ExpectationId, ExpectationStatus};
 use model::{
     CreateGoalRequest, CreateTaskRequest, Delegate, Dependency, DurationSpec, Goal, GoalId,
     GoalStatus, OnScopeExit, Task, TaskArchival, TaskDependencyEdge, TaskId, TaskStatus,
@@ -253,6 +254,7 @@ impl From<TaskRow> for Task {
             asynchronous: row.asynchronous,
             // Read after the row, from its own table.
             async_template: None,
+            agentic_brief: None,
             time_scope: time_scope_from_row(
                 row.time_scope_start_id,
                 row.time_scope_end_id,
@@ -450,6 +452,8 @@ struct TaskWrite {
     asynchronous: bool,
     /// Final Expectation template; always `None` when `asynchronous` is false.
     async_template: Option<AsyncTemplate>,
+    /// Final agentic brief — kept whatever the flag says, since the flag can be inherited.
+    agentic_brief: Option<AgenticBrief>,
     /// Final Time Scope, or `None` for unscoped.
     time_scope: Option<TimeScope>,
     /// Requested on-exit behavior; dropped by [`on_scope_exit_column`] when unscoped.
@@ -499,6 +503,10 @@ impl TaskWrite {
         } else {
             None
         };
+        let agentic_brief = match request.agentic_brief {
+            Some(new_brief) => new_brief,
+            None => stored.agentic_brief,
+        };
         let time_scope = match request.time_scope {
             Some(new_time_scope) => new_time_scope,
             None => stored.time_scope,
@@ -537,6 +545,7 @@ impl TaskWrite {
             agentic,
             asynchronous,
             async_template,
+            agentic_brief,
             time_scope,
             on_scope_exit: request.on_scope_exit.unwrap_or(stored.on_scope_exit),
             plan,
@@ -909,6 +918,8 @@ impl<'session> TaskOperator<'session> {
             .await?;
         self.write_async_template(TaskId(id), &async_template)
             .await?;
+        self.write_agentic_brief(TaskId(id), &request.agentic_brief)
+            .await?;
         self.get(TaskId(id)).await
     }
 
@@ -925,9 +936,11 @@ impl<'session> TaskOperator<'session> {
         } else {
             None
         };
+        let agentic_brief = self.agentic_brief(id).await?;
         Ok(Task {
             tag_ids,
             async_template,
+            agentic_brief,
             ..row.into()
         })
     }
@@ -969,6 +982,7 @@ impl<'session> TaskOperator<'session> {
         let rows = sqlx::query_as::<_, TaskRow>("SELECT * FROM tasks ORDER BY position ASC")
             .fetch_all(&mut *self.connection)
             .await?;
+        let mut briefs = self.agentic_briefs().await?;
         let mut tasks = Vec::with_capacity(rows.len());
         for row in rows {
             let tag_ids = fetch_task_tag_ids(&mut *self.connection, row.id).await?;
@@ -977,9 +991,11 @@ impl<'session> TaskOperator<'session> {
             } else {
                 None
             };
+            let agentic_brief = briefs.remove(&row.id);
             tasks.push(Task {
                 tag_ids,
                 async_template,
+                agentic_brief,
                 ..row.into()
             });
         }
@@ -1063,6 +1079,7 @@ impl<'session> TaskOperator<'session> {
         .execute(&mut *self.connection)
         .await?;
         self.write_async_template(id, &write.async_template).await?;
+        self.write_agentic_brief(id, &write.agentic_brief).await?;
         self.get(id).await
     }
 
@@ -1474,6 +1491,17 @@ pub async fn create_task(
     request: CreateTaskRequest,
 ) -> Result<Task, TaskError> {
     reject_backlog_with_plan(request.archival.unwrap_or_default(), &request.plan)?;
+    agentic::validate_brief(&request.agentic_brief)?;
+    if matches!(request.status, Some(TaskStatus::InProgress)) {
+        let own = request.agentic.unwrap_or_default().as_column();
+        agentic::require_spec_to_start(
+            db,
+            own,
+            (request.parent_type.as_str(), request.parent_id),
+            &request.agentic_brief,
+        )
+        .await?;
+    }
     scope_rules::validate_task_containment(
         db,
         None,
@@ -1523,8 +1551,22 @@ pub async fn update_task(
     request: UpdateTaskRequest,
 ) -> Result<Task, TaskError> {
     let stored = db.tasks().get(id).await?;
+    // Starting is the move into In Progress from anywhere else; a write to a task already in
+    // progress is not a start, so an edit to one never trips the Spec rule.
+    let starts = matches!(request.status, Some(TaskStatus::InProgress))
+        && stored.status != TaskStatus::InProgress.as_str();
     let write = TaskWrite::merge(stored, request);
     reject_backlog_with_plan(write.archival, &write.plan)?;
+    agentic::validate_brief(&write.agentic_brief)?;
+    if starts {
+        agentic::require_spec_to_start(
+            db,
+            write.agentic,
+            (write.parent_type.as_str(), write.parent_id),
+            &write.agentic_brief,
+        )
+        .await?;
+    }
     scope_rules::validate_task_containment(
         db,
         Some(id),

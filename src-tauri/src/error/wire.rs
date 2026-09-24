@@ -238,6 +238,11 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
         // The request named a check that is no longer there to complete.
         TaskError::NoCheckDue | TaskError::CheckNotReopenable => WireErrorKind::InvalidRequest,
         TaskError::CircularDependency => WireErrorKind::InvalidRequest,
+        // Refusals the user answers by editing something first: write the Spec, pick a priority
+        // in range, or raise the wait under an agentic Task.
+        TaskError::AgenticSpecMissing
+        | TaskError::AgenticPriorityOutOfRange(_)
+        | TaskError::AgenticWaitOutsideAgenticTask => WireErrorKind::InvalidRequest,
         // Not `InvalidRequest`: the request is well-formed and could be carried out. The backend
         // is asking whether to throw the Plan away, and the caller answers by asking again with
         // the Plan cleared.

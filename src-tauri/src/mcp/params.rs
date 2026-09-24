@@ -309,3 +309,21 @@ pub struct BeadsLink {
     /// The issue id now stored, or `null` if the link was cleared.
     pub beads_id: Option<String>,
 }
+
+/// The operations on the waits an agent raises.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(tag = "operation", rename_all = "snake_case")]
+#[schemars(extend("type" = "object"))]
+pub enum WaitsOperation {
+    /// Raises an agentic wait under an Agentic Task the MCP can write: "the agent is waiting on
+    /// you". The user answers by writing into the note and releasing the wait.
+    Ask {
+        /// The Agentic Task the agent is working, which the wait hangs under.
+        task_id: i64,
+        /// What the agent is waiting for, as the wait's title.
+        title: String,
+        /// The agent's question, in full.
+        #[serde(default)]
+        note: Option<String>,
+    },
+}

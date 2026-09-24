@@ -487,3 +487,72 @@ async fn roots(app: &App<MockRuntime>) -> Vec<arlesh_lib::access::model::NodeKey
         .expect("read the MCP access catalogue")
         .roots
 }
+
+async fn ask(mcp: &ArleshMcp, task_id: i64) -> CallToolResult {
+    mcp.waits(Parameters(params::WaitsOperation::Ask {
+        task_id,
+        title: "Which colour?".into(),
+        note: Some("Red or blue for the badge?".into()),
+    }))
+    .await
+    .expect("the waits tool returned no result")
+}
+
+#[tokio::test]
+async fn an_agent_raises_a_wait_under_an_agentic_task_it_can_write() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let board = board(&app).await;
+    helpers::make_agentic(&pool, board.inside_task).await;
+    add_root(&app, NodeTable::Domain, board.inside).await;
+
+    let raised = ask(&mcp(&pool), board.inside_task).await;
+
+    assert_ne!(
+        raised.is_error,
+        Some(true),
+        "{:?}",
+        raised.structured_content
+    );
+    let wait = structured(&raised);
+    assert_eq!(wait["agentic"], true);
+    assert_eq!(wait["parent_type"], "task");
+    assert_eq!(wait["parent_id"], board.inside_task);
+    assert_eq!(wait["agentic_note"], "Red or blue for the badge?");
+    let source: String = sqlx::query_scalar(
+        "SELECT source FROM undo_journal WHERE table_name = 'expectations' ORDER BY seq DESC LIMIT 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("the wait was journaled");
+    assert_eq!(
+        source, "mcp",
+        "an agent's wait is the agent's write, not the user's"
+    );
+}
+
+#[tokio::test]
+async fn an_agent_cannot_raise_a_wait_where_it_cannot_write() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let board = board(&app).await;
+    helpers::make_agentic(&pool, board.outside_task).await;
+    add_root(&app, NodeTable::Domain, board.inside).await;
+    let mcp = mcp(&pool);
+
+    assert_eq!(
+        kind_of_error(&ask(&mcp, board.inside_task).await),
+        Some("not_permitted"),
+        "readable, but not Agentic"
+    );
+    assert_eq!(
+        kind_of_error(&ask(&mcp, board.outside_task).await),
+        Some("not_permitted"),
+        "Agentic, but outside every root"
+    );
+    let waits: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM expectations")
+        .fetch_one(&pool)
+        .await
+        .expect("count waits");
+    assert_eq!(waits, 0);
+}

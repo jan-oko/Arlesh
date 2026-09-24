@@ -7,16 +7,17 @@
 //!
 //! # Shape of the surface
 //!
-//! Six tools rather than one per command. [`ArleshMcp::snapshot`] returns the whole planning
+//! Seven tools rather than one per command. [`ArleshMcp::snapshot`] returns the whole planning
 //! graph in one payload, so the read tools beside it exist only for what it does not carry: scope
 //! resolution, the knowledge base, and the handful of per-item and what-if reads. An MCP client
 //! pays context for every tool definition it loads, which is why the surface is grouped rather
 //! than mirrored.
 //!
-//! # Reads and the one write
+//! # Reads and the two writes
 //!
-//! [`ArleshMcp::beads`] is the one tool that writes something the user sees: it sets the `bd`
-//! issue id on a Task, Goal or Project, and is the only way that field can be set at all. Every
+//! [`ArleshMcp::beads`] and [`ArleshMcp::waits`] are the two tools that write something the user
+//! sees: the first sets the `bd` issue id on an Agentic Task, and is the only way that field can
+//! be set at all; the second raises an agentic wait under one — "the agent is waiting on you". Every
 //! other tool, [`ArleshMcp::snapshot`] included, is annotated `read_only_hint = true` and writes
 //! nothing. The snapshot used to be the exception — deriving a Habit's iterations minted the scope
 //! rows their windows landed on — until scopes became derived values (ADR 0009).
@@ -41,6 +42,7 @@ mod result;
 mod scopes;
 mod snapshot;
 mod tasks;
+mod waits;
 
 use std::sync::Arc;
 
@@ -93,7 +95,8 @@ impl ArleshMcp {
                 + Self::kb_router()
                 + Self::tasks_router()
                 + Self::flows_router()
-                + Self::beads_router(),
+                + Self::beads_router()
+                + Self::waits_router(),
         }
     }
 
@@ -164,7 +167,7 @@ impl ArleshMcp {
 #[tool_handler(
     router = self.tool_router,
     name = "arlesh",
-    instructions = "Arlesh's task-management and knowledge-base data, limited to the MCP roots the user has opened to you (listed at the end). Read-only apart from arlesh_beads, which links an Agentic task to a bd issue. Start with arlesh_snapshot.load: the whole planning graph — tasks, goals, flows, domains, dependencies and derived lifecycles. It is PAGED: a response carries what fits plus next_cursor, and you must keep calling with that cursor until it is null or you will only have seen part of the board. A section missing from a page is one you have not reached yet; an empty section arrives as []. Narrow with `sections` when you know what you need. Tasks and goals carry their windows as boundary scope IDs, not dates: resolve them with arlesh_scopes.resolve_many. The other tools cover what the snapshot omits."
+    instructions = "Arlesh's task-management and knowledge-base data, limited to the MCP roots the user has opened to you (listed at the end). Read-only apart from arlesh_beads, which links an Agentic task to a bd issue, and arlesh_waits, which raises a wait under an Agentic task when you need the user (\"the agent is waiting on you\"). An Agentic task carries an agentic_brief (priority 0-4 for P0-P4, spec, design, acceptance, notes): read it before working the task; a task with no spec cannot be started. Start with arlesh_snapshot.load: the whole planning graph — tasks, goals, flows, domains, dependencies and derived lifecycles. It is PAGED: a response carries what fits plus next_cursor, and you must keep calling with that cursor until it is null or you will only have seen part of the board. A section missing from a page is one you have not reached yet; an empty section arrives as []. Narrow with `sections` when you know what you need. Tasks and goals carry their windows as boundary scope IDs, not dates: resolve them with arlesh_scopes.resolve_many. The other tools cover what the snapshot omits."
 )]
 impl ServerHandler for ArleshMcp {
     /// The handshake, with the MCP roots added to the instructions — see

@@ -364,6 +364,9 @@ pub struct Task {
     /// Completing the task spawns a virtual Expectation from it; without one, nothing is spawned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub async_template: Option<AsyncTemplate>,
+    /// The Task's agentic brief, if it has one. See [`AgenticBrief`].
+    #[serde(default)]
+    pub agentic_brief: Option<AgenticBrief>,
     /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
     pub time_scope: Option<TimeScope>,
     /// On-exit behavior; present iff `time_scope` is (inherited with the window otherwise).
@@ -494,6 +497,9 @@ pub struct CreateTaskRequest {
     /// duplicate carrying its source's. Dropped unless [`Self::asynchronous`] is `Some(true)`.
     #[serde(default)]
     pub async_template: Option<AsyncTemplate>,
+    /// The new task's agentic brief, if it is created with one — a duplicate carrying its source's.
+    #[serde(default)]
+    pub agentic_brief: Option<AgenticBrief>,
 }
 
 /// Request body for updating a task.
@@ -517,6 +523,10 @@ pub struct UpdateTaskRequest {
     /// when the task ends up not Asynchronous.
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub async_template: Option<Option<AsyncTemplate>>,
+    /// The agentic brief to set (None leaves it unchanged, Some(None) removes it). Kept whether or
+    /// not the task reads as Agentic, since the flag can come and go with an ancestor's.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub agentic_brief: Option<Option<AgenticBrief>>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it).
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub time_scope: Option<Option<TimeScope>>,
@@ -744,6 +754,39 @@ pub struct UpdateCommitmentRequest {
     pub is_private: Option<bool>,
 }
 
+/// A Task's **agentic brief**: what an agent reads about the work in place of an issue tracker's
+/// entry. The Task's own and **never inherited** — unlike the Agentic flag, which a Task reads off
+/// its nearest flagged ancestor. Stored whether or not the Task currently reads as Agentic, and
+/// shown while it does.
+///
+/// Every text field is plain text, empty when unset. **Spec** is the one that matters to the rules:
+/// a Task that reads as Agentic cannot be started without one.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgenticBrief {
+    /// P0 (most urgent) to P4, as 0–4; `None` for no priority set.
+    #[serde(default)]
+    pub priority: Option<u8>,
+    /// What to build: the requirement the agent works to. Mandatory before an agentic Task starts.
+    #[serde(default)]
+    pub spec: String,
+    /// How to build it: the approach settled so far.
+    #[serde(default)]
+    pub design: String,
+    /// How to tell it is done.
+    #[serde(default)]
+    pub acceptance: String,
+    /// Anything else the agent should know.
+    #[serde(default)]
+    pub notes: String,
+}
+
+impl AgenticBrief {
+    /// Whether the brief carries a Spec — anything but whitespace.
+    pub fn has_spec(&self) -> bool {
+        !self.spec.trim().is_empty()
+    }
+}
+
 /// A Task's **Expectation template**: what the wait its completion spawns starts out as. Optional,
 /// and only kept while the Task is Asynchronous — an asynchronous Task without one spawns nothing.
 ///
@@ -917,6 +960,14 @@ pub struct Expectation {
     pub position: i64,
     /// Whether this node is private (hidden unless Private Mode is on).
     pub is_private: bool,
+    /// Whether an **agent** raised this wait on the agentic Task it hangs under: "the agent is
+    /// waiting on you". Released by the user, like any wait; the note carries the question, and
+    /// the answer is written into it before releasing.
+    #[serde(default)]
+    pub agentic: bool,
+    /// An agentic wait's question — and, once answered, the answer beneath it. `None` for none.
+    #[serde(default)]
+    pub agentic_note: Option<String>,
 }
 
 /// Request body for creating an expectation.
@@ -937,6 +988,12 @@ pub struct CreateExpectationRequest {
     /// Initial relevance window. Omitted, the expectation has none.
     #[serde(default)]
     pub time_scope: Option<TimeScope>,
+    /// Whether the wait is agentic — refused unless the parent is a Task that reads as Agentic.
+    #[serde(default)]
+    pub agentic: bool,
+    /// An agentic wait's note.
+    #[serde(default)]
+    pub agentic_note: Option<String>,
 }
 
 /// Request body for updating an expectation.
@@ -966,6 +1023,12 @@ pub struct UpdateExpectationRequest {
     pub position: Option<i64>,
     /// New private flag, if changing.
     pub is_private: Option<bool>,
+    /// Whether the wait is agentic (None leaves it unchanged). Refused as `true` unless the wait
+    /// ends up directly under a Task that reads as Agentic.
+    pub agentic: Option<bool>,
+    /// The agentic note to set (None leaves it unchanged, Some(None) clears it).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub agentic_note: Option<Option<String>>,
 }
 
 #[cfg(test)]

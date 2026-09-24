@@ -60,6 +60,19 @@ pub enum TaskError {
     /// backlogged Task simply takes it out of the backlog.)
     #[error("a backlogged task cannot also be planned")]
     BacklogWithPlan,
+    /// A Task that reads as **Agentic** was asked to start with no **Spec** in its brief. An agent
+    /// picking the work up has nothing to work from, so the start is refused out loud rather than
+    /// let through; the answer is to write the Spec first.
+    #[error("an agentic task needs a spec before it can start; write its spec first")]
+    AgenticSpecMissing,
+    /// An agentic brief named a priority outside P0–P4.
+    #[error("priority P{0} is out of range; an agentic brief's priority is P0 to P4")]
+    AgenticPriorityOutOfRange(u8),
+    /// An Expectation was made agentic — "the agent is waiting on you" — somewhere other than
+    /// directly under a Task that reads as Agentic. An agent raises one on the work it is doing,
+    /// so there is nowhere else for one to mean anything.
+    #[error("an agentic wait must hang directly under a task that reads as agentic")]
+    AgenticWaitOutsideAgenticTask,
     /// A write would break a scope-containment invariant (e.g. a Plan wider than its Time Scope).
     #[error("scope containment violation: {0}")]
     ScopeContainment(String),

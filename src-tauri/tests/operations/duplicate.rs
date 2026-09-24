@@ -317,6 +317,7 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
             agentic: Some(TaskAgentic::Yes),
             asynchronous: Some(true),
             async_template: None,
+            agentic_brief: None,
         },
     )
     .await
@@ -421,6 +422,7 @@ async fn a_duplicated_task_is_set_aside_if_the_original_was() {
             agentic: None,
             asynchronous: None,
             async_template: None,
+            agentic_brief: None,
         },
     )
     .await

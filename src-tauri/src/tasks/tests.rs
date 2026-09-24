@@ -27,6 +27,7 @@ fn stored_task() -> Task {
         agentic: None,
         asynchronous: false,
         async_template: None,
+        agentic_brief: None,
         time_scope: Some(TimeScope {
             start_id: test_key(10),
             end_id: test_key(11),

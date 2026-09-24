@@ -14,6 +14,7 @@
 #[path = "../helpers/mod.rs"]
 mod helpers;
 
+mod agentic;
 mod async_templates;
 mod block_reasons;
 mod expectations;

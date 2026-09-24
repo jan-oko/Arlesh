@@ -27,6 +27,8 @@ fn stored() -> Expectation {
         tag_ids: vec![2],
         position: 100,
         is_private: false,
+        agentic: false,
+        agentic_note: None,
     }
 }
 

@@ -2384,6 +2384,7 @@ pub async fn create_instance_child(
                     agentic: None,
                     asynchronous: None,
                     async_template: None,
+                    agentic_brief: None,
                 },
             )
             .await?
@@ -3322,6 +3323,7 @@ async fn write_plan(
                         agentic: None,
                         // And it arrives not asynchronous: a flow item has no column of its own,
                         async_template: None,
+                        agentic_brief: None,
                         // and nothing infers that doing a materialized instance starts a wait.
                         asynchronous: None,
                     },
