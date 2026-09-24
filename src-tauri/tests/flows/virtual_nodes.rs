@@ -1124,3 +1124,121 @@ async fn a_part_of_day_cycle_planned_to_its_scope_plans_its_occurrence_into_that
     .unwrap();
     assert_eq!(stored, (Some("part_of_day".to_string()), Some(1), Some(1)));
 }
+
+#[tokio::test]
+async fn a_root_and_a_whole_scope_pair_planned_into_the_window_are_planned_into_their_iteration() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    // The "Planned" toggle on the root and on a whole-scope pair: each is planned into the whole
+    // flow window, which is the window's own kind counted 1..n.
+    let flow = flow_commands::create_flow(
+        app.state(),
+        CreateFlowRequest {
+            title: "Weekly".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("week".into()),
+            root_plan_kind: Some("week".into()),
+            root_plan_start: Some(1),
+            root_plan_end: Some(1),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let review = flow_commands::create_flow_task(
+        app.state(),
+        CreateFlowItemRequest {
+            flow_id: flow.id,
+            title: "Review".into(),
+            parent_type: "flow".into(),
+            parent_id: flow.id,
+        },
+    )
+    .await
+    .unwrap();
+    flow_commands::set_flow_item_cycles(
+        app.state(),
+        flow.id,
+        FlowItemType::FlowTask,
+        review.id,
+        vec![FlowCycleInput {
+            scope_kind: None,
+            scope_index: None,
+            plan_kind: Some("week".into()),
+            plan_start: Some(1),
+            plan_end: Some(1),
+        }],
+        Some(arlesh_lib::flows::cycles::Reconcile::Discard),
+        None,
+    )
+    .await
+    .unwrap();
+    let week = scope(&pool, ScopeKind::Week, ymd(2026, 1, 5)).await;
+    flow_commands::set_flow_recurrence(
+        app.state(),
+        flow.id,
+        SetRecurrenceRequest {
+            start_scope_id: week,
+            gap_n: None,
+            gap_kind: None,
+            end_scope_id: None,
+            consumption_kind: ConsumptionKind::Accumulating,
+            blocking_mode: Some(arlesh_lib::flows::model::BlockingMode::Overlapping),
+            catchup_policy: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let board = load(&app, "2026-01-05T09:00:00").await;
+    let root_id = NodeId::Derived(
+        OccurrenceKey {
+            item: TemplateItem {
+                item_type: TemplateKind::FlowRoot,
+                item_id: flow.id,
+            },
+            iteration: week,
+            cycle: 0,
+        }
+        .id(),
+    );
+    let root = board
+        .tasks
+        .iter()
+        .find(|task| task.id == root_id)
+        .expect("the week's root occurrence");
+    assert_eq!(
+        root.plan.as_ref().map(|plan| (plan.start_id, plan.end_id)),
+        Some((week, week)),
+        "the root is planned into its iteration's window"
+    );
+    let pair: i64 = sqlx::query_scalar("SELECT id FROM flow_item_cycles WHERE item_id = ?")
+        .bind(review.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let item_id = NodeId::Derived(
+        OccurrenceKey {
+            item: TemplateItem {
+                item_type: TemplateKind::FlowTask,
+                item_id: review.id,
+            },
+            iteration: week,
+            cycle: pair,
+        }
+        .id(),
+    );
+    let item = board
+        .tasks
+        .iter()
+        .find(|task| task.id == item_id)
+        .expect("the whole-scope pair's occurrence this week");
+    assert_eq!(
+        item.plan.as_ref().map(|plan| (plan.start_id, plan.end_id)),
+        Some((week, week)),
+        "the whole-scope pair is planned into the window too"
+    );
+}

@@ -323,7 +323,7 @@ fn resolve_pair(
 ) -> Result<(Option<TimeScope>, Option<TimeScope>), FlowError> {
     Ok(match resolve_cycle(pair, window_start)? {
         Some(resolved) => (Some(resolved.time_scope), resolved.plan),
-        None => (None, None),
+        None => (None, whole_scope_plan(pair, window_start)?),
     })
 }
 
@@ -3141,7 +3141,12 @@ fn resolve_iteration_instances(
                         let (start, end) = resolved.scope.bounds();
                         (Some(resolved.time_scope), resolved.plan, start, end)
                     }
-                    None => (None, None, slot.start, slot.end),
+                    None => (
+                        None,
+                        whole_scope_plan(Some(pair), Some(window_start))?,
+                        slot.start,
+                        slot.end,
+                    ),
                 };
             instances.push(HabitInstance {
                 item_type: item_type.clone(),
@@ -3553,11 +3558,38 @@ fn resolve_root_plan(
     ) else {
         return Ok(None);
     };
-    Ok(Some(TimeScope {
-        start_id: offset_scope(base, plan_start, kind)?,
-        end_id: offset_scope(base, plan_end, kind)?,
+    Ok(Some(window_plan(base, kind, plan_start, plan_end)?))
+}
+
+/// A relative plan counted from the flow window's start: `[start, end]` of `kind`. With `kind`
+/// the window's own and `1..n`, it is the whole window — what the "Planned" toggle stores.
+fn window_plan(base: NaiveDate, kind: &str, start: i64, end: i64) -> Result<TimeScope, FlowError> {
+    Ok(TimeScope {
+        start_id: offset_scope(base, start, kind)?,
+        end_id: offset_scope(base, end, kind)?,
         duration: None,
-    }))
+    })
+}
+
+/// A **whole-scope** pair's Cycle Plan: it names no Cycle Scope, so its plan is counted from the
+/// flow window's start, like the root's. `None` for a scoped pair (see [`resolve_cycle`]), a pair
+/// with no plan, or an unscoped flow.
+pub(crate) fn whole_scope_plan(
+    pair: Option<&FlowItemCycle>,
+    window_start: Option<NaiveDate>,
+) -> Result<Option<TimeScope>, FlowError> {
+    let (Some(pair), Some(base)) = (pair, window_start) else {
+        return Ok(None);
+    };
+    if pair.scope_kind.is_some() {
+        return Ok(None);
+    }
+    let (Some(kind), Some(start), Some(end)) =
+        (pair.plan_kind.as_deref(), pair.plan_start, pair.plan_end)
+    else {
+        return Ok(None);
+    };
+    Ok(Some(window_plan(base, kind, start, end)?))
 }
 
 /// Resolves every scope a flow materialisation needs into a lookup table, in two rounds per pair:

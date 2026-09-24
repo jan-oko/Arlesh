@@ -43,8 +43,8 @@ function pairLabel(t: TFunction<["editor", "scopes"]>, pair: FlowCyclePair, flow
     ? t("editor:cycleWholeScope")
     : pathLabel(t, cycleLevels(flowScopeN, flowScopeKind, pair.scopeKind as CycleScopeKind), indexToPath(cycleLevels(flowScopeN, flowScopeKind, pair.scopeKind as CycleScopeKind), pair.scopeIndex));
   if (pair.planKind === null || pair.planStart === null) return scope;
-  // A Cycle Plan of the scope's own kind is the scope itself — the row's "Planned" toggle.
-  if (pair.planKind === pair.scopeKind) return `${scope} · ${t("editor:cyclePlannedToScope")}`;
+  // A Cycle Plan of the scope's own kind is the scope itself: the row's pressed "Planned" says so.
+  if (pair.planKind === pair.scopeKind) return scope;
   const range = pair.planEnd !== null && pair.planEnd !== pair.planStart ? `${pair.planStart}–${pair.planEnd}` : `${pair.planStart}`;
   return `${scope} · ${kindLabel(t, pair.planKind)} ${range}`;
 }
@@ -122,19 +122,22 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
     onChange([...value, { scopeKind: targetKind, scopeIndex, planKind: null, planStart: null, planEnd: null }]);
   }
 
-  // On: the pair's Cycle Plan is its own Cycle Scope. Off: no Cycle Plan — which also clears a
-  // finer plan an older pair may still carry.
-  function togglePlanned(pair: FlowCyclePair) {
+  // On: the pair's Cycle Plan is its own Cycle Scope — for a whole-scope pair, the whole flow
+  // window (its own kind, 1..n). Off: no Cycle Plan, which also clears a finer plan an older pair
+  // may still carry.
+  function togglePlanned(pair: FlowCyclePair, windowN: number, windowKind: string) {
     const key = cyclePairKey(pair);
+    const whole = pair.scopeKind === null;
     const planned: FlowCyclePair = pair.planKind === null
-      ? { ...pair, planKind: pair.scopeKind, planStart: 1, planEnd: 1 }
+      ? { ...pair, planKind: whole ? windowKind : pair.scopeKind, planStart: 1, planEnd: whole ? windowN : 1 }
       : { ...pair, planKind: null, planStart: null, planEnd: null };
     onChange(value.map((p) => (cyclePairKey(p) === key ? planned : p)));
   }
 
   function addWhole() {
     const pair: FlowCyclePair = { scopeKind: null, scopeIndex: null, planKind: null, planStart: null, planEnd: null };
-    if (!value.some((p) => cyclePairKey(p) === cyclePairKey(pair))) onChange([...value, pair]);
+    // One whole-scope pair at most, planned or not.
+    if (!value.some((p) => p.scopeKind === null)) onChange([...value, pair]);
   }
 
   function removePair(pair: FlowCyclePair) {
@@ -147,16 +150,14 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
         {!isPicking && value.map((pair) => (
           <span key={cyclePairKey(pair)} className={styles.tagPill}>
             {pair.scopeKind === null ? t("editor:cycleWholeScope") : pairLabel(t, pair, flowScopeN, flowScopeKind)}
-            {pair.scopeKind !== null && (
-              <button
-                type="button"
-                aria-pressed={pair.planKind !== null}
-                className={`${styles.statusPill}${pair.planKind !== null ? ` ${styles.statusPillActive}` : ""}`}
-                onClick={() => togglePlanned(pair)}
-              >
-                {t("editor:cyclePlanned")}
-              </button>
-            )}
+            <button
+              type="button"
+              aria-pressed={pair.planKind !== null}
+              className={`${styles.statusPill}${pair.planKind !== null ? ` ${styles.statusPillActive}` : ""}`}
+              onClick={() => togglePlanned(pair, flowScopeN, flowScopeKind)}
+            >
+              {t("editor:cyclePlanned")}
+            </button>
             <button type="button" className={styles.tagPillRemove} onClick={() => removePair(pair)}>×</button>
           </span>
         ))}

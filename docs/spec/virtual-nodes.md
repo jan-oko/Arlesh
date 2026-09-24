@@ -96,7 +96,8 @@ or its Cycle Scope's within it.
 An occurrence's **Plan** is its template's Cycle Plan resolved against the iteration — the root's
 Cycle Plan for the root, the pair's for an item — unless its overlay sets one. A Cycle Plan of its
 Cycle Scope's own kind resolves to the Cycle Scope itself (a Noon pair with its Planned toggle on
-plans each occurrence into that Noon), and with no Cycle Plan the occurrence is unplanned.
+plans each occurrence into that Noon), a whole-scope pair's or the root's plan of the window's own
+kind `1..n` is the iteration's window, and with no Cycle Plan the occurrence is unplanned.
 
 **An edit to an occurrence writes that occurrence only.** To change every occurrence, edit the
 template. Setting a field back to its template's value **clears** the override rather than pinning a

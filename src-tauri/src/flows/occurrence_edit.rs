@@ -90,8 +90,10 @@ async fn template_values(
                 .ok_or_else(|| FlowError::NodeNotFound(key.node_key()))?;
             let pair = db.flows().cycle(key.cycle).await?;
             let (_, window_start) = super::resolve_flow_window(flow, key.iteration.start_date())?;
-            let plan = resolve_cycle(pair.as_ref(), Some(window_start))?
-                .and_then(|resolved| resolved.plan);
+            let plan = match resolve_cycle(pair.as_ref(), Some(window_start))? {
+                Some(resolved) => resolved.plan,
+                None => super::whole_scope_plan(pair.as_ref(), Some(window_start))?,
+            };
             Ok(TemplateValues {
                 title: task.title,
                 is_private: task.is_private,

@@ -136,9 +136,8 @@ describe("FlowCycleField — a pair's Planned toggle", () => {
     expect(onChange).toHaveBeenCalledWith([{ ...day, planKind: "day", planStart: 1, planEnd: 1 }]);
   });
 
-  it("shows a planned pair on its chip, and turning it off clears the plan", () => {
+  it("shows a planned pair by its pressed toggle, and turning it off clears the plan", () => {
     render(<FlowCycleField flowScopeN={1} flowScopeKind="day" value={[PLANNED_MORNING]} onChange={onChange} />);
-    expect(screen.getByText("scopes:part.morning · editor:cyclePlannedToScope")).toBeInTheDocument();
     const toggle = screen.getByRole("button", { name: "editor:cyclePlanned" });
     expect(toggle).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(toggle);
@@ -151,6 +150,13 @@ describe("FlowCycleField — a pair's Planned toggle", () => {
     expect(screen.getByText("editor:kindDay 3 · editor:kindPart 2")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "editor:cyclePlanned" }));
     expect(onChange).toHaveBeenCalledWith([{ ...finer, planKind: null, planStart: null, planEnd: null }]);
+  });
+
+  it("plans a whole-scope pair into the whole flow window — two weeks, 1..2", () => {
+    const whole: FlowCyclePair = { scopeKind: null, scopeIndex: null, planKind: null, planStart: null, planEnd: null };
+    render(<FlowCycleField flowScopeN={2} flowScopeKind="week" value={[whole]} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "editor:cyclePlanned" }));
+    expect(onChange).toHaveBeenCalledWith([{ ...whole, planKind: "week", planStart: 1, planEnd: 2 }]);
   });
 
   it("offers no plan inside the picker, which only chooses Cycle Scopes", () => {

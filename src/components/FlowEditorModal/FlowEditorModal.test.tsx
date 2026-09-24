@@ -162,6 +162,32 @@ describe("FlowEditorModal — save", () => {
     );
   });
 
+  it("plans the root into the whole flow window with its Planned toggle", async () => {
+    render(<FlowEditorModal {...defaultProps} />);
+    fireEvent.click(screen.getByRole("button", { name: "cyclePlanned" }));
+    // The finer-plan picker gives way: the root is planned into the window itself.
+    expect(screen.queryByRole("combobox", { name: "cyclePlanKind" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ rootPlanKind: "week", rootPlanStart: 1, rootPlanEnd: 2 }),
+      ),
+    );
+  });
+
+  it("opens a root planned into the whole window with its toggle pressed, and turning it off unplans it", async () => {
+    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { ...mkFlow().flow!, rootPlanKind: "week", rootPlanStart: 1, rootPlanEnd: 2 } })} />);
+    const toggle = screen.getByRole("button", { name: "cyclePlanned" });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null }),
+      ),
+    );
+  });
+
   it("omits the root plan for a goal-instance flow", async () => {
     render(<FlowEditorModal {...defaultProps} />);
     fireEvent.click(screen.getByRole("button", { name: "nodeKinds:goal" }));

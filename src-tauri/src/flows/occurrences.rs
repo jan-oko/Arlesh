@@ -31,7 +31,7 @@ use super::{
         HabitIteration, InstanceTiming, IterationStatus,
     },
     parse_consumption, resolve_cycle, resolve_flow_window, resolve_root_plan, target_parent_type,
-    verdict_deadlines, window_spec,
+    verdict_deadlines, whole_scope_plan, window_spec,
 };
 use crate::{
     block_reasons::model::BlockReason,
@@ -700,7 +700,11 @@ fn build_iteration(
                     let bounds = resolved.scope.bounds();
                     (Some(resolved.time_scope), resolved.plan, bounds)
                 }
-                None => (None, None, (context.slot.start, context.slot.end)),
+                None => (
+                    None,
+                    whole_scope_plan(pair, Some(date))?,
+                    (context.slot.start, context.slot.end),
+                ),
             };
             let cycle = pair.map_or(NO_CYCLE, |pair| pair.id);
             occurrences.push(Occurrence {

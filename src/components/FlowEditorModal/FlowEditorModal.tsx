@@ -97,6 +97,13 @@ function toFlowScopeKind(value: string): FlowScopeKind {
 }
 
 /** Flattens the root Cycle Plan into the `FlowSaveData` fields (all null when unplanned). */
+/** A root planned into the whole window (its own kind, 1..n) stays whole when the window's length
+ * changes in the same edit. */
+function wholeWindowFollowsLength(plan: RootPlanValue | null, kind: string, n: number): RootPlanValue | null {
+  if (plan === null || plan.kind !== kind) return plan;
+  return { ...plan, start: 1, end: n };
+}
+
 function planFields(plan: RootPlanValue | null): Pick<FlowSaveData, "rootPlanKind" | "rootPlanStart" | "rootPlanEnd"> {
   return plan === null
     ? { rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null }
@@ -289,7 +296,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
         windowTimeStart: scoped && durationKind === "exact" ? timeStart : null,
         windowTimeEnd: scoped && durationKind === "exact" ? timeEnd : null,
         // The root Plan applies only to a task-instance flow with a Span window.
-        ...planFields(instanceType === "task" && scoped && !phase ? rootPlan : null),
+        ...planFields(instanceType === "task" && scoped && !phase ? wholeWindowFollowsLength(rootPlan, durationKind, durationN) : null),
         // And the Verdict Window only to a commitment one: nothing else has a verdict to bound.
         ...verdictWindowFields(instanceType === "commitment" ? verdictWindow : null),
         isPrivate,
