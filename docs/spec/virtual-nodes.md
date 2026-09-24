@@ -131,6 +131,25 @@ occurrence recorded something on is refused with the Habit editor's own question
 **Discard & regenerate** (the recorded edits are cleared) — and the whole item save is one undo step
 that follows the copy.
 
+## A wait's derived rows
+
+A wait's **check tasks**, the wait an Asynchronous Task's completion **spawned**, and the wait a
+**delegated** Task has on its delegate are derived rows too, with origins of their own:
+
+- `{"kind": "check", "wait_kind": "stored" | "spawned", "wait_id": …, "due_at": …}` — a Task row
+  under its wait, one per check made (done) and one for the check due now. Its key is
+  `check:{wait_kind}:{wait_id}@{due_at}`, so a check is one row from due to done. What one check
+  task changes lives in `task_overlays` under that key (`origin = 'check'`), and its tags and block
+  reasons in the relation tables with no Habit; its status is the check itself (`wait_checks`).
+- `{"kind": "spawned_wait", "task_id": …}` — an Expectation row under the Task, drawn from its
+  Expectation template, its status and archive in `spawned_waits`.
+- `{"kind": "delegation_wait", "task_id": …}` — an Expectation row under a delegated Task that is not
+  done, released only by the Task being done.
+
+What they refuse is what their derivation fixes: a check task keeps its wait and its day and is not
+delegated; a spawned wait's title, tags, window and Check every are its template's; nothing is
+written to a delegation wait; none of the three is deleted or copied.
+
 ## Horizon
 
 A kind's virtual table holds **every past iteration** since the Habit began — resolution,
