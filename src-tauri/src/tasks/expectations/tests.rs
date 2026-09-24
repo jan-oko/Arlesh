@@ -14,7 +14,7 @@ fn every(n: i64, kind: &str) -> DurationSpec {
 
 fn stored() -> Expectation {
     Expectation {
-        id: 1,
+        id: 1.into(),
         title: "Training run finishes".to_string(),
         parent_type: "project".to_string(),
         parent_id: 7.into(),
@@ -27,6 +27,7 @@ fn stored() -> Expectation {
         tag_ids: vec![2],
         position: 100,
         is_private: false,
+        origin: Default::default(),
     }
 }
 

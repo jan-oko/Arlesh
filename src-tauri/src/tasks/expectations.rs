@@ -35,16 +35,6 @@ use super::{insertion_position, time_scope_columns, time_scope_from_row};
 /// The `parent_type` / `dependency_type` / `owner_type` spelling of this kind.
 pub const EXPECTATION: &str = "expectation";
 
-/// The lifecycle `node_type` an Expectation's **next check** is sent under — what its virtual
-/// check task reads. The `expectation` entry times the wait's own Time Scope.
-pub const EXPECTATION_CHECK: &str = "expectation_check";
-
-/// The lifecycle `node_type` a Task's **spawned** wait is sent under, keyed by the Task.
-pub const SPAWNED_WAIT: &str = "spawned_wait";
-
-/// The lifecycle `node_type` a spawned wait's next check is sent under, keyed by the Task.
-pub const SPAWNED_CHECK: &str = "spawned_check";
-
 /// The stored shape of an expectation row.
 #[derive(sqlx::FromRow)]
 struct ExpectationRow {

@@ -18,3 +18,4 @@ mod async_templates;
 mod block_reasons;
 mod expectations;
 mod tasks;
+mod wait_rows;

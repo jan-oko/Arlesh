@@ -88,7 +88,7 @@ fn info(id: i64) -> Info {
 
 fn expectation(id: i64) -> Expectation {
     Expectation {
-        id,
+        id: id.into(),
         title: "e".into(),
         parent_type: "project".into(),
         parent_id: 1.into(),
@@ -101,6 +101,7 @@ fn expectation(id: i64) -> Expectation {
         check_every: None,
         check_starting: None,
         last_check_at: None,
+        origin: Default::default(),
     }
 }
 

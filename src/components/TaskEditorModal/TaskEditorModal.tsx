@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { isDerivedId, storedId } from "@/api/node-id";
+import { checkOrigin, isDerivedId, storedId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
 import { rowIdOf, isOccurrence } from "@/utils/node-identity";
 import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField";
@@ -277,6 +277,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           value={timeScope}
           onChange={setTimeScope}
           {...(isOccurrence(node) ? { lockedReason: t("editor:scopeLockedOccurrence") } : {})}
+          {...(checkOrigin(node.origin) !== undefined ? { lockedReason: t("editor:scopeLockedCheck") } : {})}
         />
       </div>
       {timeScope !== null && (
