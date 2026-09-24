@@ -75,13 +75,25 @@ export function referencedScopeIds(rows: readonly TaskListRow[]): number[] {
 }
 
 /**
- * A Task the first cut of the Plan View will not triage.
+ * Whether `node` is a Habit **occurrence**: one Task of one iteration, derived rather than stored.
+ * An iteration's **root** is not one — it stands for the whole iteration, and is never a card.
+ */
+export function isHabitOccurrence(node: MindmapNode): boolean {
+  return node.habitItem !== undefined && node.habitIteration === undefined;
+}
+
+/**
+ * Whether the Plan View triages a row. A Habit **occurrence** is triaged exactly like a Task, by its
+ * Plan — the Cycle Plan its Habit (or its item) gives it, which is what `node.plan` carries. With
+ * none it is **unplanned**, and a candidate wherever its window is relevant, as any unplanned work
+ * is. Its window is not read as a plan: a window says when it is relevant, not that anyone planned
+ * it. Planning one is refused out loud until occurrences are stored rows (see `use-plan-move`).
  *
- * Virtual rows — a Habit's occurrences and its iteration roots — have no DB row to carry a Plan,
- * so offering to plan one would be a gesture with nowhere to write. Planning a recurrence is its
- * own question and is deliberately out of scope here.
+ * The one virtual row left out is an iteration **root**, which stands for the whole iteration
+ * rather than for work.
  */
 function isTriageable(node: MindmapNode): boolean {
+  if (isHabitOccurrence(node)) return true;
   return node.virtual !== true && node.habitItem === undefined;
 }
 
@@ -108,7 +120,7 @@ export interface PlanPanes {
 
 /**
  * Splits the rows into the heaps for `target`, whose parent scopes are `parentIds` — none for a
- * Season, two for a week at a month's edge, one everywhere else.
+ * Season, one everywhere else — for a week at a month's edge, the month holding its first day.
  *
  * **Unplanned** is the work that is relevant *now*: a Task with no Plan at all whose effective Time
  * Scope overlaps the scope. An **Unscoped** task is always relevant and so is always here — the
