@@ -323,8 +323,7 @@ async fn the_lifecycle_entries_time_the_next_check_and_carry_the_archive() {
     // The first check was due on the 3rd, so on the 10th it is overdue. Its entry is filed under
     // the check task's own row.
     let check = arlesh_lib::nodes::key::DerivedKey::Check(arlesh_lib::nodes::key::CheckKey {
-        wait_kind: arlesh_lib::tasks::waits::WaitKind::Stored,
-        wait_id: late.id.sid(),
+        wait: arlesh_lib::tasks::waits::WaitRef::Stored(late.id.sid()),
         due_at: at("2026-07-03T09:00:00"),
     })
     .node_id();
