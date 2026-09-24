@@ -371,13 +371,7 @@ async fn the_set_flow_recurrence_command_commits_the_recurrence() {
     let flow = flow_commands::create_flow(app.state(), create_req("Routine"))
         .await
         .unwrap();
-    let start = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Week, ymd(2026, 1, 5))
-        .await
+    let start = arlesh_lib::scopes::model::Scope::containing(ScopeKind::Week, ymd(2026, 1, 5))
         .unwrap()
         .id;
 
@@ -421,13 +415,7 @@ async fn the_set_habit_iteration_done_command_commits_a_modification_for_every_i
     )
     .await
     .unwrap();
-    let iteration = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Week, ymd(2026, 1, 5))
-        .await
+    let iteration = arlesh_lib::scopes::model::Scope::containing(ScopeKind::Week, ymd(2026, 1, 5))
         .unwrap()
         .id;
 
@@ -450,19 +438,13 @@ async fn the_set_habit_iteration_done_command_commits_a_modification_for_every_i
 }
 
 #[tokio::test]
-async fn the_generate_habit_iterations_command_commits_the_scopes_it_materialises() {
+async fn the_generate_habit_iterations_command_writes_nothing() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let flow = flow_commands::create_flow(app.state(), create_req("Routine"))
         .await
         .unwrap();
-    let start = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Week, ymd(2026, 1, 5))
-        .await
+    let start = arlesh_lib::scopes::model::Scope::containing(ScopeKind::Week, ymd(2026, 1, 5))
         .unwrap()
         .id;
     flow_commands::set_flow_recurrence(
@@ -480,7 +462,7 @@ async fn the_generate_habit_iterations_command_commits_the_scopes_it_materialise
     )
     .await
     .unwrap();
-    let scopes_before = count_all(&pool, "scopes").await;
+    let before = helpers::total_changes(&pool).await;
 
     // Three two-week windows have started by the 4th of February.
     let iterations = flow_commands::generate_habit_iterations(
@@ -492,24 +474,18 @@ async fn the_generate_habit_iterations_command_commits_the_scopes_it_materialise
     .unwrap();
 
     assert_eq!(iterations.len(), 3, "the derivation itself");
-    assert!(
-        count_all(&pool, "scopes").await > scopes_before,
-        "the canonical scopes each window landed on must be committed, not rolled back"
+    assert_eq!(
+        helpers::total_changes(&pool).await,
+        before,
+        "every window is derived from its key; nothing is written"
     );
-    for iteration in &iterations {
-        assert_eq!(
-            count_where(&pool, "scopes", "id", iteration.anchor_scope_id).await,
-            1,
-            "every iteration's anchoring scope must be on disk"
-        );
-    }
 }
 
 #[tokio::test]
-async fn the_scope_valid_flow_targets_command_commits_the_window_it_resolves() {
+async fn the_scope_valid_flow_targets_command_writes_nothing() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let scopes_before = count_all(&pool, "scopes").await;
+    let before = helpers::total_changes(&pool).await;
 
     let valid = flow_commands::scope_valid_flow_targets(
         app.state(),
@@ -525,10 +501,7 @@ async fn the_scope_valid_flow_targets_command_commits_the_window_it_resolves() {
     .unwrap();
 
     assert_eq!(valid.len(), 1, "an unscoped aspect constrains nothing");
-    assert!(
-        count_all(&pool, "scopes").await > scopes_before,
-        "the window's canonical scopes must be committed, not rolled back"
-    );
+    assert_eq!(helpers::total_changes(&pool).await, before);
 }
 
 #[tokio::test]
@@ -635,13 +608,7 @@ async fn the_duplicate_flow_command_commits_the_copy_and_its_recurrence() {
     )
     .await
     .unwrap();
-    let start = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Week, ymd(2026, 1, 5))
-        .await
+    let start = arlesh_lib::scopes::model::Scope::containing(ScopeKind::Week, ymd(2026, 1, 5))
         .unwrap()
         .id;
     flow_commands::set_flow_recurrence(
@@ -747,14 +714,8 @@ async fn the_duplicate_flow_item_command_commits_the_copied_item_and_its_pairs()
 async fn the_convert_to_flow_command_commits_the_template_and_the_deletion() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let scope = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Week, ymd(2026, 1, 5))
-        .await
-        .unwrap();
+    let scope =
+        arlesh_lib::scopes::model::Scope::containing(ScopeKind::Week, ymd(2026, 1, 5)).unwrap();
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let root = create_goal(
         &mut db,
@@ -837,16 +798,10 @@ struct ConvertSubtree {
 async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
     let mut db = helpers::session_factory(pool).begin().await.unwrap();
 
-    let week = db
-        .scopes()
-        .get_or_create(ScopeKind::Week, ymd(2026, 1, 5))
-        .await
-        .unwrap();
-    let day = db
-        .scopes()
-        .get_or_create(ScopeKind::Day, ymd(2026, 1, 7))
-        .await
-        .unwrap();
+    let week =
+        arlesh_lib::scopes::model::Scope::containing(ScopeKind::Week, ymd(2026, 1, 5)).unwrap();
+    let day =
+        arlesh_lib::scopes::model::Scope::containing(ScopeKind::Day, ymd(2026, 1, 7)).unwrap();
 
     let root = create_goal(
         &mut db,

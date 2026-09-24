@@ -22,7 +22,7 @@ import {
   addFlowDependency, removeFlowDependency, flowOrigins,
   setFlowRecurrence, deleteFlowRecurrence, forkFlow, clearHabitModifications,
 } from "@/api/flows";
-import { getOrCreateScope } from "@/api/scopes";
+import { keyContaining } from "@/utils/scope-key";
 import { withAtomicGesture } from "@/api/gesture";
 import { localNowIso } from "@/utils/local-now";
 import type { Domain } from "@/api/domains";
@@ -343,13 +343,11 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         }
         const r = data.recurrence;
         const startKind = recurrenceStartKind(data.durationKind);
-        const startScope = await getOrCreateScope(startKind, r.startDate);
-        const endScope = r.endDate !== null ? await getOrCreateScope(startKind, r.endDate) : null;
         await setFlowRecurrence(targetId, {
-          start_scope_id: startScope.id,
+          start_scope_id: keyContaining(startKind, r.startDate),
           gap_n: r.gapN,
           gap_kind: r.gapKind,
-          end_scope_id: endScope?.id ?? null,
+          end_scope_id: r.endDate !== null ? keyContaining(startKind, r.endDate) : null,
           consumption_kind: r.consumptionKind,
           blocking_mode: r.blockingMode,
           catchup_policy: r.catchupPolicy,

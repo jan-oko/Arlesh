@@ -3,6 +3,7 @@ import { filterTree, filterTreeWithFocus, DEFAULT_FILTER } from "./filter-tree";
 import { focusExemptPath } from "./focus-exemption";
 import type { FilterState } from "./filter-tree";
 import type { MindmapNode, NodeKind } from "./tree-layout";
+import { testKey } from "@/test/scope-key";
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}, children: MindmapNode[] = []): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children, ...extra };
@@ -174,7 +175,7 @@ describe("filterTree — flows & habits", () => {
 
 describe("filterTree — a habit occurrence whose window has not opened", () => {
   const occurrence = (cycleId: number) => ({
-    flowId: 3, itemType: "flow_task" as const, itemId: 4, scopeId: 100, cycleId,
+    flowId: 3, itemType: "flow_task" as const, itemId: 4, scopeId: testKey(100), cycleId,
   });
 
   // A daily habit's iteration at breakfast: the morning item's window is open, this evening's is
@@ -693,6 +694,16 @@ describe("filterTreeWithFocus — the focus exemption", () => {
     ]);
 
   const exempt = (root: MindmapNode, id: string | null) => focusExemptPath(root, id);
+
+  // The Mindmap's exemption is kind-blind, so a Commitment is held already (Arlesh-3tt checked it).
+  it("keeps a Commitment you just marked Kept under Plan, and marks it exempt", () => {
+    const t = n("root", "domain", {}, [
+      n("aspect-1", "aspect", {}, [n("commitment-1", "commitment", { verdict: "kept", timing: "active" })]),
+    ]);
+    const { root, exemptedIds } = filterTreeWithFocus(t, f({ statusMode: "plan" }), exempt(t, "commitment-1"));
+    expect(ids(root)).toContain("commitment-1");
+    expect(exemptedIds.has("commitment-1")).toBe(true);
+  });
 
   it("keeps a task you just completed under Plan, for as long as it is focused", () => {
     const t = tree();

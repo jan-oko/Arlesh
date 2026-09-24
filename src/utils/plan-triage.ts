@@ -3,14 +3,16 @@
 // for the network — scope windows arrive already resolved (see `use-scope-windows`), so the two
 // panes re-derive synchronously as the scope is walked.
 
+import type { ScopeKey } from "@/api/scopes";
+import { sameScopeKey, scopeKeyText, type ScopeKeyText } from "@/utils/scope-key";
 import type { TimeScope } from "@/api/time-scope";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { ScopeInterval } from "@/utils/scope-interval";
 import { intervalContains, intervalsOverlap } from "@/utils/scope-interval";
 
-/** Every scope id resolved to its window, keyed by id. */
-export type ScopeWindows = ReadonlyMap<number, ScopeInterval>;
+/** Every scope id resolved to its window, keyed by the key's canonical text. */
+export type ScopeWindows = ReadonlyMap<ScopeKeyText, ScopeInterval>;
 
 /** Which containment invariant a move would break. Named, not phrased — the view words it. */
 export type PlanRefusal = "ownTimeScope" | "parentPlan";
@@ -48,20 +50,20 @@ export function nearestPlannedAncestor(row: TaskListRow): MindmapNode | null {
  * reason to leave the task out rather than as permission to move it.
  */
 export function timeScopeWindow(scope: TimeScope, windows: ScopeWindows): ScopeInterval | null {
-  const start = windows.get(scope.start_id);
-  const end = windows.get(scope.end_id);
+  const start = windows.get(scopeKeyText(scope.start_id));
+  const end = windows.get(scopeKeyText(scope.end_id));
   if (start === undefined || end === undefined) return null;
   return { start: start.start, end: end.end };
 }
 
 /** Every scope id the triage has to resolve before it can answer: each row's own and inherited
  * Time Scope, its Plan, and its ancestors' Plans. */
-export function referencedScopeIds(rows: readonly TaskListRow[]): number[] {
-  const ids = new Set<number>();
+export function referencedScopeIds(rows: readonly TaskListRow[]): ScopeKey[] {
+  const ids = new Map<ScopeKeyText, ScopeKey>();
   function add(scope: TimeScope | null | undefined): void {
     if (scope == null) return;
-    ids.add(scope.start_id);
-    ids.add(scope.end_id);
+    ids.set(scopeKeyText(scope.start_id), scope.start_id);
+    ids.set(scopeKeyText(scope.end_id), scope.end_id);
   }
   for (const row of rows) {
     add(row.node.timeScope);
@@ -71,17 +73,29 @@ export function referencedScopeIds(rows: readonly TaskListRow[]): number[] {
       add(ancestor.plan);
     }
   }
-  return [...ids];
+  return [...ids.values()];
 }
 
 /**
- * A Task the first cut of the Plan View will not triage.
+ * Whether `node` is a Habit **occurrence**: one Task of one iteration, derived rather than stored.
+ * An iteration's **root** is not one — it stands for the whole iteration, and is never a card.
+ */
+export function isHabitOccurrence(node: MindmapNode): boolean {
+  return node.habitItem !== undefined && node.habitIteration === undefined;
+}
+
+/**
+ * Whether the Plan View triages a row. A Habit **occurrence** is triaged exactly like a Task, by its
+ * Plan — the Cycle Plan its Habit (or its item) gives it, which is what `node.plan` carries. With
+ * none it is **unplanned**, and a candidate wherever its window is relevant, as any unplanned work
+ * is. Its window is not read as a plan: a window says when it is relevant, not that anyone planned
+ * it. Planning one is refused out loud until occurrences are stored rows (see `use-plan-move`).
  *
- * Virtual rows — a Habit's occurrences and its iteration roots — have no DB row to carry a Plan,
- * so offering to plan one would be a gesture with nowhere to write. Planning a recurrence is its
- * own question and is deliberately out of scope here.
+ * The one virtual row left out is an iteration **root**, which stands for the whole iteration
+ * rather than for work.
  */
 function isTriageable(node: MindmapNode): boolean {
+  if (isHabitOccurrence(node)) return true;
   return node.virtual !== true && node.habitItem === undefined;
 }
 
@@ -108,7 +122,7 @@ export interface PlanPanes {
 
 /**
  * Splits the rows into the heaps for `target`, whose parent scopes are `parentIds` — none for a
- * Season, two for a week at a month's edge, one everywhere else.
+ * Season, one everywhere else — for a week at a month's edge, the month holding its first day.
  *
  * **Unplanned** is the work that is relevant *now*: a Task with no Plan at all whose effective Time
  * Scope overlaps the scope. An **Unscoped** task is always relevant and so is always here — the
@@ -131,7 +145,7 @@ export function partitionForScope(
   rows: readonly TaskListRow[],
   target: ScopeInterval,
   windows: ScopeWindows,
-  parentIds: ReadonlySet<number>,
+  parentIds: ReadonlySet<ScopeKeyText>,
 ): PlanPanes {
   const unplanned: TaskListRow[] = [];
   const planned: TaskListRow[] = [];
@@ -140,7 +154,7 @@ export function partitionForScope(
     if (!isTriageable(row.node)) continue;
     const plan = row.node.plan;
     if (plan != null) {
-      if (plan.start_id === plan.end_id && parentIds.has(plan.start_id)) {
+      if (sameScopeKey(plan.start_id, plan.end_id) && parentIds.has(scopeKeyText(plan.start_id))) {
         parentPlanned.push(row);
         continue;
       }

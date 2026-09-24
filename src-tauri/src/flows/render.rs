@@ -9,16 +9,15 @@
 //! as it goes.
 //!
 //! The split follows [`habits`](super::habits): the impure half precomputes what the decision needs
-//! (there, the iteration windows; here, the scope table, which must be minted inside the caller's
-//! transaction because `offset_scope` writes), and the pure half decides.
+//! (there, the iteration windows; here, the scope table), and the pure half decides.
 //!
 //! [`render`] is **total** — it returns no `Result`. Every fallible step of the old loop was a
 //! `create_*` or a scope resolution, and all of those now live on one side or the other of it.
 //!
 //! One walk, [`visit_order`], underpins both halves: the gather resolves pairs in the order it
 //! yields them, and the renderer allocates nodes in that same order. That is what keeps the split
-//! from reordering anything — scope rows, goal rows and task rows are all minted in exactly the
-//! sequence the single-pass version minted them.
+//! from reordering anything — goal rows and task rows are written in exactly the sequence the
+//! single-pass version wrote them.
 
 use std::collections::HashMap;
 
@@ -118,15 +117,10 @@ pub(crate) struct FlowTemplate {
 impl FlowTemplate {
     /// The cycle pairs a materialisation will consume, **in the order it consumes them**.
     ///
-    /// This is what the gather step resolves, and resolving a pair mints scope rows, so both the
-    /// selection and the order matter:
-    ///
-    /// * *Selection* — an item whose in-flow parent chain does not lead back to `"flow"` is never
-    ///   walked, so the single-pass version never resolved its pairs. Handing the gather every
-    ///   pair the flow owns would mint scope rows that materialisation never minted, and would
-    ///   turn a malformed orphan from harmless into a hard error.
-    /// * *Order* — scope rows are numbered as they are minted, so resolving pairs in, say, table
-    ///   order rather than walk order would renumber the calendar.
+    /// This is what the gather step resolves, so the selection matters: an item whose in-flow
+    /// parent chain does not lead back to `"flow"` is never walked, so the single-pass version
+    /// never resolved its pairs. Handing the gather every pair the flow owns would turn a
+    /// malformed orphan from harmless into a hard error.
     pub fn planned_cycles(&self, flow_id: i64) -> Vec<FlowItemCycle> {
         let by_id: HashMap<i64, &FlowItemCycle> =
             self.cycles.iter().map(|cycle| (cycle.id, cycle)).collect();
@@ -149,8 +143,8 @@ pub(crate) struct ResolvedPair {
 
 /// Every scope the flow needs, resolved up front so that rendering can be pure.
 ///
-/// Built by [`resolve_scopes`](super::resolve_scopes) inside the caller's transaction — resolving a
-/// scope *mints* it, so the gather is a write and cannot be hoisted out.
+/// Built by [`resolve_scopes`](super::resolve_scopes), which is pure: a scope is derived from its
+/// value key.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ScopeTable {
     /// The Flow Window, when the flow is scoped.

@@ -12,17 +12,76 @@
 //! representation the frontend already receives.
 
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::{flows::model::TargetRef, tasks::model};
+use crate::{
+    flows::model::TargetRef,
+    scopes::{error::ScopeError, key::ScopeKey},
+    tasks::model,
+};
+
+/// A scope's id: its value key, a JSON object tagged by `kind` that names the scope's own start.
+///
+/// The mirror of [`ScopeKey`] with a schema; converting it runs the key's own validation, so a
+/// week keyed by a Wednesday is refused here exactly as everywhere else.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ScopeKeyParam {
+    /// A Season, by its first day (the 1st of December, March, June or September).
+    Season {
+        /// `YYYY-MM-DD`.
+        date: String,
+    },
+    /// A Month, by its first day.
+    Month {
+        /// `YYYY-MM-DD`.
+        date: String,
+    },
+    /// A Sunday-to-Saturday Week, by its Sunday.
+    Week {
+        /// `YYYY-MM-DD`, a Sunday.
+        date: String,
+    },
+    /// A Day.
+    Day {
+        /// `YYYY-MM-DD`.
+        date: String,
+    },
+    /// A Part of Day, on the day it starts on.
+    PartOfDay {
+        /// `YYYY-MM-DD`.
+        date: String,
+        /// `premorning`, `morning`, `noon`, `afternoon`, `evening` or `night`.
+        part: String,
+    },
+    /// A half-open `[start, end)` window.
+    Exact {
+        /// `YYYY-MM-DDTHH:MM:SS`.
+        start: String,
+        /// `YYYY-MM-DDTHH:MM:SS`, after `start`.
+        end: String,
+    },
+}
+
+impl TryFrom<ScopeKeyParam> for ScopeKey {
+    type Error = ScopeError;
+
+    fn try_from(param: ScopeKeyParam) -> Result<Self, Self::Error> {
+        // One validation, the key's own: the mirror is re-read through it.
+        let value = serde_json::to_value(&param)
+            .map_err(|error| ScopeError::MalformedKey(format!("{param:?}"), error.to_string()))?;
+        serde_json::from_value(value)
+            .map_err(|error| ScopeError::MalformedKey(format!("{param:?}"), error.to_string()))
+    }
+}
 
 /// A relevance or scheduling window, as an MCP caller supplies it.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct TimeScope {
-    /// Start boundary scope id.
-    pub start_id: i64,
+    /// Start boundary scope id: a value key such as `{"kind":"week","date":"2026-09-20"}`.
+    pub start_id: ScopeKeyParam,
     /// End boundary scope id. Equal to `start_id` for a single scope.
-    pub end_id: i64,
+    pub end_id: ScopeKeyParam,
     /// Duration parameters, when the window was expressed in duration form.
     #[serde(default)]
     pub duration: Option<DurationSpec>,
@@ -55,13 +114,15 @@ impl From<DurationSpec> for model::DurationSpec {
     }
 }
 
-impl From<TimeScope> for model::TimeScope {
-    fn from(scope: TimeScope) -> Self {
-        Self {
-            start_id: scope.start_id,
-            end_id: scope.end_id,
+impl TryFrom<TimeScope> for model::TimeScope {
+    type Error = ScopeError;
+
+    fn try_from(scope: TimeScope) -> Result<Self, Self::Error> {
+        Ok(Self {
+            start_id: ScopeKey::try_from(scope.start_id)?,
+            end_id: ScopeKey::try_from(scope.end_id)?,
             duration: scope.duration.map(Into::into),
-        }
+        })
     }
 }
 
@@ -111,28 +172,30 @@ pub enum SnapshotOperation {
     },
 }
 
-/// Turning the snapshot's scope ids into dates.
+/// What a scope's value key does not spell out: its label, its end, its datetime window.
+///
+/// A scope id is its value key — `{"kind":"week","date":"2026-09-20"}`,
+/// `{"kind":"part_of_day","date":"2026-09-23","part":"morning"}`,
+/// `{"kind":"exact","start":"2026-09-23T14:00:00","end":"2026-09-23T15:30:00"}` and so on — so its
+/// start date is already in the id.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case")]
 #[schemars(extend("type" = "object"))]
 pub enum ScopesOperation {
-    /// One scope row by id.
+    /// One scope, with its label and inclusive end date.
     Get {
-        /// Scope id.
-        id: i64,
+        /// Scope id (value key).
+        id: ScopeKeyParam,
     },
-    /// One scope resolved to concrete datetime boundaries.
+    /// One scope resolved to its half-open datetime window and whether it is active.
     Resolve {
-        /// Scope id.
-        id: i64,
+        /// Scope id (value key).
+        id: ScopeKeyParam,
     },
-    /// Several scopes resolved in one call, in the order given.
-    ///
-    /// Tasks and goals carry `time_scope` and `plan` as boundary scope *ids*, so reading a
-    /// snapshot without this means one round trip per distinct id.
+    /// Several scopes resolved in one call, in the order given, against one reference instant.
     ResolveMany {
-        /// Scope ids, resolved positionally.
-        ids: Vec<i64>,
+        /// Scope ids (value keys), resolved positionally.
+        ids: Vec<ScopeKeyParam>,
     },
 }
 

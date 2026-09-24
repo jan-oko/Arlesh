@@ -2,23 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Identifies a scope row by its primary key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ScopeId(pub i64);
-
-impl From<i64> for ScopeId {
-    fn from(value: i64) -> Self {
-        Self(value)
-    }
-}
-impl From<ScopeId> for i64 {
-    fn from(id: ScopeId) -> Self {
-        id.0
-    }
-}
+use super::key::ScopeKey;
 
 /// The granularity of a time scope.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScopeKind {
     /// Three-month season (Autumn/Winter/Spring/Summer).
@@ -63,7 +50,7 @@ impl ScopeKind {
 }
 
 /// One of the six sub-day bands. Hours are local wall-clock, start inclusive / end exclusive.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PartOfDay {
     /// 06:00–12:00.
@@ -146,12 +133,15 @@ impl PartOfDay {
 #[cfg(test)]
 mod tests;
 
-/// A scope row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+/// A scope as it travels on the wire: its key plus everything derived from it.
+///
+/// Nothing here is stored. A canonical scope is computed from its [`ScopeKey`] on every read, and
+/// an Exact scope's fields are its key's two datetimes (ADR 0009).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Scope {
-    /// Primary key.
-    pub id: i64,
-    /// Granularity.
+    /// The scope's identity: its canonical value key, e.g. `week:2026-09-20`.
+    pub id: ScopeKey,
+    /// Granularity, as [`ScopeKind::as_str`] spells it.
     pub kind: String,
     /// Human-readable label (e.g. "June 2026", "Week 25 2026").
     pub label: String,
@@ -159,14 +149,6 @@ pub struct Scope {
     pub start_date: String,
     /// ISO 8601 end date (inclusive).
     pub end_date: String,
-    /// Id of the containing Week scope (Day and Part-of-Day scopes).
-    pub week_id: Option<i64>,
-    /// Id of the containing Month scope (Day and Part-of-Day scopes).
-    pub month_id: Option<i64>,
-    /// Id of the containing Season scope (Day, Month, and Part-of-Day scopes).
-    pub season_id: Option<i64>,
-    /// Id of the containing Day scope (Part-of-Day scopes only).
-    pub day_id: Option<i64>,
     /// Which sub-day band (Part-of-Day scopes only).
     pub part: Option<String>,
     /// Explicit start datetime, ISO 8601 minute precision (Exact scopes only).

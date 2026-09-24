@@ -139,68 +139,44 @@ fn a_week_is_exactly_its_seven_days_and_a_month_its_weeks() {
     assert!(interval_contains(month, week));
 }
 
-fn mk_scope(kind: &str) -> Scope {
-    Scope {
-        id: 1,
-        kind: kind.to_string(),
-        label: "test".to_string(),
-        start_date: "2026-06-20".to_string(),
-        end_date: "2026-06-20".to_string(),
-        week_id: None,
-        month_id: None,
-        season_id: None,
-        day_id: None,
-        part: None,
-        start_datetime: None,
-        end_datetime: None,
-    }
+fn key(raw: &str) -> ScopeKey {
+    raw.parse().unwrap()
 }
 
 #[test]
-fn row_resolution_canonical_day() {
-    let scope = mk_scope("day");
+fn key_resolution_canonical_day() {
     assert_eq!(
-        scope_bounds(&scope).unwrap(),
+        key(r#"{"kind":"day","date":"2026-06-20"}"#).bounds(),
         (dt(2026, 6, 20, 2, 0), dt(2026, 6, 21, 2, 0))
     );
 }
 
 #[test]
-fn row_resolution_part_of_day_night() {
-    let mut scope = mk_scope("part_of_day");
-    scope.part = Some("night".to_string());
+fn key_resolution_part_of_day_night() {
     assert_eq!(
-        scope_bounds(&scope).unwrap(),
+        key(r#"{"kind":"part_of_day","date":"2026-06-20","part":"night"}"#).bounds(),
         (dt(2026, 6, 20, 22, 0), dt(2026, 6, 21, 2, 0))
     );
 }
 
 #[test]
-fn row_resolution_exact_uses_stored_datetimes() {
-    let mut scope = mk_scope("exact");
-    scope.start_datetime = Some("2026-06-20T09:30:00".to_string());
-    scope.end_datetime = Some("2026-06-22T14:00:00".to_string());
+fn key_resolution_exact_uses_its_datetimes() {
     assert_eq!(
-        scope_bounds(&scope).unwrap(),
+        key(r#"{"kind":"exact","start":"2026-06-20T09:30:00","end":"2026-06-22T14:00:00"}"#)
+            .bounds(),
         (dt(2026, 6, 20, 9, 30), dt(2026, 6, 22, 14, 0))
     );
 }
 
 #[test]
-fn row_resolution_active_check_on_a_row() {
-    let scope = mk_scope("day");
-    assert!(scope_is_active(&scope, dt(2026, 6, 20, 10, 0)).unwrap());
-    assert!(!scope_is_active(&scope, dt(2026, 6, 21, 10, 0)).unwrap());
+fn resolve_reports_the_window_and_whether_now_is_inside_it() {
+    let day = key(r#"{"kind":"day","date":"2026-06-20"}"#);
+    let resolved = resolve(&day, dt(2026, 6, 20, 10, 0));
+    assert_eq!(resolved.start, "2026-06-20T02:00:00");
+    assert_eq!(resolved.end, "2026-06-21T02:00:00");
+    assert!(resolved.active);
+    assert!(!resolve(&day, dt(2026, 6, 21, 10, 0)).active);
     // 01:30 the morning after is still inside the day, and 01:30 the morning of is not yet.
-    assert!(scope_is_active(&scope, dt(2026, 6, 21, 1, 30)).unwrap());
-    assert!(!scope_is_active(&scope, dt(2026, 6, 20, 1, 30)).unwrap());
-}
-
-#[test]
-fn row_resolution_rejects_unknown_kind_and_missing_part() {
-    assert!(scope_bounds(&mk_scope("decade")).is_err());
-    assert!(scope_bounds(&mk_scope("part_of_day")).is_err()); // part is None
-    let mut exact = mk_scope("exact");
-    exact.start_datetime = Some("2026-06-20T09:30:00".to_string()); // end missing
-    assert!(scope_bounds(&exact).is_err());
+    assert!(resolve(&day, dt(2026, 6, 21, 1, 30)).active);
+    assert!(!resolve(&day, dt(2026, 6, 20, 1, 30)).active);
 }

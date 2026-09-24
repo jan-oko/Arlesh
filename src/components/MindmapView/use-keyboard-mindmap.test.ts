@@ -5,6 +5,7 @@ import { mindmapKeyboardContext } from "@/test/keyboard-context";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { TypedChildKind } from "@/utils/node-meta";
 import { NO_CYCLE } from "@/api/flows";
+import { testKey } from "@/test/scope-key";
 
 function makeTask(id: string): MindmapNode {
   return { id, kind: "task", title: "Task", position: 0, tagIds: [], children: [] };
@@ -705,7 +706,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
   it("plain A does nothing on a virtual Habit instance — it has no task row to flag", () => {
     const instance: MindmapNode = {
       id: "task-4-virtual", kind: "task", title: "Instance", position: 0, tagIds: [], children: [],
-      virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: 100, cycleId: NO_CYCLE },
+      virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: testKey(100), cycleId: NO_CYCLE },
     };
     const opts = mindmapKeyboardContext({
       selectedNodeId: "task-4-virtual",

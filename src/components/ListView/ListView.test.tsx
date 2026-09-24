@@ -8,12 +8,13 @@ import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
-import type { CommitmentListRow, TaskListRow } from "@/utils/list-filter";
+import type { ExpectationListRow, CommitmentListRow, TaskListRow } from "@/utils/list-filter";
 import { fixtureRowId } from "@/test/node-fixture";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { Verdict } from "@/api/verdict";
 import { useListData } from "@/hooks/use-list-data";
 import { LIST_SCROLL_STEP_PX } from "@/hooks/use-list-scroll";
+import { testKey } from "@/test/scope-key";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -1019,6 +1020,70 @@ describe("ListView", () => {
       completeSelectedTaskUnderPlan();
       expect(screen.getByText("task-2")).toBeInTheDocument();
     });
+    // A Commitment is held the same way — in its band, and among the rows.
+    describe.each([["the band", true], ["the rows", false]] as const)("a Commitment in %s", (_where, bands) => {
+      // The band is the default every other test assumes.
+      afterEach(() => { useDisplayStore.setState({ listBands: true }); });
+
+      function keepSelectedCommitmentUnderPlan() {
+        useDisplayStore.setState({ listBands: bands });
+        useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "plan" } });
+        const open = n("commitment-1", "commitment", { verdict: "unresolved", timing: "active" });
+        const kept = n("commitment-1", "commitment", { verdict: "kept", timing: "active" });
+        const rows = [neighbour()];
+        mockUseListData.mockReturnValue(listData({ commitmentRows: [commitmentRow({ node: open })], rows, tree: treeWith(open, n("task-2", "task")) }));
+        const view = render(<ListViewInApp />);
+        fireEvent.click(screen.getByText("commitment-1"));
+        mockUseListData.mockReturnValue(listData({ commitmentRows: [commitmentRow({ node: kept })], rows, tree: treeWith(kept, n("task-2", "task")) }));
+        view.rerender(<ListViewInApp />);
+        return view;
+      }
+
+      it("stays on screen, dimmed, once you mark it Kept under Plan", () => {
+        const { container } = keepSelectedCommitmentUnderPlan();
+        expect(container.querySelector("[class*='cardFocusExempt']")?.textContent).toContain("commitment-1");
+      });
+
+      it("goes as soon as the selection moves", () => {
+        keepSelectedCommitmentUnderPlan();
+        fireEvent.click(screen.getByText("task-2"));
+        expect(screen.queryByText("commitment-1")).not.toBeInTheDocument();
+      });
+    });
+
+    describe("a wait under the Expectations option", () => {
+      function waitRowFor(status: string): ExpectationListRow {
+        return {
+          node: n("wait-1", "expectation", { status }),
+          ancestors: [n("aspect-1", "aspect")],
+          hasPrivateAncestor: false,
+          scopeTokens: ["unscoped", "unplanned"],
+        };
+      }
+
+      function releaseSelectedWait() {
+        useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, preset: "expectations" } });
+        const other = waitRowFor("pending");
+        const otherRow = { ...other, node: n("wait-2", "expectation", { status: "pending" }) };
+        mockUseListData.mockReturnValue(listData({ expectationRows: [waitRowFor("pending"), otherRow], rows: [] }));
+        const view = render(<ListViewInApp />);
+        fireEvent.click(screen.getByText("wait-1"));
+        mockUseListData.mockReturnValue(listData({ expectationRows: [waitRowFor("released"), otherRow], rows: [] }));
+        view.rerender(<ListViewInApp />);
+        return view;
+      }
+
+      it("stays on screen, dimmed, once you release it", () => {
+        const { container } = releaseSelectedWait();
+        expect(container.querySelector("[class*='cardFocusExempt']")?.textContent).toContain("wait-1");
+      });
+
+      it("goes as soon as the selection moves", () => {
+        releaseSelectedWait();
+        fireEvent.click(screen.getByText("wait-2"));
+        expect(screen.queryByText("wait-1")).not.toBeInTheDocument();
+      });
+    });
   });
 });
 
@@ -1110,7 +1175,7 @@ describe("ListView — the commitments section", () => {
       title: "Asleep by 23:00 Mon",
       verdict: "unresolved",
       virtual: true,
-      habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100, cycleId: 0 },
+      habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: testKey(100), cycleId: 0 },
     });
     mockUseListData.mockReturnValue(listData({
       commitmentRows: [commitmentRow({ node: iteration })],
@@ -1120,7 +1185,7 @@ describe("ListView — the commitments section", () => {
     render(<ListViewInApp />);
 
     fireEvent.click(screen.getByRole("button", { name: "cycleVerdict" }));
-    expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, 100, 0, "kept", expect.any(Number));
+    expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, testKey(100), 0, "kept", expect.any(Number));
     expect(updateCommitment).not.toHaveBeenCalled();
   });
 
@@ -1379,7 +1444,7 @@ describe("ListView — deleting a row", () => {
     const occurrence = n("habititem-flow_task-2-1-0-virtual", "task", {
       status: "todo",
       virtual: true,
-      habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 4 },
+      habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: testKey(3), cycleId: 4 },
     });
     const { removeNode } = setup([occurrence], [row({ node: occurrence })]);
     render(<ListViewInApp />);

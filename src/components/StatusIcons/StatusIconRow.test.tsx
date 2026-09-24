@@ -5,6 +5,7 @@ import StatusIconRow from "./StatusIconRow";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import { invalidateTagNames } from "@/hooks/use-tag-names";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import { testKey } from "@/test/scope-key";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("react-i18next", () => ({
@@ -36,7 +37,7 @@ describe("StatusIconRow", () => {
   });
 
   it("renders a tooltip per indicator (keys resolve to i18n text at runtime)", () => {
-    const scope = { start_id: 1, end_id: 2, duration: { n: 1, kind: "week" } };
+    const scope = { start_id: testKey(1), end_id: testKey(2), duration: { n: 1, kind: "week" } };
     const titles = renderRow(node("task", { status: "todo", timeScope: scope, timing: "lapsed", resolution: "overdue" }));
     // scope clock (crossed) + overdue exclamation.
     expect(titles).toEqual(["scope", "overdue"]);
@@ -44,14 +45,14 @@ describe("StatusIconRow", () => {
 
   it("uses a distinct tooltip for an archived badge that overrode a manual Frozen status", () => {
     const conflicted = node("goal", {
-      status: "frozen", timeScope: { start_id: 1, end_id: 2, duration: { n: 1, kind: "week" } },
+      status: "frozen", timeScope: { start_id: testKey(1), end_id: testKey(2), duration: { n: 1, kind: "week" } },
       timing: "lapsed", resolution: "missed", archived: true, archivalConflict: true,
     });
     expect(renderRow(conflicted)).toContain("archivedConflict");
   });
 
   it("uses the habit tooltip for a virtual habit instance and the flow tooltip otherwise", () => {
-    const habit = node("task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_root", itemId: 1, scopeId: 5, cycleId: 0 } });
+    const habit = node("task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_root", itemId: 1, scopeId: testKey(5), cycleId: 0 } });
     expect(renderRow(habit)).toEqual(["habitInstance"]);
 
     const started = node("task", { status: "todo", fromFlow: true });

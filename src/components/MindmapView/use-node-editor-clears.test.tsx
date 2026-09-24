@@ -7,6 +7,7 @@ import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/Comm
 import type { MindmapNode } from "@/utils/tree-layout";
 import { TASK_AGENTIC } from "@/api/tasks";
 import { BEADS_NODE_TYPE, clearBeadsId } from "@/api/beads";
+import { testKey } from "@/test/scope-key";
 
 // Nothing under `@/api` is mocked here, on purpose. The question these tests answer is what the
 // editor actually puts *on the wire* when a field is emptied: `Option<Option<T>>` on the Rust side
@@ -38,7 +39,7 @@ afterEach(() => {
   delete window.__TAURI_INTERNALS__;
 });
 
-const scope = { start_id: 1, end_id: 1 };
+const scope = { start_id: testKey(1), end_id: testKey(1) };
 
 const taskNode: MindmapNode = {
   id: "task-5", rowId: 5, kind: "task", title: "Task", tagIds: [], position: 0, children: [],

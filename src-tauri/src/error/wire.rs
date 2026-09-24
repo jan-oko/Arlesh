@@ -259,13 +259,11 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
 /// Maps a [`ScopeError`] variant to its [`WireErrorKind`].
 fn scope_kind(error: &ScopeError) -> WireErrorKind {
     match error {
-        ScopeError::NotFound(_) => WireErrorKind::NotFound,
-        // Malformed persisted data is not the caller's fault and is not a
-        // not-found/invalid-request case — it is an internal invariant
-        // violation discovered while reading.
-        ScopeError::Malformed(_, _) => WireErrorKind::Internal,
-        ScopeError::UnsupportedKind(_) => WireErrorKind::InvalidRequest,
-        ScopeError::Database(_) => WireErrorKind::Database,
+        // A key is parsed from what the caller sent; one read back from the database that does not
+        // parse fails inside sqlx's decode instead, as a `Database` error of whoever read it.
+        ScopeError::MalformedKey(_, _)
+        | ScopeError::EmptyExact(_, _)
+        | ScopeError::UnsupportedKind(_) => WireErrorKind::InvalidRequest,
     }
 }
 

@@ -64,7 +64,10 @@ impl ArleshMcp {
                 if !access::reads(&map, &node.node_type, node.node_id) {
                     return access::refuse(&node.node_type, node.node_id, AccessLevel::Read);
                 }
-                let window: TimeScope = time_scope.into();
+                let window = match TimeScope::try_from(time_scope) {
+                    Ok(window) => window,
+                    Err(error) => return result::failed(error),
+                };
                 match crate::tasks::conflicts_for_new_time_scope(
                     &mut db,
                     &node.node_type,

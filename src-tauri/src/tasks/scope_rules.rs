@@ -19,7 +19,6 @@ use chrono::NaiveDateTime;
 use serde::Serialize;
 
 use crate::database::session::{Db, SessionMode};
-use crate::scopes::model::ScopeId;
 use crate::scopes::resolve::{self, Bounds};
 
 use super::ancestry;
@@ -74,7 +73,7 @@ pub(super) async fn scope_governance<M: SessionMode>(
     let Some((time_scope, on_exit)) = chain.nearest_scoped().or_unconstrained() else {
         return Ok(None);
     };
-    Ok(Some((time_scope_window(db, time_scope).await?, on_exit)))
+    Ok(Some((time_scope.window(), on_exit)))
 }
 
 /// Derives the full lifecycle state (Timing / Resolution / Archival — see `lifecycle`'s module
@@ -101,10 +100,10 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         let resolved = TaskStatus::from_db(&task.status) == Some(TaskStatus::Done);
         let stored = Some(Archival::from(task.archival));
         let state = derive_item_state(window, on_exit, resolved, stored, now);
-        let plan_timing = match &task.plan {
-            Some(plan) => Some(derive_timing(Some(time_scope_window(db, plan).await?), now)),
-            None => None,
-        };
+        let plan_timing = task
+            .plan
+            .as_ref()
+            .map(|plan| derive_timing(Some(plan.window()), now));
         out.push(ItemLifecycle {
             node_type: "task".to_string(),
             node_id: task.id,
@@ -223,10 +222,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         archival,
     } in entries
     {
-        let bounds = match &window {
-            Some(window) => Some(time_scope_window(db, window).await?),
-            None => None,
-        };
+        let bounds = window.as_ref().map(TimeScope::window);
         let state = derive_expectation_state(bounds, status, archival, now);
         out.push(ItemLifecycle {
             node_type: node_type.to_string(),
@@ -251,26 +247,6 @@ struct WaitEntry {
     window: Option<TimeScope>,
     status: ExpectationStatus,
     archival: ExpectationArchival,
-}
-
-/// Resolves a single scope id to its half-open datetime window.
-pub(super) async fn scope_window<M: SessionMode>(
-    db: &mut Db<M>,
-    scope_id: i64,
-) -> Result<Bounds, TaskError> {
-    let scope = db.scopes().get(ScopeId(scope_id)).await?;
-    Ok(resolve::scope_bounds(&scope)?)
-}
-
-/// Resolves a Time Scope's boundaries to its combined window: the start of the start boundary
-/// through the end of the end boundary.
-pub async fn time_scope_window<M: SessionMode>(
-    db: &mut Db<M>,
-    time_scope: &TimeScope,
-) -> Result<Bounds, TaskError> {
-    let start = scope_window(db, time_scope.start_id).await?.0;
-    let end = scope_window(db, time_scope.end_id).await?.1;
-    Ok((start, end))
 }
 
 fn reject_unless_contained(outer: Bounds, inner: Bounds, message: &str) -> Result<(), TaskError> {
@@ -323,18 +299,6 @@ fn check_containment(windows: ContainmentWindows) -> Result<(), TaskError> {
     Ok(())
 }
 
-/// Resolves a Time Scope to its window when there is one — once, at the single point the check
-/// needs it.
-async fn resolve_optional<M: SessionMode>(
-    db: &mut Db<M>,
-    time_scope: Option<&TimeScope>,
-) -> Result<Option<Bounds>, TaskError> {
-    match time_scope {
-        Some(ts) => Ok(Some(time_scope_window(db, ts).await?)),
-        None => Ok(None),
-    }
-}
-
 /// The window of the nearest ancestor of `(parent_type, parent_id)` — itself included — that has
 /// an explicit Time Scope, or `None` if none is scoped.
 ///
@@ -349,7 +313,7 @@ pub async fn nearest_scoped_ancestor_window<M: SessionMode>(
     let Some((time_scope, _)) = chain.nearest_scoped().or_reject()? else {
         return Ok(None);
     };
-    Ok(Some(time_scope_window(db, time_scope).await?))
+    Ok(Some(time_scope.window()))
 }
 
 /// Like [`nearest_scoped_ancestor_window`] but returns the ancestor's Time Scope itself (the clamp
@@ -430,10 +394,10 @@ pub(super) async fn validate_task_containment<M: SessionMode>(
         None => None,
     };
 
-    let own_scope = resolve_optional(db, time_scope.as_ref()).await?;
-    let plan_window = resolve_optional(db, plan.as_ref()).await?;
-    let ancestor_scope = resolve_optional(db, ancestor_scope).await?;
-    let ancestor_plan = resolve_optional(db, ancestor_plan).await?;
+    let own_scope = time_scope.as_ref().map(TimeScope::window);
+    let plan_window = plan.as_ref().map(TimeScope::window);
+    let ancestor_scope = ancestor_scope.map(TimeScope::window);
+    let ancestor_plan = ancestor_plan.map(TimeScope::window);
 
     check_containment(ContainmentWindows {
         own_scope,
@@ -462,8 +426,8 @@ pub(super) async fn validate_goal_containment<M: SessionMode>(
     let chain = write_chain(db, node, parent_type, parent_id).await?;
     let ancestor_scope = chain.nearest_scoped().or_reject()?.map(|(scope, _)| scope);
 
-    let own_scope = Some(time_scope_window(db, own).await?);
-    let ancestor_scope = resolve_optional(db, ancestor_scope).await?;
+    let own_scope = Some(own.window());
+    let ancestor_scope = ancestor_scope.map(TimeScope::window);
 
     check_containment(ContainmentWindows {
         own_scope,
@@ -503,8 +467,8 @@ pub(super) async fn validate_commitment_scope<M: SessionMode>(
         };
     };
 
-    let own_scope = Some(time_scope_window(db, own).await?);
-    let ancestor_scope = resolve_optional(db, ancestor).await?;
+    let own_scope = Some(own.window());
+    let ancestor_scope = ancestor.map(TimeScope::window);
     check_containment(ContainmentWindows {
         own_scope,
         ancestor_scope,
@@ -526,8 +490,8 @@ pub(super) async fn validate_expectation_scope<M: SessionMode>(
     };
     let chain = write_chain(db, None, parent_type, parent_id).await?;
     let ancestor = chain.nearest_scoped().or_reject()?.map(|(scope, _)| scope);
-    let own_scope = Some(time_scope_window(db, own).await?);
-    let ancestor_scope = resolve_optional(db, ancestor).await?;
+    let own_scope = Some(own.window());
+    let ancestor_scope = ancestor.map(TimeScope::window);
     check_containment(ContainmentWindows {
         own_scope,
         ancestor_scope,
@@ -586,7 +550,7 @@ pub(super) async fn descendants_violating_window<M: SessionMode>(
     let mut stack = child_items(db, node_type, node_id).await?;
     while let Some((child_type, child_id)) = stack.pop() {
         if let Some(ts) = item_time_scope(db, &child_type, child_id).await? {
-            let child_window = time_scope_window(db, &ts).await?;
+            let child_window = ts.window();
             if !resolve::interval_contains(window, child_window) {
                 violators.push(ViolatingDescendant {
                     node_type: child_type.clone(),
@@ -629,10 +593,10 @@ pub async fn reparent_conflicts<M: SessionMode>(
             conflicts: Vec::new(),
         });
     };
-    let window = time_scope_window(db, &ancestor).await?;
+    let window = ancestor.window();
     let mut conflicts = Vec::new();
     if let Some(node_ts) = item_time_scope(db, node_type, node_id).await? {
-        if !resolve::interval_contains(window, time_scope_window(db, &node_ts).await?) {
+        if !resolve::interval_contains(window, node_ts.window()) {
             conflicts.push(ViolatingDescendant {
                 node_type: node_type.to_string(),
                 node_id,
@@ -655,7 +619,7 @@ pub async fn conflicts_for_new_time_scope<M: SessionMode>(
     node_id: i64,
     time_scope: &TimeScope,
 ) -> Result<Vec<ViolatingDescendant>, TaskError> {
-    let window = time_scope_window(db, time_scope).await?;
+    let window = time_scope.window();
     descendants_violating_window(db, node_type, node_id, window).await
 }
 

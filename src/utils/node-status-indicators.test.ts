@@ -2,12 +2,13 @@ import { describe, it, expect } from "vitest";
 import { deriveStatusIndicators } from "./node-status-indicators";
 import type { StatusIndicatorType } from "./node-status-indicators";
 import type { MindmapNode, NodeKind } from "./tree-layout";
+import { testKey } from "@/test/scope-key";
 
 function node(kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id: `${kind}-1`, kind, title: kind, position: 0, tagIds: [], children: [], ...extra };
 }
 
-const scope = { start_id: 10, end_id: 12 };
+const scope = { start_id: testKey(10), end_id: testKey(12) };
 
 /** The set of indicator types produced for a node, for order-independent assertions. */
 function types(n: MindmapNode): StatusIndicatorType[] {
@@ -132,7 +133,7 @@ describe("deriveStatusIndicators", () => {
 
   it("shows a flow-instance mark for a materialized (fromFlow) node and a virtual habit instance", () => {
     expect(types(node("task", { status: "todo", fromFlow: true }))).toEqual(["flowInstance"]);
-    const habit = node("task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_root", itemId: 1, scopeId: 5, cycleId: 0 } });
+    const habit = node("task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_root", itemId: 1, scopeId: testKey(5), cycleId: 0 } });
     expect(types(habit)).toEqual(["flowInstance"]);
   });
 

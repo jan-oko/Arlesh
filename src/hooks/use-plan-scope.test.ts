@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { usePlanScope } from "./use-plan-scope";
 import { useViewStore } from "@/stores/use-view-store";
-import type { Scope } from "@/api/scopes";
+import type { Scope, ScopeKey } from "@/api/scopes";
 import type { ScopeRef } from "@/utils/scope-ref";
 
 vi.mock("@/hooks/use-scope-labels", () => ({ useScopeLabels: () => ({}) }));
@@ -11,7 +11,7 @@ vi.mock("@/utils/scope-format", () => ({ formatScope: (scope: Scope) => scope.la
 /** The cell each ref names, with the dates the backend would give it. */
 function cellFor(ref: ScopeRef): Scope {
   const base = {
-    id: 1, week_id: null, month_id: null, season_id: null, day_id: null, part: null,
+    id: { kind: "day", date: "2026-09-22" } satisfies ScopeKey, part: null,
     start_datetime: null, end_datetime: null,
   };
   if (ref.kind === "exact") throw new Error("not a cell");
@@ -32,8 +32,8 @@ function cellFor(ref: ScopeRef): Scope {
   }
 }
 
-const getOrCreateForRef = vi.fn((ref: ScopeRef) => Promise.resolve(cellFor(ref)));
-vi.mock("@/api/scopes", () => ({ getOrCreateForRef: (ref: ScopeRef) => getOrCreateForRef(ref) }));
+const scopeForRef = vi.fn((ref: ScopeRef) => Promise.resolve(cellFor(ref)));
+vi.mock("@/api/scopes", () => ({ scopeForRef: (ref: ScopeRef) => scopeForRef(ref) }));
 
 // 10:00 on Tuesday 22 September 2026 — inside the Morning band.
 const NOW = new Date(2026, 8, 22, 10);
@@ -84,7 +84,7 @@ describe("going up to the parent scope", () => {
   });
 
   it("offers no Up while the scope is still being materialized", () => {
-    getOrCreateForRef.mockReturnValueOnce(new Promise(() => {}));
+    scopeForRef.mockReturnValueOnce(new Promise(() => {}));
     useViewStore.setState({ planScopeKind: "week" });
     const { result } = renderHook(() => usePlanScope(NOW));
     expect(result.current.parentKind).toBeNull();

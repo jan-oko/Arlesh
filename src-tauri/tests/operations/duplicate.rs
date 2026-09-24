@@ -21,7 +21,7 @@ use arlesh_lib::{
     duplicate::{duplicate_subtree, DuplicableKind},
     infos::model::{CreateInfoRequest, InfoId, UpdateInfoRequest},
     knowledge_base::model::CreatePersonRequest,
-    scopes::model::ScopeKind,
+    scopes::{key::ScopeKey, model::ScopeKind},
     tasks::{
         add_task_dependency, create_goal, create_task,
         model::{
@@ -73,20 +73,14 @@ async fn make_domain(
 }
 
 /// The canonical week containing `date`, instantiated on first use.
-async fn week_scope(pool: &sqlx::SqlitePool, date: NaiveDate) -> i64 {
-    helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Week, date)
-        .await
+async fn week_scope(_pool: &sqlx::SqlitePool, date: NaiveDate) -> ScopeKey {
+    arlesh_lib::scopes::model::Scope::containing(ScopeKind::Week, date)
         .unwrap()
         .id
 }
 
 /// A single-scope Time Scope, the form both fixtures and assertions use here.
-fn at(scope_id: i64) -> TimeScope {
+fn at(scope_id: ScopeKey) -> TimeScope {
     TimeScope {
         start_id: scope_id,
         end_id: scope_id,

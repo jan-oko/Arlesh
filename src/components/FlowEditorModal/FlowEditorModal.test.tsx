@@ -28,6 +28,7 @@ vi.mock("@/api/scopes", () => ({
 }));
 
 import { getFlowRecurrence, habitCompletionCount } from "@/api/flows";
+import { testKey } from "@/test/scope-key";
 
 function mkFlow(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
@@ -189,7 +190,7 @@ describe("FlowEditorModal — save", () => {
 
   it("prompts to reconcile when a schedule change collides with completed iterations", async () => {
     vi.mocked(getFlowRecurrence).mockResolvedValueOnce({
-      flow_id: 1, start_scope_id: 1, gap_n: null, gap_kind: null, end_scope_id: null,
+      flow_id: 1, start_scope_id: testKey(1), gap_n: null, gap_kind: null, end_scope_id: null,
       consumption_kind: "destructive", blocking_mode: null, catchup_policy: null,
     });
     vi.mocked(habitCompletionCount).mockResolvedValueOnce(2);

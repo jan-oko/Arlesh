@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { testKey } from "@/test/scope-key";
 import { formatScope, formatScopeAnchor, formatScopeCore, formatScopeRange } from "./scope-format";
 import type { Scope } from "@/api/scopes";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
@@ -14,10 +15,9 @@ const labels: ScopeLabelFns = {
   week: (n) => `W${n}`,
 };
 
-function mk(id: number, kind: Scope["kind"], startDate: string, label = ""): Scope {
+function mk(_id: number, kind: Scope["kind"], startDate: string, label = ""): Scope {
   return {
-    id, kind, label, start_date: startDate, end_date: startDate,
-    week_id: null, month_id: null, season_id: null, day_id: null,
+    id: testKey(0), kind, label, start_date: startDate, end_date: startDate,
     part: null, start_datetime: null, end_datetime: null,
   };
 }

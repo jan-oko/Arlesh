@@ -7,6 +7,7 @@ import type { FilterState } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER, filterExpectationList, isListOnlyPreset } from "@/utils/list-filter";
 import type { ExpectationListRow, ListFilterState } from "@/utils/list-filter";
 import { flattenExpectationRows } from "@/utils/list-data";
+import { testKey } from "@/test/scope-key";
 
 function n(id: string, kind: NodeKind, over: Partial<MindmapNode> = {}): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children: [], rowId: 1, ...over };
@@ -35,7 +36,7 @@ describe("where a wait may hang", () => {
   });
 
   it("cannot be attached to a Habit occurrence", () => {
-    const occurrence = drawn("habit-1", "task", { habitItem: { flowId: 1, itemType: "flow_task", itemId: 1, scopeId: 1, cycleId: 0 } });
+    const occurrence = drawn("habit-1", "task", { habitItem: { flowId: 1, itemType: "flow_task", itemId: 1, scopeId: testKey(1), cycleId: 0 } });
     expect(canParentNewChild(occurrence, "expectation")).toBe(false);
     expect(canParentNewChild(n("task-1", "task"), "expectation")).toBe(true);
   });

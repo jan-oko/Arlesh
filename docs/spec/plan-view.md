@@ -39,12 +39,14 @@ month sits in. It is stated against the scope being filled, not against the buck
 (see *Split by subscope* below) — splitting changes how the right-hand pane reads, not what the pass
 is filling.
 
-Two cases are not "exactly one":
+Two cases need saying:
 
-- **A week at a month's edge has two parents.** Weeks do not nest in months, and a week that
-  straddles a month boundary sits one rung below both months. Both are its parent, and work planned
-  to either is offered. That is the same rule — the cells one rung up that the scope sits in —
-  applied to the one rung that does not nest, not an exception to it.
+- **A week at a month's edge has one parent: the month holding its first day.** Weeks do not nest
+  in months, so such a week sits one rung below two of them. It once counted both as its parent,
+  which offered October's work as candidates while you filled the week that Up and `M` both call
+  September's (Arlesh-3tt). A plan into the next month is a plan into a *sibling* of this week's
+  month, and the candidates rule leaves siblings out. One parent keeps Up, `M` and "planned to the
+  parent" giving the same answer.
 - **A Season has none.** It is the only top-level scope, and that is the entire reason. This is
   **structural, not defensive**, and it does not generalise: "no parent" is not a fallback for a
   scope whose parent happens to hold nothing, and it is not a rule about empty panes. Every scope
@@ -96,8 +98,25 @@ A Task planned **somewhere else** — neither in this scope nor to its parent �
 It is not unscheduled, so it is not a candidate, and it is not in this scope, so it is not what the
 scope holds.
 
-**Virtual Habit occurrences and iteration roots are not triaged.** They have no row to carry a Plan,
-and planning a recurrence is a separate question. A first cut plans real Tasks.
+**Habit occurrences are triaged like Tasks.** An occurrence is read by its **Cycle Plan**, the Habit's
+or its item's:
+
+- **With one**, it sits where that Plan says, as a planned Task would: in the planned pane of a
+  scope the Plan sits inside, or among the candidates when the Plan is the parent scope.
+- **With none, it is unplanned**, and a candidate wherever its window is relevant, like any
+  unplanned relevant work.
+
+Its window is **not** read as a plan. A window says when the work is relevant, not that anyone
+planned it (ruled by the user, 2026-09-24, over a first cut that did read it that way).
+
+**Planning one is not possible yet.** An occurrence has no stored row to carry a Plan until
+occurrences become rows of their own (Arlesh-pnn). Every gesture that moves one — the button,
+`Enter`, a number or letter, a drag, taking it back out — leaves it where it is and says so in the
+toast, alongside whatever the rest of the batch did. It is taken out of the batch *before* the
+containment check, so it is never told to widen a window it has no editor for, and it is never
+dropped in silence.
+
+An iteration's **root** is not triaged. It stands for the whole iteration, not for a piece of work.
 
 ## Backlog
 
@@ -249,7 +268,7 @@ and a fold defeats it. Three rules keep the split from hiding anything:
   among the work that was already placed and with no gesture that could move it. It still needs
   placing, so it belongs on the side that places things.
 
-**Sectioning compares dates, never instants.** A scope row carries `start_date` and `end_date` as
+**Sectioning compares dates, never instants.** A scope carries `start_date` and `end_date` as
 plain dates, and so does a calendar cell, so "is this plan inside that week" is a string
 comparison. Building a datetime window here would bake in what instant a day begins at — which is
 the backend's answer, and not one this view may assume.
@@ -286,17 +305,16 @@ Escape itself, and a letter acting behind it would change what it is choosing be
 **Up** — a button beside the step back — fills the scope's **parent** instead: a part of day's
 Day, a Day's Week, a Week's Month, a Month's Season (see [The parent scope](#the-parent-scope)).
 The kind selector changes with it, exactly as choosing the kind would, since the kind is what it
-shows. A **week at a month's edge** has two parents; Up goes to the month holding the week's
-**first day**, the natural reading of "the week's month". The candidates pane still counts both,
-because that asks what was committed above the week, and Up asks where to stand, which is one place.
+shows. A **week at a month's edge** goes to the month holding its **first day**, the natural
+reading of "the week's month" and the same parent the candidates pane reads.
 On a **Season** Up is disabled and says on hover that a Season is the top of the ladder — the same
 structural reason *Show only planned to parent scope* is inert there. It is disabled for the moment
-the scope is still being materialized, too, since its parent is not known yet. **`\`** does the same, and where the button is disabled the key does not do nothing: it
+the scope is still being read, too, since its parent is not known yet. **`\`** does the same, and where the button is disabled the key does not do nothing: it
 says the button's reason in a toast, because a press with no visible effect reads as a key that is
 not bound. `\` was free in every table and sits beside `[` `]` on a US layout — the third key of
 the cluster, for the one step that leaves the bracket axis.
 
-Stepping walks from the materialized scope's own start date rather than from wherever the cursor
+Stepping walks from the scope's own start date rather than from wherever the cursor
 happened to sit inside it, so a month stepped from the 31st lands on the next month. Walking parts
 of a day rolls over into the next or previous day at either end of the sequence.
 
@@ -385,6 +403,6 @@ an open editor would leave the editor sitting over a board it no longer belongs 
 - **Time Scope editing.** This view sets Plans. A candidate whose window is too narrow for the scope
   is refused and sent to the editor.
 - **Creating, renaming or deleting.** A planning pass decides *when*, not *what*.
-- **Habit iterations and virtual instances as candidates**, as above.
+- **Planning a Habit occurrence**, until occurrences are stored rows, as above.
 
 ---

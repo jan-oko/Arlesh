@@ -1,4 +1,5 @@
 use super::*;
+use crate::scopes::key::test_key;
 
 fn at(iso: &str) -> NaiveDateTime {
     NaiveDateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%S").unwrap()
@@ -12,7 +13,7 @@ fn four_weeks() -> Vec<SlotWindow> {
             let start = at("2026-01-05T00:00:00") + chrono::Duration::weeks(i);
             SlotWindow {
                 index: i,
-                scope_id: 100 + i,
+                scope_id: test_key(100 + i),
                 start,
                 end: start + chrono::Duration::weeks(1),
             }

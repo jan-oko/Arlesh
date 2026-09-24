@@ -13,13 +13,32 @@ Moving only the Day was rejected. It removes the contradiction at the Day bounda
 Two consequences worth stating plainly:
 
 - **"Today" at 00:30 is the previous calendar date.** The Day that is still running began yesterday, so that is the Day scope an item is planned into, the cell the Scope Picker outlines, and the date a new Recurrence starts on by default.
-- **Nothing is stored differently.** A canonical scope row stores its inclusive `start_date`/`end_date` as dates and derives its interval on read; only an Exact scope stores datetimes. Every existing row keeps its date and simply resolves to a window shifted two hours later — no migration, no backfill.
+- **Nothing is stored differently.** A canonical scope is named by its start date and derives its interval on read; only an Exact scope names datetimes. See *Scopes are derived* below.
 
 ## The week across New Year
 
 **A Week runs Sunday to Saturday and is never split.** A week that spans 31 December to 1 January is one scope, part in each year.
 
-Its **label** is `Week N YYYY`, where N is `week_number()` (`src-tauri/src/scopes/mod.rs`) of the **date that created the row**: 1-based Sunday-to-Saturday weeks counted from 1 January of that date's year, so a year runs to week 53, or 54 when a leap year starts on a Saturday. A week that spans New Year therefore reads **"Week 53 YYYY" or "Week 1 YYYY+1"**, depending on which of its days was touched first. That dependence is known and deliberate for now; re-examining it is `Arlesh-8zf`.
+Its **label** is `Week N YYYY`, where N is `week_number()` (`src-tauri/src/scopes/derive.rs`) of the week's **Sunday**: 1-based Sunday-to-Saturday weeks counted from 1 January of that Sunday's year, so a year runs to week 53, or 54 when a leap year starts on a Saturday. A week that spans New Year therefore always reads **"Week 53 YYYY"** (or 54) — the year it starts in. It used to depend on which of its days was touched first, because the label was stored on a row created from that day; a derived scope has only its Sunday to go on. Whether it *should* read "Week 1 YYYY+1" instead is `Arlesh-8zf`, still deferred.
+
+## Scopes are derived
+
+**A scope is never stored.** Season, Month, Week, Day, Part of Day and Exact windows alike are computed from their value on every read — label, dates and bounds are arithmetic over the kind and the start date, the band of a Part of Day, the two datetimes of an Exact window. Nothing is written when a view, a Habit's iterations or the MCP snapshot needs a scope nobody has used before. See ADR 0009.
+
+**A scope's id is its value key**, a small JSON object tagged by `kind` that names the scope's own start:
+
+| Kind        | Key                                                                         |
+|-------------|-----------------------------------------------------------------------------|
+| Season      | `{"kind":"season","date":"2026-09-01"}` — the season's first day            |
+| Month       | `{"kind":"month","date":"2026-09-01"}` — the month's first day              |
+| Week        | `{"kind":"week","date":"2026-09-20"}` — the week's Sunday                   |
+| Day         | `{"kind":"day","date":"2026-09-23"}`                                        |
+| Part of Day | `{"kind":"part_of_day","date":"2026-09-23","part":"morning"}` — the day the band starts on, then the band |
+| Exact       | `{"kind":"exact","start":"2026-09-23T14:00:00","end":"2026-09-23T15:30:00"}` — half-open start and end, whole seconds |
+
+A key that does not name its own start — a week keyed by a Wednesday — is refused, not snapped; so is an Exact window that does not end after it starts. Finding the scope *containing* a date is a separate operation. Keys travel as JSON objects on the wire and are stored as their **canonical text** — `kind` first, the fields in the order above, no whitespace — which is produced in one place on each side and re-derived from the parsed value on every write, so comparing the stored text compares scopes. Every column and wire field that references a scope holds this key, which is why a Task's window reads as dates in a database dump or an MCP snapshot without resolving anything.
+
+**The calendar conventions are code.** Sunday-start weeks, December–February Winter and the 02:00 day boundary are applied at read time, so changing one would reinterpret every past window at once rather than only new ones. They are constants; making any of them configurable means revisiting ADR 0009.
 
 ## Time Scope (relevance)
 

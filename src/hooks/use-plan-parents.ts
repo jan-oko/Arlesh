@@ -1,51 +1,27 @@
-import { useEffect, useMemo, useState } from "react";
-import { getOrCreateForRef } from "@/api/scopes";
+import { useMemo } from "react";
 import type { Scope } from "@/api/scopes";
 import { parentRefs } from "@/utils/plan-scope";
+import { keyForRef, scopeKeyText, type ScopeKeyText } from "@/utils/scope-key";
 
 /** The parent scope(s) of the scope a Plan pass is filling. */
 export interface PlanParents {
-  /**
-   * Whether the scope has a rung above it at all. Known from its kind alone, before anything is
-   * materialized — `false` exactly for a Season.
-   */
+  /** Whether the scope has a rung above it at all — `false` exactly for a Season. */
   exists: boolean;
-  /** The parents' ids, once materialized; empty until then, and always empty for a Season. */
-  ids: ReadonlySet<number>;
+  /** The parents' keys, as canonical text; empty until the scope itself is known, and always
+   * empty for a Season. */
+  ids: ReadonlySet<ScopeKeyText>;
 }
 
-const NONE: ReadonlySet<number> = new Set();
-
 /**
- * Materializes the parent scope(s) of `scope` — the cells one rung above it (see `parentRefs`).
+ * The parent scope(s) of `scope` — the cells one rung above it (see `parentRefs`), as keys.
  *
- * Get-or-create rather than a lookup, because nothing guarantees a month has a row yet merely
- * because one of its weeks does, and the same door the cursor itself goes through.
- *
- * A failure leaves the ids empty: the candidates pane then shows no parent-planned work, which
- * under-reports rather than misplaces, and the scope itself — the thing the pass is about — is
- * unaffected.
+ * Derived on the spot: a scope's key is a pure function of the cell (ADR 0009), so the month a
+ * week sits in — or the two months a week at a month's edge sits in — is a string, not a lookup
+ * or a row that has to exist first.
  */
 export function usePlanParents(scope: Scope | null): PlanParents {
-  const refs = useMemo(() => (scope === null ? [] : parentRefs(scope)), [scope]);
-  const [answer, setAnswer] = useState<{ scope: Scope; ids: ReadonlySet<number> } | null>(null);
-
-  useEffect(() => {
-    if (scope === null || refs.length === 0) return;
-    let active = true;
-    void Promise.all(refs.map((ref) => getOrCreateForRef(ref))).then(
-      (parents) => {
-        if (active) setAnswer({ scope, ids: new Set(parents.map((parent) => parent.id)) });
-      },
-      () => {
-        if (active) setAnswer({ scope, ids: NONE });
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [scope, refs]);
-
-  const ids = answer !== null && answer.scope === scope ? answer.ids : NONE;
-  return { exists: refs.length > 0, ids };
+  return useMemo(() => {
+    const refs = scope === null ? [] : parentRefs(scope);
+    return { exists: refs.length > 0, ids: new Set(refs.map((ref) => scopeKeyText(keyForRef(ref)))) };
+  }, [scope]);
 }

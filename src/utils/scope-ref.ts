@@ -1,13 +1,13 @@
 // Pure selection primitives for the Scope Picker. A ScopeRef identifies a calendar cell by its
-// content (not a DB id), so selection logic stays synchronous and testable; the cell is
-// materialized to a Scope id only when the selection is resolved.
+// content, so selection logic stays synchronous and testable; the cell becomes a scope key (see
+// `@/utils/scope-key`) when the selection is resolved.
 
 import type { PartOfDay, Scope } from "@/api/scopes";
 
 /** The four calendar-aligned scope kinds selectable by an anchor date. */
 export type CanonicalKind = "season" | "month" | "week" | "day";
 
-/** A materializable reference to a calendar cell. */
+/** A reference to a calendar cell. */
 export type ScopeRef =
   | { kind: CanonicalKind; date: string }
   | { kind: "part_of_day"; date: string; part: PartOfDay }

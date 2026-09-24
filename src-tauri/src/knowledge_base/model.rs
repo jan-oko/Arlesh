@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::scopes::key::ScopeKey;
+
 /// Identifies a person row by its primary key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PersonId(pub i64);
@@ -60,7 +62,7 @@ pub struct Event {
     /// Display title.
     pub title: String,
     /// Scope the event falls within (if any).
-    pub scope_id: Option<i64>,
+    pub scope_id: Option<ScopeKey>,
     /// ISO 8601 datetime of the event (if any).
     pub event_time: Option<String>,
     /// Path to the linked Obsidian note (if any).
@@ -73,7 +75,7 @@ pub struct CreateEventRequest {
     /// Display title.
     pub title: String,
     /// Scope id (if any).
-    pub scope_id: Option<i64>,
+    pub scope_id: Option<ScopeKey>,
     /// ISO 8601 datetime (if any).
     pub event_time: Option<String>,
     /// Linked note path (if any).

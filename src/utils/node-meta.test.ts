@@ -3,6 +3,7 @@ import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validType
 import { ALL_NODE_KINDS } from "./tree-layout";
 import type { MindmapNode } from "./tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
+import { testKey } from "@/test/scope-key";
 
 describe("computeNodeDimensions", () => {
   it("matches getNodeSize height for a short single-word title", () => {
@@ -464,7 +465,7 @@ describe("canParentNewChild", () => {
   const occurrence = (kind: MindmapNode["kind"]) =>
     node(`habit-3-0-virtual`, kind, {
       virtual: true,
-      habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: 100, cycleId: 0 },
+      habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: testKey(100), cycleId: 0 },
     });
 
   const foldedRun = node("habitgroup-3-run", "habit_group", {

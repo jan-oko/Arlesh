@@ -1,280 +1,273 @@
+//! Scopes are derived, not stored (ADR 0009): what that means for the database.
+//!
+//! The derivation itself — dates, labels, bounds, the key spelling — is unit-tested beside it in
+//! `src/scopes/`. These tests hold the storage contract: no scope table, and every referencing
+//! column holding a key's one canonical text.
+
 use crate::helpers;
 
 use chrono::{NaiveDate, NaiveDateTime};
 
 use arlesh_lib::{
-    commands::scopes::{get_or_create_part_scope, get_or_create_scope},
-    scopes::model::{PartOfDay, ScopeKind},
+    commands::scopes::{exact_scope, part_scope, scope_containing},
+    domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
+    scopes::{
+        key::ScopeKey,
+        model::{PartOfDay, ScopeKind},
+    },
+    tasks::{
+        create_task,
+        model::{CreateTaskRequest, TimeScope},
+    },
 };
-use tauri::Manager;
 
-#[tokio::test]
-async fn get_or_create_day_populates_containment() {
-    let pool = helpers::test_pool().await;
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
-
-    let day = db
-        .scopes()
-        .get_or_create(ScopeKind::Day, date)
+async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
+    let aspect_id: i64 =
+        sqlx::query_scalar("SELECT id FROM domains WHERE title = 'Growth' AND subtype = 'aspect'")
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    helpers::session_factory(pool)
+        .connect()
         .await
-        .unwrap();
-    db.commit().await.unwrap();
-
-    assert_eq!(day.kind, "day");
-    assert_eq!(day.start_date, "2026-06-20");
-    assert!(day.week_id.is_some(), "day should have week_id");
-    assert!(day.month_id.is_some(), "day should have month_id");
-    assert!(day.season_id.is_some(), "day should have season_id");
+        .unwrap()
+        .domains()
+        .create(CreateDomainRequest {
+            title: "Scoped work".into(),
+            description: None,
+            subtype: DomainSubtype::Project,
+            parent_id: Some(aspect_id),
+            status: Some(ProjectStatus::Active),
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap()
+        .id
 }
 
-#[tokio::test]
-async fn week_scope_has_correct_sunday_to_saturday_bounds() {
-    let pool = helpers::test_pool().await;
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    // 2026-06-20 is a Saturday; week should start 2026-06-14 (Sunday)
-    let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
-
-    let week = db
-        .scopes()
-        .get_or_create(ScopeKind::Week, date)
-        .await
-        .unwrap();
-    db.commit().await.unwrap();
-
-    assert_eq!(week.start_date, "2026-06-14");
-    assert_eq!(week.end_date, "2026-06-20");
+fn exact_key() -> ScopeKey {
+    let at = |text: &str| NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S").unwrap();
+    ScopeKey::exact(at("2026-06-20T09:30:00"), at("2026-06-22T14:00:00")).unwrap()
 }
 
-#[tokio::test]
-async fn month_scope_has_correct_bounds() {
-    let pool = helpers::test_pool().await;
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let date = NaiveDate::from_ymd_opt(2026, 6, 15).unwrap();
-
-    let month = db
-        .scopes()
-        .get_or_create(ScopeKind::Month, date)
-        .await
-        .unwrap();
+async fn task_with_window(
+    pool: &sqlx::SqlitePool,
+    project_id: i64,
+    window: TimeScope,
+) -> Result<i64, arlesh_lib::tasks::error::TaskError> {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let task = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Scoped".into(),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            time_scope: Some(window),
+            ..Default::default()
+        },
+    )
+    .await?;
     db.commit().await.unwrap();
-
-    assert_eq!(month.start_date, "2026-06-01");
-    assert_eq!(month.end_date, "2026-06-30");
-    assert_eq!(month.label, "June 2026");
+    Ok(task.id)
 }
 
-#[tokio::test]
-async fn season_is_summer_for_june() {
-    let pool = helpers::test_pool().await;
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
-
-    let season = db
-        .scopes()
-        .get_or_create(ScopeKind::Season, date)
-        .await
-        .unwrap();
-    db.commit().await.unwrap();
-
-    assert_eq!(season.label, "Summer 2026");
-    assert_eq!(season.start_date, "2026-06-01");
-    assert_eq!(season.end_date, "2026-08-31");
-}
-
-#[tokio::test]
-async fn get_or_create_is_idempotent() {
-    let pool = helpers::test_pool().await;
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
-
-    let first = db
-        .scopes()
-        .get_or_create(ScopeKind::Day, date)
-        .await
-        .unwrap();
-    let second = db
-        .scopes()
-        .get_or_create(ScopeKind::Day, date)
-        .await
-        .unwrap();
-    db.commit().await.unwrap();
-
-    assert_eq!(first.id, second.id);
-}
-
-#[tokio::test]
-async fn winter_season_spans_dec_to_feb() {
-    let pool = helpers::test_pool().await;
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    // Dec 2026 → Winter 2026 (starts Dec 1 2026, ends Feb 28 2027)
-    let date = NaiveDate::from_ymd_opt(2026, 12, 1).unwrap();
-
-    let season = db
-        .scopes()
-        .get_or_create(ScopeKind::Season, date)
-        .await
-        .unwrap();
-    db.commit().await.unwrap();
-
-    assert_eq!(season.label, "Winter 2026");
-    assert_eq!(season.start_date, "2026-12-01");
-    assert_eq!(season.end_date, "2027-02-28");
-}
-
-#[tokio::test]
-async fn december_month_scope_spans_into_next_year() {
-    let pool = helpers::test_pool().await;
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let date = NaiveDate::from_ymd_opt(2026, 12, 15).unwrap();
-
-    let month = db
-        .scopes()
-        .get_or_create(ScopeKind::Month, date)
-        .await
-        .unwrap();
-    db.commit().await.unwrap();
-
-    assert_eq!(month.start_date, "2026-12-01");
-    assert_eq!(month.end_date, "2026-12-31");
-    assert_eq!(month.label, "December 2026");
-}
-
-#[tokio::test]
-async fn get_or_create_part_populates_day_and_containment() {
-    let pool = helpers::test_pool().await;
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
-
-    let morning = db
-        .scopes()
-        .get_or_create_part(date, PartOfDay::Morning)
-        .await
-        .unwrap();
-    db.commit().await.unwrap();
-
-    assert_eq!(morning.kind, "part_of_day");
-    assert_eq!(morning.start_date, "2026-06-20");
-    assert_eq!(morning.end_date, "2026-06-20");
-    assert_eq!(morning.part.as_deref(), Some("morning"));
-    assert!(morning.day_id.is_some(), "part should have day_id");
-    assert!(morning.week_id.is_some(), "part should inherit week_id");
-    assert!(morning.season_id.is_some(), "part should inherit season_id");
-}
-
-#[tokio::test]
-async fn night_part_ends_on_the_following_day() {
-    let pool = helpers::test_pool().await;
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
-
-    let night = db
-        .scopes()
-        .get_or_create_part(date, PartOfDay::Night)
-        .await
-        .unwrap();
-    db.commit().await.unwrap();
-
-    assert_eq!(night.start_date, "2026-06-20");
-    assert_eq!(night.end_date, "2026-06-21");
-}
-
-#[tokio::test]
-async fn get_or_create_part_is_idempotent_per_part() {
-    let pool = helpers::test_pool().await;
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
-
-    let first = db
-        .scopes()
-        .get_or_create_part(date, PartOfDay::Noon)
-        .await
-        .unwrap();
-    let second = db
-        .scopes()
-        .get_or_create_part(date, PartOfDay::Noon)
-        .await
-        .unwrap();
-    let other = db
-        .scopes()
-        .get_or_create_part(date, PartOfDay::Evening)
-        .await
-        .unwrap();
-    db.commit().await.unwrap();
-
-    assert_eq!(first.id, second.id);
-    assert_ne!(
-        first.id, other.id,
-        "different parts of the same day are distinct scopes"
-    );
-}
-
-#[tokio::test]
-async fn get_or_create_exact_stores_datetimes_and_is_idempotent() {
-    let pool = helpers::test_pool().await;
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let start = "2026-06-20T09:30:00".parse::<NaiveDateTime>().unwrap();
-    let end = "2026-06-22T14:00:00".parse::<NaiveDateTime>().unwrap();
-
-    let first = db.scopes().get_or_create_exact(start, end).await.unwrap();
-    let second = db.scopes().get_or_create_exact(start, end).await.unwrap();
-    db.commit().await.unwrap();
-
-    assert_eq!(first.kind, "exact");
-    assert_eq!(first.start_datetime.as_deref(), Some("2026-06-20T09:30:00"));
-    assert_eq!(first.end_datetime.as_deref(), Some("2026-06-22T14:00:00"));
-    assert_eq!(first.start_date, "2026-06-20");
-    assert_eq!(first.end_date, "2026-06-22");
-    assert_eq!(first.id, second.id, "identical exact windows dedupe");
-}
-
-// The tests above drive a session directly, not the command. `get_or_create_scope` and
-// `get_or_create_part_scope` run on a transactional session (containment parents are created
-// recursively, so more than one row may be written), and nothing but a test catches a command
-// that opens `begin()` and forgets `commit()` — see `Db::commit`'s docs. The two below call the
-// real command functions, with a real `tauri::State` lent by a mock app, and assert row counts on
-// disk rather than merely `Ok`.
-
-/// Counts every scope row on disk, over the same one-connection pool the command used.
-async fn scope_count_on_disk(pool: &sqlx::SqlitePool) -> i64 {
-    sqlx::query_scalar("SELECT COUNT(*) FROM scopes")
+async fn stored_window(pool: &sqlx::SqlitePool, task_id: i64) -> (String, String) {
+    sqlx::query_as("SELECT time_scope_start_id, time_scope_end_id FROM tasks WHERE id = ?")
+        .bind(task_id)
         .fetch_one(pool)
         .await
         .unwrap()
 }
 
 #[tokio::test]
-async fn the_get_or_create_scope_command_commits_the_day_and_its_containment_parents() {
+async fn there_is_no_scope_table() {
     let pool = helpers::test_pool().await;
-    let app = helpers::command_host(&pool);
-    let date = NaiveDate::from_ymd_opt(2026, 6, 20).unwrap();
+    let tables: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'
+           AND name IN ('scopes', 'exact_scopes')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(tables, 0, "scopes are derived, never stored");
+}
 
-    let day = get_or_create_scope(app.state(), ScopeKind::Day, date.to_string())
+#[tokio::test]
+async fn a_task_stores_its_window_as_canonical_key_text() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let week = ScopeKey::containing(
+        ScopeKind::Week,
+        NaiveDate::from_ymd_opt(2026, 9, 23).unwrap(),
+    )
+    .unwrap();
+
+    let task_id = task_with_window(&pool, project_id, TimeScope::single(week))
         .await
         .unwrap();
 
-    assert_eq!(day.kind, "day");
+    let week_text = r#"{"kind":"week","date":"2026-09-20"}"#.to_string();
     assert_eq!(
-        scope_count_on_disk(&pool).await,
-        4,
-        "the command must commit the day and its week/month/season parents, not roll them back"
+        stored_window(&pool, task_id).await,
+        (week_text.clone(), week_text)
     );
 }
 
 #[tokio::test]
-async fn the_get_or_create_part_scope_command_commits_the_day_and_the_part() {
+async fn an_exact_window_is_stored_as_its_value_with_no_row_of_its_own() {
     let pool = helpers::test_pool().await;
-    let app = helpers::command_host(&pool);
-    let date = NaiveDate::from_ymd_opt(2026, 6, 21).unwrap();
+    let project_id = make_project(&pool).await;
 
-    let part = get_or_create_part_scope(app.state(), date.to_string(), PartOfDay::Morning)
+    let task_id = task_with_window(&pool, project_id, TimeScope::single(exact_key()))
         .await
         .unwrap();
 
-    assert_eq!(part.kind, "part_of_day");
+    let exact_text =
+        r#"{"kind":"exact","start":"2026-06-20T09:30:00","end":"2026-06-22T14:00:00"}"#.to_string();
     assert_eq!(
-        scope_count_on_disk(&pool).await,
-        5,
-        "the command must commit the part plus the day/week/month/season it depends on"
+        stored_window(&pool, task_id).await,
+        (exact_text.clone(), exact_text)
     );
+}
+
+#[tokio::test]
+async fn a_key_sent_in_any_spelling_is_stored_in_the_one_canonical_text() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    // Fields out of order, with whitespace: the key is re-serialised from its value on the way in.
+    let loose: ScopeKey = r#"{ "part": "night", "date": "2026-09-23", "kind": "part_of_day" }"#
+        .parse()
+        .unwrap();
+
+    let task_id = task_with_window(&pool, project_id, TimeScope::single(loose))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        stored_window(&pool, task_id).await.0,
+        r#"{"kind":"part_of_day","date":"2026-09-23","part":"night"}"#
+    );
+}
+
+#[tokio::test]
+async fn text_that_is_not_json_is_refused_by_the_schema() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+
+    let written = sqlx::query(
+        "INSERT INTO tasks (title, parent_type, parent_id, time_scope_start_id, time_scope_end_id,
+                            on_scope_exit)
+         VALUES ('Raw', 'project', ?, 'week:2026-09-20', 'week:2026-09-20', 'keep')",
+    )
+    .bind(project_id)
+    .execute(&pool)
+    .await;
+
+    assert!(written.is_err(), "a scope column holds JSON or nothing");
+}
+
+#[tokio::test]
+async fn a_hand_built_key_that_misses_its_start_is_refused_on_write() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let wednesday = ScopeKey::Week {
+        date: NaiveDate::from_ymd_opt(2026, 9, 23).unwrap(),
+    };
+
+    let written = sqlx::query(
+        "INSERT INTO tasks (title, parent_type, parent_id, time_scope_start_id, time_scope_end_id,
+                            on_scope_exit)
+         VALUES ('Raw', 'project', ?, ?, ?, 'keep')",
+    )
+    .bind(project_id)
+    .bind(wednesday)
+    .bind(wednesday)
+    .execute(&pool)
+    .await;
+
+    assert!(
+        written.is_err(),
+        "a week keyed by a Wednesday names no scope"
+    );
+}
+
+#[test]
+fn the_scope_commands_derive_without_a_database() {
+    let date = "2026-06-20".to_string();
+
+    let week = scope_containing(ScopeKind::Week, date.clone()).unwrap();
+    assert_eq!(
+        week.id.canonical(),
+        r#"{"kind":"week","date":"2026-06-14"}"#
+    );
+    assert_eq!(week.end_date, "2026-06-20");
+
+    let night = part_scope(date, PartOfDay::Night).unwrap();
+    assert_eq!(
+        night.id.canonical(),
+        r#"{"kind":"part_of_day","date":"2026-06-20","part":"night"}"#
+    );
+    assert_eq!(night.end_date, "2026-06-21");
+
+    let exact = exact_scope(
+        "2026-06-20T09:30:00".to_string(),
+        "2026-06-22T14:00:00".to_string(),
+    )
+    .unwrap();
+    assert_eq!(exact.id, exact_key());
+}
+
+/// The calendar cell a corpus case names: the kind, and a date inside it (or a band, or two
+/// datetimes).
+#[derive(serde::Deserialize)]
+struct Cell {
+    kind: ScopeKind,
+    date: Option<NaiveDate>,
+    part: Option<PartOfDay>,
+    start: Option<NaiveDateTime>,
+    end: Option<NaiveDateTime>,
+}
+
+/// One case of the shared key corpus, which the frontend's `scope-key` module replays too.
+#[derive(serde::Deserialize)]
+struct KeyCase {
+    cell: Cell,
+    key: serde_json::Value,
+    text: String,
+}
+
+#[derive(serde::Deserialize)]
+struct KeyCorpus {
+    cases: Vec<KeyCase>,
+}
+
+const KEY_CORPUS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../conformance/scope-keys.json"
+));
+
+#[test]
+fn every_key_in_the_shared_corpus_has_the_same_canonical_text_here() {
+    let corpus: KeyCorpus = serde_json::from_str(KEY_CORPUS).unwrap();
+    assert!(!corpus.cases.is_empty());
+    for case in corpus.cases {
+        let cell = case.cell;
+        let key = match (cell.kind, cell.date, cell.part, cell.start, cell.end) {
+            (ScopeKind::PartOfDay, Some(date), Some(part), _, _) => ScopeKey::part(date, part),
+            (ScopeKind::Exact, _, _, Some(start), Some(end)) => {
+                ScopeKey::exact(start, end).unwrap()
+            }
+            (kind, Some(date), None, None, None) => ScopeKey::containing(kind, date).unwrap(),
+            _ => panic!("malformed corpus case {}", case.text),
+        };
+        assert_eq!(key.canonical(), case.text, "the canonical text");
+        assert_eq!(
+            serde_json::to_value(key).unwrap(),
+            case.key,
+            "the wire object"
+        );
+        let parsed: ScopeKey = case.text.parse().unwrap();
+        assert_eq!(parsed, key, "{} round-trips", case.text);
+        assert_eq!(parsed.canonical(), case.text);
+    }
 }

@@ -11,9 +11,20 @@
 use crate::helpers;
 
 use arlesh_lib::mcp::{params, ArleshMcp};
+use arlesh_lib::scopes::key::ScopeKey;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use tauri::Manager;
+
+/// A key as an MCP caller sends it: the same JSON object, through the tool's own parameter type.
+fn param(key: ScopeKey) -> params::ScopeKeyParam {
+    serde_json::from_value(serde_json::to_value(key).unwrap()).unwrap()
+}
+
+/// A key parameter from JSON text.
+fn param_of(text: &str) -> params::ScopeKeyParam {
+    serde_json::from_str(text).unwrap()
+}
 
 /// The structured payload of a successful tool call.
 ///
@@ -49,40 +60,44 @@ fn error_payload(result: &CallToolResult) -> &serde_json::Value {
 #[tokio::test]
 async fn scopes_get_returns_what_the_command_returns() {
     let pool = helpers::test_pool().await;
-    let app = helpers::command_host(&pool);
     let mcp = helpers::mcp_over_whole_board(&pool).await;
 
-    // A scope has to exist before it can be fetched, and `get_or_create_scope` is the only way in.
-    let created = arlesh_lib::commands::scopes::get_or_create_scope(
-        app.state(),
+    // No scope has to exist first: a scope is derived from its key.
+    let week = arlesh_lib::commands::scopes::scope_containing(
         arlesh_lib::scopes::model::ScopeKind::Week,
         "2026-02-02".into(),
     )
-    .await
     .unwrap();
 
     let result = mcp
-        .scopes(Parameters(params::ScopesOperation::Get { id: created.id }))
+        .scopes(Parameters(params::ScopesOperation::Get {
+            id: param(week.id),
+        }))
         .await
         .unwrap();
 
-    let expected = arlesh_lib::commands::scopes::get_scope(app.state(), created.id)
-        .await
-        .unwrap();
+    let expected = arlesh_lib::commands::scopes::get_scope(week.id);
     assert_eq!(
         payload(&result),
         &serde_json::to_value(&expected).unwrap(),
         "scopes.get"
     );
+    assert_eq!(
+        week.id.canonical(),
+        r#"{"kind":"week","date":"2026-02-01"}"#
+    );
 }
 
 #[tokio::test]
-async fn scopes_get_on_a_missing_id_reports_not_found() {
+async fn scopes_get_on_a_malformed_key_reports_an_invalid_request() {
     let pool = helpers::test_pool().await;
     let mcp = helpers::mcp_over_whole_board(&pool).await;
 
+    // A Wednesday is not the start of a week, so this names no scope.
     let result = mcp
-        .scopes(Parameters(params::ScopesOperation::Get { id: 99_999 }))
+        .scopes(Parameters(params::ScopesOperation::Get {
+            id: param_of(r#"{"kind":"week","date":"2026-02-04"}"#),
+        }))
         .await
         .unwrap();
 
@@ -90,48 +105,43 @@ async fn scopes_get_on_a_missing_id_reports_not_found() {
     // machine-readable discriminant the frontend does, not prose it has to pattern-match on.
     assert_eq!(
         error_payload(&result).get("kind").and_then(|k| k.as_str()),
-        Some("not_found"),
+        Some("invalid_request"),
     );
 }
 
 #[tokio::test]
 async fn scopes_resolve_many_resolves_each_id_in_order() {
     let pool = helpers::test_pool().await;
-    let app = helpers::command_host(&pool);
     let mcp = helpers::mcp_over_whole_board(&pool).await;
 
-    let mut ids = Vec::new();
-    for date in ["2026-02-02", "2026-02-09", "2026-02-16"] {
-        let scope = arlesh_lib::commands::scopes::get_or_create_scope(
-            app.state(),
-            arlesh_lib::scopes::model::ScopeKind::Week,
-            date.into(),
-        )
-        .await
-        .unwrap();
-        ids.push(scope.id);
-    }
+    let ids: Vec<params::ScopeKeyParam> = [
+        r#"{"kind":"week","date":"2026-02-01"}"#,
+        r#"{"kind":"day","date":"2026-02-09"}"#,
+        r#"{"kind":"month","date":"2026-02-01"}"#,
+    ]
+    .iter()
+    .map(|text| param_of(text))
+    .collect();
 
     let result = mcp
-        .scopes(Parameters(params::ScopesOperation::ResolveMany {
-            ids: ids.clone(),
-        }))
+        .scopes(Parameters(params::ScopesOperation::ResolveMany { ids }))
         .await
         .unwrap();
 
-    // `resolve_many` exists so an agent holding a snapshot does not pay a round trip per scope id.
     // Order matters: the caller pairs results back to the ids it sent positionally.
-    let mut expected = Vec::new();
-    for id in &ids {
-        expected.push(
-            arlesh_lib::commands::scopes::resolve_scope(app.state(), *id)
-                .await
-                .unwrap(),
-        );
-    }
+    let starts: Vec<&str> = payload(&result)
+        .as_array()
+        .expect("resolve_many answers a list")
+        .iter()
+        .map(|resolved| resolved["start"].as_str().unwrap())
+        .collect();
     assert_eq!(
-        payload(&result),
-        &serde_json::to_value(&expected).unwrap(),
+        starts,
+        [
+            "2026-02-01T02:00:00",
+            "2026-02-09T02:00:00",
+            "2026-02-01T02:00:00"
+        ],
         "scopes.resolve_many"
     );
 }
@@ -359,20 +369,16 @@ fn task_ids(result: &CallToolResult) -> Vec<i64> {
 }
 
 #[tokio::test]
-async fn snapshot_commits_rather_than_rolling_back() {
+async fn snapshot_writes_nothing() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let mcp = helpers::mcp_over_whole_board(&pool).await;
     seed(&app).await;
 
-    // Deriving habit iterations mints the scope rows their windows land on. Replacing the
-    // `db.commit()` in the tool with `Ok(())` still compiles and still returns a correct-looking
-    // payload, because sqlx rolls a dropped transaction back silently. Only reading the rows off
-    // the pool after the tool's session has closed tells the difference.
-    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scopes")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    // Deriving habit iterations used to mint the scope rows their windows landed on, so the
+    // snapshot had to commit. Scopes are derived now (ADR 0009): the test pool is one connection,
+    // so its change counter sees every row anything writes through it.
+    let before = helpers::total_changes(&pool).await;
 
     let result = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
@@ -385,13 +391,10 @@ async fn snapshot_commits_rather_than_rolling_back() {
         .unwrap();
     assert_ne!(result.is_error, Some(true));
 
-    let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scopes")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert!(
-        after >= before,
-        "snapshot lost scope rows: {before} before, {after} after"
+    assert_eq!(
+        helpers::total_changes(&pool).await,
+        before,
+        "a snapshot is a read"
     );
 }
 
@@ -442,12 +445,10 @@ async fn tasks_containment_conflicts_matches_the_command() {
     let mcp = helpers::mcp_over_whole_board(&pool).await;
     let task_id = seed(&app).await;
 
-    let scope = arlesh_lib::commands::scopes::get_or_create_scope(
-        app.state(),
+    let scope = arlesh_lib::commands::scopes::scope_containing(
         arlesh_lib::scopes::model::ScopeKind::Week,
         "2026-02-02".into(),
     )
-    .await
     .unwrap();
 
     let result = mcp
@@ -457,8 +458,8 @@ async fn tasks_containment_conflicts_matches_the_command() {
                 node_id: task_id,
             },
             time_scope: params::TimeScope {
-                start_id: scope.id,
-                end_id: scope.id,
+                start_id: param(scope.id),
+                end_id: param(scope.id),
                 duration: None,
             },
         }))
@@ -890,27 +891,22 @@ async fn the_snapshot_carries_a_beads_id_once_it_is_set() {
 #[tokio::test]
 async fn scopes_resolve_matches_the_command() {
     let pool = helpers::test_pool().await;
-    let app = helpers::command_host(&pool);
     let mcp = helpers::mcp_over_whole_board(&pool).await;
 
-    let scope = arlesh_lib::commands::scopes::get_or_create_scope(
-        app.state(),
+    let scope = arlesh_lib::commands::scopes::scope_containing(
         arlesh_lib::scopes::model::ScopeKind::Week,
         "2026-02-02".into(),
     )
-    .await
     .unwrap();
 
     let result = mcp
         .scopes(Parameters(params::ScopesOperation::Resolve {
-            id: scope.id,
+            id: param(scope.id),
         }))
         .await
         .unwrap();
 
-    let expected = arlesh_lib::commands::scopes::resolve_scope(app.state(), scope.id)
-        .await
-        .unwrap();
+    let expected = arlesh_lib::commands::scopes::resolve_scope(scope.id);
     assert_eq!(
         payload(&result),
         &serde_json::to_value(&expected).unwrap(),
@@ -919,18 +915,20 @@ async fn scopes_resolve_matches_the_command() {
 }
 
 #[tokio::test]
-async fn scopes_resolve_on_a_missing_id_reports_not_found() {
+async fn scopes_resolve_on_an_impossible_date_reports_an_invalid_request() {
     let pool = helpers::test_pool().await;
     let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     let result = mcp
-        .scopes(Parameters(params::ScopesOperation::Resolve { id: 99_999 }))
+        .scopes(Parameters(params::ScopesOperation::Resolve {
+            id: param_of(r#"{"kind":"day","date":"2026-02-31"}"#),
+        }))
         .await
         .unwrap();
 
     assert_eq!(
         error_payload(&result).get("kind").and_then(|k| k.as_str()),
-        Some("not_found"),
+        Some("invalid_request"),
     );
 }
 
@@ -941,26 +939,22 @@ async fn a_duration_carries_through_to_the_domain_window() {
     let mcp = helpers::mcp_over_whole_board(&pool).await;
     let task_id = seed(&app).await;
 
-    let start = arlesh_lib::commands::scopes::get_or_create_scope(
-        app.state(),
+    let start = arlesh_lib::commands::scopes::scope_containing(
         arlesh_lib::scopes::model::ScopeKind::Week,
         "2026-02-02".into(),
     )
-    .await
     .unwrap();
-    let end = arlesh_lib::commands::scopes::get_or_create_scope(
-        app.state(),
+    let end = arlesh_lib::commands::scopes::scope_containing(
         arlesh_lib::scopes::model::ScopeKind::Week,
         "2026-02-09".into(),
     )
-    .await
     .unwrap();
 
     // The MCP window types are a separate mirror of the domain ones, so the conversion between
     // them is real code that can drift. A window in duration form is the shape that exercises it.
     let mcp_window = params::TimeScope {
-        start_id: start.id,
-        end_id: end.id,
+        start_id: param(start.id),
+        end_id: param(end.id),
         duration: Some(params::DurationSpec {
             n: 2,
             kind: "week".into(),
@@ -1206,17 +1200,11 @@ async fn beads_set_refuses_a_commitment_because_only_an_agentic_task_is_writable
     let app = helpers::command_host(&pool);
     let mcp = helpers::mcp_over_whole_board(&pool).await;
 
-    let scope = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Day,
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
-        )
-        .await
-        .unwrap();
+    let scope = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Day,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap();
 
     let commitment = commitment_commands::create_commitment(
         app.state(),

@@ -3,6 +3,8 @@ import { buildPlanSections, subscopeCells } from "./plan-sections";
 import type { TaskListRow } from "./list-filter";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import type { PartOfDay, Scope, ScopeKind } from "@/api/scopes";
+import { testKey } from "@/test/scope-key";
+import { scopeKeyText } from "@/utils/scope-key";
 
 /**
  * A scope row. Only the fields the sectioning reads carry meaning — the dates, the kind and the
@@ -11,9 +13,8 @@ import type { PartOfDay, Scope, ScopeKind } from "@/api/scopes";
  */
 function scopeRow(id: number, kind: ScopeKind, startDate: string, endDate: string, part: PartOfDay | null = null): Scope {
   return {
-    id, kind, label: `${kind}:${startDate}`,
+    id: testKey(id), kind, label: `${kind}:${startDate}`,
     start_date: startDate, end_date: endDate,
-    week_id: null, month_id: null, season_id: null, day_id: null,
     part, start_datetime: null, end_datetime: null,
   };
 }
@@ -24,7 +25,7 @@ function node(id: string, extra: Partial<MindmapNode> = {}, kind: NodeKind = "ta
 
 function row(id: string, planId: number | null, ancestors: MindmapNode[] = []): TaskListRow {
   return {
-    node: node(id, planId === null ? {} : { plan: { start_id: planId, end_id: planId } }),
+    node: node(id, planId === null ? {} : { plan: { start_id: testKey(planId), end_id: testKey(planId) } }),
     ancestors,
     goalRef: null, goalStatus: null, projectRef: null, projectStatus: null,
     dependencyRefs: [], isBlocked: false, isAgentic: false, isAsynchronous: false,
@@ -77,7 +78,7 @@ describe("buildPlanSections", () => {
 
   it("files a task under the week its plan sits in", () => {
     const tuesday = scopeRow(1, "day", "2026-09-22", "2026-09-22");
-    const scopes = new Map([[100, SEPTEMBER], [1, tuesday]]);
+    const scopes = new Map([[scopeKeyText(testKey(100)), SEPTEMBER], [scopeKeyText(testKey(1)), tuesday]]);
     const split = buildPlanSections([row("a", 1)], SEPTEMBER, scopes, ALL);
     const holding = split?.sections.filter((section) => section.rows.length > 0) ?? [];
     expect(holding).toHaveLength(1);
@@ -87,13 +88,13 @@ describe("buildPlanSections", () => {
   });
 
   it("draws empty subscopes, because an empty week is an answer", () => {
-    const split = buildPlanSections([], SEPTEMBER, new Map([[100, SEPTEMBER]]), ALL);
+    const split = buildPlanSections([], SEPTEMBER, new Map([[scopeKeyText(testKey(100)), SEPTEMBER]]), ALL);
     expect(split?.sections.length).toBeGreaterThan(1);
     expect(split?.sections.every((section) => section.rows.length === 0)).toBe(true);
   });
 
   it("marks a straddling subscope partial, and a wholly-contained one not", () => {
-    const sections = buildPlanSections([], SEPTEMBER, new Map([[100, SEPTEMBER]]), ALL)?.sections ?? [];
+    const sections = buildPlanSections([], SEPTEMBER, new Map([[scopeKeyText(testKey(100)), SEPTEMBER]]), ALL)?.sections ?? [];
     expect(sections[0]?.partial).toBe(true);
     expect(sections[sections.length - 1]?.partial).toBe(true);
     // A week in the middle of the month is inside it at both ends.
@@ -105,21 +106,21 @@ describe("buildPlanSections", () => {
   // shade, and reading that as containment was what marked every day's last band as straddling it.
   it("never marks a day's own bands partial, Night included", () => {
     const day = scopeRow(300, "day", "2026-09-22", "2026-09-22");
-    const sections = buildPlanSections([], day, new Map([[300, day]]), ALL)?.sections ?? [];
+    const sections = buildPlanSections([], day, new Map([[scopeKeyText(testKey(300)), day]]), ALL)?.sections ?? [];
     expect(sections).toHaveLength(6);
     expect(sections.some((section) => section.partial)).toBe(false);
   });
 
   it("never marks a week's own days partial either", () => {
     const week = scopeRow(500, "week", "2026-09-20", "2026-09-26");
-    const sections = buildPlanSections([], week, new Map([[500, week]]), ALL)?.sections ?? [];
+    const sections = buildPlanSections([], week, new Map([[scopeKeyText(testKey(500)), week]]), ALL)?.sections ?? [];
     expect(sections).toHaveLength(7);
     expect(sections.some((section) => section.partial)).toBe(false);
   });
 
   it("leaves a Premorning nobody asked for out of the split", () => {
     const day = scopeRow(300, "day", "2026-09-22", "2026-09-22");
-    const split = buildPlanSections([], day, new Map([[300, day]]), { includePremorning: false });
+    const split = buildPlanSections([], day, new Map([[scopeKeyText(testKey(300)), day]]), { includePremorning: false });
     expect(split?.sections).toHaveLength(5);
     expect(split?.sections.some((section) => section.ref.kind === "part_of_day" && section.ref.part === "premorning")).toBe(false);
   });
@@ -127,14 +128,14 @@ describe("buildPlanSections", () => {
   it("draws Premorning anyway while something is planned into it", () => {
     const day = scopeRow(300, "day", "2026-09-22", "2026-09-22");
     const early = scopeRow(1, "part_of_day", "2026-09-22", "2026-09-22", "premorning");
-    const scopes = new Map([[300, day], [1, early]]);
+    const scopes = new Map([[scopeKeyText(testKey(300)), day], [scopeKeyText(testKey(1)), early]]);
     const split = buildPlanSections([row("a", 1)], day, scopes, { includePremorning: false });
     expect(split?.sections).toHaveLength(6);
     expect(split?.sections[0]?.rows.map((r) => r.node.id)).toEqual(["a"]);
   });
 
   it("hands work planned to the scope itself back as unplaced, for the candidates side", () => {
-    const scopes = new Map([[100, SEPTEMBER]]);
+    const scopes = new Map([[scopeKeyText(testKey(100)), SEPTEMBER]]);
     const split = buildPlanSections([row("a", 100)], SEPTEMBER, scopes, ALL);
     expect(split?.unplaced.map((r) => r.node.id)).toEqual(["a"]);
     expect(split?.sections.every((section) => section.rows.length === 0)).toBe(true);
@@ -142,12 +143,12 @@ describe("buildPlanSections", () => {
 
   it("hands a plan spanning several subscopes back too, rather than filing it under one", () => {
     // A window from the first week's Sunday to the third week's Saturday sits inside no one week.
-    const wide = node("a", { plan: { start_id: 1, end_id: 2 } });
+    const wide = node("a", { plan: { start_id: testKey(1), end_id: testKey(2) } });
     const spanning: TaskListRow = { ...row("a", null), node: wide };
     const scopes = new Map([
-      [100, SEPTEMBER],
-      [1, scopeRow(1, "week", "2026-09-06", "2026-09-12")],
-      [2, scopeRow(2, "week", "2026-09-20", "2026-09-26")],
+      [scopeKeyText(testKey(100)), SEPTEMBER],
+      [scopeKeyText(testKey(1)), scopeRow(1, "week", "2026-09-06", "2026-09-12")],
+      [scopeKeyText(testKey(2)), scopeRow(2, "week", "2026-09-20", "2026-09-26")],
     ]);
     const split = buildPlanSections([spanning], SEPTEMBER, scopes, ALL);
     expect(split?.unplaced).toHaveLength(1);
@@ -155,14 +156,14 @@ describe("buildPlanSections", () => {
 
   it("holds a task whose plan has not been read back yet, rather than dropping it", () => {
     // The scope map is empty but for the target: the plan's own rows are still in flight.
-    const split = buildPlanSections([row("a", 7)], SEPTEMBER, new Map([[100, SEPTEMBER]]), ALL);
+    const split = buildPlanSections([row("a", 7)], SEPTEMBER, new Map([[scopeKeyText(testKey(100)), SEPTEMBER]]), ALL);
     expect(split?.unplaced.map((r) => r.node.id)).toEqual(["a"]);
   });
 
   it("files a task under the band its plan names, and hands the day's own work back", () => {
     const day = scopeRow(300, "day", "2026-09-22", "2026-09-22");
     const morning = scopeRow(1, "part_of_day", "2026-09-22", "2026-09-22", "morning");
-    const scopes = new Map([[300, day], [1, morning]]);
+    const scopes = new Map([[scopeKeyText(testKey(300)), day], [scopeKeyText(testKey(1)), morning]]);
     const split = buildPlanSections([row("a", 1), row("b", 300)], day, scopes, ALL);
     expect(split?.unplaced.map((r) => r.node.id)).toEqual(["b"]);
     const banded = split?.sections.filter((section) => section.rows.length > 0) ?? [];
@@ -172,9 +173,9 @@ describe("buildPlanSections", () => {
 
   it("keeps every planned row, in a bucket or out of one", () => {
     const scopes = new Map([
-      [100, SEPTEMBER],
-      [1, scopeRow(1, "day", "2026-09-22", "2026-09-22")],
-      [2, scopeRow(2, "day", "2026-09-03", "2026-09-03")],
+      [scopeKeyText(testKey(100)), SEPTEMBER],
+      [scopeKeyText(testKey(1)), scopeRow(1, "day", "2026-09-22", "2026-09-22")],
+      [scopeKeyText(testKey(2)), scopeRow(2, "day", "2026-09-03", "2026-09-03")],
     ]);
     const rows = [row("a", 1), row("b", 2), row("c", 100), row("d", 99)];
     const split = buildPlanSections(rows, SEPTEMBER, scopes, ALL);
@@ -185,7 +186,7 @@ describe("buildPlanSections", () => {
 
   it("carries each bucket's own calendar cell, which is what a drop or a hotkey plans into", () => {
     const week = scopeRow(500, "week", "2026-09-20", "2026-09-26");
-    const sections = buildPlanSections([], week, new Map([[500, week]]), ALL)?.sections ?? [];
+    const sections = buildPlanSections([], week, new Map([[scopeKeyText(testKey(500)), week]]), ALL)?.sections ?? [];
     expect(sections[0]?.ref).toEqual({ kind: "day", date: "2026-09-20" });
   });
 });

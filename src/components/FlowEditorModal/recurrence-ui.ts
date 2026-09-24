@@ -1,7 +1,7 @@
 import type { ConsumptionKind, BlockingMode, CatchupPolicy } from "@/api/flows";
 import type { CanonicalKind } from "@/utils/scope-ref";
 
-/** UI state for a flow's Recurrence (a Habit). Dates are materialized to scope ids on save. */
+/** UI state for a flow's Recurrence (a Habit). Dates become scope keys on save. */
 export interface RecurrenceUi {
   isHabit: boolean;
   /** Start scope's anchor day (ISO `YYYY-MM-DD`), of the kind `recurrenceStartKind` derives. */

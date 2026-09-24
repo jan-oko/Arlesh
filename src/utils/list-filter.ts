@@ -405,24 +405,22 @@ export function filterCommitmentList(
   shared: FilterState,
   listFilter: ListFilterState,
 ): CommitmentListRow[] {
+  return rows.filter((row) => commitmentPassesFilters(row, shared, listFilter));
+}
+
+/** One Commitment row against the filters — the predicate {@link filterCommitmentList} applies. */
+function commitmentPassesFilters(row: CommitmentListRow, shared: FilterState, listFilter: ListFilterState): boolean {
   if (listFilter.preset === "unblock" || listFilter.preset === "backlog" || listFilter.preset === "expectations") {
-    return [];
+    return false;
   }
-  return rows.filter((row) => {
-    if (typeHardHidden(row.node, shared)) return false;
-    if (!shared.privateMode && row.hasPrivateAncestor) return false;
-    if (hasGatingAncestor(row.ancestors, shared)) return false;
-    if (!withArchivedOverride(row.node, shared, passesCommitmentPreset(row.node, shared))) {
-      return false;
-    }
-    if (!passesTags(row.node, shared)) return false;
-    if (!matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors))) return false;
-    if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
-    if (!matchesPillGroup(listFilter.pills.verdict, [row.node.verdict ?? VERDICT.UNRESOLVED])) {
-      return false;
-    }
-    return true;
-  });
+  if (typeHardHidden(row.node, shared)) return false;
+  if (!shared.privateMode && row.hasPrivateAncestor) return false;
+  if (hasGatingAncestor(row.ancestors, shared)) return false;
+  if (!withArchivedOverride(row.node, shared, passesCommitmentPreset(row.node, shared))) return false;
+  if (!passesTags(row.node, shared)) return false;
+  if (!matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors))) return false;
+  if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
+  return matchesPillGroup(listFilter.pills.verdict, [row.node.verdict ?? VERDICT.UNRESOLVED]);
 }
 
 /**
@@ -440,22 +438,25 @@ export function filterExpectationList(
   shared: FilterState,
   listFilter: ListFilterState,
 ): ExpectationListRow[] {
-  if (listFilter.preset === "unblock") return [];
+  return rows.filter((row) => expectationPassesFilters(row, shared, listFilter));
+}
+
+/** One Expectation row against the filters — the predicate {@link filterExpectationList} applies. */
+function expectationPassesFilters(row: ExpectationListRow, shared: FilterState, listFilter: ListFilterState): boolean {
+  if (listFilter.preset === "unblock") return false;
   const onlyWaits = listFilter.preset === "expectations";
   const effective = onlyWaits ? unblockSharedFilter(shared) : shared;
-  return rows.filter((row) => {
-    if (typeHardHidden(row.node, effective)) return false;
-    if (!shared.privateMode && row.hasPrivateAncestor) return false;
-    if (onlyWaits) {
-      if (!isLiveExpectation(row.node)) return false;
-    } else {
-      if (hasGatingAncestor(row.ancestors, shared)) return false;
-      if (!withArchivedOverride(row.node, shared, passesExpectationPreset(row.node, shared))) return false;
-    }
-    if (!passesTags(row.node, shared)) return false;
-    if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
-    return matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors));
-  });
+  if (typeHardHidden(row.node, effective)) return false;
+  if (!shared.privateMode && row.hasPrivateAncestor) return false;
+  if (onlyWaits) {
+    if (!isLiveExpectation(row.node)) return false;
+  } else {
+    if (hasGatingAncestor(row.ancestors, shared)) return false;
+    if (!withArchivedOverride(row.node, shared, passesExpectationPreset(row.node, shared))) return false;
+  }
+  if (!passesTags(row.node, shared)) return false;
+  if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
+  return matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors));
 }
 
 /** Filters the flattened task rows per the shared filter (status preset, tags, Info/Flow/Private) and
@@ -469,9 +470,49 @@ export function filterTaskList(
 }
 
 /** Filtered rows plus the ids kept **only** by the focus exemption — rendered dimmed. */
-export interface FocusFilteredRows {
-  rows: TaskListRow[];
+export interface FocusFilteredRows<Row = TaskListRow> {
+  rows: Row[];
   exemptedIds: ReadonlySet<string>;
+}
+
+/**
+ * Keeps the rows `passes` keeps, plus the focused one whatever `passes` says, and names it as
+ * exempted. One rule for every kind of row the List View draws — a Task, a Commitment, a wait — so
+ * the selected row stays under the cursor whichever kind it is.
+ */
+function keepWithFocus<Row extends { node: { id: string } }>(
+  rows: readonly Row[],
+  passes: (row: Row) => boolean,
+  focusedId: string | null,
+): FocusFilteredRows<Row> {
+  const exemptedIds = new Set<string>();
+  const kept = rows.filter((row) => {
+    if (passes(row)) return true;
+    if (focusedId === null || row.node.id !== focusedId) return false;
+    exemptedIds.add(row.node.id);
+    return true;
+  });
+  return { rows: kept, exemptedIds };
+}
+
+/** {@link filterCommitmentList}, with the focus exemption — see {@link filterTaskListWithFocus}. */
+export function filterCommitmentListWithFocus(
+  rows: readonly CommitmentListRow[],
+  shared: FilterState,
+  listFilter: ListFilterState,
+  focusedId: string | null,
+): FocusFilteredRows<CommitmentListRow> {
+  return keepWithFocus(rows, (row) => commitmentPassesFilters(row, shared, listFilter), focusedId);
+}
+
+/** {@link filterExpectationList}, with the focus exemption — see {@link filterTaskListWithFocus}. */
+export function filterExpectationListWithFocus(
+  rows: readonly ExpectationListRow[],
+  shared: FilterState,
+  listFilter: ListFilterState,
+  focusedId: string | null,
+): FocusFilteredRows<ExpectationListRow> {
+  return keepWithFocus(rows, (row) => expectationPassesFilters(row, shared, listFilter), focusedId);
 }
 
 /**
@@ -489,12 +530,5 @@ export function filterTaskListWithFocus(
   listFilter: ListFilterState,
   focusedId: string | null,
 ): FocusFilteredRows {
-  const exemptedIds = new Set<string>();
-  const kept = rows.filter((row) => {
-    if (rowPassesFilters(row, shared, listFilter)) return true;
-    if (focusedId === null || row.node.id !== focusedId) return false;
-    exemptedIds.add(row.node.id);
-    return true;
-  });
-  return { rows: kept, exemptedIds };
+  return keepWithFocus(rows, (row) => rowPassesFilters(row, shared, listFilter), focusedId);
 }
