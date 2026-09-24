@@ -354,7 +354,7 @@ async fn deleting_an_expectation_takes_its_notes_and_the_edges_aimed_at_it() {
             body: "asked on Monday".into(),
             details: None,
             parent_type: "expectation".into(),
-            parent_id: wait.id.into(),
+            parent_id: wait.id.clone(),
             position: 0,
         })
         .await
