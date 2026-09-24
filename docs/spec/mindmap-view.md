@@ -198,8 +198,11 @@ deterministic. So the existing spellings are **frozen exactly as written**: `dom
 every domain-table subtype), `goal-<id>`, `task-<id>`, `commitment-<id>`, `info-<id>`, `flow-<id>`,
 `flowgoal-<id>`, `flowtask-<id>`, and the folded run's `habitrun-…` keys. A Habit occurrence is
 spelled like any row of its kind, with its UUID for the id (`task-<uuid>`); the `habit-…` and
-`habititem-…` keys it was drawn under before it was a row (ADR 0008) are gone, so a tab that had one
-selected or collapsed simply no longer finds it. Changing any other would silently orphan every tab's
+`habititem-…` keys it was drawn under before it was a row (ADR 0008) are gone. The one piece of
+saved tab state that can name a node — its subtree root — is carried across: a root saved under an
+occurrence's old key, or under the old minted key of a wait's check task, spawned wait or delegation
+wait, is re-rooted at the node's key now, read off the `origin` the node carries; one whose node is
+gone drops back to the true root, as any stale root does. Selection and collapse are not saved. Changing any other would silently orphan every tab's
 saved state.
 
 **A node kind added from now on mints a UUID** for its id instead of composing a string — which
