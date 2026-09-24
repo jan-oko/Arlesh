@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { isDerivedId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
-import { rowIdOf } from "@/utils/node-identity";
+import { rowIdOf, isOccurrence } from "@/utils/node-identity";
 import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField";
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -47,7 +48,7 @@ interface Props {
 export default function GoalEditorModal({ node, allTags, domainNames, onSave, onClearBeadsId, onCheckScopeClamp, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "status", "undo"]);
-  const [title, setTitle] = useState(node.title);
+  const [title, setTitle] = useState(node.rowTitle ?? node.title);
   const [status, setStatus] = useState(node.status ?? GOAL_STATUS.ACTIVE);
   const [blockReasons, setBlockReasons] = useState<string[]>(node.blockReasons ?? []);
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
@@ -67,7 +68,7 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
     setSaveError(null);
     try {
       const dbId = rowIdOf(node);
-      if (timeScope !== null && onCheckScopeClamp && !(await onCheckScopeClamp("goal", dbId, timeScope))) {
+      if (timeScope !== null && !isDerivedId(dbId) && onCheckScopeClamp && !(await onCheckScopeClamp("goal", dbId, timeScope))) {
         setIsSaving(false);
         return;
       }
@@ -118,7 +119,11 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
       </div>
       <div className={styles.label}>
         {t("fieldTimeScope")}
-        <TimeScopeField value={timeScope} onChange={setTimeScope} />
+        <TimeScopeField
+          value={timeScope}
+          onChange={setTimeScope}
+          {...(isOccurrence(node) ? { lockedReason: t("editor:scopeLockedOccurrence") } : {})}
+        />
       </div>
       {timeScope !== null && (
         <div className={styles.label}>

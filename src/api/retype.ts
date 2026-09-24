@@ -1,3 +1,4 @@
+import type { RowId } from "@/api/node-id";
 import { invoke } from "./gesture";
 import { isWireError } from "@/api/errors";
 import type { TimeScope } from "@/api/time-scope";
@@ -169,7 +170,7 @@ export function needsTimeScope(error: unknown): boolean {
  */
 export async function retypeNode(
   nodeType: RetypeKind,
-  nodeId: number,
+  nodeId: RowId,
   targetType: RetypeKind,
   strandedChildren?: StrandedChildren,
   timeScope?: TimeScope,

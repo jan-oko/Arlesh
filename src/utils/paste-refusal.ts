@@ -1,5 +1,6 @@
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import { isDerivedWait } from "@/utils/derived-wait";
+import { isOccurrence } from "@/utils/node-identity";
 import { ALL_NODE_KINDS } from "./tree-layout";
 import { findNode, owningFlowId } from "./mindmap-tree";
 import { canAdoptExistingChild, isFlowKind, validParentKinds } from "./node-meta";
@@ -15,7 +16,7 @@ import { canAdoptExistingChild, isFlowKind, validParentKinds } from "./node-meta
 export const PASTE_REFUSAL = {
   /** The id on the clipboard is no longer in the tree — deleted, or filtered out, since the copy. */
   GONE: "gone",
-  /** A Habit repetition: worked out from the template at load time, with no row behind it. */
+  /** A Habit repetition: it belongs to its iteration, so it is neither moved out nor copied. */
   REPETITION: "repetition",
   /** An Aspect, which is fixed where it is — no destination would have taken it. */
   ASPECT: "aspect",
@@ -147,10 +148,10 @@ export function pasteRefusal(
   if (isDerivedWait(node)) {
     return { reason: PASTE_REFUSAL.DERIVED_WAIT };
   }
-  if (node.virtual === true) return { reason: PASTE_REFUSAL.REPETITION };
+  if (node.virtual === true || isOccurrence(node)) return { reason: PASTE_REFUSAL.REPETITION };
   if (node.kind === "aspect") return { reason: PASTE_REFUSAL.ASPECT };
-  // Asked of the target **node**, not of its kind: a folded run of Habit history and a virtual
-  // occurrence both wear a kind that would say yes. A target that can adopt nothing at all is
+  // Asked of the target **node**, not of its kind: a folded run of Habit history wears a kind
+  // that would say yes, and an occurrence takes no template kind. A target that can adopt nothing at all is
   // refused by the caller before this is ever reached, so what is left here really is about kinds.
   if (!canAdoptExistingChild(target, node.kind)) {
     // The rule that said no also says where yes would have been, in the same breath and from the

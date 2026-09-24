@@ -112,6 +112,11 @@ pub struct Flow {
     pub position: i64,
     /// Whether this flow is private (hidden unless Private Mode is on).
     pub is_private: bool,
+    /// What the template says about the rows it draws beyond its title and place: its kind's
+    /// columns and relations (migration 0061), flattened onto the row on the wire.
+    #[sqlx(skip)]
+    #[serde(flatten)]
+    pub template: super::template::TemplateFields,
 }
 
 /// A flow-goal (template item) row.
@@ -131,6 +136,11 @@ pub struct FlowGoal {
     pub position: i64,
     /// Whether this item is private (hidden unless Private Mode is on; propagates to its instances).
     pub is_private: bool,
+    /// What the template says about the rows it draws beyond its title and place: its kind's
+    /// columns and relations (migration 0061), flattened onto the row on the wire.
+    #[sqlx(skip)]
+    #[serde(flatten)]
+    pub template: super::template::TemplateFields,
 }
 
 /// A flow-task (template item) row.
@@ -150,6 +160,11 @@ pub struct FlowTask {
     pub position: i64,
     /// Whether this item is private (hidden unless Private Mode is on; propagates to its instances).
     pub is_private: bool,
+    /// What the template says about the rows it draws beyond its title and place: its kind's
+    /// columns and relations (migration 0061), flattened onto the row on the wire.
+    #[sqlx(skip)]
+    #[serde(flatten)]
+    pub template: super::template::TemplateFields,
 }
 
 /// Request body for creating a flow.
@@ -252,6 +267,9 @@ pub struct UpdateFlowRequest {
     pub position: Option<i64>,
     /// New private flag, if changing.
     pub is_private: Option<bool>,
+    /// Template fields to change, flattened into the request: its kind's columns and relations.
+    #[serde(flatten)]
+    pub template: super::template::TemplateUpdate,
 }
 
 /// Request body for creating a flow item (goal or task).
@@ -300,6 +318,9 @@ pub struct UpdateFlowItemRequest {
     pub position: Option<i64>,
     /// New private flag, if changing.
     pub is_private: Option<bool>,
+    /// Template fields to change, flattened into the request: its kind's columns and relations.
+    #[serde(flatten)]
+    pub template: super::template::TemplateUpdate,
 }
 
 /// A relative (Cycle Scope, Cycle Plan) pair carried by a flow item.
@@ -514,7 +535,7 @@ pub struct SetRecurrenceRequest {
 
 /// The derived state of a Habit iteration on a given day (nothing is persisted — see the pure
 /// classifier in `flows::habits`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IterationStatus {
     /// Open and awaiting completion.
@@ -526,6 +547,10 @@ pub enum IterationStatus {
     Lapsed,
     /// Skipped by a Blocking `latest` catch-up.
     Missed,
+    /// An iteration whose window has not begun. Only derived when something asks for it — an edit
+    /// already made to one of its occurrences, or a caller naming a window that reaches it (the
+    /// Plan View filling next month); the classifier itself never produces it.
+    Upcoming,
     /// A **commitment** Habit's iteration whose Verdict Window ran out with no verdict recorded.
     ///
     /// Not a fifth verdict and not a failure: the Verdict stays unresolved for good, and only the
@@ -535,10 +560,7 @@ pub enum IterationStatus {
     Expired,
 }
 
-/// Sentinel `cycle_id` for an occurrence that came from no cycle pair — an item that declares
-/// none, and the flow root, which never has any. Zero rather than `NULL` because the value is part
-/// of a UNIQUE key, and SQLite counts NULLs as distinct.
-pub const NO_CYCLE: i64 = 0;
+pub use crate::nodes::key::NO_CYCLE;
 
 /// Where one occurrence sits relative to **its own** window at the reference instant.
 ///
@@ -666,26 +688,22 @@ pub struct HabitItemStatus {
 /// A string on the wire rather than an enum with a `from_db`, because it is exactly the
 /// `node_type` every other polymorphic reference in the payload already speaks, and a second
 /// vocabulary for the same four words would be one to translate at every boundary.
-pub const CHILD_KINDS: [&str; 4] = ["task", "goal", "commitment", "info"];
+pub const CHILD_KINDS: [&str; 5] = ["task", "goal", "commitment", "info", "expectation"];
 
-/// One real node attached to a single virtual Habit occurrence.
+/// One stored node hung on a single derived one — a node added to a Habit occurrence.
 ///
-/// The occurrence is named by the same `(item_type, item_id, iteration_scope_id, cycle_id)`
-/// quadruple a [`HabitItemStatus`] is keyed by, so an added child and a recorded status describe
-/// the same thing when they agree on those four fields. `child_type`/`child_id` name the real row,
-/// which is an ordinary Task, Goal, Commitment or Info in every other respect.
+/// The occurrence is named by its canonical key (`flow_task:12:2026-09-20:3`), the same key its
+/// overlay row generates. `child_type`/`child_id` name the stored row, which is an ordinary Task,
+/// Goal, Commitment, Expectation or Info in every other respect; the virtual tables read its
+/// parent as the occurrence through this attachment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, sqlx::FromRow)]
 pub struct HabitInstanceChild {
     /// The Habit the occurrence belongs to.
     pub flow_id: i64,
-    /// Which instance of the iteration holds it (`flow_goal`, `flow_task`, or `flow_root`).
-    pub item_type: String,
-    /// The instance's id (a flow item id, or the flow id for `flow_root`).
-    pub item_id: i64,
-    /// The iteration scope the occurrence belongs to.
-    pub iteration_scope_id: ScopeKey,
-    /// Which of the item's cycle pairs drew the occurrence, or [`NO_CYCLE`].
-    pub cycle_id: i64,
+    /// What the occurrence is: `task`, `goal` or `commitment`.
+    pub parent_kind: String,
+    /// The occurrence's canonical key.
+    pub parent_key: String,
     /// Which table the child row lives in — one of [`CHILD_KINDS`].
     pub child_type: String,
     /// The child row's id.
@@ -694,18 +712,19 @@ pub struct HabitInstanceChild {
 
 /// The occurrence an added child hangs on, as everything above the child needs to read it.
 ///
-/// Deliberately not a [`HabitInstanceChild`]: what a reader of the child wants is not the key of
-/// the occurrence but its **window** and what it renders as, which is what governs the child's
+/// What a reader of the child wants is not the occurrence's key but its **window** and what it renders as, which is what governs the child's
 /// containment and its Archival. The window is the pair of boundary scopes the attachment settled
 /// when it was written, so reading it resolves nothing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChildAttachment {
     /// The Habit whose occurrence holds the child.
     pub flow_id: i64,
-    /// What the occurrence renders as — the flow's Instance Type (`goal`/`task`/`commitment`).
+    /// What the occurrence renders as (`goal`/`task`/`commitment`).
     pub instance_type: String,
-    /// The occurrence's window.
-    pub window: TimeScope,
+    /// The occurrence's canonical key.
+    pub parent_key: String,
+    /// The occurrence's window, when one was settled.
+    pub window: Option<TimeScope>,
 }
 
 /// An added child that is not finished, as the completion guard names it back to the caller.

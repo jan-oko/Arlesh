@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import StepsView from "./StepsView";
 import { useFilterStore } from "@/stores/use-filter-store";
@@ -8,7 +9,6 @@ import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
 import { fixtureRowId } from "@/test/node-fixture";
-import { testKey } from "@/test/scope-key";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -250,18 +250,16 @@ describe("a card with no editor", () => {
     expect(selectedCardId()).toBe("domain-2");
   });
 
-  it("refuses a virtual Habit occurrence, which is drawn from its template rather than stored", () => {
+  it("opens the editor on a Habit occurrence, which is a row like any other", () => {
     mockTree([n("task-7", "task", {
-      virtual: true,
-      habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: testKey(3), cycleId: 0 },
+      ...occurrenceRow({ habitId: 1, itemType: "flow_task", itemId: 2, cycleId: 0 }),
     })]);
     render(<StepsView />);
 
     press("ArrowDown");
     press("KeyE");
 
-    expect(setEditorModal).not.toHaveBeenCalled();
-    expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedNoEditor");
+    expect(setEditorModal).toHaveBeenCalled();
   });
 });
 

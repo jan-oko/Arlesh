@@ -1,0 +1,1 @@
+- **Archiving a Habit repetition takes what it holds with it.** Deleting an iteration's root archives the whole iteration, and archiving one occurrence archives the steps nested under it — as archiving any Task does. An archived iteration counts as over, so a Blocking Habit moves on to the next one without anything being marked done.

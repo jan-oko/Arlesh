@@ -50,8 +50,9 @@ export default function TaskRow({
   const inputRef = useRef<HTMLInputElement>(null);
   const { node } = row;
 
-  // Mirrors the Mindmap node's own gating: a Habit instance always advances; a real task only while unblocked.
-  const canClickStatus = node.habitItem !== undefined || !row.isBlocked;
+  // Mirrors the Mindmap node's own gating: a task advances only while unblocked — a Habit
+  // occurrence included, since it is a Task like any other.
+  const canClickStatus = !row.isBlocked;
 
   // Washed in its aspect's colour, flat — the same wash a Steps card takes, so a Task reads as the
   // same part of the board on either surface. `node.color` is the aspect's, propagated on load.

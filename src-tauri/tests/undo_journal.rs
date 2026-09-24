@@ -21,6 +21,7 @@ use arlesh_lib::{
     domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
     tasks::model::{CreateTaskRequest, UpdateTaskRequest},
 };
+use helpers::StoredId;
 use rmcp::handler::server::wrapper::Parameters;
 use tauri::Manager;
 
@@ -124,7 +125,7 @@ fn task_request(project_id: i64, title: &str) -> CreateTaskRequest {
     CreateTaskRequest {
         title: title.into(),
         parent_type: "project".into(),
-        parent_id: project_id,
+        parent_id: project_id.into(),
         status: None,
         time_scope: None,
         on_scope_exit: None,
@@ -331,6 +332,7 @@ async fn updating_a_task_journals_both_the_row_it_was_and_the_row_it_became() {
             title: Some("after".into()),
             ..Default::default()
         },
+        None,
     )
     .await
     .expect("update task");
@@ -366,13 +368,13 @@ async fn deleting_a_task_journals_every_row_the_cascade_removed_under_one_gestur
         app.state(),
         CreateTaskRequest {
             parent_type: "task".into(),
-            parent_id: parent.id,
+            parent_id: parent.id.clone(),
             ..task_request(project_id, "child")
         },
     )
     .await
     .expect("create child");
-    task_commands::add_tag_to_task(app.state(), child.id, tag_id)
+    task_commands::add_tag_to_task(app.state(), child.id.clone(), tag_id)
         .await
         .expect("tag the child");
     clear_journal(&pool).await;
@@ -427,7 +429,7 @@ async fn an_mcp_write_is_journaled_as_mcp_and_leaves_the_source_as_it_found_it()
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: task.id,
+            node_id: task.id.sid(),
             beads_id: Some("Arlesh-npt".into()),
         }))
         .await

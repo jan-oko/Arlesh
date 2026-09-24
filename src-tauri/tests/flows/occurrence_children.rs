@@ -13,12 +13,16 @@
 use crate::helpers;
 
 use arlesh_lib::commands::flows as flow_commands;
+use arlesh_lib::commands::tasks as task_commands;
 use arlesh_lib::flows::model::{
-    BlockingMode, CatchupPolicy, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest,
-    HabitInstanceRef, InstanceType, SetRecurrenceRequest,
+    BlockingMode, CatchupPolicy, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, FlowId,
+    HabitInstanceChild, InstanceType, SetRecurrenceRequest, TargetRef,
 };
+use arlesh_lib::nodes::id::NodeId;
+use arlesh_lib::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind};
 use arlesh_lib::scopes::{key::ScopeKey, model::ScopeKind};
-use arlesh_lib::tasks::model::{TaskId, TimeScope, UpdateTaskRequest};
+use arlesh_lib::tasks::model::{Task, TaskId, TaskStatus, TimeScope, UpdateTaskRequest};
+use helpers::StoredId;
 use tauri::Manager;
 
 fn ymd(y: i32, m: u32, d: u32) -> chrono::NaiveDate {
@@ -45,14 +49,78 @@ async fn scope_id(_pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::Naive
         .id
 }
 
-/// The flow root's occurrence in the iteration anchored at `scope`.
-fn root_of(flow_id: i64, scope: ScopeKey) -> HabitInstanceRef {
-    HabitInstanceRef {
-        item_type: "flow_root".into(),
-        item_id: flow_id,
-        iteration_scope_id: scope,
-        cycle_id: 0,
+/// The flow root's occurrence in the Habit's first iteration, 2026-01-05.
+fn root_of(flow_id: i64) -> OccurrenceKey {
+    OccurrenceKey {
+        item: TemplateItem {
+            item_type: TemplateKind::FlowRoot,
+            item_id: flow_id,
+        },
+        iteration: ScopeKey::day(ymd(2026, 1, 5)),
+        cycle: 0,
     }
+}
+
+/// Hangs a new node of `kind` on one occurrence.
+async fn add_child(
+    pool: &sqlx::SqlitePool,
+    parent: &OccurrenceKey,
+    kind: &str,
+    title: &str,
+) -> Result<TargetRef, arlesh_lib::flows::error::FlowError> {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let child = arlesh_lib::flows::create_instance_child(&mut db, parent, kind, title.into()).await;
+    if child.is_ok() {
+        db.commit().await.unwrap();
+    }
+    child
+}
+
+/// Completes the Habit's first iteration root through the ordinary Task update.
+async fn complete_root(
+    app: &tauri::App<tauri::test::MockRuntime>,
+    flow_id: i64,
+    confirmed: Option<bool>,
+) -> Result<Task, arlesh_lib::error::WireError> {
+    task_commands::update_task(
+        app.state(),
+        NodeId::Derived(root_of(flow_id).id()),
+        UpdateTaskRequest {
+            status: Some(TaskStatus::Done),
+            ..Default::default()
+        },
+        confirmed,
+    )
+    .await
+}
+
+/// The iteration root's status as the board reads it.
+async fn root_status(app: &tauri::App<tauri::test::MockRuntime>, flow_id: i64) -> String {
+    let load = arlesh_lib::commands::mindmap::load_mindmap(app.state(), at("2026-01-05T09:00:00"))
+        .await
+        .unwrap();
+    let root = NodeId::Derived(root_of(flow_id).id());
+    load.tasks
+        .into_iter()
+        .find(|task| task.id == root)
+        .expect("the iteration root is on the board")
+        .status
+}
+
+/// Every node hung on this Habit's occurrences.
+async fn children(pool: &sqlx::SqlitePool, flow_id: i64) -> Vec<HabitInstanceChild> {
+    helpers::session_factory(pool)
+        .connect()
+        .await
+        .unwrap()
+        .flows()
+        .list_instance_children(FlowId(flow_id))
+        .await
+        .unwrap()
+}
+
+fn at(instant: &str) -> chrono::NaiveDateTime {
+    chrono::NaiveDateTime::parse_from_str(instant, "%Y-%m-%dT%H:%M:%S").unwrap()
 }
 
 /// A day-long Habit starting 2026-01-05, and the anchor scope of its first iteration.
@@ -86,31 +154,25 @@ async fn habit_with_one_day(
 async fn an_occurrence_takes_a_child_of_every_kind_a_task_can_parent() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let (flow_id, start) = habit_with_one_day(&pool, &app).await;
+    let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
 
     for kind in ["task", "goal", "commitment", "info"] {
-        let child = flow_commands::create_habit_instance_child(
-            app.state(),
-            flow_id,
-            root_of(flow_id, start),
-            kind.into(),
-            format!("a {kind}"),
-        )
-        .await
-        .unwrap_or_else(|error| panic!("an occurrence should hold a {kind}: {error:?}"));
+        let child = add_child(&pool, &root_of(flow_id), kind, &format!("a {kind}"))
+            .await
+            .unwrap_or_else(|error| panic!("an occurrence should hold a {kind}: {error:?}"));
         assert_eq!(child.node_type, kind);
     }
 
-    let children = flow_commands::list_habit_instance_children(app.state(), flow_id)
-        .await
-        .unwrap();
+    let children = children(&pool, flow_id).await;
     assert_eq!(
         children.len(),
         4,
         "all four kinds hang on the occurrence — anything a Task can parent"
     );
     assert!(
-        children.iter().all(|c| c.iteration_scope_id == start),
+        children
+            .iter()
+            .all(|c| c.parent_key == root_of(flow_id).node_key()),
         "each one belongs to the iteration it was added on, and to no other"
     );
 }
@@ -119,18 +181,12 @@ async fn an_occurrence_takes_a_child_of_every_kind_a_task_can_parent() {
 async fn a_flow_or_a_flow_item_is_refused_by_name() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let (flow_id, start) = habit_with_one_day(&pool, &app).await;
+    let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
 
-    let refused = flow_commands::create_habit_instance_child(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        "flow".into(),
-        "nested habit".into(),
-    )
-    .await
-    .expect_err("an occurrence holds what a Task holds, and a Flow is not among them");
-    let wire = serde_json::to_value(&refused).unwrap();
+    let refused = add_child(&pool, &root_of(flow_id), "flow", "nested habit")
+        .await
+        .expect_err("an occurrence holds what a Task holds, and a Flow is not among them");
+    let wire = serde_json::to_value(arlesh_lib::error::WireError::from_error(refused)).unwrap();
     assert_eq!(wire["kind"].as_str(), Some("invalid_request"));
 }
 
@@ -142,36 +198,23 @@ async fn an_unfinished_child_never_withholds_the_habits_next_iteration() {
     // something jotted against tonight could stall the habit forever.
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let (flow_id, start) = habit_with_one_day(&pool, &app).await;
-    flow_commands::create_habit_instance_child(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        "task".into(),
-        "buy milk".into(),
-    )
-    .await
-    .unwrap();
+    let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
+    add_child(&pool, &root_of(flow_id), "task", "buy milk")
+        .await
+        .unwrap();
 
     // The occurrence is closed over the unfinished child, deliberately.
-    flow_commands::set_habit_item_status(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        Some("done".into()),
-        1_767_600_000_000,
-        Some(true),
-    )
-    .await
-    .unwrap();
+    complete_root(&app, flow_id, Some(true)).await.unwrap();
 
-    let iterations = flow_commands::generate_habit_iterations(
-        app.state(),
-        flow_id,
-        chrono::NaiveDateTime::parse_from_str("2026-01-07T09:00:00", "%Y-%m-%dT%H:%M:%S").unwrap(),
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let iterations = arlesh_lib::flows::generate_habit_iterations(
+        &mut db,
+        FlowId(flow_id),
+        at("2026-01-07T09:00:00"),
     )
     .await
     .unwrap();
+    db.commit().await.unwrap();
 
     assert!(
         iterations.len() > 1,
@@ -183,27 +226,14 @@ async fn an_unfinished_child_never_withholds_the_habits_next_iteration() {
 async fn completing_an_occurrence_that_still_holds_work_asks_first_and_names_it() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let (flow_id, start) = habit_with_one_day(&pool, &app).await;
-    flow_commands::create_habit_instance_child(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        "task".into(),
-        "buy milk".into(),
-    )
-    .await
-    .unwrap();
+    let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
+    add_child(&pool, &root_of(flow_id), "task", "buy milk")
+        .await
+        .unwrap();
 
-    let refusal = flow_commands::set_habit_item_status(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        Some("done".into()),
-        1_767_600_000_000,
-        None,
-    )
-    .await
-    .expect_err("an occurrence still holding work is not closed without being asked");
+    let refusal = complete_root(&app, flow_id, None)
+        .await
+        .expect_err("an occurrence still holding work is not closed without being asked");
 
     let wire = serde_json::to_value(&refusal).unwrap();
     assert_eq!(wire["kind"].as_str(), Some("needs_confirmation"));
@@ -213,11 +243,9 @@ async fn completing_an_occurrence_that_still_holds_work_asks_first_and_names_it(
         "the refusal names what is about to be closed over, so the answer is not blind: {details}"
     );
 
-    let statuses = flow_commands::list_habit_item_statuses(app.state(), flow_id)
-        .await
-        .unwrap();
-    assert!(
-        statuses.is_empty(),
+    assert_eq!(
+        root_status(&app, flow_id).await,
+        "todo",
         "declining leaves the occurrence exactly as it was"
     );
 }
@@ -226,35 +254,19 @@ async fn completing_an_occurrence_that_still_holds_work_asks_first_and_names_it(
 async fn confirming_closes_the_occurrence_and_leaves_the_child_alone() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let (flow_id, start) = habit_with_one_day(&pool, &app).await;
-    let child = flow_commands::create_habit_instance_child(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        "task".into(),
-        "buy milk".into(),
-    )
-    .await
-    .unwrap();
-
-    flow_commands::set_habit_item_status(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        Some("done".into()),
-        1_767_600_000_000,
-        Some(true),
-    )
-    .await
-    .unwrap();
-
-    let statuses = flow_commands::list_habit_item_statuses(app.state(), flow_id)
+    let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
+    let child = add_child(&pool, &root_of(flow_id), "task", "buy milk")
         .await
         .unwrap();
-    assert_eq!(statuses.len(), 1, "the occurrence is done");
-    let still_there = flow_commands::list_habit_instance_children(app.state(), flow_id)
-        .await
-        .unwrap();
+
+    complete_root(&app, flow_id, Some(true)).await.unwrap();
+
+    assert_eq!(
+        root_status(&app, flow_id).await,
+        "done",
+        "the occurrence is done"
+    );
+    let still_there = children(&pool, flow_id).await;
     assert_eq!(
         still_there.first().map(|c| c.child_id),
         Some(child.node_id),
@@ -266,16 +278,10 @@ async fn confirming_closes_the_occurrence_and_leaves_the_child_alone() {
 async fn a_finished_child_raises_no_prompt_at_all() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let (flow_id, start) = habit_with_one_day(&pool, &app).await;
-    let child = flow_commands::create_habit_instance_child(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        "task".into(),
-        "buy milk".into(),
-    )
-    .await
-    .unwrap();
+    let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
+    let child = add_child(&pool, &root_of(flow_id), "task", "buy milk")
+        .await
+        .unwrap();
 
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     arlesh_lib::tasks::update_task(
@@ -290,43 +296,28 @@ async fn a_finished_child_raises_no_prompt_at_all() {
     .unwrap();
     db.commit().await.unwrap();
 
-    flow_commands::set_habit_item_status(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        Some("done".into()),
-        1_767_600_000_000,
-        None,
-    )
-    .await
-    .expect("nothing is unfinished, so there is nothing to ask about");
+    complete_root(&app, flow_id, None)
+        .await
+        .expect("nothing is unfinished, so there is nothing to ask about");
 }
 
 #[tokio::test]
 async fn a_note_on_an_occurrence_is_never_unfinished_work() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let (flow_id, start) = habit_with_one_day(&pool, &app).await;
-    flow_commands::create_habit_instance_child(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        "info".into(),
-        "the corner shop shuts at 8".into(),
+    let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
+    add_child(
+        &pool,
+        &root_of(flow_id),
+        "info",
+        "the corner shop shuts at 8",
     )
     .await
     .unwrap();
 
-    flow_commands::set_habit_item_status(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        Some("done".into()),
-        1_767_600_000_000,
-        None,
-    )
-    .await
-    .expect("a note is not work, and is no reason to stop and ask");
+    complete_root(&app, flow_id, None)
+        .await
+        .expect("a note is not work, and is no reason to stop and ask");
 }
 
 #[tokio::test]
@@ -334,15 +325,9 @@ async fn a_childs_window_must_sit_inside_the_occurrences() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let (flow_id, start) = habit_with_one_day(&pool, &app).await;
-    let child = flow_commands::create_habit_instance_child(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        "task".into(),
-        "buy milk".into(),
-    )
-    .await
-    .unwrap();
+    let child = add_child(&pool, &root_of(flow_id), "task", "buy milk")
+        .await
+        .unwrap();
 
     // The occurrence runs over 2026-01-05 alone, so the following day escapes it.
     let outside = scope_id(&pool, ScopeKind::Day, ymd(2026, 1, 6)).await;
@@ -388,7 +373,7 @@ async fn a_childs_window_must_sit_inside_the_occurrences() {
 async fn an_added_child_makes_its_occurrence_divergent() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let (flow_id, start) = habit_with_one_day(&pool, &app).await;
+    let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
     assert_eq!(
         flow_commands::habit_completion_count(app.state(), flow_id)
             .await
@@ -396,15 +381,9 @@ async fn an_added_child_makes_its_occurrence_divergent() {
         0
     );
 
-    flow_commands::create_habit_instance_child(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        "task".into(),
-        "buy milk".into(),
-    )
-    .await
-    .unwrap();
+    add_child(&pool, &root_of(flow_id), "task", "buy milk")
+        .await
+        .unwrap();
 
     assert_eq!(
         flow_commands::habit_completion_count(app.state(), flow_id)
@@ -419,26 +398,17 @@ async fn an_added_child_makes_its_occurrence_divergent() {
 async fn delete_and_regenerate_takes_the_added_children_with_it() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let (flow_id, start) = habit_with_one_day(&pool, &app).await;
-    let child = flow_commands::create_habit_instance_child(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        "task".into(),
-        "buy milk".into(),
-    )
-    .await
-    .unwrap();
+    let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
+    let child = add_child(&pool, &root_of(flow_id), "task", "buy milk")
+        .await
+        .unwrap();
 
     flow_commands::clear_habit_modifications(app.state(), flow_id)
         .await
         .unwrap();
 
     assert!(
-        flow_commands::list_habit_instance_children(app.state(), flow_id)
-            .await
-            .unwrap()
-            .is_empty(),
+        children(&pool, flow_id).await.is_empty(),
         "the instances they hung off are gone, so nothing is left dangling"
     );
     let task: Option<i64> = sqlx::query_scalar("SELECT id FROM tasks WHERE id = ?")
@@ -456,7 +426,7 @@ async fn delete_and_regenerate_takes_the_added_children_with_it() {
 async fn deleting_an_added_child_never_reaches_the_template() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let (flow_id, start) = habit_with_one_day(&pool, &app).await;
+    let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
     flow_commands::create_flow_task(
         app.state(),
         CreateFlowItemRequest {
@@ -468,15 +438,9 @@ async fn deleting_an_added_child_never_reaches_the_template() {
     )
     .await
     .unwrap();
-    let child = flow_commands::create_habit_instance_child(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        "task".into(),
-        "buy milk".into(),
-    )
-    .await
-    .unwrap();
+    let child = add_child(&pool, &root_of(flow_id), "task", "buy milk")
+        .await
+        .unwrap();
 
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     arlesh_lib::tasks::delete_task(&mut db, TaskId(child.node_id))
@@ -493,10 +457,7 @@ async fn deleting_an_added_child_never_reaches_the_template() {
         "the template is untouched by anything done to a child"
     );
     assert!(
-        flow_commands::list_habit_instance_children(app.state(), flow_id)
-            .await
-            .unwrap()
-            .is_empty(),
+        children(&pool, flow_id).await.is_empty(),
         "and the attachment goes with the row, so a recycled id cannot inherit it"
     );
 }
@@ -505,16 +466,10 @@ async fn deleting_an_added_child_never_reaches_the_template() {
 async fn a_child_archives_with_the_occurrence_whose_window_has_passed() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let (flow_id, start) = habit_with_one_day(&pool, &app).await;
-    let child = flow_commands::create_habit_instance_child(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        "task".into(),
-        "buy milk".into(),
-    )
-    .await
-    .unwrap();
+    let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
+    let child = add_child(&pool, &root_of(flow_id), "task", "buy milk")
+        .await
+        .unwrap();
 
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let inside = arlesh_lib::tasks::derive_all_scope_lifecycles(
@@ -554,16 +509,10 @@ async fn a_child_archives_with_the_occurrence_whose_window_has_passed() {
 async fn an_added_child_holds_children_of_its_own_in_the_ordinary_way() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let (flow_id, start) = habit_with_one_day(&pool, &app).await;
-    let child = flow_commands::create_habit_instance_child(
-        app.state(),
-        flow_id,
-        root_of(flow_id, start),
-        "task".into(),
-        "buy milk".into(),
-    )
-    .await
-    .unwrap();
+    let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
+    let child = add_child(&pool, &root_of(flow_id), "task", "buy milk")
+        .await
+        .unwrap();
 
     // Minted before the session opens: the test pool lends one connection, and a query taken while
     // a session holds it waits for sqlx's default timeout instead of running.
@@ -574,7 +523,7 @@ async fn an_added_child_holds_children_of_its_own_in_the_ordinary_way() {
         arlesh_lib::tasks::model::CreateTaskRequest {
             title: "check the fridge first".into(),
             parent_type: "task".into(),
-            parent_id: child.node_id,
+            parent_id: child.node_id.into(),
             status: None,
             time_scope: None,
             on_scope_exit: None,
@@ -592,7 +541,7 @@ async fn an_added_child_holds_children_of_its_own_in_the_ordinary_way() {
     // child itself.
     let refused = arlesh_lib::tasks::update_task(
         &mut db,
-        TaskId(nested.id),
+        TaskId(nested.id.sid()),
         UpdateTaskRequest {
             time_scope: Some(Some(TimeScope {
                 start_id: outside,
@@ -610,10 +559,7 @@ async fn an_added_child_holds_children_of_its_own_in_the_ordinary_way() {
     drop(db);
 
     assert_eq!(
-        flow_commands::list_habit_instance_children(app.state(), flow_id)
-            .await
-            .unwrap()
-            .len(),
+        children(&pool, flow_id).await.len(),
         1,
         "only the first level is attached; everything under it is an ordinary parent link"
     );

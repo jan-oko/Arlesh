@@ -13,7 +13,6 @@ mod helpers;
 
 use arlesh_lib::commands::beads::clear_beads_id;
 use arlesh_lib::commands::block_reasons as block_reason_commands;
-use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::commands::tasks as task_commands;
 use arlesh_lib::commands::undo as undo_commands;
 use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus};
@@ -28,6 +27,7 @@ use arlesh_lib::tasks::model::{
 };
 use arlesh_lib::undo::model::GestureSummary;
 use arlesh_lib::undo::EXCLUDED_TABLES;
+use helpers::StoredId;
 use rmcp::handler::server::wrapper::Parameters;
 use sqlx::SqlitePool;
 use tauri::test::MockRuntime;
@@ -179,7 +179,7 @@ fn task_request(parent_type: &str, parent_id: i64, title: &str) -> CreateTaskReq
     CreateTaskRequest {
         title: title.into(),
         parent_type: parent_type.into(),
-        parent_id,
+        parent_id: parent_id.into(),
         status: None,
         time_scope: None,
         on_scope_exit: None,
@@ -195,7 +195,7 @@ fn goal_request(parent_type: &str, parent_id: i64, title: &str) -> CreateGoalReq
     CreateGoalRequest {
         title: title.into(),
         parent_type: parent_type.into(),
-        parent_id,
+        parent_id: parent_id.into(),
         status: None,
         time_scope: None,
         on_scope_exit: None,
@@ -244,7 +244,7 @@ async fn undoing_a_created_task_removes_it_and_redoing_puts_it_back_at_the_same_
     );
     assert!(
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM tasks WHERE id = ?")
-            .bind(task.id)
+            .bind(task.id.sid())
             .fetch_one(&pool)
             .await
             .expect("count")
@@ -270,28 +270,35 @@ async fn undoing_a_deleted_goal_brings_its_subtree_back_whole() {
     let goal = task_commands::create_goal(app.state(), goal_request("project", project_id, "goal"))
         .await
         .expect("create goal");
-    let child = task_commands::create_goal(app.state(), goal_request("goal", goal.id, "child"))
-        .await
-        .expect("create child goal");
-    let task = task_commands::create_task(app.state(), task_request("goal", goal.id, "task"))
+    let child =
+        task_commands::create_goal(app.state(), goal_request("goal", goal.id.sid(), "child"))
+            .await
+            .expect("create child goal");
+    let task = task_commands::create_task(app.state(), task_request("goal", goal.id.sid(), "task"))
         .await
         .expect("create task");
-    task_commands::add_tag_to_goal(app.state(), goal.id, tag_id)
+    task_commands::add_tag_to_goal(app.state(), goal.id.clone(), tag_id)
         .await
         .expect("tag the goal");
-    task_commands::add_tag_to_goal(app.state(), child.id, tag_id)
+    task_commands::add_tag_to_goal(app.state(), child.id.clone(), tag_id)
         .await
         .expect("tag the child");
-    task_commands::add_tag_to_task(app.state(), task.id, tag_id)
+    task_commands::add_tag_to_task(app.state(), task.id.clone(), tag_id)
         .await
         .expect("tag the task");
-    task_commands::add_task_dependency(app.state(), task.id, Dependency::Task { id: outside.id })
-        .await
-        .expect("add dependency");
+    task_commands::add_task_dependency(
+        app.state(),
+        task.id.clone(),
+        Dependency::Task {
+            id: outside.id.clone(),
+        },
+    )
+    .await
+    .expect("add dependency");
     block_reason_commands::set_block_reasons(
         app.state(),
         "goal".into(),
-        goal.id,
+        goal.id.clone(),
         vec!["waiting".into(), "unfunded".into()],
     )
     .await
@@ -299,7 +306,7 @@ async fn undoing_a_deleted_goal_brings_its_subtree_back_whole() {
     block_reason_commands::set_block_reasons(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         vec!["stuck".into()],
     )
     .await
@@ -308,15 +315,15 @@ async fn undoing_a_deleted_goal_brings_its_subtree_back_whole() {
     let before = board(&pool).await;
 
     open_gesture(&app).await;
-    task_commands::delete_goal(app.state(), goal.id)
+    task_commands::delete_goal(app.state(), goal.id.clone())
         .await
         .expect("delete the goal");
     close_gesture(&app).await;
 
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM goals WHERE id IN (?, ?)")
-            .bind(goal.id)
-            .bind(child.id)
+            .bind(goal.id.sid())
+            .bind(child.id.sid())
             .fetch_one(&pool)
             .await
             .expect("count"),
@@ -392,18 +399,19 @@ async fn an_aborted_gesture_leaves_the_board_exactly_as_it_was() {
     open_gesture(&app).await;
     task_commands::update_task(
         app.state(),
-        task.id,
+        task.id.clone(),
         UpdateTaskRequest {
             title: Some("edited".into()),
             ..Default::default()
         },
+        None,
     )
     .await
     .expect("update task");
     block_reason_commands::set_block_reasons(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         vec!["waiting on someone".into()],
     )
     .await
@@ -469,7 +477,7 @@ async fn aborting_a_gesture_that_wrote_nothing_does_nothing() {
     let before = board(&pool).await;
 
     open_gesture(&app).await;
-    task_commands::list_tasks(app.state())
+    task_commands::list_tasks(app.state(), chrono::Local::now().naive_local())
         .await
         .expect("a read changes nothing");
 
@@ -532,6 +540,7 @@ async fn undo_then_redo_returns_the_board_to_what_the_gesture_made_of_it() {
             title: Some("after".into()),
             ..Default::default()
         },
+        None,
     )
     .await
     .expect("update task");
@@ -613,7 +622,7 @@ async fn a_gesture_that_changed_nothing_never_reaches_the_stack() {
     let project_id = make_project(&pool).await;
 
     open_gesture(&app).await;
-    task_commands::list_tasks(app.state())
+    task_commands::list_tasks(app.state(), chrono::Local::now().naive_local())
         .await
         .expect("a read changes nothing");
     assert_eq!(close_gesture(&app).await, None);
@@ -676,7 +685,7 @@ async fn an_mcp_write_between_the_users_change_and_their_undo_is_not_reversed() 
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: agents_task.id,
+            node_id: agents_task.id.sid(),
             beads_id: Some("Arlesh-h2u".into()),
         }))
         .await
@@ -692,7 +701,7 @@ async fn an_mcp_write_between_the_users_change_and_their_undo_is_not_reversed() 
 
     assert_eq!(
         sqlx::query_scalar::<_, Option<String>>("SELECT beads_id FROM tasks WHERE id = ?")
-            .bind(agents_task.id)
+            .bind(agents_task.id.sid())
             .fetch_one(&pool)
             .await
             .expect("read beads id"),
@@ -730,7 +739,7 @@ async fn an_mcp_write_made_while_a_user_gesture_is_open_is_not_reversed_with_it(
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: agents_task.id,
+            node_id: agents_task.id.sid(),
             beads_id: Some("Arlesh-h2u".into()),
         }))
         .await
@@ -774,7 +783,7 @@ async fn an_mcp_write_made_while_a_user_gesture_is_open_is_not_reversed_with_it(
 
     assert_eq!(
         sqlx::query_scalar::<_, Option<String>>("SELECT beads_id FROM tasks WHERE id = ?")
-            .bind(agents_task.id)
+            .bind(agents_task.id.sid())
             .fetch_one(&pool)
             .await
             .expect("read beads id"),
@@ -866,32 +875,33 @@ async fn undoing_an_edit_that_cleared_agentic_puts_the_flag_back() {
     )
     .await
     .expect("create task");
-    assert_eq!(agentic(&pool, task.id).await, Some(true));
+    assert_eq!(agentic(&pool, task.id.sid()).await, Some(true));
 
     open_gesture(&app).await;
     task_commands::update_task(
         app.state(),
-        task.id,
+        task.id.clone(),
         UpdateTaskRequest {
             agentic: Some(TaskAgentic::Inherit),
             ..Default::default()
         },
+        None,
     )
     .await
     .expect("clear the flag back to inheriting");
     close_gesture(&app).await;
-    assert_eq!(agentic(&pool, task.id).await, None);
+    assert_eq!(agentic(&pool, task.id.sid()).await, None);
 
     undo(&app).await.expect("there is something to undo");
     assert_eq!(
-        agentic(&pool, task.id).await,
+        agentic(&pool, task.id.sid()).await,
         Some(true),
         "undo must put the flag back, not leave the Task inheriting a decision it had overridden"
     );
 
     redo(&app).await.expect("there is something to redo");
     assert_eq!(
-        agentic(&pool, task.id).await,
+        agentic(&pool, task.id.sid()).await,
         None,
         "and redo must clear it again"
     );
@@ -924,27 +934,30 @@ async fn undoing_a_cleared_issue_link_puts_the_id_back() {
     let mcp = ArleshMcp::new(helpers::session_factory(&pool));
     mcp.beads(Parameters(params::BeadsOperation::Set {
         node_type: params::BeadsNode::Task,
-        node_id: task.id,
+        node_id: task.id.sid(),
         beads_id: Some("Arlesh-ncy".into()),
     }))
     .await
     .expect("link the task to its issue");
-    assert_eq!(beads_id(&pool, task.id).await, Some("Arlesh-ncy".into()));
+    assert_eq!(
+        beads_id(&pool, task.id.sid()).await,
+        Some("Arlesh-ncy".into())
+    );
 
     open_gesture(&app).await;
-    clear_beads_id(app.state(), "task".into(), task.id)
+    clear_beads_id(app.state(), "task".into(), task.id.clone())
         .await
         .expect("clear the link");
     close_gesture(&app).await;
     assert_eq!(
-        beads_id(&pool, task.id).await,
+        beads_id(&pool, task.id.sid()).await,
         None,
         "the × writes NULL, not an empty string"
     );
 
     undo(&app).await.expect("there is something to undo");
     assert_eq!(
-        beads_id(&pool, task.id).await,
+        beads_id(&pool, task.id.sid()).await,
         Some("Arlesh-ncy".into()),
         "the clear is a user-sourced write, so Ctrl+Z puts the link back — the reason it needs no \
          confirmation dialog"
@@ -952,7 +965,7 @@ async fn undoing_a_cleared_issue_link_puts_the_id_back() {
 
     redo(&app).await.expect("there is something to redo");
     assert_eq!(
-        beads_id(&pool, task.id).await,
+        beads_id(&pool, task.id.sid()).await,
         None,
         "and redo drops it again"
     );
@@ -1036,40 +1049,48 @@ async fn undoing_a_cleared_habit_completion_brings_it_back_on_the_occurrence_it_
     };
 
     // The evening occurrence is completed...
-    flow_commands::set_habit_item_status(
-        app.state(),
-        flow.id,
-        instance(),
-        Some("done".into()),
-        1_767_600_000_000,
-        None,
-    )
-    .await
-    .expect("mark the evening occurrence done");
+    let set_status = |status: Option<&'static str>| {
+        let pool = pool.clone();
+        let instance = instance();
+        async move {
+            let mut db = helpers::session_factory(&pool)
+                .begin()
+                .await
+                .expect("begin");
+            db.flows()
+                .set_item_status(
+                    arlesh_lib::flows::model::FlowId(flow.id),
+                    &instance,
+                    status,
+                    1_767_600_000_000,
+                )
+                .await
+                .expect("set the occurrence's status");
+            db.commit().await.expect("commit");
+        }
+    };
+    set_status(Some("done")).await;
 
-    // ...and then un-completed, which deletes the Modification row, inside a gesture.
+    // ...and then un-completed, which deletes its overlay row, inside a gesture.
     open_gesture(&app).await;
-    flow_commands::set_habit_item_status(app.state(), flow.id, instance(), None, 0, None)
-        .await
-        .expect("clear the status");
+    set_status(None).await;
     close_gesture(&app).await;
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM habit_instance_modifications")
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM task_overlays")
             .fetch_one(&pool)
             .await
             .expect("count"),
         0,
-        "clearing a status removes the Modification row"
+        "clearing a status removes the overlay row, which then says nothing"
     );
 
     undo(&app).await.expect("there is something to undo");
-    let restored: (i64, Option<String>) = sqlx::query_as(
-        "SELECT cycle_id, status FROM habit_instance_modifications WHERE item_id = ?",
-    )
-    .bind(item.id)
-    .fetch_one(&pool)
-    .await
-    .expect("the Modification is back");
+    let restored: (i64, Option<String>) =
+        sqlx::query_as("SELECT cycle_id, status FROM task_overlays WHERE item_id = ?")
+            .bind(item.id)
+            .fetch_one(&pool)
+            .await
+            .expect("the overlay row is back");
     assert_eq!(
         restored,
         (evening, Some("done".into())),
@@ -1093,13 +1114,13 @@ async fn an_undo_that_cannot_be_applied_changes_nothing_and_leaves_the_gesture_o
         task_commands::create_task(app.state(), task_request("project", project_id, "tagged"))
             .await
             .expect("create task");
-    task_commands::add_tag_to_task(app.state(), task.id, tag_id)
+    task_commands::add_tag_to_task(app.state(), task.id.clone(), tag_id)
         .await
         .expect("tag the task");
 
     // The user removes the tag, inside a gesture...
     open_gesture(&app).await;
-    task_commands::remove_tag_from_task(app.state(), task.id, tag_id)
+    task_commands::remove_tag_from_task(app.state(), task.id.clone(), tag_id)
         .await
         .expect("remove the tag");
     let doomed = close_gesture(&app).await.expect("the gesture is undoable");
@@ -1161,32 +1182,33 @@ async fn undoing_an_edit_that_unflagged_asynchronous_puts_the_flag_back() {
     )
     .await
     .expect("create task");
-    assert!(asynchronous(&pool, task.id).await);
+    assert!(asynchronous(&pool, task.id.sid()).await);
 
     open_gesture(&app).await;
     task_commands::update_task(
         app.state(),
-        task.id,
+        task.id.clone(),
         UpdateTaskRequest {
             asynchronous: Some(false),
             ..Default::default()
         },
+        None,
     )
     .await
     .expect("unflag the task");
     close_gesture(&app).await;
-    assert!(!asynchronous(&pool, task.id).await);
+    assert!(!asynchronous(&pool, task.id.sid()).await);
 
     undo(&app).await.expect("there is something to undo");
     assert!(
-        asynchronous(&pool, task.id).await,
+        asynchronous(&pool, task.id.sid()).await,
         "undo must put the flag back — a column the triggers do not name is restored silently \
          as whatever it was at insert time"
     );
 
     redo(&app).await.expect("there is something to redo");
     assert!(
-        !asynchronous(&pool, task.id).await,
+        !asynchronous(&pool, task.id.sid()).await,
         "and redo must clear it again"
     );
 }
@@ -1212,7 +1234,7 @@ async fn undoing_a_completed_check_reopens_it_and_redo_completes_it_again() {
         arlesh_lib::tasks::model::CreateExpectationRequest {
             title: "reviewer replies".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             check_every: Some(arlesh_lib::tasks::model::DurationSpec {
                 n: 1,
                 kind: "day".into(),
@@ -1227,21 +1249,21 @@ async fn undoing_a_completed_check_reopens_it_and_redo_completes_it_again() {
     .expect("create the wait");
 
     open_gesture(&app).await;
-    arlesh_lib::commands::expectations::complete_expectation_check(app.state(), wait.id)
+    arlesh_lib::commands::expectations::complete_expectation_check(app.state(), wait.id.sid())
         .await
         .expect("complete the check");
     close_gesture(&app).await;
-    assert_eq!(completed_checks(&pool, wait.id).await, 1);
+    assert_eq!(completed_checks(&pool, wait.id.sid()).await, 1);
 
     undo(&app).await.expect("there is something to undo");
     assert_eq!(
-        completed_checks(&pool, wait.id).await,
+        completed_checks(&pool, wait.id.sid()).await,
         0,
         "undo reopens the check"
     );
     redo(&app).await.expect("there is something to redo");
     assert_eq!(
-        completed_checks(&pool, wait.id).await,
+        completed_checks(&pool, wait.id.sid()).await,
         1,
         "and redo completes it again"
     );

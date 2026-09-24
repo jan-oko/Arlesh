@@ -77,26 +77,19 @@ export function referencedScopeIds(rows: readonly TaskListRow[]): ScopeKey[] {
 }
 
 /**
- * Whether `node` is a Habit **occurrence**: one Task of one iteration, derived rather than stored.
- * An iteration's **root** is not one — it stands for the whole iteration, and is never a card.
- */
-export function isHabitOccurrence(node: MindmapNode): boolean {
-  return node.habitItem !== undefined && node.habitIteration === undefined;
-}
-
-/**
- * Whether the Plan View triages a row. A Habit **occurrence** is triaged exactly like a Task, by its
- * Plan — the Cycle Plan its Habit (or its item) gives it, which is what `node.plan` carries. With
- * none it is **unplanned**, and a candidate wherever its window is relevant, as any unplanned work
- * is. Its window is not read as a plan: a window says when it is relevant, not that anyone planned
- * it. Planning one is refused out loud until occurrences are stored rows (see `use-plan-move`).
+ * Whether the Plan View triages a row. A Habit **occurrence** is a row (ADR 0008) and is triaged
+ * exactly like a Task, by its Plan — the Cycle Plan its Habit (or its item) gives it unless the
+ * occurrence was planned on its own. With none it is **unplanned**, and a candidate wherever its
+ * window is relevant; its window is not read as a plan.
  *
- * The one virtual row left out is an iteration **root**, which stands for the whole iteration
- * rather than for work.
+ * An iteration **root** is triaged too, by the root Cycle Plan unless it was planned on its own. It
+ * is an ordinary row, and for a Habit with no items it is the only occurrence there is. A root and
+ * its item occurrences each appear, as a Task and its subtasks do — each is one row in one heap.
+ *
+ * Left out: a node that draws no row, which has nowhere to write a Plan.
  */
 function isTriageable(node: MindmapNode): boolean {
-  if (isHabitOccurrence(node)) return true;
-  return node.virtual !== true && node.habitItem === undefined;
+  return node.virtual !== true;
 }
 
 /** What one triage pass makes of the board, in three heaps. */

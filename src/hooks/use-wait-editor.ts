@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import type { RowId } from "@/api/node-id";
 import { dayStartInstant } from "@/utils/scope-calendar";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { findNode } from "@/utils/mindmap-tree";
@@ -10,7 +11,7 @@ import { withAtomicGesture } from "@/api/gesture";
 /** Where a new stored wait will hang — `Shift+E` in the List View. */
 export interface ExpectationCreate {
   parentType: string;
-  parentId: number;
+  parentId: RowId;
 }
 
 /** The `parent_type` a child of `parent` is written with — the spelling a Task's link takes. */

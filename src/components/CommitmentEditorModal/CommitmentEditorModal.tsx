@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { isOccurrence } from "@/utils/node-identity";
 import { useTranslation } from "react-i18next";
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -52,7 +53,7 @@ interface Props {
 export default function CommitmentEditorModal({ node, allTags, domainNames, heading, onSave, onClearBeadsId, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "status", "undo"]);
-  const [title, setTitle] = useState(node.title);
+  const [title, setTitle] = useState(node.rowTitle ?? node.title);
   const [verdict, setVerdict] = useState<Verdict>(node.verdict ?? VERDICT.UNRESOLVED);
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
   const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
@@ -128,7 +129,11 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, head
       </div>
       <div className={styles.label}>
         {t("fieldTimeScope")}
-        <TimeScopeField value={timeScope} onChange={setTimeScope} />
+        <TimeScopeField
+          value={timeScope}
+          onChange={setTimeScope}
+          {...(isOccurrence(node) ? { lockedReason: t("editor:scopeLockedOccurrence") } : {})}
+        />
       </div>
       <div className={styles.label}>
         {t("fieldVerdictWindow")}

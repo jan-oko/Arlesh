@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { checkOrigin, isDerivedId, storedId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
-import { rowIdOf } from "@/utils/node-identity";
+import { rowIdOf, isOccurrence } from "@/utils/node-identity";
 import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField";
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -97,7 +98,7 @@ function isEmptyTemplate(template: AsyncTemplate): boolean {
 export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onClearBeadsId, onCheckScopeClamp, openAtTemplate = false, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "status", "nodeKinds", "undo", "expectation"]);
-  const [title, setTitle] = useState(node.title);
+  const [title, setTitle] = useState(node.rowTitle ?? node.title);
   const [status, setStatus] = useState(node.status ?? TASK_STATUS.TODO);
   const [blockReasons, setBlockReasons] = useState<string[]>(node.blockReasons ?? []);
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
@@ -143,7 +144,8 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   function addDep(candidate: MindmapNode) {
     const kind = dependencyKindOf(candidate);
     const id = rowIdOf(candidate);
-    const dep: Dependency = { type: kind, id };
+    // A wait is always a stored row; a Task or a Goal may be a Habit occurrence.
+    const dep: Dependency = kind === "expectation" ? { type: kind, id: storedId(id) } : { type: kind, id };
     if (currentDeps.some((d) => depEquals(d, dep))) return;
     setCurrentDeps((prev) => [...prev, dep]);
     setDepSearch("");
@@ -156,7 +158,8 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
     try {
       const addedDeps = currentDeps.filter((d) => !initialDeps.some((id) => depEquals(id, d)));
       const removedDeps = initialDeps.filter((d) => !currentDeps.some((cd) => depEquals(cd, d)));
-      if (timeScope !== null && onCheckScopeClamp && !(await onCheckScopeClamp("task", dbId, timeScope))) {
+      // An occurrence's window is its iteration's and cannot change, so there is nothing to clamp.
+      if (timeScope !== null && !isDerivedId(dbId) && onCheckScopeClamp && !(await onCheckScopeClamp("task", dbId, timeScope))) {
         setIsSaving(false);
         return;
       }
@@ -270,7 +273,12 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       </div>
       <div className={styles.label}>
         {t("fieldTimeScope")}
-        <TimeScopeField value={timeScope} onChange={setTimeScope} />
+        <TimeScopeField
+          value={timeScope}
+          onChange={setTimeScope}
+          {...(isOccurrence(node) ? { lockedReason: t("editor:scopeLockedOccurrence") } : {})}
+          {...(checkOrigin(node.origin) !== undefined ? { lockedReason: t("editor:scopeLockedCheck") } : {})}
+        />
       </div>
       {timeScope !== null && (
         <div className={styles.label}>

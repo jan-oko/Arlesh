@@ -4,12 +4,37 @@ import type { PathGroupedEntry } from "./list-data";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import { fixtureRowId } from "@/test/node-fixture";
+import { occurrenceRow } from "@/test/occurrence";
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}, children: MindmapNode[] = []): MindmapNode {
   return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children, ...extra };
 }
 
 describe("flattenTaskRows", () => {
+  // A Habit's root occurrence hangs under the Flow's target (its parent project here), and its item
+  // occurrences under it — the paths a stored Task and its subtask at those places would have.
+  it("gives a Habit's root and item occurrences the paths of a Task and its subtask in their place", () => {
+    const root = n("habit-root", "task", occurrenceRow({ itemType: "flow_root" }), [
+      n("habit-item", "task", occurrenceRow({ itemType: "flow_task" })),
+    ]);
+    const stored = n("task-1", "task", {}, [n("task-2", "task")]);
+    const lang = n("domain-71", "project", { title: "LANG" }, [root, stored]);
+    const board = n("root", "domain", {}, [n("aspect-1", "aspect", { title: "Growth" }, [lang])]);
+    const paths = (frame: MindmapNode) =>
+      new Map(flattenTaskRows(frame, []).map((r) => [r.node.id, r.ancestors.map((a) => a.title)]));
+
+    const whole = paths(board);
+    expect(whole.get("habit-root")).toEqual(["Growth", "LANG"]);
+    expect(whole.get("habit-item")).toEqual(["Growth", "LANG", "habit-root"]);
+    expect(whole.get("habit-root")).toEqual(whole.get("task-1"));
+
+    // Entered on the project, the project frames the list: neither has a path above it.
+    const entered = paths(lang);
+    expect(entered.get("habit-root")).toEqual([]);
+    expect(entered.get("habit-root")).toEqual(entered.get("task-1"));
+    expect(entered.get("habit-item")).toEqual(["habit-root"]);
+  });
+
   it("collects only task nodes, skipping goals/projects/domains", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [

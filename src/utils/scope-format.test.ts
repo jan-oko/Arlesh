@@ -17,7 +17,7 @@ const labels: ScopeLabelFns = {
 
 function mk(_id: number, kind: Scope["kind"], startDate: string, label = ""): Scope {
   return {
-    id: testKey(0), kind, label, start_date: startDate, end_date: startDate,
+    id: testKey(_id), kind, label, start_date: startDate, end_date: startDate,
     part: null, start_datetime: null, end_datetime: null,
   };
 }
@@ -74,6 +74,15 @@ describe("formatScopeRange", () => {
   it("collapses to a single scope when both ids match", () => {
     const scope = mk(3, "month", "2026-06-01");
     expect(formatScopeRange(scope, scope, labels)).toBe("June 2026");
+  });
+
+  it("shows a range whose ends are one scope once, read back as two equal keys", () => {
+    const morning = (): Scope => ({
+      id: { kind: "part_of_day", date: "2026-09-24", part: "morning" }, kind: "part_of_day",
+      label: "2026-09-24 morning", start_date: "2026-09-24", end_date: "2026-09-24",
+      part: "morning", start_datetime: null, end_datetime: null,
+    });
+    expect(formatScopeRange(morning(), morning(), labels)).toBe("2026-09-24 morning");
   });
 
   it("factors out a shared year for a month range", () => {

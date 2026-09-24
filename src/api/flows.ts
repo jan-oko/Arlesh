@@ -1,8 +1,7 @@
 import { invoke } from "./gesture";
 import { isWireError } from "@/api/errors";
 import type { ScopeKey } from "@/api/scopes";
-import type { TimeScope } from "@/api/time-scope";
-import type { Timing } from "@/api/scope-lifecycle";
+import type { Delegate, TaskAgentic, TaskArchival } from "@/api/tasks";
 
 /**
  * What a Flow's root materializes as. `commitment` is how a repeating rule — a nightly
@@ -35,15 +34,24 @@ export interface Flow {
   root_plan_end: number | null;
   // The Verdict Window a commitment Habit's iterations are bounded by: how long past the end of an
   // iteration's own window its verdict may still be recorded, as the same (n, kind) Duration pair a
-  // Commitment carries. Null leaves iterations answerable indefinitely. A virtual iteration has no
-  // commitments row to carry one of its own, and the flow's target is usually a Project or Domain,
-  // which carries none either — so the Habit is where it lives.
+  // Commitment carries. Null leaves iterations answerable indefinitely. Each iteration's Commitment row
+  // reads it from here, and the flow's target is usually a Project or Domain, which carries none
+  // — so the Habit is where it lives.
   verdict_window_n: number | null;
   verdict_window_kind: string | null;
   // Whether this flow is a Habit (has a Recurrence) — derived on read.
   is_habit: boolean;
   position: number;
   is_private: boolean;
+  // The root template's own fields: a task-instance flow's Task columns, every flow's tags and
+  // block reasons (migration 0061). An iteration root inherits them.
+  delegate_to?: Delegate | null;
+  agentic?: boolean | null;
+  asynchronous?: boolean;
+  archival?: TaskArchival;
+  beads_id?: string;
+  tag_ids?: number[];
+  block_reasons?: string[];
 }
 
 export interface CreateFlowRequest {
@@ -209,12 +217,11 @@ export async function deleteFlowRecurrence(flowId: number): Promise<void> {
   return invoke<void>("delete_flow_recurrence", { flowId });
 }
 
-// --- Habit instance generation (Phase 8.2) ---
-
-/** A derived Habit iteration's state. `expired` is a commitment Habit's only: its Verdict Window
- * ran out with no verdict recorded, so it archives still unresolved — never "missed", which would
- * be the app concluding an outcome nobody stated. */
-export type IterationStatus = "active" | "done" | "lapsed" | "missed" | "expired";
+// --- Habit occurrences ---
+//
+// A Habit's occurrences are ordinary Task, Goal and Commitment rows with a `habit` origin
+// (ADR 0008). They are read, written, parented and deleted through the ordinary commands; what
+// remains here is what is genuinely about the Habit as a whole.
 
 /**
  * The `cycle_id` of an occurrence that came from no cycle pair — an item that declares none, and
@@ -222,150 +229,8 @@ export type IterationStatus = "active" | "done" | "lapsed" | "missed" | "expired
  */
 export const NO_CYCLE = 0;
 
-/**
- * One virtual instance of a flow item inside one Habit iteration: which item it draws, which of
- * that item's cycle pairs produced it, and the window that pair resolves to in this iteration.
- *
- * An item with N pairs contributes N of these, matching what starting the flow would materialize.
- * The windows are resolved by the backend, which owns the same offset arithmetic `start` uses, so
- * a rendered occurrence and a started one cannot disagree about when "the 2nd day of week 3" is.
- *
- * An occurrence whose window has not opened yet is **present**, carrying `timing` "pending".
- * Whether it is drawn is the status preset's decision — All shows it, Plan/Start/Do do not — which
- * is a decision the frontend can only make about occurrences it has been given.
- */
-export interface HabitInstance {
-  item_type: FlowItemType;
-  item_id: number;
-  /** The cycle pair behind this occurrence, or {@link NO_CYCLE} when the item declares none. */
-  cycle_id: number;
-  /** The occurrence's Cycle Scope; `null` when it has no pair (it inherits the iteration's). */
-  time_scope: TimeScope | null;
-  /** The occurrence's Cycle Plan, when its pair carries one. */
-  plan: TimeScope | null;
-  /**
-   * Where the occurrence sits relative to its own window: "pending" before it opens, "lapsed" once
-   * it has gone under the Habit's Consumption, "active" in between. One tri-state rather than two
-   * flags, because a window cannot both have not come and have gone.
-   */
-  timing: Timing;
-}
-
-/** A derived Habit iteration on a reference day (nothing is persisted per iteration). */
-export interface HabitIteration {
-  index: number;
-  anchor_scope_id: ScopeKey;
-  /** The window's first day, ISO `YYYY-MM-DD`. */
-  anchor_date: string;
-  /**
-   * The window's **exclusive** end, ISO `YYYY-MM-DDTHH:MM:SS`: the window has passed once the
-   * load's reference instant has reached it.
-   *
-   * Derived backend-side, with the same offset arithmetic `start` uses, rather than recomputed
-   * here from the flow's Duration. It is what the Mindmap folds passed iterations by, and
-   * {@link IterationStatus} could not answer that on its own — under Overlapping Consumption a
-   * long-closed window is still `active`.
-   */
-  window_end: string;
-  status: IterationStatus;
-  /** Every occurrence this iteration renders, in item order and then pair order. */
-  instances: HabitInstance[];
-}
-
-/**
- * Derives a Habit's iterations at `now` (local wall-clock, ISO `YYYY-MM-DDTHH:MM:SS`), classified
- * per its Consumption.
- */
-export async function generateHabitIterations(flowId: number, now: string): Promise<HabitIteration[]> {
-  return invoke<HabitIteration[]>("generate_habit_iterations", { flowId, now });
-}
-
-/**
- * A Habit iteration's completable instances: each flow item plus the flow **root** (`flow_root`),
- * which is an instance in its own right, not just an aggregate of its items.
- */
-export type HabitInstanceType = FlowItemType | "flow_root";
-
-/** An instance's divergent status for one Habit iteration (a non-tombstoned Modification). */
-export interface HabitItemStatus {
-  item_type: HabitInstanceType;
-  item_id: number;
-  iteration_scope_id: ScopeKey;
-  /** Which occurrence of the item, since one item can draw several in a single iteration. */
-  cycle_id: number;
-  status: string;
-}
-
-/** Every instance with a divergent status, and the iteration scope it applies to. */
-export async function listHabitItemStatuses(flowId: number): Promise<HabitItemStatus[]> {
-  return invoke<HabitItemStatus[]>("list_habit_item_statuses", { flowId });
-}
-
-/**
- * Sets a single instance's status (a flow item, or the `flow_root` — with `itemId` = the flow id) at
- * one iteration scope. `cycleId` picks which occurrence of that item ({@link NO_CYCLE} when it has
- * no cycle pairs, and always for the root): an item with a morning and an evening pair draws two
- * nodes on the same day, and completing one leaves the other to do. `status` `null` clears it (back
- * to the base status: task `todo` / goal `active`); `resolvedAtMs` is recorded for a `done` status.
- * The iteration reads Done once the root and every occurrence are `done`.
- */
-export async function setHabitItemStatus(
-  flowId: number,
-  itemType: HabitInstanceType,
-  itemId: number,
-  iterationScopeId: ScopeKey,
-  cycleId: number,
-  status: string | null,
-  resolvedAtMs: number,
-  confirmed?: boolean,
-): Promise<void> {
-  const instance = {
-    item_type: itemType, item_id: itemId, iteration_scope_id: iterationScopeId, cycle_id: cycleId,
-  };
-  return invoke<void>("set_habit_item_status", { flowId, instance, status, resolvedAtMs, confirmed });
-}
-
-/** The kinds an occurrence can hold — everything a Task can parent. */
-export type HabitChildKind = "task" | "goal" | "commitment" | "info";
-
-/**
- * One node attached to a single virtual Habit occurrence.
- *
- * The attachment only: the node itself is an ordinary Task, Goal, Commitment or Info and arrives
- * in its own list. This says which occurrence it hangs on — the one thing its own row cannot,
- * since a virtual instance has no id for a parent link to point at.
- */
-export interface HabitInstanceChild {
-  flow_id: number;
-  item_type: HabitInstanceType;
-  item_id: number;
-  iteration_scope_id: ScopeKey;
-  cycle_id: number;
-  child_type: HabitChildKind;
-  child_id: number;
-}
-
-/**
- * Creates a node and attaches it to one occurrence, in a single backend call.
- *
- * The child belongs to that occurrence and no other: next week's is not carrying it. It is a real,
- * fully editable node — scope it, tag it, plan it, complete it — and it may hold children of its
- * own in the ordinary way.
- */
-export async function createHabitInstanceChild(
-  flowId: number,
-  itemType: HabitInstanceType,
-  itemId: number,
-  iterationScopeId: ScopeKey,
-  cycleId: number,
-  childType: HabitChildKind,
-  title: string,
-): Promise<TargetRef> {
-  const instance = {
-    item_type: itemType, item_id: itemId, iteration_scope_id: iterationScopeId, cycle_id: cycleId,
-  };
-  return invoke<TargetRef>("create_habit_instance_child", { flowId, instance, childType, title });
-}
+/** What a node hung on a Habit occurrence can be: anything a Task can parent. */
+export type HabitChildKind = "task" | "goal" | "commitment" | "info" | "expectation";
 
 /** An added child that is not finished, as the completion guard names it. */
 export interface UnfinishedChild {
@@ -469,8 +334,33 @@ export async function convertToFlow(
 /** Which flow-item table a row lives in. */
 export type FlowItemType = "flow_goal" | "flow_task";
 
+/**
+ * What a template row says about the rows it draws beyond its title and place: its kind's columns
+ * and relations. A Habit's occurrences inherit each field until they say otherwise; a started
+ * flow's copy carries them. The Task-only fields are meaningful on a task template alone.
+ */
+export interface TemplateFields {
+  delegate_to?: Delegate | null;
+  agentic?: boolean | null;
+  asynchronous?: boolean;
+  archival?: TaskArchival;
+  beads_id?: string;
+  tag_ids?: number[];
+  block_reasons?: string[];
+}
+
+/** A change to a template row's own columns and relations; each field absent stays as it is. */
+export interface TemplateUpdate {
+  delegate_to?: Delegate | null;
+  agentic?: TaskAgentic;
+  asynchronous?: boolean;
+  archival?: TaskArchival;
+  tag_ids?: number[];
+  block_reasons?: string[];
+}
+
 /** A flow-goal template item. */
-export interface FlowGoal {
+export interface FlowGoal extends TemplateFields {
   id: number;
   flow_id: number;
   title: string;
@@ -481,7 +371,7 @@ export interface FlowGoal {
 }
 
 /** A flow-task template item. */
-export interface FlowTask {
+export interface FlowTask extends TemplateFields {
   id: number;
   flow_id: number;
   title: string;
@@ -531,7 +421,7 @@ export interface CreateFlowItemRequest {
   parent_id: number;
 }
 
-export interface UpdateFlowItemRequest {
+export interface UpdateFlowItemRequest extends TemplateUpdate {
   title?: string;
   parent_type?: string;
   parent_id?: number;
@@ -580,8 +470,44 @@ export async function convertFlowItem(fromType: FlowItemType, id: number, toType
   return invoke<number>("convert_flow_item", { fromType, id, toType });
 }
 
-export async function setFlowItemCycles(flowId: number, itemType: FlowItemType, itemId: number, cycles: FlowCycleInput[]): Promise<void> {
-  return invoke<void>("set_flow_item_cycles", { flowId, itemType, itemId, cycles });
+/** How a cycle edit that would orphan what an occurrence recorded is answered. */
+export type CycleReconcile = "fork" | "discard";
+
+/** The fork an Archive & new item edit landed on, with the old→new item ids. */
+export interface ForkedTemplate {
+  flow_id: number;
+  goals: [number, number][];
+  tasks: [number, number][];
+}
+
+/**
+ * Saves an item's cycle pairs, keeping every pair that survives. A change that would orphan what
+ * an occurrence recorded is refused with `needs_confirmation` until `reconcile` answers it —
+ * Archive & new (with `now`) or Discard & regenerate.
+ */
+export async function setFlowItemCycles(
+  flowId: number,
+  itemType: FlowItemType,
+  itemId: number,
+  cycles: FlowCycleInput[],
+  reconcile?: CycleReconcile,
+  now?: string,
+): Promise<ForkedTemplate | null> {
+  return invoke<ForkedTemplate | null>("set_flow_item_cycles", {
+    flowId, itemType, itemId, cycles, reconcile, now,
+  });
+}
+
+/**
+ * How many iterations a refused cycle edit would orphan the recorded edits of, when `error` is that
+ * refusal; `null` for any other error.
+ */
+export function orphanedEditCount(error: unknown): number | null {
+  if (!isWireError(error) || error.kind !== "needs_confirmation") return null;
+  const details: unknown = error.details;
+  if (typeof details !== "object" || details === null) return null;
+  if (!("reason" in details) || details.reason !== "orphaned_edits") return null;
+  return "iterations" in details && typeof details.iterations === "number" ? details.iterations : null;
 }
 
 export async function addFlowDependency(flowId: number, dependentType: FlowItemType, dependentId: number, dependsOnType: FlowItemType, dependsOnId: number): Promise<void> {

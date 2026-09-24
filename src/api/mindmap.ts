@@ -3,25 +3,21 @@ import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
 import type { Task, TaskDependencyEdge } from "@/api/tasks";
 import type { Commitment } from "@/api/commitments";
-import type { Expectation, ExpectationCheck, SpawnedWaitView } from "@/api/expectations";
+import type { Expectation } from "@/api/expectations";
 import type { Info } from "@/api/infos";
 import type { BlockReason } from "@/api/block-reasons";
 import type {
-  Flow, FlowGoal, FlowTask, FlowItemCycle, FlowDependency,
-  HabitInstanceChild, HabitIteration, HabitItemStatus, TargetRef,
+  Flow, FlowGoal, FlowTask, FlowItemCycle, FlowDependency, TargetRef,
 } from "@/api/flows";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
 
 /**
- * One flow's Habit payload, or the failure that stood in for it. Discriminated on `outcome`,
- * so narrowing needs no type assertion.
- *
- * A flow that is not a Habit is `loaded` with an empty `iterations` — "no recurrence configured"
- * is an answer, not a failure, and treating it as one would raise a notice about every ordinary
- * flow on every load.
+ * Whether one flow's Habit occurrences were derived, or the failure that stood in for them.
+ * Discriminated on `outcome`. The occurrences themselves are ordinary rows in `tasks`, `goals`
+ * and `commitments`; a flow that is not a Habit simply loads with none.
  */
 export type FlowHabitResult =
-  | { outcome: "loaded"; iterations: HabitIteration[]; statuses: HabitItemStatus[] }
+  | { outcome: "loaded" }
   | { outcome: "failed"; message: string };
 
 /**
@@ -43,12 +39,9 @@ export interface MindmapLoad {
   goals: Goal[];
   tasks: Task[];
   commitments: Commitment[];
-  /** Every stored expectation. Check tasks and delegated tasks' waits are derived, not sent. */
+  /** Every expectation, stored and derived — a Task's spawned wait and a delegated Task's wait
+   * are rows here. A wait's check tasks are rows of `tasks`. */
   expectations: Expectation[];
-  /** Each stored wait's next check. */
-  expectation_checks: ExpectationCheck[];
-  /** Each asynchronous task's spawned wait; its title and tags are the task's template. */
-  spawned_waits: SpawnedWaitView[];
   infos: Info[];
   flows: Flow[];
   flow_goals: FlowGoal[];
@@ -59,13 +52,8 @@ export interface MindmapLoad {
   task_dependencies: TaskDependencyEdge[];
   flow_instance_nodes: TargetRef[];
   lifecycles: ItemLifecycle[];
-  /** One entry per flow, in `flows` order — the dependent wave, resolved backend-side. */
+  /** One entry per flow, in `flows` order: whether its Habit occurrences were derived. */
   habits: FlowHabitEntry[];
-  /**
-   * Which virtual Habit occurrence each added child hangs on. The children themselves arrive in
-   * `tasks`/`goals`/`commitments`/`infos` like any other node; this is the attachment alone.
-   */
-  habit_instance_children: HabitInstanceChild[];
 }
 
 /**
@@ -83,12 +71,3 @@ export async function loadMindmap(now: string): Promise<MindmapLoad> {
   return invoke<MindmapLoad>("load_mindmap", { now });
 }
 
-/** `entry.iterations` when it loaded, an empty list when it did not — positional, in flow order. */
-export function habitIterations(habits: readonly FlowHabitEntry[]): HabitIteration[][] {
-  return habits.map((entry) => (entry.result.outcome === "loaded" ? entry.result.iterations : []));
-}
-
-/** `entry.statuses` when it loaded, an empty list when it did not — positional, in flow order. */
-export function habitStatuses(habits: readonly FlowHabitEntry[]): HabitItemStatus[][] {
-  return habits.map((entry) => (entry.result.outcome === "loaded" ? entry.result.statuses : []));
-}

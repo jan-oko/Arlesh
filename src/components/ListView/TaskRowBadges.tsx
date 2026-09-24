@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { isOccurrence } from "@/utils/node-identity";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { StatusIndicator } from "@/utils/node-status-indicators";
 import { useScopeRangeLabel } from "@/hooks/use-scope-range-label";
@@ -67,7 +68,7 @@ export default function TaskRowBadges({ node, indicators }: Props) {
       case "info":
         return { tooltip: node.infoDetails ?? "", icon: <EllipsisIcon cx={R} cy={R} r={R} color={MUTED} /> };
       case "flowInstance": {
-        const isHabit = node.habitItem !== undefined;
+        const isHabit = isOccurrence(node);
         return {
           tooltip: isHabit ? t("habitInstance") : t("flowInstance"),
           icon: isHabit

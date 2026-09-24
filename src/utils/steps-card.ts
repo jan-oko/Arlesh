@@ -156,7 +156,7 @@ export function stepChildCounts(
  * Two ways to qualify, and a node needs one of them:
  *
  *   - **It already holds something.** A container with children always opens, whatever it is.
- *   - **It could be given something.** A leaf Task, an Info note and a virtual Habit occurrence all
+ *   - **It could be given something.** A leaf Task, an Info note and a Habit occurrence all
  *     open on an *empty* Step that offers to create the first child — a leaf is not a dead end, and
  *     refusing to enter one would make "what is under this?" a question you can only ask where the
  *     answer is already yes.

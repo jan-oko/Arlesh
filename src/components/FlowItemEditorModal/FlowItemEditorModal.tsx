@@ -1,12 +1,23 @@
 import { useEffect, useRef, useState } from "react";
+import { storedId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
 import { rowIdOf } from "@/utils/node-identity";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
-import type { FlowItemType } from "@/api/flows";
+import type { CycleReconcile, FlowItemType, TemplateUpdate } from "@/api/flows";
+import { orphanedEditCount } from "@/api/flows";
+import type { Domain } from "@/api/domains";
+import type { TaskAgentic } from "@/api/tasks";
+import { TASK_ARCHIVAL } from "@/api/tasks";
+import { storedAgenticState } from "@/utils/agentic";
 import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
+import ReconcilePrompt from "@/components/ReconcilePrompt/ReconcilePrompt";
+import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField";
+import TagPicker from "@/components/TagPicker/TagPicker";
+import Switch from "@/components/Switch/Switch";
+import AgenticField from "@/components/TaskEditorModal/AgenticField";
 import FlowCycleField from "./FlowCycleField";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
@@ -17,6 +28,14 @@ export interface FlowItemSaveData {
   addedDeps: FlowItemDep[];
   removedDeps: FlowItemDep[];
   isPrivate: boolean;
+  /** The template item's own fields, which every occurrence it draws reads unless that
+   * occurrence says otherwise. */
+  template: TemplateUpdate;
+  /**
+   * The answer to a cycle change that would orphan what this Habit's occurrences recorded:
+   * `"fork"` (Archive & new) or `"discard"` (Discard & regenerate). Absent on a first save.
+   */
+  reconcile?: CycleReconcile;
 }
 
 function depKey(dep: FlowItemDep): string { return `${dep.type}-${dep.id}`; }
@@ -24,21 +43,25 @@ function depEquals(a: FlowItemDep, b: FlowItemDep): boolean { return a.type === 
 
 function nodeToDep(node: MindmapNode): FlowItemDep | null {
   if (node.flowItem === undefined) return null;
-  return { type: node.flowItem.itemType, id: rowIdOf(node) };
+  return { type: node.flowItem.itemType, id: storedId(rowIdOf(node)) };
 }
 
 interface Props {
   node: MindmapNode;
   availableDeps: MindmapNode[];
+  allTags: Domain[];
+  domainNames: Map<number, string>;
   onSave: (data: FlowItemSaveData) => Promise<void>;
   onClose: () => void;
 }
 
 /**
- * Edits a flow item (flow-goal / flow-task): its title, block reason, relative
- * cycle pairs, and intra-flow dependencies on other items in the same flow.
+ * Edits a flow item (flow-goal / flow-task) — the template its occurrences are drawn from: its
+ * title, relative cycle pairs and intra-flow dependencies, and the fields of its kind each
+ * occurrence reads unless it says otherwise (block reasons, tags; for a task, Backlog,
+ * Asynchronous and Agentic).
  */
-export default function FlowItemEditorModal({ node, availableDeps, onSave, onClose }: Props) {
+export default function FlowItemEditorModal({ node, availableDeps, allTags, domainNames, onSave, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "nodeKinds"]);
   const itemType: FlowItemType = node.flowItem?.itemType ?? "flow_task";
@@ -47,6 +70,13 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
   const [cycles, setCycles] = useState<FlowCyclePair[]>(node.flowItem?.cycles ?? []);
   const [currentDeps, setCurrentDeps] = useState<FlowItemDep[]>(node.flowItem?.dependsOn ?? []);
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
+  const template = node.flowItem?.template ?? {};
+  const [blockReasons, setBlockReasons] = useState<string[]>(template.block_reasons ?? []);
+  const [tagIds, setTagIds] = useState<number[]>(template.tag_ids ?? []);
+  const [isBacklogged, setIsBacklogged] = useState(template.archival === TASK_ARCHIVAL.BACKLOG);
+  const [isAsynchronous, setIsAsynchronous] = useState(template.asynchronous === true);
+  const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(template.agentic ?? null));
+  const [orphanedCount, setOrphanedCount] = useState<number | null>(null);
   const [depSearch, setDepSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -66,22 +96,44 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
     setDepSearch("");
   }
 
-  async function handleSave() {
+  function templateUpdate(): TemplateUpdate {
+    const shared = { tag_ids: tagIds, block_reasons: blockReasons.filter((reason) => reason.trim() !== "") };
+    if (itemType === "flow_goal") return shared;
+    return {
+      ...shared,
+      archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
+      asynchronous: isAsynchronous,
+      agentic,
+    };
+  }
+
+  async function save(reconcile?: CycleReconcile) {
     if (title.trim() === "") return;
     setIsSaving(true);
     setSaveError(null);
     try {
       const addedDeps = currentDeps.filter((d) => !initialDeps.some((id) => depEquals(id, d)));
       const removedDeps = initialDeps.filter((d) => !currentDeps.some((cd) => depEquals(cd, d)));
-      await onSave({ title: title.trim(), cycles, addedDeps, removedDeps, isPrivate });
+      await onSave({
+        title: title.trim(), cycles, addedDeps, removedDeps, isPrivate, template: templateUpdate(),
+        ...(reconcile !== undefined ? { reconcile } : {}),
+      });
     } catch (err) {
-      setSaveError(getErrorMessage(err));
+      // A cycle change that would orphan what this Habit's occurrences recorded asks the Habit
+      // editor's question, and the save — undone whole by its gesture — waits for the answer.
+      const orphaned = orphanedEditCount(err);
+      if (orphaned !== null) setOrphanedCount(orphaned);
+      else setSaveError(getErrorMessage(err));
       setIsSaving(false);
     }
   }
 
+  function handleSave() {
+    void save();
+  }
+
   function handleKeyDown(event: React.KeyboardEvent) {
-    if (event.key === "Enter" && !event.shiftKey && event.target === titleRef.current) { event.preventDefault(); void handleSave(); }
+    if (event.key === "Enter" && !event.shiftKey && event.target === titleRef.current) { event.preventDefault(); handleSave(); }
     if (event.key === "Escape") onClose();
   }
 
@@ -102,7 +154,14 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
   const heading = itemType === "flow_goal" ? t("editGoal") : t("editTask");
 
   return (
-    <EditorModal heading={heading} onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={() => void handleSave()} saveError={saveError}>
+    <EditorModal heading={heading} onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={handleSave} saveError={saveError}>
+      {orphanedCount !== null && (
+        <ReconcilePrompt
+          message={t("reconcilePromptCycles", { count: orphanedCount })}
+          onChoose={(choice) => { setOrphanedCount(null); void save(choice); }}
+          onCancel={() => setOrphanedCount(null)}
+        />
+      )}
       <label className={styles.label}>
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
@@ -144,7 +203,40 @@ export default function FlowItemEditorModal({ node, availableDeps, onSave, onClo
           )}
         </div>
       </div>
-      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} />
+      {itemType === "flow_task" && (
+        <>
+          <div className={styles.label}>
+            {t("fieldBacklog")}
+            <Switch
+              checked={isBacklogged}
+              onChange={setIsBacklogged}
+              label={isBacklogged ? t("backlogOn") : t("backlogOff")}
+            />
+          </div>
+          <div className={styles.label}>
+            {t("fieldAsynchronous")}
+            <Switch
+              checked={isAsynchronous}
+              onChange={setIsAsynchronous}
+              label={isAsynchronous ? t("asynchronousOn") : t("asynchronousOff")}
+            />
+          </div>
+        </>
+      )}
+      <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />
+      <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
+      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate}>
+        {itemType === "flow_task" && (
+          <AgenticField
+            value={agentic}
+            inherited={false}
+            onChange={setAgentic}
+            delegatedToAgent={false}
+            offersDelegate={false}
+            onToggleDelegate={() => undefined}
+          />
+        )}
+      </EditorAdvanced>
     </EditorModal>
   );
 }

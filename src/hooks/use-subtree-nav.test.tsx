@@ -67,6 +67,22 @@ describe("a subtree root that is no longer on the board", () => {
     expect(useMindmapStore.getState().subtreeRootId).toBe("project-2");
   });
 
+  it("re-roots a tab saved on an occurrence's pre-row key at the occurrence's key now", () => {
+    const occurrence = n("task-abc", "task", {
+      title: "Stretch", rowId: "abc",
+      origin: {
+        kind: "habit", habit_id: 3, item_type: "flow_root", item_id: 3, cycle_id: 0,
+        iteration_scope: {
+          index: 4, start_date: "2026-01-05", window_end: "2026-01-06T00:00:00",
+          scope_id: { kind: "day", date: "2026-01-05" }, kind: "day", status: "active",
+        },
+      },
+    });
+    useMindmapStore.setState({ subtreeRootId: "habit-3-4-virtual" });
+    renderHook(() => useSubtreeNav(n("root", "domain", { title: "Arlesh" }, [occurrence])));
+    expect(useMindmapStore.getState().subtreeRootId).toBe("task-abc");
+  });
+
   it("waits for a loaded tree rather than reading an empty one as a deletion", () => {
     useMindmapStore.setState({ subtreeRootId: "project-2" });
     renderHook(() => useSubtreeNav(n("root", "domain", { title: "Arlesh" })));

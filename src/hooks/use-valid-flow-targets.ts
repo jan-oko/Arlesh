@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isDerivedId } from "@/api/node-id";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
@@ -22,10 +23,11 @@ export function useValidFlowTargets(
   useEffect(() => {
     if (!scoped) return; // Unscoped flow imposes no filter — handled by the derived return below.
     let cancelled = false;
-    const refs = candidates.map((candidate) => ({
-      node_type: candidate.kind,
-      node_id: rowIdOf(candidate),
-    }));
+    // A Habit occurrence is never a flow target, so only stored rows are asked about.
+    const refs = candidates.flatMap((candidate) => {
+      const id = rowIdOf(candidate);
+      return isDerivedId(id) ? [] : [{ node_type: candidate.kind, node_id: id }];
+    });
     void scopeValidFlowTargets(durationN, durationKind, anchorDate, refs).then((valid) => {
       if (!cancelled) setFetched(new Set(valid.map((ref) => entityNodeId(ref.node_type, ref.node_id))));
     });

@@ -87,7 +87,7 @@ export default function PlanTaskCard({
         </svg>
       </span>
       <span className={styles.body}>
-        {showPath && <span className={styles.path}>{path === "" ? t("noPath") : path}</span>}
+        {showPath && path !== "" && <span className={styles.path}>{path}</span>}
         <span className={styles.title} dir={isRtlText(node.title) ? "rtl" : "ltr"}>{node.title}</span>
       </span>
       <TaskRowBadges node={node} indicators={indicators} />

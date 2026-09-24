@@ -31,8 +31,8 @@ describe("getGoal", () => {
 describe("listGoals", () => {
   it("calls invoke with list_goals and returns the goal array", async () => {
     mockCommandOnce([mockGoal]);
-    const result = await listGoals();
-    expect(invoke).toHaveBeenCalledWith("list_goals");
+    const result = await listGoals("2026-01-05T09:00:00");
+    expect(invoke).toHaveBeenCalledWith("list_goals", { now: "2026-01-05T09:00:00" });
     expect(result).toEqual([mockGoal]);
   });
 });

@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import { filterTree, filterTreeWithFocus, DEFAULT_FILTER } from "./filter-tree";
 import { focusExemptPath } from "./focus-exemption";
 import type { FilterState } from "./filter-tree";
 import type { MindmapNode, NodeKind } from "./tree-layout";
-import { testKey } from "@/test/scope-key";
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}, children: MindmapNode[] = []): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children, ...extra };
@@ -174,19 +174,17 @@ describe("filterTree — flows & habits", () => {
 });
 
 describe("filterTree — a habit occurrence whose window has not opened", () => {
-  const occurrence = (cycleId: number) => ({
-    flowId: 3, itemType: "flow_task" as const, itemId: 4, scopeId: testKey(100), cycleId,
-  });
+  const drawn = (cycleId: number) => occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4, cycleId });
 
   // A daily habit's iteration at breakfast: the morning item's window is open, this evening's is
   // not. Both reach the frontend; only the preset decides which are drawn.
   const iteration = () =>
     n("root", "domain", {}, [
       n("project-1", "project", {}, [
-        n("habit-3-0-virtual", "goal", { virtual: true, status: "active", timing: "active" }, [
-          n("morning", "task", { virtual: true, status: "todo", timing: "active", habitItem: occurrence(11) }),
-          n("evening", "task", { virtual: true, status: "todo", timing: "pending", habitItem: occurrence(12) }, [
-            n("evening-step", "task", { virtual: true, status: "todo", timing: "active", habitItem: occurrence(13) }),
+        n("habit-3-0", "goal", { status: "active", timing: "active", ...occurrenceRow({ habitId: 3, itemType: "flow_root", itemId: 3 }) }, [
+          n("morning", "task", { status: "todo", timing: "active", ...drawn(11) }),
+          n("evening", "task", { status: "todo", timing: "pending", ...drawn(12) }, [
+            n("evening-step", "task", { status: "todo", timing: "active", ...drawn(13) }),
           ]),
         ]),
       ]),

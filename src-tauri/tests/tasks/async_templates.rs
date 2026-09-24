@@ -16,6 +16,7 @@ use arlesh_lib::{
     },
 };
 use chrono::NaiveDateTime;
+use helpers::StoredId;
 
 async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
     let aspect_id: i64 =
@@ -48,14 +49,14 @@ async fn task(pool: &sqlx::SqlitePool, project: i64, title: &str) -> i64 {
         CreateTaskRequest {
             title: title.into(),
             parent_type: "project".into(),
-            parent_id: project,
+            parent_id: project.into(),
             ..Default::default()
         },
     )
     .await
     .unwrap();
     db.commit().await.unwrap();
-    task.id
+    task.id.sid()
 }
 
 fn done() -> UpdateTaskRequest {
@@ -205,9 +206,13 @@ async fn the_wait_exists_while_the_task_is_done_and_holds_up_nothing() {
     let dependent = task(&pool, project, "Merge the reply").await;
     update(&pool, sender, with_template()).await;
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    add_task_dependency(&mut db, TaskId(dependent), Dependency::Task { id: sender })
-        .await
-        .unwrap();
+    add_task_dependency(
+        &mut db,
+        TaskId(dependent),
+        Dependency::Task { id: sender.into() },
+    )
+    .await
+    .unwrap();
     db.commit().await.unwrap();
 
     update(&pool, sender, done()).await;

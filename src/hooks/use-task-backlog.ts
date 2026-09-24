@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import type { RowId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
@@ -15,7 +16,7 @@ import { getErrorMessage } from "@/api/errors";
 export interface BacklogPlanPrompt {
   nodeId: string;
   /** The task row the confirmed write goes to. */
-  rowId: number;
+  rowId: RowId;
   title: string;
   plan: TimeScope | null;
 }
@@ -61,9 +62,8 @@ export function useTaskBacklog({ findNode, reload, showToast }: Options): Result
   const toggleBacklog = useCallback(
     (nodeId: string) => {
       const node = findNode(nodeId);
-      // Only a real Task has a backlog column: a virtual Habit instance is rendered from a
-      // template and has no row of its own to set aside.
-      if (node === undefined || node.kind !== "task" || node.habitItem !== undefined) return;
+      // Any Task row, a Habit occurrence included: setting one aside sets aside that occurrence.
+      if (node === undefined || node.kind !== "task" || node.rowId === undefined) return;
       const next = node.backlogged === true ? TASK_ARCHIVAL.LIVE : TASK_ARCHIVAL.BACKLOG;
       const rowId = rowIdOf(node);
       void updateTask(rowId, { archival: next }).then(

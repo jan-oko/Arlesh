@@ -34,7 +34,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Cycle Scope** — A flow item's *relative* relevance window, expressed as the Nth subscope of the flow scope (a scope kind lower than the flow's), e.g. "3rd day of the 2-week flow scope." Null means the whole flow scope. Resolved to a concrete Time Scope when the flow is started.
 
-**Cycle Plan** — A flow item's *relative* Plan within its Cycle Scope (e.g. the morning of that day). Resolved to a concrete Plan on flow start. A flow item may hold multiple (Cycle Scope, Cycle Plan) pairs; each pair materializes a separate item per start/iteration.
+**Cycle Plan** — A flow item's *relative* Plan within its Cycle Scope (e.g. the morning of that day). It may also be the Cycle Scope itself — what a cycle pair's **Planned** toggle sets, for a scope of any kind, and for a whole-scope pair the whole flow window; with no Cycle Plan an occurrence is unplanned. Resolved to a concrete Plan on flow start. A flow item may hold multiple (Cycle Scope, Cycle Plan) pairs; each pair materializes a separate item per start/iteration.
 
 **Habit** — A Flow with a Recurrence pattern. Its instances are generated automatically per iteration and are **virtual**: each is identified by (flow item, iteration scope), rendered from the template, with only divergences (status, edits, dependencies, deletion/archival tombstones) persisted as **Modification** rows. A Habit is **Archived** by the editor's *Archive & new*: it stops recurring, and existing occurrences survive.
 

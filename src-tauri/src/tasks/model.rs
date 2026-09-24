@@ -3,6 +3,7 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
+use crate::nodes::{id::NodeId, origin::Origin};
 use crate::scopes::{key::ScopeKey, resolve::Bounds};
 
 /// Identifies a task row by its primary key.
@@ -340,14 +341,14 @@ impl TimeScope {
 /// A task row as returned from the database.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
-    /// Primary key.
-    pub id: i64,
+    /// Primary key for a stored row, or the UUID of a derived one.
+    pub id: NodeId,
     /// Display title.
     pub title: String,
     /// Type of the parent entity.
     pub parent_type: String,
-    /// Id of the parent entity.
-    pub parent_id: i64,
+    /// Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
+    pub parent_id: NodeId,
     /// Current status.
     pub status: String,
     /// Who this task is delegated to — a Person or the Agent — if anyone.
@@ -386,6 +387,9 @@ pub struct Task {
     /// the id it already has, and the Issue row's × drops the link — neither writes a new one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub beads_id: Option<String>,
+    /// Where the row came from: made by hand, or derived (a Habit occurrence).
+    #[serde(default)]
+    pub origin: Origin,
 }
 
 /// A task row enriched with virtual block information.
@@ -402,24 +406,24 @@ pub struct TaskWithBlockers {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskDependencyEdge {
     /// The dependent task.
-    pub task_id: i64,
+    pub task_id: NodeId,
     /// Kind of the dependency target: `task` or `goal`.
     pub dependency_type: String,
     /// Database id of the dependency target.
-    pub dependency_id: i64,
+    pub dependency_id: NodeId,
 }
 
 /// A goal row as returned from the database.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Goal {
-    /// Primary key.
-    pub id: i64,
+    /// Primary key for a stored row, or the UUID of a derived one.
+    pub id: NodeId,
     /// Display title.
     pub title: String,
     /// Type of the parent entity.
     pub parent_type: String,
-    /// Id of the parent entity.
-    pub parent_id: i64,
+    /// Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
+    pub parent_id: NodeId,
     /// Current status.
     pub status: String,
     /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
@@ -438,6 +442,9 @@ pub struct Goal {
     /// the id it already has, and the Issue row's × drops the link — neither writes a new one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub beads_id: Option<String>,
+    /// Where the row came from: made by hand, or derived (a Habit occurrence).
+    #[serde(default)]
+    pub origin: Origin,
 }
 
 /// Dependency reference: a task, a goal, or an expectation.
@@ -446,13 +453,13 @@ pub struct Goal {
 pub enum Dependency {
     /// Depends on another task.
     Task {
-        /// The task being depended on.
-        id: i64,
+        /// The task being depended on — a stored one, or a Habit occurrence.
+        id: NodeId,
     },
     /// Depends on a goal being achieved.
     Goal {
-        /// The goal being depended on.
-        id: i64,
+        /// The goal being depended on — a stored one, or a Habit occurrence.
+        id: NodeId,
     },
     /// Depends on an expectation being released.
     Expectation {
@@ -469,7 +476,7 @@ pub struct CreateTaskRequest {
     /// Parent entity type.
     pub parent_type: String,
     /// Parent entity id.
-    pub parent_id: i64,
+    pub parent_id: NodeId,
     /// Initial status (defaults to Todo).
     pub status: Option<TaskStatus>,
     /// Initial relevance window.
@@ -539,7 +546,7 @@ pub struct UpdateTaskRequest {
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).
-    pub parent_id: Option<i64>,
+    pub parent_id: Option<NodeId>,
     /// New sort position among siblings (for sibling reordering).
     pub position: Option<i64>,
     /// New private flag, if changing.
@@ -554,7 +561,7 @@ pub struct CreateGoalRequest {
     /// Parent entity type.
     pub parent_type: String,
     /// Parent entity id.
-    pub parent_id: i64,
+    pub parent_id: NodeId,
     /// Initial status (defaults to Active).
     pub status: Option<GoalStatus>,
     /// Initial relevance window.
@@ -585,7 +592,7 @@ pub struct UpdateGoalRequest {
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).
-    pub parent_id: Option<i64>,
+    pub parent_id: Option<NodeId>,
     /// New sort position among siblings (for sibling reordering).
     pub position: Option<i64>,
     /// New private flag, if changing.
@@ -666,14 +673,14 @@ impl Verdict {
 /// `delegate_to`, and no dependency edges in either direction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Commitment {
-    /// Primary key.
-    pub id: i64,
+    /// Primary key for a stored row, or the UUID of a derived one.
+    pub id: NodeId,
     /// Display title.
     pub title: String,
     /// Type of the parent entity.
     pub parent_type: String,
-    /// Id of the parent entity.
-    pub parent_id: i64,
+    /// Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
+    pub parent_id: NodeId,
     /// Whether it was held to. Never derived — see [`Verdict`].
     pub verdict: Verdict,
     /// Relevance window (if set). A null value inherits the nearest scoped ancestor; unlike every
@@ -696,6 +703,9 @@ pub struct Commitment {
     /// UI can drop the link but never write one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub beads_id: Option<String>,
+    /// Where the row came from: made by hand, or derived (a Habit occurrence).
+    #[serde(default)]
+    pub origin: Origin,
 }
 
 /// Request body for creating a commitment.
@@ -706,7 +716,7 @@ pub struct CreateCommitmentRequest {
     /// Parent entity type.
     pub parent_type: String,
     /// Parent entity id.
-    pub parent_id: i64,
+    pub parent_id: NodeId,
     /// Initial verdict (defaults to Unresolved). Present so a retype can carry one across; the
     /// editor never sends it, because a commitment nobody has judged yet is unresolved.
     #[serde(default)]
@@ -737,7 +747,7 @@ pub struct UpdateCommitmentRequest {
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).
-    pub parent_id: Option<i64>,
+    pub parent_id: Option<NodeId>,
     /// New sort position among siblings (for sibling reordering).
     pub position: Option<i64>,
     /// New private flag, if changing.
@@ -884,14 +894,15 @@ impl ExpectationArchival {
 /// only Tasks depend on it. Beside its Time Scope it carries the optional **Check every**.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Expectation {
-    /// Primary key.
-    pub id: i64,
+    /// Primary key for a stored wait, or the UUID of a derived one (a Task's spawned wait, or a
+    /// delegated Task's wait on its delegate).
+    pub id: NodeId,
     /// Display title.
     pub title: String,
     /// Type of the parent entity.
     pub parent_type: String,
-    /// Id of the parent entity.
-    pub parent_id: i64,
+    /// Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
+    pub parent_id: NodeId,
     /// Pending or Released.
     pub status: ExpectationStatus,
     /// Live or Archived, independently of the status.
@@ -917,6 +928,9 @@ pub struct Expectation {
     pub position: i64,
     /// Whether this node is private (hidden unless Private Mode is on).
     pub is_private: bool,
+    /// Where the row came from: made by hand, or derived from a Task (ADR 0008).
+    #[serde(default)]
+    pub origin: Origin,
 }
 
 /// Request body for creating an expectation.
@@ -927,7 +941,7 @@ pub struct CreateExpectationRequest {
     /// Parent entity type.
     pub parent_type: String,
     /// Parent entity id.
-    pub parent_id: i64,
+    pub parent_id: NodeId,
     /// How often to check on it. Omitted, it is never checked.
     #[serde(default)]
     pub check_every: Option<DurationSpec>,
@@ -961,7 +975,7 @@ pub struct UpdateExpectationRequest {
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
     /// New parent entity id for re-parenting (must be set together with parent_type).
-    pub parent_id: Option<i64>,
+    pub parent_id: Option<NodeId>,
     /// New sort position among siblings (for sibling reordering).
     pub position: Option<i64>,
     /// New private flag, if changing.

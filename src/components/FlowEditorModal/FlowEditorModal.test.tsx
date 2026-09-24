@@ -162,6 +162,35 @@ describe("FlowEditorModal — save", () => {
     );
   });
 
+  it("plans the root into the whole flow window from the Plan dropdown's instance-scope option", async () => {
+    render(<FlowEditorModal {...defaultProps} />);
+    const plan = screen.getByRole("combobox", { name: "cyclePlanKind" });
+    // One section: the dropdown carries the whole-window option, and there is no separate pill.
+    expect(screen.queryByRole("button", { name: "cyclePlanned" })).not.toBeInTheDocument();
+    fireEvent.change(plan, { target: { value: "week" } });
+    // The whole window has no cells to pick.
+    expect(screen.queryByRole("button", { name: "kindWeek 1" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ rootPlanKind: "week", rootPlanStart: 1, rootPlanEnd: 2 }),
+      ),
+    );
+  });
+
+  it("opens a root planned into the whole window on the instance-scope option, and No plan unplans it", async () => {
+    render(<FlowEditorModal {...defaultProps} node={mkFlow({ flow: { ...mkFlow().flow!, rootPlanKind: "week", rootPlanStart: 1, rootPlanEnd: 2 } })} />);
+    const plan = screen.getByRole("combobox", { name: "cyclePlanKind" });
+    expect(plan).toHaveValue("week");
+    fireEvent.change(plan, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null }),
+      ),
+    );
+  });
+
   it("omits the root plan for a goal-instance flow", async () => {
     render(<FlowEditorModal {...defaultProps} />);
     fireEvent.click(screen.getByRole("button", { name: "nodeKinds:goal" }));

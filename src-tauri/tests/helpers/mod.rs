@@ -92,6 +92,19 @@ pub fn session_factory(pool: &SqlitePool) -> SessionFactory {
     SessionFactory::new(pool.clone())
 }
 
+/// The integer id of a row a test made by hand. Every such row is stored, so a derived id here is
+/// a broken fixture and fails loudly.
+pub trait StoredId {
+    /// The stored primary key.
+    fn sid(&self) -> i64;
+}
+
+impl StoredId for arlesh_lib::nodes::id::NodeId {
+    fn sid(&self) -> i64 {
+        self.stored().expect("a row made by hand is stored")
+    }
+}
+
 /// Every row inserted, updated or deleted on the test pool's one connection since it opened.
 ///
 /// The pool has a single connection, so this counts every write anything made through it — which

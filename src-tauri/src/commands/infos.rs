@@ -18,11 +18,13 @@ pub async fn create_info(
     factory: State<'_, SessionFactory>,
     request: CreateInfoRequest,
 ) -> Result<Info, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.infos()
-        .create(request)
-        .await
-        .map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let info =
+        crate::nodes::write::create_info(&mut db, request, chrono::Local::now().naive_local())
+            .await
+            .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(info)
 }
 
 /// Lists all info nodes.
@@ -44,11 +46,10 @@ pub async fn update_info(
     request: UpdateInfoRequest,
 ) -> Result<Info, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let info = db
-        .infos()
-        .update(InfoId(id), request)
-        .await
-        .map_err(WireError::from_error)?;
+    let info =
+        crate::nodes::write::update_info(&mut db, id, request, chrono::Local::now().naive_local())
+            .await
+            .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(info)
 }

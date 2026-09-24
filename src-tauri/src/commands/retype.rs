@@ -33,6 +33,8 @@ use crate::{
 /// noise is deliberate, and the fallback if it is judged too high is an asymmetric rule (consent
 /// for children, notification for fields) rather than a silent drop.
 ///
+/// A Habit occurrence is refused outright: it cannot change kind.
+///
 /// `time_scope` answers the other refusal this command can raise. A Commitment must resolve to a
 /// window, so retyping a node that has neither its own nor a scoped ancestor's comes back
 /// [`NeedsTimeScope`](crate::error::WireErrorKind::NeedsTimeScope); the caller asks again with the
@@ -46,11 +48,18 @@ use crate::{
 pub async fn retype_node(
     factory: State<'_, SessionFactory>,
     node_type: String,
-    node_id: i64,
+    node_id: crate::nodes::id::NodeId,
     target_type: String,
     stranded_children: Option<StrandedChildren>,
     time_scope: Option<TimeScope>,
 ) -> Result<RetypedNode, WireError> {
+    // A Habit occurrence is its template's kind in its iteration, and there is no detaching it
+    // into a stored row of another (ADR 0008): the refusal says so rather than failing to parse.
+    let Some(node_id) = node_id.stored() else {
+        return Err(WireError::from_error(
+            crate::flows::occurrence_edit::refuse_retype(),
+        ));
+    };
     let source_kind = parse_kind(&node_type)?;
     let target = parse_kind(&target_type)?;
 

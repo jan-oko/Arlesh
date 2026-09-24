@@ -9,6 +9,7 @@ use arlesh_lib::{
         model::{CreateGoalRequest, CreateTaskRequest},
     },
 };
+use helpers::StoredId;
 use tauri::Manager;
 
 async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
@@ -45,7 +46,7 @@ async fn list_all_returns_reasons_for_every_owner() {
         CreateTaskRequest {
             title: "T".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: None,
             ..Default::default()
         },
@@ -57,7 +58,7 @@ async fn list_all_returns_reasons_for_every_owner() {
         CreateGoalRequest {
             title: "G".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: None,
             ..Default::default()
         },
@@ -66,11 +67,11 @@ async fn list_all_returns_reasons_for_every_owner() {
     .unwrap();
 
     db.block_reasons()
-        .set("task", task.id, &["a".into(), "b".into()])
+        .set("task", task.id.sid(), &["a".into(), "b".into()])
         .await
         .unwrap();
     db.block_reasons()
-        .set("goal", goal.id, &["x".into()])
+        .set("goal", goal.id.sid(), &["x".into()])
         .await
         .unwrap();
 
@@ -95,7 +96,7 @@ async fn deleting_a_task_removes_its_block_reasons() {
         CreateTaskRequest {
             title: "T".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: None,
             ..Default::default()
         },
@@ -103,15 +104,15 @@ async fn deleting_a_task_removes_its_block_reasons() {
     .await
     .unwrap();
     db.block_reasons()
-        .set("task", task.id, &["stuck".into()])
+        .set("task", task.id.sid(), &["stuck".into()])
         .await
         .unwrap();
 
-    delete_task(&mut db, task.id.into()).await.unwrap();
+    delete_task(&mut db, task.id.sid().into()).await.unwrap();
 
     assert!(db
         .block_reasons()
-        .list_for("task", task.id)
+        .list_for("task", task.id.sid())
         .await
         .unwrap()
         .is_empty());
@@ -127,7 +128,7 @@ async fn make_task(pool: &sqlx::SqlitePool, project_id: i64) -> i64 {
         CreateTaskRequest {
             title: "T".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: None,
             ..Default::default()
         },
@@ -136,7 +137,7 @@ async fn make_task(pool: &sqlx::SqlitePool, project_id: i64) -> i64 {
     .unwrap()
     .id;
     db.commit().await.unwrap();
-    id
+    id.sid()
 }
 
 /// Reads an owner's list back over the pool, after the session under test has released it.
@@ -297,7 +298,7 @@ async fn the_set_block_reasons_command_commits_what_it_writes() {
     set_block_reasons(
         app.state(),
         "task".into(),
-        task_id,
+        task_id.into(),
         vec!["first".into(), "second".into()],
     )
     .await
@@ -318,12 +319,22 @@ async fn the_set_block_reasons_command_replaces_rather_than_appends() {
     let task_id = make_task(&pool, project_id).await;
     let app = helpers::command_host(&pool);
 
-    set_block_reasons(app.state(), "task".into(), task_id, vec!["original".into()])
-        .await
-        .unwrap();
-    set_block_reasons(app.state(), "task".into(), task_id, vec!["replaced".into()])
-        .await
-        .unwrap();
+    set_block_reasons(
+        app.state(),
+        "task".into(),
+        task_id.into(),
+        vec!["original".into()],
+    )
+    .await
+    .unwrap();
+    set_block_reasons(
+        app.state(),
+        "task".into(),
+        task_id.into(),
+        vec!["replaced".into()],
+    )
+    .await
+    .unwrap();
 
     assert_eq!(
         reasons_on_disk(&pool, task_id).await,

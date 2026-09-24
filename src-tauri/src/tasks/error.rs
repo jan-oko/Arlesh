@@ -66,6 +66,9 @@ pub enum TaskError {
     /// A referenced scope could not be resolved.
     #[error("scope error: {0}")]
     Scope(#[from] crate::scopes::error::ScopeError),
+    /// A derived node (a Habit occurrence) was named where only a stored row will do.
+    #[error(transparent)]
+    NotStored(#[from] crate::nodes::id::NotStored),
     /// A database error occurred.
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),

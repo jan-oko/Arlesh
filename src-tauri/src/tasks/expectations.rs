@@ -35,16 +35,6 @@ use super::{insertion_position, time_scope_columns, time_scope_from_row};
 /// The `parent_type` / `dependency_type` / `owner_type` spelling of this kind.
 pub const EXPECTATION: &str = "expectation";
 
-/// The lifecycle `node_type` an Expectation's **next check** is sent under — what its virtual
-/// check task reads. The `expectation` entry times the wait's own Time Scope.
-pub const EXPECTATION_CHECK: &str = "expectation_check";
-
-/// The lifecycle `node_type` a Task's **spawned** wait is sent under, keyed by the Task.
-pub const SPAWNED_WAIT: &str = "spawned_wait";
-
-/// The lifecycle `node_type` a spawned wait's next check is sent under, keyed by the Task.
-pub const SPAWNED_CHECK: &str = "spawned_check";
-
 /// The stored shape of an expectation row.
 #[derive(sqlx::FromRow)]
 struct ExpectationRow {
@@ -77,10 +67,10 @@ const EXPECTATION_SELECT: &str = "SELECT e.*,
 impl From<ExpectationRow> for Expectation {
     fn from(row: ExpectationRow) -> Self {
         Self {
-            id: row.id,
+            id: row.id.into(),
             title: row.title,
             parent_type: row.parent_type,
-            parent_id: row.parent_id,
+            parent_id: row.parent_id.into(),
             // An unrecognised spelling reads as Pending — the answer that keeps dependents
             // blocked rather than waving them through. The CHECK constraint keeps it from arising.
             status: ExpectationStatus::from_db(&row.status).unwrap_or_default(),
@@ -100,6 +90,7 @@ impl From<ExpectationRow> for Expectation {
             tag_ids: Vec::new(),
             position: row.position,
             is_private: row.is_private,
+            origin: crate::nodes::origin::Origin::Manual,
         }
     }
 }
@@ -133,15 +124,21 @@ struct ExpectationWrite {
 
 impl ExpectationWrite {
     /// Merges `request` over the `stored` row. Pure — it reads nothing and writes nothing.
-    fn merge(stored: Expectation, request: UpdateExpectationRequest, now: NaiveDateTime) -> Self {
+    fn merge(
+        stored: Expectation,
+        request: UpdateExpectationRequest,
+        now: NaiveDateTime,
+    ) -> Result<Self, crate::nodes::id::NotStored> {
         let reparent = match (request.parent_type, request.parent_id) {
-            (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
+            (Some(parent_type), Some(parent_id)) => {
+                Some((parent_type, parent_id.require_stored()?))
+            }
             _ => None,
         };
         let (parent_type, parent_id) = reparent
             .clone()
-            .unwrap_or((stored.parent_type, stored.parent_id));
-        Self {
+            .unwrap_or((stored.parent_type, stored.parent_id.require_stored()?));
+        Ok(Self {
             reparent,
             parent_type,
             parent_id,
@@ -165,7 +162,7 @@ impl ExpectationWrite {
             ),
             position: request.position.unwrap_or(stored.position),
             is_private: request.is_private.unwrap_or(stored.is_private),
-        }
+        })
     }
 }
 
@@ -205,7 +202,7 @@ impl<'session> ExpectationOperator<'session> {
         )
         .bind(&request.title)
         .bind(&request.parent_type)
-        .bind(request.parent_id)
+        .bind(request.parent_id.require_stored()?)
         .bind(every_n)
         .bind(&every_kind)
         .bind(starting)
@@ -372,7 +369,7 @@ pub async fn create_expectation(
     super::scope_rules::validate_expectation_scope(
         db,
         &request.parent_type,
-        request.parent_id,
+        request.parent_id.require_stored()?,
         &request.time_scope,
     )
     .await?;
@@ -390,7 +387,7 @@ pub async fn update_expectation(
     request: UpdateExpectationRequest,
 ) -> Result<Expectation, TaskError> {
     let stored = db.expectations().get(id).await?;
-    let write = ExpectationWrite::merge(stored, request, now());
+    let write = ExpectationWrite::merge(stored, request, now())?;
     super::scope_rules::validate_expectation_scope(
         db,
         &write.parent_type,
@@ -422,7 +419,7 @@ pub async fn complete_expectation_check(
         return Err(TaskError::NoCheckDue);
     };
     db.tasks()
-        .record_check(super::waits::WaitKind::Stored, id.0, due, at)
+        .record_check(&super::waits::WaitRef::Stored(id.0), due, at)
         .await?;
     db.expectations().get(id).await
 }
@@ -440,7 +437,7 @@ pub async fn reopen_expectation_check(
     if stored.status != ExpectationStatus::Pending || stored.archival != ExpectationArchival::Live {
         return Err(TaskError::CheckNotReopenable);
     }
-    super::waits::reopen_latest(db, super::waits::WaitKind::Stored, id.0, due_at).await?;
+    super::waits::reopen_latest(db, &super::waits::WaitRef::Stored(id.0), due_at).await?;
     db.expectations().get(id).await
 }
 

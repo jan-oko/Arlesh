@@ -207,7 +207,7 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
         | TaskError::NoSpawnedWait(_) => WireErrorKind::NotFound,
         // The request named a check that is no longer there to complete.
         TaskError::NoCheckDue | TaskError::CheckNotReopenable => WireErrorKind::InvalidRequest,
-        TaskError::CircularDependency => WireErrorKind::InvalidRequest,
+        TaskError::CircularDependency | TaskError::NotStored(_) => WireErrorKind::InvalidRequest,
         // Not `InvalidRequest`: the request is well-formed and could be carried out. The backend
         // is asking whether to throw the Plan away, and the caller answers by asking again with
         // the Plan cleared.
@@ -256,7 +256,8 @@ fn flow_kind(error: &FlowError) -> WireErrorKind {
         FlowError::Database(_) => WireErrorKind::Database,
         FlowError::Scope(inner) => scope_kind(inner),
         FlowError::Task(inner) => task_kind(inner),
-        FlowError::Invalid(_) => WireErrorKind::InvalidRequest,
+        FlowError::Invalid(_) | FlowError::Refused(_) => WireErrorKind::InvalidRequest,
+        FlowError::NodeNotFound(_) => WireErrorKind::NotFound,
     }
 }
 

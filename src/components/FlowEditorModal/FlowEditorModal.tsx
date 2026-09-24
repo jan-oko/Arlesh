@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { storedId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
 import { rowIdOf } from "@/utils/node-identity";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
@@ -11,6 +12,7 @@ import { dayScopeDate } from "@/utils/scope-calendar";
 import { keyStartDate } from "@/utils/scope-key";
 import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
+import ReconcilePrompt from "@/components/ReconcilePrompt/ReconcilePrompt";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import Switch from "@/components/Switch/Switch";
 import RecurrenceField from "./RecurrenceField";
@@ -95,6 +97,13 @@ function toFlowScopeKind(value: string): FlowScopeKind {
 }
 
 /** Flattens the root Cycle Plan into the `FlowSaveData` fields (all null when unplanned). */
+/** A root planned into the whole window (its own kind, 1..n) stays whole when the window's length
+ * changes in the same edit. */
+function wholeWindowFollowsLength(plan: RootPlanValue | null, kind: string, n: number): RootPlanValue | null {
+  if (plan === null || plan.kind !== kind) return plan;
+  return { ...plan, start: 1, end: n };
+}
+
 function planFields(plan: RootPlanValue | null): Pick<FlowSaveData, "rootPlanKind" | "rootPlanStart" | "rootPlanEnd"> {
   return plan === null
     ? { rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null }
@@ -179,7 +188,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   const titleRef = useRef<HTMLInputElement>(null);
 
   // Recurrence (Habit) is edit-only — it needs a persisted flow to key on.
-  const flowId = node.rowId;
+  const flowId = node.rowId === undefined ? undefined : storedId(node.rowId);
   const isEdit = flowId !== undefined;
   const [recurrence, setRecurrence] = useState<RecurrenceUi>(() => defaultRecurrence(todayIso()));
   // For edit-habit reconciliation: how many completed iterations exist, the schedule snapshot to
@@ -228,7 +237,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   }, [flowId]);
 
   function selectTarget(candidate: MindmapNode) {
-    const id = rowIdOf(candidate);
+    const id = storedId(rowIdOf(candidate));
     setTarget({ kind: candidate.kind, id, title: candidate.title });
     setTargetSearch("");
   }
@@ -287,7 +296,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
         windowTimeStart: scoped && durationKind === "exact" ? timeStart : null,
         windowTimeEnd: scoped && durationKind === "exact" ? timeEnd : null,
         // The root Plan applies only to a task-instance flow with a Span window.
-        ...planFields(instanceType === "task" && scoped && !phase ? rootPlan : null),
+        ...planFields(instanceType === "task" && scoped && !phase ? wholeWindowFollowsLength(rootPlan, durationKind, durationN) : null),
         // And the Verdict Window only to a commitment one: nothing else has a verdict to bound.
         ...verdictWindowFields(instanceType === "commitment" ? verdictWindow : null),
         isPrivate,
@@ -326,20 +335,11 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   return (
     <EditorModal heading={heading ?? t("editFlow")} onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={() => void handleSave()} saveError={saveError}>
       {reconcilePrompt && (
-        <div className={styles.label}>
-          <span className={styles.depKind}>{t("reconcilePrompt", { count: completionCount })}</span>
-          <div className={styles.statusPills}>
-            <button type="button" className={styles.statusPill} onClick={() => { setReconcilePrompt(false); void doSave("fork"); }}>
-              {t("reconcileFork")}
-            </button>
-            <button type="button" className={styles.statusPill} onClick={() => { setReconcilePrompt(false); void doSave("discard"); }}>
-              {t("reconcileDiscard")}
-            </button>
-            <button type="button" className={styles.statusPill} onClick={() => setReconcilePrompt(false)}>
-              {t("reconcileCancel")}
-            </button>
-          </div>
-        </div>
+        <ReconcilePrompt
+          message={t("reconcilePrompt", { count: completionCount })}
+          onChoose={(choice) => { setReconcilePrompt(false); void doSave(choice); }}
+          onCancel={() => setReconcilePrompt(false)}
+        />
       )}
       <label className={styles.label}>
         {t("fieldTitle")}

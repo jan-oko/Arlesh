@@ -1,0 +1,1 @@
+- **Marking a Flow or a flow step private now sticks.** The Private switch in the Flow editor and the flow item editor was never saved; it is now.

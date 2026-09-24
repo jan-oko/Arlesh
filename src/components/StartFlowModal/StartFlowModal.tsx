@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { storedId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
 import { rowIdOf } from "@/utils/node-identity";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
@@ -75,7 +76,7 @@ export default function StartFlowModal({ flowTitle, flowScoped, durationN, durat
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
 
   function selectTarget(candidate: MindmapNode) {
-    const id = rowIdOf(candidate);
+    const id = storedId(rowIdOf(candidate));
     setTarget({ kind: candidate.kind, id, title: candidate.title });
     setTargetSearch("");
   }

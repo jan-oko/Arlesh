@@ -22,7 +22,7 @@ impl From<BlockReasonRow> for BlockReason {
     fn from(row: BlockReasonRow) -> Self {
         Self {
             owner_type: row.owner_type,
-            owner_id: row.owner_id,
+            owner_id: row.owner_id.into(),
             reason: row.reason,
             position: row.position,
         }

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useTaskBacklog } from "./use-task-backlog";
 import { updateTask } from "@/api/tasks";
@@ -101,20 +102,28 @@ describe("useTaskBacklog", () => {
     expect(result.current.planPrompt).toBeNull();
   });
 
-  it("ignores a goal, a container and a virtual Habit instance — none has a backlog column", () => {
+  it("ignores a goal and a container — neither has a backlog column", () => {
     const { result } = setup([
       { ...node("goal-1"), kind: "goal" },
       { ...node("project-1"), kind: "project" },
-      node("task-9", { habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: testKey(3), cycleId: 0 } }),
     ]);
 
     act(() => {
       result.current.toggleBacklog("goal-1");
       result.current.toggleBacklog("project-1");
-      result.current.toggleBacklog("task-9");
       result.current.toggleBacklog("task-missing");
     });
 
     expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it("sets a Habit occurrence aside on its own row", async () => {
+    const occurrence = node("task-9", { ...occurrenceRow({ habitId: 1, itemType: "flow_task", itemId: 2 }) });
+    vi.mocked(updateTask).mockResolvedValue({} as never);
+    const { result } = setup([occurrence]);
+
+    act(() => { result.current.toggleBacklog("task-9"); });
+
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(occurrence.rowId, { archival: "backlog" }));
   });
 });

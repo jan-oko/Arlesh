@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { storedId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
 import { useMindmapData } from "./use-mindmap-data";
 import { useDismissableLoadCondition } from "./use-dismissable-load-condition";
@@ -185,7 +186,7 @@ export default function MindmapView() {
   // Runs the conversion, reloads, then opens the new flow's editor so it can be configured.
   const runConvertToFlow = useCallback(
     async (node: MindmapNode, keepDependencies: boolean, mapScopes: boolean) => {
-      const dbId = rowIdOf(node);
+      const dbId = storedId(rowIdOf(node));
       const flow = await convertToFlow(node.kind, dbId, keepDependencies, mapScopes);
       await reload();
       const flowNode: MindmapNode = {
@@ -251,9 +252,12 @@ export default function MindmapView() {
   const guardedMoveNode = useCallback(
     async (id: string, kind: NodeKind, parentId: string, parentKind: NodeKind, position: number) => {
       await withGesture(t("undo:gestures.move", { count: 1 }), async () => {
-        if (kind === "task" || kind === "goal") {
-          const nodeDbId = rowIdOfNodeId(tree, id);
-          const parentDbId = rowIdOfNodeId(tree, parentId);
+        const clamps = kind === "task" || kind === "goal";
+        const nodeDbId = clamps ? rowIdOfNodeId(tree, id) : null;
+        const parentDbId = clamps ? rowIdOfNodeId(tree, parentId) : null;
+        // A Habit occurrence has no stored Time Scope to clamp against: moving one is refused by the
+        // backend, and a row moved onto one takes its iteration's window there.
+        if (clamps && typeof nodeDbId === "number" && typeof parentDbId === "number") {
           const { ancestor_time_scope, conflicts } = await reparentScopeConflicts(kind, nodeDbId, parentKind, parentDbId);
           if (ancestor_time_scope !== null && conflicts.length > 0) {
             if (!(await confirmScopeClamp(conflicts))) return;
@@ -435,7 +439,7 @@ export default function MindmapView() {
   const onConfirmStartFlow = useCallback(
     async (data: StartFlowData) => {
       if (startFlowNode === null) return;
-      const flowDbId = rowIdOf(startFlowNode);
+      const flowDbId = storedId(rowIdOf(startFlowNode));
       const result = await startFlow(flowDbId, {
         title: data.title, target_type: data.targetType, target_id: data.targetId, anchor_date: data.anchorDate,
       });

@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import { renderHook } from "@testing-library/react";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
 import { mindmapKeyboardContext } from "@/test/keyboard-context";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { TypedChildKind } from "@/utils/node-meta";
-import { NO_CYCLE } from "@/api/flows";
-import { testKey } from "@/test/scope-key";
 
 function makeTask(id: string): MindmapNode {
   return { id, kind: "task", title: "Task", position: 0, tagIds: [], children: [] };
@@ -703,10 +702,10 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
     expect(opts.onToggleAgentic).not.toHaveBeenCalled();
   });
 
-  it("plain A does nothing on a virtual Habit instance — it has no task row to flag", () => {
+  it("plain A flags a Habit occurrence, which is a Task row of its own", () => {
     const instance: MindmapNode = {
       id: "task-4-virtual", kind: "task", title: "Instance", position: 0, tagIds: [], children: [],
-      virtual: true, habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: testKey(100), cycleId: NO_CYCLE },
+      ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4, cycleId: 0 }),
     };
     const opts = mindmapKeyboardContext({
       selectedNodeId: "task-4-virtual",
@@ -715,7 +714,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
     });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("a");
-    expect(opts.onToggleAgentic).not.toHaveBeenCalled();
+    expect(opts.onToggleAgentic).toHaveBeenCalledWith("task-4-virtual");
   });
 
   it("plain W flips the anchor task's Asynchronous flag, leaving the rest of the selection alone", () => {

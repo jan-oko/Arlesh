@@ -136,6 +136,7 @@ export default function NodeEditorModals({ tree, editor }: Props) {
           availableDeps={allFlowItems.filter(
             (candidate) => candidate.flowItem?.flowId === node.flowItem?.flowId && candidate.id !== node.id,
           )}
+          allTags={allTags} domainNames={domainNames}
           onSave={onFlowItemSave} onClose={close}
         />
       );

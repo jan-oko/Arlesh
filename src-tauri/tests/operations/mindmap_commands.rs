@@ -97,7 +97,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
         CreateGoalRequest {
             title: "Ship".into(),
             parent_type: "domain".into(),
-            parent_id: 1,
+            parent_id: 1.into(),
             ..Default::default()
         },
     )
@@ -108,7 +108,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
         CreateTaskRequest {
             title: "Write".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id,
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
@@ -119,19 +119,25 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
         CreateTaskRequest {
             title: "Review".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id,
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
     .await
     .unwrap();
-    task_commands::add_task_dependency(app.state(), second.id, Dependency::Task { id: first.id })
-        .await
-        .unwrap();
+    task_commands::add_task_dependency(
+        app.state(),
+        second.id.clone(),
+        Dependency::Task {
+            id: first.id.clone(),
+        },
+    )
+    .await
+    .unwrap();
     block_reason_commands::set_block_reasons(
         app.state(),
         "task".into(),
-        first.id,
+        first.id.clone(),
         vec!["waiting on review".into()],
     )
     .await
@@ -142,7 +148,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
             body: "a note".into(),
             details: None,
             parent_type: "task".into(),
-            parent_id: first.id,
+            parent_id: first.id.clone(),
             position: 0,
         },
     )
@@ -186,6 +192,8 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
             plan_start: None,
             plan_end: None,
         }],
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -239,8 +247,16 @@ async fn the_envelope_carries_what_the_individual_commands_return() {
         domain_commands::list_domains(app.state(), None),
         "domains"
     );
-    same!(load.goals, task_commands::list_goals(app.state()), "goals");
-    same!(load.tasks, task_commands::list_tasks(app.state()), "tasks");
+    same!(
+        load.goals,
+        task_commands::list_goals(app.state(), now()),
+        "goals"
+    );
+    same!(
+        load.tasks,
+        task_commands::list_tasks(app.state(), now()),
+        "tasks"
+    );
     same!(load.infos, info_commands::list_infos(app.state()), "infos");
     same!(load.flows, flow_commands::list_flows(app.state()), "flows");
     same!(
@@ -293,34 +309,11 @@ async fn the_envelope_carries_what_the_individual_commands_return() {
     for (entry, flow) in load.habits.iter().zip(&load.flows) {
         assert_eq!(entry.flow_id, flow.id);
         assert_eq!(entry.flow_title, flow.title);
-        let FlowHabitResult::Loaded {
-            iterations,
-            statuses,
-        } = &entry.result
-        else {
-            panic!("flow {} should have loaded: {:?}", flow.id, entry.result);
-        };
-        assert_eq!(
-            serde_json::to_value(iterations).unwrap(),
-            serde_json::to_value(
-                flow_commands::generate_habit_iterations(app.state(), flow.id, now())
-                    .await
-                    .unwrap_or_default()
-            )
-            .unwrap(),
-            "iterations for flow {}",
-            flow.id
-        );
-        assert_eq!(
-            serde_json::to_value(statuses).unwrap(),
-            serde_json::to_value(
-                flow_commands::list_habit_item_statuses(app.state(), flow.id)
-                    .await
-                    .unwrap()
-            )
-            .unwrap(),
-            "statuses for flow {}",
-            flow.id
+        assert!(
+            matches!(entry.result, FlowHabitResult::Loaded {}),
+            "flow {} should have loaded: {:?}",
+            flow.id,
+            entry.result
         );
     }
 }
@@ -342,9 +335,18 @@ async fn loading_a_habit_that_needs_new_windows_writes_nothing() {
         .iter()
         .find(|entry| entry.flow_id == habit)
         .expect("the habit has an entry");
-    let FlowHabitResult::Loaded { iterations, .. } = &entry.result else {
-        panic!("the habit should have loaded: {:?}", entry.result);
-    };
+    assert!(
+        matches!(entry.result, FlowHabitResult::Loaded {}),
+        "the habit should have loaded: {:?}",
+        entry.result
+    );
+    let iterations: Vec<arlesh_lib::scopes::key::ScopeKey> = load
+        .tasks
+        .iter()
+        .filter_map(|task| task.origin.habit())
+        .filter(|origin| origin.habit_id == habit && origin.is_root())
+        .map(|origin| origin.iteration_scope.scope_id)
+        .collect();
     assert_eq!(
         iterations.len(),
         3,
@@ -353,7 +355,7 @@ async fn loading_a_habit_that_needs_new_windows_writes_nothing() {
     assert_eq!(
         iterations
             .iter()
-            .map(|iteration| iteration.anchor_scope_id.to_string())
+            .map(|iteration| iteration.to_string())
             .collect::<Vec<_>>(),
         [
             r#"{"kind":"week","date":"2026-01-04"}"#,
@@ -452,13 +454,15 @@ async fn a_flow_with_no_recurrence_loads_as_an_empty_habit_not_a_failure() {
         .iter()
         .find(|entry| entry.flow_id == plain.id)
         .expect("every flow has an entry");
-    let FlowHabitResult::Loaded { iterations, .. } = &entry.result else {
-        panic!(
-            "an ordinary flow is not a failure — it would raise a notice on every load: {:?}",
-            entry.result
-        );
-    };
-    assert!(iterations.is_empty(), "no recurrence, no iterations");
+    assert!(
+        matches!(entry.result, FlowHabitResult::Loaded {}),
+        "an ordinary flow is not a failure — it would raise a notice on every load: {:?}",
+        entry.result
+    );
+    assert!(
+        load.tasks.iter().all(|task| !task.origin.is_derived()),
+        "no recurrence, no occurrences"
+    );
 }
 
 #[tokio::test]

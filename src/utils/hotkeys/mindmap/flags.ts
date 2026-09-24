@@ -15,16 +15,16 @@ export interface MindmapFlagsContext extends MindmapSelectionContext {
   onToggleAsynchronous: (id: string) => void;
 }
 
-/** A real Task, not a virtual Habit instance — these flags are columns on a task row. */
+/** A Task row — stored or a Habit occurrence — since these flags are columns on a task row. */
 function isFlaggableTask(c: MindmapSelectionContext): boolean {
   const node = selectedNode(c);
-  return node !== undefined && node.kind === "task" && node.habitItem === undefined;
+  return node !== undefined && node.kind === "task" && node.virtual !== true;
 }
 
 export const MINDMAP_FLAGS_BINDINGS: readonly Binding<MindmapFlagsContext>[] = [
   {
-    // Only a real Task has a backlog column. A virtual Habit instance is rendered from a template
-    // and has no row of its own to set aside, so it is excluded rather than silently no-oping.
+    // Only a Task row has a backlog column — a Habit occurrence included. A drawn node (a wait's
+    // check task) has no row to set aside, so it is excluded rather than silently no-oping.
     id: "mindmap.toggleBacklog", section: "mindmap", chord: { code: "KeyB" },
     labelKey: "toggleBacklog",
     when: isFlaggableTask,
@@ -35,7 +35,7 @@ export const MINDMAP_FLAGS_BINDINGS: readonly Binding<MindmapFlagsContext>[] = [
     // Alt+letter is a status preset. Alt+A staying "All" is not a collision — chord matching is
     // strict about modifiers, exactly as it already is for B and Alt+B.
     //
-    // Excluded for the same reason Backlog is: a virtual Habit instance has no task row to flag.
+    // Excluded for the same reason Backlog is: a drawn node has no task row to flag.
     id: "mindmap.toggleAgentic", section: "mindmap", chord: { code: "KeyA" },
     labelKey: "toggleAgentic",
     when: isFlaggableTask,
@@ -46,8 +46,7 @@ export const MINDMAP_FLAGS_BINDINGS: readonly Binding<MindmapFlagsContext>[] = [
     // rule: a flag on the selected Task is a bare letter, Alt+letter is a status preset. Nothing
     // else binds W in either section.
     //
-    // Excluded for the same reason the other two are: a virtual Habit instance has no task row
-    // to flag.
+    // Excluded for the same reason the other two are: a drawn node has no task row to flag.
     id: "mindmap.toggleAsynchronous", section: "mindmap", chord: { code: "KeyW" },
     labelKey: "toggleAsynchronous",
     when: isFlaggableTask,

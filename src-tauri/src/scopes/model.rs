@@ -139,7 +139,7 @@ mod tests;
 /// an Exact scope's fields are its key's two datetimes (ADR 0009).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Scope {
-    /// The scope's identity: its canonical value key, e.g. `week:2026-09-20`.
+    /// The scope's identity: its value key, e.g. `{"kind":"week","date":"2026-09-20"}`.
     pub id: ScopeKey,
     /// Granularity, as [`ScopeKind::as_str`] spells it.
     pub kind: String,

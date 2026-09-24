@@ -41,9 +41,25 @@ use crate::{
 pub async fn clear_beads_id(
     factory: State<'_, SessionFactory>,
     node_type: String,
-    node_id: i64,
+    node_id: crate::nodes::id::NodeId,
 ) -> Result<(), WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    // A Habit occurrence's link is its template's until it says otherwise, so clearing one writes
+    // its overlay rather than a row.
+    let node_id = match node_id {
+        crate::nodes::id::NodeId::Stored(id) => id,
+        crate::nodes::id::NodeId::Derived(derived) => {
+            crate::nodes::write::clear_derived_beads_id(
+                &mut db,
+                &node_type,
+                &derived,
+                chrono::Local::now().naive_local(),
+            )
+            .await
+            .map_err(WireError::from_error)?;
+            return db.commit().await.map_err(WireError::from_error);
+        }
+    };
     match node_type.as_str() {
         "task" => db
             .tasks()
