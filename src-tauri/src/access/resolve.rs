@@ -27,6 +27,8 @@ struct Resolved {
     private: bool,
     /// What the node reads as for Agentic: its own flag, or the nearest flagged ancestor's.
     agentic: bool,
+    /// The node's **own** Agentic setting — `Some(false)` is an explicit "Not agentic".
+    own_agentic: Option<bool>,
 }
 
 /// Every stored node's effective access, resolved once and read many times.
@@ -70,6 +72,45 @@ impl AccessMap {
     /// Whether the MCP can write `node`.
     pub fn can_write(&self, node: NodeKey) -> bool {
         self.level(node).permits(AccessLevel::Write)
+    }
+
+    /// Whether the MCP may **create** a Task under the stored node `parent`.
+    ///
+    /// Agents may create Tasks anywhere inside an MCP root, under any node that can hold a Task —
+    /// a domain-table row, a Goal, a Task or a Commitment — and every Task they create is created
+    /// Agentic. The one exception is a Task explicitly marked **Not agentic**: its own setting says
+    /// the work under it is the user's, so nothing is created there. A Task that merely inherits
+    /// nothing is not an exception. (Whether a given domain-table row may hold a Task — an Aspect or
+    /// a Tag may not — is the ordinary parenting rule's answer, not this one's.)
+    ///
+    /// Creating is not editing: an existing Task the MCP may not write stays unwritable.
+    pub fn may_create_task_under(&self, parent: NodeKey) -> bool {
+        let holds_tasks = matches!(
+            parent.node_kind,
+            NodeTable::Domain | NodeTable::Goal | NodeTable::Task | NodeTable::Commitment
+        );
+        if !holds_tasks || self.visible(parent).is_none() {
+            return false;
+        }
+        let explicitly_not_agentic = parent.node_kind == NodeTable::Task
+            && self
+                .resolved
+                .get(&parent)
+                .is_some_and(|resolved| resolved.own_agentic == Some(false));
+        !explicitly_not_agentic
+    }
+
+    /// Whether the MCP may create a Task under a **Habit occurrence** hosted by the stored node
+    /// `host`: the occurrence must be visible — its host visible and the occurrence not private —
+    /// and not explicitly Not agentic by its own value (`own_agentic`, its template's unless it
+    /// overrides it).
+    pub fn may_create_task_under_occurrence(
+        &self,
+        host: NodeKey,
+        occurrence_private: bool,
+        own_agentic: Option<bool>,
+    ) -> bool {
+        self.visible(host).is_some() && !occurrence_private && own_agentic != Some(false)
     }
 
     /// The nearest MCP root at or above `node`, when the MCP can see `node` at all.
@@ -156,6 +197,7 @@ fn resolve_chain(
                 private: node.is_private || inherited.is_some_and(|parent| parent.private),
                 // A row hung on a Habit occurrence inherits the occurrence's answer, as the app
                 // draws it under the occurrence rather than under the host.
+                own_agentic: node.agentic,
                 agentic: node.agentic.unwrap_or(match node.occurrence_agentic {
                     Some(occurrence) => occurrence,
                     None => inherited.is_some_and(|parent| parent.agentic),

@@ -42,6 +42,16 @@ nearest flagged ancestor's, by the same rule the app badges (see [*Tasks*](resou
 Agentic, so no Goal, Commitment, Project or Domain is ever writable. The flag is read off the whole
 board, so an Agentic Task above a root still makes the Tasks inside it writable.
 
+**Agents create Agentic Tasks** (added by the user to `Arlesh-rz0`, 2026-09-24). Inside a root an
+agent may **create** a Task under any visible node that can hold one — a Domain or Project, a Goal,
+a Task, a Commitment, or a Habit occurrence — and every Task it creates is created **Agentic**, its
+own flag set, so it is writable from then on like any Agentic Task. The one exception is a Task
+explicitly marked **Not agentic** (its own setting, not merely inheriting nothing): its subtree is the
+user's, and creating under it is refused with `not_permitted`. **Editing is unchanged**: an
+existing Task that does not read as Agentic, inherited or explicit, still cannot be written. The
+rule is `AccessMap::may_create_task_under` (and `…_under_occurrence`), beside the read and write
+checks; the tool that uses it arrives with the write tools.
+
 **Private stays private.** A private node is hidden from the MCP even inside a root, together with
 its whole subtree — the rule Private Mode applies, and one the roots do not relax. A root that is
 itself private, or sits under a private node, therefore opens nothing. This was agreed before the
@@ -109,8 +119,10 @@ resolver in `src-tauri/src/access/`:
   intra-flow dependencies are there exactly when the Flow is. Its occurrences are rows of the kind
   sections, filtered like every derived row.
 
-The write tools of `Arlesh-rz0` are deliberately not built yet; they follow `Arlesh-9o1` and
-`Arlesh-pnn`, and will apply the same rule — write needs an Agentic Task inside a root.
+The write tools of `Arlesh-rz0` — create, edit, status, move, archive, the atomic status change,
+short ids — are the next PR, now that `Arlesh-9o1` and `Arlesh-pnn` have merged. They will apply these
+rules: an edit needs an Agentic Task inside a root; a create needs `may_create_task_under`, and
+always makes the new Task Agentic.
 
 ## Tools
 

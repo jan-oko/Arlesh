@@ -338,3 +338,60 @@ fn a_rows_own_flag_still_beats_its_occurrences() {
 
     assert_eq!(map.level(task(7)), AccessLevel::Read);
 }
+
+#[test]
+fn an_agent_may_create_under_any_task_holder_inside_a_root() {
+    let map = AccessMap::resolve(&board(), &[domain(2)]);
+
+    assert!(map.may_create_task_under(domain(2)), "a domain-table row");
+    assert!(map.may_create_task_under(goal(10)), "a goal");
+    assert!(map.may_create_task_under(task(100)), "an agentic task");
+    assert!(
+        map.may_create_task_under(task(101)),
+        "a task that inherits agentic"
+    );
+}
+
+#[test]
+fn a_task_that_inherits_nothing_is_no_exception() {
+    let map = AccessMap::resolve(&board(), &[domain(3)]);
+
+    assert!(map.may_create_task_under(task(110)));
+}
+
+#[test]
+fn nothing_is_created_under_a_task_explicitly_not_agentic() {
+    let map = AccessMap::resolve(&board(), &[domain(2)]);
+
+    assert!(!map.may_create_task_under(task(103)));
+}
+
+#[test]
+fn nothing_is_created_outside_the_roots_under_a_private_node_or_under_a_note() {
+    let map = AccessMap::resolve(&board(), &[domain(2)]);
+
+    assert!(!map.may_create_task_under(domain(3)), "outside every root");
+    assert!(!map.may_create_task_under(task(102)), "private");
+    assert!(
+        !map.may_create_task_under(info(201)),
+        "a note holds no task"
+    );
+    assert!(!map.may_create_task_under(flow(20)), "nor does a flow");
+}
+
+#[test]
+fn an_agent_may_create_under_a_visible_occurrence_unless_it_is_explicitly_not_agentic() {
+    let map = AccessMap::resolve(&board(), &[domain(2)]);
+
+    assert!(map.may_create_task_under_occurrence(domain(2), false, None));
+    assert!(map.may_create_task_under_occurrence(domain(2), false, Some(true)));
+    assert!(!map.may_create_task_under_occurrence(domain(2), false, Some(false)));
+    assert!(
+        !map.may_create_task_under_occurrence(domain(2), true, None),
+        "private"
+    );
+    assert!(
+        !map.may_create_task_under_occurrence(domain(3), false, None),
+        "outside"
+    );
+}
