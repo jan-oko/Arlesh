@@ -18,6 +18,7 @@ const WINDOWS: ScopeWindows = new Map([
   [scopeKeyText(testKey(3)), { start: "2026-09-27T00:00:00", end: "2026-10-04T00:00:00" }],
   [scopeKeyText(testKey(4)), { start: "2026-09-01T00:00:00", end: "2026-10-01T00:00:00" }],
   [scopeKeyText(testKey(5)), { start: "2026-09-01T00:00:00", end: "2026-12-01T00:00:00" }],
+  [scopeKeyText(testKey(6)), { start: "2026-10-01T00:00:00", end: "2026-11-01T00:00:00" }],
 ]);
 
 const WEEK = { start: "2026-09-20T00:00:00", end: "2026-09-27T00:00:00" };
@@ -191,13 +192,29 @@ describe("partitionForScope", () => {
     expect(panes.planned.map((r) => r.node.id)).toEqual(["task-2"]);
   });
 
-  // A week at a month's edge is contained by neither of its months, which is why the parent is
-  // matched by id rather than by containment.
-  it("offers work planned to either month of a week at a month's edge", () => {
+  // Arlesh-3tt: October is a sibling of September, not its parent, so work planned there is
+  // neither half of the candidates while September is being filled.
+  it("offers nothing planned to October while filling September", () => {
+    const september = WINDOWS.get(scopeKeyText(testKey(4)));
+    if (september === undefined) throw new Error("fixture");
+    const rows = [row({ node: node("task-1", { plan: scope(6) }) })];
+    const panes = partitionForScope(rows, september, WINDOWS, new Set([scopeKeyText(testKey(5))]));
+    expect(panes).toEqual({ unplanned: [], planned: [], parentPlanned: [] });
+  });
+
+  // The week of 27 September sits in both months, and is September's (see `parentRefs`): what is
+  // planned to September is its parent-planned work, and what is planned to October is not. It is
+  // contained by neither month, which is why the parent is matched by id rather than by containment.
+  it("offers September's work and not October's to the week at their edge", () => {
     const edgeWeek = { start: "2026-09-27T00:00:00", end: "2026-10-04T00:00:00" };
-    const rows = [row({ node: node("task-1", { plan: scope(4) }) })];
-    const panes = partitionForScope(rows, edgeWeek, WINDOWS, new Set([scopeKeyText(testKey(4)), scopeKeyText(testKey(6))]));
-    expect(panes.parentPlanned.map((r) => r.node.id)).toEqual(["task-1"]);
+    const rows = [
+      row({ node: node("task-sep", { plan: scope(4) }) }),
+      row({ node: node("task-oct", { plan: scope(6) }) }),
+    ];
+    const panes = partitionForScope(rows, edgeWeek, WINDOWS, MONTH_PARENT);
+    expect(panes.parentPlanned.map((r) => r.node.id)).toEqual(["task-sep"]);
+    expect(panes.unplanned).toEqual([]);
+    expect(panes.planned).toEqual([]);
   });
 
   it("does not call a plan that *is* the scope its own parent", () => {
@@ -207,17 +224,47 @@ describe("partitionForScope", () => {
     expect(panes.parentPlanned).toEqual([]);
   });
 
-  it("triages a Habit occurrence like any other Task: it is a row, with a Plan of its own", () => {
-    const rows = [row({ node: node("task-1", { ...occurrenceRow() }) })];
-    const panes = partitionForScope(rows, WEEK, WINDOWS, MONTH_PARENT);
-    expect(panes.unplanned.map((r) => r.node.id)).toEqual(["task-1"]);
-  });
-
   it("triages no node that draws no row, which has nowhere to write a Plan", () => {
     const rows = [row({ node: node("check-1", { virtual: true }) })];
     const panes = partitionForScope(rows, WEEK, WINDOWS, MONTH_PARENT);
     expect(panes.unplanned).toEqual([]);
     expect(panes.planned).toEqual([]);
+  });
+
+  describe("a Habit occurrence", () => {
+    function occurrence(extra: Partial<MindmapNode>): TaskListRow {
+      return row({ node: node("occurrence-1", { ...occurrenceRow(), ...extra }) });
+    }
+
+    // No Cycle Plan means unplanned: its window says when it is relevant, not that it was planned.
+    it("is an unplanned candidate where it has no Cycle Plan and its window is relevant", () => {
+      const panes = partitionForScope([occurrence({ timeScope: scope(2) })], WEEK, WINDOWS, MONTH_PARENT);
+      expect(panes.unplanned.map((r) => r.node.id)).toEqual(["occurrence-1"]);
+      expect(panes.planned).toEqual([]);
+    });
+
+    it("is not a candidate where its window is not relevant", () => {
+      const panes = partitionForScope([occurrence({ timeScope: scope(3) })], WEEK, WINDOWS, MONTH_PARENT);
+      expect(panes).toEqual({ unplanned: [], planned: [], parentPlanned: [] });
+    });
+
+    it("is planned where its Plan sits inside the scope", () => {
+      const panes = partitionForScope([occurrence({ timeScope: scope(4), plan: scope(2) })], WEEK, WINDOWS, MONTH_PARENT);
+      expect(panes.planned.map((r) => r.node.id)).toEqual(["occurrence-1"]);
+    });
+
+    it("is parent-planned where its Plan is the parent scope", () => {
+      const panes = partitionForScope([occurrence({ timeScope: scope(4), plan: scope(4) })], WEEK, WINDOWS, MONTH_PARENT);
+      expect(panes.parentPlanned.map((r) => r.node.id)).toEqual(["occurrence-1"]);
+    });
+
+    it("leaves out an iteration root, which stands for the whole iteration", () => {
+      const root = row({
+        node: node("habit-root", { ...occurrenceRow({ itemType: "flow_root" }), timeScope: scope(1) }),
+      });
+      expect(partitionForScope([root], WEEK, WINDOWS, MONTH_PARENT).planned).toEqual([]);
+      expect(partitionForScope([root], WEEK, WINDOWS, MONTH_PARENT).unplanned).toEqual([]);
+    });
   });
 });
 

@@ -39,12 +39,14 @@ month sits in. It is stated against the scope being filled, not against the buck
 (see *Split by subscope* below) — splitting changes how the right-hand pane reads, not what the pass
 is filling.
 
-Two cases are not "exactly one":
+Two cases need saying:
 
-- **A week at a month's edge has two parents.** Weeks do not nest in months, and a week that
-  straddles a month boundary sits one rung below both months. Both are its parent, and work planned
-  to either is offered. That is the same rule — the cells one rung up that the scope sits in —
-  applied to the one rung that does not nest, not an exception to it.
+- **A week at a month's edge has one parent: the month holding its first day.** Weeks do not nest
+  in months, so such a week sits one rung below two of them. It once counted both as its parent,
+  which offered October's work as candidates while you filled the week that Up and `M` both call
+  September's (Arlesh-3tt). A plan into the next month is a plan into a *sibling* of this week's
+  month, and the candidates rule leaves siblings out. One parent keeps Up, `M` and "planned to the
+  parent" giving the same answer.
 - **A Season has none.** It is the only top-level scope, and that is the entire reason. This is
   **structural, not defensive**, and it does not generalise: "no parent" is not a fallback for a
   scope whose parent happens to hold nothing, and it is not a rule about empty panes. Every scope
@@ -96,10 +98,25 @@ A Task planned **somewhere else** — neither in this scope nor to its parent �
 It is not unscheduled, so it is not a candidate, and it is not in this scope, so it is not what the
 scope holds.
 
-**Habit occurrences are triaged like any Task.** An occurrence is a Task row with a Plan of its own
-([Derived nodes](virtual-nodes.md)), and planning it plans that one occurrence. Its window is its
-iteration's, so a Plan it cannot hold is refused exactly as for a stored Task whose own window does
-not cover the scope.
+**Habit occurrences are triaged like Tasks.** An occurrence is a Task row ([Derived
+nodes](virtual-nodes.md)), read by its Plan — which is its **Cycle Plan**, the Habit's or its item's,
+until the occurrence is planned on its own:
+
+- **With one**, it sits where that Plan says, as a planned Task would: in the planned pane of a
+  scope the Plan sits inside, or among the candidates when the Plan is the parent scope.
+- **With none, it is unplanned**, and a candidate wherever its window is relevant, like any
+  unplanned relevant work.
+
+Its window is **not** read as a plan. A window says when the work is relevant, not that anyone
+planned it (ruled by the user, 2026-09-24, over a first cut that did read it that way).
+
+**Planning one plans that occurrence alone**: the gesture writes the Plan into its overlay, and the
+Cycle Plan every other occurrence reads stays as it was. Taking it back out leaves that occurrence
+**unplanned** — an override to no Plan, even where its item has a Cycle Plan; planning it back into
+the Cycle Plan's own scope clears the override, and it reads its Cycle Plan again. Its window is its iteration's, so a Plan it cannot hold is refused exactly
+as for a stored Task whose own window does not cover the scope.
+
+An iteration's **root** is not triaged. It stands for the whole iteration, not for a piece of work.
 
 ## Backlog
 
@@ -283,9 +300,8 @@ Escape itself, and a letter acting behind it would change what it is choosing be
 **Up** — a button beside the step back — fills the scope's **parent** instead: a part of day's
 Day, a Day's Week, a Week's Month, a Month's Season (see [The parent scope](#the-parent-scope)).
 The kind selector changes with it, exactly as choosing the kind would, since the kind is what it
-shows. A **week at a month's edge** has two parents; Up goes to the month holding the week's
-**first day**, the natural reading of "the week's month". The candidates pane still counts both,
-because that asks what was committed above the week, and Up asks where to stand, which is one place.
+shows. A **week at a month's edge** goes to the month holding its **first day**, the natural
+reading of "the week's month" and the same parent the candidates pane reads.
 On a **Season** Up is disabled and says on hover that a Season is the top of the ladder — the same
 structural reason *Show only planned to parent scope* is inert there. It is disabled for the moment
 the scope is still being read, too, since its parent is not known yet. **`\`** does the same, and where the button is disabled the key does not do nothing: it

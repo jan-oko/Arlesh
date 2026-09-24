@@ -4,6 +4,7 @@
 // panes re-derive synchronously as the scope is walked.
 
 import type { ScopeKey } from "@/api/scopes";
+import { habitOrigin } from "@/api/node-id";
 import { sameScopeKey, scopeKeyText, type ScopeKeyText } from "@/utils/scope-key";
 import type { TimeScope } from "@/api/time-scope";
 import type { TaskListRow } from "@/utils/list-filter";
@@ -77,12 +78,18 @@ export function referencedScopeIds(rows: readonly TaskListRow[]): ScopeKey[] {
 }
 
 /**
- * A Task the Plan View will not triage: one that draws no row (a wait's check task), which has
- * nowhere to write a Plan. A Habit occurrence is a row like any other (ADR 0008) and is planned
- * like one — within its own iteration, which the backend holds it to.
+ * Whether the Plan View triages a row. A Habit **occurrence** is a row (ADR 0008) and is triaged
+ * exactly like a Task, by its Plan — the Cycle Plan its Habit (or its item) gives it unless the
+ * occurrence was planned on its own. With none it is **unplanned**, and a candidate wherever its
+ * window is relevant; its window is not read as a plan.
+ *
+ * Left out: a node that draws no row (it has nowhere to write a Plan), and an iteration **root**,
+ * which stands for the whole iteration rather than for work.
  */
 function isTriageable(node: MindmapNode): boolean {
-  return node.virtual !== true;
+  if (node.virtual === true) return false;
+  const habit = habitOrigin(node.origin);
+  return habit === undefined || habit.item_type !== "flow_root";
 }
 
 /** What one triage pass makes of the board, in three heaps. */
@@ -108,7 +115,7 @@ export interface PlanPanes {
 
 /**
  * Splits the rows into the heaps for `target`, whose parent scopes are `parentIds` — none for a
- * Season, two for a week at a month's edge, one everywhere else.
+ * Season, one everywhere else — for a week at a month's edge, the month holding its first day.
  *
  * **Unplanned** is the work that is relevant *now*: a Task with no Plan at all whose effective Time
  * Scope overlaps the scope. An **Unscoped** task is always relevant and so is always here — the

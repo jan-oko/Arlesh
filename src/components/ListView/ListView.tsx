@@ -11,7 +11,7 @@ import { canParentNewChild, canParentNewTask } from "@/utils/node-meta";
 import { storedAgenticState } from "@/utils/agentic";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
-import { filterCommitmentList, filterExpectationList, filterTaskListWithFocus } from "@/utils/list-filter";
+import { filterCommitmentListWithFocus, filterExpectationListWithFocus, filterTaskListWithFocus } from "@/utils/list-filter";
 import type { StatusMode } from "@/utils/filter-tree";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { MixedListRow } from "@/utils/list-data";
@@ -140,13 +140,16 @@ export default function ListView() {
     () => filterTaskListWithFocus(rows, sharedFilter, listFilter, focusExemptTaskId),
     [rows, sharedFilter, listFilter, focusExemptTaskId],
   );
-  const filteredCommitments = useMemo(
-    () => filterCommitmentList(commitmentRows, sharedFilter, listFilter),
-    [commitmentRows, sharedFilter, listFilter],
+  // The same exemption for a Commitment or a wait, in its band or among the rows: marking the
+  // selected Commitment Kept under Plan must not pull it out from under the cursor any more than
+  // cycling a Task to Done does.
+  const { rows: filteredCommitments, exemptedIds: exemptCommitmentIds } = useMemo(
+    () => filterCommitmentListWithFocus(commitmentRows, sharedFilter, listFilter, focusExemptTaskId),
+    [commitmentRows, sharedFilter, listFilter, focusExemptTaskId],
   );
-  const filteredExpectations = useMemo(
-    () => filterExpectationList(expectationRows, sharedFilter, listFilter),
-    [expectationRows, sharedFilter, listFilter],
+  const { rows: filteredExpectations, exemptedIds: exemptExpectationIds } = useMemo(
+    () => filterExpectationListWithFocus(expectationRows, sharedFilter, listFilter, focusExemptTaskId),
+    [expectationRows, sharedFilter, listFilter, focusExemptTaskId],
   );
   const treeOrder = useMemo(() => preOrderIndex(flattenRoot), [flattenRoot]);
   // In band mode the Commitments and Expectations sit in their bands and the list below is task
@@ -325,6 +328,7 @@ export default function ListView() {
                 key={row.node.id}
                 row={row}
                 isSelected={row.node.id === activeSelectedId}
+                isFocusExempt={exemptCommitmentIds.has(row.node.id)}
                 onSelect={setSelectedRowId}
                 onCycleVerdict={cycleVerdict}
                 onOpenEditor={onDoubleClick}
@@ -344,6 +348,7 @@ export default function ListView() {
                 key={row.node.id}
                 row={row}
                 isSelected={row.node.id === activeSelectedId}
+                isFocusExempt={exemptExpectationIds.has(row.node.id)}
                 onSelect={setSelectedRowId}
                 onToggleRelease={toggleRelease}
                 onOpenEditor={onDoubleClick}
@@ -396,6 +401,7 @@ export default function ListView() {
                   row={entry.row}
                   visibleDepth={entry.visibleDepth}
                   isSelected={entry.row.node.id === activeSelectedId}
+                  isFocusExempt={exemptCommitmentIds.has(entry.row.node.id)}
                   onSelect={setSelectedRowId}
                   onCycleVerdict={cycleVerdict}
                   onOpenEditor={onDoubleClick}
@@ -410,6 +416,7 @@ export default function ListView() {
                   row={entry.row}
                   visibleDepth={entry.visibleDepth}
                   isSelected={entry.row.node.id === activeSelectedId}
+                  isFocusExempt={exemptExpectationIds.has(entry.row.node.id)}
                   onSelect={setSelectedRowId}
                   onToggleRelease={toggleRelease}
                   onOpenEditor={onDoubleClick}

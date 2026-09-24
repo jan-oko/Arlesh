@@ -60,6 +60,10 @@ interface BatchOutcome {
   unbacklogged: TaskListRow[];
 }
 
+function emptyOutcome(): BatchOutcome {
+  return { moved: [], refused: [], failed: [], unbacklogged: [] };
+}
+
 /**
  * The Plan View's one write: a task's Plan, set to a scope being filled or cleared.
  *
@@ -86,65 +90,62 @@ export function usePlanMove({
   const { t } = useTranslation(["planView", "undo"]);
 
   /**
-   * One toast for one batch, picking the thing the user most needs to hear.
+   * The one thing a batch most needs to say, or `null` when it went exactly as asked.
    *
    * There is one toast slot, and four things a batch can have to say. They are ranked by how much
    * they change what you should do next: a backend failure is a bug or a lock, a refusal is work
    * that needs an editing decision, work that left the pane is work you would otherwise go looking
    * for, and a de-backlogged task is a fact about something that *did* happen.
    */
-  const report = useCallback(
-    (outcome: BatchOutcome, label: string, leftPane: boolean): void => {
+  const headline = useCallback(
+    (outcome: BatchOutcome, label: string, leftPane: boolean): { nodeId: string; message: string } | null => {
       const first = outcome.failed[0];
       if (first !== undefined) {
-        showToast({
-          nodeId: first.row.node.id,
-          message: t("planView:moveFailed", { title: first.row.node.title, message: first.message }),
-        });
-        return;
+        return { nodeId: first.row.node.id, message: t("planView:moveFailed", { title: first.row.node.title, message: first.message }) };
       }
       const refused = outcome.refused;
       const only = refused.length === 1 ? refused[0] : undefined;
       if (only !== undefined) {
         const key = only.bound === "ownTimeScope" ? "planView:refusedTimeScope" : "planView:refusedParentPlan";
-        showToast({ nodeId: only.row.node.id, message: t(key, { title: only.row.node.title, scope: label }) });
-        return;
+        return { nodeId: only.row.node.id, message: t(key, { title: only.row.node.title, scope: label }) };
       }
       const head = refused[0];
       if (head !== undefined) {
-        showToast({
+        return {
           nodeId: head.row.node.id,
-          message: t("planView:refusedSome", {
-            count: refused.length, total: refused.length + outcome.moved.length, scope: label,
-          }),
-        });
-        return;
+          message: t("planView:refusedSome", { count: refused.length, total: refused.length + outcome.moved.length, scope: label }),
+        };
       }
       const movedFirst = outcome.moved[0];
       if (leftPane && movedFirst !== undefined) {
-        showToast({ nodeId: movedFirst, message: t("planView:plannedOutside", { scope: label }) });
-        return;
+        return { nodeId: movedFirst, message: t("planView:plannedOutside", { scope: label }) };
       }
       const one = outcome.unbacklogged.length === 1 ? outcome.unbacklogged[0] : undefined;
       if (one !== undefined) {
-        showToast({ nodeId: one.node.id, message: t("planView:unbacklogged", { title: one.node.title, scope: label }) });
-        return;
+        return { nodeId: one.node.id, message: t("planView:unbacklogged", { title: one.node.title, scope: label }) };
       }
       const many = outcome.unbacklogged[0];
       if (many !== undefined) {
-        showToast({
-          nodeId: many.node.id,
-          message: t("planView:unbackloggedMany", { count: outcome.unbacklogged.length, scope: label }),
-        });
+        return { nodeId: many.node.id, message: t("planView:unbackloggedMany", { count: outcome.unbacklogged.length, scope: label }) };
       }
+      return null;
     },
-    [showToast, t],
+    [t],
+  );
+
+  /** One toast for one batch: its headline, when it has one. */
+  const report = useCallback(
+    (outcome: BatchOutcome, label: string, leftPane: boolean): void => {
+      const lead = headline(outcome, label, leftPane);
+      if (lead !== null) showToast(lead);
+    },
+    [headline, showToast],
   );
 
   /** Writes one plan value across a batch, inside a single Gesture. */
   const write = useCallback(
     async (rows: readonly TaskListRow[], plan: { start_id: ScopeKey; end_id: ScopeKey } | null, gesture: PlanGestureKey): Promise<BatchOutcome> => {
-      const outcome: BatchOutcome = { moved: [], refused: [], failed: [], unbacklogged: [] };
+      const outcome = emptyOutcome();
       if (rows.length === 0) return outcome;
       await withGesture(t(gesture, { count: rows.length }), async () => {
         for (const row of rows) {
@@ -169,6 +170,8 @@ export function usePlanMove({
   /** Splits a batch on the two containment rules, then writes the half that passed. */
   const planIntoWindow = useCallback(
     async (rows: readonly TaskListRow[], scopeId: ScopeKey, window: ScopeInterval, label: string, leftPane: boolean): Promise<string[]> => {
+      // A Habit occurrence is a row (ADR 0008) and is planned like any Task: into its overlay,
+      // within its iteration's window, which the containment check below holds it to.
       const allowed: TaskListRow[] = [];
       const refused: BatchOutcome["refused"] = [];
       for (const row of rows) {
