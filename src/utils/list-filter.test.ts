@@ -7,7 +7,7 @@ import {
 } from "./list-filter";
 import type { PillFilter, ListFilterState, TaskListRow, CommitmentListRow } from "./list-filter";
 import { DEFAULT_FILTER } from "./filter-tree";
-import type { FilterState } from "./filter-tree";
+import type { FilterState, StatusMode } from "./filter-tree";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import { testKey } from "@/test/scope-key";
 
@@ -687,5 +687,23 @@ describe("filterTaskListWithFocus — the focus exemption", () => {
   it("marks nothing exempt when the focused row matches on its own merits", () => {
     const { exemptedIds } = filterTaskListWithFocus([done, todo], sf({ statusMode: "plan" }), lf(), "task-todo");
     expect(exemptedIds.size).toBe(0);
+  });
+});
+
+describe("filterTaskList — a done occurrence under the Plan preset", () => {
+  // The Plan View reads through this filter: a done Habit root planned into this morning is kept
+  // or dropped exactly as a stored Task planned there and done would be.
+  it("keeps or drops a done root occurrence exactly as it does a done stored Task", () => {
+    const planned = { start_id: testKey(1), end_id: testKey(1) };
+    const stored = row({ node: n("task-1", "task", { status: "done", plan: planned }), scopeTokens: ["planned"] });
+    const root = row({
+      node: n("habit-root", "task", { ...occurrenceRow({ itemType: "flow_root" }), status: "done", plan: planned }),
+      scopeTokens: ["planned"],
+    });
+    const modes: StatusMode[] = ["plan", "all"];
+    for (const statusMode of modes) {
+      const kept = filterTaskList([stored, root], sf({ statusMode }), lf()).map((r) => r.node.id);
+      expect(kept.includes("habit-root")).toBe(kept.includes("task-1"));
+    }
   });
 });

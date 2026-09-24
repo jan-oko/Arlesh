@@ -4,7 +4,6 @@
 // panes re-derive synchronously as the scope is walked.
 
 import type { ScopeKey } from "@/api/scopes";
-import { habitOrigin } from "@/api/node-id";
 import { sameScopeKey, scopeKeyText, type ScopeKeyText } from "@/utils/scope-key";
 import type { TimeScope } from "@/api/time-scope";
 import type { TaskListRow } from "@/utils/list-filter";
@@ -83,13 +82,14 @@ export function referencedScopeIds(rows: readonly TaskListRow[]): ScopeKey[] {
  * occurrence was planned on its own. With none it is **unplanned**, and a candidate wherever its
  * window is relevant; its window is not read as a plan.
  *
- * Left out: a node that draws no row (it has nowhere to write a Plan), and an iteration **root**,
- * which stands for the whole iteration rather than for work.
+ * An iteration **root** is triaged too, by the root Cycle Plan unless it was planned on its own. It
+ * is an ordinary row, and for a Habit with no items it is the only occurrence there is. A root and
+ * its item occurrences each appear, as a Task and its subtasks do — each is one row in one heap.
+ *
+ * Left out: a node that draws no row, which has nowhere to write a Plan.
  */
 function isTriageable(node: MindmapNode): boolean {
-  if (node.virtual === true) return false;
-  const habit = habitOrigin(node.origin);
-  return habit === undefined || habit.item_type !== "flow_root";
+  return node.virtual !== true;
 }
 
 /** What one triage pass makes of the board, in three heaps. */

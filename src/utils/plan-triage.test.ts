@@ -9,6 +9,7 @@ import type { TaskListRow } from "./list-filter";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import { testKey } from "@/test/scope-key";
 import { scopeKeyText, type ScopeKeyText } from "@/utils/scope-key";
+import type { ScopeKey } from "@/api/scopes";
 
 // Scope ids used throughout (as `testKey(n)`): 1 = the week being filled, 2 = a Tuesday inside it, 3 = next week,
 // 4 = the month the week starts in, and so the week's parent; 5 = the season above that month.
@@ -22,6 +23,13 @@ const WINDOWS: ScopeWindows = new Map([
 ]);
 
 const WEEK = { start: "2026-09-20T00:00:00", end: "2026-09-27T00:00:00" };
+// Tuesday 22/09 and its morning, for a plan into a part of the day.
+const TUESDAY = { start: "2026-09-22T00:00:00", end: "2026-09-23T00:00:00" };
+const MORNING: ScopeKey = { kind: "part_of_day", date: "2026-09-22", part: "morning" };
+const MORNING_WINDOWS: ScopeWindows = new Map([
+  ...WINDOWS,
+  [scopeKeyText(MORNING), { start: "2026-09-22T06:00:00", end: "2026-09-22T12:00:00" }],
+]);
 // The week's parent scope is the month, by id; a Season has none.
 const MONTH_PARENT: ReadonlySet<ScopeKeyText> = new Set([scopeKeyText(testKey(4))]);
 const NO_PARENT: ReadonlySet<ScopeKeyText> = new Set();
@@ -265,12 +273,27 @@ describe("partitionForScope", () => {
       expect(panes.parentPlanned.map((r) => r.node.id)).toEqual(["occurrence-1"]);
     });
 
-    it("leaves out an iteration root, which stands for the whole iteration", () => {
+    // An item-less Habit (flow 18): its root is the only occurrence, planned into a part of the
+    // day — this morning — and done, as a stored Task planned there and done would be.
+    it("puts an item-less Habit's root, planned into a part of the day, in that scope's planned pane", () => {
+      const morning = { start_id: MORNING, end_id: MORNING };
       const root = row({
-        node: node("habit-root", { ...occurrenceRow({ itemType: "flow_root" }), timeScope: scope(1) }),
+        node: node("habit-root", {
+          ...occurrenceRow({ itemType: "flow_root" }), timeScope: scope(2), plan: morning, status: "done",
+        }),
       });
-      expect(partitionForScope([root], WEEK, WINDOWS, MONTH_PARENT).planned).toEqual([]);
-      expect(partitionForScope([root], WEEK, WINDOWS, MONTH_PARENT).unplanned).toEqual([]);
+      const stored = row({ node: node("task-1", { timeScope: scope(2), plan: morning, status: "done" }) });
+      const panes = partitionForScope([root, stored], TUESDAY, MORNING_WINDOWS, NO_PARENT);
+      expect(panes.planned.map((r) => r.node.id)).toEqual(["habit-root", "task-1"]);
+      expect(panes.unplanned).toEqual([]);
+    });
+
+    it("offers an unplanned root as a candidate, and its item occurrence beside it, once each", () => {
+      const root = row({ node: node("habit-root", { ...occurrenceRow({ itemType: "flow_root" }), timeScope: scope(2) }) });
+      const item = occurrence({ timeScope: scope(2) });
+      const panes = partitionForScope([root, item], WEEK, WINDOWS, MONTH_PARENT);
+      expect(panes.unplanned.map((r) => r.node.id)).toEqual(["habit-root", "occurrence-1"]);
+      expect(panes.planned).toEqual([]);
     });
   });
 });

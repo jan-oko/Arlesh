@@ -116,7 +116,10 @@ Cycle Plan every other occurrence reads stays as it was. Taking it back out leav
 the Cycle Plan's own scope clears the override, and it reads its Cycle Plan again. Its window is its iteration's, so a Plan it cannot hold is refused exactly
 as for a stored Task whose own window does not cover the scope.
 
-An iteration's **root** is not triaged. It stands for the whole iteration, not for a piece of work.
+An iteration's **root** is triaged like any occurrence: by the root Cycle Plan unless it was planned on
+its own, and unplanned without one. For a Habit with no items it is the only occurrence there is.
+A root and its item occurrences each appear, as a Task and its subtasks do — each one row in one
+heap. Done work is kept or hidden by the shared filter exactly as for a stored Task.
 
 ## Backlog
 
