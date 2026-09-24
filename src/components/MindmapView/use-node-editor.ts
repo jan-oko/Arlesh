@@ -470,8 +470,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onClearBeadsId = useCallback(
     async (nodeType: BeadsNodeType) => {
       if (editorModal === null) return;
-      const dbId = storedId(rowIdOf(editorModal.node));
-      await clearBeadsId(nodeType, dbId);
+      // A Habit occurrence's link is cleared on that occurrence alone.
+      await clearBeadsId(nodeType, rowIdOf(editorModal.node));
       await reload();
     },
     [editorModal, reload],

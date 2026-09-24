@@ -583,3 +583,37 @@ async fn a_copied_flow_item_keeps_its_template_fields_and_a_deleted_one_leaves_n
         .unwrap();
     assert_eq!(left, 0, "a deleted item's template rows go with it");
 }
+
+#[tokio::test]
+async fn an_occurrence_reads_its_templates_issue_link_and_can_clear_its_own() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let (_, item) = habit(&app).await;
+    sqlx::query("UPDATE flow_tasks SET beads_id = 'arlesh-7' WHERE id = ?")
+        .bind(item)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let stretch = occurrence(TemplateKind::FlowTask, item);
+    let row = |load: &MindmapLoad| load.tasks.iter().find(|row| row.id == stretch).cloned();
+    assert_eq!(
+        row(&served(&pool).await).unwrap().beads_id.as_deref(),
+        Some("arlesh-7")
+    );
+
+    arlesh_lib::commands::beads::clear_beads_id(app.state(), "task".into(), stretch.clone())
+        .await
+        .unwrap();
+    assert_eq!(row(&board(&pool).await).unwrap().beads_id, None);
+    let template: Option<String> =
+        sqlx::query_scalar("SELECT beads_id FROM flow_tasks WHERE id = ?")
+            .bind(item)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        template.as_deref(),
+        Some("arlesh-7"),
+        "the template keeps its link"
+    );
+}

@@ -1,4 +1,5 @@
 import { invoke } from "./gesture";
+import type { RowId } from "@/api/node-id";
 
 /**
  * The node kinds that can carry a `bd` issue link.
@@ -28,6 +29,6 @@ export const BEADS_NODE_TYPE = {
  *
  * Clearing a node that carries no link is not an error. An unknown node is.
  */
-export async function clearBeadsId(nodeType: BeadsNodeType, nodeId: number): Promise<void> {
+export async function clearBeadsId(nodeType: BeadsNodeType, nodeId: RowId): Promise<void> {
   return invoke<void>("clear_beads_id", { nodeType, nodeId });
 }

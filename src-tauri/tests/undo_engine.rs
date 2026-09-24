@@ -945,7 +945,7 @@ async fn undoing_a_cleared_issue_link_puts_the_id_back() {
     );
 
     open_gesture(&app).await;
-    clear_beads_id(app.state(), "task".into(), task.id.sid())
+    clear_beads_id(app.state(), "task".into(), task.id.clone())
         .await
         .expect("clear the link");
     close_gesture(&app).await;

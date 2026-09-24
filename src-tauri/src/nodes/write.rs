@@ -497,6 +497,50 @@ pub async fn set_tag(
     Ok(())
 }
 
+/// Takes a derived row's issue link off that row alone: a Habit occurrence then reads none, even
+/// where its template carries one. A wait's check task never carries one, so clearing it is a
+/// no-op, as clearing any row with no link is.
+#[tracing::instrument(skip(db))]
+pub async fn clear_derived_beads_id(
+    db: &mut Db<Transactional>,
+    node_type: &str,
+    id: &DerivedId,
+    now: NaiveDateTime,
+) -> Result<(), AppError> {
+    let key = match resolve_key(db, id, now).await? {
+        DerivedKey::Occurrence(key) => key,
+        DerivedKey::Check(_) => return Ok(()),
+        _ => return Err(wrong_kind(&NodeId::Derived(id.clone()), node_type)),
+    };
+    let flow_id = db.flows().occurrence_flow_id(&key).await?.0;
+    // Set to NULL when the template has a link to override; otherwise the row already reads none.
+    let overrides = occurrence_edit::template_fields(db, &key)
+        .await?
+        .beads_id
+        .is_some();
+    match node_type {
+        "task" => {
+            let mut overlay = db.overlays().task(&key).await?;
+            (overlay.beads_id, overlay.beads_id_set) = (None, overrides);
+            db.overlays().put_task(flow_id, &key, &overlay).await?;
+        }
+        "goal" => {
+            let mut overlay = db.overlays().goal(&key).await?;
+            (overlay.beads_id, overlay.beads_id_set) = (None, overrides);
+            db.overlays().put_goal(flow_id, &key, &overlay).await?;
+        }
+        "commitment" => {
+            let mut overlay = db.overlays().commitment(&key).await?;
+            (overlay.beads_id, overlay.beads_id_set) = (None, overrides);
+            db.overlays()
+                .put_commitment(flow_id, &key, &overlay)
+                .await?;
+        }
+        other => return Err(wrong_kind(&NodeId::Derived(id.clone()), other)),
+    }
+    Ok(())
+}
+
 /// Replaces a Task's or Goal's block reasons. A derived one's list is its own until it is set back
 /// to its template's, which it then reads again.
 #[tracing::instrument(skip(db, reasons))]

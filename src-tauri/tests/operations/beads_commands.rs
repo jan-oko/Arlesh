@@ -174,7 +174,7 @@ async fn clearing_a_link_writes_null_to_the_column_for_every_kind_that_carries_o
             stored_beads_id(&pool, table, id).await.is_some(),
             "{node_type} must start out linked, or the clear proves nothing"
         );
-        clear_beads_id(app.state(), node_type.into(), id)
+        clear_beads_id(app.state(), node_type.into(), id.into())
             .await
             .unwrap_or_else(|error| panic!("clearing a {node_type} link failed: {error:?}"));
         assert_eq!(
@@ -192,7 +192,7 @@ async fn clearing_one_node_leaves_every_other_link_alone() {
     let app = helpers::command_host(&pool);
     let (task_id, goal_id, commitment_id, project_id) = linked_nodes(&pool).await;
 
-    clear_beads_id(app.state(), "task".into(), task_id)
+    clear_beads_id(app.state(), "task".into(), task_id.into())
         .await
         .unwrap();
 
@@ -233,7 +233,7 @@ async fn clearing_a_node_that_carries_no_link_is_not_an_error() {
         task
     };
 
-    clear_beads_id(app.state(), "task".into(), task.id.sid())
+    clear_beads_id(app.state(), "task".into(), task.id.clone())
         .await
         .expect("a second press on a stale editor reads as \"already gone\", not as a failure");
     assert_eq!(stored_beads_id(&pool, "tasks", task.id.sid()).await, None);
@@ -259,7 +259,7 @@ async fn clearing_a_domain_that_is_not_a_project_is_refused_and_writes_nothing()
         db.commit().await.unwrap();
     }
 
-    let refused = clear_beads_id(app.state(), "project".into(), tag_id)
+    let refused = clear_beads_id(app.state(), "project".into(), tag_id.into())
         .await
         .expect_err("only the project subtype of Domain carries an issue link");
     let wire = serde_json::to_value(&refused).unwrap();
@@ -277,7 +277,7 @@ async fn clearing_a_kind_that_cannot_carry_a_link_is_refused_by_name() {
     let app = helpers::command_host(&pool);
     let project_id = make_domain(&pool, DomainSubtype::Project, "Test Project").await;
 
-    let refused = clear_beads_id(app.state(), "info".into(), project_id)
+    let refused = clear_beads_id(app.state(), "info".into(), project_id.into())
         .await
         .expect_err("an Info carries no issue link, and silence would hide the typo");
     let wire = serde_json::to_value(&refused).unwrap();
@@ -295,7 +295,7 @@ async fn clearing_an_unknown_node_is_an_error_rather_than_a_silent_no_op() {
     let app = helpers::command_host(&pool);
 
     for node_type in ["task", "goal", "commitment", "project"] {
-        let outcome = clear_beads_id(app.state(), node_type.into(), 999_999).await;
+        let outcome = clear_beads_id(app.state(), node_type.into(), 999_999.into()).await;
         assert!(
             outcome.is_err(),
             "an unknown {node_type} must be an error, not success reported for a write that \

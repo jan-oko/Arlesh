@@ -829,7 +829,7 @@ fn task_row(
         beads_id: if overlay.beads_id_set {
             overlay.beads_id
         } else {
-            None
+            occurrence.fields.beads_id.clone()
         },
         origin: occurrence.origin,
     };
@@ -871,7 +871,7 @@ fn goal_row(
         beads_id: if overlay.beads_id_set {
             overlay.beads_id
         } else {
-            None
+            occurrence.fields.beads_id.clone()
         },
         origin: occurrence.origin,
     };
@@ -926,7 +926,7 @@ fn commitment_row(
         beads_id: if overlay.beads_id_set {
             overlay.beads_id
         } else {
-            None
+            occurrence.fields.beads_id.clone()
         },
         origin: occurrence.origin,
     };
