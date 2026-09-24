@@ -3,10 +3,9 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { FlowCyclePair } from "@/utils/tree-layout";
 import {
-  kindsBelow, cyclePlanCellCount, cyclePairKey, cycleLevels, pathToIndex, indexToPath,
+  kindsBelow, cyclePairKey, cycleLevels, pathToIndex, indexToPath,
   type CycleScopeKind, type CycleLevel,
 } from "@/utils/flow-cycle";
-import Switch from "@/components/Switch/Switch";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 const PART_OF_DAY_BANDS = ["morning", "noon", "afternoon", "evening", "night", "premorning"] as const;
@@ -44,7 +43,7 @@ function pairLabel(t: TFunction<["editor", "scopes"]>, pair: FlowCyclePair, flow
     ? t("editor:cycleWholeScope")
     : pathLabel(t, cycleLevels(flowScopeN, flowScopeKind, pair.scopeKind as CycleScopeKind), indexToPath(cycleLevels(flowScopeN, flowScopeKind, pair.scopeKind as CycleScopeKind), pair.scopeIndex));
   if (pair.planKind === null || pair.planStart === null) return scope;
-  // A Cycle Plan of the scope's own kind is the scope itself (Part of Day's "Plan to scope").
+  // A Cycle Plan of the scope's own kind is the scope itself — the row's "Planned" toggle.
   if (pair.planKind === pair.scopeKind) return `${scope} · ${t("editor:cyclePlannedToScope")}`;
   const range = pair.planEnd !== null && pair.planEnd !== pair.planStart ? `${pair.planStart}–${pair.planEnd}` : `${pair.planStart}`;
   return `${scope} · ${kindLabel(t, pair.planKind)} ${range}`;
@@ -67,6 +66,8 @@ interface Props {
  * chip list; a single edit/confirm toggle (pencil ↔ checkmark) switches to a drill-down picker
  * (mirrors the app's ScopePicker) that navigates the flow window's nested periods one level at a
  * time — clicking a cell at the chosen Cycle Scope Kind toggles that occurrence on/off immediately.
+ * Each pair's row carries a **Planned** toggle: on, its Cycle Plan is its own Cycle Scope. A finer
+ * plan an older pair carries is shown read-only on its row, and the toggle clears it.
  * Available only for a scoped flow — an Unscoped flow's items have no cycles.
  */
 export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onChange }: Props) {
@@ -75,11 +76,6 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
   const [mode, setMode] = useState<"list" | "picker">(value.length === 0 ? "picker" : "list");
   const [targetKind, setTargetKind] = useState<CycleScopeKind | undefined>(scopeKinds[0]);
   const [path, setPath] = useState<number[]>([]);
-  const [planKind, setPlanKind] = useState<string>("");
-  const [planStart, setPlanStart] = useState<number | null>(null);
-  const [planEnd, setPlanEnd] = useState<number | null>(null);
-  // Part of Day has no finer kind to plan within, so its only Cycle Plan is the scope itself.
-  const [planToScope, setPlanToScope] = useState(false);
 
   if (flowScopeN === null || flowScopeKind === null || targetKind === undefined) {
     return <span className={styles.depKind}>{t("editor:cycleWholeScope")}</span>;
@@ -89,16 +85,7 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
   const displayPath = displayPathOf(levels, path);
   const atLeaf = displayPath.length === levels.length - 1;
   const currentLevel = levels[displayPath.length]!;
-  const planKinds = atLeaf ? kindsBelow(targetKind) : [];
-  const planCount = atLeaf && planKind !== "" ? cyclePlanCellCount(targetKind, planKind) : 0;
   const isPicking = mode === "picker";
-
-  function resetPlan() {
-    setPlanKind("");
-    setPlanStart(null);
-    setPlanEnd(null);
-    setPlanToScope(false);
-  }
 
   function toggleMode() {
     if (isPicking) {
@@ -106,14 +93,12 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
       return;
     }
     setPath([]);
-    resetPlan();
     setMode("picker");
   }
 
   function changeTargetKind(kind: CycleScopeKind) {
     setTargetKind(kind);
     setPath([]);
-    resetPlan();
   }
 
   function descend(index: number) {
@@ -124,42 +109,27 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
     setPath(path.slice(0, -1));
   }
 
-  // Range select: first click sets a single slot; a later click extends to a range; re-click resets.
-  function clickPlan(index: number) {
-    if (planStart === null || planStart !== planEnd) {
-      setPlanStart(index);
-      setPlanEnd(index);
-    } else if (index === planStart) {
-      setPlanStart(null);
-      setPlanEnd(null);
-    } else {
-      setPlanStart(Math.min(planStart, index));
-      setPlanEnd(Math.max(planStart, index));
-    }
-  }
-
-  function leafPlanFields(): Pick<FlowCyclePair, "planKind" | "planStart" | "planEnd"> {
-    if (targetKind === "part_of_day" && planToScope) return { planKind: "part_of_day", planStart: 1, planEnd: 1 };
-    if (planKind !== "" && planStart !== null) return { planKind, planStart, planEnd: planEnd ?? planStart };
-    return { planKind: null, planStart: null, planEnd: null };
-  }
-
+  // The picker chooses Cycle Scopes only: a cell toggles its occurrence on or off. Whether a pair
+  // is planned is its row's own toggle.
   function toggleLeaf(index: number) {
     if (targetKind === undefined) return;
-    const pair: FlowCyclePair = { scopeKind: targetKind, scopeIndex: pathToIndex(levels, [...displayPath, index]), ...leafPlanFields() };
+    const scopeIndex = pathToIndex(levels, [...displayPath, index]);
+    const sameScope = (p: FlowCyclePair) => p.scopeKind === targetKind && p.scopeIndex === scopeIndex;
+    if (value.some(sameScope)) {
+      onChange(value.filter((p) => !sameScope(p)));
+      return;
+    }
+    onChange([...value, { scopeKind: targetKind, scopeIndex, planKind: null, planStart: null, planEnd: null }]);
+  }
+
+  // On: the pair's Cycle Plan is its own Cycle Scope. Off: no Cycle Plan — which also clears a
+  // finer plan an older pair may still carry.
+  function togglePlanned(pair: FlowCyclePair) {
     const key = cyclePairKey(pair);
-    if (value.some((p) => cyclePairKey(p) === key)) {
-      onChange(value.filter((p) => cyclePairKey(p) !== key));
-      return;
-    }
-    // A Part-of-Day cell already on takes the switch's answer in place, rather than being drawn
-    // twice — flipping "Plan to scope" and clicking Morning plans the Morning that is there.
-    const sameScope = (p: FlowCyclePair) => p.scopeKind === pair.scopeKind && p.scopeIndex === pair.scopeIndex;
-    if (targetKind === "part_of_day" && value.some(sameScope)) {
-      onChange(value.map((p) => (sameScope(p) ? pair : p)));
-      return;
-    }
-    onChange([...value, pair]);
+    const planned: FlowCyclePair = pair.planKind === null
+      ? { ...pair, planKind: pair.scopeKind, planStart: 1, planEnd: 1 }
+      : { ...pair, planKind: null, planStart: null, planEnd: null };
+    onChange(value.map((p) => (cyclePairKey(p) === key ? planned : p)));
   }
 
   function addWhole() {
@@ -177,6 +147,16 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
         {!isPicking && value.map((pair) => (
           <span key={cyclePairKey(pair)} className={styles.tagPill}>
             {pair.scopeKind === null ? t("editor:cycleWholeScope") : pairLabel(t, pair, flowScopeN, flowScopeKind)}
+            {pair.scopeKind !== null && (
+              <button
+                type="button"
+                aria-pressed={pair.planKind !== null}
+                className={`${styles.statusPill}${pair.planKind !== null ? ` ${styles.statusPillActive}` : ""}`}
+                onClick={() => togglePlanned(pair)}
+              >
+                {t("editor:cyclePlanned")}
+              </button>
+            )}
             <button type="button" className={styles.tagPillRemove} onClick={() => removePair(pair)}>×</button>
           </span>
         ))}
@@ -232,40 +212,6 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
               );
             })}
           </div>
-
-          {atLeaf && targetKind === "part_of_day" && (
-            <Switch checked={planToScope} onChange={setPlanToScope} label={t("editor:cyclePlanToScope")} />
-          )}
-
-          {atLeaf && planKinds.length > 0 && (
-            <>
-              <label className={styles.label}>
-                {t("editor:cyclePlanKind")}
-                <select className={`${styles.control} ${styles.select}`} value={planKind} onChange={(e) => { setPlanKind(e.target.value); setPlanStart(null); setPlanEnd(null); }}>
-                  <option value="">{t("editor:cyclePlanNone")}</option>
-                  {planKinds.map((kind) => <option key={kind} value={kind}>{kindLabel(t, kind)}</option>)}
-                </select>
-              </label>
-              {planKind !== "" && (
-                <div className={styles.statusPills}>
-                  {Array.from({ length: planCount }, (_, i) => i + 1).map((index) => {
-                    const active = planStart !== null && planEnd !== null && index >= planStart && index <= planEnd;
-                    return (
-                      <button
-                        key={index}
-                        type="button"
-                        aria-pressed={active}
-                        className={`${styles.statusPill}${active ? ` ${styles.statusPillActive}` : ""}`}
-                        onClick={() => clickPlan(index)}
-                      >
-                        {cellLabel(t, planKind, index)}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
 
           <div className={styles.statusPills}>
             <button type="button" className={styles.statusPill} onClick={addWhole}>{t("editor:cycleAddWhole")}</button>

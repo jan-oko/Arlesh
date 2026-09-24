@@ -208,6 +208,22 @@ describe("useNodeEditor — saving a flow item", () => {
     }));
   });
 
+  it("sends a planned pair's Cycle Plan to the backend", async () => {
+    const reload = vi.fn().mockResolvedValue(undefined);
+    const tree: MindmapNode = { ...root, children: [flowTask] };
+    const { result } = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload }));
+    act(() => result.current.setEditorModal({ nodeId: "flowtask-7", node: flowTask }));
+
+    await act(() => result.current.onFlowItemSave({
+      title: "Stretch", isPrivate: false, addedDeps: [], removedDeps: [], template: {},
+      cycles: [{ scopeKind: "part_of_day", scopeIndex: 2, planKind: "part_of_day", planStart: 1, planEnd: 1 }],
+    }));
+
+    expect(setFlowItemCycles).toHaveBeenCalledWith(3, "flow_task", 7, [
+      { scope_kind: "part_of_day", scope_index: 2, plan_kind: "part_of_day", plan_start: 1, plan_end: 1 },
+    ], undefined, undefined);
+  });
+
   it("lands the rest of the save on the fork an Archive & new answer created", async () => {
     vi.mocked(setFlowItemCycles).mockResolvedValueOnce({ flow_id: 9, goals: [], tasks: [[7, 70], [6, 60]] });
     const reload = vi.fn().mockResolvedValue(undefined);

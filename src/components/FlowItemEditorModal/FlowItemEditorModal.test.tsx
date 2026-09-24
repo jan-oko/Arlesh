@@ -103,6 +103,24 @@ describe("FlowItemEditorModal", () => {
     );
   });
 
+  it("saves a pair planned with its row's toggle, plan and all", async () => {
+    const morning = { scopeKind: "part_of_day", scopeIndex: 1, planKind: null, planStart: null, planEnd: null };
+    const node = mkItem({
+      flowItem: {
+        itemType: "flow_task", flowId: 5, flowInstanceType: "task", flowScopeN: 1, flowScopeKind: "day",
+        cycles: [morning], dependsOn: [], template: {},
+      },
+    });
+    render(<FlowItemEditorModal {...defaultProps} node={node} />);
+    fireEvent.click(screen.getByRole("button", { name: "editor:cyclePlanned" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
+        cycles: [{ ...morning, planKind: "part_of_day", planStart: 1, planEnd: 1 }],
+      })),
+    );
+  });
+
   it("adds an intra-flow dependency from the search", async () => {
     render(<FlowItemEditorModal {...defaultProps} />);
     fireEvent.change(screen.getByPlaceholderText("placeholderDepSearch"), { target: { value: "spec" } });

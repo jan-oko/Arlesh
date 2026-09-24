@@ -1083,7 +1083,7 @@ async fn a_part_of_day_cycle_planned_to_its_scope_plans_its_occurrence_into_that
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let (flow_id, item_id) = daily_habit(&pool, &app, InstanceType::Task).await;
-    // "Plan to scope" on a Noon cycle: the Cycle Plan is the Cycle Scope's own one cell.
+    // A Noon pair with its row's "Planned" toggle on: the Cycle Plan is the Cycle Scope itself.
     let noon_planned = FlowCycleInput {
         scope_kind: Some("part_of_day".into()),
         scope_index: Some(2),

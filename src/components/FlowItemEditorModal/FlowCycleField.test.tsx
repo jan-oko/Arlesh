@@ -108,18 +108,6 @@ describe("FlowCycleField — multi-period drill-down (2-week flow)", () => {
     ]);
   });
 
-  it("attaches a chosen plan range before toggling the target cell on", () => {
-    render(<FlowCycleField {...base} />);
-    fireEvent.click(screen.getByRole("button", { name: "editor:kindWeek 1" }));
-    // At the Day leaf (target kind), choose a part-of-day Plan sub-range before toggling the cell.
-    fireEvent.change(screen.getByDisplayValue("editor:cyclePlanNone"), { target: { value: "part_of_day" } });
-    fireEvent.click(screen.getByRole("button", { name: "scopes:part.noon" }));
-    fireEvent.click(screen.getByRole("button", { name: "editor:kindDay 1" }));
-    expect(onChange).toHaveBeenCalledWith([
-      { scopeKind: "day", scopeIndex: 1, planKind: "part_of_day", planStart: 2, planEnd: 2 },
-    ]);
-  });
-
   it("navigates three levels deep for a Part of Day target, and Up steps back one level", () => {
     render(<FlowCycleField {...base} />);
     fireEvent.change(screen.getByDisplayValue("editor:kindDay"), { target: { value: "part_of_day" } });
@@ -131,35 +119,44 @@ describe("FlowCycleField — multi-period drill-down (2-week flow)", () => {
   });
 });
 
-describe("FlowCycleField — Plan to scope on a Part of Day", () => {
-  const base = { flowScopeN: 1, flowScopeKind: "day", onChange };
-  const PLANNED_MORNING: FlowCyclePair = { scopeKind: "part_of_day", scopeIndex: 1, planKind: "part_of_day", planStart: 1, planEnd: 1 };
+describe("FlowCycleField — a pair's Planned toggle", () => {
+  const MORNING: FlowCyclePair = { scopeKind: "part_of_day", scopeIndex: 1, planKind: null, planStart: null, planEnd: null };
+  const PLANNED_MORNING: FlowCyclePair = { ...MORNING, planKind: "part_of_day", planStart: 1, planEnd: 1 };
 
-  it("plans a Morning cycle into the Morning when the switch is on", () => {
-    render(<FlowCycleField {...base} value={[]} />);
-    fireEvent.click(screen.getByRole("checkbox", { name: "editor:cyclePlanToScope" }));
-    fireEvent.click(screen.getByRole("button", { name: "scopes:part.morning" }));
+  it("plans a Morning pair into its own Morning", () => {
+    render(<FlowCycleField flowScopeN={1} flowScopeKind="day" value={[MORNING]} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "editor:cyclePlanned" }));
     expect(onChange).toHaveBeenCalledWith([PLANNED_MORNING]);
   });
 
-  it("plans a Morning already on in place, rather than adding a second one", () => {
-    const unplanned: FlowCyclePair = { ...PLANNED_MORNING, planKind: null, planStart: null, planEnd: null };
-    render(<FlowCycleField {...base} value={[unplanned]} />);
-    fireEvent.click(screen.getByRole("button", { name: "editor:cycleEdit" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "editor:cyclePlanToScope" }));
-    fireEvent.click(screen.getByRole("button", { name: "scopes:part.morning" }));
-    expect(onChange).toHaveBeenCalledWith([PLANNED_MORNING]);
+  it("plans a pair of any kind into its own scope — Day 10 into Day 10", () => {
+    const day: FlowCyclePair = { scopeKind: "day", scopeIndex: 10, planKind: null, planStart: null, planEnd: null };
+    render(<FlowCycleField flowScopeN={2} flowScopeKind="week" value={[day]} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "editor:cyclePlanned" }));
+    expect(onChange).toHaveBeenCalledWith([{ ...day, planKind: "day", planStart: 1, planEnd: 1 }]);
   });
 
-  it("says so on the chip", () => {
-    render(<FlowCycleField {...base} value={[PLANNED_MORNING]} />);
+  it("shows a planned pair on its chip, and turning it off clears the plan", () => {
+    render(<FlowCycleField flowScopeN={1} flowScopeKind="day" value={[PLANNED_MORNING]} onChange={onChange} />);
     expect(screen.getByText("scopes:part.morning · editor:cyclePlannedToScope")).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "editor:cyclePlanned" });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(toggle);
+    expect(onChange).toHaveBeenCalledWith([MORNING]);
   });
 
-  it("offers no switch above Part of Day, where the Plan-kind drill-down stays", () => {
+  it("shows an older, finer plan read-only, and the toggle clears it", () => {
+    const finer: FlowCyclePair = { scopeKind: "day", scopeIndex: 3, planKind: "part_of_day", planStart: 2, planEnd: 2 };
+    render(<FlowCycleField flowScopeN={1} flowScopeKind="week" value={[finer]} onChange={onChange} />);
+    expect(screen.getByText("editor:kindDay 3 · editor:kindPart 2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "editor:cyclePlanned" }));
+    expect(onChange).toHaveBeenCalledWith([{ ...finer, planKind: null, planStart: null, planEnd: null }]);
+  });
+
+  it("offers no plan inside the picker, which only chooses Cycle Scopes", () => {
     render(<FlowCycleField flowScopeN={2} flowScopeKind="week" value={[]} onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "editor:kindWeek 1" }));
-    expect(screen.queryByRole("checkbox", { name: "editor:cyclePlanToScope" })).not.toBeInTheDocument();
-    expect(screen.getByDisplayValue("editor:cyclePlanNone")).toBeInTheDocument();
+    expect(screen.queryByText("editor:cyclePlanKind")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "editor:cycleAddWhole" })).toBeInTheDocument();
   });
 });
