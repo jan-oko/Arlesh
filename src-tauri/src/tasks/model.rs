@@ -335,11 +335,6 @@ impl TimeScope {
     pub fn window(&self) -> Bounds {
         (self.start_id.bounds().0, self.end_id.bounds().1)
     }
-
-    /// Both boundary keys, for registering them before a write.
-    pub fn keys(&self) -> [ScopeKey; 2] {
-        [self.start_id, self.end_id]
-    }
 }
 
 /// A task row as returned from the database.

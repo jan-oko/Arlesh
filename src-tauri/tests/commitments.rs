@@ -967,14 +967,14 @@ fn an_explicit_null_time_scope_in_a_commitment_update_payload_clears_it() {
         "an explicit null clears the window"
     );
     let set: UpdateCommitmentRequest = serde_json::from_str(
-        r#"{"time_scope":{"start_id":"day:2026-07-01","end_id":"day:2026-07-02"}}"#,
+        r#"{"time_scope":{"start_id":{"kind":"day","date":"2026-07-01"},"end_id":{"kind":"day","date":"2026-07-02"}}}"#,
     )
     .unwrap();
     assert_eq!(
         set.time_scope,
         Some(Some(TimeScope {
-            start_id: "day:2026-07-01".parse().unwrap(),
-            end_id: "day:2026-07-02".parse().unwrap(),
+            start_id: r#"{"kind":"day","date":"2026-07-01"}"#.parse().unwrap(),
+            end_id: r#"{"kind":"day","date":"2026-07-02"}"#.parse().unwrap(),
             duration: None
         }))
     );

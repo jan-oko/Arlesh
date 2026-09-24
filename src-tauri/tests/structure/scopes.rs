@@ -1,8 +1,8 @@
 //! Scopes are derived, not stored (ADR 0009): what that means for the database.
 //!
 //! The derivation itself — dates, labels, bounds, the key spelling — is unit-tested beside it in
-//! `src/scopes/`. These tests hold the storage contract: no calendar table, value keys in the
-//! referencing columns, and exact windows registered by the write that stores them.
+//! `src/scopes/`. These tests hold the storage contract: no scope table, and every referencing
+//! column holding a key's one canonical text.
 
 use crate::helpers;
 
@@ -17,8 +17,7 @@ use arlesh_lib::{
     },
     tasks::{
         create_task,
-        model::{CreateTaskRequest, TimeScope, UpdateTaskRequest},
-        update_task,
+        model::{CreateTaskRequest, TimeScope},
     },
 };
 
@@ -51,13 +50,6 @@ fn exact_key() -> ScopeKey {
     ScopeKey::exact(at("2026-06-20T09:30:00"), at("2026-06-22T14:00:00")).unwrap()
 }
 
-async fn exact_rows(pool: &sqlx::SqlitePool) -> Vec<(String, String, String)> {
-    sqlx::query_as("SELECT id, start_datetime, end_datetime FROM exact_scopes ORDER BY id")
-        .fetch_all(pool)
-        .await
-        .unwrap()
-}
-
 async fn task_with_window(
     pool: &sqlx::SqlitePool,
     project_id: i64,
@@ -79,20 +71,29 @@ async fn task_with_window(
     Ok(task.id)
 }
 
+async fn stored_window(pool: &sqlx::SqlitePool, task_id: i64) -> (String, String) {
+    sqlx::query_as("SELECT time_scope_start_id, time_scope_end_id FROM tasks WHERE id = ?")
+        .bind(task_id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
 #[tokio::test]
-async fn there_is_no_calendar_table() {
+async fn there_is_no_scope_table() {
     let pool = helpers::test_pool().await;
     let tables: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'scopes'",
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'
+           AND name IN ('scopes', 'exact_scopes')",
     )
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(tables, 0, "canonical scopes are derived, never stored");
+    assert_eq!(tables, 0, "scopes are derived, never stored");
 }
 
 #[tokio::test]
-async fn a_task_stores_its_window_as_value_keys() {
+async fn a_task_stores_its_window_as_canonical_key_text() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let week = ScopeKey::containing(
@@ -105,76 +106,73 @@ async fn a_task_stores_its_window_as_value_keys() {
         .await
         .unwrap();
 
-    let stored: (String, String) =
-        sqlx::query_as("SELECT time_scope_start_id, time_scope_end_id FROM tasks WHERE id = ?")
-            .bind(task_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let week_text = r#"{"kind":"week","date":"2026-09-20"}"#.to_string();
     assert_eq!(
-        stored,
-        ("week:2026-09-20".to_string(), "week:2026-09-20".to_string())
-    );
-    assert!(
-        exact_rows(&pool).await.is_empty(),
-        "a canonical key needs no row"
+        stored_window(&pool, task_id).await,
+        (week_text.clone(), week_text)
     );
 }
 
 #[tokio::test]
-async fn saving_an_exact_window_registers_it_once() {
+async fn an_exact_window_is_stored_as_its_value_with_no_row_of_its_own() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
 
-    let first = task_with_window(&pool, project_id, TimeScope::single(exact_key())).await;
-    let second = task_with_window(&pool, project_id, TimeScope::single(exact_key())).await;
+    let task_id = task_with_window(&pool, project_id, TimeScope::single(exact_key()))
+        .await
+        .unwrap();
 
-    assert!(first.is_ok() && second.is_ok());
+    let exact_text =
+        r#"{"kind":"exact","start":"2026-06-20T09:30:00","end":"2026-06-22T14:00:00"}"#.to_string();
     assert_eq!(
-        exact_rows(&pool).await,
-        vec![(
-            "exact:2026-06-20T09:30:00/2026-06-22T14:00:00".to_string(),
-            "2026-06-20T09:30:00".to_string(),
-            "2026-06-22T14:00:00".to_string(),
-        )]
+        stored_window(&pool, task_id).await,
+        (exact_text.clone(), exact_text)
     );
 }
 
 #[tokio::test]
-async fn an_update_that_plans_into_an_exact_window_registers_it() {
+async fn a_key_sent_in_any_spelling_is_stored_in_the_one_canonical_text() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let task = create_task(
-        &mut db,
-        CreateTaskRequest {
-            title: "Plan me".into(),
-            parent_type: "project".into(),
-            parent_id: project_id,
-            ..Default::default()
-        },
-    )
-    .await
-    .unwrap();
-    update_task(
-        &mut db,
-        arlesh_lib::tasks::model::TaskId(task.id),
-        UpdateTaskRequest {
-            plan: Some(Some(TimeScope::single(exact_key()))),
-            ..Default::default()
-        },
-    )
-    .await
-    .unwrap();
-    db.commit().await.unwrap();
+    // Fields out of order, with whitespace: the key is re-serialised from its value on the way in.
+    let loose: ScopeKey = r#"{ "part": "night", "date": "2026-09-23", "kind": "part_of_day" }"#
+        .parse()
+        .unwrap();
 
-    assert_eq!(exact_rows(&pool).await.len(), 1);
+    let task_id = task_with_window(&pool, project_id, TimeScope::single(loose))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        stored_window(&pool, task_id).await.0,
+        r#"{"kind":"part_of_day","date":"2026-09-23","part":"night"}"#
+    );
 }
 
 #[tokio::test]
-async fn an_unregistered_exact_key_is_refused_by_the_schema() {
+async fn text_that_is_not_json_is_refused_by_the_schema() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
+
+    let written = sqlx::query(
+        "INSERT INTO tasks (title, parent_type, parent_id, time_scope_start_id, time_scope_end_id,
+                            on_scope_exit)
+         VALUES ('Raw', 'project', ?, 'week:2026-09-20', 'week:2026-09-20', 'keep')",
+    )
+    .bind(project_id)
+    .execute(&pool)
+    .await;
+
+    assert!(written.is_err(), "a scope column holds JSON or nothing");
+}
+
+#[tokio::test]
+async fn a_hand_built_key_that_misses_its_start_is_refused_on_write() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let wednesday = ScopeKey::Week {
+        date: NaiveDate::from_ymd_opt(2026, 9, 23).unwrap(),
+    };
 
     let written = sqlx::query(
         "INSERT INTO tasks (title, parent_type, parent_id, time_scope_start_id, time_scope_end_id,
@@ -182,34 +180,15 @@ async fn an_unregistered_exact_key_is_refused_by_the_schema() {
          VALUES ('Raw', 'project', ?, ?, ?, 'keep')",
     )
     .bind(project_id)
-    .bind(exact_key())
-    .bind(exact_key())
+    .bind(wednesday)
+    .bind(wednesday)
     .execute(&pool)
     .await;
 
     assert!(
         written.is_err(),
-        "an exact key keeps referential integrity: it must be registered before it is stored"
+        "a week keyed by a Wednesday names no scope"
     );
-}
-
-#[tokio::test]
-async fn a_canonical_key_needs_no_registration() {
-    let pool = helpers::test_pool().await;
-    let project_id = make_project(&pool).await;
-    let day = ScopeKey::day(NaiveDate::from_ymd_opt(2026, 9, 23).unwrap());
-
-    sqlx::query(
-        "INSERT INTO tasks (title, parent_type, parent_id, time_scope_start_id, time_scope_end_id,
-                            on_scope_exit)
-         VALUES ('Raw', 'project', ?, ?, ?, 'keep')",
-    )
-    .bind(project_id)
-    .bind(day)
-    .bind(day)
-    .execute(&pool)
-    .await
-    .unwrap();
 }
 
 #[test]
@@ -217,11 +196,17 @@ fn the_scope_commands_derive_without_a_database() {
     let date = "2026-06-20".to_string();
 
     let week = scope_containing(ScopeKind::Week, date.clone()).unwrap();
-    assert_eq!(week.id.to_string(), "week:2026-06-14");
+    assert_eq!(
+        week.id.canonical(),
+        r#"{"kind":"week","date":"2026-06-14"}"#
+    );
     assert_eq!(week.end_date, "2026-06-20");
 
     let night = part_scope(date, PartOfDay::Night).unwrap();
-    assert_eq!(night.id.to_string(), "part_of_day:2026-06-20:night");
+    assert_eq!(
+        night.id.canonical(),
+        r#"{"kind":"part_of_day","date":"2026-06-20","part":"night"}"#
+    );
     assert_eq!(night.end_date, "2026-06-21");
 
     let exact = exact_scope(
@@ -232,15 +217,23 @@ fn the_scope_commands_derive_without_a_database() {
     assert_eq!(exact.id, exact_key());
 }
 
-/// One case of the shared key corpus, which the frontend's `scope-key` module replays too.
+/// The calendar cell a corpus case names: the kind, and a date inside it (or a band, or two
+/// datetimes).
 #[derive(serde::Deserialize)]
-struct KeyCase {
+struct Cell {
     kind: ScopeKind,
     date: Option<NaiveDate>,
     part: Option<PartOfDay>,
     start: Option<NaiveDateTime>,
     end: Option<NaiveDateTime>,
-    key: String,
+}
+
+/// One case of the shared key corpus, which the frontend's `scope-key` module replays too.
+#[derive(serde::Deserialize)]
+struct KeyCase {
+    cell: Cell,
+    key: serde_json::Value,
+    text: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -254,24 +247,27 @@ const KEY_CORPUS: &str = include_str!(concat!(
 ));
 
 #[test]
-fn every_key_in_the_shared_corpus_is_spelled_the_same_here() {
+fn every_key_in_the_shared_corpus_has_the_same_canonical_text_here() {
     let corpus: KeyCorpus = serde_json::from_str(KEY_CORPUS).unwrap();
     assert!(!corpus.cases.is_empty());
     for case in corpus.cases {
-        let key = match (case.kind, case.date, case.part, case.start, case.end) {
+        let cell = case.cell;
+        let key = match (cell.kind, cell.date, cell.part, cell.start, cell.end) {
             (ScopeKind::PartOfDay, Some(date), Some(part), _, _) => ScopeKey::part(date, part),
             (ScopeKind::Exact, _, _, Some(start), Some(end)) => {
                 ScopeKey::exact(start, end).unwrap()
             }
             (kind, Some(date), None, None, None) => ScopeKey::containing(kind, date).unwrap(),
-            _ => panic!("malformed corpus case {}", case.key),
+            _ => panic!("malformed corpus case {}", case.text),
         };
-        assert_eq!(key.to_string(), case.key);
+        assert_eq!(key.canonical(), case.text, "the canonical text");
         assert_eq!(
-            case.key.parse::<ScopeKey>().unwrap(),
-            key,
-            "{} round-trips",
-            case.key
+            serde_json::to_value(key).unwrap(),
+            case.key,
+            "the wire object"
         );
+        let parsed: ScopeKey = case.text.parse().unwrap();
+        assert_eq!(parsed, key, "{} round-trips", case.text);
+        assert_eq!(parsed.canonical(), case.text);
     }
 }

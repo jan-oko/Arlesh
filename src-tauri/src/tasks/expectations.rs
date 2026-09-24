@@ -376,7 +376,6 @@ pub async fn create_expectation(
         &request.time_scope,
     )
     .await?;
-    super::register_windows(db, [&request.time_scope, &None]).await?;
     db.expectations().insert(request, now()).await
 }
 
@@ -399,7 +398,6 @@ pub async fn update_expectation(
         &write.time_scope,
     )
     .await?;
-    super::register_windows(db, [&write.time_scope, &None]).await?;
     db.expectations().update(id, write).await
 }
 

@@ -115,7 +115,7 @@ fn task_database_maps_to_database() {
 fn scope_malformed_key_maps_to_invalid_request() {
     assert_eq!(
         kind_of(ScopeError::MalformedKey(
-            "week:2026-09-23".to_string(),
+            r#"{"kind":"week","date":"2026-09-23"}"#.to_string(),
             "not canonical".to_string()
         )),
         WireErrorKind::InvalidRequest
@@ -135,14 +135,6 @@ fn scope_unsupported_kind_maps_to_invalid_request() {
     assert_eq!(
         kind_of(ScopeError::UnsupportedKind("exact")),
         WireErrorKind::InvalidRequest
-    );
-}
-
-#[test]
-fn scope_database_maps_to_database() {
-    assert_eq!(
-        kind_of(ScopeError::Database(sqlx::Error::RowNotFound)),
-        WireErrorKind::Database
     );
 }
 

@@ -5254,14 +5254,14 @@ fn an_explicit_null_time_scope_in_a_task_update_payload_clears_it() {
         "an explicit null clears the Time Scope"
     );
     let set: UpdateTaskRequest = serde_json::from_str(
-        r#"{"time_scope":{"start_id":"day:2026-07-01","end_id":"day:2026-07-02"}}"#,
+        r#"{"time_scope":{"start_id":{"kind":"day","date":"2026-07-01"},"end_id":{"kind":"day","date":"2026-07-02"}}}"#,
     )
     .unwrap();
     assert_eq!(
         set.time_scope,
         Some(Some(TimeScope {
-            start_id: "day:2026-07-01".parse().unwrap(),
-            end_id: "day:2026-07-02".parse().unwrap(),
+            start_id: r#"{"kind":"day","date":"2026-07-01"}"#.parse().unwrap(),
+            end_id: r#"{"kind":"day","date":"2026-07-02"}"#.parse().unwrap(),
             duration: None
         }))
     );
@@ -5291,13 +5291,13 @@ fn an_explicit_null_plan_in_a_task_update_payload_clears_it() {
     let nulled: UpdateTaskRequest = serde_json::from_str(r#"{"plan":null}"#).unwrap();
     assert_eq!(nulled.plan, Some(None), "an explicit null clears the Plan");
     let set: UpdateTaskRequest =
-        serde_json::from_str(r#"{"plan":{"start_id":"day:2026-07-03","end_id":"day:2026-07-04"}}"#)
+        serde_json::from_str(r#"{"plan":{"start_id":{"kind":"day","date":"2026-07-03"},"end_id":{"kind":"day","date":"2026-07-04"}}}"#)
             .unwrap();
     assert_eq!(
         set.plan,
         Some(Some(TimeScope {
-            start_id: "day:2026-07-03".parse().unwrap(),
-            end_id: "day:2026-07-04".parse().unwrap(),
+            start_id: r#"{"kind":"day","date":"2026-07-03"}"#.parse().unwrap(),
+            end_id: r#"{"kind":"day","date":"2026-07-04"}"#.parse().unwrap(),
             duration: None
         }))
     );
@@ -5317,14 +5317,14 @@ fn an_explicit_null_time_scope_in_a_goal_update_payload_clears_it() {
         "an explicit null clears the Time Scope"
     );
     let set: UpdateGoalRequest = serde_json::from_str(
-        r#"{"time_scope":{"start_id":"day:2026-07-01","end_id":"day:2026-07-02"}}"#,
+        r#"{"time_scope":{"start_id":{"kind":"day","date":"2026-07-01"},"end_id":{"kind":"day","date":"2026-07-02"}}}"#,
     )
     .unwrap();
     assert_eq!(
         set.time_scope,
         Some(Some(TimeScope {
-            start_id: "day:2026-07-01".parse().unwrap(),
-            end_id: "day:2026-07-02".parse().unwrap(),
+            start_id: r#"{"kind":"day","date":"2026-07-01"}"#.parse().unwrap(),
+            end_id: r#"{"kind":"day","date":"2026-07-02"}"#.parse().unwrap(),
             duration: None
         }))
     );

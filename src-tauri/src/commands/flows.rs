@@ -455,10 +455,6 @@ pub async fn set_habit_item_status(
             return Err(unfinished_refusal(&open));
         }
     }
-    db.scopes()
-        .register(&instance.iteration_scope_id)
-        .await
-        .map_err(WireError::from_error)?;
     db.flows()
         .set_item_status(
             FlowId(flow_id),

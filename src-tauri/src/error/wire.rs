@@ -230,11 +230,10 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
 fn scope_kind(error: &ScopeError) -> WireErrorKind {
     match error {
         // A key is parsed from what the caller sent; one read back from the database that does not
-        // parse fails inside sqlx's decode instead, as a `Database` error.
+        // parse fails inside sqlx's decode instead, as a `Database` error of whoever read it.
         ScopeError::MalformedKey(_, _)
         | ScopeError::EmptyExact(_, _)
         | ScopeError::UnsupportedKind(_) => WireErrorKind::InvalidRequest,
-        ScopeError::Database(_) => WireErrorKind::Database,
     }
 }
 

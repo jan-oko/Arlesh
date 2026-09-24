@@ -1,8 +1,7 @@
 //! Tauri commands for scopes.
 //!
 //! Every one of them is pure: a scope is derived from its value key (ADR 0009), so none touches
-//! the database. An Exact window is registered in `exact_scopes` by the save that first stores
-//! it, not by the picker that proposed it.
+//! the database.
 
 use chrono::{Local, NaiveDate, NaiveDateTime};
 

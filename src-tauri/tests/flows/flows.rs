@@ -1134,8 +1134,14 @@ async fn starting_a_task_flow_resolves_its_root_cycle_plan() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(plan_start.as_deref(), Some("day:2026-01-05"));
-    assert_eq!(plan_end.as_deref(), Some("day:2026-01-06"));
+    assert_eq!(
+        plan_start.as_deref(),
+        Some(r#"{"kind":"day","date":"2026-01-05"}"#)
+    );
+    assert_eq!(
+        plan_end.as_deref(),
+        Some(r#"{"kind":"day","date":"2026-01-06"}"#)
+    );
 }
 
 #[tokio::test]
@@ -2228,15 +2234,8 @@ async fn starting_an_exact_phase_flow_materializes_a_sub_day_window() {
     assert_eq!(start_id, end_id);
     assert_eq!(
         start_id.as_deref(),
-        Some("exact:2026-01-05T10:00:00/2026-01-05T12:00:00")
+        Some(r#"{"kind":"exact","start":"2026-01-05T10:00:00","end":"2026-01-05T12:00:00"}"#)
     );
-    // An exact window is real data, so starting the flow registered it.
-    let registered: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM exact_scopes WHERE id = ?")
-        .bind(start_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(registered, 1);
 }
 
 #[tokio::test]
@@ -2285,7 +2284,10 @@ async fn starting_a_part_phase_flow_materializes_the_band() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(start_id.as_deref(), Some("part_of_day:2026-01-05:evening"));
+    assert_eq!(
+        start_id.as_deref(),
+        Some(r#"{"kind":"part_of_day","date":"2026-01-05","part":"evening"}"#)
+    );
 }
 
 #[tokio::test]

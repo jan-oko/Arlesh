@@ -3,7 +3,7 @@
 /// Errors that can occur during scope operations.
 #[derive(Debug, thiserror::Error)]
 pub enum ScopeError {
-    /// A string that is not the canonical value key of any scope (see [`super::key`]).
+    /// JSON that is not the value key of any scope (see [`super::key`]).
     #[error("malformed scope key {0:?}: {1}")]
     MalformedKey(String, String),
     /// An Exact window that does not end after it starts.
@@ -13,7 +13,4 @@ pub enum ScopeError {
     /// where only a canonical kind, named by a date alone, makes sense).
     #[error("unsupported scope kind for this operation: {0}")]
     UnsupportedKind(&'static str),
-    /// A database error occurred.
-    #[error("database error: {0}")]
-    Database(#[from] sqlx::Error),
 }
