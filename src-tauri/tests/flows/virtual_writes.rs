@@ -236,7 +236,7 @@ async fn a_stored_task_moved_onto_an_occurrence_hangs_on_it() {
         &mut db,
         CreateTaskRequest {
             title: "Warm up".into(),
-            parent_type: "aspect".into(),
+            parent_type: "domain".into(),
             parent_id: 1.into(),
             ..Default::default()
         },
@@ -278,7 +278,7 @@ async fn an_occurrence_takes_tags_block_reasons_and_dependencies_of_its_own() {
         &mut db,
         CreateTaskRequest {
             title: "Buy a mat".into(),
-            parent_type: "aspect".into(),
+            parent_type: "domain".into(),
             parent_id: 1.into(),
             ..Default::default()
         },
@@ -426,9 +426,9 @@ async fn a_cycle_edit_that_would_orphan_a_recorded_edit_asks_first() {
         .tasks
         .iter()
         .find(|row| {
-            row.origin
-                .habit()
-                .is_some_and(|origin| origin.item_id == item)
+            row.origin.habit().is_some_and(|origin| {
+                origin.item_type == TemplateKind::FlowTask && origin.item_id == item
+            })
         })
         .unwrap()
         .id
