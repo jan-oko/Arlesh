@@ -102,6 +102,8 @@ fn expectation(id: i64) -> Expectation {
         check_every: None,
         check_starting: None,
         last_check_at: None,
+        agentic: false,
+        agentic_note: None,
         origin: Default::default(),
     }
 }
