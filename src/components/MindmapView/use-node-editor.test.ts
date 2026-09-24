@@ -198,12 +198,13 @@ describe("useNodeEditor — saving a flow item", () => {
     act(() => result.current.setEditorModal({ nodeId: "flowtask-7", node: flowTask }));
 
     await act(() => result.current.onFlowItemSave({
-      title: "Stretch well", cycles: [], isPrivate: false, addedDeps: [], removedDeps: [],
+      title: "Stretch well", cycles: [], isPrivate: true, addedDeps: [], removedDeps: [],
       template: { tag_ids: [4], block_reasons: [], asynchronous: true },
     }));
 
+    // Privacy travels as the backend spells it; `isPrivate` was dropped on the floor.
     expect(updateFlowTask).toHaveBeenCalledWith(7, expect.objectContaining({
-      title: "Stretch well", tag_ids: [4], block_reasons: [], asynchronous: true,
+      title: "Stretch well", is_private: true, tag_ids: [4], block_reasons: [], asynchronous: true,
     }));
   });
 

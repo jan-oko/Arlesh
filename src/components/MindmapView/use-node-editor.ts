@@ -24,7 +24,7 @@ import {
   setFlowRecurrence, deleteFlowRecurrence, forkFlow, clearHabitModifications,
 } from "@/api/flows";
 import { keyContaining } from "@/utils/scope-key";
-import type { FlowItemType, ForkedTemplate } from "@/api/flows";
+import type { FlowItemType, ForkedTemplate, UpdateFlowItemRequest, UpdateFlowRequest } from "@/api/flows";
 import { withAtomicGesture } from "@/api/gesture";
 import { localNowIso } from "@/utils/local-now";
 import type { Domain } from "@/api/domains";
@@ -332,8 +332,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         root_plan_end: data.rootPlanEnd,
         verdict_window_n: data.verdictWindowN,
         verdict_window_kind: data.verdictWindowKind,
-        isPrivate: data.isPrivate,
-      };
+        is_private: data.isPrivate,
+      } satisfies UpdateFlowRequest;
       // Persist the Recurrence for `targetId` after its flow row, so gap validation sees the new kind.
       const persistRecurrence = async (targetId: number) => {
         if (data.recurrence === undefined) return;
@@ -402,7 +402,9 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         const onto = (type: FlowItemType, id: number): number => forkedItemId(forked, type, id);
         const flowId = forked?.flow_id ?? flowItem.flowId;
         const itemId = onto(flowItem.itemType, dbId);
-        const patch = { title: data.title, isPrivate: data.isPrivate, ...data.template };
+        const patch = {
+          title: data.title, is_private: data.isPrivate, ...data.template,
+        } satisfies UpdateFlowItemRequest;
         if (flowItem.itemType === "flow_goal") {
           await updateFlowGoal(itemId, patch);
         } else {
