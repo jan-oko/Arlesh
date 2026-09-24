@@ -6,8 +6,8 @@ use rmcp::{
     tool, tool_router,
 };
 
-use super::{params::KbOperation, result, ArleshMcp};
-use crate::knowledge_base::model::PersonId;
+use super::{access, params::KbOperation, result, ArleshMcp};
+use crate::{access::model::AccessLevel, knowledge_base::model::PersonId};
 
 #[tool_router(router = kb_router, vis = "pub(super)")]
 impl ArleshMcp {
@@ -15,6 +15,10 @@ impl ArleshMcp {
     ///
     /// These are absent from `arlesh_snapshot`, which carries only the planning graph, so this is
     /// the only way to reach them.
+    ///
+    /// People, events and threads hang on no node, so no MCP root contains them: one is here only when
+    /// a task or goal the MCP can read is delegated to it or links it. `get_person` on anyone
+    /// else is refused as `not_permitted`.
     #[tool(
         name = "arlesh_kb",
         annotations(title = "Arlesh knowledge base", read_only_hint = true)
@@ -28,11 +32,45 @@ impl ArleshMcp {
             Err(error) => return result::failed(error),
         };
 
+        let map = match crate::access::access_map(&mut db).await {
+            Ok(map) => map,
+            Err(error) => return result::failed(error),
+        };
+        let references = match db.access().knowledge_base_references().await {
+            Ok(references) => references,
+            Err(error) => return result::failed(error),
+        };
+        let visible = access::visible_knowledge_base(&references, &map);
+        let sees = |entity: &str, id: i64| visible.contains(&(entity.to_string(), id));
+
         match operation {
-            KbOperation::ListPeople => result::respond(db.people().list().await),
-            KbOperation::GetPerson { id } => result::respond(db.people().get(PersonId(id)).await),
-            KbOperation::ListEvents => result::respond(db.events().list().await),
-            KbOperation::ListThreads => result::respond(db.threads().list().await),
+            KbOperation::ListPeople => match db.people().list().await {
+                Ok(mut people) => {
+                    people.retain(|person| sees("person", person.id));
+                    result::ok(people)
+                }
+                Err(error) => result::failed(error),
+            },
+            KbOperation::GetPerson { id } => {
+                if !sees("person", id) {
+                    return access::refuse("person", id, AccessLevel::Read);
+                }
+                result::respond(db.people().get(PersonId(id)).await)
+            }
+            KbOperation::ListEvents => match db.events().list().await {
+                Ok(mut events) => {
+                    events.retain(|event| sees("event", event.id));
+                    result::ok(events)
+                }
+                Err(error) => result::failed(error),
+            },
+            KbOperation::ListThreads => match db.threads().list().await {
+                Ok(mut threads) => {
+                    threads.retain(|thread| sees("thread", thread.id));
+                    result::ok(threads)
+                }
+                Err(error) => result::failed(error),
+            },
         }
     }
 }

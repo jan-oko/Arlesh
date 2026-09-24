@@ -2,6 +2,7 @@
 #![deny(missing_docs)]
 //! Arlesh — task management and knowledge-base desktop app.
 
+pub mod access;
 pub mod block_reasons;
 pub mod board;
 pub mod commands;
@@ -119,6 +120,10 @@ pub fn run() {
             commands::undo::redo,
             commands::undo::undo_status,
             commands::beads::clear_beads_id,
+            commands::access::mcp_access_catalogue,
+            commands::access::list_mcp_access,
+            commands::access::add_mcp_root,
+            commands::access::remove_mcp_root,
             commands::block_reasons::list_all_block_reasons,
             commands::block_reasons::set_block_reasons,
             commands::infos::create_info,

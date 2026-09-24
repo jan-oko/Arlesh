@@ -91,3 +91,40 @@ pub fn window(
 pub fn session_factory(pool: &SqlitePool) -> SessionFactory {
     SessionFactory::new(pool.clone())
 }
+
+/// Makes every Aspect an MCP root, so the MCP can read the whole board — private nodes aside.
+///
+/// The MCP sees nothing until the user names a root, so a test about what a tool *returns* has to
+/// open the board first. Every node hangs under an Aspect and the Aspects are seeded by the
+/// initial migration, so rooting them once at the start covers whatever the test creates later.
+///
+/// Written straight to the table with no Gesture open, so it is on no undo stack; a test that
+/// dumps the journal should call this before it starts reading.
+pub async fn open_board_to_mcp(pool: &SqlitePool) {
+    sqlx::query(
+        "INSERT INTO mcp_roots (node_kind, node_id) \
+         SELECT 'domain', id FROM domains WHERE parent_id IS NULL \
+         ON CONFLICT (node_kind, node_id) DO NOTHING",
+    )
+    .execute(pool)
+    .await
+    .expect("failed to root the Aspects for the MCP");
+}
+
+/// An MCP handler over `pool` with every Aspect already an MCP root — see
+/// [`open_board_to_mcp`].
+pub async fn mcp_over_whole_board(pool: &SqlitePool) -> arlesh_lib::mcp::ArleshMcp {
+    open_board_to_mcp(pool).await;
+    arlesh_lib::mcp::ArleshMcp::new(session_factory(pool))
+}
+
+/// Marks a Task Agentic, which is what lets the MCP write it inside a root.
+///
+/// Straight to the column, with no Gesture open, for the same reason as [`open_board_to_mcp`].
+pub async fn make_agentic(pool: &SqlitePool, task_id: i64) {
+    sqlx::query("UPDATE tasks SET agentic = 1 WHERE id = ?")
+        .bind(task_id)
+        .execute(pool)
+        .await
+        .expect("failed to mark the task Agentic");
+}

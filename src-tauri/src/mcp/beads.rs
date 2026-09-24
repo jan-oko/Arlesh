@@ -14,10 +14,12 @@ use rmcp::{
 };
 
 use super::{
+    access,
     params::{BeadsLink, BeadsNode, BeadsOperation},
     result, ArleshMcp,
 };
 use crate::{
+    access::model::AccessLevel,
     domains::model::DomainId,
     error::AppError,
     tasks::model::{CommitmentId, GoalId, TaskId},
@@ -33,7 +35,10 @@ impl ArleshMcp {
     /// Arlesh displays, not a foreign key. Setting it on an item that does not exist is an error,
     /// not a silent no-op.
     ///
-    /// This is the only operation on this server that writes anything the user entered.
+    /// This is the only operation on this server that writes anything the user entered, and it
+    /// needs **write** access: the item must be an Agentic Task inside an MCP root. Anything else
+    /// — a Goal, a non-Agentic Task, an item outside the roots or one that does not exist — is
+    /// refused as `not_permitted`.
     #[tool(
         name = "arlesh_beads",
         annotations(
@@ -76,6 +81,16 @@ impl ArleshMcp {
             Ok(db) => db,
             Err(error) => return result::failed(error),
         };
+        // Checked inside the write's own transaction, so a root removed a moment ago cannot let
+        // this write through on a stale answer.
+        let map = match crate::access::access_map(&mut db).await {
+            Ok(map) => map,
+            Err(error) => return result::failed(error),
+        };
+        if !access::permits(&map, &link.node_type, node_id, AccessLevel::Write) {
+            return access::refuse(&link.node_type, node_id, AccessLevel::Write);
+        }
+
         let user_source = match db.undo().set_source(WriteSource::Mcp).await {
             Ok(previous) => previous,
             Err(error) => return result::failed(error),

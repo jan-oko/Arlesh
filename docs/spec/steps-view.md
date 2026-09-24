@@ -329,8 +329,8 @@ under the cursor.
 ## Pages and zoom
 
 A wide Step **paginates** rather than scrolling. **Card size is a per-tab zoom** with five levels,
-set in the gear popover under Steps (and on `Ctrl+=` / `Ctrl+-`), the way the branch axis is set
-there under Mindmap: one tab walking a wide branch wants small cards while another reads one Task's
+set on the settings modal's Steps page (and on `Ctrl+=` / `Ctrl+-`), the way the branch axis is set
+on its Mindmap page: one tab walking a wide branch wants small cards while another reads one Task's
 fields at full size.
 
 **Page size is derived from the zoom and the viewport, never set independently.** The two would

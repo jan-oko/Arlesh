@@ -11,6 +11,7 @@ export type WireErrorKind =
   | "invalid_request"
   | "needs_confirmation"
   | "needs_time_scope"
+  | "not_permitted"
   | "database"
   | "internal";
 
@@ -20,6 +21,7 @@ const WIRE_ERROR_KINDS: readonly string[] = [
   "invalid_request",
   "needs_confirmation",
   "needs_time_scope",
+  "not_permitted",
   "database",
   "internal",
 ] satisfies readonly WireErrorKind[];

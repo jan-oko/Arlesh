@@ -21,7 +21,7 @@ use arlesh_lib::flows::model::{
     CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType, HabitInstanceRef,
     InstanceType,
 };
-use arlesh_lib::mcp::{params, ArleshMcp};
+use arlesh_lib::mcp::params;
 use arlesh_lib::scopes::model::ScopeKind;
 use arlesh_lib::tasks::model::{
     CreateGoalRequest, CreateTaskRequest, Dependency, TaskAgentic, UpdateTaskRequest,
@@ -660,12 +660,13 @@ async fn undo_status_names_what_each_press_would_do() {
 async fn an_mcp_write_between_the_users_change_and_their_undo_is_not_reversed() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     let project_id = make_project(&pool).await;
     let agents_task =
         task_commands::create_task(app.state(), task_request("project", project_id, "agent's"))
             .await
             .expect("create task");
+    helpers::make_agentic(&pool, agents_task.id).await;
 
     open_gesture(&app).await;
     task_commands::create_task(app.state(), task_request("project", project_id, "user's"))
@@ -713,12 +714,13 @@ async fn an_mcp_write_between_the_users_change_and_their_undo_is_not_reversed() 
 async fn an_mcp_write_made_while_a_user_gesture_is_open_is_not_reversed_with_it() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     let project_id = make_project(&pool).await;
     let agents_task =
         task_commands::create_task(app.state(), task_request("project", project_id, "agent's"))
             .await
             .expect("create task");
+    helpers::make_agentic(&pool, agents_task.id).await;
 
     // The ambient context is one row for the whole application, so an agent writing while the
     // user's gesture is open is journaled *under that gesture's id*. Only the entry's source tells
@@ -921,7 +923,8 @@ async fn undoing_a_cleared_issue_link_puts_the_id_back() {
     // Established the only way a link is ever established: through the MCP server. That write is
     // agent-sourced and deliberately not on the user's stack, so the undo below can only be
     // reversing the user's clear.
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    helpers::make_agentic(&pool, task.id).await;
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     mcp.beads(Parameters(params::BeadsOperation::Set {
         node_type: params::BeadsNode::Task,
         node_id: task.id,

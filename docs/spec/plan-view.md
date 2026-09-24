@@ -181,11 +181,16 @@ Planned      [ ] Split by subscope                     off by default
              [ ] Include premorning                    off by default
 ```
 
-They were switches in the window's settings popover, gated on the Plan View being on screen. Two
+They were switches in the window's old settings popover, gated on the Plan View being on screen. Two
 problems with that, and the second is the one that mattered: a control three rows up from the thing
 it acts on has to name which half it means, and a settings popover is somewhere you go once, not
 somewhere you reach for mid-pass. A planning pass changes its mind about how it wants to read a pane
 while it is reading it.
+
+The settings modal that replaced the popover lists them as well, on its **Plan** page (see
+[*Mindmap*](mindmap-view.md), *Settings modal*): the kebabs stay where the pass reaches for them,
+and the modal is where every setting the app has can be found in one place. Both write the same
+stored value.
 
 They stay **app-wide**, persisted beside *Asynchronous first*, and deliberately did not become
 per-tab like the filters. A filter is a question about the board and belongs to the tab

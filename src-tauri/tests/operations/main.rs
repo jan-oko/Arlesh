@@ -19,6 +19,7 @@ mod beads_commands;
 mod database;
 mod duplicate;
 mod mcp;
+mod mcp_access;
 mod mindmap_commands;
 mod preset_conformance;
 mod retype_commands;

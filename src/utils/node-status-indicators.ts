@@ -13,7 +13,8 @@ export type StatusIndicatorType =
   | "asynchronous"
   | "info"
   | "flowInstance"
-  | "tags";
+  | "tags"
+  | "mcp";
 
 /** One badge to render below a node. `outOfScope` applies only to the `scope` clock; `conflict`
  * only to `archived`. */
@@ -94,6 +95,11 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   }
   if (node.tagIds.length > 0) {
     indicators.push({ type: "tags" });
+  }
+  // One state only: the MCP can see this node. Whether it may also write it is not a second
+  // badge — inside a root, write is exactly Agentic, which the bot head above already says.
+  if (node.mcpVisibleVia !== undefined) {
+    indicators.push({ type: "mcp" });
   }
 
   return indicators;

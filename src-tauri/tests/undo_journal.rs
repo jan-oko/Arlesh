@@ -15,7 +15,7 @@
 mod helpers;
 
 use arlesh_lib::commands::tasks as task_commands;
-use arlesh_lib::mcp::{params, ArleshMcp};
+use arlesh_lib::mcp::params;
 use arlesh_lib::undo::{model::WriteSource, EXCLUDED_TABLES};
 use arlesh_lib::{
     domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
@@ -417,11 +417,12 @@ async fn deleting_a_task_journals_every_row_the_cascade_removed_under_one_gestur
 async fn an_mcp_write_is_journaled_as_mcp_and_leaves_the_source_as_it_found_it() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     let project_id = make_project(&pool).await;
     let task = task_commands::create_task(app.state(), task_request(project_id, "linked"))
         .await
         .expect("create task");
+    helpers::make_agentic(&pool, task.id).await;
     clear_journal(&pool).await;
 
     let result = mcp

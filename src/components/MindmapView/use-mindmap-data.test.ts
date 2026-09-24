@@ -406,11 +406,42 @@ describe("useMindmapData", () => {
     expect(result.current.error).toBe("backend down");
   });
 
-  it("fetches the whole mindmap in a single round trip", async () => {
+  it("fetches the whole mindmap in a single round trip, beside which nodes the MCP can see", async () => {
     const { result } = renderHook(() => useMindmapData());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    // The Gesture the wrapper opens around it is protocol, not a round trip for data.
-    expect(invokedCommands()).toEqual(["load_mindmap"]);
+    // The Gesture the wrapper opens around it is protocol, not a round trip for data. The MCP
+    // visibility is its own read, issued alongside rather than after, so the load still waits on
+    // one round trip.
+    expect(invokedCommands().sort()).toEqual(["list_mcp_access", "load_mindmap"]);
+  });
+
+  it("stamps the nodes the MCP can see with the root they are seen through", async () => {
+    const aspect: Domain = mkDomain({ id: 1, subtype: "aspect", title: "Growth" });
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "load_mindmap") return Promise.resolve(mindmapEnvelope({ domains: [aspect] }));
+      if (cmd === "list_mcp_access") {
+        return Promise.resolve([{ node_kind: "domain", node_id: 1, root_kind: "domain", root_id: 1 }]);
+      }
+      return Promise.resolve(undefined);
+    });
+    const { result } = renderHook(() => useMindmapData());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.tree.children[0]?.mcpVisibleVia).toBe("Growth");
+  });
+
+  it("still loads the board when the MCP visibility cannot be read", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "load_mindmap") return Promise.resolve(mindmapEnvelope());
+      if (cmd === "list_mcp_access") return Promise.reject(new Error("no access table"));
+      return Promise.resolve(undefined);
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { result } = renderHook(() => useMindmapData());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.error).toBeNull();
+    warn.mockRestore();
   });
 
   it("surfaces the flow whose habit iterations failed as a load condition instead of silently emptying it", async () => {

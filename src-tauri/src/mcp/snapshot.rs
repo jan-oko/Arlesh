@@ -8,6 +8,7 @@ use rmcp::{
 use serde_json::{Map, Value};
 
 use super::{
+    access,
     paging::{self, Cursor, Section, SectionItems, PAGE_BUDGET, SECTIONS},
     params::SnapshotOperation,
     result, ArleshMcp,
@@ -46,10 +47,14 @@ impl ArleshMcp {
     ///
     /// **Filterable.** `filter` reads the board under one of the List View's status presets —
     /// `all`, `plan`, `start`, `do` or `backlog` — using the same rules the user's own view
-    /// applies, so "what should I start" has one answer rather than two. Omit it for the whole
-    /// board, private nodes included; `{"preset": "all"}` is the app's neutral filter instead, and
-    /// hides those. Pass the **same** filter on every page of a walk: pages are derived
+    /// applies, so "what should I start" has one answer rather than two. Omit it for everything
+    /// you can see, unfiltered; `{"preset": "all"}` is the app's neutral filter instead. Pass the
+    /// **same** filter on every page of a walk: pages are derived
     /// independently, so changing it partway is no different from the board changing underfoot.
+    ///
+    /// **Rooted.** Only the subtrees the user made MCP roots are here — the server's instructions
+    /// name them. Nodes outside every root, and private nodes anywhere, are left out together
+    /// with every entry that names them.
     ///
     /// Not read-only: deriving habit iterations materialises the scope rows their windows land on.
     /// It creates no tasks, goals or flows.
@@ -107,6 +112,16 @@ impl ArleshMcp {
         if let Some(filter) = &filter {
             crate::filters::facts::narrow(&mut load, filter);
         }
+
+        // Access last, after the filter: the filter reads the whole board the way the user's own
+        // view does — a Frozen Project above a root still drops its subtree — and the roots then
+        // decide which of what survived the MCP may see. The other order would hand the filter
+        // a forest whose rooted subtrees hang from parents it cannot find, and it drops those.
+        let map = match crate::access::access_map(&mut db).await {
+            Ok(map) => map,
+            Err(error) => return result::failed(error),
+        };
+        access::restrict_snapshot(&mut load, &map);
 
         if let Err(error) = db.commit().await {
             return result::failed(error);

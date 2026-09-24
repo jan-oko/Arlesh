@@ -4,9 +4,10 @@
 
 Arlesh serves a [Model Context Protocol](https://modelcontextprotocol.io) endpoint while the app is
 running, so an agent — Claude Code, Claude Desktop — can read the board without being told its
-contents by hand. It is read-only with one deliberate exception: an agent can set an item's `bd`
-issue link, and nothing else. It cannot create, rename, complete or delete a Task, Goal, Flow,
-Domain or knowledge-base entry.
+contents by hand. It sees only the parts of the board the user has opened to it as **MCP roots**,
+and nothing at all until they open one (see *Access* below). It is read-only with one deliberate
+exception: an agent can set an Agentic Task's `bd` issue link, and nothing else. It cannot create,
+rename, complete or delete a Task, Goal, Flow, Domain or knowledge-base entry.
 
 The endpoint is hosted by the app itself, not a separate process, so there is only ever one writer
 to the database and the agent sees exactly what the open window sees. The cost is that it answers
@@ -21,6 +22,92 @@ endpoint rather than refusing to start.
 
 **Connecting.** `claude mcp add --transport http arlesh http://127.0.0.1:4747/mcp`
 
+## Access
+
+Settled with the user on 2026-09-24 (`Arlesh-rz0`), replacing a per-node grant model with levels
+and holes that was designed the same day and never shipped. The purpose is a cleaner context for
+the agent, not security: there are no tokens and no authentication, one set of roots applies to
+the whole endpoint, and it stays loopback-only as above.
+
+**The MCP roots.** A setting names the nodes whose subtrees the MCP can see — its **roots**. The
+MCP can **read** everything inside a root, however deep, and nothing outside every root. With no
+roots it sees nothing: every bulk read answers as though the board were empty, and every request
+naming a node is refused. Roots may nest or overlap; a node is visible when any root is at or
+above it.
+
+**Write means Agentic.** Inside a root, a Task that reads as **Agentic** — its own flag, or its
+nearest flagged ancestor's, by the same rule the app badges (see [*Tasks*](resources.md)) — can be
+**written** as well as read. Everything else inside a root is read-only, and only a Task is ever
+Agentic, so no Goal, Commitment, Project or Domain is ever writable. The flag is read off the whole
+board, so an Agentic Task above a root still makes the Tasks inside it writable.
+
+**Private stays private.** A private node is hidden from the MCP even inside a root, together with
+its whole subtree — the rule Private Mode applies, and one the roots do not relax. A root that is
+itself private, or sits under a private node, therefore opens nothing. This was agreed before the
+model was simplified and was not revoked by it.
+
+**Only stored nodes are roots.** A root names a row — a Domain (any of the four domain-table
+subtypes), Goal, Task, Commitment, Expectation, Info, Flow or flow item — keyed by its table and its
+row id, the way the node's own table keys it. A **derived** node (a Habit occurrence, a wait's check
+task, a delegated Task's wait, a spawned wait) is a row of nothing: it is visible when its nearest
+stored ancestor is, and never writable, having no row to write. This is written ahead of `Arlesh-9o1`
+and `Arlesh-pnn`, which change how scopes and derived nodes are identified; neither changes it,
+because a root only ever names a stored row.
+
+**Storage.** The roots are rows of the board (`mcp_roots`), not a per-window preference: the board
+is what they describe, and every window and the MCP endpoint read the same list. They are
+**journaled**, so adding or removing a root is an ordinary Gesture and **Ctrl+Z reverses it**. A
+root belongs to its row: deleting the node drops the root in the same Gesture, and undoing the
+delete brings both back — otherwise SQLite reusing the freed row id would open an unrelated node.
+Retyping a node (which re-creates it in another table) therefore drops its root too.
+
+**Where the user sets them.** On the *MCP access* page of the settings modal (see
+[*Mindmap*](mindmap-view.md), *Top bar*): the roots are listed with their path and kind, added with
+the node search `Ctrl+O` uses, and removed with each row's ×. A root the MCP cannot see because it
+is private is flagged as such rather than hidden from the list.
+
+**How the app shows it.** Every node the MCP can see carries an **eye** in its status-badge row,
+wherever the shared badge row is drawn — Mindmap, List View, Steps and Plan View cards — with the
+tooltip *Visible to the MCP (via {root})*. It has one state: whether the MCP may also *write* the
+node is exactly whether it is Agentic, which the bot-head badge already says. The frontend does not
+work visibility out itself; the backend resolves it once (`list_mcp_access`) and the board load
+stamps it onto the tree, a derived node taking its nearest stored ancestor's answer.
+
+**How the agent is told.** The instructions the server returns on `initialize` end with the roots
+it can see, each by kind, id and short path (at most three segments — `… › ARLESH › Features ›
+Search (task 212)`), and the two rules above. They are built per connection, so a root added,
+removed or retitled is in the next session's instructions. A private root is not named.
+
+**Enforcement** is a thin layer at each tool's edges (`src-tauri/src/mcp/access.rs`), over the one
+resolver in `src-tauri/src/access/`:
+
+- **Bulk reads omit.** `arlesh_snapshot.load` pages, the knowledge-base listings and every result
+  that lists nodes leave out what the MCP cannot see, together with every relation that points at
+  it: tag ids naming a hidden Tag, dependency edges, lifecycles, block reasons (including the
+  derived "Blocked by …" text), checks, spawned waits, flow instance links, occurrence attachments
+  and containment conflicts. Nothing says anything was left out. A readable node's **parent
+  reference** and a Flow's **target** are kept: they say where the node hangs, and the top of a
+  root's subtree always hangs somewhere the MCP cannot see. The snapshot applies the roots
+  **after** its `filter`, so a Frozen Project above a root still drops its subtree exactly as the
+  user's own view would.
+- **A named node outside the roots is refused** with `not_permitted` — `arlesh_tasks.get`,
+  `containment_conflicts`, every `arlesh_flows` operation, `arlesh_kb.get_person`. A node that does
+  not exist is refused the same way, so the error kind never tells an agent that something exists
+  where it cannot look.
+- **`arlesh_beads.set` needs write**: the item must be an Agentic Task inside a root. Anything else
+  — a Goal, Commitment or Project, a Task that is not Agentic, one outside the roots — is refused
+  with `not_permitted`.
+- **The knowledge base** hangs on no node, so no root contains it. A Person, Event or Thread is
+  visible exactly when a node the MCP can see points at it: a Task delegated to the Person, or a
+  Task or Goal linking the entity.
+- **Scopes** are the calendar, not the board, and carry nothing a root protects; `arlesh_scopes` is
+  unaffected.
+- **The Habit sections travel with their Flow**: a Flow's iterations, cycles and intra-flow
+  dependencies are there exactly when the Flow is.
+
+The write tools of `Arlesh-rz0` are deliberately not built yet; they follow `Arlesh-9o1` and
+`Arlesh-pnn`, and will apply the same rule — write needs an Agentic Task inside a root.
+
 ## Tools
 
 Six tools rather than one per backend command, because an MCP client pays context for every tool
@@ -33,7 +120,7 @@ definition it loads.
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
 | `arlesh_tasks` | `get(id)`, `containment_conflicts(node, time_scope)` |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
-| `arlesh_beads` | `set(node_type, node_id, beads_id)` — the one write; `node_type` is `task`, `goal`, `commitment` or `project`. See below |
+| `arlesh_beads` | `set(node_type, node_id, beads_id)` — the one write; `node_type` is `task`, `goal`, `commitment` or `project`, and the item must be writable (an Agentic Task inside a root). See below |
 
 `arlesh_snapshot.load` is the entry point and covers the common case. The other reads
 exist for what it does not carry: the knowledge base, scope resolution, a task's dependency-derived
@@ -67,10 +154,11 @@ as the List View stores it — beside them in shape, but not in effect: while th
 list's rows are the blocked ones and the preset does not answer for them (see
 [*List View*](list-view.md)). The Archived and Backlog pills, the tag filters, the Info/Flow toggles
 and Private Mode are all carried too, each defaulting to what the app's own filter defaults to —
-so `{"preset": "all"}` is the app's neutral filter and **hides private nodes**, where omitting
-`filter` entirely applies no filter at all and returns them. "Everything, unfiltered" and
-"everything the neutral filter shows" are different requests, and the presence of the field is
-what tells them apart.
+so `{"preset": "all"}` is the app's neutral filter, where omitting `filter` entirely applies no
+filter at all. "Everything, unfiltered" and "everything the neutral filter shows" are different
+requests, and the presence of the field is what tells them apart. Private nodes are the exception:
+the MCP never sees them whatever the filter says, Private Mode included (see *Access* above), so
+the filter's Private toggle changes nothing an agent can see.
 
 The rules live in `src-tauri/src/filters/`. The frontend does **not** call into them: its filter
 pass is synchronous and runs per render, and a Tauri round trip in front of every selection move
@@ -117,12 +205,13 @@ worth.
 ## Issue links
 
 A Task, Goal, Commitment or Project can carry the id of the `bd` issue tracking it, and `arlesh_beads.set` is
-the **only** way that field is ever given a *value*: the one Tauri command that touches the column
+the **only** way that field is ever given a *value* — and, under *Access* above, only on an Agentic
+Task inside an MCP root, so a Goal, Commitment or Project keeps whatever link it already has: the one Tauri command that touches the column
 (`clear_beads_id`) writes null and nothing else, and the editor modals render the id as text with no
 control but an × that stages the drop for their Save. So an issue id shown in Arlesh always arrived over MCP.
-Passing `null` clears the link. Setting one on an item that does not exist is an error rather than
-a silent no-op, and only the `project` subtype of Domain accepts a link — an Aspect, Domain or Tag
-is refused.
+Passing `null` clears the link. Setting one on an item that does not exist is an error
+(`not_permitted`, like any node outside the roots) rather than a silent no-op, and only the
+`project` subtype of Domain accepts a link — an Aspect, Domain or Tag is refused.
 
 ## Scope materialisation
 
@@ -151,6 +240,12 @@ and writes nothing at all.
 
 A tool that fails returns a result flagged as an error carrying the same structured `WireError` the
 frontend receives across the Tauri boundary, including its stable `kind` — `not_found`,
-`containment_violated`, `invalid_request`, `needs_confirmation`, `needs_time_scope`, `database`,
-`internal` — so an agent branches on the discriminant rather than parsing a message. (The two
-`needs_*` kinds are raised only by writes this surface does not expose.)
+`containment_violated`, `invalid_request`, `needs_confirmation`, `needs_time_scope`,
+`not_permitted`, `database`, `internal` — so an agent branches on the discriminant rather than
+parsing a message. (The two `needs_*` kinds are raised only by writes this surface does not
+expose.)
+
+`not_permitted` is the MCP's own: the request names a node the MCP may not touch — outside every
+root, private, or (for a write) not an Agentic Task — or one that does not exist, which it
+deliberately cannot tell apart. The fix is the user's, on the *MCP access* page; an agent that
+gets one should say what it needs rather than retry. The app's own commands never raise it.

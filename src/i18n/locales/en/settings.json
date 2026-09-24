@@ -1,0 +1,28 @@
+{
+  "title": "Settings",
+  "close": "Close settings",
+  "pages": "Settings pages",
+  "page": {
+    "general": "General",
+    "mindmap": "Mindmap",
+    "list": "List",
+    "steps": "Steps",
+    "plan": "Plan",
+    "windows": "Windows & tray",
+    "expectations": "Expectations",
+    "mcp": "MCP access"
+  },
+  "planCandidates": "Candidates pane",
+  "planPlanned": "Planned pane",
+  "planPaneMenus": "Each pane's ⋮ menu offers its own switches too.",
+  "mcp": {
+    "intro": "The MCP sees only the roots listed here, and everything inside them. Private nodes stay hidden even inside a root. Agentic tasks inside a root can also be written; everything else is read-only.",
+    "list": "MCP roots",
+    "none": "No roots yet — the MCP sees nothing.",
+    "add": "Add root…",
+    "remove": "Remove {{title}} as an MCP root",
+    "hidden": "Private — the MCP cannot see it",
+    "missing": "A node that no longer exists",
+    "loading": "Loading…"
+  }
+}

@@ -35,6 +35,10 @@ import { findNode } from "@/utils/mindmap-tree";
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { propagateAgentic } from "@/utils/agentic";
+import { listMcpAccess } from "@/api/mcp-access";
+import type { McpVisibility } from "@/api/mcp-access";
+import { applyMcpVisibility } from "@/utils/mcp-visibility";
+import { useMcpAccessStore } from "@/stores/use-mcp-access-store";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
 import type { Goal } from "@/api/goals";
@@ -1342,6 +1346,19 @@ async function createCommitmentUnderNode(
   return commitment.id;
 }
 
+/**
+ * Which stored nodes the MCP can see. A failure here costs the badges, not the board: it is logged
+ * and the board loads without them, since nothing else on screen depends on the answer.
+ */
+async function loadMcpVisibility(): Promise<McpVisibility[]> {
+  try {
+    return await listMcpAccess();
+  } catch (error: unknown) {
+    console.warn("[arlesh] could not read which nodes the MCP can see:", error);
+    return [];
+  }
+}
+
 export function useMindmapData(): MindmapData {
   const { t } = useTranslation(["undo", "expectation"]);
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
@@ -1380,7 +1397,7 @@ export function useMindmapData(): MindmapData {
       setError(null);
       try {
         const now = localNowIso();
-        const data = await loadMindmap(now);
+        const [data, mcpVisible] = await Promise.all([loadMindmap(now), loadMcpVisibility()]);
         const built = buildTree(
           data.domains, data.goals, data.tasks, data.infos, data.commitments, data.flows,
           data.flow_goals, data.flow_tasks, data.flow_cycles, data.flow_dependencies,
@@ -1397,6 +1414,8 @@ export function useMindmapData(): MindmapData {
           data.flow_goals, data.flow_tasks, habitStatuses(data.habits),
           data.habit_instance_children,
         );
+        // Last, so the Habit occurrences just injected take their hosts' answer too.
+        applyMcpVisibility(built, mcpVisible);
         latestTree.current = built;
         setTree(built);
         setLoadCondition(collectLoadConditions(data));
@@ -1413,6 +1432,17 @@ export function useMindmapData(): MindmapData {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load(true);
   }, [load]);
+
+  // A change to the MCP roots made in this window redraws the "visible to the MCP" badges. Not a
+  // dependency of `load`, which would raise the full-screen spinner for it; the initial load
+  // already read the roots, so only a later change reloads.
+  const mcpRevision = useMcpAccessStore((s) => s.revision);
+  const seenMcpRevision = useRef(mcpRevision);
+  useEffect(() => {
+    if (seenMcpRevision.current === mcpRevision) return;
+    seenMcpRevision.current = mcpRevision;
+    void load(false);
+  }, [mcpRevision, load]);
 
   /**
    * Creates one node under a virtual Habit occurrence and attaches it there, in one backend call.

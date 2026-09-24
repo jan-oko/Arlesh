@@ -24,8 +24,17 @@
 //! next load. Running the snapshot uncommitted would make it a pure read, but its habit iterations
 //! reference the scope ids it mints, so the payload would hand out ids that no longer resolve.
 //!
+//! # Access
+//!
+//! The MCP sees only the **MCP roots** the user chose, and nothing at all until they choose one:
+//! every tool reads the roots afresh, omits what lies outside them from what it returns, and
+//! refuses a request naming such a node as `not_permitted`. Private nodes stay hidden inside a
+//! root, and only an Agentic Task inside one can be written. The roots themselves are named in
+//! the instructions each connection receives. See [`access`] and [`crate::access`].
+//!
 //! See `docs/superpowers/specs/2026-09-16-mcp-server-design.md`.
 
+mod access;
 mod beads;
 mod flows;
 mod kb;
@@ -40,11 +49,13 @@ use std::sync::Arc;
 
 use rmcp::{
     handler::server::tool::ToolRouter,
+    model::{InitializeRequestParams, InitializeResult},
+    service::RequestContext,
     tool_handler,
     transport::streamable_http_server::{
         session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
     },
-    ServerHandler,
+    ErrorData, RoleServer, ServerHandler,
 };
 
 use crate::board::{self, Announce};
@@ -113,17 +124,65 @@ impl ArleshMcp {
         names.sort();
         names
     }
+
+    /// The instructions an agent is given on connecting: the fixed guide to the tools, then the
+    /// MCP roots this connection can see.
+    ///
+    /// Read per connection rather than cached, so a root added or removed — or retitled — is in
+    /// the next session's instructions without anything having to say it changed. A failure to
+    /// read the roots is logged and said in the text rather than failing the handshake: an agent
+    /// told nothing about its roots still gets the tools, and every tool reads the roots afresh
+    /// anyway.
+    pub async fn instructions(&self) -> String {
+        let base = self.get_info().instructions.unwrap_or_default();
+        let roots = match self.roots_instructions().await {
+            Ok(roots) => roots,
+            Err(error) => {
+                tracing::warn!(error = %error, "could not read the MCP roots for the instructions");
+                "MCP ROOTS: could not be read just now. Every tool still applies them; a request \
+                 naming a node outside them is refused as not_permitted."
+                    .to_string()
+            }
+        };
+        format!("{base}\n\n{roots}")
+    }
+
+    async fn roots_instructions(&self) -> Result<String, crate::error::AppError> {
+        let mut db = self.factory.connect().await?;
+        let nodes = db.access().catalogue().await?;
+        let roots = db.access().roots().await?;
+        let stored: Vec<_> = nodes
+            .iter()
+            .map(crate::access::model::CatalogueNode::stored)
+            .collect();
+        let map = crate::access::resolve::AccessMap::resolve(&stored, &roots);
+        Ok(access::roots_instructions(&nodes, &roots, &map))
+    }
 }
 
 // `instructions` is what an agent reads before it calls anything, so it points at the snapshot,
 // says the snapshot is paged — an agent that stops after one page silently sees a fraction of the
-// board — and names the one thing the payload does not make obvious: windows are scope IDs.
+// board — and names the one thing the payload does not make obvious: windows are scope IDs. The
+// MCP roots are appended per connection by `initialize` below, since they are the user's to change.
 #[tool_handler(
     router = self.tool_router,
     name = "arlesh",
-    instructions = "Arlesh's task-management and knowledge-base data. Read-only apart from arlesh_beads, which links an item to a bd issue. Start with arlesh_snapshot.load: the whole planning graph — tasks, goals, flows, domains, dependencies and derived lifecycles. It is PAGED: a response carries what fits plus next_cursor, and you must keep calling with that cursor until it is null or you will only have seen part of the board. A section missing from a page is one you have not reached yet; an empty section arrives as []. Narrow with `sections` when you know what you need. Tasks and goals carry their windows as boundary scope IDs, not dates: resolve them with arlesh_scopes.resolve_many. The other tools cover what the snapshot omits."
+    instructions = "Arlesh's task-management and knowledge-base data, limited to the MCP roots the user has opened to you (listed at the end). Read-only apart from arlesh_beads, which links an Agentic task to a bd issue. Start with arlesh_snapshot.load: the whole planning graph — tasks, goals, flows, domains, dependencies and derived lifecycles. It is PAGED: a response carries what fits plus next_cursor, and you must keep calling with that cursor until it is null or you will only have seen part of the board. A section missing from a page is one you have not reached yet; an empty section arrives as []. Narrow with `sections` when you know what you need. Tasks and goals carry their windows as boundary scope IDs, not dates: resolve them with arlesh_scopes.resolve_many. The other tools cover what the snapshot omits."
 )]
-impl ServerHandler for ArleshMcp {}
+impl ServerHandler for ArleshMcp {
+    /// The handshake, with the MCP roots added to the instructions — see
+    /// [`ArleshMcp::instructions`].
+    async fn initialize(
+        &self,
+        request: InitializeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<InitializeResult, ErrorData> {
+        context.peer.set_peer_info(request.clone());
+        let mut result = self.negotiate_initialize(&request)?;
+        result.instructions = Some(self.instructions().await);
+        Ok(result)
+    }
+}
 
 /// The port the endpoint binds to: [`PORT_ENV_VAR`] when set and parseable, else [`DEFAULT_PORT`].
 ///

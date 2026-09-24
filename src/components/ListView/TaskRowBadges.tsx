@@ -15,6 +15,7 @@ import AsyncIcon from "@/components/StatusIcons/AsyncIcon";
 import ArchiveIcon from "@/components/StatusIcons/ArchiveIcon";
 import ExclamationIcon from "@/components/StatusIcons/ExclamationIcon";
 import EllipsisIcon from "@/components/StatusIcons/EllipsisIcon";
+import McpIcon from "@/components/StatusIcons/McpIcon";
 import styles from "./TaskRowBadges.module.css";
 
 const R = 6;
@@ -77,6 +78,8 @@ export default function TaskRowBadges({ node, indicators }: Props) {
       }
       case "tags":
         return { tooltip: t("tags", { value: tagsValue }), icon: <TagIcon cx={R} cy={R} r={R} color={MUTED} opacity={1} /> };
+      case "mcp":
+        return { tooltip: t("mcpVisible", { root: node.mcpVisibleVia ?? "" }), icon: <McpIcon cx={R} cy={R} r={R} color={MUTED} /> };
     }
   };
 

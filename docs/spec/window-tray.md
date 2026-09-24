@@ -137,7 +137,7 @@ reflexive control on the screen should not be the one that ends the session — 
 staying up is what keeps the MCP endpoint below answering and makes reopening instant rather than a
 cold start.
 
-**A setting, on by default.** *Close to tray* sits in the settings popover beside *Light mode*,
+**A setting, on by default.** *Close to tray* sits on the settings modal's *Windows & tray* page,
 persists with it, and applies everywhere — what the close button does is not a property of a view, a
 tab or a window. It governs the **last** window's close and no other. Turn it off and the close button means quit again, as it used to. On by default, because a
 setting that has to be found first would leave the endpoint down for anyone who never looked; a

@@ -201,3 +201,20 @@ describe("deriveStatusIndicators — a commitment's verdict is the glyph's, not 
     expect(types(archived)).toEqual(["scope", "archived"]);
   });
 });
+
+describe("deriveStatusIndicators — visible to the MCP", () => {
+  it("badges a node the MCP can see, whatever its kind", () => {
+    for (const kind of ["project", "goal", "task", "info", "commitment"] satisfies NodeKind[]) {
+      expect(types(node(kind, { mcpVisibleVia: "Arlesh" }))).toContain("mcp");
+    }
+  });
+
+  it("does not badge a node the MCP cannot see", () => {
+    expect(types(node("task", { status: "todo" }))).not.toContain("mcp");
+  });
+
+  it("has one state: an Agentic task the MCP can write gets the same badge, beside the bot head", () => {
+    const writable = types(node("task", { status: "todo", agentic: true, mcpVisibleVia: "Arlesh" }));
+    expect(writable).toEqual(["agentic", "mcp"]);
+  });
+});

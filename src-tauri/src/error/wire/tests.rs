@@ -247,6 +247,7 @@ fn spelling(kind: WireErrorKind) -> &'static str {
         WireErrorKind::InvalidRequest => "invalid_request",
         WireErrorKind::NeedsConfirmation => "needs_confirmation",
         WireErrorKind::NeedsTimeScope => "needs_time_scope",
+        WireErrorKind::NotPermitted => "not_permitted",
         WireErrorKind::Database => "database",
         WireErrorKind::Internal => "internal",
     }
@@ -260,6 +261,7 @@ fn kind_serialises_to_expected_snake_case_spellings() {
         WireErrorKind::InvalidRequest,
         WireErrorKind::NeedsConfirmation,
         WireErrorKind::NeedsTimeScope,
+        WireErrorKind::NotPermitted,
         WireErrorKind::Database,
         WireErrorKind::Internal,
     ];
@@ -363,4 +365,36 @@ fn an_unmatched_gesture_close_is_an_invalid_request_and_an_unreadable_source_is_
         WireError::from_error(UndoError::Database(sqlx::Error::RowNotFound)).kind,
         WireErrorKind::Database
     );
+}
+
+// --- AccessError ---
+
+#[test]
+fn a_root_on_a_missing_node_is_not_found_and_unreadable_root_data_is_internal() {
+    use crate::access::{
+        error::AccessError,
+        model::{NodeKey, NodeTable},
+    };
+
+    assert_eq!(
+        kind_of(AccessError::NodeNotFound(NodeKey::new(NodeTable::Task, 7))),
+        WireErrorKind::NotFound
+    );
+    assert_eq!(
+        kind_of(AccessError::Corrupt("level \"admin\"".into())),
+        WireErrorKind::Internal
+    );
+    assert_eq!(
+        kind_of(AccessError::Database(sqlx::Error::RowNotFound)),
+        WireErrorKind::Database
+    );
+}
+
+#[test]
+fn not_permitted_serialises_with_its_own_kind() {
+    let wire = serde_json::to_value(WireError::not_permitted("task 7 is outside the MCP roots"))
+        .expect("a wire error serialises");
+
+    assert_eq!(wire["kind"], "not_permitted");
+    assert_eq!(wire["message"], "task 7 is outside the MCP roots");
 }

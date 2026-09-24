@@ -299,6 +299,10 @@ export interface MindmapNode {
   /** The `bd` issue this Task, Goal or Project is tracked as; absent when it is tracked as none.
    * Read-only in this app — only the MCP server writes it. */
   beadsId?: string;
+  /** Present when the MCP can see this node: the title of the MCP root it is seen through. Set on
+   * load from the backend's own resolution (`list_mcp_access`), never persisted; a derived node
+   * takes its nearest stored ancestor's. See docs/spec/mcp-server.md, "Access". */
+  mcpVisibleVia?: string;
   /** Whether this real Goal/Task was materialized by a started flow (drives the flow-instance badge). */
   fromFlow?: boolean;
   position: number;

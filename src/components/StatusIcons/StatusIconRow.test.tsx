@@ -63,6 +63,10 @@ describe("StatusIconRow", () => {
     expect(renderRow(info)).toEqual(["a stack trace"]);
   });
 
+  it("says the MCP can see a node, and through which root", () => {
+    expect(renderRow(node("goal", { status: "active", mcpVisibleVia: "Arlesh" }))).toEqual(["mcpVisible"]);
+  });
+
   it("renders nothing extra for a node with no relevant status", () => {
     expect(renderRow(node("task", { status: "todo" }))).toEqual([]);
   });
