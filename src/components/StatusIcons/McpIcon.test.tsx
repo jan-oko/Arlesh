@@ -9,13 +9,37 @@ function drawn(icon: React.ReactElement) {
 }
 
 describe("McpIcon", () => {
-  it("draws an antenna: a mast and a base, with a ball on the tip and no signal arcs", () => {
+  it("draws an antenna: one straight mast, with a signal arc either side of its tip", () => {
     const icon = drawn(<McpIcon cx={6} cy={6} r={6} color="currentColor" />);
 
-    const paths = [...icon.querySelectorAll("path")];
-    expect(paths).toHaveLength(2);
-    expect(paths.some((path) => path.getAttribute("d")?.includes(" A "))).toBe(false);
-    expect(icon.querySelectorAll("circle")).toHaveLength(1);
+    const paths = [...icon.querySelectorAll("path")].map((path) => path.getAttribute("d") ?? "");
+    const arcs = paths.filter((d) => d.includes(" A "));
+    const lines = paths.filter((d) => !d.includes(" A "));
+    expect(arcs).toHaveLength(2);
+    expect(lines).toHaveLength(1);
+    // One leg: a single segment, no tripod or splayed base.
+    expect(lines[0]?.match(/ L /g)).toHaveLength(1);
+  });
+
+  it("radiates both arcs from a filled emitter dot on top of the mast", () => {
+    const icon = drawn(<McpIcon cx={6} cy={6} r={6} color="currentColor" />);
+    const emitter = icon.querySelector("circle");
+    expect(emitter).not.toBeNull();
+    const ex = Number(emitter?.getAttribute("cx"));
+    const ey = Number(emitter?.getAttribute("cy"));
+
+    const arcs = [...icon.querySelectorAll("path")]
+      .map((path) => path.getAttribute("d") ?? "")
+      .filter((d) => d.includes(" A "));
+    for (const d of arcs) {
+      const [startX, startY, radius, , , , , endX, endY] = d.replace(/[MA]/g, "").trim().split(/\s+/).map(Number);
+      // Both ends of each arc sit one radius from the emitter, so the arc is centred on it.
+      expect(Math.hypot((startX ?? 0) - ex, (startY ?? 0) - ey)).toBeCloseTo(radius ?? 0, 5);
+      expect(Math.hypot((endX ?? 0) - ex, (endY ?? 0) - ey)).toBeCloseTo(radius ?? 0, 5);
+    }
+    // The mast starts under the dot rather than through it.
+    const mast = [...icon.querySelectorAll("path")].map((path) => path.getAttribute("d") ?? "").find((d) => !d.includes(" A "));
+    expect(Number(mast?.split(/\s+/)[2])).toBeGreaterThan(ey);
   });
 
   it("stays in open strokes, unlike the closed box of the Agentic bot head beside it", () => {

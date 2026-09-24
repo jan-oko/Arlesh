@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { MindmapNode, Orientation, Position } from "@/utils/tree-layout";
 import { computeLayout, computeSubtreeLayout, HORIZONTAL_GAP, VERTICAL_GAP } from "@/utils/tree-layout";
 import { findNode } from "@/utils/mindmap-tree";
+import { measureMindmapNode } from "@/utils/node-extent";
 
 /**
  * The two layout axes named by their role rather than by screen direction: `branch` runs from a
@@ -62,7 +63,7 @@ export function useCanvasLayout({ displayRoot, tree, collapsedNodeIds, dragSourc
   }, [collapsedNodeIds, dragSourceId]);
 
   const positions = useMemo(
-    () => computeLayout(displayRoot, effectiveCollapsedIds, orientation),
+    () => computeLayout(displayRoot, effectiveCollapsedIds, orientation, measureMindmapNode),
     [displayRoot, effectiveCollapsedIds, orientation],
   );
 
@@ -72,7 +73,7 @@ export function useCanvasLayout({ displayRoot, tree, collapsedNodeIds, dragSourc
     if (sourceNode === undefined || sourceNode.children.length === 0) return null;
     const targetPos = positions.get(dragTargetId);
     const direction: 1 | -1 = (targetPos === undefined ? 0 : axes.branchOf(targetPos)) >= 0 ? 1 : -1;
-    return computeSubtreeLayout(sourceNode, collapsedNodeIds, direction, orientation);
+    return computeSubtreeLayout(sourceNode, collapsedNodeIds, direction, orientation, measureMindmapNode);
   }, [dragSourceId, dragTargetId, tree, collapsedNodeIds, positions, orientation, axes]);
 
   // The placeholder sits one level out from the target, past its last visible child on the cross
