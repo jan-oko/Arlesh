@@ -16,6 +16,7 @@ use sqlx::SqliteConnection;
 
 use super::key::{CheckKey, OccurrenceKey};
 use crate::scopes::{error::ScopeError, key::ScopeKey, ScopeOperator};
+use crate::tasks::model::{AsyncTemplate, ExpectationArchival, ExpectationStatus};
 
 /// One occurrence's Task overlay. Every field inherits when empty.
 #[derive(Debug, Clone, Default, PartialEq, Eq, sqlx::FromRow)]
@@ -134,6 +135,8 @@ pub struct HabitOverlays {
     pub goals: HashMap<String, GoalOverlay>,
     /// Commitment overlays.
     pub commitments: HashMap<String, CommitmentOverlay>,
+    /// The Expectation templates Task occurrences carry of their own.
+    pub async_templates: HashMap<String, AsyncTemplate>,
 }
 
 /// A Task overlay as read back, beside its canonical key.
@@ -168,6 +171,31 @@ const GOAL_COLUMNS: &str =
      block_reasons_set";
 const COMMITMENT_COLUMNS: &str =
     "verdict, resolved_at, tombstone, title, is_private, beads_id, beads_id_set, position";
+
+/// An occurrence's own Expectation template as stored, beside its node key.
+#[derive(sqlx::FromRow)]
+struct AsyncTemplateRow {
+    node_key: String,
+    title: String,
+    time_scope_n: Option<i64>,
+    time_scope_kind: Option<String>,
+    check_every_n: Option<i64>,
+    check_every_kind: Option<String>,
+}
+
+impl AsyncTemplateRow {
+    fn into_template(self, tag_ids: Vec<i64>) -> AsyncTemplate {
+        let spec = |n: Option<i64>, kind: Option<String>| {
+            Some(crate::tasks::model::DurationSpec { n: n?, kind: kind? })
+        };
+        AsyncTemplate {
+            title: self.title,
+            tag_ids,
+            time_scope: spec(self.time_scope_n, self.time_scope_kind),
+            check_every: spec(self.check_every_n, self.check_every_kind),
+        }
+    }
+}
 
 /// Reads and writes the overlays on one connection. Opens no transaction of its own.
 pub struct OverlayOperator<'session> {
@@ -213,6 +241,7 @@ impl<'session> OverlayOperator<'session> {
                 .into_iter()
                 .map(|row| (row.node_key, row.overlay))
                 .collect(),
+            async_templates: self.async_templates_for_habit(flow_id).await?,
         })
     }
 
@@ -509,6 +538,147 @@ impl<'session> OverlayOperator<'session> {
         Ok(())
     }
 
+    /// Every Expectation template one Habit's occurrences carry of their own, by node key.
+    pub async fn async_templates_for_habit(
+        &mut self,
+        flow_id: i64,
+    ) -> Result<HashMap<String, AsyncTemplate>, sqlx::Error> {
+        let rows: Vec<AsyncTemplateRow> = sqlx::query_as(
+            "SELECT node_key, title, time_scope_n, time_scope_kind, check_every_n, check_every_kind
+             FROM occurrence_async_templates WHERE flow_id = ?",
+        )
+        .bind(flow_id)
+        .fetch_all(&mut *self.connection)
+        .await?;
+        let mut templates = HashMap::with_capacity(rows.len());
+        for row in rows {
+            let tag_ids = self.async_template_tags(&row.node_key).await?;
+            templates.insert(row.node_key.clone(), row.into_template(tag_ids));
+        }
+        Ok(templates)
+    }
+
+    /// One occurrence's own Expectation template, if it has one.
+    pub async fn async_template(
+        &mut self,
+        node_key: &str,
+    ) -> Result<Option<AsyncTemplate>, sqlx::Error> {
+        let Some(row) = sqlx::query_as::<_, AsyncTemplateRow>(
+            "SELECT node_key, title, time_scope_n, time_scope_kind, check_every_n, check_every_kind
+             FROM occurrence_async_templates WHERE node_key = ?",
+        )
+        .bind(node_key)
+        .fetch_optional(&mut *self.connection)
+        .await?
+        else {
+            return Ok(None);
+        };
+        let tag_ids = self.async_template_tags(node_key).await?;
+        Ok(Some(row.into_template(tag_ids)))
+    }
+
+    async fn async_template_tags(&mut self, node_key: &str) -> Result<Vec<i64>, sqlx::Error> {
+        sqlx::query_scalar(
+            "SELECT tag_id FROM tags_on_occurrence_async_templates WHERE node_key = ? ORDER BY tag_id",
+        )
+        .bind(node_key)
+        .fetch_all(&mut *self.connection)
+        .await
+    }
+
+    /// Replaces one occurrence's own Expectation template, or removes it for `None`.
+    pub async fn put_async_template(
+        &mut self,
+        flow_id: i64,
+        node_key: &str,
+        template: Option<&AsyncTemplate>,
+    ) -> Result<(), sqlx::Error> {
+        if self.async_template(node_key).await?.as_ref() == template {
+            return Ok(());
+        }
+        sqlx::query("DELETE FROM occurrence_async_templates WHERE node_key = ?")
+            .bind(node_key)
+            .execute(&mut *self.connection)
+            .await?;
+        let Some(template) = template else {
+            return Ok(());
+        };
+        let columns = |spec: &Option<crate::tasks::model::DurationSpec>| match spec {
+            Some(spec) => (Some(spec.n), Some(spec.kind.clone())),
+            None => (None, None),
+        };
+        let (scope_n, scope_kind) = columns(&template.time_scope);
+        let (every_n, every_kind) = columns(&template.check_every);
+        sqlx::query(
+            "INSERT INTO occurrence_async_templates
+                (node_key, flow_id, title, time_scope_n, time_scope_kind, check_every_n,
+                 check_every_kind)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(node_key)
+        .bind(flow_id)
+        .bind(&template.title)
+        .bind(scope_n)
+        .bind(scope_kind)
+        .bind(every_n)
+        .bind(every_kind)
+        .execute(&mut *self.connection)
+        .await?;
+        for tag_id in &template.tag_ids {
+            sqlx::query(
+                "INSERT OR IGNORE INTO tags_on_occurrence_async_templates (node_key, tag_id)
+                 VALUES (?, ?)",
+            )
+            .bind(node_key)
+            .bind(tag_id)
+            .execute(&mut *self.connection)
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// The status and archive of the wait one occurrence spawned; pending and live until changed.
+    pub async fn spawned_wait_state(
+        &mut self,
+        node_key: &str,
+    ) -> Result<(ExpectationStatus, ExpectationArchival), sqlx::Error> {
+        let row: Option<(String, String)> = sqlx::query_as(
+            "SELECT status, archival FROM occurrence_spawned_waits WHERE node_key = ?",
+        )
+        .bind(node_key)
+        .fetch_optional(&mut *self.connection)
+        .await?;
+        Ok(row.map_or_else(Default::default, |(status, archival)| {
+            (
+                ExpectationStatus::from_db(&status).unwrap_or_default(),
+                ExpectationArchival::from_db(&archival).unwrap_or_default(),
+            )
+        }))
+    }
+
+    /// Writes the status and archive of the wait one occurrence spawned.
+    pub async fn put_spawned_wait_state(
+        &mut self,
+        flow_id: i64,
+        node_key: &str,
+        status: ExpectationStatus,
+        archival: ExpectationArchival,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO occurrence_spawned_waits (node_key, flow_id, status, archival)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT (node_key) DO UPDATE SET status = excluded.status,
+                                                  archival = excluded.archival",
+        )
+        .bind(node_key)
+        .bind(flow_id)
+        .bind(status.as_str())
+        .bind(archival.as_str())
+        .execute(&mut *self.connection)
+        .await?;
+        Ok(())
+    }
+
     /// Deletes every overlay and relation one Habit's occurrences carry — delete-and-regenerate.
     pub async fn clear_habit(&mut self, flow_id: i64) -> Result<(), sqlx::Error> {
         for table in [
@@ -518,6 +688,8 @@ impl<'session> OverlayOperator<'session> {
             "derived_tags",
             "derived_block_reasons",
             "derived_dependencies",
+            "occurrence_async_templates",
+            "occurrence_spawned_waits",
         ] {
             sqlx::query(&format!("DELETE FROM {table} WHERE flow_id = ?"))
                 .bind(flow_id)
@@ -544,6 +716,9 @@ impl<'session> OverlayOperator<'session> {
             ("derived_block_reasons", "node_key"),
             ("derived_dependencies", "dependent_key"),
             ("derived_dependencies", "target_key"),
+            ("occurrence_async_templates", "node_key"),
+            ("occurrence_spawned_waits", "node_key"),
+            ("wait_checks", "wait_key"),
         ] {
             sqlx::query(&format!("DELETE FROM {table} WHERE {column} LIKE ?"))
                 .bind(&prefix)

@@ -18,8 +18,8 @@ use std::collections::HashMap;
 use chrono::NaiveDateTime;
 
 use super::{
-    id::NodeId,
-    key::{CheckKey, DerivedKey},
+    id::{DerivedId, NodeId},
+    key::{CheckKey, DerivedKey, OccurrenceKey, TemplateItem},
     origin::{CheckOrigin, Origin, WaitOrigin},
     overlay::TaskOverlay,
     registry,
@@ -29,11 +29,14 @@ use crate::{
     database::session::{Db, SessionMode},
     error::AppError,
     tasks::{
+        expectations::EXPECTATION,
+        lifecycle::ItemLifecycle,
         model::{
             Expectation, ExpectationArchival, ExpectationStatus, Task, TaskArchival, TaskId,
             TimeScope,
         },
-        waits::{self, WaitKind},
+        wait_lifecycle,
+        waits::{self, WaitProgress, WaitRef},
     },
 };
 
@@ -46,6 +49,9 @@ pub struct WaitRows {
     pub expectations: Vec<Expectation>,
     /// The check tasks' own block reasons.
     pub block_reasons: Vec<BlockReason>,
+    /// The lifecycles of the waits Habit occurrences spawned, and of their open checks. (A stored
+    /// wait's, and a stored Task's spawned wait's, come with every other stored row's.)
+    pub lifecycles: Vec<ItemLifecycle>,
 }
 
 /// What a check task's row is read from besides its key: every check task's overlay, tags and
@@ -95,8 +101,7 @@ pub async fn derive_waits<M: SessionMode>(
             &state,
             CheckDraw {
                 key: CheckKey {
-                    wait_kind: WaitKind::Stored,
-                    wait_id: check.expectation_id,
+                    wait: WaitRef::Stored(check.expectation_id),
                     due_at: check.due_at,
                 },
                 wait_title: &wait.title,
@@ -116,11 +121,12 @@ pub async fn derive_waits<M: SessionMode>(
         let Some(template) = db.tasks().async_template(TaskId(task_id)).await? else {
             continue;
         };
-        let wait_row = NodeId::Derived(registry::remember(&DerivedKey::SpawnedWait(task_id)));
+        let wait_row = NodeId::Derived(registry::remember(&DerivedKey::SpawnedWait(
+            NodeId::Stored(task_id),
+        )));
         let draw = |due_at: NaiveDateTime, due: TimeScope, done: bool| CheckDraw {
             key: CheckKey {
-                wait_kind: WaitKind::Spawned,
-                wait_id: task_id,
+                wait: WaitRef::Spawned(task_id),
                 due_at,
             },
             wait_title: &template.title,
@@ -154,6 +160,9 @@ pub async fn derive_waits<M: SessionMode>(
             }),
         });
     }
+    for task in tasks.iter().filter(|task| task.origin.habit().is_some()) {
+        rows.push_occurrence_wait(db, &state, task, now).await?;
+    }
     for task in tasks
         .iter()
         .filter(|task| task.delegate_to.is_some() && task.status != "done")
@@ -161,6 +170,18 @@ pub async fn derive_waits<M: SessionMode>(
         rows.expectations.push(delegation_wait(task));
     }
     Ok(rows)
+}
+
+/// The occurrence a Habit origin names.
+pub(crate) fn occurrence_key(habit: &super::origin::HabitOrigin) -> OccurrenceKey {
+    OccurrenceKey {
+        item: TemplateItem {
+            item_type: habit.item_type,
+            item_id: habit.item_id,
+        },
+        iteration: habit.iteration_scope.scope_id,
+        cycle: habit.cycle_id,
+    }
 }
 
 /// The wait a delegated Task has on its delegate: pending, live, no window, no check. Its title
@@ -188,9 +209,127 @@ fn delegation_wait(task: &Task) -> Expectation {
 }
 
 impl WaitRows {
+    /// Draws the wait a done, Asynchronous Habit occurrence spawned from its own Expectation
+    /// template, and that wait's checks — exactly as a stored Task's, keyed by the occurrence.
+    async fn push_occurrence_wait<M: SessionMode>(
+        &mut self,
+        db: &mut Db<M>,
+        state: &CheckState,
+        task: &Task,
+        now: NaiveDateTime,
+    ) -> Result<(), AppError> {
+        let Some(template) = task.async_template.as_ref() else {
+            return Ok(());
+        };
+        let Some(habit) = task.origin.habit() else {
+            return Ok(());
+        };
+        if !task.asynchronous || task.status != "done" {
+            return Ok(());
+        }
+        let key = occurrence_key(habit);
+        let node_key = key.node_key();
+        let spawned_at = db
+            .overlays()
+            .task(&key)
+            .await?
+            .resolved_at
+            .and_then(chrono::DateTime::from_timestamp_millis)
+            .map(|at| at.naive_utc());
+        let (status, archival) = db.overlays().spawned_wait_state(&node_key).await?;
+        let wait = WaitRef::Occurrence(node_key);
+        // A check made during an earlier completion belongs to that one, not this.
+        let checks: Vec<_> = db
+            .tasks()
+            .wait_checks(&wait)
+            .await?
+            .into_iter()
+            .filter(|check| spawned_at.is_none_or(|began| check.resolved_at >= began))
+            .collect();
+        let progress = WaitProgress {
+            spawned_at,
+            status,
+            archival,
+            last_check_at: checks.last().map(|check| check.resolved_at),
+        };
+        let wait_row = NodeId::Derived(registry::remember(&DerivedKey::SpawnedWait(
+            task.id.clone(),
+        )));
+        let time_scope = match (&template.time_scope, spawned_at) {
+            (Some(rule), Some(began)) => waits::window_from_rule(rule, waits::day_of(began))?,
+            _ => None,
+        };
+        let draw = |due_at: NaiveDateTime, done: bool| CheckDraw {
+            key: CheckKey {
+                wait: wait.clone(),
+                due_at,
+            },
+            wait_title: &template.title,
+            wait_row: wait_row.clone(),
+            due: waits::check_window(due_at),
+            done,
+            is_private: task.is_private,
+        };
+        for check in &checks {
+            self.push_check(state, draw(check.due_at, true));
+        }
+        let due = template
+            .check_every
+            .as_ref()
+            .and_then(|every| waits::next_spawned_check(&progress, every, now))
+            .filter(|due| waits::is_due(*due, now));
+        if let Some(due_at) = due {
+            let open = draw(due_at, false);
+            self.lifecycles.push(wait_lifecycle(
+                "task",
+                DerivedKey::Check(open.key.clone()).node_id(),
+                Some(&open.due),
+                status,
+                archival,
+                now,
+            ));
+            self.push_check(state, open);
+        }
+        self.lifecycles.push(wait_lifecycle(
+            EXPECTATION,
+            wait_row.clone(),
+            time_scope.as_ref(),
+            status,
+            archival,
+            now,
+        ));
+        self.expectations.push(Expectation {
+            id: wait_row,
+            title: template.title.clone(),
+            parent_type: "task".to_string(),
+            parent_id: task.id.clone(),
+            status,
+            archival,
+            time_scope,
+            tag_ids: template.tag_ids.clone(),
+            check_every: template.check_every.clone(),
+            check_starting: spawned_at,
+            last_check_at: progress.last_check_at,
+            position: i64::MIN,
+            is_private: task.is_private,
+            origin: Origin::SpawnedWait(WaitOrigin {
+                task_id: task.id.clone(),
+            }),
+        });
+        Ok(())
+    }
+
     /// Draws one check task, overlaid with what it has had done to it.
     fn push_check(&mut self, state: &CheckState, draw: CheckDraw<'_>) {
         let node_key = draw.key.node_key();
+        let origin = Origin::Check(CheckOrigin {
+            wait_kind: draw.key.wait.kind(),
+            wait_id: match &draw.key.wait {
+                WaitRef::Stored(id) | WaitRef::Spawned(id) => NodeId::Stored(*id),
+                WaitRef::Occurrence(key) => NodeId::Derived(DerivedId::of_key(key)),
+            },
+            due_at: draw.key.due_at,
+        });
         let id = NodeId::Derived(registry::remember(&DerivedKey::Check(draw.key)));
         let overlay = state.overlays.get(&node_key).cloned().unwrap_or_default();
         let status = if draw.done {
@@ -253,11 +392,7 @@ impl WaitRows {
             position: overlay.position.unwrap_or(i64::MIN),
             is_private: overlay.is_private.unwrap_or(draw.is_private),
             beads_id: None,
-            origin: Origin::Check(CheckOrigin {
-                wait_kind: draw.key.wait_kind,
-                wait_id: draw.key.wait_id,
-                due_at: draw.key.due_at,
-            }),
+            origin,
         });
     }
 }

@@ -51,8 +51,7 @@ fn a_delegated_tasks_wait_is_a_pending_expectation_beneath_it() {
 
 fn check_key() -> CheckKey {
     CheckKey {
-        wait_kind: WaitKind::Stored,
-        wait_id: 5,
+        wait: WaitRef::Stored(5),
         due_at: NaiveDate::from_ymd_opt(2026, 9, 20)
             .unwrap()
             .and_hms_opt(9, 0, 0)

@@ -93,6 +93,7 @@ pub async fn load_within(
     tasks.extend(waits.tasks);
     expectations.extend(waits.expectations);
     block_reasons.extend(waits.block_reasons);
+    lifecycles.extend(waits.lifecycles);
     let present: std::collections::HashSet<&NodeId> = tasks
         .iter()
         .map(|task| &task.id)

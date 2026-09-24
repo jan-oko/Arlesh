@@ -421,7 +421,7 @@ pub async fn complete_expectation_check(
         return Err(TaskError::NoCheckDue);
     };
     db.tasks()
-        .record_check(super::waits::WaitKind::Stored, id.0, due, at)
+        .record_check(&super::waits::WaitRef::Stored(id.0), due, at)
         .await?;
     db.expectations().get(id).await
 }
@@ -439,7 +439,7 @@ pub async fn reopen_expectation_check(
     if stored.status != ExpectationStatus::Pending || stored.archival != ExpectationArchival::Live {
         return Err(TaskError::CheckNotReopenable);
     }
-    super::waits::reopen_latest(db, super::waits::WaitKind::Stored, id.0, due_at).await?;
+    super::waits::reopen_latest(db, &super::waits::WaitRef::Stored(id.0), due_at).await?;
     db.expectations().get(id).await
 }
 

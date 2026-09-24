@@ -249,11 +249,7 @@ pub async fn update_task(
         request.time_scope.as_ref(),
         &current.time_scope,
     )?;
-    if matches!(request.async_template, Some(Some(_))) {
-        return Err(FlowError::Refused(
-            "a habit occurrence cannot carry an expectation template of its own".to_string(),
-        ));
-    }
+    let async_template = request.async_template.clone();
     let template = template_values(db, &flow, key, iteration_index(&current.origin)).await?;
     let mut overlay = db.overlays().task(key).await?;
 
@@ -323,6 +319,23 @@ pub async fn update_task(
     }
     if let Some(is_private) = request.is_private {
         overlay.is_private = (is_private != template.is_private).then_some(is_private);
+    }
+    // An occurrence's own Expectation template, kept — as a stored Task's is — only while the
+    // occurrence is Asynchronous.
+    let asynchronous = overlay.asynchronous.unwrap_or(template.fields.asynchronous);
+    let node_key = key.node_key();
+    match (asynchronous, async_template) {
+        (false, _) => {
+            db.overlays()
+                .put_async_template(flow_id.0, &node_key, None)
+                .await?
+        }
+        (true, Some(wanted)) => {
+            db.overlays()
+                .put_async_template(flow_id.0, &node_key, wanted.as_ref())
+                .await?
+        }
+        (true, None) => {}
     }
     db.overlays().put_task(flow_id.0, key, &overlay).await?;
     Ok(())

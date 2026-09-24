@@ -638,6 +638,10 @@ fn build_iteration(
                 let overlay = overlays.tasks.get(&node_key).cloned().unwrap_or_default();
                 let reasons = reasons_of(overlay.block_reasons_set);
                 let (mut task, mut lifecycle) = task_row(occurrence, overlay, consumption, expired);
+                // Its own Expectation template, kept only while it is Asynchronous.
+                if task.asynchronous {
+                    task.async_template = overlays.async_templates.get(&node_key).cloned();
+                }
                 if let Some(plan) = &task.plan {
                     lifecycle.plan_timing = Some(derive_timing(Some(plan.window()), now));
                 }

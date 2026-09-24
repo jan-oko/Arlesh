@@ -372,7 +372,7 @@ pub async fn update_expectation(
         NodeId::Derived(derived) => {
             return match resolve_key(db, derived, now).await? {
                 DerivedKey::SpawnedWait(task) => {
-                    wait_edit::update_spawned_wait(db, task, request, now).await
+                    wait_edit::update_spawned_wait(db, &task, request, now).await
                 }
                 DerivedKey::DelegationWait(_) => Err(wait_edit::refuse_delegation_wait()),
                 _ => Err(wrong_kind(&NodeId::Derived(derived.clone()), "expectation")),

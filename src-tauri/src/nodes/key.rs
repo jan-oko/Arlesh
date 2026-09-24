@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use super::id::{DerivedId, NodeId};
 use crate::scopes::key::ScopeKey;
-use crate::tasks::waits::{instant_column, WaitKind};
+use crate::tasks::waits::{instant_column, WaitRef};
 
 /// The cycle-pair sentinel of an occurrence no pair drew: the root, and an item declaring none.
 pub const NO_CYCLE: i64 = 0;
@@ -118,12 +118,10 @@ impl OccurrenceKey {
 }
 
 /// One check on a wait: the wait, and when the check fell due — which names it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CheckKey {
-    /// Which kind of wait: a stored Expectation, or the wait a Task spawned.
-    pub wait_kind: WaitKind,
-    /// The Expectation's id, or the spawning Task's.
-    pub wait_id: i64,
+    /// The wait: a stored Expectation, or the wait a stored Task or a Habit occurrence spawned.
+    pub wait: WaitRef,
     /// When the check fell due.
     pub due_at: NaiveDateTime,
 }
@@ -137,20 +135,23 @@ impl CheckKey {
 
     /// The wait's own spelling, `stored:5`: the overlay's `wait_key` column.
     pub fn wait_key(&self) -> String {
-        format!("{}:{}", self.wait_kind.as_str(), self.wait_id)
+        self.wait.spelling()
     }
 
     fn parse(rest: &str) -> Option<Self> {
-        let (wait, due_at) = rest.split_once('@')?;
-        let (wait_kind, wait_id) = wait.split_once(':')?;
-        let wait_kind = WaitKind::from_db(wait_kind)?;
-        let wait_id = wait_id.parse().ok()?;
-        let due_at = NaiveDateTime::parse_from_str(due_at, "%Y-%m-%dT%H:%M:%S").ok()?;
+        let (wait, due_at) = rest.rsplit_once('@')?;
         Some(Self {
-            wait_kind,
-            wait_id,
-            due_at,
+            wait: WaitRef::parse(wait)?,
+            due_at: NaiveDateTime::parse_from_str(due_at, "%Y-%m-%dT%H:%M:%S").ok()?,
         })
+    }
+}
+
+/// A row id read back from its spelling: an integer is a stored row, anything else a UUID.
+fn node_id_of(spelling: &str) -> NodeId {
+    match spelling.parse::<i64>() {
+        Ok(id) => NodeId::Stored(id),
+        Err(_) => NodeId::Derived(DerivedId::from_existing(spelling)),
     }
 }
 
@@ -161,8 +162,8 @@ pub enum DerivedKey {
     Occurrence(OccurrenceKey),
     /// A check task on a wait.
     Check(CheckKey),
-    /// The wait an Asynchronous Task spawned, by the Task.
-    SpawnedWait(i64),
+    /// The wait an Asynchronous Task spawned, by the Task — stored, or a Habit occurrence.
+    SpawnedWait(NodeId),
     /// The wait a delegated Task has on its delegate, by the Task — stored or itself derived.
     DelegationWait(NodeId),
 }
@@ -183,11 +184,8 @@ impl DerivedKey {
         let (head, rest) = node_key.split_once(':')?;
         match head {
             "check" => CheckKey::parse(rest).map(Self::Check),
-            "spawned_wait" => rest.parse().ok().map(Self::SpawnedWait),
-            "delegation_wait" => Some(Self::DelegationWait(match rest.parse::<i64>() {
-                Ok(id) => NodeId::Stored(id),
-                Err(_) => NodeId::Derived(DerivedId::from_existing(rest)),
-            })),
+            "spawned_wait" => Some(Self::SpawnedWait(node_id_of(rest))),
+            "delegation_wait" => Some(Self::DelegationWait(node_id_of(rest))),
             _ => OccurrenceKey::parse(node_key).map(Self::Occurrence),
         }
     }

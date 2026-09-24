@@ -617,3 +617,111 @@ async fn an_occurrence_reads_its_templates_issue_link_and_can_clear_its_own() {
         "the template keeps its link"
     );
 }
+
+#[tokio::test]
+async fn an_occurrence_carries_its_own_expectation_template_and_spawns_its_wait() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let (_, item) = habit(&app).await;
+    served(&pool).await;
+    let stretch = occurrence(TemplateKind::FlowTask, item);
+
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let written = write::update_task(
+        &mut db,
+        &stretch,
+        UpdateTaskRequest {
+            asynchronous: Some(true),
+            async_template: Some(Some(arlesh_lib::tasks::model::AsyncTemplate {
+                title: "Coach replies".into(),
+                tag_ids: vec![1],
+                time_scope: None,
+                check_every: Some(arlesh_lib::tasks::model::DurationSpec {
+                    n: 1,
+                    kind: "day".into(),
+                }),
+            })),
+            ..Default::default()
+        },
+        at(NOW),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        written
+            .async_template
+            .map(|template| template.title)
+            .as_deref(),
+        Some("Coach replies")
+    );
+    write::update_task(
+        &mut db,
+        &stretch,
+        UpdateTaskRequest {
+            status: Some(TaskStatus::Done),
+            ..Default::default()
+        },
+        at(NOW),
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+
+    let later = "2026-01-07T12:00:00";
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let load = mindmap::load(&mut db, at(later)).await.unwrap();
+    db.commit().await.unwrap();
+    let wait = load
+        .expectations
+        .iter()
+        .find(|row| row.parent_id == stretch)
+        .expect("the done occurrence spawned its wait")
+        .clone();
+    assert_eq!(wait.title, "Coach replies");
+    assert_eq!(wait.tag_ids, vec![1]);
+    let check = load
+        .tasks
+        .iter()
+        .find(|row| row.parent_id == wait.id)
+        .expect("its first check is due")
+        .clone();
+    assert!(load
+        .lifecycles
+        .iter()
+        .any(|lifecycle| lifecycle.node_id == check.id));
+
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    write::update_task(
+        &mut db,
+        &check.id,
+        UpdateTaskRequest {
+            status: Some(TaskStatus::Done),
+            ..Default::default()
+        },
+        at(later),
+    )
+    .await
+    .unwrap();
+    let released = write::update_expectation(
+        &mut db,
+        &wait.id,
+        arlesh_lib::tasks::model::UpdateExpectationRequest {
+            status: Some(arlesh_lib::tasks::model::ExpectationStatus::Released),
+            ..Default::default()
+        },
+        at(later),
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+    assert_eq!(
+        released.status,
+        arlesh_lib::tasks::model::ExpectationStatus::Released
+    );
+    let recorded: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM wait_checks WHERE wait_kind = 'occurrence'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(recorded, 1, "the check is recorded against the occurrence");
+}

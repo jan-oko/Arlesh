@@ -194,7 +194,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         if let Some((due, due_at)) = checks.get(&stored_id) {
             entries.push(WaitEntry {
                 node_type: "task",
-                node_id: check_row_id(super::waits::WaitKind::Stored, stored_id, *due_at),
+                node_id: check_row_id(super::waits::WaitRef::Stored(stored_id), *due_at),
                 window: Some(due.clone()),
                 status: expectation.status,
                 archival: expectation.archival,
@@ -209,7 +209,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         );
         entries.push(WaitEntry {
             node_type: expectations::EXPECTATION,
-            node_id: DerivedKey::SpawnedWait(task_id).node_id(),
+            node_id: DerivedKey::SpawnedWait(NodeId::Stored(task_id)).node_id(),
             window: spawned.time_scope,
             status,
             archival,
@@ -217,7 +217,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         if let (Some(due), Some(due_at)) = (spawned.next_check, spawned.next_check_at) {
             entries.push(WaitEntry {
                 node_type: "task",
-                node_id: check_row_id(super::waits::WaitKind::Spawned, task_id, due_at),
+                node_id: check_row_id(super::waits::WaitRef::Spawned(task_id), due_at),
                 window: Some(due),
                 status,
                 archival,
@@ -232,22 +232,41 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         archival,
     } in entries
     {
-        let bounds = window.as_ref().map(TimeScope::window);
-        let state = derive_expectation_state(bounds, status, archival, now);
-        out.push(ItemLifecycle {
-            node_type: node_type.to_string(),
+        out.push(wait_lifecycle(
+            node_type,
             node_id,
-            timing: state.timing,
-            resolution: state.resolution,
-            verdict: None,
-            archival: state.archival,
-            // Nothing is derived over a wait's own archive, so nothing can be overridden.
-            archival_conflict: false,
-            // A wait is never scheduled, and nor is its check: neither has a Plan.
-            plan_timing: None,
-        });
+            window.as_ref(),
+            status,
+            archival,
+            now,
+        ));
     }
     Ok(out)
+}
+
+/// The lifecycle a wait — or its open check task — is sent: its window's Timing, never Missed (a
+/// passed window with the wait pending is Overdue), and the wait's own archive.
+pub fn wait_lifecycle(
+    node_type: &str,
+    node_id: NodeId,
+    window: Option<&TimeScope>,
+    status: ExpectationStatus,
+    archival: ExpectationArchival,
+    now: chrono::NaiveDateTime,
+) -> ItemLifecycle {
+    let state = derive_expectation_state(window.map(TimeScope::window), status, archival, now);
+    ItemLifecycle {
+        node_type: node_type.to_string(),
+        node_id,
+        timing: state.timing,
+        resolution: state.resolution,
+        verdict: None,
+        archival: state.archival,
+        // Nothing is derived over a wait's own archive, so nothing can be overridden.
+        archival_conflict: false,
+        // A wait is never scheduled, and nor is its check: neither has a Plan.
+        plan_timing: None,
+    }
 }
 
 /// One lifecycle entry a wait sends: which window it times, for which node, and the wait's state.
@@ -260,17 +279,8 @@ struct WaitEntry {
 }
 
 /// The row id of the check task on a wait due at `due_at`.
-fn check_row_id(
-    wait_kind: super::waits::WaitKind,
-    wait_id: i64,
-    due_at: chrono::NaiveDateTime,
-) -> NodeId {
-    DerivedKey::Check(CheckKey {
-        wait_kind,
-        wait_id,
-        due_at,
-    })
-    .node_id()
+fn check_row_id(wait: super::waits::WaitRef, due_at: chrono::NaiveDateTime) -> NodeId {
+    DerivedKey::Check(CheckKey { wait, due_at }).node_id()
 }
 
 fn reject_unless_contained(outer: Bounds, inner: Bounds, message: &str) -> Result<(), TaskError> {

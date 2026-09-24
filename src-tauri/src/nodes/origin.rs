@@ -50,10 +50,11 @@ impl Origin {
 /// Which check on which wait a check task is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CheckOrigin {
-    /// A stored Expectation's check, or one on the wait a Task spawned.
+    /// A stored Expectation's check, or one on the wait a stored Task or an occurrence spawned.
     pub wait_kind: WaitKind,
-    /// The Expectation's id, or the spawning Task's.
-    pub wait_id: i64,
+    /// The Expectation's id, or the spawning Task's — a stored one's integer, an occurrence's
+    /// UUID.
+    pub wait_id: NodeId,
     /// When the check fell due.
     pub due_at: NaiveDateTime,
 }

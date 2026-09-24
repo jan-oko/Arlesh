@@ -42,10 +42,10 @@ export interface HabitOrigin {
 /** A wait's check task: which check on which wait. */
 export interface CheckOrigin {
   kind: "check";
-  /** A stored Expectation's check, or one on the wait a Task spawned. */
-  wait_kind: "stored" | "spawned";
-  /** The Expectation's id, or the spawning Task's. */
-  wait_id: number;
+  /** A stored Expectation's check, or one on the wait a stored Task or an occurrence spawned. */
+  wait_kind: "stored" | "spawned" | "occurrence";
+  /** The Expectation's id, or the spawning Task's (a UUID for an occurrence). */
+  wait_id: RowId;
   /** When the check fell due, ISO `YYYY-MM-DDTHH:MM:SS`. */
   due_at: string;
 }

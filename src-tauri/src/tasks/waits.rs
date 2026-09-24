@@ -119,6 +119,40 @@ pub fn spawned_check_due(
     every: &DurationSpec,
     now: NaiveDateTime,
 ) -> Option<NaiveDateTime> {
+    next_spawned_check(&WaitProgress::of(wait), every, now)
+}
+
+/// Where a spawned wait stands — whoever spawned it, a stored Task or a Habit occurrence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WaitProgress {
+    /// When it began: when its Task was completed.
+    pub spawned_at: Option<NaiveDateTime>,
+    /// Pending or Released.
+    pub status: ExpectationStatus,
+    /// Live or Archived.
+    pub archival: ExpectationArchival,
+    /// When its last check was made, if any.
+    pub last_check_at: Option<NaiveDateTime>,
+}
+
+impl WaitProgress {
+    /// A stored Task's spawned wait's progress.
+    pub fn of(wait: &SpawnedWait) -> Self {
+        Self {
+            spawned_at: wait.spawned_at,
+            status: wait.status,
+            archival: wait.archival,
+            last_check_at: wait.last_check_at,
+        }
+    }
+}
+
+/// [`spawned_check_due`] for a wait known by its progress alone.
+pub fn next_spawned_check(
+    wait: &WaitProgress,
+    every: &DurationSpec,
+    now: NaiveDateTime,
+) -> Option<NaiveDateTime> {
     if wait.status != ExpectationStatus::Pending || wait.archival != ExpectationArchival::Live {
         return None;
     }
@@ -327,17 +361,15 @@ impl TaskOperator<'_> {
     }
 
     /// A wait's completed checks, oldest first.
-    pub async fn wait_checks(
-        &mut self,
-        kind: WaitKind,
-        wait_id: i64,
-    ) -> Result<Vec<CheckRecord>, TaskError> {
+    pub async fn wait_checks(&mut self, wait: &WaitRef) -> Result<Vec<CheckRecord>, TaskError> {
+        let (wait_id, wait_key) = wait.columns();
         let rows = sqlx::query_as::<_, CheckRow>(
             "SELECT due_at, resolved_at FROM wait_checks
-             WHERE wait_kind = ? AND wait_id = ? ORDER BY resolved_at, due_at",
+             WHERE wait_kind = ? AND wait_id IS ? AND wait_key IS ? ORDER BY resolved_at, due_at",
         )
-        .bind(kind.as_str())
+        .bind(wait.kind().as_str())
         .bind(wait_id)
+        .bind(wait_key)
         .fetch_all(&mut *self.connection)
         .await?;
         Ok(rows.into_iter().filter_map(CheckRow::into_record).collect())
@@ -346,16 +378,18 @@ impl TaskOperator<'_> {
     /// Records the check due at `due_at` as completed at `resolved_at`.
     pub(crate) async fn record_check(
         &mut self,
-        kind: WaitKind,
-        wait_id: i64,
+        wait: &WaitRef,
         due_at: NaiveDateTime,
         resolved_at: NaiveDateTime,
     ) -> Result<(), TaskError> {
+        let (wait_id, wait_key) = wait.columns();
         sqlx::query(
-            "INSERT INTO wait_checks (wait_kind, wait_id, due_at, resolved_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO wait_checks (wait_kind, wait_id, wait_key, due_at, resolved_at)
+             VALUES (?, ?, ?, ?, ?)",
         )
-        .bind(kind.as_str())
+        .bind(wait.kind().as_str())
         .bind(wait_id)
+        .bind(wait_key)
         .bind(instant_column(due_at))
         .bind(instant_column(resolved_at))
         .execute(&mut *self.connection)
@@ -366,28 +400,34 @@ impl TaskOperator<'_> {
     /// Deletes the completed check due at `due_at`.
     async fn delete_check(
         &mut self,
-        kind: WaitKind,
-        wait_id: i64,
+        wait: &WaitRef,
         due_at: NaiveDateTime,
     ) -> Result<(), TaskError> {
-        sqlx::query("DELETE FROM wait_checks WHERE wait_kind = ? AND wait_id = ? AND due_at = ?")
-            .bind(kind.as_str())
-            .bind(wait_id)
-            .bind(instant_column(due_at))
-            .execute(&mut *self.connection)
-            .await?;
+        let (wait_id, wait_key) = wait.columns();
+        sqlx::query(
+            "DELETE FROM wait_checks
+             WHERE wait_kind = ? AND wait_id IS ? AND wait_key IS ? AND due_at = ?",
+        )
+        .bind(wait.kind().as_str())
+        .bind(wait_id)
+        .bind(wait_key)
+        .bind(instant_column(due_at))
+        .execute(&mut *self.connection)
+        .await?;
         Ok(())
     }
 }
 
-/// Which kind of wait a check belongs to — and so what its `wait_id` names.
+/// Which kind of wait a check belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WaitKind {
-    /// A stored Expectation; the id is the Expectation's.
+    /// A stored Expectation, named by its id.
     Stored,
-    /// The wait an Asynchronous Task spawned; the id is the Task's.
+    /// The wait a stored Asynchronous Task spawned, named by the Task's id.
     Spawned,
+    /// The wait a Habit occurrence spawned, named by the occurrence's node key.
+    Occurrence,
 }
 
 impl WaitKind {
@@ -396,14 +436,56 @@ impl WaitKind {
         match self {
             Self::Stored => "stored",
             Self::Spawned => "spawned",
+            Self::Occurrence => "occurrence",
+        }
+    }
+}
+
+/// One wait, as the checks on it name it: a stored Expectation, the wait a stored Task spawned,
+/// or the wait a Habit occurrence spawned.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum WaitRef {
+    /// A stored Expectation.
+    Stored(i64),
+    /// The wait a stored Task spawned, by the Task.
+    Spawned(i64),
+    /// The wait a Habit occurrence spawned, by the occurrence's canonical node key.
+    Occurrence(String),
+}
+
+impl WaitRef {
+    /// Which kind of wait this is.
+    pub fn kind(&self) -> WaitKind {
+        match self {
+            Self::Stored(_) => WaitKind::Stored,
+            Self::Spawned(_) => WaitKind::Spawned,
+            Self::Occurrence(_) => WaitKind::Occurrence,
         }
     }
 
-    /// Parses a `wait_kind` column.
-    pub fn from_db(value: &str) -> Option<Self> {
-        match value {
-            "stored" => Some(Self::Stored),
-            "spawned" => Some(Self::Spawned),
+    /// The `wait_checks` columns naming it: an integer id, or an occurrence's key.
+    fn columns(&self) -> (Option<i64>, Option<&str>) {
+        match self {
+            Self::Stored(id) | Self::Spawned(id) => (Some(*id), None),
+            Self::Occurrence(key) => (None, Some(key.as_str())),
+        }
+    }
+
+    /// Its canonical spelling, `stored:5` / `spawned:5` / `occurrence:{node key}`.
+    pub fn spelling(&self) -> String {
+        match self {
+            Self::Stored(id) | Self::Spawned(id) => format!("{}:{id}", self.kind().as_str()),
+            Self::Occurrence(key) => format!("occurrence:{key}"),
+        }
+    }
+
+    /// Parses [`Self::spelling`].
+    pub fn parse(spelling: &str) -> Option<Self> {
+        let (kind, rest) = spelling.split_once(':')?;
+        match kind {
+            "stored" => rest.parse().ok().map(Self::Stored),
+            "spawned" => rest.parse().ok().map(Self::Spawned),
+            "occurrence" => Some(Self::Occurrence(rest.to_string())),
             _ => None,
         }
     }
@@ -440,15 +522,14 @@ pub struct CheckRecord {
 /// stand, and it would have nowhere to be drawn.
 pub(crate) async fn reopen_latest<M: SessionMode>(
     db: &mut Db<M>,
-    kind: WaitKind,
-    wait_id: i64,
+    wait: &WaitRef,
     due_at: NaiveDateTime,
 ) -> Result<(), TaskError> {
-    let latest = db.tasks().wait_checks(kind, wait_id).await?.pop();
+    let latest = db.tasks().wait_checks(wait).await?.pop();
     if latest.is_none_or(|latest| latest.due_at != due_at) {
         return Err(TaskError::CheckNotReopenable);
     }
-    db.tasks().delete_check(kind, wait_id, due_at).await
+    db.tasks().delete_check(wait, due_at).await
 }
 
 /// A stored Expectation's next check, as the window its virtual check task is drawn in.
@@ -522,7 +603,7 @@ pub async fn derive_wait_windows<M: SessionMode>(
         // Every completed check stays on the board as a done check task.
         for done in db
             .tasks()
-            .wait_checks(WaitKind::Stored, expectation_id)
+            .wait_checks(&WaitRef::Stored(expectation_id))
             .await?
         {
             windows.expectation_checks.push(ExpectationCheck {
@@ -559,7 +640,7 @@ pub async fn derive_wait_windows<M: SessionMode>(
         let mut done_checks = Vec::new();
         for done in db
             .tasks()
-            .wait_checks(WaitKind::Spawned, wait.task_id)
+            .wait_checks(&WaitRef::Spawned(wait.task_id))
             .await?
         {
             if wait
@@ -633,7 +714,7 @@ pub async fn complete_spawned_check<M: SessionMode>(
         return Err(TaskError::NoCheckDue);
     };
     db.tasks()
-        .record_check(WaitKind::Spawned, task.0, due, at)
+        .record_check(&WaitRef::Spawned(task.0), due, at)
         .await
 }
 
@@ -653,7 +734,7 @@ pub async fn reopen_spawned_check<M: SessionMode>(
     if wait.status != ExpectationStatus::Pending || wait.archival != ExpectationArchival::Live {
         return Err(TaskError::CheckNotReopenable);
     }
-    reopen_latest(db, WaitKind::Spawned, task.0, due_at).await
+    reopen_latest(db, &WaitRef::Spawned(task.0), due_at).await
 }
 
 #[cfg(test)]

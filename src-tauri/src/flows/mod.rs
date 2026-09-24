@@ -1248,7 +1248,9 @@ impl<'session> FlowOperator<'session> {
              UNION SELECT node_key FROM derived_tags
              UNION SELECT node_key FROM derived_block_reasons
              UNION SELECT dependent_key FROM derived_dependencies WHERE dependent_key IS NOT NULL
-             UNION SELECT target_key FROM derived_dependencies WHERE target_key IS NOT NULL",
+             UNION SELECT target_key FROM derived_dependencies WHERE target_key IS NOT NULL
+             UNION SELECT node_key FROM occurrence_async_templates
+             UNION SELECT node_key FROM occurrence_spawned_waits",
         )
         .fetch_all(&mut *self.connection)
         .await?;

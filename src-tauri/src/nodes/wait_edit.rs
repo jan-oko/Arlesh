@@ -15,6 +15,7 @@
 use chrono::NaiveDateTime;
 
 use super::{
+    id::NodeId,
     key::{CheckKey, DerivedKey},
     overlay::TaskOverlay,
 };
@@ -27,7 +28,7 @@ use crate::{
             Expectation, ExpectationId, Task, TaskArchival, TaskId, TaskStatus,
             UpdateExpectationRequest, UpdateSpawnedWaitRequest, UpdateTaskRequest,
         },
-        waits::{self, WaitKind},
+        waits::{self, WaitRef},
     },
 };
 
@@ -35,15 +36,33 @@ fn refused(message: &str) -> AppError {
     FlowError::Refused(message.to_string()).into()
 }
 
-/// The derived row `key` names as it reads now, if it is derived.
+/// Every wait's derived rows as they read now: the waits hang on the Task table, stored and
+/// derived, so the Habits are derived first.
+async fn wait_rows(
+    db: &mut Db<Transactional>,
+    now: NaiveDateTime,
+) -> Result<super::waits::WaitRows, AppError> {
+    let mut tasks = db.tasks().list().await?;
+    let flows = db.flows().list().await?;
+    let (derived, _) = super::table::derive_habits(
+        db,
+        &flows,
+        now,
+        crate::flows::occurrences::Horizon::default(),
+    )
+    .await;
+    tasks.extend(derived.tasks);
+    super::waits::derive_waits(db, now, &tasks).await
+}
+
+/// The check task `key` names as it reads now.
 pub async fn check_row(
     db: &mut Db<Transactional>,
     key: &CheckKey,
     now: NaiveDateTime,
 ) -> Result<Task, AppError> {
-    let id = DerivedKey::Check(*key).node_id();
-    let tasks = db.tasks().list().await?;
-    super::waits::derive_waits(db, now, &tasks)
+    let id = DerivedKey::Check(key.clone()).node_id();
+    wait_rows(db, now)
         .await?
         .tasks
         .into_iter()
@@ -58,17 +77,7 @@ pub async fn wait_row(
     now: NaiveDateTime,
 ) -> Result<Expectation, AppError> {
     let id = key.node_id();
-    let mut tasks = db.tasks().list().await?;
-    let flows = db.flows().list().await?;
-    let (derived, _) = super::table::derive_habits(
-        db,
-        &flows,
-        now,
-        crate::flows::occurrences::Horizon::default(),
-    )
-    .await;
-    tasks.extend(derived.tasks);
-    super::waits::derive_waits(db, now, &tasks)
+    wait_rows(db, now)
         .await?
         .expectations
         .into_iter()
@@ -78,16 +87,17 @@ pub async fn wait_row(
 
 /// What a check task reads when it says nothing of its own: its wait's title.
 async fn wait_title(db: &mut Db<Transactional>, key: &CheckKey) -> Result<String, AppError> {
-    Ok(match key.wait_kind {
-        WaitKind::Stored => {
-            db.expectations()
-                .get(ExpectationId(key.wait_id))
-                .await?
-                .title
-        }
-        WaitKind::Spawned => db
+    Ok(match &key.wait {
+        WaitRef::Stored(id) => db.expectations().get(ExpectationId(*id)).await?.title,
+        WaitRef::Spawned(task) => db
             .tasks()
-            .async_template(TaskId(key.wait_id))
+            .async_template(TaskId(*task))
+            .await?
+            .map(|template| template.title)
+            .unwrap_or_default(),
+        WaitRef::Occurrence(node_key) => db
+            .overlays()
+            .async_template(node_key)
             .await?
             .map(|template| template.title)
             .unwrap_or_default(),
@@ -185,15 +195,13 @@ async fn set_status(
     match status {
         TaskStatus::Done => {
             if !was_done {
-                db.tasks()
-                    .record_check(key.wait_kind, key.wait_id, key.due_at, now)
-                    .await?;
+                db.tasks().record_check(&key.wait, key.due_at, now).await?;
             }
             overlay.status = None;
         }
         TaskStatus::Todo | TaskStatus::InProgress => {
             if was_done {
-                waits::reopen_latest(db, key.wait_kind, key.wait_id, key.due_at).await?;
+                waits::reopen_latest(db, &key.wait, key.due_at).await?;
             }
             overlay.status =
                 (status == TaskStatus::InProgress).then(|| status.as_str().to_string());
@@ -206,11 +214,11 @@ async fn set_status(
 #[tracing::instrument(skip(db, request))]
 pub async fn update_spawned_wait(
     db: &mut Db<Transactional>,
-    task_id: i64,
+    task_id: &NodeId,
     request: UpdateExpectationRequest,
     now: NaiveDateTime,
 ) -> Result<Expectation, AppError> {
-    let key = DerivedKey::SpawnedWait(task_id);
+    let key = DerivedKey::SpawnedWait(task_id.clone());
     let current = wait_row(db, &key, now).await?;
     let changes_template = request
         .title
@@ -233,15 +241,36 @@ pub async fn update_spawned_wait(
             "a spawned wait is drawn from its Task's Expectation template — edit it there",
         ));
     }
-    waits::update_spawned_wait(
-        db,
-        TaskId(task_id),
-        UpdateSpawnedWaitRequest {
-            status: request.status,
-            archival: request.archival,
-        },
-    )
-    .await?;
+    match task_id {
+        NodeId::Stored(task) => {
+            waits::update_spawned_wait(
+                db,
+                TaskId(*task),
+                UpdateSpawnedWaitRequest {
+                    status: request.status,
+                    archival: request.archival,
+                },
+            )
+            .await?;
+        }
+        NodeId::Derived(derived) => {
+            // An occurrence's spawned wait keeps its state under the occurrence's key.
+            let DerivedKey::Occurrence(occurrence) =
+                super::table::resolve_key(db, derived, now).await?
+            else {
+                return Err(refused("only a Task spawns a wait"));
+            };
+            let flow_id = db.flows().occurrence_flow_id(&occurrence).await?.0;
+            db.overlays()
+                .put_spawned_wait_state(
+                    flow_id,
+                    &occurrence.node_key(),
+                    request.status.unwrap_or(current.status),
+                    request.archival.unwrap_or(current.archival),
+                )
+                .await?;
+        }
+    }
     wait_row(db, &key, now).await
 }
 
