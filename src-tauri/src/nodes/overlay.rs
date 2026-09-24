@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use sqlx::SqliteConnection;
 
 use super::key::{CheckKey, OccurrenceKey};
-use crate::scopes::{error::ScopeError, key::ScopeKey};
+use crate::scopes::key::ScopeKey;
 use crate::tasks::model::{AsyncTemplate, ExpectationArchival, ExpectationStatus};
 
 /// One occurrence's Task overlay. Every field inherits when empty.
@@ -300,7 +300,7 @@ impl<'session> OverlayOperator<'session> {
         flow_id: i64,
         key: &OccurrenceKey,
         overlay: &TaskOverlay,
-    ) -> Result<(), ScopeError> {
+    ) -> Result<(), sqlx::Error> {
         if overlay.is_empty() {
             sqlx::query("DELETE FROM task_overlays WHERE node_key = ?")
                 .bind(key.node_key())
@@ -386,7 +386,7 @@ impl<'session> OverlayOperator<'session> {
         &mut self,
         key: &CheckKey,
         overlay: &TaskOverlay,
-    ) -> Result<(), ScopeError> {
+    ) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM task_overlays WHERE node_key = ?")
             .bind(key.node_key())
             .execute(&mut *self.connection)
@@ -434,7 +434,7 @@ impl<'session> OverlayOperator<'session> {
         flow_id: i64,
         key: &OccurrenceKey,
         overlay: &GoalOverlay,
-    ) -> Result<(), ScopeError> {
+    ) -> Result<(), sqlx::Error> {
         if overlay.is_empty() {
             sqlx::query("DELETE FROM goal_overlays WHERE node_key = ?")
                 .bind(key.node_key())
@@ -479,7 +479,7 @@ impl<'session> OverlayOperator<'session> {
         flow_id: i64,
         key: &OccurrenceKey,
         overlay: &CommitmentOverlay,
-    ) -> Result<(), ScopeError> {
+    ) -> Result<(), sqlx::Error> {
         if overlay.is_empty() {
             sqlx::query("DELETE FROM commitment_overlays WHERE node_key = ?")
                 .bind(key.node_key())
