@@ -184,6 +184,7 @@ async fn a_root_opens_its_subtree_and_nothing_beside_it() {
     let payload = snapshot(&mcp).await;
 
     assert_eq!(ids(&payload, "domains"), vec![board.inside]);
+    assert!(!ids(&payload, "domains").contains(&board.outside));
     assert_eq!(ids(&payload, "tasks"), vec![board.inside_task]);
     assert_ne!(get_task(&mcp, board.inside_task).await.is_error, Some(true));
     assert_eq!(
