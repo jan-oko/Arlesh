@@ -96,8 +96,10 @@ A Task planned **somewhere else** â€” neither in this scope nor to its parent â€
 It is not unscheduled, so it is not a candidate, and it is not in this scope, so it is not what the
 scope holds.
 
-**Virtual Habit occurrences and iteration roots are not triaged.** They have no row to carry a Plan,
-and planning a recurrence is a separate question. A first cut plans real Tasks.
+**Habit occurrences are triaged like any Task.** An occurrence is a Task row with a Plan of its own
+([Derived nodes](virtual-nodes.md)), and planning it plans that one occurrence. Its window is its
+iteration's, so a Plan it cannot hold is refused exactly as for a stored Task whose own window does
+not cover the scope.
 
 ## Backlog
 
@@ -380,6 +382,5 @@ an open editor would leave the editor sitting over a board it no longer belongs 
 - **Time Scope editing.** This view sets Plans. A candidate whose window is too narrow for the scope
   is refused and sent to the editor.
 - **Creating, renaming or deleting.** A planning pass decides *when*, not *what*.
-- **Habit iterations and virtual instances as candidates**, as above.
 
 ---

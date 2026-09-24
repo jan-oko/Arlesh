@@ -30,7 +30,7 @@ Every row carries an **`origin`**, a union discriminated on `kind`:
 - `{"kind": "manual"}` — a stored row.
 - `{"kind": "habit", "habit_id": …, "iteration_scope": {…}, "item_type": …, "item_id": …,
   "cycle_id": …}` — a Habit's occurrence. `iteration_scope` carries the iteration's ordinal, the date
-  its window starts, its exclusive end, its anchoring scope, the Habit's window kind and the
+  its window starts, its exclusive end, its anchoring scope's key, the Habit's window kind and the
   iteration's derived state; `item_type` is `flow_root` for the iteration's root and `flow_goal` /
   `flow_task` for an item's occurrence.
 
@@ -41,18 +41,31 @@ The few rules that genuinely differ for a derived row key off `origin` and nothi
   — is not a move.
 - **It cannot change kind.** Retyping it is refused; retype its template item instead.
 - **It is never deleted.** `Delete` archives it, as manual archival of a stored node would, and
-  giving it a status again brings it back.
+  giving it a status again brings it back. The Mindmap asks for the delete with the same
+  confirmation as any other.
+- **It is not copied, and nothing is copied onto it.** A copy is a stored row made under a stored
+  parent. A node *moved* onto an occurrence (cut and paste, drag) is hung on that one iteration, as
+  one created there is.
+- **It is not a Flow target**, since a target is a stored row the flow's instances hang under.
 - An iteration root's title is drawn with its iteration's label after it ("Exercise W22"); the row's
-  own title is the Habit's (or its own override).
+  own title is the Habit's (or its own override), and that is what its editor edits.
+
+Everything else is the same as for a stored row of the kind, on every surface: the status glyph and
+its completion guard, the flags (Backlog, Agentic, Asynchronous), the verdict controls, the Plan, the
+editor on `E` — whose window field shows the occurrence's window and says it stays with the
+iteration — tags, block reasons, dependencies in either direction, and children of every kind its
+kind holds except the Habit's own template kinds (a Flow, a flow item).
 
 ## Value keys
 
-A Habit occurrence's value key is **(template item, iteration start date, cycle pair)** — the template
-item being the flow itself for an iteration's root, or one of its items. It is spelled as one
-canonical string, `flow_task:12:2026-09-20:3` (item type, item id, date, cycle pair — `0` for the root
-and for an item that declares no pairs), which is what the UUID is hashed from, what the overlay tables
-generate as their `node_key` column, and what the relation tables store. The key holds a **date**,
-not a scope row id, so it stays true when scopes stop being rows (`Arlesh-9o1`).
+A Habit occurrence's value key is **(template item, iteration scope, cycle pair)** — the template
+item being the flow itself for an iteration's root, or one of its items, and the iteration scope
+being the **scope key** its window is anchored on ([Time scopes](time-scopes.md)). It is spelled as
+one canonical string, `flow_task:12:day:2026-09-20:3` (item type, item id, scope key, cycle pair —
+`0` for the root and for an item that declares no pairs), which is what the UUID is hashed from, what
+the overlay tables generate as their `node_key` column, and what the relation tables store. A scope
+key is a value, not a row, so the key is true without anything being written to name it; an Exact
+iteration scope's key is registered in `exact_scopes`, as every stored Exact key is.
 
 ## Overlays
 
@@ -74,11 +87,12 @@ template. Setting a field back to its template's value **clears** the override r
 copy, so the occurrence goes back to following the template.
 
 `habit_instance_modifications`, the single polymorphic overlay that preceded these, was split into
-them by migration 0060 and dropped. Each of its rows carried across under its iteration scope's start
-date. Where two rows met on one key — a Habit whose window kind changed kept its old rows beside the
-new ones — the row keyed on the kind the Habit generates today won. A goal's `done` became `achieved`,
-a commitment's `kept`/`broken` became its verdict (a stale `done` is not a verdict), and a `deleted`
-tombstone became `archived`.
+them by migration 0060 and dropped. Each of its rows carried across under its own iteration scope
+key, into the overlay of the kind its row draws. A goal's `done` became `achieved`, a commitment's
+`kept`/`broken` became its verdict (a stale `done` is not a verdict), a `deleted` tombstone became
+`archived`, and a block reason became the occurrence's own one-reason list. A row that carried
+nothing its kind can read was not kept. `habit_instance_dependencies` and `habit_instance_children`
+became `derived_dependencies` and `derived_children` the same way.
 
 ## Relations
 
@@ -99,6 +113,23 @@ A stored node keeps today's relation tables. A derived node's relations live in 
   the occurrence its parent, and the virtual table reads the child's parent as the occurrence. A child
   whose occurrence is not derived keeps its stored parent, so it stays on the board beside where it was
   rather than vanishing.
+
+## Templates
+
+A template item — a Flow's own row for the iteration root, a `flow_goals` or `flow_tasks` row for an
+item — carries the **full schema of its kind** (migration 0061): a task template its delegate, Agentic
+and Asynchronous flags, Backlog state and beads id; a goal template its beads id; both their tags
+(`template_tags`) and block reasons (`template_block_reasons`). Every occurrence reads them unless its
+overlay says otherwise. They are edited in the flow item's editor, beside the item's cycle pairs and
+dependencies. An Expectation template (the wait an Asynchronous Task spawns) is not part of a Habit
+template; an occurrence cannot carry one of its own either.
+
+**Changing an item's cycle pairs keeps every pair that survives.** A pair whose Cycle Scope is still
+there keeps its id, so its occurrences keep what they recorded. A change that would drop a pair some
+occurrence recorded something on is refused with the Habit editor's own question — **Archive & new**
+(the change lands on a copy of the Habit, the original stops recurring and keeps its history) or
+**Discard & regenerate** (the recorded edits are cleared) — and the whole item save is one undo step
+that follows the copy.
 
 ## Horizon
 
