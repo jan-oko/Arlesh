@@ -85,9 +85,6 @@ CREATE TABLE task_overlays (
     -- Set when the occurrence's block reasons are its own list (in derived_block_reasons), even an
     -- empty one; clear when it reads its template's.
     block_reasons_set INTEGER NOT NULL DEFAULT 0 CHECK (block_reasons_set IN (0, 1)),
-    CHECK (iteration_scope IS NULL OR json_valid(iteration_scope)),
-    CHECK (plan_start_id IS NULL OR json_valid(plan_start_id)),
-    CHECK (plan_end_id IS NULL OR json_valid(plan_end_id)),
     CHECK ((origin = 'habit') = (flow_id IS NOT NULL AND item_type IS NOT NULL AND item_id IS NOT NULL
                                  AND iteration_scope IS NOT NULL AND cycle_id IS NOT NULL)),
     CHECK ((origin = 'check') = (wait_key IS NOT NULL AND due_at IS NOT NULL)),
@@ -97,7 +94,10 @@ CREATE TABLE task_overlays (
         (delegate_kind IS NULL     AND delegate_id IS NULL)
      OR (delegate_kind = 'person'  AND delegate_id IS NOT NULL)
      OR (delegate_kind = 'agent'   AND delegate_id IS NULL)
-    )
+    ),
+    CHECK (iteration_scope IS NULL OR json_valid(iteration_scope)),
+    CHECK (plan_start_id IS NULL OR json_valid(plan_start_id)),
+    CHECK (plan_end_id IS NULL OR json_valid(plan_end_id))
 );
 CREATE UNIQUE INDEX idx_task_overlays_key ON task_overlays (node_key);
 CREATE INDEX idx_task_overlays_item ON task_overlays (item_type, item_id);
@@ -112,7 +112,6 @@ CREATE TABLE goal_overlays (
     cycle_id          INTEGER NOT NULL DEFAULT 0,
     node_key          TEXT GENERATED ALWAYS AS (
                           item_type || ':' || item_id || ':' || iteration_scope || ':' || cycle_id) VIRTUAL,
-    CHECK (iteration_scope IS NULL OR json_valid(iteration_scope)),
     status            TEXT CHECK (status IN ('active', 'achieved', 'frozen', 'archived')),
     resolved_at       INTEGER,
     tombstone         TEXT CHECK (tombstone IN ('archived', 'missed')),
@@ -122,7 +121,8 @@ CREATE TABLE goal_overlays (
     beads_id_set      INTEGER NOT NULL DEFAULT 0 CHECK (beads_id_set IN (0, 1)),
     position          INTEGER,
     block_reasons_set INTEGER NOT NULL DEFAULT 0 CHECK (block_reasons_set IN (0, 1)),
-    UNIQUE (item_type, item_id, iteration_scope, cycle_id)
+    UNIQUE (item_type, item_id, iteration_scope, cycle_id),
+    CHECK (iteration_scope IS NULL OR json_valid(iteration_scope))
 );
 CREATE UNIQUE INDEX idx_goal_overlays_key ON goal_overlays (node_key);
 CREATE INDEX idx_goal_overlays_flow ON goal_overlays (flow_id, iteration_scope);
@@ -137,7 +137,6 @@ CREATE TABLE commitment_overlays (
     cycle_id          INTEGER NOT NULL DEFAULT 0,
     node_key          TEXT GENERATED ALWAYS AS (
                           item_type || ':' || item_id || ':' || iteration_scope || ':' || cycle_id) VIRTUAL,
-    CHECK (iteration_scope IS NULL OR json_valid(iteration_scope)),
     verdict           TEXT CHECK (verdict IN ('kept', 'broken')),
     resolved_at       INTEGER,
     tombstone         TEXT CHECK (tombstone IN ('archived', 'missed')),
@@ -146,7 +145,8 @@ CREATE TABLE commitment_overlays (
     beads_id          TEXT,
     beads_id_set      INTEGER NOT NULL DEFAULT 0 CHECK (beads_id_set IN (0, 1)),
     position          INTEGER,
-    UNIQUE (item_type, item_id, iteration_scope, cycle_id)
+    UNIQUE (item_type, item_id, iteration_scope, cycle_id),
+    CHECK (iteration_scope IS NULL OR json_valid(iteration_scope))
 );
 CREATE UNIQUE INDEX idx_commitment_overlays_key ON commitment_overlays (node_key);
 CREATE INDEX idx_commitment_overlays_flow ON commitment_overlays (flow_id, iteration_scope);
@@ -224,9 +224,9 @@ CREATE TABLE derived_children (
     window_end_scope_id TEXT,
     child_type          TEXT NOT NULL CHECK (child_type IN ('task', 'goal', 'commitment', 'info', 'expectation')),
     child_id            INTEGER NOT NULL,
+    UNIQUE (child_type, child_id),
     CHECK (window_start_scope_id IS NULL OR json_valid(window_start_scope_id)),
-    CHECK (window_end_scope_id IS NULL OR json_valid(window_end_scope_id)),
-    UNIQUE (child_type, child_id)
+    CHECK (window_end_scope_id IS NULL OR json_valid(window_end_scope_id))
 );
 CREATE INDEX idx_derived_children_parent ON derived_children (parent_key);
 CREATE INDEX idx_derived_children_flow ON derived_children (flow_id);
