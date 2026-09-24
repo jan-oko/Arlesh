@@ -8,6 +8,7 @@ import {
 } from "./tasks";
 import type { Task, CreateTaskRequest, Dependency, TaskWithBlockers, ViolatingDescendant, ReparentConflicts } from "./tasks";
 import type { TimeScope } from "./time-scope";
+import { testKey } from "@/test/scope-key";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -116,7 +117,7 @@ describe("removeTagFromTask", () => {
 describe("reparentScopeConflicts", () => {
   it("calls invoke with reparent_scope_conflicts and the node + new parent", async () => {
     const result: ReparentConflicts = {
-      ancestor_time_scope: { start_id: 3, end_id: 3 },
+      ancestor_time_scope: { start_id: testKey(3), end_id: testKey(3) },
       conflicts: [{ node_type: "task", node_id: 8 }],
     };
     mockCommandOnce(result);
@@ -135,7 +136,7 @@ describe("scopeContainmentConflicts", () => {
   it("calls invoke with scope_containment_conflicts and the node + candidate scope", async () => {
     const conflicts: ViolatingDescendant[] = [{ node_type: "task", node_id: 7 }];
     mockCommandOnce(conflicts);
-    const timeScope: TimeScope = { start_id: 3, end_id: 3 };
+    const timeScope: TimeScope = { start_id: testKey(3), end_id: testKey(3) };
     const result = await scopeContainmentConflicts("goal", 5, timeScope);
     expect(invoke).toHaveBeenCalledWith("scope_containment_conflicts", {
       nodeType: "goal",

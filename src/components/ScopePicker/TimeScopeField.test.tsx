@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import TimeScopeField from "./TimeScopeField";
-import { getOrCreateScope, getScope } from "@/api/scopes";
-import type { Scope } from "@/api/scopes";
+import { getScope } from "@/api/scopes";
+import type { Scope, ScopeKey } from "@/api/scopes";
+import { keyStartDate } from "@/utils/scope-key";
 import type { TimeScope } from "@/api/time-scope";
 
 vi.mock("react-i18next", () => ({
@@ -27,30 +28,25 @@ vi.mock("@/hooks/use-scope-labels", () => ({
 }));
 
 vi.mock("@/api/scopes", () => ({
-  getOrCreateScope: vi.fn(),
-  getOrCreatePartScope: vi.fn(),
-  getOrCreateExactScope: vi.fn(),
   getScope: vi.fn(),
   resolveScope: vi.fn(),
 }));
 
-function mkScope(id: number): Scope {
+const JUNE: ScopeKey = { kind: "month", date: "2026-06-01" };
+const AUGUST: ScopeKey = { kind: "month", date: "2026-08-01" };
+
+/** The scope a key names, as the backend derives it — kind and start date are in the key. */
+function scopeOf(id: ScopeKey): Scope {
   return {
-    id, kind: "week", label: "", start_date: "", end_date: "",
-    week_id: null, month_id: null, season_id: null, day_id: null,
+    id, kind: id.kind, label: "",
+    start_date: keyStartDate(id), end_date: keyStartDate(id),
     part: null, start_datetime: null, end_datetime: null,
   };
 }
 
-let counter = 0;
 beforeEach(() => {
   vi.clearAllMocks();
-  counter = 0;
-  vi.mocked(getOrCreateScope).mockImplementation(() => Promise.resolve(mkScope(++counter)));
-  const dates: Record<number, string> = { 1: "2026-06-01", 2: "2026-08-01", 5: "2026-06-01" };
-  vi.mocked(getScope).mockImplementation((id) =>
-    Promise.resolve({ ...mkScope(id), kind: "month", start_date: dates[id] ?? "2026-06-01" }),
-  );
+  vi.mocked(getScope).mockImplementation((id) => Promise.resolve(scopeOf(id)));
 });
 
 describe("TimeScopeField — summary", () => {
@@ -60,22 +56,22 @@ describe("TimeScopeField — summary", () => {
   });
 
   it("pluralizes the duration summary", () => {
-    render(<TimeScopeField value={{ start_id: 1, end_id: 2, duration: { n: 3, kind: "week" } }} onChange={vi.fn()} />);
+    render(<TimeScopeField value={{ start_id: { kind: "week", date: "2026-06-07" }, end_id: { kind: "week", date: "2026-06-21" }, duration: { n: 3, kind: "week" } }} onChange={vi.fn()} />);
     expect(screen.getByText("3 weeks")).toBeInTheDocument();
   });
 
   it("does not pluralize a duration of 1", () => {
-    render(<TimeScopeField value={{ start_id: 1, end_id: 1, duration: { n: 1, kind: "week" } }} onChange={vi.fn()} />);
+    render(<TimeScopeField value={{ start_id: { kind: "week", date: "2026-06-07" }, end_id: { kind: "week", date: "2026-06-07" }, duration: { n: 1, kind: "week" } }} onChange={vi.fn()} />);
     expect(screen.getByText("1 week")).toBeInTheDocument();
   });
 
   it("shows a single scope's formatted label", async () => {
-    render(<TimeScopeField value={{ start_id: 5, end_id: 5 }} onChange={vi.fn()} />);
+    render(<TimeScopeField value={{ start_id: JUNE, end_id: JUNE }} onChange={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("June 2026")).toBeInTheDocument());
   });
 
   it("shows a range with a factored-out year", async () => {
-    render(<TimeScopeField value={{ start_id: 1, end_id: 2 }} onChange={vi.fn()} />);
+    render(<TimeScopeField value={{ start_id: JUNE, end_id: AUGUST }} onChange={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("June-August 2026")).toBeInTheDocument());
   });
 });
@@ -89,7 +85,7 @@ describe("TimeScopeField — editing", () => {
 
   it("clear emits null", () => {
     const onChange = vi.fn();
-    const value: TimeScope = { start_id: 1, end_id: 1 };
+    const value: TimeScope = { start_id: JUNE, end_id: JUNE };
     render(<TimeScopeField value={value} onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "scopeClear" }));
     expect(onChange).toHaveBeenCalledWith(null);
@@ -119,10 +115,7 @@ describe("TimeScopeField — opening view", () => {
   });
 
   it("opens the picker on the day of a Day-scoped value", async () => {
-    vi.mocked(getScope).mockImplementation((id) =>
-      Promise.resolve({ ...mkScope(id), kind: "day", start_date: "2026-09-16" }),
-    );
-    render(<TimeScopeField value={{ start_id: 9, end_id: 9 }} onChange={vi.fn()} />);
+    render(<TimeScopeField value={{ start_id: { kind: "day", date: "2026-09-16" }, end_id: { kind: "day", date: "2026-09-16" } }} onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "edit scope" }));
     // The week of Wednesday 16 September 2026, not the twelve months of the year.
     await waitFor(() => expect(screen.getByRole("button", { name: "16" })).toBeInTheDocument());
@@ -131,18 +124,8 @@ describe("TimeScopeField — opening view", () => {
 });
 
 describe("TimeScopeField — the opening is the selection", () => {
-  function byDate(date: string): number {
-    return date === "2026-06-01" ? 101 : 202;
-  }
-
-  beforeEach(() => {
-    vi.mocked(getOrCreateScope).mockImplementation((_kind, date) =>
-      Promise.resolve({ ...mkScope(byDate(date)), kind: "month", start_date: date }),
-    );
-  });
-
   it("draws the cell it opens on as selected", async () => {
-    render(<TimeScopeField value={{ start_id: 5, end_id: 5 }} onChange={vi.fn()} />);
+    render(<TimeScopeField value={{ start_id: JUNE, end_id: JUNE }} onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "edit scope" }));
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "June 2026" })).toHaveAttribute("aria-pressed", "true"),
@@ -151,31 +134,31 @@ describe("TimeScopeField — the opening is the selection", () => {
 
   it("applying without clicking re-applies the scope that was there", async () => {
     const onChange = vi.fn();
-    render(<TimeScopeField value={{ start_id: 5, end_id: 5 }} onChange={onChange} />);
+    render(<TimeScopeField value={{ start_id: JUNE, end_id: JUNE }} onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "edit scope" }));
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "June 2026" })).toHaveAttribute("aria-pressed", "true"),
     );
     fireEvent.click(screen.getByRole("button", { name: "scopeApply" }));
-    await waitFor(() => expect(onChange).toHaveBeenCalledWith({ start_id: 101, end_id: 101 }));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith({ start_id: JUNE, end_id: JUNE }));
     expect(onChange).not.toHaveBeenCalledWith(null);
   });
 
   it("round-trips a range: both endpoints are selected and Apply re-applies them", async () => {
     const onChange = vi.fn();
-    render(<TimeScopeField value={{ start_id: 1, end_id: 2 }} onChange={onChange} />);
+    render(<TimeScopeField value={{ start_id: JUNE, end_id: AUGUST }} onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "edit scope" }));
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "June 2026" })).toHaveAttribute("aria-pressed", "true"),
     );
     expect(screen.getByRole("button", { name: "August 2026" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "scopeApply" }));
-    await waitFor(() => expect(onChange).toHaveBeenCalledWith({ start_id: 101, end_id: 202 }));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith({ start_id: JUNE, end_id: AUGUST }));
   });
 
   it("a seeded range is closed, so the first click starts a new one", async () => {
     const onChange = vi.fn();
-    render(<TimeScopeField value={{ start_id: 1, end_id: 2 }} onChange={onChange} />);
+    render(<TimeScopeField value={{ start_id: JUNE, end_id: AUGUST }} onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "edit scope" }));
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "August 2026" })).toHaveAttribute("aria-pressed", "true"),

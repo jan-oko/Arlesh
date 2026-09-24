@@ -17,7 +17,7 @@ use arlesh_lib::flows::model::{
     BlockingMode, CatchupPolicy, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest,
     HabitInstanceRef, InstanceType, SetRecurrenceRequest,
 };
-use arlesh_lib::scopes::model::ScopeKind;
+use arlesh_lib::scopes::{key::ScopeKey, model::ScopeKind};
 use arlesh_lib::tasks::model::{TaskId, TimeScope, UpdateTaskRequest};
 use tauri::Manager;
 
@@ -38,21 +38,15 @@ fn daily_habit(title: &str) -> CreateFlowRequest {
     }
 }
 
-/// Mints the canonical scope a date falls in, as the iteration anchor an occurrence keys on.
-async fn scope_id(pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::NaiveDate) -> i64 {
-    helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(kind, date)
-        .await
+/// The canonical scope a date falls in, as the iteration anchor an occurrence keys on.
+async fn scope_id(_pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::NaiveDate) -> ScopeKey {
+    arlesh_lib::scopes::model::Scope::containing(kind, date)
         .unwrap()
         .id
 }
 
 /// The flow root's occurrence in the iteration anchored at `scope`.
-fn root_of(flow_id: i64, scope: i64) -> HabitInstanceRef {
+fn root_of(flow_id: i64, scope: ScopeKey) -> HabitInstanceRef {
     HabitInstanceRef {
         item_type: "flow_root".into(),
         item_id: flow_id,
@@ -65,7 +59,7 @@ fn root_of(flow_id: i64, scope: i64) -> HabitInstanceRef {
 async fn habit_with_one_day(
     pool: &sqlx::SqlitePool,
     app: &tauri::App<tauri::test::MockRuntime>,
-) -> (i64, i64) {
+) -> (i64, ScopeKey) {
     let flow = flow_commands::create_flow(app.state(), daily_habit("Groceries"))
         .await
         .unwrap();

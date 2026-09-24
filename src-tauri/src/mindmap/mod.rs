@@ -6,10 +6,9 @@
 //! silent reload. [`load`] is the single operation that replaces them.
 //!
 //! It touches nine resources, so per ADR-0004 it is a free function over the session rather than
-//! a method on any one operator. It takes a [`Db<Transactional>`] because
-//! [`crate::flows::generate_habit_iterations`] writes: materialising an iteration window mints
-//! the scope rows it lands on. Mode follows the operation's consistency requirement, not the
-//! reader's intuition that a load is read-only.
+//! a method on any one operator. It writes nothing — iteration windows are derived from their
+//! value keys (ADR 0009) — and takes a [`Db<Transactional>`] only so that its many reads see one
+//! consistent board.
 //!
 //! **Nothing here assembles.** Every field of [`MindmapLoad`] is what the equivalent
 //! single-resource command returns; the frontend still builds the tree.
@@ -127,7 +126,7 @@ async fn habit_entry(
 /// none. A flow without a recurrence is simply not a Habit — the overwhelmingly common case —
 /// and has no iterations; routing it through the failure path would raise a notice about every
 /// ordinary flow on every load. What stays a failure is a flow that *is* a Habit and could not
-/// be derived (an unscoped one, an unparseable Consumption, a missing scope row).
+/// be derived (an unscoped one, an unparseable Consumption).
 async fn habit_payload(
     db: &mut Db<Transactional>,
     flow_id: FlowId,

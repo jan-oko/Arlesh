@@ -1,9 +1,8 @@
 //! Flow tools — the reads the snapshot does not answer.
 //!
-//! `valid_targets` is deliberately absent. It writes (resolving a concrete window mints the
-//! canonical scopes it names, which is why `commands::flows::scope_valid_flow_targets` opens a
-//! transaction), and it answers "where could this flow be started?" — a question no tool here can
-//! act on while `start_flow` is out of scope. It belongs with the write surface, not ahead of it.
+//! `valid_targets` is deliberately absent. It only reads, but it answers "where could this flow be
+//! started?" — a question no tool here can act on while `start_flow` is out of scope. It belongs
+//! with the write surface, not ahead of it.
 
 use rmcp::{
     handler::server::wrapper::Parameters,

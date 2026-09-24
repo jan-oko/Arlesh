@@ -1,7 +1,9 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { updateTask } from "@/api/tasks";
-import { getOrCreateForRef, resolveScope } from "@/api/scopes";
+import { resolveScope } from "@/api/scopes";
+import type { ScopeKey } from "@/api/scopes";
+import { keyForRef } from "@/utils/scope-key";
 import { getErrorMessage } from "@/api/errors";
 import { withGesture } from "@/api/gesture";
 import type { PendingToast } from "@/stores/use-mindmap-store";
@@ -12,8 +14,8 @@ import type { ScopeWindows } from "@/utils/plan-triage";
 import { isHabitOccurrence, planRefusal } from "@/utils/plan-triage";
 
 interface PlanMoveOptions {
-  /** The scope being filled, once it is materialized. */
-  targetScopeId: number | null;
+  /** The scope being filled, once it is known. */
+  targetScopeId: ScopeKey | null;
   /** That scope's window, once it is resolved. */
   targetWindow: ScopeInterval | null;
   /** The scope in words, for the refusal messages. */
@@ -36,8 +38,8 @@ export interface PlanMoveHandles {
   planInto: (rows: readonly TaskListRow[]) => Promise<string[]>;
   /**
    * Plans every row into one **subscope** — a week of the month, a day of the week, a band of the
-   * day. The cell is materialized on the way in, so a bucket nobody has ever planned into is a
-   * scope row that does not exist until the moment it is used.
+   * day. The cell's key is derived on the way in, so a bucket nobody has ever planned into needs
+   * nothing to exist first.
    */
   planIntoSubscope: (rows: readonly TaskListRow[], ref: ScopeRef, label: string, partial: boolean) => Promise<string[]>;
   /** Clears every row's Plan. */
@@ -173,7 +175,7 @@ export function usePlanMove({
 
   /** Writes one plan value across a batch, inside a single Gesture. */
   const write = useCallback(
-    async (rows: readonly TaskListRow[], plan: { start_id: number; end_id: number } | null, gesture: PlanGestureKey): Promise<BatchOutcome> => {
+    async (rows: readonly TaskListRow[], plan: { start_id: ScopeKey; end_id: ScopeKey } | null, gesture: PlanGestureKey): Promise<BatchOutcome> => {
       const outcome = emptyOutcome();
       if (rows.length === 0) return outcome;
       await withGesture(t(gesture, { count: rows.length }), async () => {
@@ -198,7 +200,7 @@ export function usePlanMove({
 
   /** Splits a batch on the two containment rules, then writes the half that passed. */
   const planIntoWindow = useCallback(
-    async (rows: readonly TaskListRow[], scopeId: number, window: ScopeInterval, label: string, leftPane: boolean): Promise<string[]> => {
+    async (rows: readonly TaskListRow[], scopeId: ScopeKey, window: ScopeInterval, label: string, leftPane: boolean): Promise<string[]> => {
       const { plannable, occurrences } = setAsideOccurrences(rows);
       const allowed: TaskListRow[] = [];
       const refused: BatchOutcome["refused"] = [];
@@ -227,17 +229,17 @@ export function usePlanMove({
     async (rows: readonly TaskListRow[], ref: ScopeRef, label: string, partial: boolean): Promise<string[]> => {
       if (rows.length === 0) return [];
       // A batch of occurrences alone has nothing to write, so it is not worth a cell — and a cell
-      // that failed to materialize would otherwise say so instead of the thing worth saying.
+      // that could not be read would otherwise say so instead of the thing worth saying.
       const { plannable, occurrences } = setAsideOccurrences(rows);
       if (plannable.length === 0) {
         report({ ...emptyOutcome(), occurrences }, label, false);
         return [];
       }
-      let cell: { id: number; window: ScopeInterval };
+      let cell: { id: ScopeKey; window: ScopeInterval };
       try {
-        const scope = await getOrCreateForRef(ref);
-        const resolved = await resolveScope(scope.id);
-        cell = { id: scope.id, window: { start: resolved.start, end: resolved.end } };
+        const id = keyForRef(ref);
+        const resolved = await resolveScope(id);
+        cell = { id, window: { start: resolved.start, end: resolved.end } };
       } catch (error: unknown) {
         const head = rows[0];
         if (head !== undefined) {

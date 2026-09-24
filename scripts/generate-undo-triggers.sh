@@ -19,7 +19,7 @@
 # as a failing test rather than as silently unjournaled rows.
 set -euo pipefail
 
-EXCLUDED="scopes undo_context undo_journal"
+EXCLUDED="undo_context undo_journal"
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 migrations="$repository_root/src-tauri/migrations"

@@ -8,7 +8,7 @@ import { getFlowRecurrence, habitCompletionCount } from "@/api/flows";
 import type { DurationSpec } from "@/api/time-scope";
 import VerdictWindowField from "@/components/CommitmentEditorModal/VerdictWindowField";
 import { dayScopeDate } from "@/utils/scope-calendar";
-import { getScope } from "@/api/scopes";
+import { keyStartDate } from "@/utils/scope-key";
 import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
@@ -204,18 +204,18 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
         loadedRecurrenceRef.current = null;
         return;
       }
-      const startScope = await getScope(rec.start_scope_id);
-      const endScope = rec.end_scope_id !== null ? await getScope(rec.end_scope_id) : null;
+      const startDate = keyStartDate(rec.start_scope_id);
+      const endDate = rec.end_scope_id !== null ? keyStartDate(rec.end_scope_id) : null;
       const count = await habitCompletionCount(flowId);
       if (cancelled) return;
       const loaded: RecurrenceUi = {
         isHabit: true,
-        startDate: startScope.start_date,
+        startDate,
         gapEnabled: rec.gap_n !== null,
         gapN: rec.gap_n ?? 1,
         gapKind: rec.gap_kind ?? "day",
-        endEnabled: endScope !== null,
-        endDate: endScope?.start_date ?? startScope.start_date,
+        endEnabled: endDate !== null,
+        endDate: endDate ?? startDate,
         consumptionKind: rec.consumption_kind,
         blockingMode: rec.blocking_mode ?? "overlapping",
         catchupPolicy: rec.catchup_policy ?? "next",

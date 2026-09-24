@@ -14,7 +14,7 @@ use arlesh_lib::flows::{
     set_flow_recurrence, set_iteration_done, start, update_flow, update_flow_goal,
     update_flow_task, valid_targets,
 };
-use arlesh_lib::scopes::model::ScopeKind;
+use arlesh_lib::scopes::{key::ScopeKey, model::ScopeKind};
 use arlesh_lib::tasks::{
     add_task_dependency, create_goal, create_task,
     model::{
@@ -24,20 +24,14 @@ use arlesh_lib::tasks::{
 
 /// Creates a goal under aspect 1 whose Time Scope is the single canonical scope of `kind` covering
 /// `date`, returning its id. Used to give target candidates a concrete window to contain (or not).
-async fn week_scope_id(pool: &sqlx::SqlitePool, date: chrono::NaiveDate) -> i64 {
-    helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Week, date)
-        .await
+async fn week_scope_id(_pool: &sqlx::SqlitePool, date: chrono::NaiveDate) -> ScopeKey {
+    arlesh_lib::scopes::model::Scope::containing(ScopeKind::Week, date)
         .unwrap()
         .id
 }
 
 /// A minimal valid Recurrence: continuous (no gap), open-ended, Destructive.
-fn destructive_recurrence(start_scope_id: i64) -> SetRecurrenceRequest {
+fn destructive_recurrence(start_scope_id: ScopeKey) -> SetRecurrenceRequest {
     SetRecurrenceRequest {
         start_scope_id,
         gap_n: None,
@@ -50,14 +44,7 @@ fn destructive_recurrence(start_scope_id: i64) -> SetRecurrenceRequest {
 }
 
 async fn scoped_goal(pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::NaiveDate) -> i64 {
-    let scope = helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(kind, date)
-        .await
-        .unwrap();
+    let scope = arlesh_lib::scopes::model::Scope::containing(kind, date).unwrap();
     {
         let mut db = helpers::session_factory(pool).begin().await.unwrap();
         let __r = create_goal(
@@ -1141,24 +1128,20 @@ async fn starting_a_task_flow_resolves_its_root_cycle_plan() {
 
     // The root task's Plan resolves to days 2–3 of the window. The 2-week window starts at its week
     // scope (Sunday 2026-01-04), so day 2 = 2026-01-05 and day 3 = 2026-01-06.
-    let (plan_start, plan_end): (Option<i64>, Option<i64>) =
+    let (plan_start, plan_end): (Option<String>, Option<String>) =
         sqlx::query_as("SELECT plan_start_id, plan_end_id FROM tasks WHERE id = ?")
             .bind(result.root_id)
             .fetch_one(&pool)
             .await
             .unwrap();
-    let start_date: String = sqlx::query_scalar("SELECT start_date FROM scopes WHERE id = ?")
-        .bind(plan_start.unwrap())
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    let end_date: String = sqlx::query_scalar("SELECT start_date FROM scopes WHERE id = ?")
-        .bind(plan_end.unwrap())
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(start_date, "2026-01-05");
-    assert_eq!(end_date, "2026-01-06");
+    assert_eq!(
+        plan_start.as_deref(),
+        Some(r#"{"kind":"day","date":"2026-01-05"}"#)
+    );
+    assert_eq!(
+        plan_end.as_deref(),
+        Some(r#"{"kind":"day","date":"2026-01-06"}"#)
+    );
 }
 
 #[tokio::test]
@@ -2087,14 +2070,8 @@ async fn exact_phase_habit_recurs_at_the_fixed_time_each_day() {
         .unwrap();
 
     // The start scope pins only the first occurrence day; Gap of 1 day → daily at 10:00–12:00.
-    let day = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Day, ymd(2026, 1, 5))
-        .await
-        .unwrap();
+    let day =
+        arlesh_lib::scopes::model::Scope::containing(ScopeKind::Day, ymd(2026, 1, 5)).unwrap();
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = set_flow_recurrence(
@@ -2160,14 +2137,8 @@ async fn part_phase_habit_recurs_every_gap_days_in_the_same_band() {
         .await
         .unwrap();
 
-    let day = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Day, ymd(2026, 1, 5))
-        .await
-        .unwrap();
+    let day =
+        arlesh_lib::scopes::model::Scope::containing(ScopeKind::Day, ymd(2026, 1, 5)).unwrap();
     // Gap of 2 days → every 2nd day's Evening: Jan 5, 7, 9, ...
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
@@ -2254,22 +2225,17 @@ async fn starting_an_exact_phase_flow_materializes_a_sub_day_window() {
     assert_eq!(mat.root_type, "task");
 
     // The materialized root carries a single exact scope spanning 10:00–12:00 on the anchor day.
-    let (start_id, end_id): (Option<i64>, Option<i64>) =
+    let (start_id, end_id): (Option<String>, Option<String>) =
         sqlx::query_as("SELECT time_scope_start_id, time_scope_end_id FROM tasks WHERE id = ?")
             .bind(mat.root_id)
             .fetch_one(&pool)
             .await
             .unwrap();
     assert_eq!(start_id, end_id);
-    let (kind, sdt, edt): (String, Option<String>, Option<String>) =
-        sqlx::query_as("SELECT kind, start_datetime, end_datetime FROM scopes WHERE id = ?")
-            .bind(start_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(kind, "exact");
-    assert_eq!(sdt.as_deref(), Some("2026-01-05T10:00:00"));
-    assert_eq!(edt.as_deref(), Some("2026-01-05T12:00:00"));
+    assert_eq!(
+        start_id.as_deref(),
+        Some(r#"{"kind":"exact","start":"2026-01-05T10:00:00","end":"2026-01-05T12:00:00"}"#)
+    );
 }
 
 #[tokio::test]
@@ -2312,20 +2278,16 @@ async fn starting_a_part_phase_flow_materializes_the_band() {
     }
     .unwrap();
 
-    let start_id: Option<i64> =
+    let start_id: Option<String> =
         sqlx::query_scalar("SELECT time_scope_start_id FROM tasks WHERE id = ?")
             .bind(mat.root_id)
             .fetch_one(&pool)
             .await
             .unwrap();
-    let (kind, part): (String, Option<String>) =
-        sqlx::query_as("SELECT kind, part FROM scopes WHERE id = ?")
-            .bind(start_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(kind, "part_of_day");
-    assert_eq!(part.as_deref(), Some("evening"));
+    assert_eq!(
+        start_id.as_deref(),
+        Some(r#"{"kind":"part_of_day","date":"2026-01-05","part":"evening"}"#)
+    );
 }
 
 #[tokio::test]
@@ -3100,14 +3062,8 @@ async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subt
     let pool = helpers::test_pool().await;
 
     // Root goal under a domain (aspect 1), scoped to a week → maps to a Span(1, week) window.
-    let week = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Week, ymd(2026, 1, 5))
-        .await
-        .unwrap();
+    let week =
+        arlesh_lib::scopes::model::Scope::containing(ScopeKind::Week, ymd(2026, 1, 5)).unwrap();
     let root = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = create_goal(
@@ -3133,14 +3089,8 @@ async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subt
     }
     .unwrap();
     // A task scoped to a day inside that week → maps to a (day, offset) cycle scope.
-    let day = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Day, ymd(2026, 1, 7))
-        .await
-        .unwrap();
+    let day =
+        arlesh_lib::scopes::model::Scope::containing(ScopeKind::Day, ymd(2026, 1, 7)).unwrap();
     let step = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = create_task(
@@ -3724,18 +3674,12 @@ async fn a_commitment_habits_iterations_stop_offering_a_verdict_once_the_window_
         })
         .await
         .unwrap();
-    let start = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(
-            ScopeKind::Day,
-            chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap(),
-        )
-        .await
-        .unwrap()
-        .id;
+    let start = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Day,
+        chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap(),
+    )
+    .unwrap()
+    .id;
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         set_flow_recurrence(
@@ -4077,15 +4021,9 @@ fn an_explicit_null_root_plan_end_in_an_update_payload_clears_it() {
 // drew one node per item, hard-coded Active for as long as its iteration was. These cover the
 // resolution that fixes it, on a Span-windowed Habit and on a Phase-windowed one.
 
-/// Creates the canonical scope of `kind` covering `date` and returns its id.
-async fn scope_id(pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::NaiveDate) -> i64 {
-    helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(kind, date)
-        .await
+/// The canonical scope of `kind` covering `date`.
+async fn scope_id(_pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::NaiveDate) -> ScopeKey {
+    arlesh_lib::scopes::model::Scope::containing(kind, date)
         .unwrap()
         .id
 }
@@ -4197,12 +4135,9 @@ async fn iterations_at(
 }
 
 /// The `(kind, part)` of the scope a resolved Cycle Scope names.
-async fn scope_shape(pool: &sqlx::SqlitePool, scope_id: i64) -> (String, Option<String>) {
-    sqlx::query_as("SELECT kind, part FROM scopes WHERE id = ?")
-        .bind(scope_id)
-        .fetch_one(pool)
-        .await
-        .unwrap()
+async fn scope_shape(_pool: &sqlx::SqlitePool, scope_id: ScopeKey) -> (String, Option<String>) {
+    let scope = scope_id.scope();
+    (scope.kind, scope.part)
 }
 
 #[tokio::test]

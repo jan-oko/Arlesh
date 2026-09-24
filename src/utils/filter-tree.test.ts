@@ -3,6 +3,7 @@ import { filterTree, filterTreeWithFocus, DEFAULT_FILTER } from "./filter-tree";
 import { focusExemptPath } from "./focus-exemption";
 import type { FilterState } from "./filter-tree";
 import type { MindmapNode, NodeKind } from "./tree-layout";
+import { testKey } from "@/test/scope-key";
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}, children: MindmapNode[] = []): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children, ...extra };
@@ -174,7 +175,7 @@ describe("filterTree — flows & habits", () => {
 
 describe("filterTree — a habit occurrence whose window has not opened", () => {
   const occurrence = (cycleId: number) => ({
-    flowId: 3, itemType: "flow_task" as const, itemId: 4, scopeId: 100, cycleId,
+    flowId: 3, itemType: "flow_task" as const, itemId: 4, scopeId: testKey(100), cycleId,
   });
 
   // A daily habit's iteration at breakfast: the morning item's window is open, this evening's is

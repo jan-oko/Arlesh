@@ -52,6 +52,8 @@ import { formatScopeCore } from "@/utils/scope-format";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
 import type { CanonicalKind } from "@/utils/scope-ref";
+import type { ScopeKey } from "@/api/scopes";
+import { scopeKeyText } from "@/utils/scope-key";
 import type { DurationSpec, TimeScope } from "@/api/time-scope";
 import { localNowIso } from "@/utils/local-now";
 
@@ -278,7 +280,7 @@ function occurrenceNode(
 ): MindmapNode {
   const { itemType, item } = entry;
   const scopeId = iteration.anchor_scope_id;
-  const raw = statuses.get(`${itemKey(itemType, item.id)}-${instance.cycle_id}-${scopeId}`);
+  const raw = statuses.get(`${itemKey(itemType, item.id)}-${instance.cycle_id}-${scopeKeyText(scopeId)}`);
   const done = raw === "done";
   return {
     id: `habititem-${itemType}-${item.id}-${instance.cycle_id}-${iteration.index}-virtual`,
@@ -378,9 +380,9 @@ export function holdsUnrenderableGoalItems(flow: Flow, flowGoals: readonly FlowG
  * iteration scope, the same quadruple the backend attaches by.
  */
 function instanceKey(
-  itemType: string, itemId: number, cycleId: number, iterationScopeId: number,
+  itemType: string, itemId: number, cycleId: number, iterationScopeId: ScopeKey,
 ): string {
-  return `${itemType}-${itemId}-${cycleId}-${iterationScopeId}`;
+  return `${itemType}-${itemId}-${cycleId}-${scopeKeyText(iterationScopeId)}`;
 }
 
 /** Every added child grouped by the occurrence it hangs on. */
@@ -493,7 +495,7 @@ export function injectHabitInstances(
     // completing the morning one must not tick the evening one off with it.
     const statuses = new Map(
       (statusesByFlow[i] ?? []).map((s) => [
-        `${itemKey(s.item_type, s.item_id)}-${s.cycle_id}-${s.iteration_scope_id}`,
+        `${itemKey(s.item_type, s.item_id)}-${s.cycle_id}-${scopeKeyText(s.iteration_scope_id)}`,
         s.status,
       ]),
     );
@@ -509,7 +511,7 @@ export function injectHabitInstances(
       // so a long-closed window is still `active`.
       const windowPassed = iteration.window_end <= now;
       // The root is its own instance (`flow_root`, keyed by the flow id) with its own status.
-      const rootRaw = statuses.get(`${itemKey("flow_root", flow.id)}-${NO_CYCLE}-${scopeId}`);
+      const rootRaw = statuses.get(`${itemKey("flow_root", flow.id)}-${NO_CYCLE}-${scopeKeyText(scopeId)}`);
       const rootDone = rootRaw === "done";
       const isCommitment = flow.instance_type === "commitment";
       const rootVerdict = instanceVerdict(rootRaw);

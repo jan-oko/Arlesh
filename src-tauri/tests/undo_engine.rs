@@ -1022,18 +1022,12 @@ async fn undoing_a_cleared_habit_completion_brings_it_back_on_the_occurrence_it_
     .expect("read the cycle pairs");
     let evening = *pairs.last().expect("the item has two pairs");
 
-    let iteration_scope_id = helpers::session_factory(&pool)
-        .connect()
-        .await
-        .expect("connect")
-        .scopes()
-        .get_or_create(
-            ScopeKind::Day,
-            chrono::NaiveDate::from_ymd_opt(2026, 1, 5).expect("a real date"),
-        )
-        .await
-        .expect("the day scope")
-        .id;
+    let iteration_scope_id = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Day,
+        chrono::NaiveDate::from_ymd_opt(2026, 1, 5).expect("a real date"),
+    )
+    .expect("the day scope")
+    .id;
     let instance = || HabitInstanceRef {
         item_type: "flow_task".into(),
         item_id: item.id,

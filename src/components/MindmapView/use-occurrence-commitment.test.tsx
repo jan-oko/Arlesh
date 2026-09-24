@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { ScopeKey } from "@/api/scopes";
 import { useCallback, useState } from "react";
 import { render, screen, fireEvent, waitFor, renderHook, act } from "@testing-library/react";
 import { useMindmapData } from "./use-mindmap-data";
@@ -9,6 +10,7 @@ import { findNode } from "@/utils/mindmap-tree";
 import { NO_CYCLE } from "@/api/flows";
 import type { MindmapLoad } from "@/api/mindmap";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import { testKey } from "@/test/scope-key";
 
 // Nothing under `@/api` is mocked here, on purpose. The question is what Shift+C on a virtual
 // Habit occurrence actually puts *on the wire*: an occurrence has no row id, so a create that
@@ -41,7 +43,7 @@ declare global {
 }
 
 const FLOW_ID = 3;
-const ITERATION_SCOPE_ID = 100;
+const ITERATION_SCOPE_ID: ScopeKey = { kind: "day", date: "2026-01-05" };
 /** The nightly Habit's first iteration, as `injectHabitInstances` ids it. */
 const OCCURRENCE_ID = `habit-${FLOW_ID}-0-virtual`;
 /** The row `create_habit_instance_child` reports back for the attached commitment. */
@@ -55,7 +57,7 @@ const INSTANCE = {
   cycle_id: NO_CYCLE,
 };
 
-const WINDOW = { start_id: 7, end_id: 9 };
+const WINDOW = { start_id: testKey(7), end_id: testKey(9) };
 
 function envelope(): MindmapLoad {
   return {

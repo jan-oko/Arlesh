@@ -40,7 +40,6 @@ use crate::domains::DomainOperator;
 use crate::flows::FlowOperator;
 use crate::infos::InfoOperator;
 use crate::knowledge_base::{EventOperator, PersonOperator, ThreadOperator};
-use crate::scopes::ScopeOperator;
 use crate::tasks::{CommitmentOperator, ExpectationOperator, GoalOperator, TaskOperator};
 use crate::undo::UndoOperator;
 
@@ -89,7 +88,7 @@ impl SessionMode for Transactional {
 /// # Borrowing
 ///
 /// Work is done through the per-resource operators the session hands out — `db.goals()`,
-/// `db.tasks()`, `db.scopes()` and so on. Each accessor borrows the session mutably for the
+/// `db.tasks()`, `db.goals()` and so on. Each accessor borrows the session mutably for the
 /// duration of a single call, so operators are used **inline** (`db.goals().create(…).await?`)
 /// and never stored: binding two at once is a compile error, because both would be borrowing the
 /// one connection the session owns. The diagnostic is "cannot borrow `*db` as mutable more than
@@ -101,9 +100,9 @@ impl SessionMode for Transactional {
 /// Three cases, and every database operation in this crate is exactly one of them:
 ///
 /// 1. **One resource** — a method on that resource's operator, taking `&mut self`. Most of the
-///    crate. `GoalOperator::list`, `ScopeOperator::get`.
+///    crate. `GoalOperator::list`, `TaskOperator::get`.
 /// 2. **Several resources** — a free function taking `&mut Db<M>`, reaching each resource by
-///    calling `db.scopes()`, `db.goals()`, `db.tasks()` inline, one at a time. It takes the
+///    calling `db.goals()`, `db.tasks()` inline, one at a time. It takes the
 ///    session precisely because it needs more than one resource from it. `tasks`'
 ///    scope-containment rules are all of this kind.
 /// 3. **Several resources, atomically** — the same, but taking `&mut Db<Transactional>`
@@ -137,9 +136,8 @@ impl SessionMode for Transactional {
 /// The rule has exactly one exemption, and it is about **consequence, not shape**: a
 /// check-then-write may stay an operator method when a **schema constraint independently enforces
 /// the invariant the check is testing**, because then a lost race is a constraint error rather
-/// than corruption. `ScopeOperator::get_or_create` and its two siblings probe for a scope before
-/// inserting one, and `scopes_canonical_uniq`, `scopes_part_uniq` and `scopes_exact_uniq` stand
-/// behind them; each doc names its index, so the exemption is visible rather than assumed.
+/// than corruption. (`ScopeOperator` used to be the example, probing for a scope row before
+/// inserting one; scopes are derived now and have no operator.)
 /// `tasks::add_task_dependency` is the counter-example that fixes the boundary: nothing in the
 /// schema expresses acyclicity, so two callers can each see no cycle and jointly create one, and
 /// it is a free function over `Db<Transactional>`.
@@ -207,11 +205,6 @@ impl<M: SessionMode> Db<M> {
     /// Knowledge-base people.
     pub fn people(&mut self) -> PersonOperator<'_> {
         PersonOperator::new(self.connection())
-    }
-
-    /// Seasons, months, weeks and days.
-    pub fn scopes(&mut self) -> ScopeOperator<'_> {
-        ScopeOperator::new(self.connection())
     }
 
     /// Tasks — action items.

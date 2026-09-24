@@ -17,12 +17,9 @@
 //!
 //! [`ArleshMcp::beads`] is the one tool that writes something the user sees: it sets the `bd`
 //! issue id on a Task, Goal or Project, and is the only way that field can be set at all. Every
-//! other tool is annotated `read_only_hint = true` except [`ArleshMcp::snapshot`], which is not
-//! read-only and says so: deriving a Habit's iterations materialises the scope rows its
-//! windows land on, so the snapshot opens a transactional session and commits. Those writes create
-//! no user content — no task, goal or flow — and are the same rows the mindmap materialises on its
-//! next load. Running the snapshot uncommitted would make it a pure read, but its habit iterations
-//! reference the scope ids it mints, so the payload would hand out ids that no longer resolve.
+//! other tool, [`ArleshMcp::snapshot`] included, is annotated `read_only_hint = true` and writes
+//! nothing. The snapshot used to be the exception — deriving a Habit's iterations minted the scope
+//! rows their windows landed on — until scopes became derived values (ADR 0009).
 //!
 //! See `docs/superpowers/specs/2026-09-16-mcp-server-design.md`.
 

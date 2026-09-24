@@ -263,7 +263,7 @@ and a fold defeats it. Three rules keep the split from hiding anything:
   among the work that was already placed and with no gesture that could move it. It still needs
   placing, so it belongs on the side that places things.
 
-**Sectioning compares dates, never instants.** A scope row carries `start_date` and `end_date` as
+**Sectioning compares dates, never instants.** A scope carries `start_date` and `end_date` as
 plain dates, and so does a calendar cell, so "is this plan inside that week" is a string
 comparison. Building a datetime window here would bake in what instant a day begins at — which is
 the backend's answer, and not one this view may assume.
@@ -304,12 +304,12 @@ shows. A **week at a month's edge** goes to the month holding its **first day**,
 reading of "the week's month" and the same parent the candidates pane reads.
 On a **Season** Up is disabled and says on hover that a Season is the top of the ladder — the same
 structural reason *Show only planned to parent scope* is inert there. It is disabled for the moment
-the scope is still being materialized, too, since its parent is not known yet. **`\`** does the same, and where the button is disabled the key does not do nothing: it
+the scope is still being read, too, since its parent is not known yet. **`\`** does the same, and where the button is disabled the key does not do nothing: it
 says the button's reason in a toast, because a press with no visible effect reads as a key that is
 not bound. `\` was free in every table and sits beside `[` `]` on a US layout — the third key of
 the cluster, for the one step that leaves the bracket axis.
 
-Stepping walks from the materialized scope's own start date rather than from wherever the cursor
+Stepping walks from the scope's own start date rather than from wherever the cursor
 happened to sit inside it, so a month stepped from the 31st lands on the next month. Walking parts
 of a day rolls over into the next or previous day at either end of the sequence.
 

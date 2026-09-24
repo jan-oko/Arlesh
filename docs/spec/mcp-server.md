@@ -29,7 +29,7 @@ definition it loads.
 | Tool | Operations |
 | --- | --- |
 | `arlesh_snapshot` | `load(now, sections?, cursor?, filter?)` — the whole planning graph: domains, goals, tasks, **commitments**, notes, flows, flow items, cycles, dependencies, block reasons, materialised instance nodes, every item's derived lifecycle, each flow's habit iterations and statuses, and which occurrence each **added child** hangs on. Paged; see below |
-| `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` |
+| `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` — `id` is a scope's value key, a JSON object such as `{"kind":"week","date":"2026-09-20"}` |
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
 | `arlesh_tasks` | `get(id)`, `containment_conflicts(node, time_scope)` |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
@@ -51,9 +51,13 @@ is done, the wait it spawned is in `spawned_waits`, keyed by the task, with its 
 entries (`spawned_wait`, `spawned_check`). The derived nodes the views draw — a wait's check task, a delegated task's wait,
 a spawned wait — are not rows of their own: they are read off these sections and the task rows. Querying waits is `Arlesh-rz0`'s.
 
-Tasks, Goals and Commitments carry `time_scope` and `plan` as boundary **scope ids**, not dates, so reading a
-snapshot means resolving those ids — `arlesh_scopes.resolve_many` does a batch in one call against
-a single reference instant.
+Tasks, Goals and Commitments carry `time_scope` and `plan` as boundary **scope ids**, and a scope's
+id is its value key — `{"kind":"week","date":"2026-09-20"}`, `{"kind":"part_of_day","date":"2026-09-23","part":"morning"}` (see
+[*Scopes are derived*](time-scopes.md)) — so the dates are in the snapshot itself and reading it needs no
+round trip. `arlesh_scopes` is for what a key does not spell out: `get` adds the label and the
+inclusive end date, and `resolve` / `resolve_many` the half-open datetime window (a Day runs
+02:00 → 02:00) and whether it is active, all against a single reference instant. None of them
+touches the database.
 
 ## Filtering a read
 
@@ -124,22 +128,18 @@ Passing `null` clears the link. Setting one on an item that does not exist is an
 a silent no-op, and only the `project` subtype of Domain accepts a link — an Aspect, Domain or Tag
 is refused.
 
-## Scope materialisation
+## Nothing but `arlesh_beads` writes
 
-`arlesh_snapshot` is annotated as *not* read-only, and honestly so. Deriving a Habit's iterations
-materialises the canonical scope rows its windows land on — the same rows the Mindmap materialises
-on its next load — so the snapshot writes those and commits them. It creates no Task, Goal, Flow or
-note, and changes nothing the user entered. Running it without committing would make it a pure
-read, but the iterations it returns reference the scope ids it mints, so the payload would name ids
-that no longer exist.
-
-Every tool other than `arlesh_snapshot` and `arlesh_beads` is annotated `read_only_hint = true`
-and writes nothing at all.
+Every tool other than `arlesh_beads` is annotated `read_only_hint = true` and writes nothing at all.
+`arlesh_snapshot` used to be the exception: deriving a Habit's iterations minted the scope rows
+their windows landed on, and it had to commit them or the payload would name ids that no longer
+existed. Scopes are derived now (ADR 0009), so the snapshot reads in a read-only session like
+everything else.
 
 ## What is deliberately absent
 
-- **Every write command**, including `retype_node`, `start_flow` and the `get_or_create_*` scopes.
-- **`valid_targets`** — it reads, but resolving a concrete window mints the scopes it names, and it
+- **Every write command**, including `retype_node` and `start_flow`.
+- **`valid_targets`** — it only reads, but it
   answers "where could this Flow be started?", a question nothing on this surface can act on while
   starting a Flow is a write. It returns alongside `start_flow`.
 - **The List view's own pill dimensions** — Antecedent, Dependency, Task/Goal/Project status, Verdict,

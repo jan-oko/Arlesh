@@ -90,12 +90,6 @@ use statement::{Replay, SqlValue, Statement};
 /// The list is part of the design, not an optimisation, and each entry is here for a reason that
 /// would survive being asked about:
 ///
-/// * `scopes` — a scope row is not authored, it is the calendar. It is instantiated on demand by
-///   `ScopeOperator::get_or_create`, deduplicated by three uniqueness indexes, and never deleted
-///   by anything in this codebase. Journalling it would have undo delete a row that the next read
-///   recreates — and, when another item still references it, fail the undo outright against the
-///   foreign keys. An item's own entry restores its reference to a scope; the scope itself needs
-///   no restoring.
 /// * `undo_context`, `undo_journal` — journalling the journal is a loop.
 ///
 /// `sqlite_*` and `_sqlx_migrations` are infrastructure rather than board data and are excluded by
@@ -105,7 +99,7 @@ use statement::{Replay, SqlValue, Statement};
 /// `tests/undo_journal.rs` reads this list, enumerates the schema from `sqlite_master`, and fails
 /// when a table that is not on it has no triggers — so the exclusion list cannot quietly grow by
 /// omission. `scripts/generate-undo-triggers.sh` holds the same list, for the other direction.
-pub const EXCLUDED_TABLES: &[&str] = &["scopes", "undo_context", "undo_journal"];
+pub const EXCLUDED_TABLES: &[&str] = &["undo_context", "undo_journal"];
 
 /// How many Gestures the journal keeps before the oldest are dropped.
 ///

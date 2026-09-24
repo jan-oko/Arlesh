@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use chrono::NaiveDateTime;
 
 use super::model::{HabitIteration, InstanceTiming, IterationStatus};
+use crate::scopes::key::ScopeKey;
 
 /// A precomputed iteration window: its ordinal, anchoring scope, and half-open `[start, end)`
 /// datetime span. Supplied index-ordered from the Repetition Start.
@@ -25,7 +26,7 @@ pub struct SlotWindow {
     /// Zero-based ordinal from the Repetition Start.
     pub index: i64,
     /// Scope anchoring the window's first period.
-    pub scope_id: i64,
+    pub scope_id: ScopeKey,
     /// Inclusive start of the window.
     pub start: NaiveDateTime,
     /// Exclusive end of the window (the window has passed once `now >= end`).

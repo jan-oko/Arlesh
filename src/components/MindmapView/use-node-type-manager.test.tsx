@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useNodeTypeManager } from "./use-node-type-manager";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
+import { testKey } from "@/test/scope-key";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
@@ -174,7 +175,7 @@ describe("useNodeTypeManager — the backend's refusal becomes the prompt", () =
 
 describe("useNodeTypeManager — a Commitment with nowhere to get a window", () => {
   const UNSCOPED = { kind: "needs_time_scope", message: "a commitment must have a time scope of its own or inherit one" };
-  const TONIGHT = { start_id: 7, end_id: 7 };
+  const TONIGHT = { start_id: testKey(7), end_id: testKey(7) };
 
   function unscopedHook(first: unknown = UNSCOPED) {
     const retypeNode = vi.fn().mockRejectedValueOnce(first).mockResolvedValue("commitment-99");

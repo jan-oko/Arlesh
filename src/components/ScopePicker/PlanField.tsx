@@ -8,6 +8,7 @@ import { useScopePicker } from "@/hooks/use-scope-picker";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
 import { dayScopeDate, lastDayOfWindow, openingForRefs } from "@/utils/scope-calendar";
 import { refsForScopes } from "@/utils/scope-ref";
+import { scopeKeyText } from "@/utils/scope-key";
 import { formatScopeRange } from "@/utils/scope-format";
 import ScopePicker, { type ScopeConstraint } from "./ScopePicker";
 import styles from "./ScopeField.module.css";
@@ -63,7 +64,7 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
   useEffect(() => {
     if (value === null) return;
     let active = true;
-    const key = `${value.start_id}:${value.end_id}`;
+    const key = `${scopeKeyText(value.start_id)}/${scopeKeyText(value.end_id)}`;
     void Promise.all([getScope(value.start_id), getScope(value.end_id)]).then(([start, end]) => {
       if (active && start != null && end != null) setFetched({ key, scopes: [start, end] });
     });
@@ -85,7 +86,7 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
     setOpen(false);
   }
 
-  const planKey = value === null ? null : `${value.start_id}:${value.end_id}`;
+  const planKey = value === null ? null : `${scopeKeyText(value.start_id)}/${scopeKeyText(value.end_id)}`;
   const endpoints = fetched !== null && fetched.key === planKey ? fetched.scopes : null;
   const rangeLabel = endpoints === null ? null : formatScopeRange(endpoints[0], endpoints[1], labels);
   // The cells the stored plan occupies drive both where the picker opens and what it has

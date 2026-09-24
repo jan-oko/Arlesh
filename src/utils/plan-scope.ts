@@ -1,6 +1,6 @@
 // The Plan View's cursor: which scope is being filled, and how walking to the next one works.
-// Pure and synchronous — the cursor is a calendar position, and only materializing it (turning it
-// into a scope row with an id and a window) touches the backend.
+// Pure and synchronous — the cursor is a calendar position, and only reading it back (its label,
+// dates and window) asks the backend.
 
 import type { PartOfDay, Scope } from "@/api/scopes";
 import type { ScopeRef } from "@/utils/scope-ref";
@@ -35,7 +35,7 @@ export interface PlanScopeCursor {
 
 const FIRST_PART: PartOfDay = "premorning";
 
-/** The calendar cell a cursor names — what materializes to the scope row being filled. */
+/** The calendar cell a cursor names — the scope being filled. */
 export function cursorRef(cursor: PlanScopeCursor): ScopeRef {
   if (cursor.kind === "part_of_day") {
     return { kind: "part_of_day", date: cursor.date, part: cursor.part };
@@ -101,7 +101,7 @@ export function cursorAtNow(kind: ViewKind, todayIso: string, hour: number): Pla
  *   part of day, the day's first band).
  * - **The same kind:** nowhere; the cursor is returned as it is.
  *
- * While the current scope has not materialized there are no dates to reason from, and the kind
+ * While the current scope has not been read back there are no dates to reason from, and the kind
  * alone changes, anchored where the cursor already was — which is what the selector always did.
  */
 export function cursorForKind(
@@ -139,8 +139,8 @@ export function upRefusalKey(refusal: UpRefusal): "upScopeAtTop" | "upScopeResol
  * top-level scope, so for it the question has no answer, and nothing else on the ladder is ever
  * without one. (An Exact window is not on the ladder and is never filled, so it has none either.)
  *
- * Asked of the calendar by date rather than read off the row's containment ids, because a **Week**
- * row carries no month: weeks do not nest in months.
+ * Asked of the calendar by date, because a **Week** has no single month: weeks do not nest in
+ * months.
  *
  * **Always one**, the cell holding the scope's **first day** — including for a week at a month's
  * edge, which is in two months. That week once had both as parents, and so offered October's work

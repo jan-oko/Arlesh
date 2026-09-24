@@ -20,6 +20,7 @@ use chrono::{NaiveDate, NaiveDateTime, Timelike};
 use serde::Serialize;
 
 use crate::database::session::{Db, SessionMode};
+use crate::scopes::key::ScopeKey;
 use crate::scopes::model::ScopeKind;
 use crate::scopes::resolve::DAY_BOUNDARY_HOUR;
 
@@ -131,26 +132,14 @@ pub fn spawned_check_due(
     next_check_due(every, starting, last)
 }
 
-/// The single-day Time Scope a check due at `due` is drawn in — minting the day's scope row.
-pub async fn check_window<M: SessionMode>(
-    db: &mut Db<M>,
-    due: NaiveDateTime,
-) -> Result<TimeScope, TaskError> {
-    let day = db
-        .scopes()
-        .get_or_create(ScopeKind::Day, day_of(due))
-        .await?;
-    Ok(TimeScope {
-        start_id: day.id,
-        end_id: day.id,
-        duration: None,
-    })
+/// The single-day Time Scope a check due at `due` is drawn in.
+pub fn check_window(due: NaiveDateTime) -> TimeScope {
+    TimeScope::single(ScopeKey::day(day_of(due)))
 }
 
 /// The Time Scope a template's **rule** gives a wait that began on `from`: N of the kind, the first
 /// being the one `from` falls in. `None` for a kind that cannot be counted.
-pub async fn window_from_rule<M: SessionMode>(
-    db: &mut Db<M>,
+pub fn window_from_rule(
     rule: &DurationSpec,
     from: NaiveDate,
 ) -> Result<Option<TimeScope>, TaskError> {
@@ -161,11 +150,9 @@ pub async fn window_from_rule<M: SessionMode>(
     let Some(last) = advance_by(start_at, (rule.n - 1).max(0), &rule.kind) else {
         return Ok(None);
     };
-    let start = db.scopes().get_or_create(kind, from).await?;
-    let end = db.scopes().get_or_create(kind, last.date()).await?;
     Ok(Some(TimeScope {
-        start_id: start.id,
-        end_id: end.id,
+        start_id: ScopeKey::containing(kind, from)?,
+        end_id: ScopeKey::containing(kind, last.date())?,
         duration: Some(rule.clone()),
     }))
 }
@@ -500,7 +487,7 @@ pub struct SpawnedWaitView {
 }
 
 /// Every wait's derived windows at one load: the stored Expectations' next checks, and each
-/// spawned wait with its window and next check. Mints the scope rows the windows land on.
+/// spawned wait with its window and next check.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct WaitWindows {
     /// Each stored Expectation with a check due.
@@ -526,7 +513,7 @@ pub async fn derive_wait_windows<M: SessionMode>(
         {
             windows.expectation_checks.push(ExpectationCheck {
                 expectation_id: expectation.id,
-                due: check_window(db, done.due_at).await?,
+                due: check_window(done.due_at),
                 due_at: done.due_at,
                 resolved_at: Some(done.resolved_at),
             });
@@ -534,7 +521,7 @@ pub async fn derive_wait_windows<M: SessionMode>(
         if let Some(due) = stored_check_due(&expectation).filter(|due| is_due(*due, now)) {
             windows.expectation_checks.push(ExpectationCheck {
                 expectation_id: expectation.id,
-                due: check_window(db, due).await?,
+                due: check_window(due),
                 due_at: due,
                 resolved_at: None,
             });
@@ -545,7 +532,7 @@ pub async fn derive_wait_windows<M: SessionMode>(
             continue;
         };
         let time_scope = match (&template.time_scope, wait.spawned_at) {
-            (Some(rule), Some(began)) => window_from_rule(db, rule, day_of(began)).await?,
+            (Some(rule), Some(began)) => window_from_rule(rule, day_of(began))?,
             _ => None,
         };
         let due = template
@@ -553,10 +540,7 @@ pub async fn derive_wait_windows<M: SessionMode>(
             .as_ref()
             .and_then(|every| spawned_check_due(&wait, every, now))
             .filter(|due| is_due(*due, now));
-        let next_check = match due {
-            Some(due) => Some(check_window(db, due).await?),
-            None => None,
-        };
+        let next_check = due.map(check_window);
         // Checks from an earlier completion of the Task belong to that one, not this.
         let mut done_checks = Vec::new();
         for done in db
@@ -571,7 +555,7 @@ pub async fn derive_wait_windows<M: SessionMode>(
                 continue;
             }
             done_checks.push(DoneCheck {
-                due: check_window(db, done.due_at).await?,
+                due: check_window(done.due_at),
                 due_at: done.due_at,
                 resolved_at: done.resolved_at,
             });

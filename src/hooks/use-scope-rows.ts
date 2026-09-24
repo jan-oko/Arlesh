@@ -1,19 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { getScope } from "@/api/scopes";
-import type { Scope } from "@/api/scopes";
+import type { Scope, ScopeKey } from "@/api/scopes";
+import { scopeKeyFromText, scopeKeyText, type ScopeKeyText } from "@/utils/scope-key";
 
 /**
- * Scope rows are immutable once created, so one read serves the session. Shared with nothing else:
+ * A scope is a pure function of its key, so one read serves the session. Shared with nothing else:
  * `use-scope-windows` caches the *resolved window* of a scope, which answers a different question.
  */
-const cache = new Map<number, Promise<Scope>>();
+const cache = new Map<ScopeKeyText, Promise<Scope>>();
 
-function readCached(id: number): Promise<Scope> {
-  const hit = cache.get(id);
+function readCached(id: ScopeKey): Promise<Scope> {
+  const text = scopeKeyText(id);
+  const hit = cache.get(text);
   if (hit !== undefined) return hit;
   const pending = getScope(id);
   // A rejection must not be cached, or one transient failure makes a scope unreadable all session.
-  cache.set(id, pending.catch((error: unknown) => { cache.delete(id); throw error; }));
+  cache.set(text, pending.catch((error: unknown) => { cache.delete(text); throw error; }));
   return pending;
 }
 
@@ -33,20 +35,25 @@ export function clearScopeRowCache(): void {
  * A row that fails to read is simply **absent**, never fabricated — the caller treats a missing
  * row as "not known yet" and shows the task in its catch-all rather than filing it under a guess.
  */
-export function useScopeRows(ids: readonly number[]): ReadonlyMap<number, Scope> {
-  // The caller rebuilds its id list every render; the sorted key is what actually changed.
-  const key = useMemo(() => [...new Set(ids)].sort((a, b) => a - b).join(","), [ids]);
-  const [rows, setRows] = useState<ReadonlyMap<number, Scope>>(new Map());
+export function useScopeRows(ids: readonly ScopeKey[]): ReadonlyMap<ScopeKeyText, Scope> {
+  // The caller rebuilds its id list every render; the sorted canonical texts are what actually
+  // changed. A key's text holds no newline, so one separates them.
+  const key = useMemo(() => [...new Set(ids.map(scopeKeyText))].sort().join("\n"), [ids]);
+  const [rows, setRows] = useState<ReadonlyMap<ScopeKeyText, Scope>>(new Map());
 
   useEffect(() => {
     let active = true;
-    const wanted = key === "" ? [] : key.split(",").map(Number);
-    const entries: Array<[number, Scope]> = [];
+    const wanted = key === "" ? [] : key.split("\n");
+    const entries: Array<[ScopeKeyText, Scope]> = [];
     void Promise.all(
-      wanted.map((id) => readCached(id).then(
-        (scope) => { entries.push([id, scope]); },
-        () => { /* absent, not fabricated */ },
-      )),
+      wanted.map((text) => {
+        const id = scopeKeyFromText(text);
+        if (id === null) return Promise.resolve();
+        return readCached(id).then(
+          (scope) => { entries.push([text, scope]); },
+          () => { /* absent, not fabricated */ },
+        );
+      }),
     ).then(() => {
       if (active) setRows(new Map(entries));
     });

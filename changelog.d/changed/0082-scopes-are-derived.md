@@ -1,0 +1,3 @@
+- **Opening the board no longer writes to it.** Every Season, Month, Week, Day and Part of Day is now worked out from its dates when it is needed instead of being saved the first time something touches it, so loading the Mindmap, List or Plan View — and an agent's MCP snapshot — only reads. Boards with long-running Habits load faster.
+
+  A week that spans New Year is always labelled with the year it starts in (e.g. "Week 53 2026"); it used to depend on which of its days was used first. A retype prompt that warns a Plan or Time Scope will be dropped now names it ("Week 39 2026") instead of showing an internal number.

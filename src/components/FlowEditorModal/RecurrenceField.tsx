@@ -18,7 +18,7 @@ interface Props {
 /**
  * Edits a flow's **Recurrence** — the Repetition (Start, optional Gap, optional end) and the
  * Consumption tree (Destructive vs Accumulating → Overlapping vs Blocking → catch-up policy) that
- * turn it into a **Habit**. Controlled; the parent materializes dates to scope ids and persists.
+ * turn it into a **Habit**. Controlled; the parent turns dates into scope keys and persists.
  */
 export default function RecurrenceField({ value, onChange, durationKind }: Props) {
   const { t } = useTranslation("editor");

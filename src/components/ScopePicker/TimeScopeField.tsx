@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { getOrCreateScope, getScope } from "@/api/scopes";
+import { getScope } from "@/api/scopes";
 import type { Scope } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import { useScopePicker } from "@/hooks/use-scope-picker";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
 import { addScopePeriods, openingForRefs } from "@/utils/scope-calendar";
 import { formatScopeRange } from "@/utils/scope-format";
+import { keyContaining, scopeKeyText } from "@/utils/scope-key";
 import { refsForScopes, type CanonicalKind } from "@/utils/scope-ref";
 import ScopePicker from "./ScopePicker";
 import styles from "./ScopeField.module.css";
@@ -50,11 +51,11 @@ export default function TimeScopeField({ value, onChange, defaultForm = "boundar
   // tagged with the endpoints it was made for, so a previous value's scopes are never shown.
   const [fetched, setFetched] = useState<{ key: string; scopes: [Scope, Scope] } | null>(null);
   const boundariesKey =
-    value === null || value.duration ? null : `${value.start_id}:${value.end_id}`;
+    value === null || value.duration ? null : `${scopeKeyText(value.start_id)}/${scopeKeyText(value.end_id)}`;
   useEffect(() => {
     if (value === null || value.duration) return;
     let active = true;
-    const key = `${value.start_id}:${value.end_id}`;
+    const key = `${scopeKeyText(value.start_id)}/${scopeKeyText(value.end_id)}`;
     void Promise.all([getScope(value.start_id), getScope(value.end_id)]).then(([start, end]) => {
       if (active && start != null && end != null) setFetched({ key, scopes: [start, end] });
     });
@@ -92,17 +93,13 @@ export default function TimeScopeField({ value, onChange, defaultForm = "boundar
     setOpen(false);
   }
 
-  async function applyDuration() {
+  function applyDuration() {
     const anchor = anchorPicker.single;
     if (anchor === null || anchor.kind === "exact" || anchor.kind === "part_of_day") return;
     const endDate = addScopePeriods(durationKind, anchor.date, durationN - 1);
-    const [start, end] = await Promise.all([
-      getOrCreateScope(durationKind, anchor.date),
-      getOrCreateScope(durationKind, endDate),
-    ]);
     onChange({
-      start_id: start.id,
-      end_id: end.id,
+      start_id: keyContaining(durationKind, anchor.date),
+      end_id: keyContaining(durationKind, endDate),
       duration: { n: durationN, kind: durationKind },
     });
     setOpen(false);
@@ -179,7 +176,7 @@ export default function TimeScopeField({ value, onChange, defaultForm = "boundar
                 ))}
               </select>
               <ScopePicker picker={anchorPicker} initialKind={durationKind} />
-              <button type="button" className={`${styles.button} ${styles.primary}`} onClick={() => void applyDuration()}>
+              <button type="button" className={`${styles.button} ${styles.primary}`} onClick={() => applyDuration()}>
                 {t("scopeApply")}
               </button>
             </>

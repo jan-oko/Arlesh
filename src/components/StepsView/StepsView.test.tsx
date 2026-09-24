@@ -8,6 +8,7 @@ import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
 import { fixtureRowId } from "@/test/node-fixture";
+import { testKey } from "@/test/scope-key";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -252,7 +253,7 @@ describe("a card with no editor", () => {
   it("refuses a virtual Habit occurrence, which is drawn from its template rather than stored", () => {
     mockTree([n("task-7", "task", {
       virtual: true,
-      habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: 3, cycleId: 0 },
+      habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: testKey(3), cycleId: 0 },
     })]);
     render(<StepsView />);
 

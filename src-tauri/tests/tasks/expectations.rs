@@ -7,7 +7,7 @@ use crate::helpers;
 use arlesh_lib::{
     domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
     infos::model::CreateInfoRequest,
-    scopes::model::{ScopeId, ScopeKind},
+    scopes::model::ScopeKind,
     tasks::{
         add_task_dependency, complete_expectation_check, create_expectation, create_task,
         delete_expectation, delete_task, derive_all_scope_lifecycles,
@@ -51,15 +51,8 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .id
 }
 
-async fn day(pool: &sqlx::SqlitePool, date: NaiveDate) -> TimeScope {
-    let scope = helpers::session_factory(pool)
-        .connect()
-        .await
-        .unwrap()
-        .scopes()
-        .get_or_create(ScopeKind::Day, date)
-        .await
-        .unwrap();
+async fn day(_pool: &sqlx::SqlitePool, date: NaiveDate) -> TimeScope {
+    let scope = arlesh_lib::scopes::model::Scope::containing(ScopeKind::Day, date).unwrap();
     TimeScope {
         start_id: scope.id,
         end_id: scope.id,
@@ -205,7 +198,7 @@ async fn completing_a_check_records_it_and_moves_the_next_one_interval_on() {
         .unwrap();
     let due = open_check(&windows.expectation_checks).expect("the next check is due");
     assert_eq!(due.expectation_id, wait.id);
-    let day = db.scopes().get(ScopeId(due.due.start_id)).await.unwrap();
+    let day = due.due.start_id.scope();
     assert_eq!(day.start_date, "2026-07-12");
     drop(db);
 
@@ -631,11 +624,7 @@ async fn no_check_task_exists_before_starting_and_none_can_be_completed() {
     let windows = derive_wait_windows(&mut db, at("2026-07-20T02:00:00"))
         .await
         .unwrap();
-    let day = db
-        .scopes()
-        .get(ScopeId(windows.expectation_checks[0].due.start_id))
-        .await
-        .unwrap();
+    let day = windows.expectation_checks[0].due.start_id.scope();
     assert_eq!(day.start_date, "2026-07-20");
     drop(db);
 
