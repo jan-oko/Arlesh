@@ -9,11 +9,12 @@ function drawn(icon: React.ReactElement) {
 }
 
 describe("McpIcon", () => {
-  it("draws an antenna: a mast, a tip and signal arcs either side", () => {
+  it("draws an antenna: a mast and a base, with a ball on the tip and no signal arcs", () => {
     const icon = drawn(<McpIcon cx={6} cy={6} r={6} color="currentColor" />);
 
-    const arcs = [...icon.querySelectorAll("path")].filter((path) => path.getAttribute("d")?.includes(" A "));
-    expect(arcs).toHaveLength(4);
+    const paths = [...icon.querySelectorAll("path")];
+    expect(paths).toHaveLength(2);
+    expect(paths.some((path) => path.getAttribute("d")?.includes(" A "))).toBe(false);
     expect(icon.querySelectorAll("circle")).toHaveLength(1);
   });
 
