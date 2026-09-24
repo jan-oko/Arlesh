@@ -9,13 +9,14 @@ use serde_json::{Map, Value};
 
 use super::{
     access,
+    ids::NodeNames,
     paging::{self, Cursor, Section, SectionItems, PAGE_BUDGET, SECTIONS},
     params::SnapshotOperation,
     result,
     result::attempt,
     ArleshMcp,
 };
-use crate::mindmap::model::MindmapLoad;
+use crate::{access::model::NodeTable, mindmap::model::MindmapLoad, nodes::id::NodeId};
 
 #[tool_router(router = snapshot_router, vis = "pub(super)")]
 impl ArleshMcp {
@@ -66,6 +67,12 @@ impl ArleshMcp {
     /// you can see, unfiltered; `{"preset": "all"}` is the app's neutral filter instead. Pass the
     /// **same** filter on every page of a walk: pages are derived
     /// independently, so changing it partway is no different from the board changing underfoot.
+    ///
+    /// **Short ids.** Every node carries a `short_id` beside its `id`: the shortest prefix, 3 hex
+    /// digits or more, of its full id that no other node you can see shares right now. Any tool
+    /// taking a node id takes it (or any longer prefix, or the full id) as well as a row id. One
+    /// you saw earlier can become ambiguous as nodes are added; it is then refused as
+    /// `ambiguous_id` with the candidates listed, never read as the wrong node.
     ///
     /// **Rooted.** Only the subtrees the user made MCP roots are here — the server's instructions
     /// name them. Nodes outside every root, and private nodes anywhere, are left out together
@@ -136,7 +143,8 @@ impl ArleshMcp {
         // No answer can be produced at all if the payload will not serialize, so this is a
         // transport error rather than a tool result — the same call `result`'s own serialisation
         // failures make.
-        let available = split_into_sections(&load, &wanted).map_err(|error| {
+        let names = NodeNames::of(&load);
+        let available = split_into_sections(&load, &wanted, &names).map_err(|error| {
             ErrorData::internal_error(format!("failed to serialise tool result: {error}"), None)
         })?;
 
@@ -169,6 +177,7 @@ impl ArleshMcp {
 fn split_into_sections(
     load: &MindmapLoad,
     wanted: &[Section],
+    names: &NodeNames,
 ) -> Result<Vec<SectionItems>, serde_json::Error> {
     let mut payload = match serde_json::to_value(load)? {
         Value::Object(payload) => payload,
@@ -192,7 +201,14 @@ fn split_into_sections(
         .map(|&section| SectionItems {
             section,
             items: match payload.remove(section.as_str()) {
-                Some(Value::Array(items)) => items,
+                Some(Value::Array(mut items)) => {
+                    if let Some(table) = node_table(section) {
+                        for item in &mut items {
+                            name_item(item, table, names);
+                        }
+                    }
+                    items
+                }
                 // A section the payload does not carry reads as empty rather than failing the
                 // whole call: the drift is already caught at compile time by the test that pins
                 // `SECTIONS` against the payload's own fields.
@@ -200,4 +216,36 @@ fn split_into_sections(
             },
         })
         .collect())
+}
+
+/// Adds a node's `short_id` beside its `id`.
+fn name_item(item: &mut Value, table: NodeTable, names: &NodeNames) {
+    let Value::Object(fields) = item else {
+        return;
+    };
+    let Some(id) = fields
+        .get("id")
+        .and_then(|id| serde_json::from_value::<NodeId>(id.clone()).ok())
+    else {
+        return;
+    };
+    if let Some(short) = names.short_id(table, &id) {
+        fields.insert("short_id".into(), Value::String(short.to_string()));
+    }
+}
+
+/// The table a section's nodes are rows of — or would be, for a derived row — when it lists nodes.
+fn node_table(section: Section) -> Option<NodeTable> {
+    Some(match section {
+        Section::Domains => NodeTable::Domain,
+        Section::Goals => NodeTable::Goal,
+        Section::Tasks => NodeTable::Task,
+        Section::Commitments => NodeTable::Commitment,
+        Section::Expectations => NodeTable::Expectation,
+        Section::Infos => NodeTable::Info,
+        Section::Flows => NodeTable::Flow,
+        Section::FlowGoals => NodeTable::FlowGoal,
+        Section::FlowTasks => NodeTable::FlowTask,
+        _ => return None,
+    })
 }

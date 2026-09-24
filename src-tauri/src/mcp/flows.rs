@@ -10,7 +10,14 @@ use rmcp::{
     tool, tool_router,
 };
 
-use super::{access, params::FlowsOperation, result, result::attempt, ArleshMcp};
+use super::{
+    access,
+    lookup::{found, stored_row},
+    params::FlowsOperation,
+    result,
+    result::attempt,
+    ArleshMcp,
+};
 use crate::{
     access::model::AccessLevel,
     flows::model::{FlowId, TargetRef},
@@ -24,8 +31,8 @@ impl ArleshMcp {
     /// — as opposed to the iterations the snapshot derives from it, and is `null` for a flow that
     /// is not a Habit. `origins` maps materialised nodes back to the flow they were started from.
     ///
-    /// A flow or node outside the MCP roots is refused as `not_permitted`, and an origin
-    /// in a flow the MCP cannot read is left out.
+    /// Every id is a row id or a short id. A flow or node outside the MCP roots is refused as
+    /// `not_permitted`, and an origin in a flow the MCP cannot read is left out.
     #[tool(
         name = "arlesh_flows",
         annotations(title = "Arlesh flows", read_only_hint = true)
@@ -34,7 +41,8 @@ impl ArleshMcp {
         &self,
         Parameters(operation): Parameters<FlowsOperation>,
     ) -> Result<CallToolResult, ErrorData> {
-        let mut db = match self.factory.connect().await {
+        // Transactional only so that a short id can be read against the board; nothing is written.
+        let mut db = match self.factory.begin().await {
             Ok(db) => db,
             Err(error) => return result::failed(error),
         };
@@ -43,31 +51,40 @@ impl ArleshMcp {
 
         match operation {
             FlowsOperation::Get { id } => {
+                let id = found!(stored_row(&mut db, &id, "flow", self.now()).await);
                 if !access::reads(&map, "flow", id) {
                     return access::refuse("flow", id, AccessLevel::Read);
                 }
                 result::respond(db.flows().get(FlowId(id)).await)
             }
             FlowsOperation::Recurrence { flow_id } => {
+                let flow_id = found!(stored_row(&mut db, &flow_id, "flow", self.now()).await);
                 if !access::reads(&map, "flow", flow_id) {
                     return access::refuse("flow", flow_id, AccessLevel::Read);
                 }
                 result::respond(db.flows().get_recurrence(FlowId(flow_id)).await)
             }
             FlowsOperation::CompletionCount { flow_id } => {
+                let flow_id = found!(stored_row(&mut db, &flow_id, "flow", self.now()).await);
                 if !access::reads(&map, "flow", flow_id) {
                     return access::refuse("flow", flow_id, AccessLevel::Read);
                 }
                 result::respond(db.flows().habit_completion_count(FlowId(flow_id)).await)
             }
             FlowsOperation::Origins { nodes } => {
-                if let Some(hidden) = nodes
-                    .iter()
-                    .find(|node| !access::reads(&map, &node.node_type, node.node_id))
-                {
-                    return access::refuse(&hidden.node_type, hidden.node_id, AccessLevel::Read);
+                let mut refs: Vec<TargetRef> = Vec::with_capacity(nodes.len());
+                for node in nodes {
+                    let node_id = found!(
+                        stored_row(&mut db, &node.node_id, &node.node_type, self.now()).await
+                    );
+                    if !access::reads(&map, &node.node_type, node_id) {
+                        return access::refuse(&node.node_type, node_id, AccessLevel::Read);
+                    }
+                    refs.push(TargetRef {
+                        node_type: node.node_type,
+                        node_id,
+                    });
                 }
-                let refs: Vec<TargetRef> = nodes.into_iter().map(Into::into).collect();
                 let origins = attempt!(db.flows().origins(refs).await);
                 let mut visible = Vec::with_capacity(origins.len());
                 for origin in origins {

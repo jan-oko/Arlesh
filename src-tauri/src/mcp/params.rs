@@ -15,7 +15,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    flows::model::TargetRef,
     scopes::{error::ScopeError, key::ScopeKey},
     tasks::model,
 };
@@ -96,13 +95,34 @@ pub struct DurationSpec {
     pub kind: String,
 }
 
+/// A node's id, as an agent may give it.
+///
+/// Either the row id a stored node carries in the snapshot (a number), or a **short id** (a
+/// string): any prefix of a node's full id, at least 3 hex characters, that names one node the MCP
+/// can see — the `short_id` the snapshot sends is always one. A prefix that matches several nodes
+/// is refused as `ambiguous_id`, listing them; one that matches none as `not_permitted`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum NodeIdParam {
+    /// A stored node's row id.
+    Row(i64),
+    /// A short id, or a full id.
+    Short(String),
+}
+
+impl From<i64> for NodeIdParam {
+    fn from(id: i64) -> Self {
+        Self::Row(id)
+    }
+}
+
 /// A reference to a node in the tree, by kind and id.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct NodeRef {
     /// Node kind: `aspect`, `domain`, `project`, `goal` or `task`.
     pub node_type: String,
-    /// Node id.
-    pub node_id: i64,
+    /// Node id: a row id or a short id.
+    pub node_id: NodeIdParam,
 }
 
 impl From<DurationSpec> for model::DurationSpec {
@@ -123,15 +143,6 @@ impl TryFrom<TimeScope> for model::TimeScope {
             end_id: ScopeKey::try_from(scope.end_id)?,
             duration: scope.duration.map(Into::into),
         })
-    }
-}
-
-impl From<NodeRef> for TargetRef {
-    fn from(node: NodeRef) -> Self {
-        Self {
-            node_type: node.node_type,
-            node_id: node.node_id,
-        }
     }
 }
 
@@ -217,15 +228,126 @@ pub enum KbOperation {
     ListThreads,
 }
 
-/// Task reads the snapshot does not answer.
+/// A Task status, as the status write names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatusParam {
+    /// Not started.
+    Todo,
+    /// Under way. Starting an Agentic Task needs a Spec in its brief.
+    InProgress,
+    /// Finished.
+    Done,
+}
+
+impl From<TaskStatusParam> for model::TaskStatus {
+    fn from(status: TaskStatusParam) -> Self {
+        match status {
+            TaskStatusParam::Todo => Self::Todo,
+            TaskStatusParam::InProgress => Self::InProgress,
+            TaskStatusParam::Done => Self::Done,
+        }
+    }
+}
+
+/// An agentic brief, or the fields of one to change. Each field left out stays as it is (on
+/// create: empty).
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+pub struct BriefParam {
+    /// Priority 0–4 for P0–P4; `null` for none.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub priority: Option<Option<u8>>,
+    /// What to build. A Task that reads as Agentic cannot start without one.
+    #[serde(default)]
+    pub spec: Option<String>,
+    /// How to build it.
+    #[serde(default)]
+    pub design: Option<String>,
+    /// How to tell it is done.
+    #[serde(default)]
+    pub acceptance: Option<String>,
+    /// Anything else.
+    #[serde(default)]
+    pub notes: Option<String>,
+}
+
+impl BriefParam {
+    /// `self` written over `base`.
+    pub fn over(self, base: model::AgenticBrief) -> model::AgenticBrief {
+        model::AgenticBrief {
+            priority: self.priority.unwrap_or(base.priority),
+            spec: self.spec.unwrap_or(base.spec),
+            design: self.design.unwrap_or(base.design),
+            acceptance: self.acceptance.unwrap_or(base.acceptance),
+            notes: self.notes.unwrap_or(base.notes),
+        }
+    }
+}
+
+/// Task reads the snapshot does not answer, and the writes an agent may make.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case")]
 #[schemars(extend("type" = "object"))]
 pub enum TasksOperation {
     /// One task with its block reasons — explicit ones and those implied by its dependencies.
     Get {
-        /// Task id.
-        id: i64,
+        /// Task id: a row id or a short id.
+        id: NodeIdParam,
+    },
+    /// Creates a Task — always Agentic — under a node inside an MCP root that can hold one: a
+    /// domain or project, a goal, a task, a commitment, or a Habit occurrence. Never under a Task
+    /// explicitly marked Not agentic.
+    Create {
+        /// The parent's kind: `domain`, `project`, `goal`, `task` or `commitment`.
+        parent_type: String,
+        /// The parent's id: a row id or a short id.
+        parent_id: NodeIdParam,
+        /// The new Task's title.
+        title: String,
+        /// Its agentic brief.
+        #[serde(default)]
+        brief: Option<BriefParam>,
+    },
+    /// Edits an Agentic Task's fields: its title, its brief, whether it is set aside.
+    Update {
+        /// Task id: a row id or a short id.
+        id: NodeIdParam,
+        /// New title.
+        #[serde(default)]
+        title: Option<String>,
+        /// Brief fields to change.
+        #[serde(default)]
+        brief: Option<BriefParam>,
+        /// `true` sets it aside in the Backlog, `false` puts it back in play.
+        #[serde(default)]
+        backlog: Option<bool>,
+    },
+    /// Changes an Agentic Task's status **if it is still `expected`** — one compare-and-set step.
+    /// Otherwise refused as `status_changed`, naming the current status, and nothing is written.
+    SetStatus {
+        /// Task id: a row id or a short id.
+        id: NodeIdParam,
+        /// The status you last saw.
+        expected: TaskStatusParam,
+        /// The status to set.
+        status: TaskStatusParam,
+    },
+    /// Moves an Agentic Task under another parent. Needs create permission at both its old and
+    /// its new parent. A Habit occurrence cannot move.
+    Move {
+        /// Task id: a row id or a short id.
+        id: NodeIdParam,
+        /// The new parent's kind.
+        parent_type: String,
+        /// The new parent's id: a row id or a short id.
+        parent_id: NodeIdParam,
+    },
+    /// Archives an Agentic Task. Only a Habit occurrence archives (it is never deleted); a stored
+    /// Task is finished with `set_status` or set aside with `update`'s `backlog`. Nothing is ever
+    /// deleted.
+    Archive {
+        /// Task id: a row id or a short id.
+        id: NodeIdParam,
     },
     /// Which descendants would violate containment if a node were given this window.
     ///
@@ -245,19 +367,19 @@ pub enum TasksOperation {
 pub enum FlowsOperation {
     /// One flow by id.
     Get {
-        /// Flow id.
-        id: i64,
+        /// Flow id: a row id or a short id.
+        id: NodeIdParam,
     },
     /// A flow's stored recurrence configuration, as opposed to the iterations derived from it.
     /// `null` when the flow is not a Habit.
     Recurrence {
-        /// Flow id.
-        flow_id: i64,
+        /// Flow id: a row id or a short id.
+        flow_id: NodeIdParam,
     },
     /// How many of a Habit's iterations are complete.
     CompletionCount {
-        /// Flow id.
-        flow_id: i64,
+        /// Flow id: a row id or a short id.
+        flow_id: NodeIdParam,
     },
     /// For each given node, the flow it was materialised from, if any.
     Origins {
@@ -292,8 +414,8 @@ pub enum BeadsOperation {
     Set {
         /// Which kind of resource to link.
         node_type: BeadsNode,
-        /// The resource's id.
-        node_id: i64,
+        /// The resource's id: a row id or a short id.
+        node_id: NodeIdParam,
         /// The `bd` issue id, e.g. `Arlesh-5fs`. `null` clears the link.
         beads_id: Option<String>,
     },
@@ -319,7 +441,7 @@ pub enum WaitsOperation {
     /// you". The user answers by writing into the note and releasing the wait.
     Ask {
         /// The Agentic Task the agent is working, which the wait hangs under.
-        task_id: i64,
+        task_id: NodeIdParam,
         /// What the agent is waiting for, as the wait's title.
         title: String,
         /// The agent's question, in full.

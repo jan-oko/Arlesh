@@ -33,7 +33,7 @@ use crate::{
 /// module docs give.
 pub(super) fn refuse(
     node_type: &str,
-    node_id: i64,
+    node_id: impl std::fmt::Display,
     needed: AccessLevel,
 ) -> Result<CallToolResult, ErrorData> {
     result::not_permitted(match needed {

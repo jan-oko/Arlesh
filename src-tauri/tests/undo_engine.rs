@@ -687,7 +687,7 @@ async fn an_mcp_write_between_the_users_change_and_their_undo_is_not_reversed() 
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: agents_task.id.sid(),
+            node_id: agents_task.id.sid().into(),
             beads_id: Some("Arlesh-h2u".into()),
         }))
         .await
@@ -742,7 +742,7 @@ async fn an_mcp_write_made_while_a_user_gesture_is_open_is_not_reversed_with_it(
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: agents_task.id.sid(),
+            node_id: agents_task.id.sid().into(),
             beads_id: Some("Arlesh-h2u".into()),
         }))
         .await
@@ -938,7 +938,7 @@ async fn undoing_a_cleared_issue_link_puts_the_id_back() {
     let mcp = helpers::mcp_over_whole_board(&pool).await;
     mcp.beads(Parameters(params::BeadsOperation::Set {
         node_type: params::BeadsNode::Task,
-        node_id: task.id.sid(),
+        node_id: task.id.sid().into(),
         beads_id: Some("Arlesh-ncy".into()),
     }))
     .await

@@ -15,6 +15,7 @@ use rmcp::{
 
 use super::{
     access,
+    lookup::{found, stored_row},
     params::{BeadsLink, BeadsNode, BeadsOperation},
     result,
     result::attempt,
@@ -60,15 +61,11 @@ impl ArleshMcp {
             beads_id,
         } = operation;
 
-        let link = BeadsLink {
-            node_type: match node_type {
-                BeadsNode::Task => "task".into(),
-                BeadsNode::Goal => "goal".into(),
-                BeadsNode::Commitment => "commitment".into(),
-                BeadsNode::Project => "project".into(),
-            },
-            node_id,
-            beads_id: beads_id.clone(),
+        let kind = match node_type {
+            BeadsNode::Task => "task",
+            BeadsNode::Goal => "goal",
+            BeadsNode::Commitment => "commitment",
+            BeadsNode::Project => "project",
         };
 
         // Transactional for all three node kinds, including the two that are one UPDATE over one
@@ -83,6 +80,13 @@ impl ArleshMcp {
             Ok(db) => db,
             Err(error) => return result::failed(error),
         };
+        let node_id = found!(stored_row(&mut db, &node_id, kind, self.now()).await);
+        let link = BeadsLink {
+            node_type: kind.into(),
+            node_id,
+            beads_id: beads_id.clone(),
+        };
+
         // Checked inside the write's own transaction, so a root removed a moment ago cannot let
         // this write through on a stale answer.
         let map = attempt!(crate::access::access_map(&mut db).await);

@@ -401,7 +401,7 @@ async fn a_task_hung_on_an_item_under_an_agentic_root_is_writable_over_the_mcp()
     let linked = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: step,
+            node_id: step.into(),
             beads_id: Some("Arlesh-cz2".into()),
         }))
         .await
@@ -413,4 +413,203 @@ async fn a_task_hung_on_an_item_under_an_agentic_root_is_writable_over_the_mcp()
         "it reads as agentic through the occurrence and its root: {:?}",
         linked.structured_content
     );
+}
+
+mod over_the_mcp {
+    //! The MCP's task writes on a Habit occurrence: each lands in its overlay, as the user's own
+    //! edit would, and an occurrence neither moves nor is deleted.
+
+    use super::*;
+    use arlesh_lib::mcp::{params, ArleshMcp};
+    use arlesh_lib::tasks::lifecycle::Archival;
+    use rmcp::handler::server::wrapper::Parameters;
+    use rmcp::model::CallToolResult;
+
+    async fn mcp(pool: &sqlx::SqlitePool) -> ArleshMcp {
+        helpers::mcp_over_whole_board(pool)
+            .await
+            .with_clock(|| at(NOW))
+    }
+
+    /// The id an agent names an occurrence by: its UUID, as the snapshot sends it.
+    fn named(id: &NodeId) -> params::NodeIdParam {
+        params::NodeIdParam::Short(id.to_string())
+    }
+
+    fn body(result: &CallToolResult) -> &serde_json::Value {
+        result.structured_content.as_ref().unwrap()
+    }
+
+    fn succeeded(result: &CallToolResult) -> &serde_json::Value {
+        assert_ne!(
+            result.is_error,
+            Some(true),
+            "{:?}",
+            result.structured_content
+        );
+        body(result)
+    }
+
+    fn refused(result: &CallToolResult) -> String {
+        assert_eq!(
+            result.is_error,
+            Some(true),
+            "{:?}",
+            result.structured_content
+        );
+        body(result)["kind"].as_str().unwrap().to_string()
+    }
+
+    async fn tasks(mcp: &ArleshMcp, operation: params::TasksOperation) -> CallToolResult {
+        mcp.tasks(Parameters(operation)).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn an_agents_edit_to_an_agentic_occurrence_lands_in_its_overlay() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let item = habit(&app, agentic_with(Some(brief("Sort the mail")))).await;
+        served(&pool).await;
+        let tidy = occurrence(item);
+        let mcp = mcp(&pool).await;
+
+        let edited = tasks(
+            &mcp,
+            params::TasksOperation::Update {
+                id: named(&tidy),
+                title: Some("Tidy the inbox, twice".into()),
+                brief: Some(params::BriefParam {
+                    notes: Some("Mind the spam folder".into()),
+                    ..Default::default()
+                }),
+                backlog: None,
+            },
+        )
+        .await;
+
+        let edited = succeeded(&edited);
+        assert_eq!(edited["title"], "Tidy the inbox, twice");
+        assert!(edited["short_id"]
+            .as_str()
+            .is_some_and(|short| short.len() >= 3));
+        let now = row(&served(&pool).await, &tidy);
+        assert_eq!(now.title, "Tidy the inbox, twice");
+        assert_eq!(
+            now.agentic_brief,
+            Some(AgenticBrief {
+                notes: "Mind the spam folder".into(),
+                ..brief("Sort the mail")
+            }),
+            "the fields left out keep what the template says"
+        );
+        let overlays: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM task_overlays")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(overlays, 1, "written to the occurrence, not its template");
+    }
+
+    #[tokio::test]
+    async fn an_occurrences_status_is_compared_and_set() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let item = habit(&app, agentic_with(Some(brief("Sort the mail")))).await;
+        served(&pool).await;
+        let tidy = occurrence(item);
+        let mcp = mcp(&pool).await;
+        let start = |expected| params::TasksOperation::SetStatus {
+            id: named(&tidy),
+            expected,
+            status: params::TaskStatusParam::InProgress,
+        };
+
+        succeeded(&tasks(&mcp, start(params::TaskStatusParam::Todo)).await);
+        let stale = tasks(&mcp, start(params::TaskStatusParam::Todo)).await;
+
+        assert_eq!(refused(&stale), "status_changed");
+        assert_eq!(body(&stale)["details"]["current"], "in_progress");
+        assert_eq!(row(&served(&pool).await, &tidy).status, "in_progress");
+    }
+
+    #[tokio::test]
+    async fn an_occurrence_neither_moves_nor_is_deleted_but_archives() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let item = habit(&app, agentic_with(Some(brief("Sort the mail")))).await;
+        served(&pool).await;
+        let tidy = occurrence(item);
+        let mcp = mcp(&pool).await;
+
+        let moved = tasks(
+            &mcp,
+            params::TasksOperation::Move {
+                id: named(&tidy),
+                parent_type: "aspect".into(),
+                parent_id: 2_i64.into(),
+            },
+        )
+        .await;
+        assert_eq!(refused(&moved), "invalid_request");
+
+        let archived = tasks(&mcp, params::TasksOperation::Archive { id: named(&tidy) }).await;
+        assert_eq!(succeeded(&archived)["archived"], true);
+        let board = served(&pool).await;
+        assert!(
+            board.tasks.iter().any(|task| task.id == tidy),
+            "archived, never deleted"
+        );
+        let lifecycle = board
+            .lifecycles
+            .iter()
+            .find(|lifecycle| lifecycle.node_id == tidy)
+            .unwrap();
+        assert_eq!(lifecycle.archival, Archival::Archived);
+    }
+
+    #[tokio::test]
+    async fn an_agent_may_not_edit_an_occurrence_that_is_not_agentic() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let item = habit(&app, TemplateUpdate::default()).await;
+        served(&pool).await;
+        let mcp = mcp(&pool).await;
+
+        let edited = tasks(
+            &mcp,
+            params::TasksOperation::Update {
+                id: named(&occurrence(item)),
+                title: Some("Mine now".into()),
+                brief: None,
+                backlog: None,
+            },
+        )
+        .await;
+
+        assert_eq!(refused(&edited), "not_permitted");
+    }
+
+    #[tokio::test]
+    async fn an_agent_creates_an_agentic_task_under_an_occurrence() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let item = habit(&app, TemplateUpdate::default()).await;
+        served(&pool).await;
+        let tidy = occurrence(item);
+        let mcp = mcp(&pool).await;
+
+        let created = tasks(
+            &mcp,
+            params::TasksOperation::Create {
+                parent_type: "task".into(),
+                parent_id: named(&tidy),
+                title: "Unsubscribe from the newsletter".into(),
+                brief: None,
+            },
+        )
+        .await;
+
+        let created = succeeded(&created);
+        assert_eq!(created["agentic"], true);
+        assert_eq!(created["parent_id"], serde_json::json!(tidy));
+    }
 }

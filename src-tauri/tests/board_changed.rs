@@ -212,7 +212,7 @@ async fn the_mcp_tool_that_writes_announces_after_it_commits() {
 
     mcp.beads(Parameters(params::BeadsOperation::Set {
         node_type: params::BeadsNode::Task,
-        node_id: task_id,
+        node_id: task_id.into(),
         beads_id: Some("Arlesh-fxo".into()),
     }))
     .await
@@ -243,7 +243,7 @@ async fn an_mcp_refusal_announces_nothing() {
     let _ = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: project_id + 9_000,
+            node_id: (project_id + 9_000).into(),
             beads_id: Some("Arlesh-fxo".into()),
         }))
         .await;

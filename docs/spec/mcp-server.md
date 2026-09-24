@@ -50,7 +50,7 @@ explicitly marked **Not agentic** (its own setting, not merely inheriting nothin
 user's, and creating under it is refused with `not_permitted`. **Editing is unchanged**: an
 existing Task that does not read as Agentic, inherited or explicit, still cannot be written. The
 rule is `AccessMap::may_create_task_under` (and `…_under_occurrence`), beside the read and write
-checks; the tool that uses it arrives with the write tools.
+checks; `arlesh_tasks.create` applies it (see *Writing tasks* below).
 
 **Private stays private.** A private node is hidden from the MCP even inside a root, together with
 its whole subtree — the rule Private Mode applies, and one the roots do not relax. A root that is
@@ -107,6 +107,8 @@ resolver in `src-tauri/src/access/`:
   not exist is refused the same way, so the error kind never tells an agent that something exists
   where it cannot look.
 - **`arlesh_waits.ask` needs write** on the Task it raises the wait under.
+- **`arlesh_tasks` writes** follow the two rules above: `create` needs `may_create_task_under`
+  at the parent, and every other write needs a Task that reads as Agentic. See *Writing tasks*.
 - **`arlesh_beads.set` needs write**: the item must be an Agentic Task inside a root. Anything else
   — a Goal, Commitment or Project, a Task that is not Agentic, one outside the roots — is refused
   with `not_permitted`.
@@ -119,10 +121,6 @@ resolver in `src-tauri/src/access/`:
   intra-flow dependencies are there exactly when the Flow is. Its occurrences are rows of the kind
   sections, filtered like every derived row.
 
-The write tools of `Arlesh-rz0` — create, edit, status, move, archive, the atomic status change,
-short ids — are the next PR, now that `Arlesh-9o1` and `Arlesh-pnn` have merged. They will apply these
-rules: an edit needs an Agentic Task inside a root; a create needs `may_create_task_under`, and
-always makes the new Task Agentic.
 
 ## Tools
 
@@ -134,7 +132,7 @@ definition it loads.
 | `arlesh_snapshot` | `load(now, sections?, cursor?, filter?)` — the whole planning graph: domains, goals, tasks, **commitments**, notes, flows, flow items, cycles, dependencies, block reasons, materialised instance nodes, every item's derived lifecycle, each flow's habit iterations and statuses, and which occurrence each **added child** hangs on. Paged; see below |
 | `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` — `id` is a scope's value key, a JSON object such as `{"kind":"week","date":"2026-09-20"}` |
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
-| `arlesh_tasks` | `get(id)`, `containment_conflicts(node, time_scope)` |
+| `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?)`, `update(id, title?, brief?, backlog?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`. See *Writing tasks* below |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
 | `arlesh_waits` | `ask(task_id, title, note?)` — raises an agentic wait under an Agentic Task the MCP can write, the question in `note`. See *Agentic waits* below |
 | `arlesh_beads` | `set(node_type, node_id, beads_id)` — a write; `node_type` is `task`, `goal`, `commitment` or `project`, and the item must be writable (an Agentic Task inside a root). See below |
@@ -229,8 +227,68 @@ An **Agentic** Task (see [*Tasks*](resources.md)) carries its **brief** in the s
 `agentic_brief` — `priority` (0–4 for P0–P4, or null), `spec`, `design`, `acceptance`, `notes` — or
 null when it has none. It is what an agent reads in place of `bd show`, and the server's
 instructions say so. A Task that reads as Agentic **cannot be started without a Spec**; the write
-tools that follow `Arlesh-pnn` will change a status through the same rule, so an agent asking to
-start one gets the same refusal the app gives.
+tools change a status through the same rule, so an agent asking to start one gets the same refusal
+the app gives.
+
+## Writing tasks
+
+`arlesh_tasks` carries the agent's task writes (`Arlesh-rz0`, 2026-09-24): `create`, `update`,
+`set_status`, `move` and `archive`. Nothing is ever deleted.
+
+- **`create`** makes a Task under a parent the MCP can see that can hold one — a Domain or
+  Project, a Goal, a Task, a Commitment, or a Habit occurrence — except under a Task explicitly
+  marked **Not agentic**. The new Task is **always Agentic**, its own flag set, and may carry its
+  brief from the start.
+- **`update`** changes a Task's title, its brief — each brief field given replaces that field, the
+  rest stay — and whether it is set aside in the **Backlog**.
+- **`set_status`** is a **compare-and-set**: it names the status the agent last saw (`expected`)
+  and the one to set. The session holds SQLite's single writer lock from before the compare until
+  the write commits, so the two are one step: if the Task's status is no longer `expected`, the
+  call is refused as `status_changed`, naming the current status in `details.current`, and nothing
+  is written. Two agents both expecting `todo` cannot both win. Starting a Task that reads as
+  Agentic needs a Spec, as in the app.
+- **`move`** re-parents a Task. It needs write on the Task and create permission at **both** its
+  old and its new parent, so a Task can leave a subtree only for one it could have been made in.
+- **`archive`** never deletes. A Habit occurrence is archived as the app archives one — tombstoned
+  in its overlay, still on the board, and a status brings it back. A stored Task is never archived
+  by hand (its Archival follows its scope), so archiving one sets it aside in the Backlog, clearing
+  its Plan, which a backlogged Task cannot keep.
+
+Every write but `create` needs a Task that reads as **Agentic**, stored or derived — resolved by
+the one resolver the app uses. A write to a **Habit occurrence** lands in its overlay, exactly as
+the user's own edit would, and the template is untouched; an occurrence cannot `move` (its Habit
+decides where it hangs). A write the rules refuse is `not_permitted`, and writes nothing.
+
+**Undo.** MCP writes are not undoable from the app, deliberately: each is journaled under the `mcp`
+source, as `arlesh_beads` and `arlesh_waits` are, so it never enters the user's Undo Stack, is not a
+Gesture of its own, and never lands inside a Gesture the user has open — Ctrl+Z after an agent's
+write undoes the user's last action, not the agent's. The journal still records the write, and
+every open window is told the board changed.
+
+A known edge, left as it is: moving a stored wait onto a Habit occurrence **in the app** and making
+it agentic in the same write checks the agentic rule against its old parent. The MCP never moves or
+flags a wait, so it cannot reach it.
+
+## Short ids
+
+Every tool that names a node takes its **row id** (a number, as the snapshot's `id` carries it) or
+a **short id** (a string). Nothing is stored for them. A node's **full id** is a UUID-v5 in the one
+namespace every derived row's id already lives in: a derived row keeps the UUID it has, and a stored
+row's is the UUID-v5 of `{kind}:{row id}` — deterministic, so it never needs keeping. Its **short
+id** is the shortest prefix of the full id's hex digits, **three at least**, that no other node the
+MCP can see shares **at the time of the read**, worked out from a sorted list. The snapshot sends
+each node's `short_id` beside its `id`, and a write returns the Task's `short_id` and `full_id`.
+
+A string is read as any prefix of a full id, hyphens optional, three hex digits or more. One node
+matches: it is that node. None: `not_permitted`, as any node outside the roots. **Several**: refused
+as `ambiguous_id`, with `details.candidates` listing each — its current unique short id, its full
+id, its kind, its title and a short path such as `Growth › CODE › ARLESH`, the form the
+instructions name roots in. Only nodes the MCP can see are matched, listed or counted, so a hidden
+node never makes a prefix ambiguous and is never named.
+
+The trade-off, accepted with the user: a short id is unique **now**, not forever — a prefix an
+agent saw earlier can become ambiguous as nodes are added. It is then refused and the candidates
+listed, never read as the wrong node. An agent that needs an id to stay good holds the full one.
 
 ## Agentic waits
 
@@ -257,10 +315,10 @@ Passing `null` clears the link. Setting one on an item that does not exist is an
 (`not_permitted`, like any node outside the roots) rather than a silent no-op, and only the
 `project` subtype of Domain accepts a link — an Aspect, Domain or Tag is refused.
 
-## Nothing but `arlesh_beads` writes
+## What writes
 
-Every tool other than `arlesh_beads` and `arlesh_waits` is annotated `read_only_hint = true` and
-writes nothing at all.
+`arlesh_tasks`, `arlesh_beads` and `arlesh_waits` write; every other tool is annotated
+`read_only_hint = true` and writes nothing at all.
 `arlesh_snapshot` used to be the exception: deriving a Habit's iterations minted the scope rows
 their windows landed on, and it had to commit them or the payload would name ids that no longer
 existed. Scopes are derived now (ADR 0009), so the snapshot reads in a read-only session like
@@ -268,7 +326,8 @@ everything else.
 
 ## What is deliberately absent
 
-- **Every write command**, including `retype_node` and `start_flow`.
+- **Every write command but the task writes above**, including `retype_node`, `start_flow` and any
+  hard delete.
 - **`valid_targets`** — it only reads, but it
   answers "where could this Flow be started?", a question nothing on this surface can act on while
   starting a Flow is a write. It returns alongside `start_flow`.
@@ -282,7 +341,7 @@ everything else.
 A tool that fails returns a result flagged as an error carrying the same structured `WireError` the
 frontend receives across the Tauri boundary, including its stable `kind` — `not_found`,
 `containment_violated`, `invalid_request`, `needs_confirmation`, `needs_time_scope`,
-`not_permitted`, `database`, `internal` — so an agent branches on the discriminant rather than
+`not_permitted`, `ambiguous_id`, `status_changed`, `database`, `internal` — so an agent branches on the discriminant rather than
 parsing a message. (The two `needs_*` kinds are raised only by writes this surface does not
 expose.)
 
@@ -290,3 +349,6 @@ expose.)
 root, private, or (for a write) not an Agentic Task — or one that does not exist, which it
 deliberately cannot tell apart. The fix is the user's, on the *MCP access* page; an agent that
 gets one should say what it needs rather than retry. The app's own commands never raise it.
+
+`ambiguous_id` and `status_changed` are the MCP's too (see *Short ids* and *Writing tasks*): the
+first lists the candidates a short id matched, the second names the status a compare-and-set found.

@@ -409,7 +409,9 @@ async fn tasks_get_returns_what_the_command_returns() {
     let task_id = seed(&app).await;
 
     let result = mcp
-        .tasks(Parameters(params::TasksOperation::Get { id: task_id }))
+        .tasks(Parameters(params::TasksOperation::Get {
+            id: task_id.into(),
+        }))
         .await
         .unwrap();
 
@@ -429,7 +431,9 @@ async fn tasks_get_on_a_missing_id_is_not_permitted() {
     let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     let result = mcp
-        .tasks(Parameters(params::TasksOperation::Get { id: 99_999 }))
+        .tasks(Parameters(params::TasksOperation::Get {
+            id: 99_999_i64.into(),
+        }))
         .await
         .unwrap();
 
@@ -458,7 +462,7 @@ async fn tasks_containment_conflicts_matches_the_command() {
         .tasks(Parameters(params::TasksOperation::ContainmentConflicts {
             node: params::NodeRef {
                 node_type: "task".into(),
-                node_id: task_id,
+                node_id: task_id.into(),
             },
             time_scope: params::TimeScope {
                 start_id: param(scope.id),
@@ -569,7 +573,9 @@ async fn flows_reads_match_their_commands() {
     .unwrap();
 
     let got = mcp
-        .flows(Parameters(params::FlowsOperation::Get { id: flow.id }))
+        .flows(Parameters(params::FlowsOperation::Get {
+            id: flow.id.into(),
+        }))
         .await
         .unwrap();
     let expected = flow_commands::get_flow(app.state(), flow.id).await.unwrap();
@@ -582,7 +588,7 @@ async fn flows_reads_match_their_commands() {
     // A flow that is not a Habit has no recurrence: `null` is the answer, not an error.
     let recurrence = mcp
         .flows(Parameters(params::FlowsOperation::Recurrence {
-            flow_id: flow.id,
+            flow_id: flow.id.into(),
         }))
         .await
         .unwrap();
@@ -590,7 +596,7 @@ async fn flows_reads_match_their_commands() {
 
     let count = mcp
         .flows(Parameters(params::FlowsOperation::CompletionCount {
-            flow_id: flow.id,
+            flow_id: flow.id.into(),
         }))
         .await
         .unwrap();
@@ -609,7 +615,7 @@ async fn flows_reads_match_their_commands() {
         .flows(Parameters(params::FlowsOperation::Origins {
             nodes: vec![params::NodeRef {
                 node_type: "task".into(),
-                node_id: task_id,
+                node_id: task_id.into(),
             }],
         }))
         .await
@@ -677,7 +683,7 @@ async fn beads_set_links_a_task_and_then_clears_it() {
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: task_id,
+            node_id: task_id.into(),
             beads_id: Some("Arlesh-5fs".into()),
         }))
         .await
@@ -696,7 +702,7 @@ async fn beads_set_links_a_task_and_then_clears_it() {
     let cleared = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: task_id,
+            node_id: task_id.into(),
             beads_id: None,
         }))
         .await
@@ -729,7 +735,7 @@ async fn beads_set_refuses_a_goal_because_only_an_agentic_task_is_writable() {
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Goal,
-            node_id: goal.id.sid(),
+            node_id: goal.id.sid().into(),
             beads_id: Some("Arlesh-32r".into()),
         }))
         .await
@@ -770,7 +776,7 @@ async fn beads_set_refuses_a_project_because_only_an_agentic_task_is_writable() 
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Project,
-            node_id: project.id,
+            node_id: project.id.into(),
             beads_id: Some("Arlesh-e8d".into()),
         }))
         .await
@@ -810,7 +816,7 @@ async fn beads_set_refuses_a_domain_that_is_not_a_project() {
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Project,
-            node_id: plain_domain.id,
+            node_id: plain_domain.id.into(),
             beads_id: Some("Arlesh-5fs".into()),
         }))
         .await
@@ -837,7 +843,7 @@ async fn beads_set_on_a_missing_item_is_not_permitted() {
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: 99_999,
+            node_id: 99_999_i64.into(),
             beads_id: Some("Arlesh-5fs".into()),
         }))
         .await
@@ -859,7 +865,7 @@ async fn the_snapshot_carries_a_beads_id_once_it_is_set() {
 
     mcp.beads(Parameters(params::BeadsOperation::Set {
         node_type: params::BeadsNode::Task,
-        node_id: task_id,
+        node_id: task_id.into(),
         beads_id: Some("Arlesh-5fs".into()),
     }))
     .await
@@ -976,7 +982,7 @@ async fn a_duration_carries_through_to_the_domain_window() {
         .tasks(Parameters(params::TasksOperation::ContainmentConflicts {
             node: params::NodeRef {
                 node_type: "task".into(),
-                node_id: task_id,
+                node_id: task_id.into(),
             },
             time_scope: mcp_window,
         }))
@@ -1229,7 +1235,7 @@ async fn beads_set_refuses_a_commitment_because_only_an_agentic_task_is_writable
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Commitment,
-            node_id: commitment.id.sid(),
+            node_id: commitment.id.sid().into(),
             beads_id: Some("Arlesh-cyo".into()),
         }))
         .await
@@ -1253,7 +1259,7 @@ async fn beads_set_on_a_commitment_that_does_not_exist_is_an_error() {
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Commitment,
-            node_id: 9999,
+            node_id: 9999_i64.into(),
             beads_id: Some("Arlesh-cyo".into()),
         }))
         .await

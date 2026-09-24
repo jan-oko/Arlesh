@@ -12,7 +12,14 @@ use rmcp::{
     tool, tool_router,
 };
 
-use super::{access, params::WaitsOperation, result, result::attempt, ArleshMcp};
+use super::{
+    access,
+    lookup::{found, Board},
+    params::WaitsOperation,
+    result,
+    result::attempt,
+    ArleshMcp,
+};
 use crate::{
     access::model::AccessLevel, tasks::model::CreateExpectationRequest, undo::model::WriteSource,
 };
@@ -27,8 +34,9 @@ impl ArleshMcp {
     /// snapshot's `expectations` (`status: released`, `agentic_note`). A task you are waiting on
     /// is not blocked by it unless the user makes it a dependency.
     ///
-    /// Needs **write** access: the task must be an Agentic Task inside an MCP root, or the call is
-    /// refused as `not_permitted`.
+    /// `task_id` is a row id or a short id, and may name a Habit occurrence. Needs **write**
+    /// access: the task must be an Agentic Task inside an MCP root, or the call is refused as
+    /// `not_permitted`.
     #[tool(
         name = "arlesh_waits",
         annotations(
@@ -53,22 +61,25 @@ impl ArleshMcp {
             Ok(db) => db,
             Err(error) => return result::failed(error),
         };
-        let map = attempt!(crate::access::access_map(&mut db).await);
-        if !access::permits(&map, "task", task_id, AccessLevel::Write) {
-            return access::refuse("task", task_id, AccessLevel::Write);
+        let now = self.now();
+        let board = attempt!(Board::read(&mut db, now).await);
+        let task_id = found!(board.resolve(&task_id, "task"));
+        if !attempt!(board.writes_task(&mut db, &task_id, now).await) {
+            return access::refuse("task", &task_id, AccessLevel::Write);
         }
         let user_source = attempt!(db.undo().set_source(WriteSource::Mcp).await);
 
-        let created = crate::tasks::create_expectation(
+        let created = crate::nodes::write::create_expectation(
             &mut db,
             CreateExpectationRequest {
                 title,
                 parent_type: "task".into(),
-                parent_id: task_id.into(),
+                parent_id: task_id,
                 agentic: true,
                 agentic_note: note,
                 ..Default::default()
             },
+            now,
         )
         .await;
         let wait = attempt!(created);

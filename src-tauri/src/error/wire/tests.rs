@@ -246,6 +246,8 @@ fn spelling(kind: WireErrorKind) -> &'static str {
         WireErrorKind::NeedsConfirmation => "needs_confirmation",
         WireErrorKind::NeedsTimeScope => "needs_time_scope",
         WireErrorKind::NotPermitted => "not_permitted",
+        WireErrorKind::AmbiguousId => "ambiguous_id",
+        WireErrorKind::StatusChanged => "status_changed",
         WireErrorKind::Database => "database",
         WireErrorKind::Internal => "internal",
     }
@@ -260,6 +262,8 @@ fn kind_serialises_to_expected_snake_case_spellings() {
         WireErrorKind::NeedsConfirmation,
         WireErrorKind::NeedsTimeScope,
         WireErrorKind::NotPermitted,
+        WireErrorKind::AmbiguousId,
+        WireErrorKind::StatusChanged,
         WireErrorKind::Database,
         WireErrorKind::Internal,
     ];
@@ -395,4 +399,24 @@ fn not_permitted_serialises_with_its_own_kind() {
 
     assert_eq!(wire["kind"], "not_permitted");
     assert_eq!(wire["message"], "task 7 is outside the MCP roots");
+}
+
+#[test]
+fn a_status_change_refusal_names_the_current_status() {
+    let wire = serde_json::to_value(WireError::status_changed("done")).expect("serialise");
+
+    assert_eq!(wire["kind"], "status_changed");
+    assert_eq!(wire["details"]["current"], "done");
+}
+
+#[test]
+fn an_ambiguous_id_lists_its_candidates() {
+    let wire = serde_json::to_value(WireError::ambiguous_id(
+        "abc matches 2 nodes",
+        serde_json::json!([{ "short_id": "abc1" }, { "short_id": "abc2" }]),
+    ))
+    .expect("serialise");
+
+    assert_eq!(wire["kind"], "ambiguous_id");
+    assert_eq!(wire["details"]["candidates"][1]["short_id"], "abc2");
 }

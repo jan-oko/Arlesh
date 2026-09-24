@@ -13,14 +13,20 @@
 //! pays context for every tool definition it loads, which is why the surface is grouped rather
 //! than mirrored.
 //!
-//! # Reads and the two writes
+//! # Reads and writes
 //!
-//! [`ArleshMcp::beads`] and [`ArleshMcp::waits`] are the two tools that write something the user
-//! sees: the first sets the `bd` issue id on an Agentic Task, and is the only way that field can
-//! be set at all; the second raises an agentic wait under one — "the agent is waiting on you". Every
+//! Three tools write something the user sees. [`ArleshMcp::tasks`] creates, edits, moves,
+//! re-statuses and archives Tasks — creating anywhere inside the roots, never under a Task marked
+//! Not agentic, and changing only Tasks that read as Agentic. [`ArleshMcp::beads`] sets the `bd`
+//! issue id on an Agentic Task, the only way that field can be set at all, and
+//! [`ArleshMcp::waits`] raises an agentic wait under one — "the agent is waiting on you". Every
 //! other tool, [`ArleshMcp::snapshot`] included, is annotated `read_only_hint = true` and writes
-//! nothing. The snapshot used to be the exception — deriving a Habit's iterations minted the scope
-//! rows their windows landed on — until scopes became derived values (ADR 0009).
+//! nothing. Every write is journaled under the `mcp` source, so none enters the user's Undo Stack.
+//!
+//! # Ids
+//!
+//! Every tool that names a node takes its row id or its **short id** — see [`ids`] — and the
+//! snapshot sends each node's `short_id` beside its `id`.
 //!
 //! # Access
 //!
@@ -35,7 +41,9 @@
 mod access;
 mod beads;
 mod flows;
+mod ids;
 mod kb;
+mod lookup;
 pub mod paging;
 pub mod params;
 mod result;
@@ -45,6 +53,8 @@ mod tasks;
 mod waits;
 
 use std::sync::Arc;
+
+use chrono::NaiveDateTime;
 
 use rmcp::{
     handler::server::tool::ToolRouter,
@@ -76,8 +86,14 @@ pub struct ArleshMcp {
     /// A closure rather than an `AppHandle`, so that nothing in this module has to know what a
     /// window is — an agent's write is not made *in* a window, and every window needs telling.
     announce: Announce,
+    /// What time it is, for the writes and the short-id reads that derive the board. The wall
+    /// clock, unless a test fixes it with [`ArleshMcp::with_clock`].
+    clock: Clock,
     tool_router: ToolRouter<Self>,
 }
+
+/// A source of the current local time.
+type Clock = Arc<dyn Fn() -> NaiveDateTime + Send + Sync>;
 
 impl ArleshMcp {
     /// Builds a handler over `factory`, combining the per-resource tool routers.
@@ -90,6 +106,7 @@ impl ArleshMcp {
             // Silent until [`ArleshMcp::announcing`] says otherwise, so a handler built by a test
             // — which has no windows — needs no ceremony to stand up.
             announce: board::silent(),
+            clock: Arc::new(|| chrono::Local::now().naive_local()),
             tool_router: Self::snapshot_router()
                 + Self::scopes_router()
                 + Self::kb_router()
@@ -108,6 +125,20 @@ impl ArleshMcp {
     pub fn announcing(mut self, announce: Announce) -> Self {
         self.announce = announce;
         self
+    }
+
+    /// Fixes the time this handler's writes and short-id reads derive the board at.
+    ///
+    /// For tests: a Habit's occurrences are derived up to "now", so a test naming one needs the
+    /// board derived at the instant its fixture assumes.
+    pub fn with_clock(mut self, clock: impl Fn() -> NaiveDateTime + Send + Sync + 'static) -> Self {
+        self.clock = Arc::new(clock);
+        self
+    }
+
+    /// The current time, by this handler's clock.
+    fn now(&self) -> NaiveDateTime {
+        (self.clock)()
     }
 
     /// The names of every registered tool.
@@ -167,7 +198,7 @@ impl ArleshMcp {
 #[tool_handler(
     router = self.tool_router,
     name = "arlesh",
-    instructions = "Arlesh's task-management and knowledge-base data, limited to the MCP roots the user has opened to you (listed at the end). Read-only apart from arlesh_beads, which links an Agentic task to a bd issue, and arlesh_waits, which raises a wait under an Agentic task when you need the user (\"the agent is waiting on you\"). An Agentic task carries an agentic_brief (priority 0-4 for P0-P4, spec, design, acceptance, notes): read it before working the task; a task with no spec cannot be started. Start with arlesh_snapshot.load: the whole planning graph — tasks, goals, flows, domains, dependencies and derived lifecycles. It is PAGED: a response carries what fits plus next_cursor, and you must keep calling with that cursor until it is null or you will only have seen part of the board. A section missing from a page is one you have not reached yet; an empty section arrives as []. Narrow with `sections` when you know what you need. Tasks and goals carry their windows as boundary scope IDs, not dates: resolve them with arlesh_scopes.resolve_many. The other tools cover what the snapshot omits."
+    instructions = "Arlesh's task-management and knowledge-base data, limited to the MCP roots the user has opened to you (listed at the end). You may create tasks (arlesh_tasks.create — anywhere inside the roots except under a task marked Not agentic; what you create is always Agentic) and edit, re-status, move and archive Agentic tasks (arlesh_tasks.update/set_status/move/archive); set_status is a compare-and-set naming the status you last saw. arlesh_beads links an Agentic task to a bd issue, and arlesh_waits raises a wait under an Agentic task when you need the user (\"the agent is waiting on you\"). Everything else is read-only. Name a node by its row id or by the snapshot's short_id. An Agentic task carries an agentic_brief (priority 0-4 for P0-P4, spec, design, acceptance, notes): read it before working the task; a task with no spec cannot be started. Start with arlesh_snapshot.load: the whole planning graph — tasks, goals, flows, domains, dependencies and derived lifecycles. It is PAGED: a response carries what fits plus next_cursor, and you must keep calling with that cursor until it is null or you will only have seen part of the board. A section missing from a page is one you have not reached yet; an empty section arrives as []. Narrow with `sections` when you know what you need. Tasks and goals carry their windows as boundary scope IDs, not dates: resolve them with arlesh_scopes.resolve_many. The other tools cover what the snapshot omits."
 )]
 impl ServerHandler for ArleshMcp {
     /// The handshake, with the MCP roots added to the instructions — see

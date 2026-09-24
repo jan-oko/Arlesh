@@ -20,6 +20,7 @@ mod database;
 mod duplicate;
 mod mcp;
 mod mcp_access;
+mod mcp_writes;
 mod mindmap_commands;
 mod preset_conformance;
 mod retype_commands;

@@ -59,6 +59,29 @@ pub(super) fn failed(error: impl Into<AppError>) -> Result<CallToolResult, Error
     )?))
 }
 
+/// A tool result refusing a short id that matched several visible nodes, listing them.
+pub(super) fn ambiguous(
+    quoted: &str,
+    candidates: &[super::ids::Named],
+) -> Result<CallToolResult, ErrorData> {
+    Ok(CallToolResult::structured_error(structured(
+        WireError::ambiguous_id(
+            format!(
+                "{quoted} matches {} nodes; name one by a longer short id",
+                candidates.len()
+            ),
+            structured(candidates)?,
+        ),
+    )?))
+}
+
+/// A tool result refusing a compare-and-set status write whose expectation no longer holds.
+pub(super) fn status_changed(current: &str) -> Result<CallToolResult, ErrorData> {
+    Ok(CallToolResult::structured_error(structured(
+        WireError::status_changed(current),
+    )?))
+}
+
 /// A tool result refusing a request that names a node the MCP may not touch.
 ///
 /// Its own `kind`, `not_permitted`, rather than `not_found` or `invalid_request`: the request was

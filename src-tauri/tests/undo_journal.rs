@@ -431,7 +431,7 @@ async fn an_mcp_write_is_journaled_as_mcp_and_leaves_the_source_as_it_found_it()
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: task.id.sid(),
+            node_id: task.id.sid().into(),
             beads_id: Some("Arlesh-npt".into()),
         }))
         .await

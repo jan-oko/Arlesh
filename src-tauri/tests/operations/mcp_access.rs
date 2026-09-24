@@ -138,7 +138,7 @@ async fn snapshot(mcp: &ArleshMcp) -> serde_json::Value {
 }
 
 async fn get_task(mcp: &ArleshMcp, id: i64) -> CallToolResult {
-    mcp.tasks(Parameters(params::TasksOperation::Get { id }))
+    mcp.tasks(Parameters(params::TasksOperation::Get { id: id.into() }))
         .await
         .expect("the tasks tool returned no result")
 }
@@ -146,7 +146,7 @@ async fn get_task(mcp: &ArleshMcp, id: i64) -> CallToolResult {
 async fn set_beads(mcp: &ArleshMcp, task_id: i64) -> CallToolResult {
     mcp.beads(Parameters(params::BeadsOperation::Set {
         node_type: params::BeadsNode::Task,
-        node_id: task_id,
+        node_id: task_id.into(),
         beads_id: Some("Arlesh-rz0".into()),
     }))
     .await
@@ -493,7 +493,7 @@ async fn roots(app: &App<MockRuntime>) -> Vec<arlesh_lib::access::model::NodeKey
 
 async fn ask(mcp: &ArleshMcp, task_id: i64) -> CallToolResult {
     mcp.waits(Parameters(params::WaitsOperation::Ask {
-        task_id,
+        task_id: task_id.into(),
         title: "Which colour?".into(),
         note: Some("Red or blue for the badge?".into()),
     }))
