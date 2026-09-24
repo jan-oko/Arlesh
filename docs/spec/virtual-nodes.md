@@ -141,8 +141,15 @@ item — carries the **full schema of its kind** (migration 0061): a task templa
 and Asynchronous flags, Backlog state and beads id; a goal template its beads id; both their tags
 (`template_tags`) and block reasons (`template_block_reasons`). Every occurrence reads them unless its
 overlay says otherwise. They are edited in the flow item's editor, beside the item's cycle pairs and
-dependencies. An Expectation template (the wait an Asynchronous Task spawns) is not part of a Habit
-template; an occurrence cannot carry one of its own either.
+dependencies — all but the **delegate**, which a template and an occurrence carry but no editor
+offers to change yet (ruled by the user, 2026-09-24). An occurrence's own Task editor keeps the one
+delegate control every Task has, "Delegate to agent", which writes that occurrence alone.
+
+An Expectation template (the wait an Asynchronous Task spawns) is not part of a Habit template. An
+**occurrence** can carry one of its own, as a stored Task does (migration 0062,
+`occurrence_async_templates`): while the occurrence is Asynchronous and done, the wait it spawned is
+an Expectation row beneath it (`origin` `spawned_wait`), its state in `occurrence_spawned_waits` and
+its checks in `wait_checks` under the occurrence's node key.
 
 **Changing an item's cycle pairs keeps every pair that survives.** A pair whose Cycle Scope is still
 there keeps its id, so its occurrences keep what they recorded. A change that would drop a pair some

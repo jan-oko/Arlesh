@@ -11,10 +11,6 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@/api/people", () => ({
-  listPeople: vi.fn().mockResolvedValue([{ id: 2, name: "Dana", aliases: "[]", linked_note: null }]),
-}));
-
 function mkItem(overrides: Partial<MindmapNode> = {}): MindmapNode {
   return {
     id: "flowtask-2",
@@ -103,19 +99,6 @@ describe("FlowItemEditorModal", () => {
         template: {
           tag_ids: [4], block_reasons: ["waiting on parts"], archival: "backlog", asynchronous: true, agentic: "yes",
         },
-      })),
-    );
-  });
-
-  it("picks the template's delegate — a Person from the knowledge base — and sends only a change", async () => {
-    render(<FlowItemEditorModal {...defaultProps} />);
-    const picker = await screen.findByLabelText("fieldDelegate");
-    await waitFor(() => expect(screen.getByRole("option", { name: "Dana" })).toBeInTheDocument());
-    fireEvent.change(picker, { target: { value: "person:2" } });
-    fireEvent.click(screen.getByRole("button", { name: "save" }));
-    await waitFor(() =>
-      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
-        template: expect.objectContaining({ delegate_to: { kind: "person", id: 2 } }),
       })),
     );
   });

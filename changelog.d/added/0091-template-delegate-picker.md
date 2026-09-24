@@ -1,1 +1,0 @@
-- **Delegate a Habit step to someone.** The flow item editor has a Delegate picker — nobody, the Agent, or a Person from your knowledge base — and every occurrence of the step is delegated to them unless you change that occurrence.

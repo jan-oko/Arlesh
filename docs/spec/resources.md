@@ -168,7 +168,7 @@ The column lives on `domains` for the Project case, but only the `project` subty
 
 Specced and kept, but not in the app today:
 
-- **Delegation, beyond the Delegate itself and the Agent button.** A Person is picked as a delegate only for a Habit's **template** — the flow item editor's Delegate picker (nobody, the Agent, or a Person from the knowledge base), whose choice every occurrence reads unless it says otherwise; a Task's own editor still offers the Agent button alone. A delegate does not inherit down the tree (the specced rule is an override, as Agentic's is, and it holds across kinds — see [*Link Inheritance*](link-inheritance.md)), and there is no delegate-to or delegated/undelegated filter (for how those treat the Agent, see [*Filtering Logic*](filtering-logic.md)).
+- **Delegation, beyond the Delegate itself and the Agent button.** No UI picks a Person as a delegate, a delegate does not inherit down the tree (the specced rule is an override, as Agentic's is, and it holds across kinds — see [*Link Inheritance*](link-inheritance.md)), and there is no delegate-to or delegated/undelegated filter (for how those treat the Agent, see [*Filtering Logic*](filtering-logic.md)).
 - **Knowledge-base links.** Goals and Tasks list "KB resource links" among their fields, and the `goal_knowledge_base_links` / `task_knowledge_base_links` tables exist, but no command writes them and nothing filters on them.
 - **Obsidian discovery.** People and Threads are meant to be discovered by recursively searching configured vault directories. Today they exist only as rows created through the backend commands.
 
