@@ -425,3 +425,88 @@ async fn migration_0046_turns_every_scope_reference_into_its_key_and_keeps_every
             .unwrap();
     assert!(violations.is_empty(), "{violations:?}");
 }
+
+/// Migrations 0060–0062 turn Habit occurrences into virtual rows (ADR 0008) and give templates
+/// their kind's schema. None of them may touch what a template already planned: a flow's root
+/// Cycle Plan and an item's (Cycle Scope, Cycle Plan) pairs come through exactly as they were.
+#[tokio::test]
+async fn migrations_0060_to_0062_keep_every_cycle_plan() {
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .after_connect(|conn, _| {
+            Box::pin(async move {
+                sqlx::query("PRAGMA foreign_keys = ON")
+                    .execute(conn)
+                    .await?;
+                Ok(())
+            })
+        })
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+
+    let everything = sqlx::migrate!("./migrations");
+    let mut through_0059 = sqlx::migrate!("./migrations");
+    through_0059.migrations = std::borrow::Cow::Owned(
+        everything
+            .migrations
+            .iter()
+            .filter(|migration| migration.version < 60)
+            .cloned()
+            .collect(),
+    );
+    through_0059.run(&pool).await.unwrap();
+
+    sqlx::query(
+        "INSERT INTO flows (id, title, instance_type, parent_type, parent_id,
+                            flow_duration_n, flow_duration_kind,
+                            root_plan_kind, root_plan_start, root_plan_end)
+             VALUES (5, 'weekly', 'task', 'aspect', 1, 1, 'week', 'day', 1, 1);
+         INSERT INTO flow_tasks (id, flow_id, title, parent_type, parent_id)
+             VALUES (9, 5, 'prepare', 'flow', 5);
+         INSERT INTO flow_item_cycles (id, flow_id, item_type, item_id, scope_kind, scope_index,
+                                       plan_kind, plan_start, plan_end, position)
+             VALUES (3, 5, 'flow_task', 9, 'day', 3, 'part_of_day', 2, 4, 0);",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    everything.run(&pool).await.unwrap();
+
+    let root: (Option<String>, Option<i64>, Option<i64>) = sqlx::query_as(
+        "SELECT root_plan_kind, root_plan_start, root_plan_end FROM flows WHERE id = 5",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(root, (Some("day".to_string()), Some(1), Some(1)));
+
+    type Pair = (
+        i64,
+        Option<String>,
+        Option<i64>,
+        Option<String>,
+        Option<i64>,
+        Option<i64>,
+    );
+    let pairs: Vec<Pair> = sqlx::query_as(
+        "SELECT id, scope_kind, scope_index, plan_kind, plan_start, plan_end
+         FROM flow_item_cycles",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        pairs,
+        vec![(
+            3,
+            Some("day".to_string()),
+            Some(3),
+            Some("part_of_day".to_string()),
+            Some(2),
+            Some(4),
+        )],
+        "the pair keeps its id — occurrences are keyed on it — and its Cycle Plan"
+    );
+}

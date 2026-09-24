@@ -957,3 +957,123 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
     .unwrap();
     assert_eq!(gone, 0, "the polymorphic overlay is dropped");
 }
+
+/// The derived Task titled `title` whose window opens at `start`.
+fn occurrence_starting<'a>(
+    board: &'a MindmapLoad,
+    title: &str,
+    start: ScopeKey,
+) -> &'a arlesh_lib::tasks::model::Task {
+    board
+        .tasks
+        .iter()
+        .find(|task| {
+            task.origin.is_derived()
+                && task.title == title
+                && task.time_scope.as_ref().map(|scope| scope.start_id) == Some(start)
+        })
+        .unwrap_or_else(|| panic!("no occurrence of {title} opening at {start}"))
+}
+
+#[tokio::test]
+async fn a_root_and_an_item_cycle_plan_resolve_onto_their_occurrences() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    // A weekly task Habit whose root is planned into Day 2 of the week, with one item on Day 3
+    // planned into that day's first part — its morning.
+    let flow = flow_commands::create_flow(
+        app.state(),
+        CreateFlowRequest {
+            title: "Weekly".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("week".into()),
+            root_plan_kind: Some("day".into()),
+            root_plan_start: Some(2),
+            root_plan_end: Some(2),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let prepare = flow_commands::create_flow_task(
+        app.state(),
+        CreateFlowItemRequest {
+            flow_id: flow.id,
+            title: "Prepare".into(),
+            parent_type: "flow".into(),
+            parent_id: flow.id,
+        },
+    )
+    .await
+    .unwrap();
+    flow_commands::set_flow_item_cycles(
+        app.state(),
+        flow.id,
+        FlowItemType::FlowTask,
+        prepare.id,
+        vec![FlowCycleInput {
+            scope_kind: Some("day".into()),
+            scope_index: Some(3),
+            plan_kind: Some("part_of_day".into()),
+            plan_start: Some(1),
+            plan_end: Some(1),
+        }],
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    let week = scope(&pool, ScopeKind::Week, ymd(2026, 1, 5)).await;
+    flow_commands::set_flow_recurrence(
+        app.state(),
+        flow.id,
+        SetRecurrenceRequest {
+            start_scope_id: week,
+            gap_n: None,
+            gap_kind: None,
+            end_scope_id: None,
+            consumption_kind: ConsumptionKind::Accumulating,
+            blocking_mode: Some(arlesh_lib::flows::model::BlockingMode::Overlapping),
+            catchup_policy: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let board = load(&app, "2026-01-05T09:00:00").await;
+
+    // The week opens on Sunday 2026-01-04, so its Day 2 is the 5th and its Day 3 the 6th.
+    let root_id = NodeId::Derived(
+        OccurrenceKey {
+            item: TemplateItem {
+                item_type: TemplateKind::FlowRoot,
+                item_id: flow.id,
+            },
+            iteration: week,
+            cycle: 0,
+        }
+        .id(),
+    );
+    let root = board
+        .tasks
+        .iter()
+        .find(|task| task.id == root_id)
+        .expect("the week's root occurrence");
+    let monday = ScopeKey::day(ymd(2026, 1, 5));
+    assert_eq!(
+        root.plan.as_ref().map(|plan| (plan.start_id, plan.end_id)),
+        Some((monday, monday)),
+        "the root reads the flow's root Cycle Plan"
+    );
+    let tuesday = ScopeKey::day(ymd(2026, 1, 6));
+    let item = occurrence_starting(&board, "Prepare", tuesday);
+    let morning = ScopeKey::part(ymd(2026, 1, 6), PartOfDay::Morning);
+    assert_eq!(
+        item.plan.as_ref().map(|plan| (plan.start_id, plan.end_id)),
+        Some((morning, morning)),
+        "the item reads its pair's Cycle Plan"
+    );
+}
