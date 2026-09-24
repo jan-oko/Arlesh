@@ -292,6 +292,14 @@ fn resolve_cycle(
     let cycle_start = scope.start_date();
 
     let plan = match (pair.plan_kind.as_deref(), pair.plan_start, pair.plan_end) {
+        // A Cycle Plan of the scope's own kind is the scope itself — its one cell. Offsetting from
+        // the scope's start date would not do: a Noon cycle's first part of the day is Morning.
+        (Some(pk), Some(1), Some(1)) if pk == kind => Some(TimeScope::single(scope)),
+        (Some(pk), Some(_), Some(_)) if pk == kind => {
+            return Err(FlowError::Invalid(
+                "a Cycle Plan of its scope's own kind has one cell".to_string(),
+            ))
+        }
         (Some(pk), Some(ps), Some(pe)) => Some(TimeScope {
             start_id: offset_scope(cycle_start, ps, pk)?,
             end_id: offset_scope(cycle_start, pe, pk)?,

@@ -6,6 +6,7 @@ import {
   kindsBelow, cyclePlanCellCount, cyclePairKey, cycleLevels, pathToIndex, indexToPath,
   type CycleScopeKind, type CycleLevel,
 } from "@/utils/flow-cycle";
+import Switch from "@/components/Switch/Switch";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 const PART_OF_DAY_BANDS = ["morning", "noon", "afternoon", "evening", "night", "premorning"] as const;
@@ -43,6 +44,8 @@ function pairLabel(t: TFunction<["editor", "scopes"]>, pair: FlowCyclePair, flow
     ? t("editor:cycleWholeScope")
     : pathLabel(t, cycleLevels(flowScopeN, flowScopeKind, pair.scopeKind as CycleScopeKind), indexToPath(cycleLevels(flowScopeN, flowScopeKind, pair.scopeKind as CycleScopeKind), pair.scopeIndex));
   if (pair.planKind === null || pair.planStart === null) return scope;
+  // A Cycle Plan of the scope's own kind is the scope itself (Part of Day's "Plan to scope").
+  if (pair.planKind === pair.scopeKind) return `${scope} · ${t("editor:cyclePlannedToScope")}`;
   const range = pair.planEnd !== null && pair.planEnd !== pair.planStart ? `${pair.planStart}–${pair.planEnd}` : `${pair.planStart}`;
   return `${scope} · ${kindLabel(t, pair.planKind)} ${range}`;
 }
@@ -75,6 +78,8 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
   const [planKind, setPlanKind] = useState<string>("");
   const [planStart, setPlanStart] = useState<number | null>(null);
   const [planEnd, setPlanEnd] = useState<number | null>(null);
+  // Part of Day has no finer kind to plan within, so its only Cycle Plan is the scope itself.
+  const [planToScope, setPlanToScope] = useState(false);
 
   if (flowScopeN === null || flowScopeKind === null || targetKind === undefined) {
     return <span className={styles.depKind}>{t("editor:cycleWholeScope")}</span>;
@@ -92,6 +97,7 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
     setPlanKind("");
     setPlanStart(null);
     setPlanEnd(null);
+    setPlanToScope(false);
   }
 
   function toggleMode() {
@@ -132,15 +138,28 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
     }
   }
 
+  function leafPlanFields(): Pick<FlowCyclePair, "planKind" | "planStart" | "planEnd"> {
+    if (targetKind === "part_of_day" && planToScope) return { planKind: "part_of_day", planStart: 1, planEnd: 1 };
+    if (planKind !== "" && planStart !== null) return { planKind, planStart, planEnd: planEnd ?? planStart };
+    return { planKind: null, planStart: null, planEnd: null };
+  }
+
   function toggleLeaf(index: number) {
     if (targetKind === undefined) return;
-    const planFields = planKind !== "" && planStart !== null
-      ? { planKind, planStart, planEnd: planEnd ?? planStart }
-      : { planKind: null, planStart: null, planEnd: null };
-    const pair: FlowCyclePair = { scopeKind: targetKind, scopeIndex: pathToIndex(levels, [...displayPath, index]), ...planFields };
+    const pair: FlowCyclePair = { scopeKind: targetKind, scopeIndex: pathToIndex(levels, [...displayPath, index]), ...leafPlanFields() };
     const key = cyclePairKey(pair);
-    const exists = value.some((p) => cyclePairKey(p) === key);
-    onChange(exists ? value.filter((p) => cyclePairKey(p) !== key) : [...value, pair]);
+    if (value.some((p) => cyclePairKey(p) === key)) {
+      onChange(value.filter((p) => cyclePairKey(p) !== key));
+      return;
+    }
+    // A Part-of-Day cell already on takes the switch's answer in place, rather than being drawn
+    // twice — flipping "Plan to scope" and clicking Morning plans the Morning that is there.
+    const sameScope = (p: FlowCyclePair) => p.scopeKind === pair.scopeKind && p.scopeIndex === pair.scopeIndex;
+    if (targetKind === "part_of_day" && value.some(sameScope)) {
+      onChange(value.map((p) => (sameScope(p) ? pair : p)));
+      return;
+    }
+    onChange([...value, pair]);
   }
 
   function addWhole() {
@@ -213,6 +232,10 @@ export default function FlowCycleField({ flowScopeN, flowScopeKind, value, onCha
               );
             })}
           </div>
+
+          {atLeaf && targetKind === "part_of_day" && (
+            <Switch checked={planToScope} onChange={setPlanToScope} label={t("editor:cyclePlanToScope")} />
+          )}
 
           {atLeaf && planKinds.length > 0 && (
             <>

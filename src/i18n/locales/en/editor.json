@@ -26,6 +26,8 @@
   "cycleScopeKind": "Cycle scope",
   "cyclePlanKind": "Cycle plan",
   "cyclePlanNone": "No plan",
+  "cyclePlanToScope": "Plan to scope",
+  "cyclePlannedToScope": "planned",
   "cycleAddWhole": "Add whole-scope cycle",
   "cycleEdit": "Edit cycle",
   "cycleDone": "Done",

@@ -130,3 +130,36 @@ describe("FlowCycleField — multi-period drill-down (2-week flow)", () => {
     expect(screen.getByRole("button", { name: "editor:kindDay 1" })).toBeInTheDocument();
   });
 });
+
+describe("FlowCycleField — Plan to scope on a Part of Day", () => {
+  const base = { flowScopeN: 1, flowScopeKind: "day", onChange };
+  const PLANNED_MORNING: FlowCyclePair = { scopeKind: "part_of_day", scopeIndex: 1, planKind: "part_of_day", planStart: 1, planEnd: 1 };
+
+  it("plans a Morning cycle into the Morning when the switch is on", () => {
+    render(<FlowCycleField {...base} value={[]} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "editor:cyclePlanToScope" }));
+    fireEvent.click(screen.getByRole("button", { name: "scopes:part.morning" }));
+    expect(onChange).toHaveBeenCalledWith([PLANNED_MORNING]);
+  });
+
+  it("plans a Morning already on in place, rather than adding a second one", () => {
+    const unplanned: FlowCyclePair = { ...PLANNED_MORNING, planKind: null, planStart: null, planEnd: null };
+    render(<FlowCycleField {...base} value={[unplanned]} />);
+    fireEvent.click(screen.getByRole("button", { name: "editor:cycleEdit" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "editor:cyclePlanToScope" }));
+    fireEvent.click(screen.getByRole("button", { name: "scopes:part.morning" }));
+    expect(onChange).toHaveBeenCalledWith([PLANNED_MORNING]);
+  });
+
+  it("says so on the chip", () => {
+    render(<FlowCycleField {...base} value={[PLANNED_MORNING]} />);
+    expect(screen.getByText("scopes:part.morning · editor:cyclePlannedToScope")).toBeInTheDocument();
+  });
+
+  it("offers no switch above Part of Day, where the Plan-kind drill-down stays", () => {
+    render(<FlowCycleField flowScopeN={2} flowScopeKind="week" value={[]} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "editor:kindWeek 1" }));
+    expect(screen.queryByRole("checkbox", { name: "editor:cyclePlanToScope" })).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("editor:cyclePlanNone")).toBeInTheDocument();
+  });
+});

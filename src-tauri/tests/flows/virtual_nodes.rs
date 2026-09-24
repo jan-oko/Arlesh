@@ -1077,3 +1077,50 @@ async fn a_root_and_an_item_cycle_plan_resolve_onto_their_occurrences() {
         "the item reads its pair's Cycle Plan"
     );
 }
+
+#[tokio::test]
+async fn a_part_of_day_cycle_planned_to_its_scope_plans_its_occurrence_into_that_part() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let (flow_id, item_id) = daily_habit(&pool, &app, InstanceType::Task).await;
+    // "Plan to scope" on a Noon cycle: the Cycle Plan is the Cycle Scope's own one cell.
+    let noon_planned = FlowCycleInput {
+        scope_kind: Some("part_of_day".into()),
+        scope_index: Some(2),
+        plan_kind: Some("part_of_day".into()),
+        plan_start: Some(1),
+        plan_end: Some(1),
+    };
+    flow_commands::set_flow_item_cycles(
+        app.state(),
+        flow_id,
+        FlowItemType::FlowTask,
+        item_id,
+        vec![noon_planned],
+        Some(arlesh_lib::flows::cycles::Reconcile::Discard),
+        None,
+    )
+    .await
+    .unwrap();
+
+    let board = load(&app, "2026-01-05T09:00:00").await;
+    let noon = ScopeKey::part(ymd(2026, 1, 5), PartOfDay::Noon);
+    let occurrence = occurrence_starting(&board, "Stretch", noon);
+    assert_eq!(
+        occurrence
+            .plan
+            .as_ref()
+            .map(|plan| (plan.start_id, plan.end_id)),
+        Some((noon, noon)),
+        "planned into Noon itself, not the day's first part"
+    );
+
+    let stored: (Option<String>, Option<i64>, Option<i64>) = sqlx::query_as(
+        "SELECT plan_kind, plan_start, plan_end FROM flow_item_cycles WHERE item_id = ?",
+    )
+    .bind(item_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stored, (Some("part_of_day".to_string()), Some(1), Some(1)));
+}

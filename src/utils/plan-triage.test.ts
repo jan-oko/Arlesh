@@ -253,6 +253,13 @@ describe("partitionForScope", () => {
       expect(panes.planned.map((r) => r.node.id)).toEqual(["occurrence-1"]);
     });
 
+    // A Part-of-Day cycle planned to its own scope: the Plan is the occurrence's window itself.
+    it("is planned where its Plan is its own window, inside the scope", () => {
+      const panes = partitionForScope([occurrence({ timeScope: scope(2), plan: scope(2) })], WEEK, WINDOWS, MONTH_PARENT);
+      expect(panes.planned.map((r) => r.node.id)).toEqual(["occurrence-1"]);
+      expect(panes.unplanned).toEqual([]);
+    });
+
     it("is parent-planned where its Plan is the parent scope", () => {
       const panes = partitionForScope([occurrence({ timeScope: scope(4), plan: scope(4) })], WEEK, WINDOWS, MONTH_PARENT);
       expect(panes.parentPlanned.map((r) => r.node.id)).toEqual(["occurrence-1"]);
