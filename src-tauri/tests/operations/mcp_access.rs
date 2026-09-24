@@ -652,3 +652,19 @@ async fn a_habits_occurrences_are_visible_only_inside_a_root() {
         "every visible occurrence keeps its lifecycle and no hidden one's survives"
     );
 }
+
+#[tokio::test]
+async fn the_instructions_still_come_when_the_roots_cannot_be_read() {
+    let pool = helpers::test_pool().await;
+    let mcp = mcp(&pool);
+    // Nothing a user can do produces this; it stands in for any failure reading the roots.
+    sqlx::query("DROP TABLE mcp_roots")
+        .execute(&pool)
+        .await
+        .expect("drop the roots table");
+
+    let text = mcp.instructions().await;
+
+    assert!(text.contains("arlesh_snapshot.load"), "{text}");
+    assert!(text.contains("MCP ROOTS: could not be read"), "{text}");
+}

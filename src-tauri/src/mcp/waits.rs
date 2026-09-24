@@ -73,12 +73,8 @@ impl ArleshMcp {
         .await;
         let wait = attempt!(created);
 
-        if let Err(error) = db.undo().set_source(user_source).await {
-            return result::failed(error);
-        }
-        if let Err(error) = db.commit().await {
-            return result::failed(error);
-        }
+        attempt!(db.undo().set_source(user_source).await);
+        attempt!(db.commit().await);
         (self.announce)(None);
 
         result::ok(wait)
