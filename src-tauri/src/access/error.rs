@@ -11,6 +11,9 @@ pub enum AccessError {
     /// A stored row holds a value its CHECK constraint should have refused.
     #[error("unreadable stored access data: {0}")]
     Corrupt(String),
+    /// Resolving what a Habit occurrence reads as for Agentic failed.
+    #[error(transparent)]
+    Agentic(#[from] crate::tasks::error::TaskError),
     /// A database error occurred.
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),

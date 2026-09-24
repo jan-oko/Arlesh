@@ -154,9 +154,12 @@ fn resolve_chain(
             Resolved {
                 root: own_root.or(inherited.and_then(|parent| parent.root)),
                 private: node.is_private || inherited.is_some_and(|parent| parent.private),
-                agentic: node
-                    .agentic
-                    .unwrap_or(inherited.is_some_and(|parent| parent.agentic)),
+                // A row hung on a Habit occurrence inherits the occurrence's answer, as the app
+                // draws it under the occurrence rather than under the host.
+                agentic: node.agentic.unwrap_or(match node.occurrence_agentic {
+                    Some(occurrence) => occurrence,
+                    None => inherited.is_some_and(|parent| parent.agentic),
+                }),
             },
         );
     }

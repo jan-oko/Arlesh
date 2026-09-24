@@ -51,22 +51,17 @@ async fn occurrence_parent(
     Ok((key, host))
 }
 
-/// What a Task occurrence reads as for Agentic: its own value — its template's unless it overrides
-/// it — or else the Habit's host's. Anything but a Task occurrence is never Agentic.
+/// Whether an agentic wait may hang on the occurrence `key`: it must be a Task occurrence that
+/// reads as Agentic — resolved as the app resolves it (`tasks::agentic`).
 async fn occurrence_reads_agentic(
     db: &mut Db<Transactional>,
     key: &OccurrenceKey,
     host: &OccurrenceHost,
-    now: NaiveDateTime,
 ) -> Result<bool, AppError> {
-    let (task, _, _) = occurrence_edit::occurrence_row(db, key, now).await?;
-    let Some(task) = task else {
+    if host.parent_kind != "task" {
         return Ok(false);
-    };
-    match task.agentic {
-        Some(flag) => Ok(flag),
-        None => Ok(crate::tasks::agentic::reads_agentic(db, &host.host_type, host.host_id).await?),
     }
+    Ok(crate::tasks::agentic::occurrence_reads_agentic(db, key).await?)
 }
 
 /// A stored row, hung on an occurrence, read as the occurrence's child.
@@ -161,7 +156,7 @@ pub async fn create_expectation(
     occurrence_edit::check_within(&host, request.time_scope.as_ref(), None)?;
     // An agentic wait hangs on an occurrence that reads as Agentic, as it hangs on a Task that
     // does. Asked of the occurrence here, since the row below is written under the host.
-    if request.agentic && !occurrence_reads_agentic(db, &key, &host, now).await? {
+    if request.agentic && !occurrence_reads_agentic(db, &key, &host).await? {
         return Err(TaskError::AgenticWaitOutsideAgenticTask.into());
     }
     request.parent_type = host.host_type.clone();
@@ -413,7 +408,7 @@ pub async fn update_expectation(
             .and_then(|parent_key| OccurrenceKey::parse(&parent_key));
         if let Some(key) = hung_on {
             let host = occurrence_edit::host_of(db, &key).await?;
-            if !occurrence_reads_agentic(db, &key, &host, now).await? {
+            if !occurrence_reads_agentic(db, &key, &host).await? {
                 return Err(TaskError::AgenticWaitOutsideAgenticTask.into());
             }
         }

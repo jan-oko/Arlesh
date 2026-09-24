@@ -42,6 +42,7 @@ fn node(key: NodeKey, parent: Option<NodeKey>) -> StoredNode {
         parent,
         is_private: false,
         agentic: None,
+        occurrence_agentic: None,
     }
 }
 
@@ -302,4 +303,38 @@ fn levels_are_ordered_none_read_write() {
     assert!(AccessLevel::Read.permits(AccessLevel::Read));
     assert!(!AccessLevel::Read.permits(AccessLevel::Write));
     assert!(!AccessLevel::None.permits(AccessLevel::Read));
+}
+
+#[test]
+fn a_row_hung_on_an_agentic_occurrence_inherits_it_rather_than_its_hosts() {
+    // The step's stored parent is the Habit's host, which is not Agentic; the occurrence it hangs
+    // on is.
+    let nodes = vec![
+        node(domain(2), None),
+        StoredNode {
+            occurrence_agentic: Some(true),
+            ..node(task(7), Some(domain(2)))
+        },
+        node(task(8), Some(task(7))),
+    ];
+
+    let map = AccessMap::resolve(&nodes, &[domain(2)]);
+
+    assert_eq!(map.level(task(7)), AccessLevel::Write);
+    assert_eq!(map.level(task(8)), AccessLevel::Write, "and hands it down");
+}
+
+#[test]
+fn a_rows_own_flag_still_beats_its_occurrences() {
+    let nodes = vec![
+        node(domain(2), None),
+        StoredNode {
+            occurrence_agentic: Some(true),
+            ..agentic(task(7), Some(domain(2)), false)
+        },
+    ];
+
+    let map = AccessMap::resolve(&nodes, &[domain(2)]);
+
+    assert_eq!(map.level(task(7)), AccessLevel::Read);
 }

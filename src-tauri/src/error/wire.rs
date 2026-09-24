@@ -186,6 +186,7 @@ fn access_kind(error: &AccessError) -> WireErrorKind {
     match error {
         AccessError::NodeNotFound(_) => WireErrorKind::NotFound,
         AccessError::Corrupt(_) => WireErrorKind::Internal,
+        AccessError::Agentic(inner) => task_kind(inner),
         AccessError::Database(_) => WireErrorKind::Database,
     }
 }

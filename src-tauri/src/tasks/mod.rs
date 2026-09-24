@@ -1569,6 +1569,7 @@ pub async fn update_task(
     if starts {
         agentic::require_spec_to_start(
             db,
+            Some(id),
             write.agentic,
             (write.parent_type.as_str(), write.parent_id),
             &write.agentic_brief,

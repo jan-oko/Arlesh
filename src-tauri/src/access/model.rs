@@ -143,6 +143,9 @@ pub struct StoredNode {
     /// The node's **own** Agentic flag — a Task's `agentic`, `None` on a Task that inherits and
     /// on every other kind. Resolution passes it down the way the app does.
     pub agentic: Option<bool>,
+    /// When the node hangs on a Habit occurrence: what that occurrence reads as for Agentic, which
+    /// is what the node inherits in place of its stored parent's (the host its columns name).
+    pub occurrence_agentic: Option<bool>,
 }
 
 /// One stored node as the MCP access page lists it: enough to find it by title and name it.
@@ -187,6 +190,7 @@ impl CatalogueNode {
             parent: self.parent(),
             is_private: self.is_private,
             agentic: self.agentic,
+            occurrence_agentic: None,
         }
     }
 }

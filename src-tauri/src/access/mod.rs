@@ -18,7 +18,10 @@ use error::AccessError;
 use model::{CatalogueNode, KnowledgeBaseReference, NodeKey, NodeTable};
 use resolve::AccessMap;
 
+use std::collections::HashMap;
+
 use crate::database::session::{Db, SessionMode};
+use crate::nodes::key::OccurrenceKey;
 
 #[derive(sqlx::FromRow)]
 struct RootRow {
@@ -217,6 +220,21 @@ impl<'session> AccessOperator<'session> {
             .collect()
     }
 
+    /// Every stored row hung on a Habit occurrence, with the occurrence's canonical key.
+    #[tracing::instrument(skip(self))]
+    pub async fn hung_on_occurrences(&mut self) -> Result<Vec<(NodeKey, String)>, AccessError> {
+        let rows: Vec<(String, i64, String)> =
+            sqlx::query_as("SELECT child_type, child_id, parent_key FROM derived_children")
+                .fetch_all(&mut *self.connection)
+                .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|(kind, id, parent_key)| {
+                NodeKey::from_reference(&kind, id).map(|node| (node, parent_key))
+            })
+            .collect())
+    }
+
     /// The Flow a started-flow node was materialised from, if it was.
     #[tracing::instrument(skip(self))]
     pub async fn flow_of_instance_node(
@@ -254,13 +272,27 @@ impl<'session> AccessOperator<'session> {
 /// Two reads on one session: a pooled session sees each at its own instant, a transactional one
 /// sees both at one. The MCP snapshot resolves inside its own transaction for that reason.
 pub async fn access_map<M: SessionMode>(db: &mut Db<M>) -> Result<AccessMap, AccessError> {
-    let nodes: Vec<_> = db
+    let mut nodes: Vec<_> = db
         .access()
         .catalogue()
         .await?
         .iter()
         .map(CatalogueNode::stored)
         .collect();
+    // A row hung on a Habit occurrence inherits Agentic from the occurrence, resolved the one way
+    // the app and every other rule resolve it.
+    let mut hung: HashMap<NodeKey, Option<bool>> = HashMap::new();
+    for (child, parent_key) in db.access().hung_on_occurrences().await? {
+        if let Some(key) = OccurrenceKey::parse(&parent_key) {
+            let agentic = crate::tasks::agentic::occurrence_reads_agentic(db, &key).await?;
+            hung.insert(child, Some(agentic));
+        }
+    }
+    for node in &mut nodes {
+        if let Some(agentic) = hung.get(&node.key) {
+            node.occurrence_agentic = *agentic;
+        }
+    }
     let roots = db.access().roots().await?;
     Ok(AccessMap::resolve(&nodes, &roots))
 }

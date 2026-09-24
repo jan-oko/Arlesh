@@ -305,3 +305,112 @@ async fn an_agentic_wait_on_an_occurrence_that_is_not_agentic_is_refused() {
     let error = refused.expect_err("the occurrence is not agentic");
     assert!(error.to_string().contains("agentic"), "{error}");
 }
+
+/// The app's case: the flow root is marked Agentic and the item says nothing of its own, so the
+/// item's occurrence reads as Agentic through its template tree — for every rule alike.
+async fn agentic_root_unflagged_item(pool: &sqlx::SqlitePool, app: &App) -> i64 {
+    let item = habit(app, TemplateUpdate::default()).await;
+    let flow_id = {
+        let mut db = helpers::session_factory(pool).connect().await.unwrap();
+        db.flows()
+            .list()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|flow| flow.id)
+            .max()
+            .unwrap()
+    };
+    flow_commands::update_flow(
+        app.state(),
+        flow_id,
+        arlesh_lib::flows::model::UpdateFlowRequest {
+            template: TemplateUpdate {
+                agentic: Some(TaskAgentic::Yes),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    item
+}
+
+#[tokio::test]
+async fn an_item_under_an_agentic_root_needs_a_spec_to_start() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let item = agentic_root_unflagged_item(&pool, &app).await;
+    served(&pool).await;
+
+    let refused = update(
+        &pool,
+        &occurrence(item),
+        UpdateTaskRequest {
+            status: Some(TaskStatus::InProgress),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let error = refused.expect_err("it reads as agentic through its root, so it needs a spec");
+    assert!(error.to_string().contains("spec"), "{error}");
+}
+
+#[tokio::test]
+async fn an_item_under_an_agentic_root_takes_an_agentic_wait() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let item = agentic_root_unflagged_item(&pool, &app).await;
+    served(&pool).await;
+
+    assert!(ask(&pool, &occurrence(item)).await.is_ok());
+}
+
+#[tokio::test]
+async fn a_task_hung_on_an_item_under_an_agentic_root_is_writable_over_the_mcp() {
+    use arlesh_lib::mcp::params;
+    use rmcp::handler::server::wrapper::Parameters;
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let item = agentic_root_unflagged_item(&pool, &app).await;
+    served(&pool).await;
+    let step = {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let step = write::create_task(
+            &mut db,
+            arlesh_lib::tasks::model::CreateTaskRequest {
+                title: "Unsubscribe from the newsletter".into(),
+                parent_type: "task".into(),
+                parent_id: occurrence(item),
+                ..Default::default()
+            },
+            at(NOW),
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+        step.id
+            .stored()
+            .expect("a task hung on an occurrence is a stored row")
+    };
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
+
+    let linked = mcp
+        .beads(Parameters(params::BeadsOperation::Set {
+            node_type: params::BeadsNode::Task,
+            node_id: step,
+            beads_id: Some("Arlesh-cz2".into()),
+        }))
+        .await
+        .unwrap();
+
+    assert_ne!(
+        linked.is_error,
+        Some(true),
+        "it reads as agentic through the occurrence and its root: {:?}",
+        linked.structured_content
+    );
+}

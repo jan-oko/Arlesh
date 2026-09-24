@@ -7,6 +7,7 @@ fn node(kind: NodeTable, id: i64, parent: Option<NodeKey>) -> StoredNode {
         parent,
         is_private: false,
         agentic: None,
+        occurrence_agentic: None,
     }
 }
 
