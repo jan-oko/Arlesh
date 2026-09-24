@@ -40,7 +40,7 @@ import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirm
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import NodeCreateModals from "@/components/NodeCreateModals/NodeCreateModals";
 import NodeEditorModals from "@/components/NodeEditorModals/NodeEditorModals";
-import { editorOwnerOf, isUneditableCheck } from "@/utils/editor-owner";
+import { editorOwnerOf } from "@/utils/editor-owner";
 import { useOpenAsyncTemplate } from "@/hooks/use-open-async-template";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/UnfinishedChildrenModal";
@@ -332,12 +332,8 @@ export default function StepsView() {
         showToast({ nodeId: id, message: t("stepsView:refusedNoEditor", { title: node.title }) });
         return;
       }
-      // A derived wait opens the editor of what it is drawn from: a check task its wait's, a
-      // delegated Task's wait the Task's.
-      if (isUneditableCheck(node)) {
-        showToast({ nodeId: id, message: t("warnings:editCheckTaskRefused") });
-        return;
-      }
+      // A derived wait opens the editor of what it is drawn from — its Task's. A check task is a
+      // Task row, and opens its own.
       const owner = editorOwnerOf(tree, node);
       if (owner === undefined) {
         showToast({ nodeId: id, message: t("warnings:editOwnerMissing") });

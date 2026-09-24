@@ -1462,7 +1462,7 @@ describe("ListView — expectations", () => {
 
   it("completes a check task's check on Enter, and leaves D free", () => {
     const onCycleStatus = vi.fn();
-    const check = row({ node: n("check-1", "task", { status: "todo", virtual: true, expectationCheck: { kind: "stored", expectationId: 1 } }) });
+    const check = row({ node: n("check-1", "task", { status: "todo", rowId: "c-1", origin: { kind: "check", wait_kind: "stored", wait_id: 1, due_at: "2026-07-10T02:00:00" } }) });
     mockUseListData.mockReturnValue(listData({ rows: [check], onCycleStatus }));
     render(<ListViewInApp />);
     fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });

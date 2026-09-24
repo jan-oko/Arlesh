@@ -52,15 +52,14 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
   const { t } = useTranslation(["warnings"]);
   const { prompt: occurrencePrompt, guard, confirm: confirmOccurrence,
     cancel: cancelOccurrence } = useOccurrenceCompletion();
-  const { completeCheck, toggleRelease } = useExpectationActions({ findNode, reload, showToast });
+  const { toggleRelease } = useExpectationActions({ findNode, reload, showToast });
 
   const cycleStatus = useCallback(
     (nodeId: string) => {
       const node = findNode(nodeId);
       if (node === undefined) return;
-      // A wait's glyph releases it (or takes the release back); its check task's completes the
-      // check, which records when and stores nothing else.
-      if (node.expectationCheck !== undefined) { completeCheck(nodeId); return; }
+      // A wait's glyph releases it (or takes the release back). Its check task is a Task row, and
+      // cycles like one: marking it done records the check, and taking it back reopens it.
       if (node.kind === "expectation") { toggleRelease(nodeId); return; }
       // A Habit occurrence is an ordinary row (ADR 0008): its glyph advances it exactly as it
       // advances a stored one, through the completion guard that asks before an occurrence closes
@@ -92,7 +91,7 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
         await reload();
       }, failed("status cycle failed"));
     },
-    [findNode, reload, guard, showToast, t, completeCheck, toggleRelease],
+    [findNode, reload, guard, showToast, t, toggleRelease],
   );
 
   return { cycleStatus, occurrencePrompt, confirmOccurrence, cancelOccurrence };

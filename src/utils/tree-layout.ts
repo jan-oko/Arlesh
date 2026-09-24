@@ -2,7 +2,6 @@ import { hierarchy, tree } from "d3-hierarchy";
 import type { TimeScope } from "@/api/time-scope";
 import type { InstanceType, FlowItemType, TemplateFields } from "@/api/flows";
 import type { Origin, RowId } from "@/api/node-id";
-import { storedId } from "@/api/node-id";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
 import type { Delegate } from "@/api/tasks";
@@ -32,9 +31,6 @@ export function isNodeKind(value: string): value is NodeKind {
   return ALL_NODE_KINDS.some((kind) => kind === value);
 }
 
-/** Which wait a check task checks on: a stored Expectation, or the wait a Task's completion spawned. */
-export type WaitRef = { kind: "stored"; expectationId: number } | { kind: "spawned"; taskId: number };
-
 /** A task/goal is blocked when it has any block reason — explicit or virtual (from an unmet dependency). */
 export function isNodeBlocked(node: MindmapNode): boolean {
   if (node.kind !== "task" && node.kind !== "goal") return false;
@@ -52,7 +48,7 @@ const DOMAIN_TABLE_KINDS: ReadonlySet<string> = new Set(["aspect", "project", "d
  */
 export function entityNodeId(type: string, id: RowId): string {
   // A kind added after the composed spellings were frozen mints its id instead.
-  if (type === "expectation") return expectationNodeId(storedId(id));
+  if (type === "expectation") return expectationNodeId(id);
   return DOMAIN_TABLE_KINDS.has(type) ? `domain-${id}` : `${type}-${id}`;
 }
 
@@ -255,30 +251,19 @@ export interface MindmapNode {
    * the end of its window it stays answerable, as a count of any scope kind. Absent means it
    * inherits the nearest ancestor Commitment's. */
   verdictWindow?: DurationSpec | null;
-  /** A derived, read-only node with no backing row (a wait's check task, a spawned wait). */
+  /** A drawn, read-only node with no backing row (a folded run of Habit history). */
   virtual?: boolean;
   /** An Expectation's **Check every** (Expectations only): how often to look in on the wait. While
-   * it is pending, a virtual check task hangs beneath it, due one interval after the last check.
+   * it is pending, a check task hangs beneath it, due one interval after the last check.
    * `status` carries the Expectation's `pending`/`released`, and `archived` its archive. */
   checkEvery?: DurationSpec | null;
   /** When a stored wait's first check fell due, ISO local time. */
   checkStarting?: string | null;
-  /** Present on a wait's virtual **check task** — a `task`-kind node with no row. Completing it
-   * records the check on the wait named here and stores nothing else. */
-  expectationCheck?: WaitRef;
-  /** On a **completed** check task: when that check fell due, which names it for reopening. */
-  checkDueAt?: string;
-  /** Present on the virtual wait an **Asynchronous** Task spawned while it is done: the Task. Its
-   * title and tags are the Task's template; its state is the overlay keyed by the Task. */
-  spawnedBy?: { taskId: RowId };
   /** A Task's optional **Expectation template** (Tasks only), kept only while `asynchronous`: while
    * the Task is done, a virtual wait is drawn from it. */
   asyncTemplate?: AsyncTemplate | null;
   /** The stored Expectations this Task depends on, by row id (Tasks only). */
   expectationDependencyIds?: number[];
-  /** Present on the virtual Expectation a **delegated** Task waits on: the Task it belongs to. It
-   * has no row, and it is released only by the Task being done — never by hand. */
-  delegationWait?: { taskId: RowId };
   /** Present on a Habit **iteration root** — what the Mindmap's collapse of passed iterations
    * reads off it. Absent on the occurrences beneath it, which never fold on their own. */
   habitIteration?: HabitIterationMeta;

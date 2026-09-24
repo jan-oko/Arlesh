@@ -73,7 +73,7 @@ function envelope(): MindmapLoad {
         },
       },
     }],
-    commitments: [], expectations: [], expectation_checks: [], spawned_waits: [], infos: [],
+    commitments: [], expectations: [], infos: [],
     flows: [{
       id: FLOW_ID, title: "Evening routine", instance_type: "task",
       parent_type: "domain", parent_id: 1, target_type: "goal", target_id: 1,

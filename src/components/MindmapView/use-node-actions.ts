@@ -225,7 +225,7 @@ export function useNodeActions({
       // and there is no gesture anywhere that removes one. `Delete` on an Aspect alone used to be
       // an inert key — indistinguishable from a dead one — and in a mixed selection it took
       // everything else and said nothing about what it had dropped.
-      const refused = nodes.filter((node) => node.virtual === true || node.kind === "aspect");
+      const refused = nodes.filter((node) => node.virtual === true || isDerivedWait(node) || node.kind === "aspect");
       const first = refused[0];
       if (first !== undefined) {
         // One toast, both sentences: the store holds a single pending notice, so a selection that

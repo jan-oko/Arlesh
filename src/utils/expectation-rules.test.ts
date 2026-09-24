@@ -45,7 +45,7 @@ describe("where a wait may hang", () => {
 describe("pasting a wait", () => {
   it("refuses a copied wait and any derived one by name", () => {
     const stored = n("e", "expectation");
-    const check = drawn("c", "task", { virtual: true, expectationCheck: { kind: "stored", expectationId: 1 } });
+    const check = drawn("c", "task", { rowId: "c-1", origin: { kind: "check", wait_kind: "stored", wait_id: 1, due_at: "2026-07-10T02:00:00" } });
     const target = n("project-1", "project");
     const tree = n("root", "domain", { children: [stored, check, target] });
     expect(pasteRefusal(tree, "e", target, true)).toEqual({ reason: PASTE_REFUSAL.EXPECTATION });

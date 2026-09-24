@@ -39,12 +39,39 @@ export interface HabitOrigin {
   cycle_id: number;
 }
 
+/** A wait's check task: which check on which wait. */
+export interface CheckOrigin {
+  kind: "check";
+  /** A stored Expectation's check, or one on the wait a Task spawned. */
+  wait_kind: "stored" | "spawned";
+  /** The Expectation's id, or the spawning Task's. */
+  wait_id: number;
+  /** When the check fell due, ISO `YYYY-MM-DDTHH:MM:SS`. */
+  due_at: string;
+}
+
+/** A wait derived from a Task: the one its completion spawned, or the one its delegation holds. */
+export interface WaitOrigin {
+  kind: "spawned_wait" | "delegation_wait";
+  task_id: RowId;
+}
+
 /**
- * Where a row came from: made by hand, or derived (a Habit's occurrence). The few rules that
- * genuinely differ for a derived row — it cannot leave its iteration, change kind or be deleted —
- * key off this and nothing else. Absent reads as `manual`.
+ * Where a row came from: made by hand, or derived — a Habit's occurrence, a wait's check task, a
+ * Task's spawned wait or a delegated Task's wait. The few rules that genuinely differ for a derived
+ * row key off this and nothing else. Absent reads as `manual`.
  */
-export type Origin = { kind: "manual" } | HabitOrigin;
+export type Origin = { kind: "manual" } | HabitOrigin | CheckOrigin | WaitOrigin;
+
+/** The check `origin` names, if it names one. */
+export function checkOrigin(origin: Origin | undefined): CheckOrigin | undefined {
+  return origin?.kind === "check" ? origin : undefined;
+}
+
+/** The Task a derived wait is drawn from, if `origin` names one. */
+export function waitOrigin(origin: Origin | undefined): WaitOrigin | undefined {
+  return origin?.kind === "spawned_wait" || origin?.kind === "delegation_wait" ? origin : undefined;
+}
 
 /** The Habit occurrence `origin` names, if it names one. */
 export function habitOrigin(origin: Origin | undefined): HabitOrigin | undefined {

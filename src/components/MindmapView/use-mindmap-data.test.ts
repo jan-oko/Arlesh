@@ -348,8 +348,7 @@ describe("buildTree", () => {
 function mindmapEnvelope(overrides: Partial<MindmapLoad> = {}): MindmapLoad {
   const flows = overrides.flows ?? [];
   return {
-    domains: [], goals: [], tasks: [], commitments: [], expectations: [], expectation_checks: [],
-    spawned_waits: [], infos: [], flows: [],
+    domains: [], goals: [], tasks: [], commitments: [], expectations: [], infos: [], flows: [],
     flow_goals: [], flow_tasks: [], flow_cycles: [], flow_dependencies: [],
     block_reasons: [], task_dependencies: [], flow_instance_nodes: [], lifecycles: [],
     habits: flows.map((flow) => ({

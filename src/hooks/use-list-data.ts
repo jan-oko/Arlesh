@@ -81,7 +81,7 @@ export function useListData(): ListData {
   const rows = useMemo(() => flattenTaskRows(listRoot, taskDeps), [listRoot, taskDeps]);
   const commitmentRows = useMemo(() => flattenCommitmentRows(listRoot), [listRoot]);
   const expectationRows = useMemo(() => flattenExpectationRows(listRoot), [listRoot]);
-  const { toggleRelease, completeCheck } = useExpectationActions({
+  const { toggleRelease } = useExpectationActions({
     findNode: (id) => findNode(tree, id), reload, showToast,
   });
   const allTasksAndGoals = useMemo(() => {
@@ -94,11 +94,7 @@ export function useListData(): ListData {
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
       if (node === undefined || node.kind !== "task") return;
-      // A wait's check task has no status of its own: completing it records the check.
-      if (node.expectationCheck !== undefined) {
-        completeCheck(nodeId);
-        return;
-      }
+      // A wait's check task is a Task row: marking it done records the check.
       // Through the completion guard, exactly as the Mindmap's status click is: the same
       // occurrence closed from either view asks the same question.
       const dbId = rowIdOf(node);
@@ -115,7 +111,7 @@ export function useListData(): ListData {
         showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
       });
     },
-    [tree, reload, guard, showToast, t, completeCheck],
+    [tree, reload, guard, showToast, t],
   );
 
   const createTask = useCallback(

@@ -1,3 +1,4 @@
+import type { RowId } from "@/api/node-id";
 import { invoke } from "./gesture";
 import type { Verdict } from "@/api/verdict";
 
@@ -24,7 +25,8 @@ export type Archival = "live" | "frozen" | "backlog" | "archived";
  * archived. */
 export interface ItemLifecycle {
   node_type: string;
-  node_id: number;
+  /** The row: a stored one's integer, or a derived one's UUID. */
+  node_id: RowId;
   timing: Timing;
   resolution?: Resolution;
   verdict?: Verdict;

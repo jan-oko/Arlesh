@@ -60,7 +60,7 @@ export function useListDelete({
     (id: string) => {
       const node = findNode(id);
       if (node === undefined) return;
-      if (node.virtual === true) {
+      if (node.virtual === true || isDerivedWait(node)) {
         const derivedWait = isDerivedWait(node);
         showToast({ nodeId: id, message: t(derivedWait ? "deleteDerivedWaitRefused" : "deleteRepetitionRefused") });
         return;
