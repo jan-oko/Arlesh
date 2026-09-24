@@ -314,29 +314,30 @@ async fn the_lifecycle_entries_time_the_next_check_and_carry_the_archive() {
     let lifecycles = derive_all_scope_lifecycles(&mut db, at("2026-07-10T12:00:00"))
         .await
         .unwrap();
-    let entry = |node_type: &str, id: i64| {
+    let entry = |node_type: &str, id: arlesh_lib::nodes::id::NodeId| {
         lifecycles
             .iter()
             .find(|l| l.node_type == node_type && l.node_id == id)
             .unwrap()
     };
-    // The first check was due on the 3rd, so on the 10th it is overdue.
-    assert_eq!(
-        entry("expectation_check", late.id.sid()).timing,
-        Timing::Lapsed
-    );
-    assert_eq!(
-        entry("expectation_check", late.id.sid()).resolution,
-        Some(Resolution::Overdue)
-    );
+    // The first check was due on the 3rd, so on the 10th it is overdue. Its entry is filed under
+    // the check task's own row.
+    let check = arlesh_lib::nodes::key::DerivedKey::Check(arlesh_lib::nodes::key::CheckKey {
+        wait_kind: arlesh_lib::tasks::waits::WaitKind::Stored,
+        wait_id: late.id.sid(),
+        due_at: at("2026-07-03T09:00:00"),
+    })
+    .node_id();
+    assert_eq!(entry("task", check.clone()).timing, Timing::Lapsed);
+    assert_eq!(entry("task", check).resolution, Some(Resolution::Overdue));
     // The wait's own entry times its (absent) Time Scope and carries its archive.
-    assert_eq!(entry("expectation", late.id.sid()).timing, Timing::Active);
+    assert_eq!(entry("expectation", late.id.clone()).timing, Timing::Active);
     assert_eq!(
-        entry("expectation", archived.id.sid()).timing,
+        entry("expectation", archived.id.clone()).timing,
         Timing::Active
     );
     assert_eq!(
-        entry("expectation", archived.id.sid()).archival,
+        entry("expectation", archived.id.clone()).archival,
         Archival::Archived
     );
 }
@@ -485,7 +486,7 @@ async fn a_note_under_an_expectation_retyped_to_a_task_climbs_past_it() {
             body: "ping them Friday".into(),
             details: None,
             parent_type: "expectation".into(),
-            parent_id: wait.id.into(),
+            parent_id: wait.id,
             position: 0,
         })
         .await
