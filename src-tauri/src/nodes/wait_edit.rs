@@ -60,9 +60,13 @@ pub async fn wait_row(
     let id = key.node_id();
     let mut tasks = db.tasks().list().await?;
     let flows = db.flows().list().await?;
-    let (derived, _) =
-        super::table::derive_habits(db, &flows, now, crate::flows::occurrences::Horizon::default())
-            .await;
+    let (derived, _) = super::table::derive_habits(
+        db,
+        &flows,
+        now,
+        crate::flows::occurrences::Horizon::default(),
+    )
+    .await;
     tasks.extend(derived.tasks);
     super::waits::derive_waits(db, now, &tasks)
         .await?
@@ -75,7 +79,12 @@ pub async fn wait_row(
 /// What a check task reads when it says nothing of its own: its wait's title.
 async fn wait_title(db: &mut Db<Transactional>, key: &CheckKey) -> Result<String, AppError> {
     Ok(match key.wait_kind {
-        WaitKind::Stored => db.expectations().get(ExpectationId(key.wait_id)).await?.title,
+        WaitKind::Stored => {
+            db.expectations()
+                .get(ExpectationId(key.wait_id))
+                .await?
+                .title
+        }
         WaitKind::Spawned => db
             .tasks()
             .async_template(TaskId(key.wait_id))
@@ -96,7 +105,9 @@ fn refuse_changes(current: &Task, request: &UpdateTaskRequest) -> Result<(), App
         _ => true,
     };
     if moves {
-        return Err(refused("a check task belongs to its wait and cannot be moved"));
+        return Err(refused(
+            "a check task belongs to its wait and cannot be moved",
+        ));
     }
     let bounds = |scope: &Option<crate::tasks::model::TimeScope>| {
         scope.as_ref().map(|scope| (scope.start_id, scope.end_id))
@@ -109,7 +120,9 @@ fn refuse_changes(current: &Task, request: &UpdateTaskRequest) -> Result<(), App
         return Err(refused("a check task's day is when its check fell due"));
     }
     if matches!(request.delegate_to, Some(Some(_))) {
-        return Err(refused("a check on a wait is yours to make, and cannot be delegated"));
+        return Err(refused(
+            "a check on a wait is yours to make, and cannot be delegated",
+        ));
     }
     if request.asynchronous == Some(true) || matches!(request.async_template, Some(Some(_))) {
         return Err(refused("a check task does not start a wait of its own"));
@@ -146,8 +159,7 @@ pub async fn update_check_task(
         overlay.agentic_set = overlay.agentic.is_some();
     }
     if let Some(archival) = request.archival {
-        overlay.archival =
-            (archival != TaskArchival::Live).then(|| archival.as_str().to_string());
+        overlay.archival = (archival != TaskArchival::Live).then(|| archival.as_str().to_string());
     }
     if let Some(is_private) = request.is_private {
         overlay.is_private = (is_private != current.is_private || overlay.is_private.is_some())
@@ -200,7 +212,10 @@ pub async fn update_spawned_wait(
 ) -> Result<Expectation, AppError> {
     let key = DerivedKey::SpawnedWait(task_id);
     let current = wait_row(db, &key, now).await?;
-    let changes_template = request.title.as_ref().is_some_and(|title| *title != current.title)
+    let changes_template = request
+        .title
+        .as_ref()
+        .is_some_and(|title| *title != current.title)
         || request
             .check_every
             .as_ref()

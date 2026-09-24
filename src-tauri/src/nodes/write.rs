@@ -144,7 +144,14 @@ pub async fn create_expectation(
     request.parent_type = host.host_type.clone();
     request.parent_id = NodeId::Stored(host.host_id);
     let mut expectation = crate::tasks::create_expectation(db, request).await?;
-    occurrence_edit::attach(db, &host, &key, "expectation", expectation.id.require_stored()?).await?;
+    occurrence_edit::attach(
+        db,
+        &host,
+        &key,
+        "expectation",
+        expectation.id.require_stored()?,
+    )
+    .await?;
     (expectation.parent_type, expectation.parent_id) = hung_on(&host, &key);
     Ok(expectation)
 }

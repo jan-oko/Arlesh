@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 
 use super::id::NodeId;
 use super::key::TemplateKind;
-use crate::tasks::waits::WaitKind;
 use crate::flows::model::IterationStatus;
 use crate::scopes::key::ScopeKey;
+use crate::tasks::waits::WaitKind;
 
 /// Where a node row came from. Discriminated on `kind` on the wire.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

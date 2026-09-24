@@ -180,7 +180,6 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         facts.push(node);
         parents.push(Some(content_parent_id(&task.parent_type, &task.parent_id)));
     }
-    }
     for expectation in &load.expectations {
         let mut node = NodeFacts::new(
             format!("expectation-{}", expectation.id),

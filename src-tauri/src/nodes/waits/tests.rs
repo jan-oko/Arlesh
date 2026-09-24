@@ -95,7 +95,10 @@ fn an_open_check_task_is_a_task_under_its_wait_reading_its_overlay() {
     let task = &rows.tasks[0];
     assert_eq!(task.id, DerivedKey::Check(check_key()).node_id());
     assert_eq!(task.title, "Reply from Dana");
-    assert_eq!((task.parent_type.as_str(), &task.parent_id), ("expectation", &NodeId::Stored(5)));
+    assert_eq!(
+        (task.parent_type.as_str(), &task.parent_id),
+        ("expectation", &NodeId::Stored(5))
+    );
     assert_eq!(task.status, "in_progress");
     assert_eq!(task.tag_ids, vec![3]);
     assert!(task.time_scope.is_some());
@@ -116,5 +119,8 @@ fn a_made_check_is_a_done_task_whatever_its_overlay_said_while_open() {
     );
     assert_eq!(rows.tasks[0].status, "done");
     assert_eq!(rows.tasks[0].title, "Call Dana");
-    assert!(rows.block_reasons.is_empty(), "its reasons are its own only once set");
+    assert!(
+        rows.block_reasons.is_empty(),
+        "its reasons are its own only once set"
+    );
 }
