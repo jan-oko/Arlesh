@@ -126,7 +126,7 @@ async fn person_linked_to_task_via_delegation() {
 
     update_task(
         &mut db,
-        task.id.clone(),
+        task.id.sid().into(),
         arlesh_lib::tasks::model::UpdateTaskRequest {
             delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
                 id: person.id,
@@ -137,7 +137,7 @@ async fn person_linked_to_task_via_delegation() {
     .await
     .unwrap();
 
-    let fetched = db.tasks().get(task.id.clone()).await.unwrap();
+    let fetched = db.tasks().get(task.id.sid().into()).await.unwrap();
     assert_eq!(
         fetched.delegate_to,
         Some(arlesh_lib::tasks::model::Delegate::Person { id: person.id })
@@ -147,7 +147,7 @@ async fn person_linked_to_task_via_delegation() {
     // column: undelegating a task must remove the link rather than leave the old person on it.
     update_task(
         &mut db,
-        task.id.clone(),
+        task.id.sid().into(),
         arlesh_lib::tasks::model::UpdateTaskRequest {
             delegate_to: Some(None),
             ..Default::default()
@@ -156,7 +156,7 @@ async fn person_linked_to_task_via_delegation() {
     .await
     .unwrap();
 
-    let undelegated = db.tasks().get(task.id.clone()).await.unwrap();
+    let undelegated = db.tasks().get(task.id.sid().into()).await.unwrap();
     db.commit().await.unwrap();
     assert_eq!(
         undelegated.delegate_to, None,

@@ -29,7 +29,6 @@ use arlesh_lib::infos::model::CreateInfoRequest;
 use arlesh_lib::mindmap::model::FlowHabitResult;
 use arlesh_lib::scopes::{key::ScopeKey, model::ScopeKind};
 use arlesh_lib::tasks::model::{CreateGoalRequest, CreateTaskRequest, Dependency};
-use helpers::StoredId;
 use tauri::Manager;
 
 fn ymd(y: i32, m: u32, d: u32) -> chrono::NaiveDate {
@@ -98,7 +97,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>, pool: &sqlx::SqlitePoo
         CreateGoalRequest {
             title: "Ship".into(),
             parent_type: "domain".into(),
-            parent_id: 1,
+            parent_id: 1.into(),
             ..Default::default()
         },
     )

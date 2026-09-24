@@ -188,7 +188,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>) -> i64 {
         CreateGoalRequest {
             title: "Ship".into(),
             parent_type: "domain".into(),
-            parent_id: 1,
+            parent_id: 1.into(),
             ..Default::default()
         },
     )
@@ -684,7 +684,7 @@ async fn beads_set_links_a_goal() {
         CreateGoalRequest {
             title: "Ship".into(),
             parent_type: "domain".into(),
-            parent_id: 1,
+            parent_id: 1.into(),
             ..Default::default()
         },
     )
@@ -1178,7 +1178,7 @@ async fn beads_set_links_a_commitment_and_then_clears_it() {
         CreateCommitmentRequest {
             title: "Asleep by 23:00".into(),
             parent_type: "domain".into(),
-            parent_id: 1,
+            parent_id: 1.into(),
             time_scope: Some(TimeScope {
                 start_id: scope.id,
                 end_id: scope.id,

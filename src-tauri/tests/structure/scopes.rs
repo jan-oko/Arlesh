@@ -5,6 +5,7 @@
 //! referencing columns, and exact windows registered by the write that stores them.
 
 use crate::helpers;
+use crate::helpers::StoredId;
 
 use chrono::{NaiveDate, NaiveDateTime};
 

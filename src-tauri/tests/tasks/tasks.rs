@@ -176,7 +176,7 @@ async fn undone_dependency_blocks_task() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = add_task_dependency(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             Dependency::Task {
                 id: dependency.id.clone(),
             },
@@ -191,7 +191,7 @@ async fn undone_dependency_blocks_task() {
 
     let with_blockers = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        get_task_with_blockers(&mut db, task.id.clone()).await
+        get_task_with_blockers(&mut db, task.id.sid().into()).await
     }
     .unwrap();
     assert_eq!(with_blockers.block_reasons.len(), 1);
@@ -247,7 +247,7 @@ async fn done_dependency_unblocks_task() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = add_task_dependency(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             Dependency::Task {
                 id: dependency.id.clone(),
             },
@@ -264,7 +264,7 @@ async fn done_dependency_unblocks_task() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            dependency.id.clone(),
+            dependency.id.sid().into(),
             UpdateTaskRequest {
                 status: Some(arlesh_lib::tasks::model::TaskStatus::Done),
                 ..Default::default()
@@ -280,7 +280,7 @@ async fn done_dependency_unblocks_task() {
 
     let with_blockers = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        get_task_with_blockers(&mut db, task.id.clone()).await
+        get_task_with_blockers(&mut db, task.id.sid().into()).await
     }
     .unwrap();
     assert!(
@@ -338,7 +338,7 @@ async fn circular_dependency_rejected() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = add_task_dependency(
             &mut db,
-            task_a.id.clone(),
+            task_a.id.sid().into(),
             Dependency::Task {
                 id: task_b.id.clone(),
             },
@@ -355,7 +355,7 @@ async fn circular_dependency_rejected() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = add_task_dependency(
             &mut db,
-            task_b.id.clone(),
+            task_b.id.sid().into(),
             Dependency::Task {
                 id: task_a.id.clone(),
             },
@@ -424,7 +424,7 @@ async fn goal_dependency_blocks_task_until_achieved() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = add_task_dependency(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             Dependency::Goal {
                 id: goal.id.clone(),
             },
@@ -439,7 +439,7 @@ async fn goal_dependency_blocks_task_until_achieved() {
 
     let blocked = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        get_task_with_blockers(&mut db, task.id.clone()).await
+        get_task_with_blockers(&mut db, task.id.sid().into()).await
     }
     .unwrap();
     assert_eq!(blocked.block_reasons.len(), 1);
@@ -448,7 +448,7 @@ async fn goal_dependency_blocks_task_until_achieved() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_goal(
             &mut db,
-            goal.id.clone(),
+            goal.id.sid().into(),
             UpdateGoalRequest {
                 status: Some(GoalStatus::Achieved),
                 ..Default::default()
@@ -464,7 +464,7 @@ async fn goal_dependency_blocks_task_until_achieved() {
 
     let unblocked = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        get_task_with_blockers(&mut db, task.id.clone()).await
+        get_task_with_blockers(&mut db, task.id.sid().into()).await
     }
     .unwrap();
     assert!(unblocked.block_reasons.is_empty());
@@ -522,7 +522,7 @@ async fn reparent_task_to_different_project() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 parent_type: Some("project".into()),
                 parent_id: Some(project_b_id.into()),
@@ -573,7 +573,7 @@ async fn add_and_remove_tag_on_task() {
         .await
         .unwrap()
         .tasks()
-        .add_tag(task.id.clone(), tag_id)
+        .add_tag(task.id.sid().into(), tag_id)
         .await
         .unwrap();
     let tagged = helpers::session_factory(&pool)
@@ -581,7 +581,7 @@ async fn add_and_remove_tag_on_task() {
         .await
         .unwrap()
         .tasks()
-        .get(task.id.clone())
+        .get(task.id.sid().into())
         .await
         .unwrap();
     assert_eq!(tagged.tag_ids, vec![tag_id]);
@@ -591,7 +591,7 @@ async fn add_and_remove_tag_on_task() {
         .await
         .unwrap()
         .tasks()
-        .remove_tag(task.id.clone(), tag_id)
+        .remove_tag(task.id.sid().into(), tag_id)
         .await
         .unwrap();
     let untagged = helpers::session_factory(&pool)
@@ -599,7 +599,7 @@ async fn add_and_remove_tag_on_task() {
         .await
         .unwrap()
         .tasks()
-        .get(task.id.clone())
+        .get(task.id.sid().into())
         .await
         .unwrap();
     assert!(untagged.tag_ids.is_empty());
@@ -636,7 +636,7 @@ async fn list_tasks_includes_tag_ids() {
         .await
         .unwrap()
         .tasks()
-        .add_tag(task.id.clone(), tag_id)
+        .add_tag(task.id.sid().into(), tag_id)
         .await
         .unwrap();
 
@@ -681,7 +681,7 @@ async fn update_task_title() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 title: Some("New Title".into()),
                 ..Default::default()
@@ -733,7 +733,7 @@ async fn agentic_is_set_kept_and_cleared_back_to_inheriting() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 agentic: Some(TaskAgentic::Yes),
                 ..Default::default()
@@ -752,7 +752,7 @@ async fn agentic_is_set_kept_and_cleared_back_to_inheriting() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 title: Some("Re-cast the bell".into()),
                 ..Default::default()
@@ -775,7 +775,7 @@ async fn agentic_is_set_kept_and_cleared_back_to_inheriting() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 agentic: Some(TaskAgentic::No),
                 ..Default::default()
@@ -798,7 +798,7 @@ async fn agentic_is_set_kept_and_cleared_back_to_inheriting() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 agentic: Some(TaskAgentic::Inherit),
                 ..Default::default()
@@ -856,7 +856,7 @@ async fn asynchronous_is_set_kept_and_cleared_again() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 asynchronous: Some(true),
                 ..Default::default()
@@ -875,7 +875,7 @@ async fn asynchronous_is_set_kept_and_cleared_again() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 title: Some("Order the bell casting".into()),
                 ..Default::default()
@@ -897,7 +897,7 @@ async fn asynchronous_is_set_kept_and_cleared_again() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 asynchronous: Some(false),
                 ..Default::default()
@@ -1020,7 +1020,7 @@ async fn a_task_can_be_agentic_and_delegated_at_once() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
                     id: person,
@@ -1124,7 +1124,7 @@ async fn delegating_to_a_person_who_does_not_exist_is_refused() {
     .unwrap();
     let refused = update_task(
         &mut db,
-        task.id.clone(),
+        task.id.sid().into(),
         UpdateTaskRequest {
             delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
                 id: 9_999,
@@ -1163,7 +1163,7 @@ async fn delete_task() {
 
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r = arlesh_lib::tasks::delete_task(&mut db, task.id.clone()).await;
+        let __r = arlesh_lib::tasks::delete_task(&mut db, task.id.sid().into()).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -1176,7 +1176,7 @@ async fn delete_task() {
         .await
         .unwrap()
         .tasks()
-        .get(task.id.clone())
+        .get(task.id.sid().into())
         .await
         .unwrap_err();
     assert!(
@@ -1235,7 +1235,7 @@ async fn remove_dependency() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = add_task_dependency(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             Dependency::Task { id: dep.id.clone() },
         )
         .await;
@@ -1250,7 +1250,10 @@ async fn remove_dependency() {
         .await
         .unwrap()
         .tasks()
-        .remove_dependency(task.id.clone(), Dependency::Task { id: dep.id.clone() })
+        .remove_dependency(
+            task.id.sid().into(),
+            Dependency::Task { id: dep.id.clone() },
+        )
         .await
         .unwrap();
 
@@ -1259,7 +1262,7 @@ async fn remove_dependency() {
         .await
         .unwrap()
         .tasks()
-        .list_dependencies(task.id.clone())
+        .list_dependencies(task.id.sid().into())
         .await
         .unwrap();
     assert!(deps.is_empty());
@@ -1294,7 +1297,7 @@ async fn update_goal_title() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_goal(
             &mut db,
-            goal.id.clone(),
+            goal.id.sid().into(),
             UpdateGoalRequest {
                 title: Some("New Goal".into()),
                 ..Default::default()
@@ -1338,7 +1341,7 @@ async fn delete_goal() {
 
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r = arlesh_lib::tasks::delete_goal(&mut db, goal.id.clone()).await;
+        let __r = arlesh_lib::tasks::delete_goal(&mut db, goal.id.sid().into()).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -1351,7 +1354,7 @@ async fn delete_goal() {
         .await
         .unwrap()
         .goals()
-        .get(goal.id.clone())
+        .get(goal.id.sid().into())
         .await
         .unwrap_err();
     assert!(
@@ -1394,7 +1397,7 @@ async fn add_and_remove_tag_on_goal() {
         .await
         .unwrap()
         .goals()
-        .add_tag(goal.id.clone(), tag_id)
+        .add_tag(goal.id.sid().into(), tag_id)
         .await
         .unwrap();
     let tagged = helpers::session_factory(&pool)
@@ -1402,7 +1405,7 @@ async fn add_and_remove_tag_on_goal() {
         .await
         .unwrap()
         .goals()
-        .get(goal.id.clone())
+        .get(goal.id.sid().into())
         .await
         .unwrap();
     assert_eq!(tagged.tag_ids, vec![tag_id]);
@@ -1412,7 +1415,7 @@ async fn add_and_remove_tag_on_goal() {
         .await
         .unwrap()
         .goals()
-        .remove_tag(goal.id.clone(), tag_id)
+        .remove_tag(goal.id.sid().into(), tag_id)
         .await
         .unwrap();
     let untagged = helpers::session_factory(&pool)
@@ -1420,7 +1423,7 @@ async fn add_and_remove_tag_on_goal() {
         .await
         .unwrap()
         .goals()
-        .get(goal.id.clone())
+        .get(goal.id.sid().into())
         .await
         .unwrap();
     assert!(untagged.tag_ids.is_empty());
@@ -1457,7 +1460,7 @@ async fn list_goals_includes_tag_ids() {
         .await
         .unwrap()
         .goals()
-        .add_tag(goal.id.clone(), tag_id)
+        .add_tag(goal.id.sid().into(), tag_id)
         .await
         .unwrap();
 
@@ -1525,7 +1528,7 @@ async fn reparent_goal_to_different_project() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_goal(
             &mut db,
-            goal.id.clone(),
+            goal.id.sid().into(),
             UpdateGoalRequest {
                 parent_type: Some("project".into()),
                 parent_id: Some(project_b_id.into()),
@@ -1574,7 +1577,7 @@ async fn update_task_status_to_in_progress() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 status: Some(TaskStatus::InProgress),
                 ..Default::default()
@@ -1708,7 +1711,7 @@ async fn explicit_block_reason_surfaces_in_get_with_blockers() {
 
     let with_blockers = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        get_task_with_blockers(&mut db, task.id.clone()).await
+        get_task_with_blockers(&mut db, task.id.sid().into()).await
     }
     .unwrap();
     assert!(with_blockers
@@ -1754,7 +1757,7 @@ async fn update_task_scope() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 time_scope: Some(Some(TimeScope {
                     start_id: scope.id,
@@ -1874,7 +1877,7 @@ async fn task_plan_is_independent_of_time_scope() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 plan: Some(None),
                 ..Default::default()
@@ -2244,7 +2247,7 @@ async fn reparenting_under_a_tighter_ancestor_is_rejected() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 parent_type: Some("goal".into()),
                 parent_id: Some(august_goal.id.clone()),
@@ -2452,7 +2455,7 @@ async fn update_rejects_plan_outside_time_scope() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 plan: Some(Some(single(far_day.id))),
                 ..Default::default()
@@ -2574,7 +2577,7 @@ async fn update_goal_scope() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_goal(
             &mut db,
-            goal.id.clone(),
+            goal.id.sid().into(),
             UpdateGoalRequest {
                 time_scope: Some(Some(TimeScope {
                     start_id: scope.id,
@@ -2626,7 +2629,7 @@ async fn goal_frozen_and_archived_statuses() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_goal(
             &mut db,
-            goal.id.clone(),
+            goal.id.sid().into(),
             UpdateGoalRequest {
                 status: Some(GoalStatus::Frozen),
                 ..Default::default()
@@ -2645,7 +2648,7 @@ async fn goal_frozen_and_archived_statuses() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_goal(
             &mut db,
-            goal.id.clone(),
+            goal.id.sid().into(),
             UpdateGoalRequest {
                 status: Some(GoalStatus::Archived),
                 ..Default::default()
@@ -2691,7 +2694,7 @@ async fn goal_is_achieved() {
         .await
         .unwrap()
         .goals()
-        .is_achieved(goal.id.clone())
+        .is_achieved(goal.id.sid().into())
         .await
         .unwrap());
 
@@ -2699,7 +2702,7 @@ async fn goal_is_achieved() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_goal(
             &mut db,
-            goal.id.clone(),
+            goal.id.sid().into(),
             UpdateGoalRequest {
                 status: Some(GoalStatus::Achieved),
                 ..Default::default()
@@ -2718,7 +2721,7 @@ async fn goal_is_achieved() {
         .await
         .unwrap()
         .goals()
-        .is_achieved(goal.id.clone())
+        .is_achieved(goal.id.sid().into())
         .await
         .unwrap());
 }
@@ -2847,7 +2850,7 @@ async fn archive_on_exit_persists_and_clearing_scope_clears_it() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.clone(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 time_scope: Some(None),
                 ..Default::default()
@@ -3254,7 +3257,7 @@ async fn deleting_a_goal_cascades_its_subtree() {
 
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r = arlesh_lib::tasks::delete_goal(&mut db, parent.id.clone()).await;
+        let __r = arlesh_lib::tasks::delete_goal(&mut db, parent.id.sid().into()).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -3268,7 +3271,7 @@ async fn deleting_a_goal_cascades_its_subtree() {
         .await
         .unwrap()
         .goals()
-        .get(sub_goal.id.clone())
+        .get(sub_goal.id.sid().into())
         .await
         .is_err());
     assert!(helpers::session_factory(&pool)
@@ -3276,7 +3279,7 @@ async fn deleting_a_goal_cascades_its_subtree() {
         .await
         .unwrap()
         .tasks()
-        .get(sub_task.id.clone())
+        .get(sub_task.id.sid().into())
         .await
         .is_err());
 }
@@ -3899,7 +3902,7 @@ async fn a_cyclic_ancestor_chain_renders_fine_and_rejects_a_write() {
         CreateTaskRequest {
             title: "Scoped Child".into(),
             parent_type: "task".into(),
-            parent_id: 9001,
+            parent_id: 9001.into(),
             time_scope: Some(single(week_in_july)),
             ..Default::default()
         },
@@ -4931,7 +4934,7 @@ async fn backlogging_a_planned_task_is_refused_pending_confirmation() {
         .await
         .unwrap()
         .tasks()
-        .get(task.id.clone())
+        .get(task.id.sid().into())
         .await
         .unwrap();
     assert_eq!(stored.archival, TaskArchival::Live);

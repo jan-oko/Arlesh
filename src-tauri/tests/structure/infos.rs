@@ -10,7 +10,6 @@ use arlesh_lib::{
         model::{CreateGoalRequest, CreateTaskRequest},
     },
 };
-use helpers::StoredId;
 use tauri::Manager;
 
 async fn make_project(pool: &sqlx::SqlitePool) -> i64 {

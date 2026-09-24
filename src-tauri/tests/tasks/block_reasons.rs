@@ -108,7 +108,7 @@ async fn deleting_a_task_removes_its_block_reasons() {
         .await
         .unwrap();
 
-    delete_task(&mut db, task.id.clone()).await.unwrap();
+    delete_task(&mut db, task.id.sid().into()).await.unwrap();
 
     assert!(db
         .block_reasons()

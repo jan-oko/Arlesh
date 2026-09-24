@@ -649,7 +649,7 @@ async fn the_convert_to_flow_command_commits_the_template_and_the_deletion() {
         CreateGoalRequest {
             title: "Routine".into(),
             parent_type: "domain".into(),
-            parent_id: 1,
+            parent_id: 1.into(),
             time_scope: Some(TimeScope {
                 start_id: scope.id,
                 end_id: scope.id,
@@ -736,7 +736,7 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
         CreateGoalRequest {
             title: "Routine".into(),
             parent_type: "domain".into(),
-            parent_id: 1,
+            parent_id: 1.into(),
             time_scope: Some(TimeScope {
                 start_id: week.id,
                 end_id: week.id,
@@ -891,7 +891,7 @@ async fn a_convert_to_flow_aborted_after_the_delete_restores_the_subtree_and_lea
         CreateTaskRequest {
             title: "Parent".into(),
             parent_type: "domain".into(),
-            parent_id: 1,
+            parent_id: 1.into(),
             ..Default::default()
         },
     )

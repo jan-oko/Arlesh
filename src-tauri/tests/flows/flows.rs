@@ -53,7 +53,7 @@ async fn scoped_goal(pool: &sqlx::SqlitePool, kind: ScopeKind, date: chrono::Nai
             CreateGoalRequest {
                 title: "Scoped".into(),
                 parent_type: "domain".into(),
-                parent_id: 1,
+                parent_id: 1.into(),
                 status: None,
                 time_scope: Some(TimeScope {
                     start_id: scope.id,
@@ -3071,7 +3071,7 @@ async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subt
             CreateGoalRequest {
                 title: "Routine".into(),
                 parent_type: "domain".into(),
-                parent_id: 1,
+                parent_id: 1.into(),
                 time_scope: Some(TimeScope {
                     start_id: week.id,
                     end_id: week.id,
@@ -3137,7 +3137,7 @@ async fn convert_to_flow_builds_a_template_maps_scopes_deps_and_deletes_the_subt
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = add_task_dependency(
             &mut db,
-            step.id.clone(),
+            step.id.sid().into(),
             Dependency::Task {
                 id: prep.id.clone(),
             },
@@ -3255,7 +3255,7 @@ async fn convert_to_flow_rejects_a_task_under_a_task() {
             CreateTaskRequest {
                 title: "Parent".into(),
                 parent_type: "domain".into(),
-                parent_id: 1,
+                parent_id: 1.into(),
                 ..Default::default()
             },
         )
@@ -3307,7 +3307,7 @@ async fn convert_a_task_subtree_without_deps_or_scope_mapping() {
             CreateTaskRequest {
                 title: "Build".into(),
                 parent_type: "domain".into(),
-                parent_id: 1,
+                parent_id: 1.into(),
                 ..Default::default()
             },
         )
@@ -4768,7 +4768,7 @@ async fn a_copied_flow_keeps_a_target_that_was_chosen_deliberately() {
         CreateGoalRequest {
             title: "Elsewhere".into(),
             parent_type: "project".into(),
-            parent_id: 1,
+            parent_id: 1.into(),
             ..Default::default()
         },
     )

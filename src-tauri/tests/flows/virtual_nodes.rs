@@ -744,7 +744,7 @@ async fn a_stored_task_is_still_written_where_it_always_was() {
         CreateTaskRequest {
             title: "Ordinary".into(),
             parent_type: "project".into(),
-            parent_id: 1,
+            parent_id: 1.into(),
             ..Default::default()
         },
     )

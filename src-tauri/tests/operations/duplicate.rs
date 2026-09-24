@@ -746,8 +746,8 @@ async fn a_copied_task_waits_on_the_same_things_the_original_waits_on() {
     let mut targets: Vec<(String, i64)> = deps
         .into_iter()
         .map(|dep| match dep {
-            Dependency::Task { id } => ("task".to_string(), id),
-            Dependency::Goal { id } => ("goal".to_string(), id),
+            Dependency::Task { id } => ("task".to_string(), id.sid()),
+            Dependency::Goal { id } => ("goal".to_string(), id.sid()),
             Dependency::Expectation { id } => ("expectation".to_string(), id),
         })
         .collect();
