@@ -45,7 +45,12 @@ The few rules that genuinely differ for a derived row key off `origin` and nothi
   occurrences fall, edit the template's cycle pairs. Reordering it among its siblings is not a move.
 - **It cannot change kind.** Retyping it is refused; retype its template item instead.
 - **It is never deleted.** `Delete` archives it, as manual archival of a stored node would, and
-  giving it a status again brings it back. The Mindmap asks for the delete with the same
+  giving it a status again brings it back. Archiving takes what it holds with it, as archiving any
+  node does: an archived iteration root sets the whole iteration aside, and an archived occurrence
+  the occurrences nested under it. Everything set aside reads as archived and no longer has to be
+  done for the iteration to resolve — so under Blocking Consumption an iteration whose root was
+  archived stops withholding the Habit, without anything in it being recorded as done. Nothing is
+  written to what it holds, and nothing is taken from the template. The Mindmap asks for the delete with the same
   confirmation as any other.
 - **It is not copied, and nothing is copied onto it.** A copy is a stored row made under a stored
   parent. A node *moved* onto an occurrence (cut and paste, drag) is hung on that one iteration, as

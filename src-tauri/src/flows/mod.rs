@@ -2435,7 +2435,13 @@ impl<'session> FlowOperator<'session> {
         let overlays = OverlayOperator::new(&mut *self.connection)
             .for_habit(flow_id.0)
             .await?;
-        Ok(occurrences::resolutions(slots, &keys, &overlays))
+        let template = (
+            self.list_goals(flow_id).await?,
+            self.list_tasks(flow_id).await?,
+            self.cycles_by_item(flow_id).await?,
+        );
+        let parents = occurrences::occurrence_parents_of(flow_id, template, &keys);
+        Ok(occurrences::resolutions(slots, &keys, &overlays, &parents))
     }
 
     /// For each of `nodes` that was materialised from a flow, returns its originating flow title

@@ -165,6 +165,117 @@ impl Template {
     }
 }
 
+/// A Habit's template: its items, by id, and each item's cycle pairs. `goals` is passed in when the
+/// caller already has them.
+async fn load_template<M: SessionMode>(
+    db: &mut Db<M>,
+    flow_id: FlowId,
+    goals: Vec<FlowGoal>,
+) -> Result<Template, FlowError> {
+    Ok(Template {
+        goals: goals.into_iter().map(|goal| (goal.id, goal)).collect(),
+        tasks: db
+            .flows()
+            .list_tasks(flow_id)
+            .await?
+            .into_iter()
+            .map(|task| (task.id, task))
+            .collect(),
+        cycles: db.flows().cycles_by_item(flow_id).await?,
+    })
+}
+
+/// A template as read: its goal and task items, and each item's cycle pairs in position order.
+pub(super) type TemplateParts = (
+    Vec<FlowGoal>,
+    Vec<FlowTask>,
+    HashMap<(String, i64), Vec<FlowItemCycle>>,
+);
+
+/// One occurrence within an iteration, as its template item and cycle pair.
+pub(super) type InstanceKey = (TemplateItem, i64);
+
+/// Each occurrence's parent occurrence within its iteration — where it nests, as the rows draw it:
+/// under its parent item's **first** occurrence, or under the root. The root has none.
+pub(super) async fn occurrence_parents<M: SessionMode>(
+    db: &mut Db<M>,
+    flow_id: FlowId,
+    keys: &[InstanceKey],
+) -> Result<HashMap<InstanceKey, InstanceKey>, FlowError> {
+    let goals = db.flows().list_goals(flow_id).await?;
+    let template = load_template(db, flow_id, goals).await?;
+    Ok(template.occurrence_parents(flow_id, keys))
+}
+
+/// [`occurrence_parents`] from a template already read: its goal and task items, and each item's
+/// cycle pairs in position order.
+pub(super) fn occurrence_parents_of(
+    flow_id: FlowId,
+    (goals, tasks, cycles): TemplateParts,
+    keys: &[InstanceKey],
+) -> HashMap<InstanceKey, InstanceKey> {
+    Template {
+        goals: goals.into_iter().map(|goal| (goal.id, goal)).collect(),
+        tasks: tasks.into_iter().map(|task| (task.id, task)).collect(),
+        cycles,
+    }
+    .occurrence_parents(flow_id, keys)
+}
+
+impl Template {
+    fn occurrence_parents(
+        &self,
+        flow_id: FlowId,
+        keys: &[InstanceKey],
+    ) -> HashMap<InstanceKey, InstanceKey> {
+        let root = (
+            TemplateItem {
+                item_type: TemplateKind::FlowRoot,
+                item_id: flow_id.0,
+            },
+            NO_CYCLE,
+        );
+        keys.iter()
+            .filter(|(item, _)| item.item_type != TemplateKind::FlowRoot)
+            .map(|&key| {
+                let parent = self.parent_of(key.0).map_or(root, |parent| {
+                    (parent, self.first_cycle(parent.item_type, parent.item_id))
+                });
+                (key, parent)
+            })
+            .collect()
+    }
+}
+
+/// The occurrences of one iteration **set aside** by an archive: every one archived by hand, and
+/// every one it holds, however deep — an archived root sets aside the whole iteration, and an
+/// archived occurrence the children nested under it. Set aside, an occurrence reads as archived
+/// and no longer has to be done for its iteration to resolve, as archiving any node takes its
+/// subtree with it. Nothing is written to what it holds, and nothing is taken from the template.
+pub fn set_aside(
+    keys: &[InstanceKey],
+    archived: &HashSet<InstanceKey>,
+    parents: &HashMap<InstanceKey, InstanceKey>,
+) -> HashSet<InstanceKey> {
+    keys.iter()
+        .filter(|key| {
+            let mut current = Some(**key);
+            // Bounded by the key count: a malformed hierarchy cannot loop.
+            for _ in 0..=keys.len() {
+                let Some(step) = current else {
+                    return false;
+                };
+                if archived.contains(&step) {
+                    return true;
+                }
+                current = parents.get(&step).copied();
+            }
+            false
+        })
+        .copied()
+        .collect()
+}
+
 /// What a Habit's rows are built from, per iteration, beside the template.
 struct Iteration<'a> {
     iteration: &'a HabitIteration,
@@ -197,17 +308,7 @@ pub async fn derive_habit<M: SessionMode>(
     if flow.instance_type == "commitment" && !goals.is_empty() {
         return Ok(DerivedRows::default());
     }
-    let template = Template {
-        goals: goals.into_iter().map(|goal| (goal.id, goal)).collect(),
-        tasks: db
-            .flows()
-            .list_tasks(flow_id)
-            .await?
-            .into_iter()
-            .map(|task| (task.id, task))
-            .collect(),
-        cycles: db.flows().cycles_by_item(flow_id).await?,
-    };
+    let template = load_template(db, flow_id, goals).await?;
     let overlays = db.overlays().for_habit(flow.id).await?;
     let relations = HabitRelations {
         tags: db.relations().tags_for_habit(flow.id).await?,
@@ -306,7 +407,8 @@ async fn schedule<M: SessionMode>(
         slots.iter().cloned().partition(|slot| slot.start <= now);
 
     let template_keys = instance_keys(db, flow).await?;
-    let resolved = resolutions(&started, &template_keys, overlays);
+    let parents = occurrence_parents(db, FlowId(flow.id), &template_keys).await?;
+    let resolved = resolutions(&started, &template_keys, overlays, &parents);
     let classified = classify_iterations(&started, consumption, &resolved, now);
     let mut iterations = expire_unanswered(classified, &verdict_deadlines(flow, &started), now);
     for slot in &future {
@@ -365,15 +467,31 @@ async fn instance_keys<M: SessionMode>(
 /// verdict is an answer, not a completion.
 pub(super) fn resolutions(
     slots: &[SlotWindow],
-    keys: &[(TemplateItem, i64)],
+    keys: &[InstanceKey],
     overlays: &HabitOverlays,
+    parents: &HashMap<InstanceKey, InstanceKey>,
 ) -> HashMap<i64, NaiveDateTime> {
     let mut resolved = HashMap::new();
     for slot in slots {
         let iteration = slot.scope_id;
         let mut latest: Option<i64> = None;
         let mut every = true;
-        for (item, cycle) in keys {
+        // What an archive set aside no longer has to be done.
+        let archived: HashSet<InstanceKey> = keys
+            .iter()
+            .filter(|(item, cycle)| {
+                let node_key = OccurrenceKey {
+                    item: *item,
+                    iteration,
+                    cycle: *cycle,
+                }
+                .node_key();
+                archived_by_hand(overlays, &node_key)
+            })
+            .copied()
+            .collect();
+        let aside = set_aside(keys, &archived, parents);
+        for (item, cycle) in keys.iter().filter(|key| !aside.contains(*key)) {
             let node_key = OccurrenceKey {
                 item: *item,
                 iteration,
@@ -414,6 +532,23 @@ pub(super) fn resolutions(
         }
     }
     resolved
+}
+
+/// Whether the occurrence under `node_key` was archived by hand, whichever kind it draws.
+fn archived_by_hand(overlays: &HabitOverlays, node_key: &str) -> bool {
+    let archived = |tombstone: &Option<String>| tombstone.as_deref() == Some("archived");
+    overlays
+        .tasks
+        .get(node_key)
+        .is_some_and(|overlay| archived(&overlay.tombstone))
+        || overlays
+            .goals
+            .get(node_key)
+            .is_some_and(|overlay| archived(&overlay.tombstone))
+        || overlays
+            .commitments
+            .get(node_key)
+            .is_some_and(|overlay| archived(&overlay.tombstone))
 }
 
 /// The kind a template item's occurrences are, for the flow's Instance Type.
@@ -594,6 +729,7 @@ fn build_iteration(
         ..DerivedRows::default()
     };
     let expired = context.iteration.status == IterationStatus::Expired;
+    let aside = held_by_an_archive(&occurrences, overlays);
     for occurrence in occurrences {
         registry::remember(&DerivedKey::Occurrence(occurrence.key));
         let node_key = occurrence.key.node_key();
@@ -615,7 +751,8 @@ fn build_iteration(
             "goal" => {
                 let overlay = overlays.goals.get(&node_key).cloned().unwrap_or_default();
                 let reasons = reasons_of(overlay.block_reasons_set);
-                let (mut goal, lifecycle) = goal_row(occurrence, overlay, consumption, expired);
+                let (mut goal, mut lifecycle) = goal_row(occurrence, overlay, consumption, expired);
+                archive_if_held(&mut lifecycle, &aside, &node_key);
                 goal.tag_ids = tag_ids;
                 push_reasons(&mut rows.block_reasons, "goal", &goal.id, reasons);
                 rows.goals.push(goal);
@@ -628,8 +765,9 @@ fn build_iteration(
                     .cloned()
                     .unwrap_or_default();
                 let window = (context.slot.start, context.slot.end);
-                let (mut commitment, lifecycle) =
+                let (mut commitment, mut lifecycle) =
                     commitment_row(flow, occurrence, overlay, window, now);
+                archive_if_held(&mut lifecycle, &aside, &node_key);
                 commitment.tag_ids = tag_ids;
                 rows.commitments.push(commitment);
                 rows.lifecycles.push(lifecycle);
@@ -638,6 +776,7 @@ fn build_iteration(
                 let overlay = overlays.tasks.get(&node_key).cloned().unwrap_or_default();
                 let reasons = reasons_of(overlay.block_reasons_set);
                 let (mut task, mut lifecycle) = task_row(occurrence, overlay, consumption, expired);
+                archive_if_held(&mut lifecycle, &aside, &node_key);
                 // Its own Expectation template, kept only while it is Asynchronous.
                 if task.asynchronous {
                     task.async_template = overlays.async_templates.get(&node_key).cloned();
@@ -653,6 +792,46 @@ fn build_iteration(
         }
     }
     Ok(rows)
+}
+
+/// The node keys of one iteration's occurrences an archive holds: each one archived by hand, and
+/// everything nested under it — see [`set_aside`].
+fn held_by_an_archive(occurrences: &[Occurrence], overlays: &HabitOverlays) -> HashSet<String> {
+    let by_id: HashMap<NodeId, InstanceKey> = occurrences
+        .iter()
+        .map(|occurrence| {
+            (
+                NodeId::Derived(occurrence.key.id()),
+                (occurrence.key.item, occurrence.key.cycle),
+            )
+        })
+        .collect();
+    let keys: Vec<InstanceKey> = by_id.values().copied().collect();
+    let parents: HashMap<InstanceKey, InstanceKey> = occurrences
+        .iter()
+        .filter_map(|occurrence| {
+            let parent = by_id.get(&occurrence.parent_id)?;
+            Some(((occurrence.key.item, occurrence.key.cycle), *parent))
+        })
+        .collect();
+    let archived: HashSet<InstanceKey> = occurrences
+        .iter()
+        .filter(|occurrence| archived_by_hand(overlays, &occurrence.key.node_key()))
+        .map(|occurrence| (occurrence.key.item, occurrence.key.cycle))
+        .collect();
+    let aside = set_aside(&keys, &archived, &parents);
+    occurrences
+        .iter()
+        .filter(|occurrence| aside.contains(&(occurrence.key.item, occurrence.key.cycle)))
+        .map(|occurrence| occurrence.key.node_key())
+        .collect()
+}
+
+/// Reads an occurrence an archive holds as archived, as a stored node under an archived one is.
+fn archive_if_held(lifecycle: &mut ItemLifecycle, aside: &HashSet<String>, node_key: &str) {
+    if aside.contains(node_key) {
+        lifecycle.archival = Archival::Archived;
+    }
 }
 
 /// Appends one derived row's block reasons, in order, as the rows the load carries.

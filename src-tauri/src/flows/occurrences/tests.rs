@@ -58,7 +58,12 @@ fn an_iteration_resolves_only_when_every_instance_is_done() {
     overlays.tasks.insert(key_on(item(5), 20, 8), done_task(20));
     overlays.tasks.insert(key_on(root(1), 21, 0), done_task(40));
 
-    let resolved = resolutions(&[slot(0, 20), slot(1, 21)], &keys, &overlays);
+    let resolved = resolutions(
+        &[slot(0, 20), slot(1, 21)],
+        &keys,
+        &overlays,
+        &HashMap::new(),
+    );
     assert_eq!(resolved.len(), 1, "the second iteration has undone items");
     let instant = resolved.get(&0).copied().unwrap();
     assert_eq!(
@@ -71,12 +76,12 @@ fn an_iteration_resolves_only_when_every_instance_is_done() {
 }
 
 #[test]
-fn a_tombstoned_or_in_progress_instance_does_not_count_as_done() {
+fn a_missed_or_in_progress_instance_does_not_count_as_done() {
     let keys = vec![(root(1), NO_CYCLE)];
     let mut overlays = HabitOverlays::default();
-    let mut archived = done_task(1);
-    archived.tombstone = Some("archived".into());
-    overlays.tasks.insert(key_on(root(1), 20, 0), archived);
+    let mut missed = done_task(1);
+    missed.tombstone = Some("missed".into());
+    overlays.tasks.insert(key_on(root(1), 20, 0), missed);
     overlays.tasks.insert(
         key_on(root(1), 21, 0),
         TaskOverlay {
@@ -84,7 +89,74 @@ fn a_tombstoned_or_in_progress_instance_does_not_count_as_done() {
             ..TaskOverlay::default()
         },
     );
-    assert!(resolutions(&[slot(0, 20), slot(1, 21)], &keys, &overlays).is_empty());
+    assert!(resolutions(
+        &[slot(0, 20), slot(1, 21)],
+        &keys,
+        &overlays,
+        &HashMap::new()
+    )
+    .is_empty());
+}
+
+fn archived() -> TaskOverlay {
+    TaskOverlay {
+        tombstone: Some("archived".into()),
+        ..TaskOverlay::default()
+    }
+}
+
+/// Stretch (5) with a morning (7) and an evening (8) pair; Cool down (6) nested under Stretch.
+fn nested() -> (Vec<InstanceKey>, HashMap<InstanceKey, InstanceKey>) {
+    let keys = vec![
+        (root(1), NO_CYCLE),
+        (item(5), 7),
+        (item(5), 8),
+        (item(6), NO_CYCLE),
+    ];
+    let parents = HashMap::from([
+        ((item(5), 7), (root(1), NO_CYCLE)),
+        ((item(5), 8), (root(1), NO_CYCLE)),
+        ((item(6), NO_CYCLE), (item(5), 7)),
+    ]);
+    (keys, parents)
+}
+
+#[test]
+fn nothing_archived_sets_nothing_aside() {
+    let (keys, parents) = nested();
+    assert!(set_aside(&keys, &HashSet::new(), &parents).is_empty());
+}
+
+#[test]
+fn an_archived_root_sets_its_whole_iteration_aside_and_the_iteration_resolves() {
+    let (keys, parents) = nested();
+    let aside = set_aside(&keys, &HashSet::from([(root(1), NO_CYCLE)]), &parents);
+    assert_eq!(aside.len(), 4);
+    let mut overlays = HabitOverlays::default();
+    overlays.tasks.insert(key_on(root(1), 20, 0), archived());
+    let resolved = resolutions(&[slot(0, 20)], &keys, &overlays, &parents);
+    assert_eq!(
+        resolved.get(&0).copied(),
+        Some(at(21, 2)),
+        "set aside whole, it is over"
+    );
+}
+
+#[test]
+fn an_archived_occurrence_takes_what_is_nested_under_it_and_nothing_else() {
+    let (keys, parents) = nested();
+    let aside = set_aside(&keys, &HashSet::from([(item(5), 7)]), &parents);
+    assert_eq!(aside, HashSet::from([(item(5), 7), (item(6), NO_CYCLE)]));
+    // The evening occurrence and the root still have to be done.
+    let mut overlays = HabitOverlays::default();
+    overlays.tasks.insert(key_on(item(5), 20, 7), archived());
+    overlays.tasks.insert(key_on(root(1), 20, 0), done_task(5));
+    assert!(resolutions(&[slot(0, 20)], &keys, &overlays, &parents).is_empty());
+    overlays.tasks.insert(key_on(item(5), 20, 8), done_task(9));
+    assert_eq!(
+        resolutions(&[slot(0, 20)], &keys, &overlays, &parents).len(),
+        1
+    );
 }
 
 #[test]
@@ -98,7 +170,7 @@ fn an_achieved_goal_counts_and_a_missing_instant_falls_back_to_the_window_end() 
             ..GoalOverlay::default()
         },
     );
-    let resolved = resolutions(&[slot(0, 20)], &keys, &overlays);
+    let resolved = resolutions(&[slot(0, 20)], &keys, &overlays, &HashMap::new());
     assert_eq!(resolved.get(&0).copied(), Some(at(21, 2)));
 }
 
