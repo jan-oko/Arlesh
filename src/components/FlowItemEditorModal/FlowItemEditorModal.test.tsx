@@ -114,6 +114,7 @@ describe("FlowItemEditorModal", () => {
       },
     });
     render(<FlowItemEditorModal {...defaultProps} node={node} />);
+    fireEvent.click(screen.getByRole("button", { name: /agenticBriefSection/ }));
     fireEvent.change(screen.getByLabelText("agenticSpec"), { target: { value: "Sort the mail and parcels" } });
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>

@@ -122,5 +122,8 @@
   "agenticSpecHint": "Required before an agentic task can start",
   "agenticDesign": "Design",
   "agenticAcceptance": "Acceptance criteria",
-  "agenticNotes": "Notes"
+  "agenticNotes": "Notes",
+  "agenticBriefNoPriority": "No priority",
+  "agenticBriefSpecWritten": "Spec written",
+  "agenticBriefNoSpec": "No spec yet"
 }

@@ -343,7 +343,6 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       />
       {readsAgentic && (
         <div role="group" aria-label={t("agenticBriefSection")}>
-          <span className={styles.label}>{t("agenticBriefSection")}</span>
           <AgenticBriefFields value={agenticBrief} onChange={setAgenticBrief} />
         </div>
       )}

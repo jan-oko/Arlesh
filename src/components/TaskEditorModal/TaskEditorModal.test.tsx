@@ -703,8 +703,23 @@ describe("TaskEditorModal — the agentic brief", () => {
     expect(screen.getByRole("group", { name: "agenticBriefSection" })).toBeInTheDocument();
   });
 
+  it("starts collapsed, its header saying the priority and whether a Spec is written", async () => {
+    const brief = { priority: 2, spec: "", design: "", acceptance: "", notes: "" };
+    await open(mkNode({ agentic: true, agenticBrief: brief }));
+    const header = screen.getByRole("button", { name: /agenticBriefSection/ });
+
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(header).toHaveTextContent("agenticPriorityValue · agenticBriefNoSpec");
+    expect(screen.queryByLabelText("agenticSpec")).not.toBeInTheDocument();
+
+    fireEvent.click(header);
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("agenticSpec")).toBeInTheDocument();
+  });
+
   it("saves the priority and every text field", async () => {
     const onSave = await open(mkNode({ agentic: true }));
+    fireEvent.click(screen.getByRole("button", { name: /agenticBriefSection/ }));
     // The mocked translation names all five P-buttons alike; the first is P0.
     fireEvent.click(screen.getAllByRole("button", { name: "agenticPriorityValue" })[0]!);
     fireEvent.change(screen.getByLabelText("agenticSpec"), { target: { value: "Build the page" } });

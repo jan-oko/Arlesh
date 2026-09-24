@@ -240,8 +240,7 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
           />
           {agentic === TASK_AGENTIC.YES && (
             <div role="group" aria-label={t("agenticBriefSection")}>
-              <span className={styles.label}>{t("agenticBriefSection")}</span>
-              <AgenticBriefFields value={agenticBrief} onChange={setAgenticBrief} />
+                  <AgenticBriefFields value={agenticBrief} onChange={setAgenticBrief} />
             </div>
           )}
         </>
