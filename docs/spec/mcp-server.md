@@ -29,7 +29,7 @@ definition it loads.
 | Tool | Operations |
 | --- | --- |
 | `arlesh_snapshot` | `load(now, sections?, cursor?, filter?)` — the whole planning graph: domains, goals, tasks, **commitments**, notes, flows, flow items, cycles, dependencies, block reasons, materialised instance nodes, every item's derived lifecycle, each flow's habit iterations and statuses, and which occurrence each **added child** hangs on. Paged; see below |
-| `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` — `id` is a scope's value key, e.g. `week:2026-09-20` |
+| `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` — `id` is a scope's value key, a JSON object such as `{"kind":"week","date":"2026-09-20"}` |
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
 | `arlesh_tasks` | `get(id)`, `containment_conflicts(node, time_scope)` |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
@@ -52,7 +52,7 @@ entries (`spawned_wait`, `spawned_check`). The derived nodes the views draw — 
 a spawned wait — are not rows of their own: they are read off these sections and the task rows. Querying waits is `Arlesh-rz0`'s.
 
 Tasks, Goals and Commitments carry `time_scope` and `plan` as boundary **scope ids**, and a scope's
-id is its value key — `week:2026-09-20`, `day:2026-09-23`, `part_of_day:2026-09-23:morning` (see
+id is its value key — `{"kind":"week","date":"2026-09-20"}`, `{"kind":"part_of_day","date":"2026-09-23","part":"morning"}` (see
 [*Scopes are derived*](time-scopes.md)) — so the dates are in the snapshot itself and reading it needs no
 round trip. `arlesh_scopes` is for what a key does not spell out: `get` adds the label and the
 inclusive end date, and `resolve` / `resolve_many` the half-open datetime window (a Day runs
@@ -138,7 +138,7 @@ everything else.
 
 ## What is deliberately absent
 
-- **Every write command**, including `retype_node`, `start_flow` and registering an exact scope.
+- **Every write command**, including `retype_node` and `start_flow`.
 - **`valid_targets`** — it only reads, but it
   answers "where could this Flow be started?", a question nothing on this surface can act on while
   starting a Flow is a write. It returns alongside `start_flow`.
