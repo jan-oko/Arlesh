@@ -695,6 +695,16 @@ describe("filterTreeWithFocus — the focus exemption", () => {
 
   const exempt = (root: MindmapNode, id: string | null) => focusExemptPath(root, id);
 
+  // The Mindmap's exemption is kind-blind, so a Commitment is held already (Arlesh-3tt checked it).
+  it("keeps a Commitment you just marked Kept under Plan, and marks it exempt", () => {
+    const t = n("root", "domain", {}, [
+      n("aspect-1", "aspect", {}, [n("commitment-1", "commitment", { verdict: "kept", timing: "active" })]),
+    ]);
+    const { root, exemptedIds } = filterTreeWithFocus(t, f({ statusMode: "plan" }), exempt(t, "commitment-1"));
+    expect(ids(root)).toContain("commitment-1");
+    expect(exemptedIds.has("commitment-1")).toBe(true);
+  });
+
   it("keeps a task you just completed under Plan, for as long as it is focused", () => {
     const t = tree();
     const { root } = filterTreeWithFocus(t, f({ statusMode: "plan" }), exempt(t, "task-done"));

@@ -15,6 +15,8 @@ interface Props {
   /** Indentation, when drawn among the task rows; 0 in the band. */
   visibleDepth?: number;
   isSelected: boolean;
+  /** Kept only by the focus exemption — the selected row your own edit stopped matching. Dimmed. */
+  isFocusExempt?: boolean;
   onSelect: (nodeId: string) => void;
   /** Releases the wait, or takes a release back. */
   onToggleRelease: (nodeId: string) => void;
@@ -28,7 +30,7 @@ interface Props {
  * being done releases it.
  */
 export default function ExpectationRow({
-  row, visibleDepth = 0, isSelected, onSelect, onToggleRelease, onOpenEditor,
+  row, visibleDepth = 0, isSelected, isFocusExempt = false, onSelect, onToggleRelease, onOpenEditor,
 }: Props) {
   const { t } = useTranslation("listView");
   const { node } = row;
@@ -42,7 +44,7 @@ export default function ExpectationRow({
 
   return (
     <div
-      className={`${taskStyles.card} ${indentClass}${isSelected ? ` ${taskStyles.cardSelected}` : ""}`}
+      className={`${taskStyles.card} ${indentClass}${isSelected ? ` ${taskStyles.cardSelected}` : ""}${isFocusExempt ? ` ${taskStyles.cardFocusExempt}` : ""}`}
       data-row-id={node.id}
       style={cardStyle}
       onClick={() => onSelect(node.id)}

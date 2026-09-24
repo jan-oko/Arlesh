@@ -24,9 +24,9 @@ describe("usePlanParents", () => {
     expect([...result.current.ids]).toEqual(texts({ kind: "month", date: "2026-09-01" }));
   });
 
-  it("names both months of a week at a month's edge", () => {
+  it("names only the month of the first day for a week at a month's edge", () => {
     const { result } = renderHook(() => usePlanParents(scope("week", "2026-09-27", "2026-10-03")));
-    expect([...result.current.ids].sort()).toEqual(texts({ kind: "month", date: "2026-09-01" }, { kind: "month", date: "2026-10-01" }));
+    expect([...result.current.ids]).toEqual(texts({ kind: "month", date: "2026-09-01" }));
   });
 
   it("names the week a day sits in and the season a month sits in", () => {
