@@ -438,8 +438,13 @@ pub async fn derive_scope_lifecycles(
     factory: State<'_, SessionFactory>,
     now: chrono::NaiveDateTime,
 ) -> Result<Vec<ItemLifecycle>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    crate::tasks::derive_all_scope_lifecycles(&mut db, now)
+    // Every row of the virtual tables, a Habit's occurrences included. A transaction only because
+    // the derivation reads through one; it writes nothing.
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let lifecycles = crate::mindmap::load(&mut db, now)
         .await
-        .map_err(WireError::from_error)
+        .map_err(WireError::from_error)?
+        .lifecycles;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(lifecycles)
 }

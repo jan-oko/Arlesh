@@ -684,10 +684,9 @@ async fn a_cycle_pair_draws_its_own_occurrence_with_its_own_window() {
         .tasks
         .iter()
         .filter(|task| {
-            task.origin
-                .habit()
-                .is_some_and(|origin| origin.item_id == item_id)
-                && task.origin.habit().unwrap().iteration_scope.start_date == ymd(2026, 1, 5)
+            task.origin.habit().is_some_and(|origin| {
+                origin.item_type == TemplateKind::FlowTask && origin.item_id == item_id
+            }) && task.origin.habit().unwrap().iteration_scope.start_date == ymd(2026, 1, 5)
         })
         .collect();
     assert_eq!(occurrences.len(), 2, "a morning and an evening occurrence");
@@ -843,14 +842,7 @@ async fn migration_0060_carries_every_modification_into_its_kinds_overlay() {
 
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
 
-    let tasks: Vec<(
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<i64>,
-        i64,
-    )> = sqlx::query_as(
+    let tasks: Vec<TaskOverlayRow> = sqlx::query_as(
         "SELECT node_key, status, title, tombstone, resolved_at, block_reasons_set
              FROM task_overlays ORDER BY node_key",
     )

@@ -992,7 +992,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
         lost_child_kinds_and_ids(&wire),
         vec![
             ("goal".to_string(), sub_goal.id.sid()),
-            ("flow".to_string(), flow_child.id.into())
+            ("flow".to_string(), flow_child.id)
         ]
     );
 

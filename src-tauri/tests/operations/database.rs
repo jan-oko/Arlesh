@@ -317,7 +317,18 @@ async fn migration_0046_turns_every_scope_reference_into_its_key_and_keeps_every
     .await
     .unwrap();
 
-    everything.run(&pool).await.unwrap();
+    // Through 0059: 0060 folds `habit_instance_modifications` into the overlays (Arlesh-pnn), and
+    // what is asked here is what 0046 made of it.
+    let mut through_0059 = sqlx::migrate!("./migrations");
+    through_0059.migrations = std::borrow::Cow::Owned(
+        everything
+            .migrations
+            .iter()
+            .filter(|migration| migration.version < 60)
+            .cloned()
+            .collect(),
+    );
+    through_0059.run(&pool).await.unwrap();
 
     type Window = (
         Option<String>,

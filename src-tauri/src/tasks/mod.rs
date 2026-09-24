@@ -1587,7 +1587,7 @@ pub async fn update_task(
 /// # use arlesh_lib::tasks::{add_task_dependency, error::TaskError, model::{Dependency, TaskId}};
 /// # async fn depend(factory: &SessionFactory) -> Result<(), TaskError> {
 /// let mut db = factory.begin().await?;
-/// add_task_dependency(&mut db, TaskId(1), Dependency::Task { id: 2 }).await?;
+/// add_task_dependency(&mut db, TaskId(1), Dependency::Task { id: 2.into() }).await?;
 /// db.commit().await?;
 /// # Ok(())
 /// # }
