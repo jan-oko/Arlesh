@@ -1,0 +1,1 @@
+- **A Habit occurrence can start a wait.** Switch an occurrence to Asynchronous and give it an Expectation, exactly as on any Task: once it is done, the wait appears beneath it with its checks, and you can release it or archive it. `Shift+W` works on occurrences too. An occurrence can also have its issue link cleared on its own.

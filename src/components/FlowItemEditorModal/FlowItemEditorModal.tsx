@@ -18,6 +18,9 @@ import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField"
 import TagPicker from "@/components/TagPicker/TagPicker";
 import Switch from "@/components/Switch/Switch";
 import AgenticField from "@/components/TaskEditorModal/AgenticField";
+import DelegateField from "@/components/DelegateField/DelegateField";
+import { usePeople } from "@/hooks/use-people";
+import type { Delegate } from "@/api/tasks";
 import FlowCycleField from "./FlowCycleField";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
@@ -76,6 +79,8 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
   const [isBacklogged, setIsBacklogged] = useState(template.archival === TASK_ARCHIVAL.BACKLOG);
   const [isAsynchronous, setIsAsynchronous] = useState(template.asynchronous === true);
   const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(template.agentic ?? null));
+  const [delegate, setDelegate] = useState<Delegate | null>(template.delegate_to ?? null);
+  const people = usePeople();
   const [orphanedCount, setOrphanedCount] = useState<number | null>(null);
   const [depSearch, setDepSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -104,6 +109,8 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
       archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
       asynchronous: isAsynchronous,
       agentic,
+      // Sent only when it changed, so a save that never touched it cannot overwrite it.
+      ...(delegate !== (template.delegate_to ?? null) ? { delegate_to: delegate } : {}),
     };
   }
 
@@ -223,6 +230,7 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
           </div>
         </>
       )}
+      {itemType === "flow_task" && <DelegateField value={delegate} people={people} onChange={setDelegate} />}
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate}>
