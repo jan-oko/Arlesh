@@ -899,8 +899,9 @@ impl ExpectationArchival {
 /// only Tasks depend on it. Beside its Time Scope it carries the optional **Check every**.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Expectation {
-    /// Primary key.
-    pub id: i64,
+    /// Primary key for a stored wait, or the UUID of a derived one (a Task's spawned wait, or a
+    /// delegated Task's wait on its delegate).
+    pub id: NodeId,
     /// Display title.
     pub title: String,
     /// Type of the parent entity.
@@ -932,6 +933,9 @@ pub struct Expectation {
     pub position: i64,
     /// Whether this node is private (hidden unless Private Mode is on).
     pub is_private: bool,
+    /// Where the row came from: made by hand, or derived from a Task (ADR 0008).
+    #[serde(default)]
+    pub origin: Origin,
 }
 
 /// Request body for creating an expectation.

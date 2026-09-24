@@ -98,12 +98,26 @@ impl<'session> RelationOperator<'session> {
         Ok(differences)
     }
 
+    /// Every tag difference a derived node that belongs to no Habit carries — a wait's check task.
+    pub async fn tags_without_habit(&mut self) -> Result<TagDifferences, sqlx::Error> {
+        let rows: Vec<(String, i64, bool)> = sqlx::query_as(
+            "SELECT node_key, tag_id, added FROM derived_tags WHERE flow_id IS NULL ORDER BY tag_id",
+        )
+        .fetch_all(&mut *self.connection)
+        .await?;
+        let mut differences: TagDifferences = HashMap::new();
+        for (key, tag, added) in rows {
+            differences.entry(key).or_default().push((tag, added));
+        }
+        Ok(differences)
+    }
+
     /// Records a tag put on (`present`) or taken off one derived node, as a difference against
     /// its template's tags: a tag the template already has needs no row to be present, and one it
-    /// lacks needs none to be absent.
+    /// lacks needs none to be absent. `flow_id` is the Habit the node belongs to, if any.
     pub async fn set_tag(
         &mut self,
-        flow_id: i64,
+        flow_id: Option<i64>,
         node_kind: &str,
         node_key: &str,
         tag_id: i64,
@@ -151,11 +165,28 @@ impl<'session> RelationOperator<'session> {
         Ok(lists)
     }
 
+    /// Every own block-reason list of a derived node that belongs to no Habit, by node key.
+    pub async fn block_reasons_without_habit(
+        &mut self,
+    ) -> Result<HashMap<String, Vec<String>>, sqlx::Error> {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT node_key, reason FROM derived_block_reasons WHERE flow_id IS NULL
+             ORDER BY node_key, position, id",
+        )
+        .fetch_all(&mut *self.connection)
+        .await?;
+        let mut lists: HashMap<String, Vec<String>> = HashMap::new();
+        for (key, reason) in rows {
+            lists.entry(key).or_default().push(reason);
+        }
+        Ok(lists)
+    }
+
     /// Replaces one derived node's own block-reason list (`None` clears it, so it reads its
-    /// template's again).
+    /// template's again). `flow_id` is the Habit the node belongs to, if any.
     pub async fn set_block_reasons(
         &mut self,
-        flow_id: i64,
+        flow_id: Option<i64>,
         node_kind: &str,
         node_key: &str,
         reasons: Option<&[String]>,

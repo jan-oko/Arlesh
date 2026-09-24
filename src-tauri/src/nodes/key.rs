@@ -5,16 +5,22 @@
 //! the scope anchoring that iteration's window (ADR 0009), which spells the date it starts on —
 //! and the cycle pair that drew it.
 //!
+//! A wait's derived rows are keyed the same way: a **check task** by the wait it checks on and when
+//! that check fell due, a Task's **spawned wait** by the Task, and a delegated Task's **wait on its
+//! delegate** by the Task.
+//!
 //! Every key has one canonical string spelling, [`DerivedKey::node_key`]. It is what the overlay
 //! tables generate as their `node_key` column, what the relation tables store, and what the UUID
 //! is hashed from, so the three can never disagree about which node they mean.
 
 use std::fmt;
 
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 use super::id::{DerivedId, NodeId};
 use crate::scopes::key::ScopeKey;
+use crate::tasks::waits::{instant_column, WaitKind};
 
 /// The cycle-pair sentinel of an occurrence no pair drew: the root, and an item declaring none.
 pub const NO_CYCLE: i64 = 0;
@@ -111,11 +117,54 @@ impl OccurrenceKey {
     }
 }
 
+/// One check on a wait: the wait, and when the check fell due — which names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CheckKey {
+    /// Which kind of wait: a stored Expectation, or the wait a Task spawned.
+    pub wait_kind: WaitKind,
+    /// The Expectation's id, or the spawning Task's.
+    pub wait_id: i64,
+    /// When the check fell due.
+    pub due_at: NaiveDateTime,
+}
+
+impl CheckKey {
+    /// The canonical spelling: `check:stored:5@2026-09-20T09:00:00` — what `task_overlays`
+    /// generates as `'check:' || wait_key || '@' || due_at`.
+    pub fn node_key(&self) -> String {
+        format!("check:{}@{}", self.wait_key(), instant_column(self.due_at))
+    }
+
+    /// The wait's own spelling, `stored:5`: the overlay's `wait_key` column.
+    pub fn wait_key(&self) -> String {
+        format!("{}:{}", self.wait_kind.as_str(), self.wait_id)
+    }
+
+    fn parse(rest: &str) -> Option<Self> {
+        let (wait, due_at) = rest.split_once('@')?;
+        let (wait_kind, wait_id) = wait.split_once(':')?;
+        let wait_kind = WaitKind::from_db(wait_kind)?;
+        let wait_id = wait_id.parse().ok()?;
+        let due_at = NaiveDateTime::parse_from_str(due_at, "%Y-%m-%dT%H:%M:%S").ok()?;
+        Some(Self {
+            wait_kind,
+            wait_id,
+            due_at,
+        })
+    }
+}
+
 /// What a derived node is derived from — its value key, whichever derivation made it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DerivedKey {
     /// A Habit occurrence.
     Occurrence(OccurrenceKey),
+    /// A check task on a wait.
+    Check(CheckKey),
+    /// The wait an Asynchronous Task spawned, by the Task.
+    SpawnedWait(i64),
+    /// The wait a delegated Task has on its delegate, by the Task — stored or itself derived.
+    DelegationWait(NodeId),
 }
 
 impl DerivedKey {
@@ -123,12 +172,24 @@ impl DerivedKey {
     pub fn node_key(&self) -> String {
         match self {
             Self::Occurrence(key) => key.node_key(),
+            Self::Check(key) => key.node_key(),
+            Self::SpawnedWait(task) => format!("spawned_wait:{task}"),
+            Self::DelegationWait(task) => format!("delegation_wait:{task}"),
         }
     }
 
     /// Parses a canonical spelling.
     pub fn parse(node_key: &str) -> Option<Self> {
-        OccurrenceKey::parse(node_key).map(Self::Occurrence)
+        let (head, rest) = node_key.split_once(':')?;
+        match head {
+            "check" => CheckKey::parse(rest).map(Self::Check),
+            "spawned_wait" => rest.parse().ok().map(Self::SpawnedWait),
+            "delegation_wait" => Some(Self::DelegationWait(match rest.parse::<i64>() {
+                Ok(id) => NodeId::Stored(id),
+                Err(_) => NodeId::Derived(DerivedId::from_existing(rest)),
+            })),
+            _ => OccurrenceKey::parse(node_key).map(Self::Occurrence),
+        }
     }
 
     /// The row id the node travels under.
@@ -145,6 +206,7 @@ impl DerivedKey {
     pub fn occurrence(&self) -> Option<&OccurrenceKey> {
         match self {
             Self::Occurrence(key) => Some(key),
+            _ => None,
         }
     }
 }
@@ -152,6 +214,12 @@ impl DerivedKey {
 impl From<OccurrenceKey> for DerivedKey {
     fn from(key: OccurrenceKey) -> Self {
         Self::Occurrence(key)
+    }
+}
+
+impl From<CheckKey> for DerivedKey {
+    fn from(key: CheckKey) -> Self {
+        Self::Check(key)
     }
 }
 

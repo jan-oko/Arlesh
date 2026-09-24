@@ -813,9 +813,11 @@ fn task_row(
         agentic: if overlay.agentic_set {
             overlay.agentic
         } else {
-            None
+            occurrence.fields.agentic
         },
-        asynchronous: overlay.asynchronous.unwrap_or(false),
+        asynchronous: overlay
+            .asynchronous
+            .unwrap_or(occurrence.fields.asynchronous),
         async_template: None,
         on_scope_exit: on_exit(consumption, &occurrence.time_scope),
         time_scope: occurrence.time_scope,

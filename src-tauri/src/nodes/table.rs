@@ -149,7 +149,7 @@ pub fn attach_children(
     for expectation in rows.expectations.iter_mut() {
         reparent(
             "expectation",
-            Some(expectation.id),
+            expectation.id.stored(),
             &mut expectation.parent_type,
             &mut expectation.parent_id,
         );
@@ -164,21 +164,15 @@ pub fn attach_children(
     }
 }
 
-/// The dependency edges recorded against derived nodes — an edge added to an occurrence, or one
-/// between a stored Task and an occurrence — whose derived ends are on the board.
+/// The dependency edges recorded against derived nodes — an edge added to an occurrence or a check
+/// task, or one between a stored Task and a derived one — whose derived ends are in `present`.
 ///
 /// An edge whose derived end is not derived (its template item or cycle pair went, or it lies
 /// beyond the horizon) is left out rather than pointing at nothing.
 pub async fn added_edges<M: crate::database::session::SessionMode>(
     db: &mut Db<M>,
-    derived: &DerivedRows,
+    present: &std::collections::HashSet<&NodeId>,
 ) -> Result<Vec<TaskDependencyEdge>, sqlx::Error> {
-    let present: std::collections::HashSet<&NodeId> = derived
-        .tasks
-        .iter()
-        .map(|task| &task.id)
-        .chain(derived.goals.iter().map(|goal| &goal.id))
-        .collect();
     let on_board = |id: &NodeId| id.stored().is_some() || present.contains(id);
     Ok(db
         .relations()
@@ -213,7 +207,16 @@ pub async fn resolve_key(
         return Ok(key);
     }
     let flows = db.flows().list().await?;
-    derive_habits(db, &flows, now, Horizon::default()).await;
+    let (derived, _) = derive_habits(db, &flows, now, Horizon::default()).await;
+    if let Some(key) = registry::recall(id) {
+        return Ok(key);
+    }
+    // Not an occurrence: a wait's derived row, which hangs on the Tasks, occurrences included.
+    let mut tasks = db.tasks().list().await?;
+    tasks.extend(derived.tasks);
+    if let Err(error) = super::waits::derive_waits(db, now, &tasks).await {
+        tracing::warn!(error = %error, "wait derivation failed while resolving an id");
+    }
     registry::recall(id).ok_or_else(|| FlowError::NodeNotFound(id.to_string()))
 }
 
@@ -223,8 +226,12 @@ pub async fn resolve_occurrence(
     id: &DerivedId,
     now: NaiveDateTime,
 ) -> Result<OccurrenceKey, FlowError> {
-    let DerivedKey::Occurrence(key) = resolve_key(db, id, now).await?;
-    Ok(key)
+    match resolve_key(db, id, now).await? {
+        DerivedKey::Occurrence(key) => Ok(key),
+        _ => Err(FlowError::Refused(
+            "this row is a wait's derived row, not a habit occurrence".to_string(),
+        )),
+    }
 }
 
 #[cfg(test)]

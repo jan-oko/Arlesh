@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use sqlx::SqliteConnection;
 
-use super::key::OccurrenceKey;
+use super::key::{CheckKey, OccurrenceKey};
 use crate::scopes::{error::ScopeError, key::ScopeKey, ScopeOperator};
 
 /// One occurrence's Task overlay. Every field inherits when empty.
@@ -321,6 +321,80 @@ impl<'session> OverlayOperator<'session> {
         .bind(key.item.item_id)
         .bind(key.iteration)
         .bind(key.cycle)
+        .bind(&overlay.status)
+        .bind(overlay.resolved_at)
+        .bind(&overlay.tombstone)
+        .bind(&overlay.title)
+        .bind(overlay.plan_start_id)
+        .bind(overlay.plan_end_id)
+        .bind(overlay.plan_set)
+        .bind(&overlay.delegate_kind)
+        .bind(overlay.delegate_id)
+        .bind(overlay.delegate_set)
+        .bind(overlay.agentic)
+        .bind(overlay.agentic_set)
+        .bind(overlay.asynchronous)
+        .bind(&overlay.archival)
+        .bind(overlay.is_private)
+        .bind(&overlay.beads_id)
+        .bind(overlay.beads_id_set)
+        .bind(overlay.position)
+        .bind(overlay.block_reasons_set)
+        .execute(&mut *self.connection)
+        .await?;
+        Ok(())
+    }
+
+    /// Every wait check task's overlay, by node key.
+    pub async fn check_tasks(&mut self) -> Result<HashMap<String, TaskOverlay>, sqlx::Error> {
+        let rows: Vec<KeyedTask> = sqlx::query_as(&format!(
+            "SELECT node_key, {TASK_COLUMNS} FROM task_overlays WHERE origin = 'check'"
+        ))
+        .fetch_all(&mut *self.connection)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| (row.node_key, row.overlay))
+            .collect())
+    }
+
+    /// One check task's overlay, empty when it has none.
+    pub async fn check_task(&mut self, key: &CheckKey) -> Result<TaskOverlay, sqlx::Error> {
+        Ok(sqlx::query_as(&format!(
+            "SELECT {TASK_COLUMNS} FROM task_overlays WHERE node_key = ?"
+        ))
+        .bind(key.node_key())
+        .fetch_optional(&mut *self.connection)
+        .await?
+        .unwrap_or_default())
+    }
+
+    /// Replaces one check task's overlay; an empty one deletes the row. A check task is drawn
+    /// from nothing but its wait, so everything but its own state is empty until it says otherwise.
+    pub async fn put_check_task(
+        &mut self,
+        key: &CheckKey,
+        overlay: &TaskOverlay,
+    ) -> Result<(), ScopeError> {
+        sqlx::query("DELETE FROM task_overlays WHERE node_key = ?")
+            .bind(key.node_key())
+            .execute(&mut *self.connection)
+            .await?;
+        if overlay.is_empty() {
+            return Ok(());
+        }
+        self.register(overlay.plan_start_id.into_iter().chain(overlay.plan_end_id))
+            .await?;
+        sqlx::query(
+            "INSERT INTO task_overlays
+                (origin, wait_key, due_at,
+                 status, resolved_at, tombstone, title, plan_start_id, plan_end_id, plan_set,
+                 delegate_kind, delegate_id, delegate_set, agentic, agentic_set, asynchronous,
+                 archival, is_private, beads_id, beads_id_set, position, block_reasons_set)
+             VALUES ('check', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(key.wait_key())
+        .bind(crate::tasks::waits::instant_column(key.due_at))
         .bind(&overlay.status)
         .bind(overlay.resolved_at)
         .bind(&overlay.tombstone)

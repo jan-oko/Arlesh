@@ -20,7 +20,10 @@ use crate::{
     database::session::{Db, Transactional},
     error::AppError,
     flows::occurrences::Horizon,
-    nodes::table::{self, StoredRows},
+    nodes::{
+        id::NodeId,
+        table::{self, StoredRows},
+    },
 };
 
 use model::{FlowHabitEntry, FlowHabitResult, MindmapLoad};
@@ -65,7 +68,6 @@ pub async fn load_within(
     let flow_instance_nodes = db.flows().list_instance_node_refs().await?;
     let children = db.flows().list_all_instance_children().await?;
     let mut lifecycles = crate::tasks::derive_all_scope_lifecycles(db, now).await?;
-    let waits = crate::tasks::waits::derive_wait_windows(db, now).await?;
 
     let flows = db.flows().list().await?;
     let (derived, failures) = table::derive_habits(db, &flows, now, horizon).await;
@@ -80,13 +82,24 @@ pub async fn load_within(
             infos: &mut infos,
         },
     );
-    task_dependencies.extend(table::added_edges(db, &derived).await?);
     tasks.extend(derived.tasks);
     goals.extend(derived.goals);
     commitments.extend(derived.commitments);
     lifecycles.extend(derived.lifecycles);
     block_reasons.extend(derived.block_reasons);
     task_dependencies.extend(derived.dependencies);
+    // A wait's rows hang on the Tasks, a Habit's occurrences included.
+    let waits = crate::nodes::waits::derive_waits(db, now, &tasks).await?;
+    tasks.extend(waits.tasks);
+    expectations.extend(waits.expectations);
+    block_reasons.extend(waits.block_reasons);
+    let present: std::collections::HashSet<&NodeId> = tasks
+        .iter()
+        .map(|task| &task.id)
+        .chain(goals.iter().map(|goal| &goal.id))
+        .collect();
+    let added = table::added_edges(db, &present).await?;
+    task_dependencies.extend(added);
 
     let habits = flows
         .iter()
@@ -108,8 +121,6 @@ pub async fn load_within(
         tasks,
         commitments,
         expectations,
-        expectation_checks: waits.expectation_checks,
-        spawned_waits: waits.spawned_waits,
         infos,
         flows,
         flow_goals,

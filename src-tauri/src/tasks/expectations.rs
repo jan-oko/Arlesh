@@ -77,7 +77,7 @@ const EXPECTATION_SELECT: &str = "SELECT e.*,
 impl From<ExpectationRow> for Expectation {
     fn from(row: ExpectationRow) -> Self {
         Self {
-            id: row.id,
+            id: row.id.into(),
             title: row.title,
             parent_type: row.parent_type,
             parent_id: row.parent_id.into(),
@@ -100,6 +100,7 @@ impl From<ExpectationRow> for Expectation {
             tag_ids: Vec::new(),
             position: row.position,
             is_private: row.is_private,
+            origin: crate::nodes::origin::Origin::Manual,
         }
     }
 }

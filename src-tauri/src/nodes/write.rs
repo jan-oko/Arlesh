@@ -10,9 +10,10 @@ use chrono::NaiveDateTime;
 
 use super::{
     id::{DerivedId, NodeId},
-    key::OccurrenceKey,
+    key::{DerivedKey, OccurrenceKey},
     relations::Endpoint,
-    table::resolve_occurrence,
+    table::{resolve_key, resolve_occurrence},
+    wait_edit,
 };
 use crate::{
     database::session::{Db, Transactional},
@@ -143,7 +144,7 @@ pub async fn create_expectation(
     request.parent_type = host.host_type.clone();
     request.parent_id = NodeId::Stored(host.host_id);
     let mut expectation = crate::tasks::create_expectation(db, request).await?;
-    occurrence_edit::attach(db, &host, &key, "expectation", expectation.id).await?;
+    occurrence_edit::attach(db, &host, &key, "expectation", expectation.id.require_stored()?).await?;
     (expectation.parent_type, expectation.parent_id) = hung_on(&host, &key);
     Ok(expectation)
 }
@@ -243,7 +244,14 @@ pub async fn update_task(
         }
         NodeId::Derived(derived) => derived,
     };
-    let key = resolve_occurrence(db, derived, now).await?;
+    let key = match resolve_key(db, derived, now).await? {
+        DerivedKey::Occurrence(key) => key,
+        DerivedKey::Check(check) => {
+            wait_edit::update_check_task(db, &check, request, now).await?;
+            return wait_edit::check_row(db, &check, now).await;
+        }
+        _ => return Err(wrong_kind(id, "task")),
+    };
     occurrence_edit::update_task(db, &key, request, now).await?;
     match occurrence_edit::occurrence_row(db, &key, now).await? {
         (Some(task), _, _) => Ok(task),
@@ -337,19 +345,33 @@ pub async fn unfinished_children(
     let NodeId::Derived(derived) = id else {
         return Ok(Vec::new());
     };
-    let key = resolve_occurrence(db, derived, now).await?;
+    let DerivedKey::Occurrence(key) = resolve_key(db, derived, now).await? else {
+        return Ok(Vec::new());
+    };
     Ok(crate::flows::unfinished_instance_children(db, &key).await?)
 }
 
-/// Updates an Expectation, which is always stored; one moved onto a Habit occurrence is hung on
-/// it.
+/// Updates an Expectation. A stored one moved onto a Habit occurrence is hung on it; a Task's
+/// spawned wait takes its status and archive; a delegated Task's wait takes nothing.
 #[tracing::instrument(skip(db, request))]
 pub async fn update_expectation(
     db: &mut Db<Transactional>,
-    id: i64,
+    id: &NodeId,
     mut request: UpdateExpectationRequest,
     now: NaiveDateTime,
 ) -> Result<Expectation, AppError> {
+    let id = match id {
+        NodeId::Stored(id) => *id,
+        NodeId::Derived(derived) => {
+            return match resolve_key(db, derived, now).await? {
+                DerivedKey::SpawnedWait(task) => {
+                    wait_edit::update_spawned_wait(db, task, request, now).await
+                }
+                DerivedKey::DelegationWait(_) => Err(wait_edit::refuse_delegation_wait()),
+                _ => Err(wrong_kind(&NodeId::Derived(derived.clone()), "expectation")),
+            };
+        }
+    };
     let moved = move_stored(
         db,
         "expectation",
@@ -437,12 +459,27 @@ pub async fn set_tag(
         }
         (_, NodeId::Derived(derived), _) => derived,
     };
-    let key = resolve_occurrence(db, derived, now).await?;
+    let key = match resolve_key(db, derived, now).await? {
+        DerivedKey::Occurrence(key) => key,
+        DerivedKey::Check(check) if kind == "task" => {
+            // A check task is drawn from its wait, which gives it no tags of its own.
+            return Ok(db
+                .relations()
+                .set_tag(None, "task", &check.node_key(), tag_id, false, present)
+                .await?);
+        }
+        _ => {
+            return Err(FlowError::Refused(
+                "a derived wait's tags are its Task's Expectation template's".to_string(),
+            )
+            .into())
+        }
+    };
     let flow_id = db.flows().occurrence_flow_id(&key).await?;
     let template = occurrence_edit::template_fields(db, &key).await?;
     db.relations()
         .set_tag(
-            flow_id.0,
+            Some(flow_id.0),
             kind,
             &key.node_key(),
             tag_id,
@@ -467,13 +504,27 @@ pub async fn set_block_reasons(
         NodeId::Stored(id) => return Ok(db.block_reasons().set(owner_type, *id, reasons).await?),
         NodeId::Derived(derived) => derived,
     };
-    let key = resolve_occurrence(db, derived, now).await?;
+    let key = match resolve_key(db, derived, now).await? {
+        DerivedKey::Occurrence(key) => key,
+        DerivedKey::Check(check) => {
+            // A check task's list is its own once it has any; its wait gives it none.
+            let own = !reasons.is_empty();
+            db.relations()
+                .set_block_reasons(None, "task", &check.node_key(), own.then_some(reasons))
+                .await?;
+            let mut overlay = db.overlays().check_task(&check).await?;
+            overlay.block_reasons_set = own;
+            db.overlays().put_check_task(&check, &overlay).await?;
+            return Ok(());
+        }
+        _ => return Err(wrong_kind(owner_id, owner_type)),
+    };
     let flow_id = db.flows().occurrence_flow_id(&key).await?;
     let template = occurrence_edit::template_fields(db, &key).await?;
     let own = reasons != template.block_reasons.as_slice();
     db.relations()
         .set_block_reasons(
-            flow_id.0,
+            Some(flow_id.0),
             owner_type,
             &key.node_key(),
             own.then_some(reasons),
@@ -499,11 +550,17 @@ async fn endpoint(
 ) -> Result<(Endpoint, Option<i64>), AppError> {
     match id {
         NodeId::Stored(id) => Ok((Endpoint::Stored(*id), None)),
-        NodeId::Derived(derived) => {
-            let key = resolve_occurrence(db, derived, now).await?;
-            let flow_id = db.flows().occurrence_flow_id(&key).await?;
-            Ok((Endpoint::Derived(key.node_key()), Some(flow_id.0)))
-        }
+        NodeId::Derived(derived) => match resolve_key(db, derived, now).await? {
+            DerivedKey::Occurrence(key) => {
+                let flow_id = db.flows().occurrence_flow_id(&key).await?;
+                Ok((Endpoint::Derived(key.node_key()), Some(flow_id.0)))
+            }
+            DerivedKey::Check(check) => Ok((Endpoint::Derived(check.node_key()), None)),
+            _ => Err(FlowError::Refused(
+                "a derived wait cannot be depended on; depend on its Task instead".to_string(),
+            )
+            .into()),
+        },
     }
 }
 
@@ -682,7 +739,13 @@ pub async fn delete(
         (_, NodeId::Stored(id)) => return Ok(crate::tasks::delete_task(db, TaskId(*id)).await?),
         (_, NodeId::Derived(derived)) => derived,
     };
-    let key = resolve_occurrence(db, derived, now).await?;
+    let DerivedKey::Occurrence(key) = resolve_key(db, derived, now).await? else {
+        return Err(FlowError::Refused(
+            "a wait's check task or derived wait is not deleted; it goes with its wait or Task"
+                .to_string(),
+        )
+        .into());
+    };
     occurrence_edit::archive(db, &key).await?;
     Ok(())
 }

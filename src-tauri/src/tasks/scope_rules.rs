@@ -19,6 +19,8 @@ use chrono::NaiveDateTime;
 use serde::Serialize;
 
 use crate::database::session::{Db, SessionMode};
+use crate::nodes::id::NodeId;
+use crate::nodes::key::{CheckKey, DerivedKey};
 use crate::scopes::resolve::{self, Bounds};
 
 use super::ancestry;
@@ -166,30 +168,33 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             plan_timing: None,
         });
     }
-    // A wait's entries: `expectation` times a stored wait's own Time Scope, `expectation_check`
-    // the day its next check is due; `spawned_wait` and `spawned_check` do the same for the wait an
-    // Asynchronous task's completion spawned, keyed by the task. A wait is never Missed, so a
-    // passed window with the wait pending is Overdue.
+    // A wait's entries: `expectation` times a wait's own Time Scope — a stored one, or the wait an
+    // Asynchronous task's completion spawned, under its derived row id — and `task` the day its
+    // open check task is due, under the check task's row id. A wait is never Missed, so a passed
+    // window with the wait pending is Overdue.
     let windows = super::waits::derive_wait_windows(db, now).await?;
-    let checks: std::collections::HashMap<i64, TimeScope> = windows
+    let checks: std::collections::HashMap<i64, (TimeScope, chrono::NaiveDateTime)> = windows
         .expectation_checks
         .into_iter()
         .filter(|check| check.resolved_at.is_none())
-        .map(|check| (check.expectation_id, check.due))
+        .map(|check| (check.expectation_id, (check.due, check.due_at)))
         .collect();
     let mut entries: Vec<WaitEntry> = Vec::new();
     for expectation in db.expectations().list().await? {
+        let Some(stored_id) = expectation.id.stored() else {
+            continue;
+        };
         entries.push(WaitEntry {
             node_type: expectations::EXPECTATION,
-            node_id: expectation.id,
+            node_id: expectation.id.clone(),
             window: expectation.time_scope.clone(),
             status: expectation.status,
             archival: expectation.archival,
         });
-        if let Some(due) = checks.get(&expectation.id) {
+        if let Some((due, due_at)) = checks.get(&stored_id) {
             entries.push(WaitEntry {
-                node_type: expectations::EXPECTATION_CHECK,
-                node_id: expectation.id,
+                node_type: "task",
+                node_id: check_row_id(super::waits::WaitKind::Stored, stored_id, *due_at),
                 window: Some(due.clone()),
                 status: expectation.status,
                 archival: expectation.archival,
@@ -203,16 +208,16 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             spawned.wait.archival,
         );
         entries.push(WaitEntry {
-            node_type: expectations::SPAWNED_WAIT,
-            node_id: task_id,
+            node_type: expectations::EXPECTATION,
+            node_id: DerivedKey::SpawnedWait(task_id).node_id(),
             window: spawned.time_scope,
             status,
             archival,
         });
-        if let Some(due) = spawned.next_check {
+        if let (Some(due), Some(due_at)) = (spawned.next_check, spawned.next_check_at) {
             entries.push(WaitEntry {
-                node_type: expectations::SPAWNED_CHECK,
-                node_id: task_id,
+                node_type: "task",
+                node_id: check_row_id(super::waits::WaitKind::Spawned, task_id, due_at),
                 window: Some(due),
                 status,
                 archival,
@@ -231,7 +236,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         let state = derive_expectation_state(bounds, status, archival, now);
         out.push(ItemLifecycle {
             node_type: node_type.to_string(),
-            node_id: node_id.into(),
+            node_id,
             timing: state.timing,
             resolution: state.resolution,
             verdict: None,
@@ -248,10 +253,24 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
 /// One lifecycle entry a wait sends: which window it times, for which node, and the wait's state.
 struct WaitEntry {
     node_type: &'static str,
-    node_id: i64,
+    node_id: NodeId,
     window: Option<TimeScope>,
     status: ExpectationStatus,
     archival: ExpectationArchival,
+}
+
+/// The row id of the check task on a wait due at `due_at`.
+fn check_row_id(
+    wait_kind: super::waits::WaitKind,
+    wait_id: i64,
+    due_at: chrono::NaiveDateTime,
+) -> NodeId {
+    DerivedKey::Check(CheckKey {
+        wait_kind,
+        wait_id,
+        due_at,
+    })
+    .node_id()
 }
 
 fn reject_unless_contained(outer: Bounds, inner: Bounds, message: &str) -> Result<(), TaskError> {

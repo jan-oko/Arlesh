@@ -31,6 +31,11 @@ impl DerivedId {
         Self(uuid_v5(&NODE_NAMESPACE, node_key))
     }
 
+    /// An id already minted, read back from its spelling (a key that names another derived row).
+    pub fn from_existing(spelling: &str) -> Self {
+        Self(spelling.to_string())
+    }
+
     /// The id as its hyphenated string.
     pub fn as_str(&self) -> &str {
         &self.0

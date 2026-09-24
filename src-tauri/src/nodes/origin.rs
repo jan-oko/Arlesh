@@ -3,11 +3,15 @@
 //! Every node of a kind is one row shape, stored or derived, and **`origin`** is the one field that
 //! says which (ADR 0008, decision 9). The few rules that genuinely differ for a derived row — it
 //! cannot be moved out of its iteration, retyped or deleted — key off it, and nothing else does.
+//! A wait's check task, a spawned wait and a delegated Task's wait are derived rows too, each with
+//! an origin of its own.
 
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 
+use super::id::NodeId;
 use super::key::TemplateKind;
+use crate::tasks::waits::WaitKind;
 use crate::flows::model::IterationStatus;
 use crate::scopes::key::ScopeKey;
 
@@ -20,6 +24,12 @@ pub enum Origin {
     Manual,
     /// An occurrence of a Habit, derived from its template and overlaid with what differs.
     Habit(HabitOrigin),
+    /// A check on a wait: a Task drawn while the check is due, and kept, done, once it is made.
+    Check(CheckOrigin),
+    /// The wait an Asynchronous Task spawned when it was done, drawn from its Expectation template.
+    SpawnedWait(WaitOrigin),
+    /// The wait a delegated Task has on its delegate, drawn while the Task is not done.
+    DelegationWait(WaitOrigin),
 }
 
 impl Origin {
@@ -32,9 +42,27 @@ impl Origin {
     pub fn habit(&self) -> Option<&HabitOrigin> {
         match self {
             Self::Habit(habit) => Some(habit),
-            Self::Manual => None,
+            _ => None,
         }
     }
+}
+
+/// Which check on which wait a check task is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CheckOrigin {
+    /// A stored Expectation's check, or one on the wait a Task spawned.
+    pub wait_kind: WaitKind,
+    /// The Expectation's id, or the spawning Task's.
+    pub wait_id: i64,
+    /// When the check fell due.
+    pub due_at: NaiveDateTime,
+}
+
+/// The Task a derived wait belongs to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WaitOrigin {
+    /// The Task that spawned the wait, or that is delegated.
+    pub task_id: NodeId,
 }
 
 /// A Habit occurrence's provenance: which Habit, which iteration, which template row and pair.

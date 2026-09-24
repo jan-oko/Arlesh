@@ -1,15 +1,17 @@
 //! Tauri commands for expectation operations.
 //!
 //! Thin, like every other command module: open a session, delegate, commit. Releasing and taking
-//! a release back are ordinary [`update_expectation`] writes of the status; the one write with a
-//! command of its own is completing the virtual check task, which records the check and refuses
-//! when there is none due.
+//! a release back are ordinary [`update_expectation`] writes of the status — on a stored wait or a
+//! Task's spawned one alike. A wait's check tasks are Task rows, completed by `update_task`; the
+//! check commands here remain for callers that name the wait instead.
 
 use tauri::State;
 
 use crate::{
     database::session::SessionFactory,
     error::WireError,
+    flows::error::FlowError,
+    nodes::id::NodeId,
     tasks::model::{
         CreateExpectationRequest, Expectation, ExpectationId, SpawnedWait, TaskId,
         UpdateExpectationRequest, UpdateSpawnedWaitRequest,
@@ -34,29 +36,33 @@ pub async fn create_expectation(
     Ok(expectation)
 }
 
-/// Lists all expectations.
+/// Lists every expectation at `now`, stored and derived — the Expectation virtual table.
 #[tauri::command]
 pub async fn list_expectations(
     factory: State<'_, SessionFactory>,
+    now: chrono::NaiveDateTime,
 ) -> Result<Vec<Expectation>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.expectations()
-        .list()
+    // A transaction only because the derivation reads through one; it writes nothing.
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let expectations = crate::mindmap::load(&mut db, now)
         .await
-        .map_err(WireError::from_error)
+        .map_err(WireError::from_error)?
+        .expectations;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(expectations)
 }
 
 /// Updates an expectation — including releasing it, or taking a release back.
 #[tauri::command]
 pub async fn update_expectation(
     factory: State<'_, SessionFactory>,
-    id: i64,
+    id: NodeId,
     request: UpdateExpectationRequest,
 ) -> Result<Expectation, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
     let expectation = crate::nodes::write::update_expectation(
         &mut db,
-        id,
+        &id,
         request,
         chrono::Local::now().naive_local(),
     )
@@ -163,8 +169,14 @@ pub async fn remove_tag_from_expectation(
 #[tauri::command]
 pub async fn delete_expectation(
     factory: State<'_, SessionFactory>,
-    id: i64,
+    id: NodeId,
 ) -> Result<(), WireError> {
+    // A derived wait goes with its Task: completing it again, or taking its template away.
+    let NodeId::Stored(id) = id else {
+        return Err(WireError::from_error(FlowError::Refused(
+            "a derived wait is not deleted; it goes with its Task".to_string(),
+        )));
+    };
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
     crate::tasks::delete_expectation(&mut db, ExpectationId(id))
         .await

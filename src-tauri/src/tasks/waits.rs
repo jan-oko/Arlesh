@@ -381,7 +381,8 @@ impl TaskOperator<'_> {
 }
 
 /// Which kind of wait a check belongs to — and so what its `wait_id` names.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum WaitKind {
     /// A stored Expectation; the id is the Expectation's.
     Stored,
@@ -390,10 +391,20 @@ pub enum WaitKind {
 }
 
 impl WaitKind {
-    fn as_str(self) -> &'static str {
+    /// The spelling `wait_checks.wait_kind` stores.
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Stored => "stored",
             Self::Spawned => "spawned",
+        }
+    }
+
+    /// Parses a `wait_kind` column.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "stored" => Some(Self::Stored),
+            "spawned" => Some(Self::Spawned),
+            _ => None,
         }
     }
 }
@@ -505,14 +516,17 @@ pub async fn derive_wait_windows<M: SessionMode>(
 ) -> Result<WaitWindows, TaskError> {
     let mut windows = WaitWindows::default();
     for expectation in db.expectations().list().await? {
+        let Some(expectation_id) = expectation.id.stored() else {
+            continue;
+        };
         // Every completed check stays on the board as a done check task.
         for done in db
             .tasks()
-            .wait_checks(WaitKind::Stored, expectation.id)
+            .wait_checks(WaitKind::Stored, expectation_id)
             .await?
         {
             windows.expectation_checks.push(ExpectationCheck {
-                expectation_id: expectation.id,
+                expectation_id,
                 due: check_window(done.due_at),
                 due_at: done.due_at,
                 resolved_at: Some(done.resolved_at),
@@ -520,7 +534,7 @@ pub async fn derive_wait_windows<M: SessionMode>(
         }
         if let Some(due) = stored_check_due(&expectation).filter(|due| is_due(*due, now)) {
             windows.expectation_checks.push(ExpectationCheck {
-                expectation_id: expectation.id,
+                expectation_id,
                 due: check_window(due),
                 due_at: due,
                 resolved_at: None,
