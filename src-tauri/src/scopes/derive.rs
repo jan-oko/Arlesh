@@ -29,16 +29,6 @@ impl CanonicalKind {
             ScopeKind::PartOfDay | ScopeKind::Exact => None,
         }
     }
-
-    /// Widens back to the public `ScopeKind`.
-    pub(super) fn as_scope_kind(self) -> ScopeKind {
-        match self {
-            Self::Season => ScopeKind::Season,
-            Self::Month => ScopeKind::Month,
-            Self::Week => ScopeKind::Week,
-            Self::Day => ScopeKind::Day,
-        }
-    }
 }
 
 /// The first day of the month holding `date`.
