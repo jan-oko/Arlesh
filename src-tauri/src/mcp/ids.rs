@@ -93,6 +93,12 @@ pub(super) struct NodeNames {
     by_node: HashMap<(NodeTable, NodeId), usize>,
 }
 
+/// A node by table and id.
+type NodeRef = (NodeTable, NodeId);
+
+/// Each node's title and parent, for spelling paths.
+type Titles = HashMap<NodeRef, (String, Option<NodeRef>)>;
+
 /// One entry before its short id and path are known.
 struct Entry {
     table: NodeTable,
@@ -197,7 +203,7 @@ impl NodeNames {
     }
 
     fn from_entries(entries: Vec<Entry>) -> Self {
-        let titles: HashMap<(NodeTable, NodeId), (String, Option<(NodeTable, NodeId)>)> = entries
+        let titles: Titles = entries
             .iter()
             .map(|entry| {
                 (
@@ -317,10 +323,7 @@ fn common_prefix(left: &str, right: &str) -> usize {
 
 /// The titles of the nearest visible ancestors, outermost first — at most [`PATH_SEGMENTS`], with
 /// `…` for the rest — the form the server's instructions name roots in.
-fn path_above(
-    mut cursor: Option<(NodeTable, NodeId)>,
-    titles: &HashMap<(NodeTable, NodeId), (String, Option<(NodeTable, NodeId)>)>,
-) -> String {
+fn path_above(mut cursor: Option<(NodeTable, NodeId)>, titles: &Titles) -> String {
     let mut segments: Vec<&str> = Vec::new();
     let mut seen: Vec<(NodeTable, NodeId)> = Vec::new();
     let mut elided = false;
