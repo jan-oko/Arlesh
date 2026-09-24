@@ -23,7 +23,7 @@ import type { FilterState } from "@/utils/filter-tree";
 import type { TaskListRow } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER, filterTaskList } from "@/utils/list-filter";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
-import { partitionForScope, referencedScopeIds, triagePlanOf } from "@/utils/plan-triage";
+import { partitionForScope, referencedScopeIds } from "@/utils/plan-triage";
 import { buildPlanSections } from "@/utils/plan-sections";
 import type { PlanSection } from "@/utils/plan-sections";
 import { buildPaneModel } from "@/utils/plan-pane-model";
@@ -147,7 +147,7 @@ export default function PlanView() {
     if (!subscopeSplit || targetScopeId === null) return [];
     const ids = [targetScopeId];
     for (const row of panes.planned) {
-      const plan = triagePlanOf(row.node);
+      const plan = row.node.plan;
       if (plan != null) ids.push(plan.start_id, plan.end_id);
     }
     return ids;

@@ -83,24 +83,14 @@ export function isHabitOccurrence(node: MindmapNode): boolean {
 }
 
 /**
- * The Plan a row is triaged by: its own, for a Task.
+ * Whether the Plan View triages a row. A Habit **occurrence** is triaged exactly like a Task, by its
+ * Plan — the Cycle Plan its Habit (or its item) gives it, which is what `node.plan` carries. With
+ * none it is **unplanned**, and a candidate wherever its window is relevant, as any unplanned work
+ * is. Its window is not read as a plan: a window says when it is relevant, not that anyone planned
+ * it. Planning one is refused out loud until occurrences are stored rows (see `use-plan-move`).
  *
- * For a Habit **occurrence**, its Plan if its Habit gave it one, and otherwise its **own window**.
- * An occurrence is already scheduled — by its Habit, which placed it in this iteration — so it is
- * never *unplanned* work waiting for a decision. Reading its window as its plan puts it where that
- * schedule says: in the planned pane of a scope its window sits inside, as load the pass has to
- * see, and among the candidates only as work committed to the parent scope. It never lands in the
- * unplanned half, the one that invites a plan. Planning one is not possible until occurrences are
- * stored rows, and a move that tries says so (see `use-plan-move`).
- */
-export function triagePlanOf(node: MindmapNode): TimeScope | null {
-  if (isHabitOccurrence(node)) return node.plan ?? node.timeScope ?? null;
-  return node.plan ?? null;
-}
-
-/**
- * A row the Plan View does not triage: a virtual row that is not a Habit occurrence — an
- * iteration root, which stands for the whole iteration rather than for work.
+ * The one virtual row left out is an iteration **root**, which stands for the whole iteration
+ * rather than for work.
  */
 function isTriageable(node: MindmapNode): boolean {
   if (isHabitOccurrence(node)) return true;
@@ -160,7 +150,7 @@ export function partitionForScope(
   const parentPlanned: TaskListRow[] = [];
   for (const row of rows) {
     if (!isTriageable(row.node)) continue;
-    const plan = triagePlanOf(row.node);
+    const plan = row.node.plan;
     if (plan != null) {
       if (plan.start_id === plan.end_id && parentIds.has(plan.start_id)) {
         parentPlanned.push(row);

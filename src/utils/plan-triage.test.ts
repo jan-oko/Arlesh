@@ -227,26 +227,26 @@ describe("partitionForScope", () => {
       return row({ node: node("occurrence-1", { virtual: true, habitItem, ...extra }) });
     }
 
-    it("is planned where its own window sits inside the scope, as load the pass has to see", () => {
+    // No Cycle Plan means unplanned: its window says when it is relevant, not that it was planned.
+    it("is an unplanned candidate where it has no Cycle Plan and its window is relevant", () => {
       const panes = partitionForScope([occurrence({ timeScope: scope(2) })], WEEK, WINDOWS, MONTH_PARENT);
-      expect(panes.planned.map((r) => r.node.id)).toEqual(["occurrence-1"]);
+      expect(panes.unplanned.map((r) => r.node.id)).toEqual(["occurrence-1"]);
+      expect(panes.planned).toEqual([]);
     });
 
-    it("is parent-planned where its window is the parent scope", () => {
-      const panes = partitionForScope([occurrence({ timeScope: scope(4) })], WEEK, WINDOWS, MONTH_PARENT);
-      expect(panes.parentPlanned.map((r) => r.node.id)).toEqual(["occurrence-1"]);
+    it("is not a candidate where its window is not relevant", () => {
+      const panes = partitionForScope([occurrence({ timeScope: scope(3) })], WEEK, WINDOWS, MONTH_PARENT);
+      expect(panes).toEqual({ unplanned: [], planned: [], parentPlanned: [] });
     });
 
-    it("is read by its Habit's Plan over its window when it has one", () => {
+    it("is planned where its Cycle Plan sits inside the scope", () => {
       const panes = partitionForScope([occurrence({ timeScope: scope(4), plan: scope(2) })], WEEK, WINDOWS, MONTH_PARENT);
       expect(panes.planned.map((r) => r.node.id)).toEqual(["occurrence-1"]);
     });
 
-    // Its window overlaps the week without being inside it or being its parent: it is never
-    // offered as unplanned work, which is the half that invites a plan.
-    it("is never unplanned, even where its window only overlaps the scope", () => {
-      const panes = partitionForScope([occurrence({ timeScope: { start_id: 2, end_id: 3 } })], WEEK, WINDOWS, MONTH_PARENT);
-      expect(panes).toEqual({ unplanned: [], planned: [], parentPlanned: [] });
+    it("is parent-planned where its Cycle Plan is the parent scope", () => {
+      const panes = partitionForScope([occurrence({ timeScope: scope(4), plan: scope(4) })], WEEK, WINDOWS, MONTH_PARENT);
+      expect(panes.parentPlanned.map((r) => r.node.id)).toEqual(["occurrence-1"]);
     });
 
     it("leaves out an iteration root, which stands for the whole iteration", () => {

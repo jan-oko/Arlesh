@@ -98,17 +98,16 @@ A Task planned **somewhere else** — neither in this scope nor to its parent �
 It is not unscheduled, so it is not a candidate, and it is not in this scope, so it is not what the
 scope holds.
 
-**Habit occurrences are triaged, and are never unplanned.** An occurrence is already scheduled, by
-its Habit, which placed it in this iteration. So it is read by its Habit's Plan where it has one,
-and otherwise by **its own window as its plan**. It then sits where that schedule says:
+**Habit occurrences are triaged like Tasks.** An occurrence is read by its **Cycle Plan**, the Habit's
+or its item's:
 
-- in the **planned** pane of a scope its window sits inside, as load the pass has to see;
-- among the candidates only as **parent-planned** work, where its window is the parent scope — a
-  weekly habit's occurrence while you fill one of the week's days;
-- and nowhere else. It never joins the unplanned half, the one that invites a plan, even where its
-  window merely overlaps the scope.
+- **With one**, it sits where that Plan says, as a planned Task would: in the planned pane of a
+  scope the Plan sits inside, or among the candidates when the Plan is the parent scope.
+- **With none, it is unplanned**, and a candidate wherever its window is relevant, like any
+  unplanned relevant work.
 
-This is the conservative reading: an occurrence shows only where its Habit put it.
+Its window is **not** read as a plan. A window says when the work is relevant, not that anyone
+planned it (ruled by the user, 2026-09-24, over a first cut that did read it that way).
 
 **Planning one is not possible yet.** An occurrence has no stored row to carry a Plan until
 occurrences become rows of their own (Arlesh-pnn). Every gesture that moves one — the button,

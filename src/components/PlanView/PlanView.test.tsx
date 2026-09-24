@@ -670,14 +670,25 @@ describe("a Habit occurrence", () => {
     };
   }
 
-  it("shows in the planned pane where its window sits inside the scope", async () => {
+  it("is an unplanned candidate where it has no Cycle Plan", async () => {
     mockRows([row(occurrence({ timeScope: { start_id: DAY_ID, end_id: DAY_ID } }))]);
     await renderPlanView();
-    expect(cardsIn("planned")).toEqual(["habititem-flow_task-1-0-0-virtual"]);
+    expect(cardsIn("candidates")).toEqual(["habititem-flow_task-1-0-0-virtual"]);
+    expect(cardsIn("planned")).toEqual([]);
   });
 
   it("says it cannot be planned yet rather than moving nothing in silence", async () => {
     mockRows([row(occurrence({ timeScope: { start_id: DAY_ID, end_id: DAY_ID } }))]);
+    await renderPlanView();
+
+    await act(async () => { fireEvent.click(screen.getByLabelText("planInto")); });
+    await settle();
+    expect(updateTask).not.toHaveBeenCalled();
+    expect(screen.getByText("planView:occurrenceNotYet")).toBeInTheDocument();
+  });
+
+  it("says the same when taken back out of the scope its Cycle Plan puts it in", async () => {
+    mockRows([row(occurrence({ plan: { start_id: DAY_ID, end_id: DAY_ID } }))]);
     await renderPlanView();
 
     await act(async () => { fireEvent.click(screen.getByLabelText("unplan")); });
@@ -689,7 +700,7 @@ describe("a Habit occurrence", () => {
   // A batch with an occurrence in it plans the rest, and still names the one it left.
   it("plans the rest of a batch and says the occurrence was left where it was", async () => {
     mockRows([
-      row(occurrence({ timeScope: { start_id: MONTH_ID, end_id: MONTH_ID } })),
+      row(occurrence({ timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } })),
       row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } })),
     ]);
     await renderPlanView();
