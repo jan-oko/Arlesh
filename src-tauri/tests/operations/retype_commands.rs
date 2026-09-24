@@ -36,6 +36,7 @@ use arlesh_lib::{
     },
 };
 use chrono::NaiveDate;
+use helpers::StoredId;
 use tauri::Manager;
 
 // ===========================================================================
@@ -225,7 +226,7 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
         CreateGoalRequest {
             title: "Learn Rust".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: Some(GoalStatus::Frozen),
             time_scope: Some(TimeScope {
                 start_id: scope_id,
@@ -239,7 +240,7 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
     .unwrap();
     update_goal(
         &mut db,
-        GoalId(goal.id),
+        GoalId(goal.id.sid()),
         UpdateGoalRequest {
             is_private: Some(true),
             ..Default::default()
@@ -247,9 +248,12 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
     )
     .await
     .unwrap();
-    db.goals().add_tag(GoalId(goal.id), tag_id).await.unwrap();
+    db.goals()
+        .add_tag(GoalId(goal.id.sid()), tag_id)
+        .await
+        .unwrap();
     db.block_reasons()
-        .set("goal", goal.id, &["stuck".to_string()])
+        .set("goal", goal.id.sid(), &["stuck".to_string()])
         .await
         .unwrap();
     let dependent = create_task(
@@ -257,7 +261,7 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
         CreateTaskRequest {
             title: "Waits on it".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -265,15 +269,17 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
     .unwrap();
     add_task_dependency(
         &mut db,
-        TaskId(dependent.id),
-        Dependency::Goal { id: goal.id },
+        TaskId(dependent.id.sid()),
+        Dependency::Goal {
+            id: goal.id.clone(),
+        },
     )
     .await
     .unwrap();
     db.commit().await.unwrap();
 
     let source_position: i64 = sqlx::query_scalar("SELECT position FROM goals WHERE id = ?")
-        .bind(goal.id)
+        .bind(goal.id.sid())
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -282,7 +288,7 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
     let refused = retype_node(
         app.state(),
         "goal".into(),
-        goal.id,
+        goal.id.clone(),
         "domain".into(),
         None,
         None,
@@ -302,7 +308,7 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
         "every column-less field, named in the module's declaration order"
     );
     assert_eq!(
-        count_where(&pool, "goals", "id", goal.id).await,
+        count_where(&pool, "goals", "id", goal.id.sid()).await,
         1,
         "the refusal writes nothing"
     );
@@ -310,7 +316,7 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
     let retyped = retype_node(
         app.state(),
         "goal".into(),
-        goal.id,
+        goal.id.clone(),
         "domain".into(),
         Some(StrandedChildren::Reparent),
         None,
@@ -340,16 +346,16 @@ async fn retyping_a_goal_to_a_domain_carries_only_identity_fields_and_drops_the_
     );
 
     assert_eq!(
-        count_where(&pool, "goals", "id", goal.id).await,
+        count_where(&pool, "goals", "id", goal.id.sid()).await,
         0,
         "the goal row is gone"
     );
     assert_eq!(
-        count_where(&pool, "tags_on_goals", "goal_id", goal.id).await,
+        count_where(&pool, "tags_on_goals", "goal_id", goal.id.sid()).await,
         0
     );
     assert_eq!(
-        count_where(&pool, "block_reasons", "owner_id", goal.id).await,
+        count_where(&pool, "block_reasons", "owner_id", goal.id.sid()).await,
         0
     );
     assert_eq!(
@@ -374,7 +380,7 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
         CreateTaskRequest {
             title: "Other task".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -385,7 +391,7 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
         CreateTaskRequest {
             title: "Draft the spec".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: Some(TaskStatus::Done),
             time_scope: Some(TimeScope {
                 start_id: scope_id,
@@ -404,7 +410,7 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
     .unwrap();
     update_task(
         &mut db,
-        TaskId(task.id),
+        TaskId(task.id.sid()),
         UpdateTaskRequest {
             delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
                 id: person_id,
@@ -415,22 +421,31 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
     )
     .await
     .unwrap();
-    db.tasks().add_tag(TaskId(task.id), tag_id).await.unwrap();
+    db.tasks()
+        .add_tag(TaskId(task.id.sid()), tag_id)
+        .await
+        .unwrap();
     db.block_reasons()
-        .set("task", task.id, &["blocked on Ana".to_string()])
+        .set("task", task.id.sid(), &["blocked on Ana".to_string()])
         .await
         .unwrap();
     // Outbound: the task being retyped depends on `other`.
-    add_task_dependency(&mut db, TaskId(task.id), Dependency::Task { id: other.id })
-        .await
-        .unwrap();
+    add_task_dependency(
+        &mut db,
+        TaskId(task.id.sid()),
+        Dependency::Task {
+            id: other.id.clone(),
+        },
+    )
+    .await
+    .unwrap();
     // Inbound: `dependent` depends on the task being retyped.
     let dependent = create_task(
         &mut db,
         CreateTaskRequest {
             title: "Waits on the spec".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -438,15 +453,17 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
     .unwrap();
     add_task_dependency(
         &mut db,
-        TaskId(dependent.id),
-        Dependency::Task { id: task.id },
+        TaskId(dependent.id.sid()),
+        Dependency::Task {
+            id: task.id.clone(),
+        },
     )
     .await
     .unwrap();
     db.commit().await.unwrap();
 
     let source_position: i64 = sqlx::query_scalar("SELECT position FROM tasks WHERE id = ?")
-        .bind(task.id)
+        .bind(task.id.sid())
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -455,7 +472,7 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "project".into(),
         None,
         None,
@@ -479,7 +496,7 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
     let retyped = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "project".into(),
         Some(StrandedChildren::Reparent),
         None,
@@ -503,13 +520,13 @@ async fn retyping_a_task_to_a_project_drops_its_task_only_fields_and_ends_both_d
         "a task never had a directory to give it"
     );
 
-    assert_eq!(count_where(&pool, "tasks", "id", task.id).await, 0);
+    assert_eq!(count_where(&pool, "tasks", "id", task.id.sid()).await, 0);
     assert_eq!(
-        count_where(&pool, "tags_on_tasks", "task_id", task.id).await,
+        count_where(&pool, "tags_on_tasks", "task_id", task.id.sid()).await,
         0
     );
     assert_eq!(
-        count_where(&pool, "block_reasons", "owner_id", task.id).await,
+        count_where(&pool, "block_reasons", "owner_id", task.id.sid()).await,
         0
     );
     assert_eq!(
@@ -557,7 +574,7 @@ async fn a_domain_table_retype_rewrites_no_row_and_the_row_keeps_its_identity_th
     let hop1 = retype_node(
         app.state(),
         "project".into(),
-        created.id,
+        created.id.into(),
         "tag".into(),
         None,
         None,
@@ -582,7 +599,7 @@ async fn a_domain_table_retype_rewrites_no_row_and_the_row_keeps_its_identity_th
     let hop2 = retype_node(
         app.state(),
         "tag".into(),
-        created.id,
+        created.id.into(),
         "domain".into(),
         None,
         None,
@@ -600,7 +617,7 @@ async fn a_domain_table_retype_rewrites_no_row_and_the_row_keeps_its_identity_th
     let hop3 = retype_node(
         app.state(),
         "domain".into(),
-        created.id,
+        created.id.into(),
         "project".into(),
         None,
         None,
@@ -638,7 +655,7 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
         CreateTaskRequest {
             title: "Draft the spec".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: Some(TaskStatus::InProgress),
             plan: Some(TimeScope {
                 start_id: scope_id,
@@ -652,7 +669,7 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
     .unwrap();
     update_task(
         &mut db,
-        TaskId(task.id),
+        TaskId(task.id.sid()),
         UpdateTaskRequest {
             delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
                 id: person_id,
@@ -662,9 +679,12 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
     )
     .await
     .unwrap();
-    db.tasks().add_tag(TaskId(task.id), tag_id).await.unwrap();
+    db.tasks()
+        .add_tag(TaskId(task.id.sid()), tag_id)
+        .await
+        .unwrap();
     db.block_reasons()
-        .set("task", task.id, &["waiting on Ben".to_string()])
+        .set("task", task.id.sid(), &["waiting on Ben".to_string()])
         .await
         .unwrap();
     let dependent = create_task(
@@ -672,7 +692,7 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
         CreateTaskRequest {
             title: "Waits on the spec".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -680,8 +700,10 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
     .unwrap();
     add_task_dependency(
         &mut db,
-        TaskId(dependent.id),
-        Dependency::Task { id: task.id },
+        TaskId(dependent.id.sid()),
+        Dependency::Task {
+            id: task.id.clone(),
+        },
     )
     .await
     .unwrap();
@@ -691,7 +713,7 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "goal".into(),
         None,
         None,
@@ -704,7 +726,7 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
     let retyped = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "goal".into(),
         Some(StrandedChildren::Reparent),
         None,
@@ -736,13 +758,13 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
 
     assert_eq!(
         dependency_rows(&pool).await,
-        vec![(dependent.id, "goal".to_string(), retyped.id)],
+        vec![(dependent.id.sid(), "goal".to_string(), retyped.id)],
         "the inbound edge is repointed at the goal, not dropped — a goal can be depended on"
     );
 
-    assert_eq!(count_where(&pool, "tasks", "id", task.id).await, 0);
+    assert_eq!(count_where(&pool, "tasks", "id", task.id.sid()).await, 0);
     assert_eq!(
-        count_where(&pool, "tags_on_tasks", "task_id", task.id).await,
+        count_where(&pool, "tags_on_tasks", "task_id", task.id.sid()).await,
         0
     );
     // Filtered by `owner_type` too, not just `owner_id`: goals and tasks are separate tables with
@@ -750,7 +772,7 @@ async fn retyping_a_task_to_a_goal_carries_its_tags_and_reasons_and_repoints_wha
     let leftover_task_reasons: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM block_reasons WHERE owner_type = 'task' AND owner_id = ?",
     )
-    .bind(task.id)
+    .bind(task.id.sid())
     .fetch_one(&pool)
     .await
     .unwrap();
@@ -776,7 +798,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
         CreateGoalRequest {
             title: "Learn Rust".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -789,7 +811,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
         CreateGoalRequest {
             title: "Finish the tutorial".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id,
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
@@ -800,7 +822,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
         CreateTaskRequest {
             title: "Read chapter four".into(),
             parent_type: "goal".into(),
-            parent_id: sub_goal.id,
+            parent_id: sub_goal.id.clone(),
             ..Default::default()
         },
     )
@@ -812,7 +834,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
             body: "ownership is the hard bit".into(),
             details: None,
             parent_type: "goal".into(),
-            parent_id: sub_goal.id,
+            parent_id: sub_goal.id.clone(),
             position: 0,
         })
         .await
@@ -824,7 +846,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
         CreateTaskRequest {
             title: "Set up the toolchain".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id,
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
@@ -836,7 +858,7 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
     let refused = retype_node(
         app.state(),
         "goal".into(),
-        goal.id,
+        goal.id.clone(),
         "task".into(),
         None,
         None,
@@ -846,13 +868,13 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
     let wire = serde_json::to_value(&refused).unwrap();
     assert_eq!(
         lost_child_kinds_and_ids(&wire),
-        vec![("goal".to_string(), sub_goal.id)]
+        vec![("goal".to_string(), sub_goal.id.sid())]
     );
 
     let retyped = retype_node(
         app.state(),
         "goal".into(),
-        goal.id,
+        goal.id.clone(),
         "task".into(),
         Some(StrandedChildren::Delete),
         None,
@@ -861,12 +883,12 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
     .unwrap();
 
     assert_eq!(
-        count_where(&pool, "goals", "id", sub_goal.id).await,
+        count_where(&pool, "goals", "id", sub_goal.id.sid()).await,
         0,
         "the stranded sub-goal is gone"
     );
     assert_eq!(
-        count_where(&pool, "tasks", "id", grandchild_task.id).await,
+        count_where(&pool, "tasks", "id", grandchild_task.id.sid()).await,
         0,
         "its own descendant task went with it"
     );
@@ -876,12 +898,12 @@ async fn the_retype_node_command_deletes_stranded_children_and_their_own_descend
         "and its own descendant info too"
     );
     assert_eq!(
-        count_where(&pool, "goals", "id", goal.id).await,
+        count_where(&pool, "goals", "id", goal.id.sid()).await,
         0,
         "the retyped goal row itself is gone"
     );
 
-    let (parent_type, parent_id) = task_parent(&pool, surviving_task.id).await;
+    let (parent_type, parent_id) = task_parent(&pool, surviving_task.id.sid()).await;
     assert_eq!(
         (parent_type.as_str(), parent_id),
         ("task", retyped.id),
@@ -901,7 +923,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
         CreateGoalRequest {
             title: "Learn Rust".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -913,7 +935,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
         CreateGoalRequest {
             title: "Finish the tutorial".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id,
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
@@ -925,7 +947,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
             body: "still under the sub-goal after it moves".into(),
             details: None,
             parent_type: "goal".into(),
-            parent_id: sub_goal.id,
+            parent_id: sub_goal.id.clone(),
             position: 0,
         })
         .await
@@ -935,7 +957,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
         .create(CreateFlowRequest {
             title: "Weekly review".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id,
+            parent_id: goal.id.sid(),
             ..Default::default()
         })
         .await
@@ -946,7 +968,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
         CreateTaskRequest {
             title: "Set up the toolchain".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id,
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
@@ -958,7 +980,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
     let refused = retype_node(
         app.state(),
         "goal".into(),
-        goal.id,
+        goal.id.clone(),
         "task".into(),
         None,
         None,
@@ -969,7 +991,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
     assert_eq!(
         lost_child_kinds_and_ids(&wire),
         vec![
-            ("goal".to_string(), sub_goal.id),
+            ("goal".to_string(), sub_goal.id.sid()),
             ("flow".to_string(), flow_child.id)
         ]
     );
@@ -977,7 +999,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
     let retyped = retype_node(
         app.state(),
         "goal".into(),
-        goal.id,
+        goal.id.clone(),
         "task".into(),
         Some(StrandedChildren::Reparent),
         None,
@@ -988,7 +1010,7 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
     // Both stranded children moved up to the retyped node's own parent (the project) — not to the
     // new task, and not deleted.
     assert_eq!(
-        goal_parent(&pool, sub_goal.id).await,
+        goal_parent(&pool, sub_goal.id.sid()).await,
         ("project".to_string(), project_id),
         "the stranded sub-goal moved up to its grandparent"
     );
@@ -1002,18 +1024,18 @@ async fn the_retype_node_command_reparents_every_kind_of_stranded_child_and_leav
     // its descendants stay exactly where they were, still correctly parented to it.
     assert_eq!(
         info_parent(&pool, grandchild_info.id).await,
-        ("goal".to_string(), sub_goal.id),
+        ("goal".to_string(), sub_goal.id.sid()),
         "the sub-goal's own child is untouched by its parent's reparenting"
     );
 
     // The non-stranded child was adopted onto the new task normally.
     assert_eq!(
-        task_parent(&pool, surviving_task.id).await,
+        task_parent(&pool, surviving_task.id.sid()).await,
         ("task".to_string(), retyped.id)
     );
 
     assert_eq!(
-        count_where(&pool, "goals", "id", goal.id).await,
+        count_where(&pool, "goals", "id", goal.id.sid()).await,
         0,
         "the old goal row is gone"
     );
@@ -1123,7 +1145,7 @@ async fn retyping_a_tracked_task_to_a_goal_keeps_its_issue_link() {
         CreateTaskRequest {
             title: "Draft the spec".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -1131,7 +1153,7 @@ async fn retyping_a_tracked_task_to_a_goal_keeps_its_issue_link() {
     .unwrap();
     // Only the MCP server sets this in production; the operator setter is the same code path.
     db.tasks()
-        .set_beads_id(TaskId(task.id), Some("Arlesh-3gk".into()))
+        .set_beads_id(TaskId(task.id.sid()), Some("Arlesh-3gk".into()))
         .await
         .unwrap();
     db.commit().await.unwrap();
@@ -1140,7 +1162,7 @@ async fn retyping_a_tracked_task_to_a_goal_keeps_its_issue_link() {
     let retyped = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "goal".into(),
         None,
         None,
@@ -1156,7 +1178,7 @@ async fn retyping_a_tracked_task_to_a_goal_keeps_its_issue_link() {
         "the new goal should carry the issue link"
     );
     assert_eq!(
-        count_where(&pool, "tasks", "id", task.id).await,
+        count_where(&pool, "tasks", "id", task.id.sid()).await,
         0,
         "the old task row should be gone"
     );
@@ -1173,14 +1195,14 @@ async fn retyping_a_tracked_task_to_a_project_keeps_its_issue_link() {
         CreateTaskRequest {
             title: "Becomes a project".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
     .await
     .unwrap();
     db.tasks()
-        .set_beads_id(TaskId(task.id), Some("Arlesh-e8d".into()))
+        .set_beads_id(TaskId(task.id.sid()), Some("Arlesh-e8d".into()))
         .await
         .unwrap();
     db.commit().await.unwrap();
@@ -1215,14 +1237,14 @@ async fn retyping_a_tracked_task_to_a_note_reports_the_link_as_lost_and_clears_i
         CreateTaskRequest {
             title: "Becomes a note".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
     .await
     .unwrap();
     db.tasks()
-        .set_beads_id(TaskId(task.id), Some("Arlesh-32r".into()))
+        .set_beads_id(TaskId(task.id.sid()), Some("Arlesh-32r".into()))
         .await
         .unwrap();
     db.commit().await.unwrap();
@@ -1232,7 +1254,7 @@ async fn retyping_a_tracked_task_to_a_note_reports_the_link_as_lost_and_clears_i
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "info".into(),
         None,
         None,
@@ -1244,7 +1266,7 @@ async fn retyping_a_tracked_task_to_a_note_reports_the_link_as_lost_and_clears_i
     );
 
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let plan = plan_node_retype(&mut db, RetypeKind::Task, task.id, RetypeKind::Info)
+    let plan = plan_node_retype(&mut db, RetypeKind::Task, task.id.sid(), RetypeKind::Info)
         .await
         .unwrap();
     drop(db);
@@ -1293,16 +1315,19 @@ async fn a_scoped_task_becomes_a_commitment_carrying_its_window_tags_and_issue_l
             CreateTaskRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight.clone()),
                 ..Default::default()
             },
         )
         .await
         .unwrap();
-        db.tasks().add_tag(TaskId(task.id), tag_id).await.unwrap();
         db.tasks()
-            .set_beads_id(TaskId(task.id), Some("Arlesh-cyo".into()))
+            .add_tag(TaskId(task.id.sid()), tag_id)
+            .await
+            .unwrap();
+        db.tasks()
+            .set_beads_id(TaskId(task.id.sid()), Some("Arlesh-cyo".into()))
             .await
             .unwrap();
         db.commit().await.unwrap();
@@ -1312,7 +1337,7 @@ async fn a_scoped_task_becomes_a_commitment_carrying_its_window_tags_and_issue_l
     let retyped = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "commitment".into(),
         None,
         None,
@@ -1344,7 +1369,7 @@ async fn a_scoped_task_becomes_a_commitment_carrying_its_window_tags_and_issue_l
     );
 
     let gone: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE id = ?")
-        .bind(task.id)
+        .bind(task.id.sid())
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -1367,7 +1392,7 @@ async fn a_planned_task_cannot_become_a_commitment_until_the_caller_has_been_tol
             CreateTaskRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight.clone()),
                 plan: Some(tonight),
                 ..Default::default()
@@ -1382,7 +1407,7 @@ async fn a_planned_task_cannot_become_a_commitment_until_the_caller_has_been_tol
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "commitment".into(),
         None,
         None,
@@ -1421,7 +1446,7 @@ async fn an_unscoped_task_with_no_scoped_ancestor_cannot_become_a_commitment() {
             CreateTaskRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )
@@ -1434,7 +1459,7 @@ async fn an_unscoped_task_with_no_scoped_ancestor_cannot_become_a_commitment() {
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "commitment".into(),
         None,
         None,
@@ -1446,7 +1471,7 @@ async fn an_unscoped_task_with_no_scoped_ancestor_cannot_become_a_commitment() {
     );
 
     let survivors: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE id = ?")
-        .bind(task.id)
+        .bind(task.id.sid())
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -1478,7 +1503,7 @@ async fn an_unscoped_task_becomes_a_commitment_when_the_caller_supplies_the_wind
             CreateTaskRequest {
                 title: "No social media today".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )
@@ -1491,7 +1516,7 @@ async fn an_unscoped_task_becomes_a_commitment_when_the_caller_supplies_the_wind
     let retyped = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "commitment".into(),
         None,
         Some(tonight.clone()),
@@ -1511,7 +1536,7 @@ async fn an_unscoped_task_becomes_a_commitment_when_the_caller_supplies_the_wind
     assert_eq!(commitment.title, "No social media today");
 
     let survivors: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE id = ?")
-        .bind(task.id)
+        .bind(task.id.sid())
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -1537,7 +1562,7 @@ async fn a_task_under_a_scoped_goal_becomes_a_commitment_without_being_asked_for
             CreateGoalRequest {
                 title: "Sleep properly".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(this_month),
                 ..Default::default()
             },
@@ -1549,7 +1574,7 @@ async fn a_task_under_a_scoped_goal_becomes_a_commitment_without_being_asked_for
             CreateTaskRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "goal".into(),
-                parent_id: goal.id,
+                parent_id: goal.id.clone(),
                 ..Default::default()
             },
         )
@@ -1598,7 +1623,7 @@ async fn a_judged_commitment_becoming_a_task_reports_the_verdict_it_would_lose()
             CreateCommitmentRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 verdict: Some(Verdict::Broken),
                 time_scope: Some(tonight),
                 verdict_window: Some(DurationSpec {
@@ -1616,7 +1641,7 @@ async fn a_judged_commitment_becoming_a_task_reports_the_verdict_it_would_lose()
     let refused = retype_node(
         app.state(),
         "commitment".into(),
-        commitment.id,
+        commitment.id.clone(),
         "task".into(),
         None,
         None,
@@ -1668,7 +1693,7 @@ async fn a_commitments_task_children_move_with_it_and_its_goal_siblings_never_ar
             CreateCommitmentRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight),
                 ..Default::default()
             },
@@ -1680,7 +1705,7 @@ async fn a_commitments_task_children_move_with_it_and_its_goal_siblings_never_ar
             CreateTaskRequest {
                 title: "Phone on charger".into(),
                 parent_type: "commitment".into(),
-                parent_id: commitment.id,
+                parent_id: commitment.id.clone(),
                 ..Default::default()
             },
         )
@@ -1729,7 +1754,7 @@ async fn a_commitment_becoming_a_tag_deletes_the_children_a_label_cannot_hold() 
             CreateCommitmentRequest {
                 title: "Evening rules".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight.clone()),
                 ..Default::default()
             },
@@ -1741,7 +1766,7 @@ async fn a_commitment_becoming_a_tag_deletes_the_children_a_label_cannot_hold() 
             CreateCommitmentRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "commitment".into(),
-                parent_id: commitment.id,
+                parent_id: commitment.id.clone(),
                 time_scope: Some(tonight),
                 ..Default::default()
             },
@@ -1788,7 +1813,7 @@ async fn a_stranded_child_commitment_moves_up_to_its_grandparent_when_the_caller
             CreateCommitmentRequest {
                 title: "Evening rules".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight.clone()),
                 ..Default::default()
             },
@@ -1800,7 +1825,7 @@ async fn a_stranded_child_commitment_moves_up_to_its_grandparent_when_the_caller
             CreateCommitmentRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "commitment".into(),
-                parent_id: commitment.id,
+                parent_id: commitment.id.clone(),
                 time_scope: Some(tonight),
                 ..Default::default()
             },
@@ -1851,7 +1876,7 @@ async fn a_goal_holds_a_commitment_child_through_a_retype() {
             CreateCommitmentRequest {
                 title: "Evening rules".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight.clone()),
                 ..Default::default()
             },
@@ -1863,7 +1888,7 @@ async fn a_goal_holds_a_commitment_child_through_a_retype() {
             CreateCommitmentRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "commitment".into(),
-                parent_id: commitment.id,
+                parent_id: commitment.id.clone(),
                 time_scope: Some(tonight),
                 ..Default::default()
             },
@@ -1915,7 +1940,7 @@ async fn a_task_under_a_commitment_climbs_past_it_when_it_becomes_a_goal() {
             CreateCommitmentRequest {
                 title: "Asleep by 23:00".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight),
                 ..Default::default()
             },
@@ -1927,7 +1952,7 @@ async fn a_task_under_a_commitment_climbs_past_it_when_it_becomes_a_goal() {
             CreateTaskRequest {
                 title: "Phone on charger".into(),
                 parent_type: "commitment".into(),
-                parent_id: commitment.id,
+                parent_id: commitment.id.clone(),
                 ..Default::default()
             },
         )
@@ -1940,7 +1965,7 @@ async fn a_task_under_a_commitment_climbs_past_it_when_it_becomes_a_goal() {
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "goal".into(),
         None,
         None,
@@ -1990,7 +2015,7 @@ async fn retyping_a_backlogged_task_to_a_goal_names_the_backlog_as_lost_and_then
         CreateTaskRequest {
             title: "Set aside for now".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             archival: Some(TaskArchival::Backlog),
             ..Default::default()
         },
@@ -2005,7 +2030,7 @@ async fn retyping_a_backlogged_task_to_a_goal_names_the_backlog_as_lost_and_then
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "goal".into(),
         None,
         None,
@@ -2023,7 +2048,7 @@ async fn retyping_a_backlogged_task_to_a_goal_names_the_backlog_as_lost_and_then
     let retyped = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "goal".into(),
         Some(StrandedChildren::Reparent),
         None,
@@ -2032,7 +2057,7 @@ async fn retyping_a_backlogged_task_to_a_goal_names_the_backlog_as_lost_and_then
     .unwrap();
 
     assert_eq!(retyped.kind, RetypeKind::Goal);
-    assert_eq!(count_where(&pool, "tasks", "id", task.id).await, 0);
+    assert_eq!(count_where(&pool, "tasks", "id", task.id.sid()).await, 0);
 }
 
 #[tokio::test]
@@ -2046,7 +2071,7 @@ async fn retyping_a_task_nobody_set_aside_says_nothing_about_the_backlog() {
         CreateTaskRequest {
             title: "In play".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -2087,7 +2112,7 @@ async fn retyping_a_backlogged_task_to_a_commitment_names_the_backlog_as_lost() 
             CreateTaskRequest {
                 title: "No social media today".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(tonight),
                 archival: Some(TaskArchival::Backlog),
                 ..Default::default()
@@ -2102,7 +2127,7 @@ async fn retyping_a_backlogged_task_to_a_commitment_names_the_backlog_as_lost() 
     let refused = retype_node(
         app.state(),
         "task".into(),
-        task.id,
+        task.id.clone(),
         "commitment".into(),
         None,
         None,

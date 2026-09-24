@@ -17,6 +17,7 @@ pub mod infos;
 pub mod knowledge_base;
 pub mod mcp;
 pub mod mindmap;
+pub mod nodes;
 pub mod scopes;
 pub mod tasks;
 pub mod tray;
@@ -215,12 +216,6 @@ pub fn run() {
             commands::flows::set_flow_recurrence,
             commands::flows::get_flow_recurrence,
             commands::flows::delete_flow_recurrence,
-            commands::flows::generate_habit_iterations,
-            commands::flows::list_habit_item_statuses,
-            commands::flows::set_habit_item_status,
-            commands::flows::create_habit_instance_child,
-            commands::flows::list_habit_instance_children,
-            commands::flows::set_habit_iteration_done,
             commands::flows::habit_completion_count,
             commands::flows::clear_habit_modifications,
             commands::flows::fork_flow,

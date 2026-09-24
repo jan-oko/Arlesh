@@ -10,6 +10,7 @@ use arlesh_lib::{
     },
     tasks::{create_task, model::CreateTaskRequest, update_task},
 };
+use helpers::StoredId;
 
 async fn make_project_id(pool: &sqlx::SqlitePool) -> i64 {
     use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus};
@@ -115,7 +116,7 @@ async fn person_linked_to_task_via_delegation() {
         CreateTaskRequest {
             title: "Delegated Task".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: None,
             ..Default::default()
         },
@@ -125,7 +126,7 @@ async fn person_linked_to_task_via_delegation() {
 
     update_task(
         &mut db,
-        task.id.into(),
+        task.id.sid().into(),
         arlesh_lib::tasks::model::UpdateTaskRequest {
             delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
                 id: person.id,
@@ -136,7 +137,7 @@ async fn person_linked_to_task_via_delegation() {
     .await
     .unwrap();
 
-    let fetched = db.tasks().get(task.id.into()).await.unwrap();
+    let fetched = db.tasks().get(task.id.sid().into()).await.unwrap();
     assert_eq!(
         fetched.delegate_to,
         Some(arlesh_lib::tasks::model::Delegate::Person { id: person.id })
@@ -146,7 +147,7 @@ async fn person_linked_to_task_via_delegation() {
     // column: undelegating a task must remove the link rather than leave the old person on it.
     update_task(
         &mut db,
-        task.id.into(),
+        task.id.sid().into(),
         arlesh_lib::tasks::model::UpdateTaskRequest {
             delegate_to: Some(None),
             ..Default::default()
@@ -155,7 +156,7 @@ async fn person_linked_to_task_via_delegation() {
     .await
     .unwrap();
 
-    let undelegated = db.tasks().get(task.id.into()).await.unwrap();
+    let undelegated = db.tasks().get(task.id.sid().into()).await.unwrap();
     db.commit().await.unwrap();
     assert_eq!(
         undelegated.delegate_to, None,

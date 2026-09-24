@@ -96,7 +96,7 @@ async fn make_info(
             body: body.into(),
             details: details.map(String::from),
             parent_type: parent_type.into(),
-            parent_id,
+            parent_id: parent_id.into(),
             position,
         })
         .await
@@ -218,7 +218,7 @@ async fn retyping_an_info_nested_under_an_info_to_a_goal_climbs_to_the_project_a
     let refused = retype_node(
         app.state(),
         "info".into(),
-        inner_info,
+        inner_info.into(),
         "goal".into(),
         None,
         None,
@@ -249,7 +249,7 @@ async fn retyping_an_info_nested_under_an_info_to_a_goal_climbs_to_the_project_a
     let retyped = retype_node(
         app.state(),
         "info".into(),
-        inner_info,
+        inner_info.into(),
         "goal".into(),
         Some(StrandedChildren::Reparent),
         None,
@@ -299,7 +299,7 @@ async fn a_stranded_childs_delete_failing_rolls_back_the_whole_retype() {
     let result = retype_node(
         app.state(),
         "project".into(),
-        project,
+        project.into(),
         "info".into(),
         Some(StrandedChildren::Delete),
         None,

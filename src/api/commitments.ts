@@ -2,12 +2,13 @@ import { invoke } from "./gesture";
 import type { Verdict } from "@/api/verdict";
 import { VERDICT } from "@/api/verdict";
 import type { TimeScope, DurationSpec } from "@/api/time-scope";
+import type { Origin, RowId } from "@/api/node-id";
 
 export interface Commitment {
-  id: number;
+  id: RowId;
   title: string;
   parent_type: string;
-  parent_id: number;
+  parent_id: RowId;
   verdict: Verdict;
   // Null inherits the nearest scoped ancestor's. Unlike every other kind, the *effective* window
   // may not be absent: a commitment with no window anywhere above it is refused at write time.
@@ -21,12 +22,14 @@ export interface Commitment {
   is_private: boolean;
   // The bd issue this commitment is tracked as. Written only by the MCP server.
   beads_id?: string;
+  // Where the row came from: made by hand, or a Habit's occurrence. Absent reads as manual.
+  origin?: Origin;
 }
 
 export interface CreateCommitmentRequest {
   title: string;
   parent_type: string;
-  parent_id: number;
+  parent_id: RowId;
   verdict?: Verdict;
   time_scope?: TimeScope;
   verdict_window?: DurationSpec;
@@ -42,13 +45,13 @@ export interface UpdateCommitmentRequest {
   // Absent = leave unchanged, null = go back to inheriting, value = set.
   verdict_window?: DurationSpec | null;
   parent_type?: string;
-  parent_id?: number;
+  parent_id?: RowId;
   position?: number;
   is_private?: boolean;
 }
 
-export async function listCommitments(): Promise<Commitment[]> {
-  return invoke<Commitment[]>("list_commitments");
+export async function listCommitments(now: string): Promise<Commitment[]> {
+  return invoke<Commitment[]>("list_commitments", { now });
 }
 
 export async function getCommitment(id: number): Promise<Commitment> {
@@ -66,21 +69,21 @@ export async function createCommitment(request: CreateCommitmentRequest): Promis
 }
 
 export async function updateCommitment(
-  id: number,
+  id: RowId,
   request: UpdateCommitmentRequest,
 ): Promise<Commitment> {
   return invoke<Commitment>("update_commitment", { id, request });
 }
 
-export async function deleteCommitment(id: number): Promise<void> {
+export async function deleteCommitment(id: RowId): Promise<void> {
   return invoke<void>("delete_commitment", { id });
 }
 
-export async function addTagToCommitment(commitmentId: number, tagId: number): Promise<void> {
+export async function addTagToCommitment(commitmentId: RowId, tagId: number): Promise<void> {
   return invoke<void>("add_tag_to_commitment", { commitmentId, tagId });
 }
 
-export async function removeTagFromCommitment(commitmentId: number, tagId: number): Promise<void> {
+export async function removeTagFromCommitment(commitmentId: RowId, tagId: number): Promise<void> {
   return invoke<void>("remove_tag_from_commitment", { commitmentId, tagId });
 }
 

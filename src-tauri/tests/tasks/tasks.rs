@@ -23,6 +23,7 @@ use arlesh_lib::{
     },
 };
 use chrono::NaiveDate;
+use helpers::StoredId;
 use tauri::Manager;
 
 async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
@@ -85,7 +86,7 @@ async fn create_task_and_goal() {
             CreateTaskRequest {
                 title: "Write tests".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -109,7 +110,7 @@ async fn create_task_and_goal() {
             CreateGoalRequest {
                 title: "Ship Phase 1".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -138,7 +139,7 @@ async fn undone_dependency_blocks_task() {
             CreateTaskRequest {
                 title: "Dependency".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -158,7 +159,7 @@ async fn undone_dependency_blocks_task() {
             CreateTaskRequest {
                 title: "Blocked Task".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -175,8 +176,10 @@ async fn undone_dependency_blocks_task() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = add_task_dependency(
             &mut db,
-            task.id.into(),
-            Dependency::Task { id: dependency.id },
+            task.id.sid().into(),
+            Dependency::Task {
+                id: dependency.id.clone(),
+            },
         )
         .await;
         if __r.is_ok() {
@@ -188,7 +191,7 @@ async fn undone_dependency_blocks_task() {
 
     let with_blockers = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        get_task_with_blockers(&mut db, task.id.into()).await
+        get_task_with_blockers(&mut db, task.id.sid().into()).await
     }
     .unwrap();
     assert_eq!(with_blockers.block_reasons.len(), 1);
@@ -207,7 +210,7 @@ async fn done_dependency_unblocks_task() {
             CreateTaskRequest {
                 title: "Dep".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -227,7 +230,7 @@ async fn done_dependency_unblocks_task() {
             CreateTaskRequest {
                 title: "Task".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -244,8 +247,10 @@ async fn done_dependency_unblocks_task() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = add_task_dependency(
             &mut db,
-            task.id.into(),
-            Dependency::Task { id: dependency.id },
+            task.id.sid().into(),
+            Dependency::Task {
+                id: dependency.id.clone(),
+            },
         )
         .await;
         if __r.is_ok() {
@@ -259,7 +264,7 @@ async fn done_dependency_unblocks_task() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            dependency.id.into(),
+            dependency.id.sid().into(),
             UpdateTaskRequest {
                 status: Some(arlesh_lib::tasks::model::TaskStatus::Done),
                 ..Default::default()
@@ -275,7 +280,7 @@ async fn done_dependency_unblocks_task() {
 
     let with_blockers = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        get_task_with_blockers(&mut db, task.id.into()).await
+        get_task_with_blockers(&mut db, task.id.sid().into()).await
     }
     .unwrap();
     assert!(
@@ -296,7 +301,7 @@ async fn circular_dependency_rejected() {
             CreateTaskRequest {
                 title: "A".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -316,7 +321,7 @@ async fn circular_dependency_rejected() {
             CreateTaskRequest {
                 title: "B".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -333,8 +338,10 @@ async fn circular_dependency_rejected() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = add_task_dependency(
             &mut db,
-            task_a.id.into(),
-            Dependency::Task { id: task_b.id },
+            task_a.id.sid().into(),
+            Dependency::Task {
+                id: task_b.id.clone(),
+            },
         )
         .await;
         if __r.is_ok() {
@@ -348,8 +355,10 @@ async fn circular_dependency_rejected() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = add_task_dependency(
             &mut db,
-            task_b.id.into(),
-            Dependency::Task { id: task_a.id },
+            task_b.id.sid().into(),
+            Dependency::Task {
+                id: task_a.id.clone(),
+            },
         )
         .await;
         if __r.is_ok() {
@@ -378,7 +387,7 @@ async fn goal_dependency_blocks_task_until_achieved() {
             CreateGoalRequest {
                 title: "The Goal".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -398,7 +407,7 @@ async fn goal_dependency_blocks_task_until_achieved() {
             CreateTaskRequest {
                 title: "Task".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -413,8 +422,14 @@ async fn goal_dependency_blocks_task_until_achieved() {
 
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            add_task_dependency(&mut db, task.id.into(), Dependency::Goal { id: goal.id }).await;
+        let __r = add_task_dependency(
+            &mut db,
+            task.id.sid().into(),
+            Dependency::Goal {
+                id: goal.id.clone(),
+            },
+        )
+        .await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -424,7 +439,7 @@ async fn goal_dependency_blocks_task_until_achieved() {
 
     let blocked = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        get_task_with_blockers(&mut db, task.id.into()).await
+        get_task_with_blockers(&mut db, task.id.sid().into()).await
     }
     .unwrap();
     assert_eq!(blocked.block_reasons.len(), 1);
@@ -433,7 +448,7 @@ async fn goal_dependency_blocks_task_until_achieved() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_goal(
             &mut db,
-            goal.id.into(),
+            goal.id.sid().into(),
             UpdateGoalRequest {
                 status: Some(GoalStatus::Achieved),
                 ..Default::default()
@@ -449,7 +464,7 @@ async fn goal_dependency_blocks_task_until_achieved() {
 
     let unblocked = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        get_task_with_blockers(&mut db, task.id.into()).await
+        get_task_with_blockers(&mut db, task.id.sid().into()).await
     }
     .unwrap();
     assert!(unblocked.block_reasons.is_empty());
@@ -488,7 +503,7 @@ async fn reparent_task_to_different_project() {
             CreateTaskRequest {
                 title: "Movable Task".into(),
                 parent_type: "project".into(),
-                parent_id: project_a_id,
+                parent_id: project_a_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -507,10 +522,10 @@ async fn reparent_task_to_different_project() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 parent_type: Some("project".into()),
-                parent_id: Some(project_b_id),
+                parent_id: Some(project_b_id.into()),
                 ..Default::default()
             },
         )
@@ -538,7 +553,7 @@ async fn add_and_remove_tag_on_task() {
             CreateTaskRequest {
                 title: "Tagged Task".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -558,7 +573,7 @@ async fn add_and_remove_tag_on_task() {
         .await
         .unwrap()
         .tasks()
-        .add_tag(task.id.into(), tag_id)
+        .add_tag(task.id.sid().into(), tag_id)
         .await
         .unwrap();
     let tagged = helpers::session_factory(&pool)
@@ -566,7 +581,7 @@ async fn add_and_remove_tag_on_task() {
         .await
         .unwrap()
         .tasks()
-        .get(task.id.into())
+        .get(task.id.sid().into())
         .await
         .unwrap();
     assert_eq!(tagged.tag_ids, vec![tag_id]);
@@ -576,7 +591,7 @@ async fn add_and_remove_tag_on_task() {
         .await
         .unwrap()
         .tasks()
-        .remove_tag(task.id.into(), tag_id)
+        .remove_tag(task.id.sid().into(), tag_id)
         .await
         .unwrap();
     let untagged = helpers::session_factory(&pool)
@@ -584,7 +599,7 @@ async fn add_and_remove_tag_on_task() {
         .await
         .unwrap()
         .tasks()
-        .get(task.id.into())
+        .get(task.id.sid().into())
         .await
         .unwrap();
     assert!(untagged.tag_ids.is_empty());
@@ -603,7 +618,7 @@ async fn list_tasks_includes_tag_ids() {
             CreateTaskRequest {
                 title: "Task With Tag".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -621,7 +636,7 @@ async fn list_tasks_includes_tag_ids() {
         .await
         .unwrap()
         .tasks()
-        .add_tag(task.id.into(), tag_id)
+        .add_tag(task.id.sid().into(), tag_id)
         .await
         .unwrap();
 
@@ -649,7 +664,7 @@ async fn update_task_title() {
             CreateTaskRequest {
                 title: "Old Title".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -666,7 +681,7 @@ async fn update_task_title() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 title: Some("New Title".into()),
                 ..Default::default()
@@ -698,7 +713,7 @@ async fn agentic_is_set_kept_and_cleared_back_to_inheriting() {
             CreateTaskRequest {
                 title: "Cast the bell".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )
@@ -718,7 +733,7 @@ async fn agentic_is_set_kept_and_cleared_back_to_inheriting() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 agentic: Some(TaskAgentic::Yes),
                 ..Default::default()
@@ -737,7 +752,7 @@ async fn agentic_is_set_kept_and_cleared_back_to_inheriting() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 title: Some("Re-cast the bell".into()),
                 ..Default::default()
@@ -760,7 +775,7 @@ async fn agentic_is_set_kept_and_cleared_back_to_inheriting() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 agentic: Some(TaskAgentic::No),
                 ..Default::default()
@@ -783,7 +798,7 @@ async fn agentic_is_set_kept_and_cleared_back_to_inheriting() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 agentic: Some(TaskAgentic::Inherit),
                 ..Default::default()
@@ -799,7 +814,7 @@ async fn agentic_is_set_kept_and_cleared_back_to_inheriting() {
     assert_eq!(cleared.agentic, None);
 
     let stored: Option<bool> = sqlx::query_scalar("SELECT agentic FROM tasks WHERE id = ?")
-        .bind(task.id)
+        .bind(task.id.sid())
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -824,7 +839,7 @@ async fn asynchronous_is_set_kept_and_cleared_again() {
             CreateTaskRequest {
                 title: "Order the casting".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )
@@ -841,7 +856,7 @@ async fn asynchronous_is_set_kept_and_cleared_again() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 asynchronous: Some(true),
                 ..Default::default()
@@ -860,7 +875,7 @@ async fn asynchronous_is_set_kept_and_cleared_again() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 title: Some("Order the bell casting".into()),
                 ..Default::default()
@@ -882,7 +897,7 @@ async fn asynchronous_is_set_kept_and_cleared_again() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 asynchronous: Some(false),
                 ..Default::default()
@@ -898,7 +913,7 @@ async fn asynchronous_is_set_kept_and_cleared_again() {
     assert!(!cleared.asynchronous);
 
     let stored: bool = sqlx::query_scalar("SELECT asynchronous FROM tasks WHERE id = ?")
-        .bind(task.id)
+        .bind(task.id.sid())
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -922,7 +937,7 @@ async fn a_child_of_an_asynchronous_task_is_not_itself_asynchronous() {
             CreateTaskRequest {
                 title: "Send the brief".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 asynchronous: Some(true),
                 ..Default::default()
             },
@@ -943,7 +958,7 @@ async fn a_child_of_an_asynchronous_task_is_not_itself_asynchronous() {
             CreateTaskRequest {
                 title: "Read the reply".into(),
                 parent_type: "task".into(),
-                parent_id: parent.id,
+                parent_id: parent.id.clone(),
                 ..Default::default()
             },
         )
@@ -988,7 +1003,7 @@ async fn a_task_can_be_agentic_and_delegated_at_once() {
             CreateTaskRequest {
                 title: "Cast the bell".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 agentic: Some(TaskAgentic::Yes),
                 ..Default::default()
             },
@@ -1005,7 +1020,7 @@ async fn a_task_can_be_agentic_and_delegated_at_once() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
                     id: person,
@@ -1056,7 +1071,7 @@ async fn a_task_is_delegated_to_the_agent_and_back_over_the_wire() {
             CreateTaskRequest {
                 title: "Draft the migration".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 agentic: Some(TaskAgentic::Yes),
                 ..Default::default()
             },
@@ -1068,20 +1083,20 @@ async fn a_task_is_delegated_to_the_agent_and_back_over_the_wire() {
     };
 
     let delegated =
-        update_task_from_wire(&pool, task.id, r#"{"delegate_to":{"kind":"agent"}}"#).await;
+        update_task_from_wire(&pool, task.id.sid(), r#"{"delegate_to":{"kind":"agent"}}"#).await;
     assert_eq!(
         delegated.delegate_to,
         Some(arlesh_lib::tasks::model::Delegate::Agent)
     );
     let stored: (Option<String>, Option<i64>) =
         sqlx::query_as("SELECT delegate_kind, delegate_id FROM tasks WHERE id = ?")
-            .bind(task.id)
+            .bind(task.id.sid())
             .fetch_one(&pool)
             .await
             .unwrap();
     assert_eq!(stored, (Some("agent".to_string()), None));
 
-    let cleared = update_task_from_wire(&pool, task.id, r#"{"delegate_to":null}"#).await;
+    let cleared = update_task_from_wire(&pool, task.id.sid(), r#"{"delegate_to":null}"#).await;
     assert_eq!(
         cleared.delegate_to, None,
         "an explicit null clears the Agent"
@@ -1101,7 +1116,7 @@ async fn delegating_to_a_person_who_does_not_exist_is_refused() {
         CreateTaskRequest {
             title: "Orphan".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -1109,7 +1124,7 @@ async fn delegating_to_a_person_who_does_not_exist_is_refused() {
     .unwrap();
     let refused = update_task(
         &mut db,
-        task.id.into(),
+        task.id.sid().into(),
         UpdateTaskRequest {
             delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
                 id: 9_999,
@@ -1133,7 +1148,7 @@ async fn delete_task() {
             CreateTaskRequest {
                 title: "Doomed Task".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -1148,7 +1163,7 @@ async fn delete_task() {
 
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r = arlesh_lib::tasks::delete_task(&mut db, task.id.into()).await;
+        let __r = arlesh_lib::tasks::delete_task(&mut db, task.id.sid().into()).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -1161,7 +1176,7 @@ async fn delete_task() {
         .await
         .unwrap()
         .tasks()
-        .get(task.id.into())
+        .get(task.id.sid().into())
         .await
         .unwrap_err();
     assert!(
@@ -1183,7 +1198,7 @@ async fn remove_dependency() {
             CreateTaskRequest {
                 title: "Dep".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -1203,7 +1218,7 @@ async fn remove_dependency() {
             CreateTaskRequest {
                 title: "Task".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -1218,8 +1233,12 @@ async fn remove_dependency() {
 
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            add_task_dependency(&mut db, task.id.into(), Dependency::Task { id: dep.id }).await;
+        let __r = add_task_dependency(
+            &mut db,
+            task.id.sid().into(),
+            Dependency::Task { id: dep.id.clone() },
+        )
+        .await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -1231,7 +1250,10 @@ async fn remove_dependency() {
         .await
         .unwrap()
         .tasks()
-        .remove_dependency(task.id.into(), Dependency::Task { id: dep.id })
+        .remove_dependency(
+            task.id.sid().into(),
+            Dependency::Task { id: dep.id.clone() },
+        )
         .await
         .unwrap();
 
@@ -1240,7 +1262,7 @@ async fn remove_dependency() {
         .await
         .unwrap()
         .tasks()
-        .list_dependencies(task.id.into())
+        .list_dependencies(task.id.sid().into())
         .await
         .unwrap();
     assert!(deps.is_empty());
@@ -1258,7 +1280,7 @@ async fn update_goal_title() {
             CreateGoalRequest {
                 title: "Old Goal".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -1275,7 +1297,7 @@ async fn update_goal_title() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_goal(
             &mut db,
-            goal.id.into(),
+            goal.id.sid().into(),
             UpdateGoalRequest {
                 title: Some("New Goal".into()),
                 ..Default::default()
@@ -1304,7 +1326,7 @@ async fn delete_goal() {
             CreateGoalRequest {
                 title: "Doomed Goal".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -1319,7 +1341,7 @@ async fn delete_goal() {
 
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r = arlesh_lib::tasks::delete_goal(&mut db, goal.id.into()).await;
+        let __r = arlesh_lib::tasks::delete_goal(&mut db, goal.id.sid().into()).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -1332,7 +1354,7 @@ async fn delete_goal() {
         .await
         .unwrap()
         .goals()
-        .get(goal.id.into())
+        .get(goal.id.sid().into())
         .await
         .unwrap_err();
     assert!(
@@ -1355,7 +1377,7 @@ async fn add_and_remove_tag_on_goal() {
             CreateGoalRequest {
                 title: "Tagged Goal".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -1375,7 +1397,7 @@ async fn add_and_remove_tag_on_goal() {
         .await
         .unwrap()
         .goals()
-        .add_tag(goal.id.into(), tag_id)
+        .add_tag(goal.id.sid().into(), tag_id)
         .await
         .unwrap();
     let tagged = helpers::session_factory(&pool)
@@ -1383,7 +1405,7 @@ async fn add_and_remove_tag_on_goal() {
         .await
         .unwrap()
         .goals()
-        .get(goal.id.into())
+        .get(goal.id.sid().into())
         .await
         .unwrap();
     assert_eq!(tagged.tag_ids, vec![tag_id]);
@@ -1393,7 +1415,7 @@ async fn add_and_remove_tag_on_goal() {
         .await
         .unwrap()
         .goals()
-        .remove_tag(goal.id.into(), tag_id)
+        .remove_tag(goal.id.sid().into(), tag_id)
         .await
         .unwrap();
     let untagged = helpers::session_factory(&pool)
@@ -1401,7 +1423,7 @@ async fn add_and_remove_tag_on_goal() {
         .await
         .unwrap()
         .goals()
-        .get(goal.id.into())
+        .get(goal.id.sid().into())
         .await
         .unwrap();
     assert!(untagged.tag_ids.is_empty());
@@ -1420,7 +1442,7 @@ async fn list_goals_includes_tag_ids() {
             CreateGoalRequest {
                 title: "Goal With Tag".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -1438,7 +1460,7 @@ async fn list_goals_includes_tag_ids() {
         .await
         .unwrap()
         .goals()
-        .add_tag(goal.id.into(), tag_id)
+        .add_tag(goal.id.sid().into(), tag_id)
         .await
         .unwrap();
 
@@ -1487,7 +1509,7 @@ async fn reparent_goal_to_different_project() {
             CreateGoalRequest {
                 title: "Movable Goal".into(),
                 parent_type: "project".into(),
-                parent_id: project_a_id,
+                parent_id: project_a_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -1506,10 +1528,10 @@ async fn reparent_goal_to_different_project() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_goal(
             &mut db,
-            goal.id.into(),
+            goal.id.sid().into(),
             UpdateGoalRequest {
                 parent_type: Some("project".into()),
-                parent_id: Some(project_b_id),
+                parent_id: Some(project_b_id.into()),
                 ..Default::default()
             },
         )
@@ -1536,7 +1558,7 @@ async fn update_task_status_to_in_progress() {
             CreateTaskRequest {
                 title: "In Progress Task".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -1555,7 +1577,7 @@ async fn update_task_status_to_in_progress() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 status: Some(TaskStatus::InProgress),
                 ..Default::default()
@@ -1584,7 +1606,7 @@ async fn update_task_blocked_reason() {
             CreateTaskRequest {
                 title: "Blockable Task".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -1603,7 +1625,7 @@ async fn update_task_blocked_reason() {
             .block_reasons()
             .set(
                 "task",
-                task.id,
+                task.id.sid(),
                 &["Waiting on design".into(), "Needs review".into()],
             )
             .await;
@@ -1619,7 +1641,7 @@ async fn update_task_blocked_reason() {
             .await
             .unwrap()
             .block_reasons()
-            .list_for("task", task.id)
+            .list_for("task", task.id.sid())
             .await
             .unwrap(),
         vec!["Waiting on design".to_string(), "Needs review".to_string()],
@@ -1630,7 +1652,7 @@ async fn update_task_blocked_reason() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = db
             .block_reasons()
-            .set("task", task.id, &[String::new(), "   ".into()])
+            .set("task", task.id.sid(), &[String::new(), "   ".into()])
             .await;
         if __r.is_ok() {
             db.commit().await.unwrap();
@@ -1643,7 +1665,7 @@ async fn update_task_blocked_reason() {
         .await
         .unwrap()
         .block_reasons()
-        .list_for("task", task.id)
+        .list_for("task", task.id.sid())
         .await
         .unwrap()
         .is_empty());
@@ -1661,7 +1683,7 @@ async fn explicit_block_reason_surfaces_in_get_with_blockers() {
             CreateTaskRequest {
                 title: "Blocked Task".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -1678,7 +1700,7 @@ async fn explicit_block_reason_surfaces_in_get_with_blockers() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = db
             .block_reasons()
-            .set("task", task.id, &["Explicit reason".into()])
+            .set("task", task.id.sid(), &["Explicit reason".into()])
             .await;
         if __r.is_ok() {
             db.commit().await.unwrap();
@@ -1689,7 +1711,7 @@ async fn explicit_block_reason_surfaces_in_get_with_blockers() {
 
     let with_blockers = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        get_task_with_blockers(&mut db, task.id.into()).await
+        get_task_with_blockers(&mut db, task.id.sid().into()).await
     }
     .unwrap();
     assert!(with_blockers
@@ -1716,7 +1738,7 @@ async fn update_task_scope() {
             CreateTaskRequest {
                 title: "Scoped Task".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -1735,7 +1757,7 @@ async fn update_task_scope() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 time_scope: Some(Some(TimeScope {
                     start_id: scope.id,
@@ -1775,7 +1797,7 @@ async fn task_time_scope_duration_params_round_trip() {
             CreateTaskRequest {
                 title: "Duration Task".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(TimeScope {
                     start_id: scope.id,
                     end_id: scope.id,
@@ -1826,7 +1848,7 @@ async fn task_plan_is_independent_of_time_scope() {
             CreateTaskRequest {
                 title: "Planned Task".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(TimeScope {
                     start_id: week.id,
                     end_id: week.id,
@@ -1855,7 +1877,7 @@ async fn task_plan_is_independent_of_time_scope() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 plan: Some(None),
                 ..Default::default()
@@ -1898,7 +1920,7 @@ async fn plan_within_time_scope_is_accepted() {
             CreateTaskRequest {
                 title: "Planned".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(TimeScope {
                     start_id: week.id,
                     end_id: week.id,
@@ -1944,7 +1966,7 @@ async fn plan_outside_time_scope_is_rejected() {
             CreateTaskRequest {
                 title: "Bad plan".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(TimeScope {
                     start_id: week.id,
                     end_id: week.id,
@@ -2012,7 +2034,7 @@ async fn child_time_scope_within_ancestor_is_accepted() {
             CreateGoalRequest {
                 title: "July Goal".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(single(july)),
                 ..Default::default()
             },
@@ -2032,7 +2054,7 @@ async fn child_time_scope_within_ancestor_is_accepted() {
             CreateTaskRequest {
                 title: "Week Task".into(),
                 parent_type: "goal".into(),
-                parent_id: goal.id,
+                parent_id: goal.id.clone(),
                 time_scope: Some(single(week_in_july)),
                 ..Default::default()
             },
@@ -2062,7 +2084,7 @@ async fn child_time_scope_outside_ancestor_is_rejected() {
             CreateGoalRequest {
                 title: "July Goal".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(single(july)),
                 ..Default::default()
             },
@@ -2082,7 +2104,7 @@ async fn child_time_scope_outside_ancestor_is_rejected() {
             CreateTaskRequest {
                 title: "August Task".into(),
                 parent_type: "goal".into(),
-                parent_id: goal.id,
+                parent_id: goal.id.clone(),
                 time_scope: Some(single(week_in_august)),
                 ..Default::default()
             },
@@ -2113,7 +2135,7 @@ async fn narrowing_a_scope_reports_violating_descendants() {
             CreateGoalRequest {
                 title: "July Goal".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(single(july)),
                 ..Default::default()
             },
@@ -2132,7 +2154,7 @@ async fn narrowing_a_scope_reports_violating_descendants() {
             CreateTaskRequest {
                 title: "Whole July Task".into(),
                 parent_type: "goal".into(),
-                parent_id: goal.id,
+                parent_id: goal.id.clone(),
                 time_scope: Some(single(july)),
                 ..Default::default()
             },
@@ -2148,7 +2170,7 @@ async fn narrowing_a_scope_reports_violating_descendants() {
     // Narrowing the goal to a single week would orphan the month-scoped task.
     let conflicts = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        conflicts_for_new_time_scope(&mut db, "goal", goal.id, &single(week_in_july)).await
+        conflicts_for_new_time_scope(&mut db, "goal", goal.id.sid(), &single(week_in_july)).await
     }
     .unwrap();
     assert_eq!(conflicts.len(), 1);
@@ -2169,7 +2191,7 @@ async fn reparenting_under_a_tighter_ancestor_is_rejected() {
             CreateGoalRequest {
                 title: "July Goal".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(single(july)),
                 ..Default::default()
             },
@@ -2188,7 +2210,7 @@ async fn reparenting_under_a_tighter_ancestor_is_rejected() {
             CreateGoalRequest {
                 title: "August Goal".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(single(week_in_august)),
                 ..Default::default()
             },
@@ -2207,7 +2229,7 @@ async fn reparenting_under_a_tighter_ancestor_is_rejected() {
             CreateTaskRequest {
                 title: "Week Task".into(),
                 parent_type: "goal".into(),
-                parent_id: july_goal.id,
+                parent_id: july_goal.id.clone(),
                 time_scope: Some(single(week_in_july)),
                 ..Default::default()
             },
@@ -2225,10 +2247,10 @@ async fn reparenting_under_a_tighter_ancestor_is_rejected() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 parent_type: Some("goal".into()),
-                parent_id: Some(august_goal.id),
+                parent_id: Some(august_goal.id.clone()),
                 ..Default::default()
             },
         )
@@ -2257,7 +2279,7 @@ async fn reparent_conflicts_flags_a_node_that_would_leave_its_new_ancestor() {
             CreateGoalRequest {
                 title: "July".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(single(july)),
                 ..Default::default()
             },
@@ -2277,7 +2299,7 @@ async fn reparent_conflicts_flags_a_node_that_would_leave_its_new_ancestor() {
             CreateTaskRequest {
                 title: "August task".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(single(week_in_august)),
                 ..Default::default()
             },
@@ -2292,7 +2314,7 @@ async fn reparent_conflicts_flags_a_node_that_would_leave_its_new_ancestor() {
 
     let result = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        reparent_conflicts(&mut db, "task", task.id, "goal", july_goal.id).await
+        reparent_conflicts(&mut db, "task", task.id.sid(), "goal", july_goal.id.sid()).await
     }
     .unwrap();
 
@@ -2315,7 +2337,7 @@ async fn reparent_conflicts_empty_when_node_fits_the_new_ancestor() {
             CreateGoalRequest {
                 title: "July".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(single(july)),
                 ..Default::default()
             },
@@ -2334,7 +2356,7 @@ async fn reparent_conflicts_empty_when_node_fits_the_new_ancestor() {
             CreateTaskRequest {
                 title: "Fits".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(single(week_in_july)),
                 ..Default::default()
             },
@@ -2349,7 +2371,7 @@ async fn reparent_conflicts_empty_when_node_fits_the_new_ancestor() {
 
     let result = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        reparent_conflicts(&mut db, "task", task.id, "goal", july_goal.id).await
+        reparent_conflicts(&mut db, "task", task.id.sid(), "goal", july_goal.id.sid()).await
     }
     .unwrap();
     assert!(result.conflicts.is_empty());
@@ -2368,7 +2390,7 @@ async fn reparent_conflicts_none_under_an_unscoped_parent() {
             CreateTaskRequest {
                 title: "Scoped".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(single(week_in_august)),
                 ..Default::default()
             },
@@ -2383,7 +2405,7 @@ async fn reparent_conflicts_none_under_an_unscoped_parent() {
 
     let result = {
         let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-        reparent_conflicts(&mut db, "task", task.id, "project", project_id).await
+        reparent_conflicts(&mut db, "task", task.id.sid(), "project", project_id).await
     }
     .unwrap();
     assert!(result.ancestor_time_scope.is_none());
@@ -2412,7 +2434,7 @@ async fn update_rejects_plan_outside_time_scope() {
             CreateTaskRequest {
                 title: "Scoped".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(TimeScope {
                     start_id: week.id,
                     end_id: week.id,
@@ -2433,7 +2455,7 @@ async fn update_rejects_plan_outside_time_scope() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 plan: Some(Some(single(far_day.id))),
                 ..Default::default()
@@ -2463,7 +2485,7 @@ async fn update_goal_blocked_reason() {
             CreateGoalRequest {
                 title: "Blockable Goal".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -2480,7 +2502,7 @@ async fn update_goal_blocked_reason() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = db
             .block_reasons()
-            .set("goal", goal.id, &["Waiting on funding".into()])
+            .set("goal", goal.id.sid(), &["Waiting on funding".into()])
             .await;
         if __r.is_ok() {
             db.commit().await.unwrap();
@@ -2494,7 +2516,7 @@ async fn update_goal_blocked_reason() {
             .await
             .unwrap()
             .block_reasons()
-            .list_for("goal", goal.id)
+            .list_for("goal", goal.id.sid())
             .await
             .unwrap(),
         vec!["Waiting on funding".to_string()]
@@ -2502,7 +2524,7 @@ async fn update_goal_blocked_reason() {
 
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r = db.block_reasons().set("goal", goal.id, &[]).await;
+        let __r = db.block_reasons().set("goal", goal.id.sid(), &[]).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -2514,7 +2536,7 @@ async fn update_goal_blocked_reason() {
         .await
         .unwrap()
         .block_reasons()
-        .list_for("goal", goal.id)
+        .list_for("goal", goal.id.sid())
         .await
         .unwrap()
         .is_empty());
@@ -2538,7 +2560,7 @@ async fn update_goal_scope() {
             CreateGoalRequest {
                 title: "Scoped Goal".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -2555,7 +2577,7 @@ async fn update_goal_scope() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_goal(
             &mut db,
-            goal.id.into(),
+            goal.id.sid().into(),
             UpdateGoalRequest {
                 time_scope: Some(Some(TimeScope {
                     start_id: scope.id,
@@ -2590,7 +2612,7 @@ async fn goal_frozen_and_archived_statuses() {
             CreateGoalRequest {
                 title: "Status Goal".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -2607,7 +2629,7 @@ async fn goal_frozen_and_archived_statuses() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_goal(
             &mut db,
-            goal.id.into(),
+            goal.id.sid().into(),
             UpdateGoalRequest {
                 status: Some(GoalStatus::Frozen),
                 ..Default::default()
@@ -2626,7 +2648,7 @@ async fn goal_frozen_and_archived_statuses() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_goal(
             &mut db,
-            goal.id.into(),
+            goal.id.sid().into(),
             UpdateGoalRequest {
                 status: Some(GoalStatus::Archived),
                 ..Default::default()
@@ -2654,7 +2676,7 @@ async fn goal_is_achieved() {
             CreateGoalRequest {
                 title: "Achievement Goal".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: None,
                 ..Default::default()
             },
@@ -2672,7 +2694,7 @@ async fn goal_is_achieved() {
         .await
         .unwrap()
         .goals()
-        .is_achieved(goal.id.into())
+        .is_achieved(goal.id.sid().into())
         .await
         .unwrap());
 
@@ -2680,7 +2702,7 @@ async fn goal_is_achieved() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_goal(
             &mut db,
-            goal.id.into(),
+            goal.id.sid().into(),
             UpdateGoalRequest {
                 status: Some(GoalStatus::Achieved),
                 ..Default::default()
@@ -2699,7 +2721,7 @@ async fn goal_is_achieved() {
         .await
         .unwrap()
         .goals()
-        .is_achieved(goal.id.into())
+        .is_achieved(goal.id.sid().into())
         .await
         .unwrap());
 }
@@ -2751,7 +2773,7 @@ async fn scoped_item_defaults_to_keep_and_unscoped_forces_null() {
             CreateTaskRequest {
                 title: "Scoped".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(TimeScope {
                     start_id: scope,
                     end_id: scope,
@@ -2777,7 +2799,7 @@ async fn scoped_item_defaults_to_keep_and_unscoped_forces_null() {
             CreateTaskRequest {
                 title: "Unscoped".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 on_scope_exit: Some(OnScopeExit::Archive),
                 ..Default::default()
             },
@@ -2805,7 +2827,7 @@ async fn archive_on_exit_persists_and_clearing_scope_clears_it() {
             CreateTaskRequest {
                 title: "Archive me".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(TimeScope {
                     start_id: scope,
                     end_id: scope,
@@ -2828,7 +2850,7 @@ async fn archive_on_exit_persists_and_clearing_scope_clears_it() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = update_task(
             &mut db,
-            task.id.into(),
+            task.id.sid().into(),
             UpdateTaskRequest {
                 time_scope: Some(None),
                 ..Default::default()
@@ -2865,7 +2887,7 @@ async fn derives_overdue_missed_and_archives_a_completed_item() {
             CreateTaskRequest {
                 title: "Keep".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: scope(),
                 on_scope_exit: Some(OnScopeExit::Keep),
                 ..Default::default()
@@ -2885,7 +2907,7 @@ async fn derives_overdue_missed_and_archives_a_completed_item() {
             CreateTaskRequest {
                 title: "Archive".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: scope(),
                 on_scope_exit: Some(OnScopeExit::Archive),
                 ..Default::default()
@@ -2905,7 +2927,7 @@ async fn derives_overdue_missed_and_archives_a_completed_item() {
             CreateTaskRequest {
                 title: "Done".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: Some(TaskStatus::Done),
                 time_scope: scope(),
                 on_scope_exit: Some(OnScopeExit::Archive),
@@ -2927,19 +2949,19 @@ async fn derives_overdue_missed_and_archives_a_completed_item() {
         .unwrap();
     let states = lifecycles(&pool, now).await;
 
-    let keep_state = task_state(&states, keep.id);
+    let keep_state = task_state(&states, keep.id.sid());
     assert_eq!(keep_state.timing, Timing::Lapsed);
     assert_eq!(keep_state.resolution, Some(Resolution::Overdue));
     assert_eq!(keep_state.archival, Archival::Live); // Overdue never forces archival
 
-    let archive_state = task_state(&states, archive.id);
+    let archive_state = task_state(&states, archive.id.sid());
     assert_eq!(archive_state.timing, Timing::Lapsed);
     assert_eq!(archive_state.resolution, Some(Resolution::Missed));
     assert_eq!(archive_state.archival, Archival::Archived);
 
     // A Done task is no longer exempt from Timing — once its window passes, it's Lapsed +
     // Completed, and now also archives (the behavior this whole model was introduced to fix).
-    let done_state = task_state(&states, done.id);
+    let done_state = task_state(&states, done.id.sid());
     assert_eq!(done_state.timing, Timing::Lapsed);
     assert_eq!(done_state.resolution, Some(Resolution::Completed));
     assert_eq!(done_state.archival, Archival::Archived);
@@ -2958,7 +2980,7 @@ async fn inherited_scope_and_on_exit_govern_children() {
             CreateTaskRequest {
                 title: "Parent".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: Some(TimeScope {
                     start_id: past,
                     end_id: past,
@@ -2983,7 +3005,7 @@ async fn inherited_scope_and_on_exit_govern_children() {
             CreateTaskRequest {
                 title: "Child".into(),
                 parent_type: "task".into(),
-                parent_id: parent.id,
+                parent_id: parent.id.clone(),
                 ..Default::default()
             },
         )
@@ -3003,7 +3025,7 @@ async fn inherited_scope_and_on_exit_govern_children() {
         .unwrap();
     let states = lifecycles(&pool, now).await;
     // Inherits Archive → Lapsed + Missed, even though the child itself is unscoped.
-    let child_state = task_state(&states, child.id);
+    let child_state = task_state(&states, child.id.sid());
     assert_eq!(child_state.timing, Timing::Lapsed);
     assert_eq!(child_state.resolution, Some(Resolution::Missed));
 }
@@ -3039,7 +3061,7 @@ async fn derives_goal_overdue_missed_and_archives_an_achieved_goal() {
             CreateGoalRequest {
                 title: "Keep".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: scope(),
                 on_scope_exit: Some(OnScopeExit::Keep),
                 ..Default::default()
@@ -3059,7 +3081,7 @@ async fn derives_goal_overdue_missed_and_archives_an_achieved_goal() {
             CreateGoalRequest {
                 title: "Archive".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 time_scope: scope(),
                 on_scope_exit: Some(OnScopeExit::Archive),
                 ..Default::default()
@@ -3079,7 +3101,7 @@ async fn derives_goal_overdue_missed_and_archives_an_achieved_goal() {
             CreateGoalRequest {
                 title: "Achieved".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 status: Some(GoalStatus::Achieved),
                 time_scope: scope(),
                 on_scope_exit: Some(OnScopeExit::Archive),
@@ -3099,19 +3121,19 @@ async fn derives_goal_overdue_missed_and_archives_an_achieved_goal() {
         .unwrap();
     let states = lifecycles(&pool, now).await;
 
-    let keep_state = goal_state(&states, keep.id);
+    let keep_state = goal_state(&states, keep.id.sid());
     assert_eq!(keep_state.timing, Timing::Lapsed);
     assert_eq!(keep_state.resolution, Some(Resolution::Overdue));
     assert_eq!(keep_state.archival, Archival::Live);
 
-    let archive_state = goal_state(&states, archive.id);
+    let archive_state = goal_state(&states, archive.id.sid());
     assert_eq!(archive_state.timing, Timing::Lapsed);
     assert_eq!(archive_state.resolution, Some(Resolution::Missed));
     assert_eq!(archive_state.archival, Archival::Archived);
 
     // An Achieved goal is no longer exempt from Timing — once its window passes, it's Lapsed +
     // Completed, and now also archives (Achieved itself stays untouched as its own stored status).
-    let achieved_state = goal_state(&states, achieved.id);
+    let achieved_state = goal_state(&states, achieved.id.sid());
     assert_eq!(achieved_state.timing, Timing::Lapsed);
     assert_eq!(achieved_state.resolution, Some(Resolution::Completed));
     assert_eq!(achieved_state.archival, Archival::Archived);
@@ -3128,7 +3150,7 @@ async fn derivation_tolerates_an_orphaned_item_whose_parent_was_deleted() {
             CreateGoalRequest {
                 title: "Parent".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )
@@ -3146,7 +3168,7 @@ async fn derivation_tolerates_an_orphaned_item_whose_parent_was_deleted() {
             CreateTaskRequest {
                 title: "Child".into(),
                 parent_type: "goal".into(),
-                parent_id: parent.id,
+                parent_id: parent.id.clone(),
                 ..Default::default()
             },
         )
@@ -3159,7 +3181,7 @@ async fn derivation_tolerates_an_orphaned_item_whose_parent_was_deleted() {
     .unwrap();
     // Orphan the child directly (a raw delete that skips the cascade), simulating stale data.
     sqlx::query("DELETE FROM goals WHERE id = ?")
-        .bind(parent.id)
+        .bind(parent.id.sid())
         .execute(&pool)
         .await
         .unwrap();
@@ -3171,7 +3193,7 @@ async fn derivation_tolerates_an_orphaned_item_whose_parent_was_deleted() {
         .and_hms_opt(12, 0, 0)
         .unwrap();
     let states = lifecycles(&pool, now).await;
-    assert_eq!(task_state(&states, child.id).timing, Timing::Active);
+    assert_eq!(task_state(&states, child.id.sid()).timing, Timing::Active);
 }
 
 #[tokio::test]
@@ -3185,7 +3207,7 @@ async fn deleting_a_goal_cascades_its_subtree() {
             CreateGoalRequest {
                 title: "Parent".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )
@@ -3203,7 +3225,7 @@ async fn deleting_a_goal_cascades_its_subtree() {
             CreateGoalRequest {
                 title: "Sub".into(),
                 parent_type: "goal".into(),
-                parent_id: parent.id,
+                parent_id: parent.id.clone(),
                 ..Default::default()
             },
         )
@@ -3221,7 +3243,7 @@ async fn deleting_a_goal_cascades_its_subtree() {
             CreateTaskRequest {
                 title: "Step".into(),
                 parent_type: "goal".into(),
-                parent_id: sub_goal.id,
+                parent_id: sub_goal.id.clone(),
                 ..Default::default()
             },
         )
@@ -3235,7 +3257,7 @@ async fn deleting_a_goal_cascades_its_subtree() {
 
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r = arlesh_lib::tasks::delete_goal(&mut db, parent.id.into()).await;
+        let __r = arlesh_lib::tasks::delete_goal(&mut db, parent.id.sid().into()).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -3249,7 +3271,7 @@ async fn deleting_a_goal_cascades_its_subtree() {
         .await
         .unwrap()
         .goals()
-        .get(sub_goal.id.into())
+        .get(sub_goal.id.sid().into())
         .await
         .is_err());
     assert!(helpers::session_factory(&pool)
@@ -3257,7 +3279,7 @@ async fn deleting_a_goal_cascades_its_subtree() {
         .await
         .unwrap()
         .tasks()
-        .get(sub_task.id.into())
+        .get(sub_task.id.sid().into())
         .await
         .is_err());
 }
@@ -3343,14 +3365,14 @@ async fn the_create_task_command_commits_the_insert_and_the_position_update_toge
         CreateTaskRequest {
             title: "Committed Task".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
     .await
     .unwrap();
 
-    let (title, position) = title_and_position(&pool, "tasks", created.id).await;
+    let (title, position) = title_and_position(&pool, "tasks", created.id.sid()).await;
     assert_eq!(
         title, "Committed Task",
         "the command must commit the insert, not roll it back"
@@ -3373,7 +3395,7 @@ async fn the_update_task_command_commits_the_reparent_and_the_field_update_toget
             CreateTaskRequest {
                 title: "Before".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )
@@ -3388,19 +3410,20 @@ async fn the_update_task_command_commits_the_reparent_and_the_field_update_toget
 
     task_commands::update_task(
         app.state(),
-        task.id,
+        task.id.clone(),
         UpdateTaskRequest {
             title: Some("After".into()),
             parent_type: Some("project".into()),
-            parent_id: Some(other_project_id),
+            parent_id: Some(other_project_id.into()),
             ..Default::default()
         },
+        None,
     )
     .await
     .unwrap();
 
     // Two separate UPDATE statements: the parent move and the field write. Both or neither.
-    let (title, parent_id) = title_and_parent(&pool, "tasks", task.id).await;
+    let (title, parent_id) = title_and_parent(&pool, "tasks", task.id.sid()).await;
     assert_eq!(title, "After", "the command must commit the field update");
     assert_eq!(
         parent_id, other_project_id,
@@ -3419,7 +3442,7 @@ async fn the_delete_task_command_commits_the_whole_subtree() {
             CreateTaskRequest {
                 title: "Root".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )
@@ -3437,7 +3460,7 @@ async fn the_delete_task_command_commits_the_whole_subtree() {
             CreateTaskRequest {
                 title: "Child".into(),
                 parent_type: "task".into(),
-                parent_id: root.id,
+                parent_id: root.id.clone(),
                 ..Default::default()
             },
         )
@@ -3452,7 +3475,7 @@ async fn the_delete_task_command_commits_the_whole_subtree() {
         "INSERT INTO infos (body, parent_type, parent_id, position) VALUES (?, 'task', ?, 0)",
     )
     .bind("A note on the child")
-    .bind(child.id)
+    .bind(child.id.sid())
     .execute(&pool)
     .await
     .unwrap();
@@ -3460,7 +3483,7 @@ async fn the_delete_task_command_commits_the_whole_subtree() {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
         let __r = db
             .block_reasons()
-            .set("task", root.id, &["waiting".to_string()])
+            .set("task", root.id.sid(), &["waiting".to_string()])
             .await;
         if __r.is_ok() {
             db.commit().await.unwrap();
@@ -3470,27 +3493,27 @@ async fn the_delete_task_command_commits_the_whole_subtree() {
     .unwrap();
     let app = helpers::command_host(&pool);
 
-    task_commands::delete_task(app.state(), root.id)
+    task_commands::delete_task(app.state(), root.id.clone())
         .await
         .unwrap();
 
     assert_eq!(
-        count_where(&pool, "tasks", "id", root.id).await,
+        count_where(&pool, "tasks", "id", root.id.sid()).await,
         0,
         "the command must commit the root's deletion"
     );
     assert_eq!(
-        count_where(&pool, "tasks", "id", child.id).await,
+        count_where(&pool, "tasks", "id", child.id.sid()).await,
         0,
         "the descendant task must go with the root"
     );
     assert_eq!(
-        count_where(&pool, "infos", "parent_id", child.id).await,
+        count_where(&pool, "infos", "parent_id", child.id.sid()).await,
         0,
         "the descendant's infos must go with it"
     );
     assert_eq!(
-        count_where(&pool, "block_reasons", "owner_id", root.id).await,
+        count_where(&pool, "block_reasons", "owner_id", root.id.sid()).await,
         0,
         "the block reasons must go with the task"
     );
@@ -3507,14 +3530,14 @@ async fn the_create_goal_command_commits_the_insert_and_the_position_update_toge
         CreateGoalRequest {
             title: "Committed Goal".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
     .await
     .unwrap();
 
-    let (title, position) = title_and_position(&pool, "goals", created.id).await;
+    let (title, position) = title_and_position(&pool, "goals", created.id.sid()).await;
     assert_eq!(
         title, "Committed Goal",
         "the command must commit the insert, not roll it back"
@@ -3537,7 +3560,7 @@ async fn the_update_goal_command_commits_the_reparent_and_the_field_update_toget
             CreateGoalRequest {
                 title: "Before".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )
@@ -3552,18 +3575,19 @@ async fn the_update_goal_command_commits_the_reparent_and_the_field_update_toget
 
     task_commands::update_goal(
         app.state(),
-        goal.id,
+        goal.id.clone(),
         UpdateGoalRequest {
             title: Some("After".into()),
             parent_type: Some("project".into()),
-            parent_id: Some(other_project_id),
+            parent_id: Some(other_project_id.into()),
             ..Default::default()
         },
+        None,
     )
     .await
     .unwrap();
 
-    let (title, parent_id) = title_and_parent(&pool, "goals", goal.id).await;
+    let (title, parent_id) = title_and_parent(&pool, "goals", goal.id.sid()).await;
     assert_eq!(title, "After", "the command must commit the field update");
     assert_eq!(
         parent_id, other_project_id,
@@ -3582,7 +3606,7 @@ async fn the_delete_goal_command_commits_the_whole_subtree() {
             CreateGoalRequest {
                 title: "Root".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )
@@ -3600,7 +3624,7 @@ async fn the_delete_goal_command_commits_the_whole_subtree() {
             CreateTaskRequest {
                 title: "Step".into(),
                 parent_type: "goal".into(),
-                parent_id: root.id,
+                parent_id: root.id.clone(),
                 ..Default::default()
             },
         )
@@ -3613,17 +3637,17 @@ async fn the_delete_goal_command_commits_the_whole_subtree() {
     .unwrap();
     let app = helpers::command_host(&pool);
 
-    task_commands::delete_goal(app.state(), root.id)
+    task_commands::delete_goal(app.state(), root.id.clone())
         .await
         .unwrap();
 
     assert_eq!(
-        count_where(&pool, "goals", "id", root.id).await,
+        count_where(&pool, "goals", "id", root.id.sid()).await,
         0,
         "the command must commit the goal's deletion"
     );
     assert_eq!(
-        count_where(&pool, "tasks", "id", child.id).await,
+        count_where(&pool, "tasks", "id", child.id.sid()).await,
         0,
         "the descendant task must go with it"
     );
@@ -3640,7 +3664,7 @@ async fn the_add_task_dependency_command_commits_the_edge_it_checked() {
             CreateTaskRequest {
                 title: "Blocker".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )
@@ -3658,7 +3682,7 @@ async fn the_add_task_dependency_command_commits_the_edge_it_checked() {
             CreateTaskRequest {
                 title: "Blocked".into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )
@@ -3673,8 +3697,10 @@ async fn the_add_task_dependency_command_commits_the_edge_it_checked() {
 
     task_commands::add_task_dependency(
         app.state(),
-        blocked.id,
-        Dependency::Task { id: blocker.id },
+        blocked.id.clone(),
+        Dependency::Task {
+            id: blocker.id.clone(),
+        },
     )
     .await
     .unwrap();
@@ -3685,8 +3711,8 @@ async fn the_add_task_dependency_command_commits_the_edge_it_checked() {
         "SELECT COUNT(*) FROM task_dependencies
          WHERE task_id = ? AND dependency_type = 'task' AND dependency_id = ?",
     )
-    .bind(blocked.id)
-    .bind(blocker.id)
+    .bind(blocked.id.sid())
+    .bind(blocker.id.sid())
     .fetch_one(&pool)
     .await
     .unwrap();
@@ -3698,8 +3724,10 @@ async fn the_add_task_dependency_command_commits_the_edge_it_checked() {
     // And the check itself still rejects the reverse edge, inside the transaction.
     let cycle = task_commands::add_task_dependency(
         app.state(),
-        blocker.id,
-        Dependency::Task { id: blocked.id },
+        blocker.id.clone(),
+        Dependency::Task {
+            id: blocked.id.clone(),
+        },
     )
     .await;
     assert!(
@@ -3707,7 +3735,7 @@ async fn the_add_task_dependency_command_commits_the_edge_it_checked() {
         "the cycle check must still reject the reverse edge"
     );
     assert_eq!(
-        count_where(&pool, "task_dependencies", "task_id", blocker.id).await,
+        count_where(&pool, "task_dependencies", "task_id", blocker.id.sid()).await,
         0,
         "a rejected dependency must leave nothing behind"
     );
@@ -3770,7 +3798,7 @@ async fn a_dangling_ancestor_renders_fine_and_rejects_a_write() {
         CreateGoalRequest {
             title: "Doomed Parent".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -3780,7 +3808,7 @@ async fn a_dangling_ancestor_renders_fine_and_rejects_a_write() {
         CreateTaskRequest {
             title: "Orphan".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id,
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
@@ -3788,7 +3816,7 @@ async fn a_dangling_ancestor_renders_fine_and_rejects_a_write() {
     .unwrap();
     // A raw delete that skips the cascade — the shape stale data actually takes.
     sqlx::query("DELETE FROM goals WHERE id = ?")
-        .bind(goal.id)
+        .bind(goal.id.sid())
         .execute(&pool)
         .await
         .unwrap();
@@ -3799,7 +3827,7 @@ async fn a_dangling_ancestor_renders_fine_and_rejects_a_write() {
         .and_hms_opt(12, 0, 0)
         .unwrap();
     let states = lifecycles(&pool, now).await;
-    assert_eq!(task_state(&states, orphan.id).timing, Timing::Active);
+    assert_eq!(task_state(&states, orphan.id.sid()).timing, Timing::Active);
 
     // Write path: the very same chain refuses a scoped child, because the window that child
     // would have to fit inside cannot be read.
@@ -3808,7 +3836,7 @@ async fn a_dangling_ancestor_renders_fine_and_rejects_a_write() {
         CreateTaskRequest {
             title: "Scoped Child".into(),
             parent_type: "task".into(),
-            parent_id: orphan.id,
+            parent_id: orphan.id.clone(),
             time_scope: Some(single(week_in_july)),
             ..Default::default()
         },
@@ -3819,7 +3847,7 @@ async fn a_dangling_ancestor_renders_fine_and_rejects_a_write() {
         "the write must name the reference it could not follow, got {rejected:?}",
     );
     assert_eq!(
-        scoped_children_of(&pool, orphan.id).await,
+        scoped_children_of(&pool, orphan.id.sid()).await,
         0,
         "a rejected write must leave nothing behind"
     );
@@ -3846,7 +3874,7 @@ async fn a_cyclic_ancestor_chain_renders_fine_and_rejects_a_write() {
         CreateTaskRequest {
             title: "Anchor".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -3866,7 +3894,7 @@ async fn a_cyclic_ancestor_chain_renders_fine_and_rejects_a_write() {
         .unwrap();
     let states = lifecycles(&pool, now).await;
     assert_eq!(task_state(&states, 9001).timing, Timing::Active);
-    assert_eq!(task_state(&states, anchor.id).timing, Timing::Active);
+    assert_eq!(task_state(&states, anchor.id.sid()).timing, Timing::Active);
 
     // Write path: the same cycle refuses a scoped child.
     let rejected = create_task_under(
@@ -3874,7 +3902,7 @@ async fn a_cyclic_ancestor_chain_renders_fine_and_rejects_a_write() {
         CreateTaskRequest {
             title: "Scoped Child".into(),
             parent_type: "task".into(),
-            parent_id: 9001,
+            parent_id: 9001.into(),
             time_scope: Some(single(week_in_july)),
             ..Default::default()
         },
@@ -3942,7 +3970,7 @@ async fn seed_retype_fixture(pool: &sqlx::SqlitePool) -> RetypeFixture {
         CreateGoalRequest {
             title: "Learn Rust".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: Some(GoalStatus::Frozen),
             time_scope: Some(TimeScope {
                 start_id: scope_id,
@@ -3959,7 +3987,7 @@ async fn seed_retype_fixture(pool: &sqlx::SqlitePool) -> RetypeFixture {
     .unwrap();
     update_goal(
         &mut db,
-        arlesh_lib::tasks::model::GoalId(goal.id),
+        arlesh_lib::tasks::model::GoalId(goal.id.sid()),
         UpdateGoalRequest {
             is_private: Some(true),
             ..Default::default()
@@ -3968,17 +3996,17 @@ async fn seed_retype_fixture(pool: &sqlx::SqlitePool) -> RetypeFixture {
     .await
     .unwrap();
     db.goals()
-        .add_tag(arlesh_lib::tasks::model::GoalId(goal.id), tag_a)
+        .add_tag(arlesh_lib::tasks::model::GoalId(goal.id.sid()), tag_a)
         .await
         .unwrap();
     db.goals()
-        .add_tag(arlesh_lib::tasks::model::GoalId(goal.id), tag_b)
+        .add_tag(arlesh_lib::tasks::model::GoalId(goal.id.sid()), tag_b)
         .await
         .unwrap();
     db.block_reasons()
         .set(
             "goal",
-            goal.id,
+            goal.id.sid(),
             &["waiting on the borrow checker".to_string()],
         )
         .await
@@ -3989,7 +4017,7 @@ async fn seed_retype_fixture(pool: &sqlx::SqlitePool) -> RetypeFixture {
         CreateTaskRequest {
             title: "Read the book".into(),
             parent_type: "goal".into(),
-            parent_id: goal.id,
+            parent_id: goal.id.clone(),
             ..Default::default()
         },
     )
@@ -4001,7 +4029,7 @@ async fn seed_retype_fixture(pool: &sqlx::SqlitePool) -> RetypeFixture {
             body: "ownership is the hard bit".into(),
             details: None,
             parent_type: "goal".into(),
-            parent_id: goal.id,
+            parent_id: goal.id.clone(),
             position: 0,
         })
         .await
@@ -4014,7 +4042,7 @@ async fn seed_retype_fixture(pool: &sqlx::SqlitePool) -> RetypeFixture {
             CreateTaskRequest {
                 title: title.into(),
                 parent_type: "project".into(),
-                parent_id: project_id,
+                parent_id: project_id.into(),
                 ..Default::default()
             },
         )
@@ -4022,8 +4050,10 @@ async fn seed_retype_fixture(pool: &sqlx::SqlitePool) -> RetypeFixture {
         .unwrap();
         add_task_dependency(
             &mut db,
-            arlesh_lib::tasks::model::TaskId(dependent.id),
-            Dependency::Goal { id: goal.id },
+            arlesh_lib::tasks::model::TaskId(dependent.id.sid()),
+            Dependency::Goal {
+                id: goal.id.clone(),
+            },
         )
         .await
         .unwrap();
@@ -4034,10 +4064,10 @@ async fn seed_retype_fixture(pool: &sqlx::SqlitePool) -> RetypeFixture {
     RetypeFixture {
         project_id,
         scope_id,
-        goal_id: goal.id,
+        goal_id: goal.id.sid(),
         tag_ids: (tag_a, tag_b),
-        dependents: (dependents[0], dependents[1]),
-        task_child_id: task_child.id,
+        dependents: (dependents[0].sid(), dependents[1].sid()),
+        task_child_id: task_child.id.sid(),
         info_child_id: info_child.id,
     }
 }
@@ -4086,7 +4116,7 @@ async fn the_retype_node_command_carries_a_goals_scope_tags_and_inbound_dependen
     let retyped = arlesh_lib::commands::retype::retype_node(
         app.state(),
         "goal".into(),
-        seeded.goal_id,
+        seeded.goal_id.into(),
         "task".into(),
         None,
         None,
@@ -4212,7 +4242,7 @@ async fn the_retype_node_command_refuses_until_the_caller_acknowledges_the_child
             CreateGoalRequest {
                 title: "Finish the tutorial".into(),
                 parent_type: "goal".into(),
-                parent_id: seeded.goal_id,
+                parent_id: seeded.goal_id.into(),
                 ..Default::default()
             },
         )
@@ -4226,7 +4256,7 @@ async fn the_retype_node_command_refuses_until_the_caller_acknowledges_the_child
     let refused = arlesh_lib::commands::retype::retype_node(
         app.state(),
         "goal".into(),
-        seeded.goal_id,
+        seeded.goal_id.into(),
         "task".into(),
         None,
         None,
@@ -4255,7 +4285,7 @@ async fn the_retype_node_command_refuses_until_the_caller_acknowledges_the_child
     let retyped = arlesh_lib::commands::retype::retype_node(
         app.state(),
         "goal".into(),
-        seeded.goal_id,
+        seeded.goal_id.into(),
         "task".into(),
         Some(arlesh_lib::tasks::retype::StrandedChildren::Reparent),
         None,
@@ -4265,7 +4295,7 @@ async fn the_retype_node_command_refuses_until_the_caller_acknowledges_the_child
 
     let (parent_type, parent_id): (String, i64) =
         sqlx::query_as("SELECT parent_type, parent_id FROM goals WHERE id = ?")
-            .bind(sub_goal.id)
+            .bind(sub_goal.id.sid())
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -4397,7 +4427,7 @@ async fn retyping_a_goal_to_a_project_ends_the_dependencies_it_announced_rather_
     let refused = arlesh_lib::commands::retype::retype_node(
         app.state(),
         "goal".into(),
-        seeded.goal_id,
+        seeded.goal_id.into(),
         "project".into(),
         None,
         None,
@@ -4420,7 +4450,7 @@ async fn retyping_a_goal_to_a_project_ends_the_dependencies_it_announced_rather_
     let retyped = arlesh_lib::commands::retype::retype_node(
         app.state(),
         "goal".into(),
-        seeded.goal_id,
+        seeded.goal_id.into(),
         "project".into(),
         Some(arlesh_lib::tasks::retype::StrandedChildren::Reparent),
         None,
@@ -4463,14 +4493,14 @@ async fn seed_task(pool: &sqlx::SqlitePool, project_id: i64, title: &str) -> i64
         CreateTaskRequest {
             title: title.into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
     .await
     .unwrap();
     db.commit().await.unwrap();
-    task.id
+    task.id.sid()
 }
 
 /// A committed goal under `project_id`, titled `title`.
@@ -4481,14 +4511,14 @@ async fn seed_goal(pool: &sqlx::SqlitePool, project_id: i64, title: &str) -> i64
         CreateGoalRequest {
             title: title.into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
     .await
     .unwrap();
     db.commit().await.unwrap();
-    goal.id
+    goal.id.sid()
 }
 
 #[tokio::test]
@@ -4645,13 +4675,14 @@ async fn the_update_task_command_cannot_touch_beads_id() {
     let app = helpers::command_host(&pool);
     let updated = task_commands::update_task(
         app.state(),
-        linked_id,
+        linked_id.into(),
         UpdateTaskRequest {
             title: Some("Renamed".into()),
             status: Some(TaskStatus::InProgress),
             is_private: Some(true),
             ..Default::default()
         },
+        None,
     )
     .await
     .unwrap();
@@ -4664,11 +4695,12 @@ async fn the_update_task_command_cannot_touch_beads_id() {
 
     let untouched = task_commands::update_task(
         app.state(),
-        unlinked_id,
+        unlinked_id.into(),
         UpdateTaskRequest {
             title: Some("Also renamed".into()),
             ..Default::default()
         },
+        None,
     )
     .await
     .unwrap();
@@ -4707,13 +4739,14 @@ async fn the_update_goal_command_cannot_touch_beads_id() {
     let app = helpers::command_host(&pool);
     let updated = task_commands::update_goal(
         app.state(),
-        linked_id,
+        linked_id.into(),
         UpdateGoalRequest {
             title: Some("Renamed".into()),
             status: Some(GoalStatus::Frozen),
             is_private: Some(true),
             ..Default::default()
         },
+        None,
     )
     .await
     .unwrap();
@@ -4726,11 +4759,12 @@ async fn the_update_goal_command_cannot_touch_beads_id() {
 
     let untouched = task_commands::update_goal(
         app.state(),
-        unlinked_id,
+        unlinked_id.into(),
         UpdateGoalRequest {
             title: Some("Also renamed".into()),
             ..Default::default()
         },
+        None,
     )
     .await
     .unwrap();
@@ -4808,7 +4842,7 @@ async fn a_task_starts_out_in_play() {
         CreateTaskRequest {
             title: "Ordinary".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -4825,7 +4859,7 @@ async fn an_unplanned_task_can_be_put_in_the_backlog_and_taken_back_out() {
         CreateTaskRequest {
             title: "Not now".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: Some(TaskStatus::InProgress),
             ..Default::default()
         },
@@ -4834,7 +4868,7 @@ async fn an_unplanned_task_can_be_put_in_the_backlog_and_taken_back_out() {
 
     let aside = try_update(
         &pool,
-        task.id,
+        task.id.sid(),
         UpdateTaskRequest {
             archival: Some(TaskArchival::Backlog),
             ..Default::default()
@@ -4848,7 +4882,7 @@ async fn an_unplanned_task_can_be_put_in_the_backlog_and_taken_back_out() {
 
     let back = try_update(
         &pool,
-        task.id,
+        task.id.sid(),
         UpdateTaskRequest {
             archival: Some(TaskArchival::Live),
             ..Default::default()
@@ -4869,7 +4903,7 @@ async fn backlogging_a_planned_task_is_refused_pending_confirmation() {
         CreateTaskRequest {
             title: "Scheduled".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(week),
             plan: Some(day.clone()),
             ..Default::default()
@@ -4879,7 +4913,7 @@ async fn backlogging_a_planned_task_is_refused_pending_confirmation() {
 
     let refused = try_update(
         &pool,
-        task.id,
+        task.id.sid(),
         UpdateTaskRequest {
             archival: Some(TaskArchival::Backlog),
             ..Default::default()
@@ -4900,7 +4934,7 @@ async fn backlogging_a_planned_task_is_refused_pending_confirmation() {
         .await
         .unwrap()
         .tasks()
-        .get(task.id.into())
+        .get(task.id.sid().into())
         .await
         .unwrap();
     assert_eq!(stored.archival, TaskArchival::Live);
@@ -4916,7 +4950,7 @@ async fn clearing_the_plan_and_backlogging_in_one_request_is_accepted() {
         CreateTaskRequest {
             title: "Scheduled".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(week),
             plan: Some(day),
             ..Default::default()
@@ -4926,7 +4960,7 @@ async fn clearing_the_plan_and_backlogging_in_one_request_is_accepted() {
 
     let aside = try_update(
         &pool,
-        task.id,
+        task.id.sid(),
         UpdateTaskRequest {
             archival: Some(TaskArchival::Backlog),
             plan: Some(None),
@@ -4953,7 +4987,7 @@ async fn planning_a_backlogged_task_takes_it_out_of_the_backlog() {
         CreateTaskRequest {
             title: "Set aside".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(week),
             archival: Some(TaskArchival::Backlog),
             ..Default::default()
@@ -4965,7 +4999,7 @@ async fn planning_a_backlogged_task_takes_it_out_of_the_backlog() {
     // No prompt, no second call: scheduling something is all it takes to put it back in play.
     let planned = try_update(
         &pool,
-        task.id,
+        task.id.sid(),
         UpdateTaskRequest {
             plan: Some(Some(day.clone())),
             ..Default::default()
@@ -4986,7 +5020,7 @@ async fn starting_a_backlogged_task_takes_it_out_of_the_backlog() {
         CreateTaskRequest {
             title: "Set aside".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             archival: Some(TaskArchival::Backlog),
             ..Default::default()
         },
@@ -4997,7 +5031,7 @@ async fn starting_a_backlogged_task_takes_it_out_of_the_backlog() {
     // One write, so one undo step: you cannot be actively doing something you have put down.
     let started = try_update(
         &pool,
-        task.id,
+        task.id.sid(),
         UpdateTaskRequest {
             status: Some(TaskStatus::InProgress),
             ..Default::default()
@@ -5018,7 +5052,7 @@ async fn finishing_a_backlogged_task_leaves_it_in_the_backlog() {
         CreateTaskRequest {
             title: "Set aside".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             archival: Some(TaskArchival::Backlog),
             ..Default::default()
         },
@@ -5029,7 +5063,7 @@ async fn finishing_a_backlogged_task_leaves_it_in_the_backlog() {
     // that it ever came back into play.
     let done = try_update(
         &pool,
-        task.id,
+        task.id.sid(),
         UpdateTaskRequest {
             status: Some(TaskStatus::Done),
             ..Default::default()
@@ -5049,7 +5083,7 @@ async fn a_request_naming_the_backlog_alongside_in_progress_is_taken_at_its_word
         CreateTaskRequest {
             title: "Under way".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: Some(TaskStatus::InProgress),
             ..Default::default()
         },
@@ -5060,7 +5094,7 @@ async fn a_request_naming_the_backlog_alongside_in_progress_is_taken_at_its_word
     // set aside, and keeps its status so it says where the work stood when it is pulled back.
     let set_aside = try_update(
         &pool,
-        task.id,
+        task.id.sid(),
         UpdateTaskRequest {
             status: Some(TaskStatus::InProgress),
             archival: Some(TaskArchival::Backlog),
@@ -5082,7 +5116,7 @@ async fn editing_a_backlogged_task_leaves_it_in_the_backlog() {
         CreateTaskRequest {
             title: "Set aside".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             archival: Some(TaskArchival::Backlog),
             ..Default::default()
         },
@@ -5091,7 +5125,7 @@ async fn editing_a_backlogged_task_leaves_it_in_the_backlog() {
 
     let renamed = try_update(
         &pool,
-        task.id,
+        task.id.sid(),
         UpdateTaskRequest {
             title: Some("Set aside, renamed".into()),
             ..Default::default()
@@ -5112,7 +5146,7 @@ async fn creating_a_task_both_backlogged_and_planned_is_refused() {
         CreateTaskRequest {
             title: "Contradiction".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(week),
             plan: Some(day),
             archival: Some(TaskArchival::Backlog),
@@ -5138,7 +5172,7 @@ async fn a_backlogged_task_reports_backlog_through_the_lifecycle_derivation() {
         CreateTaskRequest {
             title: "Set aside".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             archival: Some(TaskArchival::Backlog),
             ..Default::default()
         },
@@ -5172,7 +5206,7 @@ async fn a_scoped_backlogged_task_still_lapses_missed_when_its_window_closes() {
         CreateTaskRequest {
             title: "Set aside, and scoped".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(week),
             on_scope_exit: Some(OnScopeExit::Archive),
             archival: Some(TaskArchival::Backlog),
@@ -5363,7 +5397,7 @@ async fn a_task_plan_is_placed_against_now_on_the_two_oclock_day_boundary() {
         CreateTaskRequest {
             title: "Planned for Friday".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(single(week)),
             plan: Some(single(friday)),
             ..Default::default()
@@ -5375,7 +5409,7 @@ async fn a_task_plan_is_placed_against_now_on_the_two_oclock_day_boundary() {
         CreateTaskRequest {
             title: "Unplanned".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
@@ -5398,10 +5432,10 @@ async fn a_task_plan_is_placed_against_now_on_the_two_oclock_day_boundary() {
     ] {
         let states = lifecycles(&pool, now).await;
         assert_eq!(
-            task_state(&states, planned.id).plan_timing,
+            task_state(&states, planned.id.sid()).plan_timing,
             Some(expected),
             "at {now}"
         );
-        assert_eq!(task_state(&states, unplanned.id).plan_timing, None);
+        assert_eq!(task_state(&states, unplanned.id.sid()).plan_timing, None);
     }
 }

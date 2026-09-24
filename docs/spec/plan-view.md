@@ -98,8 +98,9 @@ A Task planned **somewhere else** — neither in this scope nor to its parent �
 It is not unscheduled, so it is not a candidate, and it is not in this scope, so it is not what the
 scope holds.
 
-**Habit occurrences are triaged like Tasks.** An occurrence is read by its **Cycle Plan**, the Habit's
-or its item's:
+**Habit occurrences are triaged like Tasks.** An occurrence is a Task row ([Derived
+nodes](virtual-nodes.md)), read by its Plan — which is its **Cycle Plan**, the Habit's or its item's,
+until the occurrence is planned on its own:
 
 - **With one**, it sits where that Plan says, as a planned Task would: in the planned pane of a
   scope the Plan sits inside, or among the candidates when the Plan is the parent scope.
@@ -109,14 +110,16 @@ or its item's:
 Its window is **not** read as a plan. A window says when the work is relevant, not that anyone
 planned it (ruled by the user, 2026-09-24, over a first cut that did read it that way).
 
-**Planning one is not possible yet.** An occurrence has no stored row to carry a Plan until
-occurrences become rows of their own (Arlesh-pnn). Every gesture that moves one — the button,
-`Enter`, a number or letter, a drag, taking it back out — leaves it where it is and says so in the
-toast, alongside whatever the rest of the batch did. It is taken out of the batch *before* the
-containment check, so it is never told to widen a window it has no editor for, and it is never
-dropped in silence.
+**Planning one plans that occurrence alone**: the gesture writes the Plan into its overlay, and the
+Cycle Plan every other occurrence reads stays as it was. Taking it back out leaves that occurrence
+**unplanned** — an override to no Plan, even where its item has a Cycle Plan; planning it back into
+the Cycle Plan's own scope clears the override, and it reads its Cycle Plan again. Its window is its iteration's, so a Plan it cannot hold is refused exactly
+as for a stored Task whose own window does not cover the scope.
 
-An iteration's **root** is not triaged. It stands for the whole iteration, not for a piece of work.
+An iteration's **root** is triaged like any occurrence: by the root Cycle Plan unless it was planned on
+its own, and unplanned without one. For a Habit with no items it is the only occurrence there is.
+A root and its item occurrences each appear, as a Task and its subtasks do — each one row in one
+heap. Done work is kept or hidden by the shared filter exactly as for a stored Task.
 
 ## Backlog
 
@@ -403,6 +406,5 @@ an open editor would leave the editor sitting over a board it no longer belongs 
 - **Time Scope editing.** This view sets Plans. A candidate whose window is too narrow for the scope
   is refused and sent to the editor.
 - **Creating, renaming or deleting.** A planning pass decides *when*, not *what*.
-- **Planning a Habit occurrence**, until occurrences are stored rows, as above.
 
 ---

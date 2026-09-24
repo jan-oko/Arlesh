@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { checkOrigin, isDerivedId, storedId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
-import { rowIdOf } from "@/utils/node-identity";
+import { rowIdOf, isOccurrence } from "@/utils/node-identity";
 import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField";
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -8,7 +9,7 @@ import { entityNodeId } from "@/utils/tree-layout";
 import { EXPECTATION_STATUS } from "@/api/expectation-status";
 import type { Domain } from "@/api/domains";
 import type { AgenticBrief, AsyncTemplate, Delegate, Dependency, TaskAgentic, TaskArchival } from "@/api/tasks";
-import { EMPTY_AGENTIC_BRIEF } from "@/api/tasks";
+import { EMPTY_AGENTIC_BRIEF, isEmptyBrief } from "@/api/tasks";
 import { TASK_AGENTIC, TASK_ARCHIVAL } from "@/api/tasks";
 import { storedAgenticState } from "@/utils/agentic";
 import { isDelegatedToAgent, toggledAgentDelegate } from "@/utils/delegation";
@@ -91,12 +92,6 @@ interface Props {
   onClose: () => void;
 }
 
-/** Whether the brief says anything at all — an empty one is no brief. */
-function isEmptyBrief(brief: AgenticBrief): boolean {
-  return brief.priority === null && brief.spec.trim() === "" && brief.design.trim() === ""
-    && brief.acceptance.trim() === "" && brief.notes.trim() === "";
-}
-
 /** The section as the form holds it: every field, blank ones included. */
 const EMPTY_TEMPLATE: AsyncTemplate = { title: "", tag_ids: [] };
 
@@ -109,7 +104,7 @@ function isEmptyTemplate(template: AsyncTemplate): boolean {
 export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onClearBeadsId, onCheckScopeClamp, openAtTemplate = false, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "status", "nodeKinds", "undo", "expectation"]);
-  const [title, setTitle] = useState(node.title);
+  const [title, setTitle] = useState(node.rowTitle ?? node.title);
   const [status, setStatus] = useState(node.status ?? TASK_STATUS.TODO);
   const [blockReasons, setBlockReasons] = useState<string[]>(node.blockReasons ?? []);
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
@@ -156,7 +151,8 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   function addDep(candidate: MindmapNode) {
     const kind = dependencyKindOf(candidate);
     const id = rowIdOf(candidate);
-    const dep: Dependency = { type: kind, id };
+    // A wait is always a stored row; a Task or a Goal may be a Habit occurrence.
+    const dep: Dependency = kind === "expectation" ? { type: kind, id: storedId(id) } : { type: kind, id };
     if (currentDeps.some((d) => depEquals(d, dep))) return;
     setCurrentDeps((prev) => [...prev, dep]);
     setDepSearch("");
@@ -169,7 +165,8 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
     try {
       const addedDeps = currentDeps.filter((d) => !initialDeps.some((id) => depEquals(id, d)));
       const removedDeps = initialDeps.filter((d) => !currentDeps.some((cd) => depEquals(cd, d)));
-      if (timeScope !== null && onCheckScopeClamp && !(await onCheckScopeClamp("task", dbId, timeScope))) {
+      // An occurrence's window is its iteration's and cannot change, so there is nothing to clamp.
+      if (timeScope !== null && !isDerivedId(dbId) && onCheckScopeClamp && !(await onCheckScopeClamp("task", dbId, timeScope))) {
         setIsSaving(false);
         return;
       }
@@ -284,7 +281,12 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       </div>
       <div className={styles.label}>
         {t("fieldTimeScope")}
-        <TimeScopeField value={timeScope} onChange={setTimeScope} />
+        <TimeScopeField
+          value={timeScope}
+          onChange={setTimeScope}
+          {...(isOccurrence(node) ? { lockedReason: t("editor:scopeLockedOccurrence") } : {})}
+          {...(checkOrigin(node.origin) !== undefined ? { lockedReason: t("editor:scopeLockedCheck") } : {})}
+        />
       </div>
       {timeScope !== null && (
         <div className={styles.label}>

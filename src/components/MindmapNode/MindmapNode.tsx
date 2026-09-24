@@ -65,16 +65,14 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
       : resolution === "overdue"
         ? "var(--overdue)"
         : "var(--node-border)";
-  // A Commitment — real or a virtual Habit iteration — has no status to cycle here: its verdict is
+  // A Commitment — stored or a Habit iteration — has no status to cycle here: its verdict is
   // recorded through the two controls in List View, never through one cycling click.
   // A wait's control releases it (a delegated Task's wait is released by the Task, and refuses out
-  // loud); a wait's check task's control completes the check.
+  // loud); a wait's check task is a Task, whose status marks the check made.
   const canClickStatus =
     onStatusClick !== undefined &&
     node.kind !== "commitment" &&
-    (node.habitItem !== undefined ||
-      node.expectationCheck !== undefined ||
-      node.kind === "expectation" ||
+    (node.kind === "expectation" ||
       ((node.kind === "task" || node.kind === "goal") && !isBlocked && node.virtual !== true));
   // The status-icon row is hidden while editing, when the node grows to fit the textarea.
   const statusIndicators = isEditing ? [] : deriveStatusIndicators(node);
@@ -89,7 +87,8 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
       onSelect(node.id);
     }
   }, [node.id, onSelect, onCtrlClick, onShiftClick]);
-  // A virtual node (derived Habit iteration) is read-only: no edit, drag, or context menu.
+  // A virtual node (a folded run, a wait's check task) is read-only: no edit, drag, or context
+  // menu. A Habit occurrence is a row, and takes all three like any other.
   const handleDoubleClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); if (node.virtual === true) return; onDoubleClick(node.id); }, [node.id, node.virtual, onDoubleClick]);
   const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (node.virtual === true) return; setContextMenu({ x: e.clientX, y: e.clientY }); }, [node.virtual]);
   const handleMouseDown = useCallback((e: React.MouseEvent) => { if (e.button !== 0 || node.kind === "aspect" || node.virtual === true) return; onDragStart(node.id, e.clientX, e.clientY); }, [node.id, node.kind, node.virtual, onDragStart]);

@@ -30,10 +30,8 @@ export function useTaskAsynchronous({ findNode, reload, showToast }: Options): R
   const toggleAsynchronous = useCallback(
     (nodeId: string) => {
       const node = findNode(nodeId);
-      // Only a real Task has the column: a virtual Habit instance is rendered from a template and
-      // has no row of its own to flag — it carries no `rowId` to address, so this is a
-      // refusal to act rather than a write that would go nowhere.
-      if (node === undefined || node.kind !== "task" || node.habitItem !== undefined) return;
+      // Any Task row, a Habit occurrence included: its flag lands on that occurrence alone.
+      if (node === undefined || node.kind !== "task" || node.rowId === undefined) return;
       void updateTask(rowIdOf(node), { asynchronous: node.asynchronous !== true }).then(
         () => reload(),
         (error: unknown) => {

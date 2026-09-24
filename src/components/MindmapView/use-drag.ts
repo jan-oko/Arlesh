@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isDerivedWait } from "@/utils/derived-wait";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { canAdoptExistingChild } from "@/utils/node-meta";
 import { findNode } from "@/utils/mindmap-tree";
@@ -52,7 +53,7 @@ export function useDrag(
       // feedback and is on screen the entire time it is wrong — so this is the one place a refusal
       // needs no toast. What it must not do is offer a drop the write cannot make: a **virtual**
       // node has no row whose parent link a move could re-point, on either side of the drop.
-      if (source.virtual === true) return null;
+      if (source.virtual === true || isDerivedWait(source)) return null;
       return canAdoptExistingChild(target, source.kind) ? targetId : null;
     }
 

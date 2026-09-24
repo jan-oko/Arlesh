@@ -13,10 +13,14 @@
 //! `habit_slots` — are pure: a scope is derived from its value key (ADR 0009), so resolving a
 //! window reads and writes nothing.
 
+pub mod cycles;
 pub mod error;
 pub mod habits;
 pub mod model;
+pub mod occurrence_edit;
+pub mod occurrences;
 mod render;
+pub mod template;
 
 use std::collections::{HashMap, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -25,6 +29,12 @@ use chrono::{Datelike, Duration, Months, NaiveDate, NaiveDateTime, NaiveTime};
 
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::CreateInfoRequest;
+use crate::nodes::{
+    self,
+    id::NodeId,
+    key::{OccurrenceKey, TemplateKind},
+    overlay::OverlayOperator,
+};
 use crate::scopes::key::ScopeKey;
 use crate::scopes::model::{PartOfDay, ScopeKind};
 use crate::scopes::resolve::{day_boundary, interval_contains};
@@ -53,10 +63,11 @@ use render::{
     render, FlowTemplate, NodeRef, PlannedSource, RenderedPlan, ResolvedPair, ScopeTable,
     TemplateItem,
 };
+use template::{TemplateFields, TemplateOperator, TemplateTable};
 
-/// Sentinel `item_type` for the flow **root** instance in `habit_instance_modifications`. The root is
-/// an instance in its own right (not just an aggregate of items); its rows key `item_id` to the flow
-/// id so they stay unique per flow on a shared iteration scope.
+/// Sentinel `item_type` for the flow **root** occurrence in the overlays. The root is an instance in
+/// its own right (not just an aggregate of items); its rows key `item_id` to the flow id so they
+/// stay unique per flow on a shared iteration date.
 const ROOT_INSTANCE_TYPE: &str = "flow_root";
 
 /// Advances `date` by `k` (possibly zero) periods of `kind`; `None` on calendar overflow.
@@ -281,6 +292,15 @@ fn resolve_cycle(
     let cycle_start = scope.start_date();
 
     let plan = match (pair.plan_kind.as_deref(), pair.plan_start, pair.plan_end) {
+        // A Cycle Plan of the scope's own kind is the scope itself — its one cell, which is what a
+        // pair's "Planned" toggle stores. Offsetting from the scope's start date would not do: a
+        // Noon cycle's first part of the day is Morning.
+        (Some(pk), Some(1), Some(1)) if pk == kind => Some(TimeScope::single(scope)),
+        (Some(pk), Some(_), Some(_)) if pk == kind => {
+            return Err(FlowError::Invalid(
+                "a Cycle Plan of its scope's own kind has one cell".to_string(),
+            ))
+        }
         (Some(pk), Some(ps), Some(pe)) => Some(TimeScope {
             start_id: offset_scope(cycle_start, ps, pk)?,
             end_id: offset_scope(cycle_start, pe, pk)?,
@@ -303,7 +323,7 @@ fn resolve_pair(
 ) -> Result<(Option<TimeScope>, Option<TimeScope>), FlowError> {
     Ok(match resolve_cycle(pair, window_start)? {
         Some(resolved) => (Some(resolved.time_scope), resolved.plan),
-        None => (None, None),
+        None => (None, whole_scope_plan(pair, window_start)?),
     })
 }
 
@@ -358,7 +378,8 @@ fn resolve_flow_window(
 }
 
 /// Builds the iteration windows from the Repetition Start up to (and including the one covering)
-/// `now`, bounded by any end. A **Span** window spans `n` canonical periods and tiles
+/// `limit` — the reference instant, or a later day when the virtual tables derive part of the
+/// future — bounded by any end. A **Span** window spans `n` canonical periods and tiles
 /// contiguously; a **Phase** window is the fixed band / clock-range on its anchor day. Each next
 /// anchor advances by the Gap — for a Phase window that Gap is the whole-day stride between
 /// occurrence days (defaulting to daily), keeping the time-of-day fixed.
@@ -466,6 +487,16 @@ fn item_id_maps(copied: &[(FlowItemType, i64, i64)]) -> (HashMap<i64, i64>, Hash
     (goals, tasks)
 }
 
+/// One `derived_children` row, as the ancestry climb reads it.
+#[derive(sqlx::FromRow)]
+struct AttachmentRow {
+    flow_id: Option<i64>,
+    parent_kind: String,
+    parent_key: String,
+    window_start_scope_id: Option<ScopeKey>,
+    window_end_scope_id: Option<ScopeKey>,
+}
+
 /// Reads and writes flow templates — and their items, cycles, recurrences and instances —
 /// on a session's connection.
 ///
@@ -550,26 +581,62 @@ impl<'session> FlowOperator<'session> {
         self.get(FlowId(id)).await
     }
 
-    /// Fetches a flow by id.
+    /// Fetches a flow by id, with its root template's fields.
     pub async fn get(&mut self, id: FlowId) -> Result<Flow, FlowError> {
-        sqlx::query_as::<_, Flow>(
+        let mut flow = sqlx::query_as::<_, Flow>(
             "SELECT flows.*, EXISTS(SELECT 1 FROM flow_recurrences WHERE flow_recurrences.flow_id = flows.id) AS is_habit
              FROM flows WHERE id = ?",
         )
         .bind(id.0)
         .fetch_optional(&mut *self.connection)
         .await?
-        .ok_or(FlowError::NotFound(id.0))
+        .ok_or(FlowError::NotFound(id.0))?;
+        flow.template = self.templates().one(TemplateTable::Flow, id.0).await?;
+        Ok(flow)
     }
 
-    /// Lists all flows in sort order.
+    /// Lists all flows in sort order, each with its root template's fields.
     pub async fn list(&mut self) -> Result<Vec<Flow>, FlowError> {
-        Ok(sqlx::query_as::<_, Flow>(
+        let mut flows = sqlx::query_as::<_, Flow>(
             "SELECT flows.*, EXISTS(SELECT 1 FROM flow_recurrences WHERE flow_recurrences.flow_id = flows.id) AS is_habit
              FROM flows ORDER BY position ASC",
         )
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?;
+        let mut fields = self.templates().all(TemplateTable::Flow).await?;
+        for flow in &mut flows {
+            flow.template = fields.remove(&flow.id).unwrap_or_default();
+        }
+        Ok(flows)
+    }
+
+    /// The template fields of this session's connection.
+    fn templates(&mut self) -> TemplateOperator<'_> {
+        TemplateOperator::new(&mut *self.connection)
+    }
+
+    /// Stamps each goal item with its template fields.
+    async fn with_goal_templates(
+        &mut self,
+        mut goals: Vec<FlowGoal>,
+    ) -> Result<Vec<FlowGoal>, FlowError> {
+        let mut fields = self.templates().all(TemplateTable::FlowGoal).await?;
+        for goal in &mut goals {
+            goal.template = fields.remove(&goal.id).unwrap_or_default();
+        }
+        Ok(goals)
+    }
+
+    /// Stamps each task item with its template fields.
+    async fn with_task_templates(
+        &mut self,
+        mut tasks: Vec<FlowTask>,
+    ) -> Result<Vec<FlowTask>, FlowError> {
+        let mut fields = self.templates().all(TemplateTable::FlowTask).await?;
+        for task in &mut tasks {
+            task.template = fields.remove(&task.id).unwrap_or_default();
+        }
+        Ok(tasks)
     }
 
     /// Updates a flow.
@@ -663,6 +730,19 @@ impl<'session> FlowOperator<'session> {
     /// `&mut Db<Transactional>` and is this method's only caller.
     async fn delete(&mut self, id: FlowId) -> Result<(), FlowError> {
         self.get(id).await?;
+        // The template relations are polymorphic and carry no foreign key, so they are forgotten
+        // here rather than by the cascade that takes the items themselves.
+        for goal in self.list_goals(id).await? {
+            self.templates()
+                .forget(TemplateTable::FlowGoal, goal.id)
+                .await?;
+        }
+        for task in self.list_tasks(id).await? {
+            self.templates()
+                .forget(TemplateTable::FlowTask, task.id)
+                .await?;
+        }
+        self.templates().forget(TemplateTable::Flow, id.0).await?;
         sqlx::query("DELETE FROM flows WHERE id = ?")
             .bind(id.0)
             .execute(&mut *self.connection)
@@ -732,22 +812,24 @@ impl<'session> FlowOperator<'session> {
 
     /// Lists a flow's goal items.
     pub async fn list_goals(&mut self, flow_id: FlowId) -> Result<Vec<FlowGoal>, FlowError> {
-        Ok(sqlx::query_as::<_, FlowGoal>(
+        let goals = sqlx::query_as::<_, FlowGoal>(
             "SELECT * FROM flow_goals WHERE flow_id = ? ORDER BY position ASC",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?;
+        self.with_goal_templates(goals).await
     }
 
     /// Lists a flow's task items.
     pub async fn list_tasks(&mut self, flow_id: FlowId) -> Result<Vec<FlowTask>, FlowError> {
-        Ok(sqlx::query_as::<_, FlowTask>(
+        let tasks = sqlx::query_as::<_, FlowTask>(
             "SELECT * FROM flow_tasks WHERE flow_id = ? ORDER BY position ASC",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?;
+        self.with_task_templates(tasks).await
     }
 
     /// A flow's items as `(item_type, item_id)` in render order — goal items then task items, each
@@ -789,20 +871,18 @@ impl<'session> FlowOperator<'session> {
 
     /// Lists every flow's goal items (for the mindmap load).
     pub async fn list_all_goals(&mut self) -> Result<Vec<FlowGoal>, FlowError> {
-        Ok(
-            sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals ORDER BY position ASC")
-                .fetch_all(&mut *self.connection)
-                .await?,
-        )
+        let goals = sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals ORDER BY position ASC")
+            .fetch_all(&mut *self.connection)
+            .await?;
+        self.with_goal_templates(goals).await
     }
 
     /// Lists every flow's task items (for the mindmap load).
     pub async fn list_all_tasks(&mut self) -> Result<Vec<FlowTask>, FlowError> {
-        Ok(
-            sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks ORDER BY position ASC")
-                .fetch_all(&mut *self.connection)
-                .await?,
-        )
+        let tasks = sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks ORDER BY position ASC")
+            .fetch_all(&mut *self.connection)
+            .await?;
+        self.with_task_templates(tasks).await
     }
 
     /// Updates a flow-goal item.
@@ -908,6 +988,15 @@ impl<'session> FlowOperator<'session> {
             FlowItemType::FlowTask => "flow_tasks",
         };
         self.clear_item_links(item_type, id).await?;
+        let template = match item_type {
+            FlowItemType::FlowGoal => TemplateTable::FlowGoal,
+            FlowItemType::FlowTask => TemplateTable::FlowTask,
+        };
+        self.templates().forget(template, id).await?;
+        // Its occurrences go with it, and so does everything recorded against them.
+        OverlayOperator::new(&mut *self.connection)
+            .clear_item(item_type.as_str(), id)
+            .await?;
         sqlx::query(&format!("DELETE FROM {table} WHERE id = ?"))
             .bind(id)
             .execute(&mut *self.connection)
@@ -1032,6 +1121,21 @@ impl<'session> FlowOperator<'session> {
                 .execute(&mut *self.connection).await?;
         }
 
+        // Its tags, block reasons and beads id carry across, as they do when a node is retyped;
+        // the Task-only columns go, a goal template having none.
+        let (old_template, new_template) = match from {
+            FlowItemType::FlowGoal => (TemplateTable::FlowGoal, TemplateTable::FlowTask),
+            FlowItemType::FlowTask => (TemplateTable::FlowTask, TemplateTable::FlowGoal),
+        };
+        let carried = self.templates().one(old_template, id).await?;
+        self.templates()
+            .copy_relations_across(old_template, id, new_template, new_id)
+            .await?;
+        self.templates()
+            .set_beads_id(new_template, new_id, carried.beads_id.as_deref())
+            .await?;
+        self.templates().forget(old_template, id).await?;
+
         // The old row's links were re-pointed, so a plain delete orphans nothing.
         let old_table = match from {
             FlowItemType::FlowGoal => "flow_goals",
@@ -1044,23 +1148,18 @@ impl<'session> FlowOperator<'session> {
         Ok(new_id)
     }
 
-    /// Replaces a flow item's (Cycle Scope, Cycle Plan) pairs with `cycles`.
+    /// Makes a flow item's (Cycle Scope, Cycle Plan) pairs read `cycles`, **keeping the id of
+    /// every pair that survives**.
     ///
-    /// A `DELETE` followed by one `INSERT` per pair, and so **not atomic on its own**: interrupted
-    /// part-way it leaves the item with some of its old pairs gone and some of its new ones
-    /// missing. It opens no transaction — per ADR-0004 only the outermost caller decides the
-    /// boundary. Nothing is read first, which is why this stays on the operator.
+    /// A pair's id is part of every occurrence's value key — its overlay, its relations and the
+    /// nodes hung on it are all keyed on it — so replacing the pairs wholesale, as this used to,
+    /// orphaned every one of them on any save of the item, a title-only one included. The pairs
+    /// are diffed instead ([`cycles::diff_cycles`]): a pair whose Cycle Scope is still asked for
+    /// keeps its row, updated in place only if its Cycle Plan or position moved; only pairs that
+    /// really went are deleted and only new ones inserted. An unchanged set writes nothing.
     ///
-    /// ```no_run
-    /// # use arlesh_lib::database::session::SessionFactory;
-    /// # use arlesh_lib::flows::{error::FlowError, model::FlowItemType};
-    /// # async fn replace(factory: &SessionFactory) -> Result<(), FlowError> {
-    /// let mut db = factory.begin().await?;
-    /// db.flows().set_cycles(1, FlowItemType::FlowTask, 2, &[]).await?;
-    /// db.commit().await?;
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// It reads the stored pairs first and writes from them, and opens no transaction — per
+    /// ADR-0004 the outermost caller decides the boundary, and every caller runs inside one.
     pub async fn set_cycles(
         &mut self,
         flow_id: i64,
@@ -1068,12 +1167,45 @@ impl<'session> FlowOperator<'session> {
         item_id: i64,
         cycles: &[FlowCycleInput],
     ) -> Result<(), FlowError> {
-        sqlx::query("DELETE FROM flow_item_cycles WHERE item_type = ? AND item_id = ?")
-            .bind(item_type.as_str())
-            .bind(item_id)
+        let existing = self.item_cycles(item_type, item_id).await?;
+        let diff = cycles::diff_cycles(&existing, cycles);
+        for id in &diff.removed {
+            sqlx::query("DELETE FROM flow_item_cycles WHERE id = ?")
+                .bind(id)
+                .execute(&mut *self.connection)
+                .await?;
+        }
+        for kept in &diff.kept {
+            let (Some(stored), Some(wanted)) = (
+                existing.iter().find(|pair| pair.id == kept.id),
+                cycles.get(kept.position),
+            ) else {
+                continue;
+            };
+            let position = i64::try_from(kept.position).unwrap_or(i64::MAX);
+            let unchanged = stored.plan_kind == wanted.plan_kind
+                && stored.plan_start == wanted.plan_start
+                && stored.plan_end == wanted.plan_end
+                && stored.position == position;
+            if unchanged {
+                continue;
+            }
+            sqlx::query(
+                "UPDATE flow_item_cycles SET plan_kind = ?, plan_start = ?, plan_end = ?, position = ?
+                 WHERE id = ?",
+            )
+            .bind(&wanted.plan_kind)
+            .bind(wanted.plan_start)
+            .bind(wanted.plan_end)
+            .bind(position)
+            .bind(kept.id)
             .execute(&mut *self.connection)
             .await?;
-        for (position, cycle) in cycles.iter().enumerate() {
+        }
+        for position in &diff.added {
+            let Some(cycle) = cycles.get(*position) else {
+                continue;
+            };
             sqlx::query(
                 "INSERT INTO flow_item_cycles
                     (flow_id, item_type, item_id, scope_kind, scope_index,
@@ -1088,11 +1220,72 @@ impl<'session> FlowOperator<'session> {
             .bind(&cycle.plan_kind)
             .bind(cycle.plan_start)
             .bind(cycle.plan_end)
-            .bind(position as i64)
+            .bind(i64::try_from(*position).unwrap_or(i64::MAX))
             .execute(&mut *self.connection)
             .await?;
         }
         Ok(())
+    }
+
+    /// One item's cycle pairs, in position order.
+    pub async fn item_cycles(
+        &mut self,
+        item_type: FlowItemType,
+        item_id: i64,
+    ) -> Result<Vec<FlowItemCycle>, FlowError> {
+        Ok(sqlx::query_as::<_, FlowItemCycle>(
+            "SELECT * FROM flow_item_cycles WHERE item_type = ? AND item_id = ?
+             ORDER BY position, id",
+        )
+        .bind(item_type.as_str())
+        .bind(item_id)
+        .fetch_all(&mut *self.connection)
+        .await?)
+    }
+
+    /// How many iterations hold something recorded against an occurrence of this item drawn by
+    /// one of `cycle_ids`: an overlay, a relation, or a node hung on it.
+    pub async fn iterations_keyed_on(
+        &mut self,
+        item_type: FlowItemType,
+        item_id: i64,
+        cycle_ids: &[i64],
+    ) -> Result<i64, FlowError> {
+        let mut iterations: std::collections::HashSet<ScopeKey> = std::collections::HashSet::new();
+        let related: Vec<String> = sqlx::query_scalar(
+            "SELECT parent_key FROM derived_children
+             UNION SELECT node_key FROM derived_tags
+             UNION SELECT node_key FROM derived_block_reasons
+             UNION SELECT dependent_key FROM derived_dependencies WHERE dependent_key IS NOT NULL
+             UNION SELECT target_key FROM derived_dependencies WHERE target_key IS NOT NULL
+             UNION SELECT node_key FROM occurrence_async_templates
+             UNION SELECT node_key FROM occurrence_spawned_waits",
+        )
+        .fetch_all(&mut *self.connection)
+        .await?;
+        for cycle in cycle_ids {
+            let overlaid: Vec<ScopeKey> = sqlx::query_scalar(
+                "SELECT iteration_scope FROM task_overlays
+                 WHERE item_type = ?1 AND item_id = ?2 AND cycle_id = ?3
+                 UNION SELECT iteration_scope FROM goal_overlays
+                 WHERE item_type = ?1 AND item_id = ?2 AND cycle_id = ?3",
+            )
+            .bind(item_type.as_str())
+            .bind(item_id)
+            .bind(cycle)
+            .fetch_all(&mut *self.connection)
+            .await?;
+            iterations.extend(overlaid);
+            for key in related.iter().filter_map(|key| OccurrenceKey::parse(key)) {
+                if key.item.item_type.as_str() == item_type.as_str()
+                    && key.item.item_id == item_id
+                    && key.cycle == *cycle
+                {
+                    iterations.insert(key.iteration);
+                }
+            }
+        }
+        Ok(i64::try_from(iterations.len()).unwrap_or(i64::MAX))
     }
 
     /// Lists every flow's cycle pairs (for the mindmap load).
@@ -1325,15 +1518,106 @@ impl<'session> FlowOperator<'session> {
         Ok(())
     }
 
-    /// Resolves (or un-resolves) a whole Habit iteration by writing/clearing a `done` **Modification**
-    /// for **every** instance at that scope — the flow root plus every flow item. `resolved_at_ms` is
-    /// the completion instant (epoch ms) recorded on each row, so Blocking catch-up jumps are
-    /// reproducible. Individual instances are toggled with [`Self::set_item_status`].
+    /// The value key a scope-anchored instance reference names: the template item, the
+    /// iteration's scope key and the cycle pair, which is what an overlay row is keyed by.
+    pub async fn occurrence_key(
+        &mut self,
+        instance: &HabitInstanceRef,
+    ) -> Result<OccurrenceKey, FlowError> {
+        let item_type = TemplateKind::from_db(&instance.item_type).ok_or_else(|| {
+            FlowError::Invalid(format!("unknown instance type {}", instance.item_type))
+        })?;
+        Ok(OccurrenceKey {
+            item: nodes::key::TemplateItem {
+                item_type,
+                item_id: instance.item_id,
+            },
+            iteration: instance.iteration_scope_id,
+            cycle: instance.cycle_id,
+        })
+    }
+
+    /// What an occurrence of `item` renders as: a flow goal's is a Goal, a flow task's a Task, and
+    /// the root's whatever the flow's Instance Type says.
+    pub async fn occurrence_kind(
+        &mut self,
+        flow_id: FlowId,
+        item: TemplateKind,
+    ) -> Result<&'static str, FlowError> {
+        Ok(match item {
+            TemplateKind::FlowGoal => "goal",
+            TemplateKind::FlowTask => "task",
+            TemplateKind::FlowRoot => match self.get(flow_id).await?.instance_type.as_str() {
+                "goal" => "goal",
+                "commitment" => "commitment",
+                _ => "task",
+            },
+        })
+    }
+
+    /// Writes one occurrence's **status** into its kind's overlay, leaving every other overlay
+    /// column alone. `None` clears it back to the kind's default.
     ///
-    /// **Module-private.** It reads the stored row and writes values derived from it, so it is
-    /// only correct inside a transaction — and an operator wraps a bare connection, which cannot
-    /// demand one in its signature. [`set_iteration_done`] is the entry point; it takes
-    /// `&mut Db<Transactional>` and is this method's only caller.
+    /// The status arrives in whichever vocabulary its caller speaks and lands in the kind's own:
+    /// a Goal's `done` is `achieved`; a Commitment keeps only a `kept`/`broken` verdict, and
+    /// anything else clears it (a stale `done` is not a verdict). Completing records
+    /// `resolved_at_ms`, which Blocking catch-up reads, and any status write lifts a tombstone —
+    /// marking an archived occurrence done brings it back.
+    pub async fn set_occurrence_status(
+        &mut self,
+        flow_id: FlowId,
+        key: &OccurrenceKey,
+        status: Option<&str>,
+        resolved_at_ms: i64,
+    ) -> Result<(), FlowError> {
+        let kind = self.occurrence_kind(flow_id, key.item.item_type).await?;
+        let mut overlays = OverlayOperator::new(&mut *self.connection);
+        match kind {
+            "goal" => {
+                let mut overlay = overlays.goal(key).await?;
+                overlay.status = match status {
+                    Some("done" | "achieved") => Some("achieved".to_string()),
+                    Some(other @ ("frozen" | "archived")) => Some(other.to_string()),
+                    _ => None,
+                };
+                overlay.resolved_at =
+                    (overlay.status.as_deref() == Some("achieved")).then_some(resolved_at_ms);
+                overlay.tombstone = None;
+                overlays.put_goal(flow_id.0, key, &overlay).await?;
+            }
+            "commitment" => {
+                let mut overlay = overlays.commitment(key).await?;
+                overlay.verdict = match status {
+                    Some(verdict @ ("kept" | "broken")) => Some(verdict.to_string()),
+                    _ => None,
+                };
+                overlay.resolved_at = overlay.verdict.as_ref().map(|_| resolved_at_ms);
+                overlay.tombstone = None;
+                overlays.put_commitment(flow_id.0, key, &overlay).await?;
+            }
+            _ => {
+                let mut overlay = overlays.task(key).await?;
+                overlay.status = match status {
+                    Some(status @ ("in_progress" | "done")) => Some(status.to_string()),
+                    _ => None,
+                };
+                overlay.resolved_at =
+                    (overlay.status.as_deref() == Some("done")).then_some(resolved_at_ms);
+                overlay.tombstone = None;
+                overlays.put_task(flow_id.0, key, &overlay).await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Resolves (or un-resolves) a whole Habit iteration: marks **every** instance at that
+    /// iteration done — the flow root plus every occurrence of every flow item — or clears the
+    /// completions it holds. `resolved_at_ms` is the completion instant recorded on each, so
+    /// Blocking catch-up jumps are reproducible. Individual instances are moved with
+    /// [`Self::set_item_status`].
+    ///
+    /// **Module-private.** It reads each overlay and writes values derived from it, so it is only
+    /// correct inside a transaction. [`set_iteration_done`] is the entry point.
     async fn set_iteration_done(
         &mut self,
         flow_id: FlowId,
@@ -1341,51 +1625,57 @@ impl<'session> FlowOperator<'session> {
         done: bool,
         resolved_at_ms: i64,
     ) -> Result<(), FlowError> {
-        if !done {
-            sqlx::query(
-                "DELETE FROM habit_instance_modifications
-                 WHERE flow_id = ? AND iteration_scope_id = ? AND status = 'done' AND tombstone_kind IS NULL",
-            )
-            .bind(flow_id.0)
-            .bind(iteration_scope_id)
-            .execute(&mut *self.connection)
-            .await?;
-            return Ok(());
-        }
         for (item_type, item_id, cycle_id) in self.iteration_instance_keys(flow_id).await? {
-            sqlx::query(
-                "INSERT INTO habit_instance_modifications
-                    (flow_id, item_type, item_id, iteration_scope_id, cycle_id, status, resolved_at)
-                 VALUES (?, ?, ?, ?, ?, 'done', ?)
-                 ON CONFLICT(item_type, item_id, iteration_scope_id, cycle_id)
-                 DO UPDATE SET status = 'done', resolved_at = excluded.resolved_at, tombstone_kind = NULL",
-            )
-            .bind(flow_id.0)
-            .bind(&item_type)
-            .bind(item_id)
-            .bind(iteration_scope_id)
-            .bind(cycle_id)
-            .bind(resolved_at_ms)
-            .execute(&mut *self.connection)
-            .await?;
+            let key = self
+                .occurrence_key(&HabitInstanceRef {
+                    item_type,
+                    item_id,
+                    iteration_scope_id,
+                    cycle_id,
+                })
+                .await?;
+            if done {
+                self.set_occurrence_status(flow_id, &key, Some("done"), resolved_at_ms)
+                    .await?;
+                continue;
+            }
+            // Un-resolving clears completions only: an occurrence merely in progress, or one
+            // archived by hand, is left as it was.
+            let completed = match self.occurrence_kind(flow_id, key.item.item_type).await? {
+                "goal" => {
+                    let overlay = OverlayOperator::new(&mut *self.connection)
+                        .goal(&key)
+                        .await?;
+                    overlay.tombstone.is_none() && overlay.status.as_deref() == Some("achieved")
+                }
+                "commitment" => false,
+                _ => {
+                    let overlay = OverlayOperator::new(&mut *self.connection)
+                        .task(&key)
+                        .await?;
+                    overlay.tombstone.is_none() && overlay.status.as_deref() == Some("done")
+                }
+            };
+            if completed {
+                self.set_occurrence_status(flow_id, &key, None, resolved_at_ms)
+                    .await?;
+            }
         }
         Ok(())
     }
 
-    /// Every instance one iteration of this Habit holds, as the `(item_type, item_id, cycle_id)`
-    /// its Modification row is keyed by: the flow root, then each item once per cycle pair it
-    /// declares (once with [`NO_CYCLE`] when it declares none).
+    /// Every instance one iteration of this Habit holds, as `(item_type, item_id, cycle_id)`: the
+    /// flow root, then each item once per cycle pair it declares (once with [`NO_CYCLE`] when it
+    /// declares none).
     ///
     /// This is the same count SPEC means by "an iteration is resolved when every one of its
-    /// instances is done" — and since a flow item with N pairs now draws N nodes, N of them.
+    /// instances is done" — and since a flow item with N pairs draws N nodes, N of them.
     async fn iteration_instance_keys(
         &mut self,
         flow_id: FlowId,
     ) -> Result<Vec<(String, i64, i64)>, FlowError> {
         let items = self.instance_items(flow_id).await?;
         let cycles = self.cycles_by_item(flow_id).await?;
-        // The root is an instance too — keyed `(flow_root, flow_id)` so it stays unique per flow,
-        // and never has a cycle pair of its own.
         let mut keys = vec![(ROOT_INSTANCE_TYPE.to_string(), flow_id.0, NO_CYCLE)];
         for (item_type, item_id) in items {
             match cycles.get(&(item_type.clone(), item_id)) {
@@ -1400,28 +1690,37 @@ impl<'session> FlowOperator<'session> {
         Ok(keys)
     }
 
-    /// Lists every instance with a divergent (non-tombstoned) status Modification for this flow, and
-    /// the iteration scope it applies to — the per-instance state the mindmap renders (instances with
-    /// no row sit at their base status).
+    /// Every occurrence of this Habit with a recorded (non-tombstoned) status, and the iteration
+    /// scope it applies to — occurrences with none sit at their kind's default.
+    ///
+    /// Statuses read in the vocabulary Modifications always spoke: a Goal occurrence's
+    /// `achieved` reads `done`, and a Commitment's verdict reads as itself.
     pub async fn list_item_statuses(
         &mut self,
         flow_id: FlowId,
     ) -> Result<Vec<HabitItemStatus>, FlowError> {
         Ok(sqlx::query_as::<_, HabitItemStatus>(
-            "SELECT item_type, item_id, iteration_scope_id, cycle_id, status
-             FROM habit_instance_modifications
-             WHERE flow_id = ? AND status IS NOT NULL AND tombstone_kind IS NULL",
+            "SELECT item_type, item_id, iteration_scope AS iteration_scope_id, cycle_id, status
+             FROM task_overlays
+             WHERE flow_id = ?1 AND status IS NOT NULL AND tombstone IS NULL
+             UNION ALL
+             SELECT item_type, item_id, iteration_scope, cycle_id,
+                    CASE status WHEN 'achieved' THEN 'done' ELSE status END FROM goal_overlays
+             WHERE flow_id = ?1 AND status IS NOT NULL AND tombstone IS NULL
+             UNION ALL
+             SELECT item_type, item_id, iteration_scope, cycle_id, verdict FROM commitment_overlays
+             WHERE flow_id = ?1 AND verdict IS NOT NULL AND tombstone IS NULL",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
         .await?)
     }
 
-    /// Sets a **single** instance's status at one iteration scope. `status` `None` clears the
-    /// Modification (back to the base status); `Some(s)` upserts it (e.g. `in_progress`, `done`).
-    /// `resolved_at_ms` is recorded only for a `done` status (the completion instant that makes
-    /// Blocking catch-up reproducible). Unlike `set_iteration_done` (every instance at once), this
-    /// toggles one — so a Habit iteration can be advanced instance by instance.
+    /// Sets a **single** instance's status at one iteration scope. `status` `None` clears it (back
+    /// to the base status); `Some(s)` records it (e.g. `in_progress`, `done`). `resolved_at_ms` is
+    /// recorded only for a completion (the instant that makes Blocking catch-up reproducible).
+    /// Unlike `set_iteration_done` (every instance at once), this toggles one — so a Habit
+    /// iteration can be advanced instance by instance.
     ///
     /// `instance` names the occurrence down to its cycle pair, because an item with several pairs
     /// draws one node per pair in the same iteration: completing the morning one leaves the
@@ -1434,90 +1733,45 @@ impl<'session> FlowOperator<'session> {
         status: Option<&str>,
         resolved_at_ms: i64,
     ) -> Result<(), FlowError> {
-        let HabitInstanceRef {
-            item_type,
-            item_id,
-            iteration_scope_id,
-            cycle_id,
-        } = instance;
-        match status {
-            Some(status) => {
-                let resolved_at = if status == "done" {
-                    Some(resolved_at_ms)
-                } else {
-                    None
-                };
-                sqlx::query(
-                    "INSERT INTO habit_instance_modifications
-                        (flow_id, item_type, item_id, iteration_scope_id, cycle_id, status, resolved_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                     ON CONFLICT(item_type, item_id, iteration_scope_id, cycle_id)
-                     DO UPDATE SET status = excluded.status, resolved_at = excluded.resolved_at, tombstone_kind = NULL",
-                )
-                .bind(flow_id.0)
-                .bind(item_type)
-                .bind(item_id)
-                .bind(iteration_scope_id)
-                .bind(cycle_id)
-                .bind(status)
-                .bind(resolved_at)
-                .execute(&mut *self.connection)
-                .await?;
-            }
-            None => {
-                sqlx::query(
-                    "DELETE FROM habit_instance_modifications
-                     WHERE flow_id = ? AND item_type = ? AND item_id = ? AND iteration_scope_id = ?
-                       AND cycle_id = ? AND tombstone_kind IS NULL",
-                )
-                .bind(flow_id.0)
-                .bind(item_type)
-                .bind(item_id)
-                .bind(iteration_scope_id)
-                .bind(cycle_id)
-                .execute(&mut *self.connection)
-                .await?;
-            }
-        }
-        Ok(())
+        let key = self.occurrence_key(instance).await?;
+        self.set_occurrence_status(flow_id, &key, status, resolved_at_ms)
+            .await
     }
 
     /// Number of **divergent** iterations of a Habit — the probe the edit-habit reconciliation
     /// prompt fires on.
     ///
-    /// An iteration diverges when it has been completed **or** when something has been hung on
-    /// one of its occurrences. Both are work the user did against that iteration specifically, and
-    /// delete-and-regenerate destroys both, so both have to raise the prompt that says so. Counted
-    /// over the union of the two tables' iteration scopes rather than summed, so an iteration that
-    /// is completed *and* carries an added child counts once.
+    /// An iteration diverges when anything was recorded against it: an overlay on any of its
+    /// occurrences (a completion, an edit, an archive) or a node hung on one of them. All of it is
+    /// work the user did against that iteration specifically, and delete-and-regenerate destroys
+    /// it, so all of it has to raise the prompt that says so. Counted over the union of iteration
+    /// scopes, so an iteration that is completed *and* carries an added child counts once.
     pub async fn habit_completion_count(&mut self, flow_id: FlowId) -> Result<i64, FlowError> {
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM (
-                 SELECT iteration_scope_id FROM habit_instance_modifications
-                 WHERE flow_id = ? AND status = 'done' AND tombstone_kind IS NULL
-                 UNION
-                 SELECT iteration_scope_id FROM habit_instance_children WHERE flow_id = ?
-             )",
-        )
-        .bind(flow_id.0)
-        .bind(flow_id.0)
-        .fetch_one(&mut *self.connection)
-        .await?;
-        Ok(count)
+        let mut iterations: std::collections::HashSet<ScopeKey> =
+            OverlayOperator::new(&mut *self.connection)
+                .touched_iterations(flow_id.0)
+                .await?
+                .into_iter()
+                .collect();
+        for key in self.related_keys(flow_id).await? {
+            if let Some(key) = OccurrenceKey::parse(&key) {
+                iterations.insert(key.iteration);
+            }
+        }
+        Ok(i64::try_from(iterations.len()).unwrap_or(i64::MAX))
     }
 
-    /// Clears every Habit Modification for a flow (drops all completion history) — the
-    /// delete-and-regenerate arm of edit-habit reconciliation.
+    /// Clears everything recorded against a Habit's occurrences — overlays, relations and the
+    /// nodes hung on them — the delete-and-regenerate arm of edit-habit reconciliation.
     ///
-    /// The added children the flow's occurrences held go with it, rows and attachments alike: the
-    /// instances they hung off are about to stop existing, and a child left behind would be a node
-    /// attached to an occurrence no longer generated. The prompt this arm sits behind is what
-    /// keeps that from being a surprise.
+    /// The added children go with it, rows and attachments alike: the occurrences they hung off
+    /// are about to stop existing, and a child left behind would be a node attached to an
+    /// occurrence no longer generated. The prompt this arm sits behind is what keeps that from
+    /// being a surprise.
     pub async fn clear_habit_modifications(&mut self, flow_id: FlowId) -> Result<(), FlowError> {
         self.delete_instance_children(flow_id).await?;
-        sqlx::query("DELETE FROM habit_instance_modifications WHERE flow_id = ?")
-            .bind(flow_id.0)
-            .execute(&mut *self.connection)
+        OverlayOperator::new(&mut *self.connection)
+            .clear_habit(flow_id.0)
             .await?;
         Ok(())
     }
@@ -1533,27 +1787,60 @@ impl<'session> FlowOperator<'session> {
         )
     }
 
-    /// Every added child of every occurrence of one Habit.
-    pub async fn list_instance_children(
-        &mut self,
-        flow_id: FlowId,
-    ) -> Result<Vec<HabitInstanceChild>, FlowError> {
-        Ok(sqlx::query_as::<_, HabitInstanceChild>(
-            "SELECT flow_id, item_type, item_id, iteration_scope_id, cycle_id, child_type, child_id
-             FROM habit_instance_children WHERE flow_id = ? ORDER BY id",
+    /// The Habit an occurrence belongs to: the root's key names the flow itself, an item's names
+    /// the item, whose row says which flow owns it.
+    pub async fn occurrence_flow_id(&mut self, key: &OccurrenceKey) -> Result<FlowId, FlowError> {
+        Ok(FlowId(match key.item.item_type {
+            TemplateKind::FlowRoot => key.item.item_id,
+            TemplateKind::FlowGoal => {
+                self.item_flow_id(FlowItemType::FlowGoal, key.item.item_id)
+                    .await?
+            }
+            TemplateKind::FlowTask => {
+                self.item_flow_id(FlowItemType::FlowTask, key.item.item_id)
+                    .await?
+            }
+        }))
+    }
+
+    /// The occurrences of one Habit that carry a relation of their own — a node hung on them, a
+    /// tag, a block-reason list or a dependency — by canonical key.
+    pub async fn related_keys(&mut self, flow_id: FlowId) -> Result<Vec<String>, FlowError> {
+        Ok(sqlx::query_scalar(
+            "SELECT parent_key FROM derived_children WHERE flow_id = ?1
+             UNION SELECT node_key FROM derived_tags WHERE flow_id = ?1
+             UNION SELECT node_key FROM derived_block_reasons WHERE flow_id = ?1
+             UNION SELECT dependent_key FROM derived_dependencies
+                 WHERE flow_id = ?1 AND dependent_key IS NOT NULL
+             UNION SELECT target_key FROM derived_dependencies
+                 WHERE flow_id = ?1 AND target_key IS NOT NULL",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
         .await?)
     }
 
-    /// Every added child on the board, across every Habit — the mindmap's whole-tree read.
+    /// Every added child of every occurrence of one Habit.
+    pub async fn list_instance_children(
+        &mut self,
+        flow_id: FlowId,
+    ) -> Result<Vec<HabitInstanceChild>, FlowError> {
+        Ok(sqlx::query_as::<_, HabitInstanceChild>(
+            "SELECT flow_id, parent_kind, parent_key, child_type, child_id
+             FROM derived_children WHERE flow_id = ? ORDER BY id",
+        )
+        .bind(flow_id.0)
+        .fetch_all(&mut *self.connection)
+        .await?)
+    }
+
+    /// Every stored node hung on a derived one, across the board.
     pub async fn list_all_instance_children(
         &mut self,
     ) -> Result<Vec<HabitInstanceChild>, FlowError> {
         Ok(sqlx::query_as::<_, HabitInstanceChild>(
-            "SELECT flow_id, item_type, item_id, iteration_scope_id, cycle_id, child_type, child_id
-             FROM habit_instance_children ORDER BY id",
+            "SELECT flow_id, parent_kind, parent_key, child_type, child_id
+             FROM derived_children ORDER BY id",
         )
         .fetch_all(&mut *self.connection)
         .await?)
@@ -1561,67 +1848,66 @@ impl<'session> FlowOperator<'session> {
 
     /// The occurrence one node is attached to, if it is an added child of one.
     ///
-    /// The window comes back resolved, as the Time Scope `(iteration_scope_id,
-    /// window_end_scope_id)` the attachment settled at attach time, together with the kind the
-    /// occurrence renders as. That is everything the ancestry climb needs to treat the occurrence
-    /// as the node's parent without resolving a Flow Window on every step of every climb.
+    /// The window comes back resolved, as the Time Scope the attachment settled at attach time,
+    /// together with the kind the occurrence renders as. That is everything the ancestry climb
+    /// needs to treat the occurrence as the node's parent without resolving a Flow Window on
+    /// every step of every climb.
     ///
     /// Fails as a bare [`sqlx::Error`] rather than a [`FlowError`], because its caller is the
     /// ancestry climb in `tasks` — a `FlowError` there would need `TaskError` to wrap the very
-    /// enum that already wraps it. Both error types convert from `sqlx::Error` directly, so the
-    /// narrower failure type is the one that serves both sides.
+    /// enum that already wraps it.
     pub async fn child_attachment(
         &mut self,
         child_type: &str,
         child_id: i64,
     ) -> Result<Option<ChildAttachment>, sqlx::Error> {
-        let row: Option<(i64, String, ScopeKey, ScopeKey)> = sqlx::query_as(
-            "SELECT c.flow_id, f.instance_type, c.iteration_scope_id, c.window_end_scope_id
-             FROM habit_instance_children c JOIN flows f ON f.id = c.flow_id
-             WHERE c.child_type = ? AND c.child_id = ?",
+        let row: Option<AttachmentRow> = sqlx::query_as(
+            "SELECT flow_id, parent_kind, parent_key, window_start_scope_id, window_end_scope_id
+             FROM derived_children WHERE child_type = ? AND child_id = ?",
         )
         .bind(child_type)
         .bind(child_id)
         .fetch_optional(&mut *self.connection)
         .await?;
-        Ok(row.map(
-            |(flow_id, instance_type, start_id, end_id)| ChildAttachment {
-                flow_id,
-                instance_type,
-                window: TimeScope {
+        Ok(row.map(|row| ChildAttachment {
+            flow_id: row.flow_id.unwrap_or_default(),
+            instance_type: row.parent_kind,
+            parent_key: row.parent_key,
+            window: row.window_start_scope_id.zip(row.window_end_scope_id).map(
+                |(start_id, end_id)| TimeScope {
                     start_id,
                     end_id,
                     duration: None,
                 },
-            },
-        ))
+            ),
+        }))
     }
 
-    /// Attaches an already-created row to one occurrence. `window_end_scope_id` closes the
-    /// occurrence's window, resolved by the caller inside the same transaction.
+    /// Attaches an already-created row to one occurrence. `window` is the occurrence's, resolved
+    /// by the caller inside the same transaction.
     ///
-    /// **Module-private**: the row and its attachment are one gesture, and a row written without
-    /// its attachment is a node loose on the board. [`create_instance_child`] is the entry point.
-    async fn attach_instance_child(
+    /// **Crate-private**: the row and its attachment are one gesture, and a row written without
+    /// its attachment is a node loose on the board.
+    pub(crate) async fn attach_instance_child(
         &mut self,
         flow_id: FlowId,
-        instance: &HabitInstanceRef,
-        window_end_scope_id: ScopeKey,
+        parent_kind: &str,
+        parent: &OccurrenceKey,
+        window: Option<&TimeScope>,
         child_type: &str,
         child_id: i64,
     ) -> Result<(), FlowError> {
         sqlx::query(
-            "INSERT INTO habit_instance_children
-                (flow_id, item_type, item_id, iteration_scope_id, cycle_id, window_end_scope_id,
+            "INSERT INTO derived_children
+                (flow_id, parent_kind, parent_key, window_start_scope_id, window_end_scope_id,
                  child_type, child_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(flow_id.0)
-        .bind(&instance.item_type)
-        .bind(instance.item_id)
-        .bind(instance.iteration_scope_id)
-        .bind(instance.cycle_id)
-        .bind(window_end_scope_id)
+        .bind(parent_kind)
+        .bind(parent.node_key())
+        .bind(window.map(|window| window.start_id))
+        .bind(window.map(|window| window.end_id))
         .bind(child_type)
         .bind(child_id)
         .execute(&mut *self.connection)
@@ -1631,18 +1917,15 @@ impl<'session> FlowOperator<'session> {
 
     /// Forgets that a node was an occurrence's child, without touching the node.
     ///
-    /// Called when the node itself is deleted. SQLite recycles rowids, so an attachment left
-    /// pointing at a deleted row is not merely litter — a later node minted with the same id would
-    /// inherit it, and appear under an occurrence nobody put it on.
-    ///
-    /// Fails as a bare [`sqlx::Error`] for the same reason [`Self::child_attachment`] does: its
-    /// callers are the delete paths in `tasks`, whose own error type converts from it directly.
+    /// Called when the node itself is deleted, or moved to a parent of its own. SQLite recycles
+    /// rowids, so an attachment left pointing at a deleted row is not merely litter — a later node
+    /// minted with the same id would inherit it, and appear under an occurrence nobody put it on.
     pub async fn detach_instance_child(
         &mut self,
         child_type: &str,
         child_id: i64,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("DELETE FROM habit_instance_children WHERE child_type = ? AND child_id = ?")
+        sqlx::query("DELETE FROM derived_children WHERE child_type = ? AND child_id = ?")
             .bind(child_type)
             .bind(child_id)
             .execute(&mut *self.connection)
@@ -1664,7 +1947,7 @@ impl<'session> FlowOperator<'session> {
         new_id: i64,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "UPDATE habit_instance_children SET child_type = ?, child_id = ?
+            "UPDATE derived_children SET child_type = ?, child_id = ?
              WHERE child_type = ? AND child_id = ?",
         )
         .bind(new_type)
@@ -1687,12 +1970,13 @@ impl<'session> FlowOperator<'session> {
                 "task" => "tasks",
                 "goal" => "goals",
                 "commitment" => "commitments",
+                "expectation" => "expectations",
                 _ => "infos",
             };
-            // The table name is one of four literals chosen here, never caller text.
+            // The table name is one of five literals chosen here, never caller text.
             sqlx::query(&format!(
                 "DELETE FROM {table} WHERE id IN (
-                     SELECT child_id FROM habit_instance_children
+                     SELECT child_id FROM derived_children
                      WHERE flow_id = ? AND child_type = ?
                  )"
             ))
@@ -1701,7 +1985,7 @@ impl<'session> FlowOperator<'session> {
             .execute(&mut *self.connection)
             .await?;
         }
-        sqlx::query("DELETE FROM habit_instance_children WHERE flow_id = ?")
+        sqlx::query("DELETE FROM derived_children WHERE flow_id = ?")
             .bind(flow_id.0)
             .execute(&mut *self.connection)
             .await?;
@@ -1855,6 +2139,20 @@ impl<'session> FlowOperator<'session> {
             .bind(&d.depends_on_type).bind(map_item(&d.depends_on_type, d.depends_on_id)?)
             .execute(&mut *self.connection).await?;
         }
+        // What each template says about its occurrences travels with it, as its title does.
+        self.templates()
+            .copy(TemplateTable::Flow, flow_id.0, new_id)
+            .await?;
+        for (old, new) in &goal_map {
+            self.templates()
+                .copy(TemplateTable::FlowGoal, *old, *new)
+                .await?;
+        }
+        for (old, new) in &task_map {
+            self.templates()
+                .copy(TemplateTable::FlowTask, *old, *new)
+                .await?;
+        }
         let cloned = self.get(FlowId(new_id)).await?;
         Ok(TemplateClone {
             flow: cloned,
@@ -1984,6 +2282,11 @@ impl<'session> FlowOperator<'session> {
         // has a copy on both ends to be remapped onto.
         let (goals, tasks) = item_id_maps(&copied);
         for (kind, old_id, new_id) in &copied {
+            let table = match kind {
+                FlowItemType::FlowGoal => TemplateTable::FlowGoal,
+                FlowItemType::FlowTask => TemplateTable::FlowTask,
+            };
+            self.templates().copy(table, *old_id, *new_id).await?;
             self.copy_item_cycles(flow_id, *kind, *old_id, *new_id)
                 .await?;
             self.copy_item_dependencies(flow_id, *kind, *old_id, *new_id, &goals, &tasks)
@@ -2121,46 +2424,33 @@ impl<'session> FlowOperator<'session> {
         Ok(())
     }
 
-    /// Maps each slot index to the day its iteration was completed — present only when **every**
-    /// instance (the flow root plus every occurrence of every flow item) has a `done` Modification
-    /// (not tombstoned) for that iteration scope. An item-less flow still has one instance: its
-    /// root.
+    /// Maps each slot index to the instant its iteration was completed — present only when
+    /// **every** instance (the flow root plus every occurrence of every flow item) is done and not
+    /// tombstoned. An item-less flow still has one instance: its root.
     async fn iteration_resolutions(
         &mut self,
         flow_id: FlowId,
         slots: &[SlotWindow],
     ) -> Result<HashMap<i64, NaiveDateTime>, FlowError> {
-        // Instances = the flow root + each flow item once per cycle pair (once when it has none).
-        let instance_count = self.iteration_instance_keys(flow_id).await?.len();
-        let rows: Vec<(ScopeKey, i64, Option<i64>)> = sqlx::query_as(
-            "SELECT iteration_scope_id, COUNT(*), MAX(resolved_at)
-             FROM habit_instance_modifications
-             WHERE flow_id = ? AND status = 'done' AND tombstone_kind IS NULL
-             GROUP BY iteration_scope_id",
-        )
-        .bind(flow_id.0)
-        .fetch_all(&mut *self.connection)
-        .await?;
-        let by_scope: HashMap<ScopeKey, (i64, Option<i64>)> = rows
+        let keys: Vec<(nodes::key::TemplateItem, i64)> = self
+            .iteration_instance_keys(flow_id)
+            .await?
             .into_iter()
-            .map(|(scope, done, last)| (scope, (done, last)))
+            .filter_map(|(item_type, item_id, cycle)| {
+                TemplateKind::from_db(&item_type)
+                    .map(|item_type| (nodes::key::TemplateItem { item_type, item_id }, cycle))
+            })
             .collect();
-
-        let mut resolved = HashMap::new();
-        for slot in slots {
-            if let Some((done, last)) = by_scope.get(&slot.scope_id) {
-                if *done as usize == instance_count {
-                    // `resolved_at` is epoch-ms; treated as a UTC-naive instant for classification.
-                    // Sub-day-precision timezone reconciliation is deferred to the 8.4 write path.
-                    let instant = last
-                        .and_then(chrono::DateTime::from_timestamp_millis)
-                        .map(|dt| dt.naive_utc())
-                        .unwrap_or(slot.end);
-                    resolved.insert(slot.index, instant);
-                }
-            }
-        }
-        Ok(resolved)
+        let overlays = OverlayOperator::new(&mut *self.connection)
+            .for_habit(flow_id.0)
+            .await?;
+        let template = (
+            self.list_goals(flow_id).await?,
+            self.list_tasks(flow_id).await?,
+            self.cycles_by_item(flow_id).await?,
+        );
+        let parents = occurrences::occurrence_parents_of(flow_id, template, &keys);
+        Ok(occurrences::resolutions(slots, &keys, &overlays, &parents))
     }
 
     /// For each of `nodes` that was materialised from a flow, returns its originating flow title
@@ -2230,7 +2520,14 @@ pub async fn update_flow(
     id: FlowId,
     request: UpdateFlowRequest,
 ) -> Result<Flow, FlowError> {
-    db.flows().update(id, request).await
+    let template = request.template.clone();
+    let flow = db.flows().update(id, request).await?;
+    let is_task = InstanceType::from_db(&flow.instance_type) == InstanceType::Task;
+    db.flows()
+        .templates()
+        .write(TemplateTable::Flow, is_task, id.0, &template)
+        .await?;
+    db.flows().get(id).await
 }
 
 /// Deletes a flow (and, by cascade, its items, cycles, dependencies and recurrence).
@@ -2248,7 +2545,18 @@ pub async fn update_flow_goal(
     id: i64,
     request: UpdateFlowItemRequest,
 ) -> Result<FlowGoal, FlowError> {
-    db.flows().update_goal(id, request).await
+    let template = request.template.clone();
+    let mut goal = db.flows().update_goal(id, request).await?;
+    db.flows()
+        .templates()
+        .write(TemplateTable::FlowGoal, false, id, &template)
+        .await?;
+    goal.template = db
+        .flows()
+        .templates()
+        .one(TemplateTable::FlowGoal, id)
+        .await?;
+    Ok(goal)
 }
 
 /// Updates a flow-task item. Transactional for the same reason as [`update_flow`].
@@ -2258,7 +2566,18 @@ pub async fn update_flow_task(
     id: i64,
     request: UpdateFlowItemRequest,
 ) -> Result<FlowTask, FlowError> {
-    db.flows().update_task(id, request).await
+    let template = request.template.clone();
+    let mut task = db.flows().update_task(id, request).await?;
+    db.flows()
+        .templates()
+        .write(TemplateTable::FlowTask, true, id, &template)
+        .await?;
+    task.template = db
+        .flows()
+        .templates()
+        .one(TemplateTable::FlowTask, id)
+        .await?;
+    Ok(task)
 }
 
 /// Converts a flow item to the other kind (goal↔task), moving it to the other table and
@@ -2316,20 +2635,19 @@ pub async fn set_iteration_done(
 ///
 /// The iteration's window first, from the scope anchoring it; then, for an occurrence drawn by a
 /// **cycle pair**, that pair's Cycle Scope resolved against the iteration's start — the same
-/// arithmetic [`resolve_iteration_instances`] uses, so the window an added child is held to and
+/// arithmetic the occurrences are derived with, so the window an added child is held to and
 /// the window its occurrence renders with are one answer and not two. A pair naming no Cycle Scope
 /// falls back to the iteration's, exactly as an occurrence with no pair does.
-async fn occurrence_window(
-    db: &mut Db<Transactional>,
+pub(crate) async fn occurrence_window<M: SessionMode>(
+    db: &mut Db<M>,
     flow: &Flow,
-    instance: &HabitInstanceRef,
+    key: &OccurrenceKey,
 ) -> Result<TimeScope, FlowError> {
-    let anchor_date = instance.iteration_scope_id.start_date();
-    let (iteration, window_start) = resolve_flow_window(flow, anchor_date)?;
-    if instance.cycle_id == NO_CYCLE {
+    let (iteration, window_start) = resolve_flow_window(flow, key.iteration.start_date())?;
+    if key.cycle == NO_CYCLE {
         return Ok(iteration);
     }
-    let pair = db.flows().cycle(instance.cycle_id).await?;
+    let pair = db.flows().cycle(key.cycle).await?;
     let resolved = resolve_cycle(pair.as_ref(), Some(window_start))?;
     Ok(resolved.map_or(iteration, |resolved| resolved.time_scope))
 }
@@ -2351,92 +2669,83 @@ async fn occurrence_window(
 #[tracing::instrument(skip(db))]
 pub async fn create_instance_child(
     db: &mut Db<Transactional>,
-    flow_id: FlowId,
-    instance: &HabitInstanceRef,
+    parent: &OccurrenceKey,
     child_type: &str,
     title: String,
 ) -> Result<TargetRef, FlowError> {
     if !model::CHILD_KINDS.contains(&child_type) {
         return Err(FlowError::Invalid(format!(
-            "a habit occurrence holds tasks, goals, commitments and notes — not a {child_type}"
+            "a habit occurrence holds tasks, goals, commitments, expectations and notes — not a \
+             {child_type}"
         )));
     }
-    let flow = db.flows().get(flow_id).await?;
-    let window = occurrence_window(db, &flow, instance).await?;
-    let (host_type, host_id) = match (&flow.target_type, flow.target_id) {
-        (Some(kind), Some(id)) => (target_parent_type(kind), id),
-        _ => (target_parent_type(&flow.parent_type), flow.parent_id),
-    };
-
+    let host = occurrence_edit::host_of(db, parent).await?;
+    let parent_type = host.host_type.clone();
+    let parent_id = NodeId::Stored(host.host_id);
     let child_id = match child_type {
-        "task" => {
-            create_task(
-                db,
-                CreateTaskRequest {
-                    title,
-                    parent_type: host_type,
-                    parent_id: host_id,
-                    status: None,
-                    time_scope: None,
-                    on_scope_exit: None,
-                    plan: None,
-                    archival: None,
-                    agentic: None,
-                    asynchronous: None,
-                    async_template: None,
-                    agentic_brief: None,
-                },
-            )
-            .await?
-            .id
-        }
-        "goal" => {
-            create_goal(
-                db,
-                CreateGoalRequest {
-                    title,
-                    parent_type: host_type,
-                    parent_id: host_id,
-                    status: None,
-                    time_scope: None,
-                    on_scope_exit: None,
-                },
-            )
-            .await?
-            .id
-        }
-        "commitment" => {
-            create_commitment(
-                db,
-                CreateCommitmentRequest {
-                    title,
-                    parent_type: host_type,
-                    parent_id: host_id,
-                    verdict: None,
-                    time_scope: Some(window.clone()),
-                    verdict_window: None,
-                },
-            )
-            .await?
-            .id
-        }
+        "task" => create_task(
+            db,
+            CreateTaskRequest {
+                title,
+                parent_type,
+                parent_id,
+                ..Default::default()
+            },
+        )
+        .await?
+        .id
+        .require_stored()?,
+        "goal" => create_goal(
+            db,
+            CreateGoalRequest {
+                title,
+                parent_type,
+                parent_id,
+                ..Default::default()
+            },
+        )
+        .await?
+        .id
+        .require_stored()?,
+        "commitment" => create_commitment(
+            db,
+            CreateCommitmentRequest {
+                title,
+                parent_type,
+                parent_id,
+                time_scope: Some(host.window.clone()),
+                ..Default::default()
+            },
+        )
+        .await?
+        .id
+        .require_stored()?,
+        "expectation" => crate::tasks::create_expectation(
+            db,
+            crate::tasks::model::CreateExpectationRequest {
+                title,
+                parent_type,
+                parent_id,
+                ..Default::default()
+            },
+        )
+        .await?
+        .id
+        .require_stored()?,
         _ => {
             db.infos()
                 .create(CreateInfoRequest {
                     body: title,
                     details: None,
-                    parent_type: host_type,
-                    parent_id: host_id,
+                    parent_type,
+                    parent_id,
                     position: 0,
                 })
                 .await?
                 .id
         }
     };
-
-    db.flows()
-        .attach_instance_child(flow_id, instance, window.end_id, child_type, child_id)
-        .await?;
+    occurrence_edit::attach(db, &host, parent, child_type, child_id).await?;
     Ok(TargetRef {
         node_type: child_type.to_string(),
         node_id: child_id,
@@ -2450,16 +2759,11 @@ pub async fn create_instance_child(
 /// those children is that child's business, and that child's own status already says so.
 pub async fn unfinished_instance_children(
     db: &mut Db<Transactional>,
-    flow_id: FlowId,
-    instance: &HabitInstanceRef,
+    parent: &OccurrenceKey,
 ) -> Result<Vec<UnfinishedChild>, FlowError> {
-    unfinished_children(db, flow_id, |child| {
-        child.item_type == instance.item_type
-            && child.item_id == instance.item_id
-            && child.iteration_scope_id == instance.iteration_scope_id
-            && child.cycle_id == instance.cycle_id
-    })
-    .await
+    let flow_id = db.flows().occurrence_flow_id(parent).await?;
+    let parent_key = parent.node_key();
+    unfinished_children(db, flow_id, |child| child.parent_key == parent_key).await
 }
 
 /// The unfinished added children on **any** occurrence of one iteration — the guard for closing
@@ -2467,10 +2771,10 @@ pub async fn unfinished_instance_children(
 pub async fn unfinished_iteration_children(
     db: &mut Db<Transactional>,
     flow_id: FlowId,
-    iteration_scope_id: ScopeKey,
+    iteration: ScopeKey,
 ) -> Result<Vec<UnfinishedChild>, FlowError> {
     unfinished_children(db, flow_id, |child| {
-        child.iteration_scope_id == iteration_scope_id
+        OccurrenceKey::parse(&child.parent_key).is_some_and(|key| key.iteration == iteration)
     })
     .await
 }
@@ -2548,8 +2852,21 @@ pub async fn archive_and_fork(
     now: NaiveDateTime,
 ) -> Result<Flow, FlowError> {
     let clone = db.flows().fork_flow(flow_id).await?;
+    stop_recurring(db, flow_id, now).await?;
+    Ok(clone)
+}
+
+/// Archives a Habit: it **stops recurring** after the Day holding `now` (by the 02:00 day
+/// boundary), so an iteration that has already begun still stands with its history and no later
+/// one is generated. An end already on or before that Day is left alone rather than pushed later,
+/// and a flow with no Recurrence has nothing to stop.
+pub(crate) async fn stop_recurring(
+    db: &mut Db<Transactional>,
+    flow_id: FlowId,
+    now: NaiveDateTime,
+) -> Result<(), FlowError> {
     let Some(recurrence) = db.flows().get_recurrence(flow_id).await? else {
-        return Ok(clone);
+        return Ok(());
     };
     let today = if now < day_boundary(now.date()) {
         now.date() - Duration::days(1)
@@ -2558,13 +2875,13 @@ pub async fn archive_and_fork(
     };
     if let Some(end) = recurrence.end_scope_id {
         if end.start_date() <= today {
-            return Ok(clone);
+            return Ok(());
         }
     }
     db.flows()
         .set_recurrence_end(flow_id, ScopeKey::day(today))
         .await?;
-    Ok(clone)
+    Ok(())
 }
 
 /// Copies a Flow under `(parent_type, parent_id)` at `position` — the Mindmap's Copy+Paste of a
@@ -2824,7 +3141,12 @@ fn resolve_iteration_instances(
                         let (start, end) = resolved.scope.bounds();
                         (Some(resolved.time_scope), resolved.plan, start, end)
                     }
-                    None => (None, None, slot.start, slot.end),
+                    None => (
+                        None,
+                        whole_scope_plan(Some(pair), Some(window_start))?,
+                        slot.start,
+                        slot.end,
+                    ),
                 };
             instances.push(HabitInstance {
                 item_type: item_type.clone(),
@@ -2936,11 +3258,21 @@ pub async fn convert_to_flow(
     let (title, parent_type, parent_id, root_ts) = match root_type {
         "goal" => {
             let g = db.goals().get(GoalId(root_id)).await?;
-            (g.title, g.parent_type, g.parent_id, g.time_scope)
+            (
+                g.title,
+                g.parent_type,
+                g.parent_id.require_stored()?,
+                g.time_scope,
+            )
         }
         "task" => {
             let t = db.tasks().get(TaskId(root_id)).await?;
-            (t.title, t.parent_type, t.parent_id, t.time_scope)
+            (
+                t.title,
+                t.parent_type,
+                t.parent_id.require_stored()?,
+                t.time_scope,
+            )
         }
         _ => {
             return Err(FlowError::Invalid(
@@ -3127,8 +3459,8 @@ pub async fn convert_to_flow(
             let dependencies = db.tasks().list_dependencies(TaskId(*id)).await?;
             for dep in dependencies {
                 let dep_key = match dep {
-                    Dependency::Task { id } => ("task".to_string(), id),
-                    Dependency::Goal { id } => ("goal".to_string(), id),
+                    Dependency::Task { id } => ("task".to_string(), id.require_stored()?),
+                    Dependency::Goal { id } => ("goal".to_string(), id.require_stored()?),
                     // A wait is never a flow item, so an edge onto one has nothing inside the
                     // template to become — the same as an edge onto anything outside the subtree.
                     Dependency::Expectation { .. } => continue,
@@ -3207,6 +3539,59 @@ async fn load_template<M: SessionMode>(
     })
 }
 
+/// Resolves a flow's root **Cycle Plan** — a relative plan window inside the flow window — against
+/// one concrete window start. `None` when the flow carries none (a goal or commitment flow never
+/// does) or has no window to resolve it in.
+///
+/// Shared by [`start`], which writes it onto the root Task, and by a Habit's occurrences, which
+/// read it per iteration: one resolution, so a started flow and a derived iteration root cannot
+/// disagree about when "the 2nd day" of the window falls.
+fn resolve_root_plan(
+    flow: &Flow,
+    window_start: Option<NaiveDate>,
+) -> Result<Option<TimeScope>, FlowError> {
+    let (Some(kind), Some(plan_start), Some(plan_end), Some(base)) = (
+        flow.root_plan_kind.as_deref(),
+        flow.root_plan_start,
+        flow.root_plan_end,
+        window_start,
+    ) else {
+        return Ok(None);
+    };
+    Ok(Some(window_plan(base, kind, plan_start, plan_end)?))
+}
+
+/// A relative plan counted from the flow window's start: `[start, end]` of `kind`. With `kind`
+/// the window's own and `1..n`, it is the whole window — what the "Planned" toggle stores.
+fn window_plan(base: NaiveDate, kind: &str, start: i64, end: i64) -> Result<TimeScope, FlowError> {
+    Ok(TimeScope {
+        start_id: offset_scope(base, start, kind)?,
+        end_id: offset_scope(base, end, kind)?,
+        duration: None,
+    })
+}
+
+/// A **whole-scope** pair's Cycle Plan: it names no Cycle Scope, so its plan is counted from the
+/// flow window's start, like the root's. `None` for a scoped pair (see [`resolve_cycle`]), a pair
+/// with no plan, or an unscoped flow.
+pub(crate) fn whole_scope_plan(
+    pair: Option<&FlowItemCycle>,
+    window_start: Option<NaiveDate>,
+) -> Result<Option<TimeScope>, FlowError> {
+    let (Some(pair), Some(base)) = (pair, window_start) else {
+        return Ok(None);
+    };
+    if pair.scope_kind.is_some() {
+        return Ok(None);
+    }
+    let (Some(kind), Some(start), Some(end)) =
+        (pair.plan_kind.as_deref(), pair.plan_start, pair.plan_end)
+    else {
+        return Ok(None);
+    };
+    Ok(Some(window_plan(base, kind, start, end)?))
+}
+
 /// Resolves every scope a flow materialisation needs into a lookup table, in two rounds per pair:
 /// the Cycle Scope from the window start, then the Cycle Plan from *that scope's* own start date.
 /// Both rounds already live inside [`resolve_pair`]; this walks the pairs. Pure: every scope is
@@ -3229,19 +3614,7 @@ fn resolve_scopes(
         };
 
     // The root's relative Cycle Plan (task instance type only), against the window start.
-    let root_plan: Option<TimeScope> = match (
-        flow.root_plan_kind.as_deref(),
-        flow.root_plan_start,
-        flow.root_plan_end,
-        window_start,
-    ) {
-        (Some(kind), Some(plan_start), Some(plan_end), Some(base)) => Some(TimeScope {
-            start_id: offset_scope(base, plan_start, kind)?,
-            end_id: offset_scope(base, plan_end, kind)?,
-            duration: None,
-        }),
-        _ => None,
-    };
+    let root_plan = resolve_root_plan(flow, window_start)?;
 
     let mut pairs: HashMap<i64, ResolvedPair> = HashMap::with_capacity(cycles.len());
     for cycle in cycles {
@@ -3269,6 +3642,7 @@ async fn write_plan(
     flow_id: FlowId,
     request: &StartFlowRequest,
     plan: &RenderedPlan,
+    fields: &HashMap<(String, i64), TemplateFields>,
 ) -> Result<MaterializedFlow, FlowError> {
     let dangling = || FlowError::Invalid("rendered plan references an unwritten node".to_string());
     let mut written: Vec<(String, i64)> = Vec::with_capacity(plan.nodes.len());
@@ -3295,14 +3669,14 @@ async fn write_plan(
                     CreateGoalRequest {
                         title: node.title.clone(),
                         parent_type: create_parent.0,
-                        parent_id: create_parent.1,
+                        parent_id: create_parent.1.into(),
                         status: None,
                         time_scope: node.time_scope.clone(),
                         on_scope_exit: None,
                     },
                 )
                 .await?;
-                ("goal".to_string(), goal.id)
+                ("goal".to_string(), goal.id.require_stored()?)
             }
             InstanceType::Task => {
                 let task = create_task(
@@ -3310,7 +3684,7 @@ async fn write_plan(
                     CreateTaskRequest {
                         title: node.title.clone(),
                         parent_type: create_parent.0,
-                        parent_id: create_parent.1,
+                        parent_id: create_parent.1.into(),
                         status: None,
                         time_scope: node.time_scope.clone(),
                         plan: node.plan.clone(),
@@ -3329,7 +3703,7 @@ async fn write_plan(
                     },
                 )
                 .await?;
-                ("task".to_string(), task.id)
+                ("task".to_string(), task.id.require_stored()?)
             }
             InstanceType::Commitment => {
                 // A commitment Habit's root. Its window comes from the iteration the same way a
@@ -3344,14 +3718,14 @@ async fn write_plan(
                     CreateCommitmentRequest {
                         title: node.title.clone(),
                         parent_type: create_parent.0,
-                        parent_id: create_parent.1,
+                        parent_id: create_parent.1.into(),
                         verdict: None,
                         time_scope: node.time_scope.clone(),
                         verdict_window: None,
                     },
                 )
                 .await?;
-                ("commitment".to_string(), commitment.id)
+                ("commitment".to_string(), commitment.id.require_stored()?)
             }
         };
 
@@ -3381,6 +3755,9 @@ async fn write_plan(
         if node.is_private {
             set_node_private(db, &created.0, created.1).await?;
         }
+        if let Some(fields) = fields.get(&(source.0.to_string(), source.1)) {
+            apply_template_fields(db, &created.0, created.1, fields).await?;
+        }
         written.push(created);
     }
 
@@ -3388,9 +3765,13 @@ async fn write_plan(
         let dependent = written.get(edge.dependent.0).ok_or_else(dangling)?.1;
         let (blocker_type, blocker_id) = written.get(edge.blocker.0).ok_or_else(dangling)?.clone();
         let dependency = if blocker_type == "goal" {
-            Dependency::Goal { id: blocker_id }
+            Dependency::Goal {
+                id: blocker_id.into(),
+            }
         } else {
-            Dependency::Task { id: blocker_id }
+            Dependency::Task {
+                id: blocker_id.into(),
+            }
         };
         add_task_dependency(db, TaskId(dependent), dependency).await?;
     }
@@ -3422,7 +3803,84 @@ pub async fn start(
     let cycles = template.planned_cycles(flow_id.0);
     let scopes = resolve_scopes(&flow, request.anchor_date, &cycles)?;
     let plan = render(&flow, &request.title, &template, &scopes);
-    write_plan(db, flow_id, &request, &plan).await
+    let mut fields: HashMap<(String, i64), TemplateFields> = HashMap::new();
+    fields.insert(("flow".to_string(), flow_id.0), flow.template.clone());
+    for goal in db.flows().list_goals(flow_id).await? {
+        fields.insert(("flow_goal".to_string(), goal.id), goal.template);
+    }
+    for task in db.flows().list_tasks(flow_id).await? {
+        fields.insert(("flow_task".to_string(), task.id), task.template);
+    }
+    write_plan(db, flow_id, &request, &plan, &fields).await
+}
+
+/// Copies what a template says about the rows it draws onto one row a start just made: a Task's
+/// delegate, Agentic and Asynchronous flags and Backlog, and every kind's tags, block reasons and
+/// beads id — so a started flow's copy is the template, not merely its title.
+async fn apply_template_fields(
+    db: &mut Db<Transactional>,
+    node_type: &str,
+    node_id: i64,
+    fields: &TemplateFields,
+) -> Result<(), FlowError> {
+    match node_type {
+        "task" => {
+            if *fields != TemplateFields::default() {
+                crate::tasks::update_task(
+                    db,
+                    TaskId(node_id),
+                    crate::tasks::model::UpdateTaskRequest {
+                        delegate_to: Some(fields.delegate_to),
+                        agentic: Some(crate::tasks::model::TaskAgentic::from_column(
+                            fields.agentic,
+                        )),
+                        asynchronous: Some(fields.asynchronous),
+                        archival: Some(fields.archival),
+                        // A started Flow's Task carries its template's brief as its own.
+                        agentic_brief: Some(fields.agentic_brief.clone()),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+            }
+            for tag_id in &fields.tag_ids {
+                db.tasks().add_tag(TaskId(node_id), *tag_id).await?;
+            }
+            if let Some(beads_id) = &fields.beads_id {
+                db.tasks()
+                    .set_beads_id(TaskId(node_id), Some(beads_id.clone()))
+                    .await?;
+            }
+        }
+        "goal" => {
+            for tag_id in &fields.tag_ids {
+                db.goals().add_tag(GoalId(node_id), *tag_id).await?;
+            }
+            if let Some(beads_id) = &fields.beads_id {
+                db.goals()
+                    .set_beads_id(GoalId(node_id), Some(beads_id.clone()))
+                    .await?;
+            }
+        }
+        _ => {
+            for tag_id in &fields.tag_ids {
+                db.commitments()
+                    .add_tag(CommitmentId(node_id), *tag_id)
+                    .await?;
+            }
+            if let Some(beads_id) = &fields.beads_id {
+                db.commitments()
+                    .set_beads_id(CommitmentId(node_id), Some(beads_id.clone()))
+                    .await?;
+            }
+        }
+    }
+    if !fields.block_reasons.is_empty() && node_type != "commitment" {
+        db.block_reasons()
+            .set(node_type, node_id, &fields.block_reasons)
+            .await?;
+    }
+    Ok(())
 }
 
 /// Marks a freshly materialised node private, propagating a flow's (or flow item's) privacy onto

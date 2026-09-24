@@ -49,11 +49,12 @@ model was simplified and was not revoked by it.
 
 **Only stored nodes are roots.** A root names a row — a Domain (any of the four domain-table
 subtypes), Goal, Task, Commitment, Expectation, Info, Flow or flow item — keyed by its table and its
-row id, the way the node's own table keys it. A **derived** node (a Habit occurrence, a wait's check
-task, a delegated Task's wait, a spawned wait) is a row of nothing: it is visible when its nearest
-stored ancestor is, and never writable, having no row to write. This is written ahead of `Arlesh-9o1`
-and `Arlesh-pnn`, which change how scopes and derived nodes are identified; neither changes it,
-because a root only ever names a stored row.
+row id, the way the node's own table keys it. A **derived** row (ADR 0008 — a Habit occurrence, a wait's check
+task, a delegated Task's wait, a spawned wait, each an ordinary row of its kind with a UUID id and
+an `origin`) is never a root and never writable by the MCP: it is visible exactly when it is not
+private and the nearest **stored** row above it is visible, climbing through derived parents (an
+occurrence under its iteration's root) to get there. A stored row hung on an occurrence is a stored
+row like any other, visible by the roots above the Habit's host its columns name.
 
 **Storage.** The roots are rows of the board (`mcp_roots`), not a per-window preference: the board
 is what they describe, and every window and the MCP endpoint read the same list. They are
@@ -104,8 +105,9 @@ resolver in `src-tauri/src/access/`:
   Task or Goal linking the entity.
 - **Scopes** are the calendar, not the board, and carry nothing a root protects; `arlesh_scopes` is
   unaffected.
-- **The Habit sections travel with their Flow**: a Flow's iterations, cycles and intra-flow
-  dependencies are there exactly when the Flow is.
+- **The Flow sections travel with their Flow**: a Flow's derivation outcome (`habits`), cycles and
+  intra-flow dependencies are there exactly when the Flow is. Its occurrences are rows of the kind
+  sections, filtered like every derived row.
 
 The write tools of `Arlesh-rz0` are deliberately not built yet; they follow `Arlesh-9o1` and
 `Arlesh-pnn`, and will apply the same rule — write needs an Agentic Task inside a root.

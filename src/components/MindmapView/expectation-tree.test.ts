@@ -5,13 +5,11 @@ import { focusExemptPath } from "@/utils/focus-exemption";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
 import type { Domain } from "@/api/domains";
 import type { Task, TaskDependencyEdge } from "@/api/tasks";
-import type { Expectation, ExpectationCheck, SpawnedWaitView } from "@/api/expectations";
+import type { Expectation } from "@/api/expectations";
 import type { Info } from "@/api/infos";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { findNode } from "@/utils/mindmap-tree";
-import {
-  checkNodeId, delegationWaitNodeId, expectationNodeId, spawnedCheckNodeId, spawnedWaitNodeId,
-} from "@/utils/node-uuid";
+import { expectationNodeId } from "@/utils/node-uuid";
 import { testKey } from "@/test/scope-key";
 
 const ASPECT: Domain = {
@@ -37,24 +35,29 @@ function wait(over: Partial<Expectation> = {}): Expectation {
 
 const DUE = { start_id: testKey(10), end_id: testKey(10) };
 const EVERY = { n: 3, kind: "day" };
+/** The UUID the backend serves a check task under. */
+const CHECK_ID = "0b3c1f30-9f0e-5a1b-8c4d-000000000003";
+const SPAWNED_ID = "1c4d2e41-0a1f-5b2c-9d5e-000000000005";
+const DELEGATION_ID = "2d5e3f52-1b20-5c3d-8e6f-000000000005";
+
+/** A wait's check task, as the Task virtual table serves it. */
+function check(over: Partial<Task> = {}): Task {
+  return task({
+    id: CHECK_ID, title: "Reviewer replies", parent_type: "expectation", parent_id: 3,
+    time_scope: DUE, position: Number.MIN_SAFE_INTEGER,
+    origin: { kind: "check", wait_kind: "stored", wait_id: 3, due_at: "2026-07-10T02:00:00" },
+    ...over,
+  });
+}
 
 function build(
   tasks: Task[], expectations: Expectation[], deps: TaskDependencyEdge[] = [], infos: Info[] = [],
-  checks: ExpectationCheck[] = [], spawned: SpawnedWaitView[] = [],
 ): MindmapNode {
   return buildTree(
     [ASPECT], [], tasks, infos, [], [], [], [], [], [], [], deps, [], expectations,
-    (title) => `waiting on ${title}`, checks, spawned,
+    (title) => `waiting on ${title}`, (title) => `Check: ${title}`,
   );
 }
-
-function spawn(over: Partial<SpawnedWaitView> = {}): SpawnedWaitView {
-  return {
-    task_id: 5, spawned_at: "2026-09-20T10:00:00", status: "pending", archival: "live", done_checks: [], ...over,
-  };
-}
-
-const TEMPLATE = { title: "Waiting on Send the draft", tag_ids: [4], check_every: EVERY };
 
 describe("buildTree — expectations", () => {
   it("draws a stored wait under its parent, keyed by a minted UUID and carrying its row", () => {
@@ -64,20 +67,15 @@ describe("buildTree — expectations", () => {
     expect(node?.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   });
 
-  it("hangs a virtual check task, drawn on its due day, under each wait the backend says is due", () => {
-    const root = build([], [
-      wait({ id: 3, check_every: EVERY }),
-      wait({ id: 4, check_every: EVERY, status: "released" }),
-      wait({ id: 6, check_every: EVERY, archival: "archived" }),
-      wait({ id: 7 }),
-    ], [], [], [{ expectation_id: 3, due: DUE, due_at: "2026-07-10T02:00:00" }]);
-    expect(findNode(root, expectationNodeId(3))).toMatchObject({ checkEvery: EVERY });
-    const check = findNode(root, checkNodeId({ kind: "stored", expectationId: 3 }, "2026-07-10T02:00:00"));
-    expect(check).toMatchObject({
-      kind: "task", status: "todo", virtual: true, expectationCheck: { kind: "stored", expectationId: 3 }, timeScope: DUE,
+  it("hangs a check task row under its wait, drawn with the prefix, its editor keeping the row's title", () => {
+    const root = build([check()], [wait({ check_every: EVERY })]);
+    const node = findNode(root, `task-${CHECK_ID}`);
+    expect(node).toMatchObject({
+      kind: "task", rowId: CHECK_ID, status: "todo", timeScope: DUE,
+      title: "Check: Reviewer replies", rowTitle: "Reviewer replies",
     });
-    expect(check?.rowId).toBeUndefined();
-    for (const id of [4, 6, 7]) expect(findNode(root, expectationNodeId(id))?.children).toEqual([]);
+    expect(node?.virtual).toBeUndefined();
+    expect(findNode(root, expectationNodeId(3))?.children.map((child) => child.id)).toEqual([`task-${CHECK_ID}`]);
   });
 
   it("blocks a task depending on a pending wait, and lets it go once the wait is released", () => {
@@ -89,145 +87,88 @@ describe("buildTree — expectations", () => {
     expect(released?.virtualBlockers).toEqual([]);
   });
 
-  it("gives an undone delegated task a virtual wait, and a done one none", () => {
-    const root = build([
-      task({ id: 5, delegate_to: { kind: "agent" } }),
-      task({ id: 8, delegate_to: { kind: "person", id: 2 }, status: "done" }),
-    ], []);
-    expect(findNode(root, delegationWaitNodeId(5))).toMatchObject({
-      kind: "expectation", status: "pending", virtual: true, delegationWait: { taskId: 5 },
-      title: "waiting on Send the draft",
+  it("draws a delegated task's wait row beneath it, titled as what it waits on", () => {
+    const root = build([task({ delegate_to: { kind: "agent" } })], [wait({
+      id: DELEGATION_ID, title: "Send the draft", parent_type: "task", parent_id: 5,
+      origin: { kind: "delegation_wait", task_id: 5 },
+    })]);
+    const node = findNode(root, expectationNodeId(DELEGATION_ID));
+    expect(node).toMatchObject({
+      kind: "expectation", status: "pending", title: "waiting on Send the draft", rowTitle: "Send the draft",
     });
-    expect(findNode(root, delegationWaitNodeId(8))).toBeUndefined();
+    expect(findNode(root, "task-5")?.children.map((child) => child.id)).toContain(expectationNodeId(DELEGATION_ID));
   });
 
-  it("draws a done asynchronous task's spawned wait beneath it, from its template and overlay", () => {
+  it("draws a done asynchronous task's spawned wait row beneath it, with its checks beneath the wait", () => {
     const root = build(
-      [task({ status: "done", asynchronous: true, async_template: TEMPLATE })], [], [], [], [],
-      [spawn({ next_check: DUE, time_scope: DUE })],
+      [
+        task({ status: "done", asynchronous: true }),
+        check({
+          parent_id: SPAWNED_ID, title: "Waiting on Send the draft",
+          origin: { kind: "check", wait_kind: "spawned", wait_id: 5, due_at: "2026-09-22T10:00:00" },
+        }),
+      ],
+      [wait({
+        id: SPAWNED_ID, title: "Waiting on Send the draft", parent_type: "task", parent_id: 5,
+        check_every: EVERY, time_scope: DUE, tag_ids: [4], origin: { kind: "spawned_wait", task_id: 5 },
+      })],
     );
-    const spawned = findNode(root, spawnedWaitNodeId(5));
+    const spawned = findNode(root, expectationNodeId(SPAWNED_ID));
     expect(spawned).toMatchObject({
-      kind: "expectation", title: "Waiting on Send the draft", status: "pending", virtual: true,
-      spawnedBy: { taskId: 5 }, checkEvery: EVERY, timeScope: DUE, tagIds: [4],
+      kind: "expectation", rowId: SPAWNED_ID, checkEvery: EVERY, timeScope: DUE, tagIds: [4],
     });
-    expect(spawned?.rowId).toBeUndefined();
-    expect(findNode(root, "task-5")?.children.map((child) => child.id)).toContain(spawnedWaitNodeId(5));
-    expect(findNode(root, spawnedCheckNodeId(5))).toMatchObject({
-      kind: "task", virtual: true, expectationCheck: { kind: "spawned", taskId: 5 }, timeScope: DUE,
-    });
-  });
-
-  it("draws no spawned wait for a task without a template, asynchronous or not", () => {
-    const bare = build([task({ status: "done" })], [], [], [], [], [spawn()]);
-    expect(findNode(bare, spawnedWaitNodeId(5))).toBeUndefined();
-    const flagOnly = build([task({ status: "done", asynchronous: true })], [], [], [], [], [spawn()]);
-    expect(findNode(flagOnly, spawnedWaitNodeId(5))).toBeUndefined();
-  });
-
-  it("lets a dependent of a done asynchronous task go, whatever its spawned wait is doing", () => {
-    const edge: TaskDependencyEdge = { task_id: 8, dependency_type: "task", dependency_id: 5 };
-    const tasks = (): Task[] => [
-      task({ status: "done", asynchronous: true, async_template: TEMPLATE }),
-      task({ id: 8, title: "Merge it" }),
-    ];
-    const pending = findNode(build(tasks(), [], [edge], [], [], [spawn()]), "task-8");
-    expect(pending?.virtualBlockers).toEqual([]);
+    expect(findNode(root, "task-5")?.children.map((child) => child.id)).toContain(expectationNodeId(SPAWNED_ID));
+    expect(spawned?.children.map((child) => child.id)).toEqual([`task-${CHECK_ID}`]);
   });
 
   it("reads asynchronous from the task's own flag, with or without a template", () => {
-    const root = build([task({ asynchronous: true, async_template: TEMPLATE }), task({ id: 8, asynchronous: true })], []);
-    expect(findNode(root, "task-5")).toMatchObject({ asynchronous: true, asyncTemplate: TEMPLATE });
+    const template = { title: "Waiting on Send the draft", tag_ids: [4], check_every: EVERY };
+    const root = build([task({ asynchronous: true, async_template: template }), task({ id: 8, asynchronous: true })], []);
+    expect(findNode(root, "task-5")).toMatchObject({ asynchronous: true, asyncTemplate: template });
     expect(findNode(root, "task-8")).toMatchObject({ asynchronous: true });
   });
 
-  it("titles a check task with the prefix it is given, before the wait's own title", () => {
-    const root = buildTree(
-      [ASPECT], [], [], [], [], [], [], [], [], [], [], [], [], [wait({ id: 3, check_every: EVERY })],
-      (title) => title, [{ expectation_id: 3, due: DUE, due_at: "2026-07-10T02:00:00" }], [], (title) => `Check: ${title}`,
-    );
-    expect(findNode(root, expectationNodeId(3))?.children[0]?.title).toBe("Check: Reviewer replies");
-  });
-
-  it("keeps every completed check as a done task beside the one due", () => {
-    const root = build([], [wait({ id: 3, check_every: EVERY })], [], [], [
-      { expectation_id: 3, due: DUE, due_at: "2026-07-01T02:00:00", resolved_at: "2026-07-01T09:00:00" },
-      { expectation_id: 3, due: DUE, due_at: "2026-07-04T09:00:00", resolved_at: "2026-07-05T09:00:00" },
-      { expectation_id: 3, due: DUE, due_at: "2026-07-08T09:00:00" },
-    ]);
-    const children = findNode(root, expectationNodeId(3))?.children ?? [];
-    expect(children.map((child) => child.status)).toEqual(["done", "done", "todo"]);
-    expect(children[0]).toMatchObject({ checkDueAt: "2026-07-01T02:00:00", expectationCheck: { kind: "stored", expectationId: 3 } });
-    expect(children[2]?.id).toBe(checkNodeId({ kind: "stored", expectationId: 3 }, "2026-07-08T09:00:00"));
-    expect(new Set(children.map((child) => child.id)).size).toBe(3);
-  });
-
-  // The bug: completing a check changed its node id (open check → done check), so the selection
-  // lost it and the focus exemption could not hold it — under Plan/Start/Do it vanished.
-  describe("completing a check keeps its node", () => {
-    const OPEN = { expectation_id: 3, due: DUE, due_at: "2026-07-10T02:00:00" };
-    const DONE = { ...OPEN, resolved_at: "2026-07-10T09:00:00" };
-    const NEXT = { expectation_id: 3, due: DUE, due_at: "2026-07-13T09:00:00" };
-    const before = (): MindmapNode => build([], [wait({ id: 3, check_every: EVERY })], [], [], [OPEN]);
-    const after = (): MindmapNode => build([], [wait({ id: 3, check_every: EVERY })], [], [], [DONE, NEXT]);
-    const openCheck = (root: MindmapNode): MindmapNode | undefined =>
-      findNode(root, expectationNodeId(3))?.children.find((child) => child.status === "todo");
-
-    it("gives the open check and the same check once done one id", () => {
-      const id = openCheck(before())?.id;
-      expect(id).toBeDefined();
-      expect(findNode(after(), id ?? "")).toMatchObject({ status: "done", checkDueAt: OPEN.due_at });
-      expect(openCheck(after())?.id).not.toBe(id);
-    });
-
-    it("gives a spawned wait's open check and the same check once done one id", () => {
-      const done = task({ status: "done", asynchronous: true, async_template: TEMPLATE });
-      const open = build([done], [], [], [], [], [spawn({ next_check: DUE, next_check_at: "2026-09-22T10:00:00" })]);
-      const closed = build([done], [], [], [], [], [spawn({
-        done_checks: [{ due: DUE, due_at: "2026-09-22T10:00:00", resolved_at: "2026-09-22T11:00:00" }],
-      })]);
-      const id = findNode(open, spawnedWaitNodeId(5))?.children[0]?.id;
-      expect(findNode(closed, id ?? "")).toMatchObject({ status: "done" });
-    });
+  describe("completing a check", () => {
+    // A check task's id is its (wait, due at) key, so the open check and the same check done are
+    // one node: the selection holds on it, and the focus exemption keeps it on screen.
+    const before = (): MindmapNode => build([check()], [wait({ check_every: EVERY })]);
+    const after = (): MindmapNode => build([check({ status: "done" })], [wait({ check_every: EVERY })]);
 
     it("under All the completed check is shown done", () => {
-      const shown = findNode(filterTree(after(), DEFAULT_FILTER), expectationNodeId(3));
-      expect(shown?.children.map((child) => child.status)).toEqual(["done", "todo"]);
+      const shown = findNode(filterTree(after(), DEFAULT_FILTER), `task-${CHECK_ID}`);
+      expect(shown?.status).toBe("done");
     });
 
     it("complete a selected check under Start; it stays visible dimmed", () => {
       const start = { ...DEFAULT_FILTER, statusMode: "start" as const };
-      const selected = openCheck(before())?.id ?? "";
+      const selected = `task-${CHECK_ID}`;
       expect(findNode(filterTree(before(), start), selected)).toBeDefined();
-      // The selection survives the reload, so the exemption holds the now-done check on screen.
       const tree = after();
       const { root, exemptedIds } = filterTreeWithFocus(tree, start, focusExemptPath(tree, selected));
       expect(findNode(root, selected)).toMatchObject({ status: "done" });
       expect(exemptedIds.has(selected)).toBe(true);
-      // Without the exemption, Start hides a done check as it hides any done task.
       expect(findNode(filterTree(tree, start), selected)).toBeUndefined();
     });
 
-    it("stamps the open check with its wait's check lifecycle, and the done one with none", () => {
-      const tree = after();
+    it("stamps the open check with its own lifecycle, filed under its row", () => {
+      const tree = before();
       const lifecycle: ItemLifecycle = {
-        node_type: "expectation_check", node_id: 3, timing: "active", archival: "live", archival_conflict: false,
+        node_type: "task", node_id: CHECK_ID, timing: "active", archival: "live", archival_conflict: false,
       };
       applyLifecycles(tree, lifecycleMap([lifecycle]));
-      const [doneCheck, next] = findNode(tree, expectationNodeId(3))?.children ?? [];
-      expect(next?.timing).toBe("active");
-      expect(doneCheck?.timing).toBeUndefined();
+      expect(findNode(tree, `task-${CHECK_ID}`)?.timing).toBe("active");
     });
   });
 
-  it("keeps a spawned wait's completed checks as done tasks too", () => {
-    const root = build(
-      [task({ status: "done", asynchronous: true, async_template: TEMPLATE })], [], [], [], [],
-      [spawn({ done_checks: [{ due: DUE, due_at: "2026-09-22T10:00:00", resolved_at: "2026-09-22T11:00:00" }] })],
-    );
-    const children = findNode(root, spawnedWaitNodeId(5))?.children ?? [];
-    expect(children).toHaveLength(1);
-    expect(children[0]).toMatchObject({ status: "done", checkDueAt: "2026-09-22T10:00:00" });
+  it("stamps a spawned wait with the lifecycle filed under its row", () => {
+    const tree = build([task({ status: "done" })], [wait({
+      id: SPAWNED_ID, parent_type: "task", parent_id: 5, origin: { kind: "spawned_wait", task_id: 5 },
+    })]);
+    const lifecycle: ItemLifecycle = {
+      node_type: "expectation", node_id: SPAWNED_ID, timing: "lapsed", archival: "live", archival_conflict: false,
+    };
+    applyLifecycles(tree, lifecycleMap([lifecycle]));
+    expect(findNode(tree, expectationNodeId(SPAWNED_ID))?.timing).toBe("lapsed");
   });
 
   it("hangs a note under a wait", () => {

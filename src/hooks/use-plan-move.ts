@@ -11,7 +11,7 @@ import type { TaskListRow } from "@/utils/list-filter";
 import type { ScopeInterval } from "@/utils/scope-interval";
 import type { ScopeRef } from "@/utils/scope-ref";
 import type { ScopeWindows } from "@/utils/plan-triage";
-import { isHabitOccurrence, planRefusal } from "@/utils/plan-triage";
+import { planRefusal } from "@/utils/plan-triage";
 
 interface PlanMoveOptions {
   /** The scope being filled, once it is known. */
@@ -58,27 +58,10 @@ interface BatchOutcome {
   failed: Array<{ row: TaskListRow; message: string }>;
   /** Rows that came out of the Backlog on the way in. */
   unbacklogged: TaskListRow[];
-  /** Habit occurrences in the batch, which cannot be planned yet — set aside before anything else. */
-  occurrences: TaskListRow[];
 }
 
 function emptyOutcome(): BatchOutcome {
-  return { moved: [], refused: [], failed: [], unbacklogged: [], occurrences: [] };
-}
-
-/**
- * Splits a batch into the rows a Plan can be written to and the Habit **occurrences**, which have
- * no stored row to carry one until occurrences become rows of their own. They are taken out
- * *first*, before the containment check: an occurrence refused for its Time Scope would be told to
- * widen a window it has no editor for.
- */
-function setAsideOccurrences(rows: readonly TaskListRow[]): { plannable: TaskListRow[]; occurrences: TaskListRow[] } {
-  const plannable: TaskListRow[] = [];
-  const occurrences: TaskListRow[] = [];
-  for (const row of rows) {
-    if (isHabitOccurrence(row.node)) occurrences.push(row); else plannable.push(row);
-  }
-  return { plannable, occurrences };
+  return { moved: [], refused: [], failed: [], unbacklogged: [] };
 }
 
 /**
@@ -150,27 +133,13 @@ export function usePlanMove({
     [t],
   );
 
-  /**
-   * One toast for one batch: its headline, and — whatever the headline is — a sentence for any
-   * Habit occurrence that was set aside. That sentence is never ranked away: an occurrence that did
-   * not move with the rest would otherwise have been dropped in silence.
-   */
+  /** One toast for one batch: its headline, when it has one. */
   const report = useCallback(
     (outcome: BatchOutcome, label: string, leftPane: boolean): void => {
       const lead = headline(outcome, label, leftPane);
-      const occurrence = outcome.occurrences[0];
-      if (occurrence === undefined) {
-        if (lead !== null) showToast(lead);
-        return;
-      }
-      const note = outcome.occurrences.length === 1
-        ? t("planView:occurrenceNotYet", { title: occurrence.node.title })
-        : t("planView:occurrencesNotYet", { count: outcome.occurrences.length });
-      showToast(lead === null
-        ? { nodeId: occurrence.node.id, message: note }
-        : { nodeId: lead.nodeId, message: `${lead.message} ${note}` });
+      if (lead !== null) showToast(lead);
     },
-    [headline, showToast, t],
+    [headline, showToast],
   );
 
   /** Writes one plan value across a batch, inside a single Gesture. */
@@ -201,16 +170,16 @@ export function usePlanMove({
   /** Splits a batch on the two containment rules, then writes the half that passed. */
   const planIntoWindow = useCallback(
     async (rows: readonly TaskListRow[], scopeId: ScopeKey, window: ScopeInterval, label: string, leftPane: boolean): Promise<string[]> => {
-      const { plannable, occurrences } = setAsideOccurrences(rows);
+      // A Habit occurrence is a row (ADR 0008) and is planned like any Task: into its overlay,
+      // within its iteration's window, which the containment check below holds it to.
       const allowed: TaskListRow[] = [];
       const refused: BatchOutcome["refused"] = [];
-      for (const row of plannable) {
+      for (const row of rows) {
         const bound = planRefusal(row, window, windows);
         if (bound === null) allowed.push(row); else refused.push({ row, bound });
       }
       const outcome = await write(allowed, { start_id: scopeId, end_id: scopeId }, "undo:gestures.plan");
       outcome.refused.push(...refused);
-      outcome.occurrences.push(...occurrences);
       report(outcome, label, leftPane);
       return outcome.moved;
     },
@@ -228,13 +197,6 @@ export function usePlanMove({
   const planIntoSubscope = useCallback(
     async (rows: readonly TaskListRow[], ref: ScopeRef, label: string, partial: boolean): Promise<string[]> => {
       if (rows.length === 0) return [];
-      // A batch of occurrences alone has nothing to write, so it is not worth a cell — and a cell
-      // that could not be read would otherwise say so instead of the thing worth saying.
-      const { plannable, occurrences } = setAsideOccurrences(rows);
-      if (plannable.length === 0) {
-        report({ ...emptyOutcome(), occurrences }, label, false);
-        return [];
-      }
       let cell: { id: ScopeKey; window: ScopeInterval };
       try {
         const id = keyForRef(ref);
@@ -252,14 +214,12 @@ export function usePlanMove({
       // what keeps it from looking like the move failed.
       return planIntoWindow(rows, cell.id, cell.window, label, partial);
     },
-    [planIntoWindow, report, showToast, t],
+    [planIntoWindow, showToast, t],
   );
 
   const unplan = useCallback(
     async (rows: readonly TaskListRow[]): Promise<string[]> => {
-      const { plannable, occurrences } = setAsideOccurrences(rows);
-      const outcome = await write(plannable, null, "undo:gestures.unplan");
-      outcome.occurrences.push(...occurrences);
+      const outcome = await write(rows, null, "undo:gestures.unplan");
       report(outcome, targetLabel, false);
       return outcome.moved;
     },

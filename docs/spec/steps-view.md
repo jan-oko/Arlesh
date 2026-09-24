@@ -40,7 +40,7 @@ the subtree root, not what is picked inside it.
 ### What can be descended into
 
 A card opens when **it already holds something**, or when **it could be given something**. A leaf
-Task, an Info note and a virtual Habit occurrence all open on an *empty* Step that offers to create
+Task, an Info note and a Habit occurrence all open on an *empty* Step that offers to create
 the first child: a leaf is not a dead end, and refusing to enter one would make "what is under
 this?" a question you can only ask where the answer is already yes.
 
@@ -255,9 +255,9 @@ Because a Steps card is any kind at all, the editor fan-out every view used to c
 is now one shared component: the List View and the Plan View could get away with two kinds each
 because a row there is only ever a Task or a Commitment, and that is what stopped being true here.
 
-**Three kinds have no editor at all** — an Aspect, which is fixed; a folded run of Habit history,
-which is a drawing; and a virtual Habit occurrence, which is rendered from its template rather than
-stored. `E` on one of them is **refused out loud**. That it is one named predicate rather than a
+**Two kinds have no editor at all** — an Aspect, which is fixed, and a folded run of Habit history,
+which is a drawing. `E` on one of them is **refused out loud**. A Habit occurrence opens the editor
+of its kind, like any row ([Derived nodes](virtual-nodes.md)). That it is one named predicate rather than a
 silent `return` in the gesture and a `null` branch in the modal matters: two encodings of the one
 fact is how this view shipped a card that set the editor open, drew no modal, and left the keyboard
 captured with nothing on screen to release it.

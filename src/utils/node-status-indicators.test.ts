@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import { deriveStatusIndicators } from "./node-status-indicators";
 import type { StatusIndicatorType } from "./node-status-indicators";
 import type { MindmapNode, NodeKind } from "./tree-layout";
@@ -133,7 +134,7 @@ describe("deriveStatusIndicators", () => {
 
   it("shows a flow-instance mark for a materialized (fromFlow) node and a virtual habit instance", () => {
     expect(types(node("task", { status: "todo", fromFlow: true }))).toEqual(["flowInstance"]);
-    const habit = node("task", { status: "todo", habitItem: { flowId: 1, itemType: "flow_root", itemId: 1, scopeId: testKey(5), cycleId: 0 } });
+    const habit = node("task", { status: "todo", ...occurrenceRow({ habitId: 1, itemType: "flow_root", itemId: 1, cycleId: 0 }) });
     expect(types(habit)).toEqual(["flowInstance"]);
   });
 

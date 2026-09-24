@@ -70,7 +70,7 @@ impl ArleshMcp {
             CreateExpectationRequest {
                 title,
                 parent_type: "task".into(),
-                parent_id: task_id,
+                parent_id: task_id.into(),
                 agentic: true,
                 agentic_note: note,
                 ..Default::default()

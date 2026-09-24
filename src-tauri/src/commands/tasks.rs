@@ -6,11 +6,12 @@ use crate::{
     database::session::SessionFactory,
     duplicate::{duplicate_subtree, DuplicableKind},
     error::WireError,
+    nodes::{id::NodeId, write},
     tasks::{
         lifecycle::ItemLifecycle,
         model::{
-            CreateGoalRequest, CreateTaskRequest, Dependency, Goal, GoalId, Task,
-            TaskDependencyEdge, TaskId, TaskWithBlockers, TimeScope, UpdateGoalRequest,
+            CreateGoalRequest, CreateTaskRequest, Dependency, Goal, GoalId, GoalStatus, Task,
+            TaskDependencyEdge, TaskId, TaskStatus, TaskWithBlockers, TimeScope, UpdateGoalRequest,
             UpdateTaskRequest,
         },
         ReparentConflicts, ViolatingDescendant,
@@ -24,7 +25,7 @@ pub async fn create_task(
     request: CreateTaskRequest,
 ) -> Result<Task, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let task = crate::tasks::create_task(&mut db, request)
+    let task = write::create_task(&mut db, request, chrono::Local::now().naive_local())
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
@@ -43,22 +44,44 @@ pub async fn get_task(
         .map_err(WireError::from_error)
 }
 
-/// Lists all tasks.
+/// Lists every task — the Task virtual table: stored rows and every Habit occurrence.
 #[tauri::command]
-pub async fn list_tasks(factory: State<'_, SessionFactory>) -> Result<Vec<Task>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.tasks().list().await.map_err(WireError::from_error)
+pub async fn list_tasks(
+    factory: State<'_, SessionFactory>,
+    now: chrono::NaiveDateTime,
+) -> Result<Vec<Task>, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let load = crate::mindmap::load(&mut db, now)
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(load.tasks)
 }
 
-/// Updates a task.
+/// Updates a task, stored or derived: a Habit occurrence's update lands in its overlay.
+///
+/// Marking a Habit occurrence **done** while it still holds unfinished added children is refused
+/// with [`NeedsConfirmation`](crate::error::WireErrorKind::NeedsConfirmation) until `confirmed`
+/// says the caller has seen them; the refusal names every one. Confirming completes it and leaves
+/// the children exactly as they are, to archive with it when its window passes.
 #[tauri::command]
 pub async fn update_task(
     factory: State<'_, SessionFactory>,
-    id: i64,
+    id: NodeId,
     request: UpdateTaskRequest,
+    confirmed: Option<bool>,
 ) -> Result<Task, WireError> {
+    let now = chrono::Local::now().naive_local();
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let task = crate::tasks::update_task(&mut db, TaskId(id), request)
+    if matches!(request.status, Some(TaskStatus::Done)) && confirmed != Some(true) {
+        let open = write::unfinished_children(&mut db, &id, now)
+            .await
+            .map_err(WireError::from_error)?;
+        if !open.is_empty() {
+            return Err(crate::commands::flows::unfinished_refusal(&open));
+        }
+    }
+    let task = write::update_task(&mut db, &id, request, now)
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
@@ -102,11 +125,11 @@ pub async fn reparent_scope_conflicts(
     .map_err(WireError::from_error)
 }
 
-/// Deletes a task.
+/// Deletes a task — or archives a Habit occurrence, which is never deleted.
 #[tauri::command]
-pub async fn delete_task(factory: State<'_, SessionFactory>, id: i64) -> Result<(), WireError> {
+pub async fn delete_task(factory: State<'_, SessionFactory>, id: NodeId) -> Result<(), WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    crate::tasks::delete_task(&mut db, TaskId(id))
+    write::delete(&mut db, "task", &id, chrono::Local::now().naive_local())
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)
@@ -153,13 +176,18 @@ pub async fn duplicate_task(
 #[tauri::command]
 pub async fn add_task_dependency(
     factory: State<'_, SessionFactory>,
-    task_id: i64,
+    task_id: NodeId,
     dependency: Dependency,
 ) -> Result<(), WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    crate::tasks::add_task_dependency(&mut db, TaskId(task_id), dependency)
-        .await
-        .map_err(WireError::from_error)?;
+    write::add_dependency(
+        &mut db,
+        &task_id,
+        dependency,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)
 }
 
@@ -167,39 +195,49 @@ pub async fn add_task_dependency(
 #[tauri::command]
 pub async fn remove_task_dependency(
     factory: State<'_, SessionFactory>,
-    task_id: i64,
+    task_id: NodeId,
     dependency: Dependency,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.tasks()
-        .remove_dependency(TaskId(task_id), dependency)
-        .await
-        .map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    write::remove_dependency(
+        &mut db,
+        &task_id,
+        dependency,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
-/// Lists all dependencies for a task.
+/// Lists what one task depends on — a stored one, or a Habit occurrence, whose edges are its
+/// template's with its own differences applied.
 #[tauri::command]
 pub async fn list_task_dependencies(
     factory: State<'_, SessionFactory>,
-    task_id: i64,
+    task_id: NodeId,
 ) -> Result<Vec<Dependency>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.tasks()
-        .list_dependencies(TaskId(task_id))
-        .await
-        .map_err(WireError::from_error)
+    // A transaction only because the derivation reads through one; it writes nothing.
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let dependencies =
+        write::dependencies_of(&mut db, &task_id, chrono::Local::now().naive_local())
+            .await
+            .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(dependencies)
 }
 
-/// Lists every task-dependency edge (for the mindmap bulk load).
+/// Lists every task-dependency edge on the board, stored and derived.
 #[tauri::command]
 pub async fn list_all_task_dependencies(
     factory: State<'_, SessionFactory>,
 ) -> Result<Vec<TaskDependencyEdge>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.tasks()
-        .list_all_dependencies()
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let edges = write::all_dependencies(&mut db, chrono::Local::now().naive_local())
         .await
-        .map_err(WireError::from_error)
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(edges)
 }
 
 /// Creates a new goal.
@@ -209,7 +247,7 @@ pub async fn create_goal(
     request: CreateGoalRequest,
 ) -> Result<Goal, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let goal = crate::tasks::create_goal(&mut db, request)
+    let goal = write::create_goal(&mut db, request, chrono::Local::now().naive_local())
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
@@ -226,33 +264,51 @@ pub async fn get_goal(factory: State<'_, SessionFactory>, id: i64) -> Result<Goa
         .map_err(WireError::from_error)
 }
 
-/// Lists all goals.
+/// Lists every goal — the Goal virtual table: stored rows and every Habit occurrence.
 #[tauri::command]
-pub async fn list_goals(factory: State<'_, SessionFactory>) -> Result<Vec<Goal>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.goals().list().await.map_err(WireError::from_error)
+pub async fn list_goals(
+    factory: State<'_, SessionFactory>,
+    now: chrono::NaiveDateTime,
+) -> Result<Vec<Goal>, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let load = crate::mindmap::load(&mut db, now)
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(load.goals)
 }
 
-/// Updates a goal.
+/// Updates a goal, stored or derived. Achieving a Habit occurrence that still holds unfinished
+/// added children is refused pending confirmation, exactly as completing a Task one is.
 #[tauri::command]
 pub async fn update_goal(
     factory: State<'_, SessionFactory>,
-    id: i64,
+    id: NodeId,
     request: UpdateGoalRequest,
+    confirmed: Option<bool>,
 ) -> Result<Goal, WireError> {
+    let now = chrono::Local::now().naive_local();
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let goal = crate::tasks::update_goal(&mut db, GoalId(id), request)
+    if matches!(request.status, Some(GoalStatus::Achieved)) && confirmed != Some(true) {
+        let open = write::unfinished_children(&mut db, &id, now)
+            .await
+            .map_err(WireError::from_error)?;
+        if !open.is_empty() {
+            return Err(crate::commands::flows::unfinished_refusal(&open));
+        }
+    }
+    let goal = write::update_goal(&mut db, &id, request, now)
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(goal)
 }
 
-/// Deletes a goal.
+/// Deletes a goal — or archives a Habit occurrence, which is never deleted.
 #[tauri::command]
-pub async fn delete_goal(factory: State<'_, SessionFactory>, id: i64) -> Result<(), WireError> {
+pub async fn delete_goal(factory: State<'_, SessionFactory>, id: NodeId) -> Result<(), WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    crate::tasks::delete_goal(&mut db, GoalId(id))
+    write::delete(&mut db, "goal", &id, chrono::Local::now().naive_local())
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)
@@ -294,56 +350,84 @@ pub async fn duplicate_goal(
 #[tauri::command]
 pub async fn add_tag_to_task(
     factory: State<'_, SessionFactory>,
-    task_id: i64,
+    task_id: NodeId,
     tag_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.tasks()
-        .add_tag(TaskId(task_id), tag_id)
-        .await
-        .map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    write::set_tag(
+        &mut db,
+        "task",
+        &task_id,
+        tag_id,
+        true,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Removes a tag from a task.
 #[tauri::command]
 pub async fn remove_tag_from_task(
     factory: State<'_, SessionFactory>,
-    task_id: i64,
+    task_id: NodeId,
     tag_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.tasks()
-        .remove_tag(TaskId(task_id), tag_id)
-        .await
-        .map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    write::set_tag(
+        &mut db,
+        "task",
+        &task_id,
+        tag_id,
+        false,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Adds a tag to a goal.
 #[tauri::command]
 pub async fn add_tag_to_goal(
     factory: State<'_, SessionFactory>,
-    goal_id: i64,
+    goal_id: NodeId,
     tag_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.goals()
-        .add_tag(GoalId(goal_id), tag_id)
-        .await
-        .map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    write::set_tag(
+        &mut db,
+        "goal",
+        &goal_id,
+        tag_id,
+        true,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Removes a tag from a goal.
 #[tauri::command]
 pub async fn remove_tag_from_goal(
     factory: State<'_, SessionFactory>,
-    goal_id: i64,
+    goal_id: NodeId,
     tag_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.goals()
-        .remove_tag(GoalId(goal_id), tag_id)
-        .await
-        .map_err(WireError::from_error)
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    write::set_tag(
+        &mut db,
+        "goal",
+        &goal_id,
+        tag_id,
+        false,
+        chrono::Local::now().naive_local(),
+    )
+    .await
+    .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
 }
 
 /// Derives the scope lifecycle (Active / Overdue / Lapsed) of every Task and Goal at `now`
@@ -354,8 +438,13 @@ pub async fn derive_scope_lifecycles(
     factory: State<'_, SessionFactory>,
     now: chrono::NaiveDateTime,
 ) -> Result<Vec<ItemLifecycle>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    crate::tasks::derive_all_scope_lifecycles(&mut db, now)
+    // Every row of the virtual tables, a Habit's occurrences included. A transaction only because
+    // the derivation reads through one; it writes nothing.
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let lifecycles = crate::mindmap::load(&mut db, now)
         .await
-        .map_err(WireError::from_error)
+        .map_err(WireError::from_error)?
+        .lifecycles;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(lifecycles)
 }

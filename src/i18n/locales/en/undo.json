@@ -16,6 +16,7 @@
     "change_other": "change {{count}} items"
   },
   "gestures": {
+    "editFlowItem": "edit a flow item",
     "paste_one": "paste 1 node",
     "paste_other": "paste {{count}} nodes",
     "move_one": "move 1 node",

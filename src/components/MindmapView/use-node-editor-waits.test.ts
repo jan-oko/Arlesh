@@ -20,12 +20,11 @@ function node(id: string, kind: MindmapNode["kind"], over: Partial<MindmapNode> 
   return { id, kind, title: id, position: 0, tagIds: [], children: [], ...over };
 }
 
-const check = node("check-3", "task", { virtual: true, expectationCheck: { kind: "stored", expectationId: 3 } });
+const CHECK = { kind: "check" as const, wait_kind: "stored" as const, wait_id: 3, due_at: "2026-07-10T02:00:00" };
+const check = node("check-3", "task", { rowId: "c-3", origin: CHECK });
 const wait = node(expectationNodeId(3), "expectation", { rowId: 3, checkEvery: { n: 3, kind: "day" }, children: [check] });
-const spawnedCheck = node("check-s", "task", { virtual: true, expectationCheck: { kind: "spawned", taskId: 5 } });
-const task = node("task-5", "task", { rowId: 5, children: [spawnedCheck] });
-const orphan = node("check-9", "task", { virtual: true, expectationCheck: { kind: "stored", expectationId: 9 } });
-const root = node("root", "domain", { children: [wait, task, orphan] });
+const task = node("task-5", "task", { rowId: 5 });
+const root = node("root", "domain", { children: [wait, task] });
 
 function setup() {
   return renderHook(() => useNodeEditor({ tree: root, allTasksAndGoals: [], reload: vi.fn().mockResolvedValue(undefined) })).result;
@@ -34,19 +33,15 @@ function setup() {
 describe("useNodeEditor — waits", () => {
   beforeEach(() => { vi.clearAllMocks(); useMindmapStore.getState().clearToast(); });
 
-  it("E on a check task says it can't be edited yet, and opens nothing else", () => {
+  it("E on a check task opens its own editor: it is a Task row", () => {
     const result = setup();
-    for (const id of ["check-3", "check-s", "check-9"]) {
-      useMindmapStore.getState().clearToast();
-      act(() => result.current.onDoubleClick(id));
-      expect(result.current.editorModal).toBeNull();
-      expect(useMindmapStore.getState().pendingToast?.message).toBe("editCheckTaskRefused");
-    }
+    act(() => result.current.onDoubleClick("check-3"));
+    expect(result.current.editorModal?.node).toBe(check);
   });
 
   it("E on a spawned wait opens its Task's editor, and says so when the Task is gone", () => {
-    const spawnedWait = node("sw-5", "expectation", { virtual: true, spawnedBy: { taskId: 5 } });
-    const gone = node("sw-7", "expectation", { virtual: true, spawnedBy: { taskId: 7 } });
+    const spawnedWait = node("sw-5", "expectation", { rowId: "s-5", origin: { kind: "spawned_wait", task_id: 5 } });
+    const gone = node("sw-7", "expectation", { rowId: "s-7", origin: { kind: "spawned_wait", task_id: 7 } });
     const tree = node("root", "domain", { children: [task, spawnedWait, gone] });
     const result = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload: vi.fn().mockResolvedValue(undefined) })).result;
     act(() => result.current.onDoubleClick("sw-5"));

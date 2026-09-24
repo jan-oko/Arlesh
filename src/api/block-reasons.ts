@@ -1,9 +1,10 @@
 import { invoke } from "./gesture";
+import type { RowId } from "@/api/node-id";
 
 /** A single explicit block reason on a task or goal. */
 export interface BlockReason {
   owner_type: string; // "task" | "goal"
-  owner_id: number;
+  owner_id: RowId;
   reason: string;
   position: number;
 }
@@ -14,6 +15,6 @@ export async function listAllBlockReasons(): Promise<BlockReason[]> {
 }
 
 /** Replaces the ordered block-reason list for one owner (`ownerType` is "task" or "goal"). */
-export async function setBlockReasons(ownerType: string, ownerId: number, reasons: string[]): Promise<void> {
+export async function setBlockReasons(ownerType: string, ownerId: RowId, reasons: string[]): Promise<void> {
   return invoke<void>("set_block_reasons", { ownerType, ownerId, reasons });
 }

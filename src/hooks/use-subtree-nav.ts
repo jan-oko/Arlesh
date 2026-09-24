@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import type { SubtreeCrumb } from "@/stores/use-mindmap-store";
 import { pathToNode } from "@/utils/mindmap-tree";
+import { migratedNodeId } from "@/utils/legacy-node-id";
 import type { MindmapNode } from "@/utils/tree-layout";
 
 interface SubtreeNavHandles {
@@ -36,6 +37,7 @@ export function useSubtreeNav(tree: MindmapNode): SubtreeNavHandles {
   const setSubtreeNav = useMindmapStore((s) => s.setSubtreeNav);
   const exitSubtree = useMindmapStore((s) => s.exitSubtree);
   const onExitToRoot = useMindmapStore((s) => s.exitToRoot);
+  const enterSubtree = useMindmapStore((s) => s.enterSubtree);
 
   // One walk down to the subtree root gives the whole chain: the root itself is the last step, and
   // everything before it is an ancestor the breadcrumb can offer as a way out.
@@ -61,12 +63,17 @@ export function useSubtreeNav(tree: MindmapNode): SubtreeNavHandles {
    * and a view rooted at a node that does not exist shows nothing, with no breadcrumb to escape by.
    * An empty tree is not evidence of that: it is what a load in progress looks like, so the check
    * waits for a tree with something in it.
+   *
+   * A root saved before Habit occurrences and a wait's derived nodes became rows (ADR 0008) names
+   * the node by its old key; that one is re-rooted at the node's key now rather than lost.
    */
   useEffect(() => {
     if (subtreeRootId === null || tree.children.length === 0) return;
     if (path.length > 0) return;
-    onExitToRoot();
-  }, [subtreeRootId, tree, path, onExitToRoot]);
+    const migrated = migratedNodeId(tree, subtreeRootId);
+    if (migrated !== undefined) enterSubtree(migrated);
+    else onExitToRoot();
+  }, [subtreeRootId, tree, path, onExitToRoot, enterSubtree]);
 
   useEffect(() => {
     setSubtreeNav(subtreeRootId === null ? null : { ancestors, currentTitle });

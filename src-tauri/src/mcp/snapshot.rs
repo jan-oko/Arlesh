@@ -19,11 +19,20 @@ use crate::mindmap::model::MindmapLoad;
 impl ArleshMcp {
     /// Arlesh's planning graph: domains, goals, tasks, commitments, expectations, infos, flows, flow items,
     /// cycles, dependencies, block reasons, materialised instance nodes, each item's derived
-    /// lifecycle, and each flow's habit iterations and statuses.
+    /// lifecycle, and each Habit's derivation outcome.
+    ///
+    /// A Habit's occurrences are ordinary rows of their kinds, in `tasks`, `goals` and
+    /// `commitments`: every node carries an `origin`, `{"kind": "manual"}` for a stored one and
+    /// `{"kind": "habit", "habit_id": …, "iteration_scope": …}` for a Habit's, whose `id` is then a
+    /// UUID string rather than a number. Its `parent_id` may be one too — a node hung on an
+    /// occurrence names the occurrence as its parent.
     ///
     /// Start here. Tasks, goals and commitments carry `time_scope` and `plan` as boundary scope
-    /// ids, and a scope id is its value key — `week:2026-09-20` is the week whose Sunday is the
-    /// 20th, `day:2026-09-23`, `part_of_day:2026-09-23:morning` — so the dates are right there.
+    /// ids, and a scope id is its value key, a JSON object — `{"kind":"week","date":"2026-09-20"}`
+    /// is the week whose Sunday is the 20th, `{"kind":"day","date":"2026-09-23"}`,
+    /// `{"kind":"part_of_day","date":"2026-09-23","part":"morning"}`,
+    /// `{"kind":"exact","start":"2026-09-23T14:00:00","end":"2026-09-23T15:30:00"}` — so the dates
+    /// are right there. A Habit occurrence's `origin.iteration_scope.scope_id` is one too.
     /// `arlesh_scopes` adds labels, end dates and datetime windows if you need them.
     ///
     /// A commitment is a rule held over a window rather than a piece of work: it carries a
@@ -32,10 +41,12 @@ impl ArleshMcp {
     ///
     /// An expectation is a wait rather than an action: something outside the user's own action
     /// that tasks can depend on. Its `status` is `pending` until the wait is over and `released`
-    /// after; a task depending on a pending one is blocked. Its optional `check_every` (a Duration;
-    /// its next check is in `expectation_checks`) is how often the user means to look in on it.
-    /// An `asynchronous` task may carry an `async_template`; while such a task is done, the wait
-    /// it spawned is listed in `spawned_waits` by task. Read-only here.
+    /// after; a task depending on a pending one is blocked. Its optional `check_every` (a Duration)
+    /// is how often the user means to look in on it: each check is a task beneath it, `origin`
+    /// `{"kind": "check", ...}`, done once made. An `asynchronous` task may carry an
+    /// `async_template`; while such a task is done, the wait it spawned is an expectation beneath
+    /// it with `origin` `{"kind": "spawned_wait", "task_id": N}`, and a delegated task that is not
+    /// done has one with `{"kind": "delegation_wait", ...}`. Read-only here.
     ///
     /// A task's `delegate_to` says who holds it: `null`, `{"kind": "person", "id": N}` (resolve
     /// the Person with `arlesh_kb`), or `{"kind": "agent"}` — handed to the Agent. It is

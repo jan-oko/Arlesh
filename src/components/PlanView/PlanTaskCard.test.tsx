@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import PlanTaskCard from "./PlanTaskCard";
 import type { TaskListRow } from "@/utils/list-filter";
@@ -75,5 +75,18 @@ describe("PlanTaskCard — colour", () => {
   it("is the plain card surface outside any aspect", () => {
     const { container } = render(<PlanTaskCard {...props(row())} />);
     expect(cardOf(container).style.getPropertyValue("--card-aspect")).toBe("");
+  });
+});
+
+describe("PlanTaskCard — path line", () => {
+  it("shows no path line for a card with nothing above it", () => {
+    render(<PlanTaskCard {...props(row())} />);
+    // The title stands alone in the card's body: no placeholder line above it.
+    expect(screen.getByText("task-1").parentElement?.childElementCount).toBe(1);
+  });
+
+  it("shows its ancestors' path when it has one", () => {
+    render(<PlanTaskCard {...props(row({ ancestors: [n("p", "project", { title: "LANG" })] }))} />);
+    expect(screen.getByText("LANG")).toBeInTheDocument();
   });
 });

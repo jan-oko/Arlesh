@@ -6,6 +6,7 @@
 //! part of the board.
 
 use crate::helpers;
+use helpers::StoredId;
 
 use arlesh_lib::access::model::NodeTable;
 use arlesh_lib::commands::{
@@ -51,13 +52,14 @@ async fn task(app: &App<MockRuntime>, project_id: i64, title: &str) -> i64 {
         CreateTaskRequest {
             title: title.into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             ..Default::default()
         },
     )
     .await
     .expect("create task")
     .id
+    .sid()
 }
 
 async fn board(app: &App<MockRuntime>) -> Board {
@@ -204,9 +206,9 @@ async fn a_relation_to_a_node_outside_the_roots_is_cut() {
     let board = board(&app).await;
     task_commands::add_task_dependency(
         app.state(),
-        board.inside_task,
+        board.inside_task.into(),
         Dependency::Task {
-            id: board.outside_task,
+            id: board.outside_task.into(),
         },
     )
     .await
@@ -293,13 +295,14 @@ async fn a_task_under_an_agentic_task_inherits_write() {
         CreateTaskRequest {
             title: "Step".into(),
             parent_type: "task".into(),
-            parent_id: board.inside_task,
+            parent_id: board.inside_task.into(),
             ..Default::default()
         },
     )
     .await
     .expect("create subtask")
-    .id;
+    .id
+    .sid();
     helpers::make_agentic(&pool, board.inside_task).await;
     add_root(&app, NodeTable::Domain, board.inside).await;
 
@@ -445,7 +448,7 @@ async fn deleting_a_root_node_drops_the_root_and_undo_brings_both_back() {
     undo_commands::open_gesture(app.state())
         .await
         .expect("open gesture");
-    task_commands::delete_task(app.state(), board.inside_task)
+    task_commands::delete_task(app.state(), board.inside_task.into())
         .await
         .expect("delete task");
     undo_commands::close_gesture(helpers::window(&app), app.state(), app.state())

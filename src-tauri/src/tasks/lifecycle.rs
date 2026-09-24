@@ -236,8 +236,8 @@ pub struct ItemLifecycle {
     /// `"task"`, `"goal"`, `"commitment"` or `"expectation"`; `"expectation_check"`,
     /// `"spawned_wait"` and `"spawned_check"` time a wait's next check and a spawned wait.
     pub node_type: String,
-    /// The item's id.
-    pub node_id: i64,
+    /// The item's id — a stored row's, or a derived one's UUID.
+    pub node_id: crate::nodes::id::NodeId,
     /// Window position.
     pub timing: Timing,
     /// Resolution outcome, present iff `timing` is `Lapsed`. Always absent for a Commitment,

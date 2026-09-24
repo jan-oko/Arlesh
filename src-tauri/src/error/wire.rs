@@ -237,7 +237,7 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
         | TaskError::NoSpawnedWait(_) => WireErrorKind::NotFound,
         // The request named a check that is no longer there to complete.
         TaskError::NoCheckDue | TaskError::CheckNotReopenable => WireErrorKind::InvalidRequest,
-        TaskError::CircularDependency => WireErrorKind::InvalidRequest,
+        TaskError::CircularDependency | TaskError::NotStored(_) => WireErrorKind::InvalidRequest,
         // Refusals the user answers by editing something first: write the Spec, pick a priority
         // in range, or raise the wait under an agentic Task.
         TaskError::AgenticSpecMissing
@@ -291,7 +291,8 @@ fn flow_kind(error: &FlowError) -> WireErrorKind {
         FlowError::Database(_) => WireErrorKind::Database,
         FlowError::Scope(inner) => scope_kind(inner),
         FlowError::Task(inner) => task_kind(inner),
-        FlowError::Invalid(_) => WireErrorKind::InvalidRequest,
+        FlowError::Invalid(_) | FlowError::Refused(_) => WireErrorKind::InvalidRequest,
+        FlowError::NodeNotFound(_) => WireErrorKind::NotFound,
     }
 }
 

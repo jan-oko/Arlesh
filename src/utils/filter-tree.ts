@@ -1,4 +1,5 @@
 import type { MindmapNode } from "@/utils/tree-layout";
+import { isOccurrence } from "@/utils/node-identity";
 import { isNodeBlocked } from "@/utils/tree-layout";
 import { VERDICT } from "@/api/verdict";
 import { EXPECTATION_STATUS } from "@/api/expectation-status";
@@ -160,7 +161,7 @@ export function isHiddenBacklog(node: MindmapNode, f: FilterState): boolean {
  * started.
  */
 export function isUnopenedOccurrence(node: MindmapNode, f: FilterState): boolean {
-  if (node.habitItem === undefined || node.timing !== "pending") return false;
+  if (!isOccurrence(node) || node.timing !== "pending") return false;
   return f.statusMode !== "all";
 }
 

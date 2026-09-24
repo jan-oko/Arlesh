@@ -23,10 +23,8 @@ use crate::{
         resolve::AccessMap,
     },
     mindmap::model::MindmapLoad,
-    tasks::{
-        expectations,
-        model::{Dependency, Task},
-    },
+    nodes::id::{DerivedId, NodeId},
+    tasks::model::{Dependency, Task},
 };
 
 /// The refusal for a request naming a node the MCP may not touch at `needed`.
@@ -100,36 +98,119 @@ pub(super) fn restrict_block_reasons(
         .iter()
         .filter_map(|dependency| {
             let (kind, id) = match dependency {
-                Dependency::Task { id } => ("task", *id),
-                Dependency::Goal { id } => ("goal", *id),
-                Dependency::Expectation { id } => ("expectation", *id),
+                Dependency::Task { id } => ("task", id.clone()),
+                Dependency::Goal { id } => ("goal", id.clone()),
+                Dependency::Expectation { id } => ("expectation", NodeId::Stored(*id)),
             };
-            (!reads(map, kind, id)).then(|| format!("Blocked by {kind} {id} ("))
+            // A derived dependency (an occurrence) is kept only when its stored end is visible;
+            // without the snapshot to climb, a reason naming one is dropped as unseen.
+            let seen = id.stored().is_some_and(|stored| reads(map, kind, stored));
+            (!seen).then(|| format!("Blocked by {kind} {id} ("))
         })
         .collect();
     reasons.retain(|reason| !hidden.iter().any(|prefix| reason.starts_with(prefix)));
 }
 
+/// What the MCP can see of one snapshot's rows, stored and derived alike.
+///
+/// A stored row is visible when the MCP roots reach it ([`AccessMap`]). A derived row — a Habit
+/// occurrence, a wait's check task, a spawned or delegation wait — is a row of nothing, is never a
+/// root and never writable, and is visible exactly when it is not private and the nearest stored
+/// row above it is visible. Its parents are read off the snapshot itself, since a derived row's
+/// parent can be derived too (an occurrence under its iteration's root).
+struct SnapshotView<'map> {
+    map: &'map AccessMap,
+    derived: HashMap<DerivedId, bool>,
+}
+
+impl<'map> SnapshotView<'map> {
+    fn of(load: &MindmapLoad, map: &'map AccessMap) -> Self {
+        let mut parents: HashMap<DerivedId, (String, NodeId, bool)> = HashMap::new();
+        let mut note = |id: &NodeId, parent_type: &str, parent_id: &NodeId, private: bool| {
+            if let NodeId::Derived(derived) = id {
+                parents.insert(
+                    derived.clone(),
+                    (parent_type.to_string(), parent_id.clone(), private),
+                );
+            }
+        };
+        for row in &load.tasks {
+            note(&row.id, &row.parent_type, &row.parent_id, row.is_private);
+        }
+        for row in &load.goals {
+            note(&row.id, &row.parent_type, &row.parent_id, row.is_private);
+        }
+        for row in &load.commitments {
+            note(&row.id, &row.parent_type, &row.parent_id, row.is_private);
+        }
+        for row in &load.expectations {
+            note(&row.id, &row.parent_type, &row.parent_id, row.is_private);
+        }
+
+        let mut derived: HashMap<DerivedId, bool> = HashMap::with_capacity(parents.len());
+        for start in parents.keys() {
+            // Climb to the first stored parent, a row already decided, or a loop; then decide the
+            // whole chain from there down.
+            let mut chain: Vec<&DerivedId> = Vec::new();
+            let mut cursor = start;
+            let answer = loop {
+                if let Some(&known) = derived.get(cursor) {
+                    break known;
+                }
+                if chain.contains(&cursor) {
+                    break false;
+                }
+                chain.push(cursor);
+                let Some((parent_type, parent_id, private)) = parents.get(cursor) else {
+                    break false;
+                };
+                if *private {
+                    break false;
+                }
+                match parent_id {
+                    NodeId::Stored(id) => break reads(map, parent_type, *id),
+                    NodeId::Derived(parent) => cursor = parent,
+                }
+            };
+            for id in chain {
+                // A private row anywhere on the chain hides everything below it, not above it.
+                let private = parents.get(id).is_some_and(|(_, _, private)| *private);
+                derived.insert(id.clone(), answer && !private);
+            }
+        }
+        Self { map, derived }
+    }
+
+    /// Whether the MCP can see the node a board reference names.
+    fn sees(&self, node_type: &str, id: &NodeId) -> bool {
+        match id {
+            NodeId::Stored(id) => reads(self.map, node_type, *id),
+            NodeId::Derived(id) => self.derived.get(id).copied().unwrap_or(false),
+        }
+    }
+}
+
 /// Cuts a snapshot down to what the MCP can see.
 ///
-/// Every stored-node section loses the rows outside the roots, and every section derived from or
-/// pointing at a node loses the entries naming one it dropped: lifecycles, checks, spawned waits,
-/// block reasons, dependency edges, tag ids, flow cycles and dependencies, instance links, Habit
-/// iterations and occurrence attachments. A Flow's sections travel with the Flow.
+/// Every node section loses the rows outside the roots — derived rows included, which take their
+/// visibility from the nearest stored row above them — and every section pointing at a node loses
+/// the entries naming one it dropped: lifecycles, block reasons, dependency edges, tag ids, flow
+/// cycles and dependencies, instance links and Habit outcomes. A Flow's sections travel with the
+/// Flow.
 ///
-/// Parent references and a Flow's target are kept. They say where a readable node hangs, and the
+/// Parent references and a Flow's target are kept. They say where a visible node hangs, and the
 /// top of a root's subtree always hangs somewhere the MCP cannot see.
 pub(super) fn restrict_snapshot(load: &mut MindmapLoad, map: &AccessMap) {
+    let view = SnapshotView::of(load, map);
+
     load.domains
         .retain(|domain| reads_row(map, NodeTable::Domain, domain.id));
-    load.goals
-        .retain(|goal| reads_row(map, NodeTable::Goal, goal.id));
-    load.tasks
-        .retain(|task| reads_row(map, NodeTable::Task, task.id));
+    load.goals.retain(|goal| view.sees("goal", &goal.id));
+    load.tasks.retain(|task| view.sees("task", &task.id));
     load.commitments
-        .retain(|commitment| reads_row(map, NodeTable::Commitment, commitment.id));
+        .retain(|commitment| view.sees("commitment", &commitment.id));
     load.expectations
-        .retain(|expectation| reads_row(map, NodeTable::Expectation, expectation.id));
+        .retain(|expectation| view.sees("expectation", &expectation.id));
     load.infos
         .retain(|info| reads_row(map, NodeTable::Info, info.id));
     load.flows
@@ -152,24 +233,12 @@ pub(super) fn restrict_snapshot(load: &mut MindmapLoad, map: &AccessMap) {
         keep_readable_tags(&mut expectation.tag_ids, map);
     }
 
-    load.expectation_checks
-        .retain(|check| reads_row(map, NodeTable::Expectation, check.expectation_id));
-    load.spawned_waits
-        .retain(|spawned| reads_row(map, NodeTable::Task, spawned.wait.task_id));
-    load.lifecycles.retain(|lifecycle| {
-        // A wait's check is timed under its wait, and a spawned wait's entries under its Task.
-        let owner = match lifecycle.node_type.as_str() {
-            expectations::EXPECTATION_CHECK => expectations::EXPECTATION,
-            expectations::SPAWNED_WAIT | expectations::SPAWNED_CHECK => "task",
-            other => other,
-        };
-        reads(map, owner, lifecycle.node_id)
-    });
+    load.lifecycles
+        .retain(|lifecycle| view.sees(&lifecycle.node_type, &lifecycle.node_id));
     load.block_reasons
-        .retain(|reason| reads(map, &reason.owner_type, reason.owner_id));
+        .retain(|reason| view.sees(&reason.owner_type, &reason.owner_id));
     load.task_dependencies.retain(|edge| {
-        reads_row(map, NodeTable::Task, edge.task_id)
-            && reads(map, &edge.dependency_type, edge.dependency_id)
+        view.sees("task", &edge.task_id) && view.sees(&edge.dependency_type, &edge.dependency_id)
     });
     load.flow_instance_nodes
         .retain(|node| reads(map, &node.node_type, node.node_id));
@@ -185,10 +254,6 @@ pub(super) fn restrict_snapshot(load: &mut MindmapLoad, map: &AccessMap) {
     });
     load.habits
         .retain(|entry| reads_row(map, NodeTable::Flow, entry.flow_id));
-    load.habit_instance_children.retain(|child| {
-        reads_row(map, NodeTable::Flow, child.flow_id)
-            && reads(map, &child.child_type, child.child_id)
-    });
 }
 
 /// The knowledge-base entities the MCP can see: those a readable node points at.

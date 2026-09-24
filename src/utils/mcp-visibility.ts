@@ -19,9 +19,10 @@ const TABLE_OF_KIND: Record<NodeKind, McpNodeKind | null> = {
   habit_group: null,
 };
 
-/** The stored row a node draws, as the MCP roots name it — `null` for a derived node. */
+/** The stored row a node draws, as the MCP roots name it — `null` for a derived node, whose row id
+ * is a UUID string rather than a stored primary key. */
 export function storedKeyOf(node: MindmapNode): McpNodeKey | null {
-  if (node.virtual === true || node.rowId === undefined) return null;
+  if (node.virtual === true || typeof node.rowId !== "number") return null;
   const table = TABLE_OF_KIND[node.kind];
   if (table === null) return null;
   return { node_kind: table, node_id: node.rowId };

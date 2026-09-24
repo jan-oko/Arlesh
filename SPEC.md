@@ -27,6 +27,7 @@ is the front door — start here, then take one hop.
 | [Time Scopes & Planning](docs/spec/time-scopes.md) | Time Scope (relevance) against Plan (scheduling), on-exit behaviour, containment invariants, the Scope Picker |
 | [Flows](docs/spec/flows.md) | The Flow node kind, flow items, Cycle Scope/Plan, starting one, materialisation |
 | [Habits](docs/spec/habits.md) | Recurrence, virtual instances, iteration scopes, archiving |
+| [Derived nodes](docs/spec/virtual-nodes.md) | A derived node is an ordinary row of its kind: virtual tables, UUID ids, `origin`, overlays and their relations, the horizon |
 | [Link Inheritance](docs/spec/link-inheritance.md) | How a node inherits its ancestors' links |
 | [Filtering Logic](docs/spec/filtering-logic.md) | Pill dimensions, the three modes, the focus exemption |
 

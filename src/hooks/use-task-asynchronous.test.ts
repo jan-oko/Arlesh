@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useTaskAsynchronous } from "./use-task-asynchronous";
 import { updateTask } from "@/api/tasks";
 import type { MindmapNode } from "@/utils/tree-layout";
-import { NO_CYCLE } from "@/api/flows";
 import { fixtureRowId } from "@/test/node-fixture";
-import { testKey } from "@/test/scope-key";
 
 vi.mock("@/api/tasks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/tasks")>()),
@@ -60,19 +59,24 @@ describe("useTaskAsynchronous", () => {
 
   it("declines every node that has no asynchronous column of its own", () => {
     const goal = node("goal-1", { kind: "goal" });
-    const habitInstance = node("task-4-virtual", {
-      virtual: true,
-      habitItem: { flowId: 3, itemType: "flow_task", itemId: 4, scopeId: testKey(100), cycleId: NO_CYCLE },
-    });
-    const { result } = setup([goal, habitInstance]);
+    const { result } = setup([goal]);
 
     act(() => {
       result.current.toggleAsynchronous("goal-1");
-      result.current.toggleAsynchronous("task-4-virtual");
       result.current.toggleAsynchronous("task-missing");
     });
 
     expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it("flips a Habit occurrence's flag on its own row", async () => {
+    const occurrence = node("task-4", { ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }) });
+    vi.mocked(updateTask).mockResolvedValue({} as never);
+    const { result } = setup([occurrence]);
+
+    act(() => { result.current.toggleAsynchronous("task-4"); });
+
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(occurrence.rowId, { asynchronous: true }));
   });
 
   it("says so when the write fails rather than leaving the flag silently unchanged", async () => {

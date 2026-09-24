@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import PlanView from "./PlanView";
 import { useFilterStore } from "@/stores/use-filter-store";
@@ -123,10 +124,10 @@ vi.mock("@/api/scopes", async (importOriginal) => ({
   getScope: (id: ScopeKey) => getScope(id),
 }));
 
-const updateTask = vi.fn((_id: number, _request: unknown) => Promise.resolve());
+const updateTask = vi.fn((_id: number | string, _request: unknown) => Promise.resolve());
 vi.mock("@/api/tasks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/tasks")>()),
-  updateTask: (id: number, request: unknown) => updateTask(id, request),
+  updateTask: (id: number | string, request: unknown) => updateTask(id, request),
 }));
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
@@ -661,58 +662,55 @@ describe("splitting the planned pane by subscope", () => {
 });
 
 describe("a Habit occurrence", () => {
-  // Built by hand rather than through `n`: an occurrence has no stored row, so no row id.
+  // A row with a UUID id and a Habit origin (ADR 0008): planned like any Task, on its own row.
   function occurrence(extra: Partial<MindmapNode>): MindmapNode {
     return {
-      id: "habititem-flow_task-1-0-0-virtual", kind: "task", title: "stretch", position: 0, tagIds: [], children: [],
-      virtual: true, habitItem: { flowId: 1, itemType: "flow_task", itemId: 1, scopeId: WEEK_ID, cycleId: 0 },
-      ...extra,
+      id: "task-occ", kind: "task", title: "stretch", position: 0, tagIds: [], children: [],
+      ...occurrenceRow(), ...extra,
     };
   }
+  const OCCURRENCE_ROW = occurrenceRow().rowId;
 
   it("is an unplanned candidate where it has no Cycle Plan", async () => {
     mockRows([row(occurrence({ timeScope: { start_id: DAY_ID, end_id: DAY_ID } }))]);
     await renderPlanView();
-    expect(cardsIn("candidates")).toEqual(["habititem-flow_task-1-0-0-virtual"]);
+    expect(cardsIn("candidates")).toEqual(["task-occ"]);
     expect(cardsIn("planned")).toEqual([]);
   });
 
-  it("says it cannot be planned yet rather than moving nothing in silence", async () => {
-    mockRows([row(occurrence({ timeScope: { start_id: DAY_ID, end_id: DAY_ID } }))]);
+  it("is planned into the scope on its own row", async () => {
+    mockRows([row(occurrence({ timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
     await renderPlanView();
 
     await act(async () => { fireEvent.click(screen.getByLabelText("planInto")); });
     await settle();
-    expect(updateTask).not.toHaveBeenCalled();
-    expect(screen.getByText("planView:occurrenceNotYet")).toBeInTheDocument();
+    expect(updateTask).toHaveBeenCalledWith(OCCURRENCE_ROW, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
   });
 
-  it("says the same when taken back out of the scope its Cycle Plan puts it in", async () => {
+  it("is taken back out of the scope its Cycle Plan puts it in, on its own row", async () => {
     mockRows([row(occurrence({ plan: { start_id: DAY_ID, end_id: DAY_ID } }))]);
     await renderPlanView();
 
     await act(async () => { fireEvent.click(screen.getByLabelText("unplan")); });
     await settle();
-    expect(updateTask).not.toHaveBeenCalled();
-    expect(screen.getByText("planView:occurrenceNotYet")).toBeInTheDocument();
+    expect(updateTask).toHaveBeenCalledWith(OCCURRENCE_ROW, { plan: null });
   });
 
-  // A batch with an occurrence in it plans the rest, and still names the one it left.
-  it("plans the rest of a batch and says the occurrence was left where it was", async () => {
+  it("plans in one batch with the stored Tasks beside it", async () => {
     mockRows([
       row(occurrence({ timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } })),
       row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } })),
     ]);
     await renderPlanView();
-    expect(cardsIn("candidates")).toEqual(["habititem-flow_task-1-0-0-virtual", "task-1"]);
+    expect(cardsIn("candidates")).toEqual(["task-occ", "task-1"]);
 
     fireEvent.keyDown(window, { code: "ArrowDown" });
     fireEvent.keyDown(window, { code: "ArrowDown", shiftKey: true });
     await act(async () => { fireEvent.keyDown(window, { code: "Enter" }); });
     await settle();
-    expect(updateTask).toHaveBeenCalledTimes(1);
+    expect(updateTask).toHaveBeenCalledTimes(2);
     expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
-    expect(screen.getByText("planView:occurrenceNotYet")).toBeInTheDocument();
+    expect(updateTask).toHaveBeenCalledWith(OCCURRENCE_ROW, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
   });
 });
 

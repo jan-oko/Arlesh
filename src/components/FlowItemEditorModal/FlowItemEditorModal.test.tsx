@@ -20,19 +20,21 @@ function mkItem(overrides: Partial<MindmapNode> = {}): MindmapNode {
     position: 1,
     tagIds: [],
     children: [],
-    flowItem: { itemType: "flow_task", flowId: 5, flowInstanceType: "task" as const, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [] },
+    flowItem: { itemType: "flow_task", flowId: 5, flowInstanceType: "task" as const, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [], template: {} },
     ...overrides,
   };
 }
 
 const SPECIFY: MindmapNode = {
   id: "flowtask-1", rowId: 1, kind: "flow_task", title: "Specify", position: 0, tagIds: [], children: [],
-  flowItem: { itemType: "flow_task", flowId: 5, flowInstanceType: "task" as const, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [] },
+  flowItem: { itemType: "flow_task", flowId: 5, flowInstanceType: "task" as const, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [], template: {} },
 };
 
 const defaultProps = {
   node: mkItem(),
   availableDeps: [SPECIFY],
+  allTags: [],
+  domainNames: new Map<number, string>(),
   onSave: vi.fn().mockResolvedValue(undefined),
   onClose: vi.fn(),
 };
@@ -50,6 +52,102 @@ describe("FlowItemEditorModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({ title: "Implement" })),
+    );
+  });
+
+  it("asks the Habit editor's question when a cycle change would orphan recorded edits", async () => {
+    const orphaning = {
+      kind: "needs_confirmation",
+      message: "changing these cycles would orphan what 2 iteration(s) recorded",
+      details: { reason: "orphaned_edits", iterations: 2 },
+    };
+    const onSave = vi.fn().mockRejectedValueOnce(orphaning).mockResolvedValue(undefined);
+    render(<FlowItemEditorModal {...defaultProps} onSave={onSave} />);
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(screen.getByText("reconcilePromptCycles")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "reconcileFork" }));
+    await waitFor(() =>
+      expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ reconcile: "fork" })),
+    );
+  });
+
+  it("saves nothing more when the question is cancelled", async () => {
+    const onSave = vi.fn().mockRejectedValueOnce({
+      kind: "needs_confirmation", message: "x", details: { reason: "orphaned_edits", iterations: 1 },
+    });
+    render(<FlowItemEditorModal {...defaultProps} onSave={onSave} />);
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(screen.getByText("reconcilePromptCycles")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "reconcileCancel" }));
+    expect(screen.queryByText("reconcilePromptCycles")).toBeNull();
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it("saves the template's own fields, which its occurrences read unless they say otherwise", async () => {
+    const node = mkItem({
+      flowItem: {
+        itemType: "flow_task", flowId: 5, flowInstanceType: "task", flowScopeN: 2, flowScopeKind: "week",
+        cycles: [], dependsOn: [],
+        template: { tag_ids: [4], block_reasons: ["waiting on parts"], archival: "backlog", asynchronous: true, agentic: true },
+      },
+    });
+    render(<FlowItemEditorModal {...defaultProps} node={node} />);
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
+        template: {
+          tag_ids: [4], block_reasons: ["waiting on parts"], archival: "backlog", asynchronous: true, agentic: "yes",
+          // An empty brief section is no brief.
+          agentic_brief: null,
+        },
+      })),
+    );
+  });
+
+  it("saves the brief every occurrence reads, on an agentic task template", async () => {
+    const brief = { priority: 1, spec: "Sort the mail", design: "", acceptance: "", notes: "" };
+    const node = mkItem({
+      flowItem: {
+        itemType: "flow_task", flowId: 5, flowInstanceType: "task", flowScopeN: 1, flowScopeKind: "day",
+        cycles: [], dependsOn: [], template: { agentic: true, agentic_brief: brief },
+      },
+    });
+    render(<FlowItemEditorModal {...defaultProps} node={node} />);
+    fireEvent.change(screen.getByLabelText("agenticSpec"), { target: { value: "Sort the mail and parcels" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
+        template: expect.objectContaining({ agentic_brief: { ...brief, spec: "Sort the mail and parcels" } }),
+      })),
+    );
+  });
+
+  it("offers no brief while the template is not agentic", () => {
+    render(<FlowItemEditorModal {...defaultProps} node={mkItem({
+      flowItem: {
+        itemType: "flow_task", flowId: 5, flowInstanceType: "task", flowScopeN: 1, flowScopeKind: "day",
+        cycles: [], dependsOn: [], template: {},
+      },
+    })} />);
+    expect(screen.queryByRole("group", { name: "agenticBriefSection" })).not.toBeInTheDocument();
+  });
+
+  it("saves a pair planned with its row's toggle, plan and all", async () => {
+    const morning = { scopeKind: "part_of_day", scopeIndex: 1, planKind: null, planStart: null, planEnd: null };
+    const node = mkItem({
+      flowItem: {
+        itemType: "flow_task", flowId: 5, flowInstanceType: "task", flowScopeN: 1, flowScopeKind: "day",
+        cycles: [morning], dependsOn: [], template: {},
+      },
+    });
+    render(<FlowItemEditorModal {...defaultProps} node={node} />);
+    fireEvent.click(screen.getByRole("button", { name: "editor:cyclePlanned" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
+        cycles: [{ ...morning, planKind: "part_of_day", planStart: 1, planEnd: 1 }],
+      })),
     );
   });
 
@@ -89,7 +187,7 @@ describe("FlowItemEditorModal", () => {
   });
 
   it("hides the cycle grid for an unscoped flow", () => {
-    render(<FlowItemEditorModal {...defaultProps} node={mkItem({ flowItem: { itemType: "flow_task", flowId: 5, flowInstanceType: "task" as const, flowScopeN: null, flowScopeKind: null, cycles: [], dependsOn: [] } })} />);
+    render(<FlowItemEditorModal {...defaultProps} node={mkItem({ flowItem: { itemType: "flow_task", flowId: 5, flowInstanceType: "task" as const, flowScopeN: null, flowScopeKind: null, cycles: [], dependsOn: [], template: {} } })} />);
     expect(screen.queryByRole("button", { name: "editor:cycleAddWhole" })).not.toBeInTheDocument();
   });
 });

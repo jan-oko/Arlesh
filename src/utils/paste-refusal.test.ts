@@ -333,7 +333,7 @@ describe("the message each refusal produces", () => {
 
   it("sends a repetition to the Habit's template and a stale id back to the clipboard", () => {
     expect(warnings.pasteSkippedRepetition_one).toBe(
-      "{{count}} Habit repetition isn't a row of its own, so there is nothing to paste — copy it from the Habit's template instead.",
+      "{{count}} Habit repetition belongs to its iteration, so it can't be moved or copied — copy it from the Habit's template instead.",
     );
     expect(warnings.pasteSkippedGone_one).toBe(
       "{{count}} copied node isn't in the mindmap any more — copy it again.",

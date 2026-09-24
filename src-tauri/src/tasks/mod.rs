@@ -10,7 +10,7 @@
 //! instead — [`create_task`], [`update_task`], [`delete_task`], [`get_task_with_blockers`] and
 //! their goal and commitment counterparts. See [`Db`]'s `# Where an operation lives`.
 
-mod agentic;
+pub(crate) mod agentic;
 mod ancestry;
 pub mod commitments;
 pub mod error;
@@ -26,6 +26,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::InfoId;
+use crate::nodes::origin::Origin;
 use crate::scopes::key::ScopeKey;
 use ancestry::{AncestryLink, NodeKind, NodeRef};
 pub use commitments::{
@@ -44,7 +45,7 @@ use model::{
 };
 pub use scope_rules::{
     conflicts_for_new_time_scope, derive_all_scope_lifecycles, nearest_scoped_ancestor_window,
-    reparent_conflicts, ReparentConflicts, ViolatingDescendant,
+    reparent_conflicts, wait_lifecycle, ReparentConflicts, ViolatingDescendant,
 };
 
 // Internal row types that map directly to database columns via sqlx::FromRow.
@@ -178,6 +179,9 @@ async fn delete_node_subtree(
         // Commitment never has any, and asking for none costs one statement against the risk of
         // leaving a stale row behind if that ever changes.
         db.block_reasons().delete_for(node_type, *node_id).await?;
+        // An edge between this row and a Habit occurrence names the row by id, with no foreign
+        // key on the target side; it goes with the row, as a stored edge does.
+        db.relations().forget_stored(node_type, *node_id).await?;
         match node_type.as_str() {
             "goal" => db.goals().delete_row(GoalId(*node_id)).await?,
             "commitment" => db.commitments().delete_row(CommitmentId(*node_id)).await?,
@@ -244,10 +248,10 @@ struct TaskRow {
 impl From<TaskRow> for Task {
     fn from(row: TaskRow) -> Self {
         Self {
-            id: row.id,
+            id: row.id.into(),
             title: row.title,
             parent_type: row.parent_type,
-            parent_id: row.parent_id,
+            parent_id: row.parent_id.into(),
             status: row.status,
             delegate_to: Delegate::from_columns(row.delegate_kind.as_deref(), row.delegate_id),
             agentic: row.agentic,
@@ -270,6 +274,7 @@ impl From<TaskRow> for Task {
             position: row.position,
             is_private: row.is_private,
             beads_id: row.beads_id,
+            origin: Origin::Manual,
         }
     }
 }
@@ -294,10 +299,10 @@ struct GoalRow {
 impl From<GoalRow> for Goal {
     fn from(row: GoalRow) -> Self {
         Self {
-            id: row.id,
+            id: row.id.into(),
             title: row.title,
             parent_type: row.parent_type,
-            parent_id: row.parent_id,
+            parent_id: row.parent_id.into(),
             status: row.status,
             time_scope: time_scope_from_row(
                 row.time_scope_start_id,
@@ -310,6 +315,7 @@ impl From<GoalRow> for Goal {
             position: row.position,
             is_private: row.is_private,
             beads_id: row.beads_id,
+            origin: Origin::Manual,
         }
     }
 }
@@ -397,14 +403,19 @@ struct GoalWrite {
 
 impl GoalWrite {
     /// Merges `request` over the `stored` row. Pure — it reads nothing and writes nothing.
-    fn merge(stored: Goal, request: UpdateGoalRequest) -> Self {
+    fn merge(
+        stored: Goal,
+        request: UpdateGoalRequest,
+    ) -> Result<Self, crate::nodes::id::NotStored> {
         let reparent = match (request.parent_type, request.parent_id) {
-            (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
+            (Some(parent_type), Some(parent_id)) => {
+                Some((parent_type, parent_id.require_stored()?))
+            }
             _ => None,
         };
         let (parent_type, parent_id) = reparent
             .clone()
-            .unwrap_or((stored.parent_type, stored.parent_id));
+            .unwrap_or((stored.parent_type, stored.parent_id.require_stored()?));
         let status = request
             .status
             .as_ref()
@@ -415,7 +426,7 @@ impl GoalWrite {
             Some(new_time_scope) => new_time_scope,
             None => stored.time_scope,
         };
-        Self {
+        Ok(Self {
             reparent,
             parent_type,
             parent_id,
@@ -425,7 +436,7 @@ impl GoalWrite {
             on_scope_exit: request.on_scope_exit.unwrap_or(stored.on_scope_exit),
             position: request.position.unwrap_or(stored.position),
             is_private: request.is_private.unwrap_or(stored.is_private),
-        }
+        })
     }
 }
 
@@ -471,15 +482,20 @@ struct TaskWrite {
 
 impl TaskWrite {
     /// Merges `request` over the `stored` row. Pure — it reads nothing and writes nothing.
-    fn merge(stored: Task, request: UpdateTaskRequest) -> Self {
+    fn merge(
+        stored: Task,
+        request: UpdateTaskRequest,
+    ) -> Result<Self, crate::nodes::id::NotStored> {
         let reparent = match (request.parent_type, request.parent_id) {
-            (Some(parent_type), Some(parent_id)) => Some((parent_type, parent_id)),
+            (Some(parent_type), Some(parent_id)) => {
+                Some((parent_type, parent_id.require_stored()?))
+            }
             _ => None,
         };
         // Validate against the effective parent — the new one when reparenting.
         let (parent_type, parent_id) = reparent
             .clone()
-            .unwrap_or((stored.parent_type, stored.parent_id));
+            .unwrap_or((stored.parent_type, stored.parent_id.require_stored()?));
         let status = request
             .status
             .as_ref()
@@ -535,7 +551,7 @@ impl TaskWrite {
         } else {
             request.archival.unwrap_or(stored.archival)
         };
-        Self {
+        Ok(Self {
             reparent,
             parent_type,
             parent_id,
@@ -552,7 +568,7 @@ impl TaskWrite {
             archival,
             position: request.position.unwrap_or(stored.position),
             is_private: request.is_private.unwrap_or(stored.is_private),
-        }
+        })
     }
 }
 
@@ -601,7 +617,7 @@ impl<'session> GoalOperator<'session> {
         )
         .bind(&request.title)
         .bind(&request.parent_type)
-        .bind(request.parent_id)
+        .bind(request.parent_id.require_stored()?)
         .bind(status)
         .bind(ts_start)
         .bind(ts_end)
@@ -895,7 +911,7 @@ impl<'session> TaskOperator<'session> {
         )
         .bind(&request.title)
         .bind(&request.parent_type)
-        .bind(request.parent_id)
+        .bind(request.parent_id.require_stored()?)
         .bind(status)
         .bind(ts_start)
         .bind(ts_end)
@@ -1114,15 +1130,15 @@ impl<'session> TaskOperator<'session> {
         task_id: TaskId,
         dependency: Dependency,
     ) -> Result<(), TaskError> {
-        if let Dependency::Task { id: dependency_id } = dependency {
+        if let Dependency::Task { id: dependency_id } = &dependency {
             if self
-                .would_create_cycle(task_id, TaskId(dependency_id))
+                .would_create_cycle(task_id, TaskId(dependency_id.require_stored()?))
                 .await?
             {
                 return Err(TaskError::CircularDependency);
             }
         }
-        let (dependency_type, dependency_id) = dependency_parts(&dependency);
+        let (dependency_type, dependency_id) = dependency_parts(&dependency)?;
         sqlx::query(
             "INSERT OR IGNORE INTO task_dependencies (task_id, dependency_type, dependency_id) VALUES (?, ?, ?)",
         )
@@ -1140,7 +1156,7 @@ impl<'session> TaskOperator<'session> {
         task_id: TaskId,
         dependency: Dependency,
     ) -> Result<(), TaskError> {
-        let (dependency_type, dependency_id) = dependency_parts(&dependency);
+        let (dependency_type, dependency_id) = dependency_parts(&dependency)?;
         sqlx::query(
             "DELETE FROM task_dependencies WHERE task_id=? AND dependency_type=? AND dependency_id=?",
         )
@@ -1173,13 +1189,13 @@ impl<'session> TaskOperator<'session> {
             .into_iter()
             .map(|row| match row.dependency_type.as_str() {
                 "task" => Dependency::Task {
-                    id: row.dependency_id,
+                    id: row.dependency_id.into(),
                 },
                 expectations::EXPECTATION => Dependency::Expectation {
                     id: row.dependency_id,
                 },
                 _ => Dependency::Goal {
-                    id: row.dependency_id,
+                    id: row.dependency_id.into(),
                 },
             })
             .collect();
@@ -1196,9 +1212,9 @@ impl<'session> TaskOperator<'session> {
             .into_iter()
             .map(
                 |(task_id, dependency_type, dependency_id)| TaskDependencyEdge {
-                    task_id,
+                    task_id: task_id.into(),
                     dependency_type,
-                    dependency_id,
+                    dependency_id: dependency_id.into(),
                 },
             )
             .collect())
@@ -1410,7 +1426,7 @@ pub async fn create_goal(
         db,
         None,
         &request.parent_type,
-        request.parent_id,
+        request.parent_id.require_stored()?,
         &request.time_scope,
     )
     .await?;
@@ -1446,7 +1462,7 @@ pub async fn update_goal(
     request: UpdateGoalRequest,
 ) -> Result<Goal, TaskError> {
     let stored = db.goals().get(id).await?;
-    let write = GoalWrite::merge(stored, request);
+    let write = GoalWrite::merge(stored, request)?;
     scope_rules::validate_goal_containment(
         db,
         Some(id),
@@ -1498,7 +1514,7 @@ pub async fn create_task(
         db,
         None,
         &request.parent_type,
-        request.parent_id,
+        request.parent_id.require_stored()?,
         &request.time_scope,
         &request.plan,
     )
@@ -1547,7 +1563,7 @@ pub async fn update_task(
     // progress is not a start, so an edit to one never trips the Spec rule.
     let starts = matches!(request.status, Some(TaskStatus::InProgress))
         && stored.status != TaskStatus::InProgress.as_str();
-    let write = TaskWrite::merge(stored, request);
+    let write = TaskWrite::merge(stored, request)?;
     reject_backlog_with_plan(write.archival, &write.plan)?;
     agentic::validate_brief(&write.agentic_brief)?;
     if starts {
@@ -1588,7 +1604,7 @@ pub async fn update_task(
 /// # use arlesh_lib::tasks::{add_task_dependency, error::TaskError, model::{Dependency, TaskId}};
 /// # async fn depend(factory: &SessionFactory) -> Result<(), TaskError> {
 /// let mut db = factory.begin().await?;
-/// add_task_dependency(&mut db, TaskId(1), Dependency::Task { id: 2 }).await?;
+/// add_task_dependency(&mut db, TaskId(1), Dependency::Task { id: 2.into() }).await?;
 /// db.commit().await?;
 /// # Ok(())
 /// # }
@@ -1634,7 +1650,10 @@ pub async fn get_task_with_blockers<M: SessionMode>(
     for dependency in dependencies {
         match dependency {
             Dependency::Task { id: dependency_id } => {
-                let dependency_task = db.tasks().get(TaskId(dependency_id)).await?;
+                let dependency_task = db
+                    .tasks()
+                    .get(TaskId(dependency_id.require_stored()?))
+                    .await?;
                 if dependency_task.status != TaskStatus::Done.as_str() {
                     reasons.push(format!(
                         "Blocked by task {} ({})",
@@ -1643,8 +1662,10 @@ pub async fn get_task_with_blockers<M: SessionMode>(
                 }
             }
             Dependency::Goal { id: dependency_id } => {
-                let (goal_status, goal_title) =
-                    db.goals().status_and_title(GoalId(dependency_id)).await?;
+                let (goal_status, goal_title) = db
+                    .goals()
+                    .status_and_title(GoalId(dependency_id.require_stored()?))
+                    .await?;
                 if goal_status != GoalStatus::Achieved.as_str() {
                     reasons.push(format!(
                         "Blocked by goal {} ({})",
@@ -1670,12 +1691,17 @@ pub async fn get_task_with_blockers<M: SessionMode>(
     })
 }
 
-fn dependency_parts(dependency: &Dependency) -> (&'static str, i64) {
-    match dependency {
-        Dependency::Task { id } => ("task", *id),
-        Dependency::Goal { id } => ("goal", *id),
+/// The `(dependency_type, dependency_id)` columns a stored edge is written as. An edge naming a
+/// Habit occurrence is not a `task_dependencies` row — it lives in `derived_dependencies` — so a
+/// derived target reaching here is refused.
+fn dependency_parts(
+    dependency: &Dependency,
+) -> Result<(&'static str, i64), crate::nodes::id::NotStored> {
+    Ok(match dependency {
+        Dependency::Task { id } => ("task", id.require_stored()?),
+        Dependency::Goal { id } => ("goal", id.require_stored()?),
         Dependency::Expectation { id } => (expectations::EXPECTATION, *id),
-    }
+    })
 }
 
 #[cfg(test)]

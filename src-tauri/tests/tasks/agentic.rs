@@ -2,6 +2,7 @@
 //! before it starts, and the agentic waits that may hang only under one.
 
 use crate::helpers;
+use helpers::StoredId;
 
 use arlesh_lib::{
     domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
@@ -61,7 +62,7 @@ async fn task(
         CreateTaskRequest {
             title: "Work".into(),
             parent_type: parent.0.into(),
-            parent_id: parent.1,
+            parent_id: parent.1.into(),
             agentic: Some(agentic),
             agentic_brief: brief,
             ..Default::default()
@@ -70,6 +71,7 @@ async fn task(
     .await
     .unwrap()
     .id
+    .sid()
 }
 
 async fn update(
@@ -117,7 +119,7 @@ async fn wait_under(
         CreateExpectationRequest {
             title: "Which colour?".into(),
             parent_type: parent.0.into(),
-            parent_id: parent.1,
+            parent_id: parent.1.into(),
             agentic: true,
             agentic_note: Some("Red or blue for the badge?".into()),
             ..Default::default()
@@ -151,7 +153,7 @@ async fn a_brief_is_stored_read_back_and_removed() {
     assert_eq!(
         listed
             .iter()
-            .find(|task| task.id == id)
+            .find(|task| task.id == id.into())
             .and_then(|task| task.agentic_brief.clone()),
         with_spec("Build it")
     );
@@ -374,7 +376,7 @@ async fn creating_a_task_already_in_progress_is_not_a_start() {
         CreateTaskRequest {
             title: "Underway".into(),
             parent_type: "task".into(),
-            parent_id: parent,
+            parent_id: parent.into(),
             status: Some(TaskStatus::InProgress),
             ..Default::default()
         },
@@ -436,7 +438,7 @@ async fn an_agentic_wait_can_still_be_answered_after_its_task_stops_being_agenti
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let answered = update_expectation(
         &mut db,
-        ExpectationId(wait.id),
+        ExpectationId(wait.id.sid()),
         UpdateExpectationRequest {
             status: Some(ExpectationStatus::Released),
             agentic_note: Some(Some("Red or blue for the badge?\nBlue.".into())),

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { isDerivedId, storedId } from "@/api/node-id";
 import { dayStartInstant } from "@/utils/scope-calendar";
 import { useTranslation } from "react-i18next";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
@@ -23,6 +24,7 @@ import {
   setFlowRecurrence, deleteFlowRecurrence, forkFlow, clearHabitModifications,
 } from "@/api/flows";
 import { keyContaining } from "@/utils/scope-key";
+import type { FlowItemType, ForkedTemplate, UpdateFlowItemRequest, UpdateFlowRequest } from "@/api/flows";
 import { withAtomicGesture } from "@/api/gesture";
 import { localNowIso } from "@/utils/local-now";
 import type { Domain } from "@/api/domains";
@@ -41,10 +43,17 @@ import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
 import { addTagToCommitment, removeTagFromCommitment, updateCommitment } from "@/api/commitments";
 import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
-import { editorOwnerOf, isUneditableCheck } from "@/utils/editor-owner";
+import { editorOwnerOf } from "@/utils/editor-owner";
 import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { TASK_STATUS } from "@/utils/status-mapping";
+
+/** A flow item's id on the fork an "Archive & new" save landed on — or its own, with no fork. */
+function forkedItemId(forked: ForkedTemplate | null, type: FlowItemType, id: number): number {
+  if (forked === null) return id;
+  const pairs = type === "flow_goal" ? forked.goals : forked.tasks;
+  return pairs.find(([old]) => old === id)?.[1] ?? id;
+}
 
 export interface EditorModalState {
   nodeId: string;
@@ -172,20 +181,10 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onDoubleClick = useCallback(
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
-      // A virtual Habit instance isn't backed by a real Task/Goal row — its Time Scope is derived
-      // from the flow's Duration kind and the item's Cycle, not independently editable — and
-      // it has no `rowId` for `onTaskSave`/`onGoalSave` to write to (`rowIdOf` would throw). It stays read-only here; only `onStatusClick` may mutate it.
+      // A Habit occurrence opens the same editor as any row of its kind (ADR 0008); what it saves
+      // lands on that occurrence alone. Its window is its iteration's, which the editor shows
+      // but does not offer to change.
       if (node === undefined || node.kind === "aspect") return;
-      // Refused out loud, not by an inert key: `E` on a commitment Habit's iteration in the List
-      // View looked like a dead key (Arlesh-bzn), because this guard returned without a word.
-      if (node.habitItem !== undefined) {
-        showToast({ nodeId, message: t("editRepetitionRefused") });
-        return;
-      }
-      if (isUneditableCheck(node)) {
-        showToast({ nodeId, message: t("editCheckTaskRefused") });
-        return;
-      }
       const owner = editorOwnerOf(tree, node);
       if (owner === undefined) {
         showToast({ nodeId, message: t("editOwnerMissing") });
@@ -201,7 +200,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       if (editorModal === null) return;
       const { nodeId, node } = editorModal;
       const dbId = rowIdOf(node);
-      if (data.timeScope !== null) {
+      // An occurrence's window is its iteration's and does not change, so nothing is re-clamped.
+      if (data.timeScope !== null && !isDerivedId(dbId)) {
         const conflicts = await scopeContainmentConflicts("task", dbId, data.timeScope);
         await clampDescendants(conflicts, data.timeScope);
       }
@@ -246,7 +246,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       if (editorModal === null) return;
       const { node } = editorModal;
       const dbId = rowIdOf(node);
-      if (data.timeScope !== null) {
+      if (data.timeScope !== null && !isDerivedId(dbId)) {
         const conflicts = await scopeContainmentConflicts("goal", dbId, data.timeScope);
         await clampDescendants(conflicts, data.timeScope);
       }
@@ -271,7 +271,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onExpectationSave = useCallback(
     async (data: ExpectationSaveData) => {
       if (editorModal === null) return;
-      const dbId = rowIdOf(editorModal.node);
+      const dbId = storedId(rowIdOf(editorModal.node));
       await updateExpectation(dbId, {
         title: data.title,
         status: data.status,
@@ -319,7 +319,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onFlowSave = useCallback(
     async (data: FlowSaveData) => {
       if (editorModal === null) return;
-      const dbId = rowIdOf(editorModal.node);
+      const dbId = storedId(rowIdOf(editorModal.node));
       const flowFields = {
         title: data.title,
         instance_type: data.instanceType,
@@ -335,8 +335,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         root_plan_end: data.rootPlanEnd,
         verdict_window_n: data.verdictWindowN,
         verdict_window_kind: data.verdictWindowKind,
-        isPrivate: data.isPrivate,
-      };
+        is_private: data.isPrivate,
+      } satisfies UpdateFlowRequest;
       // Persist the Recurrence for `targetId` after its flow row, so gap validation sees the new kind.
       const persistRecurrence = async (targetId: number) => {
         if (data.recurrence === undefined) return;
@@ -383,38 +383,53 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       const { node } = editorModal;
       const flowItem = node.flowItem;
       if (flowItem === undefined) return;
-      const dbId = rowIdOf(node);
-      const patch = { title: data.title, isPrivate: data.isPrivate };
-      if (flowItem.itemType === "flow_goal") {
-        await updateFlowGoal(dbId, patch);
-      } else {
-        await updateFlowTask(dbId, patch);
-      }
-      await setFlowItemCycles(
-        flowItem.flowId,
-        flowItem.itemType,
-        dbId,
-        data.cycles.map((c) => ({
-          scope_kind: c.scopeKind, scope_index: c.scopeIndex,
-          plan_kind: c.planKind, plan_start: c.planStart, plan_end: c.planEnd,
-        })),
-      );
-      for (const dep of data.addedDeps) {
-        await addFlowDependency(flowItem.flowId, flowItem.itemType, dbId, dep.type, dep.id);
-      }
-      for (const dep of data.removedDeps) {
-        await removeFlowDependency(flowItem.itemType, dbId, dep.type, dep.id);
-      }
+      const dbId = storedId(rowIdOf(node));
+      // One gesture for the whole save. The pairs go first: they are what may refuse — a change
+      // that would orphan what occurrences recorded asks the Habit editor's question — and an
+      // "Archive & new" answer moves the rest of the save onto the fork, whose item ids the
+      // backend hands back.
+      await withAtomicGesture(tUndo("gestures.editFlowItem"), async () => {
+        const forked = await setFlowItemCycles(
+          flowItem.flowId,
+          flowItem.itemType,
+          dbId,
+          data.cycles.map((c) => ({
+            scope_kind: c.scopeKind, scope_index: c.scopeIndex,
+            plan_kind: c.planKind, plan_start: c.planStart, plan_end: c.planEnd,
+          })),
+          data.reconcile,
+          // "Archive & new" archives the original as of now, which the backend is told rather
+          // than left to read its own clock.
+          data.reconcile === undefined ? undefined : localNowIso(),
+        );
+        const onto = (type: FlowItemType, id: number): number => forkedItemId(forked, type, id);
+        const flowId = forked?.flow_id ?? flowItem.flowId;
+        const itemId = onto(flowItem.itemType, dbId);
+        const patch = {
+          title: data.title, is_private: data.isPrivate, ...data.template,
+        } satisfies UpdateFlowItemRequest;
+        if (flowItem.itemType === "flow_goal") {
+          await updateFlowGoal(itemId, patch);
+        } else {
+          await updateFlowTask(itemId, patch);
+        }
+        for (const dep of data.addedDeps) {
+          await addFlowDependency(flowId, flowItem.itemType, itemId, dep.type, onto(dep.type, dep.id));
+        }
+        for (const dep of data.removedDeps) {
+          await removeFlowDependency(flowItem.itemType, itemId, dep.type, onto(dep.type, dep.id));
+        }
+      });
       await reload();
       setEditorModal(null);
     },
-    [editorModal, reload],
+    [editorModal, reload, tUndo],
   );
 
   const onSimpleSave = useCallback(
     async (title: string, isPrivate: boolean) => {
       if (editorModal === null) return;
-      const dbId = rowIdOf(editorModal.node);
+      const dbId = storedId(rowIdOf(editorModal.node));
       // Domain/tag editors: persist title and privacy together, then refresh.
       await updateDomain(dbId, { title, is_private: isPrivate });
       await reload();
@@ -426,7 +441,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onProjectSave = useCallback(
     async (data: ProjectSaveData) => {
       if (editorModal === null) return;
-      const dbId = rowIdOf(editorModal.node);
+      const dbId = storedId(rowIdOf(editorModal.node));
       await updateDomain(dbId, {
         title: data.title,
         is_private: data.isPrivate,
@@ -442,7 +457,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onInfoSave = useCallback(
     async (data: InfoSaveData) => {
       if (editorModal === null) return;
-      const dbId = rowIdOf(editorModal.node);
+      const dbId = storedId(rowIdOf(editorModal.node));
       await updateInfo(dbId, { body: data.body, details: data.details, is_private: data.isPrivate });
       await reload();
       setEditorModal(null);
@@ -458,8 +473,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onClearBeadsId = useCallback(
     async (nodeType: BeadsNodeType) => {
       if (editorModal === null) return;
-      const dbId = rowIdOf(editorModal.node);
-      await clearBeadsId(nodeType, dbId);
+      // A Habit occurrence's link is cleared on that occurrence alone.
+      await clearBeadsId(nodeType, rowIdOf(editorModal.node));
       await reload();
     },
     [editorModal, reload],

@@ -47,7 +47,7 @@ async fn create_info_under_goal() {
         CreateGoalRequest {
             title: "A Goal".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: None,
             ..Default::default()
         },
@@ -64,7 +64,7 @@ async fn create_info_under_goal() {
             body: "Important detail".into(),
             details: None,
             parent_type: "goal".into(),
-            parent_id: goal.id,
+            parent_id: goal.id.clone(),
             position: 0,
         })
         .await
@@ -86,7 +86,7 @@ async fn create_info_under_task() {
         CreateTaskRequest {
             title: "A Task".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: None,
             ..Default::default()
         },
@@ -103,7 +103,7 @@ async fn create_info_under_task() {
             body: "Task note".into(),
             details: None,
             parent_type: "task".into(),
-            parent_id: task.id,
+            parent_id: task.id.clone(),
             position: 0,
         })
         .await
@@ -145,7 +145,7 @@ async fn create_info_under_domain() {
             body: "Domain note".into(),
             details: None,
             parent_type: "domain".into(),
-            parent_id: domain.id,
+            parent_id: domain.id.into(),
             position: 0,
         })
         .await
@@ -168,7 +168,7 @@ async fn create_nested_info_under_info() {
             body: "Parent note".into(),
             details: None,
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             position: 0,
         })
         .await
@@ -180,7 +180,7 @@ async fn create_nested_info_under_info() {
             body: "Child note".into(),
             details: None,
             parent_type: "info".into(),
-            parent_id: parent_info.id,
+            parent_id: parent_info.id.into(),
             position: 0,
         })
         .await
@@ -203,7 +203,7 @@ async fn list_infos_returns_all() {
             body: "Alpha".into(),
             details: None,
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             position: 0,
         })
         .await
@@ -214,7 +214,7 @@ async fn list_infos_returns_all() {
             body: "Beta".into(),
             details: None,
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             position: 1,
         })
         .await
@@ -238,7 +238,7 @@ async fn update_info_body() {
             body: "Old text".into(),
             details: None,
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             position: 0,
         })
         .await
@@ -273,7 +273,7 @@ async fn update_info_position() {
             body: "Note".into(),
             details: None,
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             position: 5,
         })
         .await
@@ -307,7 +307,7 @@ async fn update_info_private_round_trips() {
             body: "Note".into(),
             details: None,
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             position: 0,
         })
         .await
@@ -352,7 +352,7 @@ async fn update_info_parent() {
         CreateTaskRequest {
             title: "Target Task".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: None,
             ..Default::default()
         },
@@ -369,7 +369,7 @@ async fn update_info_parent() {
             body: "Reparented note".into(),
             details: None,
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             position: 0,
         })
         .await
@@ -381,7 +381,7 @@ async fn update_info_parent() {
             info.id.into(),
             UpdateInfoRequest {
                 parent_type: Some("task".into()),
-                parent_id: Some(task.id),
+                parent_id: Some(task.id.clone()),
                 ..Default::default()
             },
         )
@@ -405,7 +405,7 @@ async fn delete_info() {
             body: "Temporary note".into(),
             details: None,
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             position: 0,
         })
         .await
@@ -430,7 +430,7 @@ async fn details_round_trip_set_and_clear() {
             body: "Crash".into(),
             details: Some("stack trace line 1\nline 2".into()),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             position: 0,
         })
         .await
@@ -486,7 +486,7 @@ async fn the_update_info_command_commits_every_field_it_touches() {
             body: "Before".into(),
             details: None,
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             position: 0,
         })
         .await

@@ -4,24 +4,24 @@ use crate::tasks::model::{Dependency, TaskAgentic};
 
 #[test]
 fn dependency_parts_task_variant() {
-    let (ty, id) = dependency_parts(&Dependency::Task { id: 42 });
+    let (ty, id) = dependency_parts(&Dependency::Task { id: 42.into() }).unwrap();
     assert_eq!(ty, "task");
     assert_eq!(id, 42);
 }
 
 #[test]
 fn dependency_parts_goal_variant() {
-    let (ty, id) = dependency_parts(&Dependency::Goal { id: 99 });
+    let (ty, id) = dependency_parts(&Dependency::Goal { id: 99.into() }).unwrap();
     assert_eq!(ty, "goal");
     assert_eq!(id, 99);
 }
 
 fn stored_task() -> Task {
     Task {
-        id: 1,
+        id: 1.into(),
         title: "Stored".to_string(),
         parent_type: "project".to_string(),
-        parent_id: 7,
+        parent_id: 7.into(),
         status: TaskStatus::Todo.as_str().to_string(),
         delegate_to: Some(Delegate::Person { id: 3 }),
         agentic: None,
@@ -46,6 +46,7 @@ fn stored_task() -> Task {
         // Tracked in `bd`. `TaskWrite` has no counterpart field, so the merge below cannot
         // carry it either way — which is the write-path constraint, stated in the type.
         beads_id: Some("Arlesh-5fs".to_string()),
+        origin: Default::default(),
     }
 }
 
@@ -66,7 +67,8 @@ fn merging_leaves_a_backlogged_task_in_the_backlog_when_nothing_says_otherwise()
             title: Some("Renamed".to_string()),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(write.archival, TaskArchival::Backlog);
 }
 
@@ -85,7 +87,8 @@ fn setting_a_plan_on_a_backlogged_task_takes_it_out_of_the_backlog() {
             plan: Some(Some(plan.clone())),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(write.archival, TaskArchival::Live);
     assert_eq!(write.plan, Some(plan));
 }
@@ -106,14 +109,15 @@ fn an_explicit_backlog_is_never_overridden_by_the_plan_rule() {
             archival: Some(TaskArchival::Backlog),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(write.archival, TaskArchival::Backlog);
     assert!(write.plan.is_some());
 }
 
 #[test]
 fn a_live_task_that_keeps_its_plan_is_untouched_by_the_backlog_rule() {
-    let write = TaskWrite::merge(stored_task(), UpdateTaskRequest::default());
+    let write = TaskWrite::merge(stored_task(), UpdateTaskRequest::default()).unwrap();
     assert_eq!(write.archival, TaskArchival::Live);
     assert!(write.plan.is_some());
 }
@@ -150,7 +154,8 @@ fn an_update_that_says_nothing_about_agentic_leaves_the_flag_alone() {
             title: Some("Renamed".to_string()),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(write.agentic, Some(true));
 }
 
@@ -167,7 +172,8 @@ fn each_explicit_agentic_state_writes_its_own_column_value() {
                 agentic: Some(requested),
                 ..Default::default()
             },
-        );
+        )
+        .unwrap();
         assert_eq!(
             write.agentic, column,
             "{requested:?} writes the wrong column value"
@@ -185,8 +191,9 @@ fn putting_a_task_back_to_inheriting_is_not_read_as_saying_nothing() {
             agentic: Some(TaskAgentic::Inherit),
             ..Default::default()
         },
-    );
-    let untouched = TaskWrite::merge(agentic_task(), UpdateTaskRequest::default());
+    )
+    .unwrap();
+    let untouched = TaskWrite::merge(agentic_task(), UpdateTaskRequest::default()).unwrap();
     assert_eq!(cleared.agentic, None);
     assert_eq!(untouched.agentic, Some(true));
 }
@@ -201,7 +208,8 @@ fn agentic_and_the_delegate_are_merged_independently() {
             delegate_to: Some(None),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(write.agentic, Some(true));
     assert_eq!(write.delegate_to, None);
 }
@@ -214,7 +222,8 @@ fn delegating_to_the_agent_replaces_a_person_delegate() {
             delegate_to: Some(Some(Delegate::Agent)),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(write.delegate_to, Some(Delegate::Agent));
 }
 
@@ -243,7 +252,8 @@ fn an_update_that_says_nothing_about_asynchronous_leaves_the_template_alone() {
             title: Some("Renamed".to_string()),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert!(write.asynchronous);
     assert_eq!(write.async_template, asynchronous_task().async_template);
 }
@@ -269,7 +279,8 @@ fn each_asynchronous_answer_writes_itself() {
                 asynchronous: requested,
                 ..Default::default()
             },
-        );
+        )
+        .unwrap();
         assert_eq!(
             write.asynchronous, expected,
             "stored {stored}, requested {requested:?}"
@@ -285,7 +296,8 @@ fn the_toggle_turns_the_flag_on_without_a_template_and_off_taking_the_template_w
             asynchronous: Some(true),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert!(on.asynchronous);
     assert!(on.async_template.is_none());
     let keep = TaskWrite::merge(
@@ -294,7 +306,8 @@ fn the_toggle_turns_the_flag_on_without_a_template_and_off_taking_the_template_w
             asynchronous: Some(true),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(keep.async_template, asynchronous_task().async_template);
     let off = TaskWrite::merge(
         asynchronous_task(),
@@ -302,7 +315,8 @@ fn the_toggle_turns_the_flag_on_without_a_template_and_off_taking_the_template_w
             asynchronous: Some(false),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert!(!off.asynchronous);
     assert!(off.async_template.is_none());
 }
@@ -316,7 +330,8 @@ fn a_template_is_dropped_unless_the_task_ends_up_asynchronous() {
             async_template: Some(template.clone()),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert!(dropped.async_template.is_none());
     let kept = TaskWrite::merge(
         stored_task(),
@@ -325,7 +340,8 @@ fn a_template_is_dropped_unless_the_task_ends_up_asynchronous() {
             async_template: Some(template.clone()),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(kept.async_template, template);
     let removed = TaskWrite::merge(
         asynchronous_task(),
@@ -333,7 +349,8 @@ fn a_template_is_dropped_unless_the_task_ends_up_asynchronous() {
             async_template: Some(None),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert!(removed.asynchronous && removed.async_template.is_none());
 }
 
@@ -351,14 +368,15 @@ fn asynchronous_and_agentic_are_merged_independently() {
             agentic: Some(TaskAgentic::No),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(write.agentic, Some(false));
     assert!(write.async_template.is_some());
 }
 
 #[test]
 fn an_empty_update_request_writes_the_stored_row_back_unchanged() {
-    let write = TaskWrite::merge(stored_task(), UpdateTaskRequest::default());
+    let write = TaskWrite::merge(stored_task(), UpdateTaskRequest::default()).unwrap();
     assert!(write.reparent.is_none());
     assert_eq!(write.parent_type, "project");
     assert_eq!(write.parent_id, 7);
@@ -378,7 +396,8 @@ fn clearing_the_time_scope_clears_it_rather_than_keeping_the_stored_one() {
             time_scope: Some(None),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(write.time_scope, None);
 }
 
@@ -390,7 +409,8 @@ fn a_reparent_needs_both_halves_and_becomes_the_validated_parent() {
             parent_type: Some("goal".into()),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert!(
         half.reparent.is_none(),
         "a parent type without an id is not a move"
@@ -401,10 +421,11 @@ fn a_reparent_needs_both_halves_and_becomes_the_validated_parent() {
         stored_task(),
         UpdateTaskRequest {
             parent_type: Some("goal".into()),
-            parent_id: Some(42),
+            parent_id: Some(42.into()),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(full.reparent, Some(("goal".to_string(), 42)));
     assert_eq!(full.parent_type, "goal");
     assert_eq!(full.parent_id, 42);
@@ -413,10 +434,10 @@ fn a_reparent_needs_both_halves_and_becomes_the_validated_parent() {
 #[test]
 fn a_goal_update_merges_its_request_over_the_stored_row() {
     let stored = Goal {
-        id: 2,
+        id: 2.into(),
         title: "Stored".to_string(),
         parent_type: "project".to_string(),
-        parent_id: 7,
+        parent_id: 7.into(),
         status: GoalStatus::Active.as_str().to_string(),
         time_scope: None,
         on_scope_exit: None,
@@ -425,6 +446,7 @@ fn a_goal_update_merges_its_request_over_the_stored_row() {
         is_private: true,
         // As in `stored_task`: `GoalWrite` has no `beads_id`, so an update cannot reach it.
         beads_id: Some("Arlesh-5fs".to_string()),
+        origin: Default::default(),
     };
     let write = GoalWrite::merge(
         stored,
@@ -433,9 +455,18 @@ fn a_goal_update_merges_its_request_over_the_stored_row() {
             position: Some(9),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(write.title, "Stored");
     assert_eq!(write.status, GoalStatus::Achieved.as_str());
     assert_eq!(write.position, 9);
     assert!(write.is_private);
+}
+
+#[test]
+fn dependency_parts_refuses_a_derived_target() {
+    let derived = crate::nodes::id::NodeId::Derived(crate::nodes::id::DerivedId::of_key(
+        "flow_task:1:2026-01-05:0",
+    ));
+    assert!(dependency_parts(&Dependency::Task { id: derived }).is_err());
 }

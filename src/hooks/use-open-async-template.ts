@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { findNode } from "@/utils/mindmap-tree";
+import { checkOrigin } from "@/api/node-id";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import type { EditorModalState } from "@/components/MindmapView/use-node-editor";
 
@@ -21,7 +22,8 @@ export function useOpenAsyncTemplate(
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
       if (node === undefined) return;
-      if (node.kind !== "task" || node.rowId === undefined || node.habitItem !== undefined) {
+      // A wait's check task is a Task that does not start a wait of its own.
+      if (node.kind !== "task" || node.rowId === undefined || checkOrigin(node.origin) !== undefined) {
         showToast({ nodeId, message: t("bindNotATask") });
         return;
       }

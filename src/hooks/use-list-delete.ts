@@ -44,10 +44,9 @@ interface ListDelete {
  * either view. What is left here is only the part a flat list genuinely does differently.
  *
  * Two of those differences are real. The list has **one** selection where the canvas has an anchor
- * and a multi-selection, so a delete is always one row and its subtree. And a **virtual Habit
- * repetition** is refused out loud: it is derived at load time, so there is no row to delete — and
- * the thing behind it, the Habit's template, is emphatically not what `Delete` on one occurrence
- * should take away.
+ * and a multi-selection, so a delete is always one row and its subtree. And a **drawn** node (a
+ * wait's check task, a delegated Task's wait) is refused out loud: there is no row to delete. A
+ * Habit occurrence is a row, and its delete archives that one repetition.
  */
 export function useListDelete({
   findNode, removeNode, neighbourAfterDelete, selectRow, showToast,
@@ -61,7 +60,7 @@ export function useListDelete({
     (id: string) => {
       const node = findNode(id);
       if (node === undefined) return;
-      if (node.virtual === true) {
+      if (node.virtual === true || isDerivedWait(node)) {
         const derivedWait = isDerivedWait(node);
         showToast({ nodeId: id, message: t(derivedWait ? "deleteDerivedWaitRefused" : "deleteRepetitionRefused") });
         return;

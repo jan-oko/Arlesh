@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { occurrenceRow } from "@/test/occurrence";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import ListView from "./ListView";
 import { useGlobalHotkeys } from "@/hooks/use-global-hotkeys";
@@ -14,7 +15,6 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { Verdict } from "@/api/verdict";
 import { useListData } from "@/hooks/use-list-data";
 import { LIST_SCROLL_STEP_PX } from "@/hooks/use-list-scroll";
-import { testKey } from "@/test/scope-key";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -36,15 +36,10 @@ vi.mock("@/components/MindmapView/use-node-editor", () => ({
 }));
 vi.mock("@/components/TaskEditorModal/TaskEditorModal", () => ({ default: () => <div data-testid="editor-modal" /> }));
 vi.mock("@/components/CommitmentEditorModal/CommitmentEditorModal", () => ({ default: () => <div data-testid="commitment-editor-modal" /> }));
-const updateCommitment = vi.fn((_id: number, _request: unknown) => Promise.resolve());
+const updateCommitment = vi.fn((_id: number | string, _request: unknown) => Promise.resolve());
 vi.mock("@/api/commitments", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/commitments")>()),
-  updateCommitment: (id: number, request: unknown) => updateCommitment(id, request),
-}));
-const setHabitItemStatus = vi.fn((..._args: unknown[]) => Promise.resolve());
-vi.mock("@/api/flows", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/api/flows")>()),
-  setHabitItemStatus: (...args: unknown[]) => setHabitItemStatus(...args),
+  updateCommitment: (id: number | string, request: unknown) => updateCommitment(id, request),
 }));
 vi.mock("@/hooks/use-tag-names", () => ({ useTagNames: () => new Map() }));
 vi.mock("@/hooks/use-scope-range-label", () => ({ useScopeRangeLabel: () => null }));
@@ -1095,7 +1090,6 @@ describe("ListView — the commitments section", () => {
 
   beforeEach(() => {
     updateCommitment.mockClear();
-    setHabitItemStatus.mockClear();
   });
 
   it("renders commitments as their own section above the task rows", () => {
@@ -1169,13 +1163,12 @@ describe("ListView — the commitments section", () => {
   });
 
   it("gives a commitment Habit's iteration the same verdict control as any other commitment", () => {
-    // Its verdict has nowhere else to go: the iteration is virtual, so it is written as that
-    // iteration's Modification rather than against a commitments row it does not have.
-    const iteration = n("habit-3-0-virtual", "commitment", {
+    // The iteration is a Commitment row with a UUID id (ADR 0008): its verdict is written on it
+    // exactly as on any other.
+    const iteration = n("habit-3-0", "commitment", {
       title: "Asleep by 23:00 Mon",
       verdict: "unresolved",
-      virtual: true,
-      habitItem: { flowId: 3, itemType: "flow_root", itemId: 3, scopeId: testKey(100), cycleId: 0 },
+      ...occurrenceRow({ habitId: 3, itemType: "flow_root", itemId: 3, cycleId: 0 }),
     });
     mockUseListData.mockReturnValue(listData({
       commitmentRows: [commitmentRow({ node: iteration })],
@@ -1185,8 +1178,7 @@ describe("ListView — the commitments section", () => {
     render(<ListViewInApp />);
 
     fireEvent.click(screen.getByRole("button", { name: "cycleVerdict" }));
-    expect(setHabitItemStatus).toHaveBeenCalledWith(3, "flow_root", 3, testKey(100), 0, "kept", expect.any(Number));
-    expect(updateCommitment).not.toHaveBeenCalled();
+    expect(updateCommitment).toHaveBeenCalledWith(iteration.rowId, { verdict: "kept" });
   });
 
   it("leaves Enter meaning 'cycle the status' when the selected row is a task", () => {
@@ -1444,7 +1436,7 @@ describe("ListView — deleting a row", () => {
     const occurrence = n("habititem-flow_task-2-1-0-virtual", "task", {
       status: "todo",
       virtual: true,
-      habitItem: { flowId: 1, itemType: "flow_task", itemId: 2, scopeId: testKey(3), cycleId: 4 },
+      ...occurrenceRow({ habitId: 1, itemType: "flow_task", itemId: 2, cycleId: 4 }),
     });
     const { removeNode } = setup([occurrence], [row({ node: occurrence })]);
     render(<ListViewInApp />);
@@ -1534,7 +1526,7 @@ describe("ListView — expectations", () => {
 
   it("completes a check task's check on Enter, and leaves D free", () => {
     const onCycleStatus = vi.fn();
-    const check = row({ node: n("check-1", "task", { status: "todo", virtual: true, expectationCheck: { kind: "stored", expectationId: 1 } }) });
+    const check = row({ node: n("check-1", "task", { status: "todo", rowId: "c-1", origin: { kind: "check", wait_kind: "stored", wait_id: 1, due_at: "2026-07-10T02:00:00" } }) });
     mockUseListData.mockReturnValue(listData({ rows: [check], onCycleStatus }));
     render(<ListViewInApp />);
     fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });

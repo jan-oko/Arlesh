@@ -27,6 +27,7 @@ use arlesh_lib::tasks::{
     add_task_dependency, create_goal, create_task,
     model::{CreateGoalRequest, CreateTaskRequest, Dependency, GoalId, TaskId, TimeScope},
 };
+use helpers::StoredId;
 use tauri::Manager;
 
 /// Counts the rows of `table` whose `column` equals `value`.
@@ -241,6 +242,8 @@ async fn the_set_flow_item_cycles_command_commits_every_pair() {
                 ..Default::default()
             },
         ],
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -287,6 +290,8 @@ async fn the_delete_flow_item_command_commits_the_item_and_its_links() {
         FlowItemType::FlowTask,
         specify.id,
         vec![FlowCycleInput::default()],
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -398,90 +403,6 @@ async fn the_set_flow_recurrence_command_commits_the_recurrence() {
 }
 
 #[tokio::test]
-async fn the_set_habit_iteration_done_command_commits_a_modification_for_every_instance() {
-    let pool = helpers::test_pool().await;
-    let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Routine"))
-        .await
-        .unwrap();
-    flow_commands::create_flow_task(
-        app.state(),
-        CreateFlowItemRequest {
-            flow_id: flow.id,
-            title: "Exercise".into(),
-            parent_type: "flow".into(),
-            parent_id: flow.id,
-        },
-    )
-    .await
-    .unwrap();
-    let iteration = arlesh_lib::scopes::model::Scope::containing(ScopeKind::Week, ymd(2026, 1, 5))
-        .unwrap()
-        .id;
-
-    flow_commands::set_habit_iteration_done(
-        app.state(),
-        flow.id,
-        iteration,
-        true,
-        1_767_600_000_000,
-        None,
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(
-        count_where(&pool, "habit_instance_modifications", "flow_id", flow.id).await,
-        2,
-        "the root instance and the one item — an iteration resolves as a unit or not at all"
-    );
-}
-
-#[tokio::test]
-async fn the_generate_habit_iterations_command_writes_nothing() {
-    let pool = helpers::test_pool().await;
-    let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Routine"))
-        .await
-        .unwrap();
-    let start = arlesh_lib::scopes::model::Scope::containing(ScopeKind::Week, ymd(2026, 1, 5))
-        .unwrap()
-        .id;
-    flow_commands::set_flow_recurrence(
-        app.state(),
-        flow.id,
-        SetRecurrenceRequest {
-            start_scope_id: start,
-            gap_n: None,
-            gap_kind: None,
-            end_scope_id: None,
-            consumption_kind: ConsumptionKind::Destructive,
-            blocking_mode: None,
-            catchup_policy: None,
-        },
-    )
-    .await
-    .unwrap();
-    let before = helpers::total_changes(&pool).await;
-
-    // Three two-week windows have started by the 4th of February.
-    let iterations = flow_commands::generate_habit_iterations(
-        app.state(),
-        flow.id,
-        ymd(2026, 2, 4).and_hms_opt(9, 0, 0).unwrap(),
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(iterations.len(), 3, "the derivation itself");
-    assert_eq!(
-        helpers::total_changes(&pool).await,
-        before,
-        "every window is derived from its key; nothing is written"
-    );
-}
-
-#[tokio::test]
 async fn the_scope_valid_flow_targets_command_writes_nothing() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
@@ -543,6 +464,8 @@ async fn the_fork_flow_command_commits_the_whole_clone() {
             scope_index: Some(1),
             ..Default::default()
         }],
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -605,6 +528,8 @@ async fn the_duplicate_flow_command_commits_the_copy_and_its_recurrence() {
             scope_index: Some(1),
             ..Default::default()
         }],
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -682,6 +607,8 @@ async fn the_duplicate_flow_item_command_commits_the_copied_item_and_its_pairs()
             scope_index: Some(3),
             ..Default::default()
         }],
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -722,7 +649,7 @@ async fn the_convert_to_flow_command_commits_the_template_and_the_deletion() {
         CreateGoalRequest {
             title: "Routine".into(),
             parent_type: "domain".into(),
-            parent_id: 1,
+            parent_id: 1.into(),
             time_scope: Some(TimeScope {
                 start_id: scope.id,
                 end_id: scope.id,
@@ -738,7 +665,7 @@ async fn the_convert_to_flow_command_commits_the_template_and_the_deletion() {
         CreateTaskRequest {
             title: "Step".into(),
             parent_type: "goal".into(),
-            parent_id: root.id,
+            parent_id: root.id.clone(),
             ..Default::default()
         },
     )
@@ -746,9 +673,10 @@ async fn the_convert_to_flow_command_commits_the_template_and_the_deletion() {
     .unwrap();
     db.commit().await.unwrap();
 
-    let flow = flow_commands::convert_to_flow(app.state(), "goal".into(), root.id, true, true)
-        .await
-        .unwrap();
+    let flow =
+        flow_commands::convert_to_flow(app.state(), "goal".into(), root.id.sid(), true, true)
+            .await
+            .unwrap();
 
     assert_eq!(
         count_where(&pool, "flows", "id", flow.id).await,
@@ -761,12 +689,12 @@ async fn the_convert_to_flow_command_commits_the_template_and_the_deletion() {
         "the item mirroring the child"
     );
     assert_eq!(
-        count_where(&pool, "goals", "id", root.id).await,
+        count_where(&pool, "goals", "id", root.id.sid()).await,
         0,
         "the original root"
     );
     assert_eq!(
-        count_where(&pool, "tasks", "id", step.id).await,
+        count_where(&pool, "tasks", "id", step.id.sid()).await,
         0,
         "and its descendant — the deletion and the inserts commit together or not at all"
     );
@@ -808,7 +736,7 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
         CreateGoalRequest {
             title: "Routine".into(),
             parent_type: "domain".into(),
-            parent_id: 1,
+            parent_id: 1.into(),
             time_scope: Some(TimeScope {
                 start_id: week.id,
                 end_id: week.id,
@@ -824,7 +752,7 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
         CreateTaskRequest {
             title: "Step".into(),
             parent_type: "goal".into(),
-            parent_id: root.id,
+            parent_id: root.id.clone(),
             time_scope: Some(TimeScope {
                 start_id: day.id,
                 end_id: day.id,
@@ -840,7 +768,7 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
         CreateTaskRequest {
             title: "Sub-step".into(),
             parent_type: "task".into(),
-            parent_id: child.id,
+            parent_id: child.id.clone(),
             ..Default::default()
         },
     )
@@ -850,8 +778,10 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
     // A dependency inside the subtree, so the conversion writes a flow_dependencies row too.
     add_task_dependency(
         &mut db,
-        TaskId(child.id),
-        Dependency::Task { id: grandchild.id },
+        TaskId(child.id.sid()),
+        Dependency::Task {
+            id: grandchild.id.clone(),
+        },
     )
     .await
     .unwrap();
@@ -859,11 +789,11 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
     // Block reasons and infos hang off polymorphic owner links with no foreign key, so nothing in
     // the schema removes them when their owner goes: the cascade has to do it by hand.
     db.block_reasons()
-        .set("goal", root.id, &["waiting on review".into()])
+        .set("goal", root.id.sid(), &["waiting on review".into()])
         .await
         .unwrap();
     db.block_reasons()
-        .set("task", child.id, &["blocked".into()])
+        .set("task", child.id.sid(), &["blocked".into()])
         .await
         .unwrap();
     let outer = db
@@ -872,7 +802,7 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
             body: "outer note".into(),
             details: None,
             parent_type: "goal".into(),
-            parent_id: root.id,
+            parent_id: root.id.clone(),
             position: 0,
         })
         .await
@@ -883,7 +813,7 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
             body: "nested note".into(),
             details: None,
             parent_type: "info".into(),
-            parent_id: outer.id,
+            parent_id: outer.id.into(),
             position: 0,
         })
         .await
@@ -892,9 +822,9 @@ async fn seed_convert_subtree(pool: &sqlx::SqlitePool) -> ConvertSubtree {
     db.commit().await.unwrap();
 
     ConvertSubtree {
-        root_id: root.id,
-        child_id: child.id,
-        grandchild_id: grandchild.id,
+        root_id: root.id.sid(),
+        child_id: child.id.sid(),
+        grandchild_id: grandchild.id.sid(),
         outer_info_id: outer.id,
         nested_info_id: nested.id,
     }
@@ -961,7 +891,7 @@ async fn a_convert_to_flow_aborted_after_the_delete_restores_the_subtree_and_lea
         CreateTaskRequest {
             title: "Parent".into(),
             parent_type: "domain".into(),
-            parent_id: 1,
+            parent_id: 1.into(),
             ..Default::default()
         },
     )
@@ -972,7 +902,7 @@ async fn a_convert_to_flow_aborted_after_the_delete_restores_the_subtree_and_lea
         CreateTaskRequest {
             title: "Child".into(),
             parent_type: "task".into(),
-            parent_id: blocker_parent.id,
+            parent_id: blocker_parent.id.clone(),
             ..Default::default()
         },
     )
@@ -1003,7 +933,8 @@ async fn a_convert_to_flow_aborted_after_the_delete_restores_the_subtree_and_lea
     // operation's own guard on real input. Any error raised after `convert_to_flow` returns
     // reaches the database the same way — the `Db<Transactional>` is dropped without `commit()`
     // and sqlx rolls back — so this stands for the whole class, the failing `commit()` included.
-    let rejected = flows::convert_to_flow(&mut db, "task", unconvertible.id, true, true).await;
+    let rejected =
+        flows::convert_to_flow(&mut db, "task", unconvertible.id.sid(), true, true).await;
     assert!(
         rejected.is_err(),
         "a task under a task cannot become a flow"

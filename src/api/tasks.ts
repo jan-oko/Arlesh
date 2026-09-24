@@ -2,6 +2,7 @@ import { invoke } from "./gesture";
 import type { DurationSpec, TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { isWireError } from "@/api/errors";
+import type { Origin, RowId } from "@/api/node-id";
 
 /** A Task's own stored archival state. Two values only: a Task is never manually Archived, and
  * Frozen is Goal/Project vocabulary. */
@@ -73,16 +74,22 @@ export const EMPTY_AGENTIC_BRIEF: AgenticBrief = {
   priority: null, spec: "", design: "", acceptance: "", notes: "",
 };
 
+/** Whether a brief says anything at all — an empty one is no brief. */
+export function isEmptyBrief(brief: AgenticBrief): boolean {
+  return brief.priority === null && brief.spec.trim() === "" && brief.design.trim() === ""
+    && brief.acceptance.trim() === "" && brief.notes.trim() === "";
+}
+
 /** Whether a brief carries a Spec — anything but whitespace. Mirrors the backend's rule. */
 export function hasSpec(brief: AgenticBrief | null | undefined): boolean {
   return brief !== null && brief !== undefined && brief.spec.trim() !== "";
 }
 
 export interface Task {
-  id: number;
+  id: RowId;
   title: string;
   parent_type: string;
-  parent_id: number;
+  parent_id: RowId;
   status: string;
   delegate_to: Delegate | null;
   // This task's own flag: true/false when it says so itself, null when it inherits the nearest
@@ -107,12 +114,14 @@ export interface Task {
   // The bd issue this task is tracked as; absent when it is tracked as none. Written only by the
   // MCP server — no update request carries it.
   beads_id?: string;
+  // Where the row came from: made by hand, or a Habit's occurrence. Absent reads as manual.
+  origin?: Origin;
 }
 
 export interface CreateTaskRequest {
   title: string;
   parent_type: string;
-  parent_id: number;
+  parent_id: RowId;
   status?: string;
   time_scope?: TimeScope;
   // Applied only when time_scope is set (defaults to "keep").
@@ -148,24 +157,33 @@ export interface UpdateTaskRequest {
   // `backlogNeedsPlanCleared` — so the two are sent together to clear the plan and backlog at once.
   archival?: TaskArchival;
   parent_type?: string;
-  parent_id?: number;
+  parent_id?: RowId;
   position?: number;
   is_private?: boolean;
 }
 
-export async function listTasks(): Promise<Task[]> {
-  return invoke<Task[]>("list_tasks");
+export async function listTasks(now: string): Promise<Task[]> {
+  return invoke<Task[]>("list_tasks", { now });
 }
 
 export async function createTask(request: CreateTaskRequest): Promise<Task> {
   return invoke<Task>("create_task", { request });
 }
 
-export async function updateTask(id: number, request: UpdateTaskRequest): Promise<Task> {
-  return invoke<Task>("update_task", { id, request });
+/**
+ * Updates a task, stored or derived. `confirmed` answers the question completing a Habit
+ * occurrence that still holds unfinished children raises.
+ */
+export async function updateTask(
+  id: RowId,
+  request: UpdateTaskRequest,
+  confirmed?: boolean,
+): Promise<Task> {
+  return invoke<Task>("update_task", { id, request, confirmed });
 }
 
-export async function deleteTask(id: number): Promise<void> {
+/** Deletes a task — or archives a Habit occurrence, which is never deleted. */
+export async function deleteTask(id: RowId): Promise<void> {
   return invoke<void>("delete_task", { id });
 }
 
@@ -238,8 +256,8 @@ export async function scopeContainmentConflicts(
 }
 
 export type Dependency =
-  | { type: "task"; id: number }
-  | { type: "goal"; id: number }
+  | { type: "task"; id: RowId }
+  | { type: "goal"; id: RowId }
   | { type: "expectation"; id: number };
 
 export interface TaskWithBlockers {
@@ -251,15 +269,15 @@ export async function getTask(id: number): Promise<TaskWithBlockers> {
   return invoke<TaskWithBlockers>("get_task", { id });
 }
 
-export async function listTaskDependencies(taskId: number): Promise<Dependency[]> {
+export async function listTaskDependencies(taskId: RowId): Promise<Dependency[]> {
   return invoke<Dependency[]>("list_task_dependencies", { taskId });
 }
 
 /** A single dependency edge: `task_id` depends on `(dependency_type, dependency_id)`. */
 export interface TaskDependencyEdge {
-  task_id: number;
+  task_id: RowId;
   dependency_type: string; // "task" | "goal" | "expectation"
-  dependency_id: number;
+  dependency_id: RowId;
 }
 
 /** Every task-dependency edge (for the mindmap bulk load / virtual block-reason derivation). */
@@ -267,18 +285,18 @@ export async function listAllTaskDependencies(): Promise<TaskDependencyEdge[]> {
   return invoke<TaskDependencyEdge[]>("list_all_task_dependencies");
 }
 
-export async function addTaskDependency(taskId: number, dependency: Dependency): Promise<void> {
+export async function addTaskDependency(taskId: RowId, dependency: Dependency): Promise<void> {
   return invoke<void>("add_task_dependency", { taskId, dependency });
 }
 
-export async function removeTaskDependency(taskId: number, dependency: Dependency): Promise<void> {
+export async function removeTaskDependency(taskId: RowId, dependency: Dependency): Promise<void> {
   return invoke<void>("remove_task_dependency", { taskId, dependency });
 }
 
-export async function addTagToTask(taskId: number, tagId: number): Promise<void> {
+export async function addTagToTask(taskId: RowId, tagId: number): Promise<void> {
   return invoke<void>("add_tag_to_task", { taskId, tagId });
 }
 
-export async function removeTagFromTask(taskId: number, tagId: number): Promise<void> {
+export async function removeTagFromTask(taskId: RowId, tagId: number): Promise<void> {
   return invoke<void>("remove_tag_from_task", { taskId, tagId });
 }

@@ -39,3 +39,9 @@ pub enum AppError {
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),
 }
+
+impl From<crate::nodes::id::NotStored> for AppError {
+    fn from(error: crate::nodes::id::NotStored) -> Self {
+        Self::Task(error.into())
+    }
+}

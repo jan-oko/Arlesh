@@ -1,7 +1,6 @@
 //! Assembling a fact forest from a load, and narrowing a load to what a filter keeps.
 
 use super::*;
-use crate::scopes::key::test_key;
 use crate::{
     block_reasons::model::BlockReason,
     domains::model::Domain,
@@ -31,10 +30,10 @@ fn domain_row(id: i64, subtype: &str, parent: Option<i64>, status: Option<&str>)
 
 fn goal_row(id: i64, parent_type: &str, parent_id: i64, status: &str) -> Goal {
     Goal {
-        id,
+        id: id.into(),
         title: format!("goal {id}"),
         parent_type: parent_type.to_string(),
-        parent_id,
+        parent_id: parent_id.into(),
         status: status.to_string(),
         time_scope: None,
         on_scope_exit: None,
@@ -42,15 +41,16 @@ fn goal_row(id: i64, parent_type: &str, parent_id: i64, status: &str) -> Goal {
         position: id,
         is_private: false,
         beads_id: None,
+        origin: Default::default(),
     }
 }
 
 fn task_row(id: i64, parent_type: &str, parent_id: i64, status: &str) -> Task {
     Task {
-        id,
+        id: id.into(),
         title: format!("task {id}"),
         parent_type: parent_type.to_string(),
-        parent_id,
+        parent_id: parent_id.into(),
         status: status.to_string(),
         delegate_to: None,
         agentic: None,
@@ -65,15 +65,16 @@ fn task_row(id: i64, parent_type: &str, parent_id: i64, status: &str) -> Task {
         position: id,
         is_private: false,
         beads_id: None,
+        origin: Default::default(),
     }
 }
 
 fn commitment_row(id: i64, parent_type: &str, parent_id: i64, verdict: Verdict) -> Commitment {
     Commitment {
-        id,
+        id: id.into(),
         title: format!("commitment {id}"),
         parent_type: parent_type.to_string(),
-        parent_id,
+        parent_id: parent_id.into(),
         verdict,
         time_scope: None,
         verdict_window: None,
@@ -81,6 +82,7 @@ fn commitment_row(id: i64, parent_type: &str, parent_id: i64, verdict: Verdict) 
         position: id,
         is_private: false,
         beads_id: None,
+        origin: Default::default(),
     }
 }
 
@@ -90,7 +92,7 @@ fn info_row(id: i64, parent_type: &str, parent_id: i64) -> Info {
         body: format!("info {id}"),
         details: None,
         parent_type: parent_type.to_string(),
-        parent_id,
+        parent_id: parent_id.into(),
         position: id,
         is_private: false,
     }
@@ -99,7 +101,7 @@ fn info_row(id: i64, parent_type: &str, parent_id: i64) -> Info {
 fn lifecycle(node_type: &str, node_id: i64, timing: Timing, archival: Archival) -> ItemLifecycle {
     ItemLifecycle {
         node_type: node_type.to_string(),
-        node_id,
+        node_id: node_id.into(),
         timing,
         resolution: None,
         verdict: None,
@@ -187,20 +189,20 @@ fn an_explicit_block_reason_and_an_unmet_dependency_both_read_as_blocked() {
     let mut load = board();
     load.block_reasons.push(BlockReason {
         owner_type: "goal".to_string(),
-        owner_id: 10,
+        owner_id: 10.into(),
         reason: "waiting".to_string(),
         position: 0,
     });
     load.task_dependencies.push(TaskDependencyEdge {
-        task_id: 21,
+        task_id: 21.into(),
         dependency_type: "task".to_string(),
-        dependency_id: 20,
+        dependency_id: 20.into(),
     });
     // A dependency on something already finished does not block.
     load.task_dependencies.push(TaskDependencyEdge {
-        task_id: 20,
+        task_id: 20.into(),
         dependency_type: "task".to_string(),
-        dependency_id: 22,
+        dependency_id: 22.into(),
     });
 
     let forest = forest(&load);
@@ -244,14 +246,14 @@ fn narrowing_cuts_the_derived_sections_to_match_the_nodes_that_survived() {
     let mut load = board();
     load.block_reasons.push(BlockReason {
         owner_type: "task".to_string(),
-        owner_id: 22,
+        owner_id: 22.into(),
         reason: "waiting".to_string(),
         position: 0,
     });
     load.task_dependencies.push(TaskDependencyEdge {
-        task_id: 22,
+        task_id: 22.into(),
         dependency_type: "goal".to_string(),
-        dependency_id: 10,
+        dependency_id: 10.into(),
     });
     load.lifecycles
         .push(lifecycle("task", 22, Timing::Active, Archival::Live));
@@ -275,7 +277,10 @@ fn narrowing_to_do_keeps_the_containers_that_carry_an_in_progress_task() {
     let mut load = board();
     narrow(&mut load, &BoardFilter::preset(Preset::Do));
     assert_eq!(
-        load.tasks.iter().map(|task| task.id).collect::<Vec<_>>(),
+        load.tasks
+            .iter()
+            .map(|task| task.id.clone())
+            .collect::<Vec<_>>(),
         [20]
     );
     assert_eq!(
@@ -307,7 +312,7 @@ fn a_backlogged_task_leaves_plan_and_comes_back_under_the_backlog_preset() {
         backlogged
             .tasks
             .iter()
-            .map(|task| task.id)
+            .map(|task| task.id.clone())
             .collect::<Vec<_>>(),
         [20, 21]
     );
@@ -339,10 +344,10 @@ fn every_parent_spelling_a_row_can_use_resolves_to_a_node() {
 
 fn expectation_row(id: i64, parent_type: &str, parent_id: i64) -> crate::tasks::model::Expectation {
     crate::tasks::model::Expectation {
-        id,
+        id: id.into(),
         title: format!("expectation {id}"),
         parent_type: parent_type.to_string(),
-        parent_id,
+        parent_id: parent_id.into(),
         status: crate::tasks::model::ExpectationStatus::Pending,
         archival: crate::tasks::model::ExpectationArchival::Live,
         check_every: None,
@@ -354,11 +359,22 @@ fn expectation_row(id: i64, parent_type: &str, parent_id: i64) -> crate::tasks::
         is_private: false,
         agentic: false,
         agentic_note: None,
+        origin: Default::default(),
+    }
+}
+
+/// A wait's check task as the Task virtual table serves it: a row under its wait.
+fn check_row(id: &str, wait: i64, status: &str) -> Task {
+    Task {
+        id: NodeId::Derived(crate::nodes::id::DerivedId::of_key(id)),
+        parent_type: "expectation".to_string(),
+        parent_id: wait.into(),
+        ..task_row(0, "expectation", wait, status)
     }
 }
 
 #[test]
-fn an_expectation_with_a_check_due_carries_a_virtual_check_task_timed_by_its_lifecycle() {
+fn a_check_task_row_hangs_under_its_wait_timed_by_its_own_lifecycle() {
     let mut load = board();
     let mut checked = expectation_row(50, "goal", 10);
     checked.check_every = Some(crate::tasks::model::DurationSpec {
@@ -366,25 +382,13 @@ fn an_expectation_with_a_check_due_carries_a_virtual_check_task_timed_by_its_lif
         kind: "day".to_string(),
     });
     load.expectations.push(checked);
-    load.expectation_checks
-        .push(crate::tasks::waits::ExpectationCheck {
-            expectation_id: 50,
-            due: crate::tasks::model::TimeScope {
-                start_id: test_key(1),
-                end_id: test_key(1),
-                duration: None,
-            },
-            due_at: instant(2026, 7, 4),
-            resolved_at: None,
-        });
-    load.expectations.push(expectation_row(51, "goal", 10));
-    load.infos.push(info_row(41, "expectation", 51));
-    load.lifecycles.push(lifecycle(
-        "expectation_check",
-        50,
-        Timing::Pending,
-        Archival::Live,
-    ));
+    let check = check_row("check:stored:50@2026-07-04T02:00:00", 50, "todo");
+    let check_fact = format!("task-{}", check.id);
+    load.lifecycles.push(ItemLifecycle {
+        node_id: check.id.clone(),
+        ..lifecycle("task", 0, Timing::Pending, Archival::Live)
+    });
+    load.tasks.push(check);
     load.lifecycles
         .push(lifecycle("expectation", 50, Timing::Lapsed, Archival::Live));
 
@@ -392,51 +396,49 @@ fn an_expectation_with_a_check_due_carries_a_virtual_check_task_timed_by_its_lif
     let wait = find(&forest, "expectation-50").expect("the expectation is on the board");
     assert!(wait.facts.has_check);
     assert_eq!(wait.facts.timing, Some(Timing::Lapsed));
-    assert_eq!(wait.facts.status.as_deref(), Some("pending"));
-    let check = find(&forest, "expectation-check-50").expect("the check task is derived");
+    let check = find(&forest, &check_fact).expect("the check task is a row");
     assert_eq!(check.facts.kind, NodeKind::Task);
     assert_eq!(check.facts.timing, Some(Timing::Pending));
-    assert!(find(&forest, "expectation-check-51").is_none());
-    assert!(find(&forest, "info-41").is_some());
 }
 
 #[test]
-fn a_released_expectation_has_no_check_task_and_stops_blocking() {
+fn a_released_expectation_stops_blocking() {
     let mut load = board();
     let mut released = expectation_row(50, "goal", 10);
     released.status = crate::tasks::model::ExpectationStatus::Released;
     load.expectations.push(released);
     load.expectations.push(expectation_row(51, "goal", 10));
     load.task_dependencies.push(TaskDependencyEdge {
-        task_id: 21,
+        task_id: 21.into(),
         dependency_type: "expectation".to_string(),
-        dependency_id: 50,
+        dependency_id: 50.into(),
     });
     load.task_dependencies.push(TaskDependencyEdge {
-        task_id: 22,
+        task_id: 22.into(),
         dependency_type: "expectation".to_string(),
-        dependency_id: 51,
+        dependency_id: 51.into(),
     });
     let forest = forest(&load);
-    assert!(find(&forest, "expectation-check-50").is_none());
     assert!(find(&forest, "task-21").is_some_and(|node| !node.facts.is_blocked));
     assert!(find(&forest, "task-22").is_some_and(|node| node.facts.is_blocked));
 }
 
 #[test]
-fn a_delegated_task_is_delegated_and_waits_on_a_virtual_expectation_until_done() {
+fn a_derived_wait_row_hangs_under_its_task() {
     let mut load = board();
-    for task in &mut load.tasks {
-        task.delegate_to = Some(crate::tasks::model::Delegate::Agent);
-    }
+    let key = crate::nodes::key::DerivedKey::DelegationWait(20.into());
+    load.expectations.push(crate::tasks::model::Expectation {
+        id: key.node_id(),
+        origin: crate::nodes::origin::Origin::DelegationWait(crate::nodes::origin::WaitOrigin {
+            task_id: 20.into(),
+        }),
+        ..expectation_row(0, "task", 20)
+    });
     let forest = forest(&load);
-    assert!(find(&forest, "task-20").is_some_and(|node| node.facts.delegated));
-    let wait = find(&forest, "delegation-wait-20").expect("an undone delegated task waits");
+    let wait = find(&forest, &format!("expectation-{}", key.node_id()))
+        .expect("the delegation wait is a row");
     assert_eq!(wait.facts.kind, NodeKind::Expectation);
-    assert!(
-        find(&forest, "delegation-wait-22").is_none(),
-        "task 22 is done"
-    );
+    assert_eq!(wait.facts.status.as_deref(), Some("pending"));
 }
 
 #[test]
@@ -447,134 +449,18 @@ fn narrowing_keeps_an_expectation_the_filter_keeps_and_drops_one_it_does_not() {
     released.status = crate::tasks::model::ExpectationStatus::Released;
     load.expectations.push(released);
     narrow(&mut load, &BoardFilter::preset(Preset::Plan));
-    let kept: Vec<i64> = load.expectations.iter().map(|e| e.id).collect();
-    assert_eq!(kept, [50]);
-}
-
-fn spawned(
-    task_id: i64,
-    status: crate::tasks::model::ExpectationStatus,
-) -> crate::tasks::waits::SpawnedWaitView {
-    crate::tasks::waits::SpawnedWaitView {
-        wait: crate::tasks::model::SpawnedWait {
-            task_id,
-            spawned_at: chrono::NaiveDate::from_ymd_opt(2026, 7, 1)
-                .and_then(|date| date.and_hms_opt(9, 0, 0)),
-            status,
-            archival: crate::tasks::model::ExpectationArchival::Live,
-            last_check_at: None,
-        },
-        time_scope: None,
-        next_check: Some(crate::tasks::model::TimeScope {
-            start_id: test_key(1),
-            end_id: test_key(1),
-            duration: None,
-        }),
-        next_check_at: Some(instant(2026, 7, 8)),
-        done_checks: vec![],
-    }
-}
-
-fn instant(year: i32, month: u32, day: u32) -> chrono::NaiveDateTime {
-    chrono::NaiveDate::from_ymd_opt(year, month, day)
-        .and_then(|date| date.and_hms_opt(2, 0, 0))
-        .expect("a date")
+    let kept: Vec<NodeId> = load.expectations.iter().map(|e| e.id.clone()).collect();
+    assert_eq!(kept, [NodeId::Stored(50)]);
 }
 
 #[test]
-fn a_completed_check_stays_as_a_done_task_the_done_hiding_presets_drop() {
+fn a_done_check_task_is_dropped_by_the_presets_that_hide_done_work() {
     let mut load = board();
-    let mut checked = expectation_row(50, "goal", 10);
-    checked.check_every = Some(crate::tasks::model::DurationSpec {
-        n: 3,
-        kind: "day".to_string(),
-    });
-    load.expectations.push(checked);
-    let scope = crate::tasks::model::TimeScope {
-        start_id: test_key(1),
-        end_id: test_key(1),
-        duration: None,
-    };
-    load.expectation_checks
-        .push(crate::tasks::waits::ExpectationCheck {
-            expectation_id: 50,
-            due: scope.clone(),
-            due_at: instant(2026, 7, 1),
-            resolved_at: Some(instant(2026, 7, 2)),
-        });
-    let mut spawned_wait = spawned(22, crate::tasks::model::ExpectationStatus::Pending);
-    spawned_wait
-        .done_checks
-        .push(crate::tasks::waits::DoneCheck {
-            due: scope,
-            due_at: instant(2026, 7, 8),
-            resolved_at: instant(2026, 7, 8),
-        });
-    for task in &mut load.tasks {
-        if task.id == 22 {
-            task.asynchronous = true;
-            task.async_template = Some(crate::tasks::model::AsyncTemplate {
-                title: "Reply".to_string(),
-                ..Default::default()
-            });
-        }
-    }
-    load.spawned_waits.push(spawned_wait);
+    load.expectations.push(expectation_row(50, "goal", 10));
+    let done = check_row("check:stored:50@2026-07-01T02:00:00", 50, "done");
+    let done_fact = format!("task-{}", done.id);
+    load.tasks.push(done);
     let forest = forest(&load);
-    for id in [
-        "expectation-check-50-2026-07-01 02:00:00",
-        "spawned-check-22-2026-07-08 02:00:00",
-    ] {
-        let check = find(&forest, id).expect("the done check stays on the board");
-        assert_eq!(check.facts.kind, NodeKind::Task);
-        assert_eq!(check.facts.status.as_deref(), Some("done"));
-    }
-    assert!(
-        find(&forest, "expectation-check-50").is_none(),
-        "no check is due, so none is open"
-    );
-}
-
-#[test]
-fn a_done_asynchronous_task_carries_its_spawned_wait_and_does_not_hold_up_its_dependents() {
-    let mut load = board();
-    for task in &mut load.tasks {
-        if task.id == 22 {
-            task.asynchronous = true;
-            task.async_template = Some(crate::tasks::model::AsyncTemplate {
-                title: "Reply".to_string(),
-                tag_ids: vec![7],
-                time_scope: None,
-                check_every: Some(crate::tasks::model::DurationSpec {
-                    n: 1,
-                    kind: "week".to_string(),
-                }),
-            });
-        }
-    }
-    load.spawned_waits
-        .push(spawned(22, crate::tasks::model::ExpectationStatus::Pending));
-    load.task_dependencies.push(TaskDependencyEdge {
-        task_id: 21,
-        dependency_type: "task".to_string(),
-        dependency_id: 22,
-    });
-    let pending = forest(&load);
-    let wait = find(&pending, "spawned-wait-22").expect("the spawned wait is drawn");
-    assert_eq!(wait.facts.kind, NodeKind::Expectation);
-    assert_eq!(wait.facts.tag_ids, [7]);
-    assert!(wait.facts.has_check);
-    assert!(find(&pending, "spawned-check-22").is_some());
-    assert!(
-        find(&pending, "task-21").is_some_and(|node| !node.facts.is_blocked),
-        "task 22 is done: a pending spawned wait does not hold up its dependents"
-    );
-
-    let mut untemplated = load;
-    for task in &mut untemplated.tasks {
-        task.async_template = None;
-    }
-    let bare = forest(&untemplated);
-    assert!(find(&bare, "spawned-wait-22").is_none());
-    assert!(find(&bare, "task-21").is_some_and(|node| !node.facts.is_blocked));
+    let check = find(&forest, &done_fact).expect("the done check stays on the board");
+    assert_eq!(check.facts.status.as_deref(), Some("done"));
 }

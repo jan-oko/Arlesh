@@ -1030,23 +1030,29 @@ async fn next_parent_of<M: SessionMode>(
     Ok(match kind {
         "goal" => {
             let goal = db.goals().get(GoalId(id)).await?;
-            Some((goal.parent_type, goal.parent_id))
+            Some((goal.parent_type, goal.parent_id.require_stored()?))
         }
         "task" => {
             let task = db.tasks().get(TaskId(id)).await?;
-            Some((task.parent_type, task.parent_id))
+            Some((task.parent_type, task.parent_id.require_stored()?))
         }
         "commitment" => {
             let commitment = db.commitments().get(CommitmentId(id)).await?;
-            Some((commitment.parent_type, commitment.parent_id))
+            Some((
+                commitment.parent_type,
+                commitment.parent_id.require_stored()?,
+            ))
         }
         "expectation" => {
             let expectation = db.expectations().get(ExpectationId(id)).await?;
-            Some((expectation.parent_type, expectation.parent_id))
+            Some((
+                expectation.parent_type,
+                expectation.parent_id.require_stored()?,
+            ))
         }
         "info" => {
             let info = db.infos().get(InfoId(id)).await?;
-            Some((info.parent_type, info.parent_id))
+            Some((info.parent_type, info.parent_id.require_stored()?))
         }
         _ => None,
     })
@@ -1228,19 +1234,20 @@ async fn create_node(
                 CreateGoalRequest {
                     title: carried.title.clone(),
                     parent_type: goal_task_parent_type(&parent.kind).to_string(),
-                    parent_id: parent_row_id(parent)?,
+                    parent_id: parent_row_id(parent)?.into(),
                     status: carried.status.as_deref().and_then(GoalStatus::from_db),
                     time_scope: carried.time_scope.clone(),
                     on_scope_exit: carried.on_scope_exit,
                 },
             )
             .await?;
+            let goal_id = goal.id.require_stored()?;
             // `CreateGoalRequest` carries neither, and both are part of the node's identity:
             // `position` is where it sits among its siblings, `is_private` whether it is visible
             // at all. Dropping the second is the bug `convert_flow_item` still has.
             super::update_goal(
                 db,
-                GoalId(goal.id),
+                GoalId(goal_id),
                 UpdateGoalRequest {
                     position: Some(carried.position),
                     is_private: Some(carried.is_private),
@@ -1248,7 +1255,7 @@ async fn create_node(
                 },
             )
             .await?;
-            Ok(goal.id)
+            Ok(goal_id)
         }
         RetypeKind::Task => {
             let task = super::create_task(
@@ -1256,7 +1263,7 @@ async fn create_node(
                 CreateTaskRequest {
                     title: carried.title.clone(),
                     parent_type: goal_task_parent_type(&parent.kind).to_string(),
-                    parent_id: parent_row_id(parent)?,
+                    parent_id: parent_row_id(parent)?.into(),
                     status: carried.status.as_deref().and_then(TaskStatus::from_db),
                     time_scope: carried.time_scope.clone(),
                     on_scope_exit: carried.on_scope_exit,
@@ -1282,9 +1289,10 @@ async fn create_node(
                 },
             )
             .await?;
+            let task_id = task.id.require_stored()?;
             super::update_task(
                 db,
-                TaskId(task.id),
+                TaskId(task_id),
                 UpdateTaskRequest {
                     delegate_to: Some(carried.delegate_to),
                     position: Some(carried.position),
@@ -1293,7 +1301,7 @@ async fn create_node(
                 },
             )
             .await?;
-            Ok(task.id)
+            Ok(task_id)
         }
         RetypeKind::Commitment => {
             // `create_commitment` is the one create here that can refuse: a Commitment must have
@@ -1305,16 +1313,17 @@ async fn create_node(
                 CreateCommitmentRequest {
                     title: carried.title.clone(),
                     parent_type: goal_task_parent_type(&parent.kind).to_string(),
-                    parent_id: parent_row_id(parent)?,
+                    parent_id: parent_row_id(parent)?.into(),
                     verdict: carried.verdict,
                     time_scope: carried.time_scope.clone(),
                     verdict_window: carried.verdict_window.clone(),
                 },
             )
             .await?;
+            let commitment_id = commitment.id.require_stored()?;
             super::update_commitment(
                 db,
-                CommitmentId(commitment.id),
+                CommitmentId(commitment_id),
                 UpdateCommitmentRequest {
                     position: Some(carried.position),
                     is_private: Some(carried.is_private),
@@ -1322,7 +1331,7 @@ async fn create_node(
                 },
             )
             .await?;
-            Ok(commitment.id)
+            Ok(commitment_id)
         }
         RetypeKind::Info => {
             // Unlike `goal_task_parent_type`'s collapse, an info's own `parent_type` CHECK
@@ -1335,7 +1344,7 @@ async fn create_node(
                     body: carried.title.clone(),
                     details: carried.description.clone(),
                     parent_type: parent.kind.clone(),
-                    parent_id: parent_row_id(parent)?,
+                    parent_id: parent_row_id(parent)?.into(),
                     position: carried.position,
                 })
                 .await?;
@@ -1495,7 +1504,7 @@ async fn reparent(
                 GoalId(child.id),
                 UpdateGoalRequest {
                     parent_type: Some(goal_task_parent_type(&destination.kind).to_string()),
-                    parent_id: Some(parent_row_id(destination)?),
+                    parent_id: Some(parent_row_id(destination)?.into()),
                     ..Default::default()
                 },
             )
@@ -1507,7 +1516,7 @@ async fn reparent(
                 TaskId(child.id),
                 UpdateTaskRequest {
                     parent_type: Some(goal_task_parent_type(&destination.kind).to_string()),
-                    parent_id: Some(parent_row_id(destination)?),
+                    parent_id: Some(parent_row_id(destination)?.into()),
                     ..Default::default()
                 },
             )
@@ -1519,7 +1528,7 @@ async fn reparent(
                 CommitmentId(child.id),
                 UpdateCommitmentRequest {
                     parent_type: Some(goal_task_parent_type(&destination.kind).to_string()),
-                    parent_id: Some(parent_row_id(destination)?),
+                    parent_id: Some(parent_row_id(destination)?.into()),
                     ..Default::default()
                 },
             )
@@ -1531,7 +1540,7 @@ async fn reparent(
                 ExpectationId(child.id),
                 UpdateExpectationRequest {
                     parent_type: Some(goal_task_parent_type(&destination.kind).to_string()),
-                    parent_id: Some(parent_row_id(destination)?),
+                    parent_id: Some(parent_row_id(destination)?.into()),
                     ..Default::default()
                 },
             )
@@ -1543,7 +1552,7 @@ async fn reparent(
                     InfoId(child.id),
                     UpdateInfoRequest {
                         parent_type: Some(destination.kind.clone()),
-                        parent_id: Some(parent_row_id(destination)?),
+                        parent_id: Some(parent_row_id(destination)?.into()),
                         ..Default::default()
                     },
                 )
@@ -1626,7 +1635,7 @@ async fn read_source<M: SessionMode>(
             let block_reasons = db.block_reasons().list_for("goal", id).await?;
             let dependents = db.tasks().count_dependents("goal", id).await?;
             let parent = Parent {
-                id: Some(goal.parent_id),
+                id: Some(goal.parent_id.require_stored()?),
                 kind: goal.parent_type.clone(),
             };
             Ok((
@@ -1663,7 +1672,7 @@ async fn read_source<M: SessionMode>(
             let dependents = db.tasks().count_dependents("task", id).await?;
             let depends_on = db.tasks().count_dependencies(TaskId(id)).await?;
             let parent = Parent {
-                id: Some(task.parent_id),
+                id: Some(task.parent_id.require_stored()?),
                 kind: task.parent_type.clone(),
             };
             Ok((
@@ -1697,7 +1706,7 @@ async fn read_source<M: SessionMode>(
         RetypeKind::Commitment => {
             let commitment = db.commitments().get(CommitmentId(id)).await?;
             let parent = Parent {
-                id: Some(commitment.parent_id),
+                id: Some(commitment.parent_id.require_stored()?),
                 kind: commitment.parent_type.clone(),
             };
             Ok((
@@ -1738,7 +1747,7 @@ async fn read_source<M: SessionMode>(
         RetypeKind::Info => {
             let info = db.infos().get(InfoId(id)).await?;
             let parent = Parent {
-                id: Some(info.parent_id),
+                id: Some(info.parent_id.require_stored()?),
                 kind: info.parent_type.clone(),
             };
             Ok((

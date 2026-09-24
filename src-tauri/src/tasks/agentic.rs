@@ -126,7 +126,7 @@ impl TaskOperator<'_> {
 }
 
 /// Refuses a brief whose priority is outside P0–P4.
-pub(super) fn validate_brief(brief: &Option<AgenticBrief>) -> Result<(), TaskError> {
+pub(crate) fn validate_brief(brief: &Option<AgenticBrief>) -> Result<(), TaskError> {
     match brief.as_ref().and_then(|brief| brief.priority) {
         Some(priority) if priority > LOWEST_PRIORITY => {
             Err(TaskError::AgenticPriorityOutOfRange(priority))
@@ -142,7 +142,7 @@ pub(super) fn validate_brief(brief: &Option<AgenticBrief>) -> Result<(), TaskErr
 /// Commitment — so the climb passes those on its way. It stops at anything else (a Project, a
 /// Domain, an Aspect: no Task ever sits above one), at a missing row, and at a cycle, all of which
 /// read as not Agentic.
-pub(super) async fn reads_agentic<M: SessionMode>(
+pub(crate) async fn reads_agentic<M: SessionMode>(
     db: &mut Db<M>,
     node_type: &str,
     node_id: i64,
@@ -184,7 +184,7 @@ pub(super) async fn reads_agentic<M: SessionMode>(
 ///
 /// `own` is the Task's own Agentic column as it will be written — `None` inherits from `parent`,
 /// the Task's parent reference as it will be written.
-pub(super) async fn require_spec_to_start<M: SessionMode>(
+pub(crate) async fn require_spec_to_start<M: SessionMode>(
     db: &mut Db<M>,
     own: Option<bool>,
     parent: (&str, i64),
@@ -204,7 +204,7 @@ pub(super) async fn require_spec_to_start<M: SessionMode>(
 }
 
 /// Refuses an agentic wait anywhere but directly under a Task that reads as Agentic.
-pub(super) async fn require_agentic_parent<M: SessionMode>(
+pub(crate) async fn require_agentic_parent<M: SessionMode>(
     db: &mut Db<M>,
     parent_type: &str,
     parent_id: i64,

@@ -1,11 +1,12 @@
 import { invoke } from "./gesture";
+import type { RowId } from "@/api/node-id";
 
 export interface Info {
   id: number;
   body: string;
   details: string | null;
   parent_type: string;
-  parent_id: number;
+  parent_id: RowId;
   position: number;
   is_private: boolean;
 }
@@ -14,7 +15,7 @@ export interface CreateInfoRequest {
   body: string;
   details?: string | null;
   parent_type: string;
-  parent_id: number;
+  parent_id: RowId;
   position: number;
 }
 
@@ -24,7 +25,7 @@ export interface UpdateInfoRequest {
   details?: string | null;
   position?: number;
   parent_type?: string;
-  parent_id?: number;
+  parent_id?: RowId;
   is_private?: boolean;
 }
 

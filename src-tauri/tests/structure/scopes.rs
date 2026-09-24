@@ -5,6 +5,7 @@
 //! column holding a key's one canonical text.
 
 use crate::helpers;
+use crate::helpers::StoredId;
 
 use chrono::{NaiveDate, NaiveDateTime};
 
@@ -61,14 +62,14 @@ async fn task_with_window(
         CreateTaskRequest {
             title: "Scoped".into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             time_scope: Some(window),
             ..Default::default()
         },
     )
     .await?;
     db.commit().await.unwrap();
-    Ok(task.id)
+    Ok(task.id.sid())
 }
 
 async fn stored_window(pool: &sqlx::SqlitePool, task_id: i64) -> (String, String) {

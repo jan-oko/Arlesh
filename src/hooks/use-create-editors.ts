@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { storedId } from "@/api/node-id";
 import type { CreateFlowRequest, Flow } from "@/api/flows";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
@@ -68,7 +69,7 @@ export function useCreateEditors({ tree, createFlow, createCommitment }: Options
   const onCreateFlow = useCallback(
     async (data: FlowSaveData) => {
       if (flowParent === null) return;
-      const parentDbId = rowIdOfNodeId(tree, flowParent.id);
+      const parentDbId = storedId(rowIdOfNodeId(tree, flowParent.id));
       await createFlow({
         title: data.title,
         instance_type: data.instanceType,

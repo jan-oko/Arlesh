@@ -22,6 +22,7 @@ use arlesh_lib::mcp::params;
 use arlesh_lib::tasks::model::CreateTaskRequest;
 use arlesh_lib::undo::model::WriteSource;
 use arlesh_lib::undo::{self as engine, GestureClose};
+use helpers::StoredId;
 use rmcp::handler::server::wrapper::Parameters;
 use sqlx::SqlitePool;
 use tauri::test::MockRuntime;
@@ -76,7 +77,7 @@ async fn create_task(app: &App<MockRuntime>, project_id: i64, title: &str) -> i6
         CreateTaskRequest {
             title: title.into(),
             parent_type: "project".into(),
-            parent_id: project_id,
+            parent_id: project_id.into(),
             status: None,
             time_scope: None,
             on_scope_exit: None,
@@ -91,6 +92,7 @@ async fn create_task(app: &App<MockRuntime>, project_id: i64, title: &str) -> i6
     .await
     .expect("create task")
     .id
+    .sid()
 }
 
 #[tokio::test]
@@ -117,7 +119,7 @@ async fn a_gesture_that_only_read_says_nothing() {
     make_project(&pool).await;
 
     open(&app).await;
-    task_commands::list_tasks(app.state())
+    task_commands::list_tasks(app.state(), chrono::Local::now().naive_local())
         .await
         .expect("list tasks");
     let closed = close(&app).await;

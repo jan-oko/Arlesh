@@ -18,4 +18,18 @@ pub enum FlowError {
     /// The start request was invalid (e.g. flow has no scope but an anchor was given).
     #[error("invalid flow start: {0}")]
     Invalid(String),
+    /// A request named a derived node that no Habit derives — its template item, cycle pair or
+    /// iteration is gone, or it was never served.
+    #[error("no node {0}")]
+    NodeNotFound(String),
+    /// A write a derived node cannot take: moving an occurrence out of its iteration, retyping
+    /// it, deleting it. Refused out loud rather than detached into a stored row (ADR 0008).
+    #[error("{0}")]
+    Refused(String),
+}
+
+impl From<crate::nodes::id::NotStored> for FlowError {
+    fn from(error: crate::nodes::id::NotStored) -> Self {
+        Self::Task(error.into())
+    }
 }

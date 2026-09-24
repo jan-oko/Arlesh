@@ -1,0 +1,3 @@
+- **A cycle can be planned into itself.** Each cycle in a flow item's Cycles list has a **Planned** toggle beside it. On, the cycle is planned into its own window — a Noon cycle into Noon, a Day 3 cycle into Day 3, a whole-scope cycle into the whole flow window — and every occurrence it draws counts as planned in the Plan View and the filters. Off, the default, leaves it unplanned. This is what lets a part-of-the-day cycle, which has nothing finer to plan within, be planned at all.
+
+  A task Habit's root can be planned the same way: its Plan dropdown offers the window's own kind as "(instance scope)", which plans each iteration's root into that iteration's whole window.

@@ -38,9 +38,9 @@ fn a_reason_naming_an_unreadable_dependency_is_dropped_and_the_rest_are_kept() {
     restrict_block_reasons(
         &mut reasons,
         &[
-            Dependency::Task { id: 11 },
-            Dependency::Task { id: 20 },
-            Dependency::Goal { id: 404 },
+            Dependency::Task { id: 11.into() },
+            Dependency::Task { id: 20.into() },
+            Dependency::Goal { id: 404.into() },
         ],
         &map(),
     );
@@ -59,7 +59,7 @@ fn a_hidden_dependency_does_not_take_a_reason_whose_id_merely_starts_the_same() 
     // Task 1 is unreadable; the reason for task 11 must not be mistaken for it.
     let mut reasons = vec!["Blocked by task 11 (Readable)".to_string()];
 
-    restrict_block_reasons(&mut reasons, &[Dependency::Task { id: 1 }], &map());
+    restrict_block_reasons(&mut reasons, &[Dependency::Task { id: 1.into() }], &map());
 
     assert_eq!(reasons.len(), 1);
 }

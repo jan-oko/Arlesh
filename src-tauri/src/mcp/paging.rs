@@ -73,10 +73,6 @@ pub enum Section {
     Commitments,
     /// Expectations — waits tasks depend on, pending until released.
     Expectations,
-    /// Each stored expectation's next check.
-    ExpectationChecks,
-    /// Each asynchronous task's spawned wait.
-    SpawnedWaits,
     /// Notes.
     Infos,
     /// Flows.
@@ -97,21 +93,17 @@ pub enum Section {
     FlowInstanceNodes,
     /// Each item's derived Timing / Resolution / Archival state.
     Lifecycles,
-    /// Each flow's habit iterations and statuses.
+    /// Each Habit's derivation outcome. Its occurrences are rows in the kind sections.
     Habits,
-    /// Which Habit occurrence each added child hangs on.
-    HabitInstanceChildren,
 }
 
 /// Every section, in the order pages walk them.
-pub const SECTIONS: [Section; 19] = [
+pub const SECTIONS: [Section; 16] = [
     Section::Domains,
     Section::Goals,
     Section::Tasks,
     Section::Commitments,
     Section::Expectations,
-    Section::ExpectationChecks,
-    Section::SpawnedWaits,
     Section::Infos,
     Section::Flows,
     Section::FlowGoals,
@@ -123,7 +115,6 @@ pub const SECTIONS: [Section; 19] = [
     Section::FlowInstanceNodes,
     Section::Lifecycles,
     Section::Habits,
-    Section::HabitInstanceChildren,
 ];
 
 impl Section {
@@ -135,8 +126,6 @@ impl Section {
             Self::Tasks => "tasks",
             Self::Commitments => "commitments",
             Self::Expectations => "expectations",
-            Self::ExpectationChecks => "expectation_checks",
-            Self::SpawnedWaits => "spawned_waits",
             Self::Infos => "infos",
             Self::Flows => "flows",
             Self::FlowGoals => "flow_goals",
@@ -148,7 +137,6 @@ impl Section {
             Self::FlowInstanceNodes => "flow_instance_nodes",
             Self::Lifecycles => "lifecycles",
             Self::Habits => "habits",
-            Self::HabitInstanceChildren => "habit_instance_children",
         }
     }
 
