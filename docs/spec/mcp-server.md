@@ -230,6 +230,18 @@ instructions say so. A Task that reads as Agentic **cannot be started without a 
 tools change a status through the same rule, so an agent asking to start one gets the same refusal
 the app gives.
 
+**Asking for them.** `load` takes an `agentic` query beside `filter` (added to `Arlesh-rz0`,
+2026-09-24): `{}` narrows the board to the Tasks that **read as Agentic** — their own flag or their
+nearest flagged ancestor's, by the one resolver the app and the write rules share, stored rows and
+Habit occurrences alike — and `{"max_priority": 1}` to those at P1 or more urgent, a Task with no
+priority then left out. The rows each match hangs from come along for context, as do the waits and
+notes directly under a match; everything else goes, the Flow sections whole. The `tasks` section
+comes most urgent first (no priority last), context rows after, and every task row carries
+`reads_agentic` — `true` for a match, `false` for a context row. It is the MCP's own narrowing,
+applied after the roots and after `filter`, and deliberately **not** a field of the shared
+`BoardFilter`: the List View's Agentic pill reads a flattened row's value, which the presets do not,
+so the conformance corpus is untouched.
+
 ## Writing tasks
 
 `arlesh_tasks` carries the agent's task writes (`Arlesh-rz0`, 2026-09-24): `create`, `update`,
@@ -332,7 +344,8 @@ everything else.
   answers "where could this Flow be started?", a question nothing on this surface can act on while
   starting a Flow is a write. It returns alongside `start_flow`.
 - **The List view's own pill dimensions** — Antecedent, Dependency, Task/Goal/Project status, Verdict,
-  Scope, Blocked, Agentic and Asynchronous. They read values a flattened row carries rather than facts a node
+  Scope, Blocked, Agentic and Asynchronous (the snapshot's own `agentic` query, under *Agentic
+  tasks*, answers the Agentic question for an agent). They read values a flattened row carries rather than facts a node
   has, so they belong with the flattening, which is frontend-side. The status presets are no longer
   absent; see *Filtering a read* above.
 

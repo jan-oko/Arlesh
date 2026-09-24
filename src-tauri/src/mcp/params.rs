@@ -180,6 +180,14 @@ pub enum SnapshotOperation {
         /// being rows themselves, so there is nothing for a preset to judge.
         #[serde(default)]
         filter: Option<crate::filters::model::BoardFilter>,
+        /// Only the Tasks that read as **Agentic** — their own flag, or their nearest flagged
+        /// ancestor's, stored rows and Habit occurrences alike — with the rows they hang from, for
+        /// context, and their waits and notes. `{}` for all of them; `{"max_priority": 1}` for P0
+        /// and P1 only. Tasks come most urgent first, and each carries `reads_agentic`: `true` for
+        /// a match, `false` for a context row. The Flow sections are left out. Omit for no such
+        /// narrowing. Pass the same value on every page.
+        #[serde(default)]
+        agentic: Option<AgenticQuery>,
     },
 }
 
@@ -282,6 +290,15 @@ impl BriefParam {
             notes: self.notes.unwrap_or(base.notes),
         }
     }
+}
+
+/// The snapshot's agentic query.
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+pub struct AgenticQuery {
+    /// Only Tasks at this priority or more urgent — 0 for P0 through 4 for P4. A Task with no
+    /// priority is then left out.
+    #[serde(default)]
+    pub max_priority: Option<u8>,
 }
 
 /// Task reads the snapshot does not answer, and the writes an agent may make.

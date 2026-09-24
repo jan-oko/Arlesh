@@ -39,6 +39,7 @@
 //! See `docs/superpowers/specs/2026-09-16-mcp-server-design.md`.
 
 mod access;
+mod agentic;
 mod beads;
 mod flows;
 mod ids;

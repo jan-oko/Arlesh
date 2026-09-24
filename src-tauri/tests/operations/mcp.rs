@@ -280,6 +280,7 @@ async fn snapshot_returns_what_the_mindmap_command_returns() {
             sections: None,
             cursor: None,
             filter: None,
+            agentic: None,
         }))
         .await
         .unwrap();
@@ -293,6 +294,23 @@ async fn snapshot_returns_what_the_mindmap_command_returns() {
         .expect("the payload is an object")
         .remove("next_cursor")
         .expect("a paged response always says whether more remains");
+    // Each node carries its short id beside its id, which the app's own payload has no use for.
+    let mut named = 0;
+    for (section, items) in sections.as_object_mut().expect("an object").iter_mut() {
+        for item in items.as_array_mut().into_iter().flatten() {
+            if let Some(short) = item
+                .as_object_mut()
+                .and_then(|item| item.remove("short_id"))
+            {
+                assert!(
+                    short.as_str().is_some_and(|short| short.len() >= 3),
+                    "{section}"
+                );
+                named += 1;
+            }
+        }
+    }
+    assert!(named > 0, "the snapshot names its nodes by short id");
 
     let expected = arlesh_lib::commands::mindmap::load_mindmap(app.state(), now())
         .await
@@ -326,6 +344,7 @@ async fn snapshot_narrows_to_the_status_preset_it_is_given() {
             sections: None,
             cursor: None,
             filter: Some(BoardFilter::preset(Preset::Plan)),
+            agentic: None,
         }))
         .await
         .unwrap();
@@ -337,6 +356,7 @@ async fn snapshot_narrows_to_the_status_preset_it_is_given() {
             sections: None,
             cursor: None,
             filter: Some(BoardFilter::preset(Preset::Do)),
+            agentic: None,
         }))
         .await
         .unwrap();
@@ -389,6 +409,7 @@ async fn snapshot_writes_nothing() {
             sections: None,
             cursor: None,
             filter: None,
+            agentic: None,
         }))
         .await
         .unwrap();
@@ -879,6 +900,7 @@ async fn the_snapshot_carries_a_beads_id_once_it_is_set() {
             sections: None,
             cursor: None,
             filter: None,
+            agentic: None,
         }))
         .await
         .unwrap();
@@ -1016,6 +1038,7 @@ async fn page_of(
             sections,
             cursor,
             filter: None,
+            agentic: None,
         }))
         .await
         .unwrap();
@@ -1165,6 +1188,7 @@ async fn a_cursor_the_server_never_issued_is_refused() {
                 sections: None,
                 cursor: Some(bad.into()),
                 filter: None,
+                agentic: None,
             }))
             .await
             .unwrap();
@@ -1189,6 +1213,7 @@ async fn an_empty_sections_list_is_refused_rather_than_returning_nothing() {
             sections: Some(vec![]),
             cursor: None,
             filter: None,
+            agentic: None,
         }))
         .await
         .unwrap();

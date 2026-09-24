@@ -613,3 +613,35 @@ mod over_the_mcp {
         assert_eq!(created["parent_id"], serde_json::json!(tidy));
     }
 }
+
+#[tokio::test]
+async fn the_snapshots_agentic_query_counts_occurrences() {
+    use arlesh_lib::mcp::params;
+    use rmcp::handler::server::wrapper::Parameters;
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let item = habit(&app, agentic_with(Some(brief("Sort the mail")))).await;
+    served(&pool).await;
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
+
+    let result = mcp
+        .snapshot(Parameters(params::SnapshotOperation::Load {
+            now: at(NOW),
+            sections: None,
+            cursor: None,
+            filter: None,
+            agentic: Some(params::AgenticQuery::default()),
+        }))
+        .await
+        .unwrap();
+
+    let tasks = result.structured_content.as_ref().unwrap()["tasks"]
+        .as_array()
+        .cloned()
+        .unwrap();
+    let tidy = serde_json::json!(occurrence(item));
+    let row = tasks.iter().find(|task| task["id"] == tidy).unwrap();
+    assert_eq!(row["reads_agentic"], true);
+    assert_eq!(row["agentic_brief"]["spec"], "Sort the mail");
+}

@@ -22,7 +22,7 @@ use crate::{
     database::session::{Db, Transactional},
     error::AppError,
     mindmap::model::MindmapLoad,
-    nodes::{id::NodeId, key::DerivedKey, table::resolve_key},
+    nodes::id::NodeId,
     tasks::model::Task,
 };
 
@@ -78,21 +78,10 @@ impl Board {
         id: &NodeId,
         now: NaiveDateTime,
     ) -> Result<bool, AppError> {
-        let derived = match id {
-            NodeId::Stored(row) => {
-                return Ok(self.map.can_write(NodeKey::new(NodeTable::Task, *row)))
-            }
-            NodeId::Derived(derived) => derived,
-        };
         if self.task(id).is_none() {
             return Ok(false);
         }
-        Ok(match resolve_key(db, derived, now).await? {
-            DerivedKey::Occurrence(key) => {
-                crate::tasks::agentic::occurrence_reads_agentic(db, &key).await?
-            }
-            _ => false,
-        })
+        super::agentic::reads_agentic(db, &self.map, id, now).await
     }
 
     /// Whether the MCP may create a Task under the node `parent_type`/`parent` names: anywhere it

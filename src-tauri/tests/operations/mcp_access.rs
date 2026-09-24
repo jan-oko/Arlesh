@@ -125,6 +125,7 @@ async fn snapshot(mcp: &ArleshMcp) -> serde_json::Value {
             sections: None,
             cursor: None,
             filter: None,
+            agentic: None,
         }))
         .await
         .expect("the snapshot tool returned no result");

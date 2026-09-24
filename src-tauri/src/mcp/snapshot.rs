@@ -5,6 +5,8 @@ use rmcp::{
     model::{CallToolResult, ErrorData},
     tool, tool_router,
 };
+use std::collections::HashSet;
+
 use serde_json::{Map, Value};
 
 use super::{
@@ -74,6 +76,11 @@ impl ArleshMcp {
     /// you saw earlier can become ambiguous as nodes are added; it is then refused as
     /// `ambiguous_id` with the candidates listed, never read as the wrong node.
     ///
+    /// **Agentic.** `agentic` narrows the board to the Tasks that read as Agentic — `{}` for all,
+    /// `{"max_priority": 1}` for P0–P1 — with the rows above them for context and their waits and
+    /// notes, most urgent first; each task row then carries `reads_agentic`. Its brief is on the
+    /// row as `agentic_brief`.
+    ///
     /// **Rooted.** Only the subtrees the user made MCP roots are here — the server's instructions
     /// name them. Nodes outside every root, and private nodes anywhere, are left out together
     /// with every entry that names them.
@@ -92,6 +99,7 @@ impl ArleshMcp {
             sections,
             cursor,
             filter,
+            agentic,
         } = operation;
 
         let wanted = sections.unwrap_or_else(|| SECTIONS.to_vec());
@@ -136,6 +144,20 @@ impl ArleshMcp {
         let map = attempt!(crate::access::access_map(&mut db).await);
         access::restrict_snapshot(&mut load, &map);
 
+        // After the roots, so a context row above a match is one the MCP could see anyway.
+        let matched = match &agentic {
+            Some(query) => {
+                let candidates =
+                    attempt!(super::agentic::agentic_tasks(&mut db, &map, &load, now).await);
+                Some(super::agentic::narrow(
+                    &mut load,
+                    &candidates,
+                    query.max_priority,
+                ))
+            }
+            None => None,
+        };
+
         if let Err(error) = db.commit().await {
             return result::failed(error);
         }
@@ -144,9 +166,10 @@ impl ArleshMcp {
         // transport error rather than a tool result — the same call `result`'s own serialisation
         // failures make.
         let names = NodeNames::of(&load);
-        let available = split_into_sections(&load, &wanted, &names).map_err(|error| {
-            ErrorData::internal_error(format!("failed to serialise tool result: {error}"), None)
-        })?;
+        let available =
+            split_into_sections(&load, &wanted, &names, matched.as_ref()).map_err(|error| {
+                ErrorData::internal_error(format!("failed to serialise tool result: {error}"), None)
+            })?;
 
         let page = match paging::take_page(&available, cursor, PAGE_BUDGET) {
             Ok(page) => page,
@@ -178,6 +201,7 @@ fn split_into_sections(
     load: &MindmapLoad,
     wanted: &[Section],
     names: &NodeNames,
+    matched: Option<&HashSet<NodeId>>,
 ) -> Result<Vec<SectionItems>, serde_json::Error> {
     let mut payload = match serde_json::to_value(load)? {
         Value::Object(payload) => payload,
@@ -205,6 +229,9 @@ fn split_into_sections(
                     if let Some(table) = node_table(section) {
                         for item in &mut items {
                             name_item(item, table, names);
+                            if let (NodeTable::Task, Some(matched)) = (table, matched) {
+                                mark_match(item, matched);
+                            }
                         }
                     }
                     items
@@ -216,6 +243,18 @@ fn split_into_sections(
             },
         })
         .collect())
+}
+
+/// Marks a task row with whether it matched the agentic query or is there for context.
+fn mark_match(item: &mut Value, matched: &HashSet<NodeId>) {
+    let Value::Object(fields) = item else {
+        return;
+    };
+    let matches = fields
+        .get("id")
+        .and_then(|id| serde_json::from_value::<NodeId>(id.clone()).ok())
+        .is_some_and(|id| matched.contains(&id));
+    fields.insert("reads_agentic".into(), Value::Bool(matches));
 }
 
 /// Adds a node's `short_id` beside its `id`.
