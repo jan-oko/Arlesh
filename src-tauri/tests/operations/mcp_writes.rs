@@ -718,3 +718,97 @@ async fn the_snapshot_answers_which_tasks_read_as_agentic_most_urgent_first() {
         "a P3 above a P0 match stays as context, marked so"
     );
 }
+
+#[tokio::test]
+async fn every_node_carries_a_short_id_and_the_agentic_query_keeps_a_matchs_waits_and_notes() {
+    use arlesh_lib::commands::{commitments as commitment_commands, infos as info_commands};
+    use arlesh_lib::infos::model::CreateInfoRequest;
+    use arlesh_lib::scopes::model::{Scope, ScopeKind};
+    use arlesh_lib::tasks::model::{CreateCommitmentRequest, TimeScope};
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let board = board(&app).await;
+    let goal = task_commands::create_goal(
+        app.state(),
+        CreateGoalRequest {
+            title: "Ship it".into(),
+            parent_type: "project".into(),
+            parent_id: board.inside.into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("create goal")
+    .id
+    .sid();
+    let flagged = task(&app, "goal", goal, "Flagged").await;
+    helpers::make_agentic(&pool, flagged).await;
+    let day = Scope::containing(
+        ScopeKind::Day,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 1).expect("a date"),
+    )
+    .expect("a day");
+    commitment_commands::create_commitment(
+        app.state(),
+        CreateCommitmentRequest {
+            title: "Asleep by 23:00".into(),
+            parent_type: "project".into(),
+            parent_id: board.inside.into(),
+            time_scope: Some(TimeScope {
+                start_id: day.id,
+                end_id: day.id,
+                duration: None,
+            }),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("create commitment");
+    info_commands::create_info(
+        app.state(),
+        CreateInfoRequest {
+            body: "The config lives in /etc".into(),
+            details: None,
+            parent_type: "task".into(),
+            parent_id: flagged.into(),
+            position: 0,
+        },
+    )
+    .await
+    .expect("create info");
+    let mcp = mcp(&pool);
+    let asked = mcp
+        .waits(Parameters(params::WaitsOperation::Ask {
+            task_id: NodeIdParam::Short(short_id(&mcp, "tasks", flagged).await),
+            title: "Which config?".into(),
+            note: None,
+        }))
+        .await
+        .expect("the waits tool returned no result");
+    succeeded(&asked);
+
+    for section in [
+        "domains",
+        "goals",
+        "tasks",
+        "commitments",
+        "expectations",
+        "infos",
+    ] {
+        let named = snapshot(&mcp, section).await;
+        assert!(!named.is_empty(), "the board has {section}");
+        assert!(
+            named.iter().all(|row| row["short_id"].is_string()),
+            "every row of {section} carries a short id"
+        );
+    }
+
+    let payload = agentic_snapshot(&mcp, None).await;
+    let count = |section: &str| rows(&payload, section).len();
+    assert_eq!(count("tasks"), 1, "only the flagged Task matches");
+    assert_eq!(count("goals"), 1, "the goal it hangs from, for context");
+    assert_eq!(count("expectations"), 1, "its wait comes along");
+    assert_eq!(count("infos"), 1, "and its note");
+    assert_eq!(count("commitments"), 0, "a commitment beside it does not");
+}
