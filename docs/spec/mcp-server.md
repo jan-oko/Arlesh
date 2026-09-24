@@ -5,8 +5,9 @@
 Arlesh serves a [Model Context Protocol](https://modelcontextprotocol.io) endpoint while the app is
 running, so an agent — Claude Code, Claude Desktop — can read the board without being told its
 contents by hand. It sees only the parts of the board the user has opened to it as **MCP roots**,
-and nothing at all until they open one (see *Access* below). It is read-only with one deliberate
-exception: an agent can set an Agentic Task's `bd` issue link, and nothing else. It cannot create,
+and nothing at all until they open one (see *Access* below). It is read-only with two deliberate
+exceptions: an agent can set an Agentic Task's `bd` issue link, and it can raise an **agentic
+wait** under one — "the agent is waiting on you" — and nothing else. It cannot create,
 rename, complete or delete a Task, Goal, Flow, Domain or knowledge-base entry.
 
 The endpoint is hosted by the app itself, not a separate process, so there is only ever one writer
@@ -94,6 +95,7 @@ resolver in `src-tauri/src/access/`:
   `containment_conflicts`, every `arlesh_flows` operation, `arlesh_kb.get_person`. A node that does
   not exist is refused the same way, so the error kind never tells an agent that something exists
   where it cannot look.
+- **`arlesh_waits.ask` needs write** on the Task it raises the wait under.
 - **`arlesh_beads.set` needs write**: the item must be an Agentic Task inside a root. Anything else
   — a Goal, Commitment or Project, a Task that is not Agentic, one outside the roots — is refused
   with `not_permitted`.
@@ -110,7 +112,7 @@ The write tools of `Arlesh-rz0` are deliberately not built yet; they follow `Arl
 
 ## Tools
 
-Six tools rather than one per backend command, because an MCP client pays context for every tool
+Seven tools rather than one per backend command, because an MCP client pays context for every tool
 definition it loads.
 
 | Tool | Operations |
@@ -120,7 +122,8 @@ definition it loads.
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
 | `arlesh_tasks` | `get(id)`, `containment_conflicts(node, time_scope)` |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
-| `arlesh_beads` | `set(node_type, node_id, beads_id)` — the one write; `node_type` is `task`, `goal`, `commitment` or `project`, and the item must be writable (an Agentic Task inside a root). See below |
+| `arlesh_waits` | `ask(task_id, title, note?)` — raises an agentic wait under an Agentic Task the MCP can write, the question in `note`. See *Agentic waits* below |
+| `arlesh_beads` | `set(node_type, node_id, beads_id)` — a write; `node_type` is `task`, `goal`, `commitment` or `project`, and the item must be writable (an Agentic Task inside a root). See below |
 
 `arlesh_snapshot.load` is the entry point and covers the common case. The other reads
 exist for what it does not carry: the knowledge base, scope resolution, a task's dependency-derived
@@ -206,6 +209,29 @@ produce a cursor that no longer lands anywhere; the server says so and the walk 
 local user a few seconds apart, that is rarer than the cost of holding server-side state would be
 worth.
 
+## Agentic tasks
+
+An **Agentic** Task (see [*Tasks*](resources.md)) carries its **brief** in the snapshot's task rows as
+`agentic_brief` — `priority` (0–4 for P0–P4, or null), `spec`, `design`, `acceptance`, `notes` — or
+null when it has none. It is what an agent reads in place of `bd show`, and the server's
+instructions say so. A Task that reads as Agentic **cannot be started without a Spec**; the write
+tools that follow `Arlesh-pnn` will change a status through the same rule, so an agent asking to
+start one gets the same refusal the app gives.
+
+## Agentic waits
+
+`arlesh_waits.ask` is how an agent says it is **waiting on the user** — the replacement for `bd
+human`. It creates an Expectation with `agentic: true` directly under the Agentic Task the agent is
+working, titled with what it is waiting for and with the full question in `agentic_note`. It needs
+**write** access: the Task must be an Agentic Task inside an MCP root, or the call is refused as
+`not_permitted`. Like `arlesh_beads` it is transactional and journaled as the **agent's** write, so
+it never enters the user's Undo Stack, and every open window is told.
+
+The user answers by writing the answer into the note, beneath the question, and **releasing** the
+wait. The agent reads the answer off the wait in the snapshot's `expectations` — `status:
+released` and the note — and nothing else is needed to close it. A wait blocks nothing unless a
+Task depends on it.
+
 ## Issue links
 
 A Task, Goal, Commitment or Project can carry the id of the `bd` issue tracking it, and `arlesh_beads.set` is
@@ -219,7 +245,8 @@ Passing `null` clears the link. Setting one on an item that does not exist is an
 
 ## Nothing but `arlesh_beads` writes
 
-Every tool other than `arlesh_beads` is annotated `read_only_hint = true` and writes nothing at all.
+Every tool other than `arlesh_beads` and `arlesh_waits` is annotated `read_only_hint = true` and
+writes nothing at all.
 `arlesh_snapshot` used to be the exception: deriving a Habit's iterations minted the scope rows
 their windows landed on, and it had to commit them or the payload would name ids that no longer
 existed. Scopes are derived now (ADR 0009), so the snapshot reads in a read-only session like
