@@ -66,7 +66,7 @@ Retyping a node (which re-creates it in another table) therefore drops its root 
 the node search `Ctrl+O` uses, and removed with each row's ×. A root the MCP cannot see because it
 is private is flagged as such rather than hidden from the list.
 
-**How the app shows it.** Every node the MCP can see carries an **eye** in its status-badge row,
+**How the app shows it.** Every node the MCP can see carries an **antenna** in its status-badge row,
 wherever the shared badge row is drawn — Mindmap, List View, Steps and Plan View cards — with the
 tooltip *Visible to the MCP (via {root})*. It has one state: whether the MCP may also *write* the
 node is exactly whether it is Agentic, which the bot-head badge already says. The frontend does not
