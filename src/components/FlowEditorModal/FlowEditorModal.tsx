@@ -204,7 +204,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
         loadedRecurrenceRef.current = null;
         return;
       }
-      const startDate = keyStartDate(rec.start_scope_id) ?? todayIso();
+      const startDate = keyStartDate(rec.start_scope_id);
       const endDate = rec.end_scope_id !== null ? keyStartDate(rec.end_scope_id) : null;
       const count = await habitCompletionCount(flowId);
       if (cancelled) return;

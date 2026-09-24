@@ -8,7 +8,8 @@
 // business, and an interval built here from a date would bake in an answer this file has no
 // business knowing. Dates are dates under either convention.
 
-import type { Scope, ScopeKind, ScopeKey } from "@/api/scopes";
+import type { Scope, ScopeKind } from "@/api/scopes";
+import { scopeKeyText, type ScopeKeyText } from "@/utils/scope-key";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { ScopeRef } from "@/utils/scope-ref";
 import type { ScopeCell, ViewKind } from "@/utils/scope-calendar";
@@ -139,7 +140,7 @@ function sectionKey(cell: ScopeCell): string {
 export function buildPlanSections(
   planned: readonly TaskListRow[],
   target: Scope,
-  scopes: ReadonlyMap<ScopeKey, Scope>,
+  scopes: ReadonlyMap<ScopeKeyText, Scope>,
   options: PlanSplitOptions,
 ): PlanSplit | null {
   const cells = subscopeCells(target);
@@ -159,8 +160,8 @@ export function buildPlanSections(
   const unplaced: TaskListRow[] = [];
   for (const row of planned) {
     const plan = row.node.plan;
-    const start = plan == null ? undefined : scopes.get(plan.start_id);
-    const end = plan == null ? undefined : scopes.get(plan.end_id);
+    const start = plan == null ? undefined : scopes.get(scopeKeyText(plan.start_id));
+    const end = plan == null ? undefined : scopes.get(scopeKeyText(plan.end_id));
     const index = start === undefined || end === undefined
       ? -1
       : cells.findIndex((cell) => cellHoldsPlan(cell, start, end));

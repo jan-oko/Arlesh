@@ -2,14 +2,18 @@ import { invoke } from "./gesture";
 import type { ScopeRef } from "@/utils/scope-ref";
 
 /**
- * A scope's identity: its canonical value key, mirrored from the Rust `scopes::key::ScopeKey`.
+ * A scope's identity: its value key, mirrored from the Rust `scopes::key::ScopeKey`.
  *
- * `season:2026-09-01`, `month:2026-09-01`, `week:2026-09-20` (its Sunday), `day:2026-09-23`,
- * `part_of_day:2026-09-23:morning`, `exact:2026-09-23T14:00:00/2026-09-23T15:30:00`. A key always
- * names the scope's own start, so comparing keys compares scopes. Scopes are derived, not stored
- * (ADR 0009): nothing here writes, and `@/utils/scope-key` builds and reads keys without a call.
+ * A JSON object tagged by `kind` that names the scope's own start:
+ * `{kind: "week", date: "2026-09-20"}` (its Sunday), `{kind: "part_of_day", date, part}`,
+ * `{kind: "exact", start, end}`. It has the shape of a calendar-cell reference in canonical form, so
+ * comparing two keys compares their canonical text (`scopeKeyText` in `@/utils/scope-key`), never
+ * their object identity. Scopes are derived, not stored (ADR 0009): nothing here writes.
  */
-export type ScopeKey = string;
+export type ScopeKey =
+  | { kind: "season" | "month" | "week" | "day"; date: string }
+  | { kind: "part_of_day"; date: string; part: PartOfDay }
+  | { kind: "exact"; start: string; end: string };
 
 /** Scope granularity, mirrored from the Rust `ScopeKind` (serde snake_case). */
 export type ScopeKind = "season" | "month" | "week" | "day" | "part_of_day" | "exact";

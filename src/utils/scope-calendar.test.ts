@@ -324,7 +324,7 @@ describe("openingForRefs", () => {
 describe("openingForScopes", () => {
   function scope(fields: Partial<Scope>): Scope {
     return {
-      id: "day:2026-09-16", kind: "day", label: "", start_date: "2026-09-16", end_date: "2026-09-16",
+      id: { kind: "day", date: "2026-09-16" }, kind: "day", label: "", start_date: "2026-09-16", end_date: "2026-09-16",
       part: null, start_datetime: null, end_datetime: null,
       ...fields,
     };

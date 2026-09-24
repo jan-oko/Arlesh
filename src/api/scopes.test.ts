@@ -14,7 +14,7 @@ import type { Scope, ResolvedScope } from "./scopes";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 const mockScope: Scope = {
-  id: "day:2026-06-20",
+  id: { kind: "day", date: "2026-06-20" },
   kind: "day",
   label: "2026-06-20",
   start_date: "2026-06-20",
@@ -32,8 +32,8 @@ beforeEach(() => {
 describe("getScope", () => {
   it("calls invoke with get_scope and the key", async () => {
     mockCommandOnce(mockScope);
-    const result = await getScope("day:2026-06-20");
-    expect(invoke).toHaveBeenCalledWith("get_scope", { id: "day:2026-06-20" });
+    const result = await getScope({ kind: "day", date: "2026-06-20" });
+    expect(invoke).toHaveBeenCalledWith("get_scope", { id: { kind: "day", date: "2026-06-20" } });
     expect(result).toEqual(mockScope);
   });
 });
@@ -97,8 +97,8 @@ describe("resolveScope", () => {
       active: true,
     };
     mockCommandOnce(resolved);
-    const result = await resolveScope("day:2026-06-20");
-    expect(invoke).toHaveBeenCalledWith("resolve_scope", { id: "day:2026-06-20" });
+    const result = await resolveScope({ kind: "day", date: "2026-06-20" });
+    expect(invoke).toHaveBeenCalledWith("resolve_scope", { id: { kind: "day", date: "2026-06-20" } });
     expect(result).toEqual(resolved);
   });
 });

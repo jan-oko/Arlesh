@@ -4,14 +4,15 @@
 // panes re-derive synchronously as the scope is walked.
 
 import type { ScopeKey } from "@/api/scopes";
+import { sameScopeKey, scopeKeyText, type ScopeKeyText } from "@/utils/scope-key";
 import type { TimeScope } from "@/api/time-scope";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { ScopeInterval } from "@/utils/scope-interval";
 import { intervalContains, intervalsOverlap } from "@/utils/scope-interval";
 
-/** Every scope id resolved to its window, keyed by id. */
-export type ScopeWindows = ReadonlyMap<ScopeKey, ScopeInterval>;
+/** Every scope id resolved to its window, keyed by the key's canonical text. */
+export type ScopeWindows = ReadonlyMap<ScopeKeyText, ScopeInterval>;
 
 /** Which containment invariant a move would break. Named, not phrased — the view words it. */
 export type PlanRefusal = "ownTimeScope" | "parentPlan";
@@ -49,8 +50,8 @@ export function nearestPlannedAncestor(row: TaskListRow): MindmapNode | null {
  * reason to leave the task out rather than as permission to move it.
  */
 export function timeScopeWindow(scope: TimeScope, windows: ScopeWindows): ScopeInterval | null {
-  const start = windows.get(scope.start_id);
-  const end = windows.get(scope.end_id);
+  const start = windows.get(scopeKeyText(scope.start_id));
+  const end = windows.get(scopeKeyText(scope.end_id));
   if (start === undefined || end === undefined) return null;
   return { start: start.start, end: end.end };
 }
@@ -58,11 +59,11 @@ export function timeScopeWindow(scope: TimeScope, windows: ScopeWindows): ScopeI
 /** Every scope id the triage has to resolve before it can answer: each row's own and inherited
  * Time Scope, its Plan, and its ancestors' Plans. */
 export function referencedScopeIds(rows: readonly TaskListRow[]): ScopeKey[] {
-  const ids = new Set<ScopeKey>();
+  const ids = new Map<ScopeKeyText, ScopeKey>();
   function add(scope: TimeScope | null | undefined): void {
     if (scope == null) return;
-    ids.add(scope.start_id);
-    ids.add(scope.end_id);
+    ids.set(scopeKeyText(scope.start_id), scope.start_id);
+    ids.set(scopeKeyText(scope.end_id), scope.end_id);
   }
   for (const row of rows) {
     add(row.node.timeScope);
@@ -72,7 +73,7 @@ export function referencedScopeIds(rows: readonly TaskListRow[]): ScopeKey[] {
       add(ancestor.plan);
     }
   }
-  return [...ids];
+  return [...ids.values()];
 }
 
 /**
@@ -132,7 +133,7 @@ export function partitionForScope(
   rows: readonly TaskListRow[],
   target: ScopeInterval,
   windows: ScopeWindows,
-  parentIds: ReadonlySet<ScopeKey>,
+  parentIds: ReadonlySet<ScopeKeyText>,
 ): PlanPanes {
   const unplanned: TaskListRow[] = [];
   const planned: TaskListRow[] = [];
@@ -141,7 +142,7 @@ export function partitionForScope(
     if (!isTriageable(row.node)) continue;
     const plan = row.node.plan;
     if (plan != null) {
-      if (plan.start_id === plan.end_id && parentIds.has(plan.start_id)) {
+      if (sameScopeKey(plan.start_id, plan.end_id) && parentIds.has(scopeKeyText(plan.start_id))) {
         parentPlanned.push(row);
         continue;
       }

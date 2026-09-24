@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import PlanField from "./PlanField";
 import { getScope, resolveScope } from "@/api/scopes";
-import type { Scope, ScopeKey, ScopeKind } from "@/api/scopes";
+import type { Scope, ScopeKey } from "@/api/scopes";
+import { keyStartDate } from "@/utils/scope-key";
 import type { TimeScope } from "@/api/time-scope";
 
 vi.mock("react-i18next", () => ({
@@ -25,16 +26,14 @@ vi.mock("@/api/scopes", () => ({
   resolveScope: vi.fn(),
 }));
 
-const JUNE: ScopeKey = "month:2026-06-01";
-const AUGUST: ScopeKey = "month:2026-08-01";
+const JUNE: ScopeKey = { kind: "month", date: "2026-06-01" };
+const AUGUST: ScopeKey = { kind: "month", date: "2026-08-01" };
 
 /** The scope a key names, as the backend derives it — kind and start date are in the key. */
 function scopeOf(id: ScopeKey): Scope {
-  const [kind = "month", date = ""] = id.split(":");
-  const kinds: ScopeKind[] = ["season", "month", "week", "day"];
   return {
-    id, kind: kinds.find((candidate) => candidate === kind) ?? "month", label: "",
-    start_date: date, end_date: date,
+    id, kind: id.kind, label: "",
+    start_date: keyStartDate(id), end_date: keyStartDate(id),
     part: null, start_datetime: null, end_datetime: null,
   };
 }
@@ -70,7 +69,7 @@ describe("PlanField", () => {
     fireEvent.click(screen.getByRole("button", { name: "scopeApply" }));
     await waitFor(() =>
       expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
-        start_id: expect.stringMatching(/^day:\d{4}-\d{2}-\d{2}$/),
+        start_id: { kind: "day", date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) },
       })),
     );
   });

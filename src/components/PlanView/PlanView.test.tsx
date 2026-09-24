@@ -7,6 +7,8 @@ import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { ScopeRef } from "@/utils/scope-ref";
+import type { ScopeKey } from "@/api/scopes";
+import { scopeKeyText } from "@/utils/scope-key";
 import { useListData } from "@/hooks/use-list-data";
 import { clearScopeWindowCache } from "@/hooks/use-scope-windows";
 import { clearScopeRowCache } from "@/hooks/use-scope-rows";
@@ -50,32 +52,32 @@ vi.mock("@/hooks/use-scope-range-label", () => ({ useScopeRangeLabel: () => null
 
 // The scope catalogue the backend stands in for: the week being filled, the week after it, a day
 // inside the first, and the week's resolved window.
-const WEEK_ID = "week:2026-09-20";
-const NEXT_WEEK_ID = "week:2026-09-27";
-const DAY_ID = "day:2026-09-22";
+const WEEK_ID: ScopeKey = { kind: "week", date: "2026-09-20" };
+const NEXT_WEEK_ID: ScopeKey = { kind: "week", date: "2026-09-27" };
+const DAY_ID: ScopeKey = { kind: "day", date: "2026-09-22" };
 // A second day inside the same week, later than DAY_ID: the two together are what tell section
 // order apart from triage order.
-const LATER_DAY_ID = "day:2026-09-24";
+const LATER_DAY_ID: ScopeKey = { kind: "day", date: "2026-09-24" };
 // The month the week sits in — its parent scope — and the season above that, the top of the ladder.
-const MONTH_ID = "month:2026-09-01";
-const SEASON_ID = "season:2026-09-01";
+const MONTH_ID: ScopeKey = { kind: "month", date: "2026-09-01" };
+const SEASON_ID: ScopeKey = { kind: "season", date: "2026-09-01" };
 const WINDOWS: Record<string, { start: string; end: string }> = {
-  [WEEK_ID]: { start: "2026-09-20T00:00:00", end: "2026-09-27T00:00:00" },
-  [NEXT_WEEK_ID]: { start: "2026-09-27T00:00:00", end: "2026-10-04T00:00:00" },
-  [DAY_ID]: { start: "2026-09-22T00:00:00", end: "2026-09-23T00:00:00" },
-  [LATER_DAY_ID]: { start: "2026-09-24T00:00:00", end: "2026-09-25T00:00:00" },
-  [MONTH_ID]: { start: "2026-09-01T00:00:00", end: "2026-10-01T00:00:00" },
-  [SEASON_ID]: { start: "2026-09-01T00:00:00", end: "2026-12-01T00:00:00" },
+  [scopeKeyText(WEEK_ID)]: { start: "2026-09-20T00:00:00", end: "2026-09-27T00:00:00" },
+  [scopeKeyText(NEXT_WEEK_ID)]: { start: "2026-09-27T00:00:00", end: "2026-10-04T00:00:00" },
+  [scopeKeyText(DAY_ID)]: { start: "2026-09-22T00:00:00", end: "2026-09-23T00:00:00" },
+  [scopeKeyText(LATER_DAY_ID)]: { start: "2026-09-24T00:00:00", end: "2026-09-25T00:00:00" },
+  [scopeKeyText(MONTH_ID)]: { start: "2026-09-01T00:00:00", end: "2026-10-01T00:00:00" },
+  [scopeKeyText(SEASON_ID)]: { start: "2026-09-01T00:00:00", end: "2026-12-01T00:00:00" },
 };
 
 /** The scope **rows** the sectioning reads — dates, never the datetimes, which stay null. */
 const SCOPE_ROWS: Record<string, unknown> = {
-  [WEEK_ID]: { id: WEEK_ID, kind: "week", label: "W39", start_date: "2026-09-20", end_date: "2026-09-26" },
-  [DAY_ID]: { id: DAY_ID, kind: "day", label: "D", start_date: "2026-09-22", end_date: "2026-09-22" },
-  [LATER_DAY_ID]: { id: LATER_DAY_ID, kind: "day", label: "D", start_date: "2026-09-24", end_date: "2026-09-24" },
+  [scopeKeyText(WEEK_ID)]: { id: WEEK_ID, kind: "week", label: "W39", start_date: "2026-09-20", end_date: "2026-09-26" },
+  [scopeKeyText(DAY_ID)]: { id: DAY_ID, kind: "day", label: "D", start_date: "2026-09-22", end_date: "2026-09-22" },
+  [scopeKeyText(LATER_DAY_ID)]: { id: LATER_DAY_ID, kind: "day", label: "D", start_date: "2026-09-24", end_date: "2026-09-24" },
 };
-const getScope = vi.fn((id: string) => {
-  const base = SCOPE_ROWS[id];
+const getScope = vi.fn((id: ScopeKey) => {
+  const base = SCOPE_ROWS[scopeKeyText(id)];
   if (base === undefined) return Promise.reject(new Error(`no scope ${String(id)}`));
   return Promise.resolve({
     part: null, start_datetime: null, end_datetime: null, ...base,
@@ -101,8 +103,8 @@ const scopeContaining = vi.fn((kind: string, date: string) => {
     ...CONTAINMENT,
   });
 });
-const resolveScope = vi.fn((id: string) =>
-  Promise.resolve({ ...(WINDOWS[id] ?? { start: "", end: "" }), active: false }),
+const resolveScope = vi.fn((id: ScopeKey) =>
+  Promise.resolve({ ...(WINDOWS[scopeKeyText(id)] ?? { start: "", end: "" }), active: false }),
 );
 // `scopeForRef` has to be stubbed alongside the two calls it dispatches to, not left to
 // `importOriginal`. A partial mock replaces exports, not the bindings *inside* the real module — so
@@ -117,8 +119,8 @@ vi.mock("@/api/scopes", async (importOriginal) => ({
       ? scopeContaining(ref.part, ref.date)
       : scopeContaining(ref.kind, "date" in ref ? ref.date : ref.start)
   ),
-  resolveScope: (id: string) => resolveScope(id),
-  getScope: (id: string) => getScope(id),
+  resolveScope: (id: ScopeKey) => resolveScope(id),
+  getScope: (id: ScopeKey) => getScope(id),
 }));
 
 const updateTask = vi.fn((_id: number, _request: unknown) => Promise.resolve());
@@ -549,7 +551,7 @@ describe("switching the kind by its letter", () => {
     await act(async () => { fireEvent.keyDown(window, { code: "KeyM" }); });
     await settle();
     expect(useViewStore.getState().planScopeKind).toBe("week");
-    expect(resolveScope).toHaveBeenCalledWith("day:2026-09-21");
+    expect(resolveScope).toHaveBeenCalledWith({ kind: "day", date: "2026-09-21" });
   });
 
   it("does nothing while a text field has the keyboard", async () => {
@@ -637,7 +639,7 @@ describe("splitting the planned pane by subscope", () => {
     await act(async () => { fireEvent.keyDown(window, { code: "Digit2" }); });
     await settle();
     // The second bucket of the week being filled is Monday the 21st.
-    expect(resolveScope).toHaveBeenCalledWith("day:2026-09-21");
+    expect(resolveScope).toHaveBeenCalledWith({ kind: "day", date: "2026-09-21" });
     expect(updateTask).toHaveBeenCalled();
   });
 
@@ -650,11 +652,11 @@ describe("splitting the planned pane by subscope", () => {
     // W is Wednesday's alone; T and S each name two days of the week and so name none.
     await act(async () => { fireEvent.keyDown(window, { code: "KeyT" }); });
     await settle();
-    expect(resolveScope).not.toHaveBeenCalledWith(expect.stringMatching(/^day:2026-09-2[0-6]$/));
+    expect(resolveScope).not.toHaveBeenCalledWith(expect.objectContaining({ kind: "day" }));
 
     await act(async () => { fireEvent.keyDown(window, { code: "KeyW" }); });
     await settle();
-    expect(resolveScope).toHaveBeenCalledWith("day:2026-09-23");
+    expect(resolveScope).toHaveBeenCalledWith({ kind: "day", date: "2026-09-23" });
   });
 });
 

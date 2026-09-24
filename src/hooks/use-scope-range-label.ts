@@ -1,19 +1,21 @@
 import { useEffect, useState } from "react";
 import { getScope } from "@/api/scopes";
 import type { Scope, ScopeKey } from "@/api/scopes";
+import { scopeKeyText, type ScopeKeyText } from "@/utils/scope-key";
 import type { TimeScope } from "@/api/time-scope";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
 import { formatScopeRange } from "@/utils/scope-format";
 
 // A scope is a pure function of its key, so a read can be cached across every node that
 // references it — the mindmap has many nodes but few distinct scopes.
-const scopeCache = new Map<ScopeKey, Promise<Scope>>();
+const scopeCache = new Map<ScopeKeyText, Promise<Scope>>();
 
 function cachedGetScope(id: ScopeKey): Promise<Scope> {
-  const hit = scopeCache.get(id);
+  const text = scopeKeyText(id);
+  const hit = scopeCache.get(text);
   if (hit !== undefined) return hit;
   const pending = getScope(id);
-  scopeCache.set(id, pending);
+  scopeCache.set(text, pending);
   return pending;
 }
 

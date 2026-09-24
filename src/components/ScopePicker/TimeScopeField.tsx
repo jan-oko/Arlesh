@@ -8,7 +8,7 @@ import { useScopePicker } from "@/hooks/use-scope-picker";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
 import { addScopePeriods, openingForRefs } from "@/utils/scope-calendar";
 import { formatScopeRange } from "@/utils/scope-format";
-import { keyContaining } from "@/utils/scope-key";
+import { keyContaining, scopeKeyText } from "@/utils/scope-key";
 import { refsForScopes, type CanonicalKind } from "@/utils/scope-ref";
 import ScopePicker from "./ScopePicker";
 import styles from "./ScopeField.module.css";
@@ -51,11 +51,11 @@ export default function TimeScopeField({ value, onChange, defaultForm = "boundar
   // tagged with the endpoints it was made for, so a previous value's scopes are never shown.
   const [fetched, setFetched] = useState<{ key: string; scopes: [Scope, Scope] } | null>(null);
   const boundariesKey =
-    value === null || value.duration ? null : `${value.start_id}:${value.end_id}`;
+    value === null || value.duration ? null : `${scopeKeyText(value.start_id)}/${scopeKeyText(value.end_id)}`;
   useEffect(() => {
     if (value === null || value.duration) return;
     let active = true;
-    const key = `${value.start_id}:${value.end_id}`;
+    const key = `${scopeKeyText(value.start_id)}/${scopeKeyText(value.end_id)}`;
     void Promise.all([getScope(value.start_id), getScope(value.end_id)]).then(([start, end]) => {
       if (active && start != null && end != null) setFetched({ key, scopes: [start, end] });
     });

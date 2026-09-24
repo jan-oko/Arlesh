@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { ScopeKey } from "@/api/scopes";
 import { useCallback, useState } from "react";
 import { render, screen, fireEvent, waitFor, renderHook, act } from "@testing-library/react";
 import { useMindmapData } from "./use-mindmap-data";
@@ -42,7 +43,7 @@ declare global {
 }
 
 const FLOW_ID = 3;
-const ITERATION_SCOPE_ID = "day:2026-01-05";
+const ITERATION_SCOPE_ID: ScopeKey = { kind: "day", date: "2026-01-05" };
 /** The nightly Habit's first iteration, as `injectHabitInstances` ids it. */
 const OCCURRENCE_ID = `habit-${FLOW_ID}-0-virtual`;
 /** The row `create_habit_instance_child` reports back for the attached commitment. */
