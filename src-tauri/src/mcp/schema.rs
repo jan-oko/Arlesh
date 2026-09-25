@@ -200,11 +200,13 @@ fn without_description(schema: &Value) -> Value {
     schema
 }
 
-/// `` - `name`(a, b?): what it does `` — its first paragraph.
+/// `` - `name`(a, b?): what it does `` — required parameters first, then its first paragraph.
 fn line(operation: &Operation) -> String {
-    let parameters: Vec<String> = operation
-        .parameters
-        .iter()
+    // Required ones first: the order a caller needs them in, whatever order the schema kept.
+    let mut ordered: Vec<&(String, bool)> = operation.parameters.iter().collect();
+    ordered.sort_by_key(|(_, required)| !required);
+    let parameters: Vec<String> = ordered
+        .into_iter()
         .map(|(name, required)| match required {
             true => name.clone(),
             false => format!("{name}?"),
