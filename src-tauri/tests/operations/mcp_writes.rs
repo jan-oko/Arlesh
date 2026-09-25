@@ -977,6 +977,167 @@ mod agent_waits {
     }
 }
 
+mod agent_notes {
+    //! Infos an agent hangs under the Agentic Task it is working — the full wording of a title it
+    //! shortened, or any other note.
+
+    use super::*;
+
+    async fn infos(mcp: &ArleshMcp, operation: params::InfosOperation) -> CallToolResult {
+        mcp.infos(Parameters(operation))
+            .await
+            .expect("the infos tool returned no result")
+    }
+
+    fn note(task_id: impl Into<NodeIdParam>, body: &str) -> params::InfosOperation {
+        params::InfosOperation::Create {
+            task_id: task_id.into(),
+            body: body.into(),
+            details: None,
+        }
+    }
+
+    async fn info_count(pool: &sqlx::SqlitePool) -> i64 {
+        sqlx::query_scalar("SELECT COUNT(*) FROM infos")
+            .fetch_one(pool)
+            .await
+            .expect("count the infos")
+    }
+
+    #[tokio::test]
+    async fn an_agent_notes_a_shortened_titles_full_wording_under_its_agentic_task() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        helpers::make_agentic(&pool, board.inside_task).await;
+        let mcp = mcp(&pool);
+        let task_short_id = short_id(&mcp, "tasks", board.inside_task).await;
+
+        let created = infos(
+            &mcp,
+            params::InfosOperation::Create {
+                task_id: NodeIdParam::Short(task_short_id),
+                body: "Visible work, in the words the user first gave it".into(),
+                details: Some("And the rest of it".into()),
+            },
+        )
+        .await;
+
+        let created = succeeded(&created).clone();
+        assert_eq!(
+            created["body"],
+            "Visible work, in the words the user first gave it"
+        );
+        assert_eq!(created["details"], "And the rest of it");
+        assert_eq!(created["parent_type"], "task");
+        assert_eq!(created["parent_id"], board.inside_task);
+        let id = created["id"].as_i64().expect("a stored row");
+        assert_eq!(
+            created["full_id"],
+            uuid_v5(&NODE_NAMESPACE, &format!("info:{id}"))
+        );
+        assert_eq!(
+            created["short_id"].as_str(),
+            Some(short_id(&mcp, "infos", id).await.as_str()),
+            "the short id it is given is the one the snapshot then shows"
+        );
+        let source: String = sqlx::query_scalar(
+            "SELECT source FROM undo_journal WHERE table_name = 'infos' ORDER BY seq DESC LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("the info was journaled");
+        assert_eq!(source, "mcp");
+    }
+
+    #[tokio::test]
+    async fn a_note_is_refused_under_a_task_the_agent_cannot_write() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        let marked = task(&app, "project", board.inside, "The user's own").await;
+        not_agentic(&pool, marked).await;
+        let private = task(&app, "project", board.inside, "The user's secret").await;
+        helpers::make_agentic(&pool, private).await;
+        set_column(
+            &pool,
+            "UPDATE tasks SET is_private = 1 WHERE id = ?",
+            private,
+        )
+        .await;
+        helpers::make_agentic(&pool, board.outside_task).await;
+        let mcp = mcp(&pool);
+
+        let plain = infos(&mcp, note(board.inside_task, "A note")).await;
+        assert_eq!(
+            refused(&plain),
+            "not_permitted",
+            "a Task that is not Agentic"
+        );
+        let under_marked = infos(&mcp, note(marked, "A note")).await;
+        assert_eq!(refused(&under_marked), "not_permitted");
+        let under_private = infos(&mcp, note(private, "A note")).await;
+        assert_eq!(refused(&under_private), "not_permitted");
+        let outside = infos(&mcp, note(board.outside_task, "A note")).await;
+        assert_eq!(
+            refused(&outside),
+            "not_permitted",
+            "an Agentic Task outside the roots"
+        );
+        assert_eq!(info_count(&pool).await, 0, "nothing was written");
+    }
+
+    #[tokio::test]
+    async fn a_blank_note_is_refused() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        helpers::make_agentic(&pool, board.inside_task).await;
+        let mcp = mcp(&pool);
+
+        let blank = infos(&mcp, note(board.inside_task, "  ")).await;
+
+        assert_eq!(refused(&blank), "invalid_request");
+        assert_eq!(info_count(&pool).await, 0, "nothing was written");
+    }
+
+    #[tokio::test]
+    async fn an_agents_note_never_lands_on_the_users_undo_stack() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        helpers::make_agentic(&pool, board.inside_task).await;
+        let mcp = mcp(&pool);
+
+        undo_commands::open_gesture(app.state())
+            .await
+            .expect("open gesture");
+        let users = task(&app, "project", board.inside, "The user's").await;
+        let agents = succeeded(&infos(&mcp, note(board.inside_task, "The agent's")).await)["id"]
+            .as_i64()
+            .expect("a stored row");
+        undo_commands::close_gesture(helpers::window(&app), app.state(), app.state())
+            .await
+            .expect("close gesture");
+        undo_commands::undo(helpers::window(&app), app.state(), app.state())
+            .await
+            .expect("undo");
+
+        let users_left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE id = ?")
+            .bind(users)
+            .fetch_one(&pool)
+            .await
+            .expect("read the tasks");
+        assert_eq!(users_left, 0, "undo takes the user's write");
+        let agents_left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM infos WHERE id = ?")
+            .bind(agents)
+            .fetch_one(&pool)
+            .await
+            .expect("read the infos");
+        assert_eq!(agents_left, 1, "and leaves the agent's note");
+    }
+}
+
 #[tokio::test]
 async fn an_id_given_as_a_number_or_its_digits_names_the_row() {
     let pool = helpers::test_pool().await;

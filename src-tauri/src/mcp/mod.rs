@@ -7,7 +7,7 @@
 //!
 //! # Shape of the surface
 //!
-//! Seven tools rather than one per command. [`ArleshMcp::snapshot`] returns the whole planning
+//! Eight tools rather than one per command. [`ArleshMcp::snapshot`] returns the whole planning
 //! graph in one payload, so the read tools beside it exist only for what it does not carry: scope
 //! resolution, the knowledge base, and the handful of per-item and what-if reads. An MCP client
 //! pays context for every tool definition it loads, which is why the surface is grouped rather
@@ -15,11 +15,12 @@
 //!
 //! # Reads and writes
 //!
-//! Three tools write something the user sees. [`ArleshMcp::tasks`] creates, edits, moves,
+//! Four tools write something the user sees. [`ArleshMcp::tasks`] creates, edits, moves,
 //! re-statuses and archives Tasks — creating anywhere inside the roots, never under a Task marked
 //! Not agentic, and changing only Tasks that read as Agentic. [`ArleshMcp::beads`] sets the `bd`
 //! issue id on an Agentic Task, the only way that field can be set at all, and
-//! [`ArleshMcp::waits`] raises an agentic wait under one — "the agent is waiting on you". Every
+//! [`ArleshMcp::waits`] raises an agentic wait under one — "the agent is waiting on you" — and
+//! [`ArleshMcp::infos`] hangs a note (an Info) under one. Every
 //! other tool, [`ArleshMcp::snapshot`] included, is annotated `read_only_hint = true` and writes
 //! nothing. Every write is journaled under the `mcp` source, so none enters the user's Undo Stack.
 //!
@@ -41,8 +42,10 @@
 mod access;
 mod agentic;
 mod beads;
+pub mod endpoint;
 mod flows;
 mod ids;
+mod infos;
 mod kb;
 mod lookup;
 pub mod paging;
@@ -116,7 +119,8 @@ impl ArleshMcp {
                     + Self::tasks_router()
                     + Self::flows_router()
                     + Self::beads_router()
-                    + Self::waits_router(),
+                    + Self::waits_router()
+                    + Self::infos_router(),
             ),
         }
     }
@@ -215,7 +219,7 @@ impl ArleshMcp {
 #[tool_handler(
     router = self.tool_router,
     name = "Arlesh",
-    instructions = "Arlesh's task-management and knowledge-base data, limited to the MCP roots the user has opened to you (listed at the end). You may create tasks (arlesh_tasks.create — anywhere inside the roots except under a task marked Not agentic; what you create is always Agentic) and edit, re-status and move Agentic tasks (arlesh_tasks.update/set_status/move) and archive Agentic Habit occurrences (arlesh_tasks.archive; a stored task cannot be archived yet); set_status is a compare-and-set naming the status you last saw. arlesh_beads links an Agentic task to a bd issue, and arlesh_waits raises a wait under an Agentic task — a question when you need the user (\"the agent is waiting on you\"), or with question: false when you wait on something else, like CI — releases it (a question only with the answer, e.g. one you got by asking the user yourself) and polls it with get. Everything else is read-only. Every node comes back with id, short_id and full_id; name one by any of them, as a string — its row id, or a prefix (3+ characters) of its full id such as the short_id; an id matching several nodes is refused as ambiguous_id, listing them. When writing, a parameter left out means unchanged and null means clear. An Agentic task carries an agentic_brief (priority \"MW\", \"A\", \"B\" or \"C\", most urgent first, or null; spec, design, acceptance, notes): read it before working the task; a task with no spec cannot be started. Start with arlesh_snapshot.load — `now` is optional and defaults to the current time; add `agentic: {}` (or `{\"max_priority\": \"A\"}`) for just the Agentic tasks: the whole planning graph — tasks, goals, flows, domains, dependencies and derived lifecycles. It is PAGED: a response carries what fits plus next_cursor, and you must keep calling with that cursor until it is null or you will only have seen part of the board. A section missing from a page is one you have not reached yet; an empty section arrives as []. Narrow with `sections` when you know what you need. Tasks and goals carry their windows as boundary scope IDs, not dates: resolve them with arlesh_scopes.resolve_many. The other tools cover what the snapshot omits; each tool's description lists its operations and the parameters each takes. Details: a node's origin says whether it is a Habit occurrence (id a UUID), a commitment's verdict is recorded, never inferred, and a parent under a domain-table row is named project (a Project) or domain (any other subtype)."
+    instructions = "Arlesh's task-management and knowledge-base data, limited to the MCP roots the user has opened to you (listed at the end). You may create tasks (arlesh_tasks.create — anywhere inside the roots except under a task marked Not agentic; what you create is always Agentic) and edit, re-status and move Agentic tasks (arlesh_tasks.update/set_status/move) and archive Agentic Habit occurrences (arlesh_tasks.archive; a stored task cannot be archived yet); set_status is a compare-and-set naming the status you last saw. arlesh_beads links an Agentic task to a bd issue, and arlesh_waits raises a wait under an Agentic task — a question when you need the user (\"the agent is waiting on you\"), or with question: false when you wait on something else, like CI — releases it (a question only with the answer, e.g. one you got by asking the user yourself) and polls it with get. arlesh_infos.create hangs a note (an Info: a one-line body and optional details) under an Agentic task — e.g. to keep a long title's full wording when you shorten the title. Everything else is read-only. Every node comes back with id, short_id and full_id; name one by any of them, as a string — its row id, or a prefix (3+ characters) of its full id such as the short_id; an id matching several nodes is refused as ambiguous_id, listing them. When writing, a parameter left out means unchanged and null means clear. An Agentic task carries an agentic_brief (priority \"MW\", \"A\", \"B\" or \"C\", most urgent first, or null; spec, design, acceptance, notes): read it before working the task; a task with no spec cannot be started. Start with arlesh_snapshot.load — `now` is optional and defaults to the current time; add `agentic: {}` (or `{\"max_priority\": \"A\"}`) for just the Agentic tasks: the whole planning graph — tasks, goals, flows, domains, dependencies and derived lifecycles. It is PAGED: a response carries what fits plus next_cursor, and you must keep calling with that cursor until it is null or you will only have seen part of the board. A section missing from a page is one you have not reached yet; an empty section arrives as []. Narrow with `sections` when you know what you need. Tasks and goals carry their windows as boundary scope IDs, not dates: resolve them with arlesh_scopes.resolve_many. The other tools cover what the snapshot omits; each tool's description lists its operations and the parameters each takes. Details: a node's origin says whether it is a Habit occurrence (id a UUID), a commitment's verdict is recorded, never inferred, and a parent under a domain-table row is named project (a Project) or domain (any other subtype)."
 )]
 impl ServerHandler for ArleshMcp {
     /// The handshake, with the MCP roots added to the instructions — see
@@ -232,26 +236,11 @@ impl ServerHandler for ArleshMcp {
     }
 }
 
-/// The port the endpoint binds to: [`PORT_ENV_VAR`] when set and parseable, else [`DEFAULT_PORT`].
-///
-/// An unparseable value is a typo in the user's environment, not a reason to refuse to start, so
-/// it warns and falls back.
+/// The port the endpoint binds to when no setting is saved: [`PORT_ENV_VAR`] when set and
+/// parseable, else [`DEFAULT_PORT`]. The running app also honours the user's saved port — see
+/// [`endpoint::McpEndpoint`].
 pub fn port() -> u16 {
-    match std::env::var(PORT_ENV_VAR) {
-        Err(_) => DEFAULT_PORT,
-        Ok(raw) => match raw.parse() {
-            Ok(port) => port,
-            Err(error) => {
-                tracing::warn!(
-                    value = %raw,
-                    error = %error,
-                    default = DEFAULT_PORT,
-                    "ignoring unparseable MCP port override"
-                );
-                DEFAULT_PORT
-            }
-        },
-    }
+    endpoint::env_port().unwrap_or(DEFAULT_PORT)
 }
 
 /// Builds the axum router serving the MCP endpoint at `/mcp`.
@@ -269,33 +258,4 @@ fn router(factory: SessionFactory, announce: Announce) -> axum::Router {
     );
 
     axum::Router::new().nest_service("/mcp", service)
-}
-
-/// Serves the MCP endpoint on localhost until the process ends.
-///
-/// A bind failure is logged and swallowed: an occupied port is an ordinary condition, and the app
-/// is still fully usable without an agent attached. Returning an error here would propagate into
-/// Tauri's `setup` and take the whole window down with it.
-pub async fn serve(factory: SessionFactory, announce: Announce) {
-    let port = port();
-    let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-
-    let listener = match tokio::net::TcpListener::bind(address).await {
-        Ok(listener) => listener,
-        Err(error) => {
-            tracing::warn!(
-                %address,
-                error = %error,
-                env_var = PORT_ENV_VAR,
-                "MCP endpoint not started; Arlesh runs without it"
-            );
-            return;
-        }
-    };
-
-    tracing::info!(%address, "MCP endpoint listening at /mcp");
-
-    if let Err(error) = axum::serve(listener, router(factory, announce)).await {
-        tracing::error!(error = %error, "MCP endpoint stopped");
-    }
 }
