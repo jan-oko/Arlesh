@@ -84,7 +84,7 @@ pub(super) enum IdRefusal {
     /// Several do; each is listed.
     Ambiguous(Vec<Named>),
     /// None of the kind asked for does, but this node of another kind would.
-    WrongKind(Named),
+    WrongKind(Box<Named>),
 }
 
 /// Every node the MCP can see, by full id, with the short id each goes by right now.
@@ -368,6 +368,7 @@ impl NodeNames {
     /// The one node the MCP can see that `text` names, of any kind — see [`resolve_as`].
     ///
     /// [`resolve_as`]: Self::resolve_as
+    #[cfg(test)]
     pub fn resolve(&self, text: &str) -> Result<&Named, IdRefusal> {
         self.resolve_as(text, None)
     }
@@ -407,7 +408,7 @@ impl NodeNames {
         match (matches.as_slice(), all.as_slice()) {
             ([one], _) => Ok(*one),
             ([], []) => Err(IdRefusal::Unknown),
-            ([], [other, ..]) => Err(IdRefusal::WrongKind((*other).clone())),
+            ([], [other, ..]) => Err(IdRefusal::WrongKind(Box::new((*other).clone()))),
             (several, _) => Err(IdRefusal::Ambiguous(
                 several.iter().map(|node| (*node).clone()).collect(),
             )),
