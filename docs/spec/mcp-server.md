@@ -245,7 +245,7 @@ so the conformance corpus is untouched.
 ## Writing tasks
 
 `arlesh_tasks` carries the agent's task writes (`Arlesh-rz0`, 2026-09-24): `create`, `update`,
-`set_status`, `move` and `archive`. Nothing is ever deleted.
+`set_status`, `move` and `archive` (Habit occurrences only). Nothing is ever deleted.
 
 - **`create`** makes a Task under a parent the MCP can see that can hold one — a Domain or
   Project, a Goal, a Task, a Commitment, or a Habit occurrence — except under a Task explicitly
@@ -261,10 +261,11 @@ so the conformance corpus is untouched.
   Agentic needs a Spec, as in the app.
 - **`move`** re-parents a Task. It needs write on the Task and create permission at **both** its
   old and its new parent, so a Task can leave a subtree only for one it could have been made in.
-- **`archive`** never deletes. A Habit occurrence is archived as the app archives one — tombstoned
-  in its overlay, still on the board, and a status brings it back. A stored Task is never archived
-  by hand (its Archival follows its scope), so archiving one sets it aside in the Backlog, clearing
-  its Plan, which a backlogged Task cannot keep.
+- **`archive`** never deletes, and for now takes **only a Habit occurrence**, archived as the app
+  archives one — tombstoned in its overlay, still on the board, and a status brings it back.
+  Archiving a **stored** Task by hand is not in the model yet (its Archival follows its scope), so
+  the call is refused as `not_permitted`, saying manual archival is not supported yet, and nothing
+  is written. Manual archival is tracked as `Arlesh-dbh` (the user's ruling, 2026-09-25).
 
 Every write but `create` needs a Task that reads as **Agentic**, stored or derived — resolved by
 the one resolver the app uses. A write to a **Habit occurrence** lands in its overlay, exactly as

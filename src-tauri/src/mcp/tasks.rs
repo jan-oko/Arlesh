@@ -63,9 +63,9 @@ impl ArleshMcp {
     /// compare-and-set: it names the status you last saw, and if the Task has moved on since it
     /// is refused as `status_changed` with the current status, writing nothing. Starting an
     /// Agentic Task needs a Spec in its brief. `move` needs create permission at both the old and
-    /// the new parent; a Habit occurrence cannot move. `archive` never deletes: a Habit occurrence
-    /// is archived as the app archives one, and a stored Task — which is never archived by hand —
-    /// is set aside in the Backlog, its Plan cleared. A write to a Habit occurrence lands in its
+    /// the new parent; a Habit occurrence cannot move. `archive` never deletes, and takes only a Habit
+    /// occurrence, archived as the app archives one; archiving a stored Task by hand is not
+    /// supported yet and is refused as `not_permitted`. A write to a Habit occurrence lands in its
     /// overlay, as the user's own edit would.
     ///
     /// Ids are row ids or short ids (the snapshot's `short_id`); a short id matching several
@@ -214,17 +214,15 @@ impl ArleshMcp {
             }
             TasksOperation::Archive { id } => {
                 let (id, _) = found!(writable(&mut db, &board, &id, now).await);
-                match id {
-                    NodeId::Derived(_) => Write::ArchiveOccurrence(id),
-                    NodeId::Stored(_) => Write::Update(
-                        id,
-                        UpdateTaskRequest {
-                            archival: Some(TaskArchival::Backlog),
-                            plan: Some(None),
-                            ..Default::default()
-                        },
-                    ),
+                if matches!(id, NodeId::Stored(_)) {
+                    // Manual archival of a stored Task is not in the model yet (Arlesh-dbh).
+                    return result::not_permitted(format!(
+                        "task {id} is a stored Task, and archiving one by hand is not supported \
+                         yet; only a Habit occurrence can be archived. Finish it with \
+                         set_status, or set it aside with update's backlog"
+                    ));
                 }
+                Write::ArchiveOccurrence(id)
             }
         };
 

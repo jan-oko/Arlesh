@@ -426,7 +426,7 @@ async fn a_task_moves_only_between_parents_it_could_be_created_under() {
 }
 
 #[tokio::test]
-async fn archiving_a_stored_task_sets_it_aside_and_deletes_nothing() {
+async fn archiving_a_stored_task_is_refused_until_manual_archival_exists() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let board = board(&app).await;
@@ -440,8 +440,15 @@ async fn archiving_a_stored_task_sets_it_aside_and_deletes_nothing() {
     )
     .await;
 
-    assert_eq!(succeeded(&archived)["archival"], "backlog");
-    assert_eq!(title_of(&pool, board.inside_task).await, "Visible work");
+    assert_eq!(refused(&archived), "not_permitted");
+    let message = body(&archived)["message"].as_str().unwrap_or("");
+    assert!(message.contains("not supported yet"), "{message}");
+    let archival: String = sqlx::query_scalar("SELECT archival FROM tasks WHERE id = ?")
+        .bind(board.inside_task)
+        .fetch_one(&pool)
+        .await
+        .expect("read the archival");
+    assert_eq!(archival, "live", "nothing was written");
 }
 
 #[tokio::test]

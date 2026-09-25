@@ -359,9 +359,8 @@ pub enum TasksOperation {
         /// The new parent's id: a row id or a short id.
         parent_id: NodeIdParam,
     },
-    /// Archives an Agentic Task. Only a Habit occurrence archives (it is never deleted); a stored
-    /// Task is finished with `set_status` or set aside with `update`'s `backlog`. Nothing is ever
-    /// deleted.
+    /// Archives an Agentic Habit occurrence, as the app archives one; it is never deleted.
+    /// Archiving a stored Task by hand is not supported yet, and is refused as `not_permitted`.
     Archive {
         /// Task id: a row id or a short id.
         id: NodeIdParam,
