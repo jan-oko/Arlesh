@@ -66,7 +66,10 @@ impl Board {
     pub fn resolve(&self, id: &NodeIdParam, node_type: &str) -> Result<NodeId, Answer> {
         match id {
             NodeIdParam::Row(row) => Ok(NodeId::Stored(*row)),
-            NodeIdParam::Short(text) => named(&self.names, text, node_type),
+            NodeIdParam::Short(text) => match row_id(text) {
+                Some(row) => Ok(NodeId::Stored(row)),
+                None => named(&self.names, text, node_type),
+            },
         }
     }
 
@@ -109,6 +112,16 @@ impl Board {
     }
 }
 
+/// A row id a client sent as a string — all digits. A short id never is (see `ids`), so the
+/// reading is unambiguous, and some clients send every untyped parameter as a string.
+fn row_id(text: &str) -> Option<i64> {
+    let text = text.trim();
+    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    text.parse().ok()
+}
+
 /// The node a short id names among `names`, refused unless it is exactly one of kind `node_type`.
 fn named(names: &NodeNames, text: &str, node_type: &str) -> Result<NodeId, Answer> {
     let node = match names.resolve(text) {
@@ -139,7 +152,10 @@ pub(super) async fn stored_row(
 ) -> Result<i64, Answer> {
     let text = match id {
         NodeIdParam::Row(row) => return Ok(*row),
-        NodeIdParam::Short(text) => text,
+        NodeIdParam::Short(text) => match row_id(text) {
+            Some(row) => return Ok(row),
+            None => text,
+        },
     };
     let board = match Board::read(db, now).await {
         Ok(board) => board,

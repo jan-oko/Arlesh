@@ -44,6 +44,17 @@ describe("ExpectationEditorModal — an agent waiting on you", () => {
     });
   });
 
+  it("saves the note and the answer without trailing blank lines", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<ExpectationEditorModal node={ASKED} onSave={onSave} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("expectation:agentNote"), { target: { value: "Red or blue?\n\n" } });
+    fireEvent.change(screen.getByLabelText("expectation:agentAnswer"), { target: { value: "NULL\n" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ agenticNote: "Red or blue?", agenticAnswer: "NULL" });
+  });
+
   it("asks no answer of a wait on something other than the user", () => {
     const ci: MindmapNode = { ...WAIT, agentWaiting: { note: "CI on #86", question: false, answer: null } };
     render(<ExpectationEditorModal node={ci} onSave={vi.fn()} onClose={vi.fn()} />);

@@ -92,8 +92,10 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
     try {
       await onSave({
         title: title.trim(), status, checkEvery, checkStartingDate, timeScope, tagIds, archived, isPrivate,
-        agentic, agenticNote: agenticNote.trim() === "" ? null : agenticNote,
-        agenticAnswer: agenticAnswer.trim() === "" ? null : agenticAnswer,
+        // Trailing blank lines are dropped: a stray Enter at the end of a textarea is not part of
+        // what the agent reads back.
+        agentic, agenticNote: agenticNote.trim() === "" ? null : agenticNote.trimEnd(),
+        agenticAnswer: agenticAnswer.trim() === "" ? null : agenticAnswer.trimEnd(),
       });
     } catch (err) {
       setSaveError(getErrorMessage(err));

@@ -975,3 +975,37 @@ mod agent_waits {
         );
     }
 }
+
+#[tokio::test]
+async fn an_all_digit_string_id_is_a_row_id() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let board = board(&app).await;
+    helpers::make_agentic(&pool, board.inside_task).await;
+    let mcp = mcp(&pool);
+    let as_string = NodeIdParam::Short(board.inside_task.to_string());
+
+    let got = run(
+        &mcp,
+        TasksOperation::Get {
+            id: as_string.clone(),
+        },
+    )
+    .await;
+    assert_eq!(succeeded(&got)["task"]["id"], board.inside_task);
+    succeeded(&run(&mcp, retitle(as_string, "Renamed by string")).await);
+    assert_eq!(
+        title_of(&pool, board.inside_task).await,
+        "Renamed by string"
+    );
+
+    let linked = mcp
+        .beads(Parameters(params::BeadsOperation::Set {
+            node_type: params::BeadsNode::Task,
+            node_id: NodeIdParam::Short(format!(" {} ", board.inside_task)),
+            beads_id: Some("Arlesh-rz0".into()),
+        }))
+        .await
+        .expect("the beads tool returned no result");
+    succeeded(&linked);
+}

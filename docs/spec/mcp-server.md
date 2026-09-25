@@ -292,7 +292,7 @@ id** is the shortest prefix of the full id's hex digits, **three at least**, tha
 MCP can see shares **at the time of the read**, worked out from a sorted list. It is **never all digits**: a prefix with no hex letter is extended to its first one (`269590f6…` goes by `269590f`), because an MCP client may send an all-digit string as a number against the id schema, and a number is read as a row id. Extending only lengthens an already-unique prefix, so it stays unique and deterministic; a full id with no letter at all would go by the full id itself. The snapshot sends
 each node's `short_id` beside its `id`, and a write returns the Task's `short_id` and `full_id`.
 
-A string is read as any prefix of a full id, hyphens optional, three hex digits or more. One node
+A string is read as any prefix of a full id, hyphens optional, three hex digits or more — except an **all-digit** string, which is a **row id** a client sent as a string (`"3"` is row 3). Since no short id is all digits, the reading is unambiguous. One node
 matches: it is that node. None: `not_permitted`, as any node outside the roots. **Several**: refused
 as `ambiguous_id`, with `details.candidates` listing each — its current unique short id, its full
 id, its kind, its title and a short path such as `Growth › CODE › ARLESH`, the form the
