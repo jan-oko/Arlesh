@@ -3,13 +3,15 @@ import { useTranslation } from "react-i18next";
 import { mcpNodeKeyString } from "@/api/mcp-access";
 import { useMcpRoots } from "@/hooks/use-mcp-roots";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
+import McpEndpointSection from "./McpEndpointSection";
 import styles from "./SettingsModal.module.css";
 
 const REMOVE_GLYPH = "×";
 
 /**
  * The MCP roots: the parts of the board the MCP may see. Add one with the node search `Ctrl+O`
- * uses, remove one with its ×. Each change is one undoable step.
+ * uses, remove one with its ×. Each change is one undoable step. Below them, the endpoint's port
+ * and whether it is listening.
  */
 export default function McpAccessPage() {
   const { t } = useTranslation(["settings", "nodeKinds"]);
@@ -60,6 +62,7 @@ export default function McpAccessPage() {
           onClose={() => setSearching(false)}
         />
       )}
+      <McpEndpointSection />
     </div>
   );
 }

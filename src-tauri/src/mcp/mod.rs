@@ -42,6 +42,7 @@
 mod access;
 mod agentic;
 mod beads;
+pub mod endpoint;
 mod flows;
 mod ids;
 mod infos;
@@ -235,26 +236,11 @@ impl ServerHandler for ArleshMcp {
     }
 }
 
-/// The port the endpoint binds to: [`PORT_ENV_VAR`] when set and parseable, else [`DEFAULT_PORT`].
-///
-/// An unparseable value is a typo in the user's environment, not a reason to refuse to start, so
-/// it warns and falls back.
+/// The port the endpoint binds to when no setting is saved: [`PORT_ENV_VAR`] when set and
+/// parseable, else [`DEFAULT_PORT`]. The running app also honours the user's saved port — see
+/// [`endpoint::McpEndpoint`].
 pub fn port() -> u16 {
-    match std::env::var(PORT_ENV_VAR) {
-        Err(_) => DEFAULT_PORT,
-        Ok(raw) => match raw.parse() {
-            Ok(port) => port,
-            Err(error) => {
-                tracing::warn!(
-                    value = %raw,
-                    error = %error,
-                    default = DEFAULT_PORT,
-                    "ignoring unparseable MCP port override"
-                );
-                DEFAULT_PORT
-            }
-        },
-    }
+    endpoint::env_port().unwrap_or(DEFAULT_PORT)
 }
 
 /// Builds the axum router serving the MCP endpoint at `/mcp`.
@@ -272,33 +258,4 @@ fn router(factory: SessionFactory, announce: Announce) -> axum::Router {
     );
 
     axum::Router::new().nest_service("/mcp", service)
-}
-
-/// Serves the MCP endpoint on localhost until the process ends.
-///
-/// A bind failure is logged and swallowed: an occupied port is an ordinary condition, and the app
-/// is still fully usable without an agent attached. Returning an error here would propagate into
-/// Tauri's `setup` and take the whole window down with it.
-pub async fn serve(factory: SessionFactory, announce: Announce) {
-    let port = port();
-    let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-
-    let listener = match tokio::net::TcpListener::bind(address).await {
-        Ok(listener) => listener,
-        Err(error) => {
-            tracing::warn!(
-                %address,
-                error = %error,
-                env_var = PORT_ENV_VAR,
-                "MCP endpoint not started; Arlesh runs without it"
-            );
-            return;
-        }
-    };
-
-    tracing::info!(%address, "MCP endpoint listening at /mcp");
-
-    if let Err(error) = axum::serve(listener, router(factory, announce)).await {
-        tracing::error!(error = %error, "MCP endpoint stopped");
-    }
 }

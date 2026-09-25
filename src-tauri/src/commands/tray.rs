@@ -81,8 +81,8 @@ const QUIT_ITEM: &str = "quit";
 /// and the surfaces that consult it are installed together — a tray whose Quit could not reach the
 /// preference would leave the close handler hiding a window the user asked to be rid of.
 ///
-/// Infallible on purpose, the same bargain [`crate::mcp::serve`] makes with an occupied port: a
-/// desktop with no tray host is an ordinary condition, and it must not take the window down with
+/// Infallible on purpose, the same bargain [`crate::mcp::endpoint::McpEndpoint::restart`] makes
+/// with an occupied port: a desktop with no tray host is an ordinary condition, and it must not take the window down with
 /// it. What it costs is the feature, not the app — a preference that never hears the tray went up
 /// reads as off, so closing goes on meaning quit, which is where Arlesh started.
 pub fn install(app: &AppHandle) {

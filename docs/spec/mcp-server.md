@@ -16,10 +16,24 @@ nothing while Arlesh is **not running** — which, since closing the window only
 ([Windows & Tray](window-tray.md)), now takes a deliberate Quit rather than a reflexive click on the
 close button.
 
-**Address.** `http://127.0.0.1:4747/mcp`, overridable with the `ARLESH_MCP_PORT` environment
-variable. It binds loopback only and rejects any request carrying an `Origin` header, so a page in
-a browser cannot reach it. If the port is already taken the app logs a warning and runs without the
-endpoint rather than refusing to start.
+**Address.** `http://127.0.0.1:4747/mcp` by default. It binds loopback only and rejects any
+request carrying an `Origin` header, so a page in a browser cannot reach it.
+
+**Port, status and restart** (2026-09-25). The port is a setting on the Settings modal's **MCP**
+page, beside the roots. It belongs to the machine rather than the board, so it is saved in
+`mcp.json` in the app's data directory, beside the window session (`windows.json`) — not as a row,
+which would be journaled and let Ctrl+Z move the listener. The `ARLESH_MCP_PORT` environment
+variable, when set to a valid port, still **wins** over the setting; the page says so, naming the
+port in force, rather than silently ignoring the field. An unparseable override, or port 0, is
+ignored with a warning.
+
+The page shows the listener's **status**: *listening on* its address, or *not listening* on the
+port with the operating system's reason — most often that the address is already in use, because
+another Arlesh holds the port. A port that cannot be bound never stops the app from starting; it is
+recorded as the failed status rather than only logged. **Restart** stops the listener, if any, and
+binds again on the current port; **applying a new port** saves it and moves the listener onto it at
+once, with no app restart. Each answers with the status it left behind. A client still connected to
+the old listener is not cut off, but no new connection reaches it.
 
 **Connecting.** `claude mcp add --transport http Arlesh http://127.0.0.1:4747/mcp` — the server is named `Arlesh` (renamed from `arlesh` on 2026-09-25, so Claude Code's tool prefix is `mcp__Arlesh__`); the tools keep their `arlesh_*` names.
 

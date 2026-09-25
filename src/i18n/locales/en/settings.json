@@ -23,6 +23,17 @@
     "remove": "Remove {{title}} as an MCP root",
     "hidden": "Private — the MCP cannot see it",
     "missing": "A node that no longer exists",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "endpoint": {
+      "heading": "Endpoint",
+      "port": "Port",
+      "apply": "Apply",
+      "invalidPort": "A port is a whole number from 1 to 65535.",
+      "starting": "Starting…",
+      "listening": "Listening on {{address}}",
+      "failed": "Not listening on port {{port}}: {{reason}}",
+      "restart": "Restart",
+      "envOverride": "ARLESH_MCP_PORT is set, so the endpoint uses port {{port}} instead of this setting until it is unset."
+    }
   }
 }

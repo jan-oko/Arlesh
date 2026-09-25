@@ -12,6 +12,10 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@/hooks/use-mcp-roots");
+// The endpoint section has its own test; here it only has to render quietly.
+vi.mock("@/hooks/use-mcp-endpoint", () => ({
+  useMcpEndpoint: () => ({ status: null, isBusy: false, error: null, restart: vi.fn(), setPort: vi.fn() }),
+}));
 
 beforeEach(() => {
   useViewStore.setState({ view: "mindmap", mindmapOrientation: "horizontal" });

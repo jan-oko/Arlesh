@@ -12,6 +12,7 @@ pub mod flows;
 pub mod header_bar;
 pub mod infos;
 pub mod knowledge_base;
+pub mod mcp_endpoint;
 pub mod mindmap;
 pub mod retype;
 pub mod scopes;

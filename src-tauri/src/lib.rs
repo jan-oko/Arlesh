@@ -77,13 +77,19 @@ pub fn run() {
 
             // The MCP endpoint shares the factory rather than the pool, so an agent's reads go
             // through the same session layer the commands do. It also gets a way to say the board
-            // changed, so an agent setting a `beads_id` refreshes the windows that are open rather
-            // than leaving them showing the old value. `serve` swallows a bind failure: an occupied
-            // port must not take the windows down with it.
-            tauri::async_runtime::spawn(mcp::serve(
+            // changed, so an agent's write refreshes the windows that are open rather than leaving
+            // them showing the old value. A bind failure is recorded in its status, for the
+            // settings page to show and retry: an occupied port must not take the windows down.
+            let endpoint = mcp::endpoint::McpEndpoint::new(
                 factory.clone(),
                 commands::board::announcer(app.handle()),
-            ));
+                app_dir.join(mcp::endpoint::SETTINGS_FILE),
+                mcp::endpoint::env_port(),
+            );
+            app.manage(endpoint.clone());
+            tauri::async_runtime::spawn(async move {
+                endpoint.restart().await;
+            });
 
             app.manage(factory);
 
@@ -125,6 +131,9 @@ pub fn run() {
             commands::access::list_mcp_access,
             commands::access::add_mcp_root,
             commands::access::remove_mcp_root,
+            commands::mcp_endpoint::mcp_endpoint_status,
+            commands::mcp_endpoint::restart_mcp_endpoint,
+            commands::mcp_endpoint::set_mcp_port,
             commands::block_reasons::list_all_block_reasons,
             commands::block_reasons::set_block_reasons,
             commands::infos::create_info,
