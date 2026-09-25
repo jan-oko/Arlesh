@@ -56,9 +56,22 @@ impl Board {
     pub async fn read(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<Self, AppError> {
         let mut load = crate::mindmap::load(db, now).await?;
         let map = crate::access::access_map(db).await?;
+        let domains = load.domains.clone();
         access::restrict_snapshot(&mut load, &map);
-        let names = NodeNames::of(&load);
+        let names = NodeNames::of(&load).with_subtypes(&domains);
         Ok(Self { map, load, names })
+    }
+
+    /// `parent_type` as a Task stores it: a domain-table parent by its true subtype, whichever of
+    /// the four spellings (or `domain`) the caller used — they name the same table, so all are
+    /// accepted — and any other kind as given.
+    pub fn stored_parent_type(&self, parent_type: &str, parent: &NodeId) -> String {
+        match (NodeTable::from_reference(parent_type), parent) {
+            (Some(NodeTable::Domain), NodeId::Stored(row)) => {
+                self.names.subtype(*row).unwrap_or(parent_type).to_string()
+            }
+            _ => parent_type.to_string(),
+        }
     }
 
     /// The node `id` names, which must be of the kind `node_type` spells. A row id is taken as a
@@ -109,6 +122,15 @@ impl Board {
     /// The Task `id` names, when the MCP can see it.
     pub fn task(&self, id: &NodeId) -> Option<&Task> {
         self.load.tasks.iter().find(|task| &task.id == id)
+    }
+}
+
+/// The row id `id` names when it is one — a number, or a string of digits — and `None` for a
+/// short id.
+pub(super) fn plain_row(id: &NodeIdParam) -> Option<i64> {
+    match id {
+        NodeIdParam::Row(row) => Some(*row),
+        NodeIdParam::Short(text) => row_id(text),
     }
 }
 

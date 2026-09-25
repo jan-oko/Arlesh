@@ -13,11 +13,9 @@ use rmcp::{
     model::{CallToolResult, ErrorData},
     tool, tool_router,
 };
-use serde::Serialize;
 
 use super::{
     access,
-    ids::full_id,
     lookup::{found, Answer, Board},
     params::{NodeIdParam, WaitsOperation},
     result,
@@ -33,20 +31,6 @@ use crate::{
     undo::model::WriteSource,
 };
 
-/// What `get` answers: the wait as an agent polls it.
-#[derive(Serialize)]
-struct WaitView<'wait> {
-    id: &'wait NodeId,
-    full_id: String,
-    short_id: Option<&'wait str>,
-    title: &'wait str,
-    status: ExpectationStatus,
-    agentic: bool,
-    question: bool,
-    note: Option<&'wait str>,
-    answer: Option<&'wait str>,
-}
-
 #[tool_router(router = waits_router, vis = "pub(super)")]
 impl ArleshMcp {
     /// The waits an agent raises under an Agentic Task it can write, releases and watches.
@@ -61,9 +45,8 @@ impl ArleshMcp {
     /// without one; a non-question wait needs none. The user can release either from the app, a
     /// question only with an answer too.
     ///
-    /// `get` returns one wait's `status`, `question`, `note` and `answer` — poll it to see whether
-    /// the user has answered, without loading the whole snapshot. The snapshot's `expectations`
-    /// carry the same fields.
+    /// `get` returns one wait as the snapshot's `expectations` carry it — `status`, `question`,
+    /// `agentic_note`, `answer` — so you can poll for the user's answer without the snapshot.
     ///
     /// Ids are row ids or short ids. A Task you cannot write, or a wait under one, is refused as
     /// `not_permitted`; `get` needs only that you can see the wait.
@@ -113,7 +96,7 @@ impl ArleshMcp {
                 attempt!(db.undo().set_source(user_source).await);
                 attempt!(db.commit().await);
                 (self.announce)(None);
-                return result::ok(released);
+                return result::ok(board.names.stamped(released, NodeTable::Expectation));
             }
             WaitsOperation::Ask {
                 task_id,
@@ -154,7 +137,7 @@ impl ArleshMcp {
         attempt!(db.commit().await);
         (self.announce)(None);
 
-        result::ok(wait)
+        result::ok(board.names.stamped(wait, NodeTable::Expectation))
     }
 }
 
@@ -164,17 +147,8 @@ fn get(board: &Board, id: &NodeIdParam) -> Answer {
     let Some(wait) = board.load.expectations.iter().find(|wait| wait.id == id) else {
         return access::refuse("expectation", &id, AccessLevel::Read);
     };
-    result::ok(WaitView {
-        id: &wait.id,
-        full_id: full_id(NodeTable::Expectation, &wait.id),
-        short_id: board.names.short_id(NodeTable::Expectation, &wait.id),
-        title: &wait.title,
-        status: wait.status,
-        agentic: wait.agentic,
-        question: wait.question,
-        note: wait.agentic_note.as_deref(),
-        answer: wait.answer.as_deref(),
-    })
+    // The wait's own row, as the snapshot's `expectations` carry it: the same field names.
+    result::ok(board.names.stamped(wait, NodeTable::Expectation))
 }
 
 /// The visible agentic wait `id` names — the only kind an agent releases.

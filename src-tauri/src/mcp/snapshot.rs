@@ -22,70 +22,20 @@ use crate::{access::model::NodeTable, mindmap::model::MindmapLoad, nodes::id::No
 
 #[tool_router(router = snapshot_router, vis = "pub(super)")]
 impl ArleshMcp {
-    /// Arlesh's planning graph: domains, goals, tasks, commitments, expectations, infos, flows, flow items,
-    /// cycles, dependencies, block reasons, materialised instance nodes, each item's derived
-    /// lifecycle, and each Habit's derivation outcome.
+    /// Arlesh's planning graph inside the MCP roots: domains, goals, tasks, commitments,
+    /// expectations (waits), infos, flows and their items, dependencies, block reasons and each
+    /// node's derived lifecycle. Start here.
     ///
-    /// A Habit's occurrences are ordinary rows of their kinds, in `tasks`, `goals` and
-    /// `commitments`: every node carries an `origin`, `{"kind": "manual"}` for a stored one and
-    /// `{"kind": "habit", "habit_id": …, "iteration_scope": …}` for a Habit's, whose `id` is then a
-    /// UUID string rather than a number. Its `parent_id` may be one too — a node hung on an
-    /// occurrence names the occurrence as its parent.
+    /// **Paged:** call again with `next_cursor` until it is null, passing the same `filter` and
+    /// `agentic` each time; a section missing from a page is not reached yet, an empty one is `[]`.
+    /// Narrow with `sections`. `now` is optional (a local date-time; default the current time).
     ///
-    /// Start here. Tasks, goals and commitments carry `time_scope` and `plan` as boundary scope
-    /// ids, and a scope id is its value key, a JSON object — `{"kind":"week","date":"2026-09-20"}`
-    /// is the week whose Sunday is the 20th, `{"kind":"day","date":"2026-09-23"}`,
-    /// `{"kind":"part_of_day","date":"2026-09-23","part":"morning"}`,
-    /// `{"kind":"exact","start":"2026-09-23T14:00:00","end":"2026-09-23T15:30:00"}` — so the dates
-    /// are right there. A Habit occurrence's `origin.iteration_scope.scope_id` is one too.
-    /// `arlesh_scopes` adds labels, end dates and datetime windows if you need them.
-    ///
-    /// A commitment is a rule held over a window rather than a piece of work: it carries a
-    /// `verdict` of `unresolved`/`kept`/`broken` that is recorded, never inferred. `unresolved`
-    /// means the user has not said, and is not a synonym for "not done".
-    ///
-    /// An expectation is a wait rather than an action: something outside the user's own action
-    /// that tasks can depend on. Its `status` is `pending` until the wait is over and `released`
-    /// after; a task depending on a pending one is blocked. Its optional `check_every` (a Duration)
-    /// is how often the user means to look in on it: each check is a task beneath it, `origin`
-    /// `{"kind": "check", ...}`, done once made. An `asynchronous` task may carry an
-    /// `async_template`; while such a task is done, the wait it spawned is an expectation beneath
-    /// it with `origin` `{"kind": "spawned_wait", "task_id": N}`, and a delegated task that is not
-    /// done has one with `{"kind": "delegation_wait", ...}`. Read-only here.
-    ///
-    /// A task's `delegate_to` says who holds it: `null`, `{"kind": "person", "id": N}` (resolve
-    /// the Person with `arlesh_kb`), or `{"kind": "agent"}` — handed to the Agent. It is
-    /// independent of `agentic`, which says only that the work suits an agent.
-    ///
-    /// **Paged.** A board of any size outgrows one tool result, so a response carries as much as
-    /// fits and a `next_cursor`. Pass that cursor back for the next page, and keep going until it
-    /// is null. Items are never split across pages, so nothing has to be reassembled — but a
-    /// section missing from a page is one you have not reached yet, which is why an empty section
-    /// is sent as `[]` rather than left out. Narrow with `sections` when you know what you need.
-    ///
-    /// **Filterable.** `filter` reads the board under one of the List View's status presets —
-    /// `all`, `plan`, `start`, `do` or `backlog` — using the same rules the user's own view
-    /// applies, so "what should I start" has one answer rather than two. Omit it for everything
-    /// you can see, unfiltered; `{"preset": "all"}` is the app's neutral filter instead. Pass the
-    /// **same** filter on every page of a walk: pages are derived
-    /// independently, so changing it partway is no different from the board changing underfoot.
-    ///
-    /// **Short ids.** Every node carries a `short_id` beside its `id`: the shortest prefix, 3 hex
-    /// digits or more, of its full id that no other node you can see shares right now. Any tool
-    /// taking a node id takes it (or any longer prefix, or the full id) as well as a row id. One
-    /// you saw earlier can become ambiguous as nodes are added; it is then refused as
-    /// `ambiguous_id` with the candidates listed, never read as the wrong node.
-    ///
-    /// **Agentic.** `agentic` narrows the board to the Tasks that read as Agentic — `{}` for all,
-    /// `{"max_priority": "A"}` for MW and A — with the rows above them for context and their waits and
-    /// notes, most urgent first; each task row then carries `reads_agentic`. Its brief is on the
-    /// row as `agentic_brief`.
-    ///
-    /// **Rooted.** Only the subtrees the user made MCP roots are here — the server's instructions
-    /// name them. Nodes outside every root, and private nodes anywhere, are left out together
-    /// with every entry that names them.
-    ///
-    /// Read-only: it writes nothing.
+    /// Every node carries `id` (a number, or a UUID for a derived row such as a Habit
+    /// occurrence), `short_id` and `full_id`; any tool taking a node id takes any of them.
+    /// `time_scope` and `plan` are scope keys with the dates inside (`{"kind":"week",
+    /// "date":"2026-09-20"}`); `arlesh_scopes` resolves them further. `filter` applies a List View
+    /// preset (`plan`, `start`, `do`, `backlog`, `all`); `agentic: {}` (or `{"max_priority":"A"}`)
+    /// keeps only the Tasks that read as Agentic, most urgent first. Read-only.
     #[tool(
         name = "arlesh_snapshot",
         annotations(title = "Arlesh snapshot", read_only_hint = true)
@@ -127,6 +77,15 @@ impl ArleshMcp {
             Ok(load) => load,
             Err(error) => return result::failed(error),
         };
+        let map = attempt!(crate::access::access_map(&mut db).await);
+
+        // Short ids are worked out over everything the MCP can see, before any filter or query
+        // narrows it: a node goes by one short id however it is asked for.
+        let names = {
+            let mut whole = load.clone();
+            access::restrict_snapshot(&mut whole, &map);
+            NodeNames::of(&whole).with_subtypes(&load.domains)
+        };
 
         // The presets are defined in `crate::filters`, and the frontend's own evaluator is held
         // to the same conformance corpus — so an agent asking "what should I start" and a user
@@ -142,7 +101,6 @@ impl ArleshMcp {
         // view does — a Frozen Project above a root still drops its subtree — and the roots then
         // decide which of what survived the MCP may see. The other order would hand the filter
         // a forest whose rooted subtrees hang from parents it cannot find, and it drops those.
-        let map = attempt!(crate::access::access_map(&mut db).await);
         access::restrict_snapshot(&mut load, &map);
 
         // After the roots, so a context row above a match is one the MCP could see anyway.
@@ -166,7 +124,6 @@ impl ArleshMcp {
         // No answer can be produced at all if the payload will not serialize, so this is a
         // transport error rather than a tool result — the same call `result`'s own serialisation
         // failures make.
-        let names = NodeNames::of(&load);
         let available =
             split_into_sections(&load, &wanted, &names, matched.as_ref()).map_err(|error| {
                 ErrorData::internal_error(format!("failed to serialise tool result: {error}"), None)
@@ -229,7 +186,7 @@ fn split_into_sections(
                 Some(Value::Array(mut items)) => {
                     if let Some(table) = node_table(section) {
                         for item in &mut items {
-                            name_item(item, table, names);
+                            names.stamp(item, table);
                             if let (NodeTable::Task, Some(matched)) = (table, matched) {
                                 mark_match(item, matched);
                             }
@@ -256,22 +213,6 @@ fn mark_match(item: &mut Value, matched: &HashSet<NodeId>) {
         .and_then(|id| serde_json::from_value::<NodeId>(id.clone()).ok())
         .is_some_and(|id| matched.contains(&id));
     fields.insert("reads_agentic".into(), Value::Bool(matches));
-}
-
-/// Adds a node's `short_id` beside its `id`.
-fn name_item(item: &mut Value, table: NodeTable, names: &NodeNames) {
-    let Value::Object(fields) = item else {
-        return;
-    };
-    let Some(id) = fields
-        .get("id")
-        .and_then(|id| serde_json::from_value::<NodeId>(id.clone()).ok())
-    else {
-        return;
-    };
-    if let Some(short) = names.short_id(table, &id) {
-        fields.insert("short_id".into(), Value::String(short.to_string()));
-    }
 }
 
 /// The table a section's nodes are rows of — or would be, for a derived row — when it lists nodes.

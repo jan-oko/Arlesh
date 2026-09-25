@@ -358,7 +358,9 @@ async fn a_person_is_visible_only_through_a_visible_task() {
     assert_eq!(names, vec!["Seen"]);
 
     let unseen = mcp
-        .kb(Parameters(params::KbOperation::GetPerson { id: people[1] }))
+        .kb(Parameters(params::KbOperation::GetPerson {
+            id: people[1].into(),
+        }))
         .await
         .expect("the kb tool returned no result");
     assert_eq!(kind_of_error(&unseen), Some("not_permitted"));

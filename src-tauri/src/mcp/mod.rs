@@ -48,6 +48,7 @@ mod lookup;
 pub mod paging;
 pub mod params;
 mod result;
+mod schema;
 mod scopes;
 mod snapshot;
 mod tasks;
@@ -108,14 +109,29 @@ impl ArleshMcp {
             // — which has no windows — needs no ceremony to stand up.
             announce: board::silent(),
             clock: Arc::new(|| chrono::Local::now().naive_local()),
-            tool_router: Self::snapshot_router()
-                + Self::scopes_router()
-                + Self::kb_router()
-                + Self::tasks_router()
-                + Self::flows_router()
-                + Self::beads_router()
-                + Self::waits_router(),
+            tool_router: Self::flattened(
+                Self::snapshot_router()
+                    + Self::scopes_router()
+                    + Self::kb_router()
+                    + Self::tasks_router()
+                    + Self::flows_router()
+                    + Self::beads_router()
+                    + Self::waits_router(),
+            ),
         }
+    }
+
+    /// `router` with every tool's input schema flattened to one object — see [`schema`].
+    fn flattened(mut router: ToolRouter<Self>) -> ToolRouter<Self> {
+        for route in router.map.values_mut() {
+            schema::flatten_tool(&mut route.attr);
+        }
+        router
+    }
+
+    /// Every registered tool as `tools/list` serves it: name, description and input schema.
+    pub fn tools(&self) -> Vec<rmcp::model::Tool> {
+        self.tool_router.list_all()
     }
 
     /// Gives this handler somewhere to send a board change.
@@ -199,7 +215,7 @@ impl ArleshMcp {
 #[tool_handler(
     router = self.tool_router,
     name = "Arlesh",
-    instructions = "Arlesh's task-management and knowledge-base data, limited to the MCP roots the user has opened to you (listed at the end). You may create tasks (arlesh_tasks.create — anywhere inside the roots except under a task marked Not agentic; what you create is always Agentic) and edit, re-status and move Agentic tasks (arlesh_tasks.update/set_status/move) and archive Agentic Habit occurrences (arlesh_tasks.archive; a stored task cannot be archived yet); set_status is a compare-and-set naming the status you last saw. arlesh_beads links an Agentic task to a bd issue, and arlesh_waits raises a wait under an Agentic task — a question when you need the user (\"the agent is waiting on you\"), or with question: false when you wait on something else, like CI — releases it (a question only with the answer, e.g. one you got by asking the user yourself) and polls it with get. Everything else is read-only. Name a node by its row id or by the snapshot's short_id. An Agentic task carries an agentic_brief (priority \"MW\", \"A\", \"B\" or \"C\", most urgent first, or null; spec, design, acceptance, notes): read it before working the task; a task with no spec cannot be started. Start with arlesh_snapshot.load — `now` is optional and defaults to the current time; add `agentic: {}` (or `{\"max_priority\": \"A\"}`) for just the Agentic tasks: the whole planning graph — tasks, goals, flows, domains, dependencies and derived lifecycles. It is PAGED: a response carries what fits plus next_cursor, and you must keep calling with that cursor until it is null or you will only have seen part of the board. A section missing from a page is one you have not reached yet; an empty section arrives as []. Narrow with `sections` when you know what you need. Tasks and goals carry their windows as boundary scope IDs, not dates: resolve them with arlesh_scopes.resolve_many. The other tools cover what the snapshot omits."
+    instructions = "Arlesh's task-management and knowledge-base data, limited to the MCP roots the user has opened to you (listed at the end). You may create tasks (arlesh_tasks.create — anywhere inside the roots except under a task marked Not agentic; what you create is always Agentic) and edit, re-status and move Agentic tasks (arlesh_tasks.update/set_status/move) and archive Agentic Habit occurrences (arlesh_tasks.archive; a stored task cannot be archived yet); set_status is a compare-and-set naming the status you last saw. arlesh_beads links an Agentic task to a bd issue, and arlesh_waits raises a wait under an Agentic task — a question when you need the user (\"the agent is waiting on you\"), or with question: false when you wait on something else, like CI — releases it (a question only with the answer, e.g. one you got by asking the user yourself) and polls it with get. Everything else is read-only. Every node comes back with id, short_id and full_id; name one by any of them. When writing, a parameter left out means unchanged and null means clear. An Agentic task carries an agentic_brief (priority \"MW\", \"A\", \"B\" or \"C\", most urgent first, or null; spec, design, acceptance, notes): read it before working the task; a task with no spec cannot be started. Start with arlesh_snapshot.load — `now` is optional and defaults to the current time; add `agentic: {}` (or `{\"max_priority\": \"A\"}`) for just the Agentic tasks: the whole planning graph — tasks, goals, flows, domains, dependencies and derived lifecycles. It is PAGED: a response carries what fits plus next_cursor, and you must keep calling with that cursor until it is null or you will only have seen part of the board. A section missing from a page is one you have not reached yet; an empty section arrives as []. Narrow with `sections` when you know what you need. Tasks and goals carry their windows as boundary scope IDs, not dates: resolve them with arlesh_scopes.resolve_many. The other tools cover what the snapshot omits; each tool's description lists its operations and the parameters each takes. Details: a node's origin says whether it is a Habit occurrence (id a UUID), a commitment's verdict is recorded, never inferred, and a parent under a domain-table row is named by its true subtype."
 )]
 impl ServerHandler for ArleshMcp {
     /// The handshake, with the MCP roots added to the instructions — see

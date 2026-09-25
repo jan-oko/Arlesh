@@ -20,7 +20,6 @@ use serde_json::Value;
 
 use super::{
     access,
-    ids::full_id,
     lookup::{found, Answer, Board},
     params::{BriefParam, NodeIdParam, TaskStatusParam, TasksOperation},
     result,
@@ -135,7 +134,7 @@ impl ArleshMcp {
                 }
                 Write::Create(CreateTaskRequest {
                     title,
-                    parent_type: parent_type.clone(),
+                    parent_type: board.stored_parent_type(&parent_type, &parent),
                     parent_id: parent,
                     agentic: Some(TaskAgentic::Yes),
                     agentic_brief: brief.map(|brief| brief.over(AgenticBrief::default())),
@@ -206,7 +205,7 @@ impl ArleshMcp {
                 Write::Update(
                     id,
                     UpdateTaskRequest {
-                        parent_type: Some(parent_type.clone()),
+                        parent_type: Some(board.stored_parent_type(&parent_type, &parent)),
                         parent_id: Some(parent),
                         ..Default::default()
                     },
@@ -233,7 +232,7 @@ impl ArleshMcp {
         (self.announce)(None);
 
         result::ok(match written {
-            Some(task) => named(&board, task),
+            Some(task) => board.names.stamped(task, NodeTable::Task),
             None => serde_json::json!({ "archived": true }),
         })
     }
@@ -254,6 +253,10 @@ async fn get(db: &mut Db<Transactional>, board: &Board, id: &NodeIdParam) -> Ans
     let dependencies = attempt!(db.tasks().list_dependencies(TaskId(row)).await);
     access::restrict_task(&mut found.task, &board.map);
     access::restrict_block_reasons(&mut found.block_reasons, &dependencies, &board.map);
+    let mut found = serde_json::to_value(found).unwrap_or(Value::Null);
+    if let Some(task) = found.get_mut("task") {
+        board.names.stamp(task, NodeTable::Task);
+    }
     result::ok(found)
 }
 
@@ -300,20 +303,4 @@ fn merged(brief: BriefParam, task: &Task) -> AgenticBrief {
 /// A status as a Task row spells it.
 fn spelling(status: TaskStatusParam) -> &'static str {
     TaskStatus::from(status).as_str()
-}
-
-/// A written Task as the tool returns it: the row, with the full and short id it goes by.
-///
-/// The short id is worked out against the board read before the write, with the Task in it — a
-/// Task just created was not on that board, and may lengthen a neighbour's short id, which the
-/// next read will show.
-fn named(board: &Board, task: Task) -> Value {
-    let full = full_id(NodeTable::Task, &task.id);
-    let short = board.names.short_id_among(&full);
-    let mut value = serde_json::to_value(&task).unwrap_or(Value::Null);
-    if let Value::Object(fields) = &mut value {
-        fields.insert("full_id".into(), Value::String(full));
-        fields.insert("short_id".into(), Value::String(short));
-    }
-    value
 }

@@ -230,8 +230,8 @@ pub enum KbOperation {
     ListPeople,
     /// One person by id.
     GetPerson {
-        /// Person id.
-        id: i64,
+        /// Person id: a row id, as a number or a string of digits. People have no short ids.
+        id: NodeIdParam,
     },
     /// Every event.
     ListEvents,
@@ -265,21 +265,23 @@ impl From<TaskStatusParam> for model::TaskStatus {
 /// create: empty).
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 pub struct BriefParam {
-    /// Priority `"MW"`, `"A"`, `"B"` or `"C"`, most urgent first; `null` for none.
+    /// Priority `"MW"`, `"A"`, `"B"` or `"C"`, most urgent first. Omit to leave it; `null` for
+    /// none.
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub priority: Option<Option<model::AgenticPriority>>,
-    /// What to build. A Task that reads as Agentic cannot start without one.
-    #[serde(default)]
-    pub spec: Option<String>,
-    /// How to build it.
-    #[serde(default)]
-    pub design: Option<String>,
-    /// How to tell it is done.
-    #[serde(default)]
-    pub acceptance: Option<String>,
-    /// Anything else.
-    #[serde(default)]
-    pub notes: Option<String>,
+    /// What to build. A Task that reads as Agentic cannot start without one. Omit to leave it;
+    /// `null` clears it.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub spec: Option<Option<String>>,
+    /// How to build it. Omit to leave it; `null` clears it.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub design: Option<Option<String>>,
+    /// How to tell it is done. Omit to leave it; `null` clears it.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub acceptance: Option<Option<String>>,
+    /// Anything else. Omit to leave it; `null` clears it.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub notes: Option<Option<String>>,
 }
 
 impl BriefParam {
@@ -287,11 +289,19 @@ impl BriefParam {
     pub fn over(self, base: model::AgenticBrief) -> model::AgenticBrief {
         model::AgenticBrief {
             priority: self.priority.unwrap_or(base.priority),
-            spec: self.spec.unwrap_or(base.spec),
-            design: self.design.unwrap_or(base.design),
-            acceptance: self.acceptance.unwrap_or(base.acceptance),
-            notes: self.notes.unwrap_or(base.notes),
+            spec: text_over(self.spec, base.spec),
+            design: text_over(self.design, base.design),
+            acceptance: text_over(self.acceptance, base.acceptance),
+            notes: text_over(self.notes, base.notes),
         }
+    }
+}
+
+/// A brief text field written over `base`: omitted keeps it, `null` clears it.
+fn text_over(given: Option<Option<String>>, base: String) -> String {
+    match given {
+        None => base,
+        Some(text) => text.unwrap_or_default(),
     }
 }
 

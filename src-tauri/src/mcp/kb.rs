@@ -6,7 +6,7 @@ use rmcp::{
     tool, tool_router,
 };
 
-use super::{access, params::KbOperation, result, result::attempt, ArleshMcp};
+use super::{access, lookup::plain_row, params::KbOperation, result, result::attempt, ArleshMcp};
 use crate::{access::model::AccessLevel, knowledge_base::model::PersonId};
 
 #[tool_router(router = kb_router, vis = "pub(super)")]
@@ -46,6 +46,11 @@ impl ArleshMcp {
                 Err(error) => result::failed(error),
             },
             KbOperation::GetPerson { id } => {
+                let Some(id) = plain_row(&id) else {
+                    return result::refused(
+                        "a person is named by their row id, a number; people have no short ids",
+                    );
+                };
                 if !sees("person", id) {
                     return access::refuse("person", id, AccessLevel::Read);
                 }

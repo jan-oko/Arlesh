@@ -13,6 +13,7 @@
 use std::collections::HashMap;
 
 use serde::Serialize;
+use serde_json::Value;
 
 use crate::{
     access::model::NodeTable,
@@ -91,6 +92,9 @@ pub(super) struct NodeNames {
     /// Sorted by hex digits.
     nodes: Vec<Named>,
     by_node: HashMap<(NodeTable, NodeId), usize>,
+    /// Every domain-table row's true subtype, visible or not — what a parent reference to one
+    /// is reported as.
+    subtypes: HashMap<i64, String>,
 }
 
 /// A node by table and id.
@@ -257,7 +261,66 @@ impl NodeNames {
             .enumerate()
             .map(|(index, node)| ((node.table, node.node_id.clone()), index))
             .collect();
-        Self { nodes, by_node }
+        Self {
+            nodes,
+            by_node,
+            subtypes: HashMap::new(),
+        }
+    }
+
+    /// Records every domain-table row's true subtype, from the whole board, visible or not.
+    pub fn with_subtypes(mut self, domains: &[crate::domains::model::Domain]) -> Self {
+        self.subtypes = domains
+            .iter()
+            .map(|domain| (domain.id, domain.subtype.clone()))
+            .collect();
+        self
+    }
+
+    /// The true subtype of the domain-table row `id`, when it is one.
+    pub fn subtype(&self, id: i64) -> Option<&str> {
+        self.subtypes.get(&id).map(String::as_str)
+    }
+
+    /// Stamps a node's JSON with the ids it goes by — `short_id` and `full_id` beside its `id` —
+    /// and names a domain-table parent by its true subtype, whatever spelling it was stored with.
+    /// A node this list does not hold, such as one written a moment ago, gets the short id it
+    /// would have among them.
+    pub fn stamp(&self, item: &mut Value, table: NodeTable) {
+        let Value::Object(fields) = item else {
+            return;
+        };
+        let Some(id) = fields
+            .get("id")
+            .and_then(|id| serde_json::from_value::<NodeId>(id.clone()).ok())
+        else {
+            return;
+        };
+        let full = full_id(table, &id);
+        let short = match self.short_id(table, &id) {
+            Some(short) => short.to_string(),
+            None => self.short_id_among(&full),
+        };
+        fields.insert("short_id".into(), Value::String(short));
+        fields.insert("full_id".into(), Value::String(full));
+
+        let parent_row = fields.get("parent_id").and_then(Value::as_i64);
+        let under_domain = fields
+            .get("parent_type")
+            .and_then(Value::as_str)
+            .and_then(NodeTable::from_reference)
+            == Some(NodeTable::Domain);
+        if let (true, Some(subtype)) = (under_domain, parent_row.and_then(|row| self.subtype(row)))
+        {
+            fields.insert("parent_type".into(), Value::String(subtype.to_string()));
+        }
+    }
+
+    /// `value` serialised and [stamped](Self::stamp).
+    pub fn stamped(&self, value: impl Serialize, table: NodeTable) -> Value {
+        let mut value = serde_json::to_value(value).unwrap_or(Value::Null);
+        self.stamp(&mut value, table);
+        value
     }
 
     /// The short id of one node, when the MCP can see it.

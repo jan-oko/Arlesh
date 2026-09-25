@@ -31,6 +31,24 @@ fn param_of(text: &str) -> params::ScopeKeyParam {
 ///
 /// Fails the test on an error result rather than returning it: every caller here asserts on a
 /// payload, and an `is_error` result carrying a `WireError` is more useful named than unwrapped.
+/// `value` without the `short_id` and `full_id` the MCP stamps on every node, at any depth — what
+/// the app's own command returns for the same read.
+fn unstamped(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(fields) => serde_json::Value::Object(
+            fields
+                .iter()
+                .filter(|(key, _)| !matches!(key.as_str(), "short_id" | "full_id"))
+                .map(|(key, value)| (key.clone(), unstamped(value)))
+                .collect(),
+        ),
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.iter().map(unstamped).collect())
+        }
+        other => other.clone(),
+    }
+}
+
 fn payload(result: &CallToolResult) -> &serde_json::Value {
     assert_ne!(
         result.is_error,
@@ -215,7 +233,8 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>) -> i64 {
         app.state(),
         CreateGoalRequest {
             title: "Ship".into(),
-            parent_type: "domain".into(),
+            // Domain 1 is an Aspect: the MCP reports a parent by its true subtype.
+            parent_type: "aspect".into(),
             parent_id: 1.into(),
             ..Default::default()
         },
@@ -316,7 +335,7 @@ async fn snapshot_returns_what_the_mindmap_command_returns() {
         .await
         .unwrap();
     assert_eq!(
-        sections,
+        unstamped(&sections),
         serde_json::to_value(&expected).unwrap(),
         "snapshot.load section-for-section"
     );
@@ -439,9 +458,20 @@ async fn tasks_get_returns_what_the_command_returns() {
     let expected = arlesh_lib::commands::tasks::get_task(app.state(), task_id)
         .await
         .unwrap();
+    let got = payload(&result);
+    assert!(got["task"]["short_id"]
+        .as_str()
+        .is_some_and(|short| short.len() >= 3));
     assert_eq!(
-        payload(&result),
-        &serde_json::to_value(&expected).unwrap(),
+        got["task"]["full_id"],
+        arlesh_lib::nodes::id::uuid_v5(
+            &arlesh_lib::nodes::id::NODE_NAMESPACE,
+            &format!("task:{task_id}")
+        )
+    );
+    assert_eq!(
+        unstamped(got),
+        serde_json::to_value(&expected).unwrap(),
         "tasks.get"
     );
 }
@@ -532,7 +562,9 @@ async fn kb_get_person_and_remaining_lists_match_their_commands() {
     delegate(&pool, seed(&app).await, person.id).await;
 
     let got = mcp
-        .kb(Parameters(params::KbOperation::GetPerson { id: person.id }))
+        .kb(Parameters(params::KbOperation::GetPerson {
+            id: person.id.into(),
+        }))
         .await
         .unwrap();
     let expected_person = arlesh_lib::commands::knowledge_base::get_person(app.state(), person.id)
@@ -1293,5 +1325,134 @@ async fn beads_set_on_a_commitment_that_does_not_exist_is_an_error() {
         result.is_error,
         Some(true),
         "a write that landed nowhere is not a success"
+    );
+}
+
+#[tokio::test]
+async fn every_tools_input_schema_is_one_object_naming_every_operation_and_parameter() {
+    let pool = helpers::test_pool().await;
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
+    // Each tool's operations and every parameter any of them takes, as params.rs declares them.
+    let expected: &[(&str, &[&str], &[&str])] = &[
+        (
+            "arlesh_snapshot",
+            &["load"],
+            &["now", "sections", "cursor", "filter", "agentic"],
+        ),
+        (
+            "arlesh_scopes",
+            &["get", "resolve", "resolve_many"],
+            &["id", "ids"],
+        ),
+        (
+            "arlesh_kb",
+            &["list_people", "get_person", "list_events", "list_threads"],
+            &["id"],
+        ),
+        (
+            "arlesh_tasks",
+            &[
+                "get",
+                "create",
+                "update",
+                "set_status",
+                "move",
+                "archive",
+                "containment_conflicts",
+            ],
+            &[
+                "id",
+                "parent_type",
+                "parent_id",
+                "title",
+                "brief",
+                "backlog",
+                "expected",
+                "status",
+                "node",
+                "time_scope",
+            ],
+        ),
+        (
+            "arlesh_flows",
+            &["get", "recurrence", "completion_count", "origins"],
+            &["id", "flow_id", "nodes"],
+        ),
+        (
+            "arlesh_beads",
+            &["set"],
+            &["node_type", "node_id", "beads_id"],
+        ),
+        (
+            "arlesh_waits",
+            &["ask", "raise", "release", "get"],
+            &["task_id", "title", "note", "question", "id", "answer"],
+        ),
+    ];
+    let tools = mcp.tools();
+    assert_eq!(tools.len(), expected.len());
+
+    for (name, operations, parameters) in expected {
+        let tool = tools
+            .iter()
+            .find(|tool| tool.name == *name)
+            .unwrap_or_else(|| panic!("{name} is served"));
+        let schema = &tool.input_schema;
+        assert!(
+            schema.get("oneOf").is_none(),
+            "{name} has a top-level oneOf"
+        );
+        assert!(
+            schema.get("anyOf").is_none(),
+            "{name} has a top-level anyOf"
+        );
+        assert_eq!(schema["type"], "object", "{name}");
+        let properties = schema["properties"]
+            .as_object()
+            .unwrap_or_else(|| panic!("{name} has properties"));
+        let mut listed: Vec<&str> = properties["operation"]["enum"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{name}'s operation is an enum"))
+            .iter()
+            .filter_map(|operation| operation.as_str())
+            .collect();
+        listed.sort_unstable();
+        let mut wanted = operations.to_vec();
+        wanted.sort_unstable();
+        assert_eq!(listed, wanted, "{name}'s operations");
+        for parameter in *parameters {
+            let property = properties
+                .get(*parameter)
+                .unwrap_or_else(|| panic!("{name} declares {parameter}"));
+            assert!(
+                ["type", "anyOf", "oneOf", "$ref", "enum", "const"]
+                    .iter()
+                    .any(|key| property.get(key).is_some()),
+                "{name}.{parameter} is typed: {property}"
+            );
+            assert!(
+                property
+                    .get("default")
+                    .is_none_or(|default| !default.is_null()),
+                "{name}.{parameter} has no null default"
+            );
+        }
+        assert_eq!(
+            properties.len(),
+            parameters.len() + 1,
+            "{name} declares nothing else"
+        );
+        let description = tool.description.as_deref().unwrap_or("");
+        for operation in *operations {
+            assert!(
+                description.contains(&format!("- `{operation}`(")),
+                "{name}'s description lists {operation}"
+            );
+        }
+    }
+    let serialized = serde_json::to_string(&tools).unwrap();
+    assert!(
+        !serialized.contains("\"default\":null"),
+        "no null default anywhere, so a client filling defaults clears nothing"
     );
 }

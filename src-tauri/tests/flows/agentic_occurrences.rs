@@ -480,7 +480,7 @@ mod over_the_mcp {
                 id: named(&tidy),
                 title: Some("Tidy the inbox, twice".into()),
                 brief: Some(params::BriefParam {
-                    notes: Some("Mind the spam folder".into()),
+                    notes: Some(Some("Mind the spam folder".into())),
                     ..Default::default()
                 }),
                 backlog: None,

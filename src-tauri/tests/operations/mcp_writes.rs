@@ -139,7 +139,7 @@ fn create(parent_type: &str, parent_id: impl Into<NodeIdParam>, title: &str) -> 
 fn with_spec(spec: &str) -> params::BriefParam {
     params::BriefParam {
         priority: Some(Some(AgenticPriority::B)),
-        spec: Some(spec.into()),
+        spec: Some(Some(spec.into())),
         ..Default::default()
     }
 }
@@ -292,7 +292,7 @@ async fn only_a_task_that_reads_as_agentic_is_edited() {
             id: board.inside_task.into(),
             title: Some("Visible work, briefed".into()),
             brief: Some(params::BriefParam {
-                notes: Some("Mind the contrast".into()),
+                notes: Some(Some("Mind the contrast".into())),
                 ..Default::default()
             }),
             backlog: Some(true),
@@ -1008,4 +1008,87 @@ async fn an_all_digit_string_id_is_a_row_id() {
         .await
         .expect("the beads tool returned no result");
     succeeded(&linked);
+
+    let raised = mcp
+        .waits(Parameters(params::WaitsOperation::Raise {
+            task_id: NodeIdParam::Short(board.inside_task.to_string()),
+            title: "CI on #86".into(),
+            note: None,
+            question: false,
+        }))
+        .await
+        .expect("the waits tool returned no result");
+    let wait = succeeded(&raised)["id"].as_i64().expect("a stored wait");
+    let by_string = || NodeIdParam::Short(wait.to_string());
+    let polled = mcp
+        .waits(Parameters(params::WaitsOperation::Get { id: by_string() }))
+        .await
+        .expect("the waits tool returned no result");
+    assert_eq!(succeeded(&polled)["id"], wait);
+    let released = mcp
+        .waits(Parameters(params::WaitsOperation::Release {
+            id: by_string(),
+            answer: None,
+        }))
+        .await
+        .expect("the waits tool returned no result");
+    assert_eq!(succeeded(&released)["status"], "released");
+}
+
+#[tokio::test]
+async fn a_domain_table_parent_is_named_by_its_true_subtype_whatever_it_was_called() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let board = board(&app).await;
+    let mcp = mcp(&pool);
+
+    // Any of the four spellings names the same table, so each is accepted — and the row is
+    // written, and reported, under its parent's true subtype.
+    let created = run(&mcp, create("domain", board.inside, "Called a domain")).await;
+    assert_eq!(succeeded(&created)["parent_type"], "project");
+    let id = succeeded(&created)["id"].as_i64().expect("a stored row");
+    let stored: String = sqlx::query_scalar("SELECT parent_type FROM tasks WHERE id = ?")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .expect("read the parent type");
+    assert_eq!(stored, "project");
+
+    // A row stored under a wrong spelling is still reported by the true one.
+    sqlx::query("UPDATE tasks SET parent_type = 'domain' WHERE id = ?")
+        .bind(board.inside_task)
+        .execute(&pool)
+        .await
+        .expect("misspell the fixture's parent");
+    let row = snapshot(&mcp, "tasks")
+        .await
+        .into_iter()
+        .find(|row| row["id"] == board.inside_task)
+        .expect("the task is on the board");
+    assert_eq!(row["parent_type"], "project");
+    assert!(row["full_id"].is_string() && row["short_id"].is_string());
+}
+
+#[tokio::test]
+async fn a_nodes_short_id_is_the_same_in_every_view() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let board = board(&app).await;
+    helpers::make_agentic(&pool, board.inside_task).await;
+    for index in 0..40 {
+        task(&app, "project", board.inside, &format!("Filler {index}")).await;
+    }
+    let mcp = mcp(&pool);
+
+    let whole = short_id(&mcp, "tasks", board.inside_task).await;
+    let agentic = rows(&agentic_snapshot(&mcp, None).await, "tasks")
+        .into_iter()
+        .find(|row| row["id"] == board.inside_task)
+        .and_then(|row| row["short_id"].as_str().map(str::to_string))
+        .expect("the agentic task is in the agentic query");
+
+    assert_eq!(
+        agentic, whole,
+        "worked out over everything visible, not over what one query returned"
+    );
 }

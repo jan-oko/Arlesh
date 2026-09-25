@@ -137,6 +137,28 @@ definition it loads.
 | `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`. See *Agentic waits* below |
 | `arlesh_beads` | `set(node_type, node_id, beads_id)` — a write; `node_type` is `task`, `goal`, `commitment` or `project`, and the item must be writable (an Agentic Task inside a root). See below |
 
+**One flat input schema per tool** (2026-09-25). Each tool takes an `operation`-tagged union, and
+Claude Code reads a top-level `oneOf` by merging its branches' parameters while keeping
+`operation` as the first branch's single `const`, so every other operation existed only in prose.
+The served schema is therefore one object: `operation` an **enum** of every operation, every
+parameter of every operation declared with its type and required only where every operation
+needs it, and one line per operation in the tool's description naming the parameters it takes
+(`?` for optional). A missing parameter is refused server-side, naming it. No property carries a
+`"default": null`: a parameter left out means **unchanged**, and `null` means **clear** — a client
+that filled in null defaults would otherwise clear every field it did not mention. That is how an
+`update`'s `brief` fields read: omit a field to keep it, `null` to clear it.
+
+**Every node comes back with its ids**: `id`, `short_id` and `full_id`, on snapshot rows, on
+`arlesh_tasks.get` and every task write, and on every `arlesh_waits` answer. An agentic wait's
+fields have one name everywhere — `agentic_note`, `question`, `answer` — in the snapshot and in
+every `arlesh_waits` operation, `get` returning the same row.
+
+**Domain-table parents.** Aspect, Project, Domain and Tag are subtypes of one table, and a parent
+reference to one is reported by the row's **true subtype**, whatever spelling it was stored with.
+On input, any of the four names (or `domain`) is accepted for a domain-table parent — they name the
+same table, so none is wrong — and the row is written under the parent's true subtype. A name of
+another kind (`goal` for a domain row) is not a domain-table name and is resolved as that kind.
+
 `arlesh_snapshot.load` is the entry point and covers the common case. The other reads
 exist for what it does not carry: the knowledge base, scope resolution, a task's dependency-derived
 block reasons, and a Habit's stored recurrence configuration as opposed to its derived iterations.
@@ -160,6 +182,32 @@ round trip. `arlesh_scopes` is for what a key does not spell out: `get` adds the
 inclusive end date, and `resolve` / `resolve_many` the half-open datetime window (a Day runs
 02:00 → 02:00) and whether it is active, all against a single reference instant. None of them
 touches the database.
+
+## Reading the snapshot
+
+The tool's own description is kept short, because clients truncate long ones; these are the
+details an agent reads the payload by.
+
+- **Occurrences are rows.** A Habit's occurrences are ordinary rows of their kinds, in `tasks`,
+  `goals` and `commitments`. Every node carries an `origin`: `{"kind": "manual"}` for a stored one,
+  `{"kind": "habit", "habit_id": …, "iteration_scope": …}` for a Habit's, whose `id` is then a
+  UUID string rather than a number. A node hung on an occurrence names it as its `parent_id`.
+- **Scope keys.** `time_scope` and `plan` are boundary scope ids, and a scope id is its value key:
+  `{"kind":"week","date":"2026-09-20"}` is the week whose Sunday is the 20th;
+  `{"kind":"part_of_day","date":"2026-09-23","part":"morning"}`,
+  `{"kind":"exact","start":…,"end":…}`. The dates are right there; `arlesh_scopes` adds labels,
+  end dates and datetime windows.
+- **Commitments** carry a `verdict`, `unresolved`/`kept`/`broken`, recorded and never inferred:
+  `unresolved` means the user has not said, not "not done".
+- **Expectations** are waits: `pending` blocks the tasks depending on it, `released` frees them. A
+  `check_every` schedules check tasks beneath it (`origin` `{"kind": "check", …}`). An
+  `asynchronous` task's spawned wait (`{"kind": "spawned_wait", …}`) and a delegated task's wait
+  (`{"kind": "delegation_wait", …}`) are expectations too. An agentic wait carries `agentic_note`,
+  `question` and `answer` (see *Agentic waits*).
+- **Delegation.** A task's `delegate_to` is `null`, `{"kind": "person", "id": N}` (read the Person
+  with `arlesh_kb`) or `{"kind": "agent"}`, independent of `agentic`.
+- **Parents.** A node under a domain-table row names its parent by the row's **true subtype**
+  (`aspect`, `project`, `domain` or `tag`), whatever spelling it was stored with.
 
 ## Filtering a read
 
@@ -289,7 +337,9 @@ a **short id** (a string). Nothing is stored for them. A node's **full id** is a
 namespace every derived row's id already lives in: a derived row keeps the UUID it has, and a stored
 row's is the UUID-v5 of `{kind}:{row id}` — deterministic, so it never needs keeping. Its **short
 id** is the shortest prefix of the full id's hex digits, **three at least**, that no other node the
-MCP can see shares **at the time of the read**, worked out from a sorted list. It is **never all digits**: a prefix with no hex letter is extended to its first one (`269590f6…` goes by `269590f`), because an MCP client may send an all-digit string as a number against the id schema, and a number is read as a row id. Extending only lengthens an already-unique prefix, so it stays unique and deterministic; a full id with no letter at all would go by the full id itself. The snapshot sends
+MCP can see shares **at the time of the read**, worked out from a sorted list over **everything
+inside the roots** — never over one page, filter or query result, so a node goes by the same short
+id in every view. It is **never all digits**: a prefix with no hex letter is extended to its first one (`269590f6…` goes by `269590f`), because an MCP client may send an all-digit string as a number against the id schema, and a number is read as a row id. Extending only lengthens an already-unique prefix, so it stays unique and deterministic; a full id with no letter at all would go by the full id itself. The snapshot sends
 each node's `short_id` beside its `id`, and a write returns the Task's `short_id` and `full_id`.
 
 A string is read as any prefix of a full id, hyphens optional, three hex digits or more — except an **all-digit** string, which is a **row id** a client sent as a string (`"3"` is row 3). Since no short id is all digits, the reading is unambiguous. One node
