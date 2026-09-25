@@ -107,6 +107,7 @@ resolver in `src-tauri/src/access/`:
   not exist is refused the same way, so the error kind never tells an agent that something exists
   where it cannot look.
 - **`arlesh_waits.ask` needs write** on the Task it raises the wait under.
+- **`arlesh_infos.create` needs write** on the Task it hangs the note under.
 - **`arlesh_tasks` writes** follow the two rules above: `create` needs `may_create_task_under`
   at the parent, and every other write needs a Task that reads as Agentic. See *Writing tasks*.
 - **`arlesh_beads.set` needs write**: the item must be an Agentic Task inside a root. Anything else
@@ -124,7 +125,7 @@ resolver in `src-tauri/src/access/`:
 
 ## Tools
 
-Seven tools rather than one per backend command, because an MCP client pays context for every tool
+Eight tools rather than one per backend command, because an MCP client pays context for every tool
 definition it loads.
 
 | Tool | Operations |
@@ -135,6 +136,7 @@ definition it loads.
 | `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?)`, `update(id, title?, brief?, backlog?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`. See *Writing tasks* below |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
 | `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`. See *Agentic waits* below |
+| `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
 | `arlesh_beads` | `set(node_type, node_id, beads_id)` — a write; `node_type` is `task`, `goal`, `commitment` or `project`, and the item must be writable (an Agentic Task inside a root). See below |
 
 **One flat input schema per tool** (2026-09-25). Each tool takes an `operation`-tagged union, and
@@ -149,7 +151,8 @@ that filled in null defaults would otherwise clear every field it did not mentio
 `update`'s `brief` fields read: omit a field to keep it, `null` to clear it.
 
 **Every node comes back with its ids**: `id`, `short_id` and `full_id`, on snapshot rows, on
-`arlesh_tasks.get` and every task write, and on every `arlesh_waits` answer. An agentic wait's
+`arlesh_tasks.get` and every task write, on every `arlesh_waits` answer, and on the Info
+`arlesh_infos.create` returns. An agentic wait's
 fields have one name everywhere — `agentic_note`, `question`, `answer` — in the snapshot and in
 every `arlesh_waits` operation, `get` returning the same row.
 
@@ -390,6 +393,23 @@ it; the app refuses the release without one, from every release path. The agent 
 with `get`, or off the snapshot's `expectations`, which carry `question` and `answer`. A wait blocks
 nothing unless a Task depends on it.
 
+## Notes
+
+`arlesh_infos.create(task_id, body, details?)` hangs a new **Info** directly under an Agentic Task
+the agent can write — for instance the full wording of a Task whose title the agent shortened
+with `arlesh_tasks.update`. `body` is the Info's one-line text, its title, and `details` the
+optional longer text beneath it; a blank `body` is refused as `invalid_request`. The Info is
+placed last among the Task's children and is not private. It comes back as the snapshot's `infos`
+carry it, with its `id`, `short_id` and `full_id`. The Task may be a Habit occurrence, in which
+case the Info hangs on that one occurrence, as the user's own would.
+
+It needs **write** access to the Task — an Agentic Task inside an MCP root — or is refused as
+`not_permitted`, writing nothing; a private Task is not visible, so it is refused the same way.
+Like the other writes it is transactional and journaled as the **agent's** write, so it never
+enters the user's Undo Stack, and every open window is told the board changed.
+
+Creating is the whole surface: an agent neither edits, moves nor deletes an Info.
+
 ## Issue links
 
 A Task, Goal, Commitment or Project can carry the id of the `bd` issue tracking it, and `arlesh_beads.set` is
@@ -403,7 +423,7 @@ Passing `null` clears the link. Setting one on an item that does not exist is an
 
 ## What writes
 
-`arlesh_tasks`, `arlesh_beads` and `arlesh_waits` write; every other tool is annotated
+`arlesh_tasks`, `arlesh_beads`, `arlesh_waits` and `arlesh_infos` write; every other tool is annotated
 `read_only_hint = true` and writes nothing at all.
 `arlesh_snapshot` used to be the exception: deriving a Habit's iterations minted the scope rows
 their windows landed on, and it had to commit them or the payload would name ids that no longer
@@ -412,7 +432,7 @@ everything else.
 
 ## What is deliberately absent
 
-- **Every write command but the task writes above**, including `retype_node`, `start_flow` and any
+- **Every write command but the writes above**, including `retype_node`, `start_flow` and any
   hard delete.
 - **`valid_targets`** — it only reads, but it
   answers "where could this Flow be started?", a question nothing on this surface can act on while

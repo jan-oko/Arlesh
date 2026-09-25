@@ -102,7 +102,7 @@ fn reject_backlog_with_plan(
 }
 
 /// The millisecond timestamp a freshly inserted row takes as its sort position.
-fn insertion_position() -> i64 {
+pub(crate) fn insertion_position() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()

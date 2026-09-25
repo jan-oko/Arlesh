@@ -269,13 +269,14 @@ async fn every_tool_is_registered() {
     let pool = helpers::test_pool().await;
     let mcp = helpers::mcp_over_whole_board(&pool).await;
 
-    // `ArleshMcp::new` sums seven routers. Drop one and nothing fails to compile — the tool simply
+    // `ArleshMcp::new` sums eight routers. Drop one and nothing fails to compile — the tool simply
     // stops being served, which an agent would discover and this test does not let pass silently.
     assert_eq!(
         mcp.tool_names(),
         vec![
             "arlesh_beads",
             "arlesh_flows",
+            "arlesh_infos",
             "arlesh_kb",
             "arlesh_scopes",
             "arlesh_snapshot",
@@ -1387,6 +1388,7 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
             &["ask", "raise", "release", "get"],
             &["task_id", "title", "note", "question", "id", "answer"],
         ),
+        ("arlesh_infos", &["create"], &["task_id", "body", "details"]),
     ];
     let tools = mcp.tools();
     assert_eq!(tools.len(), expected.len());

@@ -535,3 +535,21 @@ pub enum WaitsOperation {
 fn question_by_default() -> bool {
     true
 }
+
+/// The notes an agent writes: an Info node under an Agentic Task.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(tag = "operation", rename_all = "snake_case")]
+#[schemars(extend("type" = "object"))]
+pub enum InfosOperation {
+    /// Creates an Info under an Agentic Task the MCP can write — for instance the full wording of
+    /// a Task whose title the agent shortened.
+    Create {
+        /// The Agentic Task the Info hangs under.
+        task_id: NodeIdParam,
+        /// The Info's one-line text — its title.
+        body: String,
+        /// Longer supporting text, shown beneath the body.
+        #[serde(default)]
+        details: Option<String>,
+    },
+}
