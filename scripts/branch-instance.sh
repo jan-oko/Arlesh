@@ -27,8 +27,9 @@
 # where a release build would need a second one — and it means an edit in a worktree hot-reloads in
 # that worktree's window.
 #
-# Both the window title and the port are baked in at build time, so the worktree's tauri.conf.json
-# is edited for the length of the build and restored afterwards, including when the build fails.
+# The window title, the port and the GTK app id setting are baked in at build time, so the
+# worktree's tauri.conf.json is edited for the length of the build and restored afterwards,
+# including when the build fails.
 #
 # Space: every branch compiles into the ONE target directory the main checkout already has, so the
 # dependency tree is built once and shared. Only the per-branch binary is kept (the shared target's
@@ -134,6 +135,11 @@ with open(path) as f: conf = json.load(f)
 conf.setdefault("build", {})["devUrl"] = f"http://localhost:{port}"
 for window in conf.get("app", {}).get("windows", []):
     window["title"] = f"Arlesh — {branch}"
+# With enableGTKAppId the app is a GApplication named com.atai.arlesh, which D-Bus keeps unique per
+# session: a second process finds the name taken, hands `activate` to the first and exits 0 without
+# a window. Instances turn it off so they open beside the main app and each other; the main app
+# keeps it for its GNOME Wayland taskbar icon.
+conf.setdefault("app", {})["enableGTKAppId"] = False
 with open(path, "w") as f: json.dump(conf, f, indent=2)
 SETCONF
 
