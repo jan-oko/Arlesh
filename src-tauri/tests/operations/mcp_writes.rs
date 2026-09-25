@@ -1016,7 +1016,7 @@ mod agent_notes {
         let created = infos(
             &mcp,
             params::InfosOperation::Create {
-                task_id: task_short_id.into(),
+                task_id: NodeIdParam::Short(task_short_id),
                 body: "Visible work, in the words the user first gave it".into(),
                 details: Some("And the rest of it".into()),
             },
