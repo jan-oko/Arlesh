@@ -416,7 +416,7 @@ async fn an_agentic_wait_can_still_be_answered_after_its_task_stops_being_agenti
         ExpectationId(wait.id.sid()),
         UpdateExpectationRequest {
             status: Some(ExpectationStatus::Released),
-            agentic_note: Some(Some("Red or blue for the badge?\nBlue.".into())),
+            answer: Some(Some("Blue.".into())),
             ..Default::default()
         },
     )
@@ -424,7 +424,5 @@ async fn an_agentic_wait_can_still_be_answered_after_its_task_stops_being_agenti
     .unwrap();
 
     assert_eq!(answered.status, ExpectationStatus::Released);
-    assert!(answered
-        .agentic_note
-        .is_some_and(|note| note.ends_with("Blue.")));
+    assert_eq!(answered.answer.as_deref(), Some("Blue."));
 }
