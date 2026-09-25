@@ -155,8 +155,11 @@ pub enum SnapshotOperation {
     /// cycles, dependencies, block reasons, instance nodes, derived lifecycles, and each flow's
     /// habit iterations and statuses.
     Load {
-        /// The reference instant lifecycles and habit iterations are derived at.
-        now: chrono::NaiveDateTime,
+        /// The reference instant lifecycles and habit iterations are derived at: a local date and
+        /// time string, `"2026-09-25T09:00:00"`. Omit it for the server's current time — the usual
+        /// case; pass one only to see the board as of another moment.
+        #[serde(default)]
+        now: Option<chrono::NaiveDateTime>,
         /// Only these sections, instead of all of them. Omit for everything.
         ///
         /// A question about scheduling needs `tasks` and `lifecycles`, not the knowledge of every
@@ -182,8 +185,8 @@ pub enum SnapshotOperation {
         filter: Option<crate::filters::model::BoardFilter>,
         /// Only the Tasks that read as **Agentic** — their own flag, or their nearest flagged
         /// ancestor's, stored rows and Habit occurrences alike — with the rows they hang from, for
-        /// context, and their waits and notes. `{}` for all of them; `{"max_priority": 1}` for P0
-        /// and P1 only. Tasks come most urgent first, and each carries `reads_agentic`: `true` for
+        /// context, and their waits and notes. `{}` for all of them; `{"max_priority": "A"}` for MW
+        /// and A only. Tasks come most urgent first, and each carries `reads_agentic`: `true` for
         /// a match, `false` for a context row. The Flow sections are left out. Omit for no such
         /// narrowing. Pass the same value on every page.
         #[serde(default)]
@@ -262,9 +265,9 @@ impl From<TaskStatusParam> for model::TaskStatus {
 /// create: empty).
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 pub struct BriefParam {
-    /// Priority 0–4 for P0–P4; `null` for none.
+    /// Priority `"MW"`, `"A"`, `"B"` or `"C"`, most urgent first; `null` for none.
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
-    pub priority: Option<Option<u8>>,
+    pub priority: Option<Option<model::AgenticPriority>>,
     /// What to build. A Task that reads as Agentic cannot start without one.
     #[serde(default)]
     pub spec: Option<String>,
@@ -295,10 +298,10 @@ impl BriefParam {
 /// The snapshot's agentic query.
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 pub struct AgenticQuery {
-    /// Only Tasks at this priority or more urgent — 0 for P0 through 4 for P4. A Task with no
+    /// Only Tasks at this priority or more urgent — `"A"` means `MW` and `A`. A Task with no
     /// priority is then left out.
     #[serde(default)]
-    pub max_priority: Option<u8>,
+    pub max_priority: Option<model::AgenticPriority>,
 }
 
 /// Task reads the snapshot does not answer, and the writes an agent may make.

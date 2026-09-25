@@ -764,6 +764,59 @@ pub struct UpdateCommitmentRequest {
     pub is_private: Option<bool>,
 }
 
+/// An agentic brief's **priority**: four levels, most urgent first — `MW`, then `A`, `B`, `C`.
+///
+/// Ordered by urgency, so sorting ascending puts the most urgent first. Stored as its
+/// [`rank`](Self::rank), 0 for `MW` through 3 for `C`, and spelled by its label everywhere else.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+)]
+pub enum AgenticPriority {
+    /// Most urgent.
+    #[serde(rename = "MW")]
+    Mw,
+    /// Second.
+    A,
+    /// Third.
+    B,
+    /// Least urgent.
+    C,
+}
+
+impl AgenticPriority {
+    /// The stored value: 0 for `MW` through 3 for `C`.
+    pub fn rank(self) -> i64 {
+        match self {
+            Self::Mw => 0,
+            Self::A => 1,
+            Self::B => 2,
+            Self::C => 3,
+        }
+    }
+
+    /// The priority a stored value names. The CHECK constraint keeps the column in 0–3, so
+    /// anything else is a row this app did not write, read as no priority rather than a wrong one.
+    pub fn from_rank(rank: i64) -> Option<Self> {
+        match rank {
+            0 => Some(Self::Mw),
+            1 => Some(Self::A),
+            2 => Some(Self::B),
+            3 => Some(Self::C),
+            _ => None,
+        }
+    }
+}
+
 /// A Task's **agentic brief**: what an agent reads about the work in place of an issue tracker's
 /// entry. The Task's own and **never inherited** — unlike the Agentic flag, which a Task reads off
 /// its nearest flagged ancestor. Stored whether or not the Task currently reads as Agentic, and
@@ -773,9 +826,9 @@ pub struct UpdateCommitmentRequest {
 /// a Task that reads as Agentic cannot be started without one.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgenticBrief {
-    /// P0 (most urgent) to P4, as 0–4; `None` for no priority set.
+    /// `MW`, `A`, `B` or `C`, most urgent first; `None` for no priority set.
     #[serde(default)]
-    pub priority: Option<u8>,
+    pub priority: Option<AgenticPriority>,
     /// What to build: the requirement the agent works to. Mandatory before an agentic Task starts.
     #[serde(default)]
     pub spec: String,

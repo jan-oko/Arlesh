@@ -275,7 +275,6 @@ pub async fn update_task(
     // Its own brief keeps only what differs from its template's, field by field; clearing it goes
     // back to reading the template's.
     if let Some(brief) = &request.agentic_brief {
-        crate::tasks::agentic::validate_brief(brief)?;
         overlay.set_brief(brief.as_ref(), template.fields.agentic_brief.as_ref());
     }
 

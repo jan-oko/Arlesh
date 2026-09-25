@@ -140,7 +140,7 @@ impl TemplateBriefRow {
         AgenticBrief {
             priority: self
                 .priority
-                .and_then(|priority| u8::try_from(priority).ok()),
+                .and_then(crate::tasks::model::AgenticPriority::from_rank),
             spec: self.spec,
             design: self.design,
             acceptance: self.acceptance,
@@ -307,7 +307,6 @@ impl<'session> TemplateOperator<'session> {
             self.set_block_reasons(table, id, reasons).await?;
         }
         if let Some(brief) = &update.agentic_brief {
-            crate::tasks::agentic::validate_brief(brief)?;
             self.set_brief(table, id, brief.as_ref()).await?;
         }
         Ok(())
@@ -335,7 +334,11 @@ impl<'session> TemplateOperator<'session> {
         )
         .bind(table.as_str())
         .bind(id)
-        .bind(brief.priority.map(i64::from))
+        .bind(
+            brief
+                .priority
+                .map(crate::tasks::model::AgenticPriority::rank),
+        )
         .bind(&brief.spec)
         .bind(&brief.design)
         .bind(&brief.acceptance)

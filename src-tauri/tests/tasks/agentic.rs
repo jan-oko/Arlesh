@@ -101,7 +101,7 @@ async fn start(pool: &sqlx::SqlitePool, id: i64) -> Result<Task, TaskError> {
 
 fn with_spec(spec: &str) -> Option<AgenticBrief> {
     Some(AgenticBrief {
-        priority: Some(1),
+        priority: Some(arlesh_lib::tasks::model::AgenticPriority::A),
         spec: spec.into(),
         design: "Reuse the modal".into(),
         acceptance: "It opens from the gear".into(),
@@ -196,31 +196,6 @@ async fn an_edit_elsewhere_leaves_the_brief_alone() {
     .unwrap();
 
     assert_eq!(renamed.agentic_brief, with_spec("Build it"));
-}
-
-#[tokio::test]
-async fn a_priority_past_p4_is_refused() {
-    let pool = helpers::test_pool().await;
-    let project = make_project(&pool).await;
-    let id = task(&pool, ("project", project), TaskAgentic::Yes, None).await;
-
-    let refused = update(
-        &pool,
-        id,
-        UpdateTaskRequest {
-            agentic_brief: Some(Some(AgenticBrief {
-                priority: Some(7),
-                ..Default::default()
-            })),
-            ..Default::default()
-        },
-    )
-    .await;
-
-    assert!(matches!(
-        refused,
-        Err(TaskError::AgenticPriorityOutOfRange(7))
-    ));
 }
 
 #[tokio::test]

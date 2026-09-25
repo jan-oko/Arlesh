@@ -14,7 +14,7 @@
 
 CREATE TABLE task_agentic_briefs (
     task_id    INTEGER PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
-    priority   INTEGER CHECK (priority IS NULL OR priority BETWEEN 0 AND 4),
+    priority   INTEGER CHECK (priority IS NULL OR priority BETWEEN 0 AND 3),
     spec       TEXT NOT NULL DEFAULT '',
     design     TEXT NOT NULL DEFAULT '',
     acceptance TEXT NOT NULL DEFAULT '',

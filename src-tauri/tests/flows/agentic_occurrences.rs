@@ -20,7 +20,8 @@ use arlesh_lib::nodes::{
 };
 use arlesh_lib::scopes::key::ScopeKey;
 use arlesh_lib::tasks::model::{
-    AgenticBrief, CreateExpectationRequest, TaskAgentic, TaskStatus, UpdateTaskRequest,
+    AgenticBrief, AgenticPriority, CreateExpectationRequest, TaskAgentic, TaskStatus,
+    UpdateTaskRequest,
 };
 use tauri::Manager;
 
@@ -117,7 +118,7 @@ async fn served(pool: &sqlx::SqlitePool) -> MindmapLoad {
 
 fn brief(spec: &str) -> AgenticBrief {
     AgenticBrief {
-        priority: Some(1),
+        priority: Some(AgenticPriority::A),
         spec: spec.into(),
         design: "Oldest first".into(),
         acceptance: "Inbox zero".into(),
@@ -627,7 +628,7 @@ async fn the_snapshots_agentic_query_counts_occurrences() {
 
     let result = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: at(NOW),
+            now: Some(at(NOW)),
             sections: None,
             cursor: None,
             filter: None,

@@ -1,31 +1,29 @@
 use super::*;
 
-fn brief(priority: Option<u8>, spec: &str) -> Option<AgenticBrief> {
-    Some(AgenticBrief {
-        priority,
-        spec: spec.to_string(),
-        ..Default::default()
-    })
-}
-
 #[test]
-fn every_priority_from_p0_to_p4_is_accepted() {
-    for priority in 0..=4 {
-        assert!(
-            validate_brief(&brief(Some(priority), "")).is_ok(),
-            "P{priority}"
-        );
+fn a_priority_is_spelled_by_its_label_and_stored_by_its_rank() {
+    use crate::tasks::model::AgenticPriority;
+
+    let all = [
+        AgenticPriority::Mw,
+        AgenticPriority::A,
+        AgenticPriority::B,
+        AgenticPriority::C,
+    ];
+    let labels: Vec<serde_json::Value> = all
+        .iter()
+        .map(|priority| serde_json::to_value(priority).unwrap())
+        .collect();
+    assert_eq!(labels, ["MW", "A", "B", "C"]);
+    for priority in all {
+        assert_eq!(AgenticPriority::from_rank(priority.rank()), Some(priority));
     }
-    assert!(validate_brief(&brief(None, "")).is_ok());
-    assert!(validate_brief(&None).is_ok());
-}
-
-#[test]
-fn a_priority_past_p4_is_refused() {
-    assert!(matches!(
-        validate_brief(&brief(Some(5), "")),
-        Err(TaskError::AgenticPriorityOutOfRange(5))
-    ));
+    assert!(
+        all.windows(2).all(|pair| pair[0] < pair[1]),
+        "most urgent first"
+    );
+    assert_eq!(AgenticPriority::from_rank(4), None);
+    assert!(serde_json::from_value::<AgenticPriority>(serde_json::json!("P0")).is_err());
 }
 
 #[test]

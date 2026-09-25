@@ -15,7 +15,7 @@ use arlesh_lib::commands::{
 use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype};
 use arlesh_lib::mcp::{params, ArleshMcp};
 use arlesh_lib::nodes::id::{uuid_v5, NODE_NAMESPACE};
-use arlesh_lib::tasks::model::{CreateGoalRequest, CreateTaskRequest};
+use arlesh_lib::tasks::model::{AgenticPriority, CreateGoalRequest, CreateTaskRequest};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use tauri::test::MockRuntime;
@@ -138,7 +138,7 @@ fn create(parent_type: &str, parent_id: impl Into<NodeIdParam>, title: &str) -> 
 
 fn with_spec(spec: &str) -> params::BriefParam {
     params::BriefParam {
-        priority: Some(Some(2)),
+        priority: Some(Some(AgenticPriority::B)),
         spec: Some(spec.into()),
         ..Default::default()
     }
@@ -173,7 +173,7 @@ async fn title_of(pool: &sqlx::SqlitePool, id: i64) -> String {
 async fn snapshot(mcp: &ArleshMcp, section: &str) -> Vec<serde_json::Value> {
     let result = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: chrono::Local::now().naive_local(),
+            now: None,
             sections: None,
             cursor: None,
             filter: None,
@@ -217,7 +217,7 @@ async fn an_agent_creates_an_agentic_task_inside_a_root() {
     let created = succeeded(&created).clone();
     assert_eq!(created["agentic"], true, "what an agent creates is Agentic");
     assert_eq!(created["agentic_brief"]["spec"], "Parse the config file");
-    assert_eq!(created["agentic_brief"]["priority"], 2);
+    assert_eq!(created["agentic_brief"]["priority"], "B");
     let id = created["id"].as_i64().expect("a stored row");
     assert_eq!(
         created["full_id"],
@@ -630,11 +630,11 @@ async fn a_prefix_several_visible_nodes_share_is_refused_listing_them() {
 
 async fn agentic_snapshot(
     mcp: &ArleshMcp,
-    max_priority: Option<u8>,
+    max_priority: Option<AgenticPriority>,
 ) -> serde_json::Map<String, serde_json::Value> {
     let result = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: chrono::Local::now().naive_local(),
+            now: None,
             sections: None,
             cursor: None,
             filter: None,
@@ -667,7 +667,10 @@ async fn the_snapshot_answers_which_tasks_read_as_agentic_most_urgent_first() {
     let marked = task(&app, "task", flagged, "Opted out").await;
     not_agentic(&pool, marked).await;
     let mcp = mcp(&pool);
-    for (id, priority) in [(flagged, 3), (inheriting, 0)] {
+    for (id, priority) in [
+        (flagged, AgenticPriority::B),
+        (inheriting, AgenticPriority::Mw),
+    ] {
         let briefed = run(
             &mcp,
             TasksOperation::Update {
@@ -694,11 +697,11 @@ async fn the_snapshot_answers_which_tasks_read_as_agentic_most_urgent_first() {
     assert_eq!(
         ids,
         vec![inheriting, flagged],
-        "stored and inherited alike, P0 before P3; neither the plain Task nor the opted-out one"
+        "stored and inherited alike, MW before B; neither the plain Task nor the opted-out one"
     );
     assert!(tasks.iter().all(|task| task["reads_agentic"] == true));
     assert_eq!(
-        tasks[0]["agentic_brief"]["priority"], 0,
+        tasks[0]["agentic_brief"]["priority"], "MW",
         "the brief comes along"
     );
     let domains: Vec<i64> = rows(&payload, "domains")
@@ -712,7 +715,7 @@ async fn the_snapshot_answers_which_tasks_read_as_agentic_most_urgent_first() {
     );
     assert!(rows(&payload, "flows").is_empty());
 
-    let urgent = agentic_snapshot(&mcp, Some(1)).await;
+    let urgent = agentic_snapshot(&mcp, Some(AgenticPriority::A)).await;
     let tasks = rows(&urgent, "tasks");
     let by_id = |id: i64| tasks.iter().find(|task| task["id"] == id).cloned();
     assert_eq!(
@@ -722,7 +725,7 @@ async fn the_snapshot_answers_which_tasks_read_as_agentic_most_urgent_first() {
     assert_eq!(
         by_id(flagged).map(|task| task["reads_agentic"].clone()),
         Some(serde_json::json!(false)),
-        "a P3 above a P0 match stays as context, marked so"
+        "a B above an MW match stays as context, marked so"
     );
 }
 

@@ -9,3 +9,5 @@
   node the MCP reads; one that has become ambiguous is refused with the candidates listed.
   An agent can also ask for just the Tasks that read as Agentic — optionally only the most urgent
   ones — each with its brief, most urgent first.
+  The MCP server is now called `Arlesh` (connect with
+  `claude mcp add --transport http Arlesh http://127.0.0.1:4747/mcp`); its tools keep their names.

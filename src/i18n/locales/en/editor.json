@@ -117,7 +117,7 @@
   "agenticBriefSection": "Brief",
   "agenticPriority": "Priority",
   "agenticPriorityNone": "None",
-  "agenticPriorityValue": "P{{priority}}",
+  "agenticPriorityValue": "{{priority}}",
   "agenticSpec": "Spec",
   "agenticSpecHint": "Required before an agentic task can start",
   "agenticDesign": "Design",

@@ -21,7 +21,7 @@ variable. It binds loopback only and rejects any request carrying an `Origin` he
 a browser cannot reach it. If the port is already taken the app logs a warning and runs without the
 endpoint rather than refusing to start.
 
-**Connecting.** `claude mcp add --transport http arlesh http://127.0.0.1:4747/mcp`
+**Connecting.** `claude mcp add --transport http Arlesh http://127.0.0.1:4747/mcp` — the server is named `Arlesh` (renamed from `arlesh` on 2026-09-25, so Claude Code's tool prefix is `mcp__Arlesh__`); the tools keep their `arlesh_*` names.
 
 ## Access
 
@@ -129,7 +129,7 @@ definition it loads.
 
 | Tool | Operations |
 | --- | --- |
-| `arlesh_snapshot` | `load(now, sections?, cursor?, filter?)` — the whole planning graph: domains, goals, tasks, **commitments**, notes, flows, flow items, cycles, dependencies, block reasons, materialised instance nodes, every item's derived lifecycle, each flow's habit iterations and statuses, and which occurrence each **added child** hangs on. Paged; see below |
+| `arlesh_snapshot` | `load(now?, sections?, cursor?, filter?, agentic?)` — `now` is a local date-time string (`"2026-09-25T09:00:00"`) and defaults to the server's current time; the whole planning graph: domains, goals, tasks, **commitments**, notes, flows, flow items, cycles, dependencies, block reasons, materialised instance nodes, every item's derived lifecycle, each flow's habit iterations and statuses, and which occurrence each **added child** hangs on. Paged; see below |
 | `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` — `id` is a scope's value key, a JSON object such as `{"kind":"week","date":"2026-09-20"}` |
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
 | `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?)`, `update(id, title?, brief?, backlog?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`. See *Writing tasks* below |
@@ -224,7 +224,7 @@ worth.
 ## Agentic tasks
 
 An **Agentic** Task (see [*Tasks*](resources.md)) carries its **brief** in the snapshot's task rows as
-`agentic_brief` — `priority` (0–4 for P0–P4, or null), `spec`, `design`, `acceptance`, `notes` — or
+`agentic_brief` — `priority` (`"MW"`, `"A"`, `"B"` or `"C"`, most urgent first, or null), `spec`, `design`, `acceptance`, `notes` — or
 null when it has none. It is what an agent reads in place of `bd show`, and the server's
 instructions say so. A Task that reads as Agentic **cannot be started without a Spec**; the write
 tools change a status through the same rule, so an agent asking to start one gets the same refusal
@@ -233,7 +233,7 @@ the app gives.
 **Asking for them.** `load` takes an `agentic` query beside `filter` (added to `Arlesh-rz0`,
 2026-09-24): `{}` narrows the board to the Tasks that **read as Agentic** — their own flag or their
 nearest flagged ancestor's, by the one resolver the app and the write rules share, stored rows and
-Habit occurrences alike — and `{"max_priority": 1}` to those at P1 or more urgent, a Task with no
+Habit occurrences alike — and `{"max_priority": "A"}` to those at A or more urgent (MW and A), a Task with no
 priority then left out. The rows each match hangs from come along for context, as do the waits and
 notes directly under a match; everything else goes, the Flow sections whole. The `tasks` section
 comes most urgent first (no priority last), context rows after, and every task row carries

@@ -1,3 +1,4 @@
+import type { AgenticBrief } from "@/api/tasks";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -106,7 +107,7 @@ describe("FlowItemEditorModal", () => {
   });
 
   it("saves the brief every occurrence reads, on an agentic task template", async () => {
-    const brief = { priority: 1, spec: "Sort the mail", design: "", acceptance: "", notes: "" };
+    const brief: AgenticBrief = { priority: "A", spec: "Sort the mail", design: "", acceptance: "", notes: "" };
     const node = mkItem({
       flowItem: {
         itemType: "flow_task", flowId: 5, flowInstanceType: "task", flowScopeN: 1, flowScopeKind: "day",

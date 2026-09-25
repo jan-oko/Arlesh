@@ -59,7 +59,7 @@ pub struct TaskOverlay {
     pub position: Option<i64>,
     /// Whether its block reasons are its own list rather than its template's.
     pub block_reasons_set: bool,
-    /// Its own agentic brief priority, 0–4 for P0–P4.
+    /// Its own agentic brief priority, stored as its rank (0 for `MW` through 3 for `C`).
     pub brief_priority: Option<i64>,
     /// Whether the priority above is its own, possibly none.
     pub brief_priority_set: bool,
@@ -95,7 +95,7 @@ impl TaskOverlay {
         Some(AgenticBrief {
             priority: if self.brief_priority_set {
                 self.brief_priority
-                    .and_then(|priority| u8::try_from(priority).ok())
+                    .and_then(crate::tasks::model::AgenticPriority::from_rank)
             } else {
                 base.priority
             },
@@ -122,7 +122,9 @@ impl TaskOverlay {
         let differs = |own: &String, inherited: &String| (own != inherited).then(|| own.clone());
         self.brief_priority_set = brief.priority != base.priority;
         self.brief_priority = if self.brief_priority_set {
-            brief.priority.map(i64::from)
+            brief
+                .priority
+                .map(crate::tasks::model::AgenticPriority::rank)
         } else {
             None
         };

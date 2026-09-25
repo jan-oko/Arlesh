@@ -31,7 +31,7 @@ interface Props {
  * Collapsed by default behind a header that says the priority and whether a Spec is written, so the
  * editor scrolls past it; the header is a button, so it opens from the keyboard like any other.
  *
- * Priority is P0–P4 or none; the rest is plain text. **Spec** is flagged as required: a task that
+ * Priority is MW, A, B, C (most urgent first) or none; the rest is plain text. **Spec** is flagged as required: a task that
  * reads as Agentic cannot be started without one, and the save that tries is refused out loud.
  */
 export default function AgenticBriefFields({ value, onChange, startOpen = false }: Props) {

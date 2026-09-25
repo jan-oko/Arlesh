@@ -2,7 +2,7 @@ use super::*;
 
 fn template() -> AgenticBrief {
     AgenticBrief {
-        priority: Some(2),
+        priority: Some(crate::tasks::model::AgenticPriority::B),
         spec: "Water the plants".into(),
         design: "Kitchen first".into(),
         acceptance: "Soil damp".into(),

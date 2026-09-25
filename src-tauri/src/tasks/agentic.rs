@@ -14,14 +14,11 @@
 use std::collections::{HashMap, HashSet};
 
 use super::error::TaskError;
-use super::model::{AgenticBrief, CommitmentId, GoalId, TaskId};
+use super::model::{AgenticBrief, AgenticPriority, CommitmentId, GoalId, TaskId};
 use super::TaskOperator;
 use crate::database::session::{Db, SessionMode};
 use crate::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind, NO_CYCLE};
 use crate::scopes::key::ScopeKey;
-
-/// The highest priority number a brief may carry: P4.
-const LOWEST_PRIORITY: u8 = 4;
 
 #[derive(sqlx::FromRow)]
 struct BriefRow {
@@ -36,11 +33,7 @@ struct BriefRow {
 impl From<BriefRow> for AgenticBrief {
     fn from(row: BriefRow) -> Self {
         Self {
-            // The CHECK constraint keeps the column in 0–4, so the conversion cannot fail on a
-            // row this app wrote; an impossible value reads as no priority rather than a wrong one.
-            priority: row
-                .priority
-                .and_then(|priority| u8::try_from(priority).ok()),
+            priority: row.priority.and_then(AgenticPriority::from_rank),
             spec: row.spec,
             design: row.design,
             acceptance: row.acceptance,
@@ -106,7 +99,7 @@ impl TaskOperator<'_> {
                 acceptance = excluded.acceptance, notes = excluded.notes",
         )
         .bind(id.0)
-        .bind(brief.priority.map(i64::from))
+        .bind(brief.priority.map(AgenticPriority::rank))
         .bind(&brief.spec)
         .bind(&brief.design)
         .bind(&brief.acceptance)
@@ -224,16 +217,6 @@ impl TaskOperator<'_> {
         .bind(id.0)
         .fetch_optional(&mut *self.connection)
         .await?)
-    }
-}
-
-/// Refuses a brief whose priority is outside P0–P4.
-pub(crate) fn validate_brief(brief: &Option<AgenticBrief>) -> Result<(), TaskError> {
-    match brief.as_ref().and_then(|brief| brief.priority) {
-        Some(priority) if priority > LOWEST_PRIORITY => {
-            Err(TaskError::AgenticPriorityOutOfRange(priority))
-        }
-        _ => Ok(()),
     }
 }
 

@@ -276,7 +276,7 @@ async fn snapshot_returns_what_the_mindmap_command_returns() {
 
     let result = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: now(),
+            now: Some(now()),
             sections: None,
             cursor: None,
             filter: None,
@@ -340,7 +340,7 @@ async fn snapshot_narrows_to_the_status_preset_it_is_given() {
     // that the tool reaches them, and that it cuts the derived sections to match.
     let planned = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: now(),
+            now: Some(now()),
             sections: None,
             cursor: None,
             filter: Some(BoardFilter::preset(Preset::Plan)),
@@ -352,7 +352,7 @@ async fn snapshot_narrows_to_the_status_preset_it_is_given() {
 
     let doing = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: now(),
+            now: Some(now()),
             sections: None,
             cursor: None,
             filter: Some(BoardFilter::preset(Preset::Do)),
@@ -405,7 +405,7 @@ async fn snapshot_writes_nothing() {
 
     let result = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: now(),
+            now: Some(now()),
             sections: None,
             cursor: None,
             filter: None,
@@ -896,7 +896,7 @@ async fn the_snapshot_carries_a_beads_id_once_it_is_set() {
     // reads everything else from, without a per-item lookup.
     let snapshot = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: now(),
+            now: Some(now()),
             sections: None,
             cursor: None,
             filter: None,
@@ -1034,7 +1034,7 @@ async fn page_of(
 ) -> serde_json::Value {
     let result = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: now(),
+            now: Some(now()),
             sections,
             cursor,
             filter: None,
@@ -1184,7 +1184,7 @@ async fn a_cursor_the_server_never_issued_is_refused() {
     for bad in ["not-a-cursor", "nosuchsection:0", "tasks:oops"] {
         let result = mcp
             .snapshot(Parameters(params::SnapshotOperation::Load {
-                now: now(),
+                now: Some(now()),
                 sections: None,
                 cursor: Some(bad.into()),
                 filter: None,
@@ -1209,7 +1209,7 @@ async fn an_empty_sections_list_is_refused_rather_than_returning_nothing() {
     // Silently returning an empty page would read as "your board is empty".
     let result = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: now(),
+            now: Some(now()),
             sections: Some(vec![]),
             cursor: None,
             filter: None,

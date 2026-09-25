@@ -77,7 +77,7 @@ impl ArleshMcp {
     /// `ambiguous_id` with the candidates listed, never read as the wrong node.
     ///
     /// **Agentic.** `agentic` narrows the board to the Tasks that read as Agentic — `{}` for all,
-    /// `{"max_priority": 1}` for P0–P1 — with the rows above them for context and their waits and
+    /// `{"max_priority": "A"}` for MW and A — with the rows above them for context and their waits and
     /// notes, most urgent first; each task row then carries `reads_agentic`. Its brief is on the
     /// row as `agentic_brief`.
     ///
@@ -121,6 +121,7 @@ impl ArleshMcp {
             Ok(db) => db,
             Err(error) => return result::failed(error),
         };
+        let now = now.unwrap_or_else(|| self.now());
 
         let mut load = match crate::mindmap::load(&mut db, now).await {
             Ok(load) => load,

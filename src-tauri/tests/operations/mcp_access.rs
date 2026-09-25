@@ -121,7 +121,7 @@ fn ids(payload: &serde_json::Value, section: &str) -> Vec<i64> {
 async fn snapshot(mcp: &ArleshMcp) -> serde_json::Value {
     let result = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: now(),
+            now: Some(now()),
             sections: None,
             cursor: None,
             filter: None,

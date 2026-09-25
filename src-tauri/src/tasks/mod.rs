@@ -1509,7 +1509,6 @@ pub async fn create_task(
     reject_backlog_with_plan(request.archival.unwrap_or_default(), &request.plan)?;
     // No Spec check here: creating a task is not starting one. The one path that creates a task
     // already in progress is a duplicate, and a copy of work underway is not a start either.
-    agentic::validate_brief(&request.agentic_brief)?;
     scope_rules::validate_task_containment(
         db,
         None,
@@ -1565,7 +1564,6 @@ pub async fn update_task(
         && stored.status != TaskStatus::InProgress.as_str();
     let write = TaskWrite::merge(stored, request)?;
     reject_backlog_with_plan(write.archival, &write.plan)?;
-    agentic::validate_brief(&write.agentic_brief)?;
     if starts {
         agentic::require_spec_to_start(
             db,

@@ -1,3 +1,4 @@
+import type { AgenticBrief } from "@/api/tasks";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -717,7 +718,7 @@ describe("TaskEditorModal — the agentic brief", () => {
   });
 
   it("starts collapsed, its header saying the priority and whether a Spec is written", async () => {
-    const brief = { priority: 2, spec: "", design: "", acceptance: "", notes: "" };
+    const brief: AgenticBrief = { priority: "B", spec: "", design: "", acceptance: "", notes: "" };
     await open(mkNode({ agentic: true, agenticBrief: brief }));
     const header = screen.getByRole("button", { name: /agenticBriefSection/ });
 
@@ -733,7 +734,7 @@ describe("TaskEditorModal — the agentic brief", () => {
   it("saves the priority and every text field", async () => {
     const onSave = await open(mkNode({ agentic: true }));
     fireEvent.click(screen.getByRole("button", { name: /agenticBriefSection/ }));
-    // The mocked translation names all five P-buttons alike; the first is P0.
+    // The mocked translation names the four priority buttons alike; the first is MW.
     fireEvent.click(screen.getAllByRole("button", { name: "agenticPriorityValue" })[0]!);
     fireEvent.change(screen.getByLabelText("agenticSpec"), { target: { value: "Build the page" } });
     fireEvent.change(screen.getByLabelText("agenticDesign"), { target: { value: "Reuse the modal" } });
@@ -744,7 +745,7 @@ describe("TaskEditorModal — the agentic brief", () => {
     await waitFor(() => expect(onSave).toHaveBeenCalled());
 
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({
-      agenticBrief: { priority: 0, spec: "Build the page", design: "Reuse the modal", acceptance: "It opens", notes: "See izq" },
+      agenticBrief: { priority: "MW", spec: "Build the page", design: "Reuse the modal", acceptance: "It opens", notes: "See izq" },
     });
   });
 
@@ -756,7 +757,7 @@ describe("TaskEditorModal — the agentic brief", () => {
   });
 
   it("keeps a stored brief when the task stops reading as agentic", async () => {
-    const brief = { priority: 2, spec: "Build it", design: "", acceptance: "", notes: "" };
+    const brief: AgenticBrief = { priority: "B", spec: "Build it", design: "", acceptance: "", notes: "" };
     const onSave = await open(mkNode({ agentic: true, agenticBrief: brief }));
     fireEvent.click(screen.getByRole("button", { name: "agenticNo" }));
     fireEvent.click(screen.getByRole("button", { name: "save" }));

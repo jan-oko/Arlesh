@@ -58,16 +58,19 @@ export interface AsyncTemplate {
  * text, empty when unset. A Task that reads as Agentic cannot be started without a `spec`.
  */
 export interface AgenticBrief {
-  /** P0 (most urgent) to P4, as 0–4; null for none. */
-  priority: number | null;
+  /** `MW`, `A`, `B` or `C`, most urgent first; null for none. */
+  priority: AgenticPriority | null;
   spec: string;
   design: string;
   acceptance: string;
   notes: string;
 }
 
-/** The priorities a brief can carry, P0 to P4, as stored. */
-export const AGENTIC_PRIORITIES: readonly number[] = [0, 1, 2, 3, 4];
+/** An agentic brief's priority: `MW`, then `A`, `B`, `C`. */
+export type AgenticPriority = "MW" | "A" | "B" | "C";
+
+/** The priorities a brief can carry, most urgent first. */
+export const AGENTIC_PRIORITIES: readonly AgenticPriority[] = ["MW", "A", "B", "C"];
 
 /** A brief with nothing in it — what the editor starts a Task without one from. */
 export const EMPTY_AGENTIC_BRIEF: AgenticBrief = {

@@ -1,6 +1,6 @@
 - **Agentic tasks carry a brief.** In the Task editor's and the flow item editor's Advanced
   section, while a task is agentic the Agentic control is followed by a **Brief**, collapsed until
-  you open it: a priority (P0–P4), the Spec, the Design, the Acceptance criteria and Notes — what
+  you open it: a priority (MW, A, B or C, most urgent first), the Spec, the Design, the Acceptance criteria and Notes — what
   an agent reads about the work. Advanced opens by itself while the task is marked Agentic or its
   brief is written. The
   brief belongs to the task and is not inherited, even though the Agentic flag is. An agentic task

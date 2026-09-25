@@ -28,7 +28,7 @@ While the app is running it serves a read-only [MCP](https://modelcontextprotoco
 approve it once when prompted. To add it elsewhere:
 
 ```
-claude mcp add --transport http arlesh http://127.0.0.1:4747/mcp
+claude mcp add --transport http Arlesh http://127.0.0.1:4747/mcp
 ```
 
 The endpoint only answers while Arlesh is open; with the app closed the server simply fails to

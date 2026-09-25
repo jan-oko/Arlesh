@@ -18,6 +18,7 @@ use crate::{
     error::AppError,
     mindmap::model::MindmapLoad,
     nodes::{id::NodeId, key::DerivedKey, table::resolve_key},
+    tasks::model::AgenticPriority,
 };
 
 /// Whether the Task `id` — on a board already cut to the roots — reads as Agentic, and so whether
@@ -71,7 +72,7 @@ fn key(node_type: &str, id: &NodeId) -> Option<Key> {
 pub(super) fn narrow(
     load: &mut MindmapLoad,
     agentic: &HashSet<NodeId>,
-    max_priority: Option<u8>,
+    max_priority: Option<AgenticPriority>,
 ) -> HashSet<NodeId> {
     let matched: HashSet<NodeId> = load
         .tasks
@@ -166,7 +167,7 @@ pub(super) fn narrow(
             .agentic_brief
             .as_ref()
             .and_then(|brief| brief.priority)
-            .unwrap_or(u8::MAX);
+            .map_or(i64::MAX, AgenticPriority::rank);
         (!matched.contains(&task.id), priority)
     });
     matched

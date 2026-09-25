@@ -65,9 +65,6 @@ pub enum TaskError {
     /// let through; the answer is to write the Spec first.
     #[error("an agentic task needs a spec before it can start; write its spec first")]
     AgenticSpecMissing,
-    /// An agentic brief named a priority outside P0–P4.
-    #[error("priority P{0} is out of range; an agentic brief's priority is P0 to P4")]
-    AgenticPriorityOutOfRange(u8),
     /// An Expectation was made agentic — "the agent is waiting on you" — somewhere other than
     /// directly under a Task that reads as Agentic. An agent raises one on the work it is doing,
     /// so there is nowhere else for one to mean anything.

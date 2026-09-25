@@ -14,7 +14,7 @@ CREATE TABLE template_agentic_briefs (
     id         INTEGER PRIMARY KEY,
     item_type  TEXT NOT NULL CHECK (item_type IN ('flow', 'flow_task')),
     item_id    INTEGER NOT NULL,
-    priority   INTEGER CHECK (priority IS NULL OR priority BETWEEN 0 AND 4),
+    priority   INTEGER CHECK (priority IS NULL OR priority BETWEEN 0 AND 3),
     spec       TEXT NOT NULL DEFAULT '',
     design     TEXT NOT NULL DEFAULT '',
     acceptance TEXT NOT NULL DEFAULT '',
@@ -23,7 +23,7 @@ CREATE TABLE template_agentic_briefs (
 );
 
 ALTER TABLE task_overlays ADD COLUMN brief_priority INTEGER
-    CHECK (brief_priority IS NULL OR brief_priority BETWEEN 0 AND 4);
+    CHECK (brief_priority IS NULL OR brief_priority BETWEEN 0 AND 3);
 ALTER TABLE task_overlays ADD COLUMN brief_priority_set INTEGER NOT NULL DEFAULT 0
     CHECK (brief_priority_set IN (0, 1));
 ALTER TABLE task_overlays ADD COLUMN brief_spec TEXT;
