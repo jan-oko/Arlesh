@@ -248,8 +248,8 @@ impl NodeNames {
                 .copied()
                 .unwrap_or(0);
             let after = shared.get(index).copied().unwrap_or(0);
-            let length = (before.max(after) + 1).max(SHORTEST).min(node.hex.len());
-            node.short_id = node.hex[..length].to_string();
+            let length = before.max(after) + 1;
+            node.short_id = lettered(&node.hex, length, &node.id);
         }
 
         let by_node = nodes
@@ -283,8 +283,7 @@ impl NodeNames {
             .skip(at)
             .find(|node| node.hex != hex)
             .map_or(0, |node| common_prefix(&node.hex, &hex));
-        let length = (before.max(after) + 1).max(SHORTEST).min(hex.len());
-        hex[..length].to_string()
+        lettered(&hex, before.max(after) + 1, full)
     }
 
     /// The one node the MCP can see whose full id starts with `text` — a short id, a longer
@@ -311,6 +310,26 @@ impl NodeNames {
                 several.iter().map(|node| (*node).clone()).collect(),
             )),
         }
+    }
+}
+
+/// The short id `hex` goes by when `unique` digits tell it apart: that prefix, at least
+/// [`SHORTEST`] long, and **never all digits** — extended until it holds a hex letter.
+///
+/// An all-digit string is one an MCP client may send as a number, against a node-id schema that
+/// takes a row id or a string, and a number is read as a row id — so `"269"` would name row 269.
+/// Extending keeps the prefix unique (it only grows past the point where it already was) and
+/// deterministic. A full id with no letter at all, vanishingly unlikely, goes by `full`, whose
+/// hyphens keep it a string.
+fn lettered(hex: &str, unique: usize, full: &str) -> String {
+    let length = unique.max(SHORTEST).min(hex.len());
+    let is_letter = |byte: &u8| byte.is_ascii_alphabetic();
+    if hex.as_bytes()[..length].iter().any(is_letter) {
+        return hex[..length].to_string();
+    }
+    match hex.as_bytes()[length..].iter().position(is_letter) {
+        Some(offset) => hex[..length + offset + 1].to_string(),
+        None => full.to_string(),
     }
 }
 

@@ -289,7 +289,7 @@ a **short id** (a string). Nothing is stored for them. A node's **full id** is a
 namespace every derived row's id already lives in: a derived row keeps the UUID it has, and a stored
 row's is the UUID-v5 of `{kind}:{row id}` — deterministic, so it never needs keeping. Its **short
 id** is the shortest prefix of the full id's hex digits, **three at least**, that no other node the
-MCP can see shares **at the time of the read**, worked out from a sorted list. The snapshot sends
+MCP can see shares **at the time of the read**, worked out from a sorted list. It is **never all digits**: a prefix with no hex letter is extended to its first one (`269590f6…` goes by `269590f`), because an MCP client may send an all-digit string as a number against the id schema, and a number is read as a row id. Extending only lengthens an already-unique prefix, so it stays unique and deterministic; a full id with no letter at all would go by the full id itself. The snapshot sends
 each node's `short_id` beside its `id`, and a write returns the Task's `short_id` and `full_id`.
 
 A string is read as any prefix of a full id, hyphens optional, three hex digits or more. One node
