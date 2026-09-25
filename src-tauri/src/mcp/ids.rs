@@ -426,6 +426,17 @@ fn clear_of_rows(hex: &str, length: usize, rows: &HashSet<String>, full: &str) -
         .map_or_else(|| full.to_string(), str::to_string)
 }
 
+/// How a parent reference names a domain-table row: `project` for a Project, `domain` for any
+/// other subtype (Aspect, Domain, Tag). It is the spelling the Task, Goal and Commitment tables'
+/// CHECK constraints allow and the app writes, so it is what the MCP writes and reports, whatever
+/// spelling a row was stored or asked with.
+pub(super) fn parent_spelling(subtype: &str) -> &'static str {
+    match subtype {
+        "project" => "project",
+        _ => "domain",
+    }
+}
+
 fn common_prefix(left: &str, right: &str) -> usize {
     left.bytes()
         .zip(right.bytes())
