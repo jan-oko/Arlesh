@@ -18,7 +18,7 @@ use arlesh_lib::board::recipients;
 use arlesh_lib::commands::tasks as task_commands;
 use arlesh_lib::commands::undo as undo_commands;
 use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus};
-use arlesh_lib::mcp::{params, ArleshMcp};
+use arlesh_lib::mcp::params;
 use arlesh_lib::tasks::model::CreateTaskRequest;
 use arlesh_lib::undo::model::WriteSource;
 use arlesh_lib::undo::{self as engine, GestureClose};
@@ -86,6 +86,7 @@ async fn create_task(app: &App<MockRuntime>, project_id: i64, title: &str) -> i6
             agentic: None,
             asynchronous: None,
             async_template: None,
+            agentic_brief: None,
         },
     )
     .await
@@ -199,18 +200,19 @@ async fn the_mcp_tool_that_writes_announces_after_it_commits() {
     let app = helpers::command_host(&pool);
     let project_id = make_project(&pool).await;
     let task_id = create_task(&app, project_id, "Linked over MCP").await;
+    helpers::make_agentic(&pool, task_id).await;
 
     let announced = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let counter = announced.clone();
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool)).announcing(std::sync::Arc::new(
-        move |_origin: Option<&str>| {
+    let mcp = helpers::mcp_over_whole_board(&pool)
+        .await
+        .announcing(std::sync::Arc::new(move |_origin: Option<&str>| {
             counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        },
-    ));
+        }));
 
     mcp.beads(Parameters(params::BeadsOperation::Set {
         node_type: params::BeadsNode::Task,
-        node_id: task_id,
+        node_id: task_id.into(),
         beads_id: Some("Arlesh-fxo".into()),
     }))
     .await
@@ -231,17 +233,17 @@ async fn an_mcp_refusal_announces_nothing() {
 
     let announced = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let counter = announced.clone();
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool)).announcing(std::sync::Arc::new(
-        move |_origin: Option<&str>| {
+    let mcp = helpers::mcp_over_whole_board(&pool)
+        .await
+        .announcing(std::sync::Arc::new(move |_origin: Option<&str>| {
             counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        },
-    ));
+        }));
 
     // A Project id offered as a Task: the tool refuses, and nothing was written to tell anyone of.
     let _ = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: project_id + 9_000,
+            node_id: (project_id + 9_000).into(),
             beads_id: Some("Arlesh-fxo".into()),
         }))
         .await;

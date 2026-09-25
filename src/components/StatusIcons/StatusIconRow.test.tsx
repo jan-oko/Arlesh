@@ -65,6 +65,22 @@ describe("StatusIconRow", () => {
     expect(renderRow(info)).toEqual(["a stack trace"]);
   });
 
+  it("says an agent is waiting on an agentic wait", () => {
+    expect(renderRow(node("expectation", { agentWaiting: { note: "Red or blue?", question: true, answer: null } })))
+      .toEqual(["agentWaitingNote"]);
+    expect(renderRow(node("expectation", { agentWaiting: { note: null, question: true, answer: null } })))
+      .toEqual(["agentWaiting"]);
+  });
+
+  it("says a wait that is not a question waits on something else", () => {
+    expect(renderRow(node("expectation", { agentWaiting: { note: "CI on #86", question: false, answer: null } })))
+      .toEqual(["agentWaitingElsewhereNote"]);
+  });
+
+  it("says the MCP can see a node, and through which root", () => {
+    expect(renderRow(node("goal", { status: "active", mcpVisibleVia: "Arlesh" }))).toEqual(["mcpVisible"]);
+  });
+
   it("renders nothing extra for a node with no relevant status", () => {
     expect(renderRow(node("task", { status: "todo" }))).toEqual([]);
   });

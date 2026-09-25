@@ -1,3 +1,4 @@
+import type { AgenticBrief } from "@/api/tasks";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -452,7 +453,7 @@ describe("TaskEditorModal — Agentic", () => {
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ agentic: "inherit" });
   });
 
-  it("flags the task from the Advanced section", async () => {
+  it("flags the task from its Agentic control", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<TaskEditorModal {...defaultProps} onSave={onSave} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
@@ -677,5 +678,90 @@ describe("TaskEditorModal — the Issue row", () => {
 
     await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalledTimes(1));
     expect(onClearBeadsId).not.toHaveBeenCalled();
+  });
+});
+
+describe("TaskEditorModal — the agentic brief", () => {
+  async function open(node: MindmapNode, onSave = vi.fn().mockResolvedValue(undefined)) {
+    render(<TaskEditorModal {...defaultProps} node={node} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue(node.title)).toBeInTheDocument());
+    return onSave;
+  }
+
+  it("is not offered on a task that does not read as agentic", async () => {
+    await open(mkNode());
+    expect(screen.queryByRole("group", { name: "agenticBriefSection" })).not.toBeInTheDocument();
+  });
+
+  it("lives in Advanced with the Agentic control, shut while nothing in it is engaged", async () => {
+    await open(mkNode({ inheritedAgentic: true }));
+    expect(screen.queryByRole("button", { name: "agenticYes" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "agenticBriefSection" })).not.toBeInTheDocument();
+  });
+
+  it("opens Advanced by itself while the task is flagged or its brief is written", async () => {
+    await open(mkNode({ agentic: true }));
+    expect(screen.getByRole("button", { name: "agenticYes" })).toBeInTheDocument();
+  });
+
+  it("follows the Agentic control as soon as the task is flagged", async () => {
+    await open(mkNode());
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
+    fireEvent.click(screen.getByRole("button", { name: "agenticYes" }));
+    expect(screen.getByRole("group", { name: "agenticBriefSection" })).toBeInTheDocument();
+  });
+
+  it("is offered on a task that inherits agentic too", async () => {
+    await open(mkNode({ inheritedAgentic: true }));
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
+    expect(screen.getByRole("group", { name: "agenticBriefSection" })).toBeInTheDocument();
+  });
+
+  it("starts collapsed, its header saying the priority and whether a Spec is written", async () => {
+    const brief: AgenticBrief = { priority: "B", spec: "", design: "", acceptance: "", notes: "" };
+    await open(mkNode({ agentic: true, agenticBrief: brief }));
+    const header = screen.getByRole("button", { name: /agenticBriefSection/ });
+
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(header).toHaveTextContent("agenticPriorityValue · agenticBriefNoSpec");
+    expect(screen.queryByLabelText("agenticSpec")).not.toBeInTheDocument();
+
+    fireEvent.click(header);
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("agenticSpec")).toBeInTheDocument();
+  });
+
+  it("saves the priority and every text field", async () => {
+    const onSave = await open(mkNode({ agentic: true }));
+    fireEvent.click(screen.getByRole("button", { name: /agenticBriefSection/ }));
+    // The mocked translation names the four priority buttons alike; the first is MW.
+    fireEvent.click(screen.getAllByRole("button", { name: "agenticPriorityValue" })[0]!);
+    fireEvent.change(screen.getByLabelText("agenticSpec"), { target: { value: "Build the page" } });
+    fireEvent.change(screen.getByLabelText("agenticDesign"), { target: { value: "Reuse the modal" } });
+    fireEvent.change(screen.getByLabelText("agenticAcceptance"), { target: { value: "It opens" } });
+    fireEvent.change(screen.getByLabelText("agenticNotes"), { target: { value: "See izq" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({
+      agenticBrief: { priority: "MW", spec: "Build the page", design: "Reuse the modal", acceptance: "It opens", notes: "See izq" },
+    });
+  });
+
+  it("saves an empty section as no brief", async () => {
+    const onSave = await open(mkNode({ agentic: true }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ agenticBrief: null });
+  });
+
+  it("keeps a stored brief when the task stops reading as agentic", async () => {
+    const brief: AgenticBrief = { priority: "B", spec: "Build it", design: "", acceptance: "", notes: "" };
+    const onSave = await open(mkNode({ agentic: true, agenticBrief: brief }));
+    fireEvent.click(screen.getByRole("button", { name: "agenticNo" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ agentic: "no", agenticBrief: brief });
   });
 });

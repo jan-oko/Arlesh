@@ -11,8 +11,7 @@ import styles from "./HabitCollapseSetting.module.css";
  * cards while another reads one Task's fields at full size. It is a slider rather than a number
  * because the five levels are sizes, not a quantity — there is no card width you would type.
  *
- * The popover shows it only while Steps is the active view, the way the branch axis and the fold
- * threshold are gated to the Mindmap: a control for something the current view cannot show is noise.
+ * It sits on the settings modal's Steps page, beside nothing else: the page is the view it acts on.
  */
 export default function StepsZoomSetting() {
   const { t } = useTranslation("stepsView");

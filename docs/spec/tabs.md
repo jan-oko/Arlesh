@@ -13,7 +13,7 @@ held. Nothing a tab owns is reachable from another tab: exiting a subtree, chang
 collapsing a branch in one leaves every other exactly where it was.
 
 **Theme and the clipboard are app-wide**, along with the Undo/Redo stacks and the display
-preferences in the settings popover. The clipboard deliberately so — cutting a subtree in one tab
+preferences in the settings modal. The clipboard deliberately so — cutting a subtree in one tab
 and pasting it in another is the obvious thing to want from a second tab, and nothing about a
 clipboard is specific to where it was filled. The theme likewise: the app must not change
 appearance as you move between tabs. The branch axis is per tab, because a wide subtree may want to

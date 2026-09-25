@@ -16,7 +16,7 @@ use sqlx::SqliteConnection;
 
 use super::key::{CheckKey, OccurrenceKey};
 use crate::scopes::key::ScopeKey;
-use crate::tasks::model::{AsyncTemplate, ExpectationArchival, ExpectationStatus};
+use crate::tasks::model::{AgenticBrief, AsyncTemplate, ExpectationArchival, ExpectationStatus};
 
 /// One occurrence's Task overlay. Every field inherits when empty.
 #[derive(Debug, Clone, Default, PartialEq, Eq, sqlx::FromRow)]
@@ -59,12 +59,79 @@ pub struct TaskOverlay {
     pub position: Option<i64>,
     /// Whether its block reasons are its own list rather than its template's.
     pub block_reasons_set: bool,
+    /// Its own agentic brief priority, stored as its rank (0 for `MW` through 3 for `C`).
+    pub brief_priority: Option<i64>,
+    /// Whether the priority above is its own, possibly none.
+    pub brief_priority_set: bool,
+    /// Its own brief Spec; `Some("")` is overridden to empty.
+    pub brief_spec: Option<String>,
+    /// Its own brief Design.
+    pub brief_design: Option<String>,
+    /// Its own brief Acceptance criteria.
+    pub brief_acceptance: Option<String>,
+    /// Its own brief Notes.
+    pub brief_notes: Option<String>,
 }
 
 impl TaskOverlay {
     /// Whether the row says nothing, so an occurrence reads exactly as its template draws it.
     pub fn is_empty(&self) -> bool {
         *self == Self::default()
+    }
+
+    /// The occurrence's agentic brief: its template's, field by field, under whatever this overlay
+    /// says of its own. `None` when neither says anything.
+    pub fn brief_over(&self, template: Option<&AgenticBrief>) -> Option<AgenticBrief> {
+        let says_anything = self.brief_priority_set
+            || self.brief_spec.is_some()
+            || self.brief_design.is_some()
+            || self.brief_acceptance.is_some()
+            || self.brief_notes.is_some();
+        if template.is_none() && !says_anything {
+            return None;
+        }
+        let base = template.cloned().unwrap_or_default();
+        let own = |field: &Option<String>, inherited: String| field.clone().unwrap_or(inherited);
+        Some(AgenticBrief {
+            priority: if self.brief_priority_set {
+                self.brief_priority
+                    .and_then(crate::tasks::model::AgenticPriority::from_rank)
+            } else {
+                base.priority
+            },
+            spec: own(&self.brief_spec, base.spec),
+            design: own(&self.brief_design, base.design),
+            acceptance: own(&self.brief_acceptance, base.acceptance),
+            notes: own(&self.brief_notes, base.notes),
+        })
+    }
+
+    /// Records `brief` as the occurrence's own, keeping only the fields that differ from
+    /// `template`; `None` goes back to reading the template's brief whole.
+    pub fn set_brief(&mut self, brief: Option<&AgenticBrief>, template: Option<&AgenticBrief>) {
+        let base = template.cloned().unwrap_or_default();
+        let Some(brief) = brief else {
+            self.brief_priority = None;
+            self.brief_priority_set = false;
+            self.brief_spec = None;
+            self.brief_design = None;
+            self.brief_acceptance = None;
+            self.brief_notes = None;
+            return;
+        };
+        let differs = |own: &String, inherited: &String| (own != inherited).then(|| own.clone());
+        self.brief_priority_set = brief.priority != base.priority;
+        self.brief_priority = if self.brief_priority_set {
+            brief
+                .priority
+                .map(crate::tasks::model::AgenticPriority::rank)
+        } else {
+            None
+        };
+        self.brief_spec = differs(&brief.spec, &base.spec);
+        self.brief_design = differs(&brief.design, &base.design);
+        self.brief_acceptance = differs(&brief.acceptance, &base.acceptance);
+        self.brief_notes = differs(&brief.notes, &base.notes);
     }
 }
 
@@ -165,7 +232,8 @@ struct KeyedCommitment {
 
 const TASK_COLUMNS: &str = "status, resolved_at, tombstone, title, plan_start_id, plan_end_id, \
      plan_set, delegate_kind, delegate_id, delegate_set, agentic, agentic_set, asynchronous, \
-     archival, is_private, beads_id, beads_id_set, position, block_reasons_set";
+     archival, is_private, beads_id, beads_id_set, position, block_reasons_set, brief_priority, \
+     brief_priority_set, brief_spec, brief_design, brief_acceptance, brief_notes";
 const GOAL_COLUMNS: &str =
     "status, resolved_at, tombstone, title, is_private, beads_id, beads_id_set, position, \
      block_reasons_set";
@@ -313,8 +381,11 @@ impl<'session> OverlayOperator<'session> {
                 (origin, flow_id, item_type, item_id, iteration_scope, cycle_id,
                  status, resolved_at, tombstone, title, plan_start_id, plan_end_id, plan_set,
                  delegate_kind, delegate_id, delegate_set, agentic, agentic_set, asynchronous,
-                 archival, is_private, beads_id, beads_id_set, position, block_reasons_set)
-             VALUES ('habit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 archival, is_private, beads_id, beads_id_set, position, block_reasons_set,
+                 brief_priority, brief_priority_set, brief_spec, brief_design, brief_acceptance,
+                 brief_notes)
+             VALUES ('habit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                     ?, ?, ?, ?, ?, ?)
              ON CONFLICT(node_key) DO UPDATE SET
                 status = excluded.status, resolved_at = excluded.resolved_at,
                 tombstone = excluded.tombstone, title = excluded.title,
@@ -325,7 +396,11 @@ impl<'session> OverlayOperator<'session> {
                 asynchronous = excluded.asynchronous, archival = excluded.archival,
                 is_private = excluded.is_private, beads_id = excluded.beads_id,
                 beads_id_set = excluded.beads_id_set, position = excluded.position,
-                block_reasons_set = excluded.block_reasons_set",
+                block_reasons_set = excluded.block_reasons_set,
+                brief_priority = excluded.brief_priority,
+                brief_priority_set = excluded.brief_priority_set,
+                brief_spec = excluded.brief_spec, brief_design = excluded.brief_design,
+                brief_acceptance = excluded.brief_acceptance, brief_notes = excluded.brief_notes",
         )
         .bind(flow_id)
         .bind(key.item.item_type.as_str())
@@ -351,6 +426,12 @@ impl<'session> OverlayOperator<'session> {
         .bind(overlay.beads_id_set)
         .bind(overlay.position)
         .bind(overlay.block_reasons_set)
+        .bind(overlay.brief_priority)
+        .bind(overlay.brief_priority_set)
+        .bind(&overlay.brief_spec)
+        .bind(&overlay.brief_design)
+        .bind(&overlay.brief_acceptance)
+        .bind(&overlay.brief_notes)
         .execute(&mut *self.connection)
         .await?;
         Ok(())
@@ -399,8 +480,11 @@ impl<'session> OverlayOperator<'session> {
                 (origin, wait_key, due_at,
                  status, resolved_at, tombstone, title, plan_start_id, plan_end_id, plan_set,
                  delegate_kind, delegate_id, delegate_set, agentic, agentic_set, asynchronous,
-                 archival, is_private, beads_id, beads_id_set, position, block_reasons_set)
-             VALUES ('check', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 archival, is_private, beads_id, beads_id_set, position, block_reasons_set,
+                 brief_priority, brief_priority_set, brief_spec, brief_design, brief_acceptance,
+                 brief_notes)
+             VALUES ('check', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                     ?, ?, ?, ?, ?, ?)",
         )
         .bind(key.wait_key())
         .bind(crate::tasks::waits::instant_column(key.due_at))
@@ -423,6 +507,12 @@ impl<'session> OverlayOperator<'session> {
         .bind(overlay.beads_id_set)
         .bind(overlay.position)
         .bind(overlay.block_reasons_set)
+        .bind(overlay.brief_priority)
+        .bind(overlay.brief_priority_set)
+        .bind(&overlay.brief_spec)
+        .bind(&overlay.brief_design)
+        .bind(&overlay.brief_acceptance)
+        .bind(&overlay.brief_notes)
         .execute(&mut *self.connection)
         .await?;
         Ok(())
@@ -706,3 +796,6 @@ impl<'session> OverlayOperator<'session> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

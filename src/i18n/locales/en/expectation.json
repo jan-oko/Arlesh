@@ -21,5 +21,10 @@
   "spawnedNotStored": "This wait was spawned by its task — edit the task's template instead.",
   "templateSection": "Expectation",
   "checkTaskPrefixDefault": "Check: ",
-  "checkStartingNow": "From when it is saved"
+  "checkStartingNow": "From when it is saved",
+  "agentWaiting": "An agent is waiting on you",
+  "agentNote": "The agent's question",
+  "agentWaitNote": "What the agent is waiting on",
+  "agentAnswer": "Your answer",
+  "agentAnswerHint": "Needed before the wait can be released"
 }

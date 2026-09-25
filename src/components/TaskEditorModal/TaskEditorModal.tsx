@@ -8,7 +8,8 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
 import { EXPECTATION_STATUS } from "@/api/expectation-status";
 import type { Domain } from "@/api/domains";
-import type { AsyncTemplate, Delegate, Dependency, TaskAgentic, TaskArchival } from "@/api/tasks";
+import type { AgenticBrief, AsyncTemplate, Delegate, Dependency, TaskAgentic, TaskArchival } from "@/api/tasks";
+import { EMPTY_AGENTIC_BRIEF, isEmptyBrief } from "@/api/tasks";
 import { TASK_AGENTIC, TASK_ARCHIVAL } from "@/api/tasks";
 import { storedAgenticState } from "@/utils/agentic";
 import { isDelegatedToAgent, toggledAgentDelegate } from "@/utils/delegation";
@@ -21,6 +22,7 @@ import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import BeadsIdField from "@/components/EditorModal/BeadsIdField";
 import AgenticField from "./AgenticField";
+import AgenticBriefFields from "./AgenticBriefFields";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import PlanField from "@/components/ScopePicker/PlanField";
@@ -53,6 +55,10 @@ export interface TaskSaveData {
   /** The optional **Expectation template** — the wait finishing the task spawns. `null` when the
    * section is empty, and always `null` when the task is not asynchronous. */
   asyncTemplate: AsyncTemplate | null;
+  /** The task's own **agentic brief**, `null` when the section is empty. Saved whatever the flag
+   * says — the flag can be inherited and come back — and shown only while the task reads as
+   * Agentic. */
+  agenticBrief: AgenticBrief | null;
   /** The task's new delegate, present only when the form changed it — `null` takes it back. Absent
    * says nothing about delegation at all, so a save that never touched it cannot overwrite it. */
   delegate?: Delegate | null;
@@ -109,6 +115,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(node.agentic));
   const [isAsynchronous, setIsAsynchronous] = useState(node.asynchronous === true || openAtTemplate);
   const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate>(node.asyncTemplate ?? EMPTY_TEMPLATE);
+  const [agenticBrief, setAgenticBrief] = useState<AgenticBrief>(node.agenticBrief ?? EMPTY_AGENTIC_BRIEF);
   const templateRef = useRef<HTMLDivElement>(null);
   const [delegate, setDelegate] = useState<Delegate | null>(node.delegate ?? null);
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
@@ -184,6 +191,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
             ...asyncTemplate,
             title: asyncTemplate.title.trim() || t("expectation:templateDefaultTitle", { title: title.trim() }),
           },
+          agenticBrief: isEmptyBrief(agenticBrief) ? null : agenticBrief,
           ...(delegate !== (node.delegate ?? null) ? { delegate } : {}),
           isPrivate,
         });
@@ -351,10 +359,14 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           )}
         </div>
       </div>
+      {/* In Advanced: the Agentic control, then — while the task reads as Agentic, its own flag or
+          an inherited one — the brief an agent reads about the work, collapsible on its own.
+          Advanced opens by itself while any of it is engaged: an own flag, a hand-off to the Agent,
+          or a brief already written. */}
       <EditorAdvanced
         isPrivate={isPrivate}
         onPrivateChange={setIsPrivate}
-        startOpen={agentic !== TASK_AGENTIC.INHERIT || delegatedToAgent}
+        startOpen={agentic !== TASK_AGENTIC.INHERIT || delegatedToAgent || (readsAgentic && !isEmptyBrief(agenticBrief))}
       >
         <AgenticField
           value={agentic}
@@ -364,6 +376,11 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           offersDelegate={readsAgentic || delegatedToAgent}
           onToggleDelegate={() => setDelegate(toggledAgentDelegate(delegate))}
         />
+        {readsAgentic && (
+          <div role="group" aria-label={t("agenticBriefSection")}>
+            <AgenticBriefFields value={agenticBrief} onChange={setAgenticBrief} />
+          </div>
+        )}
       </EditorAdvanced>
     </EditorModal>
   );

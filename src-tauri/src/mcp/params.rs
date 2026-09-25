@@ -15,7 +15,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    flows::model::TargetRef,
     scopes::{error::ScopeError, key::ScopeKey},
     tasks::model,
 };
@@ -96,13 +95,57 @@ pub struct DurationSpec {
     pub kind: String,
 }
 
+/// A node's id, as an agent may give it: a string, matched against everything the MCP can see
+/// both as a node's **row id** in decimal and as a **prefix** (3 characters or more) of its full
+/// id — the snapshot's `short_id` is always one. A match of both kinds, or of several nodes, is
+/// refused as `ambiguous_id`, listing them; no match as `not_permitted`. A JSON number is
+/// accepted too, read as its decimal string.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum NodeIdParam {
+    /// Sent as a number.
+    Row(i64),
+    /// Sent as a string.
+    Short(String),
+}
+
+impl NodeIdParam {
+    /// The id as the string it is matched as.
+    pub fn text(&self) -> String {
+        match self {
+            Self::Row(row) => row.to_string(),
+            Self::Short(text) => text.clone(),
+        }
+    }
+}
+
+impl JsonSchema for NodeIdParam {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "NodeId".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "description": "A node id: its row id or a prefix (3+ characters) of its full id, \
+                            such as the snapshot's short_id."
+        })
+    }
+}
+
+impl From<i64> for NodeIdParam {
+    fn from(id: i64) -> Self {
+        Self::Row(id)
+    }
+}
+
 /// A reference to a node in the tree, by kind and id.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct NodeRef {
     /// Node kind: `aspect`, `domain`, `project`, `goal` or `task`.
     pub node_type: String,
-    /// Node id.
-    pub node_id: i64,
+    /// Node id: a row id or a short id.
+    pub node_id: NodeIdParam,
 }
 
 impl From<DurationSpec> for model::DurationSpec {
@@ -126,15 +169,6 @@ impl TryFrom<TimeScope> for model::TimeScope {
     }
 }
 
-impl From<NodeRef> for TargetRef {
-    fn from(node: NodeRef) -> Self {
-        Self {
-            node_type: node.node_type,
-            node_id: node.node_id,
-        }
-    }
-}
-
 /// The whole planning graph in one payload.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case")]
@@ -144,8 +178,11 @@ pub enum SnapshotOperation {
     /// cycles, dependencies, block reasons, instance nodes, derived lifecycles, and each flow's
     /// habit iterations and statuses.
     Load {
-        /// The reference instant lifecycles and habit iterations are derived at.
-        now: chrono::NaiveDateTime,
+        /// The reference instant lifecycles and habit iterations are derived at: a local date and
+        /// time string, `"2026-09-25T09:00:00"`. Omit it for the server's current time — the usual
+        /// case; pass one only to see the board as of another moment.
+        #[serde(default)]
+        now: Option<chrono::NaiveDateTime>,
         /// Only these sections, instead of all of them. Omit for everything.
         ///
         /// A question about scheduling needs `tasks` and `lifecycles`, not the knowledge of every
@@ -169,6 +206,14 @@ pub enum SnapshotOperation {
         /// being rows themselves, so there is nothing for a preset to judge.
         #[serde(default)]
         filter: Option<crate::filters::model::BoardFilter>,
+        /// Only the Tasks that read as **Agentic** — their own flag, or their nearest flagged
+        /// ancestor's, stored rows and Habit occurrences alike — with the rows they hang from, for
+        /// context, and their waits and notes. `{}` for all of them; `{"max_priority": "A"}` for MW
+        /// and A only. Tasks come most urgent first, and each carries `reads_agentic`: `true` for
+        /// a match, `false` for a context row. The Flow sections are left out. Omit for no such
+        /// narrowing. Pass the same value on every page.
+        #[serde(default)]
+        agentic: Option<AgenticQuery>,
     },
 }
 
@@ -208,8 +253,8 @@ pub enum KbOperation {
     ListPeople,
     /// One person by id.
     GetPerson {
-        /// Person id.
-        id: i64,
+        /// Person id: a row id, as a number or a string of digits. People have no short ids.
+        id: NodeIdParam,
     },
     /// Every event.
     ListEvents,
@@ -217,15 +262,144 @@ pub enum KbOperation {
     ListThreads,
 }
 
-/// Task reads the snapshot does not answer.
+/// A Task status, as the status write names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatusParam {
+    /// Not started.
+    Todo,
+    /// Under way. Starting an Agentic Task needs a Spec in its brief.
+    InProgress,
+    /// Finished.
+    Done,
+}
+
+impl From<TaskStatusParam> for model::TaskStatus {
+    fn from(status: TaskStatusParam) -> Self {
+        match status {
+            TaskStatusParam::Todo => Self::Todo,
+            TaskStatusParam::InProgress => Self::InProgress,
+            TaskStatusParam::Done => Self::Done,
+        }
+    }
+}
+
+/// An agentic brief, or the fields of one to change. Each field left out stays as it is (on
+/// create: empty).
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+pub struct BriefParam {
+    /// Priority `"MW"`, `"A"`, `"B"` or `"C"`, most urgent first. Omit to leave it; `null` for
+    /// none.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub priority: Option<Option<model::AgenticPriority>>,
+    /// What to build. A Task that reads as Agentic cannot start without one. Omit to leave it;
+    /// `null` clears it.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub spec: Option<Option<String>>,
+    /// How to build it. Omit to leave it; `null` clears it.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub design: Option<Option<String>>,
+    /// How to tell it is done. Omit to leave it; `null` clears it.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub acceptance: Option<Option<String>>,
+    /// Anything else. Omit to leave it; `null` clears it.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub notes: Option<Option<String>>,
+}
+
+impl BriefParam {
+    /// `self` written over `base`.
+    pub fn over(self, base: model::AgenticBrief) -> model::AgenticBrief {
+        model::AgenticBrief {
+            priority: self.priority.unwrap_or(base.priority),
+            spec: text_over(self.spec, base.spec),
+            design: text_over(self.design, base.design),
+            acceptance: text_over(self.acceptance, base.acceptance),
+            notes: text_over(self.notes, base.notes),
+        }
+    }
+}
+
+/// A brief text field written over `base`: omitted keeps it, `null` clears it.
+fn text_over(given: Option<Option<String>>, base: String) -> String {
+    match given {
+        None => base,
+        Some(text) => text.unwrap_or_default(),
+    }
+}
+
+/// The snapshot's agentic query.
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+pub struct AgenticQuery {
+    /// Only Tasks at this priority or more urgent — `"A"` means `MW` and `A`. A Task with no
+    /// priority is then left out.
+    #[serde(default)]
+    pub max_priority: Option<model::AgenticPriority>,
+}
+
+/// Task reads the snapshot does not answer, and the writes an agent may make.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case")]
 #[schemars(extend("type" = "object"))]
 pub enum TasksOperation {
     /// One task with its block reasons — explicit ones and those implied by its dependencies.
     Get {
-        /// Task id.
-        id: i64,
+        /// Task id: a row id or a short id.
+        id: NodeIdParam,
+    },
+    /// Creates a Task — always Agentic — under a node inside an MCP root that can hold one: a
+    /// domain or project, a goal, a task, a commitment, or a Habit occurrence. Never under a Task
+    /// explicitly marked Not agentic.
+    Create {
+        /// The parent's kind: `domain`, `project`, `goal`, `task` or `commitment`.
+        parent_type: String,
+        /// The parent's id: a row id or a short id.
+        parent_id: NodeIdParam,
+        /// The new Task's title.
+        title: String,
+        /// Its agentic brief.
+        #[serde(default)]
+        brief: Option<BriefParam>,
+    },
+    /// Edits an Agentic Task's fields: its title, its brief, whether it is set aside.
+    Update {
+        /// Task id: a row id or a short id.
+        id: NodeIdParam,
+        /// New title.
+        #[serde(default)]
+        title: Option<String>,
+        /// Brief fields to change.
+        #[serde(default)]
+        brief: Option<BriefParam>,
+        /// `true` sets it aside in the Backlog, `false` puts it back in play.
+        #[serde(default)]
+        backlog: Option<bool>,
+    },
+    /// Changes an Agentic Task's status **if it is still `expected`** — one compare-and-set step.
+    /// Otherwise refused as `status_changed`, naming the current status, and nothing is written.
+    SetStatus {
+        /// Task id: a row id or a short id.
+        id: NodeIdParam,
+        /// The status you last saw.
+        expected: TaskStatusParam,
+        /// The status to set.
+        status: TaskStatusParam,
+    },
+    /// Moves an Agentic Task under another parent. Needs create permission at both its old and
+    /// its new parent. A Habit occurrence cannot move.
+    Move {
+        /// Task id: a row id or a short id.
+        id: NodeIdParam,
+        /// The new parent's kind.
+        parent_type: String,
+        /// The new parent's id: a row id or a short id.
+        parent_id: NodeIdParam,
+    },
+    /// Archives an Agentic Habit occurrence, as the app archives one; it is never deleted.
+    /// Archiving a stored Task by hand is not supported yet, and is refused as `not_permitted`.
+    Archive {
+        /// Task id: a row id or a short id.
+        id: NodeIdParam,
     },
     /// Which descendants would violate containment if a node were given this window.
     ///
@@ -245,19 +419,19 @@ pub enum TasksOperation {
 pub enum FlowsOperation {
     /// One flow by id.
     Get {
-        /// Flow id.
-        id: i64,
+        /// Flow id: a row id or a short id.
+        id: NodeIdParam,
     },
     /// A flow's stored recurrence configuration, as opposed to the iterations derived from it.
     /// `null` when the flow is not a Habit.
     Recurrence {
-        /// Flow id.
-        flow_id: i64,
+        /// Flow id: a row id or a short id.
+        flow_id: NodeIdParam,
     },
     /// How many of a Habit's iterations are complete.
     CompletionCount {
-        /// Flow id.
-        flow_id: i64,
+        /// Flow id: a row id or a short id.
+        flow_id: NodeIdParam,
     },
     /// For each given node, the flow it was materialised from, if any.
     Origins {
@@ -292,8 +466,8 @@ pub enum BeadsOperation {
     Set {
         /// Which kind of resource to link.
         node_type: BeadsNode,
-        /// The resource's id.
-        node_id: i64,
+        /// The resource's id: a row id or a short id.
+        node_id: NodeIdParam,
         /// The `bd` issue id, e.g. `Arlesh-5fs`. `null` clears the link.
         beads_id: Option<String>,
     },
@@ -308,4 +482,56 @@ pub struct BeadsLink {
     pub node_id: i64,
     /// The issue id now stored, or `null` if the link was cleared.
     pub beads_id: Option<String>,
+}
+
+/// The operations on the waits an agent raises.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(tag = "operation", rename_all = "snake_case")]
+#[schemars(extend("type" = "object"))]
+pub enum WaitsOperation {
+    /// Raises a **question** wait under an Agentic Task the MCP can write: "the agent is waiting
+    /// on you". The same as `raise` with `question: true`.
+    Ask {
+        /// The Agentic Task the agent is working, which the wait hangs under.
+        task_id: NodeIdParam,
+        /// What the agent is waiting for, as the wait's title.
+        title: String,
+        /// The agent's question, in full.
+        #[serde(default)]
+        note: Option<String>,
+    },
+    /// Raises an agentic wait under an Agentic Task the MCP can write — a question for the user,
+    /// or (`question: false`) a wait on something non-human, like CI.
+    Raise {
+        /// The Agentic Task the agent is working, which the wait hangs under.
+        task_id: NodeIdParam,
+        /// What the agent is waiting for, as the wait's title.
+        title: String,
+        /// The question, or what is being waited on.
+        #[serde(default)]
+        note: Option<String>,
+        /// `true` (the default) when the agent is asking the user, `false` when it waits on
+        /// something else.
+        #[serde(default = "question_by_default")]
+        question: bool,
+    },
+    /// Releases an agentic wait under an Agentic Task the MCP can write. A question wait needs
+    /// `answer` — the one the agent got, from the user in its own session — and is refused
+    /// without one; a wait that is not a question needs none.
+    Release {
+        /// The wait: a row id or a short id.
+        id: NodeIdParam,
+        /// The answer, for a question wait.
+        #[serde(default)]
+        answer: Option<String>,
+    },
+    /// One wait's status, question flag, note and answer — a cheap poll for the user's answer.
+    Get {
+        /// The wait: a row id or a short id.
+        id: NodeIdParam,
+    },
+}
+
+fn question_by_default() -> bool {
+    true
 }

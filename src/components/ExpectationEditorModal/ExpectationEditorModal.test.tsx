@@ -24,3 +24,46 @@ describe("ExpectationEditorModal — Check every", () => {
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ checkEvery: null });
   });
 });
+
+describe("ExpectationEditorModal — an agent waiting on you", () => {
+  const ASKED: MindmapNode = {
+    ...WAIT, agentWaiting: { note: "Red or blue for the badge?", question: true, answer: null },
+  };
+
+  it("shows the agent's question, and saves the answer in a field of its own", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<ExpectationEditorModal node={ASKED} onSave={onSave} onClose={vi.fn()} />);
+    expect(screen.getByLabelText("expectation:agentNote")).toHaveValue("Red or blue for the badge?");
+
+    fireEvent.change(screen.getByLabelText("expectation:agentAnswer"), { target: { value: "Blue." } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({
+      agentic: true, agenticNote: "Red or blue for the badge?", agenticAnswer: "Blue.",
+    });
+  });
+
+  it("saves the note and the answer without trailing blank lines", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<ExpectationEditorModal node={ASKED} onSave={onSave} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("expectation:agentNote"), { target: { value: "Red or blue?\n\n" } });
+    fireEvent.change(screen.getByLabelText("expectation:agentAnswer"), { target: { value: "NULL\n" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ agenticNote: "Red or blue?", agenticAnswer: "NULL" });
+  });
+
+  it("asks no answer of a wait on something other than the user", () => {
+    const ci: MindmapNode = { ...WAIT, agentWaiting: { note: "CI on #86", question: false, answer: null } };
+    render(<ExpectationEditorModal node={ci} onSave={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByLabelText("expectation:agentWaitNote")).toHaveValue("CI on #86");
+    expect(screen.queryByLabelText("expectation:agentAnswer")).toBeNull();
+  });
+
+  it("has no question field on an ordinary wait", () => {
+    render(<ExpectationEditorModal node={WAIT} onSave={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByLabelText("expectation:agentNote")).toBeNull();
+  });
+});

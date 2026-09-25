@@ -20,7 +20,7 @@ fn structured(value: impl Serialize) -> Result<serde_json::Value, ErrorData> {
 /// Converts a domain outcome into a tool result.
 ///
 /// The error arm keeps the `kind` discriminant `WireError` assigns — `not_found`,
-/// `containment_violated`, `invalid_request`, `database`, `internal` — so an agent can branch on
+/// `containment_violated`, `invalid_request`, `not_permitted`, `database`, `internal` — so an agent can branch on
 /// the same stable value the frontend does instead of parsing the message.
 pub(super) fn respond<T: Serialize>(
     outcome: Result<T, impl Into<AppError>>,
@@ -58,3 +58,49 @@ pub(super) fn failed(error: impl Into<AppError>) -> Result<CallToolResult, Error
         WireError::from_error(error),
     )?))
 }
+
+/// A tool result refusing a short id that matched several visible nodes, listing them.
+pub(super) fn ambiguous(
+    quoted: &str,
+    candidates: &[super::ids::Named],
+) -> Result<CallToolResult, ErrorData> {
+    Ok(CallToolResult::structured_error(structured(
+        WireError::ambiguous_id(
+            format!(
+                "{quoted} matches {} nodes; name one by a longer short id",
+                candidates.len()
+            ),
+            structured(candidates)?,
+        ),
+    )?))
+}
+
+/// A tool result refusing a compare-and-set status write whose expectation no longer holds.
+pub(super) fn status_changed(current: &str) -> Result<CallToolResult, ErrorData> {
+    Ok(CallToolResult::structured_error(structured(
+        WireError::status_changed(current),
+    )?))
+}
+
+/// A tool result refusing a request that names a node the MCP may not touch.
+///
+/// Its own `kind`, `not_permitted`, rather than `not_found` or `invalid_request`: the request was
+/// well-formed and the node may well exist, and an agent needs to tell "ask the user for access"
+/// apart from both.
+pub(super) fn not_permitted(message: impl Into<String>) -> Result<CallToolResult, ErrorData> {
+    Ok(CallToolResult::structured_error(structured(
+        WireError::not_permitted(message),
+    )?))
+}
+
+/// Unwraps a domain outcome inside a tool, or returns from the tool with it as a failed result —
+/// the `?` a tool cannot use, since its error arm is reserved for transport failures.
+macro_rules! attempt {
+    ($outcome:expr) => {
+        match $outcome {
+            Ok(value) => value,
+            Err(error) => return $crate::mcp::result::failed(error),
+        }
+    };
+}
+pub(super) use attempt;

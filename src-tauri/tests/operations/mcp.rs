@@ -31,6 +31,24 @@ fn param_of(text: &str) -> params::ScopeKeyParam {
 ///
 /// Fails the test on an error result rather than returning it: every caller here asserts on a
 /// payload, and an `is_error` result carrying a `WireError` is more useful named than unwrapped.
+/// `value` without the `short_id` and `full_id` the MCP stamps on every node, at any depth — what
+/// the app's own command returns for the same read.
+fn unstamped(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(fields) => serde_json::Value::Object(
+            fields
+                .iter()
+                .filter(|(key, _)| !matches!(key.as_str(), "short_id" | "full_id"))
+                .map(|(key, value)| (key.clone(), unstamped(value)))
+                .collect(),
+        ),
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.iter().map(unstamped).collect())
+        }
+        other => other.clone(),
+    }
+}
+
 fn payload(result: &CallToolResult) -> &serde_json::Value {
     assert_ne!(
         result.is_error,
@@ -61,7 +79,7 @@ fn error_payload(result: &CallToolResult) -> &serde_json::Value {
 #[tokio::test]
 async fn scopes_get_returns_what_the_command_returns() {
     let pool = helpers::test_pool().await;
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     // No scope has to exist first: a scope is derived from its key.
     let week = arlesh_lib::commands::scopes::scope_containing(
@@ -92,7 +110,7 @@ async fn scopes_get_returns_what_the_command_returns() {
 #[tokio::test]
 async fn scopes_get_on_a_malformed_key_reports_an_invalid_request() {
     let pool = helpers::test_pool().await;
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     // A Wednesday is not the start of a week, so this names no scope.
     let result = mcp
@@ -113,7 +131,7 @@ async fn scopes_get_on_a_malformed_key_reports_an_invalid_request() {
 #[tokio::test]
 async fn scopes_resolve_many_resolves_each_id_in_order() {
     let pool = helpers::test_pool().await;
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     let ids: Vec<params::ScopeKeyParam> = [
         r#"{"kind":"week","date":"2026-02-01"}"#,
@@ -151,9 +169,9 @@ async fn scopes_resolve_many_resolves_each_id_in_order() {
 async fn kb_lists_match_their_commands() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
-    arlesh_lib::commands::knowledge_base::create_person(
+    let ada = arlesh_lib::commands::knowledge_base::create_person(
         app.state(),
         arlesh_lib::knowledge_base::model::CreatePersonRequest {
             name: "Ada".into(),
@@ -163,6 +181,8 @@ async fn kb_lists_match_their_commands() {
     )
     .await
     .unwrap();
+    // A Person hangs on no node, so the MCP sees one only through a node it can read.
+    delegate(&pool, seed(&app).await, ada.id).await;
 
     let result = mcp
         .kb(Parameters(params::KbOperation::ListPeople))
@@ -177,6 +197,16 @@ async fn kb_lists_match_their_commands() {
         &serde_json::to_value(&expected).unwrap(),
         "kb.list_people"
     );
+}
+
+/// Delegates a Task to a Person, straight to the columns.
+async fn delegate(pool: &sqlx::SqlitePool, task_id: i64, person_id: i64) {
+    sqlx::query("UPDATE tasks SET delegate_kind = 'person', delegate_id = ? WHERE id = ?")
+        .bind(person_id)
+        .bind(task_id)
+        .execute(pool)
+        .await
+        .unwrap();
 }
 
 /// Seeds a project, a goal and a task, returning the task id.
@@ -237,9 +267,9 @@ fn now() -> chrono::NaiveDateTime {
 #[tokio::test]
 async fn every_tool_is_registered() {
     let pool = helpers::test_pool().await;
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
-    // `ArleshMcp::new` sums six routers. Drop one and nothing fails to compile — the tool simply
+    // `ArleshMcp::new` sums seven routers. Drop one and nothing fails to compile — the tool simply
     // stops being served, which an agent would discover and this test does not let pass silently.
     assert_eq!(
         mcp.tool_names(),
@@ -250,6 +280,7 @@ async fn every_tool_is_registered() {
             "arlesh_scopes",
             "arlesh_snapshot",
             "arlesh_tasks",
+            "arlesh_waits",
         ]
     );
 }
@@ -258,15 +289,16 @@ async fn every_tool_is_registered() {
 async fn snapshot_returns_what_the_mindmap_command_returns() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     seed(&app).await;
 
     let result = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: now(),
+            now: Some(now()),
             sections: None,
             cursor: None,
             filter: None,
+            agentic: None,
         }))
         .await
         .unwrap();
@@ -280,12 +312,29 @@ async fn snapshot_returns_what_the_mindmap_command_returns() {
         .expect("the payload is an object")
         .remove("next_cursor")
         .expect("a paged response always says whether more remains");
+    // Each node carries its short id beside its id, which the app's own payload has no use for.
+    let mut named = 0;
+    for (section, items) in sections.as_object_mut().expect("an object").iter_mut() {
+        for item in items.as_array_mut().into_iter().flatten() {
+            if let Some(short) = item
+                .as_object_mut()
+                .and_then(|item| item.remove("short_id"))
+            {
+                assert!(
+                    short.as_str().is_some_and(|short| short.len() >= 3),
+                    "{section}"
+                );
+                named += 1;
+            }
+        }
+    }
+    assert!(named > 0, "the snapshot names its nodes by short id");
 
     let expected = arlesh_lib::commands::mindmap::load_mindmap(app.state(), now())
         .await
         .unwrap();
     assert_eq!(
-        sections,
+        unstamped(&sections),
         serde_json::to_value(&expected).unwrap(),
         "snapshot.load section-for-section"
     );
@@ -301,7 +350,7 @@ async fn snapshot_narrows_to_the_status_preset_it_is_given() {
 
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     let task_id = seed(&app).await;
 
     // The seeded task is To Do, so Do should hold nothing at all while Plan still holds it. The
@@ -309,10 +358,11 @@ async fn snapshot_narrows_to_the_status_preset_it_is_given() {
     // that the tool reaches them, and that it cuts the derived sections to match.
     let planned = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: now(),
+            now: Some(now()),
             sections: None,
             cursor: None,
             filter: Some(BoardFilter::preset(Preset::Plan)),
+            agentic: None,
         }))
         .await
         .unwrap();
@@ -320,10 +370,11 @@ async fn snapshot_narrows_to_the_status_preset_it_is_given() {
 
     let doing = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: now(),
+            now: Some(now()),
             sections: None,
             cursor: None,
             filter: Some(BoardFilter::preset(Preset::Do)),
+            agentic: None,
         }))
         .await
         .unwrap();
@@ -362,7 +413,7 @@ fn task_ids(result: &CallToolResult) -> Vec<i64> {
 async fn snapshot_writes_nothing() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     seed(&app).await;
 
     // Deriving habit iterations used to mint the scope rows their windows landed on, so the
@@ -372,10 +423,11 @@ async fn snapshot_writes_nothing() {
 
     let result = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: now(),
+            now: Some(now()),
             sections: None,
             cursor: None,
             filter: None,
+            agentic: None,
         }))
         .await
         .unwrap();
@@ -392,37 +444,54 @@ async fn snapshot_writes_nothing() {
 async fn tasks_get_returns_what_the_command_returns() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     let task_id = seed(&app).await;
 
     let result = mcp
-        .tasks(Parameters(params::TasksOperation::Get { id: task_id }))
+        .tasks(Parameters(params::TasksOperation::Get {
+            id: task_id.into(),
+        }))
         .await
         .unwrap();
 
     let expected = arlesh_lib::commands::tasks::get_task(app.state(), task_id)
         .await
         .unwrap();
+    let got = payload(&result);
+    assert!(got["task"]["short_id"]
+        .as_str()
+        .is_some_and(|short| short.len() >= 3));
     assert_eq!(
-        payload(&result),
-        &serde_json::to_value(&expected).unwrap(),
+        got["task"]["full_id"],
+        arlesh_lib::nodes::id::uuid_v5(
+            &arlesh_lib::nodes::id::NODE_NAMESPACE,
+            &format!("task:{task_id}")
+        )
+    );
+    assert_eq!(
+        unstamped(got),
+        serde_json::to_value(&expected).unwrap(),
         "tasks.get"
     );
 }
 
 #[tokio::test]
-async fn tasks_get_on_a_missing_id_reports_not_found() {
+async fn tasks_get_on_a_missing_id_is_not_permitted() {
     let pool = helpers::test_pool().await;
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     let result = mcp
-        .tasks(Parameters(params::TasksOperation::Get { id: 99_999 }))
+        .tasks(Parameters(params::TasksOperation::Get {
+            id: 99_999_i64.into(),
+        }))
         .await
         .unwrap();
 
+    // Not `not_found`: a node that is not there and a node the MCP may not see answer alike, so
+    // the error kind cannot be used to find out what exists outside the roots.
     assert_eq!(
         error_payload(&result).get("kind").and_then(|k| k.as_str()),
-        Some("not_found"),
+        Some("not_permitted"),
     );
 }
 
@@ -430,7 +499,7 @@ async fn tasks_get_on_a_missing_id_reports_not_found() {
 async fn tasks_containment_conflicts_matches_the_command() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     let task_id = seed(&app).await;
 
     let scope = arlesh_lib::commands::scopes::scope_containing(
@@ -443,7 +512,7 @@ async fn tasks_containment_conflicts_matches_the_command() {
         .tasks(Parameters(params::TasksOperation::ContainmentConflicts {
             node: params::NodeRef {
                 node_type: "task".into(),
-                node_id: task_id,
+                node_id: task_id.into(),
             },
             time_scope: params::TimeScope {
                 start_id: param(scope.id),
@@ -477,7 +546,7 @@ async fn tasks_containment_conflicts_matches_the_command() {
 async fn kb_get_person_and_remaining_lists_match_their_commands() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     let person = arlesh_lib::commands::knowledge_base::create_person(
         app.state(),
@@ -489,9 +558,12 @@ async fn kb_get_person_and_remaining_lists_match_their_commands() {
     )
     .await
     .unwrap();
+    delegate(&pool, seed(&app).await, person.id).await;
 
     let got = mcp
-        .kb(Parameters(params::KbOperation::GetPerson { id: person.id }))
+        .kb(Parameters(params::KbOperation::GetPerson {
+            id: person.id.into(),
+        }))
         .await
         .unwrap();
     let expected_person = arlesh_lib::commands::knowledge_base::get_person(app.state(), person.id)
@@ -537,7 +609,7 @@ async fn flows_reads_match_their_commands() {
 
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     let flow = flow_commands::create_flow(
         app.state(),
@@ -553,7 +625,9 @@ async fn flows_reads_match_their_commands() {
     .unwrap();
 
     let got = mcp
-        .flows(Parameters(params::FlowsOperation::Get { id: flow.id }))
+        .flows(Parameters(params::FlowsOperation::Get {
+            id: flow.id.into(),
+        }))
         .await
         .unwrap();
     let expected = flow_commands::get_flow(app.state(), flow.id).await.unwrap();
@@ -566,7 +640,7 @@ async fn flows_reads_match_their_commands() {
     // A flow that is not a Habit has no recurrence: `null` is the answer, not an error.
     let recurrence = mcp
         .flows(Parameters(params::FlowsOperation::Recurrence {
-            flow_id: flow.id,
+            flow_id: flow.id.into(),
         }))
         .await
         .unwrap();
@@ -574,7 +648,7 @@ async fn flows_reads_match_their_commands() {
 
     let count = mcp
         .flows(Parameters(params::FlowsOperation::CompletionCount {
-            flow_id: flow.id,
+            flow_id: flow.id.into(),
         }))
         .await
         .unwrap();
@@ -587,11 +661,13 @@ async fn flows_reads_match_their_commands() {
         "flows.completion_count"
     );
 
+    // A node named here has to be one the MCP can see, so it has to exist.
+    let task_id = seed(&app).await;
     let origins = mcp
         .flows(Parameters(params::FlowsOperation::Origins {
             nodes: vec![params::NodeRef {
                 node_type: "task".into(),
-                node_id: 1,
+                node_id: task_id.into(),
             }],
         }))
         .await
@@ -600,7 +676,7 @@ async fn flows_reads_match_their_commands() {
         app.state(),
         vec![arlesh_lib::flows::model::TargetRef {
             node_type: "task".into(),
-            node_id: 1,
+            node_id: task_id,
         }],
     )
     .await
@@ -652,13 +728,14 @@ async fn stored_beads_id(pool: &sqlx::SqlitePool, table: &str, id: i64) -> Optio
 async fn beads_set_links_a_task_and_then_clears_it() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     let task_id = seed(&app).await;
+    helpers::make_agentic(&pool, task_id).await;
 
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: task_id,
+            node_id: task_id.into(),
             beads_id: Some("Arlesh-5fs".into()),
         }))
         .await
@@ -677,7 +754,7 @@ async fn beads_set_links_a_task_and_then_clears_it() {
     let cleared = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: task_id,
+            node_id: task_id.into(),
             beads_id: None,
         }))
         .await
@@ -687,13 +764,13 @@ async fn beads_set_links_a_task_and_then_clears_it() {
 }
 
 #[tokio::test]
-async fn beads_set_links_a_goal() {
+async fn beads_set_refuses_a_goal_because_only_an_agentic_task_is_writable() {
     use arlesh_lib::commands::tasks as task_commands;
     use arlesh_lib::tasks::model::CreateGoalRequest;
 
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     let goal = task_commands::create_goal(
         app.state(),
@@ -710,27 +787,29 @@ async fn beads_set_links_a_goal() {
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Goal,
-            node_id: goal.id.sid(),
+            node_id: goal.id.sid().into(),
             beads_id: Some("Arlesh-32r".into()),
         }))
         .await
         .unwrap();
-    assert_ne!(result.is_error, Some(true));
 
+    // Inside a root a Goal is readable, never writable: an agent performs actions, and only a
+    // Task is ever Agentic.
     assert_eq!(
-        stored_beads_id(&pool, "goals", goal.id.sid()).await,
-        Some("Arlesh-32r".into())
+        error_payload(&result).get("kind").and_then(|k| k.as_str()),
+        Some("not_permitted"),
     );
+    assert_eq!(stored_beads_id(&pool, "goals", goal.id.sid()).await, None);
 }
 
 #[tokio::test]
-async fn beads_set_links_a_project() {
+async fn beads_set_refuses_a_project_because_only_an_agentic_task_is_writable() {
     use arlesh_lib::commands::domains as domain_commands;
     use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype};
 
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     let project = domain_commands::create_domain(
         app.state(),
@@ -749,17 +828,17 @@ async fn beads_set_links_a_project() {
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Project,
-            node_id: project.id,
+            node_id: project.id.into(),
             beads_id: Some("Arlesh-e8d".into()),
         }))
         .await
         .unwrap();
-    assert_ne!(result.is_error, Some(true));
 
     assert_eq!(
-        stored_beads_id(&pool, "domains", project.id).await,
-        Some("Arlesh-e8d".into())
+        error_payload(&result).get("kind").and_then(|k| k.as_str()),
+        Some("not_permitted"),
     );
+    assert_eq!(stored_beads_id(&pool, "domains", project.id).await, None);
 }
 
 #[tokio::test]
@@ -769,7 +848,7 @@ async fn beads_set_refuses_a_domain_that_is_not_a_project() {
 
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     let plain_domain = domain_commands::create_domain(
         app.state(),
@@ -785,13 +864,11 @@ async fn beads_set_refuses_a_domain_that_is_not_a_project() {
     .await
     .unwrap();
 
-    // The operator's setter does not check the subtype — no schema constraint backs the
-    // invariant — so this tool is the only thing standing between an agent and an issue link on
-    // an Aspect, Domain or Tag.
+    // Refused before the subtype is even looked at: no domain-table row is ever writable.
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Project,
-            node_id: plain_domain.id,
+            node_id: plain_domain.id.into(),
             beads_id: Some("Arlesh-5fs".into()),
         }))
         .await
@@ -799,7 +876,7 @@ async fn beads_set_refuses_a_domain_that_is_not_a_project() {
 
     assert_eq!(
         error_payload(&result).get("kind").and_then(|k| k.as_str()),
-        Some("invalid_request"),
+        Some("not_permitted"),
     );
     assert_eq!(
         stored_beads_id(&pool, "domains", plain_domain.id).await,
@@ -809,16 +886,16 @@ async fn beads_set_refuses_a_domain_that_is_not_a_project() {
 }
 
 #[tokio::test]
-async fn beads_set_on_a_missing_item_reports_not_found() {
+async fn beads_set_on_a_missing_item_is_not_permitted() {
     let pool = helpers::test_pool().await;
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     // "Succeeded" for a write that landed nowhere is the wrong answer to hand an agent acting on
     // an id it was given.
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Task,
-            node_id: 99_999,
+            node_id: 99_999_i64.into(),
             beads_id: Some("Arlesh-5fs".into()),
         }))
         .await
@@ -826,7 +903,7 @@ async fn beads_set_on_a_missing_item_reports_not_found() {
 
     assert_eq!(
         error_payload(&result).get("kind").and_then(|k| k.as_str()),
-        Some("not_found"),
+        Some("not_permitted"),
     );
 }
 
@@ -834,12 +911,13 @@ async fn beads_set_on_a_missing_item_reports_not_found() {
 async fn the_snapshot_carries_a_beads_id_once_it_is_set() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     let task_id = seed(&app).await;
+    helpers::make_agentic(&pool, task_id).await;
 
     mcp.beads(Parameters(params::BeadsOperation::Set {
         node_type: params::BeadsNode::Task,
-        node_id: task_id,
+        node_id: task_id.into(),
         beads_id: Some("Arlesh-5fs".into()),
     }))
     .await
@@ -849,10 +927,11 @@ async fn the_snapshot_carries_a_beads_id_once_it_is_set() {
     // reads everything else from, without a per-item lookup.
     let snapshot = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: now(),
+            now: Some(now()),
             sections: None,
             cursor: None,
             filter: None,
+            agentic: None,
         }))
         .await
         .unwrap();
@@ -874,7 +953,7 @@ async fn the_snapshot_carries_a_beads_id_once_it_is_set() {
 #[tokio::test]
 async fn scopes_resolve_matches_the_command() {
     let pool = helpers::test_pool().await;
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     let scope = arlesh_lib::commands::scopes::scope_containing(
         arlesh_lib::scopes::model::ScopeKind::Week,
@@ -900,7 +979,7 @@ async fn scopes_resolve_matches_the_command() {
 #[tokio::test]
 async fn scopes_resolve_on_an_impossible_date_reports_an_invalid_request() {
     let pool = helpers::test_pool().await;
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     let result = mcp
         .scopes(Parameters(params::ScopesOperation::Resolve {
@@ -919,7 +998,7 @@ async fn scopes_resolve_on_an_impossible_date_reports_an_invalid_request() {
 async fn a_duration_carries_through_to_the_domain_window() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     let task_id = seed(&app).await;
 
     let start = arlesh_lib::commands::scopes::scope_containing(
@@ -956,7 +1035,7 @@ async fn a_duration_carries_through_to_the_domain_window() {
         .tasks(Parameters(params::TasksOperation::ContainmentConflicts {
             node: params::NodeRef {
                 node_type: "task".into(),
-                node_id: task_id,
+                node_id: task_id.into(),
             },
             time_scope: mcp_window,
         }))
@@ -986,10 +1065,11 @@ async fn page_of(
 ) -> serde_json::Value {
     let result = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: now(),
+            now: Some(now()),
             sections,
             cursor,
             filter: None,
+            agentic: None,
         }))
         .await
         .unwrap();
@@ -1022,7 +1102,7 @@ async fn seed_many_tasks(app: &tauri::App<tauri::test::MockRuntime>, count: usiz
 async fn a_board_too_big_for_one_page_is_handed_over_across_several() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     seed(&app).await;
     seed_many_tasks(&app, 200).await;
 
@@ -1063,7 +1143,7 @@ async fn a_board_too_big_for_one_page_is_handed_over_across_several() {
 async fn each_page_stays_under_the_budget() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     seed(&app).await;
     seed_many_tasks(&app, 200).await;
 
@@ -1090,7 +1170,7 @@ async fn sections_fetches_only_what_was_asked_for() {
 
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     seed(&app).await;
 
     let page = page_of(&mcp, Some(vec![Section::Tasks, Section::Lifecycles]), None).await;
@@ -1113,7 +1193,7 @@ async fn sections_fetches_only_what_was_asked_for() {
 async fn an_empty_section_is_returned_as_empty_rather_than_omitted() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
     seed(&app).await;
 
     // Omitted means "not reached yet" and `[]` means "none". An agent that could not tell them
@@ -1130,15 +1210,16 @@ async fn an_empty_section_is_returned_as_empty_rather_than_omitted() {
 #[tokio::test]
 async fn a_cursor_the_server_never_issued_is_refused() {
     let pool = helpers::test_pool().await;
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     for bad in ["not-a-cursor", "nosuchsection:0", "tasks:oops"] {
         let result = mcp
             .snapshot(Parameters(params::SnapshotOperation::Load {
-                now: now(),
+                now: Some(now()),
                 sections: None,
                 cursor: Some(bad.into()),
                 filter: None,
+                agentic: None,
             }))
             .await
             .unwrap();
@@ -1154,15 +1235,16 @@ async fn a_cursor_the_server_never_issued_is_refused() {
 #[tokio::test]
 async fn an_empty_sections_list_is_refused_rather_than_returning_nothing() {
     let pool = helpers::test_pool().await;
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     // Silently returning an empty page would read as "your board is empty".
     let result = mcp
         .snapshot(Parameters(params::SnapshotOperation::Load {
-            now: now(),
+            now: Some(now()),
             sections: Some(vec![]),
             cursor: None,
             filter: None,
+            agentic: None,
         }))
         .await
         .unwrap();
@@ -1174,14 +1256,14 @@ async fn an_empty_sections_list_is_refused_rather_than_returning_nothing() {
 }
 
 #[tokio::test]
-async fn beads_set_links_a_commitment_and_then_clears_it() {
+async fn beads_set_refuses_a_commitment_because_only_an_agentic_task_is_writable() {
     use arlesh_lib::commands::commitments as commitment_commands;
     use arlesh_lib::scopes::model::ScopeKind;
     use arlesh_lib::tasks::model::{CreateCommitmentRequest, TimeScope};
 
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     let scope = arlesh_lib::scopes::model::Scope::containing(
         ScopeKind::Day,
@@ -1209,27 +1291,16 @@ async fn beads_set_links_a_commitment_and_then_clears_it() {
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Commitment,
-            node_id: commitment.id.sid(),
+            node_id: commitment.id.sid().into(),
             beads_id: Some("Arlesh-cyo".into()),
         }))
         .await
         .unwrap();
-    assert_eq!(
-        payload(&result).get("node_type").and_then(|v| v.as_str()),
-        Some("commitment"),
-    );
-    assert_eq!(
-        stored_beads_id(&pool, "commitments", commitment.id.sid()).await,
-        Some("Arlesh-cyo".into())
-    );
 
-    mcp.beads(Parameters(params::BeadsOperation::Set {
-        node_type: params::BeadsNode::Commitment,
-        node_id: commitment.id.sid(),
-        beads_id: None,
-    }))
-    .await
-    .unwrap();
+    assert_eq!(
+        error_payload(&result).get("kind").and_then(|k| k.as_str()),
+        Some("not_permitted"),
+    );
     assert_eq!(
         stored_beads_id(&pool, "commitments", commitment.id.sid()).await,
         None
@@ -1239,12 +1310,12 @@ async fn beads_set_links_a_commitment_and_then_clears_it() {
 #[tokio::test]
 async fn beads_set_on_a_commitment_that_does_not_exist_is_an_error() {
     let pool = helpers::test_pool().await;
-    let mcp = ArleshMcp::new(helpers::session_factory(&pool));
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
 
     let result = mcp
         .beads(Parameters(params::BeadsOperation::Set {
             node_type: params::BeadsNode::Commitment,
-            node_id: 9999,
+            node_id: 9999_i64.into(),
             beads_id: Some("Arlesh-cyo".into()),
         }))
         .await
@@ -1253,5 +1324,134 @@ async fn beads_set_on_a_commitment_that_does_not_exist_is_an_error() {
         result.is_error,
         Some(true),
         "a write that landed nowhere is not a success"
+    );
+}
+
+#[tokio::test]
+async fn every_tools_input_schema_is_one_object_naming_every_operation_and_parameter() {
+    let pool = helpers::test_pool().await;
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
+    // Each tool's operations and every parameter any of them takes, as params.rs declares them.
+    let expected: &[(&str, &[&str], &[&str])] = &[
+        (
+            "arlesh_snapshot",
+            &["load"],
+            &["now", "sections", "cursor", "filter", "agentic"],
+        ),
+        (
+            "arlesh_scopes",
+            &["get", "resolve", "resolve_many"],
+            &["id", "ids"],
+        ),
+        (
+            "arlesh_kb",
+            &["list_people", "get_person", "list_events", "list_threads"],
+            &["id"],
+        ),
+        (
+            "arlesh_tasks",
+            &[
+                "get",
+                "create",
+                "update",
+                "set_status",
+                "move",
+                "archive",
+                "containment_conflicts",
+            ],
+            &[
+                "id",
+                "parent_type",
+                "parent_id",
+                "title",
+                "brief",
+                "backlog",
+                "expected",
+                "status",
+                "node",
+                "time_scope",
+            ],
+        ),
+        (
+            "arlesh_flows",
+            &["get", "recurrence", "completion_count", "origins"],
+            &["id", "flow_id", "nodes"],
+        ),
+        (
+            "arlesh_beads",
+            &["set"],
+            &["node_type", "node_id", "beads_id"],
+        ),
+        (
+            "arlesh_waits",
+            &["ask", "raise", "release", "get"],
+            &["task_id", "title", "note", "question", "id", "answer"],
+        ),
+    ];
+    let tools = mcp.tools();
+    assert_eq!(tools.len(), expected.len());
+
+    for (name, operations, parameters) in expected {
+        let tool = tools
+            .iter()
+            .find(|tool| tool.name == *name)
+            .unwrap_or_else(|| panic!("{name} is served"));
+        let schema = &tool.input_schema;
+        assert!(
+            schema.get("oneOf").is_none(),
+            "{name} has a top-level oneOf"
+        );
+        assert!(
+            schema.get("anyOf").is_none(),
+            "{name} has a top-level anyOf"
+        );
+        assert_eq!(schema["type"], "object", "{name}");
+        let properties = schema["properties"]
+            .as_object()
+            .unwrap_or_else(|| panic!("{name} has properties"));
+        let mut listed: Vec<&str> = properties["operation"]["enum"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{name}'s operation is an enum"))
+            .iter()
+            .filter_map(|operation| operation.as_str())
+            .collect();
+        listed.sort_unstable();
+        let mut wanted = operations.to_vec();
+        wanted.sort_unstable();
+        assert_eq!(listed, wanted, "{name}'s operations");
+        for parameter in *parameters {
+            let property = properties
+                .get(*parameter)
+                .unwrap_or_else(|| panic!("{name} declares {parameter}"));
+            assert!(
+                ["type", "anyOf", "oneOf", "$ref", "enum", "const"]
+                    .iter()
+                    .any(|key| property.get(key).is_some()),
+                "{name}.{parameter} is typed: {property}"
+            );
+            assert!(
+                property
+                    .get("default")
+                    .is_none_or(|default| !default.is_null()),
+                "{name}.{parameter} has no null default"
+            );
+        }
+        assert_eq!(
+            properties.len(),
+            parameters.len() + 1,
+            "{name} declares nothing else"
+        );
+        let description = tool.description.as_deref().unwrap_or("");
+        for operation in *operations {
+            assert!(
+                description.contains(&format!("- `{operation}`(")),
+                "{name}'s description lists {operation}"
+            );
+        }
+    }
+    let serialized = serde_json::to_string(&tools).unwrap();
+    assert!(
+        !serialized.contains("\"default\":null"),
+        "no null default anywhere, so a client filling defaults clears nothing"
     );
 }

@@ -16,12 +16,15 @@ import AsyncIcon from "./AsyncIcon";
 import ArchiveIcon from "./ArchiveIcon";
 import ExclamationIcon from "./ExclamationIcon";
 import EllipsisIcon from "./EllipsisIcon";
+import McpIcon from "./McpIcon";
 
 const ICON_R = 6;
 const ICON_SPACING = 16;
 const ROW_GAP = 11;
 const MUTED = "var(--node-text-muted)";
 const DANGER = "var(--danger)";
+/** An agent waiting on the user is the one badge that asks for something, so it is not muted. */
+const ACCENT = "var(--accent)";
 
 interface Props {
   node: MindmapNode;
@@ -72,6 +75,16 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
         return { tooltip: t("backlog"), icon: <BacklogIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
       case "agentic":
         return { tooltip: t("agentic"), icon: <AgenticIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
+      case "agentWaiting": {
+        // A question waits on the user and takes the accent; a wait on something else, like CI,
+        // is the agent's business and stays quiet.
+        const note = node.agentWaiting?.note ?? null;
+        const onYou = node.agentWaiting?.question !== false;
+        const tooltip = onYou
+          ? note === null ? t("agentWaiting") : t("agentWaitingNote", { note })
+          : note === null ? t("agentWaitingElsewhere") : t("agentWaitingElsewhereNote", { note });
+        return { tooltip, icon: <AgenticIcon cx={cx} cy={rowY} r={ICON_R} color={onYou ? ACCENT : MUTED} /> };
+      }
       case "asynchronous":
         return { tooltip: t("asynchronous"), icon: <AsyncIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
       case "info":
@@ -88,6 +101,8 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
       }
       case "tags":
         return { tooltip: t("tags", { value: tagsValue }), icon: <TagIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} opacity={1} /> };
+      case "mcp":
+        return { tooltip: t("mcpVisible", { root: node.mcpVisibleVia ?? "" }), icon: <McpIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
     }
   };
 

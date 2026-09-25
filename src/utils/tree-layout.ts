@@ -1,4 +1,5 @@
 import { hierarchy, tree } from "d3-hierarchy";
+import type { HierarchyPointNode } from "d3-hierarchy";
 import type { TimeScope } from "@/api/time-scope";
 import type { InstanceType, FlowItemType, TemplateFields } from "@/api/flows";
 import type { Origin, RowId } from "@/api/node-id";
@@ -6,7 +7,7 @@ import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
 import type { Delegate } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
-import type { AsyncTemplate } from "@/api/tasks";
+import type { AgenticBrief, AsyncTemplate } from "@/api/tasks";
 import type { CanonicalKind } from "@/utils/scope-ref";
 import { expectationNodeId } from "@/utils/node-uuid";
 
@@ -262,6 +263,14 @@ export interface MindmapNode {
   /** A Task's optional **Expectation template** (Tasks only), kept only while `asynchronous`: while
    * the Task is done, a virtual wait is drawn from it. */
   asyncTemplate?: AsyncTemplate | null;
+  /** The Task's own **agentic brief** (Tasks only): priority, Spec, Design, Acceptance criteria and
+   * Notes — what an agent reads about the work. Never inherited, unlike Agentic; shown while the
+   * Task reads as Agentic. `null` when it has none. */
+  agenticBrief?: AgenticBrief | null;
+  /** Present on an **agentic wait** (Expectations only): one an agent raised on the Agentic Task
+   * it hangs under — "the agent is waiting on you". `note` is its question, and the answer once
+   * the user writes one in. */
+  agentWaiting?: { note: string | null; question: boolean; answer: string | null };
   /** The stored Expectations this Task depends on, by row id (Tasks only). */
   expectationDependencyIds?: number[];
   /** Present on a Habit **iteration root** — what the Mindmap's collapse of passed iterations
@@ -280,6 +289,10 @@ export interface MindmapNode {
   /** The `bd` issue this Task, Goal or Project is tracked as; absent when it is tracked as none.
    * Read-only in this app — only the MCP server writes it. */
   beadsId?: string;
+  /** Present when the MCP can see this node: the title of the MCP root it is seen through. Set on
+   * load from the backend's own resolution (`list_mcp_access`), never persisted; a derived node
+   * takes its nearest stored ancestor's. See docs/spec/mcp-server.md, "Access". */
+  mcpVisibleVia?: string;
   /** Whether this real Goal/Task was materialized by a started flow (drives the flow-instance badge). */
   fromFlow?: boolean;
   position: number;
@@ -295,6 +308,21 @@ export interface Position {
 
 export const HORIZONTAL_GAP = 220;
 export const VERTICAL_GAP = 90;
+
+/** Clear space kept between two drawn node boxes — badge rows included — beyond the gaps above. */
+export const NODE_CLEARANCE = 12;
+
+/**
+ * How far a drawn node reaches above and below its centre, on screen: half its box upwards, and
+ * half its box plus its status-badge row, when it has one, downwards.
+ */
+export interface NodeExtent {
+  above: number;
+  below: number;
+}
+
+/** Measures a node as it will be drawn at `depth` (distance from the display root). */
+export type NodeMeasure = (node: MindmapNode, depth: number) => NodeExtent;
 
 /**
  * Which axis branches grow along: `horizontal` spreads them left/right of the root,
@@ -313,6 +341,7 @@ export function computeLayout(
   root: MindmapNode,
   collapsedIds: ReadonlySet<string>,
   orientation: Orientation = "horizontal",
+  measure?: NodeMeasure,
 ): Map<string, Position> {
   const positions = new Map<string, Position>();
   positions.set(root.id, { x: 0, y: 0, depth: 0 });
@@ -324,18 +353,29 @@ export function computeLayout(
   const positiveChildren = visibleChildren.slice(0, splitIndex);
   const negativeChildren = visibleChildren.slice(splitIndex);
 
-  layoutSubtree(positiveChildren, collapsedIds, positions, 1, orientation);
-  layoutSubtree(negativeChildren, collapsedIds, positions, -1, orientation);
+  layoutSubtree(root, positiveChildren, collapsedIds, positions, 1, orientation, measure);
+  layoutSubtree(root, negativeChildren, collapsedIds, positions, -1, orientation, measure);
 
   return positions;
 }
 
+/**
+ * Lays `children` of `origin` out on one side of it.
+ *
+ * With no `measure` every node is spaced by the fixed gaps. With one, a node's drawn size — its
+ * wrapped title and its status-badge row — is reserved too, wherever that size runs along an axis
+ * the fixed gap could come up short on: between siblings stacked top to bottom (the horizontal
+ * layout's breadth), and between levels stacked top to bottom (the vertical layout's depth). The
+ * fixed gap stays the minimum, so a small node is spaced exactly as it always was.
+ */
 function layoutSubtree(
+  origin: MindmapNode,
   children: MindmapNode[],
   collapsedIds: ReadonlySet<string>,
   positions: Map<string, Position>,
   direction: 1 | -1,
   orientation: Orientation,
+  measure?: NodeMeasure,
 ): void {
   if (children.length === 0) return;
 
@@ -349,26 +389,74 @@ function layoutSubtree(
   };
 
   const isVertical = orientation === "vertical";
-  // d3.tree's nodeSize is [breadth, depth]. Sibling spacing must clear the widest node on the
+  // d3.tree lays out on [breadth, depth]. Sibling spacing must clear the widest node on the
   // breadth axis, so the two gaps swap roles with the orientation.
-  const nodeSize: [number, number] = isVertical
-    ? [HORIZONTAL_GAP, VERTICAL_GAP]
-    : [VERTICAL_GAP, HORIZONTAL_GAP];
+  const breadthGap = isVertical ? HORIZONTAL_GAP : VERTICAL_GAP;
+  const depthGap = isVertical ? VERTICAL_GAP : HORIZONTAL_GAP;
 
   const pruned = pruneCollapsed(virtualRoot, collapsedIds);
   const rootHierarchy = hierarchy(pruned, (node) => node.children);
-  const layout = tree<MindmapNode>().nodeSize(nodeSize);
+  // A breadth unit of one pixel, so `separation` answers in pixels: d3's own rule (cousins twice
+  // as far apart as siblings) times the fixed gap, raised to what the two nodes actually need.
+  const layout = tree<MindmapNode>()
+    .nodeSize([1, depthGap])
+    .separation((a, b) => {
+      const fixed = (a.parent === b.parent ? 1 : 2) * breadthGap;
+      if (isVertical || measure === undefined) return fixed;
+      const first = measure(a.data, a.depth);
+      const second = measure(b.data, b.depth);
+      // Which of the two ends up on top is d3's business, so reserve for either order.
+      const needed = Math.max(first.below + second.above, second.below + first.above) + NODE_CLEARANCE;
+      return Math.max(fixed, needed);
+    });
   const pointRoot = layout(rootHierarchy);
+
+  const levelOffset = isVertical && measure !== undefined
+    ? verticalLevelOffsets(origin, pointRoot, direction, measure)
+    : null;
 
   pointRoot.each((node) => {
     if (node.data.id === "__virtual__") return;
+    const depthOffset = levelOffset?.[node.depth] ?? node.y;
     // d3.tree: x = breadth, y = depth. Vertical keeps that mapping; horizontal rotates it.
     positions.set(node.data.id, {
-      x: isVertical ? node.x : direction * node.y,
-      y: isVertical ? direction * node.y : node.x,
+      x: isVertical ? node.x : direction * depthOffset,
+      y: isVertical ? direction * depthOffset : node.x,
       depth: node.depth,
     });
   });
+}
+
+/**
+ * Distance of each level from the origin in the vertical layout, where levels stack top to
+ * bottom: each level sits far enough from the one before that the lower row's boxes clear the
+ * upper row's boxes and badge rows. Never closer than the fixed gap.
+ */
+function verticalLevelOffsets(
+  origin: MindmapNode,
+  pointRoot: HierarchyPointNode<MindmapNode>,
+  direction: 1 | -1,
+  measure: NodeMeasure,
+): number[] {
+  const extents: NodeExtent[] = [measure(origin, 0)];
+  pointRoot.each((node) => {
+    if (node.depth === 0) return;
+    const extent = measure(node.data, node.depth);
+    const level = extents[node.depth];
+    extents[node.depth] = level === undefined
+      ? extent
+      : { above: Math.max(level.above, extent.above), below: Math.max(level.below, extent.below) };
+  });
+
+  const offsets = [0];
+  for (let depth = 1; depth < extents.length; depth += 1) {
+    const inner = extents[depth - 1] ?? { above: 0, below: 0 };
+    const outer = extents[depth] ?? { above: 0, below: 0 };
+    // Growing down, the inner level's bottom meets the outer level's top; growing up, the other way.
+    const needed = direction === 1 ? inner.below + outer.above : inner.above + outer.below;
+    offsets.push((offsets[depth - 1] ?? 0) + Math.max(VERTICAL_GAP, needed + NODE_CLEARANCE));
+  }
+  return offsets;
 }
 
 /**
@@ -380,11 +468,12 @@ export function computeSubtreeLayout(
   collapsedIds: ReadonlySet<string>,
   direction: 1 | -1,
   orientation: Orientation = "horizontal",
+  measure?: NodeMeasure,
 ): Map<string, Position> {
   const positions = new Map<string, Position>();
   positions.set(root.id, { x: 0, y: 0, depth: 0 });
   if (!collapsedIds.has(root.id) && root.children.length > 0) {
-    layoutSubtree(root.children, collapsedIds, positions, direction, orientation);
+    layoutSubtree(root, root.children, collapsedIds, positions, direction, orientation, measure);
   }
   return positions;
 }

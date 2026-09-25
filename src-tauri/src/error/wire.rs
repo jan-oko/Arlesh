@@ -4,9 +4,9 @@
 use serde::Serialize;
 
 use crate::{
-    domains::error::DomainError, error::AppError, flows::error::FlowError,
-    knowledge_base::error::KnowledgeBaseError, scopes::error::ScopeError, tasks::error::TaskError,
-    undo::error::UndoError,
+    access::error::AccessError, domains::error::DomainError, error::AppError,
+    flows::error::FlowError, knowledge_base::error::KnowledgeBaseError, scopes::error::ScopeError,
+    tasks::error::TaskError, undo::error::UndoError,
 };
 
 /// Stable, machine-readable classification of a [`WireError`].
@@ -40,6 +40,18 @@ pub enum WireErrorKind {
     /// window. Distinct from it because what is missing is information, not consent, and the
     /// frontend answers the two with different prompts.
     NeedsTimeScope,
+    /// The MCP endpoint may not touch the node the request names: it is outside every read
+    /// grant, or — for a write — outside every write grant.
+    ///
+    /// Raised only by the MCP tools. A node that does not exist is reported this way too, so the
+    /// kind never tells an agent that something exists where it cannot look.
+    NotPermitted,
+    /// A short id matched several nodes the MCP can see. `details.candidates` lists each — its
+    /// longer, unique short id, full id, kind, title and path — so the caller can pick one.
+    AmbiguousId,
+    /// A status write named an expected status that is no longer the current one, so nothing was
+    /// written. `details.current` is the status now. Raised only by the MCP's compare-and-set.
+    StatusChanged,
     /// A database-level error occurred.
     Database,
     /// An unexpected or unmapped internal error occurred (e.g. corrupted
@@ -120,6 +132,37 @@ impl WireError {
         }
     }
 
+    /// Builds a [`NotPermitted`](WireErrorKind::NotPermitted) [`WireError`] directly, bypassing
+    /// [`AppError`].
+    ///
+    /// Access is an MCP-layer rule rather than a domain one — the app's own commands are never
+    /// refused for it — so there is no domain error for it to route through.
+    pub fn not_permitted(message: impl Into<String>) -> Self {
+        Self {
+            kind: WireErrorKind::NotPermitted,
+            message: message.into(),
+            details: None,
+        }
+    }
+
+    /// Builds an [`AmbiguousId`](WireErrorKind::AmbiguousId) [`WireError`] listing the candidates.
+    pub fn ambiguous_id(message: impl Into<String>, candidates: serde_json::Value) -> Self {
+        Self {
+            kind: WireErrorKind::AmbiguousId,
+            message: message.into(),
+            details: Some(serde_json::json!({ "candidates": candidates })),
+        }
+    }
+
+    /// Builds a [`StatusChanged`](WireErrorKind::StatusChanged) [`WireError`] naming the status now.
+    pub fn status_changed(current: &str) -> Self {
+        Self {
+            kind: WireErrorKind::StatusChanged,
+            message: format!("the status is now {current}; nothing was written"),
+            details: Some(serde_json::json!({ "current": current })),
+        }
+    }
+
     /// Builds a [`NeedsConfirmation`](WireErrorKind::NeedsConfirmation) [`WireError`] carrying the
     /// structured `details` the frontend needs to say what is at stake.
     ///
@@ -154,12 +197,24 @@ fn kind_of(error: &AppError) -> WireErrorKind {
         AppError::KnowledgeBase(inner) => knowledge_base_kind(inner),
         AppError::Flow(inner) => flow_kind(inner),
         AppError::Undo(inner) => undo_kind(inner),
+        AppError::Access(inner) => access_kind(inner),
         AppError::Database(sqlx::Error::RowNotFound) => WireErrorKind::NotFound,
         AppError::Database(_) => WireErrorKind::Database,
     }
 }
 
 /// Maps an [`UndoError`] variant to its [`WireErrorKind`].
+/// Classifies an [`AccessError`]: a grant on a node that is not there is `not_found`, exactly as
+/// an edit to one would be.
+fn access_kind(error: &AccessError) -> WireErrorKind {
+    match error {
+        AccessError::NodeNotFound(_) => WireErrorKind::NotFound,
+        AccessError::Corrupt(_) => WireErrorKind::Internal,
+        AccessError::Agentic(inner) => task_kind(inner),
+        AccessError::Database(_) => WireErrorKind::Database,
+    }
+}
+
 fn undo_kind(error: &UndoError) -> WireErrorKind {
     match error {
         // The request itself is malformed: a close with no matching open. The caller's gesture
@@ -208,6 +263,11 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
         // The request named a check that is no longer there to complete.
         TaskError::NoCheckDue | TaskError::CheckNotReopenable => WireErrorKind::InvalidRequest,
         TaskError::CircularDependency | TaskError::NotStored(_) => WireErrorKind::InvalidRequest,
+        // Refusals the user answers by editing something first: write the Spec, raise the wait
+        // under an agentic Task, or answer the question before releasing it.
+        TaskError::AgenticSpecMissing
+        | TaskError::AgenticWaitOutsideAgenticTask
+        | TaskError::AgenticAnswerMissing => WireErrorKind::InvalidRequest,
         // Not `InvalidRequest`: the request is well-formed and could be carried out. The backend
         // is asking whether to throw the Plan away, and the caller answers by asking again with
         // the Plan cleared.

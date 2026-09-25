@@ -12,9 +12,11 @@ export type StatusIndicatorType =
   | "backlog"
   | "agentic"
   | "asynchronous"
+  | "agentWaiting"
   | "info"
   | "flowInstance"
-  | "tags";
+  | "tags"
+  | "mcp";
 
 /** One badge to render below a node. `outOfScope` applies only to the `scope` clock; `conflict`
  * only to `archived`. */
@@ -83,6 +85,11 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   if (node.asynchronous === true) {
     indicators.push({ type: "asynchronous" });
   }
+  // An agentic wait: an agent raised it on the Task it is working and is waiting on the user. The
+  // bot head, because it is the agent that is waiting; the tooltip carries its question.
+  if (node.agentWaiting !== undefined) {
+    indicators.push({ type: "agentWaiting" });
+  }
   // No verdict badge. A Commitment's glyph carries its Verdict itself — hollow while the answer
   // is owed, solid once given, cleft when broken, struck through when the Verdict Window ran out
   // — so a badge underneath would state the same fact a few pixels away. Every other indicator
@@ -95,6 +102,11 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   }
   if (node.tagIds.length > 0) {
     indicators.push({ type: "tags" });
+  }
+  // One state only: the MCP can see this node. Whether it may also write it is not a second
+  // badge — inside a root, write is exactly Agentic, which the bot head above already says.
+  if (node.mcpVisibleVia !== undefined) {
+    indicators.push({ type: "mcp" });
   }
 
   return indicators;

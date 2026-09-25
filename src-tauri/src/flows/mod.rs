@@ -3697,6 +3697,7 @@ async fn write_plan(
                         agentic: None,
                         // And it arrives not asynchronous: a flow item has no column of its own,
                         async_template: None,
+                        agentic_brief: None,
                         // and nothing infers that doing a materialized instance starts a wait.
                         asynchronous: None,
                     },
@@ -3835,6 +3836,8 @@ async fn apply_template_fields(
                         )),
                         asynchronous: Some(fields.asynchronous),
                         archival: Some(fields.archival),
+                        // A started Flow's Task carries its template's brief as its own.
+                        agentic_brief: Some(fields.agentic_brief.clone()),
                         ..Default::default()
                     },
                 )

@@ -1006,6 +1006,8 @@ fn task_row(
             .asynchronous
             .unwrap_or(occurrence.fields.asynchronous),
         async_template: None,
+        // The template's brief, field by field, under the occurrence's own.
+        agentic_brief: overlay.brief_over(occurrence.fields.agentic_brief.as_ref()),
         on_scope_exit: on_exit(consumption, &occurrence.time_scope),
         time_scope: occurrence.time_scope,
         plan,

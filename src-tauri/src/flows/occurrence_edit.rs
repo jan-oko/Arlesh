@@ -255,6 +255,29 @@ pub async fn update_task(
     let template = template_values(db, &flow, key, iteration_index(&current.origin)).await?;
     let mut overlay = db.overlays().task(key).await?;
 
+    // Starting an occurrence that reads as Agentic needs a Spec, exactly as starting a stored Task
+    // does — Agentic resolved by the one resolver the app's tree agrees with: its own value, its
+    // template tree, then the Habit's host.
+    if matches!(request.status, Some(TaskStatus::InProgress))
+        && current.status != TaskStatus::InProgress.as_str()
+    {
+        let agentic = match request.agentic.map(|agentic| agentic.as_column()) {
+            Some(Some(flag)) => flag,
+            Some(None) => crate::tasks::agentic::occurrence_inherits_agentic(db, key).await?,
+            None => crate::tasks::agentic::occurrence_reads_agentic(db, key).await?,
+        };
+        let brief = match &request.agentic_brief {
+            Some(brief) => brief.clone(),
+            None => current.agentic_brief.clone(),
+        };
+        crate::tasks::agentic::require_spec(agentic, &brief)?;
+    }
+    // Its own brief keeps only what differs from its template's, field by field; clearing it goes
+    // back to reading the template's.
+    if let Some(brief) = &request.agentic_brief {
+        overlay.set_brief(brief.as_ref(), template.fields.agentic_brief.as_ref());
+    }
+
     if let Some(title) = request.title {
         overlay.title = (title != template.title).then_some(title);
     }

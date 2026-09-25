@@ -1285,6 +1285,7 @@ async fn create_node(
                     // plan before any of this runs.
                     asynchronous: carried.asynchronous,
                     async_template: None,
+                    agentic_brief: None,
                 },
             )
             .await?;

@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use super::error::FlowError;
-use crate::tasks::model::{Delegate, TaskAgentic, TaskArchival};
+use crate::tasks::model::{AgenticBrief, Delegate, TaskAgentic, TaskArchival};
 
 /// Which template table a row lives in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -69,6 +69,10 @@ pub struct TemplateFields {
     /// Block reasons every occurrence carries until it has its own.
     #[serde(default)]
     pub block_reasons: Vec<String>,
+    /// The agentic brief every occurrence reads, field by field, until it says otherwise. Task
+    /// templates only.
+    #[serde(default)]
+    pub agentic_brief: Option<AgenticBrief>,
 }
 
 /// A change to a template row's own columns and relations. Each field left `None` stays as it is.
@@ -92,6 +96,9 @@ pub struct TemplateUpdate {
     /// The whole block-reason list to set, in order.
     #[serde(default)]
     pub block_reasons: Option<Vec<String>>,
+    /// The agentic brief to set (`None` leaves it, `Some(None)` removes it). Task templates only.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub agentic_brief: Option<Option<AgenticBrief>>,
 }
 
 impl TemplateUpdate {
@@ -101,6 +108,7 @@ impl TemplateUpdate {
             || self.agentic.is_some()
             || self.asynchronous.is_some()
             || self.archival.is_some()
+            || self.agentic_brief.is_some()
     }
 }
 
@@ -114,6 +122,31 @@ struct TemplateColumns {
     asynchronous: bool,
     archival: String,
     beads_id: Option<String>,
+}
+
+/// One template row's agentic brief, as stored.
+#[derive(sqlx::FromRow)]
+struct TemplateBriefRow {
+    item_id: i64,
+    priority: Option<i64>,
+    spec: String,
+    design: String,
+    acceptance: String,
+    notes: String,
+}
+
+impl TemplateBriefRow {
+    fn into_brief(self) -> AgenticBrief {
+        AgenticBrief {
+            priority: self
+                .priority
+                .and_then(crate::tasks::model::AgenticPriority::from_rank),
+            spec: self.spec,
+            design: self.design,
+            acceptance: self.acceptance,
+            notes: self.notes,
+        }
+    }
 }
 
 /// Reads and writes template fields on one connection.
@@ -179,6 +212,7 @@ impl<'session> TemplateOperator<'session> {
                         beads_id: row.beads_id,
                         tag_ids: Vec::new(),
                         block_reasons: Vec::new(),
+                        agentic_brief: None,
                     },
                 )
             })
@@ -191,6 +225,18 @@ impl<'session> TemplateOperator<'session> {
         for (item_id, reason) in reasons {
             if let Some(row) = fields.get_mut(&item_id) {
                 row.block_reasons.push(reason);
+            }
+        }
+        let briefs: Vec<TemplateBriefRow> = sqlx::query_as(
+            "SELECT item_id, priority, spec, design, acceptance, notes
+             FROM template_agentic_briefs WHERE item_type = ?",
+        )
+        .bind(table.as_str())
+        .fetch_all(&mut *self.connection)
+        .await?;
+        for brief in briefs {
+            if let Some(row) = fields.get_mut(&brief.item_id) {
+                row.agentic_brief = Some(brief.into_brief());
             }
         }
         Ok(fields)
@@ -260,6 +306,45 @@ impl<'session> TemplateOperator<'session> {
         if let Some(reasons) = &update.block_reasons {
             self.set_block_reasons(table, id, reasons).await?;
         }
+        if let Some(brief) = &update.agentic_brief {
+            self.set_brief(table, id, brief.as_ref()).await?;
+        }
+        Ok(())
+    }
+
+    /// Replaces a template row's agentic brief, or removes it for `None`.
+    async fn set_brief(
+        &mut self,
+        table: TemplateTable,
+        id: i64,
+        brief: Option<&AgenticBrief>,
+    ) -> Result<(), FlowError> {
+        sqlx::query("DELETE FROM template_agentic_briefs WHERE item_type = ? AND item_id = ?")
+            .bind(table.as_str())
+            .bind(id)
+            .execute(&mut *self.connection)
+            .await?;
+        let Some(brief) = brief else {
+            return Ok(());
+        };
+        sqlx::query(
+            "INSERT INTO template_agentic_briefs
+                (item_type, item_id, priority, spec, design, acceptance, notes)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(table.as_str())
+        .bind(id)
+        .bind(
+            brief
+                .priority
+                .map(crate::tasks::model::AgenticPriority::rank),
+        )
+        .bind(&brief.spec)
+        .bind(&brief.design)
+        .bind(&brief.acceptance)
+        .bind(&brief.notes)
+        .execute(&mut *self.connection)
+        .await?;
         Ok(())
     }
 
@@ -375,6 +460,10 @@ impl<'session> TemplateOperator<'session> {
         .bind(to)
         .execute(&mut *self.connection)
         .await?;
+        if table != TemplateTable::FlowGoal {
+            let brief = self.one(table, from).await?.agentic_brief;
+            self.set_brief(table, to, brief.as_ref()).await?;
+        }
         self.copy_relations(table, from, to).await
     }
 

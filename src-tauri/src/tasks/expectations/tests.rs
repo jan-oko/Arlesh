@@ -27,6 +27,10 @@ fn stored() -> Expectation {
         tag_ids: vec![2],
         position: 100,
         is_private: false,
+        agentic: false,
+        agentic_note: None,
+        question: false,
+        answer: None,
         origin: Default::default(),
     }
 }
@@ -133,6 +137,10 @@ fn an_unrecognised_stored_status_reads_as_pending() {
         time_scope_end_id: Some(test_key(5)),
         time_scope_duration_n: None,
         time_scope_duration_kind: None,
+        agentic: false,
+        agentic_note: None,
+        agentic_question: true,
+        agentic_answer: None,
     };
     let expectation = Expectation::from(row);
     assert_eq!(expectation.status, ExpectationStatus::Pending);

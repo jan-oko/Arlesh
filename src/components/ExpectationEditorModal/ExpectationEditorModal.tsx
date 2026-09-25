@@ -26,6 +26,13 @@ export interface ExpectationSaveData {
   tagIds: number[];
   archived: boolean;
   isPrivate: boolean;
+  /** Whether an agent raised this wait on the Agentic Task above it. Refused by the backend
+   * anywhere but directly under one. */
+  agentic: boolean;
+  /** The agent's question, or what it is waiting on; `null` for none. */
+  agenticNote: string | null;
+  /** The answer to a question wait; `null` for none. Releasing a question wait needs one. */
+  agenticAnswer: string | null;
 }
 
 const STATUSES: readonly ExpectationStatus[] = [EXPECTATION_STATUS.PENDING, EXPECTATION_STATUS.RELEASED];
@@ -66,6 +73,12 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
   const [archived, setArchived] = useState(node.archived === true);
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
+  const [agentic, setAgentic] = useState(node.agentWaiting !== undefined);
+  const [agenticNote, setAgenticNote] = useState(node.agentWaiting?.note ?? "");
+  const [agenticAnswer, setAgenticAnswer] = useState(node.agentWaiting?.answer ?? "");
+  // A question for the user unless the agent said otherwise — and a wait the user makes agentic
+  // here is one too, as the backend defaults it.
+  const isQuestion = node.agentWaiting?.question !== false;
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -77,7 +90,13 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
     setIsSaving(true);
     setSaveError(null);
     try {
-      await onSave({ title: title.trim(), status, checkEvery, checkStartingDate, timeScope, tagIds, archived, isPrivate });
+      await onSave({
+        title: title.trim(), status, checkEvery, checkStartingDate, timeScope, tagIds, archived, isPrivate,
+        // Trailing blank lines are dropped: a stray Enter at the end of a textarea is not part of
+        // what the agent reads back.
+        agentic, agenticNote: agenticNote.trim() === "" ? null : agenticNote.trimEnd(),
+        agenticAnswer: agenticAnswer.trim() === "" ? null : agenticAnswer.trimEnd(),
+      });
     } catch (err) {
       setSaveError(getErrorMessage(err));
       setIsSaving(false);
@@ -121,6 +140,31 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
           ))}
         </div>
       </div>
+      {/* An agent's note comes first when there is one: it is what the wait is for. A question
+          wait then takes the user's answer, in a field of its own — releasing it needs one. */}
+      {agentic && (
+        <label className={styles.label}>
+          {isQuestion ? t("expectation:agentNote") : t("expectation:agentWaitNote")}
+          <textarea
+            className={styles.textarea}
+            rows={4}
+            value={agenticNote}
+            onChange={(e) => setAgenticNote(e.target.value)}
+          />
+        </label>
+      )}
+      {agentic && isQuestion && (
+        <label className={styles.label}>
+          {t("expectation:agentAnswer")}
+          <textarea
+            className={styles.textarea}
+            rows={3}
+            value={agenticAnswer}
+            placeholder={t("expectation:agentAnswerHint")}
+            onChange={(e) => setAgenticAnswer(e.target.value)}
+          />
+        </label>
+      )}
       <div className={styles.label}>
         {t("editor:fieldTimeScope")}
         <TimeScopeField value={timeScope} onChange={setTimeScope} />
@@ -148,8 +192,9 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
       {allTags !== undefined && domainNames !== undefined && (
         <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       )}
-      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} startOpen={archived}>
+      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} startOpen={archived || agentic}>
         <Switch checked={archived} onChange={setArchived} label={t("expectation:archived")} />
+        <Switch checked={agentic} onChange={setAgentic} label={t("expectation:agentWaiting")} />
       </EditorAdvanced>
     </EditorModal>
   );

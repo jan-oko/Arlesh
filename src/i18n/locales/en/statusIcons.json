@@ -15,5 +15,10 @@
   "broken": "Broken",
   "unresolved": "No verdict recorded yet",
   "agentic": "Agentic — work an agent could take",
-  "asynchronous": "Asynchronous — doing this starts a wait"
+  "asynchronous": "Asynchronous — doing this starts a wait",
+  "mcpVisible": "Visible to the MCP (via {{root}})",
+  "agentWaiting": "An agent is waiting on you",
+  "agentWaitingNote": "An agent is waiting on you: {{note}}",
+  "agentWaitingElsewhere": "An agent is waiting on something else",
+  "agentWaitingElsewhereNote": "An agent is waiting on something else: {{note}}"
 }

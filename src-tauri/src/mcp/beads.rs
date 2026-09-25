@@ -14,10 +14,15 @@ use rmcp::{
 };
 
 use super::{
+    access,
+    lookup::{found, stored_row},
     params::{BeadsLink, BeadsNode, BeadsOperation},
-    result, ArleshMcp,
+    result,
+    result::attempt,
+    ArleshMcp,
 };
 use crate::{
+    access::model::AccessLevel,
     domains::model::DomainId,
     error::AppError,
     tasks::model::{CommitmentId, GoalId, TaskId},
@@ -33,7 +38,10 @@ impl ArleshMcp {
     /// Arlesh displays, not a foreign key. Setting it on an item that does not exist is an error,
     /// not a silent no-op.
     ///
-    /// This is the only operation on this server that writes anything the user entered.
+    /// This is the only operation on this server that writes anything the user entered, and it
+    /// needs **write** access: the item must be an Agentic Task inside an MCP root. Anything else
+    /// — a Goal, a non-Agentic Task, an item outside the roots or one that does not exist — is
+    /// refused as `not_permitted`.
     #[tool(
         name = "arlesh_beads",
         annotations(
@@ -53,15 +61,11 @@ impl ArleshMcp {
             beads_id,
         } = operation;
 
-        let link = BeadsLink {
-            node_type: match node_type {
-                BeadsNode::Task => "task".into(),
-                BeadsNode::Goal => "goal".into(),
-                BeadsNode::Commitment => "commitment".into(),
-                BeadsNode::Project => "project".into(),
-            },
-            node_id,
-            beads_id: beads_id.clone(),
+        let kind = match node_type {
+            BeadsNode::Task => "task",
+            BeadsNode::Goal => "goal",
+            BeadsNode::Commitment => "commitment",
+            BeadsNode::Project => "project",
         };
 
         // Transactional for all three node kinds, including the two that are one UPDATE over one
@@ -76,6 +80,20 @@ impl ArleshMcp {
             Ok(db) => db,
             Err(error) => return result::failed(error),
         };
+        let node_id = found!(stored_row(&mut db, &node_id, kind, self.now()).await);
+        let link = BeadsLink {
+            node_type: kind.into(),
+            node_id,
+            beads_id: beads_id.clone(),
+        };
+
+        // Checked inside the write's own transaction, so a root removed a moment ago cannot let
+        // this write through on a stale answer.
+        let map = attempt!(crate::access::access_map(&mut db).await);
+        if !access::permits(&map, &link.node_type, node_id, AccessLevel::Write) {
+            return access::refuse(&link.node_type, node_id, AccessLevel::Write);
+        }
+
         let user_source = match db.undo().set_source(WriteSource::Mcp).await {
             Ok(previous) => previous,
             Err(error) => return result::failed(error),

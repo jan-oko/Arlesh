@@ -1,7 +1,7 @@
 import { invoke } from "./gesture";
 import { isWireError } from "@/api/errors";
 import type { ScopeKey } from "@/api/scopes";
-import type { Delegate, TaskAgentic, TaskArchival } from "@/api/tasks";
+import type { AgenticBrief, Delegate, TaskAgentic, TaskArchival } from "@/api/tasks";
 
 /**
  * What a Flow's root materializes as. `commitment` is how a repeating rule — a nightly
@@ -347,6 +347,8 @@ export interface TemplateFields {
   beads_id?: string;
   tag_ids?: number[];
   block_reasons?: string[];
+  /** The agentic brief every occurrence reads, field by field, until it says otherwise. */
+  agentic_brief?: AgenticBrief | null;
 }
 
 /** A change to a template row's own columns and relations; each field absent stays as it is. */
@@ -357,6 +359,8 @@ export interface TemplateUpdate {
   archival?: TaskArchival;
   tag_ids?: number[];
   block_reasons?: string[];
+  // Absent = leave unchanged, null = no brief, value = this brief.
+  agentic_brief?: AgenticBrief | null;
 }
 
 /** A flow-goal template item. */

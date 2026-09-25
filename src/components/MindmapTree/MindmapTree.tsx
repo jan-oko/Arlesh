@@ -1,6 +1,7 @@
 import type { MindmapNode, NodeKind, Orientation, Position } from "@/utils/tree-layout";
 import { computeLayout } from "@/utils/tree-layout";
 import { computeNodeDimensions } from "@/utils/node-meta";
+import { measureMindmapNode } from "@/utils/node-extent";
 import MindmapEdge from "@/components/MindmapEdge/MindmapEdge";
 import MindmapNodeComponent from "@/components/MindmapNode/MindmapNode";
 import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
@@ -28,7 +29,7 @@ interface Props {
 }
 
 export default function MindmapTree({ root, orientation, collapsedNodeIds, selectedNodeIds, focusExemptIds, editingNodeId, dragTargetId, dragSourceId, hasClipboard, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onStatusClick }: Props) {
-  const positions = computeLayout(root, collapsedNodeIds, orientation);
+  const positions = computeLayout(root, collapsedNodeIds, orientation, measureMindmapNode);
 
   const edges: Array<{ from: Position; to: Position; fromHeight: number; toHeight: number; key: string }> = [];
   const nodes: MindmapNode[] = [];

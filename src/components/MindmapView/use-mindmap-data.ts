@@ -30,6 +30,10 @@ import {
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { propagateAgentic } from "@/utils/agentic";
+import { listMcpAccess } from "@/api/mcp-access";
+import type { McpVisibility } from "@/api/mcp-access";
+import { applyMcpVisibility } from "@/utils/mcp-visibility";
+import { useMcpAccessStore } from "@/stores/use-mcp-access-store";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
 import type { Goal } from "@/api/goals";
@@ -328,6 +332,7 @@ function templateFieldsOf(item: FlowGoal | FlowTask): TemplateFields {
     ...(item.asynchronous !== undefined ? { asynchronous: item.asynchronous } : {}),
     ...(item.archival !== undefined ? { archival: item.archival } : {}),
     ...(item.beads_id !== undefined ? { beads_id: item.beads_id } : {}),
+    ...(item.agentic_brief !== undefined ? { agentic_brief: item.agentic_brief } : {}),
     tag_ids: item.tag_ids ?? [],
     block_reasons: item.block_reasons ?? [],
   };
@@ -442,6 +447,7 @@ export function buildTree(
       delegate: task.delegate_to,
       asynchronous: task.asynchronous,
       asyncTemplate: task.async_template ?? null,
+      agenticBrief: task.agentic_brief ?? null,
       position: task.position,
       isPrivate: task.is_private,
       ...(task.beads_id !== undefined ? { beadsId: task.beads_id } : {}),
@@ -487,6 +493,15 @@ export function buildTree(
       timeScope: expectation.time_scope,
       position: expectation.position,
       isPrivate: expectation.is_private,
+      ...(expectation.agentic === true
+        ? {
+          agentWaiting: {
+            note: expectation.agentic_note ?? null,
+            question: expectation.question !== false,
+            answer: expectation.answer ?? null,
+          },
+        }
+        : {}),
       tagIds: expectation.tag_ids,
       children: [],
     });
@@ -801,6 +816,19 @@ async function createCommitmentUnderNode(
   return commitment.id;
 }
 
+/**
+ * Which stored nodes the MCP can see. A failure here costs the badges, not the board: it is logged
+ * and the board loads without them, since nothing else on screen depends on the answer.
+ */
+async function loadMcpVisibility(): Promise<McpVisibility[]> {
+  try {
+    return await listMcpAccess();
+  } catch (error: unknown) {
+    console.warn("[arlesh] could not read which nodes the MCP can see:", error);
+    return [];
+  }
+}
+
 export function useMindmapData(): MindmapData {
   const { t } = useTranslation(["undo", "expectation"]);
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
@@ -839,7 +867,7 @@ export function useMindmapData(): MindmapData {
       setError(null);
       try {
         const now = localNowIso();
-        const data = await loadMindmap(now);
+        const [data, mcpVisible] = await Promise.all([loadMindmap(now), loadMcpVisibility()]);
         const built = buildTree(
           data.domains, data.goals, data.tasks, data.infos, data.commitments, data.flows,
           data.flow_goals, data.flow_tasks, data.flow_cycles, data.flow_dependencies,
@@ -852,6 +880,8 @@ export function useMindmapData(): MindmapData {
         // derivation failed has none, and says so as a load condition below — it is not silently
         // indistinguishable from a flow that simply has no iterations.
         decorateIterationRoots(built, data.flows, scopeLabels, now);
+        // Last, so every row — derived ones included — has its place and can take its answer.
+        applyMcpVisibility(built, mcpVisible);
         latestTree.current = built;
         setTree(built);
         setLoadCondition(collectLoadConditions(data));
@@ -868,6 +898,17 @@ export function useMindmapData(): MindmapData {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load(true);
   }, [load]);
+
+  // A change to the MCP roots made in this window redraws the "visible to the MCP" badges. Not a
+  // dependency of `load`, which would raise the full-screen spinner for it; the initial load
+  // already read the roots, so only a later change reloads.
+  const mcpRevision = useMcpAccessStore((s) => s.revision);
+  const seenMcpRevision = useRef(mcpRevision);
+  useEffect(() => {
+    if (seenMcpRevision.current === mcpRevision) return;
+    seenMcpRevision.current = mcpRevision;
+    void load(false);
+  }, [mcpRevision, load]);
 
   const createNode = useCallback(
     async (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string, agentic?: TaskAgentic): Promise<MindmapNode> => {

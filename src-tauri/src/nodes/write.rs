@@ -51,6 +51,19 @@ async fn occurrence_parent(
     Ok((key, host))
 }
 
+/// Whether an agentic wait may hang on the occurrence `key`: it must be a Task occurrence that
+/// reads as Agentic — resolved as the app resolves it (`tasks::agentic`).
+async fn occurrence_reads_agentic(
+    db: &mut Db<Transactional>,
+    key: &OccurrenceKey,
+    host: &OccurrenceHost,
+) -> Result<bool, AppError> {
+    if host.parent_kind != "task" {
+        return Ok(false);
+    }
+    Ok(crate::tasks::agentic::occurrence_reads_agentic(db, key).await?)
+}
+
 /// A stored row, hung on an occurrence, read as the occurrence's child.
 fn hung_on(host: &OccurrenceHost, key: &OccurrenceKey) -> (String, NodeId) {
     (host.parent_kind.to_string(), NodeId::Derived(key.id()))
@@ -141,9 +154,15 @@ pub async fn create_expectation(
     };
     let (key, host) = occurrence_parent(db, &parent, now).await?;
     occurrence_edit::check_within(&host, request.time_scope.as_ref(), None)?;
+    // An agentic wait hangs on an occurrence that reads as Agentic, as it hangs on a Task that
+    // does. Asked of the occurrence here, since the row below is written under the host.
+    if request.agentic && !occurrence_reads_agentic(db, &key, &host).await? {
+        return Err(TaskError::AgenticWaitOutsideAgenticTask.into());
+    }
     request.parent_type = host.host_type.clone();
     request.parent_id = NodeId::Stored(host.host_id);
-    let mut expectation = crate::tasks::create_expectation(db, request).await?;
+    let mut expectation =
+        crate::tasks::expectations::create_expectation_on_host(db, request).await?;
     occurrence_edit::attach(
         db,
         &host,
@@ -379,6 +398,21 @@ pub async fn update_expectation(
             };
         }
     };
+    // Making a wait already hung on an occurrence agentic asks the occurrence, not the host its
+    // columns name — the stored update below leaves that case to this check.
+    if request.agentic == Some(true) {
+        let hung_on = db
+            .expectations()
+            .occurrence_parent_key(ExpectationId(id))
+            .await?
+            .and_then(|parent_key| OccurrenceKey::parse(&parent_key));
+        if let Some(key) = hung_on {
+            let host = occurrence_edit::host_of(db, &key).await?;
+            if !occurrence_reads_agentic(db, &key, &host).await? {
+                return Err(TaskError::AgenticWaitOutsideAgenticTask.into());
+            }
+        }
+    }
     let moved = move_stored(
         db,
         "expectation",

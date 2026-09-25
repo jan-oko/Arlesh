@@ -26,6 +26,7 @@ second locale — not because a translation is pending.
 | `planView`     | Plan View headings, scope stepper, refusals     |
 | `expectation`  | Expectation editor, gestures, refusals and prompts |
 | `hotkeys`      | Keyboard cheat-sheet action labels             |
+| `settings`     | Settings modal pages, and the MCP access page  |
 
 ---
 
@@ -48,7 +49,8 @@ A *new* namespace must be registered in both `src/i18n/index.ts` and `src/i18n/t
    Keys must not change.
 2. In `src/i18n/index.ts`, import the new locale's namespace files, add them to `resources`,
    and drop the hardcoded `lng: "en"` in favour of a language detector or an explicit setting.
-3. Add a way to switch languages (the settings popover in `TopBar.tsx` is the natural home).
+3. Add a way to switch languages (the General page of the settings modal, `SettingsModal`, is the
+   natural home).
 4. If the language is right-to-left, set `dir` on the app shell in `App.tsx` from
    `i18n.dir()`, and re-check any layout that assumes a left leading edge —
    `StatusIconRow` in particular.

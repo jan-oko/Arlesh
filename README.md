@@ -67,7 +67,7 @@ The MCP also allows creating agent *Agentic Expectations*, which can present a q
 The [MCP](https://modelcontextprotocol.io) serves at `http://127.0.0.1:4747/mcp`.
 
 ```
-claude mcp add --transport http arlesh http://127.0.0.1:4747/mcp
+claude mcp add --transport http Arlesh http://127.0.0.1:4747/mcp
 ```
 
 The endpoint only answers while Arlesh is open; with the app closed the server simply fails to

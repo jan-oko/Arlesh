@@ -56,6 +56,7 @@ fn task_row(id: i64, parent_type: &str, parent_id: i64, status: &str) -> Task {
         agentic: None,
         asynchronous: false,
         async_template: None,
+        agentic_brief: None,
         time_scope: None,
         on_scope_exit: None,
         plan: None,
@@ -356,6 +357,10 @@ fn expectation_row(id: i64, parent_type: &str, parent_id: i64) -> crate::tasks::
         tag_ids: Vec::new(),
         position: id,
         is_private: false,
+        agentic: false,
+        agentic_note: None,
+        question: false,
+        answer: None,
         origin: Default::default(),
     }
 }

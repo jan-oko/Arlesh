@@ -27,6 +27,16 @@ export interface Expectation {
   tag_ids: number[];
   position: number;
   is_private: boolean;
+  /** Raised by an agent on the Agentic Task it hangs under: "the agent is waiting on you". The
+   * backend always sends it; absent reads as false. */
+  agentic?: boolean;
+  /** The agent's question, or what it is waiting on. */
+  agentic_note?: string | null;
+  /** Whether an agentic wait is a question for the user (released only with an answer), rather
+   * than a wait on something non-human such as CI. Absent reads as true. */
+  question?: boolean;
+  /** The answer a question wait was, or is being, released with. */
+  answer?: string | null;
   /** Where the row came from; absent reads as `manual`. */
   origin?: Origin;
 }
@@ -38,6 +48,9 @@ export interface CreateExpectationRequest {
   check_every?: DurationSpec;
   check_starting?: string;
   time_scope?: TimeScope;
+  // Refused unless the parent is a Task that reads as Agentic.
+  agentic?: boolean;
+  agentic_note?: string;
 }
 
 export interface UpdateExpectationRequest {
@@ -53,6 +66,11 @@ export interface UpdateExpectationRequest {
   parent_id?: RowId;
   position?: number;
   is_private?: boolean;
+  agentic?: boolean;
+  // Absent = leave unchanged, null = clear, value = set.
+  agentic_note?: string | null;
+  // Absent = leave unchanged, null = clear, value = set. Releasing a question wait needs one.
+  answer?: string | null;
 }
 
 export async function listExpectations(now: string): Promise<Expectation[]> {

@@ -14,6 +14,7 @@ fn delegated(id: NodeId) -> Task {
         agentic: None,
         asynchronous: false,
         async_template: None,
+        agentic_brief: None,
         time_scope: None,
         on_scope_exit: None,
         plan: None,

@@ -14,6 +14,7 @@ import type en_habits from "./locales/en/habits.json";
 import type en_planView from "./locales/en/planView.json";
 import type en_expectation from "./locales/en/expectation.json";
 import type en_stepsView from "./locales/en/stepsView.json";
+import type en_settings from "./locales/en/settings.json";
 
 declare module "i18next" {
   interface CustomTypeOptions {
@@ -35,6 +36,7 @@ declare module "i18next" {
       planView: typeof en_planView;
       expectation: typeof en_expectation;
       stepsView: typeof en_stepsView;
+      settings: typeof en_settings;
     };
   }
 }

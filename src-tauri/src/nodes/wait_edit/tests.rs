@@ -22,6 +22,7 @@ fn check() -> Task {
         agentic: None,
         asynchronous: false,
         async_template: None,
+        agentic_brief: None,
         time_scope: Some(day(20)),
         on_scope_exit: None,
         plan: None,

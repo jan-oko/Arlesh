@@ -35,6 +35,7 @@ use sqlx::pool::PoolConnection;
 use sqlx::{Sqlite, SqliteConnection, Transaction};
 
 use super::DatabasePool;
+use crate::access::AccessOperator;
 use crate::block_reasons::BlockReasonOperator;
 use crate::domains::DomainOperator;
 use crate::flows::FlowOperator;
@@ -162,6 +163,11 @@ impl<M: SessionMode> Db<M> {
     /// keeps SQL out of the rest of the crate.
     fn connection(&mut self) -> &mut SqliteConnection {
         &mut self.handle
+    }
+
+    /// MCP access grants, and the node facts access is resolved from.
+    pub fn access(&mut self) -> AccessOperator<'_> {
+        AccessOperator::new(self.connection())
     }
 
     /// Block reasons — the reasons a task or goal is blocked.

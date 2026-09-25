@@ -155,6 +155,11 @@ pub async fn derive_waits<M: SessionMode>(
             last_check_at: spawned.wait.last_check_at,
             position: i64::MIN,
             is_private: task.is_private,
+            // A derived wait is never one an agent raised.
+            agentic: false,
+            agentic_note: None,
+            question: false,
+            answer: None,
             origin: Origin::SpawnedWait(WaitOrigin {
                 task_id: NodeId::Stored(task_id),
             }),
@@ -202,6 +207,11 @@ fn delegation_wait(task: &Task) -> Expectation {
         last_check_at: None,
         position: i64::MIN,
         is_private: task.is_private,
+        // A derived wait is never one an agent raised.
+        agentic: false,
+        agentic_note: None,
+        question: false,
+        answer: None,
         origin: Origin::DelegationWait(WaitOrigin {
             task_id: task.id.clone(),
         }),
@@ -312,6 +322,11 @@ impl WaitRows {
             last_check_at: progress.last_check_at,
             position: i64::MIN,
             is_private: task.is_private,
+            // A derived wait is never one an agent raised.
+            agentic: false,
+            agentic_note: None,
+            question: false,
+            answer: None,
             origin: Origin::SpawnedWait(WaitOrigin {
                 task_id: task.id.clone(),
             }),
@@ -380,6 +395,7 @@ impl WaitRows {
             agentic: overlay.agentic,
             asynchronous: false,
             async_template: None,
+            agentic_brief: None,
             time_scope: Some(draw.due),
             on_scope_exit: None,
             plan,

@@ -108,6 +108,8 @@ export function useListData(): ListData {
         }
         await reload();
       }, (err: unknown) => {
+        // Refused out loud, as the Mindmap's status click is: an Agentic task with no Spec cannot
+        // start, and a refusal nobody sees reads as a click that did nothing.
         showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
       });
     },

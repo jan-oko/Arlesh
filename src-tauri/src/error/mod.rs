@@ -5,7 +5,7 @@ mod wire;
 pub use wire::{WireError, WireErrorKind};
 
 use crate::{
-    domains::error::DomainError, flows::error::FlowError,
+    access::error::AccessError, domains::error::DomainError, flows::error::FlowError,
     knowledge_base::error::KnowledgeBaseError, scopes::error::ScopeError, tasks::error::TaskError,
     undo::error::UndoError,
 };
@@ -28,6 +28,9 @@ pub enum AppError {
     /// Flow operation error.
     #[error(transparent)]
     Flow(#[from] FlowError),
+    /// MCP access grant error.
+    #[error(transparent)]
+    Access(#[from] AccessError),
     /// Undo Journal context error.
     #[error(transparent)]
     Undo(#[from] UndoError),

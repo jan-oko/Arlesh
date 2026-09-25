@@ -1,3 +1,4 @@
+import type { AgenticBrief } from "@/api/tasks";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -98,9 +99,44 @@ describe("FlowItemEditorModal", () => {
       expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
         template: {
           tag_ids: [4], block_reasons: ["waiting on parts"], archival: "backlog", asynchronous: true, agentic: "yes",
+          // An empty brief section is no brief.
+          agentic_brief: null,
         },
       })),
     );
+  });
+
+  it("saves the brief every occurrence reads, on an agentic task template", async () => {
+    const brief: AgenticBrief = { priority: "A", spec: "Sort the mail", design: "", acceptance: "", notes: "" };
+    const node = mkItem({
+      flowItem: {
+        itemType: "flow_task", flowId: 5, flowInstanceType: "task", flowScopeN: 1, flowScopeKind: "day",
+        cycles: [], dependsOn: [], template: { agentic: true, agentic_brief: brief },
+      },
+    });
+    render(<FlowItemEditorModal {...defaultProps} node={node} />);
+    fireEvent.click(screen.getByRole("button", { name: /agenticBriefSection/ }));
+    fireEvent.change(screen.getByLabelText("agenticSpec"), { target: { value: "Sort the mail and parcels" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
+        template: expect.objectContaining({ agentic_brief: { ...brief, spec: "Sort the mail and parcels" } }),
+      })),
+    );
+  });
+
+  it("offers no brief while the template is not agentic", () => {
+    render(<FlowItemEditorModal {...defaultProps} node={mkItem({
+      flowItem: {
+        itemType: "flow_task", flowId: 5, flowInstanceType: "task", flowScopeN: 1, flowScopeKind: "day",
+        cycles: [], dependsOn: [], template: {},
+      },
+    })} />);
+    // The Agentic control is in Advanced, shut while nothing in it is engaged.
+    expect(screen.queryByRole("button", { name: "agenticYes" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
+    expect(screen.getByRole("button", { name: "agenticYes" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "agenticBriefSection" })).not.toBeInTheDocument();
   });
 
   it("saves a pair planned with its row's toggle, plan and all", async () => {

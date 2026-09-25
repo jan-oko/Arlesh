@@ -5,9 +5,6 @@ import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
-import { useDisplayStore } from "@/stores/use-display-store";
-import { useThemeStore } from "@/stores/use-theme-store";
-import { useCloseToTrayStore } from "@/stores/use-close-to-tray-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import { useFilterDisplay } from "@/hooks/use-filter-display";
@@ -36,9 +33,6 @@ beforeEach(() => {
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
   useViewStore.setState({ view: "mindmap", mindmapOrientation: "horizontal" });
-  useDisplayStore.setState({ asynchronousFirst: false });
-  useThemeStore.setState({ theme: "dark" });
-  useCloseToTrayStore.setState({ closeToTray: true });
   mockUseFilterDisplay.mockReturnValue(EMPTY_DISPLAY);
 });
 
@@ -165,75 +159,25 @@ describe("TopBar", () => {
     });
   });
 
-  describe("settings popover", () => {
-    it("toggles the theme via the Light mode switch", () => {
+  describe("the gear", () => {
+    it("opens the settings modal, and its close button shuts it", () => {
       render(<TopBar />);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
       fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
-      const themeSwitch = screen.getByRole("checkbox", { name: "common:lightMode" });
-      expect(themeSwitch).not.toBeChecked();
-      fireEvent.click(themeSwitch);
-      expect(useThemeStore.getState().theme).toBe("light");
-      expect(themeSwitch).toBeChecked();
+      expect(screen.getByRole("dialog", { name: "title" })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "close" }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
-    it("turns close-to-tray off from its switch, which starts on", () => {
+    it("closes the modal on Escape", () => {
       render(<TopBar />);
       fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
-      const traySwitch = screen.getByRole("checkbox", { name: "common:closeToTray" });
-      expect(traySwitch).toBeChecked();
-      fireEvent.click(traySwitch);
-      expect(useCloseToTrayStore.getState().closeToTray).toBe(false);
-      expect(traySwitch).not.toBeChecked();
-    });
 
-    it("offers the close-to-tray switch in List View too, since the close button is view-agnostic", () => {
-      useViewStore.setState({ view: "list" });
-      render(<TopBar />);
-      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
-      expect(screen.getByRole("checkbox", { name: "common:closeToTray" })).toBeInTheDocument();
-    });
+      fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
 
-    it("flips the mindmap orientation from the vertical-layout switch", () => {
-      render(<TopBar />);
-      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
-      const orientationSwitch = screen.getByRole("checkbox", { name: "common:verticalLayout" });
-      expect(orientationSwitch).not.toBeChecked();
-      fireEvent.click(orientationSwitch);
-      expect(useViewStore.getState().mindmapOrientation).toBe("vertical");
-      expect(orientationSwitch).toBeChecked();
-    });
-
-    it("hides the vertical-layout switch in List View, where it has no meaning", () => {
-      useViewStore.setState({ view: "list" });
-      render(<TopBar />);
-      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
-      expect(screen.queryByRole("checkbox", { name: "common:verticalLayout" })).not.toBeInTheDocument();
-    });
-
-    it("offers no Path icons switch — the path-header glyphs are gone", () => {
-      useViewStore.setState({ view: "list" });
-      render(<TopBar />);
-      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
-      expect(screen.queryByRole("checkbox", { name: "common:pathIcons" })).not.toBeInTheDocument();
-    });
-
-    it("turns Asynchronous first on from a switch that starts off", () => {
-      // Off by default: row order is something the tree already answers, and rearranging it for
-      // everyone would be a change nobody asked for.
-      useViewStore.setState({ view: "list" });
-      render(<TopBar />);
-      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
-      const asyncSwitch = screen.getByRole("checkbox", { name: "common:asynchronousFirst" });
-      expect(asyncSwitch).not.toBeChecked();
-      fireEvent.click(asyncSwitch);
-      expect(useDisplayStore.getState().asynchronousFirst).toBe(true);
-      expect(asyncSwitch).toBeChecked();
-    });
-
-    it("hides Asynchronous first on the Mindmap, whose sibling order is set by hand", () => {
-      render(<TopBar />);
-      fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
-      expect(screen.queryByRole("checkbox", { name: "common:asynchronousFirst" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 
@@ -244,51 +188,5 @@ describe("TopBar", () => {
       render(<TopBar />);
       expect(screen.getByText("urgent")).toBeInTheDocument();
     });
-  });
-});
-
-describe("the habit-history collapse threshold", () => {
-  function openSettings() {
-    render(<TopBar />);
-    fireEvent.click(screen.getByRole("button", { name: "common:settings" }));
-  }
-
-  it("shows the current threshold in the settings popover", () => {
-    useDisplayStore.setState({ habitCollapseThreshold: 5 });
-    openSettings();
-    expect(screen.getByLabelText("collapse.thresholdLabel")).toHaveValue(5);
-  });
-
-  it("stores a new threshold once the field is left", () => {
-    useDisplayStore.setState({ habitCollapseThreshold: 3 });
-    openSettings();
-    const field = screen.getByLabelText("collapse.thresholdLabel");
-    fireEvent.change(field, { target: { value: "7" } });
-    fireEvent.blur(field);
-    expect(useDisplayStore.getState().habitCollapseThreshold).toBe(7);
-  });
-
-  it("refuses a threshold below two — one iteration is not a run", () => {
-    useDisplayStore.setState({ habitCollapseThreshold: 3 });
-    openSettings();
-    const field = screen.getByLabelText("collapse.thresholdLabel");
-    fireEvent.change(field, { target: { value: "1" } });
-    fireEvent.blur(field);
-    expect(useDisplayStore.getState().habitCollapseThreshold).toBe(2);
-  });
-
-  it("keeps the old threshold when the field is left empty", () => {
-    useDisplayStore.setState({ habitCollapseThreshold: 4 });
-    openSettings();
-    const field = screen.getByLabelText("collapse.thresholdLabel");
-    fireEvent.change(field, { target: { value: "" } });
-    fireEvent.blur(field);
-    expect(useDisplayStore.getState().habitCollapseThreshold).toBe(4);
-  });
-
-  it("stays out of List View, which draws no mindmap nodes to fold", () => {
-    useViewStore.setState({ view: "list", mindmapOrientation: "horizontal" });
-    openSettings();
-    expect(screen.queryByLabelText("collapse.thresholdLabel")).not.toBeInTheDocument();
   });
 });

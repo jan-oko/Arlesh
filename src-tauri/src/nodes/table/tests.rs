@@ -28,6 +28,7 @@ fn task(id: NodeId, parent_type: &str, parent_id: NodeId) -> Task {
         agentic: None,
         asynchronous: false,
         async_template: None,
+        agentic_brief: None,
         time_scope: None,
         on_scope_exit: None,
         plan: None,
@@ -101,6 +102,10 @@ fn expectation(id: i64) -> Expectation {
         check_every: None,
         check_starting: None,
         last_check_at: None,
+        agentic: false,
+        agentic_note: None,
+        question: false,
+        answer: None,
         origin: Default::default(),
     }
 }

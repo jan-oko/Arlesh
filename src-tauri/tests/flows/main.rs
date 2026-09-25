@@ -15,6 +15,7 @@
 #[path = "../helpers/mod.rs"]
 mod helpers;
 
+mod agentic_occurrences;
 mod flow_fan_in;
 mod flows;
 mod flows_commands;

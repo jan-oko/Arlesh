@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { computeLayout, computeSubtreeLayout, entityNodeId, flowTargetNodeId, HORIZONTAL_GAP } from "./tree-layout";
+import { computeLayout, computeSubtreeLayout, entityNodeId, flowTargetNodeId, HORIZONTAL_GAP, VERTICAL_GAP } from "./tree-layout";
+import { measureMindmapNode } from "./node-extent";
 import type { MindmapNode } from "./tree-layout";
+import type { TimeScope } from "@/api/time-scope";
+import type { ScopeKey } from "@/api/scopes";
 
 function node(id: string, children: MindmapNode[] = []): MindmapNode {
   return { id, kind: "domain", title: id, position: 0, tagIds: [], children };
@@ -182,5 +185,66 @@ describe("computeSubtreeLayout — vertical orientation", () => {
     const root = node("r", [node("c")]);
     const positions = computeSubtreeLayout(root, new Set(), -1, "vertical");
     expect(positions.get("c")!.y).toBeLessThan(0);
+  });
+});
+
+describe("computeLayout — reserving each node's drawn size", () => {
+  const LONG = "A title long enough to wrap onto several lines of the node box at this depth";
+  const day: ScopeKey = { kind: "day", date: "2026-09-24" };
+  const scope: TimeScope = { start_id: day, end_id: day };
+
+  function task(id: string, extra: Partial<MindmapNode> = {}): MindmapNode {
+    return { id, kind: "task", title: LONG, position: 0, tagIds: [], children: [], ...extra };
+  }
+
+  /** Distance between two siblings on the axis siblings stack along. */
+  function siblingGap(first: MindmapNode, orientation: "horizontal" | "vertical" = "horizontal"): number {
+    const second = task("second");
+    const root = node("root", [node("parent", [first, second])]);
+    const positions = computeLayout(root, new Set(), orientation, measureMindmapNode);
+    const a = positions.get(first.id)!;
+    const b = positions.get("second")!;
+    return orientation === "horizontal" ? Math.abs(b.y - a.y) : Math.abs(b.x - a.x);
+  }
+
+  it("keeps two tall siblings' boxes and badge rows from overlapping", () => {
+    const first = task("first", { mcpVisibleVia: "Arlesh" });
+    const gap = siblingGap(first);
+    const upper = measureMindmapNode(first, 2);
+    const lower = measureMindmapNode(task("second"), 2);
+
+    expect(gap).toBeGreaterThanOrEqual(upper.below + lower.above);
+  });
+
+  it("reserves the same room for a node whose only badge is the MCP antenna as for a calendar", () => {
+    const antennaOnly = siblingGap(task("first", { mcpVisibleVia: "Arlesh" }));
+    const calendarOnly = siblingGap(task("first", { plan: scope }));
+
+    expect(antennaOnly).toBe(calendarOnly);
+    expect(antennaOnly).toBeGreaterThan(siblingGap(task("first")));
+  });
+
+  it("never packs short nodes tighter than the fixed gap", () => {
+    const short = (id: string): MindmapNode => ({ ...node(id), kind: "task" });
+    const root = node("root", [node("parent", [short("a"), short("b")])]);
+    const positions = computeLayout(root, new Set(), "horizontal", measureMindmapNode);
+
+    expect(Math.abs(positions.get("b")!.y - positions.get("a")!.y)).toBe(VERTICAL_GAP);
+  });
+
+  it("spaces the vertical layout's levels so a tall row and its badges clear the next", () => {
+    const parent: MindmapNode = { ...task("parent", { mcpVisibleVia: "Arlesh" }), children: [task("child")] };
+    const root = node("root", [parent]);
+    const positions = computeLayout(root, new Set(), "vertical", measureMindmapNode);
+    const gap = positions.get("child")!.y - positions.get("parent")!.y;
+
+    expect(gap).toBeGreaterThanOrEqual(measureMindmapNode(parent, 1).below + measureMindmapNode(task("child"), 2).above);
+  });
+
+  it("lays out exactly as before when no measure is given", () => {
+    const root = node("root", [node("parent", [task("a", { mcpVisibleVia: "Arlesh" }), task("b")])]);
+    const positions = computeLayout(root, new Set());
+
+    expect(Math.abs(positions.get("b")!.y - positions.get("a")!.y)).toBe(VERTICAL_GAP);
   });
 });

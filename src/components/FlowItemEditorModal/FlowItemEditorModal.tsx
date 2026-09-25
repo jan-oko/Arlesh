@@ -18,6 +18,9 @@ import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField"
 import TagPicker from "@/components/TagPicker/TagPicker";
 import Switch from "@/components/Switch/Switch";
 import AgenticField from "@/components/TaskEditorModal/AgenticField";
+import AgenticBriefFields from "@/components/TaskEditorModal/AgenticBriefFields";
+import type { AgenticBrief } from "@/api/tasks";
+import { EMPTY_AGENTIC_BRIEF, TASK_AGENTIC, isEmptyBrief } from "@/api/tasks";
 import FlowCycleField from "./FlowCycleField";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
@@ -76,6 +79,7 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
   const [isBacklogged, setIsBacklogged] = useState(template.archival === TASK_ARCHIVAL.BACKLOG);
   const [isAsynchronous, setIsAsynchronous] = useState(template.asynchronous === true);
   const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(template.agentic ?? null));
+  const [agenticBrief, setAgenticBrief] = useState<AgenticBrief>(template.agentic_brief ?? EMPTY_AGENTIC_BRIEF);
   const [orphanedCount, setOrphanedCount] = useState<number | null>(null);
   const [depSearch, setDepSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -104,6 +108,9 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
       archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
       asynchronous: isAsynchronous,
       agentic,
+      // The template's brief is what every occurrence reads until it writes its own; an empty
+      // section is no brief.
+      agentic_brief: isEmptyBrief(agenticBrief) ? null : agenticBrief,
     };
   }
 
@@ -225,16 +232,29 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
       )}
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
-      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate}>
+      {/* In Advanced, as in the Task editor: the Agentic control, then the brief every occurrence
+          reads while the template is marked Agentic. */}
+      <EditorAdvanced
+        isPrivate={isPrivate}
+        onPrivateChange={setIsPrivate}
+        startOpen={itemType === "flow_task" && (agentic !== TASK_AGENTIC.INHERIT || !isEmptyBrief(agenticBrief))}
+      >
         {itemType === "flow_task" && (
-          <AgenticField
-            value={agentic}
-            inherited={false}
-            onChange={setAgentic}
-            delegatedToAgent={false}
-            offersDelegate={false}
-            onToggleDelegate={() => undefined}
-          />
+          <>
+            <AgenticField
+              value={agentic}
+              inherited={false}
+              onChange={setAgentic}
+              delegatedToAgent={false}
+              offersDelegate={false}
+              onToggleDelegate={() => undefined}
+            />
+            {agentic === TASK_AGENTIC.YES && (
+              <div role="group" aria-label={t("agenticBriefSection")}>
+                <AgenticBriefFields value={agenticBrief} onChange={setAgenticBrief} />
+              </div>
+            )}
+          </>
         )}
       </EditorAdvanced>
     </EditorModal>
