@@ -1025,16 +1025,29 @@ pub struct Expectation {
     /// Whether this node is private (hidden unless Private Mode is on).
     pub is_private: bool,
     /// Whether an **agent** raised this wait on the agentic Task it hangs under: "the agent is
-    /// waiting on you". Released by the user, like any wait; the note carries the question, and
-    /// the answer is written into it before releasing.
+    /// waiting on you" — or, when it is not a [`question`](Self::question), waiting on something
+    /// else, like CI. Released like any wait; a question wait only with an answer.
     #[serde(default)]
     pub agentic: bool,
-    /// An agentic wait's question — and, once answered, the answer beneath it. `None` for none.
+    /// An agentic wait's note: the agent's question, or what it is waiting for. `None` for none.
     #[serde(default)]
     pub agentic_note: Option<String>,
+    /// Whether an agentic wait is a **question** — the agent asking the user — rather than a wait
+    /// on something non-human, like CI. A question wait is released only with an [`answer`]
+    /// (`Self::answer`). Meaningless on a wait that is not agentic.
+    #[serde(default = "question_by_default")]
+    pub question: bool,
+    /// The answer a question wait was released with, or is being given. `None` for none.
+    #[serde(default)]
+    pub answer: Option<String>,
     /// Where the row came from: made by hand, or derived from a Task (ADR 0008).
     #[serde(default)]
     pub origin: Origin,
+}
+
+/// An agentic wait is a question unless it says otherwise.
+fn question_by_default() -> bool {
+    true
 }
 
 /// Request body for creating an expectation.
@@ -1061,6 +1074,9 @@ pub struct CreateExpectationRequest {
     /// An agentic wait's note.
     #[serde(default)]
     pub agentic_note: Option<String>,
+    /// Whether an agentic wait is a question for the user. Omitted, it is.
+    #[serde(default)]
+    pub question: Option<bool>,
 }
 
 /// Request body for updating an expectation.
@@ -1096,6 +1112,13 @@ pub struct UpdateExpectationRequest {
     /// The agentic note to set (None leaves it unchanged, Some(None) clears it).
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub agentic_note: Option<Option<String>>,
+    /// Whether the agentic wait is a question (None leaves it unchanged).
+    #[serde(default)]
+    pub question: Option<bool>,
+    /// The answer to set (None leaves it unchanged, Some(None) clears it). Releasing a question
+    /// wait needs one, given here or already stored.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub answer: Option<Option<String>>,
 }
 
 #[cfg(test)]

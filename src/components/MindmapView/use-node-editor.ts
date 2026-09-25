@@ -282,6 +282,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         is_private: data.isPrivate,
         agentic: data.agentic,
         agentic_note: data.agenticNote,
+        answer: data.agenticAnswer,
       });
       const before = editorModal.node.tagIds;
       for (const tagId of data.tagIds.filter((id) => !before.includes(id))) await addTagToExpectation(dbId, tagId);

@@ -31,6 +31,7 @@ function board(task: MindmapNode): MindmapNode {
 const SAVE = {
   title: "Reply", status: "pending" as const, checkEvery: null, checkStartingDate: null, timeScope: null,
   tagIds: [], archived: false, isPrivate: false, agentic: false, agenticNote: null,
+  agenticAnswer: null,
 };
 
 describe("useWaitEditor — Shift+E", () => {

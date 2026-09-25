@@ -66,8 +66,15 @@ describe("StatusIconRow", () => {
   });
 
   it("says an agent is waiting on an agentic wait", () => {
-    expect(renderRow(node("expectation", { agentWaiting: { note: "Red or blue?" } }))).toEqual(["agentWaitingNote"]);
-    expect(renderRow(node("expectation", { agentWaiting: { note: null } }))).toEqual(["agentWaiting"]);
+    expect(renderRow(node("expectation", { agentWaiting: { note: "Red or blue?", question: true, answer: null } })))
+      .toEqual(["agentWaitingNote"]);
+    expect(renderRow(node("expectation", { agentWaiting: { note: null, question: true, answer: null } })))
+      .toEqual(["agentWaiting"]);
+  });
+
+  it("says a wait that is not a question waits on something else", () => {
+    expect(renderRow(node("expectation", { agentWaiting: { note: "CI on #86", question: false, answer: null } })))
+      .toEqual(["agentWaitingElsewhereNote"]);
   });
 
   it("says the MCP can see a node, and through which root", () => {

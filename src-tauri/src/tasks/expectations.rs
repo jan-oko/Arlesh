@@ -55,6 +55,8 @@ struct ExpectationRow {
     check_starting: Option<String>,
     agentic: bool,
     agentic_note: Option<String>,
+    agentic_question: bool,
+    agentic_answer: Option<String>,
     /// The latest completed check's time, from `wait_checks` — not the retired column of the
     /// same meaning (0045).
     checked_at: Option<String>,
@@ -94,6 +96,8 @@ impl From<ExpectationRow> for Expectation {
             is_private: row.is_private,
             agentic: row.agentic,
             agentic_note: row.agentic_note,
+            question: row.agentic_question,
+            answer: row.agentic_answer,
             origin: crate::nodes::origin::Origin::Manual,
         }
     }
@@ -128,6 +132,12 @@ struct ExpectationWrite {
     agentic: bool,
     /// Final agentic note.
     agentic_note: Option<String>,
+    /// Final question flag.
+    question: bool,
+    /// Final answer.
+    answer: Option<String>,
+    /// Whether this write releases a question wait, which needs an answer.
+    releases_question: bool,
     /// Whether this write makes the wait agentic or moves an agentic one, and so has to be under an
     /// agentic Task. Not every write to an agentic wait: releasing one whose Task has since stopped
     /// reading as Agentic must still go through.
@@ -151,6 +161,12 @@ impl ExpectationWrite {
             .clone()
             .unwrap_or((stored.parent_type, stored.parent_id.require_stored()?));
         let agentic = request.agentic.unwrap_or(stored.agentic);
+        let question = request.question.unwrap_or(stored.question);
+        let status = request.status.unwrap_or(stored.status);
+        let releases_question = agentic
+            && question
+            && status == ExpectationStatus::Released
+            && stored.status != ExpectationStatus::Released;
         let places_agentic_wait = agentic && (!stored.agentic || reparent.is_some());
         Ok(Self {
             places_agentic_wait,
@@ -162,7 +178,7 @@ impl ExpectationWrite {
                 None => stored.time_scope,
             },
             title: request.title.unwrap_or(stored.title),
-            status: request.status.unwrap_or(stored.status),
+            status,
             archival: request.archival.unwrap_or(stored.archival),
             check_every: match &request.check_every {
                 Some(new_every) => new_every.clone(),
@@ -182,6 +198,12 @@ impl ExpectationWrite {
                 Some(new_note) => new_note,
                 None => stored.agentic_note,
             },
+            question,
+            answer: match request.answer {
+                Some(new_answer) => new_answer,
+                None => stored.answer,
+            },
+            releases_question,
         })
     }
 }
@@ -217,8 +239,8 @@ impl<'session> ExpectationOperator<'session> {
             "INSERT INTO expectations
                 (title, parent_type, parent_id, check_every_n, check_every_kind, check_starting,
                  position, time_scope_start_id, time_scope_end_id, time_scope_duration_n,
-                 time_scope_duration_kind, agentic, agentic_note)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 time_scope_duration_kind, agentic, agentic_note, agentic_question)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -233,6 +255,7 @@ impl<'session> ExpectationOperator<'session> {
         .bind(&ts_kind)
         .bind(request.agentic)
         .bind(&request.agentic_note)
+        .bind(request.question.unwrap_or(true))
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -343,7 +366,8 @@ impl<'session> ExpectationOperator<'session> {
             "UPDATE expectations SET title=?, status=?, archival=?,
                 check_every_n=?, check_every_kind=?, check_starting=?, position=?, is_private=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
-                time_scope_duration_kind=?, agentic=?, agentic_note=? WHERE id=?",
+                time_scope_duration_kind=?, agentic=?, agentic_note=?, agentic_question=?,
+                agentic_answer=? WHERE id=?",
         )
         .bind(&write.title)
         .bind(write.status.as_str())
@@ -359,6 +383,8 @@ impl<'session> ExpectationOperator<'session> {
         .bind(&ts_kind)
         .bind(write.agentic)
         .bind(&write.agentic_note)
+        .bind(write.question)
+        .bind(&write.answer)
         .bind(id.0)
         .execute(&mut *self.connection)
         .await?;
@@ -451,6 +477,13 @@ pub async fn update_expectation(
 ) -> Result<Expectation, TaskError> {
     let stored = db.expectations().get(id).await?;
     let write = ExpectationWrite::merge(stored, request, now())?;
+    let answered = write
+        .answer
+        .as_deref()
+        .is_some_and(|answer| !answer.trim().is_empty());
+    if write.releases_question && !answered {
+        return Err(TaskError::AgenticAnswerMissing);
+    }
     super::scope_rules::validate_expectation_scope(
         db,
         &write.parent_type,

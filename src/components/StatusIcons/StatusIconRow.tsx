@@ -76,11 +76,14 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
       case "agentic":
         return { tooltip: t("agentic"), icon: <AgenticIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
       case "agentWaiting": {
+        // A question waits on the user and takes the accent; a wait on something else, like CI,
+        // is the agent's business and stays quiet.
         const note = node.agentWaiting?.note ?? null;
-        return {
-          tooltip: note === null ? t("agentWaiting") : t("agentWaitingNote", { note }),
-          icon: <AgenticIcon cx={cx} cy={rowY} r={ICON_R} color={ACCENT} />,
-        };
+        const onYou = node.agentWaiting?.question !== false;
+        const tooltip = onYou
+          ? note === null ? t("agentWaiting") : t("agentWaitingNote", { note })
+          : note === null ? t("agentWaitingElsewhere") : t("agentWaitingElsewhereNote", { note });
+        return { tooltip, icon: <AgenticIcon cx={cx} cy={rowY} r={ICON_R} color={onYou ? ACCENT : MUTED} /> };
       }
       case "asynchronous":
         return { tooltip: t("asynchronous"), icon: <AsyncIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };

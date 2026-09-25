@@ -70,6 +70,10 @@ pub enum TaskError {
     /// so there is nowhere else for one to mean anything.
     #[error("an agentic wait must hang directly under a task that reads as agentic")]
     AgenticWaitOutsideAgenticTask,
+    /// A question wait — an agent asking the user — was released with no answer. Only the answer
+    /// closes the question, so a release without one would lose it.
+    #[error("this wait is a question; write the answer before releasing it")]
+    AgenticAnswerMissing,
     /// A write would break a scope-containment invariant (e.g. a Plan wider than its Time Scope).
     #[error("scope containment violation: {0}")]
     ScopeContainment(String),

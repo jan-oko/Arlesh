@@ -822,3 +822,156 @@ async fn every_node_carries_a_short_id_and_the_agentic_query_keeps_a_matchs_wait
     assert_eq!(count("infos"), 1, "and its note");
     assert_eq!(count("commitments"), 0, "a commitment beside it does not");
 }
+
+mod agent_waits {
+    //! Question waits and waits on something else: who releases them, and with what.
+
+    use super::*;
+    use arlesh_lib::commands::expectations as expectation_commands;
+    use arlesh_lib::tasks::model::{ExpectationStatus, UpdateExpectationRequest};
+
+    async fn waits(mcp: &ArleshMcp, operation: params::WaitsOperation) -> CallToolResult {
+        mcp.waits(Parameters(operation))
+            .await
+            .expect("the waits tool returned no result")
+    }
+
+    /// An agentic Task inside a root, and a wait raised on it over the MCP.
+    async fn raised(question: bool) -> (sqlx::SqlitePool, App<MockRuntime>, ArleshMcp, i64) {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        helpers::make_agentic(&pool, board.inside_task).await;
+        let mcp = mcp(&pool);
+        let wait = waits(
+            &mcp,
+            params::WaitsOperation::Raise {
+                task_id: board.inside_task.into(),
+                title: if question {
+                    "Which colour?"
+                } else {
+                    "CI on #86"
+                }
+                .into(),
+                note: None,
+                question,
+            },
+        )
+        .await;
+        let id = succeeded(&wait)["id"].as_i64().expect("a stored wait");
+        assert_eq!(succeeded(&wait)["question"], question);
+        (pool, app, mcp, id)
+    }
+
+    fn release(id: i64, answer: Option<&str>) -> params::WaitsOperation {
+        params::WaitsOperation::Release {
+            id: id.into(),
+            answer: answer.map(str::to_string),
+        }
+    }
+
+    async fn get(mcp: &ArleshMcp, id: i64) -> serde_json::Value {
+        succeeded(&waits(mcp, params::WaitsOperation::Get { id: id.into() }).await).clone()
+    }
+
+    #[tokio::test]
+    async fn an_agent_releases_a_wait_on_something_else_with_no_answer() {
+        let (_pool, _app, mcp, id) = raised(false).await;
+
+        let released = waits(&mcp, release(id, None)).await;
+
+        assert_eq!(succeeded(&released)["status"], "released");
+        assert_eq!(get(&mcp, id).await["status"], "released");
+    }
+
+    #[tokio::test]
+    async fn an_agent_releases_a_question_only_with_the_answer_it_got() {
+        let (_pool, _app, mcp, id) = raised(true).await;
+
+        let bare = waits(&mcp, release(id, None)).await;
+        assert_eq!(refused(&bare), "invalid_request");
+        let blank = waits(&mcp, release(id, Some("  "))).await;
+        assert_eq!(refused(&blank), "invalid_request");
+        assert_eq!(
+            get(&mcp, id).await["status"],
+            "pending",
+            "nothing was written"
+        );
+
+        succeeded(&waits(&mcp, release(id, Some("Blue, the user said"))).await);
+
+        let polled = get(&mcp, id).await;
+        assert_eq!(polled["status"], "released");
+        assert_eq!(polled["question"], true);
+        assert_eq!(polled["answer"], "Blue, the user said");
+    }
+
+    #[tokio::test]
+    async fn the_user_releases_a_question_only_with_an_answer_and_the_agent_reads_it() {
+        let (_pool, app, mcp, id) = raised(true).await;
+        let release_as_user = |answer: Option<&str>| UpdateExpectationRequest {
+            status: Some(ExpectationStatus::Released),
+            answer: answer.map(|answer| Some(answer.to_string())),
+            ..Default::default()
+        };
+
+        let refused_release =
+            expectation_commands::update_expectation(app.state(), id.into(), release_as_user(None))
+                .await
+                .expect_err("a question is not released without its answer");
+        assert_eq!(
+            serde_json::to_value(refused_release).expect("serialise")["kind"],
+            "invalid_request"
+        );
+
+        expectation_commands::update_expectation(
+            app.state(),
+            id.into(),
+            release_as_user(Some("Blue")),
+        )
+        .await
+        .expect("released with its answer");
+
+        let polled = get(&mcp, id).await;
+        assert_eq!(polled["status"], "released");
+        assert_eq!(polled["answer"], "Blue");
+        let snapshot_row = snapshot(&mcp, "expectations")
+            .await
+            .into_iter()
+            .find(|row| row["id"] == id)
+            .expect("the wait is on the board");
+        assert_eq!(snapshot_row["answer"], "Blue");
+        assert_eq!(snapshot_row["question"], true);
+    }
+
+    #[tokio::test]
+    async fn an_agent_cannot_release_a_wait_it_did_not_raise_or_outside_what_it_writes() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        let plain = expectation_commands::create_expectation(
+            app.state(),
+            arlesh_lib::tasks::model::CreateExpectationRequest {
+                title: "Parts arrive".into(),
+                parent_type: "task".into(),
+                parent_id: board.inside_task.into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("create wait")
+        .id
+        .sid();
+        let mcp = mcp(&pool);
+
+        assert_eq!(
+            refused(&waits(&mcp, release(plain, None)).await),
+            "not_permitted"
+        );
+        assert_eq!(
+            get(&mcp, plain).await["agentic"],
+            false,
+            "but it can still see it"
+        );
+    }
+}

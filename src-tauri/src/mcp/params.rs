@@ -456,8 +456,8 @@ pub struct BeadsLink {
 #[serde(tag = "operation", rename_all = "snake_case")]
 #[schemars(extend("type" = "object"))]
 pub enum WaitsOperation {
-    /// Raises an agentic wait under an Agentic Task the MCP can write: "the agent is waiting on
-    /// you". The user answers by writing into the note and releasing the wait.
+    /// Raises a **question** wait under an Agentic Task the MCP can write: "the agent is waiting
+    /// on you". The same as `raise` with `question: true`.
     Ask {
         /// The Agentic Task the agent is working, which the wait hangs under.
         task_id: NodeIdParam,
@@ -467,4 +467,38 @@ pub enum WaitsOperation {
         #[serde(default)]
         note: Option<String>,
     },
+    /// Raises an agentic wait under an Agentic Task the MCP can write — a question for the user,
+    /// or (`question: false`) a wait on something non-human, like CI.
+    Raise {
+        /// The Agentic Task the agent is working, which the wait hangs under.
+        task_id: NodeIdParam,
+        /// What the agent is waiting for, as the wait's title.
+        title: String,
+        /// The question, or what is being waited on.
+        #[serde(default)]
+        note: Option<String>,
+        /// `true` (the default) when the agent is asking the user, `false` when it waits on
+        /// something else.
+        #[serde(default = "question_by_default")]
+        question: bool,
+    },
+    /// Releases an agentic wait under an Agentic Task the MCP can write. A question wait needs
+    /// `answer` — the one the agent got, from the user in its own session — and is refused
+    /// without one; a wait that is not a question needs none.
+    Release {
+        /// The wait: a row id or a short id.
+        id: NodeIdParam,
+        /// The answer, for a question wait.
+        #[serde(default)]
+        answer: Option<String>,
+    },
+    /// One wait's status, question flag, note and answer — a cheap poll for the user's answer.
+    Get {
+        /// The wait: a row id or a short id.
+        id: NodeIdParam,
+    },
+}
+
+fn question_by_default() -> bool {
+    true
 }

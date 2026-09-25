@@ -29,8 +29,10 @@ export interface ExpectationSaveData {
   /** Whether an agent raised this wait on the Agentic Task above it. Refused by the backend
    * anywhere but directly under one. */
   agentic: boolean;
-  /** The agent's question, with the user's answer written beneath it; `null` for none. */
+  /** The agent's question, or what it is waiting on; `null` for none. */
   agenticNote: string | null;
+  /** The answer to a question wait; `null` for none. Releasing a question wait needs one. */
+  agenticAnswer: string | null;
 }
 
 const STATUSES: readonly ExpectationStatus[] = [EXPECTATION_STATUS.PENDING, EXPECTATION_STATUS.RELEASED];
@@ -73,6 +75,10 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [agentic, setAgentic] = useState(node.agentWaiting !== undefined);
   const [agenticNote, setAgenticNote] = useState(node.agentWaiting?.note ?? "");
+  const [agenticAnswer, setAgenticAnswer] = useState(node.agentWaiting?.answer ?? "");
+  // A question for the user unless the agent said otherwise — and a wait the user makes agentic
+  // here is one too, as the backend defaults it.
+  const isQuestion = node.agentWaiting?.question !== false;
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -87,6 +93,7 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
       await onSave({
         title: title.trim(), status, checkEvery, checkStartingDate, timeScope, tagIds, archived, isPrivate,
         agentic, agenticNote: agenticNote.trim() === "" ? null : agenticNote,
+        agenticAnswer: agenticAnswer.trim() === "" ? null : agenticAnswer,
       });
     } catch (err) {
       setSaveError(getErrorMessage(err));
@@ -131,17 +138,28 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
           ))}
         </div>
       </div>
-      {/* An agent's question comes first when there is one: it is what the wait is for, and
-          answering it — the answer written beneath, then Released above — is what it asks. */}
+      {/* An agent's note comes first when there is one: it is what the wait is for. A question
+          wait then takes the user's answer, in a field of its own — releasing it needs one. */}
       {agentic && (
         <label className={styles.label}>
-          {t("expectation:agentNote")}
+          {isQuestion ? t("expectation:agentNote") : t("expectation:agentWaitNote")}
           <textarea
             className={styles.textarea}
             rows={4}
             value={agenticNote}
-            placeholder={t("expectation:agentNoteHint")}
             onChange={(e) => setAgenticNote(e.target.value)}
+          />
+        </label>
+      )}
+      {agentic && isQuestion && (
+        <label className={styles.label}>
+          {t("expectation:agentAnswer")}
+          <textarea
+            className={styles.textarea}
+            rows={3}
+            value={agenticAnswer}
+            placeholder={t("expectation:agentAnswerHint")}
+            onChange={(e) => setAgenticAnswer(e.target.value)}
           />
         </label>
       )}

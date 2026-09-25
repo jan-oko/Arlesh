@@ -8,6 +8,8 @@
   from the status control, `Enter`, the editor and every view.
 - **An agent can wait on you.** An agent working an agentic task through the MCP can raise a wait
   under it with its question in a note — "the agent is waiting on you". It shows among your waits
-  with the bot-head badge, the question as its tooltip, and in the Expectations list. Answer by
-  writing into the note in the wait's editor and releasing it. Only a wait directly under an
-  agentic task can be one.
+  with the bot-head badge in the accent colour, the question as its tooltip, and in the
+  Expectations list. Answer it in the wait's editor, in its own Answer field: a question can't be
+  released without an answer, from anywhere. An agent can also wait on something other than you,
+  such as CI; that wait wears a quieter badge and the agent releases it itself when it is done.
+  Only a wait directly under an agentic task can be one.

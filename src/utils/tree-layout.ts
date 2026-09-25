@@ -270,7 +270,7 @@ export interface MindmapNode {
   /** Present on an **agentic wait** (Expectations only): one an agent raised on the Agentic Task
    * it hangs under — "the agent is waiting on you". `note` is its question, and the answer once
    * the user writes one in. */
-  agentWaiting?: { note: string | null };
+  agentWaiting?: { note: string | null; question: boolean; answer: string | null };
   /** The stored Expectations this Task depends on, by row id (Tasks only). */
   expectationDependencyIds?: number[];
   /** Present on a Habit **iteration root** — what the Mindmap's collapse of passed iterations

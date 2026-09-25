@@ -2,8 +2,8 @@
 -- docs/spec/resources.md, "Tasks" and "Expectations".
 --
 -- 1. **The flag is unchanged** (`tasks.agentic`, three-state, inherited). What is new is the
---    **brief**: the Task's own, never inherited, one row per Task that has one. Priority P0–P4
---    (stored 0–4), Spec, Design, Acceptance criteria and Notes. It is what an agent reads in place
+--    **brief**: the Task's own, never inherited, one row per Task that has one. Priority MW/A/B/C
+--    (stored 0–3), Spec, Design, Acceptance criteria and Notes. It is what an agent reads in place
 --    of `bd show`, and Spec is what a Task that reads as Agentic must have before it can be
 --    started. A separate table rather than columns, like `task_async_templates`: a Task without a
 --    brief stores nothing, and the row goes with its Task.
@@ -23,6 +23,12 @@ CREATE TABLE task_agentic_briefs (
 
 ALTER TABLE expectations ADD COLUMN agentic INTEGER NOT NULL DEFAULT 0 CHECK (agentic IN (0, 1));
 ALTER TABLE expectations ADD COLUMN agentic_note TEXT;
+-- 3. An agentic wait is a **question** (the agent is asking the user; 1, the default) or not (the
+--    agent waits on something non-human, like CI; 0). A question wait is released only with an
+--    **answer**, its own text beside the note, which stays the agent's question or context.
+ALTER TABLE expectations ADD COLUMN agentic_question INTEGER NOT NULL DEFAULT 1
+    CHECK (agentic_question IN (0, 1));
+ALTER TABLE expectations ADD COLUMN agentic_answer TEXT;
 
 -- Undo-journal triggers, straight from scripts/generate-undo-triggers.sh
 DROP TRIGGER IF EXISTS undo_journal_expectations_insert;
@@ -30,19 +36,19 @@ DROP TRIGGER IF EXISTS undo_journal_expectations_update;
 DROP TRIGGER IF EXISTS undo_journal_expectations_delete;
 CREATE TRIGGER undo_journal_expectations_insert AFTER INSERT ON expectations BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
-    SELECT gesture_id, source, 'expectations', new.rowid, 'insert', NULL, json_object('id', new.id, 'title', new.title, 'parent_type', new.parent_type, 'parent_id', new.parent_id, 'status', new.status, 'archival', new.archival, 'position', new.position, 'is_private', new.is_private, 'time_scope_start_id', new.time_scope_start_id, 'time_scope_end_id', new.time_scope_end_id, 'time_scope_duration_n', new.time_scope_duration_n, 'time_scope_duration_kind', new.time_scope_duration_kind, 'check_every_n', new.check_every_n, 'check_every_kind', new.check_every_kind, 'check_starting', new.check_starting, 'last_check_at', new.last_check_at, 'agentic', new.agentic, 'agentic_note', new.agentic_note), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    SELECT gesture_id, source, 'expectations', new.rowid, 'insert', NULL, json_object('id', new.id, 'title', new.title, 'parent_type', new.parent_type, 'parent_id', new.parent_id, 'status', new.status, 'archival', new.archival, 'position', new.position, 'is_private', new.is_private, 'time_scope_start_id', new.time_scope_start_id, 'time_scope_end_id', new.time_scope_end_id, 'time_scope_duration_n', new.time_scope_duration_n, 'time_scope_duration_kind', new.time_scope_duration_kind, 'check_every_n', new.check_every_n, 'check_every_kind', new.check_every_kind, 'check_starting', new.check_starting, 'last_check_at', new.last_check_at, 'agentic', new.agentic, 'agentic_note', new.agentic_note, 'agentic_question', new.agentic_question, 'agentic_answer', new.agentic_answer), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 
 CREATE TRIGGER undo_journal_expectations_update AFTER UPDATE ON expectations BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
-    SELECT gesture_id, source, 'expectations', new.rowid, 'update', json_object('id', old.id, 'title', old.title, 'parent_type', old.parent_type, 'parent_id', old.parent_id, 'status', old.status, 'archival', old.archival, 'position', old.position, 'is_private', old.is_private, 'time_scope_start_id', old.time_scope_start_id, 'time_scope_end_id', old.time_scope_end_id, 'time_scope_duration_n', old.time_scope_duration_n, 'time_scope_duration_kind', old.time_scope_duration_kind, 'check_every_n', old.check_every_n, 'check_every_kind', old.check_every_kind, 'check_starting', old.check_starting, 'last_check_at', old.last_check_at, 'agentic', old.agentic, 'agentic_note', old.agentic_note), json_object('id', new.id, 'title', new.title, 'parent_type', new.parent_type, 'parent_id', new.parent_id, 'status', new.status, 'archival', new.archival, 'position', new.position, 'is_private', new.is_private, 'time_scope_start_id', new.time_scope_start_id, 'time_scope_end_id', new.time_scope_end_id, 'time_scope_duration_n', new.time_scope_duration_n, 'time_scope_duration_kind', new.time_scope_duration_kind, 'check_every_n', new.check_every_n, 'check_every_kind', new.check_every_kind, 'check_starting', new.check_starting, 'last_check_at', new.last_check_at, 'agentic', new.agentic, 'agentic_note', new.agentic_note), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    SELECT gesture_id, source, 'expectations', new.rowid, 'update', json_object('id', old.id, 'title', old.title, 'parent_type', old.parent_type, 'parent_id', old.parent_id, 'status', old.status, 'archival', old.archival, 'position', old.position, 'is_private', old.is_private, 'time_scope_start_id', old.time_scope_start_id, 'time_scope_end_id', old.time_scope_end_id, 'time_scope_duration_n', old.time_scope_duration_n, 'time_scope_duration_kind', old.time_scope_duration_kind, 'check_every_n', old.check_every_n, 'check_every_kind', old.check_every_kind, 'check_starting', old.check_starting, 'last_check_at', old.last_check_at, 'agentic', old.agentic, 'agentic_note', old.agentic_note, 'agentic_question', old.agentic_question, 'agentic_answer', old.agentic_answer), json_object('id', new.id, 'title', new.title, 'parent_type', new.parent_type, 'parent_id', new.parent_id, 'status', new.status, 'archival', new.archival, 'position', new.position, 'is_private', new.is_private, 'time_scope_start_id', new.time_scope_start_id, 'time_scope_end_id', new.time_scope_end_id, 'time_scope_duration_n', new.time_scope_duration_n, 'time_scope_duration_kind', new.time_scope_duration_kind, 'check_every_n', new.check_every_n, 'check_every_kind', new.check_every_kind, 'check_starting', new.check_starting, 'last_check_at', new.last_check_at, 'agentic', new.agentic, 'agentic_note', new.agentic_note, 'agentic_question', new.agentic_question, 'agentic_answer', new.agentic_answer), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 
 CREATE TRIGGER undo_journal_expectations_delete AFTER DELETE ON expectations BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
-    SELECT gesture_id, source, 'expectations', old.rowid, 'delete', json_object('id', old.id, 'title', old.title, 'parent_type', old.parent_type, 'parent_id', old.parent_id, 'status', old.status, 'archival', old.archival, 'position', old.position, 'is_private', old.is_private, 'time_scope_start_id', old.time_scope_start_id, 'time_scope_end_id', old.time_scope_end_id, 'time_scope_duration_n', old.time_scope_duration_n, 'time_scope_duration_kind', old.time_scope_duration_kind, 'check_every_n', old.check_every_n, 'check_every_kind', old.check_every_kind, 'check_starting', old.check_starting, 'last_check_at', old.last_check_at, 'agentic', old.agentic, 'agentic_note', old.agentic_note), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    SELECT gesture_id, source, 'expectations', old.rowid, 'delete', json_object('id', old.id, 'title', old.title, 'parent_type', old.parent_type, 'parent_id', old.parent_id, 'status', old.status, 'archival', old.archival, 'position', old.position, 'is_private', old.is_private, 'time_scope_start_id', old.time_scope_start_id, 'time_scope_end_id', old.time_scope_end_id, 'time_scope_duration_n', old.time_scope_duration_n, 'time_scope_duration_kind', old.time_scope_duration_kind, 'check_every_n', old.check_every_n, 'check_every_kind', old.check_every_kind, 'check_starting', old.check_starting, 'last_check_at', old.last_check_at, 'agentic', old.agentic, 'agentic_note', old.agentic_note, 'agentic_question', old.agentic_question, 'agentic_answer', old.agentic_answer), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 

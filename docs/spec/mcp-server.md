@@ -134,7 +134,7 @@ definition it loads.
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
 | `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?)`, `update(id, title?, brief?, backlog?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`. See *Writing tasks* below |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
-| `arlesh_waits` | `ask(task_id, title, note?)` — raises an agentic wait under an Agentic Task the MCP can write, the question in `note`. See *Agentic waits* below |
+| `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`. See *Agentic waits* below |
 | `arlesh_beads` | `set(node_type, node_id, beads_id)` — a write; `node_type` is `task`, `goal`, `commitment` or `project`, and the item must be writable (an Agentic Task inside a root). See below |
 
 `arlesh_snapshot.load` is the entry point and covers the common case. The other reads
@@ -305,17 +305,29 @@ listed, never read as the wrong node. An agent that needs an id to stay good hol
 
 ## Agentic waits
 
-`arlesh_waits.ask` is how an agent says it is **waiting on the user** — the replacement for `bd
-human`. It creates an Expectation with `agentic: true` directly under the Agentic Task the agent is
-working, titled with what it is waiting for and with the full question in `agentic_note`. It needs
-**write** access: the Task must be an Agentic Task inside an MCP root, or the call is refused as
-`not_permitted`. Like `arlesh_beads` it is transactional and journaled as the **agent's** write, so
-it never enters the user's Undo Stack, and every open window is told.
+`arlesh_waits` is how an agent waits — the replacement for `bd human`. Every operation takes ids as
+row ids or short ids.
 
-The user answers by writing the answer into the note, beneath the question, and **releasing** the
-wait. The agent reads the answer off the wait in the snapshot's `expectations` — `status:
-released` and the note — and nothing else is needed to close it. A wait blocks nothing unless a
-Task depends on it.
+- **`raise(task_id, title, note?, question?)`** creates an Expectation with `agentic: true`
+  directly under the Agentic Task the agent is working, titled with what it waits for and with the
+  question or context in `agentic_note`. `question` (default `true`) says it is **waiting on the
+  user**; `false` says it waits on something non-human, like CI. **`ask`** is `raise` as a
+  question, kept as the short form.
+- **`release(id, answer?)`** releases an agentic wait under a Task the agent can write. A
+  **question** wait needs a non-blank `answer` — one the agent got from the user in its own
+  session — and is refused (`invalid_request`) without one, writing nothing. A wait that is not a
+  question needs none. A wait that is not agentic is refused as `not_permitted`.
+- **`get(id)`** returns one visible wait's `status`, `question`, `note` and `answer` (with its
+  short and full id), so an agent can poll for the user's answer without loading the snapshot.
+
+`raise` and `release` need **write** access to the Task: an Agentic Task inside an MCP root, or the
+call is refused as `not_permitted`. Like `arlesh_beads` they are transactional and journaled as the
+**agent's** write, so they never enter the user's Undo Stack, and every open window is told.
+
+The user answers a question wait in the app by writing the **answer** in its editor and releasing
+it; the app refuses the release without one, from every release path. The agent reads the answer
+with `get`, or off the snapshot's `expectations`, which carry `question` and `answer`. A wait blocks
+nothing unless a Task depends on it.
 
 ## Issue links
 

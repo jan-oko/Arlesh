@@ -494,7 +494,13 @@ export function buildTree(
       position: expectation.position,
       isPrivate: expectation.is_private,
       ...(expectation.agentic === true
-        ? { agentWaiting: { note: expectation.agentic_note ?? null } }
+        ? {
+          agentWaiting: {
+            note: expectation.agentic_note ?? null,
+            question: expectation.question !== false,
+            answer: expectation.answer ?? null,
+          },
+        }
         : {}),
       tagIds: expectation.tag_ids,
       children: [],

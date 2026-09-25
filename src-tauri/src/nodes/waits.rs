@@ -158,6 +158,8 @@ pub async fn derive_waits<M: SessionMode>(
             // A derived wait is never one an agent raised.
             agentic: false,
             agentic_note: None,
+            question: false,
+            answer: None,
             origin: Origin::SpawnedWait(WaitOrigin {
                 task_id: NodeId::Stored(task_id),
             }),
@@ -208,6 +210,8 @@ fn delegation_wait(task: &Task) -> Expectation {
         // A derived wait is never one an agent raised.
         agentic: false,
         agentic_note: None,
+        question: false,
+        answer: None,
         origin: Origin::DelegationWait(WaitOrigin {
             task_id: task.id.clone(),
         }),
@@ -321,6 +325,8 @@ impl WaitRows {
             // A derived wait is never one an agent raised.
             agentic: false,
             agentic_note: None,
+            question: false,
+            answer: None,
             origin: Origin::SpawnedWait(WaitOrigin {
                 task_id: task.id.clone(),
             }),

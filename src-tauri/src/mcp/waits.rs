@@ -1,42 +1,72 @@
-//! The waits an agent raises: the one write besides issue links.
+//! The waits an agent raises, releases and watches.
 //!
-//! An agent working an Agentic Task that needs something only the user can give — a decision, a
-//! credential, an answer — raises an **agentic wait** under that Task instead of stopping in the
-//! dark. It is an ordinary Expectation with the agentic flag set and the question in its note, so
-//! it shows wherever waits show, and the user answers it the way any wait is answered: by writing
-//! the answer into the note and releasing it. See `docs/spec/resources.md`, "Expectations".
+//! An agent working an Agentic Task that needs something it cannot get itself raises an **agentic
+//! wait** under that Task instead of stopping in the dark. It is an ordinary Expectation with the
+//! agentic flag set, so it shows wherever waits show. A **question** wait asks the user — "the
+//! agent is waiting on you" — and is released only with an **answer**: the user's, written in the
+//! app, or one the agent got from the user in its own session. A wait that is not a question waits
+//! on something non-human, like CI, and the agent releases it when that is done. See
+//! `docs/spec/resources.md`, "Expectations".
 
 use rmcp::{
     handler::server::wrapper::Parameters,
     model::{CallToolResult, ErrorData},
     tool, tool_router,
 };
+use serde::Serialize;
 
 use super::{
     access,
-    lookup::{found, Board},
-    params::WaitsOperation,
+    ids::full_id,
+    lookup::{found, Answer, Board},
+    params::{NodeIdParam, WaitsOperation},
     result,
     result::attempt,
     ArleshMcp,
 };
 use crate::{
-    access::model::AccessLevel, tasks::model::CreateExpectationRequest, undo::model::WriteSource,
+    access::model::{AccessLevel, NodeTable},
+    nodes::id::NodeId,
+    tasks::model::{
+        CreateExpectationRequest, Expectation, ExpectationStatus, UpdateExpectationRequest,
+    },
+    undo::model::WriteSource,
 };
+
+/// What `get` answers: the wait as an agent polls it.
+#[derive(Serialize)]
+struct WaitView<'wait> {
+    id: &'wait NodeId,
+    full_id: String,
+    short_id: Option<&'wait str>,
+    title: &'wait str,
+    status: ExpectationStatus,
+    agentic: bool,
+    question: bool,
+    note: Option<&'wait str>,
+    answer: Option<&'wait str>,
+}
 
 #[tool_router(router = waits_router, vis = "pub(super)")]
 impl ArleshMcp {
-    /// Raises an agentic wait — "the agent is waiting on you" — under an Agentic Task you can
-    /// write, with your question in `note`.
+    /// The waits an agent raises under an Agentic Task it can write, releases and watches.
     ///
-    /// Use it when the work needs something only the user can give. The wait is Pending until the
-    /// user answers: they write the answer into the note and release it, and both show in the
-    /// snapshot's `expectations` (`status: released`, `agentic_note`). A task you are waiting on
-    /// is not blocked by it unless the user makes it a dependency.
+    /// `raise` hangs a wait under the Task: a **question** for the user (`question: true`, the
+    /// default — "the agent is waiting on you") or, with `question: false`, a wait on something
+    /// non-human, like CI. `ask` is `raise` as a question. The note carries the question, or what
+    /// is being waited on.
     ///
-    /// `task_id` is a row id or a short id, and may name a Habit occurrence. Needs **write**
-    /// access: the task must be an Agentic Task inside an MCP root, or the call is refused as
-    /// `not_permitted`.
+    /// `release` releases an agentic wait under a Task you can write. A question wait needs an
+    /// `answer` — ask the user yourself if you can, and record what they said — and is refused
+    /// without one; a non-question wait needs none. The user can release either from the app, a
+    /// question only with an answer too.
+    ///
+    /// `get` returns one wait's `status`, `question`, `note` and `answer` — poll it to see whether
+    /// the user has answered, without loading the whole snapshot. The snapshot's `expectations`
+    /// carry the same fields.
+    ///
+    /// Ids are row ids or short ids. A Task you cannot write, or a wait under one, is refused as
+    /// `not_permitted`; `get` needs only that you can see the wait.
     #[tool(
         name = "arlesh_waits",
         annotations(
@@ -49,12 +79,6 @@ impl ArleshMcp {
         &self,
         Parameters(operation): Parameters<WaitsOperation>,
     ) -> Result<CallToolResult, ErrorData> {
-        let WaitsOperation::Ask {
-            task_id,
-            title,
-            note,
-        } = operation;
-
         // Transactional and tagged, for the reasons `beads` gives: the access check and the write
         // see one board, and only these statements are journaled as the agent's.
         let mut db = match self.factory.begin().await {
@@ -63,6 +87,47 @@ impl ArleshMcp {
         };
         let now = self.now();
         let board = attempt!(Board::read(&mut db, now).await);
+
+        let (task_id, title, note, question) = match operation {
+            WaitsOperation::Get { id } => return get(&board, &id),
+            WaitsOperation::Release { id, answer } => {
+                let id = found!(board.resolve(&id, "expectation"));
+                let wait = found!(released_wait(&board, &id));
+                if !attempt!(board.writes_task(&mut db, &wait.parent_id, now).await) {
+                    return access::refuse("expectation", &id, AccessLevel::Write);
+                }
+                let user_source = attempt!(db.undo().set_source(WriteSource::Mcp).await);
+                let released = attempt!(
+                    crate::nodes::write::update_expectation(
+                        &mut db,
+                        &id,
+                        UpdateExpectationRequest {
+                            status: Some(ExpectationStatus::Released),
+                            answer: answer.map(Some),
+                            ..Default::default()
+                        },
+                        now,
+                    )
+                    .await
+                );
+                attempt!(db.undo().set_source(user_source).await);
+                attempt!(db.commit().await);
+                (self.announce)(None);
+                return result::ok(released);
+            }
+            WaitsOperation::Ask {
+                task_id,
+                title,
+                note,
+            } => (task_id, title, note, true),
+            WaitsOperation::Raise {
+                task_id,
+                title,
+                note,
+                question,
+            } => (task_id, title, note, question),
+        };
+
         let task_id = found!(board.resolve(&task_id, "task"));
         if !attempt!(board.writes_task(&mut db, &task_id, now).await) {
             return access::refuse("task", &task_id, AccessLevel::Write);
@@ -77,6 +142,7 @@ impl ArleshMcp {
                 parent_id: task_id,
                 agentic: true,
                 agentic_note: note,
+                question: Some(question),
                 ..Default::default()
             },
             now,
@@ -89,5 +155,35 @@ impl ArleshMcp {
         (self.announce)(None);
 
         result::ok(wait)
+    }
+}
+
+/// `get`: one visible wait, as an agent polls it.
+fn get(board: &Board, id: &NodeIdParam) -> Answer {
+    let id = found!(board.resolve(id, "expectation"));
+    let Some(wait) = board.load.expectations.iter().find(|wait| wait.id == id) else {
+        return access::refuse("expectation", &id, AccessLevel::Read);
+    };
+    result::ok(WaitView {
+        id: &wait.id,
+        full_id: full_id(NodeTable::Expectation, &wait.id),
+        short_id: board.names.short_id(NodeTable::Expectation, &wait.id),
+        title: &wait.title,
+        status: wait.status,
+        agentic: wait.agentic,
+        question: wait.question,
+        note: wait.agentic_note.as_deref(),
+        answer: wait.answer.as_deref(),
+    })
+}
+
+/// The visible agentic wait `id` names — the only kind an agent releases.
+fn released_wait<'board>(board: &'board Board, id: &NodeId) -> Result<&'board Expectation, Answer> {
+    match board.load.expectations.iter().find(|wait| &wait.id == id) {
+        Some(wait) if wait.agentic && wait.parent_type == "task" => Ok(wait),
+        _ => Err(result::not_permitted(format!(
+            "expectation {id} is not an agentic wait inside the MCP roots, so it cannot be \
+             released by an agent"
+        ))),
     }
 }

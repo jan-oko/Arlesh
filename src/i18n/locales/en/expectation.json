@@ -24,5 +24,7 @@
   "checkStartingNow": "From when it is saved",
   "agentWaiting": "An agent is waiting on you",
   "agentNote": "The agent's question",
-  "agentNoteHint": "Write your answer below the question, then release the wait"
+  "agentWaitNote": "What the agent is waiting on",
+  "agentAnswer": "Your answer",
+  "agentAnswerHint": "Needed before the wait can be released"
 }
