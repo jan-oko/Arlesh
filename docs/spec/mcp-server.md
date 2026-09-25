@@ -153,11 +153,14 @@ that filled in null defaults would otherwise clear every field it did not mentio
 fields have one name everywhere — `agentic_note`, `question`, `answer` — in the snapshot and in
 every `arlesh_waits` operation, `get` returning the same row.
 
-**Domain-table parents.** Aspect, Project, Domain and Tag are subtypes of one table, and a parent
-reference to one is reported by the row's **true subtype**, whatever spelling it was stored with.
-On input, any of the four names (or `domain`) is accepted for a domain-table parent — they name the
-same table, so none is wrong — and the row is written under the parent's true subtype. A name of
-another kind (`goal` for a domain row) is not a domain-table name and is resolved as that kind.
+**Domain-table parents.** Aspect, Project, Domain and Tag are subtypes of one table. A parent
+reference to one is reported **one way**, derived from the parent row rather than from whatever
+was stored: `project` when the parent is a Project, `domain` for any other subtype — the spelling
+the Task, Goal and Commitment tables' constraints allow and the app writes. The parent's own
+subtype is on its row in `domains`. On input, any of the four subtype names or `domain` is accepted
+for a domain-table parent — they name the same table, so none is wrong — and the row is written
+with that one spelling. A name of another kind (`goal` for a domain row) is not a domain-table
+name and is resolved as that kind.
 
 `arlesh_snapshot.load` is the entry point and covers the common case. The other reads
 exist for what it does not carry: the knowledge base, scope resolution, a task's dependency-derived
@@ -206,8 +209,8 @@ details an agent reads the payload by.
   `question` and `answer` (see *Agentic waits*).
 - **Delegation.** A task's `delegate_to` is `null`, `{"kind": "person", "id": N}` (read the Person
   with `arlesh_kb`) or `{"kind": "agent"}`, independent of `agentic`.
-- **Parents.** A node under a domain-table row names its parent by the row's **true subtype**
-  (`aspect`, `project`, `domain` or `tag`), whatever spelling it was stored with.
+- **Parents.** A node under a domain-table row names its parent `project` (a Project) or `domain`
+  (any other subtype), derived from the parent row; its subtype is on that row in `domains`.
 
 ## Filtering a read
 

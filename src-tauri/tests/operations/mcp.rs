@@ -233,8 +233,7 @@ async fn seed(app: &tauri::App<tauri::test::MockRuntime>) -> i64 {
         app.state(),
         CreateGoalRequest {
             title: "Ship".into(),
-            // Domain 1 is an Aspect: the MCP reports a parent by its true subtype.
-            parent_type: "aspect".into(),
+            parent_type: "domain".into(),
             parent_id: 1.into(),
             ..Default::default()
         },

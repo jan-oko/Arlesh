@@ -283,7 +283,7 @@ impl NodeNames {
     }
 
     /// Stamps a node's JSON with the ids it goes by — `short_id` and `full_id` beside its `id` —
-    /// and names a domain-table parent by its true subtype, whatever spelling it was stored with.
+    /// and names a domain-table parent the one way the board does: see [`parent_spelling`].
     /// A node this list does not hold, such as one written a moment ago, gets the short id it
     /// would have among them.
     pub fn stamp(&self, item: &mut Value, table: NodeTable) {
@@ -312,7 +312,10 @@ impl NodeNames {
             == Some(NodeTable::Domain);
         if let (true, Some(subtype)) = (under_domain, parent_row.and_then(|row| self.subtype(row)))
         {
-            fields.insert("parent_type".into(), Value::String(subtype.to_string()));
+            fields.insert(
+                "parent_type".into(),
+                Value::String(parent_spelling(subtype).to_string()),
+            );
         }
     }
 
@@ -393,6 +396,17 @@ fn lettered(hex: &str, unique: usize, full: &str) -> String {
     match hex.as_bytes()[length..].iter().position(is_letter) {
         Some(offset) => hex[..length + offset + 1].to_string(),
         None => full.to_string(),
+    }
+}
+
+/// How a parent reference names a domain-table row: `project` for a Project, `domain` for any
+/// other subtype (Aspect, Domain, Tag). It is the spelling the Task, Goal and Commitment tables'
+/// CHECK constraints allow and the app writes, so it is what the MCP writes and reports, whatever
+/// spelling a row was stored or asked with.
+pub(super) fn parent_spelling(subtype: &str) -> &'static str {
+    match subtype {
+        "project" => "project",
+        _ => "domain",
     }
 }
 

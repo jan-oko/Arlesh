@@ -10,7 +10,7 @@ use rmcp::model::{CallToolResult, ErrorData};
 
 use super::{
     access,
-    ids::{IdRefusal, NodeNames},
+    ids::{parent_spelling, IdRefusal, NodeNames},
     params::NodeIdParam,
     result,
 };
@@ -62,14 +62,15 @@ impl Board {
         Ok(Self { map, load, names })
     }
 
-    /// `parent_type` as a Task stores it: a domain-table parent by its true subtype, whichever of
-    /// the four spellings (or `domain`) the caller used — they name the same table, so all are
-    /// accepted — and any other kind as given.
+    /// `parent_type` as a Task stores it. A domain-table parent may be asked for by any of the
+    /// four subtype names or `domain` — they name the same table, so all are accepted — and is
+    /// written as the board spells it ([`parent_spelling`]); any other kind as given.
     pub fn stored_parent_type(&self, parent_type: &str, parent: &NodeId) -> String {
         match (NodeTable::from_reference(parent_type), parent) {
-            (Some(NodeTable::Domain), NodeId::Stored(row)) => {
-                self.names.subtype(*row).unwrap_or(parent_type).to_string()
-            }
+            (Some(NodeTable::Domain), NodeId::Stored(row)) => match self.names.subtype(*row) {
+                Some(subtype) => parent_spelling(subtype).to_string(),
+                None => parent_type.to_string(),
+            },
             _ => parent_type.to_string(),
         }
     }
