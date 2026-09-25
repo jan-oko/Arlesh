@@ -192,8 +192,8 @@ fn a_node_not_yet_listed_gets_the_short_id_it_would_have_among_them() {
     );
     assert_eq!(
         names.short_id_among("123c56"),
-        "123c",
-        "sharing nothing, three digits and on to a letter"
+        "123",
+        "sharing nothing, three digits"
     );
     assert_eq!(
         names.short_id_among("abcde1"),
@@ -203,34 +203,16 @@ fn a_node_not_yet_listed_gets_the_short_id_it_would_have_among_them() {
 }
 
 #[test]
-fn a_short_id_is_never_all_digits_so_no_client_can_send_it_as_a_row_id() {
+fn a_digit_only_short_id_is_handed_out_and_resolves() {
     let names = with_short_ids(vec![
         named("269590f6", NodeTable::Task, 1),
         named("2a0000", NodeTable::Task, 2),
-        named("123456", NodeTable::Task, 3),
     ]);
-    let short = |id: i64| {
-        names
-            .short_id(NodeTable::Task, &NodeId::Stored(id))
-            .unwrap_or("")
-            .to_string()
-    };
 
-    assert_eq!(short(1), "269590f", "extended to its first hex letter");
-    assert_eq!(short(2), "2a0", "already holds a letter at three digits");
     assert_eq!(
-        short(3),
-        "123456",
-        "no letter anywhere: the full id instead"
+        names.short_id(NodeTable::Task, &NodeId::Stored(1)),
+        Some("269")
     );
-    assert_eq!(names.short_id_among("777b00"), "777b");
-
-    // Longer than it had to be, it still names exactly one node, and the minimal prefix it grew
-    // from still resolves to the same node.
-    for id in [1, 2] {
-        let resolved = names.resolve(&short(id)).map(|node| node.node_id.clone());
-        assert!(matches!(resolved, Ok(NodeId::Stored(row)) if row == id));
-    }
     assert!(matches!(
         names.resolve("269").map(|node| node.node_id.clone()),
         Ok(NodeId::Stored(1))
@@ -238,17 +220,71 @@ fn a_short_id_is_never_all_digits_so_no_client_can_send_it_as_a_row_id() {
 }
 
 #[test]
-fn an_extended_short_id_stays_unique_among_nodes_sharing_its_digits() {
-    // Both share "2695"; each extends past the shared digits to its own first letter.
+fn a_string_that_is_both_a_row_id_and_a_prefix_is_ambiguous_listing_both() {
     let names = with_short_ids(vec![
-        named("26951a", NodeTable::Task, 1),
-        named("26952b", NodeTable::Task, 2),
+        named("269590f6", NodeTable::Task, 1),
+        named("abc123", NodeTable::Task, 269),
     ]);
 
-    let shorts: Vec<&str> = [1, 2]
+    match names.resolve("269") {
+        Err(IdRefusal::Ambiguous(candidates)) => {
+            let rows: Vec<Option<i64>> = candidates
+                .iter()
+                .map(|candidate| candidate.node_id.stored())
+                .collect();
+            assert_eq!(rows.len(), 2);
+            assert!(rows.contains(&Some(1)) && rows.contains(&Some(269)));
+        }
+        other => panic!("expected ambiguous_id, got {other:?}"),
+    }
+    assert!(matches!(
+        names.resolve("abc").map(|node| node.node_id.clone()),
+        Ok(NodeId::Stored(269))
+    ));
+}
+
+#[test]
+fn no_short_id_handed_out_equals_a_visible_row_id() {
+    let names = with_short_ids(vec![
+        named("269590f6", NodeTable::Task, 1),
+        named("abc123", NodeTable::Task, 269),
+        named("2695f000", NodeTable::Goal, 2695),
+        named("777000", NodeTable::Task, 7),
+    ]);
+
+    let rows: Vec<String> = names
+        .nodes
         .iter()
-        .filter_map(|&id| names.short_id(NodeTable::Task, &NodeId::Stored(id)))
+        .filter_map(|node| node.node_id.stored().map(|row| row.to_string()))
         .collect();
-    assert_eq!(shorts, vec!["26951a", "26952b"]);
-    assert!(matches!(names.resolve("2695"), Err(IdRefusal::Ambiguous(found)) if found.len() == 2));
+    for node in &names.nodes {
+        assert!(
+            !rows.contains(&node.short_id),
+            "{} is a row id",
+            node.short_id
+        );
+        assert!(node.short_id.len() >= SHORTEST);
+    }
+    assert_eq!(
+        names.short_id(NodeTable::Task, &NodeId::Stored(1)),
+        Some("26959"),
+        "past 269 (a row id) and 2695 (another)"
+    );
+    assert_eq!(
+        names.short_id_among("269500"),
+        "26950",
+        "a node not yet listed obeys the same rule"
+    );
+}
+
+#[test]
+fn a_node_of_another_kind_is_named_in_the_refusal() {
+    let names = with_short_ids(vec![named("abc123", NodeTable::Goal, 4)]);
+
+    assert!(matches!(
+        names.resolve_as("abc", Some(NodeTable::Task)),
+        Err(IdRefusal::WrongKind(node)) if node.node_id == NodeId::Stored(4)
+    ));
+    assert!(names.resolve_as("abc", Some(NodeTable::Goal)).is_ok());
+    assert!(names.resolve_as("4", Some(NodeTable::Goal)).is_ok());
 }

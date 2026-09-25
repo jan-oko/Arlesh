@@ -335,22 +335,30 @@ flags a wait, so it cannot reach it.
 
 ## Short ids
 
-Every tool that names a node takes its **row id** (a number, as the snapshot's `id` carries it) or
-a **short id** (a string). Nothing is stored for them. A node's **full id** is a UUID-v5 in the one
-namespace every derived row's id already lives in: a derived row keeps the UUID it has, and a stored
-row's is the UUID-v5 of `{kind}:{row id}` — deterministic, so it never needs keeping. Its **short
-id** is the shortest prefix of the full id's hex digits, **three at least**, that no other node the
-MCP can see shares **at the time of the read**, worked out from a sorted list over **everything
-inside the roots** — never over one page, filter or query result, so a node goes by the same short
-id in every view. It is **never all digits**: a prefix with no hex letter is extended to its first one (`269590f6…` goes by `269590f`), because an MCP client may send an all-digit string as a number against the id schema, and a number is read as a row id. Extending only lengthens an already-unique prefix, so it stays unique and deterministic; a full id with no letter at all would go by the full id itself. The snapshot sends
-each node's `short_id` beside its `id`, and a write returns the Task's `short_id` and `full_id`.
+**Every node id is a string** (settled with the user on 2026-09-25). Each tool parameter naming a
+node is typed `string`; a JSON number is accepted too and read as its decimal string. Nothing is
+stored for ids. A node's **full id** is a UUID-v5 in the one namespace every derived row's id
+already lives in: a derived row keeps the UUID it has, and a stored row's is the UUID-v5 of
+`{kind}:{row id}` — deterministic, so it never needs keeping.
 
-A string is read as any prefix of a full id, hyphens optional, three hex digits or more — except an **all-digit** string, which is a **row id** a client sent as a string (`"3"` is row 3). Since no short id is all digits, the reading is unambiguous. One node
-matches: it is that node. None: `not_permitted`, as any node outside the roots. **Several**: refused
-as `ambiguous_id`, with `details.candidates` listing each — its current unique short id, its full
-id, its kind, its title and a short path such as `Growth › CODE › ARLESH`, the form the
-instructions name roots in. Only nodes the MCP can see are matched, listed or counted, so a hidden
-node never makes a prefix ambiguous and is never named.
+**Resolving.** A string is matched against everything the MCP can see, two ways at once, and the
+matches are pooled: (a) any node whose **row id** in decimal equals the string exactly, and (b) any
+node whose **full id** starts with it — 3 characters or more, hyphens optional. An exact full id
+wins outright. Only nodes of the kind the parameter names count (a `task_id` counts Tasks); when
+none does but a node of another kind would, the refusal says which. One match is that node.
+**None** is `not_permitted`, as any node outside the roots. **Several** — row 269 and a Task whose
+full id starts `269`, say — are refused as `ambiguous_id`, with `details.candidates` listing each:
+its current unique short id, its full id, its kind, its title and a short path such as
+`Growth › CODE › ARLESH`, the form the instructions name roots in. Only nodes the MCP can see are
+matched, listed or counted, so a hidden node never makes an id ambiguous and is never named.
+
+**Short ids.** A node's **short id** is the shortest prefix of its full id's hex digits, **three
+at least**, that no other visible node's full id shares **and** that is not any visible node's row
+id in decimal — so a short id can never be taken for a row id. It is worked out at each read from a
+sorted list over **everything inside the roots**, never over one page, filter or query result, so a
+node goes by the same short id in every view. It may be all digits (`269`); the row-id check
+lengthens one only when it collides, which on a board of a few hundred nodes is rare. Every node
+the MCP returns carries `id`, `short_id` and `full_id`.
 
 The trade-off, accepted with the user: a short id is unique **now**, not forever — a prefix an
 agent saw earlier can become ambiguous as nodes are added. It is then refused and the candidates

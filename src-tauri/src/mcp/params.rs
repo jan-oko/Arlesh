@@ -95,19 +95,42 @@ pub struct DurationSpec {
     pub kind: String,
 }
 
-/// A node's id, as an agent may give it.
-///
-/// Either the row id a stored node carries in the snapshot (a number), or a **short id** (a
-/// string): any prefix of a node's full id, at least 3 hex characters, that names one node the MCP
-/// can see — the `short_id` the snapshot sends is always one. A prefix that matches several nodes
-/// is refused as `ambiguous_id`, listing them; one that matches none as `not_permitted`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+/// A node's id, as an agent may give it: a string, matched against everything the MCP can see
+/// both as a node's **row id** in decimal and as a **prefix** (3 characters or more) of its full
+/// id — the snapshot's `short_id` is always one. A match of both kinds, or of several nodes, is
+/// refused as `ambiguous_id`, listing them; no match as `not_permitted`. A JSON number is
+/// accepted too, read as its decimal string.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(untagged)]
 pub enum NodeIdParam {
-    /// A stored node's row id.
+    /// Sent as a number.
     Row(i64),
-    /// A short id, or a full id.
+    /// Sent as a string.
     Short(String),
+}
+
+impl NodeIdParam {
+    /// The id as the string it is matched as.
+    pub fn text(&self) -> String {
+        match self {
+            Self::Row(row) => row.to_string(),
+            Self::Short(text) => text.clone(),
+        }
+    }
+}
+
+impl JsonSchema for NodeIdParam {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "NodeId".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "description": "A node id: its row id or a prefix (3+ characters) of its full id, \
+                            such as the snapshot's short_id."
+        })
+    }
 }
 
 impl From<i64> for NodeIdParam {

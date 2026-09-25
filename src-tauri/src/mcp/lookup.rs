@@ -75,16 +75,10 @@ impl Board {
         }
     }
 
-    /// The node `id` names, which must be of the kind `node_type` spells. A row id is taken as a
-    /// stored row, unchecked — the caller's access check decides whether it may be touched.
+    /// The visible node `id` names, which must be of the kind `node_type` spells — matched as a
+    /// row id and as a full-id prefix at once (see [`NodeNames::resolve_as`]).
     pub fn resolve(&self, id: &NodeIdParam, node_type: &str) -> Result<NodeId, Answer> {
-        match id {
-            NodeIdParam::Row(row) => Ok(NodeId::Stored(*row)),
-            NodeIdParam::Short(text) => match row_id(text) {
-                Some(row) => Ok(NodeId::Stored(row)),
-                None => named(&self.names, text, node_type),
-            },
-        }
+        named(&self.names, &id.text(), node_type)
     }
 
     /// Whether the MCP may write the Task `id`: a stored Task by the access map, a Habit
@@ -126,18 +120,10 @@ impl Board {
     }
 }
 
-/// The row id `id` names when it is one — a number, or a string of digits — and `None` for a
-/// short id.
+/// The row id `id` names, for an entity that is not a node and has no full id — a Person: the
+/// id's text in decimal, and `None` for anything else.
 pub(super) fn plain_row(id: &NodeIdParam) -> Option<i64> {
-    match id {
-        NodeIdParam::Row(row) => Some(*row),
-        NodeIdParam::Short(text) => row_id(text),
-    }
-}
-
-/// A row id a client sent as a string — all digits. A short id never is (see `ids`), so the
-/// reading is unambiguous, and some clients send every untyped parameter as a string.
-fn row_id(text: &str) -> Option<i64> {
+    let text = id.text();
     let text = text.trim();
     if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
@@ -145,41 +131,30 @@ fn row_id(text: &str) -> Option<i64> {
     text.parse().ok()
 }
 
-/// The node a short id names among `names`, refused unless it is exactly one of kind `node_type`.
+/// The visible node of kind `node_type` that `text` names, refused unless it is exactly one.
 fn named(names: &NodeNames, text: &str, node_type: &str) -> Result<NodeId, Answer> {
-    let node = match names.resolve(text) {
-        Ok(node) => node,
-        Err(IdRefusal::Unknown) => {
-            return Err(result::not_permitted(format!(
-                "no node inside the MCP roots has the id {text}"
-            )))
-        }
-        Err(IdRefusal::Ambiguous(candidates)) => return Err(result::ambiguous(text, &candidates)),
-    };
-    if NodeTable::from_reference(node_type) != Some(node.table()) {
-        return Err(result::refused(format!(
+    match names.resolve_as(text, NodeTable::from_reference(node_type)) {
+        Ok(node) => Ok(node.node_id.clone()),
+        Err(IdRefusal::Unknown) => Err(result::not_permitted(format!(
+            "no node inside the MCP roots has the id {text}"
+        ))),
+        Err(IdRefusal::Ambiguous(candidates)) => Err(result::ambiguous(text, &candidates)),
+        Err(IdRefusal::WrongKind(node)) => Err(result::refused(format!(
             "{text} is a {} ({}), not a {node_type}",
             node.kind, node.title
-        )));
+        ))),
     }
-    Ok(node.node_id.clone())
 }
 
-/// The stored row `id` names — for the tools that act on stored rows only. A short id reads the
-/// board to resolve; a Habit occurrence is refused, having no row.
+/// The stored row `id` names — for the tools that act on stored rows only. The id is resolved
+/// against the board like any other; a Habit occurrence is refused, having no row.
 pub(super) async fn stored_row(
     db: &mut Db<Transactional>,
     id: &NodeIdParam,
     node_type: &str,
     now: NaiveDateTime,
 ) -> Result<i64, Answer> {
-    let text = match id {
-        NodeIdParam::Row(row) => return Ok(*row),
-        NodeIdParam::Short(text) => match row_id(text) {
-            Some(row) => return Ok(row),
-            None => text,
-        },
-    };
+    let text = id.text();
     let board = match Board::read(db, now).await {
         Ok(board) => board,
         Err(error) => return Err(result::failed(error)),

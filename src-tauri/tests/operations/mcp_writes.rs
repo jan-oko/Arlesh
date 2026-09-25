@@ -563,7 +563,8 @@ async fn colliding_tasks(app: &App<MockRuntime>, board: &Board) -> (i64, i64, St
     for index in 0..400 {
         let id = task(app, "project", board.inside, &format!("Task {index}")).await;
         let prefix = prefix_of(format!("task:{id}"));
-        if taken.contains(&prefix) {
+        // An all-digit prefix may also be some visible row's id, which would add a third match.
+        if taken.contains(&prefix) || prefix.bytes().all(|byte| byte.is_ascii_digit()) {
             continue;
         }
         if let Some(&first) = seen.get(&prefix) {
@@ -977,13 +978,22 @@ mod agent_waits {
 }
 
 #[tokio::test]
-async fn an_all_digit_string_id_is_a_row_id() {
+async fn an_id_given_as_a_number_or_its_digits_names_the_row() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let board = board(&app).await;
     helpers::make_agentic(&pool, board.inside_task).await;
     let mcp = mcp(&pool);
     let as_string = NodeIdParam::Short(board.inside_task.to_string());
+
+    let as_number = run(
+        &mcp,
+        TasksOperation::Get {
+            id: board.inside_task.into(),
+        },
+    )
+    .await;
+    assert_eq!(succeeded(&as_number)["task"]["id"], board.inside_task);
 
     let got = run(
         &mcp,
