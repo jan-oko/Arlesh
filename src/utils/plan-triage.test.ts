@@ -343,4 +343,27 @@ describe("planRefusal", () => {
     const rows = row({ node: node("task-1", { timeScope: scope(99) }) });
     expect(planRefusal(rows, WEEK, WINDOWS)).toBeNull();
   });
+
+  it("lets an overdue task leave its own window, which has already passed", () => {
+    const rows = row({ node: node("task-1", { timeScope: scope(2), resolution: "overdue" }) });
+    expect(planRefusal(rows, WEEK, WINDOWS)).toBeNull();
+  });
+
+  it("still holds an overdue task to its nearest planned ancestor's Plan", () => {
+    const rows = row({
+      node: node("task-1", { timeScope: scope(2), resolution: "overdue" }),
+      ancestors: [node("task-0", { plan: scope(2) })],
+    });
+    expect(planRefusal(rows, WEEK, WINDOWS)).toBe("parentPlan");
+  });
+
+  it("does not exempt a task that lapsed done", () => {
+    const rows = row({ node: node("task-1", { timeScope: scope(2), resolution: "completed" }) });
+    expect(planRefusal(rows, WEEK, WINDOWS)).toBe("ownTimeScope");
+  });
+
+  it("does not exempt a task that lapsed missed", () => {
+    const rows = row({ node: node("task-1", { timeScope: scope(2), resolution: "missed" }) });
+    expect(planRefusal(rows, WEEK, WINDOWS)).toBe("ownTimeScope");
+  });
 });

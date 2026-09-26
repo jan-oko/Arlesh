@@ -32,6 +32,7 @@ import Switch from "@/components/Switch/Switch";
 import AsyncTemplateFields from "@/components/AsyncTemplateEditor/AsyncTemplateFields";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { TASK_STATUS } from "@/utils/status-mapping";
+import { isOverdue } from "@/utils/overdue";
 
 export interface TaskSaveData {
   title: string;
@@ -296,7 +297,12 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       )}
       <div className={styles.label}>
         {t("fieldPlan")}
-        <PlanField value={plan} timeScope={timeScope} onChange={setPlanAndClearBacklog} />
+        {/* An overdue task's window has passed: its Plan may leave it, as the backend allows. */}
+        <PlanField
+          value={plan}
+          timeScope={isOverdue(node) && status !== TASK_STATUS.DONE ? null : timeScope}
+          onChange={setPlanAndClearBacklog}
+        />
       </div>
       <div className={styles.label}>
         {t("fieldBacklog")}

@@ -29,6 +29,7 @@ use crate::infos::model::InfoId;
 use crate::nodes::origin::Origin;
 use crate::scopes::key::ScopeKey;
 use ancestry::{AncestryLink, NodeKind, NodeRef};
+use chrono::NaiveDateTime;
 pub use commitments::{
     create_commitment, delete_commitment, update_commitment, CommitmentOperator,
 };
@@ -1501,14 +1502,31 @@ pub async fn delete_goal(db: &mut Db<Transactional>, id: GoalId) -> Result<(), T
 /// # Ok(())
 /// # }
 /// ```
-#[tracing::instrument(skip(db))]
 pub async fn create_task(
     db: &mut Db<Transactional>,
     request: CreateTaskRequest,
 ) -> Result<Task, TaskError> {
+    create_task_at(db, request, expectations::now()).await
+}
+
+/// [`create_task`] as of `now` — the instant that decides whether the task is written **Overdue**,
+/// which lifts the bound on its Plan by its own Time Scope (see `scope_rules::is_overdue`). A
+/// command passes the one `now` it read, so every decision in one request agrees on the time.
+#[tracing::instrument(skip(db))]
+pub async fn create_task_at(
+    db: &mut Db<Transactional>,
+    request: CreateTaskRequest,
+    now: NaiveDateTime,
+) -> Result<Task, TaskError> {
     reject_backlog_with_plan(request.archival.unwrap_or_default(), &request.plan)?;
     // No Spec check here: creating a task is not starting one. The one path that creates a task
     // already in progress is a duplicate, and a copy of work underway is not a start either.
+    let overdue = scope_rules::is_overdue(
+        &request.time_scope,
+        request.on_scope_exit,
+        request.status == Some(TaskStatus::Done),
+        now,
+    );
     scope_rules::validate_task_containment(
         db,
         None,
@@ -1516,6 +1534,7 @@ pub async fn create_task(
         request.parent_id.require_stored()?,
         &request.time_scope,
         &request.plan,
+        overdue,
     )
     .await?;
     db.tasks().insert(request).await
@@ -1551,11 +1570,24 @@ pub async fn create_task(
 /// # Ok(())
 /// # }
 /// ```
-#[tracing::instrument(skip(db))]
 pub async fn update_task(
     db: &mut Db<Transactional>,
     id: TaskId,
     request: UpdateTaskRequest,
+) -> Result<Task, TaskError> {
+    update_task_at(db, id, request, expectations::now()).await
+}
+
+/// [`update_task`] as of `now` — the instant that decides whether the task, as written, is
+/// **Overdue**, which lifts the bound on its Plan by its own Time Scope (see
+/// `scope_rules::is_overdue`). The merged row is what is judged, so a write that reopens a lapsed
+/// task and plans it in one go is judged as the reopened task it leaves.
+#[tracing::instrument(skip(db))]
+pub async fn update_task_at(
+    db: &mut Db<Transactional>,
+    id: TaskId,
+    request: UpdateTaskRequest,
+    now: NaiveDateTime,
 ) -> Result<Task, TaskError> {
     let stored = db.tasks().get(id).await?;
     // Starting is the move into In Progress from anywhere else; a write to a task already in
@@ -1574,6 +1606,12 @@ pub async fn update_task(
         )
         .await?;
     }
+    let overdue = scope_rules::is_overdue(
+        &write.time_scope,
+        write.on_scope_exit,
+        write.status == TaskStatus::Done.as_str(),
+        now,
+    );
     scope_rules::validate_task_containment(
         db,
         Some(id),
@@ -1581,6 +1619,7 @@ pub async fn update_task(
         write.parent_id,
         &write.time_scope,
         &write.plan,
+        overdue,
     )
     .await?;
     // Nothing else is written for the wait an Asynchronous task spawns: it is derived from the task

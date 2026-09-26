@@ -28,6 +28,7 @@ fn a_task_nested_inside_every_window_above_it_is_accepted() {
         plan: Some(july(12, 14)),
         ancestor_scope: Some(july(1, 31)),
         ancestor_plan: Some(july(11, 15)),
+        overdue: false,
     };
 
     assert!(check_containment(windows).is_ok());
@@ -84,6 +85,7 @@ fn the_first_violation_is_the_only_one_reported() {
         plan: Some(july(1, 31)),
         ancestor_scope: Some(july(12, 18)),
         ancestor_plan: Some(july(13, 14)),
+        overdue: false,
     };
 
     assert_eq!(
@@ -133,4 +135,128 @@ fn a_goal_shaped_check_reduces_to_the_ancestor_rule_alone() {
         violation(check_containment(outside)),
         "time scope is not within the parent's time scope"
     );
+}
+
+/// An instant in July 2026, by day-of-month, for the Overdue derivation.
+fn july_day(day: u32) -> NaiveDateTime {
+    july(day, day).0
+}
+
+/// A Time Scope of one real Day in July 2026 — the one thing here that resolves, because
+/// [`is_overdue`] reads a stored window rather than a bound.
+fn july_day_scope(day: u32) -> TimeScope {
+    let key = crate::scopes::key::ScopeKey::containing(
+        crate::scopes::model::ScopeKind::Day,
+        NaiveDate::from_ymd_opt(2026, 7, day).expect("July has this day"),
+    )
+    .expect("a Day scope contains any date");
+    TimeScope {
+        start_id: key,
+        end_id: key,
+        duration: None,
+    }
+}
+
+#[test]
+fn an_overdue_task_may_plan_outside_its_own_time_scope() {
+    // Its window was the 10th–20th and has passed; it is planned into the 25th–26th.
+    let windows = ContainmentWindows {
+        own_scope: Some(july(10, 20)),
+        plan: Some(july(25, 26)),
+        overdue: true,
+        ..Default::default()
+    };
+
+    assert!(check_containment(windows).is_ok());
+}
+
+#[test]
+fn an_overdue_task_is_still_held_by_its_nearest_planned_ancestor() {
+    let windows = ContainmentWindows {
+        own_scope: Some(july(10, 20)),
+        plan: Some(july(25, 26)),
+        ancestor_plan: Some(july(21, 24)),
+        overdue: true,
+        ..Default::default()
+    };
+
+    assert_eq!(
+        violation(check_containment(windows)),
+        "plan is not within the parent task's plan"
+    );
+}
+
+#[test]
+fn an_overdue_task_is_still_held_by_its_nearest_scoped_ancestor() {
+    // The exemption is for the Plan alone: the task's own window stays inside its parent's.
+    let windows = ContainmentWindows {
+        own_scope: Some(july(10, 20)),
+        ancestor_scope: Some(july(12, 18)),
+        overdue: true,
+        ..Default::default()
+    };
+
+    assert_eq!(
+        violation(check_containment(windows)),
+        "time scope is not within the parent's time scope"
+    );
+}
+
+#[test]
+fn a_lapsed_unfinished_keep_on_exit_task_is_overdue() {
+    let scope = Some(july_day_scope(10));
+
+    assert!(is_overdue(
+        &scope,
+        Some(OnScopeExit::Keep),
+        false,
+        july_day(20)
+    ));
+}
+
+#[test]
+fn a_task_whose_window_has_not_passed_is_not_overdue() {
+    let scope = Some(july_day_scope(10));
+
+    assert!(!is_overdue(
+        &scope,
+        Some(OnScopeExit::Keep),
+        false,
+        july_day(5)
+    ));
+}
+
+#[test]
+fn a_done_task_is_not_overdue() {
+    let scope = Some(july_day_scope(10));
+
+    assert!(!is_overdue(
+        &scope,
+        Some(OnScopeExit::Keep),
+        true,
+        july_day(20)
+    ));
+}
+
+#[test]
+fn a_missed_task_is_not_overdue() {
+    // Archive-on-exit: its lapse reads Missed and archives it, so it is not rescheduled.
+    let scope = Some(july_day_scope(10));
+
+    assert!(!is_overdue(
+        &scope,
+        Some(OnScopeExit::Archive),
+        false,
+        july_day(20)
+    ));
+}
+
+#[test]
+fn a_task_with_no_time_scope_of_its_own_is_not_overdue() {
+    assert!(!is_overdue(
+        &None,
+        Some(OnScopeExit::Keep),
+        false,
+        july_day(20)
+    ));
 }
