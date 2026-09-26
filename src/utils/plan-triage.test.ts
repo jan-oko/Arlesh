@@ -93,6 +93,18 @@ describe("nearestPlannedAncestor", () => {
   it("is null when no ancestor is planned", () => {
     expect(nearestPlannedAncestor(row({ ancestors: [node("task-a")] }))).toBeNull();
   });
+
+  // A wait has no Plan and takes none from the Task it hangs under — the one an Asynchronous Task
+  // spawned included — so a check task beneath it is not bound by that Task's Plan.
+  it("stops at a wait: a check task under a spawned wait is not bound by its Task's Plan", () => {
+    const spawned = node("wait-s", { origin: { kind: "spawned_wait", task_id: 7 } }, "expectation");
+    const check = row({
+      node: node("check-1", { origin: { kind: "check", wait_kind: "spawned", wait_id: 7, due_at: "2026-09-22T02:00:00" } }),
+      ancestors: [node("task-7", { plan: scope(2), asynchronous: true, status: "done" }), spawned],
+    });
+    expect(nearestPlannedAncestor(check)).toBeNull();
+    expect(planRefusal(check, WEEK, WINDOWS)).toBeNull();
+  });
 });
 
 describe("timeScopeWindow", () => {

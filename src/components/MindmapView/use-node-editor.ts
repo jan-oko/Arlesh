@@ -44,6 +44,7 @@ import { addTagToCommitment, removeTagFromCommitment, updateCommitment } from "@
 import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
 import { editorOwnerOf } from "@/utils/editor-owner";
+import { isSpawnedWait } from "@/utils/derived-wait";
 import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { TASK_STATUS } from "@/utils/status-mapping";
@@ -271,6 +272,17 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onExpectationSave = useCallback(
     async (data: ExpectationSaveData) => {
       if (editorModal === null) return;
+      // A spawned wait's own is its status and archive, written into its overlay by its own id;
+      // everything else it shows is its Task's Expectation template's, and the editor offers none of it.
+      if (isSpawnedWait(editorModal.node)) {
+        await updateExpectation(rowIdOf(editorModal.node), {
+          status: data.status,
+          archival: data.archived ? EXPECTATION_ARCHIVAL.ARCHIVED : EXPECTATION_ARCHIVAL.LIVE,
+        });
+        setEditorModal(null);
+        await reload();
+        return;
+      }
       const dbId = storedId(rowIdOf(editorModal.node));
       await updateExpectation(dbId, {
         title: data.title,

@@ -33,10 +33,17 @@ export function effectiveTimeScope(row: TaskListRow): TimeScope | null {
   return null;
 }
 
-/** The nearest ancestor that is itself planned, or `null` — the bound `child.Plan ⊆ parent.Plan` reads. */
+/**
+ * The nearest ancestor that is itself planned, or `null` — the bound `child.Plan ⊆ parent.Plan` reads.
+ *
+ * A wait cuts the chain, as it does for the Start preset: an Expectation has no Plan and takes none
+ * from the Task it hangs under (a spawned wait's included), so nothing beneath it — a check task —
+ * is bound by that Task's Plan.
+ */
 export function nearestPlannedAncestor(row: TaskListRow): MindmapNode | null {
   for (let i = row.ancestors.length - 1; i >= 0; i--) {
     const ancestor = row.ancestors[i];
+    if (ancestor?.kind === "expectation") return null;
     if (ancestor !== undefined && ancestor.plan != null) return ancestor;
   }
   return null;

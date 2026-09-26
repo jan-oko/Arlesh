@@ -14,6 +14,7 @@ import Switch from "@/components/Switch/Switch";
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { Domain } from "@/api/domains";
 import { useInputCapture } from "@/hooks/use-input-capture";
+import { isSpawnedWait } from "@/utils/derived-wait";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 export interface ExpectationSaveData {
@@ -58,7 +59,11 @@ interface Props {
  * archive.
  *
  * Shorter than the Task editor on purpose. A wait has no Plan, no dependencies of its own and no
- * block reasons.
+ * block reasons — a wait an Asynchronous Task spawned included: it does not take its Task's Plan.
+ *
+ * On a **spawned wait** only the status and the archive are its own (its overlay). Its title, Time
+ * Scope and Check every are its Task's Expectation template's, so they are shown and not offered,
+ * and so are its tags, privacy and agent flag, which the template and the Task decide.
  */
 export default function ExpectationEditorModal({ node, heading, lead, onSave, onClose, allTags, domainNames }: Props) {
   useInputCapture();
@@ -82,6 +87,7 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+  const drawnFromTemplate = isSpawnedWait(node);
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
 
@@ -121,9 +127,13 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
       saveError={saveError}
     >
       {lead !== undefined && <p className={styles.label}>{lead}</p>}
+      {drawnFromTemplate && <p className={styles.label}>{t("expectation:drawnFromTemplate")}</p>}
       <label className={styles.label}>
         {t("editor:fieldTitle")}
-        <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
+        <input
+          ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text"
+          readOnly={drawnFromTemplate}
+        />
       </label>
       <div className={styles.label}>
         {t("editor:fieldStatus")}
@@ -167,7 +177,10 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
       )}
       <div className={styles.label}>
         {t("editor:fieldTimeScope")}
-        <TimeScopeField value={timeScope} onChange={setTimeScope} />
+        <TimeScopeField
+          value={timeScope} onChange={setTimeScope}
+          {...(drawnFromTemplate ? { lockedReason: t("expectation:drawnFromTemplate") } : {})}
+        />
       </div>
       <div className={styles.label}>
         {t("expectation:fieldCheckEvery")}
@@ -177,9 +190,10 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
           label={t("expectation:fieldCheckEvery")}
           emptyLabel={t("expectation:checkEveryNone")}
           subDay
+          locked={drawnFromTemplate}
         />
       </div>
-      {checkEvery !== null && (
+      {checkEvery !== null && !drawnFromTemplate && (
         <div className={styles.label}>
           {t("expectation:fieldCheckStarting")}
           <StartingDayField
@@ -189,13 +203,17 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
           />
         </div>
       )}
-      {allTags !== undefined && domainNames !== undefined && (
+      {!drawnFromTemplate && allTags !== undefined && domainNames !== undefined && (
         <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       )}
-      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} startOpen={archived || agentic}>
+      {drawnFromTemplate ? (
         <Switch checked={archived} onChange={setArchived} label={t("expectation:archived")} />
-        <Switch checked={agentic} onChange={setAgentic} label={t("expectation:agentWaiting")} />
-      </EditorAdvanced>
+      ) : (
+        <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} startOpen={archived || agentic}>
+          <Switch checked={archived} onChange={setArchived} label={t("expectation:archived")} />
+          <Switch checked={agentic} onChange={setAgentic} label={t("expectation:agentWaiting")} />
+        </EditorAdvanced>
+      )}
     </EditorModal>
   );
 }

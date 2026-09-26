@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useNodeEditor } from "./use-node-editor";
 import type { MindmapNode } from "@/utils/tree-layout";
-import { updateExpectation } from "@/api/expectations";
+import { removeTagFromExpectation, updateExpectation } from "@/api/expectations";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { expectationNodeId } from "@/utils/node-uuid";
 
@@ -39,17 +39,42 @@ describe("useNodeEditor — waits", () => {
     expect(result.current.editorModal?.node).toBe(check);
   });
 
-  it("E on a spawned wait opens its Task's editor, and says so when the Task is gone", () => {
+  it("E on a spawned wait opens its own Expectation editor, not its Task's", () => {
     const spawnedWait = node("sw-5", "expectation", { rowId: "s-5", origin: { kind: "spawned_wait", task_id: 5 } });
-    const gone = node("sw-7", "expectation", { rowId: "s-7", origin: { kind: "spawned_wait", task_id: 7 } });
-    const tree = node("root", "domain", { children: [task, spawnedWait, gone] });
+    const tree = node("root", "domain", { children: [task, spawnedWait] });
     const result = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload: vi.fn().mockResolvedValue(undefined) })).result;
     act(() => result.current.onDoubleClick("sw-5"));
+    expect(result.current.editorModal?.node).toBe(spawnedWait);
+  });
+
+  it("E on a delegation wait opens its Task's editor, and says so when the Task is gone", () => {
+    const delegationWait = node("dw-5", "expectation", { rowId: "d-5", origin: { kind: "delegation_wait", task_id: 5 } });
+    const gone = node("dw-7", "expectation", { rowId: "d-7", origin: { kind: "delegation_wait", task_id: 7 } });
+    const tree = node("root", "domain", { children: [task, delegationWait, gone] });
+    const result = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload: vi.fn().mockResolvedValue(undefined) })).result;
+    act(() => result.current.onDoubleClick("dw-5"));
     expect(result.current.editorModal?.node).toBe(task);
     act(() => result.current.setEditorModal(null));
-    act(() => result.current.onDoubleClick("sw-7"));
+    act(() => result.current.onDoubleClick("dw-7"));
     expect(result.current.editorModal).toBeNull();
     expect(useMindmapStore.getState().pendingToast?.message).toBe("editOwnerMissing");
+  });
+
+  it("saves a spawned wait's status and archive into its overlay, by its own id, and nothing else", async () => {
+    const spawnedWait = node("sw-5", "expectation", {
+      rowId: "5b1d7c3e-0000-5000-8000-000000000005", origin: { kind: "spawned_wait", task_id: 5 }, tagIds: [4],
+    });
+    const tree = node("root", "domain", { children: [task, spawnedWait] });
+    const result = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload: vi.fn().mockResolvedValue(undefined) })).result;
+    act(() => result.current.setEditorModal({ nodeId: spawnedWait.id, node: spawnedWait }));
+    await act(() => result.current.onExpectationSave({
+      title: "wait", status: "released", checkEvery: null, checkStartingDate: null, timeScope: null,
+      tagIds: [], archived: true, isPrivate: false, agentic: false, agenticNote: null, agenticAnswer: null,
+    }));
+    expect(updateExpectation).toHaveBeenCalledWith("5b1d7c3e-0000-5000-8000-000000000005", {
+      status: "released", archival: "archived",
+    });
+    expect(removeTagFromExpectation).not.toHaveBeenCalled();
   });
 
   it("sends a cleared Check every as an explicit null, so the backend clears it", async () => {

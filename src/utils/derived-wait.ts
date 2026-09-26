@@ -14,3 +14,12 @@ export function isDerivedWait(node: MindmapNode): boolean {
 export function isDelegationWait(node: MindmapNode): boolean {
   return node.origin?.kind === "delegation_wait";
 }
+
+/**
+ * Whether `node` is the wait an Asynchronous Task's completion spawned. It is an Expectation row of
+ * its own, edited in the Expectation editor — but only its status and archive are its own (its
+ * overlay); its title, tags, window and Check every are its Task's Expectation template's.
+ */
+export function isSpawnedWait(node: MindmapNode): boolean {
+  return node.origin?.kind === "spawned_wait";
+}

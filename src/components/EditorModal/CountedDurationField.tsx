@@ -26,6 +26,9 @@ interface Props {
   emptyLabel: string;
   /** Offer hours and minutes too — for Check every, which can come round within a Day. */
   subDay?: boolean;
+  /** Show the value without offering to change it — a spawned wait's Check every is its Task's
+   * Expectation template's. */
+  locked?: boolean;
 }
 
 /**
@@ -36,7 +39,7 @@ interface Props {
  * route was to delete the digits by hand: the number input's spinner stops at 1, so stepping down
  * never reached "none", and a set Check every looked permanent.
  */
-export default function CountedDurationField({ value, onChange, label, emptyLabel, subDay = false }: Props) {
+export default function CountedDurationField({ value, onChange, label, emptyLabel, subDay = false, locked = false }: Props) {
   const { t } = useTranslation("editor");
   const kind = value?.kind ?? "day";
 
@@ -54,20 +57,21 @@ export default function CountedDurationField({ value, onChange, label, emptyLabe
         value={value?.n ?? ""}
         placeholder={emptyLabel}
         aria-label={label}
+        disabled={locked}
         onChange={(e) => setCount(e.target.value)}
       />
       {[...KINDS, ...(subDay ? SUB_DAY_KINDS : [])].map((option) => (
         <button
           key={option.value}
           type="button"
-          disabled={value === null}
+          disabled={locked || value === null}
           className={`${styles.statusPill}${kind === option.value ? ` ${styles.statusPillActive}` : ""}`}
           onClick={() => onChange(value === null ? null : { n: value.n, kind: option.value })}
         >
           {t(option.labelKey)}
         </button>
       ))}
-      {value !== null && (
+      {!locked && value !== null && (
         <button type="button" className={styles.statusPill} onClick={() => onChange(null)}>
           {t("scopeClear")}
         </button>

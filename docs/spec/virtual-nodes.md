@@ -183,6 +183,12 @@ What they refuse is what their derivation fixes: a check task keeps its wait and
 delegated; a spawned wait's title, tags, window and Check every are its template's; nothing is
 written to a delegation wait; none of the three is deleted or copied.
 
+`E` opens each one's own editor, as on any row of its kind — the Task editor on a check task, the
+Expectation editor on a spawned wait (its status and archive editable, what its template says shown
+but not offered) — except a delegation wait, which has nothing to write and opens its delegated
+Task's editor. None of them takes a Plan from where it hangs: a spawned wait does not take
+its Task's, and a wait cuts the Plan chain for what is beneath it.
+
 ## Horizon
 
 A kind's virtual table holds **every past iteration** since the Habit began — resolution,
