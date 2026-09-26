@@ -10,7 +10,7 @@ use rmcp::model::{CallToolResult, ErrorData};
 
 use super::{
     access,
-    ids::{parent_spelling, IdRefusal, NodeNames},
+    ids::{parent_spelling, IdRefusal, Named, NodeNames},
     params::NodeIdParam,
     result,
 };
@@ -78,7 +78,44 @@ impl Board {
     /// The visible node `id` names, which must be of the kind `node_type` spells — matched as a
     /// row id and as a full-id prefix at once (see [`NodeNames::resolve_as`]).
     pub fn resolve(&self, id: &NodeIdParam, node_type: &str) -> Result<NodeId, Answer> {
-        named(&self.names, &id.text(), node_type)
+        named(&self.names, &id.text(), Some(node_type)).map(|node| node.node_id.clone())
+    }
+
+    /// The visible node `id` names among the kinds `node_types` spell, for a parameter that takes
+    /// several — matched as [`Board::resolve`] matches, a row id counting only rows of those kinds,
+    /// and refused unless it is exactly one. The caller reads the kind off the answer.
+    pub fn resolve_among(&self, id: &NodeIdParam, node_types: &[&str]) -> Result<&Named, Answer> {
+        let text = id.text();
+        let mut found: Vec<&Named> = Vec::new();
+        for node_type in node_types {
+            match self
+                .names
+                .resolve_as(&text, NodeTable::from_reference(node_type))
+            {
+                Ok(node) => found.push(node),
+                Err(IdRefusal::Ambiguous(candidates)) => {
+                    return Err(result::ambiguous(&text, &candidates))
+                }
+                Err(IdRefusal::Unknown | IdRefusal::WrongKind(_)) => {}
+            }
+        }
+        match found.as_slice() {
+            [one] => Ok(*one),
+            [] => {
+                // Nothing of those kinds: say what it does name, if anything the MCP can see.
+                let other = named(&self.names, &text, None)?;
+                Err(result::refused(format!(
+                    "{text} is a {} ({}), not a {}",
+                    other.kind,
+                    other.title,
+                    node_types.join(" or ")
+                )))
+            }
+            several => {
+                let candidates: Vec<Named> = several.iter().copied().cloned().collect();
+                Err(result::ambiguous(&text, &candidates))
+            }
+        }
     }
 
     /// Whether the MCP may write the Task `id`: a stored Task by the access map, a Habit
@@ -131,17 +168,24 @@ pub(super) fn plain_row(id: &NodeIdParam) -> Option<i64> {
     text.parse().ok()
 }
 
-/// The visible node of kind `node_type` that `text` names, refused unless it is exactly one.
-fn named(names: &NodeNames, text: &str, node_type: &str) -> Result<NodeId, Answer> {
-    match names.resolve_as(text, NodeTable::from_reference(node_type)) {
-        Ok(node) => Ok(node.node_id.clone()),
+/// The visible node of kind `node_type` (any kind, when `None`) that `text` names, refused unless
+/// it is exactly one.
+fn named<'names>(
+    names: &'names NodeNames,
+    text: &str,
+    node_type: Option<&str>,
+) -> Result<&'names Named, Answer> {
+    match names.resolve_as(text, node_type.and_then(NodeTable::from_reference)) {
+        Ok(node) => Ok(node),
         Err(IdRefusal::Unknown) => Err(result::not_permitted(format!(
             "no node inside the MCP roots has the id {text}"
         ))),
         Err(IdRefusal::Ambiguous(candidates)) => Err(result::ambiguous(text, &candidates)),
         Err(IdRefusal::WrongKind(node)) => Err(result::refused(format!(
-            "{text} is a {} ({}), not a {node_type}",
-            node.kind, node.title
+            "{text} is a {} ({}), not a {}",
+            node.kind,
+            node.title,
+            node_type.unwrap_or("node")
         ))),
     }
 }
