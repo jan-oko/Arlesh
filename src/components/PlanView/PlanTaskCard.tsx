@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import type { CSSProperties, DragEvent, MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { TaskListRow } from "@/utils/list-filter";
@@ -59,7 +60,6 @@ export default function PlanTaskCard({
   // Task reads as the same part of the board on every surface. `node.color` is the aspect's,
   // propagated on load.
   const cardStyle: CSSProperties & Record<`--${string}`, string> = { ...aspectWashStyle(node.color) };
-  const path = row.ancestors.map((ancestor) => ancestor.title).join(PATH_SEPARATOR);
   const moveLabel = direction === "in" ? t("planInto") : t("unplan");
 
   // `Ctrl` is read together with `Meta` because that is how every other modifier-click in the app
@@ -87,7 +87,20 @@ export default function PlanTaskCard({
         </svg>
       </span>
       <span className={styles.body}>
-        {showPath && path !== "" && <span className={styles.path}>{path}</span>}
+        {/* Root → leaf reads left to right whatever the titles are written in: the line is LTR and
+            each title is isolated. `›` is Bidi-mirrored, and left between two right-to-left titles
+            it took their direction and was drawn as `‹`. Isolated, a Hebrew title still reads
+            right to left inside itself, and the separators stay the line's own. */}
+        {showPath && row.ancestors.length > 0 && (
+          <span className={styles.path} dir="ltr">
+            {row.ancestors.map((ancestor, index) => (
+              <Fragment key={ancestor.id}>
+                {index > 0 && PATH_SEPARATOR}
+                <bdi>{ancestor.title}</bdi>
+              </Fragment>
+            ))}
+          </span>
+        )}
         <span className={styles.title} dir={isRtlText(node.title) ? "rtl" : "ltr"}>{node.title}</span>
       </span>
       <TaskRowBadges node={node} indicators={indicators} />

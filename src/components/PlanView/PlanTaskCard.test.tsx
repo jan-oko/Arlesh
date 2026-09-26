@@ -89,4 +89,21 @@ describe("PlanTaskCard — path line", () => {
     render(<PlanTaskCard {...props(row({ ancestors: [n("p", "project", { title: "LANG" })] }))} />);
     expect(screen.getByText("LANG")).toBeInTheDocument();
   });
+
+  // jsdom draws no bidi, so the structure is what is asserted: an LTR line whose every title is
+  // isolated, so `›` between two Hebrew titles keeps the line's direction instead of mirroring.
+  it("keeps the line left to right and isolates each title, in root-to-leaf order", () => {
+    const ancestors = [
+      n("a", "aspect", { title: "Connections" }),
+      n("b", "domain", { title: "BOND" }),
+      n("c", "domain", { title: "נרי" }),
+      n("d", "task", { title: "חברים קרובים" }),
+    ];
+    render(<PlanTaskCard {...props(row({ ancestors }))} />);
+    const line = screen.getByText("נרי").parentElement;
+    expect(line).toHaveAttribute("dir", "ltr");
+    const titles = [...(line?.querySelectorAll("bdi") ?? [])].map((el) => el.textContent);
+    expect(titles).toEqual(["Connections", "BOND", "נרי", "חברים קרובים"]);
+    expect(line?.textContent).toBe("Connections › BOND › נרי › חברים קרובים");
+  });
 });
