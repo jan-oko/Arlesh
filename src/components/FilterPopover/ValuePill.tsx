@@ -70,7 +70,7 @@ export default function ValuePill({ dimension, label, color, mode, notLabel, onA
       data-set-pill=""
       className={`${styles.pill} ${styles.setPill}`}
       style={pillStyle}
-      title={t("setPillTitle", { mode: modeName, next: t(`tagMode.${nextMode(dimension, mode)}`) })}
+      title={t("setPillTitle", { mode: modeName, next: t(`tagMode.${nextMode(mode)}`) })}
       aria-label={t("setPillAria", { label, mode: modeName })}
       onClick={onCycle}
       onKeyDown={(event) => {

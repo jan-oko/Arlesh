@@ -106,18 +106,3 @@
 .empty {
   composes: empty from "../SearchModalShell/SearchModalShell.module.css";
 }
-
-.hint {
-  padding: var(--space-2) var(--space-4);
-  border-top: 1px solid var(--node-border);
-  color: var(--text-secondary);
-  font-family: var(--font-sans);
-  font-size: var(--text-xs);
-}
-
-.hint kbd {
-  font-family: var(--font-mono);
-  border: 1px solid var(--node-border);
-  border-radius: 3px;
-  padding: 0 3px;
-}

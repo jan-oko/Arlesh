@@ -153,7 +153,7 @@ export default function FilterSearchModal({ onClose }: Props) {
                       )}
                     </span>
                     {result.kind !== "value" && <span className={stateClass(result)}>{stateText(result)}</span>}
-                    {isActive && <kbd className={styles.enter} aria-hidden="true">{t("search.hintKeys.all")}</kbd>}
+                    {isActive && <kbd className={styles.enter} aria-hidden="true">{t("search.enterKey")}</kbd>}
                   </div>
                 );
               })}
@@ -163,10 +163,6 @@ export default function FilterSearchModal({ onClose }: Props) {
           {results.length === 0 && !namesNode && <div className={styles.empty}>{t("search.noResults")}</div>}
         </div>
       )}
-      <div className={styles.hint}>
-        <kbd>{t("search.hintKeys.all")}</kbd> {t("search.hintAll")} · <kbd>{t("search.hintKeys.any")}</kbd> {t("search.hintAny")}
-        {" · "}<kbd>{t("search.hintKeys.not")}</kbd> {t("search.hintNot")} · {t("search.hintSwitch")}
-      </div>
     </SearchModalShell>
   );
 }

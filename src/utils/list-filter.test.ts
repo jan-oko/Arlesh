@@ -432,7 +432,7 @@ describe("filterTaskList — Agentic", () => {
   });
 
   it("keeps only the rest under a Not-agentic pill", () => {
-    const filtered = filterTaskList([agentic, manual], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, agentic: [{ value: "not_agentic", mode: "any" }] } }));
+    const filtered = filterTaskList([agentic, manual], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, agentic: [{ value: "agentic", mode: "exclude" }] } }));
     expect(filtered.map((r) => r.node.id)).toEqual(["task-m"]);
   });
 
@@ -458,6 +458,36 @@ describe("filterTaskList — Agentic", () => {
     // who holds it. Nothing in this dimension may touch another.
     const filtered = filterTaskList([agentic, manual], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, agentic: [{ value: "agentic", mode: "any" }] } }));
     expect(filtered).toHaveLength(1);
+  });
+});
+
+describe("filterTaskList — yes/no flags as one group", () => {
+  const both = row({ node: n("task-b", "task", { status: "todo" }), isAgentic: true, isAsynchronous: true });
+  const agent = row({ node: n("task-a", "task", { status: "todo" }), isAgentic: true });
+  const wait = row({ node: n("task-w", "task", { status: "todo" }), isAsynchronous: true });
+  const plain = row({ node: n("task-p", "task", { status: "todo" }) });
+  const rows = [both, agent, wait, plain];
+  const ids = (filtered: TaskListRow[]) => filtered.map((r) => r.node.id);
+
+  it("Agentic (Any) with Asynchronous (Any) keeps what is either", () => {
+    const pills = { ...DEFAULT_LIST_FILTER.pills, agentic: [{ value: "agentic", mode: "any" as const }], asynchronous: [{ value: "asynchronous", mode: "any" as const }] };
+    expect(ids(filterTaskList(rows, sf(), lf({ pills })))).toEqual(["task-b", "task-a", "task-w"]);
+  });
+
+  it("Agentic (All) with Asynchronous (All) keeps only what is both", () => {
+    const pills = { ...DEFAULT_LIST_FILTER.pills, agentic: [{ value: "agentic", mode: "all" as const }], asynchronous: [{ value: "asynchronous", mode: "all" as const }] };
+    expect(ids(filterTaskList(rows, sf(), lf({ pills })))).toEqual(["task-b"]);
+  });
+
+  it("an Any flag with a Not flag: agentic or asynchronous, but not blocked", () => {
+    const blockedAgent = row({ node: n("task-x", "task", { status: "todo" }), isAgentic: true, isBlocked: true });
+    const pills = {
+      ...DEFAULT_LIST_FILTER.pills,
+      agentic: [{ value: "agentic", mode: "any" as const }],
+      asynchronous: [{ value: "asynchronous", mode: "any" as const }],
+      blocked: [{ value: "blocked", mode: "exclude" as const }],
+    };
+    expect(ids(filterTaskList([...rows, blockedAgent], sf(), lf({ pills })))).toEqual(["task-b", "task-a", "task-w"]);
   });
 });
 
@@ -492,7 +522,7 @@ describe("filterTaskList — Asynchronous", () => {
   });
 
   it("keeps only the rest under a Not-asynchronous pill", () => {
-    const filtered = filterTaskList([waiting, doing], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, asynchronous: [{ value: "not_asynchronous", mode: "any" }] } }));
+    const filtered = filterTaskList([waiting, doing], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, asynchronous: [{ value: "asynchronous", mode: "exclude" }] } }));
     expect(filtered.map((r) => r.node.id)).toEqual(["task-d"]);
   });
 

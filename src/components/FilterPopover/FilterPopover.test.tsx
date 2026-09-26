@@ -225,24 +225,26 @@ describe("FilterPopover — rows", () => {
       expect(screen.queryByText("not_blocked")).not.toBeInTheDocument();
     });
 
-    it("adds 'is X' on a click (Shift too) and 'is not X' with Alt", () => {
+    it("adds 'is X' on a click, Any with Shift, and 'is not X' with Alt", () => {
       render(<FilterPopover />);
       fireEvent.click(pill("blocked"));
       fireEvent.click(pill("agentic"), { shiftKey: true });
       fireEvent.click(pill("asynchronous"), { altKey: true });
       const pills = useListFilterStore.getState().filter.pills;
       expect(pills.blocked).toEqual([{ value: "blocked", mode: "all" }]);
-      expect(pills.agentic).toEqual([{ value: "agentic", mode: "all" }]);
+      expect(pills.agentic).toEqual([{ value: "agentic", mode: "any" }]);
       expect(pills.asynchronous).toEqual([{ value: "asynchronous", mode: "exclude" }]);
     });
 
-    it("flips an added yes/no pill rather than cycling through Any", () => {
+    it("cycles an added yes/no pill All → Any → Not → All", () => {
       render(<FilterPopover />);
       fireEvent.click(pill("blocked"));
-      fireEvent.click(pill("blocked"));
-      expect(useListFilterStore.getState().filter.pills.blocked).toEqual([{ value: "blocked", mode: "exclude" }]);
-      fireEvent.click(pill("blocked"));
-      expect(useListFilterStore.getState().filter.pills.blocked).toEqual([{ value: "blocked", mode: "all" }]);
+      const modes: string[] = [];
+      for (let step = 0; step < 3; step += 1) {
+        fireEvent.click(pill("blocked"));
+        modes.push(useListFilterStore.getState().filter.pills.blocked[0]?.mode ?? "");
+      }
+      expect(modes).toEqual(["any", "exclude", "all"]);
     });
 
     it("adds a Private pill to the Yes / no row only while Private Mode is on", () => {

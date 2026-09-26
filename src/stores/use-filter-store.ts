@@ -57,7 +57,7 @@ export function createFilterStore(seed: FilterState = DEFAULT_FILTER): StoreApi<
       set((s) => ({
         filter: {
           ...s.filter,
-          tagFilters: s.filter.tagFilters.map((t) => (t.tagId === tagId ? { ...t, mode: nextMode("tag", t.mode) } : t)),
+          tagFilters: s.filter.tagFilters.map((t) => (t.tagId === tagId ? { ...t, mode: nextMode(t.mode) } : t)),
         },
       })),
     setTagFilterMode: (tagId, mode) =>

@@ -51,7 +51,6 @@ export default function FilterPopover() {
         </Fragment>
       ))}
       <div className={styles.foot}>
-        <span className={styles.hint}>{t("menuHint")}</span>
         <button
           type="button"
           className={styles.reset}

@@ -29,6 +29,26 @@ describe("HotkeysModal", () => {
     expect(screen.getByText("hotkeys:toggleSubtreeCollapsed")).toBeInTheDocument();
   });
 
+  it("documents the filter modes in a Filters section: Enter / Shift+Enter / Alt+Enter and their clicks", () => {
+    render(<HotkeysModal onClose={vi.fn()} />);
+    const section = screen.getByText("hotkeys:sectionFilters").closest("section");
+    expect(section).not.toBeNull();
+    if (section === null) return;
+    const list = within(section);
+    for (const [chord, click, label] of [
+      ["Enter", "hotkeys:filterClick", "hotkeys:filterAddAll"],
+      ["Shift+Enter", "hotkeys:filterShiftClick", "hotkeys:filterAddAny"],
+      ["Alt+Enter", "hotkeys:filterAltClick", "hotkeys:filterAddNot"],
+    ] as const) {
+      const row = list.getByText(label).closest("div");
+      expect(row).not.toBeNull();
+      expect(row).toHaveTextContent(chord);
+      expect(row).toHaveTextContent(click);
+    }
+    expect(list.getByText("hotkeys:filterCycle")).toBeInTheDocument();
+    expect(list.getByText("hotkeys:filterRemove")).toBeInTheDocument();
+  });
+
   it("merges every chord that triggers one action into a single row", () => {
     render(<HotkeysModal onClose={vi.fn()} />);
     // Scoped to the Mindmap's own section: the Steps View binds Ctrl+= to its card size, so the

@@ -99,5 +99,14 @@
   "stepsZoomOut": "Smaller cards (more to a page)",
   "stepsCreateChild": "Create a child of the selected card (on a card: step into it)",
   "stepsCreateSibling": "Create a card beside the selected one, on this Step",
-  "bindWait": "Open the selected task's editor at its Expectation section, with Asynchronous on"
+  "bindWait": "Open the selected task's editor at its Expectation section, with Asynchronous on",
+  "sectionFilters": "Filters (Filter menu, Ctrl+F, chips)",
+  "filterAddAll": "Add a value as All",
+  "filterAddAny": "Add a value as Any",
+  "filterAddNot": "Add a value as Not (exclude)",
+  "filterCycle": "Change an added value's mode: All → Any → Not",
+  "filterRemove": "Remove a focused added value or chip",
+  "filterClick": "Click",
+  "filterShiftClick": "Shift+click",
+  "filterAltClick": "Alt+click"
 }

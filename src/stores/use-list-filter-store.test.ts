@@ -68,11 +68,11 @@ describe("addPill / setPillMode / removePill", () => {
     expect(modes).toEqual(["any", "exclude", "all"]);
   });
 
-  it("adds a yes/no pill as one 'is X' pill: Any lands as All, Not as exclude", () => {
+  it("adds a yes/no pill as one 'is X' pill in the mode it is given, Any included", () => {
     useListFilterStore.getState().addPill("blocked", "blocked", "any");
     useListFilterStore.getState().addPill("agentic", "agentic", "exclude");
     const pills = useListFilterStore.getState().filter.pills;
-    expect(pills.blocked).toEqual([{ value: "blocked", mode: "all" }]);
+    expect(pills.blocked).toEqual([{ value: "blocked", mode: "any" }]);
     expect(pills.agentic).toEqual([{ value: "agentic", mode: "exclude" }]);
   });
 
@@ -82,12 +82,14 @@ describe("addPill / setPillMode / removePill", () => {
     expect(useListFilterStore.getState().filter.pills.asynchronous).toEqual([{ value: "asynchronous", mode: "exclude" }]);
   });
 
-  it("flips a yes/no pill between is and is-not rather than cycling through Any", () => {
+  it("cycles a yes/no pill All → Any → Not → All, like any other", () => {
     useListFilterStore.getState().addPill("blocked", "blocked", "all");
-    useListFilterStore.getState().cyclePill("blocked", "blocked");
-    expect(useListFilterStore.getState().filter.pills.blocked).toEqual([{ value: "blocked", mode: "exclude" }]);
-    useListFilterStore.getState().cyclePill("blocked", "blocked");
-    expect(useListFilterStore.getState().filter.pills.blocked).toEqual([{ value: "blocked", mode: "all" }]);
+    const modes: string[] = [];
+    for (let step = 0; step < 3; step += 1) {
+      useListFilterStore.getState().cyclePill("blocked", "blocked");
+      modes.push(useListFilterStore.getState().filter.pills.blocked[0]?.mode ?? "");
+    }
+    expect(modes).toEqual(["any", "exclude", "all"]);
   });
 
   it("removes a pill by value", () => {

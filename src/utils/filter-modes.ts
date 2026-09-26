@@ -8,11 +8,11 @@ import type { PillDimension, PillFilter, PillMode } from "@/utils/list-filter";
 export type FilterDimension = "tag" | PillDimension;
 
 /**
- * The dimensions that ask a yes/no question of a row. Each is **one** pill in the menu — "Blocked",
- * "Agentic", "Asynchronous" — rather than a pair of values: adding it means "is X", and its Not
- * mode means "is not X". **Private** joins them only while Private Mode is on (see
- * `offeredDimensions`). A row answers exactly one of the two, so Any and All say the same thing
- * and the pill only ever flips between the two modes that differ.
+ * The dimensions that ask a yes/no question of a row — one pill each in the menu ("Blocked",
+ * "Agentic", "Asynchronous", and "Private" while Private Mode is on; see `offeredDimensions`),
+ * stored under the "is X" value. They take the three modes like any other value: All "is X", Not
+ * "is not X", and Any "is X, or one of the other Any flags" — the flags form **one** pill group, so
+ * Agentic (Any) with Asynchronous (Any) keeps what is agentic or asynchronous.
  */
 export type YesNoDimension = "blocked" | "agentic" | "asynchronous" | "private";
 
@@ -59,35 +59,21 @@ export function modeFromModifiers(keys: ModifierKeys): PillMode {
   return "all";
 }
 
-/** The mode a value is actually stored in when added in `mode`: a yes/no pill has no Any. */
-export function addedMode(dimension: FilterDimension, mode: PillMode): PillMode {
-  if (isYesNoDimension(dimension) && mode === "any") return "all";
-  return mode;
-}
-
-/**
- * The mode a chip or a set pill moves to when clicked: **All → Any → Not → All**, and a yes/no
- * pill just flips between "is X" and "is not X".
- */
-export function nextMode(dimension: FilterDimension, mode: PillMode): PillMode {
-  if (isYesNoDimension(dimension)) return mode === "exclude" ? "all" : "exclude";
+/** The mode a chip or a set pill moves to when clicked: **All → Any → Not → All**, for every
+ * dimension alike. */
+export function nextMode(mode: PillMode): PillMode {
   return NEXT_PILL_MODE[mode];
-}
-
-/** Whether a stored yes/no pill asks for "is X" (true) or "is not X" (false). */
-function asksYes(dimension: YesNoDimension, pill: PillFilter): boolean {
-  const saysYes = pill.value !== NO_VALUE[dimension];
-  return pill.mode === "exclude" ? !saysYes : saysYes;
 }
 
 /**
  * A yes/no dimension's pills in the one shape the menu reads: at most one pill, under the "is X"
- * value, in All ("is X") or Not ("is not X"). Older state could hold the "not X" value, or an Any,
- * or both values at once; each reads as the question it asked, and when two pills disagreed — a
- * filter nothing could pass — the first one's question is kept.
+ * value, in the mode it was given. Older state could hold the "not X" value — read as the Not of
+ * "is X" (and its Not as "is X", in All) — or both values at once, where the first pill is kept.
+ * An "is X" pill in Any or All is kept exactly as it is.
  */
 export function canonicalYesNoPills(dimension: YesNoDimension, pills: readonly PillFilter[]): PillFilter[] {
   const first = pills[0];
   if (first === undefined) return [];
-  return [{ value: YES_VALUE[dimension], mode: asksYes(dimension, first) ? "all" : "exclude" }];
+  if (first.value !== NO_VALUE[dimension]) return [{ value: YES_VALUE[dimension], mode: first.mode }];
+  return [{ value: YES_VALUE[dimension], mode: first.mode === "exclude" ? "all" : "exclude" }];
 }

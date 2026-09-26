@@ -8,6 +8,7 @@ import { MINDMAP_BINDINGS } from "@/utils/hotkeys/mindmap-bindings";
 import { LIST_BINDINGS } from "@/utils/hotkeys/list-bindings";
 import { PLAN_BINDINGS } from "@/utils/hotkeys/plan-bindings";
 import { STEPS_BINDINGS } from "@/utils/hotkeys/steps-bindings";
+import { FILTER_GESTURES } from "@/utils/hotkeys/filter-gestures";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "./HotkeysModal.module.css";
 
@@ -52,6 +53,28 @@ function rowsFor(section: Section): Row[] {
   return rows;
 }
 
+/** The filter gestures: how a value is added in each mode, cycled and removed. Keys and clicks,
+ * not bindings — see `FILTER_GESTURES`. */
+function FilterGesturesSection() {
+  const { t } = useTranslation(["hotkeys"]);
+  return (
+    <section className={styles.section}>
+      <h3 className={styles.sectionTitle}>{t("hotkeys:sectionFilters")}</h3>
+      <dl className={styles.list}>
+        {FILTER_GESTURES.map((gesture) => (
+          <div key={gesture.labelKey} className={styles.row}>
+            <dt className={styles.chord}>
+              {gesture.chords.map((chord) => formatChord(chord)).map((chord) => <kbd key={chord}>{chord}</kbd>)}
+              {gesture.clickKey !== null && <kbd>{t(`hotkeys:${gesture.clickKey}`)}</kbd>}
+            </dt>
+            <dd className={styles.label}>{t(`hotkeys:${gesture.labelKey}`)}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 /** Ctrl+Shift+/ cheat-sheet: every keyboard binding, grouped by the surface it applies to. */
 export default function HotkeysModal({ onClose }: Props) {
   useInputCapture();
@@ -73,10 +96,10 @@ export default function HotkeysModal({ onClose }: Props) {
       <div className={styles.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={t("hotkeys:title")}>
         <h2 className={styles.title}>{t("hotkeys:title")}</h2>
         <div className={styles.sections}>
-          {SECTIONS.map(({ section, titleKey }) => {
+          {SECTIONS.flatMap(({ section, titleKey }) => {
             const rows = rowsFor(section);
             if (rows.length === 0) return null;
-            return (
+            const drawn = (
               <section key={section} className={styles.section}>
                 <h3 className={styles.sectionTitle}>{t(`hotkeys:${titleKey}`)}</h3>
                 <dl className={styles.list}>
@@ -91,6 +114,8 @@ export default function HotkeysModal({ onClose }: Props) {
                 </dl>
               </section>
             );
+            // The filter gestures sit right after the Global section, where Alt+F and Ctrl+F are.
+            return section === "global" ? [drawn, <FilterGesturesSection key="filters" />] : [drawn];
           })}
         </div>
       </div>

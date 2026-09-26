@@ -62,11 +62,10 @@ describe("FilterSearchModal", () => {
     expect(box()).toHaveFocus();
   });
 
-  it("shows only the search box and the hint until something is typed", () => {
+  it("shows only the search box until something is typed", () => {
     render(<FilterSearchModal onClose={vi.fn()} />);
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("option")).not.toBeInTheDocument();
-    expect(screen.getByText("search.hintKeys.any")).toBeInTheDocument();
   });
 
   it("finds nodes by name in the List View, as Under and Depends on results, with their path", () => {
@@ -158,11 +157,11 @@ describe("FilterSearchModal", () => {
     expect(useListFilterStore.getState().filter.pills.blocked).toEqual([{ value: "blocked", mode: "exclude" }]);
   });
 
-  it("lists a yes/no pill added with Shift as plain All", () => {
+  it("adds a yes/no pill with Shift as Any", () => {
     render(<FilterSearchModal onClose={vi.fn()} />);
     fireEvent.change(box(), { target: { value: "agentic" } });
     fireEvent.click(option("agentic"), { shiftKey: true });
-    expect(useListFilterStore.getState().filter.pills.agentic).toEqual([{ value: "agentic", mode: "all" }]);
+    expect(useListFilterStore.getState().filter.pills.agentic).toEqual([{ value: "agentic", mode: "any" }]);
   });
 
   describe("switches", () => {
@@ -259,10 +258,9 @@ describe("FilterSearchModal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the modifier hint", () => {
+  it("draws no modifier hint line: the cheat-sheet documents the modes", () => {
     render(<FilterSearchModal onClose={vi.fn()} />);
-    expect(screen.getByText("search.hintKeys.any")).toBeInTheDocument();
-    expect(screen.getByText("search.hintKeys.not")).toBeInTheDocument();
+    expect(screen.queryByText(/hint/)).not.toBeInTheDocument();
   });
 });
 

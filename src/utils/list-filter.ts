@@ -298,14 +298,32 @@ function ancestorRefs(ancestors: readonly MindmapNode[]): string[] {
   return ancestors.map((ancestor) => ancestor.id);
 }
 
+/** Whether a row is private: its node is marked private or sits under a node that is — the same
+ * reading Private Mode hides by. */
+function isPrivateRow(node: MindmapNode, hasPrivateAncestor: boolean): boolean {
+  return node.isPrivate === true || hasPrivateAncestor;
+}
+
+/** The yes/no flags a row answers "yes" to, as the "is X" values their pills are stored under. */
+function flagTokens(flags: Readonly<Record<"blocked" | "agentic" | "asynchronous" | "private", boolean>>): string[] {
+  return Object.entries(flags).flatMap(([flag, on]) => (on ? [flag] : []));
+}
+
 /**
- * A row's answer to the **Private** yes/no pill: private when the node is marked private or sits
- * under a node that is — the same reading Private Mode hides by. The pill is offered only while
- * Private Mode is on, and turning Private Mode off removes it, so it never narrows a list that has
- * hidden every private row already.
+ * The yes/no pills — Blocked, Agentic, Asynchronous, Private — as **one** pill group, so an Any
+ * among them is an Any across them: Agentic (Any) with Asynchronous (Any) keeps what is either.
+ * All and Not read per flag, as they would in groups of their own. A Commitment or a wait answers
+ * only the Private pill: the others ask about Tasks and do not apply to it. Private is offered
+ * only while Private Mode is on, and turning that off removes it.
  */
-function privacyToken(node: MindmapNode, hasPrivateAncestor: boolean): string {
-  return node.isPrivate === true || hasPrivateAncestor ? "private" : "not_private";
+function flagPills(listFilter: ListFilterState, taskFlags: boolean): PillFilter[] {
+  const { blocked, agentic, asynchronous } = listFilter.pills;
+  return [...(taskFlags ? [...blocked, ...agentic, ...asynchronous] : []), ...listFilter.pills.private];
+}
+
+/** A Commitment's or a wait's flag tokens: it answers only Private. */
+function privateToken(node: MindmapNode, hasPrivateAncestor: boolean): string[] {
+  return isPrivateRow(node, hasPrivateAncestor) ? ["private"] : [];
 }
 
 /** Combined pill predicate per SPEC Filtering Logic: (∪Any) ∧ (∩All) ∧ ¬(∪Exclude). */
@@ -444,10 +462,12 @@ function rowPassesFilters(row: TaskListRow, shared: FilterState, listFilter: Lis
   if (!matchesPillGroup(listFilter.pills.goalStatus, row.goalStatus !== null ? [row.goalStatus] : [])) return false;
   if (!matchesPillGroup(listFilter.pills.projectStatus, row.projectStatus !== null ? [row.projectStatus] : [])) return false;
   if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
-  if (!matchesPillGroup(listFilter.pills.blocked, [row.isBlocked ? "blocked" : "not_blocked"])) return false;
-  if (!matchesPillGroup(listFilter.pills.agentic, [row.isAgentic ? "agentic" : "not_agentic"])) return false;
-  if (!matchesPillGroup(listFilter.pills.asynchronous, [row.isAsynchronous ? "asynchronous" : "not_asynchronous"])) return false;
-  return matchesPillGroup(listFilter.pills.private, [privacyToken(row.node, row.hasPrivateAncestor)]);
+  return matchesPillGroup(flagPills(listFilter, true), flagTokens({
+    blocked: row.isBlocked,
+    agentic: row.isAgentic,
+    asynchronous: row.isAsynchronous,
+    private: isPrivateRow(row.node, row.hasPrivateAncestor),
+  }));
 }
 
 /**
@@ -496,7 +516,7 @@ function commitmentPassesFilters(row: CommitmentListRow, shared: FilterState, li
   if (!passesTags(row.node, shared)) return false;
   if (!matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors))) return false;
   if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
-  if (!matchesPillGroup(listFilter.pills.private, [privacyToken(row.node, row.hasPrivateAncestor)])) return false;
+  if (!matchesPillGroup(flagPills(listFilter, false), privateToken(row.node, row.hasPrivateAncestor))) return false;
   return matchesPillGroup(listFilter.pills.verdict, [row.node.verdict ?? VERDICT.UNRESOLVED]);
 }
 
@@ -535,7 +555,7 @@ function expectationPassesFilters(row: ExpectationListRow, shared: FilterState, 
   }
   if (!passesTags(row.node, shared)) return false;
   if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
-  if (!matchesPillGroup(listFilter.pills.private, [privacyToken(row.node, row.hasPrivateAncestor)])) return false;
+  if (!matchesPillGroup(flagPills(listFilter, false), privateToken(row.node, row.hasPrivateAncestor))) return false;
   return matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors));
 }
 

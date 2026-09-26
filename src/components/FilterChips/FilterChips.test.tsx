@@ -61,13 +61,15 @@ describe("FilterChips", () => {
     expect(modes).toEqual(["any", "exclude", "all"]);
   });
 
-  it("a yes/no chip reads Not while excluding, and flips rather than cycling through Any", () => {
+  it("a yes/no chip reads Not while excluding, and cycles All → Any → Not", () => {
     useViewStore.setState({ view: "list" });
     useListFilterStore.setState({
       filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills, blocked: [{ value: "blocked", mode: "all" }] } },
     });
     render(<FilterChips />);
     expect(screen.getByText("blocked.blocked")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("blocked.blocked"));
+    expect(useListFilterStore.getState().filter.pills.blocked).toEqual([{ value: "blocked", mode: "any" }]);
     fireEvent.click(screen.getByText("blocked.blocked"));
     expect(useListFilterStore.getState().filter.pills.blocked).toEqual([{ value: "blocked", mode: "exclude" }]);
     expect(screen.getByText("blocked.not_blocked")).toBeInTheDocument();

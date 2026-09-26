@@ -2,17 +2,16 @@ import { createStore, type StoreApi } from "zustand";
 import type { ListFilterState, ListPreset, ListRowKind, PillDimension, PillFilter, PillMode, PillSide } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER, pillSide, rowKindToggleRefusal, withRowKindToggled } from "@/utils/list-filter";
 import { tabStoreHook } from "@/stores/tab-stores-context";
-import { addedMode, canonicalYesNoPills, isYesNoDimension, nextMode } from "@/utils/filter-modes";
+import { canonicalYesNoPills, isYesNoDimension, nextMode } from "@/utils/filter-modes";
 
 export interface ListFilterStore {
   filter: ListFilterState;
   setPreset: (preset: ListPreset) => void;
   /** Shows or hides one row kind. A refused toggle (see `rowKindToggleRefusal`) changes nothing. */
   toggleKind: (kind: ListRowKind) => void;
-  /** Adds a value in `mode` (a yes/no dimension has no Any, so Any lands as All). No-op when the
-   * value is already filtered. */
+  /** Adds a value in `mode`. No-op when the value is already filtered. */
   addPill: (dimension: PillDimension, value: string, mode: PillMode) => void;
-  /** Moves a pill one step along its cycle: All → Any → Not, or a yes/no pill's flip. */
+  /** Moves a pill one step along its cycle: All → Any → Not → All. */
   cyclePill: (dimension: PillDimension, value: string) => void;
   setPillMode: (dimension: PillDimension, value: string, mode: PillMode) => void;
   setPillSide: (dimension: PillDimension, value: string, side: PillSide) => void;
@@ -42,7 +41,7 @@ export function createListFilterStore(seed: ListFilterState = DEFAULT_LIST_FILTE
       set((s) => {
         const existing = s.filter.pills[dimension];
         const added: PillFilter[] = isYesNoDimension(dimension)
-          ? canonicalYesNoPills(dimension, [{ value, mode: addedMode(dimension, mode) }])
+          ? canonicalYesNoPills(dimension, [{ value, mode }])
           : [{ value, mode }];
         if (added.some((pill) => existing.some((p) => p.value === pill.value))) return {};
         return { filter: { ...s.filter, pills: { ...s.filter.pills, [dimension]: [...existing, ...added] } } };
@@ -53,7 +52,7 @@ export function createListFilterStore(seed: ListFilterState = DEFAULT_LIST_FILTE
           ...s.filter,
           pills: {
             ...s.filter.pills,
-            [dimension]: s.filter.pills[dimension].map((p) => (p.value === value ? { ...p, mode: nextMode(dimension, p.mode) } : p)),
+            [dimension]: s.filter.pills[dimension].map((p) => (p.value === value ? { ...p, mode: nextMode(p.mode) } : p)),
           },
         },
       })),
