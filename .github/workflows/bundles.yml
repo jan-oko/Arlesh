@@ -1,0 +1,231 @@
+name: Bundles
+
+# Installable Linux builds — an AppImage and a tarball of the bare release
+# binary — published to GitHub Releases. No .deb or .rpm, by choice.
+#
+#   push to master   rolling pre-release, tag `latest`: the tag is moved to the
+#                    pushed commit and the assets replaced, so
+#                    https://github.com/jan-oko/Arlesh/releases/tag/latest is
+#                    always the newest master build, and its asset names carry
+#                    no version or sha, so direct download links keep working.
+#   push tag vX.Y.Z  a normal release for that tag, with versioned asset names.
+#                    The tag must equal tauri.conf.json's version, or the run
+#                    fails before building.
+#   dispatch         rolling, to the tag named by the `release_tag` input. It
+#                    exists for testing on a throwaway tag; `latest` itself is
+#                    only ever written from master.
+#
+# This is not a gate and never runs on pull requests: a release build compiles
+# the whole tree a second way (optimised, uninstrumented), and paying that on
+# every PR would roughly double PR wall time for something only master needs.
+# Being its own workflow on its own triggers, it cannot become a required check.
+#
+# Two jobs, so write access is as narrow as it can be: `build` runs npm ci,
+# build scripts and the compiler with a read-only token and hands its output
+# over as workflow artifacts (kept 30 days, which also gives every master commit
+# its own downloadable build); `release` holds contents: write and runs nothing
+# but gh.
+#
+# Nothing is signed; there are no secrets beyond the default GITHUB_TOKEN.
+#
+# It builds on ubuntu-22.04 deliberately. A Linux binary links against the glibc
+# of the machine that built it and runs on that version or newer, not older.
+# Building on the oldest runner that still ships webkit2gtk-4.1 is what lets the
+# same binary run on 24.04, Fedora and Arch alike; ubuntu-latest would quietly
+# raise that floor every time the image moves.
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Rolling pre-release tag to publish to (`latest` only from master)
+        default: latest
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: tauri build · linux bundles
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      sha: ${{ steps.meta.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # First, so a mistyped tag fails in seconds rather than after the build.
+      - name: Read version and short sha
+        id: meta
+        run: |
+          version=$(jq -r .version src-tauri/tauri.conf.json)
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match tauri.conf.json's version $version (expected v$version)."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Same set as ci.yml's rust lane — webkit2gtk-4.1 exists on 22.04 too.
+      # `file` is what linuxdeploy (the AppImage bundler) uses to classify ELF
+      # files; it is on the image today, named here so it stays that way.
+      - name: Install Tauri's Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libayatana-appindicator3-dev \
+            libssl-dev \
+            file
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # /rust-toolchain.toml resolves here exactly as in ci.yml; printing it is
+      # the proof in the log that the pin did.
+      - name: Show toolchain
+        run: |
+          rustc --version
+          cargo --version
+
+      # Its own key: a release build on 22.04 shares no artifacts with the
+      # instrumented debug build ci.yml caches on ubuntu-latest.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: release-bundles-ubuntu-22.04
+
+      # beforeBuildCommand (npm run build) produces dist/ first, so this is the
+      # real frontend, not ci.yml's stub.
+      #
+      # NO_STRIP: linuxdeploy ships an old `strip` that fails on libraries
+      # carrying newer ELF sections (.relr.dyn), aborting the AppImage step.
+      # Skipping the strip costs some size and nothing else.
+      - name: tauri build
+        env:
+          NO_STRIP: 'true'
+        run: npx tauri build --ci --bundles appimage
+
+      # Stable names, with no version or sha in them: these are the names the
+      # rolling release serves, so a download link to one never goes stale.
+      # The release job adds the version for a tagged release.
+      - name: Stage bundles under stable names
+        run: |
+          out="$RUNNER_TEMP/bundles"
+          mkdir -p "$out"
+          bundle=src-tauri/target/release/bundle
+          cp $bundle/appimage/*.AppImage "$out/Arlesh-linux-x86_64.AppImage"
+          tar -czf "$out/arlesh-linux-x86_64.tar.gz" -C src-tauri/target/release arlesh
+          ls -la "$out"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arlesh-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.sha }}-linux-appimage
+          path: ${{ runner.temp }}/bundles/*.AppImage
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arlesh-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.sha }}-linux-x86_64-tarball
+          path: ${{ runner.temp }}/bundles/*.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  release:
+    name: publish · github release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag || 'latest' }}
+      VERSION: ${{ needs.build.outputs.version }}
+      SHORT_SHA: ${{ needs.build.outputs.sha }}
+    # One publisher per release at a time, so two master pushes never race on
+    # `latest`. A queued run that is superseded by a newer one is cancelled,
+    # which is fine: the newer one publishes the newer commit.
+    concurrency:
+      group: release-${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag || 'latest' }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: arlesh-${{ needs.build.outputs.version }}-${{ needs.build.outputs.sha }}-linux-*
+          path: bundles
+          merge-multiple: true
+
+      - name: Publish
+        run: |
+          set -euo pipefail
+          cd bundles
+
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            for f in *; do mv "$f" "${f/-linux-/-$VERSION-linux-}"; done
+            ls -la
+            if ! gh release view "$TAG" >/dev/null 2>&1; then
+              gh release create "$TAG" --verify-tag \
+                --title "Arlesh $VERSION" \
+                --notes "Arlesh $VERSION, built from $SHORT_SHA."
+            fi
+            gh release upload "$TAG" --clobber *
+            exit 0
+          fi
+
+          # Rolling. `latest` is master's alone: a dispatch from any other ref
+          # has to name a different tag.
+          if [ "$TAG" = latest ] && [ "$GITHUB_REF" != refs/heads/master ]; then
+            echo "::error::The latest release is only published from master; pass another release_tag."
+            exit 1
+          fi
+
+          # Builds run in parallel and can finish out of order. If the branch
+          # has moved on since this commit, a newer run publishes it; stepping
+          # aside here keeps an older build from overwriting a newer one.
+          head=$(gh api "repos/$GH_REPO/commits/$GITHUB_REF_NAME" --jq .sha)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "$GITHUB_REF_NAME is at $head now, not $GITHUB_SHA; leaving $TAG to the newer run."
+            exit 0
+          fi
+
+          ls -la
+
+          # Point the tag at this commit, creating it the first time.
+          if gh api "repos/$GH_REPO/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/$TAG" -f sha="$GITHUB_SHA" -F force=true >/dev/null
+          else
+            gh api -X POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" >/dev/null
+          fi
+
+          title="Latest $GITHUB_REF_NAME build"
+          notes=$(printf '%s\n\n%s\n' \
+            "Arlesh $VERSION, built from [\`$SHORT_SHA\`]($GITHUB_SERVER_URL/$GH_REPO/commit/$GITHUB_SHA) on $(date -u +'%Y-%m-%d %H:%M UTC')." \
+            "Rebuilt on every push to $GITHUB_REF_NAME; the assets are replaced in place, so their download links stay the same.")
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --prerelease --latest=false --title "$title" --notes "$notes"
+          else
+            gh release create "$TAG" --verify-tag --prerelease --latest=false --title "$title" --notes "$notes"
+          fi
+          gh release upload "$TAG" --clobber *
