@@ -22,7 +22,7 @@ beforeEach(() => {
   useDisplayStore.setState({
     asynchronousFirst: false, listBands: true, habitCollapseThreshold: 3,
     planCandidatesPathGrouping: false, planCandidatesParentOnly: false,
-    planSubscopeSplit: false, planIncludePremorning: false,
+    planSplitBySubscope: false, planIncludePremorning: false,
   });
   useThemeStore.setState({ theme: "dark" });
   useCloseToTrayStore.setState({ closeToTray: true });
@@ -182,7 +182,7 @@ describe("SettingsModal", () => {
     const display = useDisplayStore.getState();
     expect(display.planCandidatesParentOnly).toBe(true);
     expect(display.planCandidatesPathGrouping).toBe(true);
-    expect(display.planSubscopeSplit).toBe(true);
+    expect(display.planSplitBySubscope).toBe(true);
     expect(display.planIncludePremorning).toBe(true);
   });
 

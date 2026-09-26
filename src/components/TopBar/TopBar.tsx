@@ -11,6 +11,8 @@ import type { ListPreset } from "@/utils/list-filter";
 import FilterPopover from "@/components/FilterPopover/FilterPopover";
 import FilterChips from "@/components/FilterChips/FilterChips";
 import Select from "@/components/Select/Select";
+import PlanScopeField from "@/components/ScopePicker/PlanScopeField";
+import { useDisplayStore } from "@/stores/use-display-store";
 import SettingsModal from "@/components/SettingsModal/SettingsModal";
 import SubtreeBreadcrumb from "./SubtreeBreadcrumb";
 import styles from "./TopBar.module.css";
@@ -29,9 +31,12 @@ function FunnelIcon() {
 }
 
 export default function TopBar() {
-  const { t } = useTranslation(["common", "listView", "planView"]);
+  const { t } = useTranslation(["common", "listView", "planView", "filter"]);
   const statusMode = useFilterStore((s) => s.filter.statusMode);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
+  const planScope = useFilterStore((s) => s.filter.planScope);
+  const setPlanScope = useFilterStore((s) => s.setPlanScope);
+  const planScopeOverlapping = useDisplayStore((s) => s.planScopeOverlapping);
   // Popover-open state lives in the store so the Alt+F keyboard shortcut can toggle it too.
   const filterOpen = useFilterStore((s) => s.popoverOpen);
   const setFilterPopover = useFilterStore((s) => s.setFilterPopover);
@@ -60,6 +65,9 @@ export default function TopBar() {
     : view === "list" && isListOnlyPreset(listPreset) ? listPreset : statusMode;
   const presetOptions = view === "list" ? LIST_PRESET_VALUES : MINDMAP_PRESETS;
   const presetLockedReason = planLocked ? t("planView:presetLocked") : undefined;
+  // The Plan preset's scope sits beside the preset it belongs to, and only while it is the one
+  // chosen. Never in the Plan View, which reads under Plan with a scope of its own.
+  const showPlanScope = !planLocked && activePreset === "plan";
 
   function selectPreset(value: string) {
     if (!isListPreset(value)) return;
@@ -117,6 +125,13 @@ export default function TopBar() {
             ariaLabel={t("listView:statusPresetLabel")}
             {...(presetLockedReason === undefined ? {} : { title: presetLockedReason })}
           />
+          {showPlanScope && (
+            <PlanScopeField
+              value={planScope}
+              onChange={setPlanScope}
+              hint={planScopeOverlapping ? t("filter:planScopeHintOverlapping") : t("filter:planScopeHint")}
+            />
+          )}
         </div>
 
         {/* Where you are, and the whole way down to it. A slot rather than a sibling, because the

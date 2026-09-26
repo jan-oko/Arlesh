@@ -7,20 +7,23 @@ import { useScopeLabels } from "@/hooks/use-scope-labels";
 import { formatScopeAnchor } from "@/utils/scope-format";
 import { keyForRef } from "@/utils/scope-key";
 import ScopePicker from "./ScopePicker";
-import styles from "./ScopeField.module.css";
+import styles from "./PlanScopeField.module.css";
 
 interface Props {
   /** The scope chosen, or `null` for none. */
   value: ScopeKey | null;
   onChange: (scope: ScopeKey | null) => void;
+  /** Hover text for the trigger: what the scope does to the board. */
+  hint: string;
 }
 
 /**
  * Picks the one scope the Plan preset narrows the board to — any calendar cell, any kind — with the
- * app's own Scope Picker, or clears it. The key is the cell's own value (ADR 0009), so nothing is
+ * app's own Scope Picker, or clears it. Drawn in the top bar beside the preset it belongs to, so the
+ * picker floats below it rather than pushing the bar open. The key is the cell's own value (ADR 0009), so nothing is
  * read back to name it.
  */
-export default function PlanScopeField({ value, onChange }: Props) {
+export default function PlanScopeField({ value, onChange, hint }: Props) {
   const { t } = useTranslation(["filter", "scopes"]);
   const [open, setOpen] = useState(false);
   const labels = useScopeLabels();
@@ -41,25 +44,33 @@ export default function PlanScopeField({ value, onChange }: Props) {
   }
 
   return (
-    <div className={styles.field}>
-      <div className={styles.summaryRow}>
-        <span className={styles.summary}>{value === null ? t("filter:planScopeAny") : label(value)}</span>
-        <button type="button" className={styles.button} onClick={() => setOpen((current) => !current)}>
-          {open ? t("filter:planScopeClose") : t("filter:planScopeEdit")}
+    <div className={styles.wrap}>
+      <button
+        type="button"
+        className={styles.trigger}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={t("filter:planScopeLabel")}
+        title={hint}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {value === null ? <span className={styles.unset}>{t("filter:planScopeAny")}</span> : label(value)}
+      </button>
+      {value !== null && (
+        <button type="button" className={styles.clear} onClick={() => onChange(null)}>
+          {t("filter:planScopeClear")}
         </button>
-        {value !== null && (
-          <button type="button" className={styles.button} onClick={() => onChange(null)}>
-            {t("filter:planScopeClear")}
-          </button>
-        )}
-      </div>
+      )}
       {open && (
-        <div className={styles.popover} role="group" aria-label={t("filter:planScopePicker")}>
-          <ScopePicker picker={picker} initialKind={value?.kind === "exact" || value === null ? "week" : value.kind} />
-          <button type="button" className={`${styles.button} ${styles.primary}`} onClick={apply}>
-            {t("filter:planScopeApply")}
-          </button>
-        </div>
+        <>
+          <div className={styles.backdrop} onClick={() => setOpen(false)} />
+          <div className={styles.popover} role="group" aria-label={t("filter:planScopePicker")}>
+            <ScopePicker picker={picker} initialKind={value?.kind === "exact" || value === null ? "week" : value.kind} />
+            <button type="button" className={styles.apply} onClick={apply}>
+              {t("filter:planScopeApply")}
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

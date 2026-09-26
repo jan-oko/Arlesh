@@ -195,10 +195,3 @@
 .reset:hover {
   color: var(--text-primary);
 }
-
-/* One line under a control saying what it does. */
-.hint {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}

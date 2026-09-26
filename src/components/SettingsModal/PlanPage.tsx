@@ -16,8 +16,8 @@ export default function PlanPage() {
   const toggleGroupByPath = useDisplayStore((s) => s.togglePlanCandidatesPathGrouping);
   const parentOnly = useDisplayStore((s) => s.planCandidatesParentOnly);
   const toggleParentOnly = useDisplayStore((s) => s.togglePlanCandidatesParentOnly);
-  const subscopeSplit = useDisplayStore((s) => s.planSubscopeSplit);
-  const toggleSubscopeSplit = useDisplayStore((s) => s.togglePlanSubscopeSplit);
+  const subscopeSplit = useDisplayStore((s) => s.planSplitBySubscope);
+  const toggleSubscopeSplit = useDisplayStore((s) => s.togglePlanSplitBySubscope);
   const includePremorning = useDisplayStore((s) => s.planIncludePremorning);
   const toggleIncludePremorning = useDisplayStore((s) => s.togglePlanIncludePremorning);
 

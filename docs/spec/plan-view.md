@@ -248,7 +248,7 @@ half:
 Candidates   [x] Show only planned to parent scope     on  by default
              [x] Group by path                         on  by default
 
-Planned      [ ] Split by subscope                     off by default
+Planned      [x] Split by subscope                     on  by default
              [ ] Include premorning                    off by default
 ```
 
@@ -290,6 +290,13 @@ month, the days of a week, the bands of a day — so a whole month's buckets and
 in one pass. The subscope is the next kind down the ladder `season → month → week → day → part of
 day`; a Part of Day has nothing below it and does not split, and neither does an Exact window, which
 is not a calendar cell.
+
+It is **on by default** (ruled by the user, 2026-09-26; it opened off before). A pass places work
+into the scope's parts, and the buckets are where it goes. Like the other three switches it is
+app-wide, not per tab, and the stored value could not tell a switch someone turned off from one that
+was never touched — the whole preference blob is written on any change. So the switch was stored
+under a new name, and the new default applies to everyone once, including whoever had turned it off
+on purpose; from then on the choice sticks.
 
 **Include premorning** draws a Day's 02:00–06:00 band as a bucket of its own. Off by default: the
 small hours are not where work gets planned, and a bucket nobody fills is a sixth of the pane spent

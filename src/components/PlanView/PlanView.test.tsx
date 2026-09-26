@@ -200,7 +200,7 @@ beforeEach(() => {
   // tests are about. The ones that are about it set the switches back.
   useDisplayStore.setState({
     planCandidatesPathGrouping: false, planCandidatesParentOnly: false,
-    planSubscopeSplit: false, planIncludePremorning: false,
+    planSplitBySubscope: false, planIncludePremorning: false,
   });
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
   useMindmapStore.setState({ subtreeRootId: null, pendingToast: null });
@@ -323,7 +323,7 @@ describe("taking work back out of the scope", () => {
   });
 
   it("plans it to the scope being filled itself with Enter while the pane is split", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([row(n("task-2", "task", { plan: onTuesday }))]);
     await renderPlanView();
 
@@ -334,7 +334,7 @@ describe("taking work back out of the scope", () => {
   });
 
   it("plans it to the scope being filled itself when dropped on the candidates pane while split", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([row(n("task-2", "task", { plan: onTuesday }))]);
     await renderPlanView();
 
@@ -558,7 +558,7 @@ describe("the two kebab menus", () => {
   // Work the split cannot place in a bucket is neither half: it is planned to the scope itself,
   // and the switch does not hide it.
   it("keeps work planned to the scope itself on the candidates side while it is split", async () => {
-    useDisplayStore.setState({ planCandidatesParentOnly: true, planSubscopeSplit: true });
+    useDisplayStore.setState({ planCandidatesParentOnly: true, planSplitBySubscope: true });
     mockRows([
       row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } })),
       row(n("task-2", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } })),
@@ -650,7 +650,7 @@ describe("switching the kind by its letter", () => {
 
   // With a row selected the letter is the subscope mnemonic's: M plans into Monday.
   it("leaves M to the subscope mnemonic while a row is selected", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
     await renderPlanView();
 
@@ -685,7 +685,7 @@ describe("switching the kind by its letter", () => {
 
 describe("splitting the planned pane by subscope", () => {
   it("draws one section per day of the week being filled, empty ones included", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([row(n("task-2", "task", { plan: { start_id: DAY_ID, end_id: DAY_ID } }))]);
     await renderPlanView();
     // Sunday the 20th through Saturday the 26th: seven buckets, six of them empty.
@@ -696,7 +696,7 @@ describe("splitting the planned pane by subscope", () => {
   });
 
   it("leaves the candidates pane flat — the work waiting there sits in no subscope", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
     await renderPlanView();
     expect(headingsIn("candidates")).toEqual([]);
@@ -707,7 +707,7 @@ describe("splitting the planned pane by subscope", () => {
   // says Down does not jump between buckets: the triage hands these over late-then-early, and the
   // split has to put them back in calendar order.
   it("draws the pane in section order, not in the order the triage produced", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([
       row(n("task-late", "task", { plan: { start_id: LATER_DAY_ID, end_id: LATER_DAY_ID } })),
       row(n("task-early", "task", { plan: { start_id: DAY_ID, end_id: DAY_ID } })),
@@ -719,7 +719,7 @@ describe("splitting the planned pane by subscope", () => {
   // The catch-all section is gone. Work pinned to the scope while its parts are what you are
   // filling is work that still needs placing, and the side with the gestures is the left one.
   it("moves work planned to the scope itself to the candidates side, out of every section", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([
       row(n("task-loose", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } })),
       row(n("task-2", "task", { plan: { start_id: DAY_ID, end_id: DAY_ID } })),
@@ -730,14 +730,14 @@ describe("splitting the planned pane by subscope", () => {
   });
 
   it("offers no plan-into-this-scope while the parts are what is being filled", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([row(n("task-loose", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
     await renderPlanView();
     expect(screen.queryByLabelText("planInto")).toBeNull();
   });
 
   it("plans the selection into the subscope a number names", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
     await renderPlanView();
     expect(cardsIn("candidates")).toEqual(["task-5"]);
@@ -751,7 +751,7 @@ describe("splitting the planned pane by subscope", () => {
   });
 
   it("plans by an unambiguous initial too, and leaves the colliding ones to their numbers", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
     await renderPlanView();
 
