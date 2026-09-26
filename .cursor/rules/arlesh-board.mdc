@@ -1,0 +1,11 @@
+---
+alwaysApply: true
+---
+
+# Tracking work: the Arlesh board
+
+Work is tracked as Agentic Tasks under the ARLESH project on the user's Arlesh board, through the
+`Arlesh` MCP server (`.mcp.json`, `http://127.0.0.1:4747/mcp` by default). See the
+"Tracking work: the Arlesh board" section of `AGENTS.md` for the command map and the rules —
+above all: never create a Task or set a priority without the user's approval, and never fall
+back to `bd` (`.beads/` is a read-only archive).

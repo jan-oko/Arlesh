@@ -24,7 +24,9 @@ a build, stop and ask me rather than starting one.
 
 ## Task
 
-Implement bead **`<id>`** — "<title>" (P<n>). Run `bd show <id>` and read it in full.
+Implement Task **`<short_id>`** — "<title>" (<priority>) on the Arlesh board. Read it in full with
+`arlesh_tasks.get` (Arlesh MCP), brief included, and claim it with `arlesh_tasks.set_status`
+todo → in_progress.
 Invoke the `solid` skill before writing code. Read `docs/spec/<area>.md` first.
 <If it lands in an existing PR:> This goes into PR #<n> on branch `<branch>`. Commit and
 push there. Do NOT run `gh pr create`.
@@ -40,10 +42,10 @@ settled so it is not re-litigated. Include rulings the user rejected, and why.>
 <Numbered questions the agent must answer and report. Name the traps you know of.>
 
 ## Out of scope
-<What NOT to touch, and who owns it instead (another bead, another agent's PR).>
+<What NOT to touch, and who owns it instead (another Task, another agent's PR).>
 
 ## In flight nearby
-<Each other branch touching the same files or API: bead, PR, what it changes, and the
+<Each other branch touching the same files or API: Task, PR, what it changes, and the
 resolution rule if they meet ("keep your content, then run `cargo fmt`", "5vp lands first").
 Ask the agent to tell you if it changes a shared API's shape.>
 
@@ -62,13 +64,14 @@ Ask the agent to tell you if it changes a shared API's shape.>
 
 ## Do NOT
 
-- **Do NOT run `bd create`** or change any bead's priority. Report anything worth filing.
+- **Do NOT create a Task** (`arlesh_tasks.create`) or set or change any Task's priority. Report
+  anything worth filing. Do not use `bd`.
 - Do not fix unrelated things you notice, and do not widen the task into an audit. Report them.
 - Never push to `master`. No time estimates.
 
 ## Stop and ask me, rather than guess
 
-A product decision; a spec ruling; two designs that disagree in a merge; a bead that reports
+A product decision; a spec ruling; two designs that disagree in a merge; a Task that reports
 "no way to do X" where X exists (say where it is — do not move UI on a guess); anything
 that needs a build or a migration number.
 
@@ -111,7 +114,9 @@ reminder.
 
 Three real briefs from 2026-09-22/23, verbatim. They predate `strict: false` and the
 fragment-only changelog in places — where they say "protection requires a current base" or
-mention `npm run changelog`, the template above is current.
+mention `npm run changelog`, the template above is current. They also predate the move from bd
+to the Arlesh board: where they say `bd show`, `bd create` or "bead", read `arlesh_tasks.get`,
+`arlesh_tasks.create` and "Task".
 
 - **Example 1** — a feature bead with a hard decision the orchestrator verified against
   master first, two routes named with their traps, and a sibling bead in flight on the same API.
