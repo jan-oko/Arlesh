@@ -18,5 +18,6 @@ mod agentic;
 mod async_templates;
 mod block_reasons;
 mod expectations;
+mod plan_overdue;
 mod tasks;
 mod wait_rows;

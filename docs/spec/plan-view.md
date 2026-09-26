@@ -165,9 +165,19 @@ that carried its rows outside the scope being filled and so off the pane.
 the task's own window is **not** widened on the user's behalf: a window is a statement about when
 work *matters*, and changing one is an editing decision, made in the editor.
 
+**An Overdue task is exempt from the first bound** (ruled by the user, 2026-09-26): one whose own
+window has passed while it is not done and Keep-on-exit — its Resolution reads **Overdue** (see
+[Time Scopes & Planning](time-scopes.md)). That is exactly when it needs rescheduling, and its own
+window can only ever refuse now and later, so it may be planned into any scope; its window stays as
+it was. The second bound still holds — it answers to its nearest planned ancestor's Plan like any
+task. A task that lapsed **Done** or **Missed** is not exempt, and nor is a Habit occurrence, whose
+lifecycle never reads Overdue: it stays within its iteration's window. The exemption is about what a
+move may do, not about where the task is offered: which scopes show it as a candidate is still
+*The candidates*' rule, unchanged.
+
 The two bounds are checked in the order the backend checks them — the task's own Time Scope first,
 then the nearest planned ancestor's Plan — so the view's refusal and the backend's cannot disagree
-about which bound stopped a move. The check is made **before** the write purely so the message can
+about which bound stopped a move; both lift the first for an Overdue task. The check is made **before** the write purely so the message can
 be specific; the backend enforces the same two rules on the way in, and a refusal that somehow
 reaches it is still refused, just less precisely. A bound whose window has not resolved yet refuses
 nothing here and is left to the backend.
