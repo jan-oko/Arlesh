@@ -72,7 +72,7 @@ A Task's Done status and a Goal's Achieved status are themselves untouched by an
 
 ## Plan (scheduling)
 
-A **Task** (not a Goal) may be **planned** into a single Scope. The Plan must be wholly contained within the task's Time Scope (the same scope or a subscope).
+A **Task** (not a Goal) may be **planned** into a single Scope. The Plan must be wholly contained within the task's Time Scope (the same scope or a subscope) — unless the task is **Overdue** (below).
 
 ## Containment invariants
 
@@ -81,6 +81,8 @@ Evaluated as interval containment on resolved datetime boundaries:
 - `Plan ⊆ TimeScope`
 - `child.TimeScope ⊆ parent.TimeScope`
 - `child.Plan ⊆ parent.Plan`
+
+**The Overdue exemption** (ruled by the user, 2026-09-26). `Plan ⊆ TimeScope` does not bind a Task whose Resolution reads **Overdue** — its own window has fully passed, it is not Done, and it is Keep-on-exit, judged on the task as the write leaves it at the moment of the write. A window that has passed can only refuse now and later, which is exactly where overdue work has to be rescheduled to. The exemption lifts that one bound and nothing else: the task's **Time Scope is not changed or widened** (a window is an editing decision), `child.TimeScope ⊆ parent.TimeScope` still holds, and so does `child.Plan ⊆ parent.Plan` — an overdue task is planned inside its nearest planned ancestor's Plan like any other. A task that lapsed **Done** (Completed) or **Missed** is not exempt, and nor is a Habit occurrence: its lifecycle never reads Overdue (an Accumulating one stays Active past its window, a Destructive one is Missed), so it stays within its iteration's window. Only a task's **own** Time Scope bounds its Plan in the first place, so an inherited window has nothing to lift. Descendants stay coherent without a rule of their own: a child's own window sits inside the overdue parent's, so an unfinished Keep-on-exit child is Overdue too and may follow its parent into a later Plan, while a Done child keeps its window's bound. The backend lifts the bound on the way in, and the [Plan View](plan-view.md)'s pre-check and the Task editor's Plan picker lift it with it.
 
 **Enforcement:** a local edit that exceeds a bound (a child or Plan set too wide) is rejected at write time. A parent-narrowing or reparent that would orphan descendants prompts the user to *clamp descendants to the intersection* or *cancel*.
 

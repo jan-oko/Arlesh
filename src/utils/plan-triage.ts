@@ -10,6 +10,7 @@ import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { ScopeInterval } from "@/utils/scope-interval";
 import { intervalContains, intervalsOverlap } from "@/utils/scope-interval";
+import { isOverdue } from "@/utils/overdue";
 
 /** Every scope id resolved to its window, keyed by the key's canonical text. */
 export type ScopeWindows = ReadonlyMap<ScopeKeyText, ScopeInterval>;
@@ -181,8 +182,10 @@ export function partitionForScope(
  *
  * - `Plan ⊆ TimeScope`, against the task's **own** window only. An inherited window constrains the
  *   window a task may take, not the Plan it may hold — that is the model's rule, and widening the
- *   task's own window on the user's behalf is an editor decision, not a triage one.
- * - `child.Plan ⊆ parent.Plan`, against the nearest planned ancestor.
+ *   task's own window on the user's behalf is an editor decision, not a triage one. Lifted for an
+ *   **Overdue** task (see `isOverdue`), whose window has already passed: rescheduling it is the
+ *   point, and its window stays as it is.
+ * - `child.Plan ⊆ parent.Plan`, against the nearest planned ancestor — overdue or not.
  *
  * A bound whose window has not resolved refuses nothing here: the backend still checks, and a
  * refusal the view cannot explain is better raised by the writer than guessed at.
@@ -193,7 +196,7 @@ export function planRefusal(
   windows: ScopeWindows,
 ): PlanRefusal | null {
   const own = row.node.timeScope;
-  if (own != null) {
+  if (own != null && !isOverdue(row.node)) {
     const ownWindow = timeScopeWindow(own, windows);
     if (ownWindow !== null && !intervalContains(ownWindow, target)) return "ownTimeScope";
   }

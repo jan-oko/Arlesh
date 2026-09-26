@@ -78,13 +78,13 @@ pub async fn create_task(
     now: NaiveDateTime,
 ) -> Result<Task, AppError> {
     let NodeId::Derived(parent) = request.parent_id.clone() else {
-        return Ok(crate::tasks::create_task(db, request).await?);
+        return Ok(crate::tasks::create_task_at(db, request, now).await?);
     };
     let (key, host) = occurrence_parent(db, &parent, now).await?;
     occurrence_edit::check_within(&host, request.time_scope.as_ref(), request.plan.as_ref())?;
     request.parent_type = host.host_type.clone();
     request.parent_id = NodeId::Stored(host.host_id);
-    let mut task = crate::tasks::create_task(db, request).await?;
+    let mut task = crate::tasks::create_task_at(db, request, now).await?;
     occurrence_edit::attach(db, &host, &key, "task", task.id.require_stored()?).await?;
     (task.parent_type, task.parent_id) = hung_on(&host, &key);
     Ok(task)
@@ -262,7 +262,7 @@ pub async fn update_task(
                     request.plan.as_ref().and_then(Option::as_ref),
                 )?;
             }
-            let mut task = crate::tasks::update_task(db, TaskId(*id), request).await?;
+            let mut task = crate::tasks::update_task_at(db, TaskId(*id), request, now).await?;
             if let Some((parent_type, parent_id)) = finish_move(db, moved, "task", *id).await? {
                 (task.parent_type, task.parent_id) = (parent_type, parent_id);
             }

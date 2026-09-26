@@ -28,8 +28,8 @@ use super::commitments;
 use super::error::TaskError;
 use super::expectations;
 use super::lifecycle::{
-    derive_commitment_state, derive_expectation_state, derive_item_state, derive_timing, Archival,
-    ItemLifecycle,
+    derive_commitment_state, derive_expectation_state, derive_item_state, derive_resolution,
+    derive_timing, Archival, ItemLifecycle, Resolution,
 };
 use super::model::{
     CommitmentId, ExpectationArchival, ExpectationStatus, GoalId, GoalStatus, OnScopeExit, TaskId,
@@ -306,9 +306,16 @@ struct ContainmentWindows {
     ancestor_scope: Option<Bounds>,
     /// The nearest planned task ancestor's Plan window.
     ancestor_plan: Option<Bounds>,
+    /// The item reads **Overdue** (see [`is_overdue`]), which lifts rule one alone: its Plan may
+    /// leave the window that has already passed. The two ancestor rules still hold.
+    overdue: bool,
 }
 
 /// Checks the three containment rules and reports the **first** violation.
+///
+/// Rule one — Plan within the item's own Time Scope — is skipped for an Overdue item, so work
+/// whose window passed unfinished can be rescheduled into now or later without its window being
+/// widened on the user's behalf.
 ///
 /// Pure: every window is resolved before it arrives, each exactly once, where the old code
 /// climbed twice and re-resolved the same Time Scope up to twice more.
@@ -317,7 +324,7 @@ struct ContainmentWindows {
 /// one message, and collecting all three is an explicit non-goal. The rule order is the order
 /// the old function checked in, so the message a given bad write produces has not changed.
 fn check_containment(windows: ContainmentWindows) -> Result<(), TaskError> {
-    if let (Some(own), Some(plan)) = (windows.own_scope, windows.plan) {
+    if let (Some(own), Some(plan), false) = (windows.own_scope, windows.plan, windows.overdue) {
         reject_unless_contained(own, plan, "plan is not within the task's time scope")?;
     }
     if let (Some(ancestor), Some(own)) = (windows.ancestor_scope, windows.own_scope) {
@@ -331,6 +338,27 @@ fn check_containment(windows: ContainmentWindows) -> Result<(), TaskError> {
         reject_unless_contained(ancestor, plan, "plan is not within the parent task's plan")?;
     }
     Ok(())
+}
+
+/// Whether a task written with this **own** Time Scope, On-exit behavior and completion reads
+/// **Overdue** at `now` — the lifecycle's own Resolution, derived exactly as
+/// [`derive_all_scope_lifecycles`] derives it: the window has fully passed, the task is not Done,
+/// and it is Keep-on-exit. A Missed task (Archive-on-exit) is archived, not overdue, and so is not
+/// exempt from anything.
+///
+/// Only the task's own window is read. An inherited window never bounded the Plan in the first
+/// place (rule one reads the own Time Scope alone), so there is nothing for it to lift.
+pub(super) fn is_overdue(
+    time_scope: &Option<TimeScope>,
+    on_exit: Option<OnScopeExit>,
+    done: bool,
+    now: NaiveDateTime,
+) -> bool {
+    let Some(own) = time_scope else {
+        return false;
+    };
+    let timing = derive_timing(Some(own.window()), now);
+    derive_resolution(timing, done, on_exit) == Some(Resolution::Overdue)
 }
 
 /// The window of the nearest ancestor of `(parent_type, parent_id)` — itself included — that has
@@ -396,7 +424,8 @@ async fn write_chain<M: SessionMode>(
 /// Rejects a task write that breaks a containment invariant: Plan ⊆ own Time Scope, own Time
 /// Scope ⊆ nearest scoped ancestor, and Plan ⊆ nearest planned ancestor. `parent_type`/`parent_id`
 /// is the task's effective parent (the new one when reparenting), and `id` the task being written
-/// when it already exists — see [`write_chain`].
+/// when it already exists — see [`write_chain`]. `overdue` is the written task's [`is_overdue`],
+/// which lifts the first rule alone.
 ///
 /// **Climbs once.** The old shape walked the chain twice — once for the scoped ancestor and once
 /// for the planned one — and resolved the item's own Time Scope up to twice more on top. Here
@@ -413,6 +442,7 @@ pub(super) async fn validate_task_containment<M: SessionMode>(
     parent_id: i64,
     time_scope: &Option<TimeScope>,
     plan: &Option<TimeScope>,
+    overdue: bool,
 ) -> Result<(), TaskError> {
     if time_scope.is_none() && plan.is_none() {
         return Ok(());
@@ -438,6 +468,7 @@ pub(super) async fn validate_task_containment<M: SessionMode>(
         plan: plan_window,
         ancestor_scope,
         ancestor_plan,
+        overdue,
     })
 }
 

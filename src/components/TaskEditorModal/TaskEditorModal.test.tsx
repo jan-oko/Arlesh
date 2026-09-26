@@ -765,3 +765,29 @@ describe("TaskEditorModal — the agentic brief", () => {
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ agentic: "no", agenticBrief: brief });
   });
 });
+
+describe("TaskEditorModal — the Plan picker's bound", () => {
+  const JULY_WEEK = { start_id: testKey(7), end_id: testKey(7) };
+
+  async function openPlanPicker(node: MindmapNode) {
+    render(<TaskEditorModal {...defaultProps} node={node} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+    vi.mocked(invoke).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "edit plan" }));
+  }
+
+  function resolvedScopes(): unknown[] {
+    return vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "resolve_scope");
+  }
+
+  it("holds a task's Plan to its own Time Scope", async () => {
+    await openPlanPicker(mkNode({ timeScope: JULY_WEEK, onScopeExit: "keep" }));
+    await waitFor(() => expect(resolvedScopes().length).toBeGreaterThan(0));
+  });
+
+  it("lifts the bound for an overdue task, whose window has already passed", async () => {
+    await openPlanPicker(mkNode({ timeScope: JULY_WEEK, onScopeExit: "keep", resolution: "overdue" }));
+    await screen.findByRole("group", { name: "plan picker" });
+    expect(resolvedScopes()).toEqual([]);
+  });
+});
