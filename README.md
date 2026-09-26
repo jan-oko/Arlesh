@@ -80,6 +80,19 @@ connect.
 - Tasks can be backlogged, hiding them from the plan filter.
 - Close to tray.
 
+# Installing
+
+Linux builds are published to GitHub Releases:
+
+- [**latest**](https://github.com/jan-oko/Arlesh/releases/tag/latest) — a pre-release rebuilt from every commit to master.
+- [**Versioned releases**](https://github.com/jan-oko/Arlesh/releases) — one per `vX.Y.Z` tag.
+
+Each carries two files:
+
+- **AppImage** (any distro, including Arch): download `Arlesh-linux-x86_64.AppImage`, `chmod +x` it and run it.
+- **Tarball** (the bare binary): `tar -xzf arlesh-linux-x86_64.tar.gz -C ~/.local/bin` and run `arlesh`. It needs `webkit2gtk-4.1` installed (`pacman -S webkit2gtk-4.1` on Arch).
+
+An installed build keeps its data in the same directory as dev builds (`~/.local/share/com.atai.arlesh`), so it opens the same database.
 
 # Development 
 

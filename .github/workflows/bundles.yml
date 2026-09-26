@@ -36,7 +36,7 @@ name: Bundles
 
 on:
   push:
-    branches: [master, arlesh-ci-bundles]  # TEMPORARY test trigger
+    branches: [master]
     tags: ['v*']
   workflow_dispatch:
     inputs:
@@ -160,14 +160,14 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag || (github.ref_name == 'arlesh-ci-bundles' && 'latest-test') || 'latest' }}
+      TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag || 'latest' }}
       VERSION: ${{ needs.build.outputs.version }}
       SHORT_SHA: ${{ needs.build.outputs.sha }}
     # One publisher per release at a time, so two master pushes never race on
     # `latest`. A queued run that is superseded by a newer one is cancelled,
     # which is fine: the newer one publishes the newer commit.
     concurrency:
-      group: release-${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag || (github.ref_name == 'arlesh-ci-bundles' && 'latest-test') || 'latest' }}
+      group: release-${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag || 'latest' }}
       cancel-in-progress: false
     steps:
       - uses: actions/download-artifact@v5
