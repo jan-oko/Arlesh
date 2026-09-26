@@ -147,7 +147,7 @@ definition it loads.
 | `arlesh_snapshot` | `load(now?, sections?, cursor?, filter?, agentic?)` — `now` is a local date-time string (`"2026-09-25T09:00:00"`) and defaults to the server's current time; the whole planning graph: domains, goals, tasks, **commitments**, notes, flows, flow items, cycles, dependencies, block reasons, materialised instance nodes, every item's derived lifecycle, each flow's habit iterations and statuses, and which occurrence each **added child** hangs on. Paged; see below |
 | `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` — `id` is a scope's value key, a JSON object such as `{"kind":"week","date":"2026-09-20"}` |
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
-| `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?)`, `update(id, title?, brief?, backlog?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`. See *Writing tasks* below |
+| `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`. See *Writing tasks* below |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
 | `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`. See *Agentic waits* below |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
@@ -321,6 +321,31 @@ so the conformance corpus is untouched.
   brief from the start.
 - **`update`** changes a Task's title, its brief — each brief field given replaces that field, the
   rest stay — and whether it is set aside in the **Backlog**.
+- **`create` and `update` carry the rest of the Task** (2026-09-26), so an agent can keep its work
+  in Arlesh as it would in `bd`: its **Time Scope** and **Plan** (scope ids, the shape
+  `containment_conflicts` takes), `on_scope_exit` (`keep` or `archive`), `asynchronous`, its
+  explicit **block reasons** (the ordered list, replaced whole), its **tags** (by Tag id) and its
+  **prerequisites** — the Tasks, Goals or waits it comes after. "X after Y" is X depending on Y.
+  `create` takes `dependencies` and `tags` as lists; `update` takes `add_dependencies` /
+  `remove_dependencies` and `add_tags` / `remove_tags`, removals applied first. On `update` a
+  field left out is unchanged and `null` clears it (`time_scope`, `plan`, `block_reasons`).
+  Each goes through the same backend write the app's own command uses (`nodes::write` —
+  `update_task`, `add_dependency`, `remove_dependency`, `set_tag`, `set_block_reasons`), so its
+  rules are the app's: a Plan outside the Time Scope or a window outside an ancestor's is
+  `containment_violated`, a backlogged Task given a Plan leaves the Backlog, a Task set aside while
+  planned is `needs_confirmation` (resend with `plan: null`), and a dependency that would close a
+  cycle — a Task after itself included — is `invalid_request` with the app's reason. The Task must
+  be writable; a **prerequisite or Tag need only be visible** (inside the roots, not private), and
+  one that is not is `not_permitted`. A prerequisite id is matched among Tasks, Goals and waits
+  together, a Tag id among domain-table rows, so a row id shared by two visible nodes of those kinds
+  is `ambiguous_id`.
+  **One transaction**: every id is read before anything is written, the row is written, then its
+  relations; a refusal anywhere writes none of it, and a success announces one board change. Not
+  exposed: the Agentic flag (what an agent creates is always Agentic, and it cannot un-flag
+  anything), `is_private`, the issue link (`arlesh_beads`), delegation, and an Asynchronous Task's
+  wait template. On a **Habit occurrence** each lands in its overlay; its Time Scope is its
+  iteration's and a change is refused, and `on_scope_exit` — its Habit's to decide — is refused
+  as `invalid_request` before anything is written.
 - **`set_status`** is a **compare-and-set**: it names the status the agent last saw (`expected`)
   and the one to set. The session holds SQLite's single writer lock from before the compare until
   the write commits, so the two are one step: if the Task's status is no longer `expected`, the
@@ -463,7 +488,8 @@ A tool that fails returns a result flagged as an error carrying the same structu
 frontend receives across the Tauri boundary, including its stable `kind` — `not_found`,
 `containment_violated`, `invalid_request`, `needs_confirmation`, `needs_time_scope`,
 `not_permitted`, `ambiguous_id`, `status_changed`, `database`, `internal` — so an agent branches on the discriminant rather than
-parsing a message. (The two `needs_*` kinds are raised only by writes this surface does not
+parsing a message. (`needs_confirmation` reaches an agent only from `arlesh_tasks.update`
+setting a planned Task aside; `needs_time_scope` is raised only by writes this surface does not
 expose.)
 
 `not_permitted` is the MCP's own: the request names a node the MCP may not touch — outside every

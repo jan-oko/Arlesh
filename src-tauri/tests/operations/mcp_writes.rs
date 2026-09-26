@@ -128,12 +128,17 @@ fn refused(result: &CallToolResult) -> &str {
 }
 
 fn create(parent_type: &str, parent_id: impl Into<NodeIdParam>, title: &str) -> TasksOperation {
-    TasksOperation::Create {
-        parent_type: parent_type.into(),
-        parent_id: parent_id.into(),
-        title: title.into(),
-        brief: None,
-    }
+    operation(serde_json::json!({
+        "operation": "create",
+        "parent_type": parent_type,
+        "parent_id": parent_id.into().text(),
+        "title": title,
+    }))
+}
+
+/// An operation as an agent sends it, read through the wire's own parsing.
+fn operation(value: serde_json::Value) -> TasksOperation {
+    serde_json::from_value(value).expect("a well-formed operation")
 }
 
 fn with_spec(spec: &str) -> params::BriefParam {
@@ -144,13 +149,32 @@ fn with_spec(spec: &str) -> params::BriefParam {
     }
 }
 
-fn retitle(id: impl Into<NodeIdParam>, title: &str) -> TasksOperation {
+/// An update of the row fields the first task writes took, every other field left out.
+fn edit(
+    id: impl Into<NodeIdParam>,
+    title: Option<&str>,
+    brief: Option<params::BriefParam>,
+    backlog: Option<bool>,
+) -> TasksOperation {
     TasksOperation::Update {
         id: id.into(),
-        title: Some(title.into()),
-        brief: None,
-        backlog: None,
+        title: title.map(str::to_string),
+        brief,
+        backlog,
+        time_scope: None,
+        on_scope_exit: None,
+        plan: None,
+        asynchronous: None,
+        add_dependencies: Vec::new(),
+        remove_dependencies: Vec::new(),
+        add_tags: Vec::new(),
+        remove_tags: Vec::new(),
+        block_reasons: None,
     }
+}
+
+fn retitle(id: impl Into<NodeIdParam>, title: &str) -> TasksOperation {
+    edit(id, Some(title), None, None)
 }
 
 async fn status_of(pool: &sqlx::SqlitePool, id: i64) -> String {
@@ -205,12 +229,13 @@ async fn an_agent_creates_an_agentic_task_inside_a_root() {
 
     let created = run(
         &mcp,
-        TasksOperation::Create {
-            parent_type: "project".into(),
-            parent_id: board.inside.into(),
-            title: "Write the parser".into(),
-            brief: Some(with_spec("Parse the config file")),
-        },
+        operation(serde_json::json!({
+            "operation": "create",
+            "parent_type": "project",
+            "parent_id": board.inside.to_string(),
+            "title": "Write the parser",
+            "brief": { "priority": "B", "spec": "Parse the config file" },
+        })),
     )
     .await;
 
@@ -277,26 +302,26 @@ async fn only_a_task_that_reads_as_agentic_is_edited() {
     helpers::make_agentic(&pool, board.inside_task).await;
     let briefed = run(
         &mcp,
-        TasksOperation::Update {
-            id: board.inside_task.into(),
-            title: None,
-            brief: Some(with_spec("Make it visible")),
-            backlog: None,
-        },
+        edit(
+            board.inside_task,
+            None,
+            Some(with_spec("Make it visible")),
+            None,
+        ),
     )
     .await;
     succeeded(&briefed);
     let noted = run(
         &mcp,
-        TasksOperation::Update {
-            id: board.inside_task.into(),
-            title: Some("Visible work, briefed".into()),
-            brief: Some(params::BriefParam {
+        edit(
+            board.inside_task,
+            Some("Visible work, briefed"),
+            Some(params::BriefParam {
                 notes: Some(Some("Mind the contrast".into())),
                 ..Default::default()
             }),
-            backlog: Some(true),
-        },
+            Some(true),
+        ),
     )
     .await;
 
@@ -320,12 +345,7 @@ async fn of_two_status_writes_expecting_the_same_status_exactly_one_wins() {
     succeeded(
         &run(
             &mcp,
-            TasksOperation::Update {
-                id: board.inside_task.into(),
-                title: None,
-                brief: Some(with_spec("Race")),
-                backlog: None,
-            },
+            edit(board.inside_task, None, Some(with_spec("Race")), None),
         )
         .await,
     );
@@ -674,15 +694,15 @@ async fn the_snapshot_answers_which_tasks_read_as_agentic_most_urgent_first() {
     ] {
         let briefed = run(
             &mcp,
-            TasksOperation::Update {
-                id: id.into(),
-                title: None,
-                brief: Some(params::BriefParam {
+            edit(
+                id,
+                None,
+                Some(params::BriefParam {
                     priority: Some(Some(priority)),
                     ..Default::default()
                 }),
-                backlog: None,
-            },
+                None,
+            ),
         )
         .await;
         succeeded(&briefed);
@@ -1262,4 +1282,376 @@ async fn a_nodes_short_id_is_the_same_in_every_view() {
         agentic, whole,
         "worked out over everything visible, not over what one query returned"
     );
+}
+
+mod task_fields {
+    //! The rest of an Agentic Task through `create` and `update`: its windows, its lapse and
+    //! Asynchronous flag, its prerequisites, tags and block reasons — each set and cleared, each
+    //! refused where the app or the roots refuse it, and a refused update writing none of itself.
+
+    use super::*;
+    use serde_json::json;
+
+    fn week(date: &str) -> serde_json::Value {
+        let key = json!({ "kind": "week", "date": date });
+        json!({ "start_id": key, "end_id": key })
+    }
+
+    fn day(date: &str) -> serde_json::Value {
+        let key = json!({ "kind": "day", "date": date });
+        json!({ "start_id": key, "end_id": key })
+    }
+
+    async fn tag(app: &App<MockRuntime>, parent: i64, title: &str) -> i64 {
+        domain_commands::create_domain(
+            app.state(),
+            CreateDomainRequest {
+                title: title.into(),
+                description: None,
+                subtype: DomainSubtype::Tag,
+                parent_id: Some(parent),
+                status: None,
+                knowledge_base_directory: None,
+            },
+        )
+        .await
+        .expect("create tag")
+        .id
+    }
+
+    async fn prerequisites(pool: &sqlx::SqlitePool, id: i64) -> Vec<i64> {
+        sqlx::query_scalar(
+            "SELECT dependency_id FROM task_dependencies \
+             WHERE task_id = ? AND dependency_type = 'task' ORDER BY dependency_id",
+        )
+        .bind(id)
+        .fetch_all(pool)
+        .await
+        .expect("read the dependencies")
+    }
+
+    async fn block_reasons(mcp: &ArleshMcp, id: i64) -> Vec<String> {
+        let got = run(mcp, TasksOperation::Get { id: id.into() }).await;
+        succeeded(&got)["block_reasons"]
+            .as_array()
+            .expect("block reasons")
+            .iter()
+            .filter_map(|reason| reason.as_str().map(str::to_string))
+            .collect()
+    }
+
+    async fn journal_end(pool: &sqlx::SqlitePool) -> i64 {
+        sqlx::query_scalar("SELECT COALESCE(MAX(seq), 0) FROM undo_journal")
+            .fetch_one(pool)
+            .await
+            .expect("read the journal")
+    }
+
+    #[tokio::test]
+    async fn a_task_is_created_with_every_field_journaled_as_the_agents() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        let label = tag(&app, board.inside, "backend").await;
+        let mcp = mcp(&pool);
+        let before = journal_end(&pool).await;
+
+        let created = run(
+            &mcp,
+            operation(json!({
+                "operation": "create",
+                "parent_type": "project",
+                "parent_id": board.inside.to_string(),
+                "title": "Ship the parser",
+                "time_scope": week("2026-09-20"),
+                "plan": day("2026-09-22"),
+                "on_scope_exit": "archive",
+                "asynchronous": true,
+                "dependencies": [board.inside_task.to_string()],
+                "tags": [label.to_string()],
+                "block_reasons": ["Waiting on review"],
+            })),
+        )
+        .await;
+
+        let created = succeeded(&created).clone();
+        let id = created["id"].as_i64().expect("a stored row");
+        assert_eq!(created["agentic"], true);
+        assert_eq!(created["time_scope"]["start_id"]["kind"], "week");
+        assert_eq!(created["plan"]["start_id"]["date"], "2026-09-22");
+        assert_eq!(created["on_scope_exit"], "archive");
+        assert_eq!(created["asynchronous"], true);
+        assert_eq!(created["tag_ids"], json!([label]));
+        assert_eq!(prerequisites(&pool, id).await, vec![board.inside_task]);
+        assert!(block_reasons(&mcp, id)
+            .await
+            .contains(&"Waiting on review".to_string()));
+
+        let users: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM undo_journal WHERE seq > ? AND source <> 'mcp'",
+        )
+        .bind(before)
+        .fetch_one(&pool)
+        .await
+        .expect("read the journal");
+        assert_eq!(users, 0, "none of it reaches the user's Undo Stack");
+        let tables: Vec<String> = sqlx::query_scalar(
+            "SELECT DISTINCT table_name FROM undo_journal WHERE seq > ? ORDER BY table_name",
+        )
+        .bind(before)
+        .fetch_all(&pool)
+        .await
+        .expect("read the journal");
+        for table in [
+            "tasks",
+            "task_dependencies",
+            "tags_on_tasks",
+            "block_reasons",
+        ] {
+            assert!(
+                tables.iter().any(|name| name == table),
+                "{table} in {tables:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn each_field_is_set_and_then_cleared_on_an_agentic_task() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        helpers::make_agentic(&pool, board.inside_task).await;
+        let first = task(&app, "project", board.inside, "Lay the groundwork").await;
+        let label = tag(&app, board.inside, "backend").await;
+        let mcp = mcp(&pool);
+        let id = board.inside_task;
+
+        let set = run(
+            &mcp,
+            operation(json!({
+                "operation": "update",
+                "id": id.to_string(),
+                "time_scope": week("2026-09-20"),
+                "plan": day("2026-09-22"),
+                "on_scope_exit": "archive",
+                "asynchronous": true,
+                "add_dependencies": [first.to_string()],
+                "add_tags": [label.to_string()],
+                "block_reasons": ["Waiting on review", "Needs a design"],
+            })),
+        )
+        .await;
+        let set = succeeded(&set).clone();
+        assert_eq!(set["time_scope"]["start_id"]["date"], "2026-09-20");
+        assert_eq!(set["plan"]["start_id"]["date"], "2026-09-22");
+        assert_eq!(set["on_scope_exit"], "archive");
+        assert_eq!(set["asynchronous"], true);
+        assert_eq!(set["tag_ids"], json!([label]));
+        assert_eq!(prerequisites(&pool, id).await, vec![first]);
+        let reasons = block_reasons(&mcp, id).await;
+        assert_eq!(&reasons[..2], ["Waiting on review", "Needs a design"]);
+
+        let cleared = run(
+            &mcp,
+            operation(json!({
+                "operation": "update",
+                "id": id.to_string(),
+                "time_scope": null,
+                "plan": null,
+                "asynchronous": false,
+                "remove_dependencies": [first.to_string()],
+                "remove_tags": [label.to_string()],
+                "block_reasons": null,
+            })),
+        )
+        .await;
+        let cleared = succeeded(&cleared).clone();
+        assert!(cleared["time_scope"].is_null());
+        assert!(cleared["plan"].is_null());
+        assert_eq!(cleared["asynchronous"], false);
+        assert_eq!(cleared["tag_ids"], json!([]));
+        assert!(prerequisites(&pool, id).await.is_empty());
+        assert!(block_reasons(&mcp, id).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_task_that_is_not_agentic_takes_none_of_it() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        let first = task(&app, "project", board.inside, "Lay the groundwork").await;
+        let mcp = mcp(&pool);
+
+        let refused_write = run(
+            &mcp,
+            operation(json!({
+                "operation": "update",
+                "id": board.inside_task.to_string(),
+                "add_dependencies": [first.to_string()],
+                "block_reasons": ["Mine now"],
+            })),
+        )
+        .await;
+
+        assert_eq!(refused(&refused_write), "not_permitted");
+        assert!(prerequisites(&pool, board.inside_task).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_prerequisite_or_tag_the_mcp_cannot_see_is_not_permitted() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        helpers::make_agentic(&pool, board.inside_task).await;
+        let private = task(&app, "project", board.inside, "The user's secret").await;
+        set_column(
+            &pool,
+            "UPDATE tasks SET is_private = 1 WHERE id = ?",
+            private,
+        )
+        .await;
+        let hidden_tag = tag(&app, board.outside, "hidden").await;
+        let mcp = mcp(&pool);
+        let add = |field: &str, target: i64| {
+            operation(json!({
+                "operation": "update",
+                "id": board.inside_task.to_string(),
+                "title": "Should not land",
+                field: [target.to_string()],
+            }))
+        };
+
+        for (field, target) in [
+            ("add_dependencies", board.outside_task),
+            ("add_dependencies", private),
+            ("add_tags", hidden_tag),
+        ] {
+            let result = run(&mcp, add(field, target)).await;
+            assert_eq!(refused(&result), "not_permitted", "{field} {target}");
+        }
+        let outside = run(
+            &mcp,
+            operation(json!({
+                "operation": "create",
+                "parent_type": "project",
+                "parent_id": board.inside.to_string(),
+                "title": "Should not land",
+                "dependencies": [board.outside_task.to_string()],
+            })),
+        )
+        .await;
+        assert_eq!(refused(&outside), "not_permitted");
+
+        let not_a_tag = run(&mcp, add("add_tags", board.inside)).await;
+        assert_eq!(
+            refused(&not_a_tag),
+            "invalid_request",
+            "a project is no tag"
+        );
+        assert_eq!(title_of(&pool, board.inside_task).await, "Visible work");
+    }
+
+    #[tokio::test]
+    async fn a_dependency_cycle_is_refused_and_the_rest_of_the_update_with_it() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        helpers::make_agentic(&pool, board.inside_task).await;
+        let label = tag(&app, board.inside, "backend").await;
+        let mcp = mcp(&pool);
+        let after = run(
+            &mcp,
+            operation(json!({
+                "operation": "create",
+                "parent_type": "project",
+                "parent_id": board.inside.to_string(),
+                "title": "Comes after",
+                "dependencies": [board.inside_task.to_string()],
+            })),
+        )
+        .await;
+        let after = succeeded(&after)["id"].as_i64().expect("a stored row");
+
+        let cycle = run(
+            &mcp,
+            operation(json!({
+                "operation": "update",
+                "id": board.inside_task.to_string(),
+                "title": "Should not land",
+                "add_tags": [label.to_string()],
+                "block_reasons": ["Should not land"],
+                "add_dependencies": [after.to_string()],
+            })),
+        )
+        .await;
+        assert_eq!(refused(&cycle), "invalid_request");
+        let message = body(&cycle)["message"].as_str().unwrap_or("");
+        assert!(message.contains("cycle"), "{message}");
+
+        let own = run(
+            &mcp,
+            operation(json!({
+                "operation": "update",
+                "id": board.inside_task.to_string(),
+                "add_dependencies": [board.inside_task.to_string()],
+            })),
+        )
+        .await;
+        assert_eq!(
+            refused(&own),
+            "invalid_request",
+            "nothing comes after itself"
+        );
+
+        assert_eq!(title_of(&pool, board.inside_task).await, "Visible work");
+        assert!(prerequisites(&pool, board.inside_task).await.is_empty());
+        assert!(block_reasons(&mcp, board.inside_task).await.is_empty());
+        let tagged: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM tags_on_tasks WHERE task_id = ?")
+                .bind(board.inside_task)
+                .fetch_one(&pool)
+                .await
+                .expect("read the tags");
+        assert_eq!(
+            tagged, 0,
+            "all or nothing: the row and its relations roll back together"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_plan_outside_the_time_scope_is_refused_with_the_apps_reason() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        helpers::make_agentic(&pool, board.inside_task).await;
+        let mcp = mcp(&pool);
+
+        let outside = run(
+            &mcp,
+            operation(json!({
+                "operation": "update",
+                "id": board.inside_task.to_string(),
+                "title": "Should not land",
+                "time_scope": week("2026-09-20"),
+                "plan": day("2026-10-05"),
+            })),
+        )
+        .await;
+
+        assert_eq!(refused(&outside), "containment_violated");
+        assert_eq!(title_of(&pool, board.inside_task).await, "Visible work");
+        let created = run(
+            &mcp,
+            operation(json!({
+                "operation": "create",
+                "parent_type": "project",
+                "parent_id": board.inside.to_string(),
+                "title": "Should not land",
+                "time_scope": week("2026-09-20"),
+                "plan": day("2026-10-05"),
+            })),
+        )
+        .await;
+        assert_eq!(refused(&created), "containment_violated");
+    }
 }
