@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { storedId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
 import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
-import { collectSearchableNodes, flattenNodesById } from "@/utils/mindmap-tree";
+import { flattenNodesById } from "@/utils/mindmap-tree";
+import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { rowIdOf } from "@/utils/node-identity";
 import {
   isTaskStatusValue, isGoalStatusValue, isProjectStatusValue, isScopeStateValue, isBlockedValue,
@@ -65,7 +66,7 @@ export function useFilterDisplay(): FilterDisplay {
   const { tree } = useMindmapData();
 
   const nodeById = useMemo(() => flattenNodesById(tree), [tree]);
-  const searchableNodes = useMemo(() => collectSearchableNodes(tree), [tree]);
+  const searchableNodes = useSearchableNodes(tree);
 
   const tagOptions = useMemo<TagOption[]>(
     () => [...nodeById.values()]

@@ -9,6 +9,7 @@ import { useListDelete } from "@/hooks/use-list-delete";
 import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useStatusCycle } from "@/hooks/use-status-cycle";
+import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
@@ -23,7 +24,7 @@ import { useViewStore } from "@/stores/use-view-store";
 import { getErrorMessage } from "@/api/errors";
 import { filterTreeWithFocus } from "@/utils/filter-tree";
 import { focusExemptPath } from "@/utils/focus-exemption";
-import { collectSearchableNodes, collectTasksAndGoals, findNode } from "@/utils/mindmap-tree";
+import { collectTasksAndGoals, findNode } from "@/utils/mindmap-tree";
 import { aspectColorOf } from "@/utils/node-visuals";
 import { canDescendInto, creatableKinds, stepChildCounts, stepRefusalKey } from "@/utils/steps-card";
 import { hasNodeEditor } from "@/utils/node-meta";
@@ -115,6 +116,8 @@ export default function StepsView() {
 
   // Publishes the tab's subtree descriptor for the top bar; the exits are global bindings.
   const { subtreeRootId } = useSubtreeNav(tree);
+  // Ctrl+O offers archived nodes only when Settings says to (see `useSearchableNodes`).
+  const searchableNodes = useSearchableNodes(tree);
 
   const [selection, setSelection] = useState<StepSelection>(null);
   const [page, setPage] = useState(0);
@@ -507,7 +510,7 @@ export default function StepsView() {
 
       {searchOpen && (
         <NodeSearchModal
-          nodes={collectSearchableNodes(tree)}
+          nodes={searchableNodes}
           onSelect={(id) => { enterSubtree(id); closeSearch(); setSelection(null); setPage(0); }}
           onClose={closeSearch}
         />

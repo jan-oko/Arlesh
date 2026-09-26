@@ -147,7 +147,7 @@ beforeEach(() => {
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   mockUseListData.mockReturnValue(listData());
   useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
-  useDisplayStore.setState({ asynchronousFirst: false });
+  useDisplayStore.setState({ asynchronousFirst: false, searchIncludesArchived: false });
 });
 
 describe("ListView — Asynchronous first", () => {
@@ -680,6 +680,42 @@ describe("ListView", () => {
       fireEvent.change(input, { target: { value: query } });
       return input;
     }
+
+    /** A live project and an archived one holding a live-looking child. */
+    function withArchived() {
+      return listData({
+        tree: n("root", "domain", {
+          children: [
+            n("project-1", "project", { title: "Shelf live" }),
+            n("project-4", "project", {
+              title: "Shelf archived", status: "archived",
+              children: [n("goal-9", "goal", { title: "Shelf inner", status: "active" })],
+            }),
+          ],
+        }),
+        rows: [row({ node: n("task-a", "task", { status: "todo" }) })],
+      });
+    }
+
+    it("Ctrl+O leaves archived nodes, and what is under them, out by default", () => {
+      mockUseListData.mockReturnValue(withArchived());
+      render(<ListViewInApp />);
+      const input = openSearch("shelf");
+      expect(screen.getByText("Shelf live")).toBeInTheDocument();
+      expect(screen.queryByText("Shelf archived")).not.toBeInTheDocument();
+      expect(screen.queryByText("Shelf inner")).not.toBeInTheDocument();
+      fireEvent.keyDown(input, { key: "Escape" });
+    });
+
+    it("Ctrl+O offers archived nodes when the setting includes them", () => {
+      useDisplayStore.setState({ searchIncludesArchived: true });
+      mockUseListData.mockReturnValue(withArchived());
+      render(<ListViewInApp />);
+      const input = openSearch("shelf");
+      expect(screen.getByText("Shelf archived")).toBeInTheDocument();
+      expect(screen.getByText("Shelf inner")).toBeInTheDocument();
+      fireEvent.keyDown(input, { key: "Escape" });
+    });
 
     it("Ctrl+O opens the node search over every node kind", () => {
       mockUseListData.mockReturnValue(searchable());

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { connectedNodeIds, pathToNode, owningFlowId, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, parentAndChildrenIds, siblingIds, gatherSubtreeItems, collectSubtreePostOrder, conversionNeedsConfirm, flattenNodesById, canConvertNodeToFlow } from "./mindmap-tree";
+import { connectedNodeIds, pathToNode, owningFlowId, nearestInDirection, collectAllNodeIds, computeShiftSelectRange, collectSearchableNodes, parentAndChildrenIds, siblingIds, gatherSubtreeItems, collectSubtreePostOrder, conversionNeedsConfirm, flattenNodesById, canConvertNodeToFlow } from "./mindmap-tree";
 import type { MindmapNode } from "./tree-layout";
 import type { Position } from "./tree-layout";
 
@@ -412,5 +412,26 @@ describe("owningFlowId", () => {
   it("returns undefined for a node outside any flow, and for one not in the tree", () => {
     expect(owningFlowId(TREE_WITH_FLOWS, "task-9")).toBeUndefined();
     expect(owningFlowId(TREE_WITH_FLOWS, "missing")).toBeUndefined();
+  });
+});
+
+describe("collectSearchableNodes with skipArchived", () => {
+  const tree: MindmapNode = {
+    id: "root", kind: "domain", title: "root", position: 0, tagIds: [],
+    children: [
+      { id: "goal-1", kind: "goal", title: "Done goal", status: "archived", position: 0, tagIds: [], children: [
+        { id: "task-1", kind: "task", title: "Under it", status: "todo", position: 0, tagIds: [], children: [] },
+      ] },
+      { id: "task-2", kind: "task", title: "Delegated", status: "todo", delegate: { kind: "agent" }, position: 1, tagIds: [], children: [] },
+      { id: "task-3", kind: "task", title: "Live", status: "todo", position: 2, tagIds: [], children: [] },
+    ],
+  };
+
+  it("drops an archived node together with its subtree, and a delegated Task, which reads as archived", () => {
+    expect(collectSearchableNodes(tree, { skipArchived: true }).map((n) => n.title)).toEqual(["Live"]);
+  });
+
+  it("keeps everything when not skipping", () => {
+    expect(collectSearchableNodes(tree).map((n) => n.title)).toEqual(["Done goal", "Under it", "Delegated", "Live"]);
   });
 });
