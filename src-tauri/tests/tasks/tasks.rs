@@ -12,14 +12,14 @@ use arlesh_lib::{
     scopes::{key::ScopeKey, model::ScopeKind},
     tasks::{
         add_task_dependency, conflicts_for_new_time_scope, create_goal, create_task,
-        derive_all_scope_lifecycles, get_task_with_blockers,
+        create_task_at, derive_all_scope_lifecycles, get_task_with_blockers,
         lifecycle::{Archival, Resolution, Timing},
         model::{
             CreateGoalRequest, CreateTaskRequest, Dependency, DurationSpec, GoalStatus,
             OnScopeExit, TaskAgentic, TaskArchival, TaskStatus, TimeScope, UpdateGoalRequest,
             UpdateTaskRequest,
         },
-        reparent_conflicts, update_goal, update_task,
+        reparent_conflicts, update_goal, update_task, update_task_at,
     },
 };
 use chrono::NaiveDate;
@@ -1961,7 +1961,8 @@ async fn plan_outside_time_scope_is_rejected() {
 
     let result = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r = create_task(
+        // Judged inside the week: once it has passed, the task would be Overdue and exempt.
+        let __r = create_task_at(
             &mut db,
             CreateTaskRequest {
                 title: "Bad plan".into(),
@@ -1975,6 +1976,7 @@ async fn plan_outside_time_scope_is_rejected() {
                 plan: Some(single(far_day.id)),
                 ..Default::default()
             },
+            within_early_july(),
         )
         .await;
         if __r.is_ok() {
@@ -1993,6 +1995,14 @@ async fn plan_outside_time_scope_is_rejected() {
 }
 
 // --- Cross-tree containment (child within ancestor, cascade detection, reparent) ---
+
+/// Noon on 1 July 2026, inside the week the plan-containment tests scope their task to.
+fn within_early_july() -> chrono::NaiveDateTime {
+    chrono::NaiveDate::from_ymd_opt(2026, 7, 1)
+        .unwrap()
+        .and_hms_opt(12, 0, 0)
+        .unwrap()
+}
 
 fn single(scope_id: ScopeKey) -> TimeScope {
     TimeScope {
@@ -2453,13 +2463,15 @@ async fn update_rejects_plan_outside_time_scope() {
 
     let result = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r = update_task(
+        // Judged inside the week: once it has passed, the task would be Overdue and exempt.
+        let __r = update_task_at(
             &mut db,
             task.id.sid().into(),
             UpdateTaskRequest {
                 plan: Some(Some(single(far_day.id))),
                 ..Default::default()
             },
+            within_early_july(),
         )
         .await;
         if __r.is_ok() {
