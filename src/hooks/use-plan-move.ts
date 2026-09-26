@@ -12,6 +12,14 @@ import type { ScopeInterval } from "@/utils/scope-interval";
 import type { ScopeRef } from "@/utils/scope-ref";
 import type { ScopeWindows } from "@/utils/plan-triage";
 import { planRefusal } from "@/utils/plan-triage";
+import type { TakeOutTarget } from "@/utils/plan-take-out";
+
+/** A scope work can be planned to: its key, its window once resolved, and its name for the toasts. */
+export interface PlanDestination {
+  id: ScopeKey;
+  window: ScopeInterval | null;
+  label: string;
+}
 
 interface PlanMoveOptions {
   /** The scope being filled, once it is known. */
@@ -42,8 +50,12 @@ export interface PlanMoveHandles {
    * nothing to exist first.
    */
   planIntoSubscope: (rows: readonly TaskListRow[], ref: ScopeRef, label: string, partial: boolean) => Promise<string[]>;
-  /** Clears every row's Plan. */
-  unplan: (rows: readonly TaskListRow[]) => Promise<string[]>;
+  /**
+   * Takes every row back out of the scope: plans it to `target`'s scope — the one whose work the
+   * candidates side shows — or clears its Plan where there is none (see `takeOutTarget`). The
+   * containment rules hold for the new scope exactly as for planning into one.
+   */
+  takeOut: (rows: readonly TaskListRow[], target: TakeOutTarget<PlanDestination>) => Promise<string[]>;
 }
 
 /** The two things this hook ever writes, as the names one `Ctrl+Z` will reverse. */
@@ -65,7 +77,8 @@ function emptyOutcome(): BatchOutcome {
 }
 
 /**
- * The Plan View's one write: a task's Plan, set to a scope being filled or cleared.
+ * The Plan View's one write: a task's Plan, set to a scope — the one being filled, one of its parts,
+ * or the rung a take-out sends it back to — or cleared.
  *
  * **A whole selection is one Gesture**, so planning five rows is one `Ctrl+Z`. It is a plain
  * {@link withGesture} rather than an atomic one deliberately: a batch that plans five of six has
@@ -169,7 +182,10 @@ export function usePlanMove({
 
   /** Splits a batch on the two containment rules, then writes the half that passed. */
   const planIntoWindow = useCallback(
-    async (rows: readonly TaskListRow[], scopeId: ScopeKey, window: ScopeInterval, label: string, leftPane: boolean): Promise<string[]> => {
+    async (
+      rows: readonly TaskListRow[], scopeId: ScopeKey, window: ScopeInterval, label: string, leftPane: boolean,
+      gesture: PlanGestureKey = "undo:gestures.plan",
+    ): Promise<string[]> => {
       // A Habit occurrence is a row (ADR 0008) and is planned like any Task: into its overlay,
       // within its iteration's window, which the containment check below holds it to.
       const allowed: TaskListRow[] = [];
@@ -178,7 +194,7 @@ export function usePlanMove({
         const bound = planRefusal(row, window, windows);
         if (bound === null) allowed.push(row); else refused.push({ row, bound });
       }
-      const outcome = await write(allowed, { start_id: scopeId, end_id: scopeId }, "undo:gestures.plan");
+      const outcome = await write(allowed, { start_id: scopeId, end_id: scopeId }, gesture);
       outcome.refused.push(...refused);
       report(outcome, label, leftPane);
       return outcome.moved;
@@ -217,14 +233,21 @@ export function usePlanMove({
     [planIntoWindow, showToast, t],
   );
 
-  const unplan = useCallback(
-    async (rows: readonly TaskListRow[]): Promise<string[]> => {
-      const outcome = await write(rows, null, "undo:gestures.unplan");
-      report(outcome, targetLabel, false);
-      return outcome.moved;
+  const takeOut = useCallback(
+    async (rows: readonly TaskListRow[], target: TakeOutTarget<PlanDestination>): Promise<string[]> => {
+      if (target.kind === "clear") {
+        const outcome = await write(rows, null, "undo:gestures.unplan");
+        report(outcome, targetLabel, false);
+        return outcome.moved;
+      }
+      // A Habit occurrence taken out to its own Cycle Plan's scope has its override cleared by the
+      // backend, which compares the Plan written with the one its template gives it.
+      const { id, window, label } = target.scope;
+      if (window === null) return [];
+      return planIntoWindow(rows, id, window, label, false, "undo:gestures.unplan");
     },
-    [write, report, targetLabel],
+    [write, report, targetLabel, planIntoWindow],
   );
 
-  return { planInto, planIntoSubscope, unplan };
+  return { planInto, planIntoSubscope, takeOut };
 }

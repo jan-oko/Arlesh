@@ -9,6 +9,11 @@ export interface SelectOption {
   label: string;
   /** Hover text for the option, e.g. the key that picks it without opening the menu. */
   title?: string;
+  /**
+   * Drawn but not choosable. Marked `aria-disabled` rather than `disabled`, so its hover text —
+   * which is where it says *why* — still shows: a disabled button takes no pointer events.
+   */
+  disabled?: boolean;
 }
 
 interface Props {
@@ -67,7 +72,7 @@ export default function Select({ value, options, onChange, ariaLabel, title }: P
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         const option = options[highlighted];
-        if (option !== undefined) {
+        if (option !== undefined && option.disabled !== true) {
           onChange(option.value);
           setOpen(false);
           triggerRef.current?.focus();
@@ -103,10 +108,15 @@ export default function Select({ value, options, onChange, ariaLabel, title }: P
                 type="button"
                 role="option"
                 aria-selected={option.value === value}
+                aria-disabled={option.disabled === true ? true : undefined}
                 title={option.title}
-                className={`${styles.option}${i === highlighted ? ` ${styles.optionHighlighted}` : ""}${option.value === value ? ` ${styles.optionSelected}` : ""}`}
+                className={`${styles.option}${i === highlighted ? ` ${styles.optionHighlighted}` : ""}${option.value === value ? ` ${styles.optionSelected}` : ""}${option.disabled === true ? ` ${styles.optionDisabled}` : ""}`}
                 onMouseEnter={() => setHighlighted(i)}
-                onClick={() => { onChange(option.value); setOpen(false); }}
+                onClick={() => {
+                  if (option.disabled === true) return;
+                  onChange(option.value);
+                  setOpen(false);
+                }}
               >
                 {option.label}
               </button>

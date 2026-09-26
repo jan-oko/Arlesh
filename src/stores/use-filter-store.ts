@@ -2,6 +2,7 @@ import { createStore, type StoreApi } from "zustand";
 import type { FilterState, StatusMode, TagFilterMode } from "@/utils/filter-tree";
 import { DEFAULT_FILTER, NEXT_OVERRIDE_MODE } from "@/utils/filter-tree";
 import { tabStoreHook } from "@/stores/tab-stores-context";
+import type { ScopeKey } from "@/api/scopes";
 
 export interface FilterStore {
   filter: FilterState;
@@ -11,6 +12,8 @@ export interface FilterStore {
   setFilterPopover: (open: boolean) => void;
   setStatusMode: (mode: StatusMode) => void;
   toggleModeFlows: () => void;
+  /** Sets or clears (`null`) the Plan preset's scope narrowing. */
+  setPlanScope: (scope: ScopeKey | null) => void;
   addTagFilter: (tagId: number) => void;
   setTagFilterMode: (tagId: number, mode: TagFilterMode) => void;
   removeTagFilter: (tagId: number) => void;
@@ -31,6 +34,7 @@ export function createFilterStore(seed: FilterState = DEFAULT_FILTER): StoreApi<
     setFilterPopover: (open) => set({ popoverOpen: open }),
     setStatusMode: (mode) => set((s) => ({ filter: { ...s.filter, statusMode: mode } })),
     toggleModeFlows: () => set((s) => ({ filter: { ...s.filter, modeIncludeFlows: !s.filter.modeIncludeFlows } })),
+    setPlanScope: (scope) => set((s) => ({ filter: { ...s.filter, planScope: scope } })),
     addTagFilter: (tagId) =>
       set((s) =>
         s.filter.tagFilters.some((t) => t.tagId === tagId)

@@ -200,7 +200,7 @@ beforeEach(() => {
   // tests are about. The ones that are about it set the switches back.
   useDisplayStore.setState({
     planCandidatesPathGrouping: false, planCandidatesParentOnly: false,
-    planSubscopeSplit: false, planIncludePremorning: false,
+    planSplitBySubscope: false, planIncludePremorning: false,
   });
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
   useMindmapStore.setState({ subtreeRootId: null, pendingToast: null });
@@ -245,7 +245,7 @@ describe("moving a task across", () => {
     expect(reload).toHaveBeenCalled();
   });
 
-  it("clears the Plan on the way back", async () => {
+  it("plans it to the parent scope on the way back", async () => {
     mockRows([row(n("task-2", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
     await renderPlanView();
 
@@ -253,7 +253,7 @@ describe("moving a task across", () => {
       fireEvent.click(screen.getByLabelText("unplan"));
     });
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(2, { plan: null });
+    expect(updateTask).toHaveBeenCalledWith(2, { plan: { start_id: MONTH_ID, end_id: MONTH_ID } });
   });
 
   it("refuses a move that escapes the task's own Time Scope, and says which bound stopped it", async () => {
@@ -279,6 +279,112 @@ describe("moving a task across", () => {
     await settle();
     expect(updateTask).not.toHaveBeenCalled();
     expect(screen.getByText("planView:refusedParentPlan")).toBeInTheDocument();
+  });
+});
+
+/** Drops a drag carrying `ids`, dragged out of `from`, onto the candidates pane at large. */
+function dropOnCandidates(ids: string[], from: "candidates" | "planned"): void {
+  const pane = document.querySelector('[data-plan-pane="candidates"]');
+  if (pane === null) throw new Error("no candidates pane on screen");
+  const payload = JSON.stringify({ pane: from, ids });
+  fireEvent.drop(pane, {
+    dataTransfer: {
+      types: ["application/x-arlesh-plan-rows"],
+      getData: (type: string) => (type === "application/x-arlesh-plan-rows" ? payload : ""),
+    },
+  });
+}
+
+// Taking work out moves its Plan one rung up, to the scope whose work the candidates side shows, so
+// it stays in view instead of vanishing behind "Show only planned to parent scope".
+describe("taking work back out of the scope", () => {
+  const onTuesday = { start_id: DAY_ID, end_id: DAY_ID };
+  const toMonth = { plan: { start_id: MONTH_ID, end_id: MONTH_ID } };
+  const toWeek = { plan: { start_id: WEEK_ID, end_id: WEEK_ID } };
+
+  it("plans it to the parent scope with Enter while the pane is not split", async () => {
+    useDisplayStore.setState({ planCandidatesParentOnly: true });
+    mockRows([row(n("task-2", "task", { plan: onTuesday }))]);
+    await renderPlanView();
+
+    fireEvent.keyDown(window, { code: "ArrowRight" });
+    await act(async () => { fireEvent.keyDown(window, { code: "Enter" }); });
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(2, toMonth);
+  });
+
+  it("plans it to the parent scope when dropped on the candidates pane while the pane is not split", async () => {
+    mockRows([row(n("task-2", "task", { plan: onTuesday }))]);
+    await renderPlanView();
+
+    await act(async () => { dropOnCandidates(["task-2"], "planned"); });
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(2, toMonth);
+  });
+
+  it("plans it to the scope being filled itself with Enter while the pane is split", async () => {
+    useDisplayStore.setState({ planSplitBySubscope: true });
+    mockRows([row(n("task-2", "task", { plan: onTuesday }))]);
+    await renderPlanView();
+
+    fireEvent.keyDown(window, { code: "ArrowRight" });
+    await act(async () => { fireEvent.keyDown(window, { code: "Enter" }); });
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(2, toWeek);
+  });
+
+  it("plans it to the scope being filled itself when dropped on the candidates pane while split", async () => {
+    useDisplayStore.setState({ planSplitBySubscope: true });
+    mockRows([row(n("task-2", "task", { plan: onTuesday }))]);
+    await renderPlanView();
+
+    await act(async () => { dropOnCandidates(["task-2"], "planned"); });
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(2, toWeek);
+  });
+
+  it("clears the Plan on an unsplit Season, which has no rung above it", async () => {
+    useViewStore.setState({ planScopeKind: "season" });
+    mockRows([row(n("task-2", "task", { plan: { start_id: MONTH_ID, end_id: MONTH_ID } }))]);
+    await renderPlanView();
+
+    fireEvent.keyDown(window, { code: "ArrowRight" });
+    await act(async () => { fireEvent.keyDown(window, { code: "Enter" }); });
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(2, { plan: null });
+  });
+
+  it("refuses a take-out the task's own Time Scope cannot hold, and says so", async () => {
+    mockRows([row(n("task-2", "task", { timeScope: { start_id: DAY_ID, end_id: DAY_ID }, plan: onTuesday }))]);
+    await renderPlanView();
+
+    fireEvent.keyDown(window, { code: "ArrowRight" });
+    await act(async () => { fireEvent.keyDown(window, { code: "Enter" }); });
+    await settle();
+    expect(updateTask).not.toHaveBeenCalled();
+    expect(screen.getByText("planView:refusedTimeScope")).toBeInTheDocument();
+  });
+});
+
+// The view reads under Plan whatever the tab's preset is, without writing Plan over it.
+describe("the status preset", () => {
+  it("reads the board under Plan even while the tab's own preset is Do", async () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
+    // Do shows only in-progress work; a todo candidate on screen is the Plan preset at work.
+    mockRows([row(n("task-1", "task", { status: "todo", timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+    await renderPlanView();
+    expect(cardsIn("candidates")).toEqual(["task-1"]);
+    expect(useFilterStore.getState().filter.statusMode).toBe("do");
+  });
+
+  it("answers a preset key with the reason rather than changing the preset", async () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
+    mockRows([]);
+    await renderPlanView();
+
+    await act(async () => { fireEvent.keyDown(window, { code: "KeyA", altKey: true }); });
+    expect(screen.getByText("planView:presetLocked")).toBeInTheDocument();
+    expect(useFilterStore.getState().filter.statusMode).toBe("do");
   });
 });
 
@@ -363,7 +469,7 @@ describe("the keyboard", () => {
       fireEvent.keyDown(window, { code: "Enter" });
     });
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(2, { plan: null });
+    expect(updateTask).toHaveBeenCalledWith(2, { plan: { start_id: MONTH_ID, end_id: MONTH_ID } });
   });
 });
 
@@ -452,7 +558,7 @@ describe("the two kebab menus", () => {
   // Work the split cannot place in a bucket is neither half: it is planned to the scope itself,
   // and the switch does not hide it.
   it("keeps work planned to the scope itself on the candidates side while it is split", async () => {
-    useDisplayStore.setState({ planCandidatesParentOnly: true, planSubscopeSplit: true });
+    useDisplayStore.setState({ planCandidatesParentOnly: true, planSplitBySubscope: true });
     mockRows([
       row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } })),
       row(n("task-2", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } })),
@@ -544,7 +650,7 @@ describe("switching the kind by its letter", () => {
 
   // With a row selected the letter is the subscope mnemonic's: M plans into Monday.
   it("leaves M to the subscope mnemonic while a row is selected", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
     await renderPlanView();
 
@@ -579,7 +685,7 @@ describe("switching the kind by its letter", () => {
 
 describe("splitting the planned pane by subscope", () => {
   it("draws one section per day of the week being filled, empty ones included", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([row(n("task-2", "task", { plan: { start_id: DAY_ID, end_id: DAY_ID } }))]);
     await renderPlanView();
     // Sunday the 20th through Saturday the 26th: seven buckets, six of them empty.
@@ -590,7 +696,7 @@ describe("splitting the planned pane by subscope", () => {
   });
 
   it("leaves the candidates pane flat — the work waiting there sits in no subscope", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
     await renderPlanView();
     expect(headingsIn("candidates")).toEqual([]);
@@ -601,7 +707,7 @@ describe("splitting the planned pane by subscope", () => {
   // says Down does not jump between buckets: the triage hands these over late-then-early, and the
   // split has to put them back in calendar order.
   it("draws the pane in section order, not in the order the triage produced", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([
       row(n("task-late", "task", { plan: { start_id: LATER_DAY_ID, end_id: LATER_DAY_ID } })),
       row(n("task-early", "task", { plan: { start_id: DAY_ID, end_id: DAY_ID } })),
@@ -613,7 +719,7 @@ describe("splitting the planned pane by subscope", () => {
   // The catch-all section is gone. Work pinned to the scope while its parts are what you are
   // filling is work that still needs placing, and the side with the gestures is the left one.
   it("moves work planned to the scope itself to the candidates side, out of every section", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([
       row(n("task-loose", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } })),
       row(n("task-2", "task", { plan: { start_id: DAY_ID, end_id: DAY_ID } })),
@@ -624,14 +730,14 @@ describe("splitting the planned pane by subscope", () => {
   });
 
   it("offers no plan-into-this-scope while the parts are what is being filled", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([row(n("task-loose", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
     await renderPlanView();
     expect(screen.queryByLabelText("planInto")).toBeNull();
   });
 
   it("plans the selection into the subscope a number names", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
     await renderPlanView();
     expect(cardsIn("candidates")).toEqual(["task-5"]);
@@ -645,7 +751,7 @@ describe("splitting the planned pane by subscope", () => {
   });
 
   it("plans by an unambiguous initial too, and leaves the colliding ones to their numbers", async () => {
-    useDisplayStore.setState({ planSubscopeSplit: true });
+    useDisplayStore.setState({ planSplitBySubscope: true });
     mockRows([row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
     await renderPlanView();
 
@@ -693,7 +799,9 @@ describe("a Habit occurrence", () => {
 
     await act(async () => { fireEvent.click(screen.getByLabelText("unplan")); });
     await settle();
-    expect(updateTask).toHaveBeenCalledWith(OCCURRENCE_ROW, { plan: null });
+    // One rung up, into its overlay; where that is its Cycle Plan's own scope, the backend clears
+    // the override instead of writing one.
+    expect(updateTask).toHaveBeenCalledWith(OCCURRENCE_ROW, { plan: { start_id: MONTH_ID, end_id: MONTH_ID } });
   });
 
   it("plans in one batch with the stored Tasks beside it", async () => {

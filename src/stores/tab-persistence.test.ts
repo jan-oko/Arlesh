@@ -38,6 +38,20 @@ describe("reading one tab's stored state", () => {
     expect(state.filter.statusMode).toBe("plan");
   });
 
+  it("keeps a stored Plan scope, and drops a malformed one and any stored match", () => {
+    const read = (planScope: unknown) => parseTabState({
+      subtreeRootId: null,
+      view: { view: "mindmap", mindmapOrientation: "horizontal" },
+      filter: { ...DEFAULT_FILTER, statusMode: "plan", planScope, scopeMatch: "overlapping" },
+      listFilter: DEFAULT_LIST_FILTER,
+    }).filter;
+
+    expect(read({ kind: "week", date: "2026-09-20" }).planScope).toEqual({ kind: "week", date: "2026-09-20" });
+    expect(read({ kind: "week" }).planScope).toBeNull();
+    expect(read(undefined).planScope).toBeNull();
+    expect(read(null).scopeMatch).toBeUndefined();
+  });
+
   it("drops a Parent pill saved before the dimension was retired", () => {
     const state = parseTabState({
       listFilter: {

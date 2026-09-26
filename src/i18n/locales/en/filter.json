@@ -27,5 +27,12 @@
     "inactive": "Backlog: default",
     "include": "Backlog: shown",
     "exclude": "Backlog: hidden"
-  }
+  },
+  "planScopeLabel": "Plan scope",
+  "planScopeAny": "Any scope",
+  "planScopeClear": "Clear",
+  "planScopeApply": "Apply",
+  "planScopePicker": "Plan scope picker",
+  "planScopeHint": "Shows only Tasks whose Time Scope is within this scope.",
+  "planScopeHintOverlapping": "Shows only Tasks whose Time Scope overlaps this scope."
 }

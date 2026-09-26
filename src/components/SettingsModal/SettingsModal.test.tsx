@@ -22,7 +22,7 @@ beforeEach(() => {
   useDisplayStore.setState({
     asynchronousFirst: false, listBands: true, habitCollapseThreshold: 3,
     planCandidatesPathGrouping: false, planCandidatesParentOnly: false,
-    planSubscopeSplit: false, planIncludePremorning: false,
+    planSplitBySubscope: false, planIncludePremorning: false,
   });
   useThemeStore.setState({ theme: "dark" });
   useCloseToTrayStore.setState({ closeToTray: true });
@@ -107,6 +107,17 @@ describe("SettingsModal", () => {
     expect(useThemeStore.getState().theme).toBe("light");
   });
 
+  it("switches the Plan scope to matching by overlap on General, and back", () => {
+    useDisplayStore.setState({ planScopeOverlapping: false });
+    open();
+
+    const control = screen.getByRole("checkbox", { name: "planScopeOverlapping" });
+    fireEvent.click(control);
+    expect(useDisplayStore.getState().planScopeOverlapping).toBe(true);
+    fireEvent.click(control);
+    expect(useDisplayStore.getState().planScopeOverlapping).toBe(false);
+  });
+
   it("turns close-to-tray off under Windows & tray", () => {
     open();
     goTo("windows");
@@ -171,7 +182,7 @@ describe("SettingsModal", () => {
     const display = useDisplayStore.getState();
     expect(display.planCandidatesParentOnly).toBe(true);
     expect(display.planCandidatesPathGrouping).toBe(true);
-    expect(display.planSubscopeSplit).toBe(true);
+    expect(display.planSplitBySubscope).toBe(true);
     expect(display.planIncludePremorning).toBe(true);
   });
 

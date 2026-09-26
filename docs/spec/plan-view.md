@@ -9,12 +9,35 @@ screen saying what the scope already held.
 
 The Plan View is a **two-pane triage** over one scope. On the left are the **candidates** — relevant
 work that is unplanned, or planned to the scope one rung above. On the right is **the scope being
-filled** — what is already planned into it. Moving a card across sets its Plan; moving one back clears it. That is the whole of what
-this view writes.
+filled** — what is already planned into it. Moving a card across sets its Plan; moving one back sets
+it one rung up (see [Taking work back out](#taking-work-back-out)). That is the whole of what this
+view writes.
 
 It is a third tab beside Mindmap and List, and shares what they share: the tab's **subtree root**
 and the tab's **filter set** (see [Tabs](tabs.md)). Entering a subtree anywhere in a tab narrows
-this view too, and the status preset chosen in any of the three governs all three.
+this view too, and so do the tab's tags and other filters.
+
+### Always the Plan preset
+
+The status preset is the one part of the filter set this view does not take from the tab: **it
+always reads under Plan**. A planning pass is the Plan preset's own question — what is still live
+and can be placed — and under Do or Backlog the candidates would be a different, wrong list.
+
+- The top bar's preset control shows **Plan** as active while this view is. The other presets —
+  All, Start, Do, Backlog — are **drawn but disabled**, each saying on hover that the Plan View
+  always reads under the Plan preset, and so does the closed control. Drawn rather than removed,
+  so the control does not change shape as you walk views.
+- `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B` change nothing here, and each says the same reason in a
+  toast rather than doing nothing, since a press with no visible effect reads as a key that is not
+  bound. They are left off this view's cheat-sheet for the same reason.
+- The tab's own preset is **not overwritten**. The view reads the board *as* Plan; the stored
+  preset stays whatever the tab had, so switching back to the Mindmap, the List or the Steps View
+  gives it back.
+
+The view's own switches work as before on top of it, the Backlog switch included (see
+[Backlog](#backlog)), which overrides the shared Backlog pill. The Plan preset's **scope
+narrowing** (see [Mindmap](mindmap-view.md)) is not read here: the view has its own scope, the one
+being filled, and a scope the tab chose for the other views does not narrow its panes.
 
 ## The two panes
 
@@ -111,9 +134,12 @@ Its window is **not** read as a plan. A window says when the work is relevant, n
 planned it (ruled by the user, 2026-09-24, over a first cut that did read it that way).
 
 **Planning one plans that occurrence alone**: the gesture writes the Plan into its overlay, and the
-Cycle Plan every other occurrence reads stays as it was. Taking it back out leaves that occurrence
-**unplanned** — an override to no Plan, even where its item has a Cycle Plan; planning it back into
-the Cycle Plan's own scope clears the override, and it reads its Cycle Plan again. Its window is its iteration's, so a Plan it cannot hold is refused exactly
+Cycle Plan every other occurrence reads stays as it was. Taking it back out moves it **one rung up**,
+by the same rule as any Task (see [Taking work back out](#taking-work-back-out)), written into its
+overlay the same way; where that rung is the Cycle Plan's own scope — as planning it back into the
+Cycle Plan's own scope always does — the override is cleared, and it reads its Cycle Plan again. Only
+on an unsplit Season, with no rung above, is it left **unplanned**: an override to no Plan, even
+where its item has a Cycle Plan. Its window is its iteration's, so a Plan it cannot hold is refused exactly
 as for a stored Task whose own window does not cover the scope.
 
 An iteration's **root** is triaged like any occurrence: by the root Cycle Plan unless it was planned on
@@ -142,6 +168,29 @@ direction is meant, so there is one gesture rather than two. With the planned pa
 **no** move into the scope itself — the buckets are its parts, and planning into the whole while
 looking at them is the move the split exists to replace — so a candidate's button is absent rather
 than present and refusing, and `Enter` says so in a toast instead of doing nothing.
+
+### Taking work back out
+
+Taking work out — the button on a planned card, `Enter` from the right, or a drop on the candidates
+pane — moves its Plan **one rung up, to the scope whose work the candidates side shows**, so what you
+take out stays in front of you:
+
+- **Planned pane split by subscope** — the work sat in a bucket. It is planned to **the scope being
+  filled itself**, which is the work no bucket holds, and that is on the candidates side while the
+  pane is split.
+- **Not split** — it is planned to **the parent scope** (see [The parent scope](#the-parent-scope);
+  for a week at a month's edge, the month holding its first day), and joins the candidates as work
+  planned to the parent.
+- **Not split, on a Season** — there is no rung above, so the Plan is **cleared**, and the work comes
+  back as unplanned relevant work.
+
+It used to clear the Plan everywhere. With *Show only planned to parent scope* on by default, that
+hid the work from the candidates as well, so it vanished from both panes (fixed 2026-09-26).
+
+The new Plan is a Plan like any other: the containment bounds below hold for it exactly as for
+planning into a scope, so a task whose own window is narrower than the rung above — work windowed to
+Tuesday, taken out of an unsplit week — is refused, counted in the toast, and stays where it was.
+Clearing a Plan outright is the editor's.
 
 ### More than one row
 
@@ -199,7 +248,7 @@ half:
 Candidates   [x] Show only planned to parent scope     on  by default
              [x] Group by path                         on  by default
 
-Planned      [ ] Split by subscope                     off by default
+Planned      [x] Split by subscope                     on  by default
              [ ] Include premorning                    off by default
 ```
 
@@ -241,6 +290,13 @@ month, the days of a week, the bands of a day — so a whole month's buckets and
 in one pass. The subscope is the next kind down the ladder `season → month → week → day → part of
 day`; a Part of Day has nothing below it and does not split, and neither does an Exact window, which
 is not a calendar cell.
+
+It is **on by default** (ruled by the user, 2026-09-26; it opened off before). A pass places work
+into the scope's parts, and the buckets are where it goes. Like the other three switches it is
+app-wide, not per tab, and the stored value could not tell a switch someone turned off from one that
+was never touched — the whole preference blob is written on any change. So the switch was stored
+under a new name, and the new default applies to everyone once, including whoever had turned it off
+on purpose; from then on the choice sticks.
 
 **Include premorning** draws a Day's 02:00–06:00 band as a bucket of its own. Off by default: the
 small hours are not where work gets planned, and a bucket nobody fills is a sixth of the pane spent
@@ -336,7 +392,8 @@ that is part of the selection carries the whole selection; dragging one that is 
 first, so the pointer and the keyboard are never talking about different rows. With the pane split
 the buckets are the **only** targets in it — dropping on the pane at large would be planning into
 the scope itself — and the pointer says so on its own, because over the gaps there is nothing that
-accepts the drag. Dropping on the candidates pane takes work back out of the scope.
+accepts the drag. Dropping on the candidates pane takes work back out of the scope, one rung up (see
+[Taking work back out](#taking-work-back-out)).
 
 **A number.** `1` through `7` name the buckets by **position in the pane**, which is the calendar's
 own order, and every bucket is always drawn, so `3` is the third week of the month you are filling
@@ -378,8 +435,9 @@ move looking like a failure.
 - `↑` / `↓` — move the selection within the focused pane
 - `Shift+↑` / `Shift+↓` — extend the selection from its anchor
 - `←` / `→` — cross to the other pane, keeping your place in the list
-- `Enter` — move the selection across: into the scope from the left, out of it from the right. With
-  the planned pane split there is no move into the scope, and `Enter` from the left says so
+- `Enter` — move the selection across: into the scope from the left, out of it — one rung up, see
+  [Taking work back out](#taking-work-back-out) — from the right. With the planned pane split there
+  is no move into the scope, and `Enter` from the left says so
 - `1`–`7`, and an unambiguous initial — plan the selection into that subscope
 - `[` / `]` — fill the previous / next scope
 - `\` — fill the parent scope; on a Season, says why there is none
@@ -389,8 +447,8 @@ move looking like a failure.
   selected Task in the List View, and a key that sets one task aside must not reveal a whole
   category of them elsewhere
 - `E` — open the selected task's editor; `Escape` — deselect
-- `Alt+F` — the filter menu, also global; `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B` — the shared status
-  presets
+- `Alt+F` — the filter menu, also global; `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B` — say that the view
+  always reads under the Plan preset (see [Always the Plan preset](#always-the-plan-preset))
 - `Ctrl+O` — search every node and enter the one you pick; `Shift+Escape` / `Ctrl+Escape` — up one
   subtree level / back to the true root. All three are [global bindings](tabs.md): they act on the
   tab's subtree root, which every view shares

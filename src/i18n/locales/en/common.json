@@ -4,6 +4,7 @@
   "cancel": "Cancel",
   "settings": "Settings",
   "lightMode": "Light mode",
+  "planScopeOverlapping": "Plan scope keeps Tasks that overlap it, not only those within it",
   "closeToTray": "Close to tray",
   "keyboardShortcuts": "Keyboard shortcuts",
   "verticalLayout": "Vertical layout",

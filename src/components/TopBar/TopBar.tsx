@@ -6,10 +6,13 @@ import { useViewStore, ALL_VIEWS, isView } from "@/stores/use-view-store";
 import type { View } from "@/stores/use-view-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 import { LIST_PRESET_VALUES, isListOnlyPreset, isListPreset } from "@/utils/list-filter";
+import { PLAN_VIEW_STATUS_MODE } from "@/utils/filter-tree";
 import type { ListPreset } from "@/utils/list-filter";
 import FilterPopover from "@/components/FilterPopover/FilterPopover";
 import FilterChips from "@/components/FilterChips/FilterChips";
 import Select from "@/components/Select/Select";
+import PlanScopeField from "@/components/ScopePicker/PlanScopeField";
+import { useDisplayStore } from "@/stores/use-display-store";
 import SettingsModal from "@/components/SettingsModal/SettingsModal";
 import SubtreeBreadcrumb from "./SubtreeBreadcrumb";
 import styles from "./TopBar.module.css";
@@ -28,9 +31,12 @@ function FunnelIcon() {
 }
 
 export default function TopBar() {
-  const { t } = useTranslation(["common", "listView"]);
+  const { t } = useTranslation(["common", "listView", "planView", "filter"]);
   const statusMode = useFilterStore((s) => s.filter.statusMode);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
+  const planScope = useFilterStore((s) => s.filter.planScope);
+  const setPlanScope = useFilterStore((s) => s.setPlanScope);
+  const planScopeOverlapping = useDisplayStore((s) => s.planScopeOverlapping);
   // Popover-open state lives in the store so the Alt+F keyboard shortcut can toggle it too.
   const filterOpen = useFilterStore((s) => s.popoverOpen);
   const setFilterPopover = useFilterStore((s) => s.setFilterPopover);
@@ -51,11 +57,21 @@ export default function TopBar() {
     steps: t("common:viewSteps"),
   };
 
-  const activePreset: ListPreset = view === "list" && isListOnlyPreset(listPreset) ? listPreset : statusMode;
+  // The Plan View always reads under Plan (see `PLAN_VIEW_STATUS_MODE`). It *reads* as Plan rather
+  // than writing Plan into the tab's filter, so leaving it gives the tab back the preset it had.
+  const planLocked = view === "plan";
+  const activePreset: ListPreset = planLocked
+    ? PLAN_VIEW_STATUS_MODE
+    : view === "list" && isListOnlyPreset(listPreset) ? listPreset : statusMode;
   const presetOptions = view === "list" ? LIST_PRESET_VALUES : MINDMAP_PRESETS;
+  const presetLockedReason = planLocked ? t("planView:presetLocked") : undefined;
+  // The Plan preset's scope sits beside the preset it belongs to, and only while it is the one
+  // chosen. Never in the Plan View, which reads under Plan with a scope of its own.
+  const showPlanScope = !planLocked && activePreset === "plan";
 
   function selectPreset(value: string) {
     if (!isListPreset(value)) return;
+    if (planLocked) return;
     if (value === "unblock" || value === "expectations") {
       setListPreset(value);
       return;
@@ -100,10 +116,22 @@ export default function TopBar() {
           />
           <Select
             value={activePreset}
-            options={presetOptions.map((preset) => ({ value: preset, label: t(`listView:preset.${preset}`) }))}
+            options={presetOptions.map((preset) => ({
+              value: preset,
+              label: t(`listView:preset.${preset}`),
+              ...(planLocked && preset !== PLAN_VIEW_STATUS_MODE ? { disabled: true, title: presetLockedReason ?? "" } : {}),
+            }))}
             onChange={selectPreset}
             ariaLabel={t("listView:statusPresetLabel")}
+            {...(presetLockedReason === undefined ? {} : { title: presetLockedReason })}
           />
+          {showPlanScope && (
+            <PlanScopeField
+              value={planScope}
+              onChange={setPlanScope}
+              hint={planScopeOverlapping ? t("filter:planScopeHintOverlapping") : t("filter:planScopeHint")}
+            />
+          )}
         </div>
 
         {/* Where you are, and the whole way down to it. A slot rather than a sibling, because the

@@ -56,11 +56,11 @@ const LABELS_SPANNING_SECTIONS: Readonly<Record<string, readonly string[]>> = {
   // Identical chords and identical run bodies, but the List View's handler writes its own preset
   // as well as the shared one — which is how any of them takes the list back out of Unblock. A
   // single global handler would silently drop that half.
-  statusAll: ["mindmap", "listView", "planView"],
-  statusPlan: ["mindmap", "listView", "planView"],
-  statusStart: ["mindmap", "listView", "planView"],
-  statusDo: ["mindmap", "listView", "planView"],
-  statusBacklog: ["mindmap", "listView", "planView"],
+  statusAll: ["mindmap", "listView"],
+  statusPlan: ["mindmap", "listView"],
+  statusStart: ["mindmap", "listView"],
+  statusDo: ["mindmap", "listView"],
+  statusBacklog: ["mindmap", "listView"],
   // Identical everywhere, and the one group that is blocked on architecture rather than on
   // meaning: `useUndo` needs the board reload, which each view owns its own copy of.
   undo: ["mindmap", "listView", "planView"],

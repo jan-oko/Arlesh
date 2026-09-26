@@ -3,8 +3,9 @@ import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
 import {
   typeHardHidden, passesTags, withArchivedOverride, isShelvedProject, isHiddenBacklog,
   isUnopenedOccurrence, passesCommitmentPreset, passesExpectationPreset, isArchived, isDelegated,
-  isLiveExpectation, isPlannedAhead,
+  isLiveExpectation, isPlannedAhead, isOutsidePlanScope,
 } from "@/utils/filter-tree";
+import type { TimeScope } from "@/api/time-scope";
 import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
 import type { Verdict } from "@/api/verdict";
 import type { Timing } from "@/api/scope-lifecycle";
@@ -302,6 +303,16 @@ function inheritedPlan(ancestors: readonly MindmapNode[]): Timing | undefined {
   return undefined;
 }
 
+/** The nearest scoped ancestor's Time Scope — what an unscoped row inherits for the Plan preset's
+ * scope narrowing. */
+function inheritedTimeScope(ancestors: readonly MindmapNode[]): TimeScope | undefined {
+  for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+    const scope = ancestors[index]?.timeScope;
+    if (scope != null) return scope;
+  }
+  return undefined;
+}
+
 /** Task-only status-preset predicate (List View rows are always tasks, so no container logic is
  * needed here, unlike the Mindmap's passesStatus). Mirrors filter-tree.ts's task branches — including
  * its effective-Archival clause, so a lapsed task archives out of Plan here exactly as it does on the
@@ -313,6 +324,7 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
     case "all":
       return true;
     case "plan":
+      if (isOutsidePlanScope(row.node, f, inheritedTimeScope(row.ancestors))) return false;
       return withArchivedOverride(row.node, f, row.node.status !== "done" && !isArchived(row.node));
     case "start": {
       if (row.isBlocked || row.hasBlockedAncestor) return false;

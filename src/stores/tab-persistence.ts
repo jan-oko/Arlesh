@@ -9,6 +9,7 @@ import { isStepsZoom } from "@/utils/steps-grid";
 import type { TabState } from "@/stores/tab-stores";
 import { DEFAULT_TAB_STATE } from "@/stores/tab-stores";
 import { mergeFilterDefaults } from "@/stores/persist-merge";
+import { scopeKeyFrom } from "@/utils/scope-key";
 import { BOOTSTRAP_WINDOW_LABEL } from "@/api/window-label";
 
 /**
@@ -113,9 +114,16 @@ function readViewState(value: unknown): ViewState {
   return { view, mindmapOrientation, planScopeKind, stepsZoom };
 }
 
-/** A stored mindmap filter, with every field this build knows about present. */
+/**
+ * A stored mindmap filter, with every field this build knows about present. The Plan preset's
+ * scope is read back through the key's own validator, so a malformed one narrows nothing rather
+ * than reaching the filter; how it matches is an app-wide setting, never the tab's, so a stored one
+ * is dropped.
+ */
 function readFilterState(value: unknown): FilterState {
-  return mergeFilterDefaults(value, DEFAULT_FILTER);
+  const merged: FilterState = { ...mergeFilterDefaults(value, DEFAULT_FILTER) };
+  delete merged.scopeMatch;
+  return { ...merged, planScope: scopeKeyFrom(merged.planScope) };
 }
 
 /**

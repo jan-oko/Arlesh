@@ -10,6 +10,7 @@ import { findNode } from "@/utils/mindmap-tree";
 import { canParentNewChild, canParentNewTask } from "@/utils/node-meta";
 import { storedAgenticState } from "@/utils/agentic";
 import { useFilterStore } from "@/stores/use-filter-store";
+import { useBoardFilter } from "@/hooks/use-board-filter";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { filterCommitmentListWithFocus, filterExpectationListWithFocus, filterTaskListWithFocus } from "@/utils/list-filter";
 import type { StatusMode } from "@/utils/filter-tree";
@@ -55,7 +56,7 @@ export default function ListView() {
     createTask, deleteTask, removeNode,
     occurrencePrompt, confirmOccurrence, cancelOccurrence } = useListData();
 
-  const sharedFilter = useFilterStore((s) => s.filter);
+  const sharedFilter = useBoardFilter();
   // The cheat-sheet overlay gates background shortcuts the same way an open modal does.
   const isInputCaptured = useIsInputCaptured();
   const addTagFilter = useFilterStore((s) => s.addTagFilter);

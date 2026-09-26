@@ -235,6 +235,14 @@ struct KeyCase {
     cell: Cell,
     key: serde_json::Value,
     text: String,
+    window: Window,
+}
+
+/// A case's half-open window, which the frontend derives on its own for its filter.
+#[derive(serde::Deserialize)]
+struct Window {
+    start: NaiveDateTime,
+    end: NaiveDateTime,
 }
 
 #[derive(serde::Deserialize)]
@@ -262,6 +270,12 @@ fn every_key_in_the_shared_corpus_has_the_same_canonical_text_here() {
             _ => panic!("malformed corpus case {}", case.text),
         };
         assert_eq!(key.canonical(), case.text, "the canonical text");
+        assert_eq!(
+            key.bounds(),
+            (case.window.start, case.window.end),
+            "the window of {}",
+            case.text
+        );
         assert_eq!(
             serde_json::to_value(key).unwrap(),
             case.key,
