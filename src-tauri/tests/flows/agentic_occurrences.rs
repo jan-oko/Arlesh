@@ -635,7 +635,7 @@ mod over_the_mcp {
                 &mut db,
                 arlesh_lib::tasks::model::CreateTaskRequest {
                     title: "Empty the spam folder".into(),
-                    parent_type: "aspect".into(),
+                    parent_type: "domain".into(),
                     parent_id: 1.into(),
                     ..Default::default()
                 },
