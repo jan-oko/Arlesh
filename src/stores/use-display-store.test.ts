@@ -7,7 +7,7 @@ beforeEach(() => {
   useDisplayStore.setState({
     habitCollapseThreshold: 3, asynchronousFirst: false,
     planCandidatesPathGrouping: true, planCandidatesParentOnly: true,
-    planSubscopeSplit: false, planIncludePremorning: false,
+    planSplitBySubscope: false, planIncludePremorning: false,
   });
   localStorage.clear();
 });
@@ -60,6 +60,32 @@ describe("a display blob written while the path-icon setting still existed", () 
  * whatever it finds over the initial state and what it would have found is an off switch nobody
  * chose.
  */
+describe("a display blob carrying the split switch from when it defaulted off", () => {
+  it("ignores it, so the planned pane opens split", async () => {
+    localStorage.setItem(
+      "arlesh-display",
+      JSON.stringify({ state: { planSubscopeSplit: false }, version: 0 }),
+    );
+    vi.resetModules();
+
+    const module = await import("./use-display-store");
+
+    expect(module.useDisplayStore.getState().planSplitBySubscope).toBe(true);
+  });
+
+  it("keeps a choice made under the new name", async () => {
+    localStorage.setItem(
+      "arlesh-display",
+      JSON.stringify({ state: { planSplitBySubscope: false }, version: 0 }),
+    );
+    vi.resetModules();
+
+    const module = await import("./use-display-store");
+
+    expect(module.useDisplayStore.getState().planSplitBySubscope).toBe(false);
+  });
+});
+
 describe("a display blob carrying the Plan View's first path switch", () => {
   it("ignores it, so the new switch actually opens on", async () => {
     localStorage.setItem(
@@ -80,8 +106,12 @@ describe("the Plan View's kebab switches", () => {
     expect(useDisplayStore.getState().planCandidatesPathGrouping).toBe(true);
   });
 
-  it("leave the planned pane unsplit, and Premorning out of it", () => {
-    expect(useDisplayStore.getState().planSubscopeSplit).toBe(false);
+  it("split the planned pane by subscope, and leave Premorning out of it", async () => {
+    // The shared `beforeEach` pins the switches; the default is what a fresh store boots with.
+    localStorage.clear();
+    vi.resetModules();
+    const module = await import("./use-display-store");
+    expect(module.useDisplayStore.getState().planSplitBySubscope).toBe(true);
     expect(useDisplayStore.getState().planIncludePremorning).toBe(false);
   });
 });

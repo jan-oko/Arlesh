@@ -251,6 +251,18 @@ describe("partitionForScope", () => {
     expect(panes.planned).toEqual([]);
   });
 
+  // Filling a Season the unplanned half is never hidden, and Unscoped work is relevant to every
+  // scope: a Task with a Plan of its own must still stay out of it.
+  it("offers a Season an Unscoped unplanned Task, and neither an Unscoped nor a scoped planned one", () => {
+    const panes = partitionForScope([
+      row({ node: node("task-unscoped-unplanned") }),
+      row({ node: node("task-unscoped-planned", { plan: scope(6) }) }),
+      row({ node: node("task-scoped-planned", { timeScope: scope(5), plan: scope(3) }) }),
+    ], SEASON, WINDOWS, NO_PARENT);
+    expect(panes.unplanned.map((r) => r.node.id)).toEqual(["task-unscoped-unplanned"]);
+    expect(panes.planned.map((r) => r.node.id)).toEqual(["task-unscoped-planned", "task-scoped-planned"]);
+  });
+
   describe("a Habit occurrence", () => {
     function occurrence(extra: Partial<MindmapNode>): TaskListRow {
       return row({ node: node("occurrence-1", { ...occurrenceRow(), ...extra }) });

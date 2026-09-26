@@ -51,11 +51,18 @@ interface DisplayStore {
    * Whether the Plan View's **planned** pane splits into one section per subscope: the weeks of a
    * month, the days of a week, the bands of a day.
    *
-   * **Off by default.** The candidates pane is never split — the work waiting there sits in no
-   * subscope, which is exactly why it is waiting.
+   * **On by default** (ruled by the user, 2026-09-26): a pass places work into the scope's parts,
+   * and the buckets are where it goes. The candidates pane is never split — the work waiting there
+   * sits in no subscope, which is exactly why it is waiting.
+   *
+   * The name is not `planSubscopeSplit`, which this replaces, for the reason the path switch was
+   * renamed: `persist` writes the whole state on every change, so a stored `false` cannot say
+   * whether anyone chose it, and keeping the key would have kept everyone on the old default.
+   * Renaming applies the new default to everybody once — including whoever had turned the split
+   * off on purpose, who turns it off once more.
    */
-  planSubscopeSplit: boolean;
-  togglePlanSubscopeSplit: () => void;
+  planSplitBySubscope: boolean;
+  togglePlanSplitBySubscope: () => void;
   /**
    * Whether the List View draws Commitments and Expectations in **bands** above the task rows
    * (on, the default — the shape the Commitments band already had) or as **ordinary rows** among
@@ -80,6 +87,15 @@ interface DisplayStore {
    */
   planIncludePremorning: boolean;
   togglePlanIncludePremorning: () => void;
+  /**
+   * Whether the Plan preset's **scope narrowing** keeps a Task whose effective Time Scope merely
+   * **overlaps** the chosen scope, rather than only one wholly **contained** in it.
+   *
+   * **Off by default** — containment. App-wide, not per tab: the scope is a question each tab asks,
+   * and how a window answers it is a reading of the board you would want the same everywhere.
+   */
+  planScopeOverlapping: boolean;
+  togglePlanScopeOverlapping: () => void;
 }
 
 /** Keeps a stored or typed threshold inside the range the setting offers. */
@@ -106,7 +122,8 @@ function clampThreshold(value: number): number {
  * tab would read as a bug rather than as a setting.
  *
  * A stored blob may still carry `pathHeaderIcons`, the path-header glyph switch that used to live
- * here, and `planPathGrouping`, the first cut of the Plan View's path switch. Nothing reads either
+ * here, `planPathGrouping`, the first cut of the Plan View's path switch, and `planSubscopeSplit`,
+ * the split switch from when it defaulted off. Nothing reads either
  * any more; they are left where they lie rather than migrated away, because a key nobody asks about
  * costs nothing and rewriting someone's stored settings to drop one does.
  */
@@ -123,8 +140,8 @@ export const useDisplayStore = create<DisplayStore>()(
       planCandidatesParentOnly: true,
       togglePlanCandidatesParentOnly: () =>
         set((s) => ({ planCandidatesParentOnly: !s.planCandidatesParentOnly })),
-      planSubscopeSplit: false,
-      togglePlanSubscopeSplit: () => set((s) => ({ planSubscopeSplit: !s.planSubscopeSplit })),
+      planSplitBySubscope: true,
+      togglePlanSplitBySubscope: () => set((s) => ({ planSplitBySubscope: !s.planSplitBySubscope })),
       listBands: true,
       toggleListBands: () => set((s) => ({ listBands: !s.listBands })),
       checkTaskPrefix: null,
@@ -132,6 +149,8 @@ export const useDisplayStore = create<DisplayStore>()(
       planIncludePremorning: false,
       togglePlanIncludePremorning: () =>
         set((s) => ({ planIncludePremorning: !s.planIncludePremorning })),
+      planScopeOverlapping: false,
+      togglePlanScopeOverlapping: () => set((s) => ({ planScopeOverlapping: !s.planScopeOverlapping })),
     }),
     { name: "arlesh-display" },
   ),

@@ -148,6 +148,86 @@ describe("TopBar", () => {
       expect(useListFilterStore.getState().filter.preset).toBe("unblock");
     });
 
+    it("shows Plan active and every other preset disabled while the Plan View is active", () => {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
+      useViewStore.setState({ view: "plan" });
+      render(<TopBar />);
+      const trigger = screen.getByRole("button", { name: "listView:statusPresetLabel" });
+      expect(trigger).toHaveTextContent("listView:preset.plan");
+      expect(trigger).toHaveAttribute("title", "planView:presetLocked");
+
+      fireEvent.click(trigger);
+      const plan = screen.getByRole("option", { name: "listView:preset.plan" });
+      expect(plan).not.toHaveAttribute("aria-disabled");
+      for (const preset of ["all", "start", "do", "backlog"]) {
+        const option = screen.getByRole("option", { name: `listView:preset.${preset}` });
+        expect(option).toHaveAttribute("aria-disabled", "true");
+        expect(option).toHaveAttribute("title", "planView:presetLocked");
+      }
+
+      fireEvent.click(screen.getByRole("option", { name: "listView:preset.all" }));
+      expect(useFilterStore.getState().filter.statusMode).toBe("do");
+    });
+
+    it("gives the tab its own preset back on leaving the Plan View", () => {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
+      useViewStore.setState({ view: "plan" });
+      const { rerender } = render(<TopBar />);
+      expect(screen.getByRole("button", { name: "listView:statusPresetLabel" })).toHaveTextContent("listView:preset.plan");
+
+      useViewStore.setState({ view: "mindmap" });
+      rerender(<TopBar />);
+      const trigger = screen.getByRole("button", { name: "listView:statusPresetLabel" });
+      expect(trigger).toHaveTextContent("listView:preset.do");
+      expect(trigger).not.toHaveAttribute("title");
+      expect(useFilterStore.getState().filter.statusMode).toBe("do");
+    });
+
+    it("draws the Plan scope beside the preset only while Plan is the preset", () => {
+      const all = render(<TopBar />);
+      expect(screen.queryByRole("button", { name: "filter:planScopeLabel" })).not.toBeInTheDocument();
+      all.unmount();
+
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "plan" } });
+      const mindmap = render(<TopBar />);
+      expect(screen.getByRole("button", { name: "filter:planScopeLabel" })).toHaveTextContent("filter:planScopeAny");
+      mindmap.unmount();
+
+      useViewStore.setState({ view: "list" });
+      const list = render(<TopBar />);
+      expect(screen.getByRole("button", { name: "filter:planScopeLabel" })).toBeInTheDocument();
+      list.unmount();
+
+      // Unblock replaces the preset's rules in the list, so the scope has nothing to narrow.
+      useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, preset: "unblock" } });
+      const unblock = render(<TopBar />);
+      expect(screen.queryByRole("button", { name: "filter:planScopeLabel" })).not.toBeInTheDocument();
+      unblock.unmount();
+    });
+
+    it("never draws the Plan scope in the Plan View, which has a scope of its own", () => {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "plan" } });
+      useViewStore.setState({ view: "plan" });
+      render(<TopBar />);
+      expect(screen.queryByRole("button", { name: "filter:planScopeLabel" })).not.toBeInTheDocument();
+    });
+
+    it("clears a chosen Plan scope from the top bar", () => {
+      useFilterStore.setState({
+        filter: { ...DEFAULT_FILTER, statusMode: "plan", planScope: { kind: "week", date: "2026-09-20" } },
+      });
+      render(<TopBar />);
+      fireEvent.click(screen.getByRole("button", { name: "filter:planScopeClear" }));
+      expect(useFilterStore.getState().filter.planScope).toBeNull();
+    });
+
+    it("opens the Scope Picker from the Plan scope", () => {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "plan" } });
+      render(<TopBar />);
+      fireEvent.click(screen.getByRole("button", { name: "filter:planScopeLabel" }));
+      expect(screen.getByRole("group", { name: "filter:planScopePicker" })).toBeInTheDocument();
+    });
+
     it("reflects Unblock as the selected value only while List View is active", () => {
       useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, preset: "unblock" } });
       useViewStore.setState({ view: "mindmap" });

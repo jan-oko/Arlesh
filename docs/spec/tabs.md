@@ -150,7 +150,8 @@ they are not re-litigated:
 - **`Alt+A/P/S/D/B`**, the status presets, write to the shared filter and look identical — but the
   List View's handler also writes that view's **own** preset, which is how any of the five takes the
   list back out of **Unblock**. A single global handler would silently drop that half, and `Alt+U`
-  is List-only besides, so the set is not even symmetric.
+  is List-only besides, so the set is not even symmetric — nor is the Plan View's, where the five only say
+  that it always reads under Plan (see [Plan View](plan-view.md#always-the-plan-preset)).
 
 **Undo and redo** (`Ctrl+Z`, `Ctrl+Shift+Z`, `Ctrl+Y`) are identical in every view and would
 belong here on the rule above, but they are blocked on something else: the handler needs the board

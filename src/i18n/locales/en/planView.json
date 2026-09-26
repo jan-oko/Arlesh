@@ -19,6 +19,7 @@
   "upScopeTo": "Up to parent scope, the {{kind}} (\\)",
   "upScopeResolving": "The scope is still loading, so its parent is not known yet.",
   "upScopeAtTop": "A Season is the top of the ladder: there is no scope above it.",
+  "presetLocked": "The Plan View always reads under the Plan preset. Switch to another view to use a different one.",
   "previousScope": "Previous scope",
   "nextScope": "Next scope",
   "jumpToScope": "Jump to a scope",

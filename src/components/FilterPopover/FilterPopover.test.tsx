@@ -44,6 +44,12 @@ describe("FilterPopover", () => {
     unmount();
   });
 
+  it("no longer carries the Plan scope, which lives in the top bar", () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "plan" } });
+    render(<FilterPopover />);
+    expect(screen.queryByRole("button", { name: "filter:planScopeLabel" })).not.toBeInTheDocument();
+  });
+
   it("toggles Info visibility off via the type pill (Mindmap only)", () => {
     render(<FilterPopover />);
     fireEvent.click(screen.getByRole("button", { name: "nodeKinds:info" }));

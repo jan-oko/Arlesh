@@ -7,7 +7,7 @@
 
 use std::borrow::Cow;
 
-use crate::tasks::lifecycle::Timing;
+use crate::tasks::{lifecycle::Timing, model::TimeScope};
 
 use super::{
     model::{BoardFilter, NodeFacts, NodeKind, Preset},
@@ -48,6 +48,15 @@ impl<'a> Row<'a> {
             }
         }
         None
+    }
+
+    /// The nearest scoped ancestor's Time Scope — what an unscoped row inherits for the Plan
+    /// preset's scope narrowing (see [`rules::is_outside_plan_scope`]).
+    fn inherited_time_scope(&self) -> Option<&'a TimeScope> {
+        self.ancestors
+            .iter()
+            .rev()
+            .find_map(|ancestor| ancestor.time_scope.as_ref())
     }
 
     /// Whether any ancestor gates the whole subtree beneath it under this filter.
@@ -126,6 +135,9 @@ fn passes_row_preset(row: Row<'_>, filter: &BoardFilter) -> bool {
         return false;
     }
     if rules::is_planned_ahead(row.node, filter, row.inherited_plan()) {
+        return false;
+    }
+    if rules::is_outside_plan_scope(row.node, filter, row.inherited_time_scope()) {
         return false;
     }
     let under_backlog = row.ancestors.iter().any(|ancestor| ancestor.backlogged);

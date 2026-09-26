@@ -6,6 +6,8 @@ import { usePlanScope } from "@/hooks/use-plan-scope";
 import { usePlanParents } from "@/hooks/use-plan-parents";
 import { upRefusalKey } from "@/utils/plan-scope";
 import { usePlanMove } from "@/hooks/use-plan-move";
+import type { PlanDestination } from "@/hooks/use-plan-move";
+import { takeOutTarget } from "@/utils/plan-take-out";
 import { useScopeWindows } from "@/hooks/use-scope-windows";
 import { useScopeRows } from "@/hooks/use-scope-rows";
 import { useSubscopeLabel } from "@/hooks/use-subscope-label";
@@ -20,6 +22,7 @@ import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { BEADS_NODE_TYPE } from "@/api/beads";
 import type { FilterState } from "@/utils/filter-tree";
+import { PLAN_VIEW_STATUS_MODE } from "@/utils/filter-tree";
 import type { TaskListRow } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER, filterTaskList } from "@/utils/list-filter";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
@@ -49,6 +52,8 @@ import styles from "./PlanView.module.css";
 
 /** What the Up refusal anchors to: the scope, not a node — so the toast takes the fixed spot. */
 const UP_TOAST_ANCHOR = "planView:up";
+/** The same, for a status preset key pressed where the preset cannot change. */
+const PRESET_TOAST_ANCHOR = "planView:preset";
 
 const NO_PANES: PlanPanes = { unplanned: [], planned: [], parentPlanned: [] };
 
@@ -56,9 +61,9 @@ const NO_PANES: PlanPanes = { unplanned: [], planned: [], parentPlanned: [] };
  * The **Plan View**: one scope at a time, as a two-pane triage.
  *
  * On the left is the work this pass has not placed yet; on the right is what the scope already
- * holds. Moving a card across sets its Plan and moving it back clears it, which is the whole of
- * what this view writes — a Time Scope is a statement about when a task *matters* and changing one
- * is an editing decision, so it stays in the editor.
+ * holds. Moving a card across sets its Plan, and moving it back sets it one rung up — or clears it,
+ * on an unsplit Season. Plans are the whole of what this view writes: a Time Scope is a statement
+ * about when a task *matters* and changing one is an editing decision, so it stays in the editor.
  *
  * It reads the same tree the Mindmap and the List View read, through the same shared subtree root
  * and the same shared filter, so entering a subtree anywhere in the tab narrows this too and the
@@ -69,7 +74,6 @@ export default function PlanView() {
   const { tree, rows, allTasksAndGoals, isLoading, error, reload } = useListData();
 
   const sharedFilter = useFilterStore((s) => s.filter);
-  const setStatusMode = useFilterStore((s) => s.setStatusMode);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   // Ctrl+O is a global binding; the flag it raises is read here, where the loaded tree already is.
   const enterSubtree = useMindmapStore((s) => s.enterSubtree);
@@ -94,12 +98,19 @@ export default function PlanView() {
     onClearBeadsId, checkScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, reload });
 
+  // The view always reads under the **Plan** preset, whatever the tab's is: it is read as Plan here
+  // rather than written into the tab's filter, so the tab keeps its own preset for the other views.
   // Backlog is the one filter dimension this view answers for itself. The switch *is* the backlog
   // question here, so it overrides the shared pill rather than combining with it — otherwise
   // turning it on under the Plan preset, which hides backlogged work of its own accord, would be a
   // control that visibly did nothing.
   const filter = useMemo<FilterState>(
-    () => ({ ...sharedFilter, backlogMode: showBacklogged ? "include" : "exclude" }),
+    // The view has its own scope — the one being filled — so the Plan preset's scope narrowing, a
+    // question the other views ask, is not asked here.
+    () => ({
+      ...sharedFilter, statusMode: PLAN_VIEW_STATUS_MODE, planScope: null,
+      backlogMode: showBacklogged ? "include" : "exclude",
+    }),
     [sharedFilter, showBacklogged],
   );
   // The List View's own pill dimensions are its own; what the three views share is this filter.
@@ -116,8 +127,10 @@ export default function PlanView() {
   const scopeIds = useMemo(() => {
     const ids = referencedScopeIds(visibleRows);
     if (targetScopeId !== null) ids.push(targetScopeId);
+    // The parent's window is what a take-out from an unsplit scope is checked against.
+    if (parents.parent !== null) ids.push(parents.parent.key);
     return ids;
-  }, [visibleRows, targetScopeId]);
+  }, [visibleRows, targetScopeId, parents.parent]);
   const windows = useScopeWindows(scopeIds);
   const targetWindow = targetScopeId === null ? null : windows.get(scopeKeyText(targetScopeId)) ?? null;
 
@@ -126,7 +139,7 @@ export default function PlanView() {
     [visibleRows, targetWindow, windows, parents.ids],
   );
 
-  const { planInto, planIntoSubscope, unplan } = usePlanMove({
+  const { planInto, planIntoSubscope, takeOut } = usePlanMove({
     targetScopeId, targetWindow, targetLabel: scope.label, windows, reload, showToast,
   });
 
@@ -135,8 +148,8 @@ export default function PlanView() {
   const toggleGroupByPath = useDisplayStore((s) => s.togglePlanCandidatesPathGrouping);
   const parentOnly = useDisplayStore((s) => s.planCandidatesParentOnly);
   const toggleParentOnly = useDisplayStore((s) => s.togglePlanCandidatesParentOnly);
-  const subscopeSplit = useDisplayStore((s) => s.planSubscopeSplit);
-  const toggleSubscopeSplit = useDisplayStore((s) => s.togglePlanSubscopeSplit);
+  const subscopeSplit = useDisplayStore((s) => s.planSplitBySubscope);
+  const toggleSubscopeSplit = useDisplayStore((s) => s.togglePlanSplitBySubscope);
   const includePremorning = useDisplayStore((s) => s.planIncludePremorning);
   const toggleIncludePremorning = useDisplayStore((s) => s.togglePlanIncludePremorning);
   const setPillSide = useListFilterStore((s) => s.setPillSide);
@@ -205,6 +218,21 @@ export default function PlanView() {
     () => buildPaneModel(split?.sections ?? null, panes.planned, false),
     [split, panes.planned],
   );
+
+  /**
+   * Where work taken back out of the scope lands: one rung up, on the scope whose work the
+   * candidates side shows — so it stays in view rather than vanishing (see `takeOutTarget`).
+   */
+  const takeOutTo = useMemo(() => {
+    const filled: PlanDestination | null = targetScopeId === null
+      ? null
+      : { id: targetScopeId, window: targetWindow, label: scope.label };
+    const parent = parents.parent;
+    const above: PlanDestination | null = parent === null
+      ? null
+      : { id: parent.key, window: windows.get(scopeKeyText(parent.key)) ?? null, label: subscopeLabel(parent.ref) };
+    return filled === null ? null : takeOutTarget(plannedModel.sectioned, filled, above);
+  }, [targetScopeId, targetWindow, scope.label, parents.parent, windows, subscopeLabel, plannedModel.sectioned]);
 
   /** Each bucket in words, and the keys that reach it. */
   const sectionInfo = useMemo<ReadonlyMap<string, SectionInfo>>(() => {
@@ -323,14 +351,15 @@ export default function PlanView() {
         if (head !== undefined) showToast({ nodeId: head.node.id, message: t("planView:noParentPlan") });
         return;
       }
-      void (from === "candidates" ? planInto(rows) : unplan(rows)).then((moved) => {
+      const move = from === "candidates" ? planInto(rows) : takeOutTo === null ? Promise.resolve([]) : takeOut(rows, takeOutTo);
+      void move.then((moved) => {
         // Only what actually moved advances the cursor. A batch where nothing did leaves the
         // selection on the work the toast is about, which is what you are being told something
         // about.
         advancePast(from, moved);
       });
     },
-    [plannedModel.sectioned, planInto, unplan, advancePast, showToast, t],
+    [plannedModel.sectioned, planInto, takeOut, takeOutTo, advancePast, showToast, t],
   );
 
   const onMoveAcross = useCallback(
@@ -422,7 +451,7 @@ export default function PlanView() {
     onUpScope: upScope,
     onSetScopeKind: scope.setKind,
     onToggleBacklogCandidates: () => setShowBacklogged((on) => !on),
-    onSetStatusMode: setStatusMode,
+    onRefuseStatusPreset: () => showToast({ nodeId: PRESET_TOAST_ANCHOR, message: t("planView:presetLocked") }),
     onOpenEditor: onDoubleClick,
     onDeselect: () => setSelection(EMPTY_PLAN_SELECTION),
     onToggleFullscreen: toggleFullscreen,

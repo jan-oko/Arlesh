@@ -12,10 +12,13 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use arlesh_lib::filters::{
-    list,
-    model::{BoardFilter, NodeKind, OverrideMode, Preset, TagFilter, TagMode},
-    tree::{self, FactNode},
+use arlesh_lib::{
+    filters::{
+        list,
+        model::{BoardFilter, NodeKind, OverrideMode, Preset, ScopeMatch, TagFilter, TagMode},
+        tree::{self, FactNode},
+    },
+    scopes::key::ScopeKey,
 };
 use serde::Deserialize;
 
@@ -72,6 +75,10 @@ struct CorpusFilter {
     archived: OverrideMode,
     #[serde(default)]
     backlog: OverrideMode,
+    #[serde(default)]
+    plan_scope: Option<ScopeKey>,
+    #[serde(default)]
+    scope_match: ScopeMatch,
 }
 
 fn yes() -> bool {
@@ -105,6 +112,8 @@ impl From<&CorpusFilter> for BoardFilter {
             private_mode: filter.private_mode,
             archived: filter.archived,
             backlog: filter.backlog,
+            plan_scope: filter.plan_scope,
+            scope_match: filter.scope_match,
         }
     }
 }

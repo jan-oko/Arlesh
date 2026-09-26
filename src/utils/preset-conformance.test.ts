@@ -3,7 +3,10 @@ import { occurrenceRow } from "@/test/occurrence";
 import corpusJson from "@conformance/preset-filters.json";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { isNodeKind } from "@/utils/tree-layout";
-import type { FilterState, ArchivedMode, StatusMode, TagFilter, TagFilterMode } from "@/utils/filter-tree";
+import type { FilterState, ArchivedMode, ScopeMatch, StatusMode, TagFilter, TagFilterMode } from "@/utils/filter-tree";
+import type { ScopeKey } from "@/api/scopes";
+import type { TimeScope } from "@/api/time-scope";
+import { scopeKeyFrom } from "@/utils/scope-key";
 import { DEFAULT_FILTER, filterTree } from "@/utils/filter-tree";
 import type { ListFilterState, ListPreset } from "@/utils/list-filter";
 import {
@@ -45,6 +48,7 @@ interface CorpusNode {
   delegated?: boolean;
   hasCheck?: boolean;
   tagIds?: number[];
+  timeScope?: TimeScope;
   children?: CorpusNode[];
 }
 
@@ -60,6 +64,8 @@ interface CorpusFilter {
   privateMode?: boolean;
   archived?: ArchivedMode;
   backlog?: ArchivedMode;
+  planScope?: ScopeKey;
+  scopeMatch?: ScopeMatch;
 }
 
 /** One case: a board, a filter, and what each of the three surfaces keeps. */
@@ -131,7 +137,24 @@ function parseNode(value: unknown, what: string): CorpusNode {
     ...flag(raw.isHabitOccurrence, "isHabitOccurrence", what),
     ...flag(raw.delegated, "delegated", what),
     ...flag(raw.hasCheck, "hasCheck", what),
+    ...(raw.timeScope !== undefined ? { timeScope: parseTimeScope(raw.timeScope, `${what}.timeScope`) } : {}),
   };
+}
+
+function parseScopeKey(value: unknown, what: string): ScopeKey {
+  return scopeKeyFrom(value) ?? fail(`${what} is not a scope key`);
+}
+
+function parseTimeScope(value: unknown, what: string): TimeScope {
+  const raw = record(value, what);
+  return { start_id: parseScopeKey(raw.start_id, `${what}.start_id`), end_id: parseScopeKey(raw.end_id, `${what}.end_id`) };
+}
+
+const SCOPE_MATCHES: readonly ScopeMatch[] = ["contained", "overlapping"];
+
+function parseScopeMatch(value: unknown, what: string): ScopeMatch {
+  const match = str(value, what);
+  return SCOPE_MATCHES.find((candidate) => candidate === match) ?? fail(`${what} is not a scope match: ${match}`);
 }
 
 function flag(value: unknown, name: string, what: string): Record<string, boolean> {
@@ -198,6 +221,8 @@ function parseFilter(value: unknown, what: string): CorpusFilter {
     ...flag(raw.privateMode, "privateMode", what),
     ...(raw.archived !== undefined ? { archived: parseOverride(raw.archived, `${what}.archived`) } : {}),
     ...(raw.backlog !== undefined ? { backlog: parseOverride(raw.backlog, `${what}.backlog`) } : {}),
+    ...(raw.planScope !== undefined ? { planScope: parseScopeKey(raw.planScope, `${what}.planScope`) } : {}),
+    ...(raw.scopeMatch !== undefined ? { scopeMatch: parseScopeMatch(raw.scopeMatch, `${what}.scopeMatch`) } : {}),
   };
 }
 
@@ -259,6 +284,7 @@ function toMindmapNode(node: CorpusNode): MindmapNode {
     ...(node.isHabitOccurrence === true ? occurrenceRow() : {}),
     ...(node.delegated === true ? { delegate: { kind: "agent" as const } } : {}),
     ...(node.hasCheck === true ? { checkEvery: { n: 1, kind: "day" } } : {}),
+    ...(node.timeScope !== undefined ? { timeScope: node.timeScope } : {}),
   };
 }
 
@@ -276,6 +302,8 @@ function toSharedFilter(filter: CorpusFilter): FilterState {
     ...(filter.privateMode !== undefined ? { privateMode: filter.privateMode } : {}),
     ...(filter.archived !== undefined ? { archivedMode: filter.archived } : {}),
     ...(filter.backlog !== undefined ? { backlogMode: filter.backlog } : {}),
+    ...(filter.planScope !== undefined ? { planScope: filter.planScope } : {}),
+    ...(filter.scopeMatch !== undefined ? { scopeMatch: filter.scopeMatch } : {}),
   };
 }
 
