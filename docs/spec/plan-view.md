@@ -111,9 +111,12 @@ Its window is **not** read as a plan. A window says when the work is relevant, n
 planned it (ruled by the user, 2026-09-24, over a first cut that did read it that way).
 
 **Planning one plans that occurrence alone**: the gesture writes the Plan into its overlay, and the
-Cycle Plan every other occurrence reads stays as it was. Taking it back out leaves that occurrence
-**unplanned** — an override to no Plan, even where its item has a Cycle Plan; planning it back into
-the Cycle Plan's own scope clears the override, and it reads its Cycle Plan again. Its window is its iteration's, so a Plan it cannot hold is refused exactly
+Cycle Plan every other occurrence reads stays as it was. Taking it back out moves it **one rung up**,
+by the same rule as any Task (see [Taking work back out](#taking-work-back-out)), written into its
+overlay the same way; where that rung is the Cycle Plan's own scope — as planning it back into the
+Cycle Plan's own scope always does — the override is cleared, and it reads its Cycle Plan again. Only
+on an unsplit Season, with no rung above, is it left **unplanned**: an override to no Plan, even
+where its item has a Cycle Plan. Its window is its iteration's, so a Plan it cannot hold is refused exactly
 as for a stored Task whose own window does not cover the scope.
 
 An iteration's **root** is triaged like any occurrence: by the root Cycle Plan unless it was planned on
@@ -142,6 +145,29 @@ direction is meant, so there is one gesture rather than two. With the planned pa
 **no** move into the scope itself — the buckets are its parts, and planning into the whole while
 looking at them is the move the split exists to replace — so a candidate's button is absent rather
 than present and refusing, and `Enter` says so in a toast instead of doing nothing.
+
+### Taking work back out
+
+Taking work out — the button on a planned card, `Enter` from the right, or a drop on the candidates
+pane — moves its Plan **one rung up, to the scope whose work the candidates side shows**, so what you
+take out stays in front of you:
+
+- **Planned pane split by subscope** — the work sat in a bucket. It is planned to **the scope being
+  filled itself**, which is the work no bucket holds, and that is on the candidates side while the
+  pane is split.
+- **Not split** — it is planned to **the parent scope** (see [The parent scope](#the-parent-scope);
+  for a week at a month's edge, the month holding its first day), and joins the candidates as work
+  planned to the parent.
+- **Not split, on a Season** — there is no rung above, so the Plan is **cleared**, and the work comes
+  back as unplanned relevant work.
+
+It used to clear the Plan everywhere. With *Show only planned to parent scope* on by default, that
+hid the work from the candidates as well, so it vanished from both panes (fixed 2026-09-26).
+
+The new Plan is a Plan like any other: the containment bounds below hold for it exactly as for
+planning into a scope, so a task whose own window is narrower than the rung above — work windowed to
+Tuesday, taken out of an unsplit week — is refused, counted in the toast, and stays where it was.
+Clearing a Plan outright is the editor's.
 
 ### More than one row
 
@@ -336,7 +362,8 @@ that is part of the selection carries the whole selection; dragging one that is 
 first, so the pointer and the keyboard are never talking about different rows. With the pane split
 the buckets are the **only** targets in it — dropping on the pane at large would be planning into
 the scope itself — and the pointer says so on its own, because over the gaps there is nothing that
-accepts the drag. Dropping on the candidates pane takes work back out of the scope.
+accepts the drag. Dropping on the candidates pane takes work back out of the scope, one rung up (see
+[Taking work back out](#taking-work-back-out)).
 
 **A number.** `1` through `7` name the buckets by **position in the pane**, which is the calendar's
 own order, and every bucket is always drawn, so `3` is the third week of the month you are filling
@@ -378,8 +405,9 @@ move looking like a failure.
 - `↑` / `↓` — move the selection within the focused pane
 - `Shift+↑` / `Shift+↓` — extend the selection from its anchor
 - `←` / `→` — cross to the other pane, keeping your place in the list
-- `Enter` — move the selection across: into the scope from the left, out of it from the right. With
-  the planned pane split there is no move into the scope, and `Enter` from the left says so
+- `Enter` — move the selection across: into the scope from the left, out of it — one rung up, see
+  [Taking work back out](#taking-work-back-out) — from the right. With the planned pane split there
+  is no move into the scope, and `Enter` from the left says so
 - `1`–`7`, and an unambiguous initial — plan the selection into that subscope
 - `[` / `]` — fill the previous / next scope
 - `\` — fill the parent scope; on a Season, says why there is none

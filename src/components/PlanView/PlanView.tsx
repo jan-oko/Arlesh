@@ -6,6 +6,8 @@ import { usePlanScope } from "@/hooks/use-plan-scope";
 import { usePlanParents } from "@/hooks/use-plan-parents";
 import { upRefusalKey } from "@/utils/plan-scope";
 import { usePlanMove } from "@/hooks/use-plan-move";
+import type { PlanDestination } from "@/hooks/use-plan-move";
+import { takeOutTarget } from "@/utils/plan-take-out";
 import { useScopeWindows } from "@/hooks/use-scope-windows";
 import { useScopeRows } from "@/hooks/use-scope-rows";
 import { useSubscopeLabel } from "@/hooks/use-subscope-label";
@@ -56,9 +58,9 @@ const NO_PANES: PlanPanes = { unplanned: [], planned: [], parentPlanned: [] };
  * The **Plan View**: one scope at a time, as a two-pane triage.
  *
  * On the left is the work this pass has not placed yet; on the right is what the scope already
- * holds. Moving a card across sets its Plan and moving it back clears it, which is the whole of
- * what this view writes — a Time Scope is a statement about when a task *matters* and changing one
- * is an editing decision, so it stays in the editor.
+ * holds. Moving a card across sets its Plan, and moving it back sets it one rung up — or clears it,
+ * on an unsplit Season. Plans are the whole of what this view writes: a Time Scope is a statement
+ * about when a task *matters* and changing one is an editing decision, so it stays in the editor.
  *
  * It reads the same tree the Mindmap and the List View read, through the same shared subtree root
  * and the same shared filter, so entering a subtree anywhere in the tab narrows this too and the
@@ -116,8 +118,10 @@ export default function PlanView() {
   const scopeIds = useMemo(() => {
     const ids = referencedScopeIds(visibleRows);
     if (targetScopeId !== null) ids.push(targetScopeId);
+    // The parent's window is what a take-out from an unsplit scope is checked against.
+    if (parents.parent !== null) ids.push(parents.parent.key);
     return ids;
-  }, [visibleRows, targetScopeId]);
+  }, [visibleRows, targetScopeId, parents.parent]);
   const windows = useScopeWindows(scopeIds);
   const targetWindow = targetScopeId === null ? null : windows.get(scopeKeyText(targetScopeId)) ?? null;
 
@@ -126,7 +130,7 @@ export default function PlanView() {
     [visibleRows, targetWindow, windows, parents.ids],
   );
 
-  const { planInto, planIntoSubscope, unplan } = usePlanMove({
+  const { planInto, planIntoSubscope, takeOut } = usePlanMove({
     targetScopeId, targetWindow, targetLabel: scope.label, windows, reload, showToast,
   });
 
@@ -205,6 +209,21 @@ export default function PlanView() {
     () => buildPaneModel(split?.sections ?? null, panes.planned, false),
     [split, panes.planned],
   );
+
+  /**
+   * Where work taken back out of the scope lands: one rung up, on the scope whose work the
+   * candidates side shows — so it stays in view rather than vanishing (see `takeOutTarget`).
+   */
+  const takeOutTo = useMemo(() => {
+    const filled: PlanDestination | null = targetScopeId === null
+      ? null
+      : { id: targetScopeId, window: targetWindow, label: scope.label };
+    const parent = parents.parent;
+    const above: PlanDestination | null = parent === null
+      ? null
+      : { id: parent.key, window: windows.get(scopeKeyText(parent.key)) ?? null, label: subscopeLabel(parent.ref) };
+    return filled === null ? null : takeOutTarget(plannedModel.sectioned, filled, above);
+  }, [targetScopeId, targetWindow, scope.label, parents.parent, windows, subscopeLabel, plannedModel.sectioned]);
 
   /** Each bucket in words, and the keys that reach it. */
   const sectionInfo = useMemo<ReadonlyMap<string, SectionInfo>>(() => {
@@ -323,14 +342,15 @@ export default function PlanView() {
         if (head !== undefined) showToast({ nodeId: head.node.id, message: t("planView:noParentPlan") });
         return;
       }
-      void (from === "candidates" ? planInto(rows) : unplan(rows)).then((moved) => {
+      const move = from === "candidates" ? planInto(rows) : takeOutTo === null ? Promise.resolve([]) : takeOut(rows, takeOutTo);
+      void move.then((moved) => {
         // Only what actually moved advances the cursor. A batch where nothing did leaves the
         // selection on the work the toast is about, which is what you are being told something
         // about.
         advancePast(from, moved);
       });
     },
-    [plannedModel.sectioned, planInto, unplan, advancePast, showToast, t],
+    [plannedModel.sectioned, planInto, takeOut, takeOutTo, advancePast, showToast, t],
   );
 
   const onMoveAcross = useCallback(
