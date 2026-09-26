@@ -284,6 +284,25 @@ impl From<TaskStatusParam> for model::TaskStatus {
     }
 }
 
+/// What a scoped Task does once its Time Scope has passed while it is unfinished.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum OnScopeExitParam {
+    /// It lapses: drops out of the active view.
+    Archive,
+    /// It stays, flagged Overdue. The default.
+    Keep,
+}
+
+impl From<OnScopeExitParam> for model::OnScopeExit {
+    fn from(exit: OnScopeExitParam) -> Self {
+        match exit {
+            OnScopeExitParam::Archive => Self::Archive,
+            OnScopeExitParam::Keep => Self::Keep,
+        }
+    }
+}
+
 /// An agentic brief, or the fields of one to change. Each field left out stays as it is (on
 /// create: empty).
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
@@ -360,8 +379,32 @@ pub enum TasksOperation {
         /// Its agentic brief.
         #[serde(default)]
         brief: Option<BriefParam>,
+        /// Its Time Scope — the window it is relevant in, held within its ancestors'.
+        #[serde(default)]
+        time_scope: Option<TimeScope>,
+        /// What it does once its Time Scope passes unfinished; applies only with a `time_scope`.
+        #[serde(default)]
+        on_scope_exit: Option<OnScopeExitParam>,
+        /// Its Plan — when it is to be worked — which must fall within its Time Scope.
+        #[serde(default)]
+        plan: Option<TimeScope>,
+        /// `true` makes it Asynchronous: finishing it spawns a wait.
+        #[serde(default)]
+        asynchronous: Option<bool>,
+        /// Its prerequisites — the tasks, goals or waits it comes after — by id. Each must be
+        /// visible to you.
+        #[serde(default)]
+        dependencies: Vec<NodeIdParam>,
+        /// Its tags, by each Tag's id. Each must be visible to you.
+        #[serde(default)]
+        tags: Vec<NodeIdParam>,
+        /// Its explicit block reasons, in order.
+        #[serde(default)]
+        block_reasons: Vec<String>,
     },
-    /// Edits an Agentic Task's fields: its title, its brief, whether it is set aside.
+    /// Edits an Agentic Task: its title, brief, backlog, Time Scope, Plan, on-scope-exit,
+    /// Asynchronous flag, prerequisites, tags and block reasons. One transaction: every change
+    /// lands, or none does.
     Update {
         /// Task id: a row id or a short id.
         id: NodeIdParam,
@@ -374,6 +417,37 @@ pub enum TasksOperation {
         /// `true` sets it aside in the Backlog, `false` puts it back in play.
         #[serde(default)]
         backlog: Option<bool>,
+        /// New Time Scope; `null` clears it. A Habit occurrence's is its iteration's and cannot
+        /// change.
+        #[serde(default, deserialize_with = "crate::wire::null_clears")]
+        time_scope: Option<Option<TimeScope>>,
+        /// What it does once its Time Scope passes unfinished. Not for a Habit occurrence, which
+        /// its Habit decides.
+        #[serde(default)]
+        on_scope_exit: Option<OnScopeExitParam>,
+        /// New Plan, within its Time Scope; `null` clears it. Planning a backlogged Task takes it
+        /// out of the Backlog.
+        #[serde(default, deserialize_with = "crate::wire::null_clears")]
+        plan: Option<Option<TimeScope>>,
+        /// `true` makes it Asynchronous, `false` not (dropping its wait template).
+        #[serde(default)]
+        asynchronous: Option<bool>,
+        /// Prerequisites to add — tasks, goals or waits it comes after — by id. Each must be
+        /// visible to you.
+        #[serde(default)]
+        add_dependencies: Vec<NodeIdParam>,
+        /// Prerequisites to remove, by id.
+        #[serde(default)]
+        remove_dependencies: Vec<NodeIdParam>,
+        /// Tags to put on, by each Tag's id. Each must be visible to you.
+        #[serde(default)]
+        add_tags: Vec<NodeIdParam>,
+        /// Tags to take off, by each Tag's id.
+        #[serde(default)]
+        remove_tags: Vec<NodeIdParam>,
+        /// Its explicit block reasons, replacing the list; `null` clears it.
+        #[serde(default, deserialize_with = "crate::wire::null_clears")]
+        block_reasons: Option<Option<Vec<String>>>,
     },
     /// Changes an Agentic Task's status **if it is still `expected`** — one compare-and-set step.
     /// Otherwise refused as `status_changed`, naming the current status, and nothing is written.

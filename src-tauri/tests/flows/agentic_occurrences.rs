@@ -441,6 +441,11 @@ mod over_the_mcp {
         result.structured_content.as_ref().unwrap()
     }
 
+    /// An operation as an agent sends it, read through the wire's own parsing.
+    fn operation(value: serde_json::Value) -> params::TasksOperation {
+        serde_json::from_value(value).expect("a well-formed operation")
+    }
+
     fn succeeded(result: &CallToolResult) -> &serde_json::Value {
         assert_ne!(
             result.is_error,
@@ -476,15 +481,12 @@ mod over_the_mcp {
 
         let edited = tasks(
             &mcp,
-            params::TasksOperation::Update {
-                id: named(&tidy),
-                title: Some("Tidy the inbox, twice".into()),
-                brief: Some(params::BriefParam {
-                    notes: Some(Some("Mind the spam folder".into())),
-                    ..Default::default()
-                }),
-                backlog: None,
-            },
+            operation(serde_json::json!({
+                "operation": "update",
+                "id": tidy.to_string(),
+                "title": "Tidy the inbox, twice",
+                "brief": { "notes": "Mind the spam folder" },
+            })),
         )
         .await;
 
@@ -577,12 +579,11 @@ mod over_the_mcp {
 
         let edited = tasks(
             &mcp,
-            params::TasksOperation::Update {
-                id: named(&occurrence(item)),
-                title: Some("Mine now".into()),
-                brief: None,
-                backlog: None,
-            },
+            operation(serde_json::json!({
+                "operation": "update",
+                "id": occurrence(item).to_string(),
+                "title": "Mine now",
+            })),
         )
         .await;
 
@@ -600,18 +601,126 @@ mod over_the_mcp {
 
         let created = tasks(
             &mcp,
-            params::TasksOperation::Create {
-                parent_type: "task".into(),
-                parent_id: named(&tidy),
-                title: "Unsubscribe from the newsletter".into(),
-                brief: None,
-            },
+            operation(serde_json::json!({
+                "operation": "create",
+                "parent_type": "task",
+                "parent_id": tidy.to_string(),
+                "title": "Unsubscribe from the newsletter",
+            })),
         )
         .await;
 
         let created = succeeded(&created);
         assert_eq!(created["agentic"], true);
         assert_eq!(created["parent_id"], serde_json::json!(tidy));
+    }
+
+    /// A Plan on the morning of the occurrence's day, which its window holds.
+    fn this_morning() -> serde_json::Value {
+        let morning =
+            serde_json::json!({ "kind": "part_of_day", "date": "2026-01-05", "part": "morning" });
+        serde_json::json!({ "start_id": morning, "end_id": morning })
+    }
+
+    #[tokio::test]
+    async fn an_agent_plans_blocks_and_chains_an_occurrence_in_its_overlay() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let item = habit(&app, agentic_with(Some(brief("Sort the mail")))).await;
+        served(&pool).await;
+        let tidy = occurrence(item);
+        let first = {
+            let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+            let first = write::create_task(
+                &mut db,
+                arlesh_lib::tasks::model::CreateTaskRequest {
+                    title: "Empty the spam folder".into(),
+                    parent_type: "aspect".into(),
+                    parent_id: 1.into(),
+                    ..Default::default()
+                },
+                at(NOW),
+            )
+            .await
+            .unwrap();
+            db.commit().await.unwrap();
+            first.id
+        };
+        let mcp = mcp(&pool).await;
+
+        let edited = tasks(
+            &mcp,
+            operation(serde_json::json!({
+                "operation": "update",
+                "id": tidy.to_string(),
+                "plan": this_morning(),
+                "asynchronous": true,
+                "block_reasons": ["The mail server is down"],
+                "add_dependencies": [first.to_string()],
+            })),
+        )
+        .await;
+
+        succeeded(&edited);
+        let board = served(&pool).await;
+        let now = row(&board, &tidy);
+        assert!(now.asynchronous);
+        assert_eq!(
+            serde_json::to_value(&now.plan).unwrap()["start_id"]["part"],
+            "morning"
+        );
+        assert!(board
+            .block_reasons
+            .iter()
+            .any(|reason| reason.owner_id == tidy && reason.reason == "The mail server is down"));
+        assert!(
+            board
+                .task_dependencies
+                .iter()
+                .any(|edge| edge.task_id == tidy && edge.dependency_id == first),
+            "the occurrence now comes after the stored task"
+        );
+    }
+
+    #[tokio::test]
+    async fn what_an_occurrence_cannot_hold_is_refused_and_nothing_is_written() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let item = habit(&app, agentic_with(Some(brief("Sort the mail")))).await;
+        served(&pool).await;
+        let tidy = occurrence(item);
+        let mcp = mcp(&pool).await;
+
+        let exit = tasks(
+            &mcp,
+            operation(serde_json::json!({
+                "operation": "update",
+                "id": tidy.to_string(),
+                "title": "Tidy the inbox, twice",
+                "on_scope_exit": "archive",
+            })),
+        )
+        .await;
+        assert_eq!(refused(&exit), "invalid_request");
+
+        let week = serde_json::json!({ "kind": "week", "date": "2026-01-04" });
+        let rescoped = tasks(
+            &mcp,
+            operation(serde_json::json!({
+                "operation": "update",
+                "id": tidy.to_string(),
+                "title": "Tidy the inbox, twice",
+                "time_scope": { "start_id": week, "end_id": week },
+            })),
+        )
+        .await;
+        assert_eq!(refused(&rescoped), "invalid_request");
+
+        assert_eq!(
+            row(&served(&pool).await, &tidy).title,
+            "Tidy the inbox",
+            "a refused update writes none of its fields"
+        );
     }
 }
 
