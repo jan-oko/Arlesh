@@ -1,0 +1,1 @@
+- **Downloadable Linux builds.** Every commit to master publishes an AppImage and a tarball of the bare binary to the rolling *latest* pre-release on GitHub, and each `vX.Y.Z` tag gets a release of its own. They are built against an older glibc, so they run on current distributions including Arch, and they share their data directory with a locally built Arlesh.
