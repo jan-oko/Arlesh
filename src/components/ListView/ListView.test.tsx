@@ -1595,45 +1595,26 @@ describe("ListView — row kinds", () => {
     return titles.filter(([, title]) => screen.queryByText(title) !== null).map(([kind]) => kind);
   }
 
-  function pressKind(code: "KeyT" | "KeyC" | "KeyE") {
-    act(() => { fireEvent.keyDown(window, { key: code.slice(3), code, altKey: true, shiftKey: true }); });
-  }
-
   beforeEach(() => {
     useDisplayStore.setState({ listBands: true });
     useMindmapStore.setState({ pendingToast: null });
     mockUseListData.mockReturnValue(listData({ rows: [row()], commitmentRows: [commitmentRow()], expectationRows: [wait()] }));
   });
 
-  it.each([
-    ["KeyT", "task"],
-    ["KeyC", "commitment"],
-    ["KeyE", "expectation"],
-  ] as const)("%s hides the %s rows and a second press brings them back", (code, kind) => {
+  it.each(["task", "commitment", "expectation"] as const)("hiding the %s kind drops its rows, and showing it brings them back", (kind) => {
     render(<ListViewInApp />);
     expect(kindsOnScreen()).toEqual(["task", "commitment", "expectation"]);
-    pressKind(code);
+    act(() => { useListFilterStore.getState().toggleKind(kind); });
     expect(kindsOnScreen()).toEqual(["task", "commitment", "expectation"].filter((k) => k !== kind));
-    pressKind(code);
+    act(() => { useListFilterStore.getState().toggleKind(kind); });
     expect(kindsOnScreen()).toEqual(["task", "commitment", "expectation"]);
   });
 
-  it("will not hide the last kind shown, and says why", () => {
+  // Alt+Shift+T/C/E were removed: with a layout-switching Alt+Shift they never arrived.
+  it("has no Alt+Shift shortcut for the kinds any more", () => {
     render(<ListViewInApp />);
-    pressKind("KeyT");
-    pressKind("KeyC");
-    pressKind("KeyE");
-    expect(kindsOnScreen()).toEqual(["expectation"]);
-    expect(useListFilterStore.getState().filter.kinds).toEqual(["expectation"]);
-    expect(screen.getByText("listView:rowKindRefused.lastKind")).toBeInTheDocument();
-  });
-
-  it("leaves the kinds alone under the Expectations option, and says why", () => {
-    useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, preset: "expectations" } });
-    render(<ListViewInApp />);
-    pressKind("KeyE");
+    act(() => { fireEvent.keyDown(window, { key: "T", code: "KeyT", altKey: true, shiftKey: true }); });
     expect(useListFilterStore.getState().filter.kinds).toEqual(["task", "commitment", "expectation"]);
-    expect(kindsOnScreen()).toEqual(["expectation"]);
-    expect(screen.getByText("listView:rowKindRefused.expectationsOption")).toBeInTheDocument();
+    expect(kindsOnScreen()).toEqual(["task", "commitment", "expectation"]);
   });
 });

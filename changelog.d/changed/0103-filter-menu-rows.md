@@ -2,3 +2,4 @@
   A value you add stays in its row wearing its mode, like its chip in the top bar: click it to cycle All → Any → Not, press Delete to remove it. Tags, Under and Depends on each have their own search box. Blocked, Agentic and Asynchronous are one pill each — "Blocked", or with Alt, "Not blocked".
   Adding now defaults to **All**: click or Enter adds as All, Shift adds as Any, and Alt adds as Not. Chips cycle All → Any → Not.
   While Private Mode is on, the List View also offers a **Private** pill — only private rows, or with Alt, only the rest. Turning Private Mode off removes it, and a message says so.
+  The **Alt+Shift+T / C / E** shortcuts for showing or hiding Tasks, Commitments and Expectations are gone: on keyboards where Alt+Shift switches layout they never worked, and could trigger other shortcuts instead. Toggle the kinds in the Filter menu, or type their name into `Ctrl+F`.

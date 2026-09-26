@@ -226,7 +226,7 @@ describe("FilterSearchModal", () => {
       switchOption("listView:rowKind.commitment", "search.rowKindState.hidden");
     });
 
-    it("refuses to hide the last kind, with the toast Alt+Shift+T/C/E shows", () => {
+    it("refuses to hide the last kind, with a toast saying why", () => {
       useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, kinds: ["task"] } });
       useMindmapStore.setState({ pendingToast: null });
       render(<FilterSearchModal onClose={vi.fn()} />);

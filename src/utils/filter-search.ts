@@ -39,7 +39,7 @@ export interface SwitchResult {
 /**
  * A List View row-kind toggle — Tasks, Commitments, Expectations — wearing whether it is shown.
  * Picking it flips it, whatever keys are held; a refused flip (the last kind shown, or any kind
- * under the Expectations option) says why in a toast, as `Alt+Shift+T/C/E` does.
+ * under the Expectations option) says why in a toast.
  */
 export interface RowKindResult {
   kind: "rowKind";

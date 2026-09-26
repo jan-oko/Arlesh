@@ -17,7 +17,7 @@ const CONTROL_KEYS: ReadonlySet<string> = new Set([
  * Whether the event is a control key pressed inside a region that handles its own keyboard — the
  * Filter menu and the filter chips, marked `data-owns-keys`, whose pills add on Enter and are
  * removed with Delete. Without this, Delete on a set pill would also delete the selected node, since
- * this listener runs first, in the capture phase. Chords with a letter (Alt+F, Alt+Shift+T) still
+ * this listener runs first, in the capture phase. Chords with a letter (Alt+F, Alt+A) still
  * reach their bindings from inside the region.
  */
 function isOwnedByRegion(event: KeyboardEvent): boolean {

@@ -1,8 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { LIST_ROW_KINDS, rowKindToggleRefusal, type ListRowKind } from "@/utils/list-filter";
-import { formatChord } from "@/utils/hotkeys/chord";
-import { ROW_KIND_CHORDS } from "@/utils/hotkeys/list/row-kinds";
 import styles from "./FilterPopover.module.css";
 
 /**
@@ -20,7 +18,7 @@ export default function RowKindSelector() {
   function tooltip(kind: ListRowKind): string {
     const refusal = rowKindToggleRefusal(listFilter, kind);
     if (refusal !== null) return t(`rowKindRefused.${refusal}`);
-    return t("rowKindTooltip", { kind: t(`rowKind.${kind}`), chord: formatChord(ROW_KIND_CHORDS[kind]) });
+    return t("rowKindTooltip", { kind: t(`rowKind.${kind}`) });
   }
 
   return (

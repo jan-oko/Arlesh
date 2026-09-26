@@ -62,7 +62,7 @@ export default function FilterSearchModal({ onClose }: Props) {
     else setBacklogMode(next);
   }
 
-  /** Flips a row kind, or says why not — the toast `Alt+Shift+T/C/E` shows. */
+  /** Flips a row kind, or says why not in a toast. */
   function pickRowKind(result: RowKindResult) {
     const refusal = rowKindToggleRefusal(listFilter, result.target);
     if (refusal === null) toggleKind(result.target);

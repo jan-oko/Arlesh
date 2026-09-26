@@ -15,7 +15,7 @@
     "commitment": "Commitments",
     "expectation": "Expectations"
   },
-  "rowKindTooltip": "Show or hide {{kind}} ({{chord}})",
+  "rowKindTooltip": "Show or hide {{kind}}",
   "rowKindRefused": {
     "lastKind": "At least one kind stays shown — turn another on first.",
     "expectationsOption": "The Expectations option already shows Expectations only — pick another option to choose kinds."
