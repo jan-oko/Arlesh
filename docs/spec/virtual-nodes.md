@@ -189,7 +189,9 @@ NULL inherits, a `*_set` flag marks an override to NULL, and a value set back to
 drawn with clears the override. Its tags are differences in `derived_tags` under the same key. A
 wait under a Habit occurrence keeps its row with the Habit (`flow_id`) and the occurrence
 (`occurrence_key`), so it goes when they do. A spawned wait's checks are scheduled from its own
-Check every and Starting when it has them.
+Check every and Starting when it has them. A wait that stops being derived — its Task reopened, or no longer delegated — leaves its overlay
+row and tag differences where they are, ignored; when it is derived again it reads them again
+(see *Asynchronous* in [Resources](resources.md)).
 
 What they refuse is what their origin fixes: none leaves its parent (a request naming the current
 parent — a full editor save — is not a move) and none is deleted or copied; a check task keeps its
