@@ -66,6 +66,7 @@ interface CorpusFilter {
   backlog?: ArchivedMode;
   planScope?: ScopeKey;
   scopeMatch?: ScopeMatch;
+  startHidesCheckedWaits?: boolean;
 }
 
 /** One case: a board, a filter, and what each of the three surfaces keeps. */
@@ -223,6 +224,7 @@ function parseFilter(value: unknown, what: string): CorpusFilter {
     ...(raw.backlog !== undefined ? { backlog: parseOverride(raw.backlog, `${what}.backlog`) } : {}),
     ...(raw.planScope !== undefined ? { planScope: parseScopeKey(raw.planScope, `${what}.planScope`) } : {}),
     ...(raw.scopeMatch !== undefined ? { scopeMatch: parseScopeMatch(raw.scopeMatch, `${what}.scopeMatch`) } : {}),
+    ...flag(raw.startHidesCheckedWaits, "startHidesCheckedWaits", what),
   };
 }
 
@@ -304,6 +306,7 @@ function toSharedFilter(filter: CorpusFilter): FilterState {
     ...(filter.backlog !== undefined ? { backlogMode: filter.backlog } : {}),
     ...(filter.planScope !== undefined ? { planScope: filter.planScope } : {}),
     ...(filter.scopeMatch !== undefined ? { scopeMatch: filter.scopeMatch } : {}),
+    ...(filter.startHidesCheckedWaits !== undefined ? { startHidesCheckedWaits: filter.startHidesCheckedWaits } : {}),
   };
 }
 

@@ -257,7 +257,9 @@ list's rows are the blocked ones and the preset does not answer for them (see
 [*List View*](list-view.md)). The Archived and Backlog pills, the tag filters, the Info/Flow toggles
 and Private Mode are all carried too, and so is the Plan preset's **scope narrowing** —
 `plan_scope`, a scope key, and `scope_match`, `contained` (the default) or `overlapping`, the
-app-wide setting the UI fills in (see [*Mindmap*](mindmap-view.md)) — each defaulting to what the
+app-wide setting the UI fills in (see [*Mindmap*](mindmap-view.md)) — and `start_hides_checked_waits`,
+whether **Start** hides a pending wait that has a Check every (`false`, the default, shows it; the
+UI fills it in from its app-wide setting, see [*Expectations*](resources.md)) — each defaulting to what the
 app's own filter defaults to —
 so `{"preset": "all"}` is the app's neutral filter, where omitting `filter` entirely applies no
 filter at all. "Everything, unfiltered" and "everything the neutral filter shows" are different

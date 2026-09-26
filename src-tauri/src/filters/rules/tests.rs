@@ -184,7 +184,7 @@ fn expectation(status: &str) -> NodeFacts {
 }
 
 #[test]
-fn a_pending_expectation_shows_under_all_and_plan_and_under_start_only_without_checks() {
+fn with_the_setting_on_start_shows_a_pending_wait_only_without_checks() {
     let bare = expectation("pending");
     let mut checked = expectation("pending");
     checked.has_check = true;
@@ -195,7 +195,10 @@ fn a_pending_expectation_shows_under_all_and_plan_and_under_start_only_without_c
         (Preset::Do, false, false),
         (Preset::Backlog, false, false),
     ] {
-        let filter = BoardFilter::preset(preset);
+        let filter = BoardFilter {
+            start_hides_checked_waits: true,
+            ..BoardFilter::preset(preset)
+        };
         assert_eq!(
             passes_expectation_preset(&bare, &filter),
             bare_shows,
@@ -207,6 +210,20 @@ fn a_pending_expectation_shows_under_all_and_plan_and_under_start_only_without_c
             "{preset:?}"
         );
     }
+}
+
+#[test]
+fn by_default_start_shows_a_pending_wait_whether_or_not_it_is_checked_on() {
+    let bare = expectation("pending");
+    let mut checked = expectation("pending");
+    checked.has_check = true;
+    let start = BoardFilter::preset(Preset::Start);
+    assert!(!start.start_hides_checked_waits, "off by default");
+    assert!(passes_expectation_preset(&bare, &start));
+    assert!(passes_expectation_preset(&checked, &start));
+    // A passed window still drops it, checked or not.
+    checked.timing = Some(Timing::Lapsed);
+    assert!(!passes_expectation_preset(&checked, &start));
 }
 
 #[test]

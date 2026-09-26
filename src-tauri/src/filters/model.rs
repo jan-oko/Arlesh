@@ -141,6 +141,10 @@ pub struct BoardFilter {
     pub plan_scope: Option<ScopeKey>,
     /// How [`Self::plan_scope`] matches: by containment (the default) or by overlap.
     pub scope_match: ScopeMatch,
+    /// Whether **Start** hides a pending wait that has a Check every, showing only the check task
+    /// beneath it. Off by default: under Start a pending, live wait shows whether it is checked on
+    /// or not. An app-wide preference in the UI, carried here so an MCP read asks it either way.
+    pub start_hides_checked_waits: bool,
 }
 
 impl Default for BoardFilter {
@@ -159,6 +163,7 @@ impl Default for BoardFilter {
             backlog: OverrideMode::Inactive,
             plan_scope: None,
             scope_match: ScopeMatch::Contained,
+            start_hides_checked_waits: false,
         }
     }
 }

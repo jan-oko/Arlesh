@@ -71,7 +71,9 @@ describe("filterExpectationList", () => {
   it("answers the preset rules", () => {
     expect(kept(shared(), list("all"))).toEqual(["pending", "checked", "released"]);
     expect(kept(shared({ statusMode: "plan" }), list("plan"))).toEqual(["pending", "checked"]);
-    expect(kept(shared({ statusMode: "start" }), list("start"))).toEqual(["pending"]);
+    // By default Start shows a checked wait too; the setting hides it behind its check task.
+    expect(kept(shared({ statusMode: "start" }), list("start"))).toEqual(["pending", "checked"]);
+    expect(kept(shared({ statusMode: "start", startHidesCheckedWaits: true }), list("start"))).toEqual(["pending"]);
     expect(kept(shared({ statusMode: "do" }), list("do"))).toEqual([]);
   });
 

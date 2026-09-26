@@ -123,6 +123,7 @@ function readViewState(value: unknown): ViewState {
 function readFilterState(value: unknown): FilterState {
   const merged: FilterState = { ...mergeFilterDefaults(value, DEFAULT_FILTER) };
   delete merged.scopeMatch;
+  delete merged.startHidesCheckedWaits;
   return { ...merged, planScope: scopeKeyFrom(merged.planScope) };
 }
 

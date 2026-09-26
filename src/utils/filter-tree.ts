@@ -77,6 +77,12 @@ export interface FilterState {
    * views fill it in from that (see `use-board-filter`). Absent reads as `contained`.
    */
   scopeMatch?: ScopeMatch;
+  /**
+   * Whether **Start** hides a pending wait that has a Check every, showing only the check task
+   * beneath it. **Not persisted with the tab**: an app-wide setting, filled in by the views (see
+   * `use-board-filter`). Absent reads as off — Start then shows the wait, checked on or not.
+   */
+  startHidesCheckedWaits?: boolean;
 }
 
 /** The neutral, indicator-off filter — shows everything except nodes marked private. */
@@ -391,9 +397,12 @@ export function isLiveExpectation(node: MindmapNode): boolean {
  * Whether an Expectation shows under the given preset.
  *
  * A wait is not work, so it answers its own rule. **All** shows every one. A pending, live one
- * shows under **Plan**, and under **Start** only when it is not checked on (no Check every) — with
- * a Check every, the virtual check task beneath it is the thing to start, and that task answers the ordinary Task rules. **Do**
- * and **Backlog** show none. A released or archived one shows under All only.
+ * shows under **Plan**, and under **Start** while its window has not passed, whether or not it is
+ * checked on; its check tasks answer the ordinary Task rules beside it. With `startHidesCheckedWaits`
+ * on (an app-wide setting, off by default), Start shows one only when it has no Check every — the
+ * check task beneath it is then the thing to start. Stored and derived waits alike. **Do** and
+ * **Backlog** show none. A released or archived one shows under All only. Mirrors
+ * `passes_expectation_preset` in `src-tauri/src/filters/rules.rs`.
  */
 export function passesExpectationPreset(node: MindmapNode, f: FilterState): boolean {
   switch (f.statusMode) {
@@ -403,7 +412,9 @@ export function passesExpectationPreset(node: MindmapNode, f: FilterState): bool
       return isLiveExpectation(node);
     // A wait whose own window has passed drops out of Start, as a Task's does.
     case "start":
-      return isLiveExpectation(node) && (node.checkEvery ?? null) === null && node.timing !== "lapsed";
+      return isLiveExpectation(node)
+        && !(f.startHidesCheckedWaits === true && (node.checkEvery ?? null) !== null)
+        && node.timing !== "lapsed";
     case "do":
     case "backlog":
       return false;
