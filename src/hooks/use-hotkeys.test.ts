@@ -99,4 +99,37 @@ describe("useHotkeys", () => {
     expect(ctx.onFirst).not.toHaveBeenCalled();
     document.body.removeChild(input);
   });
+
+  describe("inside a region that owns its keys", () => {
+    function pressOn(target: HTMLElement, code: string, modifiers: Partial<KeyboardEventInit> = {}) {
+      target.dispatchEvent(new KeyboardEvent("keydown", { code, bubbles: true, cancelable: true, ...modifiers }));
+    }
+
+    function region(): HTMLButtonElement {
+      const wrapper = document.createElement("div");
+      wrapper.setAttribute("data-owns-keys", "");
+      const button = document.createElement("button");
+      wrapper.appendChild(button);
+      document.body.appendChild(wrapper);
+      return button;
+    }
+
+    it("leaves a control key to the focused control, so Delete on a filter pill deletes no node", () => {
+      const ctx = makeContext();
+      renderHook(() => useHotkeys(BINDINGS, ctx, true));
+      pressOn(region(), "ArrowUp");
+      expect(ctx.onFirst).not.toHaveBeenCalled();
+      expect(ctx.onSecond).not.toHaveBeenCalled();
+    });
+
+    it("still dispatches a letter chord from inside it", () => {
+      const ctx = makeContext();
+      const letter: readonly Binding<TestContext>[] = [
+        { id: "test.letter", section: "global", chord: { code: "KeyF", alt: true }, labelKey: "viewList", run: (c) => c.onFirst() },
+      ];
+      renderHook(() => useHotkeys(letter, ctx, true));
+      pressOn(region(), "KeyF", { altKey: true });
+      expect(ctx.onFirst).toHaveBeenCalledTimes(1);
+    });
+  });
 });

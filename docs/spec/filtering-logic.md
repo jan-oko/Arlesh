@@ -6,11 +6,15 @@ Filters apply to task/goal lists. Any number of filters can be active simultaneo
 
 - **Any** — item must match at least one Any-mode filter
 - **All** — item must match every All-mode filter
-- **Exclusion** — item must not match any Exclusion-mode filter
+- **Exclusion** (shown as **Not**) — item must not match any Exclusion-mode filter
 
 Combined logic: `(union of Any-filters) AND (intersection of All-filters) AND NOT (union of Exclusion-filters)`
 
-Filterable fields: status (the presets, and Task/Goal/Project status), tag, antecedent (any ancestor — parent domain/task, Project, Aspect, Goal), dependency, verdict, scope state (including planned/unplanned), blocked, agentic, asynchronous.
+Filterable fields: status (the presets, and Task/Goal/Project status), tag, **Under** (any ancestor — parent domain/task, Project, Aspect, Goal; called *Antecedent* until 2026-09-26), **Depends on** (called *Dependency*), verdict, scope state (including planned/unplanned), blocked, agentic, asynchronous.
+
+<a id="adding-modes"></a>**Adding a filter, and its mode** (2026-09-26). Every place that adds a value — a pill in the [Filter menu](mindmap-view.md#filter-menu), an option in one of its search dropdowns, a result in the `Ctrl+F` [filter search](mindmap-view.md#filter-search) — reads the mode off the keys held: **click / Enter adds as All**, **Shift+click / Shift+Enter as Any**, **Alt+click / Alt+Enter as Not** (Alt wins over Shift). Values used to be added as Any; All became the default because a single value reads the same either way and All is the one that narrows further as you add. An added value's chip, and its set pill in the Filter menu, cycle **All → Any → Not → All** on click, and Delete or Backspace on either removes it. (A tag clicked on a List View row, and a path-header segment `Ctrl`/`Alt`-clicked, keep adding as they did: Any, and include/exclude.)
+
+**Yes/no dimensions** — Blocked, Agentic, Asynchronous — are **one pill each**, not a pair of values: adding the pill means "is blocked", adding it with Alt means "is not blocked", and a click on the added pill just **flips** between the two, since a row answers exactly one of them and Any would say nothing All does not. It is stored as a single "is X" value in All or Not; a tab stored with the old "not X" value, or with Any, reads as the same question on load. Its chip reads **Blocked** or **Not blocked**.
 
 The presets judge each kind by its own rule: a Task and a Goal by their status and effective Archival, a Commitment by its Verdict, and an **Expectation** by its status and archive (see [*Expectations*](resources.md)). A **delegated Task** is judged as archived — it has every effect of archival — and a dependency on a pending Expectation makes a Task **blocked**; a dependency on a done Asynchronous Task is met, whatever the wait it spawned is doing. A spawned wait — derived while an Asynchronous Task with a template is done — is judged by the same Expectation rules as a stored one, reading its status and archive from its overlay (pending and live when it has none) and its Check every from the template. "Asynchronous" is the Task's own flag. The List View's **Expectations** option, like Unblock, is a flag beside the preset (`BoardFilter::expectations`) rather than a preset of its own, and the Mindmap ignores it.
 

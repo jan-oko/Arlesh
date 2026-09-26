@@ -37,29 +37,61 @@ describe("toggleKind", () => {
 });
 
 describe("addPill / setPillMode / removePill", () => {
-  it("adds a pill in 'any' mode by default, to the given dimension only", () => {
-    useListFilterStore.getState().addPill("antecedent", "goal-1");
+  it("adds a pill in the mode it is given, to the given dimension only", () => {
+    useListFilterStore.getState().addPill("antecedent", "goal-1", "all");
     const s = useListFilterStore.getState().filter;
-    expect(s.pills.antecedent).toEqual([{ value: "goal-1", mode: "any" }]);
+    expect(s.pills.antecedent).toEqual([{ value: "goal-1", mode: "all" }]);
     expect(s.pills.dependency).toEqual([]);
   });
 
   it("does not add a duplicate value to the same dimension", () => {
-    useListFilterStore.getState().addPill("taskStatus", "todo");
-    useListFilterStore.getState().addPill("taskStatus", "todo");
-    expect(useListFilterStore.getState().filter.pills.taskStatus).toHaveLength(1);
+    useListFilterStore.getState().addPill("taskStatus", "todo", "any");
+    useListFilterStore.getState().addPill("taskStatus", "todo", "exclude");
+    expect(useListFilterStore.getState().filter.pills.taskStatus).toEqual([{ value: "todo", mode: "any" }]);
   });
 
-  it("cycles a pill's mode without touching other pills", () => {
-    useListFilterStore.getState().addPill("blocked", "blocked");
-    useListFilterStore.getState().addPill("blocked", "not_blocked");
-    useListFilterStore.getState().setPillMode("blocked", "blocked", "exclude");
-    const pills = useListFilterStore.getState().filter.pills.blocked;
-    expect(pills).toEqual([{ value: "blocked", mode: "exclude" }, { value: "not_blocked", mode: "any" }]);
+  it("sets a pill's mode without touching other pills", () => {
+    useListFilterStore.getState().addPill("taskStatus", "todo", "any");
+    useListFilterStore.getState().addPill("taskStatus", "done", "any");
+    useListFilterStore.getState().setPillMode("taskStatus", "todo", "exclude");
+    const pills = useListFilterStore.getState().filter.pills.taskStatus;
+    expect(pills).toEqual([{ value: "todo", mode: "exclude" }, { value: "done", mode: "any" }]);
+  });
+
+  it("cycles a pill All → Any → Not → All", () => {
+    useListFilterStore.getState().addPill("verdict", "kept", "all");
+    const modes: string[] = [];
+    for (let step = 0; step < 3; step += 1) {
+      useListFilterStore.getState().cyclePill("verdict", "kept");
+      modes.push(useListFilterStore.getState().filter.pills.verdict[0]?.mode ?? "");
+    }
+    expect(modes).toEqual(["any", "exclude", "all"]);
+  });
+
+  it("adds a yes/no pill as one 'is X' pill: Any lands as All, Not as exclude", () => {
+    useListFilterStore.getState().addPill("blocked", "blocked", "any");
+    useListFilterStore.getState().addPill("agentic", "agentic", "exclude");
+    const pills = useListFilterStore.getState().filter.pills;
+    expect(pills.blocked).toEqual([{ value: "blocked", mode: "all" }]);
+    expect(pills.agentic).toEqual([{ value: "agentic", mode: "exclude" }]);
+  });
+
+  it("reads an old 'not X' value as the Not of the one pill, and refuses a second pill", () => {
+    useListFilterStore.getState().addPill("asynchronous", "not_asynchronous", "all");
+    useListFilterStore.getState().addPill("asynchronous", "asynchronous", "all");
+    expect(useListFilterStore.getState().filter.pills.asynchronous).toEqual([{ value: "asynchronous", mode: "exclude" }]);
+  });
+
+  it("flips a yes/no pill between is and is-not rather than cycling through Any", () => {
+    useListFilterStore.getState().addPill("blocked", "blocked", "all");
+    useListFilterStore.getState().cyclePill("blocked", "blocked");
+    expect(useListFilterStore.getState().filter.pills.blocked).toEqual([{ value: "blocked", mode: "exclude" }]);
+    useListFilterStore.getState().cyclePill("blocked", "blocked");
+    expect(useListFilterStore.getState().filter.pills.blocked).toEqual([{ value: "blocked", mode: "all" }]);
   });
 
   it("removes a pill by value", () => {
-    useListFilterStore.getState().addPill("dependency", "task-9");
+    useListFilterStore.getState().addPill("dependency", "task-9", "any");
     useListFilterStore.getState().removePill("dependency", "task-9");
     expect(useListFilterStore.getState().filter.pills.dependency).toEqual([]);
   });
@@ -94,14 +126,14 @@ describe("setPillSide", () => {
 
   // `all` and `any` both keep the value in; only `exclude` reverses the question.
   it("leaves an 'all' pill alone when asked to include it, keeping the mode set on its chip", () => {
-    useListFilterStore.getState().addPill("antecedent", "goal-1");
+    useListFilterStore.getState().addPill("antecedent", "goal-1", "any");
     useListFilterStore.getState().setPillMode("antecedent", "goal-1", "all");
     useListFilterStore.getState().setPillSide("antecedent", "goal-1", "include");
     expect(antecedent()).toEqual([{ value: "goal-1", mode: "all" }]);
   });
 
   it("brings an 'all' pill back to a plain include when asked to exclude and then include it", () => {
-    useListFilterStore.getState().addPill("antecedent", "goal-1");
+    useListFilterStore.getState().addPill("antecedent", "goal-1", "any");
     useListFilterStore.getState().setPillMode("antecedent", "goal-1", "all");
     useListFilterStore.getState().setPillSide("antecedent", "goal-1", "exclude");
     useListFilterStore.getState().setPillSide("antecedent", "goal-1", "include");
@@ -114,7 +146,7 @@ describe("setPillSide", () => {
   });
 
   it("leaves the other pills in its own dimension untouched", () => {
-    useListFilterStore.getState().addPill("antecedent", "goal-1");
+    useListFilterStore.getState().addPill("antecedent", "goal-1", "any");
     useListFilterStore.getState().setPillSide("antecedent", "task-2", "exclude");
     expect(antecedent()).toEqual([
       { value: "goal-1", mode: "any" },
@@ -126,7 +158,7 @@ describe("setPillSide", () => {
 describe("reset", () => {
   it("restores the neutral filter", () => {
     useListFilterStore.getState().setPreset("do");
-    useListFilterStore.getState().addPill("antecedent", "goal-1");
+    useListFilterStore.getState().addPill("antecedent", "goal-1", "any");
     useListFilterStore.getState().reset();
     expect(useListFilterStore.getState().filter).toEqual(DEFAULT_LIST_FILTER);
   });

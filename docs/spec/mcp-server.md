@@ -496,7 +496,7 @@ everything else.
 - **`valid_targets`** — it only reads, but it
   answers "where could this Flow be started?", a question nothing on this surface can act on while
   starting a Flow is a write. It returns alongside `start_flow`.
-- **The List view's own pill dimensions** — Antecedent, Dependency, Task/Goal/Project status, Verdict,
+- **The List view's own pill dimensions** — Under (formerly Antecedent), Depends on (formerly Dependency), Task/Goal/Project status, Verdict,
   Scope, Blocked, Agentic and Asynchronous (the snapshot's own `agentic` query, under *Agentic
   tasks*, answers the Agentic question for an agent). They read values a flattened row carries rather than facts a node
   has, so they belong with the flattening, which is frontend-side. The status presets are no longer

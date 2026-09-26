@@ -129,8 +129,9 @@ switching views behind an open editor would leave that editor over a board it no
 acts on belongs to the **tab** rather than to the view drawing it. On that rule these are global,
 declared once and listed once on the cheat-sheet: the four view chords above; `Ctrl+Escape` and
 `Shift+Escape`, which leave a subtree — and the subtree root is the tab's, shared by every view;
-`Ctrl+O`, which searches every node and re-roots the tab at the one you pick; and `Alt+F`, which
-opens the filter popover over the tab's own filter set. Each of them used to be declared once per
+`Ctrl+O`, which searches every node and re-roots the tab at the one you pick; `Alt+F`, which
+opens the Filter menu over the tab's own filter set; and `Ctrl+F`, the filter search over that same
+set (see [*Mindmap*](mindmap-view.md#filter-search)). Each of them used to be declared once per
 view with an identical chord and an identical action, which meant the cheat-sheet printed it once
 per view and each new view added another copy.
 

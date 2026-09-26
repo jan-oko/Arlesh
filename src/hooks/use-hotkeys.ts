@@ -8,12 +8,30 @@ function isTypingTarget(target: EventTarget | null): boolean {
     (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
 }
 
+/** The keys a focused control acts on by itself: activate, remove, move, dismiss. */
+const CONTROL_KEYS: ReadonlySet<string> = new Set([
+  "Enter", "NumpadEnter", "Space", "Delete", "Backspace", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+]);
+
+/**
+ * Whether the event is a control key pressed inside a region that handles its own keyboard — the
+ * Filter menu and the filter chips, marked `data-owns-keys`, whose pills add on Enter and are
+ * removed with Delete. Without this, Delete on a set pill would also delete the selected node, since
+ * this listener runs first, in the capture phase. Chords with a letter (Alt+F, Alt+Shift+T) still
+ * reach their bindings from inside the region.
+ */
+function isOwnedByRegion(event: KeyboardEvent): boolean {
+  if (!CONTROL_KEYS.has(event.code)) return false;
+  return event.target instanceof Element && event.target.closest("[data-owns-keys]") !== null;
+}
+
 /**
  * Dispatches a keydown against an ordered binding table: the first entry whose chord matches and
  * whose guard passes wins. Order only matters between entries sharing a chord — strict chord
  * matching keeps everything else independent.
  *
- * Events originating in a text input are always ignored, since no binding should fire mid-typing.
+ * Events originating in a text input are always ignored, since no binding should fire mid-typing, and
+ * so is a control key pressed inside a region marked `data-owns-keys` (see `isOwnedByRegion`).
  * Beyond that the hook holds no domain knowledge and no state of its own: gating on an open modal
  * or an active inline edit is the caller's job, expressed through `enabled`.
  */
@@ -29,7 +47,7 @@ export function useHotkeys<Ctx>(bindings: readonly Binding<Ctx>[], ctx: Ctx, ena
     if (!enabled) return;
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (isTypingTarget(event.target)) return;
+      if (isTypingTarget(event.target) || isOwnedByRegion(event)) return;
       const context = ctxRef.current;
       const binding = bindings.find((candidate) => {
         if (!matchesChord(event, candidate.chord)) return false;

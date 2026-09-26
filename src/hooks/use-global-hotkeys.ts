@@ -32,6 +32,8 @@ export function useGlobalHotkeys(): void {
   const { subtreeRootId, onExitSubtree, onExitToRoot } = useSubtreeExits();
   const openSearch = useMindmapStore((s) => s.openSearch);
   const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
+  const setFilterPopover = useFilterStore((s) => s.setFilterPopover);
+  const setFilterSearch = useFilterStore((s) => s.setFilterSearch);
 
   useHotkeys(
     GLOBAL_BINDINGS,
@@ -46,6 +48,8 @@ export function useGlobalHotkeys(): void {
       onExitToRoot,
       onOpenSearch: openSearch,
       onToggleFilter: toggleFilterPopover,
+      // The search replaces the menu rather than sitting over it: both edit the same filter.
+      onOpenFilterSearch: () => { setFilterPopover(false); setFilterSearch(true); },
     },
     true,
   );

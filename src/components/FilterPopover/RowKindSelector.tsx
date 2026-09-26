@@ -3,7 +3,6 @@ import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { LIST_ROW_KINDS, rowKindToggleRefusal, type ListRowKind } from "@/utils/list-filter";
 import { formatChord } from "@/utils/hotkeys/chord";
 import { ROW_KIND_CHORDS } from "@/utils/hotkeys/list/row-kinds";
-import PillFilterSection from "./PillFilterSection";
 import styles from "./FilterPopover.module.css";
 
 /**
@@ -25,25 +24,23 @@ export default function RowKindSelector() {
   }
 
   return (
-    <PillFilterSection label={t("rowKindsLabel")}>
-      <div className={styles.typePills} role="group" aria-label={t("rowKindsLabel")}>
-        {LIST_ROW_KINDS.map((kind) => {
-          const shown = listFilter.kinds.includes(kind);
-          return (
-            <button
-              key={kind}
-              type="button"
-              className={`${styles.typePill}${shown ? ` ${styles.typePillActive}` : ""}`}
-              aria-pressed={shown}
-              disabled={rowKindToggleRefusal(listFilter, kind) !== null}
-              title={tooltip(kind)}
-              onClick={() => toggleKind(kind)}
-            >
-              {t(`rowKind.${kind}`)}
-            </button>
-          );
-        })}
-      </div>
-    </PillFilterSection>
+    <div className={styles.pills} role="group" aria-label={t("rowKindsLabel")}>
+      {LIST_ROW_KINDS.map((kind) => {
+        const shown = listFilter.kinds.includes(kind);
+        return (
+          <button
+            key={kind}
+            type="button"
+            className={`${styles.typePill}${shown ? ` ${styles.typePillActive}` : ""}`}
+            aria-pressed={shown}
+            disabled={rowKindToggleRefusal(listFilter, kind) !== null}
+            title={tooltip(kind)}
+            onClick={() => toggleKind(kind)}
+          >
+            {t(`rowKind.${kind}`)}
+          </button>
+        );
+      })}
+    </div>
   );
 }

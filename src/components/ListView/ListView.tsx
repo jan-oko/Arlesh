@@ -62,7 +62,10 @@ export default function ListView() {
   const sharedFilter = useBoardFilter();
   // The cheat-sheet overlay gates background shortcuts the same way an open modal does.
   const isInputCaptured = useIsInputCaptured();
-  const addTagFilter = useFilterStore((s) => s.addTagFilter);
+  const addTagFilterInMode = useFilterStore((s) => s.addTagFilter);
+  // A tag clicked on a row keeps the Any mode it has always added in; the filter menu's own adds
+  // read their mode off the keys held (see `modeFromModifiers`).
+  const addTagFilter = (tagId: number) => addTagFilterInMode(tagId, "any");
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
 
   // Subtree entry is shared state, not a filter: the Mindmap and the List View re-root together.

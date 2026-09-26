@@ -29,7 +29,7 @@ const EMPTY_DISPLAY = {
 };
 
 beforeEach(() => {
-  useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
+  useFilterStore.setState({ filter: { ...DEFAULT_FILTER }, searchOpen: false, popoverOpen: false });
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
   useViewStore.setState({ view: "mindmap", mindmapOrientation: "horizontal" });
@@ -48,6 +48,15 @@ function enterCODE() {
 }
 
 describe("TopBar", () => {
+  it("draws the Ctrl+F filter search while it is open, and closes it on Esc", () => {
+    useFilterStore.setState({ searchOpen: true });
+    render(<TopBar />);
+    const box = screen.getByRole("combobox", { name: "search.dialogLabel" });
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(useFilterStore.getState().searchOpen).toBe(false);
+    expect(screen.queryByRole("combobox", { name: "search.dialogLabel" })).not.toBeInTheDocument();
+  });
+
   it("renders the settings and filter buttons, and no breadcrumb at the root", () => {
     render(<TopBar />);
     expect(screen.getByRole("button", { name: "common:settings" })).toBeInTheDocument();

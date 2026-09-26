@@ -10,6 +10,7 @@ import { PLAN_VIEW_STATUS_MODE } from "@/utils/filter-tree";
 import type { ListPreset } from "@/utils/list-filter";
 import FilterPopover from "@/components/FilterPopover/FilterPopover";
 import FilterChips from "@/components/FilterChips/FilterChips";
+import FilterSearchModal from "@/components/FilterSearchModal/FilterSearchModal";
 import Select from "@/components/Select/Select";
 import PlanScopeField from "@/components/ScopePicker/PlanScopeField";
 import { useDisplayStore } from "@/stores/use-display-store";
@@ -41,6 +42,8 @@ export default function TopBar() {
   const filterOpen = useFilterStore((s) => s.popoverOpen);
   const setFilterPopover = useFilterStore((s) => s.setFilterPopover);
   const toggleFilterPopover = useFilterStore((s) => s.toggleFilterPopover);
+  const filterSearchOpen = useFilterStore((s) => s.searchOpen);
+  const setFilterSearch = useFilterStore((s) => s.setFilterSearch);
   const view = useViewStore((s) => s.view);
   const setView = useViewStore((s) => s.setView);
   const listPreset = useListFilterStore((s) => s.filter.preset);
@@ -143,7 +146,7 @@ export default function TopBar() {
 
         <div className={`${styles.side} ${styles.sideEnd}`}>
           <div className={styles.anchor}>
-            <button className={styles.filterBtn} type="button" onClick={toggleFilterPopover}>
+            <button className={styles.filterBtn} type="button" aria-expanded={filterOpen} title={t("filter:filterButtonTitle")} onClick={toggleFilterPopover}>
               <FunnelIcon />{t("common:filter")}
             </button>
             {filterOpen && (
@@ -156,6 +159,7 @@ export default function TopBar() {
         </div>
       </header>
       <FilterChips />
+      {filterSearchOpen && <FilterSearchModal onClose={() => setFilterSearch(false)} />}
     </>
   );
 }

@@ -10,6 +10,7 @@ import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping
 import type { Verdict } from "@/api/verdict";
 import type { Timing } from "@/api/scope-lifecycle";
 import { VERDICT, VERDICT_VALUES } from "@/api/verdict";
+import { canonicalYesNoPills, isYesNoDimension } from "@/utils/filter-modes";
 
 /** Same any/all/exclude semantics as a tag filter, reused across every List View filter dimension. */
 export type PillMode = TagFilterMode;
@@ -22,9 +23,6 @@ export interface PillFilter {
 
 /** Set-theory glyphs: Any = union, All = intersection, Exclude = empty set — shown on every pill/chip. */
 export const PILL_MODE_SYMBOL: Record<PillMode, string> = { any: "∪", all: "∩", exclude: "∅" };
-
-/** The mode a pill advances to when its chip is clicked (Any → All → Exclude → Any). */
-export const NEXT_PILL_MODE: Record<PillMode, PillMode> = { any: "all", all: "exclude", exclude: "any" };
 
 /**
  * Which way a pill points: it keeps its value **in** or keeps it **out**.
@@ -210,13 +208,16 @@ export interface PersistedListFilter {
  * Parent, subsumed by Antecedent and already named in every row's path header — is dropped rather
  * than carried forward as a filter that still narrows the list while no chip shows it and no
  * control can clear it. Only the keys in {@link PILL_DIMENSIONS} are read, so a retired key is
- * simply never looked at, whatever it holds.
+ * simply never looked at, whatever it holds. A yes/no dimension (Blocked, Agentic, Asynchronous) is
+ * brought to its single-pill shape — see `canonicalYesNoPills`.
  */
 export function withCurrentPillDimensions(filter: PersistedListFilter): ListFilterState {
   const pills: Record<PillDimension, PillFilter[]> = { ...DEFAULT_LIST_FILTER.pills };
   for (const dimension of PILL_DIMENSIONS) {
     const persisted = filter.pills[dimension];
-    pills[dimension] = Array.isArray(persisted) ? persisted.filter(isPillFilter) : [];
+    const read = Array.isArray(persisted) ? persisted.filter(isPillFilter) : [];
+    // A yes/no dimension is one pill in the menu now; older state may hold its "not" value.
+    pills[dimension] = isYesNoDimension(dimension) ? canonicalYesNoPills(dimension, read) : read;
   }
   return { preset: filter.preset, kinds: readRowKinds(filter.kinds), pills };
 }

@@ -13,6 +13,7 @@
   "toggleHotkeys": "Show this cheat-sheet",
   "quitApp": "Quit Arlesh",
   "toggleFilter": "Toggle the filter menu",
+  "openFilterSearch": "Search the filters and add one",
   "statusAll": "Status preset: All",
   "statusPlan": "Status preset: Plan",
   "statusStart": "Status preset: Start",
