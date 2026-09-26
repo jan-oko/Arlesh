@@ -10,17 +10,24 @@ import { useFilterSearchGroups } from "@/hooks/use-filter-search-groups";
 import { modeFromModifiers } from "@/utils/filter-modes";
 import type { ModifierKeys } from "@/utils/filter-modes";
 import { searchFilterCatalogue, switchStateAfterPick } from "@/utils/filter-search";
-import type { SearchResult, SwitchResult } from "@/utils/filter-search";
+import type { FilterOption, SearchResult, SwitchResult } from "@/utils/filter-search";
 import SearchModalShell from "@/components/SearchModalShell/SearchModalShell";
 import styles from "./FilterSearchModal.module.css";
+
+/** Whether any node's title contains the query. */
+function nodeTitleMatches(nodes: readonly FilterOption[], query: string): boolean {
+  const q = query.trim().toLocaleLowerCase();
+  return nodes.some((node) => node.label.toLocaleLowerCase().includes(q));
+}
 
 interface Props {
   onClose: () => void;
 }
 
 /**
- * `Ctrl+F`: one "Add filter…" search over every filter the view supports. Empty, it browses them
- * all, grouped; typing narrows by a dimension's name (old names included) or a value's. **↑ ↓**
+ * `Ctrl+F`: one "Add filter…" search over every filter the view supports. Nothing is listed until
+ * something is typed; a query matches a dimension's name (old names included) or a value's — in the
+ * List View every node too, as "Under: X" and "Depends on: X", with its path. **↑ ↓**
  * move, and **Enter** or a click adds — All, **Shift** Any, **Alt** Not — then clears the query and
  * stays open. The switches (Private, Archived, Backlog) are one result each wearing their state.
  * It edits the same per-tab filter as the Filter menu and the chips.
@@ -88,7 +95,10 @@ export default function FilterSearchModal({ onClose }: Props) {
   // Each section's first option index in the flat list the arrow keys walk.
   const sectionStarts = sections.map((_, position) =>
     sections.slice(0, position).reduce((count, section) => count + section.results.length, 0));
-  const nothingMatches = results.length === 0 && sections.every((section) => !section.typeToSearch);
+  const hasQuery = query.trim() !== "";
+  // Outside the List View there is no node filter; a query naming a node says so rather than
+  // answering with nothing (the user may be looking for Ctrl+O's subtree entry).
+  const namesNode = hasQuery && view !== "list" && nodeTitleMatches(catalogue.options("antecedent"), query);
   const placeholder = view === "list" ? t("search.placeholder") : t("search.placeholderTags");
 
   return (
@@ -102,44 +112,46 @@ export default function FilterSearchModal({ onClose }: Props) {
       listId={listId}
       {...(results.length > 0 ? { activeOptionId: `${listId}-${clampedActive}` } : {})}
     >
-      <div className={styles.results} role="listbox" id={listId} aria-label={t("search.dialogLabel")}>
-        {sections.map((section, position) => (
-          <div key={section.key} role="group" aria-label={section.label}>
-            <div className={styles.heading} role="presentation">
-              {section.label}
-              {section.typeToSearch && <span className={styles.typeToSearch}>{t("search.typeToSearch")}</span>}
+      {hasQuery && (
+        <div className={styles.results} role="listbox" id={listId} aria-label={t("search.dialogLabel")}>
+          {sections.map((section, position) => (
+            <div key={section.key} role="group" aria-label={section.label}>
+              <div className={styles.heading} role="presentation">{section.label}</div>
+              {section.results.map((result, offset) => {
+                const own = (sectionStarts[position] ?? 0) + offset;
+                const isActive = own === clampedActive;
+                return (
+                  <div
+                    key={result.kind === "switch" ? `switch-${result.target}` : `${result.dimension}-${result.value}`}
+                    id={`${listId}-${own}`}
+                    role="option"
+                    aria-selected={isActive}
+                    className={`${styles.option}${isActive ? ` ${styles.active}` : ""}`}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseEnter={() => setActive(own)}
+                    onClick={(event: MouseEvent) => pick(result, event)}
+                  >
+                    <span className={styles.label}>
+                      {section.searchOnly && <span className={styles.prefix}>{t("search.nodePrefix", { dimension: section.label })}</span>}
+                      {result.kind === "value" && result.color !== null && (
+                        <span className={styles.dot} style={{ background: result.color }} aria-hidden="true" />
+                      )}
+                      <span className={styles.title}>{result.label}</span>
+                      {result.kind === "value" && result.detail !== null && result.detail !== "" && (
+                        <span className={styles.path}>({result.detail})</span>
+                      )}
+                    </span>
+                    {result.kind === "switch" && <span className={stateClass(result)}>{stateText(result)}</span>}
+                    {isActive && <kbd className={styles.enter} aria-hidden="true">{t("search.hintKeys.all")}</kbd>}
+                  </div>
+                );
+              })}
             </div>
-            {section.results.map((result, offset) => {
-              const own = (sectionStarts[position] ?? 0) + offset;
-              const isActive = own === clampedActive;
-              return (
-                <div
-                  key={result.kind === "switch" ? `switch-${result.target}` : `${result.dimension}-${result.value}`}
-                  id={`${listId}-${own}`}
-                  role="option"
-                  aria-selected={isActive}
-                  className={`${styles.option}${isActive ? ` ${styles.active}` : ""}`}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onMouseEnter={() => setActive(own)}
-                  onClick={(event: MouseEvent) => pick(result, event)}
-                >
-                  <span className={styles.label}>
-                    {result.kind === "value" && result.color !== null && (
-                      <span className={styles.dot} style={{ background: result.color }} aria-hidden="true" />
-                    )}
-                    {result.label}
-                  </span>
-                  {result.kind === "switch" && <span className={stateClass(result)}>{stateText(result)}</span>}
-                  {isActive && <kbd className={styles.enter} aria-hidden="true">{t("search.hintKeys.all")}</kbd>}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-        {nothingMatches && (
-          <div className={styles.empty}>{query.trim() === "" ? t("search.nothingLeft") : t("search.noResults")}</div>
-        )}
-      </div>
+          ))}
+          {namesNode && <div className={styles.note}>{t("search.nodesListOnly")}</div>}
+          {results.length === 0 && !namesNode && <div className={styles.empty}>{t("search.noResults")}</div>}
+        </div>
+      )}
       <div className={styles.hint}>
         <kbd>{t("search.hintKeys.all")}</kbd> {t("search.hintAll")} · <kbd>{t("search.hintKeys.any")}</kbd> {t("search.hintAny")}
         {" · "}<kbd>{t("search.hintKeys.not")}</kbd> {t("search.hintNot")} · {t("search.hintSwitch")}

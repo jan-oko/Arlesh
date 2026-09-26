@@ -76,9 +76,7 @@
     "dialogLabel": "Add a filter",
     "placeholder": "Add filter… tag, status, under",
     "placeholderTags": "Add filter… tag",
-    "typeToSearch": "type to search",
     "noResults": "No filter matches",
-    "nothingLeft": "Every value is already added",
     "hintAll": "All",
     "hintAny": "Any",
     "hintNot": "Not",
@@ -97,7 +95,9 @@
       "all": "↵",
       "any": "⇧↵",
       "not": "Alt ↵"
-    }
+    },
+    "nodePrefix": "{{dimension}}:",
+    "nodesListOnly": "Node filters (Under, Depends on) are List View only — switch with Ctrl+L, or enter a node's subtree with Ctrl+O."
   },
   "filterButtonTitle": "Filter (Alt+F) · search the filters with Ctrl+F"
 }

@@ -8,6 +8,8 @@ export interface FilterOption {
   label: string;
   /** A tag's or node's own color, for a dot and a tint. */
   color: string | null;
+  /** A node's path, outermost first, to tell same-named nodes apart; `null` for other values. */
+  detail: string | null;
 }
 
 /** A value result: picking it adds `value` to `dimension`. */
@@ -39,17 +41,18 @@ export interface SearchGroup {
   label: string;
   /** Other names the heading answers to — the old names Antecedent and Dependency. */
   aliases: readonly string[];
-  /** Searches every node, so it lists nothing until you type (Under, Depends on). */
+  /** Searches every node (Under, Depends on): its results are capped, as `Ctrl+O`'s are. */
   searchOnly: boolean;
   /** What can still be picked here: added values are already left out. */
   results: readonly SearchResult[];
 }
 
-/** A heading as the search draws it: its results, or a "type to search" note. */
+/** A heading as the search draws it, with the results that matched under it. */
 export interface SearchSection {
   key: string;
   label: string;
-  typeToSearch: boolean;
+  /** A node search — its results read "Under: ARLESH". */
+  searchOnly: boolean;
   results: SearchResult[];
 }
 
@@ -61,27 +64,19 @@ function normalise(text: string): string {
 }
 
 /**
- * Narrows the catalogue to a query. Empty, it browses every heading, with the node searches shown
- * as a heading that asks you to type. Typing keeps a whole heading when its name (or an old name)
- * matches, and otherwise the results whose own text matches; headings left empty drop out.
+ * Narrows the catalogue to a query. Nothing is listed until something is typed: the search is a
+ * way to name a filter, not a menu to scroll. A query keeps a whole heading when its name (or an old
+ * name) matches, and otherwise the results whose own text matches; headings left empty drop out.
  */
 export function searchFilterCatalogue(groups: readonly SearchGroup[], query: string): SearchSection[] {
   const q = normalise(query);
+  if (q === "") return [];
   const sections: SearchSection[] = [];
   for (const group of groups) {
-    if (q === "") {
-      sections.push({
-        key: group.key,
-        label: group.label,
-        typeToSearch: group.searchOnly,
-        results: group.searchOnly ? [] : [...group.results],
-      });
-      continue;
-    }
     const headingHit = [group.label, ...group.aliases].some((name) => normalise(name).includes(q));
     const matched = headingHit ? [...group.results] : group.results.filter((r) => normalise(r.matchText).includes(q));
     const results = group.searchOnly ? matched.slice(0, SEARCH_ONLY_LIMIT) : matched;
-    if (results.length > 0) sections.push({ key: group.key, label: group.label, typeToSearch: false, results });
+    if (results.length > 0) sections.push({ key: group.key, label: group.label, searchOnly: group.searchOnly, results });
   }
   return sections;
 }

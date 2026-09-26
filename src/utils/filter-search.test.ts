@@ -3,7 +3,7 @@ import { searchFilterCatalogue, switchStateAfterPick } from "./filter-search";
 import type { SearchGroup, ValueResult } from "./filter-search";
 
 function value(dimension: ValueResult["dimension"], label: string, matchText = label): ValueResult {
-  return { kind: "value", dimension, value: label.toLowerCase(), label, color: null, matchText };
+  return { kind: "value", dimension, value: label.toLowerCase(), label, color: null, detail: null, matchText };
 }
 
 const GROUPS: SearchGroup[] = [
@@ -17,11 +17,9 @@ const GROUPS: SearchGroup[] = [
 ];
 
 describe("searchFilterCatalogue", () => {
-  it("browses every heading when empty, the node searches only as a heading to type into", () => {
-    const sections = searchFilterCatalogue(GROUPS, "");
-    expect(sections.map((s) => [s.label, s.typeToSearch, s.results.length])).toEqual([
-      ["Under", true, 0], ["Tags", false, 2], ["Yes / no", false, 1], ["Switches", false, 1],
-    ]);
+  it("lists nothing until something is typed", () => {
+    expect(searchFilterCatalogue(GROUPS, "")).toEqual([]);
+    expect(searchFilterCatalogue(GROUPS, "   ")).toEqual([]);
   });
 
   it("narrows by a value's text, dropping headings left empty", () => {
@@ -29,9 +27,9 @@ describe("searchFilterCatalogue", () => {
     expect(sections.map((s) => s.results.map((r) => r.label))).toEqual([["urgent"]]);
   });
 
-  it("finds a node once you type", () => {
+  it("finds a node by its name, under its node heading", () => {
     const sections = searchFilterCatalogue(GROUPS, "arl");
-    expect(sections.map((s) => s.results.map((r) => r.label))).toEqual([["ARLESH"]]);
+    expect(sections.map((s) => [s.label, s.searchOnly, s.results.map((r) => r.label)])).toEqual([["Under", true, ["ARLESH"]]]);
   });
 
   it("keeps a whole heading when its old name matches", () => {

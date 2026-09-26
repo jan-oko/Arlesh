@@ -65,15 +65,15 @@ export function useFilterDimensions(): FilterDimensions {
   const display = useFilterDisplay();
 
   const tagOptions = useMemo<FilterOption[]>(
-    () => display.tagOptions.map((tag) => ({ value: String(tag.id), label: tag.label, color: tag.color })),
+    () => display.tagOptions.map((tag) => ({ value: String(tag.id), label: tag.label, color: tag.color, detail: null })),
     [display.tagOptions],
   );
   const antecedentOptions = useMemo<FilterOption[]>(
-    () => display.antecedentPool.map((node) => ({ value: node.id, label: node.label, color: node.color })),
+    () => display.antecedentPool.map((node) => ({ value: node.id, label: node.label, color: node.color, detail: node.path })),
     [display.antecedentPool],
   );
   const dependencyOptions = useMemo<FilterOption[]>(
-    () => display.dependencyPool.map((node) => ({ value: node.id, label: node.label, color: node.color })),
+    () => display.dependencyPool.map((node) => ({ value: node.id, label: node.label, color: node.color, detail: node.path })),
     [display.dependencyPool],
   );
 
@@ -94,7 +94,7 @@ export function useFilterDimensions(): FilterDimensions {
       if (dimension === "tag") return tagOptions;
       if (dimension === "antecedent") return antecedentOptions;
       if (dimension === "dependency") return dependencyOptions;
-      return fixedValues(dimension).map((value) => ({ value, label: fixedLabel(display, dimension, value), color: null }));
+      return fixedValues(dimension).map((value) => ({ value, label: fixedLabel(display, dimension, value), color: null, detail: null }));
     },
     valueLabel: (dimension, value, mode) => {
       if (isYesNoDimension(dimension) && mode === "exclude") return fixedLabel(display, dimension, NO_VALUE[dimension]);

@@ -15,11 +15,18 @@ import {
  * the filter exists for. */
 const ANTECEDENT_KINDS = new Set(["aspect", "domain", "project", "goal", "task"]);
 
+/** A searchable node's ancestor titles (innermost first) as a path read outermost first. */
+function pathText(ancestors: readonly string[]): string {
+  return [...ancestors].reverse().join(" › ");
+}
+
 export interface EntityOption {
   id: string;
   label: string;
   /** The node's own (or nearest-aspect-inherited) color, for a picker swatch / chip tint. */
   color: string | null;
+  /** Where the node sits, outermost first ("Growth › CODE"); empty at the top level. */
+  path: string;
 }
 
 export interface TagOption {
@@ -71,13 +78,13 @@ export function useFilterDisplay(): FilterDisplay {
   const antecedentPool = useMemo<EntityOption[]>(
     () => searchableNodes
       .filter((n) => ANTECEDENT_KINDS.has(n.kind))
-      .map((n) => ({ id: n.id, label: n.title, color: nodeById.get(n.id)?.color ?? null })),
+      .map((n) => ({ id: n.id, label: n.title, color: nodeById.get(n.id)?.color ?? null, path: pathText(n.path) })),
     [searchableNodes, nodeById],
   );
   const dependencyPool = useMemo<EntityOption[]>(
     () => searchableNodes
       .filter((n) => n.kind === "task" || n.kind === "goal")
-      .map((n) => ({ id: n.id, label: n.title, color: nodeById.get(n.id)?.color ?? null })),
+      .map((n) => ({ id: n.id, label: n.title, color: nodeById.get(n.id)?.color ?? null, path: pathText(n.path) })),
     [searchableNodes, nodeById],
   );
 

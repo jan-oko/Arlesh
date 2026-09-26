@@ -294,7 +294,7 @@ describe("FilterPopover — rows", () => {
       mockUseFilterDisplay.mockReturnValue({
         ...EMPTY_DISPLAY,
         nodeLabel: (ref: string) => (ref === "project-1" ? "Rocket" : ref),
-        antecedentPool: [{ id: "project-1", label: "Rocket", color: "#e74c3c" }, { id: "project-2", label: "Rover", color: null }],
+        antecedentPool: [{ id: "project-1", label: "Rocket", color: "#e74c3c", path: "" }, { id: "project-2", label: "Rover", color: null, path: "" }],
       });
       render(<FilterPopover />);
       const box = screen.getByRole("combobox", { name: "rows.antecedent" });
@@ -311,7 +311,7 @@ describe("FilterPopover — rows", () => {
 
     it("searches Depends on in its own pool", () => {
       useViewStore.setState({ view: "list" });
-      mockUseFilterDisplay.mockReturnValue({ ...EMPTY_DISPLAY, dependencyPool: [{ id: "task-9", label: "Fuel up", color: null }] });
+      mockUseFilterDisplay.mockReturnValue({ ...EMPTY_DISPLAY, dependencyPool: [{ id: "task-9", label: "Fuel up", color: null, path: "" }] });
       render(<FilterPopover />);
       const box = screen.getByRole("combobox", { name: "rows.dependency" });
       fireEvent.focus(box);
