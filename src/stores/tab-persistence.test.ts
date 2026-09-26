@@ -229,6 +229,30 @@ describe("a strip written by this build", () => {
   });
 });
 
+describe("a tab's List View row kinds", () => {
+  it("come back per tab: hiding a kind in one tab leaves the other showing every kind", () => {
+    useTabsStore.getState().openTab();
+    useTabsStore.getState().tabs[1]?.stores.listFilter.getState().toggleKind("commitment");
+
+    reloadTabs();
+
+    const { tabs } = useTabsStore.getState();
+    expect(tabs[0]?.stores.listFilter.getState().filter.kinds).toEqual(["task", "commitment", "expectation"]);
+    expect(tabs[1]?.stores.listFilter.getState().filter.kinds).toEqual(["task", "expectation"]);
+  });
+
+  it("read as every kind for a tab stored before the selector existed", () => {
+    const state = parseTabState({ listFilter: { preset: "do", pills: {} } });
+    expect(state.listFilter.kinds).toEqual(["task", "commitment", "expectation"]);
+    expect(state.listFilter.preset).toBe("do");
+  });
+
+  it("read as every kind when the stored selection would show none", () => {
+    expect(parseTabState({ listFilter: { preset: "all", kinds: [], pills: {} } }).listFilter.kinds)
+      .toEqual(["task", "commitment", "expectation"]);
+  });
+});
+
 describe("a tab's name in storage", () => {
   it("comes back with the tab", () => {
     const id = useTabsStore.getState().tabs[0]?.id ?? "";

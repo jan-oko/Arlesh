@@ -29,6 +29,22 @@ describe("HotkeysModal", () => {
     expect(screen.getByText("hotkeys:toggleSubtreeCollapsed")).toBeInTheDocument();
   });
 
+  it("lists the List View's three row-kind toggles on Shift+Alt+T/C/E", () => {
+    render(<HotkeysModal onClose={vi.fn()} />);
+    const section = screen.getByText("hotkeys:sectionListView").closest("section");
+    expect(section).not.toBeNull();
+    if (section === null) return;
+    const list = within(section);
+    for (const [chord, label] of [
+      ["Shift+Alt+T", "hotkeys:toggleKindTasks"],
+      ["Shift+Alt+C", "hotkeys:toggleKindCommitments"],
+      ["Shift+Alt+E", "hotkeys:toggleKindExpectations"],
+    ] as const) {
+      expect(list.getByText(chord)).toBeInTheDocument();
+      expect(list.getByText(label)).toBeInTheDocument();
+    }
+  });
+
   it("merges every chord that triggers one action into a single row", () => {
     render(<HotkeysModal onClose={vi.fn()} />);
     // Scoped to the Mindmap's own section: the Steps View binds Ctrl+= to its card size, so the

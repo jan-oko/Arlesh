@@ -1544,3 +1544,60 @@ describe("ListView — expectations", () => {
     expect(useFilterStore.getState().filter.statusMode).toBe("start");
   });
 });
+
+describe("ListView — row kinds", () => {
+  const wait = (): ExpectationListRow => ({
+    node: n("wait-1", "expectation", { status: "pending" }),
+    ancestors: [n("aspect-1", "aspect")],
+    hasPrivateAncestor: false,
+    scopeTokens: ["unscoped", "unplanned"],
+  });
+
+  /** Which kinds are on screen, read off each fixture row's title. */
+  function kindsOnScreen(): string[] {
+    const titles = [["task", "task-1"], ["commitment", "commitment-1"], ["expectation", "wait-1"]] as const;
+    return titles.filter(([, title]) => screen.queryByText(title) !== null).map(([kind]) => kind);
+  }
+
+  function pressKind(code: "KeyT" | "KeyC" | "KeyE") {
+    act(() => { fireEvent.keyDown(window, { key: code.slice(3), code, altKey: true, shiftKey: true }); });
+  }
+
+  beforeEach(() => {
+    useDisplayStore.setState({ listBands: true });
+    useMindmapStore.setState({ pendingToast: null });
+    mockUseListData.mockReturnValue(listData({ rows: [row()], commitmentRows: [commitmentRow()], expectationRows: [wait()] }));
+  });
+
+  it.each([
+    ["KeyT", "task"],
+    ["KeyC", "commitment"],
+    ["KeyE", "expectation"],
+  ] as const)("%s hides the %s rows and a second press brings them back", (code, kind) => {
+    render(<ListViewInApp />);
+    expect(kindsOnScreen()).toEqual(["task", "commitment", "expectation"]);
+    pressKind(code);
+    expect(kindsOnScreen()).toEqual(["task", "commitment", "expectation"].filter((k) => k !== kind));
+    pressKind(code);
+    expect(kindsOnScreen()).toEqual(["task", "commitment", "expectation"]);
+  });
+
+  it("will not hide the last kind shown, and says why", () => {
+    render(<ListViewInApp />);
+    pressKind("KeyT");
+    pressKind("KeyC");
+    pressKind("KeyE");
+    expect(kindsOnScreen()).toEqual(["expectation"]);
+    expect(useListFilterStore.getState().filter.kinds).toEqual(["expectation"]);
+    expect(screen.getByText("listView:rowKindRefused.lastKind")).toBeInTheDocument();
+  });
+
+  it("leaves the kinds alone under the Expectations option, and says why", () => {
+    useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, preset: "expectations" } });
+    render(<ListViewInApp />);
+    pressKind("KeyE");
+    expect(useListFilterStore.getState().filter.kinds).toEqual(["task", "commitment", "expectation"]);
+    expect(kindsOnScreen()).toEqual(["expectation"]);
+    expect(screen.getByText("listView:rowKindRefused.expectationsOption")).toBeInTheDocument();
+  });
+});

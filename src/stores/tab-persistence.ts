@@ -137,7 +137,7 @@ function readListFilterState(value: unknown): ListFilterState {
   const merged = mergeFilterDefaults(value, DEFAULT_LIST_FILTER);
   const preset = isListPreset(merged.preset) ? merged.preset : DEFAULT_LIST_FILTER.preset;
   const pills = isRecord(merged.pills) ? merged.pills : {};
-  return withCurrentPillDimensions({ preset, pills });
+  return withCurrentPillDimensions({ preset, kinds: merged.kinds, pills });
 }
 
 /** One tab's state as it comes back out of storage, rebuilt field by field so no stored shape

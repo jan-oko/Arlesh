@@ -12,6 +12,7 @@ import type { PillDimension } from "@/utils/list-filter";
 import type { OverrideMode } from "@/utils/filter-tree";
 import Switch from "@/components/Switch/Switch";
 import PillFilterSection from "./PillFilterSection";
+import RowKindSelector from "./RowKindSelector";
 import { EntityAdder, FixedValueAdder } from "./PillAdders";
 import styles from "./FilterPopover.module.css";
 
@@ -73,6 +74,13 @@ export default function FilterPopover() {
 
   return (
     <div className={styles.popover}>
+      {/* First, above every other filter: which kinds of row the list draws at all. */}
+      {view === "list" && (
+        <div className={styles.cluster}>
+          <RowKindSelector />
+        </div>
+      )}
+
       <div className={styles.cluster}>
         <div className={styles.clusterLabel}>{t("tagTypeClusterLabel")}</div>
         <PillFilterSection label={t("tagsLabel")}>
