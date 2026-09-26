@@ -265,6 +265,74 @@ fn an_expired_iteration_archives_its_steps_without_a_resolution() {
     assert_eq!(expired.archival, Archival::Archived);
 }
 
+/// A day-long occurrence's lifecycle on the day after its window, as `task_row` derives it: the
+/// Consumption's timing, settled by whether it is done.
+fn day_after(consumption: Consumption, done: bool, closes_when_done: bool) -> ItemLifecycle {
+    let timing = instance_timing(
+        consumption,
+        IterationStatus::Active,
+        (at(20, 2), at(21, 2)),
+        at(22, 9),
+    );
+    work_lifecycle(
+        "task",
+        NodeId::Stored(1),
+        settled_timing(timing, done, closes_when_done),
+        done,
+        false,
+        false,
+        false,
+    )
+}
+
+#[test]
+fn a_done_accumulating_occurrence_past_its_window_is_completed_and_archived() {
+    for consumption in [
+        Consumption::Overlapping,
+        Consumption::Blocking(crate::flows::habits::Catchup::AllPending),
+    ] {
+        let done = day_after(consumption, true, true);
+        assert_eq!(done.timing, Timing::Lapsed);
+        assert_eq!(done.resolution, Some(Resolution::Completed));
+        assert_eq!(done.archival, Archival::Archived);
+    }
+}
+
+#[test]
+fn an_unfinished_accumulating_occurrence_past_its_window_keeps_accumulating() {
+    let open = day_after(Consumption::Overlapping, false, true);
+    assert_eq!((open.timing, open.resolution), (Timing::Active, None));
+    assert_eq!(open.archival, Archival::Live);
+}
+
+#[test]
+fn a_destructive_occurrence_past_its_window_lapses_done_or_not() {
+    let done = day_after(Consumption::Destructive, true, true);
+    assert_eq!(done.resolution, Some(Resolution::Completed));
+    assert_eq!(done.archival, Archival::Archived);
+    let missed = day_after(Consumption::Destructive, false, true);
+    assert_eq!(missed.resolution, Some(Resolution::Missed));
+    assert_eq!(missed.archival, Archival::Archived);
+}
+
+#[test]
+fn being_done_settles_nothing_until_the_occurrence_closes() {
+    assert_eq!(
+        settled_timing(InstanceTiming::Active, true, false),
+        InstanceTiming::Active,
+        "a done occurrence whose window is still open stays Active"
+    );
+    assert_eq!(
+        settled_timing(InstanceTiming::Pending, false, false),
+        InstanceTiming::Pending
+    );
+    let open = day_after(Consumption::Overlapping, true, false);
+    assert_eq!(
+        (open.timing, open.archival),
+        (Timing::Active, Archival::Live)
+    );
+}
+
 #[test]
 fn only_an_occurrence_with_a_window_of_its_own_reads_an_on_exit() {
     let window = Some(TimeScope::single(ScopeKey::day(

@@ -576,6 +576,9 @@ struct Occurrence {
     time_scope: Option<TimeScope>,
     plan: Option<TimeScope>,
     timing: InstanceTiming,
+    /// Whether being done finishes it for good: its own window has passed, and no verdict is still
+    /// owed over it. See [`settled_timing`].
+    closes_when_done: bool,
     origin: Origin,
     /// What the template says beyond its title and place.
     fields: TemplateFields,
@@ -632,6 +635,10 @@ fn build_iteration(
         IterationStatus::Lapsed | IterationStatus::Missed => InstanceTiming::Lapsed,
         _ => InstanceTiming::Active,
     };
+    // A commitment Habit's work is answered for by the verdict, which its Verdict Window bounds;
+    // nothing it generates is finished by its window passing.
+    let verdict_owed = flow.instance_type == "commitment";
+    let window_passed = |end: NaiveDateTime| !verdict_owed && end <= now;
     let mut occurrences = vec![Occurrence {
         key: root_key,
         kind: occurrence_kind(flow, TemplateKind::FlowRoot),
@@ -643,6 +650,10 @@ fn build_iteration(
         time_scope: Some(context.window.clone()),
         plan: context.root_plan.clone(),
         timing: root_timing,
+        // The root closes with its iteration: only a Done iteration's root is finished, so a root
+        // ticked off above work still open keeps that work company.
+        closes_when_done: context.iteration.status == IterationStatus::Done
+            && window_passed(context.slot.end),
         origin: origin_of(root_item, NO_CYCLE),
         fields: flow.template.clone(),
     }];
@@ -722,6 +733,7 @@ fn build_iteration(
                 time_scope,
                 plan,
                 timing: instance_timing(consumption, context.iteration.status, window, now),
+                closes_when_done: window_passed(window.1),
                 origin: origin_of(item, cycle),
                 fields: fields.clone(),
             });
@@ -900,11 +912,26 @@ fn on_exit(consumption: Consumption, time_scope: &Option<TimeScope>) -> Option<O
     })
 }
 
+/// An occurrence's timing once whether it is done is known.
+///
+/// [`instance_timing`] places an occurrence by its window and its Habit's Consumption alone, and
+/// under Accumulating a passed window leaves it Active — which is right for *unfinished* work, the
+/// pile-up Accumulating means. Done work does not pile up: a done occurrence whose window has
+/// passed is Lapsed whatever the Consumption, so it resolves Completed and archives, exactly as a
+/// stored Task or Goal does (`docs/spec/time-scopes.md`, On-exit behavior).
+fn settled_timing(timing: InstanceTiming, done: bool, closes_when_done: bool) -> InstanceTiming {
+    if done && closes_when_done {
+        return InstanceTiming::Lapsed;
+    }
+    timing
+}
+
 /// A Task or Goal occurrence's lifecycle, by the Habit's rules: pending until its window opens,
-/// active while it is open, and once past — Lapsed under Destructive, or with its iteration
-/// Lapsed or Missed — archived as a unit, Completed if it was done and Missed if not. An
-/// iteration whose Verdict Window ran out (a commitment Habit's supporting steps) is archived
-/// with no Resolution at all. A tombstone archives it by hand; a Backlog shows while it is live.
+/// active while it is open, and once past — Lapsed under Destructive, with its iteration Lapsed or
+/// Missed, or done (see [`settled_timing`]) — archived as a unit, Completed if it was done and
+/// Missed if not. An iteration whose Verdict Window ran out (a commitment Habit's supporting
+/// steps) is archived with no Resolution at all. A tombstone archives it by hand; a Backlog shows
+/// while it is live.
 fn work_lifecycle(
     kind: &str,
     id: NodeId,
@@ -981,11 +1008,12 @@ fn task_row(
     } else {
         occurrence.fields.delegate_to
     };
+    let done = status == "done";
     let lifecycle = work_lifecycle(
         "task",
         id.clone(),
-        occurrence.timing,
-        status == "done",
+        settled_timing(occurrence.timing, done, occurrence.closes_when_done),
+        done,
         expired,
         overlay.tombstone.is_some(),
         archival == TaskArchival::Backlog,
@@ -1037,11 +1065,12 @@ fn goal_row(
         .status
         .clone()
         .unwrap_or_else(|| "active".to_string());
+    let done = status == "achieved" || status == "archived";
     let lifecycle = work_lifecycle(
         "goal",
         id.clone(),
-        occurrence.timing,
-        status == "achieved" || status == "archived",
+        settled_timing(occurrence.timing, done, occurrence.closes_when_done),
+        done,
         expired,
         overlay.tombstone.is_some(),
         false,
