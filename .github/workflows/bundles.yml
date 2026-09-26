@@ -1,0 +1,142 @@
+name: Bundles
+
+# Installable Linux builds of every master commit, as downloadable CI artifacts.
+#
+# This is not a gate. It runs after the merge, on push to master (and by hand),
+# never on pull requests: a release build compiles the whole tree a second way
+# (optimised, no instrumentation), and paying that on every PR would roughly
+# double PR wall time for something only master's commits need. Being a separate
+# workflow on a different trigger, it can never become a required PR check.
+#
+# Nothing is signed and no GitHub Release is made: the output is four artifacts
+# on the run — AppImage, .deb, .rpm and a tarball of the bare release binary —
+# each named with the app version and the short sha, kept for 30 days.
+#
+# It builds on ubuntu-22.04 deliberately. A Linux binary links against the glibc
+# of the machine that built it and runs on that version or newer, not older.
+# Building on the oldest runner that still ships webkit2gtk-4.1 is what lets the
+# same binary run on 24.04, Fedora and Arch alike; ubuntu-latest would quietly
+# raise that floor every time the image moves.
+
+on:
+  push:
+    branches: [master, arlesh-ci-bundles]  # TEMPORARY: test trigger, remove before merge
+  workflow_dispatch:
+
+# Every master commit gets its own set of artifacts, so nothing is cancelled.
+concurrency:
+  group: bundles-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux:
+    name: tauri build · linux bundles
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      # Same set as ci.yml's rust lane — webkit2gtk-4.1 exists on 22.04 too.
+      # `file` is what linuxdeploy (the AppImage bundler) uses to classify ELF
+      # files; it is on the image today, named here so it stays that way.
+      - name: Install Tauri's Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libayatana-appindicator3-dev \
+            libssl-dev \
+            file
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # /rust-toolchain.toml resolves here exactly as in ci.yml; printing it is
+      # the proof in the log that the pin did.
+      - name: Show toolchain
+        run: |
+          rustc --version
+          cargo --version
+
+      # Its own key: a release build on 22.04 shares no artifacts with the
+      # instrumented debug build ci.yml caches on ubuntu-latest.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: release-bundles-ubuntu-22.04
+
+      - name: Read version and short sha
+        id: meta
+        run: |
+          echo "version=$(jq -r .version src-tauri/tauri.conf.json)" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      # beforeBuildCommand (npm run build) produces dist/ first, so this is the
+      # real frontend, not ci.yml's stub.
+      #
+      # NO_STRIP: linuxdeploy ships an old `strip` that fails on libraries
+      # carrying newer ELF sections (.relr.dyn), aborting the AppImage step.
+      # Skipping the strip costs some size and nothing else.
+      - name: tauri build
+        env:
+          NO_STRIP: 'true'
+        run: npx tauri build --ci --bundles appimage,deb,rpm
+
+      - name: Tarball the release binary
+        run: |
+          mkdir -p "$RUNNER_TEMP/tarball"
+          tar -czf "$RUNNER_TEMP/tarball/arlesh-${{ steps.meta.outputs.version }}-linux-x86_64.tar.gz" \
+            -C src-tauri/target/release arlesh
+
+      - name: List bundles
+        run: |
+          ls -la src-tauri/target/release/bundle/appimage/*.AppImage \
+                 src-tauri/target/release/bundle/deb/*.deb \
+                 src-tauri/target/release/bundle/rpm/*.rpm \
+                 "$RUNNER_TEMP"/tarball/*.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arlesh-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.sha }}-linux-appimage
+          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arlesh-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.sha }}-linux-deb
+          path: src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arlesh-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.sha }}-linux-rpm
+          path: src-tauri/target/release/bundle/rpm/*.rpm
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arlesh-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.sha }}-linux-x86_64-tarball
+          path: ${{ runner.temp }}/tarball/*.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
