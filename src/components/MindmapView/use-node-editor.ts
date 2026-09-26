@@ -43,7 +43,6 @@ import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
 import { addTagToCommitment, removeTagFromCommitment, updateCommitment } from "@/api/commitments";
 import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
-import { editorOwnerOf } from "@/utils/editor-owner";
 import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { TASK_STATUS } from "@/utils/status-mapping";
@@ -181,18 +180,13 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onDoubleClick = useCallback(
     (nodeId: string) => {
       const node = findNode(tree, nodeId);
-      // A Habit occurrence opens the same editor as any row of its kind (ADR 0008); what it saves
-      // lands on that occurrence alone. Its window is its iteration's, which the editor shows
-      // but does not offer to change.
+      // A derived row — a Habit occurrence, a wait's check task, a spawned or delegation wait —
+      // opens the same editor as any row of its kind (ADR 0008); what it saves lands on that row
+      // alone, in its overlay.
       if (node === undefined || node.kind === "aspect") return;
-      const owner = editorOwnerOf(tree, node);
-      if (owner === undefined) {
-        showToast({ nodeId, message: t("editOwnerMissing") });
-        return;
-      }
-      setEditorModal({ nodeId: owner.id, node: owner });
+      setEditorModal({ nodeId: node.id, node });
     },
-    [tree, showToast, t],
+    [tree],
   );
 
   const onTaskSave = useCallback(
@@ -271,7 +265,9 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const onExpectationSave = useCallback(
     async (data: ExpectationSaveData) => {
       if (editorModal === null) return;
-      const dbId = storedId(rowIdOf(editorModal.node));
+      // A stored wait's id, or a derived one's UUID (a spawned or delegation wait): the backend
+      // writes a derived wait's fields into its overlay and its tags as differences, that wait only.
+      const dbId = rowIdOf(editorModal.node);
       await updateExpectation(dbId, {
         title: data.title,
         status: data.status,

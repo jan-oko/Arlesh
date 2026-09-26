@@ -995,6 +995,108 @@ mod agent_waits {
             "but it can still see it"
         );
     }
+
+    /// A done Asynchronous Agentic Task inside a root, and the wait its completion spawned — a
+    /// derived row, made agentic in the app as any wait is edited.
+    #[tokio::test]
+    async fn an_agent_polls_and_releases_a_spawned_wait_made_agentic_like_a_stored_one() {
+        use arlesh_lib::tasks::model::{AsyncTemplate, UpdateTaskRequest};
+
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        helpers::make_agentic(&pool, board.inside_task).await;
+        task_commands::update_task(
+            app.state(),
+            board.inside_task.into(),
+            UpdateTaskRequest {
+                asynchronous: Some(true),
+                async_template: Some(Some(AsyncTemplate {
+                    title: "CI on the branch".into(),
+                    tag_ids: vec![],
+                    time_scope: None,
+                    check_every: None,
+                })),
+                status: Some(arlesh_lib::tasks::model::TaskStatus::Done),
+                ..Default::default()
+            },
+            None,
+        )
+        .await
+        .expect("complete the asynchronous task");
+        let mcp = mcp(&pool);
+        let spawned = snapshot(&mcp, "expectations")
+            .await
+            .into_iter()
+            .find(|row| row["origin"]["kind"] == "spawned_wait")
+            .expect("the spawned wait is an expectation row");
+        let full_id = spawned["full_id"].as_str().expect("a full id").to_string();
+        let wait_id = arlesh_lib::nodes::id::NodeId::Derived(
+            arlesh_lib::nodes::id::DerivedId::from_existing(
+                spawned["id"]
+                    .as_str()
+                    .expect("a derived wait's id is its UUID"),
+            ),
+        );
+
+        // Not agentic: the agent sees it, and cannot release it.
+        let bare = waits(
+            &mcp,
+            params::WaitsOperation::Release {
+                id: NodeIdParam::Short(full_id.clone()),
+                answer: None,
+            },
+        )
+        .await;
+        assert_eq!(refused(&bare), "not_permitted");
+
+        expectation_commands::update_expectation(
+            app.state(),
+            wait_id,
+            UpdateExpectationRequest {
+                agentic: Some(true),
+                question: Some(false),
+                agentic_note: Some(Some("Green on the branch".into())),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("the user makes the spawned wait agentic, as any wait");
+
+        let polled = succeeded(
+            &waits(
+                &mcp,
+                params::WaitsOperation::Get {
+                    id: NodeIdParam::Short(full_id.clone()),
+                },
+            )
+            .await,
+        )
+        .clone();
+        assert_eq!(polled["agentic"], true);
+        assert_eq!(polled["agentic_note"], "Green on the branch");
+        assert_eq!(polled["status"], "pending");
+
+        let released = waits(
+            &mcp,
+            params::WaitsOperation::Release {
+                id: NodeIdParam::Short(full_id.clone()),
+                answer: None,
+            },
+        )
+        .await;
+        assert_eq!(succeeded(&released)["status"], "released");
+        let row = snapshot(&mcp, "expectations")
+            .await
+            .into_iter()
+            .find(|row| row["full_id"] == full_id.as_str())
+            .expect("still the same row");
+        assert_eq!(row["status"], "released");
+        assert_eq!(
+            row["title"], "CI on the branch",
+            "drawn from the template still"
+        );
+    }
 }
 
 mod agent_notes {

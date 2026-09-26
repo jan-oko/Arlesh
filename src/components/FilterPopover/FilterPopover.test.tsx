@@ -242,3 +242,71 @@ describe("FilterPopover — Backlog pill", () => {
     expect(useFilterStore.getState().filter.backlogMode).toBe("inactive");
   });
 });
+
+describe("FilterPopover row-kind selector", () => {
+  const kindButton = (kind: string) => screen.getByRole("button", { name: `rowKind.${kind}` });
+
+  it("opens the popover in List View, above every other filter", () => {
+    useViewStore.setState({ view: "list" });
+    render(<FilterPopover />);
+    const selector = screen.getByRole("group", { name: "rowKindsLabel" });
+    const firstLabel = screen.getAllByText(/Label$/)[0];
+    expect(firstLabel).toHaveTextContent("rowKindsLabel");
+    expect(selector).toContainElement(kindButton("task"));
+    expect(kindButton("commitment")).toHaveAttribute("aria-pressed", "true");
+    expect(kindButton("expectation")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it.each(["mindmap", "plan", "steps"] as const)("is not drawn in the %s view", (view) => {
+    useViewStore.setState({ view });
+    render(<FilterPopover />);
+    expect(screen.queryByRole("group", { name: "rowKindsLabel" })).not.toBeInTheDocument();
+  });
+
+  it("toggles each kind off and back on", () => {
+    useViewStore.setState({ view: "list" });
+    render(<FilterPopover />);
+    for (const kind of ["task", "commitment", "expectation"] as const) {
+      fireEvent.click(kindButton(kind));
+      expect(useListFilterStore.getState().filter.kinds).not.toContain(kind);
+      expect(kindButton(kind)).toHaveAttribute("aria-pressed", "false");
+      fireEvent.click(kindButton(kind));
+      expect(useListFilterStore.getState().filter.kinds).toContain(kind);
+    }
+  });
+
+  it("will not turn the last kind off", () => {
+    useViewStore.setState({ view: "list" });
+    useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, kinds: ["commitment"] } });
+    render(<FilterPopover />);
+    expect(kindButton("commitment")).toBeDisabled();
+    expect(kindButton("commitment")).toHaveAttribute("title", "rowKindRefused.lastKind");
+    fireEvent.click(kindButton("commitment"));
+    expect(useListFilterStore.getState().filter.kinds).toEqual(["commitment"]);
+    expect(kindButton("task")).toBeEnabled();
+  });
+
+  it("stands aside under the Expectations option, which is a kind choice of its own", () => {
+    useViewStore.setState({ view: "list" });
+    useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, preset: "expectations" } });
+    render(<FilterPopover />);
+    for (const kind of ["task", "commitment", "expectation"] as const) {
+      expect(kindButton(kind)).toBeDisabled();
+      expect(kindButton(kind)).toHaveAttribute("title", "rowKindRefused.expectationsOption");
+    }
+  });
+
+  it("names its shortcut in each toggle's tooltip", () => {
+    useViewStore.setState({ view: "list" });
+    render(<FilterPopover />);
+    expect(kindButton("task")).toHaveAttribute("title", "rowKindTooltip");
+  });
+
+  it("Reset shows every kind again", () => {
+    useViewStore.setState({ view: "list" });
+    useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, kinds: ["task"] } });
+    render(<FilterPopover />);
+    fireEvent.click(screen.getByRole("button", { name: "reset" }));
+    expect(useListFilterStore.getState().filter.kinds).toEqual(["task", "commitment", "expectation"]);
+  });
+});

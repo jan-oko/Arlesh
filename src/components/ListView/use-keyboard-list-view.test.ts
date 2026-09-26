@@ -55,6 +55,27 @@ describe("useKeyboardListView", () => {
     expect(options.onSetStatusMode).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["T", "task"],
+    ["C", "commitment"],
+    ["E", "expectation"],
+  ] as const)("Alt+Shift+%s toggles the %s row kind", (key, kind) => {
+    const options = listKeyboardContext();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey(key, { altKey: true, shiftKey: true });
+    expect(options.onToggleRowKind).toHaveBeenCalledWith(kind);
+    expect(options.onSetExpectationsPreset).not.toHaveBeenCalled();
+    expect(options.onCreateExpectation).not.toHaveBeenCalled();
+  });
+
+  it("Alt+E still selects the Expectations option, not the Expectations kind", () => {
+    const options = listKeyboardContext();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("e", { altKey: true });
+    expect(options.onSetExpectationsPreset).toHaveBeenCalledTimes(1);
+    expect(options.onToggleRowKind).not.toHaveBeenCalled();
+  });
+
   it("plain B toggles the selected row's backlog", () => {
     const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });

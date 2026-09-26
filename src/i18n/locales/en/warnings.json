@@ -99,6 +99,5 @@
   "pasteSkippedDerivedWait_one": "{{count}} check task or derived wait isn't a row of its own, so there is nothing to paste.",
   "pasteSkippedDerivedWait_other": "{{count}} check tasks or derived waits aren't rows of their own, so there is nothing to paste.",
   "pasteSkippedExpectation_one": "{{count}} Expectation can't be copied — use cut to move it.",
-  "pasteSkippedExpectation_other": "{{count}} Expectations can't be copied — use cut to move them.",
-  "editOwnerMissing": "This is drawn from something that isn't on the board any more, so there's nothing to edit."
+  "pasteSkippedExpectation_other": "{{count}} Expectations can't be copied — use cut to move them."
 }

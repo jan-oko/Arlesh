@@ -63,7 +63,8 @@ interface Props {
 export default function ExpectationEditorModal({ node, heading, lead, onSave, onClose, allTags, domainNames }: Props) {
   useInputCapture();
   const { t } = useTranslation(["expectation", "editor"]);
-  const [title, setTitle] = useState(node.title);
+  // A delegation wait is drawn with a label round its title; the editor edits the title itself.
+  const [title, setTitle] = useState(node.rowTitle ?? node.title);
   const [status, setStatus] = useState<ExpectationStatus>(
     node.status === EXPECTATION_STATUS.RELEASED ? EXPECTATION_STATUS.RELEASED : EXPECTATION_STATUS.PENDING,
   );

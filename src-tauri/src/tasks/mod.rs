@@ -196,7 +196,11 @@ async fn delete_node_subtree(
                     .delete_row(ExpectationId(*node_id))
                     .await?
             }
-            _ => db.tasks().delete_row(TaskId(*node_id)).await?,
+            _ => {
+                // The waits a Task draws are rows of nothing; what was written to them goes with it.
+                db.overlays().forget_task_waits(*node_id).await?;
+                db.tasks().delete_row(TaskId(*node_id)).await?
+            }
         }
     }
     Ok(())

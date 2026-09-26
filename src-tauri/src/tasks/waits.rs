@@ -110,16 +110,58 @@ pub fn stored_check_due(expectation: &Expectation) -> Option<NaiveDateTime> {
     next_check_due(every, starting, expectation.last_check_at)
 }
 
-/// When a spawned wait's current check fell due, given its template's Check every. Its first check
-/// is one interval after it began, not at once: the email has only just been sent. A completion
-/// never recorded asks for one at `now`. A check made during an earlier completion, kept by the
-/// overlay, is not a check on this one.
+/// When a spawned wait's current check fell due, given its Check every. Its first check is one
+/// interval after it began, not at once — the email has only just been sent — unless the wait has a
+/// Starting of its own. A completion never recorded asks for one at `now`. A check made during an
+/// earlier completion, kept by the overlay, is not a check on this one.
 pub fn spawned_check_due(
     wait: &SpawnedWait,
     every: &DurationSpec,
     now: NaiveDateTime,
 ) -> Option<NaiveDateTime> {
     next_spawned_check(&WaitProgress::of(wait), every, now)
+}
+
+/// A spawned wait's window and schedule: what its Task's Expectation template draws, under
+/// whatever the wait's own overlay says (see [`crate::nodes::wait_overlay`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SpawnedSchedule {
+    /// Its Time Scope: its own, or the template's rule counted from the day it began.
+    pub time_scope: Option<TimeScope>,
+    /// Its Check every: its own, or the template's.
+    pub check_every: Option<DurationSpec>,
+    /// Its own Starting, if it has one; otherwise its first check is one interval after it began.
+    pub check_starting: Option<NaiveDateTime>,
+}
+
+/// The [`SpawnedSchedule`] of a wait drawn from `template`, begun at `spawned_at`, with `overlay`.
+pub fn spawned_schedule(
+    template: &AsyncTemplate,
+    spawned_at: Option<NaiveDateTime>,
+    overlay: &crate::nodes::wait_overlay::ExpectationOverlay,
+) -> Result<SpawnedSchedule, TaskError> {
+    let time_scope = match overlay.time_scope() {
+        Some(own) => own,
+        None => match (&template.time_scope, spawned_at) {
+            (Some(rule), Some(began)) => window_from_rule(rule, day_of(began))?,
+            _ => None,
+        },
+    };
+    Ok(SpawnedSchedule {
+        time_scope,
+        check_every: overlay
+            .check_every()
+            .unwrap_or_else(|| template.check_every.clone()),
+        check_starting: overlay.check_starting(),
+    })
+}
+
+/// When a spawned wait's first check falls due: its own Starting, or one interval after it began.
+pub fn first_spawned_check(wait: &WaitProgress, every: &DurationSpec) -> Option<NaiveDateTime> {
+    match wait.check_starting {
+        Some(own) => Some(own),
+        None => advance_check(wait.spawned_at?, every),
+    }
 }
 
 /// Where a spawned wait stands — whoever spawned it, a stored Task or a Habit occurrence.
@@ -133,16 +175,19 @@ pub struct WaitProgress {
     pub archival: ExpectationArchival,
     /// When its last check was made, if any.
     pub last_check_at: Option<NaiveDateTime>,
+    /// Its own Starting, when it has one: its first check then falls due at it.
+    pub check_starting: Option<NaiveDateTime>,
 }
 
 impl WaitProgress {
-    /// A stored Task's spawned wait's progress.
+    /// A stored Task's spawned wait's progress, before anything is said of its Starting.
     pub fn of(wait: &SpawnedWait) -> Self {
         Self {
             spawned_at: wait.spawned_at,
             status: wait.status,
             archival: wait.archival,
             last_check_at: wait.last_check_at,
+            check_starting: None,
         }
     }
 }
@@ -156,14 +201,20 @@ pub fn next_spawned_check(
     if wait.status != ExpectationStatus::Pending || wait.archival != ExpectationArchival::Live {
         return None;
     }
-    let starting = match wait.spawned_at {
-        Some(began) => advance_check(began, every)?,
-        None => now.with_nanosecond(0).unwrap_or(now),
+    let starting = match (wait.check_starting, wait.spawned_at) {
+        (Some(own), _) => own,
+        (None, Some(began)) => advance_check(began, every)?,
+        (None, None) => now.with_nanosecond(0).unwrap_or(now),
     };
     let last = wait
         .last_check_at
         .filter(|last| wait.spawned_at.is_none_or(|began| *last >= began));
     next_check_due(every, starting, last)
+}
+
+/// The canonical node key of the wait a stored Task spawned — what its overlay is kept under.
+pub fn spawned_key(task_id: i64) -> String {
+    crate::nodes::key::DerivedKey::SpawnedWait(crate::nodes::id::NodeId::Stored(task_id)).node_key()
 }
 
 /// The single-day Time Scope a check due at `due` is drawn in.
@@ -558,15 +609,22 @@ pub struct DoneCheck {
 }
 
 /// A Task's spawned wait as the views draw it: the overlay, plus what the template makes of it —
-/// its Time Scope (the template's rule, counted from the day it began) and its next check.
+/// its Time Scope (the template's rule, counted from the day it began) and its next check — each
+/// under what the wait's own Expectation overlay says.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SpawnedWaitView {
     /// The overlay itself.
     #[serde(flatten)]
     pub wait: SpawnedWait,
-    /// Its Time Scope, when the template gives it a rule.
+    /// Its Time Scope: its own, or the template's rule's.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub time_scope: Option<TimeScope>,
+    /// Its Check every: its own, or the template's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub check_every: Option<DurationSpec>,
+    /// When its first check falls due, while it is checked on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub check_starting: Option<NaiveDateTime>,
     /// The Day its current check fell due on, while one is due and open.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_check: Option<TimeScope>,
@@ -622,19 +680,27 @@ pub async fn derive_wait_windows<M: SessionMode>(
             });
         }
     }
+    let overlays = db.overlays().expectations().await?;
     for wait in db.tasks().spawned_waits().await? {
         let Some(template) = db.tasks().async_template(TaskId(wait.task_id)).await? else {
             continue;
         };
-        let time_scope = match (&template.time_scope, wait.spawned_at) {
-            (Some(rule), Some(began)) => window_from_rule(rule, day_of(began))?,
-            _ => None,
+        let key = spawned_key(wait.task_id);
+        let overlay = overlays.get(&key).cloned().unwrap_or_default();
+        let schedule = spawned_schedule(&template, wait.spawned_at, &overlay)?;
+        let progress = WaitProgress {
+            check_starting: schedule.check_starting,
+            ..WaitProgress::of(&wait)
         };
-        let due = template
+        let due = schedule
             .check_every
             .as_ref()
-            .and_then(|every| spawned_check_due(&wait, every, now))
+            .and_then(|every| next_spawned_check(&progress, every, now))
             .filter(|due| is_due(*due, now));
+        let check_starting = schedule
+            .check_every
+            .as_ref()
+            .and_then(|every| first_spawned_check(&progress, every));
         let next_check = due.map(check_window);
         // Checks from an earlier completion of the Task belong to that one, not this.
         let mut done_checks = Vec::new();
@@ -657,7 +723,9 @@ pub async fn derive_wait_windows<M: SessionMode>(
         }
         windows.spawned_waits.push(SpawnedWaitView {
             wait,
-            time_scope,
+            time_scope: schedule.time_scope,
+            check_every: schedule.check_every,
+            check_starting,
             next_check,
             next_check_at: due,
             done_checks,
@@ -703,12 +771,18 @@ pub async fn complete_spawned_check<M: SessionMode>(
         .spawned_wait(task)
         .await?
         .ok_or(TaskError::NoSpawnedWait(task.0))?;
-    let Some(due) = db
-        .tasks()
-        .async_template(task)
-        .await?
-        .and_then(|template| template.check_every)
-        .and_then(|every| spawned_check_due(&wait, &every, at))
+    let overlay = db.overlays().expectation(&spawned_key(task.0)).await?;
+    let schedule = match db.tasks().async_template(task).await? {
+        Some(template) => spawned_schedule(&template, wait.spawned_at, &overlay)?,
+        None => SpawnedSchedule::default(),
+    };
+    let progress = WaitProgress {
+        check_starting: schedule.check_starting,
+        ..WaitProgress::of(&wait)
+    };
+    let Some(due) = schedule
+        .check_every
+        .and_then(|every| next_spawned_check(&progress, &every, at))
         .filter(|due| is_due(*due, at))
     else {
         return Err(TaskError::NoCheckDue);

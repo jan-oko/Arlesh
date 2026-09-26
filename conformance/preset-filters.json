@@ -785,6 +785,7 @@
         "expectation-archived",
         "expectation-check-ahead",
         "expectation-checked",
+        "expectation-checked-idle",
         "expectation-delegation",
         "expectation-late",
         "expectation-pending",
@@ -809,6 +810,7 @@
         "expectation-archived",
         "expectation-check-ahead",
         "expectation-checked",
+        "expectation-checked-idle",
         "expectation-delegation",
         "expectation-late",
         "expectation-pending",
@@ -826,6 +828,7 @@
         "domain-work",
         "expectation-check-ahead",
         "expectation-checked",
+        "expectation-checked-idle",
         "expectation-delegation",
         "expectation-late",
         "expectation-pending",
@@ -845,16 +848,51 @@
       "expectations": [
         "expectation-check-ahead",
         "expectation-checked",
+        "expectation-checked-idle",
         "expectation-delegation",
         "expectation-late",
         "expectation-pending"
       ]
     },
     {
-      "name": "start shows a pending expectation only when it has no check chain, and the check task under the ordinary task rules",
-      "spec": "resources.md, Expectations — Start shows a pending Expectation only when it has no check chain; the virtual check task follows the ordinary Task preset rules. A task depending on a pending Expectation is blocked. A wait whose own Time Scope has lapsed drops out of Start, as a Task's does.",
+      "name": "start shows every pending live expectation, checked on or not, and the check task under the ordinary task rules",
+      "spec": "mindmap-view.md, Start — by default Start shows a pending, live Expectation whether or not it has a Check every; its check task follows the ordinary Task preset rules. A task depending on a pending Expectation is blocked. A wait whose own Time Scope has lapsed drops out of Start, as a Task's does.",
       "filter": {
         "preset": "start"
+      },
+      "board": "waits",
+      "mindmap": [
+        "domain-work",
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-checked-idle",
+        "expectation-delegation",
+        "expectation-pending",
+        "goal-w",
+        "info-on-wait",
+        "task-check-ahead",
+        "task-check-open",
+        "task-delegated"
+      ],
+      "list": [
+        "task-check-ahead",
+        "task-check-open"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-check-ahead",
+        "expectation-checked",
+        "expectation-checked-idle",
+        "expectation-delegation",
+        "expectation-pending"
+      ]
+    },
+    {
+      "name": "with the setting on, start shows a pending expectation only when it has no check chain, and the check task under the ordinary task rules",
+      "spec": "mindmap-view.md, Start — with \"Start hides waits that have checks\" on (an app-wide setting, off by default), Start shows a pending Expectation only when it has no Check every; its check task follows the ordinary Task preset rules. A wait whose own Time Scope has lapsed drops out of Start, as a Task's does.",
+      "filter": {
+        "preset": "start",
+        "startHidesCheckedWaits": true
       },
       "board": "waits",
       "mindmap": [
@@ -916,6 +954,7 @@
         "expectation-archived",
         "expectation-check-ahead",
         "expectation-checked",
+        "expectation-checked-idle",
         "expectation-delegation",
         "expectation-late",
         "expectation-pending",
@@ -933,6 +972,7 @@
       "expectations": [
         "expectation-check-ahead",
         "expectation-checked",
+        "expectation-checked-idle",
         "expectation-delegation",
         "expectation-late",
         "expectation-pending"
@@ -950,6 +990,7 @@
         "domain-work",
         "expectation-check-ahead",
         "expectation-checked",
+        "expectation-checked-idle",
         "expectation-delegation",
         "expectation-pending",
         "goal-w",
@@ -963,6 +1004,7 @@
       "expectations": [
         "expectation-check-ahead",
         "expectation-checked",
+        "expectation-checked-idle",
         "expectation-delegation",
         "expectation-late",
         "expectation-pending"
@@ -981,6 +1023,7 @@
         "expectation-archived",
         "expectation-check-ahead",
         "expectation-checked",
+        "expectation-checked-idle",
         "expectation-delegation",
         "expectation-late",
         "expectation-pending",
@@ -1012,6 +1055,7 @@
         "expectation-archived",
         "expectation-check-ahead",
         "expectation-checked",
+        "expectation-checked-idle",
         "expectation-delegation",
         "expectation-late",
         "expectation-pending",
@@ -1035,6 +1079,7 @@
         "expectation-archived",
         "expectation-check-ahead",
         "expectation-checked",
+        "expectation-checked-idle",
         "expectation-delegation",
         "expectation-late",
         "expectation-pending"
@@ -1052,6 +1097,7 @@
         "domain-work",
         "expectation-check-ahead",
         "expectation-checked",
+        "expectation-checked-idle",
         "expectation-late",
         "expectation-pending",
         "expectation-released",
@@ -1070,6 +1116,7 @@
       "expectations": [
         "expectation-check-ahead",
         "expectation-checked",
+        "expectation-checked-idle",
         "expectation-delegation",
         "expectation-late",
         "expectation-pending",
@@ -1248,7 +1295,7 @@
     },
     {
       "name": "start keeps a due check task under a wait whose task is planned ahead",
-      "spec": "resources.md, Expectations / mindmap-view.md — a wait cuts Plan inheritance: its check task has no Plan and answers to its own due time, so a Task planned for next week does not hide the check due today beneath its wait.",
+      "spec": "resources.md, Expectations / mindmap-view.md — a wait cuts Plan inheritance: its check task has no Plan and answers to its own due time, so a Task planned for next week does not hide the check due today beneath its wait. The wait itself shows as well: by default Start shows a pending wait whether or not it is checked on, and no Plan hides it.",
       "filter": {
         "preset": "start"
       },
@@ -1263,7 +1310,9 @@
         "task-check-under-wait"
       ],
       "commitments": [],
-      "expectations": []
+      "expectations": [
+        "expectation-wait-ahead"
+      ]
     },
     {
       "name": "plan with a scope keeps the tasks whose effective time scope is contained in it",
@@ -1903,6 +1952,12 @@
                       "timing": "pending"
                     }
                   ]
+                },
+                {
+                  "id": "expectation-checked-idle",
+                  "kind": "expectation",
+                  "status": "pending",
+                  "hasCheck": true
                 },
                 {
                   "id": "expectation-released",

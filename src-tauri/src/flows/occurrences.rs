@@ -107,7 +107,7 @@ struct HabitRelations {
 }
 
 /// The template's tags with one occurrence's differences applied.
-fn effective_tags(template: &[i64], differences: Option<&Vec<(i64, bool)>>) -> Vec<i64> {
+pub(crate) fn effective_tags(template: &[i64], differences: Option<&Vec<(i64, bool)>>) -> Vec<i64> {
     let mut tags: Vec<i64> = template.to_vec();
     for (tag, added) in differences.map(Vec::as_slice).unwrap_or_default() {
         tags.retain(|existing| existing != tag);

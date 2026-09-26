@@ -287,9 +287,12 @@ pub fn is_live_expectation(node: &NodeFacts) -> bool {
 /// Whether an Expectation shows under the active preset.
 ///
 /// A wait is not work, so it answers to its own rule. **All** shows every one. A **pending**, live
-/// one shows under **Plan** — it is part of what is in play — and under **Start** only when it has
-/// no Check every: with one, the virtual check task beneath it is the thing to start, and that task
-/// answers the ordinary Task rules. **Do** and **Backlog** show none: nothing about a wait is
+/// one shows under **Plan** — it is part of what is in play — and under **Start** while its window
+/// has not passed, whether or not it is checked on; its check tasks answer the ordinary Task rules
+/// beside it. With [`BoardFilter::start_hides_checked_waits`] on (an app-wide setting, off by
+/// default), Start shows one only when it has **no** Check every: the check task beneath it is then
+/// the thing to start, and stands in for it. Stored and derived waits alike. **Do** and **Backlog**
+/// show none: nothing about a wait is
 /// underway on your side, and a wait cannot be set aside. A **released** or **archived** one shows
 /// under All only.
 ///
@@ -301,7 +304,10 @@ pub fn passes_expectation_preset(node: &NodeFacts, filter: &BoardFilter) -> bool
         Preset::Plan => is_live_expectation(node),
         // A window that has passed drops out of Start, as a Task's does.
         Preset::Start => {
-            is_live_expectation(node) && !node.has_check && node.timing != Some(Timing::Lapsed)
+            let hidden_for_its_check = filter.start_hides_checked_waits && node.has_check;
+            is_live_expectation(node)
+                && !hidden_for_its_check
+                && node.timing != Some(Timing::Lapsed)
         }
         Preset::Do | Preset::Backlog => false,
     }

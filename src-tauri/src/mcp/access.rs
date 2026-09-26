@@ -114,9 +114,10 @@ pub(super) fn restrict_block_reasons(
 /// What the MCP can see of one snapshot's rows, stored and derived alike.
 ///
 /// A stored row is visible when the MCP roots reach it ([`AccessMap`]). A derived row — a Habit
-/// occurrence, a wait's check task, a spawned or delegation wait — is a row of nothing, is never a
-/// root and never writable, and is visible exactly when it is not private and the nearest stored
-/// row above it is visible. Its parents are read off the snapshot itself, since a derived row's
+/// occurrence, a wait's check task, a spawned or delegation wait — is a row of nothing and never a
+/// root; it is written only where a tool says so (an Agentic occurrence through `arlesh_tasks`, an
+/// agentic wait's release through `arlesh_waits`), and is visible exactly when it is not private
+/// and the nearest stored row above it is visible. Its parents are read off the snapshot itself, since a derived row's
 /// parent can be derived too (an occurrence under its iteration's root).
 struct SnapshotView<'map> {
     map: &'map AccessMap,

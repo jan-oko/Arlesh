@@ -124,13 +124,62 @@ export function isAsynchronousValue(value: string): value is AsynchronousValue {
   return (ASYNCHRONOUS_VALUES as readonly string[]).includes(value);
 }
 
+/** The three actionable kinds the List View draws as rows, in the order its selector lists them. */
+export const LIST_ROW_KINDS = ["task", "commitment", "expectation"] as const;
+export type ListRowKind = (typeof LIST_ROW_KINDS)[number];
+
+export function isListRowKind(value: unknown): value is ListRowKind {
+  return LIST_ROW_KINDS.some((kind) => kind === value);
+}
+
+/**
+ * Why toggling a row kind is refused. `lastKind`: it is the only kind still shown, and a list
+ * showing no kind at all is an empty screen nobody asked for. `expectationsOption`: the List View's
+ * **Expectations** option already is a kind choice — waits and nothing else — so the selector
+ * stands aside while it is chosen rather than quietly editing a setting that has no effect.
+ */
+export type RowKindRefusal = "lastKind" | "expectationsOption";
+
+/** Whether the kind selector answers at all under `preset` — every option but Expectations. */
+export function rowKindsApply(preset: ListPreset): boolean {
+  return preset !== "expectations";
+}
+
+/** Why `kind` cannot be toggled under `filter` right now, or `null` when it can. */
+export function rowKindToggleRefusal(filter: ListFilterState, kind: ListRowKind): RowKindRefusal | null {
+  if (!rowKindsApply(filter.preset)) return "expectationsOption";
+  const onlyThisOne = filter.kinds.length === 1 && filter.kinds[0] === kind;
+  return onlyThisOne ? "lastKind" : null;
+}
+
+/** `kinds` with `kind` flipped, kept in {@link LIST_ROW_KINDS} order. Does not guard the last kind —
+ * ask {@link rowKindToggleRefusal} first. */
+export function withRowKindToggled(kinds: readonly ListRowKind[], kind: ListRowKind): ListRowKind[] {
+  const shown = kinds.includes(kind);
+  return LIST_ROW_KINDS.filter((candidate) => (candidate === kind ? !shown : kinds.includes(candidate)));
+}
+
+/**
+ * A stored kind selection, read back: the valid kinds it names, in canonical order. Anything that
+ * leaves no kind at all — a missing field from a tab stored before the selector existed, a malformed
+ * value, an empty list — reads as every kind, since "none" is the one selection the UI never makes.
+ */
+export function readRowKinds(value: unknown): ListRowKind[] {
+  if (!Array.isArray(value)) return [...LIST_ROW_KINDS];
+  const kinds = LIST_ROW_KINDS.filter((kind) => value.includes(kind));
+  return kinds.length > 0 ? kinds : [...LIST_ROW_KINDS];
+}
+
 export interface ListFilterState {
   preset: ListPreset;
+  /** Which actionable kinds the list draws as rows. Never empty; ignored under the Expectations option. */
+  kinds: ListRowKind[];
   pills: Record<PillDimension, PillFilter[]>;
 }
 
 export const DEFAULT_LIST_FILTER: ListFilterState = {
   preset: "all",
+  kinds: [...LIST_ROW_KINDS],
   pills: {
     antecedent: [], dependency: [],
     taskStatus: [], goalStatus: [], projectStatus: [], verdict: [],
@@ -150,6 +199,8 @@ function isPillFilter(value: unknown): value is PillFilter {
  * pill map is read as an untrusted map rather than as today's exact set of dimensions. */
 export interface PersistedListFilter {
   preset: ListPreset;
+  /** Absent from a tab stored before the kind selector existed; read by {@link readRowKinds}. */
+  kinds?: unknown;
   pills: Record<string, unknown>;
 }
 
@@ -167,7 +218,7 @@ export function withCurrentPillDimensions(filter: PersistedListFilter): ListFilt
     const persisted = filter.pills[dimension];
     pills[dimension] = Array.isArray(persisted) ? persisted.filter(isPillFilter) : [];
   }
-  return { preset: filter.preset, pills };
+  return { preset: filter.preset, kinds: readRowKinds(filter.kinds), pills };
 }
 
 /** One flattened Task row, precomputed with everything the filters and UI need. */
@@ -366,6 +417,7 @@ function unblockSharedFilter(shared: FilterState): FilterState {
 function rowPassesFilters(row: TaskListRow, shared: FilterState, listFilter: ListFilterState): boolean {
   // The Expectations option shows waits and nothing else.
   if (listFilter.preset === "expectations") return false;
+  if (!listFilter.kinds.includes("task")) return false;
   const effectiveShared = listFilter.preset === "unblock" ? unblockSharedFilter(shared) : shared;
   if (typeHardHidden(row.node, effectiveShared)) return false;
   if (!shared.privateMode && row.hasPrivateAncestor) return false;
@@ -425,6 +477,7 @@ function commitmentPassesFilters(row: CommitmentListRow, shared: FilterState, li
   if (listFilter.preset === "unblock" || listFilter.preset === "backlog" || listFilter.preset === "expectations") {
     return false;
   }
+  if (!listFilter.kinds.includes("commitment")) return false;
   if (typeHardHidden(row.node, shared)) return false;
   if (!shared.privateMode && row.hasPrivateAncestor) return false;
   if (hasGatingAncestor(row.ancestors, shared)) return false;
@@ -457,6 +510,8 @@ export function filterExpectationList(
 function expectationPassesFilters(row: ExpectationListRow, shared: FilterState, listFilter: ListFilterState): boolean {
   if (listFilter.preset === "unblock") return false;
   const onlyWaits = listFilter.preset === "expectations";
+  // The Expectations option is itself the kind choice, so the selector does not answer under it.
+  if (!onlyWaits && !listFilter.kinds.includes("expectation")) return false;
   const effective = onlyWaits ? unblockSharedFilter(shared) : shared;
   if (typeHardHidden(row.node, effective)) return false;
   if (!shared.privateMode && row.hasPrivateAncestor) return false;

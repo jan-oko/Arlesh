@@ -79,6 +79,8 @@ struct CorpusFilter {
     plan_scope: Option<ScopeKey>,
     #[serde(default)]
     scope_match: ScopeMatch,
+    #[serde(default)]
+    start_hides_checked_waits: bool,
 }
 
 fn yes() -> bool {
@@ -114,6 +116,7 @@ impl From<&CorpusFilter> for BoardFilter {
             backlog: filter.backlog,
             plan_scope: filter.plan_scope,
             scope_match: filter.scope_match,
+            start_hides_checked_waits: filter.start_hides_checked_waits,
         }
     }
 }

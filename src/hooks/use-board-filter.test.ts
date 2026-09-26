@@ -3,7 +3,7 @@ import { act, renderHook } from "@testing-library/react";
 import { useBoardFilter } from "./use-board-filter";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useDisplayStore } from "@/stores/use-display-store";
-import { DEFAULT_FILTER } from "@/utils/filter-tree";
+import { DEFAULT_FILTER, passesExpectationPreset } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER, filterTaskList } from "@/utils/list-filter";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -32,7 +32,7 @@ beforeEach(() => {
   useFilterStore.setState({
     filter: { ...DEFAULT_FILTER, statusMode: "plan", planScope: { kind: "week", date: "2026-09-20" } },
   });
-  useDisplayStore.setState({ planScopeOverlapping: false });
+  useDisplayStore.setState({ planScopeOverlapping: false, startHidesCheckedWaits: false });
 });
 
 describe("useBoardFilter", () => {
@@ -47,6 +47,23 @@ describe("useBoardFilter", () => {
     expect(result.current.scopeMatch).toBe("overlapping");
     // Overlap keeps the straddling window, and an Unscoped Task, always relevant, overlaps every scope.
     expect(kept()).toEqual(["inside", "straddling", "unscoped"]);
+  });
+
+  it("fills in whether Start hides a wait that has checks: off by default, so Start shows it", () => {
+    const checked: MindmapNode = {
+      id: "wait", kind: "expectation", title: "wait", position: 0, tagIds: [], children: [],
+      status: "pending", checkEvery: { n: 1, kind: "hour" },
+    };
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "start" } });
+    const { result } = renderHook(() => useBoardFilter());
+    expect(result.current.startHidesCheckedWaits).toBe(false);
+    expect(passesExpectationPreset(checked, result.current)).toBe(true);
+
+    act(() => { useDisplayStore.getState().toggleStartHidesCheckedWaits(); });
+    expect(result.current.startHidesCheckedWaits).toBe(true);
+    expect(passesExpectationPreset(checked, result.current)).toBe(false);
+    expect(passesExpectationPreset({ ...checked, checkEvery: null }, result.current)).toBe(true);
+    expect(useFilterStore.getState().filter.startHidesCheckedWaits).toBeUndefined();
   });
 
   it("leaves the tab's stored filter without a match of its own", () => {

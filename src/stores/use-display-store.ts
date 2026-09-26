@@ -96,6 +96,15 @@ interface DisplayStore {
    */
   planScopeOverlapping: boolean;
   togglePlanScopeOverlapping: () => void;
+  /**
+   * Whether the **Start** preset hides a pending wait that has a Check every, showing only the
+   * check task beneath it as the thing to start.
+   *
+   * **Off by default** (ruled by the user, 2026-09-26): Start then shows the wait itself, checked
+   * on or not, beside its check task. App-wide, like `planScopeOverlapping`.
+   */
+  startHidesCheckedWaits: boolean;
+  toggleStartHidesCheckedWaits: () => void;
 }
 
 /** Keeps a stored or typed threshold inside the range the setting offers. */
@@ -151,6 +160,9 @@ export const useDisplayStore = create<DisplayStore>()(
         set((s) => ({ planIncludePremorning: !s.planIncludePremorning })),
       planScopeOverlapping: false,
       togglePlanScopeOverlapping: () => set((s) => ({ planScopeOverlapping: !s.planScopeOverlapping })),
+      startHidesCheckedWaits: false,
+      toggleStartHidesCheckedWaits: () =>
+        set((s) => ({ startHidesCheckedWaits: !s.startHidesCheckedWaits })),
     }),
     { name: "arlesh-display" },
   ),

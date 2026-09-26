@@ -75,7 +75,8 @@ model was simplified and was not revoked by it.
 subtypes), Goal, Task, Commitment, Expectation, Info, Flow or flow item — keyed by its table and its
 row id, the way the node's own table keys it. A **derived** row (ADR 0008 — a Habit occurrence, a wait's check
 task, a delegated Task's wait, a spawned wait, each an ordinary row of its kind with a UUID id and
-an `origin`) is never a root and never writable by the MCP: it is visible exactly when it is not
+an `origin`) is never a root, and is written only where a tool says so (an Agentic occurrence
+through `arlesh_tasks`, an agentic derived wait's release through `arlesh_waits`): it is visible exactly when it is not
 private and the nearest **stored** row above it is visible, climbing through derived parents (an
 occurrence under its iteration's root) to get there. A stored row hung on an occurrence is a stored
 row like any other, visible by the roots above the Habit's host its columns name.
@@ -187,13 +188,27 @@ A Commitment arrives with its `verdict` (`unresolved` / `kept` / `broken`) and i
 lifecycle. The verdict is recorded, never inferred, and `unresolved` means the user has not said
 rather than "not done" — an agent that reads it as an unfinished task has misread the board.
 
-An Expectation — a wait tasks can depend on — arrives in its own `expectations` section, read-only,
-with its `status` (`pending` / `released`), its `archival` and its optional `check_every` (a count
-and a kind), `check_starting` and `last_check_at`. The day each checked wait's next check is due is
-in `expectation_checks`. An `asynchronous` task may carry an `async_template`; while such a task
-is done, the wait it spawned is in `spawned_waits`, keyed by the task, with its own lifecycle
-entries (`spawned_wait`, `spawned_check`). The derived nodes the views draw — a wait's check task, a delegated task's wait,
-a spawned wait — are not rows of their own: they are read off these sections and the task rows. Querying waits is `Arlesh-rz0`'s.
+An Expectation — a wait tasks can depend on — arrives in its own `expectations` section, with its
+`status` (`pending` / `released`), its `archival` and its optional `check_every` (a count and a
+kind), `check_starting` and `last_check_at`. The section holds **every** wait, stored and derived
+alike (ADR 0008, [Derived nodes](virtual-nodes.md)): the wait an `asynchronous` task's completion
+spawned (`origin` `{"kind": "spawned_wait", "task_id": …}`) and a delegated task's wait
+(`{"kind": "delegation_wait", …}`) are ordinary rows of it, with a UUID `id`, `parent_type` `task`
+and their Task as `parent_id`. A derived wait is read **as it is edited**: its title, window, Check
+every and Starting, privacy, tags and agent fields are what its template (or its Task) draws them
+as, under whatever was written to that one wait in the app — its overlay (`expectation_overlays`)
+and its tag differences — exactly as a Habit occurrence reads. Its checks are Task rows in `tasks`
+(`origin` `{"kind": "check", …}`) under it, and its lifecycle is in `lifecycles` under its own id,
+as a stored wait's is. The task's own `async_template` rides on the task. A spawned wait exists
+only while its Task is done; un-completing the Task drops it from the snapshot, and completing it
+again brings the same wait back, with everything written to it.
+
+An agent reaches a derived wait as it reaches a stored one: `arlesh_waits.get` reads it by its full
+or short id, and `arlesh_waits.release` releases it when it is **agentic** — which a spawned wait
+becomes the way any wait does, by the user setting it in the app — and hangs under a Task the agent
+can write. The release lands in the wait's own state, never in its template. A delegated task's wait
+is released only by its Task being done, so releasing one is refused. `raise` and `ask` create a
+stored wait, as before; the MCP writes nothing else to a derived wait.
 
 Tasks, Goals and Commitments carry `time_scope` and `plan` as boundary **scope ids**, and a scope's
 id is its value key — `{"kind":"week","date":"2026-09-20"}`, `{"kind":"part_of_day","date":"2026-09-23","part":"morning"}` (see
@@ -242,7 +257,9 @@ list's rows are the blocked ones and the preset does not answer for them (see
 [*List View*](list-view.md)). The Archived and Backlog pills, the tag filters, the Info/Flow toggles
 and Private Mode are all carried too, and so is the Plan preset's **scope narrowing** —
 `plan_scope`, a scope key, and `scope_match`, `contained` (the default) or `overlapping`, the
-app-wide setting the UI fills in (see [*Mindmap*](mindmap-view.md)) — each defaulting to what the
+app-wide setting the UI fills in (see [*Mindmap*](mindmap-view.md)) — and `start_hides_checked_waits`,
+whether **Start** hides a pending wait that has a Check every (`false`, the default, shows it; the
+UI fills it in from its app-wide setting, see [*Expectations*](resources.md)) — each defaulting to what the
 app's own filter defaults to —
 so `{"preset": "all"}` is the app's neutral filter, where omitting `filter` entirely applies no
 filter at all. "Everything, unfiltered" and "everything the neutral filter shows" are different

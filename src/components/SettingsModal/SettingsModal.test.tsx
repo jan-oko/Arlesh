@@ -118,6 +118,18 @@ describe("SettingsModal", () => {
     expect(useDisplayStore.getState().planScopeOverlapping).toBe(false);
   });
 
+  it("makes Start hide waits that have checks on General, off until switched on", () => {
+    useDisplayStore.setState({ startHidesCheckedWaits: false });
+    open();
+
+    const control = screen.getByRole("checkbox", { name: "startHidesCheckedWaits" });
+    expect(control).not.toBeChecked();
+    fireEvent.click(control);
+    expect(useDisplayStore.getState().startHidesCheckedWaits).toBe(true);
+    fireEvent.click(control);
+    expect(useDisplayStore.getState().startHidesCheckedWaits).toBe(false);
+  });
+
   it("turns close-to-tray off under Windows & tray", () => {
     open();
     goTo("windows");

@@ -1259,7 +1259,9 @@ impl<'session> FlowOperator<'session> {
              UNION SELECT dependent_key FROM derived_dependencies WHERE dependent_key IS NOT NULL
              UNION SELECT target_key FROM derived_dependencies WHERE target_key IS NOT NULL
              UNION SELECT node_key FROM occurrence_async_templates
-             UNION SELECT node_key FROM occurrence_spawned_waits",
+             UNION SELECT node_key FROM occurrence_spawned_waits
+             UNION SELECT occurrence_key FROM expectation_overlays
+                 WHERE occurrence_key IS NOT NULL",
         )
         .fetch_all(&mut *self.connection)
         .await?;

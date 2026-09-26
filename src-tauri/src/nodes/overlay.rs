@@ -267,7 +267,7 @@ impl AsyncTemplateRow {
 
 /// Reads and writes the overlays on one connection. Opens no transaction of its own.
 pub struct OverlayOperator<'session> {
-    connection: &'session mut SqliteConnection,
+    pub(super) connection: &'session mut SqliteConnection,
 }
 
 impl<'session> OverlayOperator<'session> {
@@ -758,6 +758,7 @@ impl<'session> OverlayOperator<'session> {
             "derived_dependencies",
             "occurrence_async_templates",
             "occurrence_spawned_waits",
+            "expectation_overlays",
         ] {
             sqlx::query(&format!("DELETE FROM {table} WHERE flow_id = ?"))
                 .bind(flow_id)
@@ -786,6 +787,7 @@ impl<'session> OverlayOperator<'session> {
             ("derived_dependencies", "target_key"),
             ("occurrence_async_templates", "node_key"),
             ("occurrence_spawned_waits", "node_key"),
+            ("expectation_overlays", "occurrence_key"),
             ("wait_checks", "wait_key"),
         ] {
             sqlx::query(&format!("DELETE FROM {table} WHERE {column} LIKE ?"))

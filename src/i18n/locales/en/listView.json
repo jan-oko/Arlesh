@@ -9,6 +9,17 @@
     "expectations": "Expectations"
   },
   "statusPresetLabel": "Status preset",
+  "rowKindsLabel": "Show",
+  "rowKind": {
+    "task": "Tasks",
+    "commitment": "Commitments",
+    "expectation": "Expectations"
+  },
+  "rowKindTooltip": "Show or hide {{kind}} ({{chord}})",
+  "rowKindRefused": {
+    "lastKind": "At least one kind stays shown — turn another on first.",
+    "expectationsOption": "The Expectations option already shows Expectations only — pick another option to choose kinds."
+  },
   "hierarchyClusterLabel": "Hierarchy",
   "statusScopeClusterLabel": "Status & Scope",
   "empty": "No tasks match the current filters.",

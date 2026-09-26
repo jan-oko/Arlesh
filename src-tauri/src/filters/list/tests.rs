@@ -351,8 +351,14 @@ fn the_expectations_option_shows_pending_waits_and_nothing_else() {
 fn expectation_rows_answer_the_preset_and_unblock_empties_them() {
     assert_eq!(
         expectation_rows(&waits(), &BoardFilter::preset(Preset::Start)),
-        ["expectation-1"]
+        ["expectation-1", "expectation-2"],
+        "by default Start shows a checked wait too"
     );
+    let hiding = BoardFilter {
+        start_hides_checked_waits: true,
+        ..BoardFilter::preset(Preset::Start)
+    };
+    assert_eq!(expectation_rows(&waits(), &hiding), ["expectation-1"]);
     assert_eq!(
         expectation_rows(&waits(), &BoardFilter::preset(Preset::All)),
         ["expectation-1", "expectation-2", "expectation-3"]

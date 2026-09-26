@@ -57,6 +57,7 @@ export function listKeyboardContext(overrides: Partial<ListOptions> = {}): ListO
     onDeselect: vi.fn(),
     onSetStatusMode: vi.fn(),
     onSetUnblockPreset: vi.fn(),
+    onToggleRowKind: vi.fn(),
     onToggleBacklog: vi.fn(),
     onToggleAgentic: vi.fn(),
     onToggleAsynchronous: vi.fn(),

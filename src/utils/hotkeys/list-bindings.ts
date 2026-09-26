@@ -10,6 +10,7 @@ import { LIST_FLAGS_BINDINGS, type ListFlagsContext } from "./list/flags";
 import { LIST_FULLSCREEN_BINDINGS, type ListFullscreenContext } from "./list/fullscreen";
 import { LIST_HISTORY_BINDINGS, type ListHistoryContext } from "./list/history";
 import { LIST_NAVIGATE_BINDINGS, type ListNavigateContext } from "./list/navigate";
+import { LIST_ROW_KINDS_BINDINGS, type ListRowKindsContext } from "./list/row-kinds";
 import { LIST_RENAME_BINDINGS, type ListRenameContext } from "./list/rename";
 import { LIST_SCROLL_BINDINGS, type ListScrollContext } from "./list/scroll";
 import { LIST_STATUS_BINDINGS, type ListStatusContext } from "./list/status";
@@ -38,6 +39,7 @@ export interface ListContext extends
   ListHistoryContext,
   ListNavigateContext,
   ListRenameContext,
+  ListRowKindsContext,
   ListScrollContext,
   ListStatusContext,
   ListStatusPresetContext,
@@ -56,6 +58,7 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
   ...LIST_FULLSCREEN_BINDINGS,
   ...LIST_STATUS_PRESET_BINDINGS,
   ...LIST_UNBLOCK_PRESET_BINDINGS,
+  ...LIST_ROW_KINDS_BINDINGS,
   ...LIST_NAVIGATE_BINDINGS,
   ...LIST_SCROLL_BINDINGS,
   ...LIST_STATUS_BINDINGS,

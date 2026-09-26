@@ -14,6 +14,28 @@ describe("setPreset", () => {
   });
 });
 
+describe("toggleKind", () => {
+  it("hides a kind, then shows it again", () => {
+    useListFilterStore.getState().toggleKind("task");
+    expect(useListFilterStore.getState().filter.kinds).toEqual(["commitment", "expectation"]);
+    useListFilterStore.getState().toggleKind("task");
+    expect(useListFilterStore.getState().filter.kinds).toEqual(["task", "commitment", "expectation"]);
+  });
+
+  it("will not hide the last kind shown", () => {
+    useListFilterStore.getState().toggleKind("task");
+    useListFilterStore.getState().toggleKind("commitment");
+    useListFilterStore.getState().toggleKind("expectation");
+    expect(useListFilterStore.getState().filter.kinds).toEqual(["expectation"]);
+  });
+
+  it("changes nothing under the Expectations option", () => {
+    useListFilterStore.getState().setPreset("expectations");
+    useListFilterStore.getState().toggleKind("task");
+    expect(useListFilterStore.getState().filter.kinds).toEqual(["task", "commitment", "expectation"]);
+  });
+});
+
 describe("addPill / setPillMode / removePill", () => {
   it("adds a pill in 'any' mode by default, to the given dimension only", () => {
     useListFilterStore.getState().addPill("antecedent", "goal-1");

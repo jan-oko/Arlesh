@@ -477,15 +477,17 @@ export function buildTree(
   const taskById = new Map(tasks.map((t) => [t.id, t]));
   for (const expectation of expectations) {
     const id = expectationNodeId(expectation.id);
-    // A delegated Task's wait is drawn as what it waits on; the row's title is the Task's.
-    const isDelegation = expectation.origin?.kind === "delegation_wait";
+    // A delegated Task's wait is drawn as what it waits on while its title is the Task's; one given
+    // a title of its own is drawn with it. The row's title is what its editor edits.
+    const labelled = expectation.origin?.kind === "delegation_wait"
+      && taskById.get(expectation.parent_id)?.title === expectation.title;
     nodeMap.set(id, {
       id,
       rowId: expectation.id,
       origin: expectation.origin ?? { kind: "manual" },
       kind: "expectation",
-      title: isDelegation ? delegationWaitTitle(expectation.title) : expectation.title,
-      ...(isDelegation ? { rowTitle: expectation.title } : {}),
+      title: labelled ? delegationWaitTitle(expectation.title) : expectation.title,
+      ...(labelled ? { rowTitle: expectation.title } : {}),
       status: expectation.status,
       archived: expectation.archival === EXPECTATION_ARCHIVAL.ARCHIVED,
       checkEvery: expectation.check_every ?? null,

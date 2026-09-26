@@ -393,7 +393,9 @@ pub async fn update_expectation(
                 DerivedKey::SpawnedWait(task) => {
                     wait_edit::update_spawned_wait(db, &task, request, now).await
                 }
-                DerivedKey::DelegationWait(_) => Err(wait_edit::refuse_delegation_wait()),
+                DerivedKey::DelegationWait(task) => {
+                    wait_edit::update_delegation_wait(db, &task, request, now).await
+                }
                 _ => Err(wrong_kind(&NodeId::Derived(derived.clone()), "expectation")),
             };
         }
@@ -509,12 +511,12 @@ pub async fn set_tag(
                 .set_tag(None, "task", &check.node_key(), tag_id, false, present)
                 .await?);
         }
-        _ => {
-            return Err(FlowError::Refused(
-                "a derived wait's tags are its Task's Expectation template's".to_string(),
-            )
-            .into())
+        wait @ (DerivedKey::SpawnedWait(_) | DerivedKey::DelegationWait(_))
+            if kind == "expectation" =>
+        {
+            return wait_edit::set_wait_tag(db, &wait, tag_id, present, now).await;
         }
+        _ => return Err(wrong_kind(&NodeId::Derived(derived.clone()), kind)),
     };
     let flow_id = db.flows().occurrence_flow_id(&key).await?;
     let template = occurrence_edit::template_fields(db, &key).await?;

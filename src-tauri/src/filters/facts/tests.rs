@@ -466,3 +466,46 @@ fn a_done_check_task_is_dropped_by_the_presets_that_hide_done_work() {
     let check = find(&forest, &done_fact).expect("the done check stays on the board");
     assert_eq!(check.facts.status.as_deref(), Some("done"));
 }
+
+/// The wait an Asynchronous Task's completion spawned is an Expectation of its own: it takes no
+/// Plan from the Task it hangs under, and under Start neither it nor its check task is hidden by
+/// that Task's Plan still being ahead.
+#[test]
+fn a_spawned_wait_takes_no_plan_from_its_planned_task() {
+    use crate::nodes::{key::DerivedKey, origin::WaitOrigin};
+
+    let mut load = board();
+    let task_id = NodeId::Stored(22);
+    let wait_id = DerivedKey::SpawnedWait(task_id.clone()).node_id();
+    // Task 22 is done and planned into a week that has not begun yet.
+    let mut planned = lifecycle("task", 22, Timing::Lapsed, Archival::Live);
+    planned.plan_timing = Some(Timing::Pending);
+    load.lifecycles.push(planned);
+    // One spawned wait with no Check every, and one with a check due now.
+    let mut spawned = expectation_row(0, "task", 22);
+    spawned.id = wait_id.clone();
+    spawned.origin = crate::nodes::origin::Origin::SpawnedWait(WaitOrigin {
+        task_id: task_id.clone(),
+    });
+    load.lifecycles.push(ItemLifecycle {
+        node_id: wait_id.clone(),
+        ..lifecycle("expectation", 0, Timing::Active, Archival::Live)
+    });
+    load.expectations.push(spawned);
+    let check = Task {
+        parent_id: wait_id.clone(),
+        ..check_row("check:spawned:22@2026-07-04T02:00:00", 0, "todo")
+    };
+    let check_fact = format!("task-{}", check.id);
+    load.tasks.push(check);
+
+    let forest = forest(&load);
+    let wait_fact = format!("expectation-{wait_id}");
+    let wait = find(&forest, &wait_fact).expect("the spawned wait is on the board");
+    assert_eq!(wait.facts.plan_timing, None);
+
+    let start = tree::prune_forest(&forest, &BoardFilter::preset(Preset::Start));
+    let kept = tree::kept_ids_in_forest(&start);
+    assert!(kept.contains(&wait_fact), "{kept:?}");
+    assert!(kept.contains(&check_fact), "{kept:?}");
+}

@@ -67,3 +67,22 @@ describe("ExpectationEditorModal — an agent waiting on you", () => {
     expect(screen.queryByLabelText("expectation:agentNote")).toBeNull();
   });
 });
+
+describe("ExpectationEditorModal — a wait an Asynchronous Task spawned", () => {
+  const SPAWNED: MindmapNode = {
+    ...WAIT, rowId: "5b1d7c3e-0000-5000-8000-000000000005", origin: { kind: "spawned_wait", task_id: 5 },
+  };
+
+  it("offers every field a stored wait's editor does, and saves what was changed", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<ExpectationEditorModal node={SPAWNED} allTags={[]} domainNames={new Map()} onSave={onSave} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("editor:fieldTitle"), { target: { value: "Chase the reviewer" } });
+    fireEvent.change(screen.getByLabelText("expectation:fieldCheckEvery"), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "expectation:status.released" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({
+      title: "Chase the reviewer", status: "released", checkEvery: { n: 5, kind: "day" },
+    });
+  });
+});

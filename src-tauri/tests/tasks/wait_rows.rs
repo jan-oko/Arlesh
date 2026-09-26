@@ -315,19 +315,199 @@ async fn a_done_asynchronous_tasks_wait_is_an_expectation_row_released_like_any_
     .unwrap();
     db.commit().await.unwrap();
     assert_eq!(released.status, ExpectationStatus::Released);
+}
 
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let retitled = write::update_expectation(
-        &mut db,
-        &spawned.id,
-        UpdateExpectationRequest {
-            title: Some("Something else".into()),
+/// An Asynchronous Task, done, whose template draws "Reviewer replies" checked every week.
+async fn sent(pool: &sqlx::SqlitePool, project: i64) -> i64 {
+    task(
+        pool,
+        project,
+        UpdateTaskRequest {
+            asynchronous: Some(true),
+            async_template: Some(Some(AsyncTemplate {
+                title: "Reviewer replies".into(),
+                tag_ids: vec![],
+                time_scope: None,
+                check_every: Some(DurationSpec {
+                    n: 1,
+                    kind: "week".into(),
+                }),
+            })),
+            status: Some(TaskStatus::Done),
             ..Default::default()
         },
-        at(now),
+    )
+    .await
+}
+
+fn spawned_by(load: &MindmapLoad, task: i64) -> Expectation {
+    load.expectations
+        .iter()
+        .find(|expectation| {
+            matches!(expectation.origin, Origin::SpawnedWait(_))
+                && expectation.parent_id == NodeId::Stored(task)
+        })
+        .expect("the spawned wait is a row")
+        .clone()
+}
+
+async fn write_wait(
+    pool: &sqlx::SqlitePool,
+    id: &NodeId,
+    request: UpdateExpectationRequest,
+    now: &str,
+) -> Result<Expectation, arlesh_lib::error::AppError> {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    let written = write::update_expectation(&mut db, id, request, at(now)).await;
+    if written.is_ok() {
+        db.commit().await.unwrap();
+    }
+    written
+}
+
+async fn tag_wait(pool: &sqlx::SqlitePool, id: &NodeId, tag: i64, present: bool, now: &str) {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    write::set_tag(&mut db, "expectation", id, tag, present, at(now))
+        .await
+        .unwrap();
+    db.commit().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_spawned_wait_is_edited_like_any_expectation_and_the_edit_is_its_own() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let edited = sent(&pool, project).await;
+    let sibling = sent(&pool, project).await;
+    let now = "2099-01-01T12:00:00";
+    let wait = spawned_by(&board(&pool, now).await, edited);
+    // Any domain row serves as a tag here.
+    let tag = project;
+
+    let starting = at("2099-01-03T02:00:00");
+    write_wait(
+        &pool,
+        &wait.id,
+        UpdateExpectationRequest {
+            title: Some("Chase the reviewer".into()),
+            check_every: Some(Some(DurationSpec {
+                n: 2,
+                kind: "day".into(),
+            })),
+            check_starting: Some(starting),
+            is_private: Some(true),
+            ..Default::default()
+        },
+        now,
+    )
+    .await
+    .unwrap();
+    tag_wait(&pool, &wait.id, tag, true, now).await;
+
+    let load = board(&pool, now).await;
+    let read = spawned_by(&load, edited);
+    assert_eq!(read.id, wait.id, "still the same row");
+    assert_eq!(read.title, "Chase the reviewer");
+    assert_eq!(
+        read.check_every,
+        Some(DurationSpec {
+            n: 2,
+            kind: "day".into()
+        })
+    );
+    assert_eq!(read.check_starting, Some(starting));
+    assert!(read.is_private);
+    assert_eq!(read.tag_ids, vec![tag]);
+    // Its first check now falls on its own Starting, which is still ahead.
+    assert!(checks_of(&load, &read.id).is_empty());
+    let later = board(&pool, "2099-01-03T10:00:00").await;
+    let checks = checks_of(&later, &read.id);
+    assert_eq!(checks.len(), 1, "its own Starting has come round");
+    assert_eq!(checks[0].title, "Chase the reviewer");
+
+    // The other Task's wait, and the template both are drawn from, are as they were.
+    let other = spawned_by(&load, sibling);
+    assert_eq!(other.title, "Reviewer replies");
+    assert!(!other.is_private);
+    assert!(other.tag_ids.is_empty());
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    let template = db
+        .tasks()
+        .async_template(TaskId(edited))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(template.title, "Reviewer replies");
+    assert!(template.tag_ids.is_empty());
+    drop(db);
+
+    // Set back, each field follows the template again and the overlay says nothing.
+    write_wait(
+        &pool,
+        &wait.id,
+        UpdateExpectationRequest {
+            title: Some("Reviewer replies".into()),
+            check_every: Some(Some(DurationSpec {
+                n: 1,
+                kind: "week".into(),
+            })),
+            is_private: Some(false),
+            ..Default::default()
+        },
+        now,
+    )
+    .await
+    .unwrap();
+    tag_wait(&pool, &wait.id, tag, false, now).await;
+    let back = spawned_by(&board(&pool, now).await, edited);
+    assert_eq!(back.title, "Reviewer replies");
+    assert!(back.tag_ids.is_empty());
+    let follows_template: bool = sqlx::query_scalar(
+        "SELECT title IS NULL AND check_every_set = 0 AND is_private IS NULL
+         FROM expectation_overlays",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        follows_template,
+        "only its own Starting is left in its overlay"
+    );
+}
+
+#[tokio::test]
+async fn a_spawned_wait_cannot_leave_its_task() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let sender = sent(&pool, project).await;
+    let now = "2099-01-01T12:00:00";
+    let wait = spawned_by(&board(&pool, now).await, sender);
+    let moved = write_wait(
+        &pool,
+        &wait.id,
+        UpdateExpectationRequest {
+            parent_type: Some("project".into()),
+            parent_id: Some(project.into()),
+            ..Default::default()
+        },
+        now,
     )
     .await;
-    assert!(retitled.is_err(), "its title is its Task's template's");
+    assert!(moved.is_err());
+    // A full save naming its own parent is not a move.
+    write_wait(
+        &pool,
+        &wait.id,
+        UpdateExpectationRequest {
+            parent_type: Some("task".into()),
+            parent_id: Some(sender.into()),
+            title: Some("Reviewer replies".into()),
+            ..Default::default()
+        },
+        now,
+    )
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -367,6 +547,43 @@ async fn a_delegated_tasks_wait_is_a_row_nothing_but_the_task_releases() {
     .await;
     assert!(released.is_err());
     drop(db);
+
+    // Everything else it takes like any wait, into its own overlay.
+    let renamed = write_wait(
+        &pool,
+        &wait.id,
+        UpdateExpectationRequest {
+            title: Some("The agent's pull request".into()),
+            status: Some(ExpectationStatus::Pending),
+            is_private: Some(true),
+            archival: Some(arlesh_lib::tasks::model::ExpectationArchival::Archived),
+            ..Default::default()
+        },
+        now,
+    )
+    .await
+    .unwrap();
+    assert_eq!(renamed.title, "The agent's pull request");
+    assert!(renamed.is_private);
+    assert_eq!(
+        renamed.archival,
+        arlesh_lib::tasks::model::ExpectationArchival::Archived
+    );
+    assert_eq!(renamed.status, ExpectationStatus::Pending);
+    let checked = write_wait(
+        &pool,
+        &wait.id,
+        UpdateExpectationRequest {
+            check_every: Some(Some(DurationSpec {
+                n: 1,
+                kind: "day".into(),
+            })),
+            ..Default::default()
+        },
+        now,
+    )
+    .await;
+    assert!(checked.is_err(), "nothing schedules checks on it");
 
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     update_task(&mut db, TaskId(delegated), status(TaskStatus::Done))

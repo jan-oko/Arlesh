@@ -1,11 +1,13 @@
 import { createStore, type StoreApi } from "zustand";
-import type { ListFilterState, ListPreset, PillDimension, PillMode, PillSide } from "@/utils/list-filter";
-import { DEFAULT_LIST_FILTER, pillSide } from "@/utils/list-filter";
+import type { ListFilterState, ListPreset, ListRowKind, PillDimension, PillMode, PillSide } from "@/utils/list-filter";
+import { DEFAULT_LIST_FILTER, pillSide, rowKindToggleRefusal, withRowKindToggled } from "@/utils/list-filter";
 import { tabStoreHook } from "@/stores/tab-stores-context";
 
 export interface ListFilterStore {
   filter: ListFilterState;
   setPreset: (preset: ListPreset) => void;
+  /** Shows or hides one row kind. A refused toggle (see `rowKindToggleRefusal`) changes nothing. */
+  toggleKind: (kind: ListRowKind) => void;
   addPill: (dimension: PillDimension, value: string) => void;
   setPillMode: (dimension: PillDimension, value: string, mode: PillMode) => void;
   setPillSide: (dimension: PillDimension, value: string, side: PillSide) => void;
@@ -13,7 +15,7 @@ export interface ListFilterStore {
   reset: () => void;
 }
 
-/** One tab's List View filter state: its own preset selector and the List-View-exclusive pill
+/** One tab's List View filter state: its own preset selector, the row-kind selector and the List-View-exclusive pill
  * filters (antecedent/dependency/statuses/scope/blocked/agentic). Status preset, tag filters, and Info/Flow/Private
  * toggles are shared with that tab's Mindmap via its `useFilterStore`.
  *
@@ -26,6 +28,11 @@ export function createListFilterStore(seed: ListFilterState = DEFAULT_LIST_FILTE
   return createStore<ListFilterStore>()((set) => ({
     filter: seed,
     setPreset: (preset) => set((s) => ({ filter: { ...s.filter, preset } })),
+    toggleKind: (kind) =>
+      set((s) => {
+        if (rowKindToggleRefusal(s.filter, kind) !== null) return {};
+        return { filter: { ...s.filter, kinds: withRowKindToggled(s.filter.kinds, kind) } };
+      }),
     addPill: (dimension, value) =>
       set((s) => {
         const existing = s.filter.pills[dimension];
