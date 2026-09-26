@@ -697,13 +697,13 @@ describe("ListView", () => {
       });
     }
 
-    it("Ctrl+O leaves archived nodes, and what is under them, out by default", () => {
+    it("Ctrl+O leaves archived nodes out by default, but finds a live node under one", () => {
       mockUseListData.mockReturnValue(withArchived());
       render(<ListViewInApp />);
       const input = openSearch("shelf");
       expect(screen.getByText("Shelf live")).toBeInTheDocument();
       expect(screen.queryByText("Shelf archived")).not.toBeInTheDocument();
-      expect(screen.queryByText("Shelf inner")).not.toBeInTheDocument();
+      expect(screen.getByText("Shelf inner")).toBeInTheDocument();
       fireEvent.keyDown(input, { key: "Escape" });
     });
 

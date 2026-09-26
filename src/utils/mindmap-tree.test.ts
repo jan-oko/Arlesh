@@ -427,8 +427,13 @@ describe("collectSearchableNodes with skipArchived", () => {
     ],
   };
 
-  it("drops an archived node together with its subtree, and a delegated Task, which reads as archived", () => {
-    expect(collectSearchableNodes(tree, { skipArchived: true }).map((n) => n.title)).toEqual(["Live"]);
+  it("drops an archived node and a delegated Task, which reads as archived, but keeps a live child of an archived node", () => {
+    expect(collectSearchableNodes(tree, { skipArchived: true }).map((n) => n.title)).toEqual(["Under it", "Live"]);
+  });
+
+  it("keeps the archived ancestor in a live child's path", () => {
+    const underIt = collectSearchableNodes(tree, { skipArchived: true }).find((n) => n.id === "task-1");
+    expect(underIt?.path).toEqual(["Done goal"]);
   });
 
   it("keeps everything when not skipping", () => {

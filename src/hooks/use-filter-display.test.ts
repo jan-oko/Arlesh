@@ -107,12 +107,12 @@ describe("useFilterDisplay", () => {
       ],
     };
 
-    it("leaves archived nodes and their subtrees out by default", () => {
+    it("leaves archived nodes out by default, but not the live nodes under them", () => {
       useDisplayStore.setState({ searchIncludesArchived: false });
       mockUseMindmapData.mockReturnValue(mindmapData(ARCHIVED_TREE));
       const { result } = renderHook(() => useFilterDisplay());
-      expect(result.current.antecedentPool.map((o) => o.label)).toEqual(["Live"]);
-      expect(result.current.dependencyPool).toEqual([]);
+      expect(result.current.antecedentPool.map((o) => o.label)).toEqual(["Live", "Inside"]);
+      expect(result.current.dependencyPool.map((o) => o.label)).toEqual(["Inside"]);
       expect(result.current.nodeLabel("task-5")).toBe("Inside");
     });
 

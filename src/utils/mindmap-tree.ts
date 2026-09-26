@@ -180,9 +180,9 @@ export interface SearchableNode { id: string; title: string; kind: NodeKind; pat
 /** How a node search reads the tree. */
 export interface SearchableNodeOptions {
   /**
-   * Leave out archived nodes — an effectively-Archived node (see `isArchived`: an Archived status,
-   * a derived Archival of Archived, or a delegated Task) **together with everything beneath it**,
-   * the way the Archived pill's Exclude hides a subtree.
+   * Leave out archived nodes — each judged by its **own** archival (see `isArchived`: an Archived
+   * status, a derived Archival of Archived, or a delegated Task). What lies beneath an archived node
+   * is not archived by being there, so it stays searchable (ruled by the user, 2026-09-27).
    */
   skipArchived: boolean;
 }
@@ -194,8 +194,9 @@ export function collectSearchableNodes(
 ): SearchableNode[] {
   const out: SearchableNode[] = [];
   function visit(n: MindmapNode, isRoot: boolean, ancestors: string[]): void {
-    if (!isRoot && options.skipArchived && isArchived(n)) return;
-    if (!isRoot) out.push({ id: n.id, title: n.title, kind: n.kind, path: ancestors });
+    if (!isRoot && !(options.skipArchived && isArchived(n))) {
+      out.push({ id: n.id, title: n.title, kind: n.kind, path: ancestors });
+    }
     const childAncestors = isRoot ? [] : [n.title, ...ancestors];
     for (const child of n.children) visit(child, false, childAncestors);
   }
