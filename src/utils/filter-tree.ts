@@ -9,6 +9,13 @@ import type { Timing } from "@/api/scope-lifecycle";
  * only what has been deliberately set aside. */
 export type StatusMode = "all" | "plan" | "start" | "do" | "backlog";
 
+/**
+ * The status preset the **Plan View** always reads under, whatever the tab's own is. The view reads
+ * the board *as* Plan rather than writing Plan into the tab's filter, so the tab's own preset is
+ * still there — and back in force — the moment you switch to another view.
+ */
+export const PLAN_VIEW_STATUS_MODE: StatusMode = "plan";
+
 /** How a single tag filter contributes to the combined tag predicate (SPEC Filtering Logic). */
 export type TagFilterMode = "any" | "all" | "exclude";
 

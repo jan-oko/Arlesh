@@ -9,12 +9,33 @@ screen saying what the scope already held.
 
 The Plan View is a **two-pane triage** over one scope. On the left are the **candidates** — relevant
 work that is unplanned, or planned to the scope one rung above. On the right is **the scope being
-filled** — what is already planned into it. Moving a card across sets its Plan; moving one back clears it. That is the whole of what
-this view writes.
+filled** — what is already planned into it. Moving a card across sets its Plan; moving one back sets
+it one rung up (see [Taking work back out](#taking-work-back-out)). That is the whole of what this
+view writes.
 
 It is a third tab beside Mindmap and List, and shares what they share: the tab's **subtree root**
 and the tab's **filter set** (see [Tabs](tabs.md)). Entering a subtree anywhere in a tab narrows
-this view too, and the status preset chosen in any of the three governs all three.
+this view too, and so do the tab's tags and other filters.
+
+### Always the Plan preset
+
+The status preset is the one part of the filter set this view does not take from the tab: **it
+always reads under Plan**. A planning pass is the Plan preset's own question — what is still live
+and can be placed — and under Do or Backlog the candidates would be a different, wrong list.
+
+- The top bar's preset control shows **Plan** as active while this view is. The other presets —
+  All, Start, Do, Backlog — are **drawn but disabled**, each saying on hover that the Plan View
+  always reads under the Plan preset, and so does the closed control. Drawn rather than removed,
+  so the control does not change shape as you walk views.
+- `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B` change nothing here, and each says the same reason in a
+  toast rather than doing nothing, since a press with no visible effect reads as a key that is not
+  bound. They are left off this view's cheat-sheet for the same reason.
+- The tab's own preset is **not overwritten**. The view reads the board *as* Plan; the stored
+  preset stays whatever the tab had, so switching back to the Mindmap, the List or the Steps View
+  gives it back.
+
+The view's own switches work as before on top of it, the Backlog switch included (see
+[Backlog](#backlog)), which overrides the shared Backlog pill.
 
 ## The two panes
 
@@ -417,8 +438,8 @@ move looking like a failure.
   selected Task in the List View, and a key that sets one task aside must not reveal a whole
   category of them elsewhere
 - `E` — open the selected task's editor; `Escape` — deselect
-- `Alt+F` — the filter menu, also global; `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B` — the shared status
-  presets
+- `Alt+F` — the filter menu, also global; `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B` — say that the view
+  always reads under the Plan preset (see [Always the Plan preset](#always-the-plan-preset))
 - `Ctrl+O` — search every node and enter the one you pick; `Shift+Escape` / `Ctrl+Escape` — up one
   subtree level / back to the true root. All three are [global bindings](tabs.md): they act on the
   tab's subtree root, which every view shares

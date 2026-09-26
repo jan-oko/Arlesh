@@ -366,6 +366,28 @@ describe("taking work back out of the scope", () => {
   });
 });
 
+// The view reads under Plan whatever the tab's preset is, without writing Plan over it.
+describe("the status preset", () => {
+  it("reads the board under Plan even while the tab's own preset is Do", async () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
+    // Do shows only in-progress work; a todo candidate on screen is the Plan preset at work.
+    mockRows([row(n("task-1", "task", { status: "todo", timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+    await renderPlanView();
+    expect(cardsIn("candidates")).toEqual(["task-1"]);
+    expect(useFilterStore.getState().filter.statusMode).toBe("do");
+  });
+
+  it("answers a preset key with the reason rather than changing the preset", async () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
+    mockRows([]);
+    await renderPlanView();
+
+    await act(async () => { fireEvent.keyDown(window, { code: "KeyA", altKey: true }); });
+    expect(screen.getByText("planView:presetLocked")).toBeInTheDocument();
+    expect(useFilterStore.getState().filter.statusMode).toBe("do");
+  });
+});
+
 describe("walking the scopes", () => {
   it("re-derives both panes against the next scope", async () => {
     mockRows([

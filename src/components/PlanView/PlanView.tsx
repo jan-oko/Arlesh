@@ -22,6 +22,7 @@ import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { BEADS_NODE_TYPE } from "@/api/beads";
 import type { FilterState } from "@/utils/filter-tree";
+import { PLAN_VIEW_STATUS_MODE } from "@/utils/filter-tree";
 import type { TaskListRow } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER, filterTaskList } from "@/utils/list-filter";
 import { collectSearchableNodes } from "@/utils/mindmap-tree";
@@ -51,6 +52,8 @@ import styles from "./PlanView.module.css";
 
 /** What the Up refusal anchors to: the scope, not a node — so the toast takes the fixed spot. */
 const UP_TOAST_ANCHOR = "planView:up";
+/** The same, for a status preset key pressed where the preset cannot change. */
+const PRESET_TOAST_ANCHOR = "planView:preset";
 
 const NO_PANES: PlanPanes = { unplanned: [], planned: [], parentPlanned: [] };
 
@@ -71,7 +74,6 @@ export default function PlanView() {
   const { tree, rows, allTasksAndGoals, isLoading, error, reload } = useListData();
 
   const sharedFilter = useFilterStore((s) => s.filter);
-  const setStatusMode = useFilterStore((s) => s.setStatusMode);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   // Ctrl+O is a global binding; the flag it raises is read here, where the loaded tree already is.
   const enterSubtree = useMindmapStore((s) => s.enterSubtree);
@@ -96,12 +98,14 @@ export default function PlanView() {
     onClearBeadsId, checkScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, reload });
 
+  // The view always reads under the **Plan** preset, whatever the tab's is: it is read as Plan here
+  // rather than written into the tab's filter, so the tab keeps its own preset for the other views.
   // Backlog is the one filter dimension this view answers for itself. The switch *is* the backlog
   // question here, so it overrides the shared pill rather than combining with it — otherwise
   // turning it on under the Plan preset, which hides backlogged work of its own accord, would be a
   // control that visibly did nothing.
   const filter = useMemo<FilterState>(
-    () => ({ ...sharedFilter, backlogMode: showBacklogged ? "include" : "exclude" }),
+    () => ({ ...sharedFilter, statusMode: PLAN_VIEW_STATUS_MODE, backlogMode: showBacklogged ? "include" : "exclude" }),
     [sharedFilter, showBacklogged],
   );
   // The List View's own pill dimensions are its own; what the three views share is this filter.
@@ -442,7 +446,7 @@ export default function PlanView() {
     onUpScope: upScope,
     onSetScopeKind: scope.setKind,
     onToggleBacklogCandidates: () => setShowBacklogged((on) => !on),
-    onSetStatusMode: setStatusMode,
+    onRefuseStatusPreset: () => showToast({ nodeId: PRESET_TOAST_ANCHOR, message: t("planView:presetLocked") }),
     onOpenEditor: onDoubleClick,
     onDeselect: () => setSelection(EMPTY_PLAN_SELECTION),
     onToggleFullscreen: toggleFullscreen,

@@ -73,3 +73,9 @@
   color: var(--accent);
   font-weight: 600;
 }
+
+/* Drawn, so the menu keeps its shape, but not choosable; the option's hover text says why. */
+.optionDisabled {
+  color: var(--text-secondary);
+  cursor: not-allowed;
+}

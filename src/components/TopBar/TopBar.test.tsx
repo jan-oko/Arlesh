@@ -148,6 +148,41 @@ describe("TopBar", () => {
       expect(useListFilterStore.getState().filter.preset).toBe("unblock");
     });
 
+    it("shows Plan active and every other preset disabled while the Plan View is active", () => {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
+      useViewStore.setState({ view: "plan" });
+      render(<TopBar />);
+      const trigger = screen.getByRole("button", { name: "listView:statusPresetLabel" });
+      expect(trigger).toHaveTextContent("listView:preset.plan");
+      expect(trigger).toHaveAttribute("title", "planView:presetLocked");
+
+      fireEvent.click(trigger);
+      const plan = screen.getByRole("option", { name: "listView:preset.plan" });
+      expect(plan).not.toHaveAttribute("aria-disabled");
+      for (const preset of ["all", "start", "do", "backlog"]) {
+        const option = screen.getByRole("option", { name: `listView:preset.${preset}` });
+        expect(option).toHaveAttribute("aria-disabled", "true");
+        expect(option).toHaveAttribute("title", "planView:presetLocked");
+      }
+
+      fireEvent.click(screen.getByRole("option", { name: "listView:preset.all" }));
+      expect(useFilterStore.getState().filter.statusMode).toBe("do");
+    });
+
+    it("gives the tab its own preset back on leaving the Plan View", () => {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "do" } });
+      useViewStore.setState({ view: "plan" });
+      const { rerender } = render(<TopBar />);
+      expect(screen.getByRole("button", { name: "listView:statusPresetLabel" })).toHaveTextContent("listView:preset.plan");
+
+      useViewStore.setState({ view: "mindmap" });
+      rerender(<TopBar />);
+      const trigger = screen.getByRole("button", { name: "listView:statusPresetLabel" });
+      expect(trigger).toHaveTextContent("listView:preset.do");
+      expect(trigger).not.toHaveAttribute("title");
+      expect(useFilterStore.getState().filter.statusMode).toBe("do");
+    });
+
     it("reflects Unblock as the selected value only while List View is active", () => {
       useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, preset: "unblock" } });
       useViewStore.setState({ view: "mindmap" });
