@@ -112,6 +112,21 @@ impl<'session> RelationOperator<'session> {
         Ok(differences)
     }
 
+    /// Every tag difference a derived wait carries — a spawned or delegation wait, whoever its Task.
+    pub async fn expectation_tags(&mut self) -> Result<TagDifferences, sqlx::Error> {
+        let rows: Vec<(String, i64, bool)> = sqlx::query_as(
+            "SELECT node_key, tag_id, added FROM derived_tags WHERE node_kind = 'expectation'
+             ORDER BY tag_id",
+        )
+        .fetch_all(&mut *self.connection)
+        .await?;
+        let mut differences: TagDifferences = HashMap::new();
+        for (key, tag, added) in rows {
+            differences.entry(key).or_default().push((tag, added));
+        }
+        Ok(differences)
+    }
+
     /// Records a tag put on (`present`) or taken off one derived node, as a difference against
     /// its template's tags: a tag the template already has needs no row to be present, and one it
     /// lacks needs none to be absent. `flow_id` is the Habit the node belongs to, if any.

@@ -724,4 +724,55 @@ async fn an_occurrence_carries_its_own_expectation_template_and_spawns_its_wait(
             .await
             .unwrap();
     assert_eq!(recorded, 1, "the check is recorded against the occurrence");
+
+    // The wait takes an Expectation's edits into its own overlay; the occurrence's template, which
+    // draws it, stays as it was.
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let retitled = write::update_expectation(
+        &mut db,
+        &wait.id,
+        arlesh_lib::tasks::model::UpdateExpectationRequest {
+            title: Some("Coach finally replies".into()),
+            ..Default::default()
+        },
+        at(later),
+    )
+    .await
+    .unwrap();
+    write::set_tag(&mut db, "expectation", &wait.id, 1, false, at(later))
+        .await
+        .unwrap();
+    db.commit().await.unwrap();
+    assert_eq!(retitled.title, "Coach finally replies");
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let load = mindmap::load(&mut db, at(later)).await.unwrap();
+    db.commit().await.unwrap();
+    let read = load
+        .expectations
+        .iter()
+        .find(|row| row.id == wait.id)
+        .expect("still the same row");
+    assert_eq!(read.title, "Coach finally replies");
+    assert!(
+        read.tag_ids.is_empty(),
+        "its template's tag is taken off it alone"
+    );
+    let occurrence = load
+        .tasks
+        .iter()
+        .find(|row| row.id == stretch)
+        .expect("the occurrence is on the board");
+    let template = occurrence.async_template.as_ref().expect("its template");
+    assert_eq!(template.title, "Coach replies");
+    assert_eq!(template.tag_ids, vec![1]);
+    let overlaid: Option<i64> = sqlx::query_scalar(
+        "SELECT flow_id FROM expectation_overlays WHERE occurrence_key IS NOT NULL",
+    )
+    .fetch_optional(&pool)
+    .await
+    .unwrap();
+    assert!(
+        overlaid.is_some(),
+        "kept with its Habit, so it goes with it"
+    );
 }

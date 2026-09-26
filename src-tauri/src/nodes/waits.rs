@@ -23,6 +23,7 @@ use super::{
     origin::{CheckOrigin, Origin, WaitOrigin},
     overlay::TaskOverlay,
     registry,
+    wait_overlay::ExpectationOverlay,
 };
 use crate::{
     block_reasons::model::BlockReason,
@@ -52,6 +53,38 @@ pub struct WaitRows {
     /// The lifecycles of the waits Habit occurrences spawned, and of their open checks. (A stored
     /// wait's, and a stored Task's spawned wait's, come with every other stored row's.)
     pub lifecycles: Vec<ItemLifecycle>,
+    /// Each spawned and delegation wait as it is **drawn** — from its Task's template, or its
+    /// Task — before its own overlay: what a write compares against, so setting a field back to
+    /// it clears the override.
+    pub drawn: HashMap<NodeId, Expectation>,
+}
+
+/// What a derived wait's row is read from besides what draws it: every wait's overlay and tag
+/// differences, read once for the whole load.
+struct WaitState {
+    overlays: HashMap<String, ExpectationOverlay>,
+    tags: super::relations::TagDifferences,
+}
+
+impl WaitState {
+    /// `drawn` with its own overlay and tags applied.
+    fn read(&self, key: &DerivedKey, drawn: &Expectation) -> Expectation {
+        let node_key = key.node_key();
+        let mut row = drawn.clone();
+        if let Some(overlay) = self.overlays.get(&node_key) {
+            overlay.apply(&mut row);
+        }
+        row.tag_ids =
+            crate::flows::occurrences::effective_tags(&drawn.tag_ids, self.tags.get(&node_key));
+        row
+    }
+
+    fn overlay(&self, key: &DerivedKey) -> ExpectationOverlay {
+        self.overlays
+            .get(&key.node_key())
+            .cloned()
+            .unwrap_or_default()
+    }
 }
 
 /// What a check task's row is read from besides its key: every check task's overlay, tags and
@@ -92,6 +125,10 @@ pub async fn derive_waits<M: SessionMode>(
         .into_iter()
         .filter_map(|expectation| Some((expectation.id.stored()?, expectation)))
         .collect();
+    let wait_state = WaitState {
+        overlays: db.overlays().expectations().await?,
+        tags: db.relations().expectation_tags().await?,
+    };
     let mut rows = WaitRows::default();
     for check in &windows.expectation_checks {
         let Some(wait) = stored.get(&check.expectation_id) else {
@@ -121,41 +158,36 @@ pub async fn derive_waits<M: SessionMode>(
         let Some(template) = db.tasks().async_template(TaskId(task_id)).await? else {
             continue;
         };
-        let wait_row = NodeId::Derived(registry::remember(&DerivedKey::SpawnedWait(
-            NodeId::Stored(task_id),
-        )));
-        let draw = |due_at: NaiveDateTime, due: TimeScope, done: bool| CheckDraw {
-            key: CheckKey {
-                wait: WaitRef::Spawned(task_id),
-                due_at,
-            },
-            wait_title: &template.title,
-            wait_row: wait_row.clone(),
-            due,
-            done,
-            is_private: task.is_private,
-        };
-        for done in &spawned.done_checks {
-            rows.push_check(&state, draw(done.due_at, done.due.clone(), true));
-        }
-        if let (Some(due), Some(due_at)) = (&spawned.next_check, spawned.next_check_at) {
-            rows.push_check(&state, draw(due_at, due.clone(), false));
-        }
-        rows.expectations.push(Expectation {
+        let key = DerivedKey::SpawnedWait(NodeId::Stored(task_id));
+        let wait_row = NodeId::Derived(registry::remember(&key));
+        // As drawn from the template alone, then as it reads with what was written to it.
+        let spawned_at = spawned.wait.spawned_at;
+        let drawn_schedule =
+            waits::spawned_schedule(&template, spawned_at, &ExpectationOverlay::default())?;
+        let drawn_start = drawn_schedule.check_every.as_ref().and_then(|every| {
+            waits::first_spawned_check(
+                &WaitProgress {
+                    check_starting: None,
+                    ..WaitProgress::of(&spawned.wait)
+                },
+                every,
+            )
+        });
+        let drawn = Expectation {
             id: wait_row.clone(),
             title: template.title.clone(),
             parent_type: "task".to_string(),
             parent_id: NodeId::Stored(task_id),
             status: spawned.wait.status,
             archival: spawned.wait.archival,
-            time_scope: spawned.time_scope.clone(),
+            time_scope: drawn_schedule.time_scope,
             tag_ids: template.tag_ids.clone(),
-            check_every: template.check_every.clone(),
-            check_starting: spawned.wait.spawned_at,
+            check_every: drawn_schedule.check_every,
+            check_starting: drawn_start,
             last_check_at: spawned.wait.last_check_at,
             position: i64::MIN,
             is_private: task.is_private,
-            // A derived wait is never one an agent raised.
+            // A derived wait is not one an agent raised until it says so itself.
             agentic: false,
             agentic_note: None,
             question: false,
@@ -163,16 +195,44 @@ pub async fn derive_waits<M: SessionMode>(
             origin: Origin::SpawnedWait(WaitOrigin {
                 task_id: NodeId::Stored(task_id),
             }),
-        });
+        };
+        let mut row = wait_state.read(&key, &drawn);
+        // Its window and schedule are the ones its checks were drawn on.
+        row.time_scope.clone_from(&spawned.time_scope);
+        row.check_every.clone_from(&spawned.check_every);
+        row.check_starting = spawned.check_starting;
+        let draw = |due_at: NaiveDateTime, due: TimeScope, done: bool| CheckDraw {
+            key: CheckKey {
+                wait: WaitRef::Spawned(task_id),
+                due_at,
+            },
+            wait_title: &row.title,
+            wait_row: wait_row.clone(),
+            due,
+            done,
+            is_private: row.is_private,
+        };
+        for done in &spawned.done_checks {
+            rows.push_check(&state, draw(done.due_at, done.due.clone(), true));
+        }
+        if let (Some(due), Some(due_at)) = (&spawned.next_check, spawned.next_check_at) {
+            rows.push_check(&state, draw(due_at, due.clone(), false));
+        }
+        rows.drawn.insert(wait_row, drawn);
+        rows.expectations.push(row);
     }
     for task in tasks.iter().filter(|task| task.origin.habit().is_some()) {
-        rows.push_occurrence_wait(db, &state, task, now).await?;
+        rows.push_occurrence_wait(db, &state, &wait_state, task, now)
+            .await?;
     }
     for task in tasks
         .iter()
         .filter(|task| task.delegate_to.is_some() && task.status != "done")
     {
-        rows.expectations.push(delegation_wait(task));
+        let drawn = delegation_wait(task);
+        let row = wait_state.read(&DerivedKey::DelegationWait(task.id.clone()), &drawn);
+        rows.drawn.insert(drawn.id.clone(), drawn);
+        rows.expectations.push(row);
     }
     Ok(rows)
 }
@@ -207,7 +267,7 @@ fn delegation_wait(task: &Task) -> Expectation {
         last_check_at: None,
         position: i64::MIN,
         is_private: task.is_private,
-        // A derived wait is never one an agent raised.
+        // A derived wait is not one an agent raised until it says so itself.
         agentic: false,
         agentic_note: None,
         question: false,
@@ -225,6 +285,7 @@ impl WaitRows {
         &mut self,
         db: &mut Db<M>,
         state: &CheckState,
+        waits_state: &WaitState,
         task: &Task,
         now: NaiveDateTime,
     ) -> Result<(), AppError> {
@@ -256,34 +317,73 @@ impl WaitRows {
             .into_iter()
             .filter(|check| spawned_at.is_none_or(|began| check.resolved_at >= began))
             .collect();
+        let spawned_key = DerivedKey::SpawnedWait(task.id.clone());
+        let overlay = waits_state.overlay(&spawned_key);
+        let schedule = waits::spawned_schedule(template, spawned_at, &overlay)?;
+        let drawn_schedule =
+            waits::spawned_schedule(template, spawned_at, &ExpectationOverlay::default())?;
         let progress = WaitProgress {
             spawned_at,
             status,
             archival,
             last_check_at: checks.last().map(|check| check.resolved_at),
+            check_starting: schedule.check_starting,
         };
-        let wait_row = NodeId::Derived(registry::remember(&DerivedKey::SpawnedWait(
-            task.id.clone(),
-        )));
-        let time_scope = match (&template.time_scope, spawned_at) {
-            (Some(rule), Some(began)) => waits::window_from_rule(rule, waits::day_of(began))?,
-            _ => None,
+        let wait_row = NodeId::Derived(registry::remember(&spawned_key));
+        let drawn = Expectation {
+            id: wait_row.clone(),
+            title: template.title.clone(),
+            parent_type: "task".to_string(),
+            parent_id: task.id.clone(),
+            status,
+            archival,
+            time_scope: drawn_schedule.time_scope,
+            tag_ids: template.tag_ids.clone(),
+            check_starting: drawn_schedule.check_every.as_ref().and_then(|every| {
+                waits::first_spawned_check(
+                    &WaitProgress {
+                        check_starting: None,
+                        ..progress
+                    },
+                    every,
+                )
+            }),
+            check_every: drawn_schedule.check_every,
+            last_check_at: progress.last_check_at,
+            position: i64::MIN,
+            is_private: task.is_private,
+            // A derived wait is not one an agent raised until it says so itself.
+            agentic: false,
+            agentic_note: None,
+            question: false,
+            answer: None,
+            origin: Origin::SpawnedWait(WaitOrigin {
+                task_id: task.id.clone(),
+            }),
         };
+        let mut row = waits_state.read(&spawned_key, &drawn);
+        // Its window and schedule are the ones its checks are drawn on.
+        row.time_scope.clone_from(&schedule.time_scope);
+        row.check_starting = schedule
+            .check_every
+            .as_ref()
+            .and_then(|every| waits::first_spawned_check(&progress, every));
+        row.check_every.clone_from(&schedule.check_every);
         let draw = |due_at: NaiveDateTime, done: bool| CheckDraw {
             key: CheckKey {
                 wait: wait.clone(),
                 due_at,
             },
-            wait_title: &template.title,
+            wait_title: &row.title,
             wait_row: wait_row.clone(),
             due: waits::check_window(due_at),
             done,
-            is_private: task.is_private,
+            is_private: row.is_private,
         };
         for check in &checks {
             self.push_check(state, draw(check.due_at, true));
         }
-        let due = template
+        let due = schedule
             .check_every
             .as_ref()
             .and_then(|every| waits::next_spawned_check(&progress, every, now))
@@ -303,34 +403,13 @@ impl WaitRows {
         self.lifecycles.push(wait_lifecycle(
             EXPECTATION,
             wait_row.clone(),
-            time_scope.as_ref(),
+            row.time_scope.as_ref(),
             status,
             archival,
             now,
         ));
-        self.expectations.push(Expectation {
-            id: wait_row,
-            title: template.title.clone(),
-            parent_type: "task".to_string(),
-            parent_id: task.id.clone(),
-            status,
-            archival,
-            time_scope,
-            tag_ids: template.tag_ids.clone(),
-            check_every: template.check_every.clone(),
-            check_starting: spawned_at,
-            last_check_at: progress.last_check_at,
-            position: i64::MIN,
-            is_private: task.is_private,
-            // A derived wait is never one an agent raised.
-            agentic: false,
-            agentic_note: None,
-            question: false,
-            answer: None,
-            origin: Origin::SpawnedWait(WaitOrigin {
-                task_id: task.id.clone(),
-            }),
-        });
+        self.drawn.insert(wait_row, drawn);
+        self.expectations.push(row);
         Ok(())
     }
 

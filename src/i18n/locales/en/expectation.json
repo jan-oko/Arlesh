@@ -26,6 +26,5 @@
   "agentNote": "The agent's question",
   "agentWaitNote": "What the agent is waiting on",
   "agentAnswer": "Your answer",
-  "agentAnswerHint": "Needed before the wait can be released",
-  "drawnFromTemplate": "Its task spawned this wait: the title, Time Scope, Check every and tags come from the task's Expectation template and are edited there (Shift+W on the task)."
+  "agentAnswerHint": "Needed before the wait can be released"
 }

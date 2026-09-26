@@ -133,7 +133,8 @@ right, with a check inside once released — so its status is never written out;
 is dimmed and badged like any archived card; its fields are its **Time Scope** and its **Check every**. `Enter`
 descends into it like any card, onto its notes, its completed checks and, while one is due, its
 open check task. `E` on a check task says it has no editor yet (see [*Expectations*](resources.md));
-on a delegated Task's virtual wait or an asynchronous Task's spawned wait it opens the Task's.
+on a delegated Task's virtual wait or an asynchronous Task's spawned wait it opens the wait's own
+Expectation editor, as on any Expectation row (see [Derived nodes](virtual-nodes.md)).
 
 | Kind | Fields, in reading order |
 | --- | --- |

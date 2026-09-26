@@ -73,26 +73,16 @@ describe("ExpectationEditorModal — a wait an Asynchronous Task spawned", () =>
     ...WAIT, rowId: "5b1d7c3e-0000-5000-8000-000000000005", origin: { kind: "spawned_wait", task_id: 5 },
   };
 
-  it("offers its status and archive, and shows what its Task's template says without offering to change it", async () => {
+  it("offers every field a stored wait's editor does, and saves what was changed", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<ExpectationEditorModal node={SPAWNED} allTags={[]} domainNames={new Map()} onSave={onSave} onClose={vi.fn()} />);
-    expect(screen.getByText("expectation:drawnFromTemplate")).toBeInTheDocument();
-    expect(screen.getByLabelText("editor:fieldTitle")).toHaveAttribute("readonly");
-    expect(screen.getByLabelText("expectation:fieldCheckEvery")).toBeDisabled();
-    // No Clear on Check every, no tag picker, no Plan: nothing here is the wait's own to change.
-    expect(screen.queryByRole("button", { name: "scopeClear" })).toBeNull();
-    expect(screen.queryByText("editor:fieldPlan")).toBeNull();
-
+    fireEvent.change(screen.getByLabelText("editor:fieldTitle"), { target: { value: "Chase the reviewer" } });
+    fireEvent.change(screen.getByLabelText("expectation:fieldCheckEvery"), { target: { value: "5" } });
     fireEvent.click(screen.getByRole("button", { name: "expectation:status.released" }));
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "released", archived: false });
-  });
-
-  it("keeps a stored wait's fields its own to edit", () => {
-    render(<ExpectationEditorModal node={WAIT} onSave={vi.fn()} onClose={vi.fn()} />);
-    expect(screen.queryByText("expectation:drawnFromTemplate")).toBeNull();
-    expect(screen.getByLabelText("editor:fieldTitle")).not.toHaveAttribute("readonly");
-    expect(screen.getByLabelText("expectation:fieldCheckEvery")).toBeEnabled();
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({
+      title: "Chase the reviewer", status: "released", checkEvery: { n: 5, kind: "day" },
+    });
   });
 });

@@ -177,17 +177,27 @@ A wait's **check tasks**, the wait an Asynchronous Task's completion **spawned**
 - `{"kind": "spawned_wait", "task_id": …}` — an Expectation row under the Task, drawn from its
   Expectation template, its status and archive in `spawned_waits`.
 - `{"kind": "delegation_wait", "task_id": …}` — an Expectation row under a delegated Task that is not
-  done, released only by the Task being done.
+  done, drawn from the Task (its title), released only by the Task being done.
 
-What they refuse is what their derivation fixes: a check task keeps its wait and its day and is not
-delegated; a spawned wait's title, tags, window and Check every are its template's; nothing is
-written to a delegation wait; none of the three is deleted or copied.
+Each is a **full node of its kind** (ruled by the user, 2026-09-26): `E` opens the ordinary editor —
+the Task editor on a check task, the Expectation editor on a spawned or delegation wait — with every
+field that kind's editor offers, and an edit lands on that one row. A wait's own fields live in the
+Expectation kind's overlay, **`expectation_overlays`** (migration 0083), keyed by the wait's node key
+(`spawned_wait:{task}`, `delegation_wait:{task}`) and mirroring the `expectations` columns the editor
+writes — title, window, Check every, Starting, privacy, the agent flag, note, question and answer;
+NULL inherits, a `*_set` flag marks an override to NULL, and a value set back to what the wait is
+drawn with clears the override. Its tags are differences in `derived_tags` under the same key. A
+wait under a Habit occurrence keeps its row with the Habit (`flow_id`) and the occurrence
+(`occurrence_key`), so it goes when they do. A spawned wait's checks are scheduled from its own
+Check every and Starting when it has them.
 
-`E` opens each one's own editor, as on any row of its kind — the Task editor on a check task, the
-Expectation editor on a spawned wait (its status and archive editable, what its template says shown
-but not offered) — except a delegation wait, which has nothing to write and opens its delegated
-Task's editor. None of them takes a Plan from where it hangs: a spawned wait does not take
-its Task's, and a wait cuts the Plan chain for what is beneath it.
+What they refuse is what their origin fixes: none leaves its parent (a request naming the current
+parent — a full editor save — is not a move) and none is deleted or copied; a check task keeps its
+day and is not delegated; a delegation wait's status is its Task's (only the Task being done
+releases it), and nothing schedules checks on it, so it takes no Check every. None of them takes a
+Plan from where it hangs: a spawned wait does not take its Task's, and a wait cuts the Plan chain
+for what is beneath it. A delegation wait is drawn with a label round its title ("“…” done by its
+delegate") while that title is its Task's; one given a title of its own is drawn with it.
 
 ## Horizon
 

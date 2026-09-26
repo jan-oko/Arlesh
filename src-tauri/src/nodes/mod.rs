@@ -24,5 +24,6 @@ pub mod registry;
 pub mod relations;
 pub mod table;
 pub mod wait_edit;
+pub mod wait_overlay;
 pub mod waits;
 pub mod write;
