@@ -5,7 +5,7 @@
   "identifier": "com.atai.arlesh",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:14228",
+    "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Arlesh \u2014 plan-takeout",
+        "title": "Arlesh",
         "width": 800,
         "height": 600,
         "create": false,
@@ -23,7 +23,7 @@
     "security": {
       "csp": null
     },
-    "enableGTKAppId": false
+    "enableGTKAppId": true
   },
   "bundle": {
     "active": true,

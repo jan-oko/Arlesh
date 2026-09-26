@@ -156,6 +156,7 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.status = Some(goal.status.clone());
         node.is_private = goal.is_private;
         node.tag_ids.clone_from(&goal.tag_ids);
+        node.time_scope.clone_from(&goal.time_scope);
         node.is_blocked = blocked.contains(&node.id);
         apply_lifecycle(
             &mut node,
@@ -171,6 +172,7 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.backlogged = task.archival == TaskArchival::Backlog;
         node.delegated = task.delegate_to.is_some();
         node.tag_ids.clone_from(&task.tag_ids);
+        node.time_scope.clone_from(&task.time_scope);
         node.is_blocked = blocked.contains(&node.id);
         node.has_todo_child = todo_parents.contains(&node.id);
         apply_lifecycle(
@@ -190,6 +192,7 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.archived = expectation.archival == ExpectationArchival::Archived;
         node.has_check = expectation.check_every.is_some();
         node.tag_ids.clone_from(&expectation.tag_ids);
+        node.time_scope.clone_from(&expectation.time_scope);
         // Its own Time Scope's Timing — the stored archive, not the lifecycle, says archived.
         node.timing = lifecycles
             .get(&(expectations::EXPECTATION, expectation.id.clone()))
@@ -208,6 +211,7 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.is_private = commitment.is_private;
         node.verdict = Some(commitment.verdict);
         node.tag_ids.clone_from(&commitment.tag_ids);
+        node.time_scope.clone_from(&commitment.time_scope);
         apply_lifecycle(
             &mut node,
             lifecycles

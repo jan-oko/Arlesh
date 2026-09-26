@@ -44,6 +44,36 @@ describe("FilterPopover", () => {
     unmount();
   });
 
+  it("offers the Plan scope only while Plan is the preset, and not in the Plan View", () => {
+    const { unmount } = render(<FilterPopover />);
+    expect(screen.queryByText("planScopeLabel")).not.toBeInTheDocument(); // All
+    unmount();
+
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "start" } });
+    const start = render(<FilterPopover />);
+    expect(screen.queryByText("planScopeLabel")).not.toBeInTheDocument();
+    start.unmount();
+
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "plan" } });
+    const plan = render(<FilterPopover />);
+    expect(screen.getByText("planScopeLabel")).toBeInTheDocument();
+    expect(screen.getByText("filter:planScopeAny")).toBeInTheDocument();
+    plan.unmount();
+
+    useViewStore.setState({ view: "plan" });
+    render(<FilterPopover />);
+    expect(screen.queryByText("planScopeLabel")).not.toBeInTheDocument();
+  });
+
+  it("clears a chosen Plan scope", () => {
+    useFilterStore.setState({
+      filter: { ...DEFAULT_FILTER, statusMode: "plan", planScope: { kind: "week", date: "2026-09-20" } },
+    });
+    render(<FilterPopover />);
+    fireEvent.click(screen.getByRole("button", { name: "filter:planScopeClear" }));
+    expect(useFilterStore.getState().filter.planScope).toBeNull();
+  });
+
   it("toggles Info visibility off via the type pill (Mindmap only)", () => {
     render(<FilterPopover />);
     fireEvent.click(screen.getByRole("button", { name: "nodeKinds:info" }));

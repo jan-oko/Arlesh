@@ -560,3 +560,110 @@ fn only_start_reads_a_plan_and_only_on_a_task() {
         Some(Timing::Pending)
     ));
 }
+
+fn date(iso: &str) -> chrono::NaiveDate {
+    chrono::NaiveDate::parse_from_str(iso, "%Y-%m-%d").unwrap()
+}
+
+/// The week of 2026-09-20 to 2026-09-26.
+fn week() -> crate::scopes::key::ScopeKey {
+    crate::scopes::key::ScopeKey::containing(
+        crate::scopes::model::ScopeKind::Week,
+        date("2026-09-20"),
+    )
+    .unwrap()
+}
+
+fn window(start: &str, end: &str) -> TimeScope {
+    TimeScope {
+        start_id: crate::scopes::key::ScopeKey::day(date(start)),
+        end_id: crate::scopes::key::ScopeKey::day(date(end)),
+        duration: None,
+    }
+}
+
+fn scoped(time_scope: Option<TimeScope>) -> NodeFacts {
+    let mut node = task("todo");
+    node.time_scope = time_scope;
+    node
+}
+
+fn narrowed(scope_match: crate::filters::model::ScopeMatch) -> BoardFilter {
+    BoardFilter {
+        plan_scope: Some(week()),
+        scope_match,
+        ..BoardFilter::preset(Preset::Plan)
+    }
+}
+
+#[test]
+fn the_plan_scope_keeps_a_task_whose_window_is_contained_or_equal() {
+    let contained = narrowed(crate::filters::model::ScopeMatch::Contained);
+    let tuesday = scoped(Some(window("2026-09-22", "2026-09-22")));
+    let whole_week = scoped(Some(window("2026-09-20", "2026-09-26")));
+    assert!(!is_outside_plan_scope(&tuesday, &contained, None));
+    assert!(!is_outside_plan_scope(&whole_week, &contained, None));
+}
+
+#[test]
+fn the_plan_scope_leaves_out_an_overlapping_window_and_an_unscoped_task_under_containment() {
+    let contained = narrowed(crate::filters::model::ScopeMatch::Contained);
+    let straddling = scoped(Some(window("2026-09-25", "2026-09-28")));
+    assert!(is_outside_plan_scope(&straddling, &contained, None));
+    assert!(is_outside_plan_scope(&scoped(None), &contained, None));
+}
+
+#[test]
+fn the_plan_scope_reads_an_inherited_window_and_the_task_own_one_wins() {
+    let contained = narrowed(crate::filters::model::ScopeMatch::Contained);
+    let inside = window("2026-09-22", "2026-09-22");
+    let outside = window("2026-10-05", "2026-10-05");
+    assert!(!is_outside_plan_scope(
+        &scoped(None),
+        &contained,
+        Some(&inside)
+    ));
+    assert!(is_outside_plan_scope(
+        &scoped(None),
+        &contained,
+        Some(&outside)
+    ));
+    assert!(!is_outside_plan_scope(
+        &scoped(Some(inside.clone())),
+        &contained,
+        Some(&outside)
+    ));
+}
+
+#[test]
+fn the_overlapping_match_keeps_a_straddling_window_and_an_unscoped_task() {
+    let overlapping = narrowed(crate::filters::model::ScopeMatch::Overlapping);
+    let straddling = scoped(Some(window("2026-09-25", "2026-09-28")));
+    let next_week = scoped(Some(window("2026-09-27", "2026-09-30")));
+    assert!(!is_outside_plan_scope(&straddling, &overlapping, None));
+    assert!(!is_outside_plan_scope(&scoped(None), &overlapping, None));
+    // Adjacent is not overlapping: next week begins where this one ends.
+    assert!(is_outside_plan_scope(&next_week, &overlapping, None));
+}
+
+#[test]
+fn only_the_plan_preset_narrows_by_scope_and_only_a_task() {
+    let unscoped = scoped(None);
+    for preset in [Preset::All, Preset::Start, Preset::Do, Preset::Backlog] {
+        let filter = BoardFilter {
+            plan_scope: Some(week()),
+            ..BoardFilter::preset(preset)
+        };
+        assert!(
+            !is_outside_plan_scope(&unscoped, &filter, None),
+            "{preset:?}"
+        );
+    }
+    let contained = narrowed(crate::filters::model::ScopeMatch::Contained);
+    assert!(!is_outside_plan_scope(&goal("active"), &contained, None));
+    assert!(!is_outside_plan_scope(
+        &unscoped,
+        &BoardFilter::preset(Preset::Plan),
+        None
+    ));
+}

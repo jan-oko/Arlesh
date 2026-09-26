@@ -80,6 +80,15 @@ interface DisplayStore {
    */
   planIncludePremorning: boolean;
   togglePlanIncludePremorning: () => void;
+  /**
+   * Whether the Plan preset's **scope narrowing** keeps a Task whose effective Time Scope merely
+   * **overlaps** the chosen scope, rather than only one wholly **contained** in it.
+   *
+   * **Off by default** — containment. App-wide, not per tab: the scope is a question each tab asks,
+   * and how a window answers it is a reading of the board you would want the same everywhere.
+   */
+  planScopeOverlapping: boolean;
+  togglePlanScopeOverlapping: () => void;
 }
 
 /** Keeps a stored or typed threshold inside the range the setting offers. */
@@ -132,6 +141,8 @@ export const useDisplayStore = create<DisplayStore>()(
       planIncludePremorning: false,
       togglePlanIncludePremorning: () =>
         set((s) => ({ planIncludePremorning: !s.planIncludePremorning })),
+      planScopeOverlapping: false,
+      togglePlanScopeOverlapping: () => set((s) => ({ planScopeOverlapping: !s.planScopeOverlapping })),
     }),
     { name: "arlesh-display" },
   ),

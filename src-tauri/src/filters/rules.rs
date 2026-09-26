@@ -4,10 +4,17 @@
 //! Mindmap's tree and [`list`](super::list) applies them to a flat row and its ancestor chain, so
 //! the two cannot answer the same node differently.
 
-use crate::tasks::{lifecycle::Timing, model::Verdict};
+use crate::{
+    scopes::resolve::{interval_contains, Bounds},
+    tasks::{
+        lifecycle::Timing,
+        model::{TimeScope, Verdict},
+    },
+};
 
 use super::model::{
-    BoardFilter, NodeFacts, NodeKind, OverrideMode, Preset, TagFilter, TagMode, EXPECTATION_PENDING,
+    BoardFilter, NodeFacts, NodeKind, OverrideMode, Preset, ScopeMatch, TagFilter, TagMode,
+    EXPECTATION_PENDING,
 };
 
 /// Goal statuses that read as resolved, and so drop out of Plan and Start.
@@ -131,6 +138,47 @@ pub fn is_planned_ahead(
     filter.preset == Preset::Start
         && node.kind == NodeKind::Task
         && node.plan_timing.or(inherited_plan) == Some(Timing::Pending)
+}
+
+/// Whether two half-open windows share any instant. Adjacent windows — one ending where the next
+/// begins — do not.
+fn intervals_overlap(a: Bounds, b: Bounds) -> bool {
+    a.0 < b.1 && b.0 < a.1
+}
+
+/// Whether `node` is a Task the Plan preset's **scope narrowing** leaves out.
+///
+/// With [`BoardFilter::plan_scope`] set under [`Preset::Plan`], a Task shows only when its
+/// **effective** Time Scope — its own, or `inherited`, the nearest scoped ancestor's, which the
+/// walk carries down — matches the scope by [`BoardFilter::scope_match`]:
+///
+/// - **Contained** (the default): the window lies wholly inside the scope. An **Unscoped** Task —
+///   no window of its own or inherited — is inside nothing, and is left out.
+/// - **Overlapping**: the window shares any instant with the scope, and an Unscoped Task, which
+///   the model defines as always relevant, overlaps every scope.
+///
+/// Only a Task is narrowed; every other kind answers the preset as before. It fails the Task's own
+/// match rather than gating its subtree, so a sub-step inside the scope still shows, holding its
+/// wider parent on screen as its ancestor — the ordinary ancestor-keeping.
+pub fn is_outside_plan_scope(
+    node: &NodeFacts,
+    filter: &BoardFilter,
+    inherited: Option<&TimeScope>,
+) -> bool {
+    let Some(scope) = filter.plan_scope else {
+        return false;
+    };
+    if filter.preset != Preset::Plan || node.kind != NodeKind::Task {
+        return false;
+    }
+    let target = scope.bounds();
+    let Some(window) = node.time_scope.as_ref().or(inherited) else {
+        return filter.scope_match == ScopeMatch::Contained;
+    };
+    match filter.scope_match {
+        ScopeMatch::Contained => !interval_contains(target, window.window()),
+        ScopeMatch::Overlapping => !intervals_overlap(target, window.window()),
+    }
 }
 
 /// Whether `node` is a Project that Plan/Start shelve along with everything inside it.

@@ -2,7 +2,13 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::tasks::{lifecycle::Timing, model::Verdict};
+use crate::{
+    scopes::key::ScopeKey,
+    tasks::{
+        lifecycle::Timing,
+        model::{TimeScope, Verdict},
+    },
+};
 
 /// The status preset a board is being read under.
 ///
@@ -78,6 +84,24 @@ pub struct TagFilter {
     pub mode: TagMode,
 }
 
+/// How the Plan preset's scope narrowing ([`BoardFilter::plan_scope`]) matches a Task's window.
+///
+/// An app-wide preference in the UI, carried in the filter so that a board read over MCP can ask
+/// the same question either way.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ScopeMatch {
+    /// The Task's effective Time Scope lies wholly inside the scope. An Unscoped Task is inside
+    /// nothing, and is left out.
+    #[default]
+    Contained,
+    /// The Task's effective Time Scope shares any instant with the scope. An Unscoped Task is
+    /// always relevant, so it overlaps every scope.
+    Overlapping,
+}
+
 /// The whole filter state one board read is taken under.
 ///
 /// Mirrors the frontend's persisted `FilterState` plus the List View's `unblock` option, so that a
@@ -110,6 +134,13 @@ pub struct BoardFilter {
     pub archived: OverrideMode,
     /// The Backlog pill.
     pub backlog: OverrideMode,
+    /// The Plan preset's scope narrowing: with a scope here and the preset [`Preset::Plan`], a
+    /// Task shows only when its effective Time Scope matches it by [`Self::scope_match`]. `None`
+    /// narrows nothing, and no other preset reads it.
+    #[schemars(with = "Option<crate::mcp::params::ScopeKeyParam>")]
+    pub plan_scope: Option<ScopeKey>,
+    /// How [`Self::plan_scope`] matches: by containment (the default) or by overlap.
+    pub scope_match: ScopeMatch,
 }
 
 impl Default for BoardFilter {
@@ -126,6 +157,8 @@ impl Default for BoardFilter {
             private_mode: false,
             archived: OverrideMode::Inactive,
             backlog: OverrideMode::Inactive,
+            plan_scope: None,
+            scope_match: ScopeMatch::Contained,
         }
     }
 }
@@ -253,6 +286,11 @@ pub struct NodeFacts {
     /// The tag domain ids attached to the node.
     #[serde(default)]
     pub tag_ids: Vec<i64>,
+    /// The node's **own** Time Scope, for the kinds that carry one. `None` inherits: what an
+    /// ancestor's window says is not a fact of this node, and the filter walk carries it down
+    /// (see [`super::rules::is_outside_plan_scope`]).
+    #[serde(default)]
+    pub time_scope: Option<TimeScope>,
 }
 
 impl NodeFacts {
@@ -275,6 +313,7 @@ impl NodeFacts {
             is_habit_flow: false,
             is_habit_occurrence: false,
             tag_ids: Vec::new(),
+            time_scope: None,
         }
     }
 

@@ -11,6 +11,8 @@ import {
 import type { PillDimension } from "@/utils/list-filter";
 import type { OverrideMode } from "@/utils/filter-tree";
 import Switch from "@/components/Switch/Switch";
+import PlanScopeField from "@/components/ScopePicker/PlanScopeField";
+import { useDisplayStore } from "@/stores/use-display-store";
 import PillFilterSection from "./PillFilterSection";
 import { EntityAdder, FixedValueAdder } from "./PillAdders";
 import styles from "./FilterPopover.module.css";
@@ -33,6 +35,8 @@ export default function FilterPopover() {
   const { t } = useTranslation(["filter", "nodeKinds", "listView"]);
   const filter = useFilterStore((s) => s.filter);
   const toggleModeFlows = useFilterStore((s) => s.toggleModeFlows);
+  const setPlanScope = useFilterStore((s) => s.setPlanScope);
+  const planScopeOverlapping = useDisplayStore((s) => s.planScopeOverlapping);
   const addTagFilter = useFilterStore((s) => s.addTagFilter);
   const toggleShowInfo = useFilterStore((s) => s.toggleShowInfo);
   const toggleShowFlow = useFilterStore((s) => s.toggleShowFlow);
@@ -62,6 +66,9 @@ export default function FilterPopover() {
   );
 
   const showFlowsSub = filter.statusMode === "plan" || filter.statusMode === "start";
+  // The Plan preset's scope narrowing — shown only while Plan is the preset, as the flows switch is
+  // for its two, and never in the Plan View, which reads under Plan with a scope of its own.
+  const showPlanScope = filter.statusMode === "plan" && view !== "plan";
 
   function addedSet(dimension: PillDimension): ReadonlySet<string> {
     return new Set(listFilter.pills[dimension].map((p) => p.value));
@@ -98,6 +105,13 @@ export default function FilterPopover() {
             {showFlowsSub && (
               <Switch checked={filter.modeIncludeFlows} onChange={toggleModeFlows} label={t("includeFlows")} />
             )}
+          </PillFilterSection>
+        )}
+
+        {showPlanScope && (
+          <PillFilterSection label={t("planScopeLabel")}>
+            <PlanScopeField value={filter.planScope} onChange={setPlanScope} />
+            <p className={styles.hint}>{planScopeOverlapping ? t("planScopeHintOverlapping") : t("planScopeHint")}</p>
           </PillFilterSection>
         )}
 

@@ -1264,6 +1264,144 @@
       ],
       "commitments": [],
       "expectations": []
+    },
+    {
+      "name": "plan with a scope keeps the tasks whose effective time scope is contained in it",
+      "spec": "mindmap-view.md — Plan's scope narrowing: a Task shows only when its effective Time Scope (its own, or the nearest scoped ancestor's) lies within the scope; equal counts, overlapping is not enough, an Unscoped Task is left out, and a wider parent stays as the ancestor of a match.",
+      "filter": {
+        "preset": "plan",
+        "planScope": {
+          "kind": "week",
+          "date": "2026-09-20"
+        }
+      },
+      "board": "plan-scope",
+      "mindmap": [
+        "domain-plan-scope",
+        "goal-september",
+        "goal-this-week",
+        "task-in-tuesday",
+        "task-inherits-week",
+        "task-inside-child",
+        "task-whole-week",
+        "task-wide-parent"
+      ],
+      "list": [
+        "task-in-tuesday",
+        "task-inherits-week",
+        "task-inside-child",
+        "task-whole-week"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "plan with a scope matched by overlap keeps every task whose window touches it, and the unscoped ones",
+      "spec": "mindmap-view.md — Plan's scope narrowing, overlapping mode: a Task shows when its effective Time Scope shares any instant with the scope; an Unscoped Task is always relevant and so overlaps every scope; an adjacent window does not overlap.",
+      "filter": {
+        "preset": "plan",
+        "planScope": {
+          "kind": "week",
+          "date": "2026-09-20"
+        },
+        "scopeMatch": "overlapping"
+      },
+      "board": "plan-scope",
+      "mindmap": [
+        "domain-plan-scope",
+        "goal-september",
+        "goal-this-week",
+        "task-in-tuesday",
+        "task-inherits-september",
+        "task-inherits-week",
+        "task-inside-child",
+        "task-straddling",
+        "task-unscoped",
+        "task-whole-week",
+        "task-wide-parent"
+      ],
+      "list": [
+        "task-in-tuesday",
+        "task-inherits-september",
+        "task-inherits-week",
+        "task-inside-child",
+        "task-straddling",
+        "task-unscoped",
+        "task-whole-week",
+        "task-wide-parent"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "plan with no scope narrows nothing",
+      "spec": "mindmap-view.md — Plan's scope narrowing: with no scope chosen, Plan is unchanged.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "plan-scope",
+      "mindmap": [
+        "domain-plan-scope",
+        "goal-september",
+        "goal-this-week",
+        "task-in-tuesday",
+        "task-inherits-september",
+        "task-inherits-week",
+        "task-inside-child",
+        "task-next-week",
+        "task-straddling",
+        "task-unscoped",
+        "task-whole-week",
+        "task-wide-parent"
+      ],
+      "list": [
+        "task-in-tuesday",
+        "task-inherits-september",
+        "task-inherits-week",
+        "task-inside-child",
+        "task-next-week",
+        "task-straddling",
+        "task-unscoped",
+        "task-whole-week",
+        "task-wide-parent"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "a plan scope is read by the plan preset alone",
+      "spec": "mindmap-view.md — Plan's scope narrowing belongs to the Plan preset; All ignores a scope left in the filter.",
+      "filter": {
+        "preset": "all",
+        "planScope": {
+          "kind": "week",
+          "date": "2026-09-20"
+        }
+      },
+      "board": "plan-scope",
+      "mindmap": [
+        "domain-plan-scope",
+        "goal-september",
+        "goal-this-week",
+        "task-in-tuesday",
+        "task-inherits-september",
+        "task-inherits-week",
+        "task-inside-child",
+        "task-next-week",
+        "task-straddling",
+        "task-unscoped",
+        "task-whole-week",
+        "task-wide-parent"
+      ],
+      "list": [
+        "task-in-tuesday",
+        "task-inherits-september",
+        "task-inherits-week",
+        "task-inside-child",
+        "task-next-week",
+        "task-straddling",
+        "task-unscoped",
+        "task-whole-week",
+        "task-wide-parent"
+      ],
+      "commitments": []
     }
   ],
   "boards": {
@@ -1976,6 +2114,160 @@
                       "status": "todo"
                     }
                   ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "plan-scope": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-plan-scope",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-in-tuesday",
+              "kind": "task",
+              "status": "todo",
+              "timeScope": {
+                "start_id": {
+                  "kind": "day",
+                  "date": "2026-09-22"
+                },
+                "end_id": {
+                  "kind": "day",
+                  "date": "2026-09-22"
+                }
+              }
+            },
+            {
+              "id": "task-whole-week",
+              "kind": "task",
+              "status": "todo",
+              "timeScope": {
+                "start_id": {
+                  "kind": "week",
+                  "date": "2026-09-20"
+                },
+                "end_id": {
+                  "kind": "week",
+                  "date": "2026-09-20"
+                }
+              }
+            },
+            {
+              "id": "task-straddling",
+              "kind": "task",
+              "status": "todo",
+              "timeScope": {
+                "start_id": {
+                  "kind": "day",
+                  "date": "2026-09-25"
+                },
+                "end_id": {
+                  "kind": "day",
+                  "date": "2026-09-28"
+                }
+              }
+            },
+            {
+              "id": "task-next-week",
+              "kind": "task",
+              "status": "todo",
+              "timeScope": {
+                "start_id": {
+                  "kind": "week",
+                  "date": "2026-09-27"
+                },
+                "end_id": {
+                  "kind": "week",
+                  "date": "2026-09-27"
+                }
+              }
+            },
+            {
+              "id": "task-unscoped",
+              "kind": "task",
+              "status": "todo"
+            },
+            {
+              "id": "goal-september",
+              "kind": "goal",
+              "status": "active",
+              "timeScope": {
+                "start_id": {
+                  "kind": "month",
+                  "date": "2026-09-01"
+                },
+                "end_id": {
+                  "kind": "month",
+                  "date": "2026-09-01"
+                }
+              },
+              "children": [
+                {
+                  "id": "task-inherits-september",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "goal-this-week",
+              "kind": "goal",
+              "status": "active",
+              "timeScope": {
+                "start_id": {
+                  "kind": "week",
+                  "date": "2026-09-20"
+                },
+                "end_id": {
+                  "kind": "week",
+                  "date": "2026-09-20"
+                }
+              },
+              "children": [
+                {
+                  "id": "task-inherits-week",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-wide-parent",
+              "kind": "task",
+              "status": "todo",
+              "timeScope": {
+                "start_id": {
+                  "kind": "month",
+                  "date": "2026-09-01"
+                },
+                "end_id": {
+                  "kind": "month",
+                  "date": "2026-09-01"
+                }
+              },
+              "children": [
+                {
+                  "id": "task-inside-child",
+                  "kind": "task",
+                  "status": "todo",
+                  "timeScope": {
+                    "start_id": {
+                      "kind": "day",
+                      "date": "2026-09-23"
+                    },
+                    "end_id": {
+                      "kind": "day",
+                      "date": "2026-09-23"
+                    }
+                  }
                 }
               ]
             }

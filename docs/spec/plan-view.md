@@ -35,7 +35,9 @@ and can be placed — and under Do or Backlog the candidates would be a differen
   gives it back.
 
 The view's own switches work as before on top of it, the Backlog switch included (see
-[Backlog](#backlog)), which overrides the shared Backlog pill.
+[Backlog](#backlog)), which overrides the shared Backlog pill. The Plan preset's **scope
+narrowing** (see [Mindmap](mindmap-view.md)) is not read here: the view has its own scope, the one
+being filled, and a scope the tab chose for the other views does not narrow its panes.
 
 ## The two panes
 

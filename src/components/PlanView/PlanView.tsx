@@ -105,7 +105,12 @@ export default function PlanView() {
   // turning it on under the Plan preset, which hides backlogged work of its own accord, would be a
   // control that visibly did nothing.
   const filter = useMemo<FilterState>(
-    () => ({ ...sharedFilter, statusMode: PLAN_VIEW_STATUS_MODE, backlogMode: showBacklogged ? "include" : "exclude" }),
+    // The view has its own scope — the one being filled — so the Plan preset's scope narrowing, a
+    // question the other views ask, is not asked here.
+    () => ({
+      ...sharedFilter, statusMode: PLAN_VIEW_STATUS_MODE, planScope: null,
+      backlogMode: showBacklogged ? "include" : "exclude",
+    }),
     [sharedFilter, showBacklogged],
   );
   // The List View's own pill dimensions are its own; what the three views share is this filter.

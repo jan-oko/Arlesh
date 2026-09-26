@@ -4,6 +4,10 @@ import { isNodeBlocked } from "@/utils/tree-layout";
 import { VERDICT } from "@/api/verdict";
 import { EXPECTATION_STATUS } from "@/api/expectation-status";
 import type { Timing } from "@/api/scope-lifecycle";
+import type { ScopeKey } from "@/api/scopes";
+import type { TimeScope } from "@/api/time-scope";
+import { intervalContains, intervalsOverlap } from "@/utils/scope-interval";
+import { keyWindow, timeScopeWindowOf } from "@/utils/scope-window";
 
 /** Status preset a filter is in. `all` disables status filtering; `backlog` inverts it, showing
  * only what has been deliberately set aside. */
@@ -15,6 +19,13 @@ export type StatusMode = "all" | "plan" | "start" | "do" | "backlog";
  * still there — and back in force — the moment you switch to another view.
  */
 export const PLAN_VIEW_STATUS_MODE: StatusMode = "plan";
+
+/**
+ * How the Plan preset's scope narrowing matches a Task's window: `contained` (the default) keeps a
+ * Task whose effective Time Scope lies wholly inside the scope, `overlapping` one whose window
+ * shares any instant with it. Mirrors the Rust `ScopeMatch`.
+ */
+export type ScopeMatch = "contained" | "overlapping";
 
 /** How a single tag filter contributes to the combined tag predicate (SPEC Filtering Logic). */
 export type TagFilterMode = "any" | "all" | "exclude";
@@ -58,6 +69,14 @@ export interface FilterState {
   archivedMode: ArchivedMode;
   /** Override for backlogged Tasks on top of the status preset — the Archived pill's twin. */
   backlogMode: BacklogMode;
+  /** The Plan preset's scope narrowing: under Plan, a Task shows only when its effective Time
+   * Scope matches this scope. `null` narrows nothing. Persisted with the tab. */
+  planScope: ScopeKey | null;
+  /**
+   * How `planScope` matches. **Not persisted with the tab**: it is an app-wide preference, and the
+   * views fill it in from that (see `use-board-filter`). Absent reads as `contained`.
+   */
+  scopeMatch?: ScopeMatch;
 }
 
 /** The neutral, indicator-off filter — shows everything except nodes marked private. */
@@ -70,6 +89,7 @@ export const DEFAULT_FILTER: FilterState = {
   privateMode: false,
   archivedMode: "inactive",
   backlogMode: "inactive",
+  planScope: null,
 };
 
 /** Goal statuses that read as resolved/inactive (hidden by Plan/Start). */
@@ -191,6 +211,29 @@ export function isUnopenedOccurrence(node: MindmapNode, f: FilterState): boolean
 export function isPlannedAhead(node: MindmapNode, f: FilterState, inheritedPlan: Timing | undefined): boolean {
   if (f.statusMode !== "start" || node.kind !== "task") return false;
   return (node.planTiming ?? inheritedPlan) === "pending";
+}
+
+/**
+ * Whether `node` is a Task the Plan preset's **scope narrowing** leaves out.
+ *
+ * With `planScope` set under Plan, a Task shows only when its **effective** Time Scope — its own,
+ * or `inheritedTimeScope`, the nearest scoped ancestor's, which the walk carries down — matches the
+ * scope: wholly inside it under `contained` (the default), sharing any instant with it under
+ * `overlapping`. An **Unscoped** Task is inside nothing, so containment leaves it out; overlap keeps
+ * it, since the model defines Unscoped as always relevant.
+ *
+ * Only a Task is narrowed. It fails the Task's own match rather than gating its subtree, so a
+ * sub-step inside the scope still holds a wider parent on screen as its ancestor. Mirrors
+ * `is_outside_plan_scope` in `src-tauri/src/filters/rules.rs`.
+ */
+export function isOutsidePlanScope(node: MindmapNode, f: FilterState, inheritedTimeScope: TimeScope | undefined): boolean {
+  if (f.statusMode !== "plan" || f.planScope === null || node.kind !== "task") return false;
+  const match = f.scopeMatch ?? "contained";
+  const scope = node.timeScope ?? inheritedTimeScope;
+  if (scope === undefined) return match === "contained";
+  const target = keyWindow(f.planScope);
+  const window = timeScopeWindowOf(scope);
+  return match === "contained" ? !intervalContains(target, window) : !intervalsOverlap(target, window);
 }
 
 /**
@@ -430,6 +473,7 @@ function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string
     inheritedStatus: string,
     underBacklog: boolean,
     inheritedPlan: Timing | undefined,
+    inheritedTimeScope: TimeScope | undefined,
   ): MindmapNode | null {
     const isExempt = exempt.has(node.id);
     const hardHidden = typeHardHidden(node, f);
@@ -445,12 +489,14 @@ function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string
     // A wait cuts the chain: the check task beneath it has no Plan, answers to its own due time,
     // and must not vanish because the Task the wait hangs under is planned for next week.
     const planForChildren = node.kind === "expectation" ? undefined : node.planTiming ?? inheritedPlan;
+    // A Time Scope is inherited from the nearest scoped ancestor, as it is everywhere else.
+    const timeScopeForChildren = node.timeScope ?? inheritedTimeScope;
     const children: MindmapNode[] = [];
     let hasContentMatch = false;
     for (const child of node.children) {
       // A hard-hidden node is on screen only to carry the focused node: nothing else beneath it returns.
       if (hardHidden && !exempt.has(child.id)) continue;
-      const pruned = prune(child, inheritedForChildren, backlogForChildren, planForChildren);
+      const pruned = prune(child, inheritedForChildren, backlogForChildren, planForChildren, timeScopeForChildren);
       if (pruned === null) continue;
       children.push(pruned);
       // A child kept only by the exemption is not a match, so it must not keep its parent either —
@@ -463,7 +509,9 @@ function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string
     }
     // Info is carried by its parent's decision (visibility already handled by typeHardHidden above).
     if (node.kind === "info") return { ...node, children };
-    const matches = selfMatches(node, f, inheritedStatus, underBacklog) && !isPlannedAhead(node, f, inheritedPlan);
+    const matches = selfMatches(node, f, inheritedStatus, underBacklog)
+      && !isPlannedAhead(node, f, inheritedPlan)
+      && !isOutsidePlanScope(node, f, inheritedTimeScope);
     if (matches || hasContentMatch) return { ...node, children };
     if (isExempt) {
       exemptedIds.add(node.id);
@@ -472,5 +520,5 @@ function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string
     return null;
   }
 
-  return { root: prune(root, UNSET_STATUS, false, undefined) ?? { ...root, children: [] }, exemptedIds };
+  return { root: prune(root, UNSET_STATUS, false, undefined, undefined) ?? { ...root, children: [] }, exemptedIds };
 }

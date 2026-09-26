@@ -16,6 +16,7 @@ import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useUndo } from "@/hooks/use-undo";
 import { useClipboardStore } from "@/stores/use-clipboard-store";
 import { useFilterStore } from "@/stores/use-filter-store";
+import { useBoardFilter } from "@/hooks/use-board-filter";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useViewStore } from "@/stores/use-view-store";
@@ -99,7 +100,7 @@ export default function StepsView() {
   const clipboard = useClipboardStore((s) => s.clipboard);
   const setClipboard = useClipboardStore((s) => s.setClipboard);
 
-  const filter = useFilterStore((s) => s.filter);
+  const filter = useBoardFilter();
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
   const zoom = useViewStore((s) => s.stepsZoom);
