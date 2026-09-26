@@ -43,12 +43,12 @@ export function pillSide(mode: PillMode): PillSide {
 export type PillDimension =
   | "antecedent" | "dependency"
   | "taskStatus" | "goalStatus" | "projectStatus" | "verdict"
-  | "scopeState" | "blocked" | "agentic" | "asynchronous";
+  | "scopeState" | "blocked" | "agentic" | "asynchronous" | "private";
 
 export const PILL_DIMENSIONS: PillDimension[] = [
   "antecedent", "dependency",
   "taskStatus", "goalStatus", "projectStatus", "verdict",
-  "scopeState", "blocked", "agentic", "asynchronous",
+  "scopeState", "blocked", "agentic", "asynchronous", "private",
 ];
 
 /** List View's own preset selector: All/Plan/Start/Do write through to the shared status preset;
@@ -181,7 +181,7 @@ export const DEFAULT_LIST_FILTER: ListFilterState = {
   pills: {
     antecedent: [], dependency: [],
     taskStatus: [], goalStatus: [], projectStatus: [], verdict: [],
-    scopeState: [], blocked: [], agentic: [], asynchronous: [],
+    scopeState: [], blocked: [], agentic: [], asynchronous: [], private: [],
   },
 };
 
@@ -296,6 +296,16 @@ export interface ExpectationListRow {
  */
 function ancestorRefs(ancestors: readonly MindmapNode[]): string[] {
   return ancestors.map((ancestor) => ancestor.id);
+}
+
+/**
+ * A row's answer to the **Private** yes/no pill: private when the node is marked private or sits
+ * under a node that is — the same reading Private Mode hides by. The pill is offered only while
+ * Private Mode is on, and turning Private Mode off removes it, so it never narrows a list that has
+ * hidden every private row already.
+ */
+function privacyToken(node: MindmapNode, hasPrivateAncestor: boolean): string {
+  return node.isPrivate === true || hasPrivateAncestor ? "private" : "not_private";
 }
 
 /** Combined pill predicate per SPEC Filtering Logic: (∪Any) ∧ (∩All) ∧ ¬(∪Exclude). */
@@ -437,7 +447,7 @@ function rowPassesFilters(row: TaskListRow, shared: FilterState, listFilter: Lis
   if (!matchesPillGroup(listFilter.pills.blocked, [row.isBlocked ? "blocked" : "not_blocked"])) return false;
   if (!matchesPillGroup(listFilter.pills.agentic, [row.isAgentic ? "agentic" : "not_agentic"])) return false;
   if (!matchesPillGroup(listFilter.pills.asynchronous, [row.isAsynchronous ? "asynchronous" : "not_asynchronous"])) return false;
-  return true;
+  return matchesPillGroup(listFilter.pills.private, [privacyToken(row.node, row.hasPrivateAncestor)]);
 }
 
 /**
@@ -486,6 +496,7 @@ function commitmentPassesFilters(row: CommitmentListRow, shared: FilterState, li
   if (!passesTags(row.node, shared)) return false;
   if (!matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors))) return false;
   if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
+  if (!matchesPillGroup(listFilter.pills.private, [privacyToken(row.node, row.hasPrivateAncestor)])) return false;
   return matchesPillGroup(listFilter.pills.verdict, [row.node.verdict ?? VERDICT.UNRESOLVED]);
 }
 
@@ -524,6 +535,7 @@ function expectationPassesFilters(row: ExpectationListRow, shared: FilterState, 
   }
   if (!passesTags(row.node, shared)) return false;
   if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
+  if (!matchesPillGroup(listFilter.pills.private, [privacyToken(row.node, row.hasPrivateAncestor)])) return false;
   return matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors));
 }
 

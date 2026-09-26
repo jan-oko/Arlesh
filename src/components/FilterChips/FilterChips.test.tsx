@@ -75,6 +75,16 @@ describe("FilterChips", () => {
     expect(useListFilterStore.getState().filter.pills.blocked).toEqual([{ value: "blocked", mode: "all" }]);
   });
 
+  it("reads a Private chip as Private or Not private", () => {
+    useViewStore.setState({ view: "list" });
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
+    useListFilterStore.setState({
+      filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills, private: [{ value: "private", mode: "exclude" }] } },
+    });
+    render(<FilterChips />);
+    expect(screen.getByText("privateState.not_private")).toBeInTheDocument();
+  });
+
   it("names the dimension in the chip's accessible name, with Under for the old Antecedent", () => {
     useViewStore.setState({ view: "list" });
     useListFilterStore.setState({

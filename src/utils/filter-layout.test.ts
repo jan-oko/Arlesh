@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterMenuRows, filterSwitchesFor, rowDimensions } from "./filter-layout";
+import { filterMenuRows, filterSwitchesFor, offeredDimensions, rowDimensions } from "./filter-layout";
 
 describe("filterMenuRows", () => {
   it("lists the List View's rows grouped: Under, Tags, Depends on | Scope, Yes / no | Task, Goal, Project, Verdict", () => {
@@ -16,9 +16,16 @@ describe("filterMenuRows", () => {
 });
 
 describe("rowDimensions", () => {
-  it("expands the Yes / no row into its three dimensions", () => {
-    expect(rowDimensions("yesNo")).toEqual(["blocked", "agentic", "asynchronous"]);
+  it("expands the Yes / no row into its dimensions", () => {
+    expect(rowDimensions("yesNo")).toEqual(["blocked", "agentic", "asynchronous", "private"]);
     expect(rowDimensions("verdict")).toEqual(["verdict"]);
+  });
+});
+
+describe("offeredDimensions", () => {
+  it("offers the Private pill only while Private Mode is on", () => {
+    expect(offeredDimensions("yesNo", false)).toEqual(["blocked", "agentic", "asynchronous"]);
+    expect(offeredDimensions("yesNo", true)).toEqual(["blocked", "agentic", "asynchronous", "private"]);
   });
 });
 

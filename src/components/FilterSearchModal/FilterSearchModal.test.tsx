@@ -8,6 +8,7 @@ import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import { useFilterDisplay } from "@/hooks/use-filter-display";
 import { useGlobalHotkeys } from "@/hooks/use-global-hotkeys";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
@@ -186,14 +187,60 @@ describe("FilterSearchModal", () => {
       expect(useFilterStore.getState().filter.backlogMode).toBe("include");
     });
 
-    it("turns Private on and, with Alt, off", () => {
+    it("offers no Private Mode result: Private is the menu's switch", () => {
       render(<FilterSearchModal onClose={vi.fn()} />);
       fireEvent.change(box(), { target: { value: "private" } });
-      fireEvent.click(switchOption("privateMode", "search.privateState.inactive"));
-      expect(useFilterStore.getState().filter.privateMode).toBe(true);
-      fireEvent.change(box(), { target: { value: "private" } });
-      fireEvent.click(switchOption("privateMode", "search.privateState.include"), { altKey: true });
-      expect(useFilterStore.getState().filter.privateMode).toBe(false);
+      expect(screen.queryByRole("option", { name: /privateMode/ })).not.toBeInTheDocument();
+    });
+
+    it("offers the Private flag while Private Mode is on: Enter only private, Alt not private", () => {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
+      render(<FilterSearchModal onClose={vi.fn()} />);
+      fireEvent.change(box(), { target: { value: "not_private" } });
+      expect(optionLabels()).toEqual(["privateState.private"]);
+      fireEvent.keyDown(box(), { key: "Enter", altKey: true });
+      expect(useListFilterStore.getState().filter.pills.private).toEqual([{ value: "private", mode: "exclude" }]);
+    });
+
+    it("does not offer the Private flag while Private Mode is off", () => {
+      render(<FilterSearchModal onClose={vi.fn()} />);
+      fireEvent.change(box(), { target: { value: "privateState" } });
+      expect(screen.queryByRole("option")).not.toBeInTheDocument();
+    });
+
+    it("does not offer the Private flag outside the List View", () => {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
+      useViewStore.setState({ view: "mindmap" });
+      render(<FilterSearchModal onClose={vi.fn()} />);
+      fireEvent.change(box(), { target: { value: "privateState" } });
+      expect(screen.queryByRole("option")).not.toBeInTheDocument();
+    });
+
+    it("shows the row kinds with their state, and toggles one on Enter", () => {
+      render(<FilterSearchModal onClose={vi.fn()} />);
+      fireEvent.change(box(), { target: { value: "rowKind.commitment" } });
+      switchOption("listView:rowKind.commitment", "search.rowKindState.shown");
+      fireEvent.keyDown(box(), { key: "Enter", altKey: true });
+      expect(useListFilterStore.getState().filter.kinds).toEqual(["task", "expectation"]);
+      fireEvent.change(box(), { target: { value: "rowKind.commitment" } });
+      switchOption("listView:rowKind.commitment", "search.rowKindState.hidden");
+    });
+
+    it("refuses to hide the last kind, with the toast Alt+Shift+T/C/E shows", () => {
+      useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, kinds: ["task"] } });
+      useMindmapStore.setState({ pendingToast: null });
+      render(<FilterSearchModal onClose={vi.fn()} />);
+      fireEvent.change(box(), { target: { value: "rowKind.task" } });
+      fireEvent.keyDown(box(), { key: "Enter" });
+      expect(useListFilterStore.getState().filter.kinds).toEqual(["task"]);
+      expect(useMindmapStore.getState().pendingToast?.message).toBe("listView:rowKindRefused.lastKind");
+    });
+
+    it("offers no row kinds outside the List View", () => {
+      useViewStore.setState({ view: "mindmap" });
+      render(<FilterSearchModal onClose={vi.fn()} />);
+      fireEvent.change(box(), { target: { value: "rowKind" } });
+      expect(screen.queryByRole("option")).not.toBeInTheDocument();
     });
 
     it("offers no Backlog in the Plan View, which answers it itself", () => {

@@ -1,6 +1,10 @@
 import type { OverrideMode } from "@/utils/filter-tree";
 import type { FilterDimension, ModifierKeys } from "@/utils/filter-modes";
-import type { FilterSwitch } from "@/utils/filter-layout";
+import type { ListRowKind } from "@/utils/list-filter";
+
+/** The tri-state switches the search offers: Archived and Backlog. (Private is a yes/no pill here,
+ * offered while Private Mode is on.) */
+export type SearchSwitch = "archived" | "backlog";
 
 /** A value that can be added to a dimension, as the menu and the search draw it. */
 export interface FilterOption {
@@ -21,19 +25,31 @@ export interface ValueResult extends FilterOption {
 }
 
 /**
- * A switch result — Archived, Backlog or Private. It is not added and does not drop out: it shows
- * its current state, and picking it sets that state (see {@link switchStateAfterPick}).
+ * A switch result — Archived or Backlog. It is not added and does not drop out: it shows its
+ * current state, and picking it sets that state (see {@link switchStateAfterPick}).
  */
 export interface SwitchResult {
   kind: "switch";
-  target: FilterSwitch;
+  target: SearchSwitch;
   label: string;
-  /** Private reads `include` when on and `inactive` when off; it has no `exclude`. */
   state: OverrideMode;
   matchText: string;
 }
 
-export type SearchResult = ValueResult | SwitchResult;
+/**
+ * A List View row-kind toggle — Tasks, Commitments, Expectations — wearing whether it is shown.
+ * Picking it flips it, whatever keys are held; a refused flip (the last kind shown, or any kind
+ * under the Expectations option) says why in a toast, as `Alt+Shift+T/C/E` does.
+ */
+export interface RowKindResult {
+  kind: "rowKind";
+  target: ListRowKind;
+  label: string;
+  shown: boolean;
+  matchText: string;
+}
+
+export type SearchResult = ValueResult | SwitchResult | RowKindResult;
 
 /** One heading's worth of the search: a dimension, the Yes / no group, or the switches. */
 export interface SearchGroup {
@@ -82,13 +98,13 @@ export function searchFilterCatalogue(groups: readonly SearchGroup[], query: str
 }
 
 /**
- * The state a switch moves to when picked with `keys` held: **Enter / click** sets Archived and
- * Backlog to **include** and Private **on**; **Alt** sets Archived and Backlog to **exclude** and
- * Private **off**; Shift reads as a plain pick. Picking the state a switch is already in clears it
- * back to what the preset says — the search's way back, as Delete is on a set pill.
+ * The state a switch moves to when picked with `keys` held: **Enter / click** sets it to
+ * **include**, **Alt** to **exclude**, and Shift reads as a plain pick. Picking the state a switch
+ * is already in clears it back to what the preset says — the search's way back, as Delete is on a
+ * set pill.
  */
-export function switchStateAfterPick(target: FilterSwitch, current: OverrideMode, keys: ModifierKeys): OverrideMode {
-  const asked: OverrideMode = keys.altKey ? (target === "private" ? "inactive" : "exclude") : "include";
+export function switchStateAfterPick(current: OverrideMode, keys: ModifierKeys): OverrideMode {
+  const asked: OverrideMode = keys.altKey ? "exclude" : "include";
   if (asked === current) return "inactive";
   return asked;
 }

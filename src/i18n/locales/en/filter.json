@@ -41,7 +41,8 @@
     "verdict": "Verdict",
     "blocked": "Blocked",
     "agentic": "Agentic",
-    "asynchronous": "Asynchronous"
+    "asynchronous": "Asynchronous",
+    "private": "Private"
   },
   "groups": {
     "antecedent": "Under",
@@ -56,7 +57,8 @@
     "switches": "Switches",
     "blocked": "Blocked",
     "agentic": "Agentic",
-    "asynchronous": "Asynchronous"
+    "asynchronous": "Asynchronous",
+    "private": "Private"
   },
   "aliases": {
     "antecedent": "Antecedent",
@@ -80,16 +82,11 @@
     "hintAll": "All",
     "hintAny": "Any",
     "hintNot": "Not",
-    "hintSwitch": "on a switch: ↵ include, Alt ↵ exclude, again to clear",
+    "hintSwitch": "on a switch: ↵ include, Alt ↵ exclude, again to clear · Tasks / Commitments / Expectations: ↵ show or hide",
     "switchState": {
       "inactive": "as the preset says",
       "include": "include",
       "exclude": "exclude"
-    },
-    "privateState": {
-      "inactive": "off",
-      "include": "on",
-      "exclude": "off"
     },
     "hintKeys": {
       "all": "↵",
@@ -97,7 +94,16 @@
       "not": "Alt ↵"
     },
     "nodePrefix": "{{dimension}}:",
-    "nodesListOnly": "Node filters (Under, Depends on) are List View only — switch with Ctrl+L, or enter a node's subtree with Ctrl+O."
+    "nodesListOnly": "Node filters (Under, Depends on) are List View only — switch with Ctrl+L, or enter a node's subtree with Ctrl+O.",
+    "rowKindState": {
+      "shown": "shown",
+      "hidden": "hidden"
+    }
   },
-  "filterButtonTitle": "Filter (Alt+F) · search the filters with Ctrl+F"
+  "filterButtonTitle": "Filter (Alt+F) · search the filters with Ctrl+F",
+  "privateState": {
+    "private": "Private",
+    "not_private": "Not private"
+  },
+  "privateFilterRemoved": "Private Mode is off, so the Private / Not private filter was removed."
 }

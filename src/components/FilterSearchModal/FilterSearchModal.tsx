@@ -2,6 +2,8 @@ import { useId, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useFilterStore } from "@/stores/use-filter-store";
+import { useListFilterStore } from "@/stores/use-list-filter-store";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import { useFilterDimensions } from "@/hooks/use-filter-dimensions";
@@ -10,7 +12,8 @@ import { useFilterSearchGroups } from "@/hooks/use-filter-search-groups";
 import { modeFromModifiers } from "@/utils/filter-modes";
 import type { ModifierKeys } from "@/utils/filter-modes";
 import { searchFilterCatalogue, switchStateAfterPick } from "@/utils/filter-search";
-import type { FilterOption, SearchResult, SwitchResult } from "@/utils/filter-search";
+import type { FilterOption, RowKindResult, SearchResult, SwitchResult } from "@/utils/filter-search";
+import { rowKindToggleRefusal } from "@/utils/list-filter";
 import SearchModalShell from "@/components/SearchModalShell/SearchModalShell";
 import styles from "./FilterSearchModal.module.css";
 
@@ -29,15 +32,18 @@ interface Props {
  * something is typed; a query matches a dimension's name (old names included) or a value's — in the
  * List View every node too, as "Under: X" and "Depends on: X", with its path. **↑ ↓**
  * move, and **Enter** or a click adds — All, **Shift** Any, **Alt** Not — then clears the query and
- * stays open. The switches (Private, Archived, Backlog) are one result each wearing their state.
+ * stays open. The switches — the List View's row kinds, Archived, Backlog — are one result each
+ * wearing their state; Private is a yes/no pill here, offered while Private Mode is on.
  * It edits the same per-tab filter as the Filter menu and the chips.
  */
 export default function FilterSearchModal({ onClose }: Props) {
   useInputCapture();
-  const { t } = useTranslation("filter");
+  const { t } = useTranslation(["filter", "listView"]);
   const listId = useId();
   const view = useViewStore((s) => s.view);
-  const setPrivateMode = useFilterStore((s) => s.setPrivateMode);
+  const listFilter = useListFilterStore((s) => s.filter);
+  const toggleKind = useListFilterStore((s) => s.toggleKind);
+  const showToast = useMindmapStore((s) => s.showToast);
   const setArchivedMode = useFilterStore((s) => s.setArchivedMode);
   const setBacklogMode = useFilterStore((s) => s.setBacklogMode);
   const catalogue = useFilterDimensions();
@@ -51,18 +57,22 @@ export default function FilterSearchModal({ onClose }: Props) {
   const clampedActive = Math.min(active, Math.max(0, results.length - 1));
 
   function pickSwitch(result: SwitchResult, keys: ModifierKeys) {
-    const next = switchStateAfterPick(result.target, result.state, keys);
-    if (result.target === "private") setPrivateMode(next === "include");
-    else if (result.target === "archived") setArchivedMode(next);
+    const next = switchStateAfterPick(result.state, keys);
+    if (result.target === "archived") setArchivedMode(next);
     else setBacklogMode(next);
   }
 
+  /** Flips a row kind, or says why not — the toast `Alt+Shift+T/C/E` shows. */
+  function pickRowKind(result: RowKindResult) {
+    const refusal = rowKindToggleRefusal(listFilter, result.target);
+    if (refusal === null) toggleKind(result.target);
+    else showToast({ nodeId: "", message: t(`listView:rowKindRefused.${refusal}`) });
+  }
+
   function pick(result: SearchResult, keys: ModifierKeys) {
-    if (result.kind === "switch") {
-      pickSwitch(result, keys);
-    } else {
-      entries.add(result.dimension, result.value, modeFromModifiers(keys));
-    }
+    if (result.kind === "switch") pickSwitch(result, keys);
+    else if (result.kind === "rowKind") pickRowKind(result);
+    else entries.add(result.dimension, result.value, modeFromModifiers(keys));
     setQuery("");
     setActive(0);
   }
@@ -81,14 +91,15 @@ export default function FilterSearchModal({ onClose }: Props) {
     pick(result, event);
   }
 
-  function stateText(result: SwitchResult): string {
-    if (result.target === "private") return t(`search.privateState.${result.state}`);
+  function stateText(result: SwitchResult | RowKindResult): string {
+    if (result.kind === "rowKind") return t(result.shown ? "search.rowKindState.shown" : "search.rowKindState.hidden");
     return t(`search.switchState.${result.state}`);
   }
 
-  function stateClass(result: SwitchResult): string {
-    if (result.state === "include") return `${styles.state} ${styles.stateInclude}`;
-    if (result.state === "exclude") return `${styles.state} ${styles.stateExclude}`;
+  function stateClass(result: SwitchResult | RowKindResult): string {
+    const included = result.kind === "rowKind" ? result.shown : result.state === "include";
+    if (included) return `${styles.state} ${styles.stateInclude}`;
+    if (result.kind === "switch" && result.state === "exclude") return `${styles.state} ${styles.stateExclude}`;
     return styles.state ?? "";
   }
 
@@ -122,7 +133,7 @@ export default function FilterSearchModal({ onClose }: Props) {
                 const isActive = own === clampedActive;
                 return (
                   <div
-                    key={result.kind === "switch" ? `switch-${result.target}` : `${result.dimension}-${result.value}`}
+                    key={result.kind === "value" ? `${result.dimension}-${result.value}` : `${result.kind}-${result.target}`}
                     id={`${listId}-${own}`}
                     role="option"
                     aria-selected={isActive}
@@ -141,7 +152,7 @@ export default function FilterSearchModal({ onClose }: Props) {
                         <span className={styles.path}>({result.detail})</span>
                       )}
                     </span>
-                    {result.kind === "switch" && <span className={stateClass(result)}>{stateText(result)}</span>}
+                    {result.kind !== "value" && <span className={stateClass(result)}>{stateText(result)}</span>}
                     {isActive && <kbd className={styles.enter} aria-hidden="true">{t("search.hintKeys.all")}</kbd>}
                   </div>
                 );

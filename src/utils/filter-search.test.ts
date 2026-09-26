@@ -56,21 +56,14 @@ describe("switchStateAfterPick", () => {
   const shift = { shiftKey: true, altKey: false };
   const alt = { shiftKey: false, altKey: true };
 
-  it("includes Archived on a plain pick and on Shift, excludes it on Alt", () => {
-    expect(switchStateAfterPick("archived", "inactive", plain)).toBe("include");
-    expect(switchStateAfterPick("archived", "inactive", shift)).toBe("include");
-    expect(switchStateAfterPick("backlog", "include", alt)).toBe("exclude");
+  it("includes on a plain pick and on Shift, excludes on Alt", () => {
+    expect(switchStateAfterPick("inactive", plain)).toBe("include");
+    expect(switchStateAfterPick("inactive", shift)).toBe("include");
+    expect(switchStateAfterPick("include", alt)).toBe("exclude");
   });
 
   it("clears back to the preset when the state picked is the one already set", () => {
-    expect(switchStateAfterPick("archived", "include", plain)).toBe("inactive");
-    expect(switchStateAfterPick("backlog", "exclude", alt)).toBe("inactive");
-  });
-
-  it("turns Private on with a pick and off with Alt or a second pick", () => {
-    expect(switchStateAfterPick("private", "inactive", plain)).toBe("include");
-    expect(switchStateAfterPick("private", "include", alt)).toBe("inactive");
-    expect(switchStateAfterPick("private", "include", plain)).toBe("inactive");
-    expect(switchStateAfterPick("private", "inactive", alt)).toBe("inactive");
+    expect(switchStateAfterPick("include", plain)).toBe("inactive");
+    expect(switchStateAfterPick("exclude", alt)).toBe("inactive");
   });
 });

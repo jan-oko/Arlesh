@@ -461,6 +461,23 @@ describe("filterTaskList — Agentic", () => {
   });
 });
 
+describe("filterTaskList — Private", () => {
+  const own = row({ node: n("task-p", "task", { status: "todo", isPrivate: true }) });
+  const inherited = row({ node: n("task-i", "task", { status: "todo" }), hasPrivateAncestor: true });
+  const open = row({ node: n("task-o", "task", { status: "todo" }) });
+  const on = sf({ privateMode: true });
+
+  it("keeps the private rows — marked, or under something marked — under a Private pill", () => {
+    const filtered = filterTaskList([own, inherited, open], on, lf({ pills: { ...DEFAULT_LIST_FILTER.pills, private: [{ value: "private", mode: "all" }] } }));
+    expect(filtered.map((r) => r.node.id)).toEqual(["task-p", "task-i"]);
+  });
+
+  it("keeps the rest under a Not private pill", () => {
+    const filtered = filterTaskList([own, inherited, open], on, lf({ pills: { ...DEFAULT_LIST_FILTER.pills, private: [{ value: "private", mode: "exclude" }] } }));
+    expect(filtered.map((r) => r.node.id)).toEqual(["task-o"]);
+  });
+});
+
 describe("filterTaskList — Asynchronous", () => {
   const waiting = row({ node: n("task-w", "task", { status: "todo" }), isAsynchronous: true });
   const doing = row({ node: n("task-d", "task", { status: "todo" }), isAsynchronous: false });

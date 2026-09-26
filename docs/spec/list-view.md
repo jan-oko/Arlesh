@@ -81,6 +81,7 @@ On top of the shared filters, the List View adds its own filter dimensions — a
 | Scope | Unscoped / Active / Overdue / Lapsed / Planned / Unplanned — independent axes, so e.g. Unscoped + Planned can both apply to the same task |
 | Blocked | One yes/no pill: Blocked, or with Alt, Not blocked (see [*Yes/no dimensions*](filtering-logic.md#adding-modes)) |
 | Agentic | One yes/no pill: Agentic / Not agentic — the flag as the task *reads* it, its own or inherited (see [*Tasks*](resources.md)). Independent of the delegated/undelegated question |
+| Private | One yes/no pill, offered only while Private Mode is on: Private / Not private — the node marked Private, or under one that is. Applies to every row kind. Turning Private Mode off removes it, with a toast |
 | Asynchronous | One yes/no pill: Asynchronous / Not asynchronous — the task's **own** flag (see [*Tasks*](resources.md)); it does not inherit, so a subtask of an asynchronous task reads as not asynchronous |
 
 ## What a row's colour says

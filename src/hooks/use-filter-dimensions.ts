@@ -26,9 +26,16 @@ export interface FilterDimensions {
   valueColor: (dimension: FilterDimension, value: string) => string | null;
 }
 
-/** The label a fixed-value dimension gives one of its values. */
-function fixedLabel(display: FilterDisplay, dimension: FilterDimension, value: string): string {
+/** The label a fixed-value dimension gives one of its values. `privateLabel` words the Private
+ * pill, which has no display resolver of its own. */
+function fixedLabel(
+  display: FilterDisplay,
+  privateLabel: (value: string) => string,
+  dimension: FilterDimension,
+  value: string,
+): string {
   switch (dimension) {
+    case "private": return privateLabel(value);
     case "taskStatus": return display.displayTaskStatus(value);
     case "goalStatus": return display.displayGoalStatus(value);
     case "projectStatus": return display.displayProjectStatus(value);
@@ -52,7 +59,8 @@ function fixedValues(dimension: FilterDimension): readonly string[] {
     case "scopeState": return SCOPE_STATE_VALUES;
     case "blocked":
     case "agentic":
-    case "asynchronous": return [YES_VALUE[dimension]];
+    case "asynchronous":
+    case "private": return [YES_VALUE[dimension]];
     case "tag":
     case "antecedent":
     case "dependency": return [];
@@ -63,6 +71,9 @@ function fixedValues(dimension: FilterDimension): readonly string[] {
 export function useFilterDimensions(): FilterDimensions {
   const { t } = useTranslation("filter");
   const display = useFilterDisplay();
+  const privateLabel = (value: string) =>
+    (value === NO_VALUE.private ? t("privateState.not_private") : t("privateState.private"));
+  const label = (dimension: FilterDimension, value: string) => fixedLabel(display, privateLabel, dimension, value);
 
   const tagOptions = useMemo<FilterOption[]>(
     () => display.tagOptions.map((tag) => ({ value: String(tag.id), label: tag.label, color: tag.color, detail: null })),
@@ -94,11 +105,11 @@ export function useFilterDimensions(): FilterDimensions {
       if (dimension === "tag") return tagOptions;
       if (dimension === "antecedent") return antecedentOptions;
       if (dimension === "dependency") return dependencyOptions;
-      return fixedValues(dimension).map((value) => ({ value, label: fixedLabel(display, dimension, value), color: null, detail: null }));
+      return fixedValues(dimension).map((value) => ({ value, label: label(dimension, value), color: null, detail: null }));
     },
     valueLabel: (dimension, value, mode) => {
-      if (isYesNoDimension(dimension) && mode === "exclude") return fixedLabel(display, dimension, NO_VALUE[dimension]);
-      return fixedLabel(display, dimension, value);
+      if (isYesNoDimension(dimension) && mode === "exclude") return label(dimension, NO_VALUE[dimension]);
+      return label(dimension, value);
     },
     valueColor,
   };

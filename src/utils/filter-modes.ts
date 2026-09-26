@@ -10,18 +10,20 @@ export type FilterDimension = "tag" | PillDimension;
 /**
  * The dimensions that ask a yes/no question of a row. Each is **one** pill in the menu — "Blocked",
  * "Agentic", "Asynchronous" — rather than a pair of values: adding it means "is X", and its Not
- * mode means "is not X". A row answers exactly one of the two, so Any and All say the same thing
+ * mode means "is not X". **Private** joins them only while Private Mode is on (see
+ * `offeredDimensions`). A row answers exactly one of the two, so Any and All say the same thing
  * and the pill only ever flips between the two modes that differ.
  */
-export type YesNoDimension = "blocked" | "agentic" | "asynchronous";
+export type YesNoDimension = "blocked" | "agentic" | "asynchronous" | "private";
 
-export const YES_NO_DIMENSIONS: readonly YesNoDimension[] = ["blocked", "agentic", "asynchronous"];
+export const YES_NO_DIMENSIONS: readonly YesNoDimension[] = ["blocked", "agentic", "asynchronous", "private"];
 
 /** The stored value that means "is X" — the only value a yes/no pill is kept under. */
 export const YES_VALUE: Record<YesNoDimension, string> = {
   blocked: "blocked",
   agentic: "agentic",
   asynchronous: "asynchronous",
+  private: "private",
 };
 
 /** The stored value a row reports for "is not X" — accepted from older state, never written; its label is the Not pill's wording. */
@@ -29,6 +31,7 @@ export const NO_VALUE: Record<YesNoDimension, string> = {
   blocked: "not_blocked",
   agentic: "not_agentic",
   asynchronous: "not_asynchronous",
+  private: "not_private",
 };
 
 export function isYesNoDimension(dimension: FilterDimension): dimension is YesNoDimension {

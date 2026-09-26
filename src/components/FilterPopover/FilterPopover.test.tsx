@@ -4,6 +4,7 @@ import FilterPopover from "./FilterPopover";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import { useFilterDisplay } from "@/hooks/use-filter-display";
@@ -242,6 +243,29 @@ describe("FilterPopover — rows", () => {
       expect(useListFilterStore.getState().filter.pills.blocked).toEqual([{ value: "blocked", mode: "exclude" }]);
       fireEvent.click(pill("blocked"));
       expect(useListFilterStore.getState().filter.pills.blocked).toEqual([{ value: "blocked", mode: "all" }]);
+    });
+
+    it("adds a Private pill to the Yes / no row only while Private Mode is on", () => {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
+      render(<FilterPopover />);
+      const row = screen.getByRole("group", { name: "rows.yesNo" });
+      expect(within(row).getAllByRole("button").map((b) => b.textContent)).toEqual(
+        ["blocked", "agentic", "asynchronous", "privateState.private"],
+      );
+      fireEvent.click(pill("privateState.private"), { altKey: true });
+      expect(useListFilterStore.getState().filter.pills.private).toEqual([{ value: "private", mode: "exclude" }]);
+    });
+
+    it("turning Private Mode off removes the Private pill and says so in a toast", () => {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
+      useListFilterStore.getState().addPill("private", "private", "all");
+      useMindmapStore.setState({ pendingToast: null });
+      render(<FilterPopover />);
+      fireEvent.click(screen.getByLabelText("privateMode"));
+      expect(useFilterStore.getState().filter.privateMode).toBe(false);
+      expect(useListFilterStore.getState().filter.pills.private).toEqual([]);
+      expect(useMindmapStore.getState().pendingToast?.message).toBe("privateFilterRemoved");
+      expect(screen.queryByText("privateState.private")).not.toBeInTheDocument();
     });
 
     it("leaves the Blocked dimension alone when an Agentic pill is added", () => {

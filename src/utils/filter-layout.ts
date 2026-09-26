@@ -14,6 +14,14 @@ export function rowDimensions(row: FilterRowId): readonly FilterDimension[] {
   return [row];
 }
 
+/**
+ * The dimensions a row offers right now: the **Private** yes/no pill only while Private Mode is on,
+ * since with it off every private row is hidden already (and turning it off removes the pill).
+ */
+export function offeredDimensions(row: FilterRowId, privateMode: boolean): readonly FilterDimension[] {
+  return rowDimensions(row).filter((dimension) => privateMode || dimension !== "private");
+}
+
 /** The dimensions whose values are nodes or tags, searched through a box in their row rather than
  * listed as pills: there are too many to list. */
 const SEARCHED: ReadonlySet<FilterDimension> = new Set<FilterDimension>(["tag", "antecedent", "dependency"]);

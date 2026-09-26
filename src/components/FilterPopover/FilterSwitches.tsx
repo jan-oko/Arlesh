@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useFilterStore } from "@/stores/use-filter-store";
+import { useSetPrivateMode } from "@/hooks/use-private-mode";
 import type { View } from "@/stores/use-view-store";
 import { filterSwitchesFor } from "@/utils/filter-layout";
 import type { StatusMode } from "@/utils/filter-tree";
@@ -25,7 +26,7 @@ export default function FilterSwitches({ view, statusMode }: Props) {
   const toggleShowInfo = useFilterStore((s) => s.toggleShowInfo);
   const toggleShowFlow = useFilterStore((s) => s.toggleShowFlow);
   const toggleModeFlows = useFilterStore((s) => s.toggleModeFlows);
-  const togglePrivateMode = useFilterStore((s) => s.togglePrivateMode);
+  const setPrivateMode = useSetPrivateMode();
   const cycleArchivedMode = useFilterStore((s) => s.cycleArchivedMode);
   const cycleBacklogMode = useFilterStore((s) => s.cycleBacklogMode);
   const switches = filterSwitchesFor(view);
@@ -50,7 +51,7 @@ export default function FilterSwitches({ view, statusMode }: Props) {
         </div>
       )}
       <div className={styles.pills} role="group" aria-label={t("switchesLabel")}>
-        <Switch checked={filter.privateMode} onChange={togglePrivateMode} label={t("privateMode")} />
+        <Switch checked={filter.privateMode} onChange={setPrivateMode} label={t("privateMode")} />
         <span className={styles.switchGap} aria-hidden="true" />
         {switches.includes("archived") && (
           <OverridePill

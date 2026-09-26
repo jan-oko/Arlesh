@@ -6,7 +6,7 @@ import { useViewStore } from "@/stores/use-view-store";
 import { useFilterDimensions } from "@/hooks/use-filter-dimensions";
 import { useFilterEntries } from "@/hooks/use-filter-entries";
 import { PLAN_VIEW_STATUS_MODE } from "@/utils/filter-tree";
-import { filterMenuRows, isSearchedDimension, rowDimensions } from "@/utils/filter-layout";
+import { filterMenuRows, isSearchedDimension, offeredDimensions } from "@/utils/filter-layout";
 import type { FilterRowId } from "@/utils/filter-layout";
 import FilterRow from "./FilterRow";
 import FilterSwitches from "./FilterSwitches";
@@ -23,8 +23,11 @@ import styles from "./FilterPopover.module.css";
 export default function FilterPopover() {
   const { t } = useTranslation(["filter", "common"]);
   const statusMode = useFilterStore((s) => s.filter.statusMode);
+  const privateMode = useFilterStore((s) => s.filter.privateMode);
   const reset = useFilterStore((s) => s.reset);
   const listReset = useListFilterStore((s) => s.reset);
+  const privatePills = useListFilterStore((s) => s.filter.pills.private);
+  const removePill = useListFilterStore((s) => s.removePill);
   const view = useViewStore((s) => s.view);
   const catalogue = useFilterDimensions();
   const entries = useFilterEntries();
@@ -33,7 +36,7 @@ export default function FilterPopover() {
     if (row !== "yesNo" && isSearchedDimension(row)) {
       return <InlineSearch dimension={row} catalogue={catalogue} entries={entries} label={catalogue.rowLabel(row)} />;
     }
-    return <FixedValueRow dimensions={rowDimensions(row)} catalogue={catalogue} entries={entries} />;
+    return <FixedValueRow dimensions={offeredDimensions(row, privateMode)} catalogue={catalogue} entries={entries} />;
   }
 
   return (
@@ -52,7 +55,12 @@ export default function FilterPopover() {
         <button
           type="button"
           className={styles.reset}
-          onClick={() => { reset(); if (view === "list") listReset(); }}
+          onClick={() => {
+            reset();
+            if (view === "list") listReset();
+            // Reset turns Private Mode off, which takes the Private pill with it in every view.
+            else for (const pill of privatePills) removePill("private", pill.value);
+          }}
         >
           {t("reset")}
         </button>
