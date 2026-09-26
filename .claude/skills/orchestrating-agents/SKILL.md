@@ -1,6 +1,6 @@
 ---
 name: orchestrating-agents
-description: Use when orchestrating parallel subagents on the Arlesh repo — dispatching beads to agents, writing an agent brief, watching agents and their PRs, reporting a PR ready, recovering an agent that died or was stopped, or picking orchestration back up after compaction or a session restart.
+description: Use when orchestrating parallel subagents on the Arlesh repo — dispatching Arlesh board Tasks to agents, writing an agent brief, watching agents and their PRs, reporting a PR ready, recovering an agent that died or was stopped, or picking orchestration back up after compaction or a session restart.
 ---
 
 # Orchestrating agents on Arlesh
@@ -31,17 +31,22 @@ are listed at the end.
 - **PR cap** — the user sets it and moves it ("Raise the PR cap to 10 for now." / "Let's go
   back to 8 cap after this."). The standing goal is the last one they set, e.g.
   *"Goal set: beads board clean or at least 8 open, up to date and CI-green PRs"*.
+- **Work is tracked on the Arlesh board**, as Agentic Tasks under the ARLESH project, through
+  the `Arlesh` MCP server — not bd (see *Tracking work* in `CLAUDE.md`). The user's quotes
+  below predate that and say "bead"/"ticket"; they apply to Tasks unchanged. `.beads/` is a
+  read-only archive.
 
 ## Dispatching
 
-1. **Pick only beads the user filed or approved, highest priority first.** User: *"You're
+1. **Pick only Tasks the user filed or approved, highest priority first.** User: *"You're
    spawning agents for tickets I never filed or approved. Ensure both you and your subagents
    always approve and prioritize new tickets through me."* / *"prioritize high first. Only if
-   there are conflicts between tasks go down in priority."* Re-read `bd ready` before each
+   there are conflicts between tasks go down in priority."* Re-load the ready list
+   (`arlesh_snapshot.load`, `agentic: {}`, `filter: {"preset": "start"}`, every page) before each
    round — *"I changed some priorities so reread the list afterwards."*
-2. **Never `bd create`, reprioritise or bundle beads yourself.** Propose a bead with its
-   priority and wait. User: *"any ticket that you or another agent files should go through me
-   for priority."* Bundling small beads is good, but the user makes the bundle.
+2. **Never create a Task (`arlesh_tasks.create`), set or change a priority, or bundle Tasks
+   yourself.** Propose a Task with its priority and wait. User: *"any ticket that you or
+   another agent files should go through me for priority."* Bundling small Tasks is good, but the user makes the bundle.
 3. **Batch small work into one PR**, across files too. User: *"if small tasks touch different
    sites we can batch them too - no need to merge everything, but I don't want a PR to review
    on every hotkey and one function fix."*
@@ -54,19 +59,19 @@ are listed at the end.
    spawn subagents for management tasks too - we should be parallelizing as much as possible
    (you're still the sprint master though)"*.
 6. **Spec with the user, not alone.** User: *"I mean, spec with me! Not by yourself"* and
-   *"let's go back on the ones you speced yourself"*. A bead with open design questions is
+   *"let's go back on the ones you speced yourself"*. A Task with open design questions is
    grilled with the user before an agent gets it.
 7. **Sequence overlapping work instead of parallelising it.** Before dispatching, name the
-   files each in-flight branch owns. Two beads where one *extends* a schema the other
+   files each in-flight branch owns. Two Tasks where one *extends* a schema the other
    *replaces* merge cleanly and are wrong (Lesson: 5vp vs fxo on `tab-persistence.ts`).
    Land the cheaper one first.
 8. **Write the brief from the template in `briefs.md`.** Every section exists because an
    early brief lacked it and an agent went wrong.
-9. **Record the dispatch** (agent id, bead, worktree, branch) somewhere that survives
-   compaction — the bead's notes or your own checklist. User on the orchestrator's own
-   checklist: *"Use the todo list tool, since beads is global and 'resolve conflicts and
-   merge' is a smaller scope then a beads ticket"*. That overrides `CLAUDE.md`'s "bd for all
-   tracking" for orchestration steps only; work items stay beads.
+9. **Record the dispatch** (agent id, Task, worktree, branch) somewhere that survives
+   compaction — the Task's brief notes (`arlesh_tasks.update`) or your own checklist. User on
+   the orchestrator's own checklist: *"Use the todo list tool, since beads is global and 'resolve conflicts and
+   merge' is a smaller scope then a beads ticket"*. Orchestration steps live on
+   that checklist; work items stay Tasks on the Arlesh board.
    Keep a running log too — *"Keep a progress.md on your own worktree to keep."*
 
 No time estimates, anywhere. User: *"stop the time estimates"* — they were off by about an
@@ -75,11 +80,11 @@ about an hour."*
 
 ## While agents run
 
-- **Keep slots full.** When an agent finishes and a slot is open, dispatch the next bead
+- **Keep slots full.** When an agent finishes and a slot is open, dispatch the next Task
   without being asked (User: *"Whenever an agent finishes, spin another for the next task."*).
 - **Relay review items to the right agent, verbatim, and check where each one belongs.**
   Lesson: a Steps View review item ("Arlesh top-level card should just say 'Arlesh',
-  centered") was misfiled into the Plan View bead; that agent built it, and had to revert it.
+  centered") was misfiled into the Plan View Task; that agent built it, and had to revert it.
   The agent had flagged it could not tell what the item meant — treat "I can't tell what this
   means" as a misfiling signal, not a prompt to guess.
 - **Relay a ruling at the scope the user gave it.** Lesson: the user said seasons are the
@@ -148,8 +153,8 @@ verification is reading `gh pr checks`, not re-running the gate.
 4. Why the user reviews, so you frame the report for it: *"The reason I review merges is for
    product feel that you cannot do without my context - really, this feature is not
    sufficiently useful to merge yet."* Correctness is CI's job; the report is about feel.
-5. After the user merges: close the bead, reconcile the board (User: *"please make sure beads board
-   statuses are uo to date"*), and dispatch into the freed slot.
+5. After the user merges: set the Task `done` (`arlesh_tasks.set_status`), reconcile the board
+   (User: *"please make sure beads board statuses are uo to date"*), and dispatch into the freed slot.
 
 ## When an agent dies, stalls or is stopped
 
@@ -171,12 +176,14 @@ In this order:
 
 ## After compaction or a restart
 
-1. Load this skill. Run `bd prime`, `bd ready`, `bd list --status=in_progress`.
+1. Load this skill. Load the board: `arlesh_snapshot.load` with `agentic: {}`, every page —
+   the ready Tasks (`filter: {"preset": "start"}`) and the ones `in_progress`. If the MCP is
+   unreachable, ask the user to start Arlesh; do not fall back to bd.
 2. `gh pr list` with `gh pr checks` for each; `git worktree list`; `df -h /`.
 3. For each in-flight agent from your checklist: is it running, finished, or stopped? Apply
    *When an agent dies* to the ones that are not running.
-4. Re-read the summary for the last goal the user set and any rulings made since the beads
-   were written — record rulings on the bead so they survive the next compaction.
+4. Re-read the summary for the last goal the user set and any rulings made since the Tasks
+   were written — record rulings in the Task's brief so they survive the next compaction.
 5. Do not re-ask the user for anything recorded; do not re-derive rules from this file's
    history.
 
