@@ -227,3 +227,33 @@ describe("deriveStatusIndicators — an agent waiting on you", () => {
     expect(types(node("expectation"))).not.toContain("agentWaiting");
   });
 });
+
+describe("deriveStatusIndicators — Private", () => {
+  it("badges a node marked Private itself, whatever its kind", () => {
+    const kinds = ["aspect", "project", "goal", "task", "commitment", "expectation", "info", "flow"] satisfies NodeKind[];
+    for (const kind of kinds) {
+      expect(types(node(kind, { isPrivate: true }))).toContain("private");
+    }
+  });
+
+  it("does not badge a node that is not marked Private", () => {
+    expect(types(node("task", { status: "todo" }))).not.toContain("private");
+    expect(types(node("task", { status: "todo", isPrivate: false }))).not.toContain("private");
+  });
+
+  it("reads the node's own flag only: a child of a Private node carries no badge of its own", () => {
+    const child = node("task", { id: "task-2", status: "todo" });
+    const parent = node("goal", { status: "active", isPrivate: true, children: [child] });
+    expect(types(parent)).toContain("private");
+    expect(types(child)).not.toContain("private");
+  });
+
+  it("badges derived rows off their own flag — a Habit occurrence and a derived wait", () => {
+    const occurrence = node("task", { status: "todo", isPrivate: true, ...occurrenceRow() });
+    const derivedWait = node("expectation", {
+      rowId: "d-5", origin: { kind: "delegation_wait", task_id: 5 }, status: "pending", isPrivate: true,
+    });
+    expect(types(occurrence)).toContain("private");
+    expect(types(derivedWait)).toContain("private");
+  });
+});

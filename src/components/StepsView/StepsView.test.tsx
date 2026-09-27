@@ -339,6 +339,17 @@ describe("a card's glyph and kind line", () => {
   });
 });
 
+describe("a card's Private badge", () => {
+  it("badges a card marked Private itself, and not an unmarked one beside it", () => {
+    mockTree([n("goal-1", "goal", { status: "active", isPrivate: true }), n("goal-3", "goal", { status: "active" })]);
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
+    render(<StepsView />);
+
+    expect(document.querySelector('[data-step-card="goal-1"] [title="private"]')).not.toBeNull();
+    expect(document.querySelector('[data-step-card="goal-3"] [title="private"]')).toBeNull();
+  });
+});
+
 describe("the Info notes on a card", () => {
   it("draws the first ones as bullets", () => {
     mockTree([n("goal-1", "goal", {

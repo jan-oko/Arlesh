@@ -107,3 +107,15 @@ describe("PlanTaskCard — path line", () => {
     expect(line?.textContent).toBe("Connections › BOND › נרי › חברים קרובים");
   });
 });
+
+describe("PlanTaskCard — Private badge", () => {
+  it("badges a Task marked Private itself", () => {
+    render(<PlanTaskCard {...props(row({ node: n("task-1", "task", { status: "todo", isPrivate: true }) }))} />);
+    expect(screen.getByTitle("private")).toBeInTheDocument();
+  });
+
+  it("leaves a Task under a Private ancestor unbadged", () => {
+    render(<PlanTaskCard {...props(row({ hasPrivateAncestor: true }))} />);
+    expect(screen.queryByTitle("private")).not.toBeInTheDocument();
+  });
+});

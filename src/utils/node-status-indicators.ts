@@ -16,7 +16,8 @@ export type StatusIndicatorType =
   | "info"
   | "flowInstance"
   | "tags"
-  | "mcp";
+  | "mcp"
+  | "private";
 
 /** One badge to render below a node. `outOfScope` applies only to the `scope` clock; `conflict`
  * only to `archived`. */
@@ -107,6 +108,15 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   // badge — inside a root, write is exactly Agentic, which the bot head above already says.
   if (node.mcpVisibleVia !== undefined) {
     indicators.push({ type: "mcp" });
+  }
+  // The node's own flag and never an ancestor's. Privacy does act on the whole subtree — Private
+  // Mode hides a private node with everything under it — but that is filtering, not a state of each
+  // node beneath: the flag is set, and unset, on one node only, and the badge says where. Badging
+  // the subtree too would mark every row under a private branch alike, hiding the one that holds
+  // the switch. It sits in the antenna's slot: the MCP never sees a private node, so the two never
+  // share a row on the same node.
+  if (node.isPrivate === true) {
+    indicators.push({ type: "private" });
   }
 
   return indicators;
