@@ -18,7 +18,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Task** — An action item. Parented under a Project, Domain, Goal, Commitment, or another Task. Can depend on Tasks, Goals and Expectations. A delegated Task has every effect of archival.
 
-**Info** — A free-standing note: a one-line body plus an optional long-form **Details** text, stored in `infos`. Parented under an Aspect, Project, Domain, Tag, Goal, Task or another Info (a Tag holds nothing else). Carries no status, scope or tags; on the Mindmap an Info rides along with a kept node but never keeps one. One of the `RetypeKind`s, so any other kind can be retyped to it and back.
+**Info** — A free-standing note: a one-line body plus an optional long-form **Details** text, stored in `infos`. Parented under an Aspect, Project, Domain, Tag, Goal, Task or another Info (a Tag holds nothing else). Carries no status, scope or tags; on the Mindmap an Info rides along with a kept node but never keeps one.
 
 **Flow** — A template for a Goal/Task subtree, materialized on demand. A new node kind. Has a title, an **Instance Type** (goal or task), an optional **Target Node**, and a **Flow Window**. May be parented under an Aspect, Domain, Project, or Goal.
 
@@ -54,7 +54,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Verdict Window** — How long past the end of a Commitment's Time Scope a Verdict may still be recorded. While it lasts the Commitment stays live; once it passes an `unresolved` Commitment is Archived, still unresolved. Expressed as a **Duration** — a count of N of any scope kind — in the same form a Habit's **Gap** and a Time Scope's Duration take, and independent of the Commitment's own scope kind: a monthly commitment may be answerable for two days. Set per Commitment and inherited down the tree like Time Scope; there is no global default. A **commitment Habit** carries one on the flow itself (`flows.verdict_window_n/kind`) and every one of its iterations resolves to that: a virtual iteration has no `commitments` row to carry one, and the flow's Target Node is normally a Project or Domain, which carries none either.
 
-**Backlog** — A Task deliberately set aside: not in play now, kept for later. A stored **Archival** value on Tasks (`Archival::Backlog`), independent of the Task's status, which continues to say where the work stands. Hidden from the Plan and Start presets together with its whole subtree, shown under All, and browsable on its own via the **Backlog** preset. The Task-side counterpart of a Goal's or Project's **Frozen**, but a separate state: neither maps to the other on retype. A Task cannot be both backlogged and planned.
+**Backlog** — A Task deliberately set aside: not in play now, kept for later. A stored **Archival** value on Tasks (`Archival::Backlog`), independent of the Task's status, which continues to say where the work stands. Hidden from the Plan and Start presets together with its whole subtree, shown under All, and browsable on its own via the **Backlog** preset. The Task-side counterpart of a Goal's or Project's **Frozen**, but a separate state: neither maps to the other. A Task cannot be both backlogged and planned.
 
 **Agentic** — A Task marked as work that suits being handed to an agent. A stored three-state flag on Tasks (`tasks.agentic`: NULL = inherit, true, false) that **inherits downward and is overridable**, the rule specced for Delegation (not built for Delegation yet — see *Not built yet*): a Task with no value of its own reads its nearest flagged ancestor, and an explicit value — agentic *or* not agentic — replaces it for that Task and its subtree. Inherits *through* kinds that carry no flag (Goal, Project, Domain), and is read only on Tasks. Independent of **Delegation**: the flag says the work suits an agent, a delegate says who holds it, so a Task may be both. Set from the Task editor's Agentic control beside Asynchronous, badged in both views, and filterable as its own List View pill dimension. While a Task reads as Agentic it carries an **Agentic brief**. Nothing about it dispatches anything.
 
@@ -157,7 +157,7 @@ Specced, and deliberately kept, but not in the app today. Nothing above depends 
 - An Aspect cannot be reparented, renamed, or deleted.
 - A Tag cannot parent other Tags.
 - Circular Task/Goal dependencies are always rejected.
-- Type cycling (Ctrl+Up/Down) follows the valid-type sequence for the node's parent context.
+- A node keeps the kind it was created as; nothing retypes it (removed by the user, 2026-09-27).
 - A Commitment must have an **effective** Time Scope — its own, or inherited from a scoped ancestor. A Commitment with no scoped ancestor at all is rejected; there is no Unscoped Commitment.
 - A backlogged Task hides with its whole subtree in Plan and Start, as a Frozen or Archived Project already does.
 - A Task is never both backlogged and planned. Backlogging a planned Task asks first and offers to clear the Plan; planning a backlogged Task takes it out of the Backlog.

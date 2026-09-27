@@ -43,7 +43,7 @@ The few rules that genuinely differ for a derived row key off `origin` and nothi
   would leave the Habit with a hole in an iteration and the row with a history it no longer has. To
   put the work somewhere else, make a stored Task there (or copy the template item); to change when
   occurrences fall, edit the template's cycle pairs. Reordering it among its siblings is not a move.
-- **It cannot change kind.** Retyping it is refused; retype its template item instead.
+- **It cannot change kind** — no node can (see [*No retyping*](mindmap-view.md#no-retyping)).
 - **It is never deleted.** `Delete` archives it, as manual archival of a stored node would, and
   giving it a status again brings it back. Archiving takes what it holds with it, as archiving any
   node does: an archived iteration root sets the whole iteration aside, and an archived occurrence

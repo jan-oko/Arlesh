@@ -727,8 +727,8 @@ pub struct CreateCommitmentRequest {
     pub parent_type: String,
     /// Parent entity id.
     pub parent_id: NodeId,
-    /// Initial verdict (defaults to Unresolved). Present so a retype can carry one across; the
-    /// editor never sends it, because a commitment nobody has judged yet is unresolved.
+    /// Initial verdict (defaults to Unresolved). The editor never sends it, because a commitment
+    /// nobody has judged yet is unresolved.
     #[serde(default)]
     pub verdict: Option<Verdict>,
     /// Initial relevance window. Omitted, the commitment inherits a scoped ancestor's — and is

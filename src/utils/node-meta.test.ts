@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
-import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, validTypesForCycling, typeAcceptsChildren, isValidDropTarget, computeEditHeight, validParentKinds, isFlowKind, canParentNewTask, canParentNewChild, canParentAnyNewChild, canAdoptChildren, canAdoptExistingChild, TYPED_CHILD_KINDS } from "./node-meta";
+import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, isValidDropTarget, computeEditHeight, validParentKinds, isFlowKind, canParentNewTask, canParentNewChild, canParentAnyNewChild, canAdoptChildren, canAdoptExistingChild, TYPED_CHILD_KINDS } from "./node-meta";
 import { ALL_NODE_KINDS } from "./tree-layout";
 import type { MindmapNode } from "./tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
@@ -143,138 +143,6 @@ describe("isValidDropTarget — goal and task sources", () => {
   });
 });
 
-describe("validTypesForCycling — parent-subtype validity", () => {
-  it("offers Project only under an Aspect or Project parent", () => {
-    expect(validTypesForCycling("domain", "aspect")).toContain("project");
-    expect(validTypesForCycling("domain", "project")).toContain("project");
-    // A Project's parent must be an Aspect or Project — not a Domain or Tag.
-    expect(validTypesForCycling("domain", "domain")).not.toContain("project");
-    expect(validTypesForCycling("domain", "tag")).not.toContain("project");
-  });
-
-  it("does not offer Tag under a Tag parent (tags can't have tag children)", () => {
-    expect(validTypesForCycling("domain", "tag")).not.toContain("tag");
-    expect(validTypesForCycling("domain", "aspect")).toContain("tag");
-  });
-
-  it("still offers Domain under any domain-table parent", () => {
-    for (const parent of ["aspect", "project", "domain", "tag"] as const) {
-      expect(validTypesForCycling("project", parent)).toContain("domain");
-    }
-  });
-});
-
-describe("typeAcceptsChildren", () => {
-  it("info can only hold info children", () => {
-    expect(typeAcceptsChildren("info", ["info"])).toBe(true);
-    expect(typeAcceptsChildren("info", ["task"])).toBe(false);
-    expect(typeAcceptsChildren("info", [])).toBe(true);
-  });
-
-  it("task cannot hold goal children (goal parent_type excludes task)", () => {
-    expect(typeAcceptsChildren("task", ["task", "info"])).toBe(true);
-    expect(typeAcceptsChildren("task", ["goal"])).toBe(false);
-  });
-
-  it("goal holds goal/task/info but not a domain-table child", () => {
-    expect(typeAcceptsChildren("goal", ["goal", "task", "info"])).toBe(true);
-    expect(typeAcceptsChildren("goal", ["project"])).toBe(false);
-  });
-
-  it("domain cannot hold a project child (a project needs an aspect/project parent)", () => {
-    expect(typeAcceptsChildren("domain", ["domain", "goal"])).toBe(true);
-    expect(typeAcceptsChildren("domain", ["project"])).toBe(false);
-  });
-
-  it("the two rules about what hangs under a kind agree, for every real kind", () => {
-    // They lived apart and disagreed about a Tag: `ALLOWED_CHILD_KINDS` said "info notes", which
-    // the retype menu read, while `isValidDropTarget` refused everything, which every gesture
-    // read — so a Tag held a note when retyping and nothing when creating. Pinned here so neither
-    // can drift again. Flows keep a world of their own and are not in `ALLOWED_CHILD_KINDS`, so
-    // they are deliberately outside this.
-    const realKinds = ["aspect", "domain", "project", "goal", "task", "commitment", "info", "tag"] as const;
-    for (const parent of realKinds) {
-      for (const child of realKinds) {
-        expect(typeAcceptsChildren(parent, [child])).toBe(isValidDropTarget(child, parent));
-      }
-    }
-  });
-
-  it("a tag holds only info children (it's a label, and a note about it)", () => {
-    expect(typeAcceptsChildren("tag", ["info"])).toBe(true);
-    expect(typeAcceptsChildren("tag", [])).toBe(true);
-    expect(typeAcceptsChildren("tag", ["goal"])).toBe(false);
-    expect(typeAcceptsChildren("tag", ["task"])).toBe(false);
-    expect(typeAcceptsChildren("tag", ["domain"])).toBe(false);
-  });
-});
-
-describe("validTypesForCycling — info", () => {
-  it("includes info in the cycle under a domain parent", () => {
-    expect(validTypesForCycling("task", "domain")).toContain("info");
-  });
-
-  it("includes info in the cycle under an aspect parent", () => {
-    expect(validTypesForCycling("domain", "aspect")).toContain("info");
-  });
-
-  it("includes info in the cycle under a goal parent", () => {
-    expect(validTypesForCycling("task", "goal")).toContain("info");
-  });
-
-  it("includes info in the cycle under a task parent", () => {
-    expect(validTypesForCycling("task", "task")).toContain("info");
-  });
-
-  it("returns only [info] when parent is info (no cycling out)", () => {
-    expect(validTypesForCycling("info", "info")).toEqual(["info"]);
-  });
-
-  it("can cycle from info itself when parent is domain", () => {
-    const cycle = validTypesForCycling("info", "domain");
-    expect(cycle).toContain("info");
-    expect(cycle.length).toBeGreaterThan(1);
-  });
-});
-
-describe("validTypesForCycling — a commitment flow's items", () => {
-  it("does not offer a goal item on a commitment flow", () => {
-    // A Commitment holds Tasks and other Commitments and no Goals, so such an item could never
-    // materialise: the flow would derive no iterations at all. Not offered, rather than offered
-    // and explained afterwards by the Mindmap's failure banner.
-    expect(validTypesForCycling("flow_task", "flow", "commitment")).toEqual(["flow_task"]);
-    expect(validTypesForCycling("flow_goal", "flow", "commitment")).toEqual(["flow_task"]);
-  });
-
-  it("still offers both on a goal or task flow", () => {
-    expect(validTypesForCycling("flow_task", "flow", "task")).toEqual(["flow_goal", "flow_task"]);
-    expect(validTypesForCycling("flow_task", "flow", "goal")).toEqual(["flow_goal", "flow_task"]);
-  });
-
-  it("offers both when the instance type is not known, as before", () => {
-    expect(validTypesForCycling("flow_task", "flow")).toEqual(["flow_goal", "flow_task"]);
-  });
-});
-
-describe("validTypesForCycling — flow items", () => {
-  it("cycles a flow item between goal and task under a flow root", () => {
-    expect(validTypesForCycling("flow_goal", "flow")).toEqual(["flow_goal", "flow_task"]);
-    expect(validTypesForCycling("flow_task", "flow")).toEqual(["flow_goal", "flow_task"]);
-  });
-
-  it("cycles a flow item between goal and task under a flow-goal parent", () => {
-    expect(validTypesForCycling("flow_task", "flow_goal")).toEqual(["flow_goal", "flow_task"]);
-  });
-
-  it("allows only task under a flow-task parent (a goal can't sit under a task)", () => {
-    expect(validTypesForCycling("flow_task", "flow_task")).toEqual(["flow_task"]);
-  });
-
-  it("never cycles the flow node itself", () => {
-    expect(validTypesForCycling("flow", "domain")).toEqual([]);
-  });
-});
-
 describe("isValidDropTarget — info", () => {
   it("info can be dropped onto a domain", () => {
     expect(isValidDropTarget("info", "domain")).toBe(true);
@@ -315,34 +183,7 @@ describe("isValidDropTarget — info", () => {
   });
 });
 
-describe("commitments in the type cycle", () => {
-  it("sits immediately after Task under a domain-table parent", () => {
-    const cycle = validTypesForCycling("task", "project");
-    expect(cycle).toContain("commitment");
-    expect(cycle.indexOf("commitment")).toBe(cycle.indexOf("task") + 1);
-  });
-
-  it("is reachable under a goal, a task and another commitment", () => {
-    for (const parent of ["goal", "task", "commitment"] as const) {
-      expect(validTypesForCycling("task", parent)).toContain("commitment");
-    }
-  });
-
-  it("is not reachable under an info parent, which holds only notes", () => {
-    expect(validTypesForCycling("info", "info")).toEqual(["info"]);
-  });
-
-  it("offers no Goal under a commitment: a desired state is not something you hold to", () => {
-    expect(validTypesForCycling("task", "commitment")).not.toContain("goal");
-    expect(typeAcceptsChildren("commitment", ["goal"])).toBe(false);
-  });
-
-  it("holds tasks, other commitments and notes", () => {
-    expect(typeAcceptsChildren("commitment", ["task", "commitment", "info"])).toBe(true);
-    expect(typeAcceptsChildren("commitment", ["flow"])).toBe(false);
-    expect(typeAcceptsChildren("commitment", ["project"])).toBe(false);
-  });
-
+describe("commitments as drop sources and targets", () => {
   it("can be dropped wherever a task can, plus onto another commitment", () => {
     for (const target of ["aspect", "domain", "project", "goal", "task", "commitment"] as const) {
       expect(isValidDropTarget("commitment", target)).toBe(true);

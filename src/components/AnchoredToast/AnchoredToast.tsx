@@ -7,8 +7,8 @@ interface Props {
 }
 
 /**
- * Renders the pending notice (a retype status remap, a retype failure, a refused typed-child
- * chord, a convert-to-flow error), or nothing when there is none.
+ * Renders the pending notice (a refused typed-child chord, a convert-to-flow error), or nothing
+ * when there is none.
  *
  * It no longer consults the anchor node's laid-out position. Two bugs lived in that lookup: a
  * node with no position — under a collapsed ancestor, or outside the current `enterSubtree`

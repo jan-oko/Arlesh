@@ -86,7 +86,6 @@ export function mindmapKeyboardContext(overrides: Partial<MindmapOptions> = {}):
     findNodeById: (id: string) => (id === "task-1" ? makeFixtureTask("task-1") : undefined),
     onNavigate: vi.fn(),
     onPanCanvas: vi.fn(),
-    onCycleType: vi.fn(),
     onReorder: vi.fn(),
     onStartRename: vi.fn(),
     onCreateChild: vi.fn(),

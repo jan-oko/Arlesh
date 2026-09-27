@@ -10,7 +10,7 @@ use crate::helpers;
 
 use arlesh_lib::commands::{
     commitments as commitment_commands, flows as flow_commands, mindmap as mindmap_commands,
-    retype as retype_commands, tasks as task_commands,
+    tasks as task_commands,
 };
 use arlesh_lib::flows::model::{
     ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType,
@@ -386,7 +386,7 @@ async fn an_occurrence_cannot_leave_its_iteration() {
     let tomorrow = scope(&pool, ScopeKind::Day, ymd(2026, 1, 6)).await;
     let rescoped = task_commands::update_task(
         app.state(),
-        today.clone(),
+        today,
         UpdateTaskRequest {
             time_scope: Some(Some(TimeScope {
                 start_id: tomorrow,
@@ -399,13 +399,6 @@ async fn an_occurrence_cannot_leave_its_iteration() {
     )
     .await;
     assert!(rescoped.is_err(), "and so is giving it another window");
-
-    let retyped =
-        retype_commands::retype_node(app.state(), "task".into(), today, "goal".into(), None, None)
-            .await
-            .expect_err("an occurrence cannot change kind");
-    let message = serde_json::to_value(&retyped).unwrap()["message"].to_string();
-    assert!(message.contains("kind"), "{message}");
 }
 
 #[tokio::test]

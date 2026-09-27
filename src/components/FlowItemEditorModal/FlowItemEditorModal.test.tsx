@@ -21,14 +21,14 @@ function mkItem(overrides: Partial<MindmapNode> = {}): MindmapNode {
     position: 1,
     tagIds: [],
     children: [],
-    flowItem: { itemType: "flow_task", flowId: 5, flowInstanceType: "task" as const, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [], template: {} },
+    flowItem: { itemType: "flow_task", flowId: 5, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [], template: {} },
     ...overrides,
   };
 }
 
 const SPECIFY: MindmapNode = {
   id: "flowtask-1", rowId: 1, kind: "flow_task", title: "Specify", position: 0, tagIds: [], children: [],
-  flowItem: { itemType: "flow_task", flowId: 5, flowInstanceType: "task" as const, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [], template: {} },
+  flowItem: { itemType: "flow_task", flowId: 5, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [], template: {} },
 };
 
 const defaultProps = {
@@ -88,7 +88,7 @@ describe("FlowItemEditorModal", () => {
   it("saves the template's own fields, which its occurrences read unless they say otherwise", async () => {
     const node = mkItem({
       flowItem: {
-        itemType: "flow_task", flowId: 5, flowInstanceType: "task", flowScopeN: 2, flowScopeKind: "week",
+        itemType: "flow_task", flowId: 5, flowScopeN: 2, flowScopeKind: "week",
         cycles: [], dependsOn: [],
         template: { tag_ids: [4], block_reasons: ["waiting on parts"], archival: "backlog", asynchronous: true, agentic: true },
       },
@@ -110,7 +110,7 @@ describe("FlowItemEditorModal", () => {
     const brief: AgenticBrief = { priority: "A", spec: "Sort the mail", design: "", acceptance: "", notes: "" };
     const node = mkItem({
       flowItem: {
-        itemType: "flow_task", flowId: 5, flowInstanceType: "task", flowScopeN: 1, flowScopeKind: "day",
+        itemType: "flow_task", flowId: 5, flowScopeN: 1, flowScopeKind: "day",
         cycles: [], dependsOn: [], template: { agentic: true, agentic_brief: brief },
       },
     });
@@ -128,7 +128,7 @@ describe("FlowItemEditorModal", () => {
   it("offers no brief while the template is not agentic", () => {
     render(<FlowItemEditorModal {...defaultProps} node={mkItem({
       flowItem: {
-        itemType: "flow_task", flowId: 5, flowInstanceType: "task", flowScopeN: 1, flowScopeKind: "day",
+        itemType: "flow_task", flowId: 5, flowScopeN: 1, flowScopeKind: "day",
         cycles: [], dependsOn: [], template: {},
       },
     })} />);
@@ -143,7 +143,7 @@ describe("FlowItemEditorModal", () => {
     const morning = { scopeKind: "part_of_day", scopeIndex: 1, planKind: null, planStart: null, planEnd: null };
     const node = mkItem({
       flowItem: {
-        itemType: "flow_task", flowId: 5, flowInstanceType: "task", flowScopeN: 1, flowScopeKind: "day",
+        itemType: "flow_task", flowId: 5, flowScopeN: 1, flowScopeKind: "day",
         cycles: [morning], dependsOn: [], template: {},
       },
     });
@@ -193,7 +193,7 @@ describe("FlowItemEditorModal", () => {
   });
 
   it("hides the cycle grid for an unscoped flow", () => {
-    render(<FlowItemEditorModal {...defaultProps} node={mkItem({ flowItem: { itemType: "flow_task", flowId: 5, flowInstanceType: "task" as const, flowScopeN: null, flowScopeKind: null, cycles: [], dependsOn: [], template: {} } })} />);
+    render(<FlowItemEditorModal {...defaultProps} node={mkItem({ flowItem: { itemType: "flow_task", flowId: 5, flowScopeN: null, flowScopeKind: null, cycles: [], dependsOn: [], template: {} } })} />);
     expect(screen.queryByRole("button", { name: "editor:cycleAddWhole" })).not.toBeInTheDocument();
   });
 });

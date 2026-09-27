@@ -207,8 +207,7 @@ export async function duplicateTask(
  * `updateTask(id, { archival: "backlog", plan: null })`. Anything else is a real failure and must
  * be surfaced as one.
  *
- * `update_task` raises no other confirmation, so the kind alone identifies it — unlike
- * `retype_node`, whose refusal carries a payload naming what is at stake.
+ * `update_task` raises no other confirmation, so the kind alone identifies it.
  */
 export function backlogNeedsPlanCleared(error: unknown): boolean {
   return isWireError(error) && error.kind === "needs_confirmation";

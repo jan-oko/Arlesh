@@ -4,7 +4,7 @@
 //! reach scopes, tasks or goals — [`start`], [`convert_to_flow`], [`valid_targets`],
 //! [`generate_habit_iterations`] — is a **free function over a [`Db`] session** instead, as is
 //! every operation whose write depends on a read it took first ([`update_flow`], [`delete_flow`],
-//! [`convert_flow_item`], [`set_flow_recurrence`], [`set_iteration_done`], [`fork_flow`] and the
+//! [`set_flow_recurrence`], [`set_iteration_done`], [`fork_flow`] and the
 //! two item updates). Those take `&mut Db<Transactional>` specifically, so calling one
 //! non-atomically is a compile error; the operator halves they drive are module-private. See
 //! [`Db`]'s `# Where an operation lives`.
@@ -504,7 +504,7 @@ struct AttachmentRow {
 /// operation belongs.
 ///
 /// Everything here touches the flow tables only. The methods that first **read** and then write
-/// what they read — `update`, `delete`, `update_goal`, `update_task`, `convert_item`,
+/// what they read — `update`, `delete`, `update_goal`, `update_task`,
 /// `set_recurrence`, `set_iteration_done` and `fork_flow` — are **module-private**, because an
 /// operator wraps a bare connection and so cannot demand a transaction in its signature. Their
 /// public entry points are the free functions below ([`update_flow`], [`delete_flow`], …), which
@@ -1025,127 +1025,6 @@ impl<'session> FlowOperator<'session> {
         .execute(&mut *self.connection)
         .await?;
         Ok(())
-    }
-
-    /// Converts a flow item to the other kind (goal↔task), moving it to the other table.
-    ///
-    /// The item's cycle pairs and dependency edges (both directions) are re-pointed to the new
-    /// row, and children still parented on it are reparented onto it where the nesting rules allow
-    /// (a flow-goal child cannot sit under a flow-task, so the caller must move or delete those
-    /// first). Returns the new item id.
-    ///
-    /// **Module-private.** It reads the stored row and writes values derived from it, so it is
-    /// only correct inside a transaction — and an operator wraps a bare connection, which cannot
-    /// demand one in its signature. [`convert_flow_item`] is the entry point; it takes
-    /// `&mut Db<Transactional>` and is this method's only caller.
-    async fn convert_item(
-        &mut self,
-        from: FlowItemType,
-        id: i64,
-        to: FlowItemType,
-    ) -> Result<i64, FlowError> {
-        if from == to {
-            return Ok(id);
-        }
-        // Common fields carry over regardless of which table the item lives in.
-        let (flow_id, title, parent_type, parent_id, position, is_private) = match from {
-            FlowItemType::FlowGoal => {
-                let g = sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals WHERE id = ?")
-                    .bind(id)
-                    .fetch_optional(&mut *self.connection)
-                    .await?
-                    .ok_or(FlowError::NotFound(id))?;
-                (
-                    g.flow_id,
-                    g.title,
-                    g.parent_type,
-                    g.parent_id,
-                    g.position,
-                    g.is_private,
-                )
-            }
-            FlowItemType::FlowTask => {
-                let t = sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks WHERE id = ?")
-                    .bind(id)
-                    .fetch_optional(&mut *self.connection)
-                    .await?
-                    .ok_or(FlowError::NotFound(id))?;
-                (
-                    t.flow_id,
-                    t.title,
-                    t.parent_type,
-                    t.parent_id,
-                    t.position,
-                    t.is_private,
-                )
-            }
-        };
-
-        let new_table = match to {
-            FlowItemType::FlowGoal => "flow_goals",
-            FlowItemType::FlowTask => "flow_tasks",
-        };
-        let new_id = sqlx::query(&format!(
-            "INSERT INTO {new_table} (flow_id, title, parent_type, parent_id, position, is_private)
-             VALUES (?, ?, ?, ?, ?, ?)"
-        ))
-        .bind(flow_id)
-        .bind(&title)
-        .bind(&parent_type)
-        .bind(parent_id)
-        .bind(position)
-        .bind(is_private)
-        .execute(&mut *self.connection)
-        .await?
-        .last_insert_rowid();
-
-        // Re-point this item's cycles and dependency edges (both directions) to the new row.
-        sqlx::query("UPDATE flow_item_cycles SET item_type = ?, item_id = ? WHERE item_type = ? AND item_id = ?")
-            .bind(to.as_str()).bind(new_id).bind(from.as_str()).bind(id)
-            .execute(&mut *self.connection).await?;
-        sqlx::query("UPDATE flow_dependencies SET dependent_type = ?, dependent_id = ? WHERE dependent_type = ? AND dependent_id = ?")
-            .bind(to.as_str()).bind(new_id).bind(from.as_str()).bind(id)
-            .execute(&mut *self.connection).await?;
-        sqlx::query("UPDATE flow_dependencies SET depends_on_type = ?, depends_on_id = ? WHERE depends_on_type = ? AND depends_on_id = ?")
-            .bind(to.as_str()).bind(new_id).bind(from.as_str()).bind(id)
-            .execute(&mut *self.connection).await?;
-
-        // Reparent children onto the new row where nesting allows. Task children are valid under
-        // both kinds; goal children only under a goal.
-        sqlx::query("UPDATE flow_tasks SET parent_type = ?, parent_id = ? WHERE parent_type = ? AND parent_id = ?")
-            .bind(to.as_str()).bind(new_id).bind(from.as_str()).bind(id)
-            .execute(&mut *self.connection).await?;
-        if to == FlowItemType::FlowGoal {
-            sqlx::query("UPDATE flow_goals SET parent_type = ?, parent_id = ? WHERE parent_type = ? AND parent_id = ?")
-                .bind(to.as_str()).bind(new_id).bind(from.as_str()).bind(id)
-                .execute(&mut *self.connection).await?;
-        }
-
-        // Its tags, block reasons and beads id carry across, as they do when a node is retyped;
-        // the Task-only columns go, a goal template having none.
-        let (old_template, new_template) = match from {
-            FlowItemType::FlowGoal => (TemplateTable::FlowGoal, TemplateTable::FlowTask),
-            FlowItemType::FlowTask => (TemplateTable::FlowTask, TemplateTable::FlowGoal),
-        };
-        let carried = self.templates().one(old_template, id).await?;
-        self.templates()
-            .copy_relations_across(old_template, id, new_template, new_id)
-            .await?;
-        self.templates()
-            .set_beads_id(new_template, new_id, carried.beads_id.as_deref())
-            .await?;
-        self.templates().forget(old_template, id).await?;
-
-        // The old row's links were re-pointed, so a plain delete orphans nothing.
-        let old_table = match from {
-            FlowItemType::FlowGoal => "flow_goals",
-            FlowItemType::FlowTask => "flow_tasks",
-        };
-        sqlx::query(&format!("DELETE FROM {old_table} WHERE id = ?"))
-            .bind(id)
-            .execute(&mut *self.connection)
-            .await?;
-        Ok(new_id)
     }
 
     /// Makes a flow item's (Cycle Scope, Cycle Plan) pairs read `cycles`, **keeping the id of
@@ -1935,32 +1814,6 @@ impl<'session> FlowOperator<'session> {
         Ok(())
     }
 
-    /// Moves an attachment from one row to another — the retype path, where the node keeps its
-    /// meaning and changes its table.
-    ///
-    /// A no-op when the old row held no attachment, which is every retype but the rare one, so
-    /// callers need not ask first. Tonight's "buy milk" retyped from a Task into a Note is still
-    /// something written on tonight's grocery run, and this is what keeps it there.
-    pub async fn repoint_instance_child(
-        &mut self,
-        old_type: &str,
-        old_id: i64,
-        new_type: &str,
-        new_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE derived_children SET child_type = ?, child_id = ?
-             WHERE child_type = ? AND child_id = ?",
-        )
-        .bind(new_type)
-        .bind(new_id)
-        .bind(old_type)
-        .bind(old_id)
-        .execute(&mut *self.connection)
-        .await?;
-        Ok(())
-    }
-
     /// Deletes every added child of a Habit — the child rows themselves and their attachments.
     ///
     /// Private: it destroys real nodes, so it is reachable only through
@@ -2580,21 +2433,6 @@ pub async fn update_flow_task(
         .one(TemplateTable::FlowTask, id)
         .await?;
     Ok(task)
-}
-
-/// Converts a flow item to the other kind (goal↔task), moving it to the other table and
-/// re-pointing its cycles, dependencies and children. Returns the new item id.
-///
-/// Transactional: the new row is written from values read off the old one, and the old row is
-/// deleted afterwards — a failure in between would duplicate or orphan the item.
-#[tracing::instrument(skip(db))]
-pub async fn convert_flow_item(
-    db: &mut Db<Transactional>,
-    from: FlowItemType,
-    id: i64,
-    to: FlowItemType,
-) -> Result<i64, FlowError> {
-    db.flows().convert_item(from, id, to).await
 }
 
 /// Sets (creates or replaces) a flow's Recurrence, making it a Habit.

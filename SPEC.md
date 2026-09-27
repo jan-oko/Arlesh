@@ -39,7 +39,7 @@ so a change to what a node *is* belongs above, and a change to how it is *shown*
 | Area | What is in it |
 | --- | --- |
 | [Tabs](docs/spec/tabs.md) | The tab strip, what a tab owns, persistence |
-| [Mindmap (Tree View)](docs/spec/mindmap-view.md) | The canvas, nodes and badges, the top bar, keyboard interactions, retyping |
+| [Mindmap (Tree View)](docs/spec/mindmap-view.md) | The canvas, nodes and badges, the top bar, keyboard interactions |
 | [List View](docs/spec/list-view.md) | Rows and cards, the Commitments band, path headers, keyboard interactions, its own pill dimensions |
 | [Plan View](docs/spec/plan-view.md) | Scope-by-scope triage: the two panes, the Backlog switch, the containment refusal, walking the scopes |
 | [Steps View](docs/spec/steps-view.md) | One Step at a time: the header card, what a card carries, descending and climbing, pages and zoom |

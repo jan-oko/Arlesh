@@ -34,7 +34,7 @@ use crate::{
 ///
 /// Transactional for every kind, including the three that are one statement over one column. The
 /// Project case reads the row before writing it, and per ADR-0004 a check-then-write belongs on a
-/// transactional session: without it another writer could retype the domain between the check and
+/// transactional session: without it another writer could change the domain between the check and
 /// the update. The write is left on the journal's ambient source, which is the user — this is a
 /// gesture, and Ctrl+Z puts the link back.
 #[tauri::command]
