@@ -383,3 +383,29 @@ describe("useKeyboardListView — deleting a row", () => {
     expect(options.onDelete).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("useKeyboardListView — quick Plan picker (P)", () => {
+  it("plain P opens the Plan picker on the selected row", () => {
+    const options = listKeyboardContext();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("p");
+    expect(options.onQuickPlan).toHaveBeenCalledWith(["task-1"]);
+  });
+
+  it("fires on a selected Commitment too, so the handler can refuse it out loud", () => {
+    const options = listKeyboardContext({ selectedTaskId: null, selectedCommitmentId: "commitment-4" });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("p");
+    expect(options.onQuickPlan).toHaveBeenCalledWith(["commitment-4"]);
+  });
+
+  it("does nothing with no row selected, and leaves Alt+P to the Plan preset", () => {
+    const options = listKeyboardContext({ selectedTaskId: null });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("p");
+    expect(options.onQuickPlan).not.toHaveBeenCalled();
+    fireKey("p", { altKey: true });
+    expect(options.onQuickPlan).not.toHaveBeenCalled();
+    expect(options.onSetStatusMode).toHaveBeenCalledWith("plan");
+  });
+});

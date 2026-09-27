@@ -125,4 +125,24 @@ describe("HotkeysModal — typed-child chords", () => {
       }
     },
   );
+
+  it("lists the Scope Picker's own keys in a section of their own", () => {
+    render(<HotkeysModal onClose={vi.fn()} />);
+    const section = screen.getByText("hotkeys:sectionScopePicker").closest("section");
+    expect(section).not.toBeNull();
+    if (section === null) return;
+    const list = within(section);
+    for (const [label, chords] of [
+      ["hotkeys:pickerMove", ["←", "→", "↑", "↓"]],
+      ["hotkeys:pickerStepPeriod", ["[", "]"]],
+      ["hotkeys:pickerUp", ["\\"]],
+      ["hotkeys:pickerPick", ["Space"]],
+      ["hotkeys:pickerEnter", ["Enter"]],
+      ["hotkeys:pickerApply", ["Ctrl+Enter"]],
+      ["hotkeys:pickerClose", ["Esc"]],
+    ] as const) {
+      const row = list.getByText(label).closest("div");
+      for (const chord of chords) expect(row).toHaveTextContent(chord);
+    }
+  });
 });

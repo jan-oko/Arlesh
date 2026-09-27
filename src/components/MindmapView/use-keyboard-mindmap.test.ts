@@ -1101,3 +1101,46 @@ describe("useKeyboardMindmap — X records Broken", () => {
     expect(opts.onCut).toHaveBeenCalled();
   });
 });
+
+describe("useKeyboardMindmap — quick Plan picker (P)", () => {
+  it("plain P opens the Plan picker on the selected node", () => {
+    const opts = mindmapKeyboardContext();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("p");
+    expect(opts.onQuickPlan).toHaveBeenCalledWith(["task-1"]);
+  });
+
+  it("hands over the whole selection, the anchor first", () => {
+    const opts = mindmapKeyboardContext({
+      selectedNodeId: "task-2",
+      selectedNodeIds: new Set(["task-1", "task-2", "task-3"]) as ReadonlySet<string>,
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("p");
+    expect(opts.onQuickPlan).toHaveBeenCalledWith(["task-2", "task-1", "task-3"]);
+  });
+
+  it("fires on a node that holds no Plan, so the handler can refuse it by name", () => {
+    const opts = mindmapKeyboardContext({
+      selectedNodeId: "domain-1",
+      selectedNodeIds: new Set(["domain-1"]) as ReadonlySet<string>,
+      findNodeById: (id: string) => (id === "domain-1" ? makeDomain("domain-1") : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("p");
+    expect(opts.onQuickPlan).toHaveBeenCalledWith(["domain-1"]);
+  });
+
+  it("leaves Shift+P to create a Project and does nothing with nothing selected", () => {
+    const opts = mindmapKeyboardContext();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("P", { shiftKey: true });
+    expect(opts.onQuickPlan).not.toHaveBeenCalled();
+    expect(opts.onCreateTypedChild).toHaveBeenCalledWith("task-1", "project");
+
+    const none = mindmapKeyboardContext({ selectedNodeId: null, selectedNodeIds: new Set() as ReadonlySet<string> });
+    renderHook(() => useKeyboardMindmap(none));
+    fireKey("p");
+    expect(none.onQuickPlan).not.toHaveBeenCalled();
+  });
+});

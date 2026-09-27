@@ -57,6 +57,8 @@ import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useOpenAsyncTemplate } from "@/hooks/use-open-async-template";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
+import { useQuickPlan } from "@/hooks/use-quick-plan";
+import QuickPlanPicker from "@/components/QuickPlanPicker/QuickPlanPicker";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
 
@@ -333,6 +335,11 @@ export default function MindmapView() {
     findNode: findNodeById, reload, showToast,
   });
   const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
+  // `P`. Reads the drawn tree as a fallback so a selected fold of Habit history is refused by name
+  // rather than dropped as an id the loaded tree does not hold.
+  const quickPlan = useQuickPlan({
+    findNode: (id) => findNode(tree, id) ?? findNode(displayRoot, id), reload, showToast,
+  });
 
   const handleConfirmDelete = useCallback(() => {
     if (deleteTargets === null) return;
@@ -510,6 +517,7 @@ export default function MindmapView() {
     onRedo,
     onToggleAgentic: toggleAgentic,
     onToggleAsynchronous: toggleAsynchronous,
+    onQuickPlan: quickPlan.open,
     findNodeById,
   });
   const targetPos = dragTargetId !== null ? positions.get(dragTargetId) : undefined;
@@ -554,6 +562,15 @@ export default function MindmapView() {
 
 
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
+
+      {quickPlan.target !== null && (
+        <QuickPlanPicker
+          target={quickPlan.target}
+          anchorAttribute="data-node-id"
+          onApply={(plan) => void quickPlan.apply(plan)}
+          onClose={quickPlan.close}
+        />
+      )}
 
       {/* The editor for whichever kind is open — one component, shared with the Steps View, which
           can open one on any kind at all. */}

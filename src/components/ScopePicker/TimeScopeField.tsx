@@ -150,6 +150,7 @@ export default function TimeScopeField({ value, onChange, defaultForm = "boundar
               <ScopePicker
                 key={opening === null ? "default" : `${opening.kind}:${opening.anchor}`}
                 picker={rangePicker}
+                onCommit={() => void applyBoundaries()}
                 initialKind={opening?.kind ?? "month"}
                 {...(opening ? { initialAnchor: opening.anchor } : {})}
               />

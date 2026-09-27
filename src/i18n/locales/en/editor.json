@@ -126,5 +126,9 @@
   "agenticNotes": "Notes",
   "agenticBriefNoPriority": "No priority",
   "agenticBriefSpecWritten": "Spec written",
-  "agenticBriefNoSpec": "No spec yet"
+  "agenticBriefNoSpec": "No spec yet",
+  "quickPlanPicker": "Plan",
+  "quickPlanHeading": "Plan “{{title}}”",
+  "quickPlanHeadingMany_one": "Plan {{count}} task",
+  "quickPlanHeadingMany_other": "Plan {{count}} tasks"
 }

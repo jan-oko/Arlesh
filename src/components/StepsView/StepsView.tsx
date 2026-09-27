@@ -40,6 +40,8 @@ import type { StepCursor, StepDirection, StepsZoom } from "@/utils/steps-grid";
 import type { StepsTarget } from "@/utils/hotkeys/steps-bindings";
 import type { MindmapNode } from "@/utils/tree-layout";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
+import QuickPlanPicker from "@/components/QuickPlanPicker/QuickPlanPicker";
+import { useQuickPlan } from "@/hooks/use-quick-plan";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import NodeCreateModals from "@/components/NodeCreateModals/NodeCreateModals";
@@ -223,6 +225,8 @@ export default function StepsView() {
     findNode: (id) => findNode(tree, id), reload, showToast,
   });
   const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
+  // `P`. A fold card is found in the drawn tree and refused by name, as any node without a Plan is.
+  const quickPlan = useQuickPlan({ findNode: lookup, reload, showToast });
   const { onUndo, onRedo } = useUndo({ reload, showToast });
 
   /**
@@ -438,6 +442,7 @@ export default function StepsView() {
     onToggleBacklog: unlessDrawing(toggleBacklog),
     onToggleAgentic: unlessDrawing(toggleAgentic),
     onToggleAsynchronous: unlessDrawing(toggleAsynchronous),
+    onQuickPlan: quickPlan.open,
     onBindWait: unlessDrawing(openAsyncTemplate),
     onOpenEditor,
     onCreateChild: onCreateChildHere,
@@ -476,6 +481,15 @@ export default function StepsView() {
   return (
     <div className={styles.container} style={gridStyle}>
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
+
+      {quickPlan.target !== null && (
+        <QuickPlanPicker
+          target={quickPlan.target}
+          anchorAttribute="data-step-card"
+          onApply={(plan) => void quickPlan.apply(plan)}
+          onClose={quickPlan.close}
+        />
+      )}
 
       {/* The header card takes the *filtered* copy of the node it stands for. The node itself is
           whatever you walked to and the filter never takes that away — but its children are what
