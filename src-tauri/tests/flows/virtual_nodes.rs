@@ -24,7 +24,7 @@ use arlesh_lib::nodes::{
 };
 use arlesh_lib::scopes::key::ScopeKey;
 use arlesh_lib::scopes::model::{PartOfDay, ScopeKind};
-use arlesh_lib::tasks::lifecycle::{Archival, Timing};
+use arlesh_lib::tasks::lifecycle::{Archival, ItemLifecycle, Resolution, Timing};
 use arlesh_lib::tasks::model::{
     CreateTaskRequest, GoalStatus, TaskArchival, TaskStatus, TimeScope, UpdateCommitmentRequest,
     UpdateGoalRequest, UpdateTaskRequest, Verdict,
@@ -731,6 +731,74 @@ async fn completing_every_occurrence_resolves_the_iteration() {
     assert_eq!(
         first.origin.habit().unwrap().iteration_scope.status,
         arlesh_lib::flows::model::IterationStatus::Done
+    );
+}
+
+async fn mark_done(app: &App, id: &NodeId) {
+    task_commands::update_task(
+        app.state(),
+        id.clone(),
+        UpdateTaskRequest {
+            status: Some(TaskStatus::Done),
+            ..Default::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+}
+
+fn lifecycle_of<'a>(board: &'a MindmapLoad, id: &NodeId) -> &'a ItemLifecycle {
+    board
+        .lifecycles
+        .iter()
+        .find(|lifecycle| &lifecycle.node_id == id)
+        .expect("every occurrence has a lifecycle")
+}
+
+#[tokio::test]
+async fn a_done_occurrence_archives_once_its_window_passes_under_accumulating() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let (flow_id, item_id) = daily_habit(&pool, &app, InstanceType::Task).await;
+    load(&app, "2026-01-06T09:00:00").await;
+    let (fifth, sixth) = (ymd(2026, 1, 5), ymd(2026, 1, 6));
+    // The 5th: its root and its step both done — a Done iteration.
+    mark_done(&app, &root(flow_id, fifth)).await;
+    mark_done(&app, &item(item_id, fifth)).await;
+    // The 6th: the root ticked off, the step still open.
+    mark_done(&app, &root(flow_id, sixth)).await;
+
+    let same_day = load(&app, "2026-01-06T09:00:00").await;
+    let root_today = lifecycle_of(&same_day, &root(flow_id, sixth));
+    assert_eq!(
+        (root_today.timing, root_today.archival),
+        (Timing::Active, Archival::Live),
+        "done inside its open window, it stays until the window passes"
+    );
+
+    let board = load(&app, "2026-01-07T09:00:00").await;
+    for id in [root(flow_id, fifth), item(item_id, fifth)] {
+        let passed = lifecycle_of(&board, &id);
+        assert_eq!(passed.timing, Timing::Lapsed);
+        assert_eq!(passed.resolution, Some(Resolution::Completed));
+        assert_eq!(
+            passed.archival,
+            Archival::Archived,
+            "a Completed Resolution archives it"
+        );
+    }
+    let open_step = lifecycle_of(&board, &item(item_id, sixth));
+    assert_eq!(
+        (open_step.timing, open_step.resolution, open_step.archival),
+        (Timing::Active, None, Archival::Live),
+        "unfinished work keeps accumulating"
+    );
+    let open_root = lifecycle_of(&board, &root(flow_id, sixth));
+    assert_eq!(
+        open_root.archival,
+        Archival::Live,
+        "a root closes with its iteration, not ahead of the work still open under it"
     );
 }
 

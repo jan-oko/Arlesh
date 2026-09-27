@@ -87,7 +87,9 @@ fn iteration(slot: &SlotWindow, status: IterationStatus) -> HabitIteration {
 /// hours before the day it sits in ends, which is the whole point of scoping it to the morning.
 /// Under **Accumulating** nothing lapses on the way past — an overlapping Habit's unfinished
 /// occurrence piles up exactly as its unfinished iteration does, and if a morning routine should
-/// vanish at noon, Destructive is what says so.
+/// vanish at noon, Destructive is what says so. This reads the window alone, not whether the
+/// occurrence is done: a *done* one whose window has passed is Lapsed whatever the Consumption,
+/// which the occurrence's row settles once its state is known (`occurrences::settled_timing`).
 ///
 /// An iteration that is itself Lapsed or Missed carries every *started* occurrence in it with it,
 /// whatever its Consumption: a Blocking `latest` skip is not a window passing, and nothing under a
