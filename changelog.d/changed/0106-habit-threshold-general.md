@@ -1,0 +1,1 @@
+- **"Collapse habit history after N" has moved to the General settings page.** It now applies to the Steps View as well as the Mindmap, so it lives with the other app-wide settings rather than on the Mindmap page. Your current value is kept.

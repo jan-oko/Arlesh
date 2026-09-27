@@ -60,6 +60,8 @@ const KEY_LABELS: Record<string, string> = {
   Escape: "Esc",
   Slash: "/",
   Backslash: "\\",
+  BracketLeft: "[",
+  BracketRight: "]",
   Equal: "=",
   Minus: "-",
   NumpadAdd: "Numpad +",

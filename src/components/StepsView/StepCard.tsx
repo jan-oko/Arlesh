@@ -109,6 +109,8 @@ export default function StepCard({
       style={cardStyle}
       data-step-card={node.id}
       aria-current={isSelected ? "true" : undefined}
+      // A folded run of Habit history names its day span here, as its Mindmap node does.
+      title={node.habitGroup?.spanLabel}
       onClick={onSelect}
       // Double-click descends rather than opening the editor, which is the one place this view
       // departs from the Mindmap: descending is the gesture Steps exists for, and the editor is one

@@ -139,12 +139,17 @@ describe("SettingsModal", () => {
     expect(useCloseToTrayStore.getState().closeToTray).toBe(false);
   });
 
-  it("flips the branch axis and stores the Habit-history threshold under Mindmap", () => {
+  it("flips the branch axis under Mindmap, where the Habit-history threshold no longer is", () => {
     open();
     goTo("mindmap");
 
     fireEvent.click(screen.getByRole("checkbox", { name: "verticalLayout" }));
     expect(useViewStore.getState().mindmapOrientation).toBe("vertical");
+    expect(screen.queryByLabelText("collapse.thresholdLabel")).toBeNull();
+  });
+
+  it("stores the Habit-history threshold both views fold at under General", () => {
+    open();
 
     const threshold = screen.getByLabelText("collapse.thresholdLabel");
     expect(threshold).toHaveValue(3);
@@ -155,7 +160,6 @@ describe("SettingsModal", () => {
 
   it("refuses a Habit-history threshold below two", () => {
     open();
-    goTo("mindmap");
     const threshold = screen.getByLabelText("collapse.thresholdLabel");
 
     fireEvent.change(threshold, { target: { value: "1" } });
