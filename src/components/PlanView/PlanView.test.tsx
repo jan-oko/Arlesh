@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import PlanView from "./PlanView";
@@ -191,7 +191,15 @@ function cardsIn(pane: "candidates" | "planned"): string[] {
   return [...section.querySelectorAll("[data-plan-card-id]")].map((el) => el.getAttribute("data-plan-card-id") ?? "");
 }
 
+// The view opens on the scope holding *now*, and the catalogue above is a fixed week — so "now" is
+// pinned inside WEEK_ID, a Tuesday morning, or the view would open on whatever week the wall clock
+// is in and every test would start from the wrong scope. Only `Date` is faked: the promise chains
+// and timers the view runs on stay real.
+const PINNED_NOW = new Date(2026, 8, 22, 10, 0, 0);
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(PINNED_NOW);
   vi.clearAllMocks();
   clearScopeWindowCache();
   clearScopeRowCache();
@@ -205,6 +213,10 @@ beforeEach(() => {
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
   useMindmapStore.setState({ subtreeRootId: null, pendingToast: null });
   useViewStore.setState({ planScopeKind: "week" });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("the two panes", () => {

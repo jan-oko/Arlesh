@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import TimeScopeField from "./TimeScopeField";
 import { getScope } from "@/api/scopes";
@@ -108,6 +108,18 @@ describe("TimeScopeField — editing", () => {
 });
 
 describe("TimeScopeField — opening view", () => {
+  // With no value the picker opens on the months of the year holding *now*, so now is pinned to
+  // 2026 — the year every fixture here is written in. Only `Date` is faked; `waitFor` keeps its
+  // real timers.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 8, 16, 10, 0, 0));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("opens the picker on Month when there is no scope", () => {
     render(<TimeScopeField value={null} onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "edit scope" }));
