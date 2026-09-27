@@ -1,0 +1,1 @@
+- **Turning pages in the Steps View with `[` and `]`, and with the arrows.** `[` and `]` turn to the previous and next page of a Step, alongside `PageUp` and `PageDown`. And the arrows no longer stop dead at a page's edge: `→` on the last card of a page moves on to the first card of the next page, and `←` on the first card goes back to the last card of the page before.

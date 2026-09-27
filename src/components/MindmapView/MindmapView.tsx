@@ -21,6 +21,7 @@ import { updateTask, reparentScopeConflicts } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
 import { getErrorMessage } from "@/api/errors";
 import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange, conversionNeedsConfirm, canConvertNodeToFlow } from "@/utils/mindmap-tree";
+import { storedSubtreeBase } from "@/utils/drawn-path";
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
 import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCanvas/MindmapCanvas";
 import DragGhost from "@/components/DragGhost/DragGhost";
@@ -111,7 +112,7 @@ export default function MindmapView() {
   // selection moves or the filter/subtree changes; see use-focus-exemption.
   const focusExemptNodeId = useFocusExemption(selectedNodeId, [filter, subtreeRootId]);
   const { root: filteredRoot, exemptedIds: focusExemptIds } = useMemo(() => {
-    const base = subtreeRootId !== null ? (findNode(tree, subtreeRootId) ?? tree) : tree;
+    const base = storedSubtreeBase(tree, subtreeRootId);
     return filterTreeWithFocus(base, filter, focusExemptPath(base, focusExemptNodeId));
   }, [subtreeRootId, tree, filter, focusExemptNodeId]);
 

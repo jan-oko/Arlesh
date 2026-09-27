@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
-import type { SubtreeCrumb } from "@/stores/use-mindmap-store";
-import { pathToNode } from "@/utils/mindmap-tree";
+import type { SubtreeCrumb, SubtreeNav } from "@/stores/use-mindmap-store";
+import { useFoldReading } from "@/hooks/use-fold-reading";
+import { drawnPathToNode, fallbackRootFor } from "@/utils/drawn-path";
 import { migratedNodeId } from "@/utils/legacy-node-id";
 import type { MindmapNode } from "@/utils/tree-layout";
 
@@ -35,15 +36,19 @@ interface SubtreeNavHandles {
 export function useSubtreeNav(tree: MindmapNode): SubtreeNavHandles {
   const subtreeRootId = useMindmapStore((s) => s.subtreeRootId);
   const setSubtreeNav = useMindmapStore((s) => s.setSubtreeNav);
+  const publishedNav = useMindmapStore((s) => s.subtreeNav);
   const exitSubtree = useMindmapStore((s) => s.exitSubtree);
   const onExitToRoot = useMindmapStore((s) => s.exitToRoot);
   const enterSubtree = useMindmapStore((s) => s.enterSubtree);
 
   // One walk down to the subtree root gives the whole chain: the root itself is the last step, and
-  // everything before it is an ancestor the breadcrumb can offer as a way out.
+  // everything before it is an ancestor the breadcrumb can offer as a way out. It is the walk down
+  // the tree **as drawn**, so a folded run of Habit history and each scope level under it is a
+  // crumb of its own — and a root that is one of them resolves at all (`drawn-path.ts`).
+  const reading = useFoldReading();
   const path = useMemo(
-    () => (subtreeRootId === null ? [] : pathToNode(tree, subtreeRootId)),
-    [tree, subtreeRootId],
+    () => (subtreeRootId === null ? [] : drawnPathToNode(tree, subtreeRootId, reading)),
+    [tree, subtreeRootId, reading],
   );
   const current = path[path.length - 1];
   const currentTitle = current?.title ?? "";
@@ -66,22 +71,42 @@ export function useSubtreeNav(tree: MindmapNode): SubtreeNavHandles {
    *
    * A root saved before Habit occurrences and a wait's derived nodes became rows (ADR 0008) names
    * the node by its old key; that one is re-rooted at the node's key now rather than lost.
+   *
+   * A folded run of Habit history, or a scope level of one, that is no longer drawn climbs to the
+   * nearest thing that still is — the run, then the Habit's host — rather than all the way out.
    */
   useEffect(() => {
     if (subtreeRootId === null || tree.children.length === 0) return;
     if (path.length > 0) return;
     const migrated = migratedNodeId(tree, subtreeRootId);
-    if (migrated !== undefined) enterSubtree(migrated);
+    if (migrated !== undefined) { enterSubtree(migrated); return; }
+    const fallback = fallbackRootFor(tree, subtreeRootId, reading);
+    if (fallback !== null) enterSubtree(fallback);
     else onExitToRoot();
-  }, [subtreeRootId, tree, path, onExitToRoot, enterSubtree]);
+  }, [subtreeRootId, tree, path, reading, onExitToRoot, enterSubtree]);
 
+  // Published only when it says something new. The walk is re-run whenever the fold's reading is
+  // rebuilt, which hands back an equal chain in a new array — and publishing that would re-render
+  // this hook's own view into another walk.
   useEffect(() => {
-    setSubtreeNav(subtreeRootId === null ? null : { ancestors, currentTitle });
-  }, [subtreeRootId, ancestors, currentTitle, setSubtreeNav]);
+    const next = subtreeRootId === null ? null : { ancestors, currentTitle };
+    if (sameSubtreeNav(publishedNav, next)) return;
+    setSubtreeNav(next);
+  }, [subtreeRootId, ancestors, currentTitle, publishedNav, setSubtreeNav]);
 
   const onExitSubtree = useCallback(() => exitSubtree(parentSubtreeId), [exitSubtree, parentSubtreeId]);
 
   return { subtreeRootId, parentSubtreeId, onExitSubtree, onExitToRoot };
+}
+
+/** Whether two published descriptors name the same chain, crumb for crumb. */
+function sameSubtreeNav(a: SubtreeNav | null, b: SubtreeNav | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.currentTitle !== b.currentTitle || a.ancestors.length !== b.ancestors.length) return false;
+  return a.ancestors.every((crumb, index) => {
+    const other = b.ancestors[index];
+    return other !== undefined && crumb.id === other.id && crumb.title === other.title;
+  });
 }
 
 /** The two "go up" actions on their own, derived from the published descriptor rather than a tree. */

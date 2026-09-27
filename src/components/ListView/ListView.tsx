@@ -7,6 +7,7 @@ import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { findNode } from "@/utils/mindmap-tree";
+import { storedSubtreeBase } from "@/utils/drawn-path";
 import { canParentNewChild, canParentNewTask } from "@/utils/node-meta";
 import { storedAgenticState } from "@/utils/agentic";
 import { useFilterStore } from "@/stores/use-filter-store";
@@ -214,7 +215,7 @@ export default function ListView() {
   // The frame the list is drawn from — the subtree you have entered, or the whole board. It is the
   // parent for a sibling of a row that has no ancestor inside the list to share one with.
   const listRoot = useMemo(
-    () => (subtreeRootId !== null ? (findNode(tree, subtreeRootId) ?? tree) : tree),
+    () => storedSubtreeBase(tree, subtreeRootId),
     [tree, subtreeRootId],
   );
 

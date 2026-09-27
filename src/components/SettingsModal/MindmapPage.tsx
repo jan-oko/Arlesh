@@ -1,10 +1,10 @@
 import { useTranslation } from "react-i18next";
 import { useViewStore } from "@/stores/use-view-store";
 import Switch from "@/components/Switch/Switch";
-import HabitCollapseSetting from "./HabitCollapseSetting";
 import styles from "./SettingsModal.module.css";
 
-/** How the Mindmap draws: its branch axis (per tab) and how much Habit history it folds (app-wide). */
+/** How the Mindmap draws: its branch axis, per tab. How much Habit history folds is on General,
+ * since the Steps View folds it too. */
 export default function MindmapPage() {
   const { t } = useTranslation("common");
   const orientation = useViewStore((s) => s.mindmapOrientation);
@@ -13,7 +13,6 @@ export default function MindmapPage() {
   return (
     <div className={styles.page}>
       <Switch checked={orientation === "vertical"} onChange={toggleOrientation} label={t("verticalLayout")} />
-      <HabitCollapseSetting />
     </div>
   );
 }

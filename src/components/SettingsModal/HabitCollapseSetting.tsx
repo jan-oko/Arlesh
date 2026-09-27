@@ -8,9 +8,10 @@ import {
 import styles from "./HabitCollapseSetting.module.css";
 
 /**
- * How many consecutive passed iterations of a Habit the Mindmap draws before folding them into one
- * node. Applies to every Habit at once — it is a statement about how much history you want on
- * screen, not about any one of them.
+ * How many consecutive passed iterations of a Habit the Mindmap and the Steps View draw before
+ * folding them into one node. Applies to every Habit and both views at once — it is a statement
+ * about how much history you want on screen, not about any one of them or any one view. It lives on
+ * General for that reason: it was on the Mindmap page until the Steps View folded too.
  *
  * The typed text is kept locally while it is being edited so a half-typed value ("1" on the way to
  * "12") does not get clamped out from under the cursor; the store only ever sees a whole number in

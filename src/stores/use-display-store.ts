@@ -8,8 +8,9 @@ import {
 
 interface DisplayStore {
   /**
-   * How many consecutive passed Habit iterations it takes before the Mindmap folds them into one
-   * node. Applies to every Habit; a run shorter than this draws its iterations directly.
+   * How many consecutive passed Habit iterations it takes before the Mindmap and the Steps View
+   * fold them into one node. Applies to every Habit and both views; a run shorter than this draws
+   * its iterations directly.
    */
   habitCollapseThreshold: number;
   setHabitCollapseThreshold: (value: number) => void;

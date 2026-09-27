@@ -7,6 +7,7 @@ import { useNodeActions } from "@/components/MindmapView/use-node-actions";
 import { useCreateEditors } from "@/hooks/use-create-editors";
 import { useListDelete } from "@/hooks/use-list-delete";
 import { useFocusExemption } from "@/hooks/use-focus-exemption";
+import { useFoldReading } from "@/hooks/use-fold-reading";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useStatusCycle } from "@/hooks/use-status-cycle";
 import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
@@ -22,16 +23,17 @@ import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { getErrorMessage } from "@/api/errors";
-import { filterTreeWithFocus } from "@/utils/filter-tree";
-import { focusExemptPath } from "@/utils/focus-exemption";
+import { drawnPathToNode } from "@/utils/drawn-path";
+import { foldHabitRuns, habitGroupFlowId, isHabitGroupNode } from "@/utils/habit-collapse";
 import { collectTasksAndGoals, findNode } from "@/utils/mindmap-tree";
 import { aspectColorOf } from "@/utils/node-visuals";
 import { canDescendInto, creatableKinds, stepChildCounts, stepRefusalKey } from "@/utils/steps-card";
-import { hasNodeEditor } from "@/utils/node-meta";
+import type { StepChildCounts } from "@/utils/steps-card";
+import { canParentAnyNewChild, hasNodeEditor } from "@/utils/node-meta";
 import type { TypedChildKind } from "@/utils/node-meta";
 import { neighbourAfterDelete } from "@/utils/neighbour-after-delete";
 import {
-  CARD_GAP, HEADER_CURSOR, STEPS_ZOOM_LEVELS, cardSizeForZoom, childCursor, clampPage, moveCursor,
+  CARD_GAP, HEADER_CURSOR, STEPS_ZOOM_LEVELS, cardSizeForZoom, childCursor, clampPage, moveAcrossPages,
   pageCount, pageSlice, resolveGrid, shownPage,
 } from "@/utils/steps-grid";
 import type { StepCursor, StepDirection, StepsZoom } from "@/utils/steps-grid";
@@ -85,11 +87,13 @@ function steppedZoom(zoom: StepsZoom, direction: 1 | -1): StepsZoom {
  * The **selection is its own**, as the Mindmap's and the List View's are: what the views share is
  * where the tab is rooted, not what is picked inside it.
  *
- * Passed Habit iterations are **not folded** here, unlike on the Mindmap. Folding exists because
- * the Mindmap draws a whole subtree at once; a Step draws one level and paginates, which solves the
- * same problem without inventing a node. It also could not work: a folded run is drawn rather than
- * stored, so descending into one would set the tab's root to an id `pathToNode` cannot find, and
- * the recovery in `use-subtree-nav` would bounce you straight back to the true root.
+ * Passed Habit iterations **fold** here as they do on the Mindmap — by the Mindmap's own
+ * `foldHabitRuns`, after the filter, at the one shared threshold — into a card titled with the
+ * Habit and its tally. `Enter` descends into it: the Step inside a run is its next scope level,
+ * each level a card of the same kind, down to the iterations. A fold node is drawn rather than
+ * stored, so a Step standing on one resolves it by its id (`drawn-path.ts`): the id names the
+ * Habit, the Habit names the host to fold again, and folding is deterministic. That is what lets a
+ * tab rooted in a run survive a reload rather than being bounced to the true root.
  */
 export default function StepsView() {
   const { t } = useTranslation(["common", "stepsView", "warnings"]);
@@ -136,24 +140,52 @@ export default function StepsView() {
   const nodeEditor = useNodeEditor({ tree, allTasksAndGoals, reload });
   const { editorModal, setEditorModal } = nodeEditor;
 
-  // The node the Step is standing on, read from the **unfiltered** tree: it is what you walked to,
-  // so the filter never takes it out from under you. `null` is the true root, where the header card
-  // stands for the board itself.
-  const rawStepNode = useMemo(
-    () => (subtreeRootId === null ? null : findNode(tree, subtreeRootId) ?? null),
-    [tree, subtreeRootId],
-  );
-
   // The focus exemption: the selected card stays on the Step even once your own edit stops it
   // matching — cycling a Task to Done under Plan no longer erases it out from under the cursor. It
   // ends when the selection moves or the filter or the subtree changes.
   const selectedChildId = selection !== null && selection.cell === "child" ? selection.nodeId : null;
   const focusExemptNodeId = useFocusExemption(selectedChildId, [filter, subtreeRootId]);
+  // How a host is drawn before its Habit history folds: the tab's filter, with this exemption.
+  const reading = useFoldReading(focusExemptNodeId);
 
-  const { root: filteredRoot } = useMemo(() => {
-    const base = rawStepNode ?? tree;
-    return filterTreeWithFocus(base, filter, focusExemptPath(base, focusExemptNodeId));
-  }, [rawStepNode, tree, filter, focusExemptNodeId]);
+  // The node the Step is standing on. A stored node is read from the **unfiltered** tree: it is
+  // what you walked to, so the filter never takes it out from under you. A folded run of Habit
+  // history, or a scope level of one, exists only drawn, so it is the drawn one — filtered and
+  // folded already. `null` is the true root, where the header card stands for the board itself.
+  const rawStepNode = useMemo(() => {
+    if (subtreeRootId === null) return null;
+    if (habitGroupFlowId(subtreeRootId) === undefined) return findNode(tree, subtreeRootId) ?? null;
+    const path = drawnPathToNode(tree, subtreeRootId, reading);
+    return path[path.length - 1] ?? null;
+  }, [tree, subtreeRootId, reading]);
+  const standsOnFold = rawStepNode !== null && isHabitGroupNode(rawStepNode);
+
+  // The Step before its Habit history folds — what the "3 of 12" counts are read from, since a
+  // count of cards would read a fold as the filter hiding what it only gathered up.
+  const unfoldedRoot = useMemo(
+    () => (standsOnFold && rawStepNode !== null ? rawStepNode : reading.drawHost(rawStepNode ?? tree)),
+    [standsOnFold, rawStepNode, tree, reading],
+  );
+  // And after: runs of passed iterations at or over the threshold are one card each. Folding is
+  // idempotent, so a Step that is itself a fold node comes through unchanged.
+  const filteredRoot = useMemo(
+    () => foldHabitRuns(unfoldedRoot, reading.threshold, reading.labels),
+    [unfoldedRoot, reading],
+  );
+
+  /** A node on this Step or anywhere on the board — a fold card is only on the Step. */
+  function lookup(id: string): MindmapNode | undefined {
+    return findNode(tree, id) ?? findNode(filteredRoot, id);
+  }
+
+  /**
+   * What a card counts: what descending shows against what the board holds. A fold card counts
+   * nothing — its title is already the tally of what it stands for.
+   */
+  function cardCounts(node: MindmapNode): StepChildCounts | null {
+    if (isHabitGroupNode(node)) return null;
+    return stepChildCounts(findNode(unfoldedRoot, node.id) ?? node, findNode(tree, node.id));
+  }
 
   const children = filteredRoot.children;
   const { ref: childAreaRef, grid: measuredGrid } = useStepGrid(zoom);
@@ -231,6 +263,24 @@ export default function StepsView() {
 
   const stepNodeId = rawStepNode?.id ?? null;
 
+  /**
+   * Refuses, out loud, a gesture aimed at a **fold card** — a folded run of Habit history or one of
+   * its scope levels. It is a drawing of many iterations: there is nothing inside it to create in,
+   * and nothing of its own to mark, move or delete. Descending is the one thing it answers.
+   * Returns whether it refused.
+   */
+  function refusedOnDrawing(id: string, key: "refusedCreateInDrawing" | "refusedActOnDrawing"): boolean {
+    const node = lookup(id);
+    if (node === undefined || !isHabitGroupNode(node)) return false;
+    showToast({ nodeId: id, message: t(`stepsView:${key}`, { title: node.title }) });
+    return true;
+  }
+
+  /** `act`, unless `id` is a fold card, which refuses it. */
+  function unlessDrawing(act: (id: string) => void): (id: string) => void {
+    return (id) => { if (!refusedOnDrawing(id, "refusedActOnDrawing")) act(id); };
+  }
+
   /** Refuses a gesture that would act on the Step you are standing on from inside it. */
   function refuseOnStep(id: string, key: "refusedSiblingOfStep" | "refusedParentOfStep" | "refusedDeleteStep"): void {
     const node = findNode(tree, id);
@@ -238,11 +288,13 @@ export default function StepsView() {
   }
 
   function onCreateChildHere(id: string): void {
+    if (refusedOnDrawing(id, "refusedCreateInDrawing")) return;
     descendOnCreate.current = id === stepNodeId ? null : id;
     actions.onCreateChild(id);
   }
 
   function onCreateTypedChildHere(id: string, kind: TypedChildKind): void {
+    if (refusedOnDrawing(id, "refusedCreateInDrawing")) return;
     descendOnCreate.current = id === stepNodeId ? null : id;
     actions.onCreateTypedChild(id, kind);
   }
@@ -258,17 +310,20 @@ export default function StepsView() {
   function onCreateSiblingHere(id: string): void {
     descendOnCreate.current = null;
     if (id === stepNodeId) { refuseOnStep(id, "refusedSiblingOfStep"); return; }
+    if (refusedOnDrawing(id, "refusedActOnDrawing")) return;
     actions.onCreateSibling(id);
   }
 
   function onInsertParentHere(id: string): void {
     descendOnCreate.current = null;
     if (id === stepNodeId) { refuseOnStep(id, "refusedParentOfStep"); return; }
+    if (refusedOnDrawing(id, "refusedActOnDrawing")) return;
     actions.onInsertParent(id);
   }
 
   function onDeleteHere(id: string): void {
     if (id === stepNodeId) { refuseOnStep(id, "refusedDeleteStep"); return; }
+    if (refusedOnDrawing(id, "refusedActOnDrawing")) return;
     actions.onDelete([id]);
   }
 
@@ -286,7 +341,7 @@ export default function StepsView() {
    */
   const onDescend = useCallback(
     (id: string) => {
-      const node = findNode(tree, id);
+      const node = findNode(tree, id) ?? findNode(filteredRoot, id);
       if (node === undefined) return;
       if (id === subtreeRootId) {
         showToast({ nodeId: id, message: t("stepsView:refusedAlreadyHere", { title: node.title }) });
@@ -300,11 +355,15 @@ export default function StepsView() {
       setSelection(null);
       setPage(0);
     },
-    [tree, subtreeRootId, enterSubtree, showToast, t],
+    [tree, filteredRoot, subtreeRootId, enterSubtree, showToast, t],
   );
 
+  // An arrow that runs off the end of a page carries on onto the next page's adjacent card; the
+  // page shown follows the selection there.
   function onNavigate(direction: StepDirection): void {
-    selectCursor(moveCursor(cursor, direction, pageChildren.length, grid.columns), pageChildren);
+    const next = moveAcrossPages(cursor, direction, currentPage, children.length, grid);
+    if (next.page !== currentPage) setPage(next.page);
+    selectCursor(next.cursor, pageSlice(children, next.page, grid.pageSize));
   }
 
   // Turning a page moves the cursor onto the first card of the page you turned to, rather than
@@ -329,7 +388,7 @@ export default function StepsView() {
    */
   const onOpenEditor = useCallback(
     (id: string) => {
-      const node = findNode(tree, id);
+      const node = findNode(tree, id) ?? findNode(filteredRoot, id);
       if (node === undefined) return;
       if (!hasNodeEditor(node)) {
         showToast({ nodeId: id, message: t("stepsView:refusedNoEditor", { title: node.title }) });
@@ -339,7 +398,7 @@ export default function StepsView() {
       // the Task editor, a spawned or delegation wait the Expectation editor.
       setEditorModal({ nodeId: node.id, node });
     },
-    [tree, setEditorModal, showToast, t],
+    [tree, filteredRoot, setEditorModal, showToast, t],
   );
 
   /** The empty Step's offer: a first child, taken straight into its editor to be named. */
@@ -374,11 +433,11 @@ export default function StepsView() {
     onDescend,
     onStepPage,
     onStepZoom,
-    onCycleStatus: cycleStatus,
-    onToggleBacklog: toggleBacklog,
-    onToggleAgentic: toggleAgentic,
-    onToggleAsynchronous: toggleAsynchronous,
-    onBindWait: openAsyncTemplate,
+    onCycleStatus: unlessDrawing(cycleStatus),
+    onToggleBacklog: unlessDrawing(toggleBacklog),
+    onToggleAgentic: unlessDrawing(toggleAgentic),
+    onToggleAsynchronous: unlessDrawing(toggleAsynchronous),
+    onBindWait: unlessDrawing(openAsyncTemplate),
     onOpenEditor,
     onCreateChild: onCreateChildHere,
     onCreateTypedChild: onCreateTypedChildHere,
@@ -407,9 +466,11 @@ export default function StepsView() {
     "--step-card-gap": `${CARD_GAP}px`,
     "--step-columns": grid.columns,
   };
-  const headerCounts = stepChildCounts(filteredRoot, rawStepNode ?? tree);
+  const headerCounts = rawStepNode === null ? stepChildCounts(unfoldedRoot, tree) : cardCounts(rawStepNode);
   const stepTitle = rawStepNode?.title ?? t("stepsView:boardTitle");
-  const canCreateFirstChild = rawStepNode !== null && headerCounts.total === 0 && canDescendInto(rawStepNode);
+  const holdsNothing = headerCounts !== null && headerCounts.total === 0;
+  const canCreateFirstChild = rawStepNode !== null && holdsNothing && canParentAnyNewChild(rawStepNode);
+  const stepCreatableKinds = rawStepNode === null ? [] : creatableKinds(rawStepNode);
 
   return (
     <div className={styles.container} style={gridStyle}>
@@ -439,15 +500,16 @@ export default function StepsView() {
           onCommitTitle={(title) => { if (rawStepNode !== null) actions.onCommitEdit(rawStepNode.id, title); }}
           onCancelTitleEdit={() => setEditingNodeId(null)}
         />
-        {rawStepNode !== null && (
-          <StepCreateMenu kinds={creatableKinds(rawStepNode)} onCreate={onCreateTypedChildOnStep} />
+        {/* Nor on a fold, which holds nothing that could be created. */}
+        {stepCreatableKinds.length > 0 && (
+          <StepCreateMenu kinds={stepCreatableKinds} onCreate={onCreateTypedChildOnStep} />
         )}
       </div>
 
       {children.length === 0 ? (
         <div className={styles.empty} ref={childAreaRef}>
           <p>
-            {headerCounts.total === 0
+            {holdsNothing
               ? t("stepsView:emptyStep", { title: stepTitle })
               : t("stepsView:emptyStepFiltered", { title: stepTitle })}
           </p>
@@ -472,7 +534,7 @@ export default function StepsView() {
               cardHeight={card.height}
               isHeader={false}
               isSelected={cursor?.cell === "child" && cursor.index === index}
-              counts={stepChildCounts(child, findNode(tree, child.id))}
+              counts={cardCounts(child)}
               onSelect={() => setSelection({ cell: "child", nodeId: child.id })}
               onDescend={() => onDescend(child.id)}
               onOpenEditor={() => onOpenEditor(child.id)}

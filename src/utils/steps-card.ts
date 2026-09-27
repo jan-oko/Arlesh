@@ -1,6 +1,7 @@
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { TYPED_CHILD_KINDS, canAdoptChildren, canParentAnyNewChild, canParentNewChild } from "@/utils/node-meta";
 import type { TypedChildKind } from "@/utils/node-meta";
+import { isHabitGroupNode } from "@/utils/habit-collapse";
 
 /**
  * What a **Steps card** says, and whether you can descend into it.
@@ -83,8 +84,8 @@ function fieldsForKind(node: MindmapNode): readonly StepFieldKind[] {
     case "flow_goal":
     case "flow_task":
       return ["timeScope"];
-    // A folded run of Habit history is a tally and a span, not a node with fields. Steps does not
-    // fold, so one should never reach a card — but "no fields" is the honest answer either way.
+    // A folded run of Habit history is a tally and a span, not a node with fields: its title is the
+    // tally, and the span is the card's tooltip.
     case "habit_group":
       return [];
   }
@@ -161,9 +162,14 @@ export function stepChildCounts(
  *     refusing to enter one would make "what is under this?" a question you can only ask where the
  *     answer is already yes.
  *
- * What is left is a **drawing** — a folded run of Habit history, or anything else rendered rather
- * than stored — which has no inside at all. It is refused out loud (Arlesh-zlg), through
- * {@link stepRefusalKey}.
+ * A **folded run of Habit history**, and each scope level of one, opens too, though it holds
+ * nothing you could create: it is a drawing of many iterations, and the Step inside it is the next
+ * level of the fold — the scope levels, then the iterations themselves. So it is admitted by name,
+ * ahead of the two tests, and `canParentAnyNewChild` still answers no for it: entering is allowed,
+ * creating is not. Its id resolves after a reload through `drawn-path.ts`.
+ *
+ * What is left is any other **drawing** — something rendered rather than stored — which has no
+ * inside at all. It is refused out loud (Arlesh-zlg), through {@link stepRefusalKey}.
  *
  * Every *real* node passes the second test, including a **Tag**: a tag is a label, and the one
  * thing you hang on a label is a note about it (Arlesh-71m). `stepRefusalKey`'s other answer is
@@ -174,6 +180,7 @@ export function stepChildCounts(
  * same one rather than adding a third opinion about what can hold a child.
  */
 export function canDescendInto(node: MindmapNode): boolean {
+  if (isHabitGroupNode(node)) return true;
   return node.children.length > 0 || canParentAnyNewChild(node);
 }
 

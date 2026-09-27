@@ -44,12 +44,18 @@ Task, an Info note and a Habit occurrence all open on an *empty* Step that offer
 the first child: a leaf is not a dead end, and refusing to enter one would make "what is under
 this?" a question you can only ask where the answer is already yes.
 
-What is refused says why rather than doing nothing: a **drawing** — anything rendered rather than
-stored, such as a folded run of Habit history — which has no inside at all. Every *real* node opens,
-a **Tag** included: a tag is a label, and the one thing you hang on a label is a note about it.
+A **folded run of Habit history** opens too, and so does each scope level of one — see
+[below](#passed-habit-iterations-fold-here). It is drawn rather than stored and nothing can be
+created in it, so it is admitted **by name** ahead of the two tests: entering it is allowed,
+creating in it is not.
 
-The predicate is `canParentAnyNewChild` in `node-meta.ts`, the same one the creation gestures ask;
-there is no second opinion about what can hold a child, which is why teaching the model that a Tag
+What is refused says why rather than doing nothing: any other **drawing** — anything rendered rather
+than stored — which has no inside at all. Every *real* node opens, a **Tag** included: a tag is a
+label, and the one thing you hang on a label is a note about it.
+
+The predicate is `canParentAnyNewChild` in `node-meta.ts`, the same one the creation gestures ask —
+and it still answers no for a fold node, which `canDescendInto` admits separately; there is no
+second opinion about what can hold a child, which is why teaching the model that a Tag
 takes notes moved this rule with it and cost nothing here.
 
 **Virtual nodes are enterable** — a Habit iteration or occurrence is a node like any other here. The
@@ -60,13 +66,63 @@ so descending into a virtual node and reloading lands at the true root rather th
 **`Enter` on the card you are already standing on** is refused with a toast rather than silently
 re-rooting where you already are.
 
-### Passed Habit iterations are not folded here
+### Passed Habit iterations fold here
 
-The Mindmap folds a run of passed iterations into one `habit_group` node because it draws a whole
-subtree at once. A Step draws one level and paginates, which answers the same problem without
-inventing a node — and folding could not work here anyway: a folded run is drawn rather than stored,
-so descending into one would set the tab's root to an id `pathToNode` cannot find and the recovery
-above would bounce you straight back to the true root.
+A run of passed iterations piles up on a Step as it does on the Mindmap — a year of a kept daily
+Habit is three hundred and sixty-five cards, most of them pages away from the one live iteration.
+So a Step folds it the way the Mindmap does, **with the Mindmap's own fold** (`foldHabitRuns` in
+`habit-collapse.ts`): one implementation, so the two views can never disagree about what folds,
+what it is called or how it expands. It was once argued that pagination made the fold unnecessary
+here; it does not — pagination only chooses which screenful of dead iterations you look at.
+
+- **What folds, and when.** A run of passed iterations of one Habit at or over the threshold
+  becomes **one card**, titled with the Habit and its tally — "Journal: 14 passed · 9 done, 5
+  missed" — with its day span in the card's tooltip. A shorter run draws its iterations as cards of
+  their own. The threshold is the one setting both views share, "Collapse habit history after N"
+  on the settings modal's **General** page (see [Habits](habits.md)).
+- **After the filter.** The fold runs over the Step the filter has already thinned, so a card
+  stands for exactly the iterations that would otherwise have been drawn — the Mindmap's rule.
+- **What a fold card carries.** Its glyph, its title and nothing else: no fields, and no "n of m"
+  count, because its title is already the tally of what it stands for.
+- **Descending.** `Enter` on a fold card opens a Step whose cards are the run's **next level** — the
+  scope-levelled tree the Mindmap expands into (year → season → month → week, each level inserted
+  only where the run spans more than one of that unit, each with its own tally). A level card is a
+  fold card in turn and opens the same way, down to the iterations, which are ordinary cards. Every
+  level is a crumb in the breadcrumb, and an iteration entered through them names them too, so
+  `Shift+Escape` climbs back up through the levels in the order you came down.
+- **What it refuses.** It is a drawing, so everything but descending is refused out loud: `E` (no
+  editor), the create gestures and the Step's "+" (it has no inside to create in — the "+" is not
+  drawn on a Step that is one), and `Delete`, `Space` and the flag keys (nothing of its own to
+  change).
+
+#### A fold node's id is an address
+
+A fold node exists only in a drawn tree, so descending into one sets the tab's subtree root to an id
+the loaded tree does not hold — and `pathToNode` alone would not find it, and the recovery in
+`use-subtree-nav.ts` would bounce the tab to the true root on the next load. So the id is made
+**resolvable** rather than merely unique:
+
+| Node | Id |
+| --- | --- |
+| The run | `habitrun-{habit}-virtual` |
+| A scope level | `habitrun-{habit}-{level}-{first day of its span}-virtual` |
+
+Both spellings are the Mindmap's, unchanged — they are also what its opened-groups set persists.
+What resolves one is `drawnPathToNode` (`drawn-path.ts`): the id names the Habit; the Habit's
+iterations name their **host**; the host, drawn as the view draws it (filtered) and folded again,
+yields the same ids, because folding is deterministic. The path to a fold node is the loaded path
+to its host followed by the fold's own nodes down to it, and the breadcrumb, the header card and
+the recovery effect all read it. The same walk splices the fold back into the path of a folded
+iteration, which is what gives an iteration entered through the levels its full breadcrumb.
+
+**A fold root survives a reload** for as long as the run it names is still drawn. When it is not,
+the recovery climbs to the nearest thing that still is rather than all the way out: a **level** that
+stopped being drawn (the filter took its iterations, or the run now spans one unit fewer) climbs to
+its **run**, and a run that fell under the threshold to the Habit's **host**, where its iterations
+now stand on their own.
+
+**The Mindmap and the List View draw from the loaded tree** and cannot stand on a fold node, so a
+tab rooted at one shows the Habit's host there — the run where it lives — until you switch back.
 
 ## The header card
 
@@ -256,8 +312,8 @@ Because a Steps card is any kind at all, the editor fan-out every view used to c
 is now one shared component: the List View and the Plan View could get away with two kinds each
 because a row there is only ever a Task or a Commitment, and that is what stopped being true here.
 
-**Two kinds have no editor at all** — an Aspect, which is fixed, and a folded run of Habit history,
-which is a drawing. `E` on one of them is **refused out loud**. A Habit occurrence opens the editor
+**Two kinds have no editor at all** — an Aspect, which is fixed, and a folded run of Habit history
+(or a scope level of one), which is a drawing. `E` on one of them is **refused out loud**. A Habit occurrence opens the editor
 of its kind, like any row ([Derived nodes](virtual-nodes.md)). That it is one named predicate rather than a
 silent `return` in the gesture and a `null` branch in the modal matters: two encodings of the one
 fact is how this view shipped a card that set the editor open, drew no modal, and left the keyboard
@@ -340,17 +396,26 @@ eight either overflows or scrolls, and not scrolling is the point. Zoom is the c
 follows it and the window.
 
 Pagination means the staircase has **landings**, and moving between them has its own affordance:
-`PageUp` / `PageDown` and a pager below the cards. Deliberately not an arrow (an arrow that
-sometimes moved the cursor and sometimes replaced every card would be the one movement here you
-could not predict) and deliberately not `Enter` or `Escape`, which are the two ways depth changes.
-Three movements, three gestures. An arrow key never leaves the page.
+`PageUp` / `PageDown`, `[` / `]`, and a pager below the cards. Deliberately not `Enter` or
+`Escape`, which are the two ways depth changes. `[` and `]` are the Plan View's "back one / on one"
+pair, free in this table and the always-live ones, for a hand on the letters rather than the
+navigation block.
+
+**The arrows cross a page edge along the reading order, and only there.** The cards are one sequence
+split into pages, so `→` on a page's last card lands on the **next page's first**, and `←` on a
+page's first card on the **previous page's last**; the page shown follows the selection. Every other
+edge stays put as before — `↑` from the top row is still the header card, and `↓` from the bottom
+row and `→` at the end of a row that is not the page's last card do not move — because none of
+those is the card that comes next. (Until 2026-09-27 no arrow ever left the page; stopping dead at
+the last card of a page, with more cards one page on, read as the end of the Step.)
 
 ## Keyboard
 
-- `↑` `↓` `←` `→` — move the selection within the grid, the header card included. Depth is not on
-  an axis
-- `Enter` — descend into the selected card
-- `PageUp` / `PageDown` — the previous / next page of this Step
+- `↑` `↓` `←` `→` — move the selection within the grid, the header card included, and across a
+  page edge along the reading order. Depth is not on an axis
+- `Enter` — descend into the selected card, a folded run of Habit history included
+- `PageUp` / `PageDown`, `[` / `]` — the previous / next page of this Step. `→` off a page's last
+  card and `←` off its first also turn the page
 - `Space` — cycle the selected card's status. Not `Enter`, which descends here; `Space` is bound
   nowhere else and reads as a toggle rather than a move. On an **Expectation** it releases the wait
   or takes the release back, and on its check task it completes the check (or reopens a done one).
@@ -380,7 +445,6 @@ a fourth view cost one binding.
 - **Editing in a card**, beyond naming one just created. `E` is the one editing surface.
 - **Pasting, and moving cards between Steps.**
 - **A free-text description on kinds that have none**, as above.
-- **Folding passed Habit iterations**, as above.
 
 Ordering follows the same sibling position the other views use.
 
