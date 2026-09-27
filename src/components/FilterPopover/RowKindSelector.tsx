@@ -1,7 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { LIST_ROW_KINDS, rowKindToggleRefusal, type ListRowKind } from "@/utils/list-filter";
-import { ROW_KIND_KEYS, keyLetter } from "@/utils/filter-menu-keys";
 import styles from "./FilterPopover.module.css";
 
 /**
@@ -37,7 +36,6 @@ export default function RowKindSelector() {
             onClick={() => toggleKind(kind)}
           >
             {t(`rowKind.${kind}`)}
-            <kbd className={styles.key} aria-hidden="true">{keyLetter(ROW_KIND_KEYS[kind])}</kbd>
           </button>
         );
       })}

@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useFilterStore } from "@/stores/use-filter-store";
+import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useFilterEntries } from "@/hooks/use-filter-entries";
 import { useRowKindToggle } from "@/hooks/use-row-kind-toggle";
@@ -27,19 +28,25 @@ export function useFilterMenuKeys(lettersEnabled: boolean): (event: KeyboardEven
   const showToast = useMindmapStore((s) => s.showToast);
   const rowKinds = useRowKindToggle();
   const entries = useFilterEntries();
+  const setPillMode = useListFilterStore((s) => s.setPillMode);
 
   function onRowKind(kind: ListRowKind, event: KeyboardEvent) {
     if (event.shiftKey) rowKinds.showOnly(kind);
     else rowKinds.toggle(kind);
   }
 
-  /** A flag key: added in the pill modes, or — once added — cycled as a click on its pill would. */
+  /**
+   * A flag key names a mode — plain All, Shift Any, Alt Not. An unset flag is added in it; a set one
+   * is switched to it, or removed when it is already in it (a click on the pill still cycles).
+   */
   function onFlag(flag: YesNoDimension, event: KeyboardEvent) {
     if (flag === "private" && !privateMode) { showToast({ nodeId: "", message: t("privateModeOff") }); return; }
     const value = YES_VALUE[flag];
-    const added = entries.entries(flag).some((entry) => entry.value === value);
-    if (added) entries.cycle(flag, value);
-    else entries.add(flag, value, modeFromModifiers(event));
+    const mode = modeFromModifiers(event);
+    const current = entries.entries(flag).find((entry) => entry.value === value);
+    if (current === undefined) entries.add(flag, value, mode);
+    else if (current.mode === mode) entries.remove(flag, value);
+    else setPillMode(flag, value, mode);
   }
 
   return (event) => {

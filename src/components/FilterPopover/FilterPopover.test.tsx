@@ -221,7 +221,7 @@ describe("FilterPopover — rows", () => {
     it("collapses each yes/no dimension to one pill in the Yes / no row", () => {
       render(<FilterPopover />);
       const row = screen.getByRole("group", { name: "rows.yesNo" });
-      expect(within(row).getAllByRole("button").map((b) => b.textContent)).toEqual(["blockedB", "agenticA", "asynchronousW"]);
+      expect(within(row).getAllByRole("button").map((b) => b.textContent)).toEqual(["blocked", "agentic", "asynchronous"]);
       expect(screen.queryByText("not_blocked")).not.toBeInTheDocument();
     });
 
@@ -252,7 +252,7 @@ describe("FilterPopover — rows", () => {
       render(<FilterPopover />);
       const row = screen.getByRole("group", { name: "rows.yesNo" });
       expect(within(row).getAllByRole("button").map((b) => b.textContent)).toEqual(
-        ["blockedB", "agenticA", "asynchronousW", "privateState.privateP"],
+        ["blocked", "agentic", "asynchronous", "privateState.private"],
       );
       fireEvent.click(pill("privateState.private"), { altKey: true });
       expect(useListFilterStore.getState().filter.pills.private).toEqual([{ value: "private", mode: "exclude" }]);
@@ -413,7 +413,7 @@ describe("FilterPopover — letter keys (List View)", () => {
     expect(useMindmapStore.getState().pendingToast?.message).toBe("rowKindRefused.lastKind");
   });
 
-  it("a / w / b add a flag — plain All, Shift Any, Alt Not — and a second press cycles it", () => {
+  it("a / w / b add a flag — plain All, Shift Any, Alt Not", () => {
     render(<FilterPopover />);
     press("KeyA");
     press("KeyW", { shiftKey: true });
@@ -421,8 +421,21 @@ describe("FilterPopover — letter keys (List View)", () => {
     expect(pills().agentic).toEqual([{ value: "agentic", mode: "all" }]);
     expect(pills().asynchronous).toEqual([{ value: "asynchronous", mode: "any" }]);
     expect(pills().blocked).toEqual([{ value: "blocked", mode: "exclude" }]);
-    press("KeyA");
-    expect(pills().agentic).toEqual([{ value: "agentic", mode: "any" }]);
+  });
+
+  it("a key on a set flag switches it to the key's mode, and removes it when already in that mode", () => {
+    render(<FilterPopover />);
+    press("KeyW", { shiftKey: true });
+    expect(pills().asynchronous).toEqual([{ value: "asynchronous", mode: "any" }]);
+    press("KeyW");
+    expect(pills().asynchronous).toEqual([{ value: "asynchronous", mode: "all" }]);
+    press("KeyW");
+    expect(pills().asynchronous).toEqual([]);
+    press("KeyB", { altKey: true });
+    press("KeyB", { shiftKey: true });
+    expect(pills().blocked).toEqual([{ value: "blocked", mode: "any" }]);
+    press("KeyB", { shiftKey: true });
+    expect(pills().blocked).toEqual([]);
   });
 
   it("p adds Private only while Private Mode is on; otherwise says it is off", () => {
@@ -469,10 +482,11 @@ describe("FilterPopover — letter keys (List View)", () => {
     expect(pills().agentic).toEqual([]);
   });
 
-  it("draws each key as a keycap on its pill", () => {
+  it("draws no key hints on the pills or the Private switch", () => {
     render(<FilterPopover />);
-    expect(screen.getByRole("button", { name: /rowKind\.task/ })).toHaveTextContent("T");
-    expect(within(screen.getByRole("group", { name: "rows.yesNo" })).getByText("W")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /rowKind\.task/ })).toHaveTextContent(/^rowKind\.task$/);
+    expect(screen.queryByText("privateModeKey")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "common:filter" }).querySelector("kbd")).toBeNull();
   });
 });
 

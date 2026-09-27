@@ -110,7 +110,7 @@
   "filterShiftClick": "Shift+click",
   "filterAltClick": "Alt+click",
   "filterKindKeys": "In the Filter menu (List View): show or hide Tasks / Commitments / Expectations; with Shift, show only that kind",
-  "filterFlagKeys": "In the Filter menu (List View): add Agentic / Asynchronous / Blocked / Private — Shift Any, Alt Not; again cycles it",
+  "filterFlagKeys": "In the Filter menu (List View): Agentic / Asynchronous / Blocked / Private — adds as All (Shift Any, Alt Not); on a set flag, switches it to that mode, or removes it if already in it",
   "filterPrivateMode": "In the Filter menu: turn Private Mode on or off",
   "filterRemoveSearch": "In Ctrl+F: remove the highlighted active filter"
 }

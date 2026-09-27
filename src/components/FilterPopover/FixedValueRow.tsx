@@ -1,6 +1,5 @@
 import type { FilterDimension } from "@/utils/filter-modes";
 import { NO_VALUE, isYesNoDimension } from "@/utils/filter-modes";
-import { FLAG_KEYS, keyLetter } from "@/utils/filter-menu-keys";
 import type { FilterDimensions } from "@/hooks/use-filter-dimensions";
 import type { FilterEntries } from "@/hooks/use-filter-entries";
 import ValuePill from "./ValuePill";
@@ -31,7 +30,6 @@ export default function FixedValueRow({ dimensions, catalogue, entries }: Props)
               color={option.color}
               mode={added?.mode ?? null}
               {...(notLabel === undefined ? {} : { notLabel })}
-              {...(isYesNoDimension(dimension) ? { keyLetter: keyLetter(FLAG_KEYS[dimension]) } : {})}
               onAdd={(mode) => entries.add(dimension, option.value, mode)}
               onCycle={() => entries.cycle(dimension, option.value)}
               onRemove={() => entries.remove(dimension, option.value)}

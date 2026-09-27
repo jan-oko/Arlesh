@@ -98,6 +98,5 @@
     "not_private": "Not private"
   },
   "privateFilterRemoved": "Private Mode is off, so the Private / Not private filter was removed.",
-  "privateModeOff": "Private Mode is off — turn it on (Ctrl+P in this menu) to filter by Private.",
-  "privateModeKey": "Ctrl+P"
+  "privateModeOff": "Private Mode is off — turn it on to filter by Private."
 }

@@ -6,7 +6,8 @@ import type { YesNoDimension } from "@/utils/filter-modes";
 /**
  * The Filter menu's letter keys (List View), read by physical key while focus is in the menu but
  * not in one of its search boxes. `t` / `c` / `e` toggle a row kind (Shift: show only that one);
- * `a` / `w` / `b` / `p` add a flag in the pill modes (Shift Any, Alt Not), or cycle it once added;
+ * `a` / `w` / `b` / `p` add a flag in the key's mode (plain All, Shift Any, Alt Not), switch a set
+ * flag to that mode, or remove it when it is already in that mode;
  * `Ctrl+P` toggles Private Mode itself — taking over the global "Plan View" chord only while focus
  * is in the menu.
  */
@@ -30,11 +31,6 @@ export const PRIVATE_MODE_TOKEN = "Ctrl+KeyP";
 export const FILTER_MENU_CODES: readonly string[] = [
   ...Object.values(ROW_KIND_KEYS), ...Object.values(FLAG_KEYS), PRIVATE_MODE_TOKEN,
 ];
-
-/** The letter a key code is printed as on a pill ("KeyW" → "W"). */
-export function keyLetter(code: string): string {
-  return code.replace(/^Key/, "");
-}
 
 /** The row kind a key code toggles, or `null`. */
 export function rowKindForCode(code: string): ListRowKind | null {
