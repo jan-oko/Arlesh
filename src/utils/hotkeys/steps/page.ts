@@ -13,6 +13,10 @@ export interface StepsPageContext {
  * card on screen would be the one movement in this view you could not predict — and deliberately
  * not `Enter` or `Escape`, which are the two ways depth changes. The staircase has landings, and
  * walking along one is not the same as taking a step.
+ *
+ * `[` / `]` do the same, for a hand already on the letters: the bracket pair is free in this table
+ * and in the always-live ones, and it is what the Plan View walks its scopes with — "back one / on
+ * one" — so it reads the same way here. The four share one cheat-sheet row.
  */
 export const STEPS_PAGE_BINDINGS: readonly Binding<StepsPageContext>[] = [
   {
@@ -21,6 +25,14 @@ export const STEPS_PAGE_BINDINGS: readonly Binding<StepsPageContext>[] = [
   },
   {
     id: "stepsView.pageNext", section: "stepsView", chord: { code: "PageDown" },
+    labelKey: "stepsPage", run: (c) => c.onStepPage(1),
+  },
+  {
+    id: "stepsView.pagePreviousBracket", section: "stepsView", chord: { code: "BracketLeft" },
+    labelKey: "stepsPage", run: (c) => c.onStepPage(-1),
+  },
+  {
+    id: "stepsView.pageNextBracket", section: "stepsView", chord: { code: "BracketRight" },
     labelKey: "stepsPage", run: (c) => c.onStepPage(1),
   },
 ];
