@@ -17,7 +17,7 @@ function node(kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
 const WINDOW = { start_id: testKey(7), end_id: testKey(7) };
 
 describe("the fields a card spells out", () => {
-  it("never repeat the badge row: Private is the closed eye, so it is not also a field", () => {
+  it("never repeat the badge row: Private is the crossed-out eye, so it is not also a field", () => {
     expect(stepCardFields(node("goal", { status: "active", isPrivate: true }))).toEqual([]);
   });
 
