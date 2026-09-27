@@ -332,7 +332,10 @@ the undo Gestures come with them rather than being restated; one `Ctrl+Z` takes 
 delete made here. `Shift+F` and `Shift+C` open the blank Flow and Commitment editors, shared with the
 Mindmap through `useCreateEditors`, because those two kinds are configured before they exist;
 `Shift+H` opens the Flow editor as a Habit, repeating already on. `Tab` creates a Task, as on the
-Mindmap.
+Mindmap. Standing inside a Flow template, `Tab` and `Shift+T` make a Task flow item and `Shift+G` a
+Goal item, while `Shift+C` and `Shift+E` are refused because no flow item can be a Commitment or an
+Expectation — the Mindmap's rule, from the same hook; so on a Flow's Step the "+" offers Task and
+Goal (Task alone on a commitment Flow or a Task item).
 
 **Where the new node goes is the Mindmap's answer, and Steps only decides what you see.**
 

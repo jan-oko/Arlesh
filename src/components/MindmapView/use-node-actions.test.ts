@@ -357,14 +357,18 @@ describe("useNodeActions — onCreateChild (Tab: always a Task)", () => {
     expect(opts.showToast).not.toHaveBeenCalled();
   });
 
-  it.each(["flow-1", "flowtask-4"])("inside a Flow template (%s) still adds the Flow's next item", async (id) => {
-    const opts = makeOpts({ createChild: vi.fn().mockResolvedValue(mkNode("flowtask-99", "flow_task")) });
-    const { result } = renderHook(() => useNodeActions(opts));
-    act(() => { result.current.onCreateChild(id); });
-    await vi.waitFor(() => expect(opts.createChild).toHaveBeenCalledWith(id, expect.any(String), ""));
-    expect(opts.createNode).not.toHaveBeenCalled();
-    expect(opts.selectNode).toHaveBeenCalledWith("flowtask-99");
-  });
+  it.each<[string, NodeKind]>([["flow-1", "flow"], ["flowtask-4", "flow_task"]])(
+    "inside a Flow template (%s) creates a Task flow item, whatever the Flow's instance type",
+    async (id, kind) => {
+      const opts = makeOpts({ createNode: vi.fn().mockResolvedValue(mkNode("flowtask-99", "flow_task")) });
+      const { result } = renderHook(() => useNodeActions(opts));
+      act(() => { result.current.onCreateChild(id); });
+      await vi.waitFor(() => expect(opts.createNode).toHaveBeenCalledWith(id, kind, "flow_task", ""));
+      expect(opts.createChild).not.toHaveBeenCalled();
+      expect(opts.selectNode).toHaveBeenCalledWith("flowtask-99");
+      expect(opts.setEditingNodeId).toHaveBeenCalledWith("flowtask-99");
+    },
+  );
 
   it("says so when the backend refuses the Task", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -412,6 +416,78 @@ describe("useNodeActions — onCreateTypedChild (Shift+H: a Habit)", () => {
       nodeId: "habit-3-0-virtual",
       message: expect.stringContaining("createUnderOccurrenceRefused"),
     });
+  });
+});
+
+describe("useNodeActions — onCreateTypedChild inside a Flow template", () => {
+  const GOAL_ITEM = mkNode("flowgoal-5", "flow_goal");
+  const COMMITMENT_FLOW = mkNode("flow-6", "flow", [], {
+    flow: {
+      instanceType: "commitment", targetType: null, targetId: null, durationN: null, durationKind: null,
+      windowPart: null, windowTimeStart: null, windowTimeEnd: null, isHabit: false,
+      rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null,
+    },
+  });
+  const TREE = mkNode("root", "domain", [
+    mkNode("domain-3", "project", [mkNode("flow-1", "flow", [FLOW_TASK_NODE, GOAL_ITEM]), COMMITMENT_FLOW]),
+  ]);
+
+  it.each<[string, NodeKind, "task" | "goal", NodeKind]>([
+    ["flow-1", "flow", "task", "flow_task"],
+    ["flow-1", "flow", "goal", "flow_goal"],
+    ["flowtask-4", "flow_task", "task", "flow_task"],
+    ["flowgoal-5", "flow_goal", "task", "flow_task"],
+    ["flowgoal-5", "flow_goal", "goal", "flow_goal"],
+    ["flow-6", "flow", "task", "flow_task"],
+  ])("under %s (%s), Shift+%s creates a %s", async (id, kind, chord, itemKind) => {
+    const opts = makeOpts({ tree: TREE, createNode: vi.fn().mockResolvedValue(mkNode("flowitem-99", itemKind)) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild(id, chord); });
+    await vi.waitFor(() => expect(opts.createNode).toHaveBeenCalledWith(id, kind, itemKind, ""));
+    expect(opts.selectNode).toHaveBeenCalledWith("flowitem-99");
+    expect(opts.setEditingNodeId).toHaveBeenCalledWith("flowitem-99");
+  });
+
+  it.each<[string, "commitment" | "expectation"]>([
+    ["flow-1", "commitment"],
+    ["flow-1", "expectation"],
+    ["flowtask-4", "commitment"],
+    ["flowgoal-5", "expectation"],
+  ])("under %s, Shift+%s is refused by name — no flow item can be one", (id, chord) => {
+    const opts = makeOpts({ tree: TREE });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild(id, chord); });
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.onNewCommitment).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: id, message: `warnings:notAFlowItemKind:nodeKinds:${chord}` });
+  });
+
+  it("refuses a Goal item under a Task item, naming where a Goal item does go", () => {
+    const opts = makeOpts({ tree: TREE });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("flowtask-4", "goal"); });
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "flowtask-4",
+      message: ["warnings:typedChildRefused", "nodeKinds:goal", "nodeKinds:flow_task", "nodeKinds:flow, nodeKinds:flow_goal"].join(":"),
+    });
+  });
+
+  it("refuses a Goal item in a commitment Flow, which cannot hold a Goal", () => {
+    const opts = makeOpts({ tree: TREE });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("flow-6", "goal"); });
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "flow-6", message: "warnings:goalItemInCommitmentFlowRefused" });
+  });
+
+  it("outside a Flow, Shift+C still opens the Commitment editor and Shift+E still makes an Expectation", async () => {
+    const opts = makeOpts({ tree: TREE, createNode: vi.fn().mockResolvedValue(mkNode("expectation-99", "expectation")) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("domain-3", "commitment"); });
+    expect(opts.onNewCommitment).toHaveBeenCalledWith("domain-3");
+    act(() => { result.current.onCreateTypedChild("domain-3", "expectation"); });
+    await vi.waitFor(() => expect(opts.createNode).toHaveBeenCalledWith("domain-3", "project", "expectation", ""));
   });
 });
 
@@ -1084,7 +1160,7 @@ describe("useNodeActions — onCreateTypedChild", () => {
   it("refuses a real node under a Flow, whose children are its own items", () => {
     const opts = typedOpts();
     const { result } = renderHook(() => useNodeActions(opts));
-    act(() => { result.current.onCreateTypedChild("flow-1", "task"); });
+    act(() => { result.current.onCreateTypedChild("flow-1", "info"); });
     expect(opts.createNode).not.toHaveBeenCalled();
     expect(opts.showToast).toHaveBeenCalledTimes(1);
   });

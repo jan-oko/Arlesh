@@ -1,0 +1,1 @@
+- **A new Flow or Habit marked Private is created Private.** The Private switch in the New Flow (`Shift+F`) and New Habit (`Shift+H`) editors was not saved, so the Flow was created public and showed with Private Mode off. It is now stored as set.

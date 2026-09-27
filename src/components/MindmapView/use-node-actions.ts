@@ -4,7 +4,7 @@ import { isDerivedWait } from "@/utils/derived-wait";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
-import { canAdoptChildren, canParentNewChild, isFlowKind, typedChildNodeKind, validParentKinds } from "@/utils/node-meta";
+import { canAdoptChildren, canParentNewChild, isCommitmentFlow, typedChildStoredKind, validParentKinds } from "@/utils/node-meta";
 import { pasteRefusal, countPasteRefusals, pasteRefusalKey, flowsLeftBehind, PASTE_REFUSAL } from "@/utils/paste-refusal";
 import type { PasteRefusal, PasteRefusalCount } from "@/utils/paste-refusal";
 import type { TypedChildKind } from "@/utils/node-meta";
@@ -115,15 +115,16 @@ export function useNodeActions({
    * else is the ordinary parenting rule, stated positively so it answers "then where?".
    */
   const typedChildRefusal = useCallback(
-    (parent: MindmapNode, childKind: TypedChildKind): string => {
+    (parent: MindmapNode, childKind: TypedChildKind, storedKind: NodeKind): string => {
       if (isOccurrence(parent)) {
         return t("warnings:createUnderOccurrenceRefused", { child: t(`nodeKinds:${childKind}`) });
       }
       if (parent.virtual === true) return t("warnings:createUnderRepetition");
+      if (storedKind === "flow_goal" && isCommitmentFlow(parent)) return t("warnings:goalItemInCommitmentFlowRefused");
       return t("warnings:typedChildRefused", {
         child: t(`nodeKinds:${childKind}`),
         parent: t(`nodeKinds:${parent.kind}`),
-        parents: validParentKinds(typedChildNodeKind(childKind)).map((kind) => t(`nodeKinds:${kind}`)).join(", "),
+        parents: validParentKinds(storedKind).map((kind) => t(`nodeKinds:${kind}`)).join(", "),
       });
     },
     [t],
@@ -142,8 +143,16 @@ export function useNodeActions({
       // one, so `Shift+F` on a virtual Habit occurrence used to pass this check (a Habit whose
       // instances are Goals draws an iteration root of kind `goal`, and a Flow may sit under a
       // Goal), route straight to the Flow editor below, and post a parent id of `NaN`.
-      if (!canParentNewChild(parent, typedChildNodeKind(childKind))) {
-        showToast({ nodeId, message: typedChildRefusal(parent, childKind) });
+      //
+      // Inside a Flow template the Task and Goal chords make that kind's flow item; a Commitment or
+      // an Expectation has no flow-item form, and says so rather than reaching for a stored node.
+      const storedKind = typedChildStoredKind(parent.kind, childKind);
+      if (storedKind === null) {
+        showToast({ nodeId, message: t("warnings:notAFlowItemKind", { child: t(`nodeKinds:${childKind}`) }) });
+        return;
+      }
+      if (!canParentNewChild(parent, storedKind)) {
+        showToast({ nodeId, message: typedChildRefusal(parent, childKind, storedKind) });
         return;
       }
 
@@ -156,7 +165,7 @@ export function useNodeActions({
 
       void (async () => {
         try {
-          const newNode = await createNode(nodeId, parent.kind, childKind, "");
+          const newNode = await createNode(nodeId, parent.kind, storedKind, "");
           selectNode(newNode.id);
           setEditingNodeId(newNode.id);
         } catch (err) {
@@ -175,30 +184,11 @@ export function useNodeActions({
    * pick the kind (a Domain under an Aspect, a Goal under a Goal, an Info under an Info), which made
    * the commonest key's result depend on where you stood. A parent that cannot hold a Task is
    * refused by the same rule, in the same words, as `Shift+T` on it — never answered with a kind
-   * nobody asked for.
-   *
-   * The one exception is a **Flow template**: nothing real lives inside one, and `Tab` is the only
-   * way its items are made, so there it still adds the item the template implies.
+   * nobody asked for. Inside a **Flow template** that makes a Task flow item, as `Shift+T` does.
    */
   const onCreateChild = useCallback(
-    (nodeId: string) => {
-      const node = findNode(tree, nodeId);
-      // The synthetic root is the "nothing was aimed at" case, and stays silent on purpose — the
-      // same answer the typed chords give with no selection at all.
-      if (node === undefined || !nodeId.includes("-")) return;
-      if (!isFlowKind(node.kind)) { onCreateTypedChild(nodeId, "task"); return; }
-      void (async () => {
-        try {
-          const newNode = await createChild(nodeId, node.kind, "");
-          selectNode(newNode.id);
-          setEditingNodeId(newNode.id);
-        } catch (err) {
-          console.error(`${LOG_PREFIX} createChild failed:`, err);
-          showToast({ nodeId, message: t("warnings:createFailed", { message: getErrorMessage(err) }) });
-        }
-      })();
-    },
-    [tree, createChild, onCreateTypedChild, selectNode, setEditingNodeId, showToast, t],
+    (nodeId: string) => { onCreateTypedChild(nodeId, "task"); },
+    [onCreateTypedChild],
   );
 
   const onDelete = useCallback(

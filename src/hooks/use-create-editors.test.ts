@@ -78,6 +78,30 @@ describe("useCreateEditors", () => {
     expect(setFlowRecurrence).not.toHaveBeenCalled();
   });
 
+  // The editor's Private switch never reached the create request, so a Flow — or a Habit — marked
+  // Private as it was made was stored public.
+  it.each([
+    ["Flow", "onNewFlow", {}],
+    ["Habit", "onNewHabit", {
+      recurrence: {
+        startDate: "2026-09-27", gapN: null, gapKind: null, endDate: null,
+        consumptionKind: "destructive", blockingMode: null, catchupPolicy: null,
+      },
+    }],
+  ] as const)("creates a new %s marked Private as private", async (_label, open, extra) => {
+    const { hook, createFlow } = setup();
+    act(() => hook.result.current[open]("goal-4"));
+    await act(async () => { await hook.result.current.onCreateFlow({ ...PLAIN_FLOW, ...extra, isPrivate: true }); });
+    expect(createFlow).toHaveBeenCalledWith(expect.objectContaining({ is_private: true }));
+  });
+
+  it("creates a new Flow left public as public", async () => {
+    const { hook, createFlow } = setup();
+    act(() => hook.result.current.onNewFlow("goal-4"));
+    await act(async () => { await hook.result.current.onCreateFlow(PLAIN_FLOW); });
+    expect(createFlow).toHaveBeenCalledWith(expect.objectContaining({ is_private: false }));
+  });
+
   it("opens nothing for a parent that is not on the board", () => {
     const { hook } = setup();
     act(() => hook.result.current.onNewCommitment("goal-99"));

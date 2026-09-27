@@ -5,7 +5,7 @@ import { hasSelection, selectedNode } from "./selection";
 
 /** What the creation chords act on. */
 export interface MindmapCreateContext extends MindmapSelectionContext {
-  /** Tab: a Task child of `id` (inside a Flow template, the template's next item). */
+  /** Tab: a Task child of `id` (inside a Flow template, a Task flow item). */
   onCreateChild: (id: string) => void;
   /**
    * Creates a child of a *named* kind under `id` — the Shift+initial chords. A parent that cannot
