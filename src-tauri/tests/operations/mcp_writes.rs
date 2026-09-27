@@ -1394,6 +1394,18 @@ mod task_fields {
     use super::*;
     use serde_json::json;
 
+    /// The handler these tests write through, its clock pinned to noon on Tuesday 22 September
+    /// 2026 — inside the week of 20 September the windows below are written in. On the wall clock
+    /// that week passes, a Task scoped to it turns Overdue, and an Overdue Task may be planned
+    /// outside its own Time Scope, so the containment refusal below would stop happening.
+    fn mcp(pool: &sqlx::SqlitePool) -> ArleshMcp {
+        super::mcp(pool).with_clock(|| {
+            chrono::NaiveDate::from_ymd_opt(2026, 9, 22)
+                .and_then(|date| date.and_hms_opt(12, 0, 0))
+                .expect("a valid instant")
+        })
+    }
+
     fn week(date: &str) -> serde_json::Value {
         let key = json!({ "kind": "week", "date": date });
         json!({ "start_id": key, "end_id": key })
