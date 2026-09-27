@@ -15,6 +15,7 @@ import { useBoardFilter } from "@/hooks/use-board-filter";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { filterCommitmentListWithFocus, filterExpectationListWithFocus, filterTaskListWithFocus } from "@/utils/list-filter";
 import type { StatusMode } from "@/utils/filter-tree";
+import type { ListEdge } from "@/utils/hotkeys/list-bindings";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { MixedListRow } from "@/utils/list-data";
 import { groupMixedRowsByPath, mergeInTreeOrder, preOrderIndex } from "@/utils/list-data";
@@ -212,6 +213,15 @@ export default function ListView() {
     setSelectedRowId(navigableIds[nextIndex] ?? null);
   }
 
+  /** Ctrl+Home / Ctrl+End: the first or last row drawn, reached as the arrows would reach it —
+   * one row selected, the view at that end of the list. */
+  function handleJumpToEdge(edge: ListEdge) {
+    const target = edge === "first" ? navigableIds[0] : navigableIds[navigableIds.length - 1];
+    if (target === undefined) return;
+    setSelectedRowId(target);
+    scrollToEdge(edge);
+  }
+
   // The frame the list is drawn from — the subtree you have entered, or the whole board. It is the
   // parent for a sibling of a row that has no ancestor inside the list to share one with.
   const listRoot = useMemo(
@@ -274,7 +284,7 @@ export default function ListView() {
   const { onUndo, onRedo } = useUndo({ reload, showToast });
 
   // The viewport: it follows the selection, and j/k roam it without moving the selection.
-  const { containerRef, startScroll } = useListScroll(activeSelectedId);
+  const { containerRef, startScroll, scrollToEdge } = useListScroll(activeSelectedId);
 
   useKeyboardListView({
     // The prompt swallows the row keys while it is open, as the editor modal already does.
@@ -298,6 +308,7 @@ export default function ListView() {
     onToggleFullscreen: toggleFullscreen,
     isSelectedBlocked,
     onNavigate: handleNavigate,
+    onJumpToEdge: handleJumpToEdge,
     onScrollList: startScroll,
     onCycleStatus,
     onOpenEditor: onDoubleClick,

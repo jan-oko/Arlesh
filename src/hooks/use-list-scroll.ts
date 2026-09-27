@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { RefObject } from "react";
 import { SCROLL_DOWN_CODE, SCROLL_UP_CODE } from "@/utils/hotkeys/list-bindings";
+import type { ListEdge } from "@/utils/hotkeys/list-bindings";
 
 /**
  * How far a single `j`/`k` press nudges the viewport.
@@ -67,6 +68,19 @@ function scrollViewport(viewport: Viewport, pixels: number): void {
   // Instant: the smoothness comes from the size of each move and the frame rate, not from asking
   // the browser to animate one — an animated scroll per frame would fight the next frame's.
   container.scrollBy({ top: pixels, behavior: "auto" });
+}
+
+/**
+ * Puts the viewport at one end of the list. The selection's own `nearest` scroll cannot do this
+ * alone: the first row sits under its path header (or below the commitments band), so bringing just
+ * the row into view would leave what is drawn above it cut off — and a row already selected moves
+ * no selection, so nothing would scroll at all.
+ */
+function scrollViewportToEdge(viewport: Viewport, edge: ListEdge): void {
+  const container = viewport.container.current;
+  if (container === null || typeof container.scrollTo !== "function") return;
+  endHold(viewport);
+  container.scrollTo({ top: edge === "first" ? 0 : container.scrollHeight, behavior: "auto" });
 }
 
 function endHold(viewport: Viewport): void {
@@ -152,6 +166,8 @@ export function useListScroll(selectedRowId: string | null): {
   containerRef: RefObject<HTMLDivElement | null>;
   /** One `j` (1) or `k` (-1) press: a nudge, then a continuous scroll while the key stays down. */
   startScroll: (direction: 1 | -1) => void;
+  /** `Ctrl+Home` / `Ctrl+End`: scrolls to the very top or bottom of the list. */
+  scrollToEdge: (edge: ListEdge) => void;
 } {
   const containerRef = useRef<HTMLDivElement>(null);
   const holdRef = useRef<Hold | null>(null);
@@ -170,6 +186,7 @@ export function useListScroll(selectedRowId: string | null): {
   }, [selectedRowId]);
 
   const startScroll = useCallback((direction: 1 | -1) => beginHold(viewport, direction), [viewport]);
+  const scrollToEdge = useCallback((edge: ListEdge) => scrollViewportToEdge(viewport, edge), [viewport]);
 
   useEffect(() => {
     function handleKeyUp(event: KeyboardEvent) {
@@ -191,5 +208,5 @@ export function useListScroll(selectedRowId: string | null): {
     };
   }, [viewport]);
 
-  return { containerRef, startScroll };
+  return { containerRef, startScroll, scrollToEdge };
 }

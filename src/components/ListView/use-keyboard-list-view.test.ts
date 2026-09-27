@@ -115,6 +115,33 @@ describe("useKeyboardListView", () => {
     expect(options.onToggleAsynchronous).not.toHaveBeenCalled();
   });
 
+  it("Ctrl+Home / Ctrl+End jump to the first / last row", () => {
+    const options = listKeyboardContext();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Home", { ctrlKey: true });
+    expect(options.onJumpToEdge).toHaveBeenCalledWith("first");
+    fireKey("End", { ctrlKey: true });
+    expect(options.onJumpToEdge).toHaveBeenLastCalledWith("last");
+  });
+
+  it("Ctrl+Home prevents the webview's own scroll, so the list does not scroll twice", () => {
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: listKeyboardContext() });
+    const event = new KeyboardEvent("keydown", { key: "Home", code: "Home", ctrlKey: true, cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it.each([
+    ["bare", {}],
+    ["Ctrl+Shift", { ctrlKey: true, shiftKey: true }],
+  ] as const)("%s Home / End are not bound", (_label, modifiers) => {
+    const options = listKeyboardContext();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("Home", modifiers);
+    fireKey("End", modifiers);
+    expect(options.onJumpToEdge).not.toHaveBeenCalled();
+  });
+
   it("ArrowDown/ArrowUp navigate the selection", () => {
     const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });

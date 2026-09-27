@@ -898,23 +898,30 @@ describe("ListView", () => {
   describe("scrolling", () => {
     let intoViewRows: Array<string | null> = [];
     let scrollByCalls: ScrollToOptions[] = [];
+    let scrollToCalls: ScrollToOptions[] = [];
     const originalIntoView = Element.prototype.scrollIntoView;
     const originalScrollBy = Element.prototype.scrollBy;
+    const originalScrollTo = Element.prototype.scrollTo;
 
     beforeEach(() => {
       intoViewRows = [];
       scrollByCalls = [];
+      scrollToCalls = [];
       Element.prototype.scrollIntoView = function () {
         intoViewRows.push(this.getAttribute("data-row-id"));
       };
       Element.prototype.scrollBy = function (options?: ScrollToOptions | number) {
         if (typeof options === "object") scrollByCalls.push(options);
       };
+      Element.prototype.scrollTo = function (options?: ScrollToOptions | number) {
+        if (typeof options === "object") scrollToCalls.push(options);
+      };
     });
 
     afterEach(() => {
       Element.prototype.scrollIntoView = originalIntoView;
       Element.prototype.scrollBy = originalScrollBy;
+      Element.prototype.scrollTo = originalScrollTo;
     });
 
     function twoRows() {
@@ -943,6 +950,85 @@ describe("ListView", () => {
       render(<ListViewInApp />);
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
       expect(intoViewRows).toEqual(["commitment-1"]);
+    });
+
+    function threeRows() {
+      return listData({
+        rows: [
+          row({ node: n("task-a", "task", { status: "todo" }) }),
+          row({ node: n("task-b", "task", { status: "todo" }) }),
+          row({ node: n("task-c", "task", { status: "todo" }) }),
+        ],
+      });
+    }
+
+    function selectedTitle(container: HTMLElement): string | undefined {
+      return container.querySelector("[class*='cardSelected'] button[class*='title']")?.textContent ?? undefined;
+    }
+
+    it("Ctrl+Home selects the first row, past the path header above it, and scrolls to the top", () => {
+      mockUseListData.mockReturnValue(threeRows());
+      const { container } = render(<ListViewInApp />);
+      // The rows sit under a path header, which is drawn first but is not a row.
+      expect(screen.getAllByTitle("pathSegmentActions").length).toBeGreaterThan(0);
+      fireEvent.keyDown(window, { key: "Home", code: "Home", ctrlKey: true });
+      expect(selectedTitle(container)).toBe("task-a");
+      expect(scrollToCalls).toEqual([{ top: 0, behavior: "auto" }]);
+      expect(intoViewRows).toEqual(["task-a"]);
+    });
+
+    it("Ctrl+End selects the last row and scrolls to the bottom", () => {
+      const scrollHeight = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(5000);
+      mockUseListData.mockReturnValue(threeRows());
+      const { container } = render(<ListViewInApp />);
+      fireEvent.keyDown(window, { key: "End", code: "End", ctrlKey: true });
+      expect(selectedTitle(container)).toBe("task-c");
+      expect(scrollToCalls).toEqual([{ top: 5000, behavior: "auto" }]);
+      expect(intoViewRows).toEqual(["task-c"]);
+      scrollHeight.mockRestore();
+    });
+
+    it("moves a selection elsewhere to the one edge row, as an arrow move would", () => {
+      mockUseListData.mockReturnValue(threeRows());
+      const { container } = render(<ListViewInApp />);
+      fireEvent.click(screen.getByText("task-b"));
+      fireEvent.keyDown(window, { key: "End", code: "End", ctrlKey: true });
+      expect(container.querySelectorAll("[class*='cardSelected']")).toHaveLength(1);
+      expect(selectedTitle(container)).toBe("task-c");
+      fireEvent.keyDown(window, { key: "Home", code: "Home", ctrlKey: true });
+      expect(container.querySelectorAll("[class*='cardSelected']")).toHaveLength(1);
+      expect(selectedTitle(container)).toBe("task-a");
+    });
+
+    it("scrolls back to the top even when the first row is already selected", () => {
+      mockUseListData.mockReturnValue(threeRows());
+      render(<ListViewInApp />);
+      fireEvent.keyDown(window, { key: "Home", code: "Home", ctrlKey: true });
+      fireEvent.keyDown(window, { key: "j", code: "KeyJ" });
+      fireEvent.keyUp(window, { key: "j", code: "KeyJ" });
+      fireEvent.keyDown(window, { key: "Home", code: "Home", ctrlKey: true });
+      expect(scrollToCalls).toEqual([{ top: 0, behavior: "auto" }, { top: 0, behavior: "auto" }]);
+    });
+
+    it("starts from the commitments band, the first thing drawn", () => {
+      mockUseListData.mockReturnValue(listData({
+        commitmentRows: [commitmentRow()],
+        rows: [row()],
+        tree: treeWith(n("commitment-1", "commitment", { verdict: "unresolved" })),
+      }));
+      render(<ListViewInApp />);
+      fireEvent.keyDown(window, { key: "Home", code: "Home", ctrlKey: true });
+      expect(intoViewRows).toEqual(["commitment-1"]);
+    });
+
+    it("Ctrl+Home and Ctrl+End do nothing on an empty list", () => {
+      mockUseListData.mockReturnValue(listData({ rows: [] }));
+      const { container } = render(<ListViewInApp />);
+      fireEvent.keyDown(window, { key: "Home", code: "Home", ctrlKey: true });
+      fireEvent.keyDown(window, { key: "End", code: "End", ctrlKey: true });
+      expect(container.querySelector("[class*='cardSelected']")).toBeNull();
+      expect(scrollToCalls).toEqual([]);
+      expect(screen.getByText("listView:empty")).toBeInTheDocument();
     });
 
     it("J scrolls down a fixed step and leaves the selection where it is", () => {

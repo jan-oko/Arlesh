@@ -9,6 +9,7 @@ import { LIST_EXPECTATION_BINDINGS, type ListExpectationContext } from "./list/e
 import { LIST_FLAGS_BINDINGS, type ListFlagsContext } from "./list/flags";
 import { LIST_FULLSCREEN_BINDINGS, type ListFullscreenContext } from "./list/fullscreen";
 import { LIST_HISTORY_BINDINGS, type ListHistoryContext } from "./list/history";
+import { LIST_JUMP_BINDINGS, type ListJumpContext } from "./list/jump";
 import { LIST_NAVIGATE_BINDINGS, type ListNavigateContext } from "./list/navigate";
 import { LIST_RENAME_BINDINGS, type ListRenameContext } from "./list/rename";
 import { LIST_SCROLL_BINDINGS, type ListScrollContext } from "./list/scroll";
@@ -18,6 +19,7 @@ import { LIST_UNBLOCK_PRESET_BINDINGS, type ListUnblockPresetContext } from "./l
 
 export type { ListSelectionContext };
 export { SCROLL_DOWN_CODE, SCROLL_UP_CODE } from "./list/scroll";
+export type { ListEdge } from "./list/jump";
 
 /**
  * What the List View bindings act on — the hook's options minus its gating flag.
@@ -36,6 +38,7 @@ export interface ListContext extends
   ListFlagsContext,
   ListFullscreenContext,
   ListHistoryContext,
+  ListJumpContext,
   ListNavigateContext,
   ListRenameContext,
   ListScrollContext,
@@ -57,6 +60,7 @@ export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
   ...LIST_STATUS_PRESET_BINDINGS,
   ...LIST_UNBLOCK_PRESET_BINDINGS,
   ...LIST_NAVIGATE_BINDINGS,
+  ...LIST_JUMP_BINDINGS,
   ...LIST_SCROLL_BINDINGS,
   ...LIST_STATUS_BINDINGS,
   ...LIST_COMMITMENT_BINDINGS,
