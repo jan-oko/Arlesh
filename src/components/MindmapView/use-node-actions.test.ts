@@ -100,6 +100,7 @@ function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {})
     setEditingNodeId: vi.fn(),
     showToast: vi.fn(),
     onNewFlow: vi.fn(),
+    onNewHabit: vi.fn(),
     onNewCommitment: vi.fn(),
     ...overrides,
   };
@@ -284,25 +285,54 @@ describe("useNodeActions — onCommitEdit", () => {
   });
 });
 
-describe("useNodeActions — onCreateChild", () => {
-  it("skips creation for a tag-kind node", () => {
-    const tagNode = mkNode("domain-10", "tag");
-    const tree = mkNode("root", "domain", [tagNode]);
-    const opts = makeOpts({ tree });
+describe("useNodeActions — onCreateChild (Tab: always a Task)", () => {
+  // One real node of every kind a Task may hang from, plus a Task occurrence, which hangs a new
+  // Task on that one iteration.
+  const TASK_PARENTS: ReadonlyArray<[string, NodeKind]> = [
+    ["aspect-1", "aspect"],
+    ["domain-3", "project"],
+    ["goal-2", "goal"],
+    ["task-5", "task"],
+    ["commitment-7", "commitment"],
+    ["habititem-flow_task-4-0-virtual", "task"],
+  ];
+
+  it.each(TASK_PARENTS)("creates a Task under %s (%s), selected and open for naming", async (id, kind) => {
+    const newNode = mkNode("task-99", "task");
+    const opts = makeOpts({ createNode: vi.fn().mockResolvedValue(newNode) });
     const { result } = renderHook(() => useNodeActions(opts));
-    act(() => { result.current.onCreateChild("domain-10"); });
+    act(() => { result.current.onCreateChild(id); });
+    await vi.waitFor(() => expect(opts.createNode).toHaveBeenCalledWith(id, kind, "task", ""));
     expect(opts.createChild).not.toHaveBeenCalled();
+    expect(opts.selectNode).toHaveBeenCalledWith("task-99");
+    expect(opts.setEditingNodeId).toHaveBeenCalledWith("task-99");
   });
 
-  it("says why a Tag holds nothing, instead of being an inert key", () => {
-    const TREE = mkNode("root", "domain", [mkNode("domain-3", "project", [mkNode("domain-20", "tag")])]);
+  it("creates a Task under a Domain, whose default child used to be another Domain", async () => {
+    const TREE = mkNode("root", "domain", [mkNode("domain-4", "domain")]);
     const opts = makeOpts({ tree: TREE });
     const { result } = renderHook(() => useNodeActions(opts));
-    act(() => { result.current.onCreateChild("domain-20"); });
+    act(() => { result.current.onCreateChild("domain-4"); });
+    await vi.waitFor(() => expect(opts.createNode).toHaveBeenCalledWith("domain-4", "domain", "task", ""));
+  });
+
+  it.each<[string, NodeKind]>([
+    ["domain-20", "tag"],
+    ["info-21", "info"],
+    ["expectation-22", "expectation"],
+  ])("refuses %s (%s) by naming where a Task does go, and creates nothing", (id, kind) => {
+    const TREE = mkNode("root", "domain", [mkNode("domain-3", "project", [mkNode(id, kind)])]);
+    const opts = makeOpts({ tree: TREE });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateChild(id); });
+    expect(opts.createNode).not.toHaveBeenCalled();
     expect(opts.createChild).not.toHaveBeenCalled();
     expect(opts.showToast).toHaveBeenCalledWith({
-      nodeId: "domain-20",
-      message: expect.stringContaining("createUnderTagRefused"),
+      nodeId: id,
+      message: [
+        "warnings:typedChildRefused", "nodeKinds:task", `nodeKinds:${kind}`,
+        "nodeKinds:aspect, nodeKinds:domain, nodeKinds:project, nodeKinds:goal, nodeKinds:task, nodeKinds:commitment",
+      ].join(":"),
     });
   });
 
@@ -311,6 +341,7 @@ describe("useNodeActions — onCreateChild", () => {
     const opts = makeOpts({ tree: TREE });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onCreateChild("habitgroup-3-run"); });
+    expect(opts.createNode).not.toHaveBeenCalled();
     expect(opts.createChild).not.toHaveBeenCalled();
     expect(opts.showToast).toHaveBeenCalledWith({
       nodeId: "habitgroup-3-run",
@@ -318,9 +349,26 @@ describe("useNodeActions — onCreateChild", () => {
     });
   });
 
-  it("says so when the backend refuses the child", async () => {
+  it("does nothing at all on the synthetic root", () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateChild("root"); });
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.showToast).not.toHaveBeenCalled();
+  });
+
+  it.each(["flow-1", "flowtask-4"])("inside a Flow template (%s) still adds the Flow's next item", async (id) => {
+    const opts = makeOpts({ createChild: vi.fn().mockResolvedValue(mkNode("flowtask-99", "flow_task")) });
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateChild(id); });
+    await vi.waitFor(() => expect(opts.createChild).toHaveBeenCalledWith(id, expect.any(String), ""));
+    expect(opts.createNode).not.toHaveBeenCalled();
+    expect(opts.selectNode).toHaveBeenCalledWith("flowtask-99");
+  });
+
+  it("says so when the backend refuses the Task", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const opts = makeOpts({ createChild: vi.fn().mockRejectedValue(new Error("tags cannot have child domains")) });
+    const opts = makeOpts({ createNode: vi.fn().mockRejectedValue(new Error("nope")) });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onCreateChild("domain-3"); });
     await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
@@ -329,15 +377,41 @@ describe("useNodeActions — onCreateChild", () => {
     }));
     consoleError.mockRestore();
   });
+});
 
-  it("creates a child and sets selection and editing state", async () => {
-    const newNode = mkNode("domain-99", "domain");
-    const opts = makeOpts({ createChild: vi.fn().mockResolvedValue(newNode) });
+describe("useNodeActions — onCreateTypedChild (Shift+H: a Habit)", () => {
+  it("opens the new-Habit editor under a parent a Flow may hang from", () => {
+    const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
-    act(() => { result.current.onCreateChild("domain-3"); });
-    await vi.waitFor(() => expect(opts.createChild).toHaveBeenCalledWith("domain-3", "project", ""));
-    expect(opts.selectNode).toHaveBeenCalledWith("domain-99");
-    expect(opts.setEditingNodeId).toHaveBeenCalledWith("domain-99");
+    act(() => { result.current.onCreateTypedChild("goal-2", "habit"); });
+    expect(opts.onNewHabit).toHaveBeenCalledWith("goal-2");
+    expect(opts.onNewFlow).not.toHaveBeenCalled();
+    expect(opts.createNode).not.toHaveBeenCalled();
+  });
+
+  it("refuses under a Task, naming the Habit and where a Flow does go", () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("task-5", "habit"); });
+    expect(opts.onNewHabit).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "task-5",
+      message: [
+        "warnings:typedChildRefused", "nodeKinds:habit", "nodeKinds:task",
+        "nodeKinds:aspect, nodeKinds:domain, nodeKinds:project, nodeKinds:goal",
+      ].join(":"),
+    });
+  });
+
+  it("refuses on a Habit occurrence, which cannot hold its own template", () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useNodeActions(opts));
+    act(() => { result.current.onCreateTypedChild("habit-3-0-virtual", "habit"); });
+    expect(opts.onNewHabit).not.toHaveBeenCalled();
+    expect(opts.showToast).toHaveBeenCalledWith({
+      nodeId: "habit-3-0-virtual",
+      message: expect.stringContaining("createUnderOccurrenceRefused"),
+    });
   });
 });
 

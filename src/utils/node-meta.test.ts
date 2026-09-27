@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
-import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, isValidDropTarget, computeEditHeight, validParentKinds, isFlowKind, canParentNewTask, canParentNewChild, canParentAnyNewChild, canAdoptChildren, canAdoptExistingChild, TYPED_CHILD_KINDS } from "./node-meta";
+import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, isValidDropTarget, computeEditHeight, validParentKinds, isFlowKind, canParentNewTask, canParentNewChild, canParentAnyNewChild, canAdoptChildren, canAdoptExistingChild, TYPED_CHILD_KINDS, typedChildNodeKind } from "./node-meta";
 import { ALL_NODE_KINDS } from "./tree-layout";
 import type { MindmapNode } from "./tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
@@ -251,7 +251,8 @@ describe("validParentKinds", () => {
 
   it("agrees with isValidDropTarget for every kind it lists and every kind it omits", () => {
     const everyParent = ["aspect", "domain", "project", "goal", "task", "commitment", "info", "tag"] as const;
-    for (const child of TYPED_CHILD_KINDS) {
+    for (const typed of TYPED_CHILD_KINDS) {
+      const child = typedChildNodeKind(typed);
       const listed = validParentKinds(child);
       for (const parent of everyParent) {
         expect(listed.includes(parent)).toBe(isValidDropTarget(child, parent));
@@ -384,5 +385,17 @@ describe("canParentNewChild", () => {
       expect(canAdoptChildren(foldedRun)).toBe(false);
       expect(canAdoptChildren(node("root", "domain"))).toBe(false);
     });
+  });
+});
+
+describe("typedChildNodeKind", () => {
+  it("stores a Habit as a Flow — a Habit is a Flow that repeats", () => {
+    expect(typedChildNodeKind("habit")).toBe("flow");
+  });
+
+  it("stores every other typed kind as itself", () => {
+    for (const kind of TYPED_CHILD_KINDS.filter((candidate) => candidate !== "habit")) {
+      expect(typedChildNodeKind(kind)).toBe(kind);
+    }
   });
 });

@@ -16,14 +16,13 @@ import { updateInfo } from "@/api/infos";
 import { clearBeadsId, type BeadsNodeType } from "@/api/beads";
 import { setBlockReasons } from "@/api/block-reasons";
 import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
-import { recurrenceStartKind } from "@/components/FlowEditorModal/recurrence-ui";
+import { recurrenceRequest } from "@/components/FlowEditorModal/recurrence-ui";
 import type { FlowItemSaveData } from "@/components/FlowItemEditorModal/FlowItemEditorModal";
 import {
   updateFlow, updateFlowGoal, updateFlowTask, setFlowItemCycles,
   addFlowDependency, removeFlowDependency, flowOrigins,
   setFlowRecurrence, deleteFlowRecurrence, forkFlow, clearHabitModifications,
 } from "@/api/flows";
-import { keyContaining } from "@/utils/scope-key";
 import type { FlowItemType, ForkedTemplate, UpdateFlowItemRequest, UpdateFlowRequest } from "@/api/flows";
 import { withAtomicGesture } from "@/api/gesture";
 import { localNowIso } from "@/utils/local-now";
@@ -341,17 +340,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
           await deleteFlowRecurrence(targetId);
           return;
         }
-        const r = data.recurrence;
-        const startKind = recurrenceStartKind(data.durationKind);
-        await setFlowRecurrence(targetId, {
-          start_scope_id: keyContaining(startKind, r.startDate),
-          gap_n: r.gapN,
-          gap_kind: r.gapKind,
-          end_scope_id: r.endDate !== null ? keyContaining(startKind, r.endDate) : null,
-          consumption_kind: r.consumptionKind,
-          blocking_mode: r.blockingMode,
-          catchup_policy: r.catchupPolicy,
-        });
+        await setFlowRecurrence(targetId, recurrenceRequest(data.recurrence, data.durationKind));
       };
       if (data.reconcile === "fork") {
         // Archive & new: the backend clones the template and archives the original (it stops

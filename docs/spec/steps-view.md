@@ -325,12 +325,14 @@ child kind and opens straight into its editor to be named.
 ### Creating and deleting
 
 **The Mindmap's chords, through the Mindmap's actions.** `Tab`, `Shift+Enter`, `Ctrl+Enter`, the
-seven `Shift`+initial chords and `Delete` are bound here and hand the selected card to
+`Shift`+initial chords and `Delete` are bound here and hand the selected card to
 `useNodeActions`, the same hook the Mindmap calls. So the type rules, the parent rules, every
-refusal (an Aspect, a Habit repetition, a Tag's default child, a kind the parent cannot hold) and
+refusal (an Aspect, a Habit repetition, a Task under a node that cannot hold one, a kind the parent cannot hold) and
 the undo Gestures come with them rather than being restated; one `Ctrl+Z` takes back a create or a
 delete made here. `Shift+F` and `Shift+C` open the blank Flow and Commitment editors, shared with the
-Mindmap through `useCreateEditors`, because those two kinds are configured before they exist.
+Mindmap through `useCreateEditors`, because those two kinds are configured before they exist;
+`Shift+H` opens the Flow editor as a Habit, repeating already on. `Tab` creates a Task, as on the
+Mindmap.
 
 **Where the new node goes is the Mindmap's answer, and Steps only decides what you see.**
 
@@ -423,7 +425,7 @@ the last card of a page, with more cards one page on, read as the end of the Ste
   this one
 - `Shift+W` — on a Task card, open its editor at the Expectation section with Asynchronous on, as on the Mindmap
 - `E` — open the selected card's editor
-- `Tab`, `Shift+Enter`, `Ctrl+Enter`, `Shift+D`/`P`/`G`/`T`/`C`/`E`/`I`/`F` — create, as above
+- `Tab`, `Shift+Enter`, `Ctrl+Enter`, `Shift+D`/`P`/`G`/`T`/`C`/`E`/`I`/`F`/`H` — create, as above
   (`Shift+E` an **Expectation**); the
   `Shift`+initial chords also with nothing selected, onto this Step
 - `Delete` — delete the selected card, after confirming

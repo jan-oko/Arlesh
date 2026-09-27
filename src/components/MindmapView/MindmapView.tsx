@@ -178,9 +178,10 @@ export default function MindmapView() {
   // The targets the *create* and *start* paths offer. The open editor's own targets are derived
   // inside `NodeEditorModals`, which is the only other place that needed them.
   const flowTargets = useMemo(() => flowTargetNodes(tree), [tree]);
-  // Shift+F and Shift+C open a blank editor rather than creating a row; shared with the Steps View.
-  const createEditors = useCreateEditors({ tree, createFlow, createCommitment });
-  const { onNewFlow, onNewCommitment } = createEditors;
+  // Shift+F, Shift+H and Shift+C open a blank editor rather than creating a row; shared with the
+  // Steps View.
+  const createEditors = useCreateEditors({ tree, createFlow, createCommitment, reload });
+  const { onNewFlow, onNewHabit, onNewCommitment } = createEditors;
   const startedFlowParent = useMemo(
     () => (startFlowNode === null ? null : targetSelectionFor(findParent(tree, startFlowNode.id))),
     [startFlowNode, tree],
@@ -380,7 +381,7 @@ export default function MindmapView() {
     onDelete, onPaste, occurrencePrompt, confirmOccurrence, cancelOccurrence,
   } = useNodeActions({
     tree, clipboard, moveNode, duplicateNode, onRequestDelete: setDeleteTargets, reload, renameNode,
-    createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewCommitment,
+    createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewHabit, onNewCommitment,
   });
 
 

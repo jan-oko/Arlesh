@@ -1,5 +1,5 @@
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import { TYPED_CHILD_KINDS, canAdoptChildren, canParentAnyNewChild, canParentNewChild } from "@/utils/node-meta";
+import { TYPED_CHILD_KINDS, canAdoptChildren, canParentAnyNewChild, canParentNewChild, typedChildNodeKind } from "@/utils/node-meta";
 import type { TypedChildKind } from "@/utils/node-meta";
 import { isHabitGroupNode } from "@/utils/habit-collapse";
 
@@ -275,5 +275,5 @@ export function cardWritesKind(kind: NodeKind): boolean {
  * something the create would then refuse.
  */
 export function creatableKinds(node: MindmapNode): readonly TypedChildKind[] {
-  return TYPED_CHILD_KINDS.filter((kind) => canParentNewChild(node, kind));
+  return TYPED_CHILD_KINDS.filter((kind) => canParentNewChild(node, typedChildNodeKind(kind)));
 }

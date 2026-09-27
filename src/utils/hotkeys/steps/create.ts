@@ -35,6 +35,8 @@ export const STEPS_TYPED_CHILD_CHORDS: ReadonlyArray<{ code: string; kind: Typed
   { code: "KeyE", kind: "expectation", labelKey: "createExpectationChild" },
   { code: "KeyI", kind: "info", labelKey: "createInfoChild" },
   { code: "KeyF", kind: "flow", labelKey: "createFlowChild" },
+  // H for Habit: a Flow child with repeating already on. Bare H and Shift+H were free everywhere.
+  { code: "KeyH", kind: "habit", labelKey: "createHabitChild" },
 ];
 
 // `allowRepeat: false` throughout: creation is a round-trip to the database, and a held key would

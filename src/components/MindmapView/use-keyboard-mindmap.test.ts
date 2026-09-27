@@ -214,7 +214,7 @@ describe("useKeyboardMindmap — Tab (create child)", () => {
     expect(opts.onCreateChild).toHaveBeenCalledWith("task-1");
   });
 
-  it("Tab does not call onCreateChild for a tag-kind node", () => {
+  it("Tab reaches onCreateChild on a Tag too, whose handler refuses it out loud", () => {
     const tagNode: MindmapNode = { id: "domain-9", kind: "tag", title: "tag", position: 0, tagIds: [], children: [] };
     const opts = mindmapKeyboardContext({
       selectedNodeId: "domain-9",
@@ -222,7 +222,7 @@ describe("useKeyboardMindmap — Tab (create child)", () => {
     });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Tab");
-    expect(opts.onCreateChild).not.toHaveBeenCalled();
+    expect(opts.onCreateChild).toHaveBeenCalledWith("domain-9");
   });
 
   it("Tab does nothing when no node is selected", () => {
@@ -972,7 +972,14 @@ describe("useKeyboardMindmap — Shift+initial creates a typed child", () => {
     expect(opts.onConvertToFlow).not.toHaveBeenCalled();
   });
 
-  it("leaves Tab creating an inherit-the-parent child", () => {
+  it("Shift+H creates a Habit child — a Flow with repeating on", () => {
+    const opts = mindmapKeyboardContext();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("h", { shiftKey: true });
+    expect(opts.onCreateTypedChild).toHaveBeenCalledWith("task-1", "habit");
+  });
+
+  it("leaves Tab on its own handler — a Task child, not a typed chord", () => {
     const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Tab");

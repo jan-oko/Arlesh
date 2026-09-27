@@ -50,7 +50,15 @@ export default function NodeCreateModals({ tree, editors, allTags, domainNames }
         <CommitmentEditorModal node={BLANK_COMMITMENT_NODE} allTags={allTags} domainNames={domainNames} heading={t("editor:newCommitmentTitle")} onSave={onCreateCommitment} onClose={closeCommitment} />
       )}
       {flowParent !== null && (
-        <FlowEditorModal node={BLANK_FLOW_NODE} availableTargets={flowTargets} inheritedTarget={inheritedTarget} heading={t("editor:newFlowTitle")} onSave={onCreateFlow} onClose={closeFlow} />
+        <FlowEditorModal
+          node={BLANK_FLOW_NODE}
+          availableTargets={flowTargets}
+          inheritedTarget={inheritedTarget}
+          heading={flowParent.asHabit ? t("editor:newHabitTitle") : t("editor:newFlowTitle")}
+          startAsHabit={flowParent.asHabit}
+          onSave={onCreateFlow}
+          onClose={closeFlow}
+        />
       )}
     </>
   );
