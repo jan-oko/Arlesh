@@ -1,6 +1,6 @@
 import { createStore, type StoreApi } from "zustand";
 import type { ListFilterState, ListPreset, ListRowKind, PillDimension, PillFilter, PillMode, PillSide } from "@/utils/list-filter";
-import { DEFAULT_LIST_FILTER, pillSide, rowKindToggleRefusal, withRowKindToggled } from "@/utils/list-filter";
+import { DEFAULT_LIST_FILTER, pillSide, rowKindToggleRefusal, rowKindsApply, withRowKindToggled } from "@/utils/list-filter";
 import { tabStoreHook } from "@/stores/tab-stores-context";
 import { canonicalYesNoPills, isYesNoDimension, nextMode } from "@/utils/filter-modes";
 
@@ -9,6 +9,8 @@ export interface ListFilterStore {
   setPreset: (preset: ListPreset) => void;
   /** Shows or hides one row kind. A refused toggle (see `rowKindToggleRefusal`) changes nothing. */
   toggleKind: (kind: ListRowKind) => void;
+  /** Shows that one kind and hides the others. Refused (no change) under the Expectations option. */
+  showOnlyKind: (kind: ListRowKind) => void;
   /** Adds a value in `mode`. No-op when the value is already filtered. */
   addPill: (dimension: PillDimension, value: string, mode: PillMode) => void;
   /** Moves a pill one step along its cycle: All → Any → Not → All. */
@@ -32,6 +34,8 @@ export function createListFilterStore(seed: ListFilterState = DEFAULT_LIST_FILTE
   return createStore<ListFilterStore>()((set) => ({
     filter: seed,
     setPreset: (preset) => set((s) => ({ filter: { ...s.filter, preset } })),
+    showOnlyKind: (kind) =>
+      set((s) => (rowKindsApply(s.filter.preset) ? { filter: { ...s.filter, kinds: [kind] } } : {})),
     toggleKind: (kind) =>
       set((s) => {
         if (rowKindToggleRefusal(s.filter, kind) !== null) return {};

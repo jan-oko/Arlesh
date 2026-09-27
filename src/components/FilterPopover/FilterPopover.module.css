@@ -109,6 +109,24 @@
   color: var(--pill-mode-color, var(--text-secondary));
 }
 
+/* The letter key that acts on a pill while focus is in the menu (List View). */
+.key {
+  margin-inline-start: 3px;
+  padding: 0 2px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.2;
+  opacity: 0.55;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.popover:focus {
+  outline: none;
+}
+
 .struck {
   text-decoration: line-through;
 }

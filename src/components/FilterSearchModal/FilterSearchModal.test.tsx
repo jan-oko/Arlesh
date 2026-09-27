@@ -232,7 +232,7 @@ describe("FilterSearchModal", () => {
       fireEvent.change(box(), { target: { value: "rowKind.task" } });
       fireEvent.keyDown(box(), { key: "Enter" });
       expect(useListFilterStore.getState().filter.kinds).toEqual(["task"]);
-      expect(useMindmapStore.getState().pendingToast?.message).toBe("listView:rowKindRefused.lastKind");
+      expect(useMindmapStore.getState().pendingToast?.message).toBe("rowKindRefused.lastKind");
     });
 
     it("offers no row kinds outside the List View", () => {
@@ -261,6 +261,61 @@ describe("FilterSearchModal", () => {
   it("draws no modifier hint line: the cheat-sheet documents the modes", () => {
     render(<FilterSearchModal onClose={vi.fn()} />);
     expect(screen.queryByText(/hint/)).not.toBeInTheDocument();
+  });
+});
+
+describe("FilterSearchModal — active filters", () => {
+  function withActive() {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: 1, mode: "all" }] } });
+    useListFilterStore.setState({
+      filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills, taskStatus: [{ value: "done", mode: "exclude" }] } },
+    });
+  }
+  const activeGroup = () => screen.getByRole("group", { name: "search.activeHeading" });
+
+  it("lists the active filters first, even with nothing typed", () => {
+    withActive();
+    render(<FilterSearchModal onClose={vi.fn()} />);
+    expect(headings()).toEqual(["search.activeHeading"]);
+    expect(within(activeGroup()).getAllByRole("option")).toHaveLength(2);
+  });
+
+  it("shows nothing when no filter is active and nothing is typed", () => {
+    render(<FilterSearchModal onClose={vi.fn()} />);
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("cycles the highlighted one on Enter, and a clicked one, like a chip", () => {
+    withActive();
+    render(<FilterSearchModal onClose={vi.fn()} />);
+    fireEvent.keyDown(box(), { key: "Enter" });
+    expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 1, mode: "any" }]);
+    fireEvent.click(within(activeGroup()).getAllByRole("option")[1] ?? document.body);
+    expect(useListFilterStore.getState().filter.pills.taskStatus).toEqual([{ value: "done", mode: "all" }]);
+  });
+
+  it("removes the highlighted one with Delete, reached with the arrows", () => {
+    withActive();
+    render(<FilterSearchModal onClose={vi.fn()} />);
+    fireEvent.keyDown(box(), { key: "ArrowDown" });
+    fireEvent.keyDown(box(), { key: "Delete" });
+    expect(useListFilterStore.getState().filter.pills.taskStatus).toEqual([]);
+    expect(useFilterStore.getState().filter.tagFilters).toHaveLength(1);
+  });
+
+  it("leaves Backspace to the query: it removes nothing", () => {
+    withActive();
+    render(<FilterSearchModal onClose={vi.fn()} />);
+    fireEvent.keyDown(box(), { key: "Backspace" });
+    expect(useFilterStore.getState().filter.tagFilters).toHaveLength(1);
+    expect(useListFilterStore.getState().filter.pills.taskStatus).toHaveLength(1);
+  });
+
+  it("narrows the active filters with the query too", () => {
+    withActive();
+    render(<FilterSearchModal onClose={vi.fn()} />);
+    fireEvent.change(box(), { target: { value: "urg" } });
+    expect(within(activeGroup()).getAllByRole("option")).toHaveLength(1);
   });
 });
 

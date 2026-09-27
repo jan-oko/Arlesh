@@ -52,6 +52,7 @@ export default function FilterSwitches({ view, statusMode }: Props) {
       )}
       <div className={styles.pills} role="group" aria-label={t("switchesLabel")}>
         <Switch checked={filter.privateMode} onChange={setPrivateMode} label={t("privateMode")} />
+        <kbd className={styles.key} aria-hidden="true">{t("privateModeKey")}</kbd>
         <span className={styles.switchGap} aria-hidden="true" />
         {switches.includes("archived") && (
           <OverridePill

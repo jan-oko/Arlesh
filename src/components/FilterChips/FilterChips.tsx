@@ -1,32 +1,15 @@
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { useViewStore } from "@/stores/use-view-store";
 import { useFilterDimensions } from "@/hooks/use-filter-dimensions";
 import { useFilterEntries } from "@/hooks/use-filter-entries";
-import { PILL_DIMENSIONS, PILL_MODE_SYMBOL } from "@/utils/list-filter";
-import type { PillMode } from "@/utils/list-filter";
-import type { FilterDimension } from "@/utils/filter-modes";
-import { isYesNoDimension } from "@/utils/filter-modes";
+import { useActiveFilters } from "@/hooks/use-active-filters";
+import { PILL_MODE_SYMBOL } from "@/utils/list-filter";
 import { modeColorVar, tintBackground } from "@/utils/pill-color";
 import styles from "./FilterChips.module.css";
-
-interface ChipDescriptor {
-  key: string;
-  dimension: FilterDimension;
-  value: string;
-  label: string;
-  mode: PillMode;
-  color: string | null;
-}
 
 interface ChipStyle extends CSSProperties {
   "--chip-mode-color": string;
   "--chip-tint": string | undefined;
-}
-
-/** The dimensions whose chips show in a view: tags everywhere, the List View's own pills there only. */
-function chipDimensions(view: string): readonly FilterDimension[] {
-  return view === "list" ? ["tag", ...PILL_DIMENSIONS] : ["tag"];
 }
 
 /** The always-visible row of active-filter chips (moved out of the popover so what's filtered is
@@ -36,20 +19,9 @@ function chipDimensions(view: string): readonly FilterDimension[] {
  * resolvable (tags, Under, Depends on). */
 export default function FilterChips() {
   const { t } = useTranslation("filter");
-  const view = useViewStore((s) => s.view);
   const catalogue = useFilterDimensions();
   const entries = useFilterEntries();
-
-  const chips: ChipDescriptor[] = chipDimensions(view).flatMap((dimension) =>
-    entries.entries(dimension).map((entry) => ({
-      key: `${dimension}-${entry.value}`,
-      dimension,
-      value: entry.value,
-      label: catalogue.valueLabel(dimension, entry.value, entry.mode),
-      mode: entry.mode,
-      color: catalogue.valueColor(dimension, entry.value),
-    })),
-  );
+  const chips = useActiveFilters(catalogue, entries);
 
   if (chips.length === 0) return null;
 
@@ -62,16 +34,15 @@ export default function FilterChips() {
         };
         const cycle = () => entries.cycle(chip.dimension, chip.value);
         const remove = () => entries.remove(chip.dimension, chip.value);
-        const dimensionName = isYesNoDimension(chip.dimension) ? t("rows.yesNo") : t(`rows.${chip.dimension}`);
         return (
           <div
-            key={chip.key}
+            key={`${chip.dimension}-${chip.value}`}
             role="button"
             tabIndex={0}
             className={styles.chip}
             style={chipStyle}
             title={t(`tagMode.${chip.mode}`)}
-            aria-label={t("chipAria", { dimension: dimensionName, label: chip.label, mode: t(`tagMode.${chip.mode}`) })}
+            aria-label={t("chipAria", { dimension: chip.dimensionLabel, label: chip.label, mode: t(`tagMode.${chip.mode}`) })}
             onClick={cycle}
             onKeyDown={(e) => {
               if (e.target !== e.currentTarget) return;

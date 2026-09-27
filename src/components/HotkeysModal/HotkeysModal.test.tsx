@@ -47,6 +47,15 @@ describe("HotkeysModal", () => {
     }
     expect(list.getByText("hotkeys:filterCycle")).toBeInTheDocument();
     expect(list.getByText("hotkeys:filterRemove")).toBeInTheDocument();
+    for (const [label, chords] of [
+      ["hotkeys:filterKindKeys", ["T", "C", "E"]],
+      ["hotkeys:filterFlagKeys", ["A", "W", "B", "P"]],
+      ["hotkeys:filterPrivateMode", ["Ctrl+P"]],
+      ["hotkeys:filterRemoveSearch", ["Delete"]],
+    ] as const) {
+      const row = list.getByText(label).closest("div");
+      for (const chord of chords) expect(row).toHaveTextContent(chord);
+    }
   });
 
   it("merges every chord that triggers one action into a single row", () => {

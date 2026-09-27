@@ -20,6 +20,8 @@ interface Props {
   mode: PillMode | null;
   /** A yes/no pill's Not wording, for the plain pill's tooltip ("Alt+click: Not blocked"). */
   notLabel?: string;
+  /** The letter key that adds it from the menu, drawn as a small keycap. */
+  keyLetter?: string;
   onAdd: (mode: PillMode) => void;
   onCycle: () => void;
   onRemove: () => void;
@@ -31,7 +33,7 @@ interface Props {
  * clicking cycles the mode, **Delete** or **Backspace** removes it. It is one button in both states,
  * so a fixed value removed from the keyboard keeps focus where it was.
  */
-export default function ValuePill({ dimension, label, color, mode, notLabel, onAdd, onCycle, onRemove }: Props) {
+export default function ValuePill({ dimension, label, color, mode, notLabel, keyLetter, onAdd, onCycle, onRemove }: Props) {
   const { t } = useTranslation("filter");
 
   function add(event: MouseEvent | KeyboardEvent) {
@@ -39,6 +41,7 @@ export default function ValuePill({ dimension, label, color, mode, notLabel, onA
   }
 
   const dot = color === null ? null : <span className={styles.dot} style={{ background: color }} aria-hidden="true" />;
+  const keycap = keyLetter === undefined ? null : <kbd className={styles.key} aria-hidden="true">{keyLetter}</kbd>;
 
   if (mode === null) {
     const title = isYesNoDimension(dimension) && notLabel !== undefined
@@ -58,6 +61,7 @@ export default function ValuePill({ dimension, label, color, mode, notLabel, onA
       >
         {dot}
         {label}
+        {keycap}
       </button>
     );
   }
@@ -81,6 +85,7 @@ export default function ValuePill({ dimension, label, color, mode, notLabel, onA
     >
       <span className={styles.symbol} aria-hidden="true">{PILL_MODE_SYMBOL[mode]}</span>
       <span className={mode === "exclude" ? styles.struck : undefined}>{label}</span>
+      {keycap}
     </button>
   );
 }

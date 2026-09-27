@@ -14,15 +14,24 @@ const CONTROL_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Whether the event is a control key pressed inside a region that handles its own keyboard — the
- * Filter menu and the filter chips, marked `data-owns-keys`, whose pills add on Enter and are
- * removed with Delete. Without this, Delete on a set pill would also delete the selected node, since
- * this listener runs first, in the capture phase. Chords with a letter (Alt+F, Alt+A) still
- * reach their bindings from inside the region.
+ * Whether the event is a key pressed inside a region that handles its own keyboard — the Filter
+ * menu and the filter chips, marked `data-owns-keys`. The region owns every control key (its pills
+ * add on Enter and are removed with Delete; without this, Delete on a set pill would also delete the
+ * selected node, since this listener runs first, in the capture phase), plus the key codes its
+ * attribute lists — the Filter menu's letters (`KeyT`, `KeyA`, …), with or without Shift or Alt but
+ * never with Ctrl or Meta, and any `Ctrl+Key…` token it lists (the menu's `Ctrl+KeyP`, which
+ * therefore does not switch to the Plan View while focus is in the menu). Every other chord (Alt+F,
+ * Alt+S, Ctrl+F) still reaches its binding.
  */
 function isOwnedByRegion(event: KeyboardEvent): boolean {
-  if (!CONTROL_KEYS.has(event.code)) return false;
-  return event.target instanceof Element && event.target.closest("[data-owns-keys]") !== null;
+  if (!(event.target instanceof Element)) return false;
+  const region = event.target.closest("[data-owns-keys]");
+  if (region === null) return false;
+  if (CONTROL_KEYS.has(event.code)) return true;
+  const owned = (region.getAttribute("data-owns-keys") ?? "").split(" ");
+  if (event.metaKey) return false;
+  if (event.ctrlKey) return !event.altKey && !event.shiftKey && owned.includes(`Ctrl+${event.code}`);
+  return owned.includes(event.code);
 }
 
 /**

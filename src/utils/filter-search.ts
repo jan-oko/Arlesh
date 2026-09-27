@@ -1,6 +1,6 @@
 import type { OverrideMode } from "@/utils/filter-tree";
 import type { FilterDimension, ModifierKeys } from "@/utils/filter-modes";
-import type { ListRowKind } from "@/utils/list-filter";
+import type { ListRowKind, PillMode } from "@/utils/list-filter";
 
 /** The tri-state switches the search offers: Archived and Backlog. (Private is a yes/no pill here,
  * offered while Private Mode is on.) */
@@ -49,7 +49,23 @@ export interface RowKindResult {
   matchText: string;
 }
 
-export type SearchResult = ValueResult | SwitchResult | RowKindResult;
+/**
+ * A filter already added, listed first so it can be changed from the search: picking it cycles its
+ * mode as a click on its chip does, and Delete removes it.
+ */
+export interface ActiveResult {
+  kind: "active";
+  dimension: FilterDimension;
+  value: string;
+  label: string;
+  mode: PillMode;
+  color: string | null;
+  /** The dimension's name, drawn before the value ("Under:"). */
+  dimensionLabel: string;
+  matchText: string;
+}
+
+export type SearchResult = ValueResult | SwitchResult | RowKindResult | ActiveResult;
 
 /** One heading's worth of the search: a dimension, the Yes / no group, or the switches. */
 export interface SearchGroup {

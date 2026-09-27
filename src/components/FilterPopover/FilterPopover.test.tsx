@@ -221,7 +221,7 @@ describe("FilterPopover — rows", () => {
     it("collapses each yes/no dimension to one pill in the Yes / no row", () => {
       render(<FilterPopover />);
       const row = screen.getByRole("group", { name: "rows.yesNo" });
-      expect(within(row).getAllByRole("button").map((b) => b.textContent)).toEqual(["blocked", "agentic", "asynchronous"]);
+      expect(within(row).getAllByRole("button").map((b) => b.textContent)).toEqual(["blockedB", "agenticA", "asynchronousW"]);
       expect(screen.queryByText("not_blocked")).not.toBeInTheDocument();
     });
 
@@ -252,7 +252,7 @@ describe("FilterPopover — rows", () => {
       render(<FilterPopover />);
       const row = screen.getByRole("group", { name: "rows.yesNo" });
       expect(within(row).getAllByRole("button").map((b) => b.textContent)).toEqual(
-        ["blocked", "agentic", "asynchronous", "privateState.private"],
+        ["blockedB", "agenticA", "asynchronousW", "privateState.privateP"],
       );
       fireEvent.click(pill("privateState.private"), { altKey: true });
       expect(useListFilterStore.getState().filter.pills.private).toEqual([{ value: "private", mode: "exclude" }]);
@@ -376,6 +376,103 @@ describe("FilterPopover — rows", () => {
       expect(box).toHaveValue("");
       expect(outer).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("FilterPopover — letter keys (List View)", () => {
+  beforeEach(() => {
+    useViewStore.setState({ view: "list" });
+    useMindmapStore.setState({ pendingToast: null });
+  });
+
+  const menu = () => screen.getByRole("dialog", { name: "common:filter" });
+  const press = (code: string, keys: Partial<KeyboardEventInit> = {}) => fireEvent.keyDown(menu(), { code, ...keys });
+  const kinds = () => useListFilterStore.getState().filter.kinds;
+  const pills = () => useListFilterStore.getState().filter.pills;
+
+  it("takes focus when it opens, so the keys work at once", () => {
+    render(<FilterPopover />);
+    expect(menu()).toHaveFocus();
+  });
+
+  it("t / c / e toggle a row kind; Alt does the same; Shift shows that kind alone", () => {
+    render(<FilterPopover />);
+    press("KeyT");
+    expect(kinds()).toEqual(["commitment", "expectation"]);
+    press("KeyT", { altKey: true });
+    expect(kinds()).toEqual(["task", "commitment", "expectation"]);
+    press("KeyC", { shiftKey: true });
+    expect(kinds()).toEqual(["commitment"]);
+  });
+
+  it("refuses to hide the last kind, with a toast", () => {
+    useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, kinds: ["expectation"] } });
+    render(<FilterPopover />);
+    press("KeyE");
+    expect(kinds()).toEqual(["expectation"]);
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("rowKindRefused.lastKind");
+  });
+
+  it("a / w / b add a flag — plain All, Shift Any, Alt Not — and a second press cycles it", () => {
+    render(<FilterPopover />);
+    press("KeyA");
+    press("KeyW", { shiftKey: true });
+    press("KeyB", { altKey: true });
+    expect(pills().agentic).toEqual([{ value: "agentic", mode: "all" }]);
+    expect(pills().asynchronous).toEqual([{ value: "asynchronous", mode: "any" }]);
+    expect(pills().blocked).toEqual([{ value: "blocked", mode: "exclude" }]);
+    press("KeyA");
+    expect(pills().agentic).toEqual([{ value: "agentic", mode: "any" }]);
+  });
+
+  it("p adds Private only while Private Mode is on; otherwise says it is off", () => {
+    render(<FilterPopover />);
+    press("KeyP");
+    expect(pills().private).toEqual([]);
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("privateModeOff");
+  });
+
+  it("Shift+P adds Private as Any, like any flag", () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
+    render(<FilterPopover />);
+    press("KeyP", { shiftKey: true });
+    expect(pills().private).toEqual([{ value: "private", mode: "any" }]);
+    expect(useFilterStore.getState().filter.privateMode).toBe(true);
+  });
+
+  it("Ctrl+P toggles Private Mode, removing a Private pill when it turns off", () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
+    useListFilterStore.getState().addPill("private", "private", "all");
+    render(<FilterPopover />);
+    press("KeyP", { ctrlKey: true });
+    expect(useFilterStore.getState().filter.privateMode).toBe(false);
+    expect(pills().private).toEqual([]);
+    press("KeyP", { ctrlKey: true });
+    expect(useFilterStore.getState().filter.privateMode).toBe(true);
+  });
+
+  it("Ctrl+P works in the Mindmap's menu too, where the letters do nothing", () => {
+    useViewStore.setState({ view: "mindmap" });
+    render(<FilterPopover />);
+    press("KeyT");
+    expect(kinds()).toEqual(["task", "commitment", "expectation"]);
+    press("KeyP", { ctrlKey: true });
+    expect(useFilterStore.getState().filter.privateMode).toBe(true);
+  });
+
+  it("letters typed into a search box type, and change nothing", () => {
+    render(<FilterPopover />);
+    const box = screen.getByRole("combobox", { name: "rows.tag" });
+    fireEvent.keyDown(box, { code: "KeyT" });
+    fireEvent.keyDown(box, { code: "KeyA" });
+    expect(kinds()).toEqual(["task", "commitment", "expectation"]);
+    expect(pills().agentic).toEqual([]);
+  });
+
+  it("draws each key as a keycap on its pill", () => {
+    render(<FilterPopover />);
+    expect(screen.getByRole("button", { name: /rowKind\.task/ })).toHaveTextContent("T");
+    expect(within(screen.getByRole("group", { name: "rows.yesNo" })).getByText("W")).toBeInTheDocument();
   });
 });
 

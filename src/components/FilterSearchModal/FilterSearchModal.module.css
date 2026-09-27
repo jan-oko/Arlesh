@@ -106,3 +106,15 @@
 .empty {
   composes: empty from "../SearchModalShell/SearchModalShell.module.css";
 }
+
+/* An active filter's mode symbol, in the mode's colour as on its chip. */
+.symbol {
+  font-family: var(--font-mono);
+  line-height: 1;
+  color: var(--pill-mode-color, var(--text-secondary));
+  flex-shrink: 0;
+}
+
+.struck {
+  text-decoration: line-through;
+}

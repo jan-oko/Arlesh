@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import PlanView from "./PlanView";
@@ -190,6 +190,18 @@ function cardsIn(pane: "candidates" | "planned"): string[] {
   if (section === null) throw new Error(`no ${pane} pane on screen`);
   return [...section.querySelectorAll("[data-plan-card-id]")].map((el) => el.getAttribute("data-plan-card-id") ?? "");
 }
+
+// The fixtures sit in the week of 2026-09-20, and which scopes are current, pending or lapsed is
+// read off the clock. Pin the clock inside that week (Date only — timers stay real, so the async
+// waits below still run), or the suite starts failing the day the real week ends.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-22T12:00:00"));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

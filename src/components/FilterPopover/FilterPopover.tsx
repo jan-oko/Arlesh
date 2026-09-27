@@ -1,10 +1,12 @@
-import { Fragment } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useFilterDimensions } from "@/hooks/use-filter-dimensions";
 import { useFilterEntries } from "@/hooks/use-filter-entries";
+import { useFilterMenuKeys } from "@/hooks/use-filter-menu-keys";
+import { FILTER_MENU_CODES, PRIVATE_MODE_TOKEN } from "@/utils/filter-menu-keys";
 import { PLAN_VIEW_STATUS_MODE } from "@/utils/filter-tree";
 import { filterMenuRows, isSearchedDimension, offeredDimensions } from "@/utils/filter-layout";
 import type { FilterRowId } from "@/utils/filter-layout";
@@ -18,7 +20,8 @@ import styles from "./FilterPopover.module.css";
  * The Filter menu, opened from the top-bar Filter button or `Alt+F`: the switch block, then one
  * compact labelled row per dimension, in untitled groups split by a thin rule. An added value stays
  * in its row wearing its chip's mode, in step with the top-bar chips. The List View lists its own
- * dimensions; every other view filters by tag.
+ * dimensions; every other view filters by tag. In the List View, letter keys act while focus is in
+ * the menu (see `filter-menu-keys.ts`); focus moves into it when it opens.
  */
 export default function FilterPopover() {
   const { t } = useTranslation(["filter", "common"]);
@@ -31,6 +34,11 @@ export default function FilterPopover() {
   const view = useViewStore((s) => s.view);
   const catalogue = useFilterDimensions();
   const entries = useFilterEntries();
+  const onKeyDown = useFilterMenuKeys(view === "list");
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Focus lands in the menu when it opens, so its letter keys work at once — from Alt+F too.
+  useEffect(() => { menuRef.current?.focus(); }, []);
 
   function rowBody(row: FilterRowId) {
     if (row !== "yesNo" && isSearchedDimension(row)) {
@@ -40,7 +48,15 @@ export default function FilterPopover() {
   }
 
   return (
-    <div className={styles.popover} role="dialog" aria-label={t("common:filter")} data-owns-keys="">
+    <div
+      ref={menuRef}
+      tabIndex={-1}
+      className={styles.popover}
+      role="dialog"
+      aria-label={t("common:filter")}
+      data-owns-keys={view === "list" ? FILTER_MENU_CODES.join(" ") : PRIVATE_MODE_TOKEN}
+      onKeyDown={onKeyDown}
+    >
       <FilterSwitches view={view} statusMode={view === "plan" ? PLAN_VIEW_STATUS_MODE : statusMode} />
       {filterMenuRows(view).map((group, index) => (
         <Fragment key={index}>

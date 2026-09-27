@@ -19,4 +19,8 @@ export const FILTER_GESTURES: readonly FilterGesture[] = [
   { labelKey: "filterAddNot", chords: [{ code: "Enter", alt: true }], clickKey: "filterAltClick" },
   { labelKey: "filterCycle", chords: [], clickKey: "filterClick" },
   { labelKey: "filterRemove", chords: [{ code: "Delete" }, { code: "Backspace" }], clickKey: null },
+  { labelKey: "filterRemoveSearch", chords: [{ code: "Delete" }], clickKey: null },
+  { labelKey: "filterKindKeys", chords: [{ code: "KeyT" }, { code: "KeyC" }, { code: "KeyE" }], clickKey: null },
+  { labelKey: "filterFlagKeys", chords: [{ code: "KeyA" }, { code: "KeyW" }, { code: "KeyB" }, { code: "KeyP" }], clickKey: null },
+  { labelKey: "filterPrivateMode", chords: [{ code: "KeyP", ctrl: true }], clickKey: null },
 ];

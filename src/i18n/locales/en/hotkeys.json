@@ -105,8 +105,12 @@
   "filterAddAny": "Add a value as Any",
   "filterAddNot": "Add a value as Not (exclude)",
   "filterCycle": "Change an added value's mode: All → Any → Not",
-  "filterRemove": "Remove a focused added value or chip",
+  "filterRemove": "Remove a focused added value or chip (Delete or Backspace)",
   "filterClick": "Click",
   "filterShiftClick": "Shift+click",
-  "filterAltClick": "Alt+click"
+  "filterAltClick": "Alt+click",
+  "filterKindKeys": "In the Filter menu (List View): show or hide Tasks / Commitments / Expectations; with Shift, show only that kind",
+  "filterFlagKeys": "In the Filter menu (List View): add Agentic / Asynchronous / Blocked / Private — Shift Any, Alt Not; again cycles it",
+  "filterPrivateMode": "In the Filter menu: turn Private Mode on or off",
+  "filterRemoveSearch": "In Ctrl+F: remove the highlighted active filter"
 }

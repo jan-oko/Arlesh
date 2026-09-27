@@ -105,9 +105,9 @@ describe("useHotkeys", () => {
       target.dispatchEvent(new KeyboardEvent("keydown", { code, bubbles: true, cancelable: true, ...modifiers }));
     }
 
-    function region(): HTMLButtonElement {
+    function region(owns = ""): HTMLButtonElement {
       const wrapper = document.createElement("div");
-      wrapper.setAttribute("data-owns-keys", "");
+      wrapper.setAttribute("data-owns-keys", owns);
       const button = document.createElement("button");
       wrapper.appendChild(button);
       document.body.appendChild(wrapper);
@@ -130,6 +130,22 @@ describe("useHotkeys", () => {
       renderHook(() => useHotkeys(letter, ctx, true));
       pressOn(region(), "KeyF", { altKey: true });
       expect(ctx.onFirst).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the letters and Ctrl chords the region lists, and only those", () => {
+      const ctx = makeContext();
+      const chords: readonly Binding<TestContext>[] = [
+        { id: "test.letter", section: "global", chord: { code: "KeyT" }, labelKey: "viewList", run: (c) => c.onFirst() },
+        { id: "test.ctrl", section: "global", chord: { code: "KeyP", ctrl: true }, labelKey: "viewPlan", run: (c) => c.onSecond() },
+      ];
+      renderHook(() => useHotkeys(chords, ctx, true));
+      const inside = region("KeyT Ctrl+KeyP");
+      pressOn(inside, "KeyT");
+      pressOn(inside, "KeyP", { ctrlKey: true });
+      expect(ctx.onFirst).not.toHaveBeenCalled();
+      expect(ctx.onSecond).not.toHaveBeenCalled();
+      pressOn(region(""), "KeyP", { ctrlKey: true });
+      expect(ctx.onSecond).toHaveBeenCalledTimes(1);
     });
   });
 });
