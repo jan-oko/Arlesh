@@ -36,6 +36,8 @@ import CommitmentRow from "./CommitmentRow";
 import ExpectationRow from "./ExpectationRow";
 import PathHeaderRow from "./PathHeaderRow";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
+import QuickPlanPicker from "@/components/QuickPlanPicker/QuickPlanPicker";
+import { useQuickPlan } from "@/hooks/use-quick-plan";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
 import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/UnfinishedChildrenModal";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
@@ -106,6 +108,11 @@ export default function ListView() {
     showToast,
   });
   const { toggleAsynchronous } = useTaskAsynchronous({
+    findNode: (id) => findNode(tree, id),
+    reload,
+    showToast,
+  });
+  const quickPlan = useQuickPlan({
     findNode: (id) => findNode(tree, id),
     reload,
     showToast,
@@ -311,6 +318,7 @@ export default function ListView() {
     onToggleBacklog: toggleBacklog,
     onToggleAgentic: toggleAgentic,
     onToggleAsynchronous: toggleAsynchronous,
+    onQuickPlan: quickPlan.open,
     onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,
     onUndo,
@@ -323,6 +331,15 @@ export default function ListView() {
   return (
     <div className={styles.container} ref={containerRef}>
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
+
+      {quickPlan.target !== null && (
+        <QuickPlanPicker
+          target={quickPlan.target}
+          anchorAttribute="data-row-id"
+          onApply={(plan) => void quickPlan.apply(plan)}
+          onClose={quickPlan.close}
+        />
+      )}
 
       {bandCommitments.length > 0 && (
         <section className={styles.commitments} aria-label={t("listView:commitmentsHeading")}>

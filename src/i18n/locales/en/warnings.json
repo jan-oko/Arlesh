@@ -99,5 +99,14 @@
   "pasteSkippedDerivedWait_one": "{{count}} check task or derived wait isn't a row of its own, so there is nothing to paste.",
   "pasteSkippedDerivedWait_other": "{{count}} check tasks or derived waits aren't rows of their own, so there is nothing to paste.",
   "pasteSkippedExpectation_one": "{{count}} Expectation can't be copied — use cut to move it.",
-  "pasteSkippedExpectation_other": "{{count}} Expectations can't be copied — use cut to move them."
+  "pasteSkippedExpectation_other": "{{count}} Expectations can't be copied — use cut to move them.",
+  "backlogClearedByPlanMany_one": "{{count}} task taken out of the backlog — it is planned now.",
+  "backlogClearedByPlanMany_other": "{{count}} tasks taken out of the backlog — they are planned now.",
+  "quickPlanNotTask": "“{{title}}” can't hold a Plan — only a Task is planned.",
+  "quickPlanNoTasks": "Nothing selected can hold a Plan — only a Task is planned.",
+  "quickPlanFailed": "Couldn't plan “{{title}}”: {{message}}",
+  "quickPlanFailedSome_one": "{{count}} of {{total}} tasks couldn't be planned — “{{title}}”: {{message}}",
+  "quickPlanFailedSome_other": "{{count}} of {{total}} tasks couldn't be planned — first, “{{title}}”: {{message}}",
+  "quickPlanSkippedNotTask_one": "{{count}} selected node isn't a Task, so it was left unplanned — only a Task holds a Plan.",
+  "quickPlanSkippedNotTask_other": "{{count}} selected nodes aren't Tasks, so they were left unplanned — only a Task holds a Plan."
 }

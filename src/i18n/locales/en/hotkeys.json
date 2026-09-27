@@ -71,6 +71,7 @@
   "toggleBacklog": "Put in / take out of the backlog",
   "toggleAgentic": "Mark Agentic / Not agentic",
   "toggleAsynchronous": "Mark Asynchronous / Not asynchronous",
+  "quickPlan": "Set the Plan in a quick picker (Enter applies, Esc cancels)",
   "cycleVerdict": "Cycle the selected commitment's verdict (Unresolved → Kept → Broken)",
   "markBroken": "Mark the selected commitment broken (again to clear it)",
   "toggleRelease": "Release the selected expectation (again to take it back)",

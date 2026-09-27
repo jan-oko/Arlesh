@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
 import StepsView from "./StepsView";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
@@ -708,5 +708,60 @@ describe("the Step's +", () => {
     // The second kind offered to a Goal, whatever it is, was created under the Step.
     expect(createNode.mock.calls[0]?.[0]).toBe("goal-1");
     expect(`nodeKinds:${createNode.mock.calls[0]?.[2] ?? ""}`).toBe(second.replace(/Shift\+.$/, ""));
+  });
+});
+
+describe("P, the quick Plan picker", () => {
+  it("opens the Plan picker at the selected Task card, writes the pick, and one Ctrl+Z takes it back", async () => {
+    mockTree([n("task-1", "task", { status: "todo" })]);
+    render(<StepsView />);
+
+    press("ArrowDown");
+    press("KeyP");
+    const dialog = screen.getByRole("dialog", { name: "quickPlanPicker" });
+    const day = [...dialog.querySelectorAll("button")].find((b) => /^\d+$/.test(b.textContent ?? ""));
+    if (day === undefined) throw new Error("the picker drew no Day cells");
+    fireEvent.click(day);
+    fireEvent.click(screen.getByRole("button", { name: "scopeApply" }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(1, {
+      plan: expect.objectContaining({ start_id: expect.objectContaining({ kind: "day" }) }),
+    }));
+    expect(screen.queryByRole("dialog", { name: "quickPlanPicker" })).toBeNull();
+
+    pressWith("KeyZ", { ctrl: true });
+    await settle();
+    expect(undo).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds the view's own keys while it is open, and Escape closes it writing nothing", () => {
+    mockTree([n("task-1", "task", { status: "todo" })]);
+    render(<StepsView />);
+
+    press("ArrowDown");
+    press("KeyP");
+    press("Space");
+    expect(updateTask).not.toHaveBeenCalled();
+    act(() => { fireEvent.keyDown(document, { key: "Escape" }); });
+    expect(screen.queryByRole("dialog", { name: "quickPlanPicker" })).toBeNull();
+    expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it("refuses a card that holds no Plan, by name", () => {
+    mockTree([n("goal-1", "goal")]);
+    render(<StepsView />);
+
+    press("ArrowDown");
+    press("KeyP");
+    expect(screen.queryByRole("dialog", { name: "quickPlanPicker" })).toBeNull();
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("warnings:quickPlanNotTask");
+  });
+
+  it("refuses the board's own card", () => {
+    mockTree([n("goal-1", "goal")]);
+    render(<StepsView />);
+
+    press("ArrowUp");
+    press("KeyP");
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedBoardRoot");
   });
 });

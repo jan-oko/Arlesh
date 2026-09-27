@@ -11,6 +11,7 @@ import { STEPS_FULLSCREEN_BINDINGS, type StepsFullscreenContext } from "./steps/
 import { STEPS_HISTORY_BINDINGS, type StepsHistoryContext } from "./steps/history";
 import { STEPS_NAVIGATE_BINDINGS, type StepsNavigateContext } from "./steps/navigate";
 import { STEPS_PAGE_BINDINGS, type StepsPageContext } from "./steps/page";
+import { STEPS_PLAN_BINDINGS, type StepsPlanContext } from "./steps/plan";
 import { STEPS_STATUS_BINDINGS, type StepsStatusContext } from "./steps/status";
 import { STEPS_STATUS_PRESET_BINDINGS, type StepsStatusPresetContext } from "./steps/status-presets";
 import { STEPS_ZOOM_BINDINGS, type StepsZoomContext } from "./steps/zoom";
@@ -36,6 +37,7 @@ export interface StepsContext extends
   StepsHistoryContext,
   StepsNavigateContext,
   StepsPageContext,
+  StepsPlanContext,
   StepsStatusContext,
   StepsStatusPresetContext,
   StepsZoomContext {}
@@ -61,6 +63,7 @@ export const STEPS_BINDINGS: readonly Binding<StepsContext>[] = [
   ...STEPS_ZOOM_BINDINGS,
   ...STEPS_STATUS_BINDINGS,
   ...STEPS_FLAGS_BINDINGS,
+  ...STEPS_PLAN_BINDINGS,
   ...STEPS_EXPECTATION_BINDINGS,
   ...STEPS_EDITOR_BINDINGS,
   ...STEPS_CREATE_BINDINGS,

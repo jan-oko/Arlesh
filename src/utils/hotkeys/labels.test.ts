@@ -45,6 +45,7 @@ const LABELS_SPANNING_SECTIONS: Readonly<Record<string, readonly string[]>> = {
   toggleBacklog: ["mindmap", "listView"],
   toggleAgentic: ["mindmap", "listView"],
   toggleAsynchronous: ["mindmap", "listView"],
+  quickPlan: ["mindmap", "listView"],
   bindWait: ["mindmap", "listView"],
   // The List View creates Tasks alone except for a wait, which it opens the editor for.
   createExpectationChild: ["mindmap", "listView"],

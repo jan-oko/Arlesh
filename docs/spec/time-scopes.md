@@ -117,6 +117,16 @@ The picker opens with the scope it was handed **selected**, not merely shown: th
 
 **Clear** is the only way to remove a Time Scope or a Plan. It sits in the field's summary row beside the edit button, shown only when there is a value to remove, and asks for no confirmation — the same call as the beads-id row in the editors: nothing is written until the editor is saved, and a saved clear is undone with Ctrl+Z.
 
+### The quick Plan picker (`P`)
+
+Bare **`P`** on the Mindmap, the List View and the Steps View sets the selected Task's Plan **without opening the editor** (ruled by the user, 2026-09-27). It opens **the same Scope Picker** the editor's Plan field uses, as a small popover drawn at the selected node, row or card, and it opens the same way — on the stored Plan, seeded with it, and held to the Task's Time Scope, except an **Overdue** Task's, whose Plan may leave its passed window. It dismisses the way every inline picker does: **Enter** or a click outside applies the selection, and with nothing selected just closes; **Esc** closes and writes nothing; **Clear**, offered while there is a Plan to remove, removes it. While it is open it holds the keyboard, so the view's own letters stay quiet.
+
+The pick is written exactly as the editor's Save writes a Plan — `update_task` with the new `plan`, one Gesture, one Ctrl+Z — so every rule above holds unchanged: `Plan ⊆ TimeScope` (Overdue excepted), `child.Plan ⊆ parent.Plan`, a Habit occurrence's Plan landing in its overlay, and a backlogged Task coming **out of the Backlog**, which a toast names. A refusal comes back from the backend and is shown as a toast carrying its reason.
+
+- **Only a Task holds a Plan** — a stored Task or a Habit occurrence. Any other node, a wait's drawn check task, a folded run of Habit history, or the Steps View's board card is **refused by name** in a toast rather than the key going quiet.
+- **A Mindmap multi-selection is planned whole**, in one Gesture: the picker is drawn at the selection's lead, opens on the lead's Plan and is held to the lead's Time Scope, and the pick is written to every Task in the selection. Selected nodes that hold no Plan are left alone and **counted in the toast**; a Task the backend turns away does not take back the ones it accepted, and the toast counts it too — the Plan View's batch rule. The List View and the Steps View select one row or card at a time.
+- **Not in the Plan View.** There bare `P` already means *fill parts of the day* with nothing selected and *plan into the P-initialled subscope* (Premorning) with a selection; planning is what that view's own keys do.
+
 ### Current period
 
 The cell holding the present is outlined. In every view but parts of day that is the cell whose dates contain **the current Day** — which, by the 02:00 boundary above, is the previous calendar date between 00:00 and 01:59. A part of day is a function of the instant, the displayed date **and** the part: exactly one part is current, and only on the date that part belongs to. Because Night runs 22:00–02:00 and belongs to the day it starts on, between 00:00 and 01:59 the current part is the **previous** calendar date's Night — on the date the clock reads, no part is outlined at all.
