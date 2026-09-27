@@ -4601,6 +4601,26 @@ async fn a_copied_habit_carries_no_completion_history() {
 }
 
 #[tokio::test]
+async fn a_flow_created_private_is_stored_private() {
+    // The new-Flow editor's Private switch used to be dropped on the way in: the create request had
+    // no field for it, so a Flow marked Private as it was made was stored public.
+    let pool = helpers::test_pool().await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    let private = db
+        .flows()
+        .create(CreateFlowRequest {
+            is_private: true,
+            ..create_req("Secret")
+        })
+        .await
+        .unwrap();
+    let public = db.flows().create(create_req("Open")).await.unwrap();
+
+    assert!(private.is_private);
+    assert!(!public.is_private, "omitting the flag still means public");
+}
+
+#[tokio::test]
 async fn a_copy_of_a_private_flow_is_private() {
     let pool = helpers::test_pool().await;
     let flow = helpers::session_factory(&pool)

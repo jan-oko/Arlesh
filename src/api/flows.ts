@@ -71,6 +71,8 @@ export interface CreateFlowRequest {
   root_plan_end?: number | null;
   verdict_window_n?: number | null;
   verdict_window_kind?: string | null;
+  /** Created Private; omitted means public. */
+  is_private?: boolean;
 }
 
 export interface UpdateFlowRequest {

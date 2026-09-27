@@ -214,6 +214,10 @@ pub struct CreateFlowRequest {
     /// Verdict Window kind; set with `verdict_window_n`.
     #[serde(default)]
     pub verdict_window_kind: Option<String>,
+    /// Whether the flow is created **Private** (the new-Flow editor's Private switch); omitted
+    /// means public.
+    #[serde(default)]
+    pub is_private: bool,
 }
 
 /// Request body for updating a flow (fields left `None` are unchanged; `Some(None)` clears).

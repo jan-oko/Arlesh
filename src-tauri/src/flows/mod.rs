@@ -555,8 +555,8 @@ impl<'session> FlowOperator<'session> {
                  flow_duration_n, flow_duration_kind,
                  flow_window_part, flow_window_time_start, flow_window_time_end,
                  root_plan_kind, root_plan_start, root_plan_end,
-                 verdict_window_n, verdict_window_kind, position)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 verdict_window_n, verdict_window_kind, position, is_private)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(instance_type)
@@ -575,6 +575,7 @@ impl<'session> FlowOperator<'session> {
         .bind(request.verdict_window_n)
         .bind(&request.verdict_window_kind)
         .bind(now_position())
+        .bind(request.is_private)
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();

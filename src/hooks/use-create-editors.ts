@@ -107,6 +107,7 @@ export function useCreateEditors({ tree, createFlow, createCommitment, reload }:
         root_plan_end: data.rootPlanEnd,
         verdict_window_n: data.verdictWindowN,
         verdict_window_kind: data.verdictWindowKind,
+        is_private: data.isPrivate,
       };
       const recurrence = data.recurrence ?? null;
       if (recurrence === null) {
