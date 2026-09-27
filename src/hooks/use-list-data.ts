@@ -9,6 +9,7 @@ import type { TaskAgentic } from "@/api/tasks";
 import { TASK_STATUS } from "@/utils/status-mapping";
 import { cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
 import { findNode, collectTasksAndGoals } from "@/utils/mindmap-tree";
+import { storedSubtreeBase } from "@/utils/drawn-path";
 import { rowIdOf } from "@/utils/node-identity";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { CommitmentListRow, ExpectationListRow, TaskListRow } from "@/utils/list-filter";
@@ -75,7 +76,7 @@ export function useListData(): ListData {
   // `subtreeRootId`, so the two views are never in different places. Only the rows are scoped:
   // `tree` stays whole, because Ctrl+O searches the entire board from wherever you happen to be.
   const listRoot = useMemo(
-    () => (subtreeRootId !== null ? (findNode(tree, subtreeRootId) ?? tree) : tree),
+    () => storedSubtreeBase(tree, subtreeRootId),
     [tree, subtreeRootId],
   );
   const rows = useMemo(() => flattenTaskRows(listRoot, taskDeps), [listRoot, taskDeps]);

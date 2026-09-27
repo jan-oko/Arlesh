@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useDisplayStore } from "@/stores/use-display-store";
 import Switch from "@/components/Switch/Switch";
+import HabitCollapseSetting from "./HabitCollapseSetting";
 import styles from "./SettingsModal.module.css";
 
 interface Props {
@@ -9,8 +10,9 @@ interface Props {
   onOpenHotkeys: () => void;
 }
 
-/** Appearance, how the Plan preset's scope matches, whether Start hides a wait that has checks,
- * and the way to the keyboard cheat-sheet. App-wide. */
+/** Appearance, how the Plan preset's scope matches, whether Start hides a wait that has checks, how
+ * much Habit history the Mindmap and the Steps View fold, and the way to the keyboard cheat-sheet.
+ * App-wide. */
 export default function GeneralPage({ onOpenHotkeys }: Props) {
   const { t } = useTranslation("common");
   const theme = useThemeStore((s) => s.theme);
@@ -29,6 +31,7 @@ export default function GeneralPage({ onOpenHotkeys }: Props) {
         onChange={toggleStartHidesCheckedWaits}
         label={t("startHidesCheckedWaits")}
       />
+      <HabitCollapseSetting />
       <div>
         <button className={styles.button} type="button" onClick={onOpenHotkeys}>
           {t("keyboardShortcuts")}

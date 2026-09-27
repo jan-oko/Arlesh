@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   shownPage,
   CARD_GAP, DEFAULT_STEPS_ZOOM, HEADER_CURSOR, cardSizeForZoom, childCursor, clampPage, isStepsZoom,
-  moveCursor, pageCount, pageSlice, resolveGrid, stepGrid,
+  moveAcrossPages, moveCursor, pageCount, pageSlice, resolveGrid, stepGrid,
 } from "./steps-grid";
 
 describe("a stored zoom level", () => {
@@ -140,5 +140,38 @@ describe("the arrow grid, with the header card as its first cell", () => {
   it("walks along a row on ← and →", () => {
     expect(moveCursor(childCursor(3), "right", COUNT, COLUMNS)).toEqual(childCursor(4));
     expect(moveCursor(childCursor(4), "left", COUNT, COLUMNS)).toEqual(childCursor(3));
+  });
+});
+
+describe("the arrows at a page's edge", () => {
+  // Three across and two down: pages of six, and seven cards fill two of them.
+  const GRID = { columns: 3, rows: 2, pageSize: 6 };
+  const COUNT = 7;
+
+  it("carries → off a page's last card onto the next page's first", () => {
+    expect(moveAcrossPages(childCursor(5), "right", 0, COUNT, GRID)).toEqual({ page: 1, cursor: childCursor(0) });
+  });
+
+  it("carries ← off a page's first card onto the previous page's last", () => {
+    expect(moveAcrossPages(childCursor(0), "left", 1, COUNT, GRID)).toEqual({ page: 0, cursor: childCursor(5) });
+  });
+
+  it("stops at the ends of the whole Step, where there is no page to turn to", () => {
+    expect(moveAcrossPages(childCursor(0), "left", 0, COUNT, GRID)).toEqual({ page: 0, cursor: childCursor(0) });
+    expect(moveAcrossPages(childCursor(0), "right", 1, COUNT, GRID)).toEqual({ page: 1, cursor: childCursor(0) });
+  });
+
+  it("does not turn the page from a row's end that is not the page's last card", () => {
+    expect(moveAcrossPages(childCursor(2), "right", 0, COUNT, GRID)).toEqual({ page: 0, cursor: childCursor(2) });
+  });
+
+  it("keeps ↑ from the top row on the header, and ↓ from the bottom row where it is", () => {
+    expect(moveAcrossPages(childCursor(0), "up", 1, COUNT, GRID)).toEqual({ page: 1, cursor: HEADER_CURSOR });
+    expect(moveAcrossPages(childCursor(4), "down", 0, COUNT, GRID)).toEqual({ page: 0, cursor: childCursor(4) });
+  });
+
+  it("moves within the page as the grid always has", () => {
+    expect(moveAcrossPages(childCursor(1), "down", 0, COUNT, GRID)).toEqual({ page: 0, cursor: childCursor(4) });
+    expect(moveAcrossPages(null, "down", 1, COUNT, GRID)).toEqual({ page: 1, cursor: childCursor(0) });
   });
 });

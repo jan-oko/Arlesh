@@ -123,6 +123,39 @@ export function habitRunId(flowId: number): string {
   return `habitrun-${flowId}-virtual`;
 }
 
+/** The spelling every fold id shares: `habitrun-{flow}-…-virtual`. */
+const HABIT_GROUP_ID = /^habitrun-(\d+)-(?:.+-)?virtual$/;
+
+/**
+ * The Habit a fold id belongs to — the run's, or one of its scope levels' — or `undefined` for any
+ * other id.
+ *
+ * This is what makes a fold id **resolvable** rather than merely unique. A folded node exists only
+ * in a drawn tree, so an id saved somewhere (a tab's subtree root) cannot be looked up in the loaded
+ * one; but the flow in it says which host to fold again, and folding that host is deterministic —
+ * the run's id is its flow, a level's is its flow, its kind and the day its span starts — so the same
+ * id comes back out of it. See `drawn-path.ts`.
+ */
+export function habitGroupFlowId(id: string): number | undefined {
+  const match = HABIT_GROUP_ID.exec(id);
+  if (match === null) return undefined;
+  const flowId = Number(match[1]);
+  return Number.isSafeInteger(flowId) ? flowId : undefined;
+}
+
+/**
+ * The path from `root` down to the node a Habit's iterations are drawn under — its **host**, the
+ * Target Node — or `[]` when none of that Habit's iterations is on the board.
+ */
+export function pathToHabitHost(root: MindmapNode, flowId: number): readonly MindmapNode[] {
+  if (root.children.some((child) => child.habitIteration?.flowId === flowId)) return [root];
+  for (const child of root.children) {
+    const below = pathToHabitHost(child, flowId);
+    if (below.length > 0) return [root, ...below];
+  }
+  return [];
+}
+
 /**
  * A scope level's tree id, keyed by the first iteration under it.
  *
@@ -287,6 +320,9 @@ export function foldHabitRuns(
   threshold: number,
   labels: HabitCollapseLabels,
 ): MindmapNode {
+  // A fold's own node is already folded: its levels were built with it, and folding its iterations
+  // again would hang a second run inside the first.
+  if (isHabitGroupNode(root)) return root;
   const children = foldChildren(
     root.children.map((child) => foldHabitRuns(child, threshold, labels)),
     threshold,

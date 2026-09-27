@@ -7,6 +7,7 @@ import {
   stepRefusalKey,
 } from "./steps-card";
 import { testKey } from "@/test/scope-key";
+import { canParentAnyNewChild } from "@/utils/node-meta";
 
 function node(kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   const rowId = extra.virtual === true ? {} : { rowId: 1 };
@@ -151,16 +152,24 @@ describe("what you can descend into", () => {
     expect(canDescendInto(node("tag"))).toBe(true);
   });
 
-  it("refuses a childless drawing, which has no inside at all", () => {
+  it("opens a folded run of Habit history, which is entered but never created in", () => {
     const folded = node("habit_group", {
-      id: "habit_group-1",
+      id: "habitrun-1-virtual",
+      virtual: true,
       habitGroup: {
         flowId: 1, level: "run", passed: 9, done: 5, missed: 4,
         spanStart: "2026-01-01", spanEnd: "2026-02-01", spanLabel: "January",
       },
     });
-    expect(canDescendInto(folded)).toBe(false);
-    expect(stepRefusalKey(folded)).toBe("refusedNotStored");
+    expect(canDescendInto(folded)).toBe(true);
+    expect(canParentAnyNewChild(folded)).toBe(false);
+    expect(creatableKinds(folded)).toEqual([]);
+  });
+
+  it("refuses a childless drawing, which has no inside at all", () => {
+    const drawing = node("task", { id: "drawn-1-virtual", virtual: true });
+    expect(canDescendInto(drawing)).toBe(false);
+    expect(stepRefusalKey(drawing)).toBe("refusedNotStored");
   });
 });
 

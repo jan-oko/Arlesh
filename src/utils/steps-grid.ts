@@ -142,8 +142,9 @@ export function pageSlice<T>(children: readonly T[], page: number, pageSize: num
  *
  * The **header card is a cell of the same grid**, not a separate thing with its own keys — one
  * navigation model, nothing extra to learn. `index` is within the current *page*, because a page is
- * what is on screen and an arrow key never leaves it: moving between pages is its own gesture,
- * deliberately distinct from descending and climbing so the three movements cannot be confused.
+ * what is on screen. Moving between pages has gestures of its own, deliberately distinct from
+ * descending and climbing so the three movements cannot be confused; the arrows cross a page edge
+ * only along the reading order ({@link moveAcrossPages}).
  */
 export type StepCursor = { cell: "header" } | { cell: "child"; index: number };
 
@@ -195,4 +196,42 @@ export function moveCursor(
       return next % width === 0 || next >= childCount ? cursor : childCursor(next);
     }
   }
+}
+
+/** A cursor together with the page it is on — what an arrow that may turn the page lands on. */
+export interface PagedCursor {
+  page: number;
+  cursor: StepCursor;
+}
+
+/**
+ * Where `direction` takes `cursor` on `page` when the arrows may **turn the page**.
+ *
+ * Within a page it is {@link moveCursor}. The cards are one sequence split into pages, so the two
+ * moves that run off the end of that sequence's page carry on into the next one rather than
+ * stopping: `→` on a page's last card lands on the next page's first, and `←` on a page's first
+ * card on the previous page's last. The view follows the selection onto the page it lands on.
+ *
+ * Only those two. `↑` from the top row is still the header card — what you are standing on, not a
+ * page back — and `↓` from the bottom row and `→` at the end of a row that is not the page's last
+ * card stay put, as {@link moveCursor} has them: neither is the card that comes next.
+ */
+export function moveAcrossPages(
+  cursor: StepCursor | null,
+  direction: StepDirection,
+  page: number,
+  childCount: number,
+  grid: StepGrid,
+): PagedCursor {
+  const onPage = Math.max(0, Math.min(grid.pageSize, childCount - page * grid.pageSize));
+  const within: PagedCursor = { page, cursor: moveCursor(cursor, direction, onPage, grid.columns) };
+  if (cursor === null || cursor.cell !== "child") return within;
+  const lastPage = pageCount(childCount, grid.pageSize) - 1;
+  if (direction === "right" && cursor.index === onPage - 1 && page < lastPage) {
+    return { page: page + 1, cursor: childCursor(0) };
+  }
+  if (direction === "left" && cursor.index === 0 && page > 0) {
+    return { page: page - 1, cursor: childCursor(grid.pageSize - 1) };
+  }
+  return within;
 }
