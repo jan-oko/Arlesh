@@ -260,3 +260,102 @@ fn a_task_with_no_time_scope_of_its_own_is_not_overdue() {
         july_day(20)
     ));
 }
+
+/// A pending, live wait under `(parent_type, parent_id)`, with `time_scope` as its own window.
+fn wait_under(
+    id: i64,
+    parent_type: &str,
+    parent_id: i64,
+    time_scope: Option<TimeScope>,
+) -> Expectation {
+    Expectation {
+        id: NodeId::Stored(id),
+        title: "wait".to_string(),
+        parent_type: parent_type.to_string(),
+        parent_id: NodeId::Stored(parent_id),
+        status: ExpectationStatus::Pending,
+        archival: ExpectationArchival::Live,
+        time_scope,
+        tag_ids: Vec::new(),
+        check_every: None,
+        check_starting: None,
+        last_check_at: None,
+        position: 0,
+        is_private: false,
+        agentic: false,
+        agentic_note: None,
+        question: false,
+        answer: None,
+        origin: Default::default(),
+    }
+}
+
+/// A lifecycle entry reading `timing`, for `node_type`/`id`.
+fn entry(node_type: &str, id: i64, timing: Timing) -> ItemLifecycle {
+    ItemLifecycle {
+        node_type: node_type.to_string(),
+        node_id: NodeId::Stored(id),
+        timing,
+        resolution: None,
+        verdict: None,
+        archival: Archival::Live,
+        archival_conflict: false,
+        plan_timing: None,
+    }
+}
+
+fn timing_of(lifecycles: &[ItemLifecycle], id: i64) -> Option<Timing> {
+    lifecycles
+        .iter()
+        .find(|entry| entry.node_type == EXPECTATION && entry.node_id == NodeId::Stored(id))
+        .map(|entry| entry.timing)
+}
+
+#[test]
+fn an_unscoped_wait_under_a_task_whose_window_is_ahead_reads_pending() {
+    let waits = [wait_under(1, "task", 10, None)];
+    let mut lifecycles = vec![
+        entry("task", 10, Timing::Pending),
+        entry(EXPECTATION, 1, Timing::Active),
+    ];
+
+    mark_waits_under_pending(&waits, &mut lifecycles);
+
+    assert_eq!(timing_of(&lifecycles, 1), Some(Timing::Pending));
+}
+
+#[test]
+fn a_wait_that_sent_no_entry_gets_a_pending_one_under_a_pending_parent() {
+    let waits = [wait_under(2, "goal", 20, None)];
+    let mut lifecycles = vec![entry("goal", 20, Timing::Pending)];
+
+    mark_waits_under_pending(&waits, &mut lifecycles);
+
+    assert_eq!(timing_of(&lifecycles, 2), Some(Timing::Pending));
+}
+
+#[test]
+fn an_unscoped_wait_under_a_lapsed_task_keeps_its_own_timing() {
+    let waits = [wait_under(3, "task", 30, None)];
+    let mut lifecycles = vec![
+        entry("task", 30, Timing::Lapsed),
+        entry(EXPECTATION, 3, Timing::Active),
+    ];
+
+    mark_waits_under_pending(&waits, &mut lifecycles);
+
+    assert_eq!(timing_of(&lifecycles, 3), Some(Timing::Active));
+}
+
+#[test]
+fn a_wait_with_a_window_of_its_own_answers_to_it_alone() {
+    let waits = [wait_under(4, "task", 40, Some(july_day_scope(12)))];
+    let mut lifecycles = vec![
+        entry("task", 40, Timing::Pending),
+        entry(EXPECTATION, 4, Timing::Active),
+    ];
+
+    mark_waits_under_pending(&waits, &mut lifecycles);
+
+    assert_eq!(timing_of(&lifecycles, 4), Some(Timing::Active));
+}

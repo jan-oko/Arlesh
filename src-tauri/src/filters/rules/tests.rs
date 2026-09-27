@@ -83,6 +83,31 @@ fn start_drops_a_lapsed_window_even_when_nothing_else_would() {
 }
 
 #[test]
+fn start_drops_a_task_or_goal_whose_window_has_not_begun_and_no_other_preset_does() {
+    for mut node in [task("todo"), goal("active")] {
+        node.timing = Some(Timing::Pending);
+        assert!(matches(&node, Preset::All));
+        assert!(
+            matches(&node, Preset::Plan),
+            "Plan still shows work scheduled ahead"
+        );
+        assert!(!matches(&node, Preset::Start), "{:?}", node.kind);
+        node.timing = Some(Timing::Active);
+        assert!(matches(&node, Preset::Start), "{:?}", node.kind);
+    }
+}
+
+#[test]
+fn a_task_whose_window_has_not_begun_fails_only_its_own_match_under_start() {
+    let mut node = task("todo");
+    node.timing = Some(Timing::Pending);
+    assert!(
+        !type_hard_hidden(&node, &BoardFilter::preset(Preset::Start)),
+        "a child with its own open window must still be able to hold it on screen"
+    );
+}
+
+#[test]
 fn start_drops_an_in_progress_task_with_nothing_left_to_start() {
     let bare = task("in_progress");
     assert!(!matches(&bare, Preset::Start));
@@ -224,6 +249,46 @@ fn by_default_start_shows_a_pending_wait_whether_or_not_it_is_checked_on() {
     // A passed window still drops it, checked or not.
     checked.timing = Some(Timing::Lapsed);
     assert!(!passes_expectation_preset(&checked, &start));
+}
+
+#[test]
+fn start_hides_a_wait_whose_window_has_not_begun_together_with_its_check_tasks() {
+    let mut ahead = expectation("pending");
+    ahead.timing = Some(Timing::Pending);
+    let start = BoardFilter::preset(Preset::Start);
+    assert!(!passes_expectation_preset(&ahead, &start));
+    assert!(
+        is_unopened_wait(&ahead, &start),
+        "gates its subtree, so a check due already goes with it"
+    );
+    assert!(type_hard_hidden(&ahead, &start));
+    for preset in [Preset::All, Preset::Plan, Preset::Do, Preset::Backlog] {
+        assert!(
+            !is_unopened_wait(&ahead, &BoardFilter::preset(preset)),
+            "{preset:?}"
+        );
+    }
+    assert!(passes_expectation_preset(
+        &ahead,
+        &BoardFilter::preset(Preset::Plan)
+    ));
+
+    let mut open = expectation("pending");
+    open.timing = Some(Timing::Active);
+    assert!(!is_unopened_wait(&open, &start));
+    assert!(passes_expectation_preset(&open, &start));
+}
+
+#[test]
+fn the_archived_pill_on_include_still_shows_an_archived_wait_whose_window_is_ahead() {
+    let mut archived = expectation("pending");
+    archived.timing = Some(Timing::Pending);
+    archived.archived = true;
+    let filter = BoardFilter {
+        archived: OverrideMode::Include,
+        ..BoardFilter::preset(Preset::Start)
+    };
+    assert!(!is_unopened_wait(&archived, &filter));
 }
 
 #[test]

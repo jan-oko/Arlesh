@@ -114,6 +114,32 @@ pub fn is_unopened_occurrence(node: &NodeFacts, filter: &BoardFilter) -> bool {
     filter.preset != Preset::All
 }
 
+/// Whether `node` is a wait whose window has not begun, which Start hides together with the check
+/// tasks beneath it.
+///
+/// Start hides an item that is not in scope yet exactly as it hides one whose scope has passed
+/// (ruled by the user, 2026-09-27), and a wait is no exception: its Timing reads Pending before its
+/// own window opens, or — with none of its own — while the window of what it hangs under has not
+/// begun (see [`crate::tasks::mark_waits_under_pending`]).
+///
+/// It **gates** the subtree rather than merely failing its own match, and that is the difference
+/// from a Task's rule. A wait's only children are its notes and its check tasks, and a check task
+/// is timed by the day it fell due, not by the wait's window — a wait checked on every week from
+/// today has a check due today whatever its window says. Failing the wait alone would leave that
+/// check on screen, holding the wait as its ancestor. The check schedule itself is not touched:
+/// the check is still due, and every other preset still shows it.
+///
+/// The Archived pill's `Include` still wins for an archived wait, as it does for a lapsed one.
+pub fn is_unopened_wait(node: &NodeFacts, filter: &BoardFilter) -> bool {
+    if filter.preset != Preset::Start || node.kind != NodeKind::Expectation {
+        return false;
+    }
+    if node.timing != Some(Timing::Pending) {
+        return false;
+    }
+    !(filter.archived == OverrideMode::Include && is_archived(node))
+}
+
 /// Whether `node` is a Task that Start hides because its Plan has not begun yet.
 ///
 /// Start asks what can be begun **now**, and a Task scheduled into next week is not that. The
@@ -254,6 +280,9 @@ pub fn type_hard_hidden(node: &NodeFacts, filter: &BoardFilter) -> bool {
     if is_unopened_occurrence(node, filter) {
         return true;
     }
+    if is_unopened_wait(node, filter) {
+        return true;
+    }
     is_flow_hard_hidden(node, filter)
 }
 
@@ -288,7 +317,7 @@ pub fn is_live_expectation(node: &NodeFacts) -> bool {
 ///
 /// A wait is not work, so it answers to its own rule. **All** shows every one. A **pending**, live
 /// one shows under **Plan** — it is part of what is in play — and under **Start** while its window
-/// has not passed, whether or not it is checked on; its check tasks answer the ordinary Task rules
+/// is open (neither Pending nor Lapsed), whether or not it is checked on; its check tasks answer the ordinary Task rules
 /// beside it. With [`BoardFilter::start_hides_checked_waits`] on (an app-wide setting, off by
 /// default), Start shows one only when it has **no** Check every: the check task beneath it is then
 /// the thing to start, and stands in for it. Stored and derived waits alike. **Do** and **Backlog**
@@ -302,12 +331,10 @@ pub fn passes_expectation_preset(node: &NodeFacts, filter: &BoardFilter) -> bool
     match filter.preset {
         Preset::All => true,
         Preset::Plan => is_live_expectation(node),
-        // A window that has passed drops out of Start, as a Task's does.
+        // A window that has passed, or has not begun, drops out of Start, as a Task's does.
         Preset::Start => {
             let hidden_for_its_check = filter.start_hides_checked_waits && node.has_check;
-            is_live_expectation(node)
-                && !hidden_for_its_check
-                && node.timing != Some(Timing::Lapsed)
+            is_live_expectation(node) && !hidden_for_its_check && is_in_window(node)
         }
         Preset::Do | Preset::Backlog => false,
     }
@@ -381,18 +408,31 @@ fn passes_plan(node: &NodeFacts, filter: &BoardFilter) -> bool {
     }
 }
 
+/// Whether a node's effective window is open now: neither still ahead (Pending) nor passed
+/// (Lapsed). An unscoped node, or one no lifecycle was derived for, is always in its window.
+fn is_in_window(node: &NodeFacts) -> bool {
+    !matches!(node.timing, Some(Timing::Pending | Timing::Lapsed))
+}
+
 /// Start's own branch: things that can be begun now.
 ///
 /// Anything whose window has passed drops out, which is why no separate Archival clause is needed
 /// — effective Archival only ever becomes Archived once a window has lapsed, or once a Goal says
-/// so in its own status. Blocked Tasks and Goals are dropped earlier, as a hard-hidden subtree.
+/// so in its own status. So does anything whose window has **not begun** (ruled by the user,
+/// 2026-09-27): what is not in scope yet is no more startable than what has left it. Blocked Tasks
+/// and Goals are dropped earlier, as a hard-hidden subtree.
+///
+/// A window still ahead fails the node's **own** match rather than gating its subtree, as a
+/// lapsed one and a Plan still ahead ([`is_planned_ahead`]) do. A child with no window of its own
+/// reads its parent's, so it is Pending too and drops on its own account; a child whose own
+/// window is already open still shows, holding its parent on screen as its ancestor.
 fn passes_start(node: &NodeFacts, filter: &BoardFilter) -> bool {
     if !matches!(node.kind, NodeKind::Task | NodeKind::Goal) {
         return true;
     }
-    // A lapsed window drops out, and so does a delegated Task: it is archived in every effect
-    // but name, and nothing someone else holds is yours to start.
-    if node.timing == Some(Timing::Lapsed) || node.delegated {
+    // A window outside now drops out, and so does a delegated Task: it is archived in every
+    // effect but name, and nothing someone else holds is yours to start.
+    if !is_in_window(node) || node.delegated {
         return with_archived_override(node, filter, false);
     }
     if node.kind == NodeKind::Goal {

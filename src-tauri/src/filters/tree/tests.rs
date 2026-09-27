@@ -147,3 +147,40 @@ fn the_archived_pill_on_exclude_hides_a_subtree_that_all_would_otherwise_keep() 
     };
     assert_eq!(ids(&prune_tree(&root, &filter)), ["root"]);
 }
+
+#[test]
+fn start_keeps_a_parent_whose_window_has_not_begun_only_as_the_ancestor_of_an_open_child() {
+    use crate::tasks::lifecycle::Timing;
+    let timed = |id: &str, timing: Timing| {
+        let mut leaf = task(id, "todo");
+        leaf.facts.timing = Some(timing);
+        leaf
+    };
+    let mut parent = timed("task-ahead", Timing::Pending);
+    parent.children = vec![
+        timed("task-inherits", Timing::Pending),
+        timed("task-own-now", Timing::Active),
+    ];
+    let lone = timed("task-lone-ahead", Timing::Pending);
+    let root = domain("domain-1", vec![parent, lone]);
+
+    let pruned =
+        prune(&root, &BoardFilter::preset(Preset::Start)).expect("the open child survives");
+
+    assert_eq!(ids(&pruned), ["domain-1", "task-ahead", "task-own-now"]);
+}
+
+#[test]
+fn start_drops_a_wait_whose_window_has_not_begun_with_the_check_due_beneath_it() {
+    use crate::tasks::lifecycle::Timing;
+    let mut wait = NodeFacts::new("expectation-1", NodeKind::Expectation);
+    wait.status = Some("pending".to_string());
+    wait.timing = Some(Timing::Pending);
+    let mut check = task("task-check", "todo");
+    check.facts.timing = Some(Timing::Active);
+    let root = domain("domain-1", vec![FactNode::with_children(wait, vec![check])]);
+
+    assert_eq!(prune(&root, &BoardFilter::preset(Preset::Start)), None);
+    let plan = prune(&root, &BoardFilter::preset(Preset::Plan)).expect("Plan keeps the wait");
+    assert_eq!(ids(&plan), ["domain-1", "expectation-1", "task-check"]);
+}

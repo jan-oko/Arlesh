@@ -65,6 +65,7 @@ impl<'a> Row<'a> {
             rules::is_shelved_project(ancestor, filter)
                 || rules::is_hidden_backlog(ancestor, filter)
                 || rules::is_unopened_occurrence(ancestor, filter)
+                || rules::is_unopened_wait(ancestor, filter)
         })
     }
 }
@@ -120,9 +121,9 @@ fn unblock_filter(filter: &BoardFilter) -> BoardFilter {
 /// The status preset, asked of a flat row.
 ///
 /// The preset's own verdict is [`rules::passes_status`], unchanged — the same call the Mindmap
-/// makes. What a list has to add is the three subtree gates it cannot get from pruning: a shelved
+/// makes. What a list has to add is the subtree gates it cannot get from pruning: a shelved
 /// Project, a backlogged Task or an unopened Habit occurrence above the row, and, under Start, a
-/// blocked ancestor. A row's ancestors also carry the Backlog preset's "and everything beneath
+/// blocked ancestor or a wait whose window has not begun (which is what hides its check task). A row's ancestors also carry the Backlog preset's "and everything beneath
 /// it", and Start's inherited Plan, which the tree walk would otherwise have accumulated on the
 /// way down.
 fn passes_row_preset(row: Row<'_>, filter: &BoardFilter) -> bool {

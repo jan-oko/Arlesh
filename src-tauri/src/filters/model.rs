@@ -32,9 +32,10 @@ pub enum Preset {
     /// What is still to be planned: no done tasks, no achieved/frozen/archived goals, nothing
     /// whose effective Archival is Archived.
     Plan,
-    /// What can be begun now: Plan, minus lapsed windows, minus in-progress tasks with nothing
-    /// left under them to start, minus Habit flows, minus blocked subtrees, minus Tasks planned
-    /// into a scope that has not begun yet.
+    /// What can be begun now: Plan, minus items whose window has lapsed or has not begun yet
+    /// (Tasks, Goals and waits — a wait still ahead takes its check tasks with it), minus
+    /// in-progress tasks with nothing left under them to start, minus Habit flows, minus blocked
+    /// subtrees, minus Tasks planned into a scope that has not begun yet.
     Start,
     /// Only in-progress tasks.
     Do,

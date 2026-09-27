@@ -2,7 +2,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
 import {
   typeHardHidden, passesTags, withArchivedOverride, isShelvedProject, isHiddenBacklog,
-  isUnopenedOccurrence, passesCommitmentPreset, passesExpectationPreset, isArchived, isDelegated,
+  isUnopenedOccurrence, isUnopenedWait, passesCommitmentPreset, passesExpectationPreset, isArchived, isDelegated,
   isLiveExpectation, isPlannedAhead, isOutsidePlanScope,
 } from "@/utils/filter-tree";
 import type { TimeScope } from "@/api/time-scope";
@@ -358,17 +358,20 @@ export function deriveScopeStateTokens(node: MindmapNode): string[] {
 /**
  * Whether some ancestor of a row gates the whole subtree beneath it under this filter.
  *
- * Three rules hide a node *together with everything under it*: a Frozen/Archived Project shelved by
- * Plan/Start, a backlogged Task, and a habit occurrence whose window has not opened. The Mindmap
+ * Four rules hide a node *together with everything under it*: a Frozen/Archived Project shelved by
+ * Plan/Start, a backlogged Task, a habit occurrence whose window has not opened, and, under Start, a
+ * wait whose window has not begun (which is what takes its check task out). The Mindmap
  * gets that for free from tree-pruning — drop the node and its descendants go with it — but a flat
- * list has no tree to prune, so it asks each row's chain outright. (A row's own three are handled
+ * list has no tree to prune, so it asks each row's chain outright. (A row's own four are handled
  * by `typeHardHidden`, before this runs.)
  *
  * Shared by the task rows and the commitments band so the band cannot keep a Commitment from a
  * branch the rows have dropped.
  */
 function hasGatingAncestor(ancestors: readonly MindmapNode[], f: FilterState): boolean {
-  return ancestors.some((a) => isShelvedProject(a, f) || isHiddenBacklog(a, f) || isUnopenedOccurrence(a, f));
+  return ancestors.some(
+    (a) => isShelvedProject(a, f) || isHiddenBacklog(a, f) || isUnopenedOccurrence(a, f) || isUnopenedWait(a, f),
+  );
 }
 
 /** The nearest ancestor's own Plan position — what an unplanned row inherits under Start. */
@@ -410,7 +413,10 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
       if (row.isBlocked || row.hasBlockedAncestor) return false;
       // A flat list has no walk to carry a Plan down, so the row asks its own chain.
       if (isPlannedAhead(row.node, f, inheritedPlan(row.ancestors))) return false;
-      if (row.node.timing === "lapsed" || isDelegated(row.node)) return withArchivedOverride(row.node, f, false);
+      // A window that has passed or has not begun drops out, as on the canvas.
+      if (row.node.timing === "lapsed" || row.node.timing === "pending" || isDelegated(row.node)) {
+        return withArchivedOverride(row.node, f, false);
+      }
       if (row.node.status === "done") return false;
       if (row.node.status === "in_progress" && !row.node.children.some((c) => c.kind === "task" && c.status === "todo")) {
         return false;
