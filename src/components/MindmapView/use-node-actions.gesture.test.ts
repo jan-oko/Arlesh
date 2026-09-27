@@ -95,6 +95,7 @@ function renderPaste() {
       setEditingNodeId: vi.fn(),
       showToast: vi.fn(),
       onNewFlow: vi.fn(),
+      onNewHabit: vi.fn(),
       onNewCommitment: vi.fn(),
     }),
   );

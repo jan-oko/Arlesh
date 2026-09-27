@@ -298,15 +298,23 @@ export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): b
 }
 
 /**
- * The node kinds a Shift+initial chord creates directly under the selection, bypassing Tab's
- * inherit-the-parent default. Deliberately the seven *named* kinds a user reaches for; flow items
- * are left out because they are spawned by Tab from inside their flow. Two of the seven open an
- * editor rather than a blank row — see `onCreateTypedChild`.
+ * The kinds a Shift+initial chord creates directly under the selection. Deliberately the *named*
+ * kinds a user reaches for; flow items are left out because they are spawned by Tab from inside
+ * their flow. Three of them open an editor rather than a blank row — see `onCreateTypedChild`.
+ *
+ * `habit` is the one entry that is not a node kind of its own: a Habit is a Flow with its
+ * Recurrence switched on, so it is created as a Flow and parented by a Flow's rules
+ * ({@link typedChildNodeKind}).
  */
-export const TYPED_CHILD_KINDS = ["domain", "project", "goal", "task", "commitment", "expectation", "info", "flow"] as const;
+export const TYPED_CHILD_KINDS = ["domain", "project", "goal", "task", "commitment", "expectation", "info", "flow", "habit"] as const;
 
 /** One of the kinds a Shift+initial chord can create. */
 export type TypedChildKind = (typeof TYPED_CHILD_KINDS)[number];
+
+/** The node kind a typed chord's child is stored as — a Habit is a Flow, every other one itself. */
+export function typedChildNodeKind(kind: TypedChildKind): NodeKind {
+  return kind === "habit" ? "flow" : kind;
+}
 
 /**
  * Every kind that can hold a child, in the order a refusal message should read them out. The flow
@@ -402,14 +410,9 @@ export function canAdoptChildren(node: MindmapNode): boolean {
 /**
  * Whether **any** new child can be created under `node` at all.
  *
- * The question `Tab` asks, and the only form it can ask it in: `Tab` names no kind — the parent
- * decides what its child is — so there is nothing to put to {@link canParentNewChild}. What
- * answers no is anything drawn rather than stored: a folded run of Habit history, the synthetic
- * root, and any other virtual node.
- *
- * A **Tag** answers yes, because it holds an Info note — but `Tab` is still refused on one, in the
- * gesture rather than here: `Tab` creates the parent's *default* child, which for a label would be
- * a Domain, and the one kind a Tag does hold has a chord of its own (`Shift+I`).
+ * The question the Steps View asks of an empty Step before it offers a first child. What answers
+ * no is anything drawn rather than stored: a folded run of Habit history, the synthetic root, and
+ * any other virtual node.
  */
 export function canParentAnyNewChild(node: MindmapNode): boolean {
   return ALL_NODE_KINDS.some((kind) => canParentNewChild(node, kind));

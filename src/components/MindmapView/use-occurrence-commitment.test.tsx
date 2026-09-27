@@ -161,7 +161,7 @@ function Harness() {
   const { onCreateTypedChild } = useNodeActions({
     tree, clipboard: null, moveNode, duplicateNode, onRequestDelete: noop, reload, renameNode,
     createNode, createChild, selectNode: noop, setClipboard: noop, setEditingNodeId: noop,
-    showToast: noop, onNewFlow: noop, onNewCommitment,
+    showToast: noop, onNewFlow: noop, onNewHabit: noop, onNewCommitment,
   });
 
   if (isLoading) return <div>{LOADING_LABEL}</div>;

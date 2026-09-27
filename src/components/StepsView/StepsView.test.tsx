@@ -19,6 +19,8 @@ vi.mock("@/components/NodeEditorModals/NodeEditorModals", () => ({
   default: () => <div data-testid="editor-modals" />,
 }));
 vi.mock("@/hooks/use-tag-names", () => ({ useTagNames: () => new Map() }));
+// The blank Flow editor (Shift+H) asks the backend which targets could hold it; unrestricted here.
+vi.mock("@/hooks/use-valid-flow-targets", () => ({ useValidFlowTargets: () => null }));
 vi.mock("@/hooks/use-scope-range-label", () => ({ useScopeRangeLabel: () => null }));
 
 const setEditorModal = vi.fn();
@@ -449,7 +451,7 @@ describe("creating from a Step", () => {
     press("Tab");
     await settle();
 
-    expect(createChild).toHaveBeenCalledWith("goal-1", "goal", "");
+    expect(createNode).toHaveBeenCalledWith("goal-1", "goal", "task", "");
     expect(useMindmapStore.getState().subtreeRootId).toBe("goal-1");
   });
 
@@ -462,12 +464,12 @@ describe("creating from a Step", () => {
     press("Tab");
     await settle();
 
-    expect(createChild).toHaveBeenCalledWith("task-1", "task", "");
+    expect(createNode).toHaveBeenCalledWith("task-1", "task", "task", "");
     expect(useMindmapStore.getState().subtreeRootId).toBe("task-1");
   });
 
   it("does not step in when the create is refused, and says why", async () => {
-    // A Tag holds notes and nothing else, so Tab (which would create its default child) is refused.
+    // A Tag holds notes and nothing else, so Tab (which creates a Task) is refused.
     mockTree([n("domain-1", "domain", { children: [n("domain-2", "tag")] })]);
     useMindmapStore.setState({ subtreeRootId: "domain-1" });
     render(<StepsView />);
@@ -476,9 +478,19 @@ describe("creating from a Step", () => {
     press("Tab");
     await settle();
 
-    expect(createChild).not.toHaveBeenCalled();
+    expect(createNode).not.toHaveBeenCalled();
     expect(useMindmapStore.getState().subtreeRootId).toBe("domain-1");
-    expect(useMindmapStore.getState().pendingToast?.message).toBe("warnings:createUnderTagRefused");
+    expect(useMindmapStore.getState().pendingToast?.message).toContain("typedChildRefused");
+  });
+
+  it("opens the new-Habit editor on Shift+H, with repeating already on", () => {
+    mockTree([n("goal-1", "goal", { children: [n("task-1", "task")] })]);
+    useMindmapStore.setState({ subtreeRootId: "goal-1" });
+    render(<StepsView />);
+
+    pressWith("KeyH", { shift: true }); // nothing selected: onto the Step's own Goal
+    expect(screen.getByText("editor:newHabitTitle")).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "makeHabit" })).toBeChecked();
   });
 
   it("refuses a sibling of the Step itself, which would land outside it", () => {

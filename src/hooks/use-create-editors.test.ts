@@ -3,25 +3,79 @@ import { act, renderHook } from "@testing-library/react";
 import { useCreateEditors } from "./use-create-editors";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
+import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
+import { setFlowRecurrence } from "@/api/flows";
+import { withAtomicGesture } from "@/api/gesture";
+
+vi.mock("@/api/flows", () => ({ setFlowRecurrence: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/api/gesture", () => ({
+  withAtomicGesture: vi.fn((_name: string, run: () => Promise<unknown>) => run()),
+}));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 
 const tree: MindmapNode = {
   id: "root", kind: "domain", title: "", position: 0, tagIds: [],
-  children: [{ id: "goal-4", kind: "goal", title: "Ship", position: 0, tagIds: [], children: [] }],
+  children: [{ id: "goal-4", rowId: 4, kind: "goal", title: "Ship", position: 0, tagIds: [], children: [] }],
 };
 
 function setup() {
-  const createFlow = vi.fn();
+  const createFlow = vi.fn().mockResolvedValue({ id: 31 });
   const createCommitment = vi.fn().mockResolvedValue(undefined);
-  const hook = renderHook(() => useCreateEditors({ tree, createFlow, createCommitment }));
-  return { hook, createFlow, createCommitment };
+  const reload = vi.fn().mockResolvedValue(undefined);
+  const hook = renderHook(() => useCreateEditors({ tree, createFlow, createCommitment, reload }));
+  return { hook, createFlow, createCommitment, reload };
 }
+
+const PLAIN_FLOW: FlowSaveData = {
+  title: "Journal", instanceType: "task", targetType: null, targetId: null,
+  durationN: 1, durationKind: "week", windowPart: null, windowTimeStart: null, windowTimeEnd: null,
+  rootPlanKind: null, rootPlanStart: null, rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null,
+  isPrivate: false,
+};
 
 describe("useCreateEditors", () => {
   it("opens a blank Flow editor under a parent, remembering the parent's kind", () => {
     const { hook } = setup();
     act(() => hook.result.current.onNewFlow("goal-4"));
-    expect(hook.result.current.flowParent).toEqual({ id: "goal-4", kind: "goal" });
+    expect(hook.result.current.flowParent).toEqual({ id: "goal-4", kind: "goal", asHabit: false });
     expect(hook.result.current.commitmentParent).toBeNull();
+  });
+
+  it("opens the same Flow editor as a Habit under a parent — Shift+H", () => {
+    const { hook } = setup();
+    act(() => hook.result.current.onNewHabit("goal-4"));
+    expect(hook.result.current.flowParent).toEqual({ id: "goal-4", kind: "goal", asHabit: true });
+  });
+
+  it("saves a new Habit as its Flow and its Recurrence, in one undoable gesture", async () => {
+    const { hook, createFlow, reload } = setup();
+    act(() => hook.result.current.onNewHabit("goal-4"));
+    await act(async () => {
+      await hook.result.current.onCreateFlow({
+        ...PLAIN_FLOW,
+        recurrence: {
+          startDate: "2026-09-27", gapN: null, gapKind: null, endDate: null,
+          consumptionKind: "destructive", blockingMode: null, catchupPolicy: null,
+        },
+      });
+    });
+    expect(withAtomicGesture).toHaveBeenCalledWith("gestures.newHabit", expect.any(Function));
+    expect(createFlow).toHaveBeenCalledWith(expect.objectContaining({ title: "Journal", parent_type: "goal" }));
+    expect(setFlowRecurrence).toHaveBeenCalledWith(31, {
+      start_scope_id: { kind: "week", date: "2026-09-27" }, gap_n: null, gap_kind: null, end_scope_id: null,
+      consumption_kind: "destructive", blocking_mode: null, catchup_policy: null,
+    });
+    expect(reload).toHaveBeenCalled();
+    expect(hook.result.current.flowParent).toBeNull();
+  });
+
+  it("saves a plain Flow with no Recurrence at all", async () => {
+    const { hook, createFlow } = setup();
+    vi.mocked(setFlowRecurrence).mockClear();
+    act(() => hook.result.current.onNewFlow("goal-4"));
+    await act(async () => { await hook.result.current.onCreateFlow(PLAIN_FLOW); });
+    expect(createFlow).toHaveBeenCalled();
+    expect(setFlowRecurrence).not.toHaveBeenCalled();
   });
 
   it("opens nothing for a parent that is not on the board", () => {

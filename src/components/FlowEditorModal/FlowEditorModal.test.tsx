@@ -217,6 +217,31 @@ describe("FlowEditorModal — save", () => {
     );
   });
 
+  it("opens a new flow as a Habit with repeating already on, and saves the toggle's defaults", async () => {
+    const blank = mkFlow({ id: "flow-new", title: "Journal" });
+    delete blank.rowId;
+    render(<FlowEditorModal {...defaultProps} node={blank} startAsHabit />);
+    expect(screen.getByRole("checkbox", { name: "makeHabit" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recurrence: {
+            startDate: expect.any(String), gapN: null, gapKind: null, endDate: null,
+            consumptionKind: "destructive", blockingMode: null, catchupPolicy: null,
+          },
+        }),
+      ),
+    );
+  });
+
+  it("offers no Recurrence on a plain new flow — only Shift+H opens one as a Habit", () => {
+    const blank = mkFlow({ id: "flow-new" });
+    delete blank.rowId;
+    render(<FlowEditorModal {...defaultProps} node={blank} />);
+    expect(screen.queryByRole("checkbox", { name: "makeHabit" })).not.toBeInTheDocument();
+  });
+
   it("prompts to reconcile when a schedule change collides with completed iterations", async () => {
     vi.mocked(getFlowRecurrence).mockResolvedValueOnce({
       flow_id: 1, start_scope_id: testKey(1), gap_n: null, gap_kind: null, end_scope_id: null,

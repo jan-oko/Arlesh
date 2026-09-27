@@ -237,7 +237,7 @@ export default function StepsView() {
     setSelection(id === null ? null : { cell: "child", nodeId: id });
   }, [enterSubtree]);
 
-  const createEditors = useCreateEditors({ tree, createFlow, createCommitment });
+  const createEditors = useCreateEditors({ tree, createFlow, createCommitment, reload });
 
   // Deleting on the other views' terms: the List View's single-selection confirmation and its
   // "next, else previous" landing, over the Mindmap's writer — so one Ctrl+Z takes it back.
@@ -258,6 +258,7 @@ export default function StepsView() {
     onRequestDelete: (ids) => { const first = ids[0]; if (first !== undefined) requestDelete(first); },
     selectNode: selectCreated,
     onNewFlow: createEditors.onNewFlow,
+    onNewHabit: createEditors.onNewHabit,
     onNewCommitment: createEditors.onNewCommitment,
   });
 

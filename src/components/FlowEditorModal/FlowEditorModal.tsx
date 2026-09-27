@@ -150,6 +150,11 @@ interface Props {
    */
   inheritedTarget?: TargetSelection | null;
   heading?: string;
+  /**
+   * A new flow that opens **as a Habit** (Shift+H): repeating is already switched on, with the
+   * defaults the switch gives an existing flow, and saving writes the Recurrence with the flow.
+   */
+  startAsHabit?: boolean;
   onSave: (data: FlowSaveData) => Promise<void>;
   onClose: () => void;
 }
@@ -158,7 +163,7 @@ interface Props {
  * Edits a Flow template: its title, Instance Type (goal|task), Duration-form flow scope,
  * and Target Node. Flow items and their cycle scopes are edited separately (Phase 7.3).
  */
-export default function FlowEditorModal({ node, availableTargets, inheritedTarget = null, heading, onSave, onClose }: Props) {
+export default function FlowEditorModal({ node, availableTargets, inheritedTarget = null, heading, startAsHabit = false, onSave, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "nodeKinds", "scopes"]);
   const [title, setTitle] = useState(node.title);
@@ -187,10 +192,14 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
-  // Recurrence (Habit) is edit-only — it needs a persisted flow to key on.
+  // Recurrence (Habit) is offered when editing a persisted flow, and when creating one as a Habit
+  // (Shift+H) — whose save writes the flow first and keys the Recurrence on it.
   const flowId = node.rowId === undefined ? undefined : storedId(node.rowId);
   const isEdit = flowId !== undefined;
-  const [recurrence, setRecurrence] = useState<RecurrenceUi>(() => defaultRecurrence(todayIso()));
+  const offersRecurrence = isEdit || startAsHabit;
+  const [recurrence, setRecurrence] = useState<RecurrenceUi>(
+    () => ({ ...defaultRecurrence(todayIso()), isHabit: startAsHabit }),
+  );
   // For edit-habit reconciliation: how many completed iterations exist, the schedule snapshot to
   // diff against, and whether the reconcile prompt is showing.
   const [completionCount, setCompletionCount] = useState(0);
@@ -268,7 +277,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
     setSaveError(null);
     try {
       const phase = isPhaseKind(durationKind);
-      // Recurrence is set/cleared only for an already-persisted, scoped flow.
+      // Recurrence is set/cleared only for a scoped flow that offers it.
       const recurrenceSave: RecurrenceSave | null =
         recurrence.isHabit
           ? {
@@ -300,7 +309,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
         // And the Verdict Window only to a commitment one: nothing else has a verdict to bound.
         ...verdictWindowFields(instanceType === "commitment" ? verdictWindow : null),
         isPrivate,
-        ...(isEdit && scoped ? { recurrence: recurrenceSave } : {}),
+        ...(offersRecurrence && scoped ? { recurrence: recurrenceSave } : {}),
         ...(reconcile !== undefined ? { reconcile } : {}),
       });
     } catch (err) {
@@ -425,7 +434,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
           <RootPlanField flowScopeN={durationN} flowScopeKind={durationKind} value={rootPlan} onChange={setRootPlan} />
         </div>
       )}
-      {scoped && isEdit && (
+      {scoped && offersRecurrence && (
         <div className={styles.label}>
           {t("fieldRecurrence")}
           <RecurrenceField value={recurrence} onChange={setRecurrence} durationKind={durationKind} />

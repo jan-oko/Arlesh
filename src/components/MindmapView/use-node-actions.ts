@@ -4,7 +4,7 @@ import { isDerivedWait } from "@/utils/derived-wait";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
-import { canAdoptChildren, canParentAnyNewChild, canParentNewChild, validParentKinds } from "@/utils/node-meta";
+import { canAdoptChildren, canParentNewChild, isFlowKind, typedChildNodeKind, validParentKinds } from "@/utils/node-meta";
 import { pasteRefusal, countPasteRefusals, pasteRefusalKey, flowsLeftBehind, PASTE_REFUSAL } from "@/utils/paste-refusal";
 import type { PasteRefusal, PasteRefusalCount } from "@/utils/paste-refusal";
 import type { TypedChildKind } from "@/utils/node-meta";
@@ -44,6 +44,11 @@ interface Options {
    */
   onNewFlow: (parentId: string) => void;
   /**
+   * Opens the same blank Flow editor with its Recurrence already switched on — a Habit, which is a
+   * Flow that repeats. Shift+H: the Flow child and the "make it a Habit" switch in one step.
+   */
+  onNewHabit: (parentId: string) => void;
+  /**
    * Opens the Commitment editor on a blank commitment under `parentId`. A Commitment is invalid
    * without a window of its own or one above it, so Shift+C asks for the window first rather than
    * posting a bare row for the backend to refuse.
@@ -70,7 +75,7 @@ interface Result {
 
 export function useNodeActions({
   tree, clipboard, moveNode, duplicateNode, onRequestDelete, reload, renameNode,
-  createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewCommitment,
+  createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewHabit, onNewCommitment,
 }: Options): Result {
   const { t } = useTranslation(["warnings", "nodeKinds", "undo"]);
   // Advancing a status is one definition, shared with every other surface that draws the gesture
@@ -99,40 +104,6 @@ export function useNodeActions({
     [tree, renameNode, setEditingNodeId, showToast, t],
   );
 
-  const onCreateChild = useCallback(
-    (nodeId: string) => {
-      const node = findNode(tree, nodeId);
-      // The synthetic root is the "nothing was aimed at" case, and stays silent on purpose — the
-      // same answer the typed chords give with no selection at all.
-      if (node === undefined || !nodeId.includes("-")) return;
-      // `Tab` names no kind — the parent decides what its child is — so the two refusals it can
-      // give are about that. A **Tag** does hold something (an Info note, and nothing else), but
-      // not the Domain a label's default child would be, and the kind it does hold has a chord of
-      // its own — so `Tab` points at it rather than creating something the backend would refuse.
-      if (node.kind === "tag") {
-        showToast({ nodeId, message: t("warnings:createUnderTagRefused") });
-        return;
-      }
-      // And a node drawn rather than stored — a folded run of Habit history — holds nothing at
-      // all. Both used to be an `if (…) return` with nothing on screen.
-      if (!canParentAnyNewChild(node)) {
-        showToast({ nodeId, message: t("warnings:createUnderRepetition") });
-        return;
-      }
-      void (async () => {
-        try {
-          const newNode = await createChild(nodeId, node.kind, "");
-          selectNode(newNode.id);
-          setEditingNodeId(newNode.id);
-        } catch (err) {
-          console.error(`${LOG_PREFIX} createChild failed:`, err);
-          showToast({ nodeId, message: t("warnings:createFailed", { message: getErrorMessage(err) }) });
-        }
-      })();
-    },
-    [tree, createChild, selectNode, setEditingNodeId, showToast, t],
-  );
-
   /**
    * Why `parent` cannot take a new `childKind`, as a sentence.
    *
@@ -152,7 +123,7 @@ export function useNodeActions({
       return t("warnings:typedChildRefused", {
         child: t(`nodeKinds:${childKind}`),
         parent: t(`nodeKinds:${parent.kind}`),
-        parents: validParentKinds(childKind).map((kind) => t(`nodeKinds:${kind}`)).join(", "),
+        parents: validParentKinds(typedChildNodeKind(childKind)).map((kind) => t(`nodeKinds:${kind}`)).join(", "),
       });
     },
     [t],
@@ -171,15 +142,16 @@ export function useNodeActions({
       // one, so `Shift+F` on a virtual Habit occurrence used to pass this check (a Habit whose
       // instances are Goals draws an iteration root of kind `goal`, and a Flow may sit under a
       // Goal), route straight to the Flow editor below, and post a parent id of `NaN`.
-      if (!canParentNewChild(parent, childKind)) {
+      if (!canParentNewChild(parent, typedChildNodeKind(childKind))) {
         showToast({ nodeId, message: typedChildRefusal(parent, childKind) });
         return;
       }
 
-      // Two kinds are configured before they exist rather than named and filled in after. A Flow
-      // because that is what a Flow is; a Commitment because it is not valid without a window, so
+      // Three kinds are configured before they exist rather than named and filled in after. A Flow
+      // because that is what a Flow is, and a Habit because it is a Flow that repeats; a Commitment because it is not valid without a window, so
       // posting a bare row first would only earn a refusal and leave the user at a dead end.
       if (childKind === "flow") { onNewFlow(nodeId); return; }
+      if (childKind === "habit") { onNewHabit(nodeId); return; }
       if (childKind === "commitment") { onNewCommitment(nodeId); return; }
 
       void (async () => {
@@ -195,7 +167,38 @@ export function useNodeActions({
         }
       })();
     },
-    [tree, createNode, onNewFlow, onNewCommitment, selectNode, setEditingNodeId, showToast, t, typedChildRefusal],
+    [tree, createNode, onNewFlow, onNewHabit, onNewCommitment, selectNode, setEditingNodeId, showToast, t, typedChildRefusal],
+  );
+
+  /**
+   * `Tab`: a **Task** child, whatever the parent — `Shift+T` without the Shift. The parent used to
+   * pick the kind (a Domain under an Aspect, a Goal under a Goal, an Info under an Info), which made
+   * the commonest key's result depend on where you stood. A parent that cannot hold a Task is
+   * refused by the same rule, in the same words, as `Shift+T` on it — never answered with a kind
+   * nobody asked for.
+   *
+   * The one exception is a **Flow template**: nothing real lives inside one, and `Tab` is the only
+   * way its items are made, so there it still adds the item the template implies.
+   */
+  const onCreateChild = useCallback(
+    (nodeId: string) => {
+      const node = findNode(tree, nodeId);
+      // The synthetic root is the "nothing was aimed at" case, and stays silent on purpose — the
+      // same answer the typed chords give with no selection at all.
+      if (node === undefined || !nodeId.includes("-")) return;
+      if (!isFlowKind(node.kind)) { onCreateTypedChild(nodeId, "task"); return; }
+      void (async () => {
+        try {
+          const newNode = await createChild(nodeId, node.kind, "");
+          selectNode(newNode.id);
+          setEditingNodeId(newNode.id);
+        } catch (err) {
+          console.error(`${LOG_PREFIX} createChild failed:`, err);
+          showToast({ nodeId, message: t("warnings:createFailed", { message: getErrorMessage(err) }) });
+        }
+      })();
+    },
+    [tree, createChild, onCreateTypedChild, selectNode, setEditingNodeId, showToast, t],
   );
 
   const onDelete = useCallback(

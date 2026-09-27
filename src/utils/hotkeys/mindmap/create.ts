@@ -5,11 +5,12 @@ import { hasSelection, selectedNode } from "./selection";
 
 /** What the creation chords act on. */
 export interface MindmapCreateContext extends MindmapSelectionContext {
+  /** Tab: a Task child of `id` (inside a Flow template, the template's next item). */
   onCreateChild: (id: string) => void;
   /**
-   * Creates a child of a *named* kind under `id` — the Shift+initial chords — instead of the kind
-   * Tab would inherit from the parent. A parent that cannot hold that kind is refused out loud,
-   * which is why this fires on any selection and decides inside rather than being guarded here.
+   * Creates a child of a *named* kind under `id` — the Shift+initial chords. A parent that cannot
+   * hold that kind is refused out loud, which is why this fires on any selection and decides inside
+   * rather than being guarded here.
    */
   onCreateTypedChild: (id: string, kind: TypedChildKind) => void;
   onCreateSibling: (id: string) => void;
@@ -19,7 +20,7 @@ export interface MindmapCreateContext extends MindmapSelectionContext {
 /**
  * Shift+initial, one per named kind. Shift is free for letters — every other Shift chord in the
  * app sits on a non-letter key (Shift+arrows, Shift+Enter, Shift+Escape, Ctrl+Shift+/) — so these
- * six take nothing away. Bare `F` still converts the selection to a Flow; Shift+F creates one
+ * take nothing away. Bare `F` still converts the selection to a Flow; Shift+F creates one
  * under it.
  */
 const TYPED_CHILD_CHORDS: ReadonlyArray<{ code: string; kind: TypedChildKind; labelKey: HotkeyLabelKey }> = [
@@ -34,6 +35,8 @@ const TYPED_CHILD_CHORDS: ReadonlyArray<{ code: string; kind: TypedChildKind; la
   { code: "KeyE", kind: "expectation", labelKey: "createExpectationChild" },
   { code: "KeyI", kind: "info", labelKey: "createInfoChild" },
   { code: "KeyF", kind: "flow", labelKey: "createFlowChild" },
+  // H for Habit: a Flow child with repeating already on. Bare H and Shift+H were free everywhere.
+  { code: "KeyH", kind: "habit", labelKey: "createHabitChild" },
 ];
 
 const typedChildBindings: readonly Binding<MindmapCreateContext>[] = TYPED_CHILD_CHORDS.map(
@@ -59,9 +62,11 @@ export const MINDMAP_CREATE_BINDINGS: readonly Binding<MindmapCreateContext>[] =
   {
     id: "mindmap.createChild", section: "mindmap", chord: { code: "Tab" },
     labelKey: "createChild",
+    // Live on every real node, a Tag included: `Tab` always asks for a Task, and a node that cannot
+    // hold one refuses it out loud rather than leaving the key inert.
     when: (c) => {
       const node = selectedNode(c);
-      return node !== undefined && node.id.includes("-") && node.kind !== "tag";
+      return node !== undefined && node.id.includes("-");
     },
     run: (c) => { if (c.selectedNodeId !== null) c.onCreateChild(c.selectedNodeId); },
   },
