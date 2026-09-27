@@ -39,7 +39,6 @@ export default function SubtreeBreadcrumb() {
   const subtreeNav = useMindmapStore((s) => s.subtreeNav);
   const exitSubtree = useMindmapStore((s) => s.exitSubtree);
   const exitToRoot = useMindmapStore((s) => s.exitToRoot);
-  const chainRef = useRef<HTMLDivElement>(null);
   const foldRef = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuOffset, setMenuOffset] = useState(0);
@@ -47,7 +46,7 @@ export default function SubtreeBreadcrumb() {
   const ancestors = subtreeNav?.ancestors ?? [];
   const currentTitle = subtreeNav?.currentTitle ?? "";
   const [rootCrumb, ...middles] = ancestors;
-  const folded = useCrumbOverflow(chainRef, middles.length, chainIdentity(ancestors, currentTitle));
+  const { boxRef: chainRef, folded } = useCrumbOverflow(middles.length, chainIdentity(ancestors, currentTitle));
   const foldedCrumbs = middles.slice(0, folded);
   const shownCrumbs = middles.slice(folded);
 

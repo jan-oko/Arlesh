@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import SubtreeBreadcrumb from "./SubtreeBreadcrumb";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import type { SubtreeCrumb } from "@/stores/use-mindmap-store";
@@ -46,11 +46,67 @@ function enterDeepSubtree() {
   });
 }
 
+/**
+ * A `ResizeObserver` a test can drive: it remembers what it watches, and `resizeTo` reports a new
+ * width to every observer watching a box that is still in the document — which is all a browser
+ * would ever report on.
+ */
+class ScriptedResizeObserver implements ResizeObserver {
+  static live = new Set<ScriptedResizeObserver>();
+  private readonly watched = new Set<Element>();
+
+  constructor(private readonly callback: ResizeObserverCallback) {}
+
+  observe(target: Element): void {
+    this.watched.add(target);
+    ScriptedResizeObserver.live.add(this);
+  }
+
+  unobserve(target: Element): void {
+    this.watched.delete(target);
+  }
+
+  disconnect(): void {
+    this.watched.clear();
+    ScriptedResizeObserver.live.delete(this);
+  }
+
+  report(width: number): void {
+    const entries = [...this.watched]
+      .filter((target) => target.isConnected)
+      .map(
+        (target) =>
+          ({
+            target,
+            contentRect: new DOMRect(0, 0, width, 20),
+            borderBoxSize: [],
+            contentBoxSize: [],
+            devicePixelContentBoxSize: [],
+          }) satisfies ResizeObserverEntry,
+      );
+    if (entries.length === 0) return;
+    this.callback(entries, this);
+  }
+}
+
+/** The window (or a pane beside the bar) changes size: the box gets `width`, and says so. */
+function resizeTo(width: number) {
+  giveChainRoom(width);
+  act(() => {
+    for (const observer of ScriptedResizeObserver.live) observer.report(width);
+  });
+}
+
+const originalResizeObserver = globalThis.ResizeObserver;
+
 beforeEach(() => {
   useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
+  ScriptedResizeObserver.live.clear();
+  globalThis.ResizeObserver = ScriptedResizeObserver;
 });
 
 afterEach(() => {
+  globalThis.ResizeObserver = originalResizeObserver;
   Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
   Reflect.deleteProperty(HTMLElement.prototype, "scrollWidth");
 });
@@ -156,6 +212,60 @@ describe("SubtreeBreadcrumb", () => {
       fireEvent.click(screen.getByRole("button", { name: "foldedLevels" }));
       fireEvent.keyDown(window, { key: "Escape", shiftKey: true });
       expect(screen.getByRole("menu")).toBeInTheDocument();
+    });
+  });
+
+  describe("following the bar's width", () => {
+    it("unfolds every level again once the bar has room, for a subtree entered while it was narrow", () => {
+      giveChainRoom(200);
+      render(<SubtreeBreadcrumb />);
+      act(() => enterDeepSubtree());
+      expect(screen.getByRole("button", { name: "foldedLevels" })).toBeInTheDocument();
+
+      resizeTo(1000);
+
+      expect(screen.queryByRole("button", { name: "foldedLevels" })).not.toBeInTheDocument();
+      for (const title of ["A-one", "B-two", "C-three"]) {
+        expect(screen.getByRole("button", { name: title })).toBeInTheDocument();
+      }
+    });
+
+    it("folds the middle away as the bar narrows", () => {
+      giveChainRoom(1000);
+      enterDeepSubtree();
+      render(<SubtreeBreadcrumb />);
+      resizeTo(1000);
+      expect(screen.queryByRole("button", { name: "foldedLevels" })).not.toBeInTheDocument();
+
+      resizeTo(200);
+
+      expect(screen.getByRole("button", { name: "foldedLevels" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "A-one" })).not.toBeInTheDocument();
+    });
+
+    it("unfolds only as many levels as the new width holds", () => {
+      giveChainRoom(200);
+      enterDeepSubtree();
+      render(<SubtreeBreadcrumb />);
+
+      // `Arlesh…B-twoC-threeDeep` is 23 characters: room for one fold, not for none.
+      resizeTo(250);
+
+      fireEvent.click(screen.getByRole("button", { name: "foldedLevels" }));
+      const folded = screen.getAllByRole("menuitem").map((item) => item.textContent);
+      expect(folded).toEqual(["A-one"]);
+    });
+
+    it("keeps following it after the subtree is left and entered again", () => {
+      giveChainRoom(1000);
+      enterDeepSubtree();
+      render(<SubtreeBreadcrumb />);
+      act(() => useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null }));
+      act(() => enterDeepSubtree());
+
+      resizeTo(200);
+
+      expect(screen.getByRole("button", { name: "foldedLevels" })).toBeInTheDocument();
     });
   });
 });

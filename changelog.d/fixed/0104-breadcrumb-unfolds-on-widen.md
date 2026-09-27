@@ -1,0 +1,1 @@
+- **The subtree breadcrumb unfolds again when the window widens.** Entering a subtree while the window was narrow folded the middle of the path into `…`, and it stayed folded however wide the window then grew. The breadcrumb now follows the top bar's width both ways: levels fold away as it narrows and come back as soon as they fit again.
