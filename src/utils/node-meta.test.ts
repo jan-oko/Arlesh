@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
-import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, isValidDropTarget, computeEditHeight, validParentKinds, isFlowKind, canParentNewTask, canParentNewChild, canParentAnyNewChild, canAdoptChildren, canAdoptExistingChild, TYPED_CHILD_KINDS, typedChildNodeKind } from "./node-meta";
+import { computeNodeDimensions, estimateWrappedLineCount, getNodeSize, isValidDropTarget, computeEditHeight, validParentKinds, isFlowKind, canParentNewTask, canParentNewChild, canParentAnyNewChild, canAdoptChildren, canAdoptExistingChild, TYPED_CHILD_KINDS, typedChildNodeKind, typedChildStoredKind } from "./node-meta";
 import { ALL_NODE_KINDS } from "./tree-layout";
 import type { MindmapNode } from "./tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
@@ -397,5 +397,28 @@ describe("typedChildNodeKind", () => {
     for (const kind of TYPED_CHILD_KINDS.filter((candidate) => candidate !== "habit")) {
       expect(typedChildNodeKind(kind)).toBe(kind);
     }
+  });
+});
+
+describe("typedChildStoredKind", () => {
+  it("is typedChildNodeKind outside a Flow template", () => {
+    for (const kind of TYPED_CHILD_KINDS) {
+      expect(typedChildStoredKind("project", kind)).toBe(typedChildNodeKind(kind));
+    }
+  });
+
+  it.each(["flow", "flow_goal", "flow_task"] as const)("inside a Flow template (%s) makes Task and Goal flow items", (parent) => {
+    expect(typedChildStoredKind(parent, "task")).toBe("flow_task");
+    expect(typedChildStoredKind(parent, "goal")).toBe("flow_goal");
+  });
+
+  it.each(["flow", "flow_goal", "flow_task"] as const)("inside a Flow template (%s) has no Commitment or Expectation item", (parent) => {
+    expect(typedChildStoredKind(parent, "commitment")).toBeNull();
+    expect(typedChildStoredKind(parent, "expectation")).toBeNull();
+  });
+
+  it("leaves the other chords their own kind inside a Flow, for the parenting rule to refuse", () => {
+    expect(typedChildStoredKind("flow", "info")).toBe("info");
+    expect(typedChildStoredKind("flow", "habit")).toBe("flow");
   });
 });

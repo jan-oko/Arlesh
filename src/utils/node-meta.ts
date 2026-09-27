@@ -191,8 +191,9 @@ export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): b
 
 /**
  * The kinds a Shift+initial chord creates directly under the selection. Deliberately the *named*
- * kinds a user reaches for; flow items are left out because they are spawned by Tab from inside
- * their flow. Three of them open an editor rather than a blank row — see `onCreateTypedChild`.
+ * kinds a user reaches for; flow items are not listed because inside a Flow template the Task and
+ * Goal chords create them ({@link typedChildStoredKind}). Three of them open an editor rather than
+ * a blank row — see `onCreateTypedChild`.
  *
  * `habit` is the one entry that is not a node kind of its own: a Habit is a Flow with its
  * Recurrence switched on, so it is created as a Flow and parented by a Flow's rules
@@ -206,6 +207,40 @@ export type TypedChildKind = (typeof TYPED_CHILD_KINDS)[number];
 /** The node kind a typed chord's child is stored as — a Habit is a Flow, every other one itself. */
 export function typedChildNodeKind(kind: TypedChildKind): NodeKind {
   return kind === "habit" ? "flow" : kind;
+}
+
+/**
+ * The chords that, aimed inside a Flow template, ask for a **flow item** of their kind rather than
+ * a stored node — Tab among them, which is Shift+T there as everywhere. Only a Task and a Goal have
+ * a flow-item form (`flow_tasks`, `flow_goals`); a Commitment or an Expectation item does not exist.
+ */
+const FLOW_ITEM_FORM: ReadonlyMap<TypedChildKind, NodeKind | null> = new Map<TypedChildKind, NodeKind | null>([
+  ["task", "flow_task"],
+  ["goal", "flow_goal"],
+  ["commitment", null],
+  ["expectation", null],
+]);
+
+/**
+ * The node kind a typed chord creates under a parent of `parentKind`, or `null` when the chord asks
+ * for a flow item of a kind no flow item can be.
+ *
+ * Outside a Flow template this is {@link typedChildNodeKind}. Inside one (the Flow, or one of its
+ * items) `Shift+T` and `Shift+G` create that kind's flow item, and `Shift+C` and `Shift+E` have no
+ * flow item to create. The other chords keep their own kind, which the parenting rule then refuses.
+ */
+export function typedChildStoredKind(parentKind: NodeKind, kind: TypedChildKind): NodeKind | null {
+  if (!isFlowKind(parentKind)) return typedChildNodeKind(kind);
+  const flowItemForm = FLOW_ITEM_FORM.get(kind);
+  return flowItemForm === undefined ? typedChildNodeKind(kind) : flowItemForm;
+}
+
+/**
+ * Whether `node` is a **commitment** Flow, whose template holds no Goal items: a Commitment cannot
+ * parent a Goal, so the backend refuses a `flow_goal` there (`FlowsOps::create_goal`).
+ */
+export function isCommitmentFlow(node: MindmapNode): boolean {
+  return node.kind === "flow" && node.flow?.instanceType === "commitment";
 }
 
 /**
@@ -272,6 +307,7 @@ export function canParentNewChild(node: MindmapNode, childKind: NodeKind): boole
       // `Shift+G` under a Task occurrence is refused exactly as it is under a Task.
       return !isFlowKind(childKind) && isValidDropTarget(childKind, node.kind);
     case "row":
+      if (childKind === "flow_goal" && isCommitmentFlow(node)) return false;
       return isValidDropTarget(childKind, node.kind);
   }
 }

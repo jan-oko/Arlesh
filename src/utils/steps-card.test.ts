@@ -204,4 +204,10 @@ describe("what a Step's + offers", () => {
   it("offers a Tag only a note", () => {
     expect(creatableKinds(node("tag"))).toEqual(["info"]);
   });
+
+  it("offers a Flow's Step its two flow items, and a Task item's Step a Task item alone", () => {
+    expect(creatableKinds(node("flow"))).toEqual(["goal", "task"]);
+    expect(creatableKinds(node("flow_goal"))).toEqual(["goal", "task"]);
+    expect(creatableKinds(node("flow_task"))).toEqual(["task"]);
+  });
 });
