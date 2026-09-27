@@ -328,48 +328,6 @@ async fn the_delete_flow_item_command_commits_the_item_and_its_links() {
 }
 
 #[tokio::test]
-async fn the_convert_flow_item_command_commits_both_halves() {
-    let pool = helpers::test_pool().await;
-    let app = helpers::command_host(&pool);
-    let flow = flow_commands::create_flow(app.state(), create_req("Feature"))
-        .await
-        .unwrap();
-    let task = flow_commands::create_flow_task(
-        app.state(),
-        CreateFlowItemRequest {
-            flow_id: flow.id,
-            title: "Ambiguous".into(),
-            parent_type: "flow".into(),
-            parent_id: flow.id,
-        },
-    )
-    .await
-    .unwrap();
-
-    let new_id = flow_commands::convert_flow_item(
-        app.state(),
-        FlowItemType::FlowTask,
-        task.id,
-        FlowItemType::FlowGoal,
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(
-        text_at(&pool, "flow_goals", "title", new_id)
-            .await
-            .as_deref(),
-        Some("Ambiguous"),
-        "the new row must be committed"
-    );
-    assert_eq!(
-        count_where(&pool, "flow_tasks", "id", task.id).await,
-        0,
-        "and the old one deleted in the same transaction"
-    );
-}
-
-#[tokio::test]
 async fn the_set_flow_recurrence_command_commits_the_recurrence() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);

@@ -129,11 +129,6 @@ fn a_completion_instant_reads_back_as_the_same_wall_clock() {
 }
 
 #[test]
-fn a_retype_is_refused_out_loud() {
-    assert!(refuse_retype().to_string().contains("cannot change kind"));
-}
-
-#[test]
 fn an_iteration_root_defaults_to_its_iteration_ordinal() {
     assert_eq!(iteration_index(&Origin::Manual), 0);
 }

@@ -118,7 +118,7 @@ impl ArleshMcp {
             // A Project is the `project` subtype of Domain, and the operator's setter deliberately
             // does not check the subtype — no schema constraint backs the invariant, so it is
             // enforced here. Reading the row and then writing it is two statements, which per
-            // ADR-0004 means a transactional session: without it another writer could retype the
+            // ADR-0004 means a transactional session: without it another writer could change the
             // domain between the check and the update.
             BeadsNode::Project => {
                 let domain = match db.domains().get(DomainId(node_id)).await {

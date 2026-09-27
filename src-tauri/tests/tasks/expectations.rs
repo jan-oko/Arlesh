@@ -1,6 +1,5 @@
 //! Expectations against a real database: the row, the dependency edges aimed at it, the virtual
-//! block reason it gives a Task, its lifecycle entry, the subtree delete and the retype paths that
-//! have to carry one.
+//! block reason it gives a Task, its lifecycle entry and the subtree delete.
 
 use crate::helpers;
 
@@ -19,9 +18,7 @@ use arlesh_lib::{
             ExpectationArchival, ExpectationId, ExpectationStatus, TaskId, TimeScope,
             UpdateExpectationRequest,
         },
-        reopen_expectation_check,
-        retype::{apply_retype, plan_node_retype, RetypeKind, StrandedChildren},
-        update_expectation,
+        reopen_expectation_check, update_expectation,
         waits::{derive_wait_windows, ExpectationCheck},
     },
 };
@@ -396,120 +393,6 @@ async fn deleting_a_task_takes_the_expectation_beneath_it() {
     // The pool holds one connection: give it back before asking on another.
     drop(db);
     assert_eq!(inbound_edges(&pool, wait.id.sid()).await, 0);
-}
-
-#[tokio::test]
-async fn retyping_a_task_to_a_goal_carries_its_expectation_across() {
-    let pool = helpers::test_pool().await;
-    let project = make_project(&pool).await;
-    let parent = task(&pool, "project", project).await;
-    let wait = expectation(&pool, "task", parent, None).await;
-
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let planned = plan_node_retype(&mut db, RetypeKind::Task, parent, RetypeKind::Goal)
-        .await
-        .unwrap();
-    let goal = apply_retype(&mut db, &planned, StrandedChildren::Reparent)
-        .await
-        .unwrap();
-    db.commit().await.unwrap();
-
-    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    let moved = db
-        .expectations()
-        .get(ExpectationId(wait.id.sid()))
-        .await
-        .unwrap();
-    assert_eq!(moved.parent_type, "goal");
-    assert_eq!(moved.parent_id, goal.id);
-}
-
-#[tokio::test]
-async fn retyping_a_task_to_a_tag_strands_its_expectation_up_to_the_parent() {
-    let pool = helpers::test_pool().await;
-    let project = make_project(&pool).await;
-    let parent = task(&pool, "project", project).await;
-    let wait = expectation(&pool, "task", parent, None).await;
-
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let planned = plan_node_retype(&mut db, RetypeKind::Task, parent, RetypeKind::Tag)
-        .await
-        .unwrap();
-    apply_retype(&mut db, &planned, StrandedChildren::Reparent)
-        .await
-        .unwrap();
-    db.commit().await.unwrap();
-
-    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    let moved = db
-        .expectations()
-        .get(ExpectationId(wait.id.sid()))
-        .await
-        .unwrap();
-    assert_eq!(moved.parent_type, "project");
-    assert_eq!(moved.parent_id, project);
-}
-
-#[tokio::test]
-async fn retyping_a_task_to_an_info_deletes_a_stranded_expectation_when_asked() {
-    let pool = helpers::test_pool().await;
-    let project = make_project(&pool).await;
-    let parent = task(&pool, "project", project).await;
-    let wait = expectation(&pool, "task", parent, None).await;
-
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let planned = plan_node_retype(&mut db, RetypeKind::Task, parent, RetypeKind::Info)
-        .await
-        .unwrap();
-    apply_retype(&mut db, &planned, StrandedChildren::Delete)
-        .await
-        .unwrap();
-    db.commit().await.unwrap();
-
-    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    assert!(db
-        .expectations()
-        .get(ExpectationId(wait.id.sid()))
-        .await
-        .is_err());
-}
-
-#[tokio::test]
-async fn a_note_under_an_expectation_retyped_to_a_task_climbs_past_it() {
-    let pool = helpers::test_pool().await;
-    let project = make_project(&pool).await;
-    let wait = expectation(&pool, "project", project, None).await;
-    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let note = db
-        .infos()
-        .create(CreateInfoRequest {
-            body: "ping them Friday".into(),
-            details: None,
-            parent_type: "expectation".into(),
-            parent_id: wait.id,
-            position: 0,
-        })
-        .await
-        .unwrap();
-    let planned = plan_node_retype(&mut db, RetypeKind::Info, note.id, RetypeKind::Task)
-        .await
-        .unwrap();
-    let climb = planned
-        .plan
-        .parent_climb
-        .clone()
-        .expect("a Task cannot hang under a wait");
-    assert_eq!(climb.from.kind, "expectation");
-    assert_eq!(climb.from.title, "Reviewer replies");
-    let retyped = apply_retype(&mut db, &planned, StrandedChildren::Reparent)
-        .await
-        .unwrap();
-    db.commit().await.unwrap();
-
-    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    let task = db.tasks().get(TaskId(retyped.id)).await.unwrap();
-    assert_eq!(task.parent_type, "project");
-    assert_eq!(task.parent_id, project);
 }
 
 #[tokio::test]

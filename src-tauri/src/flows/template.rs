@@ -467,55 +467,6 @@ impl<'session> TemplateOperator<'session> {
         self.copy_relations(table, from, to).await
     }
 
-    /// Copies one template row's tags and block reasons onto a row of another template table — a
-    /// flow item retyped between goal and task.
-    pub async fn copy_relations_across(
-        &mut self,
-        from_table: TemplateTable,
-        from: i64,
-        to_table: TemplateTable,
-        to: i64,
-    ) -> Result<(), FlowError> {
-        sqlx::query(
-            "INSERT INTO template_tags (item_type, item_id, tag_id)
-             SELECT ?, ?, tag_id FROM template_tags WHERE item_type = ? AND item_id = ?",
-        )
-        .bind(to_table.as_str())
-        .bind(to)
-        .bind(from_table.as_str())
-        .bind(from)
-        .execute(&mut *self.connection)
-        .await?;
-        sqlx::query(
-            "INSERT INTO template_block_reasons (item_type, item_id, reason, position)
-             SELECT ?, ?, reason, position FROM template_block_reasons
-             WHERE item_type = ? AND item_id = ?",
-        )
-        .bind(to_table.as_str())
-        .bind(to)
-        .bind(from_table.as_str())
-        .bind(from)
-        .execute(&mut *self.connection)
-        .await?;
-        Ok(())
-    }
-
-    /// Writes a template row's beads id — carried by a copy, never authored here.
-    pub async fn set_beads_id(
-        &mut self,
-        table: TemplateTable,
-        id: i64,
-        beads_id: Option<&str>,
-    ) -> Result<(), FlowError> {
-        let name = table.table();
-        sqlx::query(&format!("UPDATE {name} SET beads_id = ? WHERE id = ?"))
-            .bind(beads_id)
-            .bind(id)
-            .execute(&mut *self.connection)
-            .await?;
-        Ok(())
-    }
-
     /// Forgets a template row's relations — the row itself is going.
     pub async fn forget(&mut self, table: TemplateTable, id: i64) -> Result<(), FlowError> {
         for relation in ["template_tags", "template_block_reasons"] {
