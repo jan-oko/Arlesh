@@ -278,7 +278,7 @@ pub fn wait_lifecycle(
 /// never Overdue because that work's window passed — the spawned wait of a Task done yesterday is
 /// still being waited on today. But before the window it sits in has **begun**, it is not in scope
 /// any more than that work is (ruled by the user, 2026-09-27): an unscoped wait under a Task
-/// planned for next month is not something to look at now. Its parent's own entry already says
+/// scoped to next month is not something to look at now. Its parent's own entry already says
 /// so — a Task's, Goal's or Commitment's Timing is its *effective* window's, the nearest scoped
 /// ancestor's when it has none — so this reads it there rather than climbing the tree again.
 ///
