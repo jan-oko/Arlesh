@@ -96,8 +96,6 @@ export default function StepCardFields({ node, fields }: Props) {
         return node.infoDetails ?? "";
       case "knowledgeBase":
         return node.knowledgeBaseDirectory ?? "";
-      case "private":
-        return t("stepsView:value.yes");
       case "instanceType":
         return t(`nodeKinds:${node.flow?.instanceType ?? "task"}`);
       case "beadsId":

@@ -17,6 +17,7 @@ import ArchiveIcon from "./ArchiveIcon";
 import ExclamationIcon from "./ExclamationIcon";
 import EllipsisIcon from "./EllipsisIcon";
 import McpIcon from "./McpIcon";
+import PrivateIcon from "./PrivateIcon";
 
 const ICON_R = 6;
 const ICON_SPACING = 16;
@@ -103,6 +104,8 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
         return { tooltip: t("tags", { value: tagsValue }), icon: <TagIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} opacity={1} /> };
       case "mcp":
         return { tooltip: t("mcpVisible", { root: node.mcpVisibleVia ?? "" }), icon: <McpIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
+      case "private":
+        return { tooltip: t("private"), icon: <PrivateIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
     }
   };
 

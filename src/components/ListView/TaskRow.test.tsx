@@ -263,3 +263,15 @@ describe("TaskRow — its colour", () => {
     expect(cardOf(container).style.getPropertyValue("--card-aspect")).toBe("");
   });
 });
+
+describe("TaskRow — Private badge", () => {
+  it("badges a task marked Private itself", () => {
+    render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", isPrivate: true }) }) })} />);
+    expect(screen.getByTitle("private")).toBeInTheDocument();
+  });
+
+  it("leaves a task under a Private ancestor unbadged: the badge is the node's own flag", () => {
+    render(<TaskRow {...baseProps({ row: row({ hasPrivateAncestor: true }) })} />);
+    expect(screen.queryByTitle("private")).not.toBeInTheDocument();
+  });
+});

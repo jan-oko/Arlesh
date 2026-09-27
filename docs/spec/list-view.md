@@ -103,7 +103,7 @@ take the per-aspect strengths described there, so the two greys differ on a row 
 card.
 
 **The colour says nothing about state.** The status control's glyph draws done, in progress and
-blocked (and is disabled while blocked); the badge row carries archived, frozen, backlogged, agentic
-and asynchronous; a Commitment's status control shows its Verdict.
+blocked (and is disabled while blocked); the badge row carries archived, frozen, backlogged, agentic,
+asynchronous and private; a Commitment's status control shows its Verdict.
 
 ---

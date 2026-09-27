@@ -81,6 +81,11 @@ describe("StatusIconRow", () => {
     expect(renderRow(node("goal", { status: "active", mcpVisibleVia: "Arlesh" }))).toEqual(["mcpVisible"]);
   });
 
+  it("says a node marked Private is private", () => {
+    expect(renderRow(node("info", { isPrivate: true }))).toEqual(["private"]);
+    expect(renderRow(node("info", { isPrivate: false }))).toEqual([]);
+  });
+
   it("renders nothing extra for a node with no relevant status", () => {
     expect(renderRow(node("task", { status: "todo" }))).toEqual([]);
   });
