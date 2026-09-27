@@ -106,6 +106,15 @@ interface DisplayStore {
    */
   startHidesCheckedWaits: boolean;
   toggleStartHidesCheckedWaits: () => void;
+  /**
+   * Whether the node searches — `Ctrl+O`, and the node results of `Ctrl+F` and the Filter menu's
+   * Under / Depends on boxes — offer **archived** nodes and what lies beneath them.
+   *
+   * **Off by default** (ruled by the user, 2026-09-27): what is archived is rarely what you are
+   * looking for, and it crowded the live nodes out of the results. App-wide.
+   */
+  searchIncludesArchived: boolean;
+  toggleSearchIncludesArchived: () => void;
 }
 
 /** Keeps a stored or typed threshold inside the range the setting offers. */
@@ -164,6 +173,9 @@ export const useDisplayStore = create<DisplayStore>()(
       startHidesCheckedWaits: false,
       toggleStartHidesCheckedWaits: () =>
         set((s) => ({ startHidesCheckedWaits: !s.startHidesCheckedWaits })),
+      searchIncludesArchived: false,
+      toggleSearchIncludesArchived: () =>
+        set((s) => ({ searchIncludesArchived: !s.searchIncludesArchived })),
     }),
     { name: "arlesh-display" },
   ),

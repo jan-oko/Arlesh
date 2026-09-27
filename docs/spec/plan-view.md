@@ -283,7 +283,7 @@ differently because it was started from another tab would read as a bug rather t
 
 **Group by path** draws a header above each contiguous run of rows sharing a location, spelling the
 chain — `Growth › CODE › ARLESH › Features`. It is the List View's header: clicking a segment enters
-that subtree and Ctrl-clicking files it as an Antecedent pill. The Plan View offers no **+** on a
+that subtree and Ctrl-clicking files it as an Under pill. The Plan View offers no **+** on a
 header, because planning is the only thing this view writes.
 
 It is the **candidates pane's** switch and groups that pane alone. That pane is read for *where*
@@ -457,7 +457,7 @@ move looking like a failure.
   selected Task in the List View, and a key that sets one task aside must not reveal a whole
   category of them elsewhere
 - `E` — open the selected task's editor; `Escape` — deselect
-- `Alt+F` — the filter menu, also global; `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B` — say that the view
+- `Alt+F` — the filter menu, and `Ctrl+F` the filter search, both global; `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B` — say that the view
   always reads under the Plan preset (see [Always the Plan preset](#always-the-plan-preset))
 - `Ctrl+O` — search every node and enter the one you pick; `Shift+Escape` / `Ctrl+Escape` — up one
   subtree level / back to the true root. All three are [global bindings](tabs.md): they act on the

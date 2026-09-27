@@ -29,19 +29,32 @@ describe("HotkeysModal", () => {
     expect(screen.getByText("hotkeys:toggleSubtreeCollapsed")).toBeInTheDocument();
   });
 
-  it("lists the List View's three row-kind toggles on Shift+Alt+T/C/E", () => {
+  it("documents the filter modes in a Filters section: Enter / Shift+Enter / Alt+Enter and their clicks", () => {
     render(<HotkeysModal onClose={vi.fn()} />);
-    const section = screen.getByText("hotkeys:sectionListView").closest("section");
+    const section = screen.getByText("hotkeys:sectionFilters").closest("section");
     expect(section).not.toBeNull();
     if (section === null) return;
     const list = within(section);
-    for (const [chord, label] of [
-      ["Shift+Alt+T", "hotkeys:toggleKindTasks"],
-      ["Shift+Alt+C", "hotkeys:toggleKindCommitments"],
-      ["Shift+Alt+E", "hotkeys:toggleKindExpectations"],
+    for (const [chord, click, label] of [
+      ["Enter", "hotkeys:filterClick", "hotkeys:filterAddAll"],
+      ["Shift+Enter", "hotkeys:filterShiftClick", "hotkeys:filterAddAny"],
+      ["Alt+Enter", "hotkeys:filterAltClick", "hotkeys:filterAddNot"],
     ] as const) {
-      expect(list.getByText(chord)).toBeInTheDocument();
-      expect(list.getByText(label)).toBeInTheDocument();
+      const row = list.getByText(label).closest("div");
+      expect(row).not.toBeNull();
+      expect(row).toHaveTextContent(chord);
+      expect(row).toHaveTextContent(click);
+    }
+    expect(list.getByText("hotkeys:filterCycle")).toBeInTheDocument();
+    expect(list.getByText("hotkeys:filterRemove")).toBeInTheDocument();
+    for (const [label, chords] of [
+      ["hotkeys:filterKindKeys", ["T", "C", "E"]],
+      ["hotkeys:filterFlagKeys", ["A", "W", "B", "P"]],
+      ["hotkeys:filterPrivateMode", ["Ctrl+P"]],
+      ["hotkeys:filterRemoveSearch", ["Delete"]],
+    ] as const) {
+      const row = list.getByText(label).closest("div");
+      for (const chord of chords) expect(row).toHaveTextContent(chord);
     }
   });
 

@@ -1,32 +1,24 @@
 {
-  "tagTypeClusterLabel": "Tags & Type",
   "includeFlows": "Include flows",
-  "tagsLabel": "Tags",
   "tagMode": {
-    "any": "Any",
     "all": "All",
-    "exclude": "Exclude"
+    "any": "Any",
+    "exclude": "Not"
   },
-  "addTag": "Add tag filter…",
-  "removeTagFilter": "Remove tag filter",
-  "typesLabel": "Node types",
-  "privateLabel": "Private",
-  "privateMode": "Show private nodes",
-  "advanced": "Advanced",
-  "archivedLabel": "Archived",
+  "removeTagFilter": "Remove filter",
+  "privateMode": "Private",
   "archivedPill": "Archived",
   "archivedTooltip": {
-    "inactive": "Archived: default",
-    "include": "Archived: shown",
-    "exclude": "Archived: hidden"
+    "inactive": "Archived: as the preset says. Click to cycle off → include → exclude.",
+    "include": "Archived: included. Click to cycle off → include → exclude.",
+    "exclude": "Archived: excluded. Click to cycle off → include → exclude."
   },
   "reset": "Reset",
-  "backlogLabel": "Backlog",
   "backlogPill": "Backlog",
   "backlogTooltip": {
-    "inactive": "Backlog: default",
-    "include": "Backlog: shown",
-    "exclude": "Backlog: hidden"
+    "inactive": "Backlog: as the preset says. Click to cycle off → include → exclude.",
+    "include": "Backlog: included. Click to cycle off → include → exclude.",
+    "exclude": "Backlog: excluded. Click to cycle off → include → exclude."
   },
   "planScopeLabel": "Plan scope",
   "planScopeAny": "Any scope",
@@ -34,5 +26,77 @@
   "planScopeApply": "Apply",
   "planScopePicker": "Plan scope picker",
   "planScopeHint": "Shows only Tasks whose Time Scope is within this scope.",
-  "planScopeHintOverlapping": "Shows only Tasks whose Time Scope overlaps this scope."
+  "planScopeHintOverlapping": "Shows only Tasks whose Time Scope overlaps this scope.",
+  "switchesLabel": "Switches",
+  "nodeTypesLabel": "Node types",
+  "rows": {
+    "antecedent": "Under",
+    "tag": "Tags",
+    "dependency": "Depends on",
+    "scopeState": "Scope",
+    "yesNo": "Yes / no",
+    "taskStatus": "Task",
+    "goalStatus": "Goal",
+    "projectStatus": "Project",
+    "verdict": "Verdict",
+    "blocked": "Blocked",
+    "agentic": "Agentic",
+    "asynchronous": "Asynchronous",
+    "private": "Private"
+  },
+  "groups": {
+    "antecedent": "Under",
+    "tag": "Tags",
+    "dependency": "Depends on",
+    "scopeState": "Scope",
+    "yesNo": "Yes / no",
+    "taskStatus": "Task status",
+    "goalStatus": "Goal status",
+    "projectStatus": "Project status",
+    "verdict": "Verdict",
+    "switches": "Switches",
+    "blocked": "Blocked",
+    "agentic": "Agentic",
+    "asynchronous": "Asynchronous",
+    "private": "Private"
+  },
+  "aliases": {
+    "antecedent": "Antecedent",
+    "dependency": "Dependency"
+  },
+  "searchTags": "Search tags…",
+  "searchNodes": "Search nodes…",
+  "noTagMatch": "No tag matches",
+  "noNodeMatch": "No node matches",
+  "addPillTitle": "Click: All · Shift+click: Any · Alt+click: Not",
+  "addYesNoTitle": "Click: {{label}} · Alt+click: {{notLabel}}",
+  "setPillTitle": "{{mode}} — click to make it {{next}} · Delete removes",
+  "setPillAria": "{{label}}, {{mode}}. Activate to change mode, Delete to remove.",
+  "chipAria": "{{dimension}}: {{label}}, {{mode}}",
+  "search": {
+    "dialogLabel": "Add a filter",
+    "placeholder": "Add filter… tag, status, under",
+    "placeholderTags": "Add filter… tag",
+    "noResults": "No filter matches",
+    "switchState": {
+      "inactive": "as the preset says",
+      "include": "include",
+      "exclude": "exclude"
+    },
+    "nodePrefix": "{{dimension}}:",
+    "nodesListOnly": "Node filters (Under, Depends on) are List View only — switch with Ctrl+L, or enter a node's subtree with Ctrl+O.",
+    "rowKindState": {
+      "shown": "shown",
+      "hidden": "hidden"
+    },
+    "enterKey": "↵",
+    "activeHeading": "Active"
+  },
+  "filterButtonTitle": "Filter (Alt+F) · search the filters with Ctrl+F",
+  "privateState": {
+    "private": "Private",
+    "not_private": "Not private"
+  },
+  "privateFilterRemoved": "Private Mode is off, so the Private / Not private filter was removed.",
+  "privateModeOff": "Private Mode is off — turn it on to filter by Private."
 }

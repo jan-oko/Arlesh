@@ -3,6 +3,7 @@ import { renderHook } from "@testing-library/react";
 import { useFilterDisplay } from "./use-filter-display";
 import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { useDisplayStore } from "@/stores/use-display-store";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/components/MindmapView/use-mindmap-data");
@@ -92,5 +93,36 @@ describe("useFilterDisplay", () => {
     mockUseMindmapData.mockReturnValue(mindmapData(TREE));
     const { result } = renderHook(() => useFilterDisplay());
     expect(result.current.displayTaskStatus("bogus")).toBe("bogus");
+  });
+
+  describe("archived nodes in the Under / Depends on pools (Ctrl+F and the Filter menu)", () => {
+    const ARCHIVED_TREE: MindmapNode = {
+      id: "root", kind: "domain", title: "Arlesh", position: 0, tagIds: [],
+      children: [
+        { id: "project-1", rowId: 1, kind: "project", title: "Live", position: 0, tagIds: [], children: [] },
+        { id: "project-2", rowId: 2, kind: "project", title: "Shelved", status: "archived", position: 1, tagIds: [], children: [
+          { id: "task-5", rowId: 5, kind: "task", title: "Inside", status: "todo", position: 0, tagIds: [], children: [] },
+        ] },
+        { id: "task-6", rowId: 6, kind: "task", title: "Lapsed", status: "todo", archived: true, position: 2, tagIds: [], children: [] },
+      ],
+    };
+
+    it("leaves archived nodes out by default, but not the live nodes under them", () => {
+      useDisplayStore.setState({ searchIncludesArchived: false });
+      mockUseMindmapData.mockReturnValue(mindmapData(ARCHIVED_TREE));
+      const { result } = renderHook(() => useFilterDisplay());
+      expect(result.current.antecedentPool.map((o) => o.label)).toEqual(["Live", "Inside"]);
+      expect(result.current.dependencyPool.map((o) => o.label)).toEqual(["Inside"]);
+      expect(result.current.nodeLabel("task-5")).toBe("Inside");
+    });
+
+    it("offers them when the setting includes archived nodes", () => {
+      useDisplayStore.setState({ searchIncludesArchived: true });
+      mockUseMindmapData.mockReturnValue(mindmapData(ARCHIVED_TREE));
+      const { result } = renderHook(() => useFilterDisplay());
+      expect(result.current.antecedentPool.map((o) => o.label)).toEqual(["Live", "Shelved", "Inside", "Lapsed"]);
+      expect(result.current.dependencyPool.map((o) => o.label)).toEqual(["Inside", "Lapsed"]);
+      useDisplayStore.setState({ searchIncludesArchived: false });
+    });
   });
 });

@@ -10,6 +10,7 @@ import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping
 import type { Verdict } from "@/api/verdict";
 import type { Timing } from "@/api/scope-lifecycle";
 import { VERDICT, VERDICT_VALUES } from "@/api/verdict";
+import { canonicalYesNoPills, isYesNoDimension } from "@/utils/filter-modes";
 
 /** Same any/all/exclude semantics as a tag filter, reused across every List View filter dimension. */
 export type PillMode = TagFilterMode;
@@ -22,9 +23,6 @@ export interface PillFilter {
 
 /** Set-theory glyphs: Any = union, All = intersection, Exclude = empty set — shown on every pill/chip. */
 export const PILL_MODE_SYMBOL: Record<PillMode, string> = { any: "∪", all: "∩", exclude: "∅" };
-
-/** The mode a pill advances to when its chip is clicked (Any → All → Exclude → Any). */
-export const NEXT_PILL_MODE: Record<PillMode, PillMode> = { any: "all", all: "exclude", exclude: "any" };
 
 /**
  * Which way a pill points: it keeps its value **in** or keeps it **out**.
@@ -45,12 +43,12 @@ export function pillSide(mode: PillMode): PillSide {
 export type PillDimension =
   | "antecedent" | "dependency"
   | "taskStatus" | "goalStatus" | "projectStatus" | "verdict"
-  | "scopeState" | "blocked" | "agentic" | "asynchronous";
+  | "scopeState" | "blocked" | "agentic" | "asynchronous" | "private";
 
 export const PILL_DIMENSIONS: PillDimension[] = [
   "antecedent", "dependency",
   "taskStatus", "goalStatus", "projectStatus", "verdict",
-  "scopeState", "blocked", "agentic", "asynchronous",
+  "scopeState", "blocked", "agentic", "asynchronous", "private",
 ];
 
 /** List View's own preset selector: All/Plan/Start/Do write through to the shared status preset;
@@ -183,7 +181,7 @@ export const DEFAULT_LIST_FILTER: ListFilterState = {
   pills: {
     antecedent: [], dependency: [],
     taskStatus: [], goalStatus: [], projectStatus: [], verdict: [],
-    scopeState: [], blocked: [], agentic: [], asynchronous: [],
+    scopeState: [], blocked: [], agentic: [], asynchronous: [], private: [],
   },
 };
 
@@ -210,13 +208,16 @@ export interface PersistedListFilter {
  * Parent, subsumed by Antecedent and already named in every row's path header — is dropped rather
  * than carried forward as a filter that still narrows the list while no chip shows it and no
  * control can clear it. Only the keys in {@link PILL_DIMENSIONS} are read, so a retired key is
- * simply never looked at, whatever it holds.
+ * simply never looked at, whatever it holds. A yes/no dimension (Blocked, Agentic, Asynchronous) is
+ * brought to its single-pill shape — see `canonicalYesNoPills`.
  */
 export function withCurrentPillDimensions(filter: PersistedListFilter): ListFilterState {
   const pills: Record<PillDimension, PillFilter[]> = { ...DEFAULT_LIST_FILTER.pills };
   for (const dimension of PILL_DIMENSIONS) {
     const persisted = filter.pills[dimension];
-    pills[dimension] = Array.isArray(persisted) ? persisted.filter(isPillFilter) : [];
+    const read = Array.isArray(persisted) ? persisted.filter(isPillFilter) : [];
+    // A yes/no dimension is one pill in the menu now; older state may hold its "not" value.
+    pills[dimension] = isYesNoDimension(dimension) ? canonicalYesNoPills(dimension, read) : read;
   }
   return { preset: filter.preset, kinds: readRowKinds(filter.kinds), pills };
 }
@@ -295,6 +296,34 @@ export interface ExpectationListRow {
  */
 function ancestorRefs(ancestors: readonly MindmapNode[]): string[] {
   return ancestors.map((ancestor) => ancestor.id);
+}
+
+/** Whether a row is private: its node is marked private or sits under a node that is — the same
+ * reading Private Mode hides by. */
+function isPrivateRow(node: MindmapNode, hasPrivateAncestor: boolean): boolean {
+  return node.isPrivate === true || hasPrivateAncestor;
+}
+
+/** The yes/no flags a row answers "yes" to, as the "is X" values their pills are stored under. */
+function flagTokens(flags: Readonly<Record<"blocked" | "agentic" | "asynchronous" | "private", boolean>>): string[] {
+  return Object.entries(flags).flatMap(([flag, on]) => (on ? [flag] : []));
+}
+
+/**
+ * The yes/no pills — Blocked, Agentic, Asynchronous, Private — as **one** pill group, so an Any
+ * among them is an Any across them: Agentic (Any) with Asynchronous (Any) keeps what is either.
+ * All and Not read per flag, as they would in groups of their own. A Commitment or a wait answers
+ * only the Private pill: the others ask about Tasks and do not apply to it. Private is offered
+ * only while Private Mode is on, and turning that off removes it.
+ */
+function flagPills(listFilter: ListFilterState, taskFlags: boolean): PillFilter[] {
+  const { blocked, agentic, asynchronous } = listFilter.pills;
+  return [...(taskFlags ? [...blocked, ...agentic, ...asynchronous] : []), ...listFilter.pills.private];
+}
+
+/** A Commitment's or a wait's flag tokens: it answers only Private. */
+function privateToken(node: MindmapNode, hasPrivateAncestor: boolean): string[] {
+  return isPrivateRow(node, hasPrivateAncestor) ? ["private"] : [];
 }
 
 /** Combined pill predicate per SPEC Filtering Logic: (∪Any) ∧ (∩All) ∧ ¬(∪Exclude). */
@@ -433,10 +462,12 @@ function rowPassesFilters(row: TaskListRow, shared: FilterState, listFilter: Lis
   if (!matchesPillGroup(listFilter.pills.goalStatus, row.goalStatus !== null ? [row.goalStatus] : [])) return false;
   if (!matchesPillGroup(listFilter.pills.projectStatus, row.projectStatus !== null ? [row.projectStatus] : [])) return false;
   if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
-  if (!matchesPillGroup(listFilter.pills.blocked, [row.isBlocked ? "blocked" : "not_blocked"])) return false;
-  if (!matchesPillGroup(listFilter.pills.agentic, [row.isAgentic ? "agentic" : "not_agentic"])) return false;
-  if (!matchesPillGroup(listFilter.pills.asynchronous, [row.isAsynchronous ? "asynchronous" : "not_asynchronous"])) return false;
-  return true;
+  return matchesPillGroup(flagPills(listFilter, true), flagTokens({
+    blocked: row.isBlocked,
+    agentic: row.isAgentic,
+    asynchronous: row.isAsynchronous,
+    private: isPrivateRow(row.node, row.hasPrivateAncestor),
+  }));
 }
 
 /**
@@ -485,6 +516,7 @@ function commitmentPassesFilters(row: CommitmentListRow, shared: FilterState, li
   if (!passesTags(row.node, shared)) return false;
   if (!matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors))) return false;
   if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
+  if (!matchesPillGroup(flagPills(listFilter, false), privateToken(row.node, row.hasPrivateAncestor))) return false;
   return matchesPillGroup(listFilter.pills.verdict, [row.node.verdict ?? VERDICT.UNRESOLVED]);
 }
 
@@ -523,6 +555,7 @@ function expectationPassesFilters(row: ExpectationListRow, shared: FilterState, 
   }
   if (!passesTags(row.node, shared)) return false;
   if (!matchesPillGroup(listFilter.pills.scopeState, row.scopeTokens)) return false;
+  if (!matchesPillGroup(flagPills(listFilter, false), privateToken(row.node, row.hasPrivateAncestor))) return false;
   return matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors));
 }
 

@@ -22,7 +22,7 @@ describe("two tabs' stores", () => {
     const a = createTabStores();
     const b = createTabStores();
 
-    a.listFilter.getState().addPill("taskStatus", "todo");
+    a.listFilter.getState().addPill("taskStatus", "todo", "any");
     a.listFilter.getState().setPreset("unblock");
 
     expect(a.listFilter.getState().filter.pills.taskStatus).toEqual([{ value: "todo", mode: "any" }]);

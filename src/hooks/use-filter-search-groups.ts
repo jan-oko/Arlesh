@@ -1,0 +1,78 @@
+import { useTranslation } from "react-i18next";
+import { useFilterStore } from "@/stores/use-filter-store";
+import { useListFilterStore } from "@/stores/use-list-filter-store";
+import type { View } from "@/stores/use-view-store";
+import type { FilterDimensions } from "@/hooks/use-filter-dimensions";
+import type { FilterEntries } from "@/hooks/use-filter-entries";
+import { NO_VALUE, isYesNoDimension } from "@/utils/filter-modes";
+import { filterMenuRows, filterSwitchesFor, offeredDimensions } from "@/utils/filter-layout";
+import type { FilterRowId } from "@/utils/filter-layout";
+import type { RowKindResult, SearchGroup, SearchResult, SearchSwitch, SwitchResult } from "@/utils/filter-search";
+import { LIST_ROW_KINDS } from "@/utils/list-filter";
+
+/** Rows whose values are every node: their results are capped. */
+function isNodeSearch(row: FilterRowId): boolean {
+  return row === "antecedent" || row === "dependency";
+}
+
+/** The switches the search offers: Archived and Backlog where the view has them. Private Mode is
+ * the menu's switch; while it is on, the Private yes/no pill is what the search offers instead. */
+function searchSwitches(view: View): SearchSwitch[] {
+  return filterSwitchesFor(view).flatMap((target) => (target === "private" ? [] : [target]));
+}
+
+/**
+ * The `Ctrl+F` filter search's catalogue for a view: every dimension the view's Filter menu has, in
+ * the menu's order, with the values not yet added; then the switches — in the List View the three
+ * row kinds, then Archived and Backlog — each one result wearing its current state.
+ */
+export function useFilterSearchGroups(view: View, catalogue: FilterDimensions, entries: FilterEntries): SearchGroup[] {
+  const { t } = useTranslation(["filter", "listView"]);
+  const filter = useFilterStore((s) => s.filter);
+  const kinds = useListFilterStore((s) => s.filter.kinds);
+
+  function valueResults(row: FilterRowId): SearchResult[] {
+    return offeredDimensions(row, filter.privateMode).flatMap((dimension) => {
+      const added = new Set(entries.entries(dimension).map((entry) => entry.value));
+      return catalogue.options(dimension)
+        .filter((option) => !added.has(option.value))
+        .map((option) => {
+          const notLabel = isYesNoDimension(dimension) ? catalogue.valueLabel(dimension, NO_VALUE[dimension], "all") : "";
+          return { ...option, kind: "value" as const, dimension, matchText: `${option.label} ${notLabel}` };
+        });
+    });
+  }
+
+  function switchLabel(target: SearchSwitch): string {
+    return target === "archived" ? t("archivedPill") : t("backlogPill");
+  }
+
+  const rowKinds: RowKindResult[] = view !== "list" ? [] : LIST_ROW_KINDS.map((kind) => ({
+    kind: "rowKind",
+    target: kind,
+    label: t(`listView:rowKind.${kind}`),
+    shown: kinds.includes(kind),
+    matchText: t(`listView:rowKind.${kind}`),
+  }));
+
+  const switches: SwitchResult[] = searchSwitches(view).map((target) => ({
+    kind: "switch",
+    target,
+    label: switchLabel(target),
+    state: target === "archived" ? filter.archivedMode : filter.backlogMode,
+    matchText: switchLabel(target),
+  }));
+
+  const dimensionGroups: SearchGroup[] = filterMenuRows(view).flat().map((row) => ({
+    key: row,
+    label: catalogue.groupLabel(row),
+    aliases: catalogue.aliases(row),
+    searchOnly: isNodeSearch(row),
+    results: valueResults(row),
+  }));
+
+  return [
+    ...dimensionGroups,
+    { key: "switches", label: t("groups.switches"), aliases: [], searchOnly: false, results: [...rowKinds, ...switches] },
+  ];
+}

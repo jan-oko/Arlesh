@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import FilterPopover from "./FilterPopover";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore } from "@/stores/use-view-store";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import { useFilterDisplay } from "@/hooks/use-filter-display";
@@ -34,7 +35,21 @@ beforeEach(() => {
   mockUseFilterDisplay.mockReturnValue(EMPTY_DISPLAY);
 });
 
-describe("FilterPopover", () => {
+/** The button a pill's text sits in — a set pill's accessible name is its mode sentence. */
+function pill(text: string): HTMLElement {
+  const button = screen.getByText(text).closest("button");
+  if (button === null) throw new Error(`no pill reads ${text}`);
+  return button;
+}
+
+/** The labels of the dimension rows below the switch block, top to bottom. */
+function rowLabels(): string[] {
+  return screen.getAllByRole("group")
+    .map((group) => group.getAttribute("aria-label") ?? "")
+    .filter((label) => label.startsWith("rows."));
+}
+
+describe("FilterPopover — switch block", () => {
   it("shows the include-flows subtoggle only in Plan/Start", () => {
     render(<FilterPopover />);
     expect(screen.queryByText("includeFlows")).not.toBeInTheDocument(); // All
@@ -56,190 +71,422 @@ describe("FilterPopover", () => {
     expect(useFilterStore.getState().filter.showInfo).toBe(false);
   });
 
-  it("does not show the node-type section while List View is active", () => {
+  it("does not show the node types while List View is active", () => {
     useViewStore.setState({ view: "list" });
     render(<FilterPopover />);
-    expect(screen.queryByText("typesLabel")).not.toBeInTheDocument();
-  });
-
-  it("adds a tag filter (default Any) from the search combobox", async () => {
-    mockUseFilterDisplay.mockReturnValue({
-      ...EMPTY_DISPLAY,
-      tagOptions: [{ id: 1, label: "urgent", color: null }],
-    });
-    render(<FilterPopover />);
-    fireEvent.focus(await screen.findByPlaceholderText("addTag"));
-    await waitFor(() => expect(screen.getByText("urgent")).toBeInTheDocument());
-    fireEvent.mouseDown(screen.getByText("urgent"));
-    expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 1, mode: "any" }]);
-  });
-
-  it("an already-selected tag no longer appears as a candidate", () => {
-    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: 1, mode: "any" }] } });
-    mockUseFilterDisplay.mockReturnValue({
-      ...EMPTY_DISPLAY,
-      tagOptions: [{ id: 1, label: "urgent", color: null }],
-    });
-    render(<FilterPopover />);
-    expect(screen.queryByPlaceholderText("addTag")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "nodeKinds:info" })).not.toBeInTheDocument();
   });
 
   it("toggles Private Mode", () => {
     render(<FilterPopover />);
-    fireEvent.click(screen.getByText("privateMode").closest("label") ?? screen.getByText("privateMode"));
+    fireEvent.click(screen.getByLabelText("privateMode"));
     expect(useFilterStore.getState().filter.privateMode).toBe(true);
   });
 
-  it("hides the archived pill behind a collapsed Advanced disclosure by default", () => {
-    render(<FilterPopover />);
-    expect(screen.queryByRole("button", { name: "archivedPill" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
-    expect(screen.getByRole("button", { name: "archivedPill" })).toBeInTheDocument();
-  });
-
-  it("auto-opens the Advanced disclosure when the archived filter is already active", () => {
-    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, archivedMode: "exclude" } });
-    render(<FilterPopover />);
-    expect(screen.getByRole("button", { name: "archivedPill" })).toBeInTheDocument();
-  });
-
-  it("cycles the archived pill Inactive → Include → Exclude → Inactive on click (Mindmap only)", () => {
-    render(<FilterPopover />);
-    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
-    const pill = screen.getByRole("button", { name: "archivedPill" });
-    expect(useFilterStore.getState().filter.archivedMode).toBe("inactive");
-    fireEvent.click(pill);
-    expect(useFilterStore.getState().filter.archivedMode).toBe("include");
-    fireEvent.click(pill);
-    expect(useFilterStore.getState().filter.archivedMode).toBe("exclude");
-    fireEvent.click(pill);
-    expect(useFilterStore.getState().filter.archivedMode).toBe("inactive");
-  });
-
-  it("does not show the Advanced disclosure while List View is active", () => {
-    useViewStore.setState({ view: "list" });
+  it("has no Advanced disclosure: Archived and Backlog are in the switch block", () => {
     render(<FilterPopover />);
     expect(screen.queryByRole("button", { name: "advanced" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "archivedPill" })).not.toBeInTheDocument();
+    const switches = screen.getByRole("group", { name: "switchesLabel" });
+    expect(within(switches).getByRole("button", { name: "archivedPill" })).toBeInTheDocument();
+    expect(within(switches).getByRole("button", { name: "backlogPill" })).toBeInTheDocument();
+  });
+
+  it.each(["mindmap", "list", "steps"] as const)("offers Archived and Backlog in the %s view", (view) => {
+    useViewStore.setState({ view });
+    render(<FilterPopover />);
+    expect(screen.getByRole("button", { name: "archivedPill" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "backlogPill" })).toBeInTheDocument();
+  });
+
+  it("leaves Backlog out of the Plan View, which answers it with a switch of its own", () => {
+    useViewStore.setState({ view: "plan" });
+    render(<FilterPopover />);
+    expect(screen.getByRole("button", { name: "archivedPill" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "backlogPill" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { name: "archivedPill", read: () => useFilterStore.getState().filter.archivedMode },
+    { name: "backlogPill", read: () => useFilterStore.getState().filter.backlogMode },
+  ])("cycles $name off → include → exclude → off in the List View", ({ name, read }) => {
+    useViewStore.setState({ view: "list" });
+    render(<FilterPopover />);
+    const modes: string[] = [];
+    for (let step = 0; step < 3; step += 1) {
+      fireEvent.click(screen.getByRole("button", { name }));
+      modes.push(read());
+    }
+    expect(modes).toEqual(["include", "exclude", "inactive"]);
   });
 
   it("reset clears the shared filter (and the list filter, while List View is active)", () => {
-    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true, archivedMode: "exclude" } });
     useViewStore.setState({ view: "list" });
     useListFilterStore.setState({
-      filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills, blocked: [{ value: "blocked", mode: "any" }] } },
+      filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills, blocked: [{ value: "blocked", mode: "all" }] } },
     });
     render(<FilterPopover />);
-    fireEvent.click(screen.getByText("reset"));
+    fireEvent.click(screen.getByRole("button", { name: "reset" }));
     expect(useFilterStore.getState().filter.privateMode).toBe(false);
+    expect(useFilterStore.getState().filter.archivedMode).toBe("inactive");
     expect(useListFilterStore.getState().filter.pills.blocked).toEqual([]);
   });
+});
 
-  describe("List View filter sections", () => {
+describe("FilterPopover — rows", () => {
+  it("lays out the List View's rows in their groups", () => {
+    useViewStore.setState({ view: "list" });
+    render(<FilterPopover />);
+    expect(rowLabels()).toEqual([
+      "rows.antecedent", "rows.tag", "rows.dependency",
+      "rows.scopeState", "rows.yesNo",
+      "rows.taskStatus", "rows.goalStatus", "rows.projectStatus", "rows.verdict",
+    ]);
+  });
+
+  it.each(["mindmap", "steps", "plan"] as const)("gives the %s view the Tags row alone", (view) => {
+    useViewStore.setState({ view });
+    render(<FilterPopover />);
+    expect(rowLabels()).toEqual(["rows.tag"]);
+  });
+
+  describe("fixed values", () => {
     beforeEach(() => {
       useViewStore.setState({ view: "list" });
     });
 
-    it("does not render List-View-exclusive sections while the Mindmap is active", () => {
-      useViewStore.setState({ view: "mindmap" });
+    it.each([
+      { keys: {}, mode: "all" },
+      { keys: { shiftKey: true }, mode: "any" },
+      { keys: { altKey: true }, mode: "exclude" },
+    ])("a click with $keys adds the value as $mode", ({ keys, mode }) => {
       render(<FilterPopover />);
-      expect(screen.queryByText("listView:taskStatusLabel")).not.toBeInTheDocument();
+      fireEvent.click(pill("todo"), keys);
+      expect(useListFilterStore.getState().filter.pills.taskStatus).toEqual([{ value: "todo", mode }]);
     });
 
-    it("renders the Hierarchy and Status & Scope clusters while List View is active", () => {
+    it("Enter adds as All, Shift+Enter as Any, Alt+Enter as Not", () => {
       render(<FilterPopover />);
-      expect(screen.getByText("listView:hierarchyClusterLabel")).toBeInTheDocument();
-      expect(screen.getByText("listView:statusScopeClusterLabel")).toBeInTheDocument();
+      fireEvent.keyDown(pill("todo"), { key: "Enter" });
+      fireEvent.keyDown(pill("done"), { key: "Enter", shiftKey: true });
+      fireEvent.keyDown(pill("in_progress"), { key: "Enter", altKey: true });
+      expect(useListFilterStore.getState().filter.pills.taskStatus).toEqual([
+        { value: "todo", mode: "all" }, { value: "done", mode: "any" }, { value: "in_progress", mode: "exclude" },
+      ]);
     });
 
-    it("offers Agentic as a pill dimension of its own, alongside the rest", () => {
+    it("keeps an added value in its row, wearing its mode, and cycles it All → Any → Not → All on click", () => {
       render(<FilterPopover />);
-      expect(screen.getByText("listView:agenticLabel")).toBeInTheDocument();
-      fireEvent.click(screen.getByText("agentic"));
-      expect(useListFilterStore.getState().filter.pills.agentic).toEqual([{ value: "agentic", mode: "any" }]);
+      fireEvent.click(pill("kept"));
+      expect(pill("kept")).toHaveAttribute("data-set-pill");
+      expect(pill("kept")).toHaveTextContent("∩");
+      const modes: string[] = [];
+      for (let step = 0; step < 3; step += 1) {
+        fireEvent.click(pill("kept"));
+        modes.push(useListFilterStore.getState().filter.pills.verdict[0]?.mode ?? "");
+      }
+      expect(modes).toEqual(["any", "exclude", "all"]);
+    });
+
+    it("strikes a Not value through", () => {
+      render(<FilterPopover />);
+      fireEvent.click(pill("lapsed"), { altKey: true });
+      expect(pill("lapsed")).toHaveTextContent("∅");
+      expect(screen.getByText("lapsed").className).toMatch(/struck/);
+    });
+
+    it("Delete removes a set value and leaves focus on the pill, now plain", () => {
+      render(<FilterPopover />);
+      fireEvent.click(pill("todo"));
+      pill("todo").focus();
+      fireEvent.keyDown(pill("todo"), { key: "Delete" });
+      expect(useListFilterStore.getState().filter.pills.taskStatus).toEqual([]);
+      expect(pill("todo")).not.toHaveAttribute("data-set-pill");
+      expect(pill("todo")).toHaveFocus();
+    });
+
+    it("Backspace removes a set value too", () => {
+      render(<FilterPopover />);
+      fireEvent.click(pill("todo"));
+      fireEvent.keyDown(pill("todo"), { key: "Backspace" });
+      expect(useListFilterStore.getState().filter.pills.taskStatus).toEqual([]);
+    });
+  });
+
+  describe("yes/no pills", () => {
+    beforeEach(() => {
+      useViewStore.setState({ view: "list" });
+    });
+
+    it("collapses each yes/no dimension to one pill in the Yes / no row", () => {
+      render(<FilterPopover />);
+      const row = screen.getByRole("group", { name: "rows.yesNo" });
+      expect(within(row).getAllByRole("button").map((b) => b.textContent)).toEqual(["blocked", "agentic", "asynchronous"]);
+      expect(screen.queryByText("not_blocked")).not.toBeInTheDocument();
+    });
+
+    it("adds 'is X' on a click, Any with Shift, and 'is not X' with Alt", () => {
+      render(<FilterPopover />);
+      fireEvent.click(pill("blocked"));
+      fireEvent.click(pill("agentic"), { shiftKey: true });
+      fireEvent.click(pill("asynchronous"), { altKey: true });
+      const pills = useListFilterStore.getState().filter.pills;
+      expect(pills.blocked).toEqual([{ value: "blocked", mode: "all" }]);
+      expect(pills.agentic).toEqual([{ value: "agentic", mode: "any" }]);
+      expect(pills.asynchronous).toEqual([{ value: "asynchronous", mode: "exclude" }]);
+    });
+
+    it("cycles an added yes/no pill All → Any → Not → All", () => {
+      render(<FilterPopover />);
+      fireEvent.click(pill("blocked"));
+      const modes: string[] = [];
+      for (let step = 0; step < 3; step += 1) {
+        fireEvent.click(pill("blocked"));
+        modes.push(useListFilterStore.getState().filter.pills.blocked[0]?.mode ?? "");
+      }
+      expect(modes).toEqual(["any", "exclude", "all"]);
+    });
+
+    it("adds a Private pill to the Yes / no row only while Private Mode is on", () => {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
+      render(<FilterPopover />);
+      const row = screen.getByRole("group", { name: "rows.yesNo" });
+      expect(within(row).getAllByRole("button").map((b) => b.textContent)).toEqual(
+        ["blocked", "agentic", "asynchronous", "privateState.private"],
+      );
+      fireEvent.click(pill("privateState.private"), { altKey: true });
+      expect(useListFilterStore.getState().filter.pills.private).toEqual([{ value: "private", mode: "exclude" }]);
+    });
+
+    it("turning Private Mode off removes the Private pill and says so in a toast", () => {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
+      useListFilterStore.getState().addPill("private", "private", "all");
+      useMindmapStore.setState({ pendingToast: null });
+      render(<FilterPopover />);
+      fireEvent.click(screen.getByLabelText("privateMode"));
+      expect(useFilterStore.getState().filter.privateMode).toBe(false);
+      expect(useListFilterStore.getState().filter.pills.private).toEqual([]);
+      expect(useMindmapStore.getState().pendingToast?.message).toBe("privateFilterRemoved");
+      expect(screen.queryByText("privateState.private")).not.toBeInTheDocument();
     });
 
     it("leaves the Blocked dimension alone when an Agentic pill is added", () => {
-      // Agentic is independent of every other dimension, and of Delegation in particular.
       render(<FilterPopover />);
-      fireEvent.click(screen.getByText("not_agentic"));
+      fireEvent.click(pill("agentic"), { altKey: true });
       expect(useListFilterStore.getState().filter.pills.blocked).toEqual([]);
     });
+  });
 
-    it("adds a fixed-option pill (task status) by clicking it", () => {
-      render(<FilterPopover />);
-      fireEvent.click(screen.getByText("todo"));
-      expect(useListFilterStore.getState().filter.pills.taskStatus).toEqual([{ value: "todo", mode: "any" }]);
-    });
-
-    it("an already-added fixed value no longer appears as a candidate", () => {
-      useListFilterStore.getState().addPill("blocked", "blocked");
-      render(<FilterPopover />);
-      expect(screen.queryByText("blocked")).not.toBeInTheDocument();
-      expect(screen.getByText("not_blocked")).toBeInTheDocument();
-    });
-
-    it("adds an antecedent filter pill from the searchable combobox", async () => {
+  describe("inline searches", () => {
+    it("adds a tag from its row's search box, as All on Enter", () => {
       mockUseFilterDisplay.mockReturnValue({
         ...EMPTY_DISPLAY,
-        antecedentPool: [{ id: "project-1", label: "Rocket", color: "#e74c3c" }],
+        tagOptions: [{ id: 1, label: "urgent", color: "#e74c3c" }, { id: 2, label: "home", color: null }],
       });
       render(<FilterPopover />);
-      fireEvent.focus(await screen.findByPlaceholderText("listView:addAntecedent"));
-      await waitFor(() => expect(screen.getByText("Rocket")).toBeInTheDocument());
-      fireEvent.mouseDown(screen.getByText("Rocket"));
-      expect(useListFilterStore.getState().filter.pills.antecedent).toEqual([{ value: "project-1", mode: "any" }]);
+      const box = screen.getByRole("combobox", { name: "rows.tag" });
+      fireEvent.focus(box);
+      fireEvent.change(box, { target: { value: "urg" } });
+      expect(screen.getByRole("option", { name: "urgent" })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: "home" })).not.toBeInTheDocument();
+      fireEvent.keyDown(box, { key: "Enter" });
+      expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 1, mode: "all" }]);
+      expect(box).toHaveValue("");
     });
 
-    it("an already-added antecedent no longer appears as a candidate", () => {
-      useListFilterStore.getState().addPill("antecedent", "project-1");
-      mockUseFilterDisplay.mockReturnValue({
-        ...EMPTY_DISPLAY,
-        antecedentPool: [{ id: "project-1", label: "Rocket", color: null }],
-      });
+    it("lists nothing until you type", () => {
+      mockUseFilterDisplay.mockReturnValue({ ...EMPTY_DISPLAY, tagOptions: [{ id: 1, label: "urgent", color: null }] });
       render(<FilterPopover />);
-      expect(screen.queryByPlaceholderText("listView:addAntecedent")).not.toBeInTheDocument();
+      fireEvent.focus(screen.getByRole("combobox", { name: "rows.tag" }));
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     });
 
-    it("adds a dependency filter pill from its own pool (tasks/goals only)", async () => {
+    it("moves with the arrows and adds with Shift+Enter as Any", () => {
       mockUseFilterDisplay.mockReturnValue({
         ...EMPTY_DISPLAY,
-        dependencyPool: [{ id: "task-9", label: "Fuel up", color: null }],
+        tagOptions: [{ id: 1, label: "home", color: null }, { id: 2, label: "homework", color: null }],
       });
       render(<FilterPopover />);
-      fireEvent.focus(await screen.findByPlaceholderText("listView:addDependency"));
-      await waitFor(() => expect(screen.getByText("Fuel up")).toBeInTheDocument());
-      fireEvent.mouseDown(screen.getByText("Fuel up"));
-      expect(useListFilterStore.getState().filter.pills.dependency).toEqual([{ value: "task-9", mode: "any" }]);
+      const box = screen.getByRole("combobox", { name: "rows.tag" });
+      fireEvent.focus(box);
+      fireEvent.change(box, { target: { value: "home" } });
+      fireEvent.keyDown(box, { key: "ArrowDown" });
+      fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+      expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 2, mode: "any" }]);
+    });
+
+    it("adds with Alt+click as Not, and shows the added value beside the box, gone from the dropdown", () => {
+      useViewStore.setState({ view: "list" });
+      mockUseFilterDisplay.mockReturnValue({
+        ...EMPTY_DISPLAY,
+        nodeLabel: (ref: string) => (ref === "project-1" ? "Rocket" : ref),
+        antecedentPool: [{ id: "project-1", label: "Rocket", color: "#e74c3c", path: "" }, { id: "project-2", label: "Rover", color: null, path: "" }],
+      });
+      render(<FilterPopover />);
+      const box = screen.getByRole("combobox", { name: "rows.antecedent" });
+      fireEvent.focus(box);
+      fireEvent.change(box, { target: { value: "ro" } });
+      fireEvent.click(screen.getByRole("option", { name: "Rocket" }), { altKey: true });
+      expect(useListFilterStore.getState().filter.pills.antecedent).toEqual([{ value: "project-1", mode: "exclude" }]);
+      const row = screen.getByRole("group", { name: "rows.antecedent" });
+      expect(within(row).getByText("Rocket").closest("button")).toHaveAttribute("data-set-pill");
+      fireEvent.change(box, { target: { value: "ro" } });
+      expect(screen.queryByRole("option", { name: "Rocket" })).not.toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Rover" })).toBeInTheDocument();
+    });
+
+    it("searches Depends on in its own pool", () => {
+      useViewStore.setState({ view: "list" });
+      mockUseFilterDisplay.mockReturnValue({ ...EMPTY_DISPLAY, dependencyPool: [{ id: "task-9", label: "Fuel up", color: null, path: "" }] });
+      render(<FilterPopover />);
+      const box = screen.getByRole("combobox", { name: "rows.dependency" });
+      fireEvent.focus(box);
+      fireEvent.change(box, { target: { value: "fuel" } });
+      fireEvent.click(screen.getByRole("option", { name: "Fuel up" }));
+      expect(useListFilterStore.getState().filter.pills.dependency).toEqual([{ value: "task-9", mode: "all" }]);
+    });
+
+    it("cycles a set pill in the row and, on Delete, moves focus to the next one or the box", () => {
+      useFilterStore.setState({
+        filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: 1, mode: "all" }, { tagId: 2, mode: "all" }] },
+      });
+      mockUseFilterDisplay.mockReturnValue({
+        ...EMPTY_DISPLAY,
+        tagName: (id: number) => (id === 1 ? "urgent" : "home"),
+        tagOptions: [{ id: 1, label: "urgent", color: null }, { id: 2, label: "home", color: null }],
+      });
+      render(<FilterPopover />);
+      fireEvent.click(pill("urgent"));
+      expect(useFilterStore.getState().filter.tagFilters[0]).toEqual({ tagId: 1, mode: "any" });
+      fireEvent.keyDown(pill("urgent"), { key: "Delete" });
+      expect(useFilterStore.getState().filter.tagFilters).toEqual([{ tagId: 2, mode: "all" }]);
+      expect(pill("home")).toHaveFocus();
+      fireEvent.keyDown(pill("home"), { key: "Backspace" });
+      expect(screen.getByRole("combobox", { name: "rows.tag" })).toHaveFocus();
+    });
+
+    it("Esc clears the query without letting the key reach the menu", () => {
+      mockUseFilterDisplay.mockReturnValue({ ...EMPTY_DISPLAY, tagOptions: [{ id: 1, label: "urgent", color: null }] });
+      const outer = vi.fn();
+      render(<div onKeyDown={outer}><FilterPopover /></div>);
+      const box = screen.getByRole("combobox", { name: "rows.tag" });
+      fireEvent.focus(box);
+      fireEvent.change(box, { target: { value: "urg" } });
+      fireEvent.keyDown(box, { key: "Escape" });
+      expect(box).toHaveValue("");
+      expect(outer).not.toHaveBeenCalled();
     });
   });
 });
 
-describe("FilterPopover — Backlog pill", () => {
-  it("sits beside the Archived pill under the Advanced disclosure", () => {
-    render(<FilterPopover />);
-    expect(screen.queryByRole("button", { name: "backlogPill" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /advanced/ }));
-    expect(screen.getByRole("button", { name: "backlogPill" })).toBeInTheDocument();
+describe("FilterPopover — letter keys (List View)", () => {
+  beforeEach(() => {
+    useViewStore.setState({ view: "list" });
+    useMindmapStore.setState({ pendingToast: null });
   });
 
-  it("auto-opens the Advanced disclosure when the backlog filter is already active", () => {
-    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, backlogMode: "include" } });
+  const menu = () => screen.getByRole("dialog", { name: "common:filter" });
+  const press = (code: string, keys: Partial<KeyboardEventInit> = {}) => fireEvent.keyDown(menu(), { code, ...keys });
+  const kinds = () => useListFilterStore.getState().filter.kinds;
+  const pills = () => useListFilterStore.getState().filter.pills;
+
+  it("takes focus when it opens, so the keys work at once", () => {
     render(<FilterPopover />);
-    expect(screen.getByRole("button", { name: "backlogPill" })).toBeInTheDocument();
+    expect(menu()).toHaveFocus();
   });
 
-  it("cycles Inactive → Include → Exclude → Inactive on click", () => {
+  it("t / c / e toggle a row kind; Alt does the same; Shift shows that kind alone", () => {
     render(<FilterPopover />);
-    fireEvent.click(screen.getByRole("button", { name: /advanced/ }));
-    const pill = screen.getByRole("button", { name: "backlogPill" });
-    expect(useFilterStore.getState().filter.backlogMode).toBe("inactive");
-    fireEvent.click(pill);
-    expect(useFilterStore.getState().filter.backlogMode).toBe("include");
-    fireEvent.click(pill);
-    expect(useFilterStore.getState().filter.backlogMode).toBe("exclude");
-    fireEvent.click(pill);
-    expect(useFilterStore.getState().filter.backlogMode).toBe("inactive");
+    press("KeyT");
+    expect(kinds()).toEqual(["commitment", "expectation"]);
+    press("KeyT", { altKey: true });
+    expect(kinds()).toEqual(["task", "commitment", "expectation"]);
+    press("KeyC", { shiftKey: true });
+    expect(kinds()).toEqual(["commitment"]);
+  });
+
+  it("refuses to hide the last kind, with a toast", () => {
+    useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, kinds: ["expectation"] } });
+    render(<FilterPopover />);
+    press("KeyE");
+    expect(kinds()).toEqual(["expectation"]);
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("rowKindRefused.lastKind");
+  });
+
+  it("a / w / b add a flag — plain All, Shift Any, Alt Not", () => {
+    render(<FilterPopover />);
+    press("KeyA");
+    press("KeyW", { shiftKey: true });
+    press("KeyB", { altKey: true });
+    expect(pills().agentic).toEqual([{ value: "agentic", mode: "all" }]);
+    expect(pills().asynchronous).toEqual([{ value: "asynchronous", mode: "any" }]);
+    expect(pills().blocked).toEqual([{ value: "blocked", mode: "exclude" }]);
+  });
+
+  it("a key on a set flag switches it to the key's mode, and removes it when already in that mode", () => {
+    render(<FilterPopover />);
+    press("KeyW", { shiftKey: true });
+    expect(pills().asynchronous).toEqual([{ value: "asynchronous", mode: "any" }]);
+    press("KeyW");
+    expect(pills().asynchronous).toEqual([{ value: "asynchronous", mode: "all" }]);
+    press("KeyW");
+    expect(pills().asynchronous).toEqual([]);
+    press("KeyB", { altKey: true });
+    press("KeyB", { shiftKey: true });
+    expect(pills().blocked).toEqual([{ value: "blocked", mode: "any" }]);
+    press("KeyB", { shiftKey: true });
+    expect(pills().blocked).toEqual([]);
+  });
+
+  it("p adds Private only while Private Mode is on; otherwise says it is off", () => {
+    render(<FilterPopover />);
+    press("KeyP");
+    expect(pills().private).toEqual([]);
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("privateModeOff");
+  });
+
+  it("Shift+P adds Private as Any, like any flag", () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
+    render(<FilterPopover />);
+    press("KeyP", { shiftKey: true });
+    expect(pills().private).toEqual([{ value: "private", mode: "any" }]);
+    expect(useFilterStore.getState().filter.privateMode).toBe(true);
+  });
+
+  it("Ctrl+P toggles Private Mode, removing a Private pill when it turns off", () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
+    useListFilterStore.getState().addPill("private", "private", "all");
+    render(<FilterPopover />);
+    press("KeyP", { ctrlKey: true });
+    expect(useFilterStore.getState().filter.privateMode).toBe(false);
+    expect(pills().private).toEqual([]);
+    press("KeyP", { ctrlKey: true });
+    expect(useFilterStore.getState().filter.privateMode).toBe(true);
+  });
+
+  it("Ctrl+P works in the Mindmap's menu too, where the letters do nothing", () => {
+    useViewStore.setState({ view: "mindmap" });
+    render(<FilterPopover />);
+    press("KeyT");
+    expect(kinds()).toEqual(["task", "commitment", "expectation"]);
+    press("KeyP", { ctrlKey: true });
+    expect(useFilterStore.getState().filter.privateMode).toBe(true);
+  });
+
+  it("letters typed into a search box type, and change nothing", () => {
+    render(<FilterPopover />);
+    const box = screen.getByRole("combobox", { name: "rows.tag" });
+    fireEvent.keyDown(box, { code: "KeyT" });
+    fireEvent.keyDown(box, { code: "KeyA" });
+    expect(kinds()).toEqual(["task", "commitment", "expectation"]);
+    expect(pills().agentic).toEqual([]);
+  });
+
+  it("draws no key hints on the pills or the Private switch", () => {
+    render(<FilterPopover />);
+    expect(screen.getByRole("button", { name: /rowKind\.task/ })).toHaveTextContent(/^rowKind\.task$/);
+    expect(screen.queryByText("privateModeKey")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "common:filter" }).querySelector("kbd")).toBeNull();
   });
 });
 
@@ -250,8 +497,8 @@ describe("FilterPopover row-kind selector", () => {
     useViewStore.setState({ view: "list" });
     render(<FilterPopover />);
     const selector = screen.getByRole("group", { name: "rowKindsLabel" });
-    const firstLabel = screen.getAllByText(/Label$/)[0];
-    expect(firstLabel).toHaveTextContent("rowKindsLabel");
+    const firstGroup = screen.getAllByRole("group")[0];
+    expect(firstGroup).toBe(selector);
     expect(selector).toContainElement(kindButton("task"));
     expect(kindButton("commitment")).toHaveAttribute("aria-pressed", "true");
     expect(kindButton("expectation")).toHaveAttribute("aria-pressed", "true");

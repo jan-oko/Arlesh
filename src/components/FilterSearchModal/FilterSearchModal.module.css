@@ -1,0 +1,120 @@
+/* Ctrl+F's result list: the shared search-modal look, grouped under headings. */
+.results {
+  composes: results from "../SearchModalShell/SearchModalShell.module.css";
+  gap: 0;
+}
+
+.heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) 2px;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.prefix {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A node's path, faded, like Ctrl+O's disambiguation. */
+.path {
+  color: var(--text-secondary);
+  opacity: 0.7;
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.note {
+  padding: var(--space-2) var(--space-4);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-style: italic;
+}
+
+.option {
+  composes: result from "../SearchModalShell/SearchModalShell.module.css";
+}
+
+.active {
+  composes: active from "../SearchModalShell/SearchModalShell.module.css";
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* A switch's current state, worn like a set pill: accent for include/on, struck red for exclude. */
+.state {
+  padding: 0 var(--space-2);
+  border-radius: 999px;
+  border: 1px solid var(--node-border);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.stateInclude {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--surface);
+}
+
+.stateExclude {
+  background: var(--mode-exclude);
+  border-color: var(--mode-exclude);
+  color: var(--surface);
+  text-decoration: line-through;
+}
+
+.enter {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.empty {
+  composes: empty from "../SearchModalShell/SearchModalShell.module.css";
+}
+
+/* An active filter's mode symbol, in the mode's colour as on its chip. */
+.symbol {
+  font-family: var(--font-mono);
+  line-height: 1;
+  color: var(--pill-mode-color, var(--text-secondary));
+  flex-shrink: 0;
+}
+
+.struck {
+  text-decoration: line-through;
+}

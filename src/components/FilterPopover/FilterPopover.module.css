@@ -1,9 +1,13 @@
+/* The Filter menu: the switch block, then one compact labelled row per dimension. 300px wide; rows
+ * wrap and never scroll sideways. */
 .popover {
   position: absolute;
   top: calc(100% + var(--space-2));
   inset-inline-end: 0;
   z-index: 100;
-  width: 260px;
+  width: 300px;
+  max-width: calc(100vw - 2 * var(--space-4));
+  box-sizing: border-box;
   background: var(--surface-raised);
   border: 1px solid var(--node-border);
   border-radius: 8px;
@@ -11,107 +15,119 @@
   padding: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: 3px;
   font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  overflow-x: hidden;
 }
 
-.section {
+/* The switch block at the top: row kinds / node types, then Private, Archived and Backlog. */
+.switches {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
-.sectionLabel {
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.switchGap {
+  width: var(--space-2);
+}
+
+.smallSwitch {
   font-size: var(--text-xs);
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
-/* Groups a few sections under a heading (Tags & Type / Hierarchy / Status & Scope) — always
- * expanded, separated by a divider rather than hidden behind a collapse. */
-.cluster {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding-top: var(--space-3);
+/* Thin rule between the untitled groups of rows. */
+.separator {
+  border: none;
   border-top: 1px solid var(--node-border);
-}
-
-.cluster:first-child {
-  padding-top: 0;
-  border-top: none;
-}
-
-.clusterLabel {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-/* Tag search combobox (input + portalled results menu) */
-.searchWrap {
-  position: relative;
-}
-
-.search {
+  margin: 5px 0;
   width: 100%;
-  box-sizing: border-box;
-  padding: 4px var(--space-2);
-  border-radius: 6px;
+}
+
+/* One dimension: a muted label, then its pills (and, for a searched dimension, its search box). */
+.row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+  min-height: 22px;
+}
+
+.rowLabel {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* A value pill. Plain until added; added, it wears its chip's mode (see .setPill). */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
   border: 1px solid var(--node-border);
-  background: var(--surface);
+  background: transparent;
   color: var(--text-primary);
   font-size: var(--text-sm);
   font-family: var(--font-sans);
-  outline: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
 }
 
-.search:focus {
+.pill:hover {
   border-color: var(--accent);
 }
 
-.menu {
-  z-index: 300;
-  max-height: 200px;
-  overflow-y: auto;
-  background: var(--surface-raised);
-  border: 1px solid var(--node-border);
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+.pill:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.menuItem {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-  font-family: var(--font-sans);
-  cursor: pointer;
+.setPill {
+  padding: 1px 6px 1px 5px;
+  border-color: color-mix(in srgb, var(--pill-mode-color, var(--node-border)) 70%, var(--node-border));
+  background: var(--chip-tint, var(--surface));
 }
 
-.menuItem:hover {
-  background: var(--surface-hover, rgba(255, 255, 255, 0.08));
+.setPill:hover {
+  border-color: var(--pill-mode-color, var(--accent));
+}
+
+.symbol {
+  font-family: var(--font-mono);
+  line-height: 1;
+  color: var(--pill-mode-color, var(--text-secondary));
+}
+
+.popover:focus {
+  outline: none;
+}
+
+.struck {
+  text-decoration: line-through;
 }
 
 .dot {
-  width: 8px;
-  height: 8px;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   flex-shrink: 0;
 }
 
-/* Node-type visibility pills (Info / Flow) */
-.typePills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
+/* Row-kind and node-type toggles: filled while shown, struck through while hidden. */
 .typePill {
-  padding: 2px var(--space-3);
+  padding: 1px 7px;
   border-radius: 999px;
   border: 1px solid var(--node-border);
   background: transparent;
@@ -135,36 +151,9 @@
   opacity: 0.55;
 }
 
-/* Collapsible "Advanced" disclosure (currently just the Archived pill) — mirrors EditorAdvanced */
-.advancedToggle {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  align-self: flex-start;
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  font-family: var(--font-sans);
-  cursor: pointer;
-}
-
-.advancedToggle:hover {
-  color: var(--text-primary);
-}
-
-.advancedBody {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-/* Tri-state override pill (Archived, Backlog): cycles Inactive (neutral) → Include (accent) →
-   Exclude (mode-exclude). Shared, because the two behave identically. */
+/* Tri-state override pill (Archived, Backlog): off (neutral) → include (accent) → exclude. */
 .overridePill {
-  align-self: flex-start;
-  padding: 2px var(--space-3);
+  padding: 1px 7px;
   border-radius: 999px;
   border: 1px solid var(--node-border);
   background: transparent;
@@ -187,8 +176,91 @@
   text-decoration: line-through;
 }
 
+/* A searched row: its added values, then the box, all wrapping together. */
+.searchRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.combo {
+  position: relative;
+  flex: 1 1 120px;
+  min-width: 120px;
+}
+
+.search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 2px var(--space-2);
+  border-radius: 6px;
+  border: 1px solid var(--node-border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  outline: none;
+}
+
+.search:focus {
+  border-color: var(--accent);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 300;
+  max-height: 180px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface-raised);
+  border: 1px solid var(--node-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menuItem:hover {
+  background: var(--surface-hover, rgba(255, 255, 255, 0.08));
+}
+
+.menuItemActive {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.menuEmpty {
+  padding: var(--space-1) var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: 6px;
+}
+
 .reset {
-  align-self: flex-start;
   background: none;
   border: none;
   color: var(--text-secondary);

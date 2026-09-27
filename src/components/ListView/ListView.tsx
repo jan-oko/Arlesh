@@ -13,16 +13,13 @@ import { storedAgenticState } from "@/utils/agentic";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useBoardFilter } from "@/hooks/use-board-filter";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
-import {
-  filterCommitmentListWithFocus, filterExpectationListWithFocus, filterTaskListWithFocus, rowKindToggleRefusal,
-  type ListRowKind,
-} from "@/utils/list-filter";
+import { filterCommitmentListWithFocus, filterExpectationListWithFocus, filterTaskListWithFocus } from "@/utils/list-filter";
 import type { StatusMode } from "@/utils/filter-tree";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { MixedListRow } from "@/utils/list-data";
 import { groupMixedRowsByPath, mergeInTreeOrder, preOrderIndex } from "@/utils/list-data";
 import { withAsynchronousSectionMixed } from "@/utils/async-first";
-import { collectSearchableNodes } from "@/utils/mindmap-tree";
+import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { BEADS_NODE_TYPE } from "@/api/beads";
 import { useKeyboardListView } from "./use-keyboard-list-view";
@@ -63,7 +60,10 @@ export default function ListView() {
   const sharedFilter = useBoardFilter();
   // The cheat-sheet overlay gates background shortcuts the same way an open modal does.
   const isInputCaptured = useIsInputCaptured();
-  const addTagFilter = useFilterStore((s) => s.addTagFilter);
+  const addTagFilterInMode = useFilterStore((s) => s.addTagFilter);
+  // A tag clicked on a row keeps the Any mode it has always added in; the filter menu's own adds
+  // read their mode off the keys held (see `modeFromModifiers`).
+  const addTagFilter = (tagId: number) => addTagFilterInMode(tagId, "any");
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
 
   // Subtree entry is shared state, not a filter: the Mindmap and the List View re-root together.
@@ -82,7 +82,6 @@ export default function ListView() {
   const listFilter = useListFilterStore((s) => s.filter);
   const setListPreset = useListFilterStore((s) => s.setPreset);
   const setPillSide = useListFilterStore((s) => s.setPillSide);
-  const toggleRowKind = useListFilterStore((s) => s.toggleKind);
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
@@ -131,7 +130,7 @@ export default function ListView() {
 
   // Every node kind, exactly as the Mindmap's Ctrl+O searches them, and over the whole board
   // rather than the subtree you are standing in — the point of the chord is to get somewhere else.
-  const searchableNodes = useMemo(() => collectSearchableNodes(tree), [tree]);
+  const searchableNodes = useSearchableNodes(tree);
 
   // The focus exemption: the selected row stays in the list even once your own edit stops it matching
   // — cycling a task to Done under Plan no longer drops it out from under the cursor. It ends when the
@@ -256,17 +255,6 @@ export default function ListView() {
     return neighbourAfterDelete(navigableIds, id, deletedIds);
   }
 
-  /** Alt+Shift+T/C/E: the popover's kind toggles, from the keyboard — and a refusal said out loud,
-   * where the popover can draw it as a disabled toggle. */
-  function handleToggleRowKind(kind: ListRowKind) {
-    const refusal = rowKindToggleRefusal(listFilter, kind);
-    if (refusal !== null) {
-      showToast({ nodeId: "", message: t(`listView:rowKindRefused.${refusal}`) });
-      return;
-    }
-    toggleRowKind(kind);
-  }
-
   function handleSetStatusPreset(mode: StatusMode) {
     setStatusMode(mode);
     setListPreset(mode);
@@ -320,7 +308,6 @@ export default function ListView() {
     onDeselect: () => setSelectedRowId(null),
     onSetStatusMode: handleSetStatusPreset,
     onSetUnblockPreset: () => setListPreset("unblock"),
-    onToggleRowKind: handleToggleRowKind,
     onToggleBacklog: toggleBacklog,
     onToggleAgentic: toggleAgentic,
     onToggleAsynchronous: toggleAsynchronous,

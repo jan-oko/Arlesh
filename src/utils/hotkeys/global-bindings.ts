@@ -18,6 +18,7 @@ export interface GlobalContext {
   onExitToRoot: () => void;
   onOpenSearch: () => void;
   onToggleFilter: () => void;
+  onOpenFilterSearch: () => void;
 }
 
 /**
@@ -161,5 +162,17 @@ export const GLOBAL_BINDINGS: readonly Binding<GlobalContext>[] = [
     labelKey: "toggleFilter",
     when: (c) => !c.isInputCaptured,
     run: (c) => c.onToggleFilter(),
+  },
+  {
+    // The filter search: one "Add filter…" box over every filter the view has. Ctrl+F is free in
+    // every view — bare F and Shift+F are view chords, and strict matching keeps Ctrl+F apart from
+    // both — and the webview has no find-in-page of its own to shadow: the dispatcher takes it in
+    // the capture phase and calls preventDefault, as it does Ctrl+P and Ctrl+S.
+    id: "global.openFilterSearch",
+    section: "global",
+    chord: { code: "KeyF", ctrl: true },
+    labelKey: "openFilterSearch",
+    when: (c) => !c.isInputCaptured,
+    run: (c) => c.onOpenFilterSearch(),
   },
 ];

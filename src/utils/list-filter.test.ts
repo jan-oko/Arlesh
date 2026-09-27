@@ -432,7 +432,7 @@ describe("filterTaskList — Agentic", () => {
   });
 
   it("keeps only the rest under a Not-agentic pill", () => {
-    const filtered = filterTaskList([agentic, manual], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, agentic: [{ value: "not_agentic", mode: "any" }] } }));
+    const filtered = filterTaskList([agentic, manual], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, agentic: [{ value: "agentic", mode: "exclude" }] } }));
     expect(filtered.map((r) => r.node.id)).toEqual(["task-m"]);
   });
 
@@ -461,6 +461,53 @@ describe("filterTaskList — Agentic", () => {
   });
 });
 
+describe("filterTaskList — yes/no flags as one group", () => {
+  const both = row({ node: n("task-b", "task", { status: "todo" }), isAgentic: true, isAsynchronous: true });
+  const agent = row({ node: n("task-a", "task", { status: "todo" }), isAgentic: true });
+  const wait = row({ node: n("task-w", "task", { status: "todo" }), isAsynchronous: true });
+  const plain = row({ node: n("task-p", "task", { status: "todo" }) });
+  const rows = [both, agent, wait, plain];
+  const ids = (filtered: TaskListRow[]) => filtered.map((r) => r.node.id);
+
+  it("Agentic (Any) with Asynchronous (Any) keeps what is either", () => {
+    const pills = { ...DEFAULT_LIST_FILTER.pills, agentic: [{ value: "agentic", mode: "any" as const }], asynchronous: [{ value: "asynchronous", mode: "any" as const }] };
+    expect(ids(filterTaskList(rows, sf(), lf({ pills })))).toEqual(["task-b", "task-a", "task-w"]);
+  });
+
+  it("Agentic (All) with Asynchronous (All) keeps only what is both", () => {
+    const pills = { ...DEFAULT_LIST_FILTER.pills, agentic: [{ value: "agentic", mode: "all" as const }], asynchronous: [{ value: "asynchronous", mode: "all" as const }] };
+    expect(ids(filterTaskList(rows, sf(), lf({ pills })))).toEqual(["task-b"]);
+  });
+
+  it("an Any flag with a Not flag: agentic or asynchronous, but not blocked", () => {
+    const blockedAgent = row({ node: n("task-x", "task", { status: "todo" }), isAgentic: true, isBlocked: true });
+    const pills = {
+      ...DEFAULT_LIST_FILTER.pills,
+      agentic: [{ value: "agentic", mode: "any" as const }],
+      asynchronous: [{ value: "asynchronous", mode: "any" as const }],
+      blocked: [{ value: "blocked", mode: "exclude" as const }],
+    };
+    expect(ids(filterTaskList([...rows, blockedAgent], sf(), lf({ pills })))).toEqual(["task-b", "task-a", "task-w"]);
+  });
+});
+
+describe("filterTaskList — Private", () => {
+  const own = row({ node: n("task-p", "task", { status: "todo", isPrivate: true }) });
+  const inherited = row({ node: n("task-i", "task", { status: "todo" }), hasPrivateAncestor: true });
+  const open = row({ node: n("task-o", "task", { status: "todo" }) });
+  const on = sf({ privateMode: true });
+
+  it("keeps the private rows — marked, or under something marked — under a Private pill", () => {
+    const filtered = filterTaskList([own, inherited, open], on, lf({ pills: { ...DEFAULT_LIST_FILTER.pills, private: [{ value: "private", mode: "all" }] } }));
+    expect(filtered.map((r) => r.node.id)).toEqual(["task-p", "task-i"]);
+  });
+
+  it("keeps the rest under a Not private pill", () => {
+    const filtered = filterTaskList([own, inherited, open], on, lf({ pills: { ...DEFAULT_LIST_FILTER.pills, private: [{ value: "private", mode: "exclude" }] } }));
+    expect(filtered.map((r) => r.node.id)).toEqual(["task-o"]);
+  });
+});
+
 describe("filterTaskList — Asynchronous", () => {
   const waiting = row({ node: n("task-w", "task", { status: "todo" }), isAsynchronous: true });
   const doing = row({ node: n("task-d", "task", { status: "todo" }), isAsynchronous: false });
@@ -475,7 +522,7 @@ describe("filterTaskList — Asynchronous", () => {
   });
 
   it("keeps only the rest under a Not-asynchronous pill", () => {
-    const filtered = filterTaskList([waiting, doing], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, asynchronous: [{ value: "not_asynchronous", mode: "any" }] } }));
+    const filtered = filterTaskList([waiting, doing], sf(), lf({ pills: { ...DEFAULT_LIST_FILTER.pills, asynchronous: [{ value: "asynchronous", mode: "exclude" }] } }));
     expect(filtered.map((r) => r.node.id)).toEqual(["task-d"]);
   });
 

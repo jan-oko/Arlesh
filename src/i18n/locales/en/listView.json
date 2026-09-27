@@ -15,27 +15,16 @@
     "commitment": "Commitments",
     "expectation": "Expectations"
   },
-  "rowKindTooltip": "Show or hide {{kind}} ({{chord}})",
+  "rowKindTooltip": "Show or hide {{kind}}",
   "rowKindRefused": {
     "lastKind": "At least one kind stays shown — turn another on first.",
     "expectationsOption": "The Expectations option already shows Expectations only — pick another option to choose kinds."
   },
-  "hierarchyClusterLabel": "Hierarchy",
-  "statusScopeClusterLabel": "Status & Scope",
   "empty": "No tasks match the current filters.",
   "cycleStatus": "Cycle status",
   "filterByTag": "Filter by this tag",
   "pathSegmentActions": "Click: enter this subtree\nCtrl+click: filter to it\nAlt+click: filter it out",
   "filterSectionLabel": "List filters",
-  "antecedentLabel": "Antecedent",
-  "dependencyLabel": "Dependency",
-  "taskStatusLabel": "Task status",
-  "goalStatusLabel": "Goal status",
-  "projectStatusLabel": "Project status",
-  "scopeStateLabel": "Scope",
-  "blockedLabel": "Blocked",
-  "addAntecedent": "Add antecedent filter…",
-  "addDependency": "Add dependency filter…",
   "removePill": "Remove filter",
   "scopeState": {
     "unscoped": "Unscoped",
@@ -54,19 +43,16 @@
   "markKept": "Mark kept",
   "markBroken": "Mark broken",
   "clearVerdict": "Clear the verdict",
-  "verdictLabel": "Verdict",
   "verdictState": {
     "unresolved": "Unresolved",
     "kept": "Kept",
     "broken": "Broken"
   },
-  "agenticLabel": "Agentic",
   "agenticState": {
     "agentic": "Agentic",
     "not_agentic": "Not agentic"
   },
   "asynchronousHeading": "Asynchronous",
-  "asynchronousLabel": "Asynchronous",
   "asynchronousState": {
     "asynchronous": "Asynchronous",
     "not_asynchronous": "Not asynchronous"

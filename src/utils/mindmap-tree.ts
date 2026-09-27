@@ -1,5 +1,6 @@
 import type { MindmapNode, NodeKind, Position } from "@/utils/tree-layout";
 import { isDerivedWait } from "@/utils/derived-wait";
+import { isArchived } from "@/utils/filter-tree";
 
 export function findNode(root: MindmapNode, id: string): MindmapNode | undefined {
   if (root.id === id) return root;
@@ -176,11 +177,26 @@ export function canConvertNodeToFlow(nodeKind: NodeKind, parentKind: NodeKind | 
 /** A flattened node for search: its id, title, kind, and ancestor titles nearest-first (root excluded). */
 export interface SearchableNode { id: string; title: string; kind: NodeKind; path: string[] }
 
+/** How a node search reads the tree. */
+export interface SearchableNodeOptions {
+  /**
+   * Leave out archived nodes — each judged by its **own** archival (see `isArchived`: an Archived
+   * status, a derived Archival of Archived, or a delegated Task). What lies beneath an archived node
+   * is not archived by being there, so it stays searchable (ruled by the user, 2026-09-27).
+   */
+  skipArchived: boolean;
+}
+
 /** Flattens the tree (excluding the virtual root) into searchable rows carrying each node's ancestry. */
-export function collectSearchableNodes(root: MindmapNode): SearchableNode[] {
+export function collectSearchableNodes(
+  root: MindmapNode,
+  options: SearchableNodeOptions = { skipArchived: false },
+): SearchableNode[] {
   const out: SearchableNode[] = [];
   function visit(n: MindmapNode, isRoot: boolean, ancestors: string[]): void {
-    if (!isRoot) out.push({ id: n.id, title: n.title, kind: n.kind, path: ancestors });
+    if (!isRoot && !(options.skipArchived && isArchived(n))) {
+      out.push({ id: n.id, title: n.title, kind: n.kind, path: ancestors });
+    }
     const childAncestors = isRoot ? [] : [n.title, ...ancestors];
     for (const child of n.children) visit(child, false, childAncestors);
   }

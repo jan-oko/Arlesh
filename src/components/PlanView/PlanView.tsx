@@ -11,6 +11,7 @@ import { takeOutTarget } from "@/utils/plan-take-out";
 import { useScopeWindows } from "@/hooks/use-scope-windows";
 import { useScopeRows } from "@/hooks/use-scope-rows";
 import { useSubscopeLabel } from "@/hooks/use-subscope-label";
+import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { useUndo } from "@/hooks/use-undo";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
@@ -25,7 +26,6 @@ import type { FilterState } from "@/utils/filter-tree";
 import { PLAN_VIEW_STATUS_MODE } from "@/utils/filter-tree";
 import type { TaskListRow } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER, filterTaskList } from "@/utils/list-filter";
-import { collectSearchableNodes } from "@/utils/mindmap-tree";
 import { partitionForScope, referencedScopeIds } from "@/utils/plan-triage";
 import { scopeKeyText } from "@/utils/scope-key";
 import { buildPlanSections } from "@/utils/plan-sections";
@@ -85,6 +85,8 @@ export default function PlanView() {
   const isInputCaptured = useIsInputCaptured();
   // Publishes the tab's subtree descriptor for the top bar; the exits are global bindings.
   useSubtreeNav(tree);
+  // Ctrl+O offers archived nodes only when Settings says to (see `useSearchableNodes`).
+  const searchableNodes = useSearchableNodes(tree);
   const { onUndo, onRedo } = useUndo({ reload, showToast });
 
   const scope = usePlanScope();
@@ -551,7 +553,7 @@ export default function PlanView() {
 
       {searchOpen && (
         <NodeSearchModal
-          nodes={collectSearchableNodes(tree)}
+          nodes={searchableNodes}
           onSelect={(id) => { enterSubtree(id); closeSearch(); }}
           onClose={closeSearch}
         />

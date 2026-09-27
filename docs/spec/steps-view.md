@@ -432,7 +432,7 @@ the last card of a page, with more cards one page on, read as the end of the Ste
 - `Ctrl+=` / `Ctrl+-` — card size
 - `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B` — the shared status presets
 - `Ctrl+Z` / `Ctrl+Shift+Z` — undo and redo
-- `Ctrl+O`, `Shift+Escape`, `Ctrl+Escape`, `Alt+F` — [global bindings](tabs.md): they act on the
+- `Ctrl+O`, `Shift+Escape`, `Ctrl+Escape`, `Alt+F`, `Ctrl+F` — [global bindings](tabs.md): they act on the
   tab's subtree root and filter set, which every view shares
 
 **`Ctrl+S` shows this view**, from wherever you are — see the switcher in [Tabs](tabs.md). It was

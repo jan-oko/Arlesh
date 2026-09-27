@@ -50,11 +50,57 @@ describe("FilterChips", () => {
     expect(screen.getByText("urgent")).toBeInTheDocument();
   });
 
-  it("clicking the chip body cycles Any → All", () => {
-    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: 5, mode: "any" }] } });
+  it("clicking the chip body cycles All → Any → Not → All", () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: 5, mode: "all" }] } });
     render(<FilterChips />);
-    fireEvent.click(screen.getByText("urgent"));
-    expect(useFilterStore.getState().filter.tagFilters[0]?.mode).toBe("all");
+    const modes: string[] = [];
+    for (let step = 0; step < 3; step += 1) {
+      fireEvent.click(screen.getByText("urgent"));
+      modes.push(useFilterStore.getState().filter.tagFilters[0]?.mode ?? "");
+    }
+    expect(modes).toEqual(["any", "exclude", "all"]);
+  });
+
+  it("a yes/no chip reads Not while excluding, and cycles All → Any → Not", () => {
+    useViewStore.setState({ view: "list" });
+    useListFilterStore.setState({
+      filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills, blocked: [{ value: "blocked", mode: "all" }] } },
+    });
+    render(<FilterChips />);
+    expect(screen.getByText("blocked.blocked")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("blocked.blocked"));
+    expect(useListFilterStore.getState().filter.pills.blocked).toEqual([{ value: "blocked", mode: "any" }]);
+    fireEvent.click(screen.getByText("blocked.blocked"));
+    expect(useListFilterStore.getState().filter.pills.blocked).toEqual([{ value: "blocked", mode: "exclude" }]);
+    expect(screen.getByText("blocked.not_blocked")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("blocked.not_blocked"));
+    expect(useListFilterStore.getState().filter.pills.blocked).toEqual([{ value: "blocked", mode: "all" }]);
+  });
+
+  it("reads a Private chip as Private or Not private", () => {
+    useViewStore.setState({ view: "list" });
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, privateMode: true } });
+    useListFilterStore.setState({
+      filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills, private: [{ value: "private", mode: "exclude" }] } },
+    });
+    render(<FilterChips />);
+    expect(screen.getByText("privateState.not_private")).toBeInTheDocument();
+  });
+
+  it("names the dimension in the chip's accessible name, with Under for the old Antecedent", () => {
+    useViewStore.setState({ view: "list" });
+    useListFilterStore.setState({
+      filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills, antecedent: [{ value: "project-1", mode: "all" }] } },
+    });
+    render(<FilterChips />);
+    expect(screen.getByRole("button", { name: "chipAria" })).toBeInTheDocument();
+  });
+
+  it("Delete on a focused chip removes it", () => {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, tagFilters: [{ tagId: 5, mode: "all" }] } });
+    render(<FilterChips />);
+    fireEvent.keyDown(screen.getByRole("button", { name: "chipAria" }), { key: "Delete" });
+    expect(useFilterStore.getState().filter.tagFilters).toEqual([]);
   });
 
   it("clicking the embedded × removes the chip without cycling its mode", () => {
@@ -87,7 +133,7 @@ describe("FilterChips", () => {
     });
     render(<FilterChips />);
     expect(screen.getByText("Rocket")).toBeInTheDocument();
-    expect(screen.getByText("blocked.blocked")).toBeInTheDocument();
+    expect(screen.getByText("blocked.not_blocked")).toBeInTheDocument();
   });
 
   it("removing a pill-filter chip calls removePill for the right dimension/value", () => {

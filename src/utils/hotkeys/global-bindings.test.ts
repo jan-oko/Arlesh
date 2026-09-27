@@ -15,6 +15,7 @@ function makeContext(overrides: Partial<GlobalContext> = {}): GlobalContext {
     onExitToRoot: vi.fn(),
     onOpenSearch: vi.fn(),
     onToggleFilter: vi.fn(),
+    onOpenFilterSearch: vi.fn(),
     ...overrides,
   };
 }
@@ -194,6 +195,19 @@ describe("the chords promoted out of the view tables", () => {
     expect(ctx.onToggleFilter).toHaveBeenCalledTimes(1);
   });
 
+  it("Ctrl+F opens the filter search", () => {
+    const ctx = makeContext();
+    expect(runFor("KeyF", { ctrlKey: true }, ctx)).toBe(true);
+    expect(ctx.onOpenFilterSearch).toHaveBeenCalledTimes(1);
+    expect(ctx.onToggleFilter).not.toHaveBeenCalled();
+  });
+
+  it("Ctrl+F does nothing while a modal holds the keyboard", () => {
+    const ctx = makeContext({ isInputCaptured: true });
+    expect(runFor("KeyF", { ctrlKey: true }, ctx)).toBe(false);
+    expect(ctx.onOpenFilterSearch).not.toHaveBeenCalled();
+  });
+
   // Bare F is the board-alone mode and is declared per view, because whether it is eligible depends
   // on the view's selection. A global Alt+F never reaches it: the modifiers differ.
   it("bare F reaches nothing global", () => {
@@ -224,6 +238,7 @@ describe("the chords promoted out of the view tables", () => {
     expect(guarded).toEqual([
       "global.exitSubtree",
       "global.exitToRoot",
+      "global.openFilterSearch",
       "global.openSearch",
       "global.toggleFilter",
       "global.viewList",

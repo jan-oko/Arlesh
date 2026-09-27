@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { NodeKind } from "@/utils/tree-layout";
 import type { SearchableNode } from "@/utils/mindmap-tree";
 import { useInputCapture } from "@/hooks/use-input-capture";
+import SearchModalShell from "@/components/SearchModalShell/SearchModalShell";
 import styles from "./NodeSearchModal.module.css";
 
 export type { SearchableNode };
@@ -87,40 +88,36 @@ export default function NodeSearchModal({ nodes, onSelect, onClose }: Props) {
   }
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => { e.stopPropagation(); }}>
-        <input
-          autoFocus
-          type="text"
-          className={styles.input}
-          placeholder={t("common:searchNodesPlaceholder")}
-          value={query}
-          onChange={(e) => { setQuery(e.target.value); setActive(0); }}
-          onKeyDown={handleKeyDown}
-        />
-        {hasQuery && results.length === 0 && <div className={styles.empty}>{t("common:noResults")}</div>}
-        {hasQuery && results.length > 0 && (
-          <ul className={styles.results}>
-            {results.map((node, i) => {
-              const detail = details.get(node.id);
-              return (
-                <li
-                  key={node.id}
-                  className={`${styles.result}${i === clampedActive ? ` ${styles.active}` : ""}`}
-                  onMouseDown={(e) => { e.preventDefault(); commit(i); }}
-                  onMouseEnter={() => setActive(i)}
-                >
-                  <span className={styles.label}>
-                    <span className={styles.title}>{node.title}</span>
-                    {detail !== undefined && detail !== "" && <span className={styles.parentPath}>({detail})</span>}
-                  </span>
-                  <span className={styles.kind}>{t(`nodeKinds:${node.kind}`)}</span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-    </div>
+    <SearchModalShell
+      label={t("common:searchNodesPlaceholder")}
+      placeholder={t("common:searchNodesPlaceholder")}
+      query={query}
+      onQueryChange={(next) => { setQuery(next); setActive(0); }}
+      onKeyDown={handleKeyDown}
+      onClose={onClose}
+    >
+      {hasQuery && results.length === 0 && <div className={styles.empty}>{t("common:noResults")}</div>}
+      {hasQuery && results.length > 0 && (
+        <ul className={styles.results}>
+          {results.map((node, i) => {
+            const detail = details.get(node.id);
+            return (
+              <li
+                key={node.id}
+                className={`${styles.result}${i === clampedActive ? ` ${styles.active}` : ""}`}
+                onMouseDown={(e) => { e.preventDefault(); commit(i); }}
+                onMouseEnter={() => setActive(i)}
+              >
+                <span className={styles.label}>
+                  <span className={styles.title}>{node.title}</span>
+                  {detail !== undefined && detail !== "" && <span className={styles.parentPath}>({detail})</span>}
+                </span>
+                <span className={styles.kind}>{t(`nodeKinds:${node.kind}`)}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </SearchModalShell>
   );
 }

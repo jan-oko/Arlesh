@@ -20,7 +20,7 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { updateTask, reparentScopeConflicts } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
 import { getErrorMessage } from "@/api/errors";
-import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange, conversionNeedsConfirm, canConvertNodeToFlow, collectSearchableNodes } from "@/utils/mindmap-tree";
+import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange, conversionNeedsConfirm, canConvertNodeToFlow } from "@/utils/mindmap-tree";
 import { storedSubtreeBase } from "@/utils/drawn-path";
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
 import MindmapCanvas, { type MindmapCanvasHandle } from "@/components/MindmapCanvas/MindmapCanvas";
@@ -31,6 +31,7 @@ import { useBoardFilter } from "@/hooks/use-board-filter";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
+import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { filterTreeWithFocus } from "@/utils/filter-tree";
 import { collapsedWithFoldedGroups, foldHabitRuns, isHabitGroupNode } from "@/utils/habit-collapse";
@@ -82,6 +83,8 @@ export default function MindmapView() {
   // descriptor so whichever is on screen keeps the top bar right.
   // Publishes the tab's subtree descriptor for the top bar; the exits are global bindings.
   useSubtreeNav(tree);
+  // Ctrl+O offers archived nodes only when Settings says to (see `useSearchableNodes`).
+  const searchableNodes = useSearchableNodes(tree);
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const { visibleFailedFlows, visibleUnrenderableCommitmentFlows, dismiss: dismissHabitBanner } =
@@ -566,7 +569,7 @@ export default function MindmapView() {
       <NodeEditorModals tree={tree} editor={nodeEditor} />
       {searchOpen && (
         <NodeSearchModal
-          nodes={collectSearchableNodes(tree)}
+          nodes={searchableNodes}
           onSelect={(id) => { enterSubtree(id); closeSearch(); }}
           onClose={closeSearch}
         />
