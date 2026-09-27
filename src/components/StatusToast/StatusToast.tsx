@@ -8,8 +8,8 @@ interface Props {
 }
 
 /**
- * A transient notice about the thing the user just acted on — a retype status remap, a refused
- * typed-child chord, a convert-to-flow error.
+ * A transient notice about the thing the user just acted on — a refused typed-child chord, a
+ * convert-to-flow error.
  *
  * It takes no position. It used to be placed at the anchor node's laid-out position, which is a
  * d3 *layout* coordinate (display root at the origin, half the tree negative) rendered outside the

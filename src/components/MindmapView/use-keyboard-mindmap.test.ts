@@ -123,26 +123,13 @@ describe("useKeyboardMindmap — arrow navigation", () => {
     expect(opts.onNavigate).toHaveBeenCalledWith("ArrowDown");
   });
 
-  it("Ctrl+ArrowUp calls onCycleType with -1", () => {
+  it("Ctrl+ArrowUp and Ctrl+ArrowDown are unbound: they neither navigate nor reorder", () => {
     const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowUp", { ctrlKey: true });
-    expect(opts.onCycleType).toHaveBeenCalledWith("task-1", -1);
-  });
-
-  it("Ctrl+ArrowDown calls onCycleType with 1", () => {
-    const opts = mindmapKeyboardContext();
-    renderHook(() => useKeyboardMindmap(opts));
     fireKey("ArrowDown", { ctrlKey: true });
-    expect(opts.onCycleType).toHaveBeenCalledWith("task-1", 1);
-  });
-
-  it("ignores Ctrl+ArrowDown key auto-repeat (no duplicate-sibling race) and does not fall back to navigate", () => {
-    const opts = mindmapKeyboardContext();
-    renderHook(() => useKeyboardMindmap(opts));
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", code: "ArrowDown", ctrlKey: true, repeat: true, bubbles: true, cancelable: true }));
-    expect(opts.onCycleType).not.toHaveBeenCalled();
     expect(opts.onNavigate).not.toHaveBeenCalled();
+    expect(opts.onReorder).not.toHaveBeenCalled();
   });
 
   it("Alt+ArrowUp calls onReorder with -1", () => {

@@ -69,32 +69,11 @@ describe("NodeContextMenu — canEnter", () => {
   });
 });
 
-describe("NodeContextMenu — Set type submenu", () => {
-  it("shows a Set type entry with the valid target kinds for domain nodes", () => {
-    render(<NodeContextMenu {...defaultProps} nodeKind="domain" />);
-    expect(screen.getByRole("button", { name: /setType/ })).toBeInTheDocument();
-    // Under a domain-table parent the cycle offers goal/task/etc (not the current "domain").
-    expect(screen.getByRole("button", { name: "nodeKinds:goal" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "nodeKinds:task" })).toBeInTheDocument();
-  });
-
-  it("dispatches set-type:<kind> when a submenu option is clicked", () => {
-    render(<NodeContextMenu {...defaultProps} nodeKind="domain" />);
-    fireEvent.click(screen.getByRole("button", { name: "nodeKinds:task" }));
-    expect(defaultProps.onAction).toHaveBeenCalledWith("set-type:task");
-  });
-
-  it("hides Set type for aspect nodes", () => {
-    render(<NodeContextMenu {...defaultProps} nodeKind="aspect" />);
+describe("NodeContextMenu — no retyping", () => {
+  it("offers no way to change a node's type", () => {
+    render(<NodeContextMenu {...defaultProps} nodeKind="goal" parentKind="domain" />);
     expect(screen.queryByRole("button", { name: /setType/ })).not.toBeInTheDocument();
-  });
-
-  it("omits target kinds that couldn't hold the node's children", () => {
-    // A goal (under a domain) with a goal child: Task and Info can't hold a goal, so they're not offered.
-    render(<NodeContextMenu {...defaultProps} nodeKind="goal" parentKind="domain" childKinds={["goal"]} />);
-    expect(screen.getByRole("button", { name: "nodeKinds:domain" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "nodeKinds:task" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "nodeKinds:info" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /nodeKinds:/ })).not.toBeInTheDocument();
   });
 });
 

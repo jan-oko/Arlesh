@@ -5,7 +5,6 @@ import { useMindmapData } from "./use-mindmap-data";
 import { useDismissableLoadCondition } from "./use-dismissable-load-condition";
 import { useDrag } from "./use-drag";
 import { useCanvasLayout } from "./use-canvas-layout";
-import { useNodeTypeManager } from "./use-node-type-manager";
 import { useNodeEditor } from "./use-node-editor";
 import { useNodeActions } from "./use-node-actions";
 import { useContextAction } from "./use-context-action";
@@ -42,7 +41,6 @@ import { focusExemptPath } from "@/utils/focus-exemption";
 import { useFocusExemption } from "@/hooks/use-focus-exemption";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import HabitFailureBanner from "@/components/HabitFailureBanner/HabitFailureBanner";
-import CommitmentScopePrompt from "@/components/CommitmentScopePrompt/CommitmentScopePrompt";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import NodeCreateModals from "@/components/NodeCreateModals/NodeCreateModals";
 import { useCreateEditors } from "@/hooks/use-create-editors";
@@ -67,7 +65,7 @@ const KEYBOARD_PAN_STEP = 80;
 
 export default function MindmapView() {
   const { t } = useTranslation(["common", "editor", "warnings", "nodeKinds", "undo"]);
-  const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, retypeNode, reorderNode, moveNode, duplicateNode, removeNode, createCommitment, createFlow, reload } =
+  const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, reorderNode, moveNode, duplicateNode, removeNode, createCommitment, createFlow, reload } =
     useMindmapData();
   const {
     selectedNodeId, selectedNodeIds, subtreeRootId, collapsedNodeIds, expandedHabitGroupIds, pendingToast,
@@ -322,13 +320,6 @@ export default function MindmapView() {
     if (pos !== undefined) canvasRef.current?.centerOnPoint(pos.x, pos.y);
   }, [mindmapOrientation, selectedNodeId, displayRoot, positions]);
 
-  const {
-    warningModal, setWarningModal, cycleType, setType, retypeActions,
-    commitmentScopeRequest, resolveCommitmentScope,
-  } = useNodeTypeManager({
-    tree, retypeNode, selectNode, showToast,
-  });
-
   const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({
     findNode: findNodeById, reload, showToast,
   });
@@ -456,7 +447,7 @@ export default function MindmapView() {
   );
 
   const { onContextAction } = useContextAction({
-    findNodeById, enterSubtree, setEditingNodeId, setType,
+    findNodeById, enterSubtree, setEditingNodeId,
     setClipboard, clipboard, onPaste, toggleCollapsed: toggleCollapsedOrGroup, onDelete, onNewFlow, onConvertToFlow, onStartFlow,
   });
 
@@ -476,16 +467,15 @@ export default function MindmapView() {
 
   useKeyboardMindmap({
     isInputActive: isInputCaptured,
-    // Both prompts swallow the canvas keys; Escape dismisses whichever is open.
-    isWarningActive: warningModal !== null || planPrompt !== null,
-    onDismissWarning: () => { setWarningModal(null); cancelPlanPrompt(); },
+    // The backlog prompt swallows the canvas keys; Escape dismisses it.
+    isWarningActive: planPrompt !== null,
+    onDismissWarning: cancelPlanPrompt,
     selectedNodeId,
     selectedNodeIds,
     clipboard,
     orientation: mindmapOrientation,
     onNavigate: navigateArrow,
     onPanCanvas,
-    onCycleType: cycleType,
     onReorder: (id, dir) => { void reorderNode(id, dir); },
     onStartRename: setEditingNodeId,
     onCreateChild,
@@ -598,15 +588,6 @@ export default function MindmapView() {
         />
       )}
 
-      {warningModal !== null && retypeActions !== null && (
-        <WarningConfirmModal
-          heading={warningModal.heading}
-          consequences={warningModal.consequences}
-          actions={retypeActions}
-          onCancel={() => setWarningModal(null)}
-        />
-      )}
-
       {occurrencePrompt !== null && (
         <UnfinishedChildrenModal
           prompt={occurrencePrompt}
@@ -617,13 +598,6 @@ export default function MindmapView() {
 
       {planPrompt !== null && (
         <BacklogConfirmModal prompt={planPrompt} onConfirm={confirmClearPlan} onCancel={cancelPlanPrompt} />
-      )}
-
-      {commitmentScopeRequest !== null && (
-        <CommitmentScopePrompt
-          title={commitmentScopeRequest.title}
-          onResolve={resolveCommitmentScope}
-        />
       )}
 
       {scopeClampRequest !== null && (
