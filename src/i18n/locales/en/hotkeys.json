@@ -20,6 +20,8 @@
   "statusDo": "Status preset: Do",
   "navigate": "Move between cells",
   "navigateRows": "Move between rows",
+  "jumpToFirstRow": "Jump to the first row",
+  "jumpToLastRow": "Jump to the last row",
   "scrollList": "Scroll the list (the selection stays put)",
   "panCanvas": "Pan the canvas (nothing selected)",
   "extendSelection": "Extend the selection across siblings",
