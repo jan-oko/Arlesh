@@ -268,4 +268,71 @@ describe("SubtreeBreadcrumb", () => {
       expect(screen.getByRole("button", { name: "foldedLevels" })).toBeInTheDocument();
     });
   });
+
+  describe("a bar narrower than root, `…` and where you are", () => {
+    /** `Arlesh › … › <title>`, with the whole middle already folded — the room left to play with. */
+    function enterSubtreeNamed(currentTitle: string) {
+      useMindmapStore.setState({
+        subtreeRootId: "deep",
+        subtreeNav: { ancestors: ANCESTORS, currentTitle },
+      });
+    }
+
+    function foldedMenuTitles(): (string | null)[] {
+      fireEvent.click(screen.getByRole("button", { name: "foldedLevels" }));
+      return screen.getAllByRole("menuitem").map((item) => item.textContent);
+    }
+
+    it("keeps root, `…` and where you are while those three fit", () => {
+      // `Arlesh…Deep` is 11 characters.
+      giveChainRoom(110);
+      enterDeepSubtree();
+      render(<SubtreeBreadcrumb />);
+      expect(screen.getByRole("button", { name: "Arlesh" })).toBeInTheDocument();
+      expect(screen.getByText("Deep")).toBeInTheDocument();
+      expect(foldedMenuTitles()).toEqual(["A-one", "B-two", "C-three"]);
+    });
+
+    it("drops the root before where you are, into the same menu", () => {
+      // `…Deep` is 5 characters; `Arlesh…Deep` would be 11.
+      giveChainRoom(60);
+      enterDeepSubtree();
+      render(<SubtreeBreadcrumb />);
+      expect(screen.queryByRole("button", { name: "Arlesh" })).not.toBeInTheDocument();
+      expect(screen.getByText("Deep").className).not.toContain("currentShrinks");
+      expect(foldedMenuTitles()).toEqual(["Arlesh", "A-one", "B-two", "C-three"]);
+    });
+
+    it("shows `root › …` when where you are is too long to stand beside the `…` alone", () => {
+      // `…Where-you-are-now` is 18 characters, `Arlesh…` 7.
+      giveChainRoom(100);
+      enterSubtreeNamed("Where-you-are-now");
+      render(<SubtreeBreadcrumb />);
+      expect(screen.getByRole("button", { name: "Arlesh" })).toBeInTheDocument();
+      expect(screen.queryByText("Where-you-are-now")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "foldedLevels" })).toHaveAttribute("title", "Where-you-are-now");
+    });
+
+    it("truncates where you are, beside the `…` and never beside the root, once nothing whole fits", () => {
+      giveChainRoom(40);
+      enterSubtreeNamed("Where-you-are-now");
+      render(<SubtreeBreadcrumb />);
+      expect(screen.queryByRole("button", { name: "Arlesh" })).not.toBeInTheDocument();
+      expect(screen.getByText("Where-you-are-now").className).toContain("currentShrinks");
+      expect(screen.getByRole("button", { name: "foldedLevels" })).toBeInTheDocument();
+    });
+
+    it("brings the root and every level back as the bar widens", () => {
+      giveChainRoom(40);
+      enterSubtreeNamed("Where-you-are-now");
+      render(<SubtreeBreadcrumb />);
+
+      resizeTo(1000);
+
+      for (const title of ["Arlesh", "A-one", "B-two", "C-three"]) {
+        expect(screen.getByRole("button", { name: title })).toBeInTheDocument();
+      }
+      expect(screen.getByText("Where-you-are-now").className).not.toContain("currentShrinks");
+    });
+  });
 });

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import type { SubtreeCrumb } from "@/stores/use-mindmap-store";
 import { useCrumbOverflow } from "@/hooks/use-crumb-overflow";
+import { crumbFold, lastFoldStep } from "@/utils/crumb-fold";
 import FoldedCrumbsMenu from "./FoldedCrumbsMenu";
 import styles from "./SubtreeBreadcrumb.module.css";
 
@@ -30,9 +31,11 @@ function chainIdentity(ancestors: readonly SubtreeCrumb[], currentTitle: string)
  * chain from whichever view is mounted, and the exits are that store's own `exitSubtree` /
  * `exitToRoot`, the same two the `Shift`/`Ctrl+Escape` bindings call.
  *
- * When the chain outgrows the bar its middle folds into a `…` whose menu still reaches every level
- * it dropped. The first and last segments never fold: between them they say which board you are on
- * and which subtree you are in, which is the least a breadcrumb can be and still be one.
+ * When the chain outgrows the bar it gives up whole segments before it cuts any text, in the order
+ * `crumbFold` sets out: the middle folds into a `…` whose menu still reaches every level it dropped,
+ * then the root joins it (`… › here`), then — only for a title too long to stand beside the `…` —
+ * the root comes back in its place (`root › …`), and last of all the current title truncates on its
+ * own. Two cut titles side by side say less than one whole one next to a `…`.
  */
 export default function SubtreeBreadcrumb() {
   const { t } = useTranslation("common");
@@ -46,9 +49,15 @@ export default function SubtreeBreadcrumb() {
   const ancestors = subtreeNav?.ancestors ?? [];
   const currentTitle = subtreeNav?.currentTitle ?? "";
   const [rootCrumb, ...middles] = ancestors;
-  const { boxRef: chainRef, folded } = useCrumbOverflow(middles.length, chainIdentity(ancestors, currentTitle));
-  const foldedCrumbs = middles.slice(0, folded);
-  const shownCrumbs = middles.slice(folded);
+  const { boxRef: chainRef, step } = useCrumbOverflow(
+    lastFoldStep(middles.length),
+    chainIdentity(ancestors, currentTitle),
+  );
+  const fold = crumbFold(step, middles.length);
+  const foldedMiddles = middles.slice(0, fold.middlesFolded);
+  const foldedCrumbs = fold.rootShown || rootCrumb === undefined ? foldedMiddles : [rootCrumb, ...foldedMiddles];
+  const shownCrumbs = middles.slice(fold.middlesFolded);
+  const foldShown = foldedCrumbs.length > 0 || !fold.currentShown;
 
   // Nothing at the true root, and nothing while a view is still resolving the chain: a breadcrumb
   // with no root to open it would be a path starting mid-air.
@@ -79,24 +88,28 @@ export default function SubtreeBreadcrumb() {
     <nav className={styles.wrap} aria-label={t("insideSubtree")}>
       <div className={styles.chain} ref={chainRef}>
         <div className={styles.row}>
-          <button
-            type="button"
-            className={styles.segment}
-            dir="auto"
-            title={t("exitToLevel")}
-            onClick={() => goTo(rootCrumb)}
-          >
-            {rootCrumb.title}
-          </button>
-          {foldedCrumbs.length > 0 && (
+          {fold.rootShown && (
+            <button
+              type="button"
+              className={styles.segment}
+              dir="auto"
+              title={t("exitToLevel")}
+              onClick={() => goTo(rootCrumb)}
+            >
+              {rootCrumb.title}
+            </button>
+          )}
+          {foldShown && (
             <>
-              <span className={styles.separator} aria-hidden="true" />
+              {fold.rootShown && <span className={styles.separator} aria-hidden="true" />}
               <button
                 type="button"
                 className={`${styles.segment} ${styles.fold}`}
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
                 aria-label={t("foldedLevels")}
+                // With where you are folded away too, the `…` is the only place its title is left.
+                {...(fold.currentShown ? {} : { title: currentTitle })}
                 ref={foldRef}
                 onClick={toggleMenu}
               >
@@ -118,8 +131,17 @@ export default function SubtreeBreadcrumb() {
               </button>
             </Fragment>
           ))}
-          <span className={styles.separator} aria-hidden="true" />
-          <span className={styles.current} dir="auto">{currentTitle}</span>
+          {fold.currentShown && (
+            <>
+              <span className={styles.separator} aria-hidden="true" />
+              <span
+                className={fold.currentTruncates ? `${styles.current} ${styles.currentShrinks}` : styles.current}
+                dir="auto"
+              >
+                {currentTitle}
+              </span>
+            </>
+          )}
         </div>
       </div>
       {/* A chain that has grown room again folds nothing — and then there is no menu to show, even
