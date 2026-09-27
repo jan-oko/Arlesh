@@ -94,6 +94,8 @@ pub async fn load_within(
     expectations.extend(waits.expectations);
     block_reasons.extend(waits.block_reasons);
     lifecycles.extend(waits.lifecycles);
+    // Only now is every parent's Timing in, stored and derived alike.
+    crate::tasks::mark_waits_under_pending(&expectations, &mut lifecycles);
     let present: std::collections::HashSet<&NodeId> = tasks
         .iter()
         .map(|task| &task.id)

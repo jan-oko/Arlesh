@@ -248,7 +248,8 @@ details an agent reads the payload by.
 
 `load` takes an optional `filter`, and it is the **same** filter the top bar sets, answered by the
 same definition — not an approximation assembled from `lifecycles`. `{"preset": "start"}` answers "what can I begin now?" by the rules the
-user's own view applies: Plan minus lapsed windows, minus in-progress tasks with nothing left under
+user's own view applies: Plan minus windows that have lapsed or have not begun yet (a wait still
+ahead taking its check tasks with it), minus in-progress tasks with nothing left under
 them to start, minus Habit flows, minus blocked subtrees, minus Tasks whose Plan has not begun
 yet (see [*Mindmap*](mindmap-view.md)). `all`, `plan`, `start`, `do` and
 `backlog` are the presets; `unblock` rides beside them as a flag rather than replacing one, exactly

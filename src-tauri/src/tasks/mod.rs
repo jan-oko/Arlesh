@@ -45,8 +45,9 @@ use model::{
     TaskWithBlockers, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
 };
 pub use scope_rules::{
-    conflicts_for_new_time_scope, derive_all_scope_lifecycles, nearest_scoped_ancestor_window,
-    reparent_conflicts, wait_lifecycle, ReparentConflicts, ViolatingDescendant,
+    conflicts_for_new_time_scope, derive_all_scope_lifecycles, mark_waits_under_pending,
+    nearest_scoped_ancestor_window, reparent_conflicts, wait_lifecycle, ReparentConflicts,
+    ViolatingDescendant,
 };
 
 // Internal row types that map directly to database columns via sqlx::FromRow.

@@ -199,6 +199,31 @@ export function isUnopenedOccurrence(node: MindmapNode, f: FilterState): boolean
 }
 
 /**
+ * Whether `node` is a wait whose window has not begun, which **Start** hides together with the check
+ * tasks beneath it. Start hides what is not in scope yet exactly as it hides what has left it (ruled by
+ * the user, 2026-09-27); a wait's Timing reads `pending` before its own window opens or, with none of
+ * its own, while the window of what it hangs under has not begun.
+ *
+ * It **gates** the subtree, unlike a Task's rule: a wait's children are its notes and check tasks, and a
+ * check is timed by the day it fell due, not by the wait's window — a wait checked on weekly from today
+ * has a check due today whatever its window says. Failing the wait alone would leave that check on
+ * screen holding the wait as its ancestor. The check schedule is untouched: every other preset still
+ * shows the check. The Archived pill's Include still wins for an archived wait. Mirrors
+ * `is_unopened_wait` in `src-tauri/src/filters/rules.rs`.
+ */
+export function isUnopenedWait(node: MindmapNode, f: FilterState): boolean {
+  if (f.statusMode !== "start" || node.kind !== "expectation") return false;
+  if (node.timing !== "pending") return false;
+  return !(f.archivedMode === "include" && isArchived(node));
+}
+
+/** Whether a node's effective window is open now: neither still ahead nor passed. An unscoped node,
+ * or one with no derived lifecycle, is always in its window. */
+function isInWindow(node: MindmapNode): boolean {
+  return node.timing !== "pending" && node.timing !== "lapsed";
+}
+
+/**
  * Whether `node` is a Task that **Start** hides because its Plan has not begun yet — Start asks what
  * can be begun *now*, and a Task scheduled into next week is not that.
  *
@@ -275,6 +300,8 @@ export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   if (isShelvedProject(node, f)) return true;
   // A habit occurrence whose window has not opened: hidden by every preset but All, subtree and all.
   if (isUnopenedOccurrence(node, f)) return true;
+  // Under Start, a wait whose window has not begun: its check tasks go with it.
+  if (isUnopenedWait(node, f)) return true;
   return flowHardHidden(node, f);
 }
 
@@ -339,10 +366,13 @@ function passesStatus(
       return true;
     case "start": {
       if (node.kind !== "task" && node.kind !== "goal") return true;
-      // Start = things you can begin now: drop anything whose window has passed. (Blocked
-      // task/goals are dropped earlier, as a hard-hidden subtree — see typeHardHidden.)
-      // A delegated Task drops out with the lapsed ones: nothing someone else holds is yours to start.
-      if (node.timing === "lapsed" || isDelegated(node)) return withArchivedOverride(node, f, false);
+      // Start = things you can begin now: drop anything whose window has passed or has not begun.
+      // (Blocked task/goals are dropped earlier, as a hard-hidden subtree — see typeHardHidden.) A
+      // window still ahead fails only the node's own match, as a lapsed one and a Plan still ahead do:
+      // a child with no window of its own reads its parent's and drops too, while one whose own window
+      // is open still shows, holding its parent as an ancestor.
+      // A delegated Task drops out with them: nothing someone else holds is yours to start.
+      if (!isInWindow(node) || isDelegated(node)) return withArchivedOverride(node, f, false);
       if (node.kind === "goal") return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? ""));
       if (node.status === "done") return false;
       // An in-progress task with nothing left to start (no direct todo child) drops out.
@@ -397,7 +427,7 @@ export function isLiveExpectation(node: MindmapNode): boolean {
  * Whether an Expectation shows under the given preset.
  *
  * A wait is not work, so it answers its own rule. **All** shows every one. A pending, live one
- * shows under **Plan**, and under **Start** while its window has not passed, whether or not it is
+ * shows under **Plan**, and under **Start** while its window is open (neither ahead nor passed), whether or not it is
  * checked on; its check tasks answer the ordinary Task rules beside it. With `startHidesCheckedWaits`
  * on (an app-wide setting, off by default), Start shows one only when it has no Check every — the
  * check task beneath it is then the thing to start. Stored and derived waits alike. **Do** and
@@ -410,11 +440,11 @@ export function passesExpectationPreset(node: MindmapNode, f: FilterState): bool
       return true;
     case "plan":
       return isLiveExpectation(node);
-    // A wait whose own window has passed drops out of Start, as a Task's does.
+    // A wait whose window has passed, or has not begun, drops out of Start, as a Task's does.
     case "start":
       return isLiveExpectation(node)
         && !(f.startHidesCheckedWaits === true && (node.checkEvery ?? null) !== null)
-        && node.timing !== "lapsed";
+        && isInWindow(node);
     case "do":
     case "backlog":
       return false;

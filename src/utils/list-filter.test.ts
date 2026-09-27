@@ -591,6 +591,31 @@ describe("filterTaskList — Backlog", () => {
   });
 });
 
+describe("filterTaskList — a window that has not begun, under Start", () => {
+  const ahead = row({ node: n("task-ahead", "task", { status: "todo", timing: "pending" }) });
+  const now = row({ node: n("task-now", "task", { status: "todo", timing: "active" }) });
+  // A sub-step with its own open window under a parent whose window is still ahead.
+  const ownWindow = row({
+    node: n("task-own-now", "task", { status: "todo", timing: "active" }),
+    ancestors: [n("task-ahead", "task", { status: "todo", timing: "pending" })],
+  });
+  // The check already due on a wait whose own window has not begun.
+  const check = row({
+    node: n("task-check", "task", { status: "todo", timing: "active" }),
+    ancestors: [n("expectation-ahead", "expectation", { status: "pending", timing: "pending" })],
+  });
+  const rows = [ahead, now, ownWindow, check];
+  const kept = (shared: Partial<FilterState>) => filterTaskList(rows, sf(shared), lf()).map((r) => r.node.id);
+
+  it("Start drops the row still ahead and the check under the wait still ahead", () => {
+    expect(kept({ statusMode: "start" })).toEqual(["task-now", "task-own-now"]);
+  });
+
+  it("Plan keeps them all: only Start asks what is in scope now", () => {
+    expect(kept({ statusMode: "plan" })).toEqual(["task-ahead", "task-now", "task-own-now", "task-check"]);
+  });
+});
+
 describe("filterCommitmentList", () => {
   function commitmentRow(over: Partial<CommitmentListRow> = {}): CommitmentListRow {
     return {

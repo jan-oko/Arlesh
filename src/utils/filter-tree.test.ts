@@ -212,12 +212,50 @@ describe("filterTree — a habit occurrence whose window has not opened", () => 
     expect(kept).not.toContain("evening");
   });
 
-  it("leaves a real task whose window is still ahead alone — planning ahead is what Plan is for", () => {
+  it("leaves a real task whose window is still ahead to Plan — planning ahead is what Plan is for", () => {
     // `pending` is derived for any scoped item with its window ahead, not just habit occurrences.
-    // Only the generated ones are hidden; a task scheduled for next week still plans.
+    // Only the generated ones are hidden everywhere; a task scheduled for next week still plans. Start
+    // drops it, since what is not in scope yet is not startable (ruled by the user, 2026-09-27).
     const t = n("root", "domain", {}, [n("next-week", "task", { status: "todo", timing: "pending" })]);
     expect(ids(filterTree(t, f({ statusMode: "plan" })))).toContain("next-week");
-    expect(ids(filterTree(t, f({ statusMode: "start" })))).toContain("next-week");
+    expect(ids(filterTree(t, f({ statusMode: "start" })))).not.toContain("next-week");
+  });
+});
+
+describe("filterTree — Start and a window that has not begun", () => {
+  const tree = () =>
+    n("root", "domain", {}, [
+      n("task-ahead", "task", { status: "todo", timing: "pending" }, [
+        n("task-inherits", "task", { status: "todo", timing: "pending" }),
+        n("task-own-now", "task", { status: "todo", timing: "active" }),
+      ]),
+      n("goal-ahead", "goal", { status: "active", timing: "pending" }),
+      n("wait-ahead", "expectation", { status: "pending", timing: "pending" }, [
+        n("task-check", "task", { status: "todo", timing: "active" }),
+      ]),
+      n("wait-now", "expectation", { status: "pending", timing: "active" }),
+    ]);
+
+  it("drops what is ahead, keeping a parent only as the ancestor of a child whose own window is open", () => {
+    expect(ids(filterTree(tree(), f({ statusMode: "start" })))).toEqual([
+      "root", "task-ahead", "task-own-now", "wait-now",
+    ]);
+  });
+
+  it("takes the check already due under a wait still ahead out with the wait", () => {
+    const kept = ids(filterTree(tree(), f({ statusMode: "start" })));
+    expect(kept).not.toContain("wait-ahead");
+    expect(kept).not.toContain("task-check");
+  });
+
+  it("leaves Plan alone", () => {
+    const kept = ids(filterTree(tree(), f({ statusMode: "plan" })));
+    for (const id of ["task-ahead", "task-inherits", "goal-ahead", "wait-ahead", "task-check"]) expect(kept).toContain(id);
+  });
+
+  it("still force-shows an archived wait still ahead under the Archived pill's Include", () => {
+    const t = n("root", "domain", {}, [n("wait", "expectation", { status: "pending", timing: "pending", archived: true })]);
+    expect(ids(filterTree(t, f({ statusMode: "start", archivedMode: "include" })))).toContain("wait");
   });
 });
 

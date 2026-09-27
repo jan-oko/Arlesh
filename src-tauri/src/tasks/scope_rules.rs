@@ -15,6 +15,8 @@
 //! takes [`Search::or_unconstrained`](super::ancestry::Search::or_unconstrained) and keeps going,
 //! a write takes [`Search::or_reject`](super::ancestry::Search::or_reject) and refuses.
 
+use std::collections::HashSet;
+
 use chrono::NaiveDateTime;
 use serde::Serialize;
 
@@ -26,14 +28,14 @@ use crate::scopes::resolve::{self, Bounds};
 use super::ancestry;
 use super::commitments;
 use super::error::TaskError;
-use super::expectations;
+use super::expectations::{self, EXPECTATION};
 use super::lifecycle::{
     derive_commitment_state, derive_expectation_state, derive_item_state, derive_resolution,
-    derive_timing, Archival, ItemLifecycle, Resolution,
+    derive_timing, Archival, ItemLifecycle, Resolution, Timing,
 };
 use super::model::{
-    CommitmentId, ExpectationArchival, ExpectationStatus, GoalId, GoalStatus, OnScopeExit, TaskId,
-    TaskStatus, TimeScope,
+    CommitmentId, Expectation, ExpectationArchival, ExpectationStatus, GoalId, GoalStatus,
+    OnScopeExit, TaskId, TaskStatus, TimeScope,
 };
 
 /// Maps a Goal's stored status to its baseline Archival value, for [`derive_item_state`]'s `stored`
@@ -266,6 +268,55 @@ pub fn wait_lifecycle(
         archival_conflict: false,
         // A wait is never scheduled, and nor is its check: neither has a Plan.
         plan_timing: None,
+    }
+}
+
+/// Marks **Pending** every wait with no window of its own that hangs under an item whose window
+/// has not begun, adding the entry when the wait sent none (a delegated Task's wait sends none).
+///
+/// A wait's window is its own: it inherits none, so it outlives the work it hangs under and is
+/// never Overdue because that work's window passed — the spawned wait of a Task done yesterday is
+/// still being waited on today. But before the window it sits in has **begun**, it is not in scope
+/// any more than that work is (ruled by the user, 2026-09-27): an unscoped wait under a Task
+/// planned for next month is not something to look at now. Its parent's own entry already says
+/// so — a Task's, Goal's or Commitment's Timing is its *effective* window's, the nearest scoped
+/// ancestor's when it has none — so this reads it there rather than climbing the tree again.
+///
+/// Stored and derived waits alike, which is why it runs over the whole load's rows once they are
+/// all in, rather than inside any one derivation.
+pub fn mark_waits_under_pending(expectations: &[Expectation], lifecycles: &mut Vec<ItemLifecycle>) {
+    let pending: HashSet<(String, NodeId)> = lifecycles
+        .iter()
+        .filter(|entry| entry.timing == Timing::Pending && entry.node_type != EXPECTATION)
+        .map(|entry| (entry.node_type.clone(), entry.node_id.clone()))
+        .collect();
+    for wait in expectations.iter().filter(|wait| wait.time_scope.is_none()) {
+        if !pending.contains(&(wait.parent_type.clone(), wait.parent_id.clone())) {
+            continue;
+        }
+        let mut found = false;
+        for entry in lifecycles
+            .iter_mut()
+            .filter(|entry| entry.node_type == EXPECTATION && entry.node_id == wait.id)
+        {
+            entry.timing = Timing::Pending;
+            entry.resolution = None;
+            found = true;
+        }
+        if !found {
+            // No window is passed, so the instant is never read.
+            lifecycles.push(ItemLifecycle {
+                timing: Timing::Pending,
+                ..wait_lifecycle(
+                    EXPECTATION,
+                    wait.id.clone(),
+                    None,
+                    wait.status,
+                    wait.archival,
+                    NaiveDateTime::MIN,
+                )
+            });
+        }
     }
 }
 

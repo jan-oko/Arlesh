@@ -856,7 +856,7 @@
     },
     {
       "name": "start shows every pending live expectation, checked on or not, and the check task under the ordinary task rules",
-      "spec": "mindmap-view.md, Start — by default Start shows a pending, live Expectation whether or not it has a Check every; its check task follows the ordinary Task preset rules. A task depending on a pending Expectation is blocked. A wait whose own Time Scope has lapsed drops out of Start, as a Task's does.",
+      "spec": "mindmap-view.md, Start — by default Start shows a pending, live Expectation whether or not it has a Check every; its check task follows the ordinary Task preset rules. A task depending on a pending Expectation is blocked. A wait whose own Time Scope has lapsed drops out of Start, as a Task's does. A check task whose own Day has not begun is Pending, and drops out of Start as any such Task does.",
       "filter": {
         "preset": "start"
       },
@@ -870,12 +870,10 @@
         "expectation-pending",
         "goal-w",
         "info-on-wait",
-        "task-check-ahead",
         "task-check-open",
         "task-delegated"
       ],
       "list": [
-        "task-check-ahead",
         "task-check-open"
       ],
       "commitments": [],
@@ -889,7 +887,7 @@
     },
     {
       "name": "with the setting on, start shows a pending expectation only when it has no check chain, and the check task under the ordinary task rules",
-      "spec": "mindmap-view.md, Start — with \"Start hides waits that have checks\" on (an app-wide setting, off by default), Start shows a pending Expectation only when it has no Check every; its check task follows the ordinary Task preset rules. A wait whose own Time Scope has lapsed drops out of Start, as a Task's does.",
+      "spec": "mindmap-view.md, Start — with \"Start hides waits that have checks\" on (an app-wide setting, off by default), Start shows a pending Expectation only when it has no Check every; its check task follows the ordinary Task preset rules. A wait whose own Time Scope has lapsed drops out of Start, as a Task's does. A check task whose own Day has not begun is Pending, and drops out of Start as any such Task does, so it no longer holds its checked wait on screen.",
       "filter": {
         "preset": "start",
         "startHidesCheckedWaits": true
@@ -897,18 +895,15 @@
       "board": "waits",
       "mindmap": [
         "domain-work",
-        "expectation-check-ahead",
         "expectation-checked",
         "expectation-delegation",
         "expectation-pending",
         "goal-w",
         "info-on-wait",
-        "task-check-ahead",
         "task-check-open",
         "task-delegated"
       ],
       "list": [
-        "task-check-ahead",
         "task-check-open"
       ],
       "commitments": [],
@@ -995,7 +990,6 @@
         "expectation-pending",
         "goal-w",
         "info-on-wait",
-        "task-check-ahead",
         "task-check-open",
         "task-delegated"
       ],
@@ -1451,6 +1445,95 @@
         "task-wide-parent"
       ],
       "commitments": []
+    },
+    {
+      "name": "start hides a task, goal or wait whose window has not begun, and the check due under that wait",
+      "spec": "mindmap-view.md, Start — an item whose window has not begun is not in scope yet, and Start drops it as it drops a Lapsed one (ruled by the user, 2026-09-27). For a Task or Goal it fails only the node's own match: a child that inherits the window is Pending too and drops, while a child whose own window is open still shows and holds its parent as an ancestor. A wait whose window has not begun is hidden together with its check tasks, though a check already falls due on it. Lapsed items drop as before.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "start-pending",
+      "mindmap": [
+        "domain-start-pending",
+        "expectation-window-now",
+        "task-check-due-now",
+        "task-own-window-now",
+        "task-parent-ahead",
+        "task-window-now"
+      ],
+      "list": [
+        "task-own-window-now",
+        "task-window-now",
+        "task-check-due-now"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-window-now"
+      ]
+    },
+    {
+      "name": "plan still shows a task, goal or wait whose window has not begun, and the check due under that wait",
+      "spec": "mindmap-view.md, Plan — work scheduled ahead is what planning is; only Start drops a window that has not begun.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "start-pending",
+      "mindmap": [
+        "domain-start-pending",
+        "expectation-window-ahead",
+        "expectation-window-lapsed",
+        "expectation-window-now",
+        "goal-window-ahead",
+        "info-on-wait-ahead",
+        "task-check-due-early",
+        "task-check-due-now",
+        "task-inherits-ahead",
+        "task-own-window-now",
+        "task-parent-ahead",
+        "task-window-ahead",
+        "task-window-lapsed",
+        "task-window-now"
+      ],
+      "list": [
+        "task-window-ahead",
+        "task-window-now",
+        "task-window-lapsed",
+        "task-parent-ahead",
+        "task-inherits-ahead",
+        "task-own-window-now",
+        "task-check-due-early",
+        "task-check-due-now"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-window-ahead",
+        "expectation-window-now",
+        "expectation-window-lapsed"
+      ]
+    },
+    {
+      "name": "the expectations option shows a pending live wait whose window has not begun",
+      "spec": "list-view.md — the Expectations option replaces the preset's rules for the list, so a wait still ahead is listed there even over Start.",
+      "filter": {
+        "preset": "start",
+        "expectations": true
+      },
+      "board": "start-pending",
+      "mindmap": [
+        "domain-start-pending",
+        "expectation-window-now",
+        "task-check-due-now",
+        "task-own-window-now",
+        "task-parent-ahead",
+        "task-window-now"
+      ],
+      "list": [],
+      "commitments": [],
+      "expectations": [
+        "expectation-window-ahead",
+        "expectation-window-now",
+        "expectation-window-lapsed"
+      ]
     }
   ],
   "boards": {
@@ -2325,6 +2408,103 @@
                   }
                 }
               ]
+            }
+          ]
+        }
+      ]
+    },
+    "start-pending": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-start-pending",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-window-ahead",
+              "kind": "task",
+              "status": "todo",
+              "timing": "pending"
+            },
+            {
+              "id": "task-window-now",
+              "kind": "task",
+              "status": "todo",
+              "timing": "active"
+            },
+            {
+              "id": "task-window-lapsed",
+              "kind": "task",
+              "status": "todo",
+              "timing": "lapsed"
+            },
+            {
+              "id": "goal-window-ahead",
+              "kind": "goal",
+              "status": "active",
+              "timing": "pending"
+            },
+            {
+              "id": "task-parent-ahead",
+              "kind": "task",
+              "status": "todo",
+              "timing": "pending",
+              "children": [
+                {
+                  "id": "task-inherits-ahead",
+                  "kind": "task",
+                  "status": "todo",
+                  "timing": "pending"
+                },
+                {
+                  "id": "task-own-window-now",
+                  "kind": "task",
+                  "status": "todo",
+                  "timing": "active"
+                }
+              ]
+            },
+            {
+              "id": "expectation-window-ahead",
+              "kind": "expectation",
+              "status": "pending",
+              "hasCheck": true,
+              "timing": "pending",
+              "children": [
+                {
+                  "id": "task-check-due-early",
+                  "kind": "task",
+                  "status": "todo",
+                  "timing": "active"
+                },
+                {
+                  "id": "info-on-wait-ahead",
+                  "kind": "info"
+                }
+              ]
+            },
+            {
+              "id": "expectation-window-now",
+              "kind": "expectation",
+              "status": "pending",
+              "hasCheck": true,
+              "timing": "active",
+              "children": [
+                {
+                  "id": "task-check-due-now",
+                  "kind": "task",
+                  "status": "todo",
+                  "timing": "active"
+                }
+              ]
+            },
+            {
+              "id": "expectation-window-lapsed",
+              "kind": "expectation",
+              "status": "pending",
+              "timing": "lapsed"
             }
           ]
         }

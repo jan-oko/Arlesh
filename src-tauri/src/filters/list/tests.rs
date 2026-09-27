@@ -103,6 +103,47 @@ fn an_unopened_occurrence_above_a_row_takes_the_row_with_it() {
 }
 
 #[test]
+fn start_drops_a_check_task_whose_wait_has_not_begun_and_keeps_the_rest() {
+    let mut wait = NodeFacts::new("expectation-1", NodeKind::Expectation);
+    wait.status = Some("pending".to_string());
+    wait.has_check = true;
+    wait.timing = Some(Timing::Pending);
+    let mut check = task("task-check", "todo");
+    check.timing = Some(Timing::Active);
+    let root = FactNode::with_children(
+        NodeFacts::new("root", NodeKind::Aspect),
+        vec![FactNode::with_children(wait, vec![FactNode::leaf(check)])],
+    );
+    assert!(rows_of(&root, &BoardFilter::preset(Preset::Start)).is_empty());
+    assert_eq!(
+        rows_of(&root, &BoardFilter::preset(Preset::Plan)),
+        ["task-check"],
+        "the check is still due: only Start hides it"
+    );
+}
+
+#[test]
+fn start_drops_a_row_whose_window_has_not_begun_but_not_its_child_whose_window_has() {
+    let mut ahead = task("task-ahead", "todo");
+    ahead.timing = Some(Timing::Pending);
+    let mut inherits = task("task-inherits", "todo");
+    inherits.timing = Some(Timing::Pending);
+    let mut own_now = task("task-own-now", "todo");
+    own_now.timing = Some(Timing::Active);
+    let root = FactNode::with_children(
+        NodeFacts::new("root", NodeKind::Aspect),
+        vec![FactNode::with_children(
+            ahead,
+            vec![FactNode::leaf(inherits), FactNode::leaf(own_now)],
+        )],
+    );
+    assert_eq!(
+        rows_of(&root, &BoardFilter::preset(Preset::Start)),
+        ["task-own-now"]
+    );
+}
+
+#[test]
 fn a_private_ancestor_hides_a_row_that_is_not_itself_private() {
     let mut private = NodeFacts::new("domain-1", NodeKind::Domain);
     private.is_private = true;
