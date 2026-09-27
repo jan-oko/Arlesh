@@ -37,13 +37,11 @@
     "details": "Details",
     "knowledgeBase": "Knowledge base",
     "instanceType": "Instance Type",
-    "private": "Private",
     "beadsId": "Issue",
     "tags": "Tags",
     "checkEvery": "Check every"
   },
   "value": {
-    "yes": "Yes",
     "onExitArchive": "Archive",
     "onExitKeep": "Keep",
     "loading": "…"

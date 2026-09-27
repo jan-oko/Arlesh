@@ -167,7 +167,7 @@ Backlog is meaningless on a Goal. A field the node has no value for is left out 
 **A card never repeats what its icon or its badge row already says.** Those two are not decoration:
 the glyph encodes a Task's and a Goal's status (and its blocked-ness), a Commitment's Verdict, and
 whether a Flow recurs; the badge row carries every boolean flag there is. So `Status`, `Verdict`,
-`Recurrence`, `Backlog`, `Agentic` and `Asynchronous` are **not** fields — each was a second copy of
+`Recurrence`, `Backlog`, `Agentic`, `Asynchronous` and `Private` are **not** fields — each was a second copy of
 something already on the card, in a view whose only scarcity is vertical space.
 
 The line is drawn at **boolean against value**. A badge says a Task *has* a Time Scope; only a field
@@ -203,7 +203,7 @@ Expectation editor, as on any Expectation row (see [Derived nodes](virtual-nodes
 | Flow | Instance Type |
 | Flow item | Time Scope |
 
-Every kind then reads **Blocked by**, **Tags**, **Issue** and **Private** after its own. A Project's
+Every kind then reads **Blocked by**, **Tags** and **Issue** after its own. A Project's
 Status stays a field because no icon draws it and no badge carries it.
 
 **Under the fields, the node's first Info notes, as bullets — as many as the card's height leaves
@@ -292,8 +292,8 @@ for non-text rather than 4.5:1.
 
 **The fill says nothing about state**, deliberately. That is only safe because the glyph and the
 badge row already do: the Task and Goal icons draw their status and their blocked-ness, the
-Commitment shield draws its Verdict, and the badge row carries archived, frozen, backlogged, agentic
-and asynchronous. It is the same reasoning that took those out of the card's fields — with state
+Commitment shield draws its Verdict, and the badge row carries archived, frozen, backlogged, agentic,
+asynchronous and private. It is the same reasoning that took those out of the card's fields — with state
 covered twice over, the fill is free to spend itself on *where* the node lives, which nothing else
 on the card says.
 
