@@ -91,6 +91,14 @@
   font-weight: 600;
 }
 
+/* The last resort, and only ever with the `…` beside it rather than the root: once every whole
+   segment that could go has gone, where you are gives up the width it cannot have and ends in an
+   ellipsis instead of being clipped off the end of the bar. */
+.currentShrinks {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .separator {
   flex: none;
   color: var(--text-secondary);
