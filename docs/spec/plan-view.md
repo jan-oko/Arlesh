@@ -449,7 +449,7 @@ move looking like a failure.
   [Taking work back out](#taking-work-back-out) — from the right. With the planned pane split there
   is no move into the scope, and `Enter` from the left says so
 - `1`–`7`, and an unambiguous initial — plan the selection into that subscope
-- `[` / `]` — fill the previous / next scope
+- `[` / `]` — fill the previous / next scope (the same keys, with `\`, browse any Scope Picker that has the focus — see [*The keyboard*](time-scopes.md#the-keyboard))
 - `\` — fill the parent scope; on a Season, says why there is none
 - `S` / `M` / `W` / `D` / `P`, with nothing selected — fill seasons / months / weeks / days / parts
   of the day. Because `P` is taken both ways here, the other views' quick Plan picker (bare `P`) is

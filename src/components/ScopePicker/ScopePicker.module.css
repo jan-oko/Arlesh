@@ -76,3 +76,13 @@
   background: var(--accent);
   color: var(--text-primary);
 }
+
+/* The keyboard highlight: the cell the arrows are on, drawn only while the grid has the focus. */
+.grid:focus {
+  outline: none;
+}
+
+.grid:focus .active {
+  outline: 2px solid var(--node-border-selected);
+  outline-offset: 1px;
+}

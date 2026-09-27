@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import type { BindingMeta, HotkeyLabelKey, Section } from "@/utils/hotkeys/chord";
+import type { BindingMeta, Chord, HotkeyLabelKey, Section } from "@/utils/hotkeys/chord";
 import { formatChord } from "@/utils/hotkeys/chord";
 import { GLOBAL_BINDINGS } from "@/utils/hotkeys/global-bindings";
 import { TAB_BINDINGS } from "@/utils/hotkeys/tab-bindings";
@@ -9,6 +9,7 @@ import { LIST_BINDINGS } from "@/utils/hotkeys/list-bindings";
 import { PLAN_BINDINGS } from "@/utils/hotkeys/plan-bindings";
 import { STEPS_BINDINGS } from "@/utils/hotkeys/steps-bindings";
 import { FILTER_GESTURES } from "@/utils/hotkeys/filter-gestures";
+import { SCOPE_PICKER_KEYS } from "@/utils/hotkeys/scope-picker-keys";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "./HotkeysModal.module.css";
 
@@ -41,16 +42,19 @@ interface Row {
  * as a single "← → ↑ ↓ move between cells" row rather than four identical lines. Order follows each
  * action's first appearance in the table.
  */
-function rowsFor(section: Section): Row[] {
+function groupRows(entries: ReadonlyArray<{ labelKey: HotkeyLabelKey; chord: Chord }>): Row[] {
   const rows: Row[] = [];
-  for (const binding of ALL_BINDINGS) {
-    if (binding.section !== section || binding.hidden === true) continue;
-    const chord = formatChord(binding.chord);
-    const existing = rows.find((r) => r.labelKey === binding.labelKey);
-    if (existing === undefined) rows.push({ labelKey: binding.labelKey, chords: [chord] });
+  for (const entry of entries) {
+    const chord = formatChord(entry.chord);
+    const existing = rows.find((r) => r.labelKey === entry.labelKey);
+    if (existing === undefined) rows.push({ labelKey: entry.labelKey, chords: [chord] });
     else if (!existing.chords.includes(chord)) existing.chords.push(chord);
   }
   return rows;
+}
+
+function rowsFor(section: Section): Row[] {
+  return groupRows(ALL_BINDINGS.filter((binding) => binding.section === section && binding.hidden !== true));
 }
 
 /** The filter gestures: how a value is added in each mode, cycled and removed. Keys and clicks,
@@ -68,6 +72,26 @@ function FilterGesturesSection() {
               {gesture.clickKey !== null && <kbd>{t(`hotkeys:${gesture.clickKey}`)}</kbd>}
             </dt>
             <dd className={styles.label}>{t(`hotkeys:${gesture.labelKey}`)}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+/** Keys that act inside any Scope Picker while it has the focus — not bindings of a view. */
+function ScopePickerSection() {
+  const { t } = useTranslation(["hotkeys"]);
+  return (
+    <section className={styles.section}>
+      <h3 className={styles.sectionTitle}>{t("hotkeys:sectionScopePicker")}</h3>
+      <dl className={styles.list}>
+        {groupRows(SCOPE_PICKER_KEYS).map((row) => (
+          <div key={row.labelKey} className={styles.row}>
+            <dt className={styles.chord}>
+              {row.chords.map((chord) => <kbd key={chord}>{chord}</kbd>)}
+            </dt>
+            <dd className={styles.label}>{t(`hotkeys:${row.labelKey}`)}</dd>
           </div>
         ))}
       </dl>
@@ -115,7 +139,10 @@ export default function HotkeysModal({ onClose }: Props) {
               </section>
             );
             // The filter gestures sit right after the Global section, where Alt+F and Ctrl+F are.
-            return section === "global" ? [drawn, <FilterGesturesSection key="filters" />] : [drawn];
+            if (section === "global") return [drawn, <FilterGesturesSection key="filters" />];
+            // The picker's keys follow the Plan View, whose `[` `]` `\` they borrow.
+            if (section === "planView") return [drawn, <ScopePickerSection key="scopePicker" />];
+            return [drawn];
           })}
         </div>
       </div>

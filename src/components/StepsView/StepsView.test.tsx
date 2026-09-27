@@ -727,6 +727,8 @@ describe("P, the quick Plan picker", () => {
       plan: expect.objectContaining({ start_id: expect.objectContaining({ kind: "day" }) }),
     }));
     expect(screen.queryByRole("dialog", { name: "quickPlanPicker" })).toBeNull();
+    // The write has landed once the board reloads; only then is there a step to take back.
+    await waitFor(() => expect(reload).toHaveBeenCalled());
 
     pressWith("KeyZ", { ctrl: true });
     await settle();

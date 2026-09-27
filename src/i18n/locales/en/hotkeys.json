@@ -71,7 +71,7 @@
   "toggleBacklog": "Put in / take out of the backlog",
   "toggleAgentic": "Mark Agentic / Not agentic",
   "toggleAsynchronous": "Mark Asynchronous / Not asynchronous",
-  "quickPlan": "Set the Plan in a quick picker (Enter applies, Esc cancels)",
+  "quickPlan": "Set the Plan in a quick picker drawn at the selection",
   "cycleVerdict": "Cycle the selected commitment's verdict (Unresolved → Kept → Broken)",
   "markBroken": "Mark the selected commitment broken (again to clear it)",
   "toggleRelease": "Release the selected expectation (again to take it back)",
@@ -113,5 +113,13 @@
   "filterKindKeys": "In the Filter menu (List View): show or hide Tasks / Commitments / Expectations; with Shift, show only that kind",
   "filterFlagKeys": "In the Filter menu (List View): Agentic / Asynchronous / Blocked / Private — adds as All (Shift Any, Alt Not); on a set flag, switches it to that mode, or removes it if already in it",
   "filterPrivateMode": "In the Filter menu: turn Private Mode on or off",
-  "filterRemoveSearch": "In Ctrl+F: remove the highlighted active filter"
+  "filterRemoveSearch": "In Ctrl+F: remove the highlighted active filter",
+  "sectionScopePicker": "Scope pickers (the P quick picker, and the editors' scope fields)",
+  "pickerMove": "Move the highlight over the scopes shown",
+  "pickerStepPeriod": "Show the previous / next period",
+  "pickerUp": "Up one level (days → weeks → months → seasons)",
+  "pickerPick": "Pick the highlighted scope (a second pick makes a range)",
+  "pickerEnter": "Step into the highlighted scope (a month → its weeks)",
+  "pickerApply": "Apply what is picked",
+  "pickerClose": "Close without a change (in an editor, closes the editor)"
 }

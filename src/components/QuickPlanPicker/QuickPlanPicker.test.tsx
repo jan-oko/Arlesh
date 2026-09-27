@@ -81,12 +81,30 @@ describe("QuickPlanPicker", () => {
     })));
   });
 
-  it("applies on Enter, as every inline picker does", async () => {
+  it("is driven from the keyboard alone: the grid has the focus, Space picks, Ctrl+Enter applies", async () => {
     const onApply = vi.fn();
     render(<QuickPlanPicker target={target()} anchorAttribute="data-node-id" onApply={onApply} onClose={vi.fn()} />);
-    fireEvent.click(dayCells()[0]!);
-    fireEvent.keyDown(document, { key: "Enter" });
-    await waitFor(() => expect(onApply).toHaveBeenCalledTimes(1));
+    const grid = screen.getByRole("group");
+    expect(grid).toHaveFocus();
+    fireEvent.keyDown(grid, { code: "ArrowRight" });
+    fireEvent.keyDown(grid, { code: "Space" });
+    fireEvent.keyDown(grid, { key: "Enter", code: "Enter", ctrlKey: true });
+    await waitFor(() => expect(onApply).toHaveBeenCalledWith(expect.objectContaining({
+      start_id: { kind: "day", date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) },
+    })));
+  });
+
+  it("Enter steps into the highlighted scope instead of applying", () => {
+    const onApply = vi.fn();
+    const onClose = vi.fn();
+    render(<QuickPlanPicker target={target()} anchorAttribute="data-node-id" onApply={onApply} onClose={onClose} />);
+    const grid = screen.getByRole("group");
+    fireEvent.keyDown(grid, { code: "Backslash" });
+    expect(dayCells()).toHaveLength(0);
+    fireEvent.keyDown(grid, { key: "Enter", code: "Enter" });
+    expect(dayCells()).toHaveLength(7);
+    expect(onApply).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("closes on Escape without writing anything", () => {

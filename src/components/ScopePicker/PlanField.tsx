@@ -59,6 +59,8 @@ export default function PlanField({ value, timeScope, onChange }: Props) {
           <ScopePicker
             key={opening === null ? "default" : `${opening.kind}:${opening.anchor}`}
             picker={picker}
+            autoFocus
+            onCommit={() => void apply()}
             initialKind={opening?.kind ?? "day"}
             {...(opening ? { initialAnchor: opening.anchor } : {})}
             {...(constraint ? { constraint } : {})}
