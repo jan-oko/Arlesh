@@ -129,7 +129,7 @@ impl SessionMode for Transactional {
 ///
 /// `flows` extends the same corollary to the second half of the consistency rule: every one of
 /// its operations whose write depends on a read it took first — `update`, `delete`, the two item
-/// updates, `convert_item`, `set_recurrence`, `set_iteration_done`, `fork_flow` — is private on
+/// updates, `set_recurrence`, `set_iteration_done`, `fork_flow` — is private on
 /// the operator, with a `Db<Transactional>` free function ([`crate::flows::update_flow`] and its
 /// siblings) as the only way in. An operator wraps a bare connection and is deliberately
 /// mode-agnostic, so it cannot demand a transaction in its signature; only a free function over

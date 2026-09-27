@@ -19,19 +19,3 @@ export const PROJECT_STATUS = {
   FROZEN: "frozen",
   ARCHIVED: "archived",
 } as const;
-
-/** Maps a Goal status to the closest equivalent Task status per SPEC type-cycling rules. */
-export function goalStatusToTaskStatus(
-  goalStatus: string,
-): "todo" | "in_progress" | "done" {
-  if (goalStatus === GOAL_STATUS.ACHIEVED) return TASK_STATUS.DONE;
-  return TASK_STATUS.TODO;
-}
-
-/** Maps a Task status to the closest equivalent Goal status per SPEC type-cycling rules. */
-export function taskStatusToGoalStatus(
-  taskStatus: string,
-): "active" | "achieved" | "frozen" | "archived" {
-  if (taskStatus === TASK_STATUS.DONE) return GOAL_STATUS.ACHIEVED;
-  return GOAL_STATUS.ACTIVE;
-}

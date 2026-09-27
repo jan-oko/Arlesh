@@ -609,13 +609,5 @@ pub async fn attach(
         .await
 }
 
-/// Retyping an occurrence is refused: it is its template's kind in its iteration, and there is no
-/// detaching it into a stored row of another kind (ADR 0008, decision 7).
-pub fn refuse_retype() -> FlowError {
-    FlowError::Refused(
-        "a habit occurrence cannot change kind — retype its template item instead".to_string(),
-    )
-}
-
 #[cfg(test)]
 mod tests;

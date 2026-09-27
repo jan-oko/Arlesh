@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import { canParentNewChild, isValidDropTarget, validTypesForCycling } from "@/utils/node-meta";
+import { canParentNewChild, isValidDropTarget } from "@/utils/node-meta";
 import { pasteRefusal, PASTE_REFUSAL } from "@/utils/paste-refusal";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import type { FilterState } from "@/utils/filter-tree";
@@ -28,11 +28,6 @@ describe("where a wait may hang", () => {
     }
     expect(isValidDropTarget("info", "expectation")).toBe(true);
     expect(isValidDropTarget("task", "expectation")).toBe(false);
-  });
-
-  it("is not in the type cycle, and a note under it cycles to nothing but a note", () => {
-    expect(validTypesForCycling("expectation", "project")).toEqual([]);
-    expect(validTypesForCycling("info", "expectation")).toEqual(["info"]);
   });
 
   it("hangs on a Habit occurrence as on any Task", () => {

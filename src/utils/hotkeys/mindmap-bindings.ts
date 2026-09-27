@@ -19,7 +19,6 @@ import { MINDMAP_RENAME_BINDINGS, type MindmapRenameContext } from "./mindmap/re
 import { MINDMAP_REORDER_BINDINGS, type MindmapReorderContext } from "./mindmap/reorder";
 import { MINDMAP_START_FLOW_BINDINGS, type MindmapStartFlowContext } from "./mindmap/start-flow";
 import { MINDMAP_STATUS_PRESET_BINDINGS, type MindmapStatusPresetContext } from "./mindmap/status-presets";
-import { MINDMAP_TYPE_CYCLE_BINDINGS, type MindmapTypeCycleContext } from "./mindmap/type-cycle";
 import { MINDMAP_ZOOM_BINDINGS, type MindmapZoomContext } from "./mindmap/zoom";
 
 export type { MindmapSelectionContext };
@@ -54,7 +53,6 @@ export interface MindmapContext extends
   MindmapReorderContext,
   MindmapStartFlowContext,
   MindmapStatusPresetContext,
-  MindmapTypeCycleContext,
   MindmapZoomContext {}
 
 /**
@@ -71,7 +69,6 @@ export interface MindmapContext extends
  */
 export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
   ...MINDMAP_STATUS_PRESET_BINDINGS,
-  ...MINDMAP_TYPE_CYCLE_BINDINGS,
   ...MINDMAP_REORDER_BINDINGS,
   ...MINDMAP_NAVIGATE_BINDINGS,
   ...MINDMAP_RENAME_BINDINGS,

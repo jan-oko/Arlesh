@@ -1,7 +1,7 @@
 //! Write-time rules for Commitments, and how a Commitment reads back once derived.
 //!
-//! The pure halves — what verdict a Commitment reads as, and what a retype would carry or drop —
-//! are unit-tested where they live (`tasks::lifecycle`, `tasks::retype`). What needs a session,
+//! The pure half — what verdict a Commitment reads as — is unit-tested where it lives
+//! (`tasks::lifecycle`). What needs a session,
 //! and so lives here, is everything that has to consult the tree: the effective-scope rule, the
 //! containment rule between a parent Commitment and its children, and the inheritance of both a
 //! window and a Verdict Window down a subtree.

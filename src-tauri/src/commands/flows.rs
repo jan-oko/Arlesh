@@ -285,22 +285,6 @@ pub async fn list_flow_instance_nodes(
         .map_err(WireError::from_error)
 }
 
-/// Converts a flow item to the other kind (goal↔task), preserving its cycles and dependencies.
-#[tauri::command]
-pub async fn convert_flow_item(
-    factory: State<'_, SessionFactory>,
-    from_type: FlowItemType,
-    id: i64,
-    to_type: FlowItemType,
-) -> Result<i64, WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let new_id = flows::convert_flow_item(&mut db, from_type, id, to_type)
-        .await
-        .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(new_id)
-}
-
 /// Deletes a flow item (goal or task) and its cycles and dependency links.
 #[tauri::command]
 pub async fn delete_flow_item(

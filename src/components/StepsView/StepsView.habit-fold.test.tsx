@@ -100,7 +100,6 @@ function mockTree(tree: MindmapNode): void {
     createNode,
     createChild,
     renameNode: vi.fn(),
-    retypeNode: vi.fn(),
     reorderNode: vi.fn(),
     moveNode: vi.fn(),
     duplicateNode: vi.fn(),

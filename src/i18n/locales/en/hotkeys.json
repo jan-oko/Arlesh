@@ -23,7 +23,6 @@
   "scrollList": "Scroll the list (the selection stays put)",
   "panCanvas": "Pan the canvas (nothing selected)",
   "extendSelection": "Extend the selection across siblings",
-  "cycleType": "Cycle the cell's type",
   "reorder": "Move the cell among its siblings",
   "rename": "Rename",
   "createChild": "Create a Task child (in a Flow template: its next item)",

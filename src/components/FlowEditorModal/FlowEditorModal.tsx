@@ -35,7 +35,7 @@ function isPhaseKind(kind: FlowScopeKind): boolean {
 
 /** What a Flow's root materialises as. **Commitment** is how a nightly rule recurs: through the
  * Habit machinery that already exists rather than a second recurrence engine. */
-// In the same order the type cycle puts the three kinds in, Commitment last.
+// Goal, then Task, then Commitment last.
 const INSTANCE_TYPES: InstanceType[] = ["goal", "task", "commitment"];
 
 const NODE_KINDS: NodeKind[] = ["aspect", "project", "domain", "goal", "task", "tag", "info", "flow"];

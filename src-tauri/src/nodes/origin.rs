@@ -2,7 +2,7 @@
 //!
 //! Every node of a kind is one row shape, stored or derived, and **`origin`** is the one field that
 //! says which (ADR 0008, decision 9). The few rules that genuinely differ for a derived row — it
-//! cannot be moved out of its iteration, retyped or deleted — key off it, and nothing else does.
+//! cannot be moved out of its iteration or deleted — key off it, and nothing else does.
 //! A wait's check task, a spawned wait and a delegated Task's wait are derived rows too, each with
 //! an origin of its own.
 

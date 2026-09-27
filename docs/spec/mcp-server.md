@@ -86,7 +86,6 @@ is what they describe, and every window and the MCP endpoint read the same list.
 **journaled**, so adding or removing a root is an ordinary Gesture and **Ctrl+Z reverses it**. A
 root belongs to its row: deleting the node drops the root in the same Gesture, and undoing the
 delete brings both back — otherwise SQLite reusing the freed row id would open an unrelated node.
-Retyping a node (which re-creates it in another table) therefore drops its root too.
 
 **Where the user sets them.** On the *MCP access* page of the settings modal (see
 [*Mindmap*](mindmap-view.md), *Top bar*): the roots are listed with their path and kind, added with
@@ -491,8 +490,7 @@ everything else.
 
 ## What is deliberately absent
 
-- **Every write command but the writes above**, including `retype_node`, `start_flow` and any
-  hard delete.
+- **Every write command but the writes above**, including `start_flow` and any hard delete.
 - **`valid_targets`** — it only reads, but it
   answers "where could this Flow be started?", a question nothing on this surface can act on while
   starting a Flow is a write. It returns alongside `start_flow`.

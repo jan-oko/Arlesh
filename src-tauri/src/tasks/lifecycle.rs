@@ -93,8 +93,7 @@ pub fn derive_resolution(
 ///
 /// `Frozen` and `Backlog` are deliberately distinct variants rather than one state rendered under
 /// two names: the database and the wire say which state a node is in, instead of leaving it to be
-/// inferred from the node's kind. Neither translates into the other — a Frozen Goal retyped to a
-/// Task arrives as an ordinary Live one.
+/// inferred from the node's kind. Neither translates into the other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Archival {

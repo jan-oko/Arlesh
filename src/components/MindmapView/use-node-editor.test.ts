@@ -186,7 +186,7 @@ describe("useNodeEditor — saving a flow item", () => {
   const flowTask: MindmapNode = {
     id: "flowtask-7", rowId: 7, kind: "flow_task", title: "Stretch", tagIds: [], position: 0, children: [],
     flowItem: {
-      itemType: "flow_task", flowId: 3, flowInstanceType: "task", flowScopeN: 1, flowScopeKind: "day",
+      itemType: "flow_task", flowId: 3, flowScopeN: 1, flowScopeKind: "day",
       cycles: [], dependsOn: [], template: {},
     },
   };

@@ -469,10 +469,6 @@ export async function deleteFlowItem(itemType: FlowItemType, id: number): Promis
   return invoke<void>("delete_flow_item", { itemType, id });
 }
 
-/** Converts a flow item to the other kind (goal↔task); returns the new item id. */
-export async function convertFlowItem(fromType: FlowItemType, id: number, toType: FlowItemType): Promise<number> {
-  return invoke<number>("convert_flow_item", { fromType, id, toType });
-}
 
 /** How a cycle edit that would orphan what an occurrence recorded is answered. */
 export type CycleReconcile = "fork" | "discard";

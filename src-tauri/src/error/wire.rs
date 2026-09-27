@@ -28,9 +28,10 @@ pub enum WireErrorKind {
     /// dependency cycle, a fixed Aspect edit, an unsupported scope kind).
     InvalidRequest,
     /// The operation is valid but ambiguous or destructive enough that the
-    /// caller must confirm before it proceeds. Raised by `retype_node` (with
-    /// a `details` payload naming what would be lost) and by `update_task`
-    /// when backlogging a task that still has a Plan.
+    /// caller must confirm before it proceeds. Raised by `set_flow_item_cycles`
+    /// and by completing an occurrence that still holds unfinished children
+    /// (each with a `details` payload naming what is at stake), and by
+    /// `update_task` when backlogging a task that still has a Plan.
     NeedsConfirmation,
     /// The request cannot be carried out until the caller supplies a **Time Scope**.
     ///
@@ -169,8 +170,7 @@ impl WireError {
     /// The one error kind that is not a failure: the request was well-formed and the backend is
     /// able to carry it out, but doing so would destroy something, so it refuses until the caller
     /// says it knows. `details` is what makes that answerable — a refusal the user can only
-    /// accept blind is not consent. `retype_node` is the first caller; its payload is
-    /// [`crate::tasks::retype::TransferPlan::details`].
+    /// accept blind is not consent.
     pub fn needs_confirmation(message: impl Into<String>, details: serde_json::Value) -> Self {
         Self {
             kind: WireErrorKind::NeedsConfirmation,

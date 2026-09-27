@@ -16,15 +16,13 @@ import type { BlockReason } from "@/api/block-reasons";
 import { createGoal, updateGoal, deleteGoal, duplicateGoal } from "@/api/goals";
 import { createInfo, updateInfo, deleteInfo, duplicateInfo } from "@/api/infos";
 import { getErrorMessage } from "@/api/errors";
-import { asRetypeKind, retypeNode as backendRetype } from "@/api/retype";
-import type { StrandedChildren } from "@/api/retype";
 import { loadMindmap } from "@/api/mindmap";
 import { withGesture } from "@/api/gesture";
 import { useBoardChanged } from "@/hooks/use-board-changed";
 import type { MindmapLoad } from "@/api/mindmap";
 import {
   createFlow, updateFlow, deleteFlow,
-  createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem, convertFlowItem,
+  createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem,
   duplicateFlow, duplicateFlowItem,
 } from "@/api/flows";
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
@@ -44,7 +42,6 @@ import type {
 } from "@/api/flows";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
-import { entityNodeId } from "@/utils/tree-layout";
 import { formatScopeCore } from "@/utils/scope-format";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
@@ -155,30 +152,6 @@ export function decorateIterationRoots(
   visit(node);
 }
 
-export const GOAL_CHILDREN_ACTION = {
-  REMOVE: "remove",
-  REPARENT: "reparent",
-} as const;
-
-export type GoalChildrenAction = "remove" | "reparent";
-
-export interface RetypeOptions {
-  /** Flow-goal children of a flow item being converted to a flow-task. */
-  goalChildrenAction?: GoalChildrenAction;
-  /**
-   * Children the new kind cannot hold, for a retype `retype_node` owns — and, by being present
-   * at all, the caller's acknowledgement of everything else the backend said would be lost.
-   * Without it the command refuses rather than dropping anything quietly.
-   */
-  strandedChildren?: StrandedChildren;
-  /**
-   * A window for a node becoming a Commitment that has none of its own and nothing above it to
-   * inherit one from. Supplied in answer to the backend's `needs_time_scope` refusal, and carried
-   * on the retype itself so the conversion stays a single atomic write.
-   */
-  timeScope?: TimeScope;
-}
-
 interface MindmapData {
   tree: MindmapNode;
   isLoading: boolean;
@@ -192,7 +165,6 @@ interface MindmapData {
   createNode: (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string, agentic?: TaskAgentic) => Promise<MindmapNode>;
   createChild: (parentId: string, parentKind: NodeKind, title: string) => Promise<MindmapNode>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
-  retypeNode: (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions) => Promise<string | null>;
   reorderNode: (id: string, direction: 1 | -1) => Promise<void>;
   moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number) => Promise<void>;
   duplicateNode: (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number) => Promise<void>;
@@ -610,7 +582,6 @@ export function buildTree(
       flowItem: {
         itemType,
         flowId: item.flow_id,
-        flowInstanceType: owningFlow?.instance_type ?? "task",
         flowScopeN: owningFlow?.flow_duration_n ?? null,
         flowScopeKind: owningFlow?.flow_duration_kind ?? null,
         cycles: cyclesByItem.get(id) ?? [],
@@ -1075,64 +1046,6 @@ export function useMindmapData(): MindmapData {
     [load, rowIdOfId],
   );
 
-  const retypeNode = useCallback(
-    async (id: string, fromKind: NodeKind, toKind: NodeKind, options?: RetypeOptions): Promise<string | null> => {
-      const dbId = rowIdOfId(id);
-      // The flow node itself is not part of the retype cycle (Phase 7.2 decision).
-      if (fromKind === "flow") return null;
-
-      // Flow items convert goal↔task in their own tables, preserving cycles and dependencies.
-      if (fromKind === "flow_goal" || fromKind === "flow_task") {
-        if ((toKind !== "flow_goal" && toKind !== "flow_task") || fromKind === toKind) return null;
-        const node = findNodeInTree(tree, id);
-        const parent = findParentInTree(tree, id);
-        if (node === undefined || parent === undefined) return null;
-
-        // A flow-goal child can't live under a flow-task; move it up or delete it per the prompt.
-        if (fromKind === "flow_goal" && toKind === "flow_task") {
-          const parentType = parent.kind === "flow" ? "flow" : parent.kind;
-          const parentDbId = storedId(rowIdOf(parent));
-          for (const child of node.children.filter((c) => c.kind === "flow_goal")) {
-            const childDbId = storedId(rowIdOf(child));
-            if (options?.goalChildrenAction === "reparent") {
-              await updateFlowGoal(childDbId, { parent_type: parentType, parent_id: parentDbId });
-            } else {
-              await deleteFlowItem("flow_goal", childDbId);
-            }
-          }
-        }
-
-        const newId = await convertFlowItem(fromKind, storedId(dbId), toKind);
-        await load(false);
-        return toKind === "flow_goal" ? `flowgoal-${newId}` : `flowtask-${newId}`;
-      }
-
-      // Every retype between the goals, tasks, domains and infos tables is one atomic backend
-      // call. `retype_node` creates the new row with every field that carries, moves the tags and
-      // the block reasons, repoints the dependency edges aimed at the node, adopts the children the
-      // new kind can hold and settles the ones it cannot — or does none of it. It also refuses
-      // outright, with a payload naming what is at stake, rather than dropping anything quietly;
-      // `use-node-type-manager` is what puts that to the user and retries with the answer.
-      //
-      // Infos used to be orchestrated here instead, as a chain of separate calls: that dropped
-      // `details` and `is_private` unannounced, left a duplicate node behind when the final delete
-      // failed, and — because an info's parent link is polymorphic — could write a `parent_type`
-      // naming a table its `parent_id` did not point into.
-      const sourceKind = asRetypeKind(fromKind);
-      const targetKind = asRetypeKind(toKind);
-      if (sourceKind !== null && targetKind !== null) {
-        const retyped = await backendRetype(
-          sourceKind, dbId, targetKind, options?.strandedChildren, options?.timeScope,
-        );
-        await load(false);
-        return entityNodeId(retyped.kind, retyped.id);
-      }
-
-      return null;
-    },
-    [load, rowIdOfId, tree],
-  );
-
   const reorderNode = useCallback(
     async (id: string, direction: 1 | -1): Promise<void> => {
       const parent = findParentInTree(tree, id);
@@ -1388,7 +1301,6 @@ export function useMindmapData(): MindmapData {
     createNode,
     createChild,
     renameNode,
-    retypeNode,
     reorderNode,
     moveNode,
     duplicateNode,
