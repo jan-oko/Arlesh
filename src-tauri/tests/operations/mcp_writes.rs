@@ -1728,17 +1728,14 @@ mod task_fields {
         helpers::make_agentic(&pool, board.inside_task).await;
         let mcp = mcp(&pool);
 
-        // Both in the future: a Task whose own Time Scope has passed is Overdue, and an Overdue
-        // Task may be planned outside it (#93) — so a past week here stops being a refusal the
-        // day it ends.
         let outside = run(
             &mcp,
             operation(json!({
                 "operation": "update",
                 "id": board.inside_task.to_string(),
                 "title": "Should not land",
-                "time_scope": week("2099-09-20"),
-                "plan": day("2099-10-05"),
+                "time_scope": week("2026-09-20"),
+                "plan": day("2026-10-05"),
             })),
         )
         .await;
@@ -1752,8 +1749,8 @@ mod task_fields {
                 "parent_type": "project",
                 "parent_id": board.inside.to_string(),
                 "title": "Should not land",
-                "time_scope": week("2099-09-20"),
-                "plan": day("2099-10-05"),
+                "time_scope": week("2026-09-20"),
+                "plan": day("2026-10-05"),
             })),
         )
         .await;

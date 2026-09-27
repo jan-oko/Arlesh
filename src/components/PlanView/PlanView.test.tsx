@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import PlanView from "./PlanView";
@@ -190,17 +190,6 @@ function cardsIn(pane: "candidates" | "planned"): string[] {
   if (section === null) throw new Error(`no ${pane} pane on screen`);
   return [...section.querySelectorAll("[data-plan-card-id]")].map((el) => el.getAttribute("data-plan-card-id") ?? "");
 }
-
-// The fixtures above are the week of 2026-09-20, and the view opens on the scope holding today — so
-// today is pinned inside it. Only `Date` is faked; timers and promises stay real.
-beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(new Date("2026-09-23T12:00:00"));
-});
-
-afterEach(() => {
-  vi.useRealTimers();
-});
 
 beforeEach(() => {
   vi.clearAllMocks();
