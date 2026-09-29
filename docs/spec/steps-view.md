@@ -434,7 +434,7 @@ the last card of a page, with more cards one page on, read as the end of the Ste
 - `Delete` — delete the selected card, after confirming
 - `B` / `A` / `W` — backlog, agentic, asynchronous, the same bare letters the other views bind
 - `P` — set the selected Task card's **Plan** in a quick picker drawn at the card, as on the Mindmap; any other card, a fold card and the board card are refused by name (see [*The quick Plan picker*](time-scopes.md#the-quick-plan-picker-p))
-- `D` — make the selected Task card **depend on** a Task or an Expectation, picked in a small search bar drawn at the card, as on the Mindmap; any other card, a fold card and the board card are refused by name (see [*The quick dependency picker*](resources.md#quick-dependency))
+- `D` — make the selected Task card **depend on** a Task, a Goal or an Expectation, picked in a small search bar drawn at the card, as on the Mindmap; any other card, a fold card and the board card are refused by name (see [*The quick dependency picker*](resources.md#quick-dependency))
 - `Escape` — deselect; `F` with nothing selected — the board alone
 - `Ctrl+=` / `Ctrl+-` — card size
 - `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B` — the shared status presets

@@ -24,8 +24,8 @@ interface Props {
 }
 
 /**
- * The `D` quick picker: a small search bar drawn at the selected Task, offering the Tasks and
- * Expectations it may be made to depend on.
+ * The `D` quick picker: a small search bar drawn at the selected Task, offering the Tasks, Goals
+ * and Expectations it may be made to depend on.
  *
  * It searches as `Ctrl+O` does — nothing until you type, titles in any case, a shared title told
  * apart by its parent path. **↑ ↓** move the highlight, **Enter** or a click adds the highlighted

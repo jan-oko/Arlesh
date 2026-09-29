@@ -97,13 +97,13 @@ beforeEach(() => {
 });
 
 describe("useQuickDependency — opening", () => {
-  it("opens on a Task and offers the other Tasks and the stored waits, archived ones left out", async () => {
+  it("opens on a Task and offers the other Tasks, the Goals and the stored waits, archived ones left out", async () => {
     installBackend();
     const { result } = setup();
     act(() => { result.current.open(["task-1"]); });
     expect(result.current.target).toMatchObject({ anchorId: "task-1", candidates: null });
     await waitFor(() => expect(result.current.target?.candidates).not.toBeNull());
-    expect(result.current.target?.candidates?.map((c) => c.id)).toEqual(["task-2", "expectation-7"]);
+    expect(result.current.target?.candidates?.map((c) => c.id)).toEqual(["task-2", "expectation-7", "goal-4"]);
   });
 
   it("offers archived nodes too when Settings says search includes them", async () => {
@@ -112,12 +112,13 @@ describe("useQuickDependency — opening", () => {
     const { result } = setup();
     act(() => { result.current.open(["task-1"]); });
     await waitFor(() => expect(result.current.target?.candidates).not.toBeNull());
-    expect(result.current.target?.candidates?.map((c) => c.id)).toEqual(["task-2", "task-3", "expectation-7"]);
+    expect(result.current.target?.candidates?.map((c) => c.id)).toEqual(["task-2", "task-3", "expectation-7", "goal-4"]);
   });
 
   it("leaves out what it already depends on and what depends on it", async () => {
     installBackend({ edges: [
       { task_id: 1, dependency_type: "expectation", dependency_id: 7 },
+      { task_id: 1, dependency_type: "goal", dependency_id: 4 },
       { task_id: 2, dependency_type: "task", dependency_id: 1 },
     ] });
     const { result } = setup();

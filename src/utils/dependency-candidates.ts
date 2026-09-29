@@ -20,12 +20,13 @@ export function canHoldDependencies(node: MindmapNode): boolean {
 
 /**
  * The edge that makes a Task depend on `node`, or `null` when `node` cannot be depended on here.
- * A Task (stored or an occurrence) and a **stored** Expectation can; a derived wait — a check
- * task, a delegated Task's wait, the wait an Asynchronous Task spawned — has no row an edge can
- * name, since an Expectation edge carries a stored id.
+ * A Task or a Goal (stored or an occurrence) and a **stored** Expectation can; a derived wait — a
+ * check task, a delegated Task's wait, the wait an Asynchronous Task spawned — has no row an edge
+ * can name, since an Expectation edge carries a stored id.
  */
 export function dependencyOn(node: MindmapNode): Dependency | null {
   if (canHoldDependencies(node) && node.rowId !== undefined) return { type: "task", id: node.rowId };
+  if (node.kind === "goal" && node.virtual !== true && node.rowId !== undefined) return { type: "goal", id: node.rowId };
   if (node.kind !== "expectation" || isDerivedWait(node) || typeof node.rowId !== "number") return null;
   return { type: "expectation", id: node.rowId };
 }
@@ -53,10 +54,10 @@ function transitiveDependents(dependent: RowId, edges: readonly TaskDependencyEd
 }
 
 /**
- * What `dependent` may be made to depend on, in search order: every Task and stored Expectation
- * among `nodes`, less the Task itself, what it already depends on, and every Task that already
- * depends on it (directly or through a chain), since that edge would close a cycle the backend
- * refuses. `nodes` is the node search's own pool, so its archived rule applies unchanged.
+ * What `dependent` may be made to depend on, in search order: every Task, Goal and stored
+ * Expectation among `nodes`, less the Task itself, what it already depends on, and every Task that
+ * already depends on it (directly or through a chain), since that edge would close a cycle the
+ * backend refuses. A Goal or an Expectation depends on nothing, so no cycle runs through one. `nodes` is the node search's own pool, so its archived rule applies unchanged.
  */
 export function dependencyCandidates(
   dependent: MindmapNode,
