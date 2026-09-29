@@ -1,0 +1,60 @@
+/* The quick pickers' popover, fixed at the selection's own box — `top`/`left` come from its rect. */
+.popover {
+  composes: popover from "../QuickPlanPicker/QuickPlanPicker.module.css";
+  width: 360px;
+}
+
+.heading {
+  composes: heading from "../QuickPlanPicker/QuickPlanPicker.module.css";
+}
+
+.input {
+  border: 1px solid var(--node-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--accent);
+}
+
+/* The result rows are Ctrl+O's, in a shorter list. */
+.results {
+  composes: results from "../SearchModalShell/SearchModalShell.module.css";
+  padding: 0;
+  max-height: 40vh;
+}
+
+.result {
+  composes: result from "../SearchModalShell/SearchModalShell.module.css";
+}
+
+.active {
+  composes: active from "../SearchModalShell/SearchModalShell.module.css";
+}
+
+.empty {
+  composes: empty from "../SearchModalShell/SearchModalShell.module.css";
+  padding: var(--space-2) var(--space-3);
+}
+
+.label {
+  composes: label from "../NodeSearchModal/NodeSearchModal.module.css";
+}
+
+.title {
+  composes: title from "../NodeSearchModal/NodeSearchModal.module.css";
+}
+
+.parentPath {
+  composes: parentPath from "../NodeSearchModal/NodeSearchModal.module.css";
+}
+
+.kind {
+  composes: kind from "../NodeSearchModal/NodeSearchModal.module.css";
+}

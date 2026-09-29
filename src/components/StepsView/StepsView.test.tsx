@@ -35,6 +35,8 @@ vi.mock("@/components/MindmapView/use-node-editor", () => ({
 }));
 
 const updateTask = vi.fn((_id: number, _request: unknown) => Promise.resolve());
+const addTaskDependency = vi.fn((_id: number, _dependency: unknown) => Promise.resolve());
+const listAllTaskDependencies = vi.fn(() => Promise.resolve([]));
 
 const undo = vi.fn(() => Promise.resolve(null));
 vi.mock("@/api/gesture", async (importOriginal) => ({
@@ -44,6 +46,8 @@ vi.mock("@/api/gesture", async (importOriginal) => ({
 vi.mock("@/api/tasks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/tasks")>()),
   updateTask: (id: number, request: unknown) => updateTask(id, request),
+  addTaskDependency: (id: number, dependency: unknown) => addTaskDependency(id, dependency),
+  listAllTaskDependencies: () => listAllTaskDependencies(),
 }));
 
 /** A fixture node; it draws the row its id names (`task-12` is row 12), unless it is virtual. */
@@ -776,5 +780,52 @@ describe("P, the quick Plan picker", () => {
     press("ArrowUp");
     press("KeyP");
     expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedBoardRoot");
+  });
+});
+
+describe("D, the quick dependency picker", () => {
+  it("opens a search at the selected Task card, adds the pick, and one Ctrl+Z takes it back", async () => {
+    mockTree([n("task-1", "task", { status: "todo" }), n("expectation-7", "expectation", { title: "Parts arrive" })]);
+    render(<StepsView />);
+
+    press("ArrowDown");
+    press("KeyD");
+    const dialog = screen.getByRole("dialog", { name: "editor:quickDependencyPicker" });
+    const search = screen.getByRole("combobox");
+    await waitFor(() => expect(listAllTaskDependencies).toHaveBeenCalled());
+    fireEvent.change(search, { target: { value: "parts" } });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1));
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    await waitFor(() => expect(addTaskDependency).toHaveBeenCalledWith(1, { type: "expectation", id: 7 }));
+    expect(dialog.isConnected).toBe(false);
+    await waitFor(() => expect(reload).toHaveBeenCalled());
+
+    pressWith("KeyZ", { ctrl: true });
+    await settle();
+    expect(undo).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds the view's own keys while it is open, and Escape closes it writing nothing", () => {
+    mockTree([n("task-1", "task", { status: "todo" })]);
+    render(<StepsView />);
+
+    press("ArrowDown");
+    press("KeyD");
+    press("Space");
+    expect(updateTask).not.toHaveBeenCalled();
+    act(() => { fireEvent.keyDown(document, { key: "Escape" }); });
+    expect(screen.queryByRole("dialog", { name: "editor:quickDependencyPicker" })).toBeNull();
+    expect(addTaskDependency).not.toHaveBeenCalled();
+  });
+
+  it("refuses a card that holds no dependencies, by name", () => {
+    mockTree([n("goal-1", "goal")]);
+    render(<StepsView />);
+
+    press("ArrowDown");
+    press("KeyD");
+    expect(screen.queryByRole("dialog", { name: "editor:quickDependencyPicker" })).toBeNull();
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("warnings:quickDependencyNotTask");
   });
 });

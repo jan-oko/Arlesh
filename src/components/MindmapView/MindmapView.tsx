@@ -58,6 +58,8 @@ import { useOpenAsyncTemplate } from "@/hooks/use-open-async-template";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
 import { useQuickPlan } from "@/hooks/use-quick-plan";
+import { useQuickDependency } from "@/hooks/use-quick-dependency";
+import QuickDependencyPicker from "@/components/QuickDependencyPicker/QuickDependencyPicker";
 import QuickPlanPicker from "@/components/QuickPlanPicker/QuickPlanPicker";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
@@ -340,6 +342,10 @@ export default function MindmapView() {
   const quickPlan = useQuickPlan({
     findNode: (id) => findNode(tree, id) ?? findNode(displayRoot, id), reload, showToast,
   });
+  // `D`. The same drawn-tree fallback, so a fold is refused by name; the search reads the board.
+  const quickDependency = useQuickDependency({
+    tree, findNode: (id) => findNode(tree, id) ?? findNode(displayRoot, id), reload, showToast,
+  });
 
   const handleConfirmDelete = useCallback(() => {
     if (deleteTargets === null) return;
@@ -518,6 +524,7 @@ export default function MindmapView() {
     onToggleAgentic: toggleAgentic,
     onToggleAsynchronous: toggleAsynchronous,
     onQuickPlan: quickPlan.open,
+    onQuickDependency: quickDependency.open,
     findNodeById,
   });
   const targetPos = dragTargetId !== null ? positions.get(dragTargetId) : undefined;
@@ -569,6 +576,15 @@ export default function MindmapView() {
           anchorAttribute="data-node-id"
           onApply={(plan) => void quickPlan.apply(plan)}
           onClose={quickPlan.close}
+        />
+      )}
+
+      {quickDependency.target !== null && (
+        <QuickDependencyPicker
+          target={quickDependency.target}
+          anchorAttribute="data-node-id"
+          onPick={(candidate) => void quickDependency.apply(candidate)}
+          onClose={quickDependency.close}
         />
       )}
 

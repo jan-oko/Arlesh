@@ -130,5 +130,9 @@
   "quickPlanPicker": "Plan",
   "quickPlanHeading": "Plan “{{title}}”",
   "quickPlanHeadingMany_one": "Plan {{count}} task",
-  "quickPlanHeadingMany_other": "Plan {{count}} tasks"
+  "quickPlanHeadingMany_other": "Plan {{count}} tasks",
+  "quickDependencyPicker": "Add a dependency",
+  "quickDependencyHeading": "“{{title}}” depends on…",
+  "quickDependencyPlaceholder": "Search Tasks and Expectations",
+  "quickDependencyLoading": "Loading…"
 }

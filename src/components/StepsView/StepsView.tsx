@@ -42,6 +42,8 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import QuickPlanPicker from "@/components/QuickPlanPicker/QuickPlanPicker";
 import { useQuickPlan } from "@/hooks/use-quick-plan";
+import { useQuickDependency } from "@/hooks/use-quick-dependency";
+import QuickDependencyPicker from "@/components/QuickDependencyPicker/QuickDependencyPicker";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import NodeCreateModals from "@/components/NodeCreateModals/NodeCreateModals";
@@ -227,6 +229,8 @@ export default function StepsView() {
   const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
   // `P`. A fold card is found in the drawn tree and refused by name, as any node without a Plan is.
   const quickPlan = useQuickPlan({ findNode: lookup, reload, showToast });
+  // `D`, refusing what `P` refuses and for the same reason.
+  const quickDependency = useQuickDependency({ tree, findNode: lookup, reload, showToast });
   const { onUndo, onRedo } = useUndo({ reload, showToast });
 
   /**
@@ -443,6 +447,7 @@ export default function StepsView() {
     onToggleAgentic: unlessDrawing(toggleAgentic),
     onToggleAsynchronous: unlessDrawing(toggleAsynchronous),
     onQuickPlan: quickPlan.open,
+    onQuickDependency: quickDependency.open,
     onBindWait: unlessDrawing(openAsyncTemplate),
     onOpenEditor,
     onCreateChild: onCreateChildHere,
@@ -488,6 +493,15 @@ export default function StepsView() {
           anchorAttribute="data-step-card"
           onApply={(plan) => void quickPlan.apply(plan)}
           onClose={quickPlan.close}
+        />
+      )}
+
+      {quickDependency.target !== null && (
+        <QuickDependencyPicker
+          target={quickDependency.target}
+          anchorAttribute="data-step-card"
+          onPick={(candidate) => void quickDependency.apply(candidate)}
+          onClose={quickDependency.close}
         />
       )}
 

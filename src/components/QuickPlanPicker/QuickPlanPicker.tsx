@@ -1,35 +1,14 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { TimeScope } from "@/api/time-scope";
 import ScopePicker from "@/components/ScopePicker/ScopePicker";
+import { useAnchoredPosition } from "@/hooks/use-anchored-position";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import { usePlanPicker } from "@/hooks/use-plan-picker";
 import type { QuickPlanTarget } from "@/hooks/use-quick-plan";
-import { findAnchorElement } from "@/utils/anchor-element";
 import fieldStyles from "@/components/ScopePicker/ScopeField.module.css";
 import styles from "./QuickPlanPicker.module.css";
-
-/** Room kept between the popover and the anchor, and between it and the window's edges. */
-const GAP_PX = 6;
-
-interface Position {
-  top: number;
-  left: number;
-}
-
-/**
- * Where the popover goes: below the anchor's box, left edges aligned — or above it when there is no
- * room below — and never past the window's edges. With no anchor drawn, the window's top-left.
- */
-function positionFor(anchor: DOMRect | null, size: { width: number; height: number }): Position {
-  if (anchor === null) return { top: GAP_PX, left: GAP_PX };
-  const below = anchor.bottom + GAP_PX;
-  const fitsBelow = below + size.height <= window.innerHeight - GAP_PX;
-  const top = fitsBelow ? below : Math.max(GAP_PX, anchor.top - GAP_PX - size.height);
-  const left = Math.max(GAP_PX, Math.min(anchor.left, window.innerWidth - GAP_PX - size.width));
-  return { top, left };
-}
 
 interface Props {
   target: QuickPlanTarget;
@@ -58,20 +37,7 @@ export default function QuickPlanPicker({ target, anchorAttribute, onApply, onCl
   // The picker re-mounts on this when a late-arriving Plan moves its opening, and may change size.
   const openingKey = opening === null ? "default" : `${opening.kind}:${opening.anchor}`;
   const ref = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<Position>({ top: GAP_PX, left: GAP_PX });
-
-  useLayoutEffect(() => {
-    function place() {
-      const anchor = findAnchorElement(anchorAttribute, target.anchorId);
-      const own = ref.current?.getBoundingClientRect();
-      const size = { width: own?.width ?? 0, height: own?.height ?? 0 };
-      const next = positionFor(anchor?.getBoundingClientRect() ?? null, size);
-      setPosition((current) => (current.top === next.top && current.left === next.left ? current : next));
-    }
-    place();
-    window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
-  }, [anchorAttribute, target.anchorId, openingKey]);
+  const position = useAnchoredPosition(ref, anchorAttribute, target.anchorId, openingKey);
 
   const commit = useCallback(() => {
     // An empty selection is an unanswered question, not a request to clear: only Clear clears.

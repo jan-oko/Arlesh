@@ -39,6 +39,8 @@ import PathHeaderRow from "./PathHeaderRow";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import QuickPlanPicker from "@/components/QuickPlanPicker/QuickPlanPicker";
 import { useQuickPlan } from "@/hooks/use-quick-plan";
+import { useQuickDependency } from "@/hooks/use-quick-dependency";
+import QuickDependencyPicker from "@/components/QuickDependencyPicker/QuickDependencyPicker";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
 import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/UnfinishedChildrenModal";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
@@ -114,6 +116,12 @@ export default function ListView() {
     showToast,
   });
   const quickPlan = useQuickPlan({
+    findNode: (id) => findNode(tree, id),
+    reload,
+    showToast,
+  });
+  const quickDependency = useQuickDependency({
+    tree,
     findNode: (id) => findNode(tree, id),
     reload,
     showToast,
@@ -330,6 +338,7 @@ export default function ListView() {
     onToggleAgentic: toggleAgentic,
     onToggleAsynchronous: toggleAsynchronous,
     onQuickPlan: quickPlan.open,
+    onQuickDependency: quickDependency.open,
     onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,
     onUndo,
@@ -349,6 +358,15 @@ export default function ListView() {
           anchorAttribute="data-row-id"
           onApply={(plan) => void quickPlan.apply(plan)}
           onClose={quickPlan.close}
+        />
+      )}
+
+      {quickDependency.target !== null && (
+        <QuickDependencyPicker
+          target={quickDependency.target}
+          anchorAttribute="data-row-id"
+          onPick={(candidate) => void quickDependency.apply(candidate)}
+          onClose={quickDependency.close}
         />
       )}
 
