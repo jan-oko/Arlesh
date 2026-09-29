@@ -22,19 +22,25 @@ Exactly as the [Plan View is always Plan](plan-view.md#always-the-plan-preset), 
 - The top bar's preset control shows **Do** while this view is active; the other presets are drawn
   but disabled, each saying on hover that the Zen View always reads under Do, and so does the
   closed control.
-- `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B`, and the List View's `Alt+U`, change nothing here and
-  say so in a toast. They are left off this view's cheat-sheet. (`Alt+E` is taken here — see
-  *The strips*.)
+- `Alt+A`/`Alt+P`/`Alt+S`/`Alt+D`/`Alt+B`, and the List View's `Alt+U` and `Alt+E`, change nothing
+  here and say so in a toast. They are left off this view's cheat-sheet.
 - The tab's own preset is **not overwritten**: the view reads the board *as* Do, and switching to
   another view gives the tab its preset back. The Plan preset's scope narrowing is not read either,
   since Do never consults it.
 
 Everything else in the shared filter applies as it does in the other views: tags, Private Mode, the
-Info/Flow toggles, the Archived and Backlog pills. The **List View's own pill dimensions** (Under,
-Depends on, Scope, Yes/no, Task/Goal/Project status, Verdict) and its row-kind selector do **not**
-apply: they are the List View's, as they are not the Plan View's or the Steps View's, and the Filter
-menu and the chips here show Tags alone — so a pill set in the List View never narrows this view
-without a chip saying so.
+Info/Flow toggles, the Archived and Backlog pills.
+
+**Of the List View's own pills, the Zen View reads Agentic alone** (ruled by the user, 2026-09-29).
+Its Filter menu has a **Tags** row and an **Agentic** row below the switch block, and the Agentic
+pill works exactly as the List View's: added as All, Shift Any, Alt Not, a click cycles its mode,
+`a` in the open menu adds it in the key's mode, and `Ctrl+F` finds it. It is the same stored pill
+the List View reads, per tab, so one set in either view applies in both. It narrows the **grid**
+only: Agentic asks about Tasks, and a Commitment or a wait does not answer it. It draws **no chip**
+under the top bar, like the Mindmap's own filters — it is set and seen in the Filter menu (and
+`Ctrl+F`). The List View's other pills (Under, Depends on, Scope, Blocked, Asynchronous, Private,
+Task/Goal/Project status, Verdict) do not apply here and are not offered, so none can narrow this
+view unseen.
 
 ## The grid
 
@@ -46,15 +52,16 @@ View's setting says (ruled by the user). The **focus exemption** holds as elsewh
 Logic](filtering-logic.md)): a card your own edit stops matching — cycling it to Done with `Enter` —
 stays where it is, dimmed, until the selection leaves it.
 
-**A card** carries its **title**, large; beneath it the **parent path**, small — every ancestor
-between the view's frame and the Task, `Growth › CODE › ARLESH`, the line left-to-right with each
-title isolated so a Hebrew title reads correctly inside it (the Plan View's rule); and, when the
-card is tall enough, the standard **status-badge row** the Mindmap, the List View and the Steps View
-draw, from the same component. It is washed in its **aspect's colour**, flat, from the shared
-stylesheet the List and Steps cards use. The title is drawn with `dir="auto"`, so a Hebrew or Arabic
-title runs right-to-left and aligns to its own start edge. A selected card has the selected border;
-the card carries no status control (the badge row and the title are the whole card, as decided) —
-`Enter` is the status gesture.
+**A card** carries its **title**, large; beneath it the **parent path** — every ancestor between the
+view's frame and the Task, `Growth › CODE › ARLESH`, the line left-to-right with each title isolated
+so a Hebrew title reads correctly inside it (the Plan View's rule); and, when the card is tall
+enough, the standard **status-badge row** the Mindmap, the List View and the Steps View draw, from
+the same component. The three are **one block, centred** on the card both across and down (ruled by
+the user, 2026-09-29), so the path and the badges sit under the title whatever its direction. The
+title is drawn with `dir="auto"`, so a Hebrew or Arabic title reads right-to-left. The card is
+washed in its **aspect's colour**, flat, from the shared stylesheet the List and Steps cards use. A
+selected card has the selected border; the card carries no status control (the badge row and the
+title are the whole card, as decided) — `Enter` is the status gesture.
 
 **Size to fit.** The grid **always fills the area left below the strips**, and never scrolls while
 the cards can stay at least the minimum size:
@@ -75,10 +82,14 @@ the cards can stay at least the minimum size:
   it. Before the area has a real size (the first frame, or a test environment without layout) the
   grid draws at the minimum size, scrolling.
 
-**Title scaling.** The title's font size is `min(0.28 × card height, 0.09 × card width)`, held
-between **14px** (the normal text size — what a minimum card gets) and **64px**. The path line is
-`0.45 ×` the title size, held between 12px and 20px. A long title wraps and is clamped to the lines
-the card has room for, ending in an ellipsis; its full text is the card's tooltip.
+**Scaling.** Usually one to three Tasks are in progress, so the view is designed first for a few big
+cards. The title's font size is `min(0.28 × card height, 0.08 × card width)`, held between **14px**
+(the normal text size — what a minimum card gets) and **112px** (one card across a full-HD window).
+Everything else keeps to the title's scale, so a big title never sits over a line of small print:
+the **path** is half the title (at least 12px), each **badge icon** 0.4 of it (at least 12px), and
+the card's **padding** 0.3 of it (at least 6px), with a third of that between the title, the path
+and the badges. A long title wraps and is clamped to the lines the card has room for, ending in an
+ellipsis; its full text is the card's tooltip.
 
 **Badges** are drawn only when the card is at least **72px** tall and the **Show badges on cards**
 setting is on — see *Settings*.
@@ -86,8 +97,8 @@ setting is on — see *Settings*.
 ## The strips
 
 Above the grid, **Commitments first, then Expectations**, each a **single horizontal row of small
-cards** — the kind's glyph and the title, aspect-washed — that **scrolls sideways** when it is
-longer than the window. The grid resizes to fill what the strips leave. A strip with nothing in it
+cards** — the kind's glyph and the title at the normal text size (14px), in a pill with 6px × 14px
+of padding, aspect-washed — that **scrolls sideways** when it is longer than the window. The grid resizes to fill what the strips leave. A strip with nothing in it
 **takes no space at all**; there is no heading, the glyphs say which strip is which.
 
 - **The Commitments strip** holds what the List View shows under Do: every **unresolved**
@@ -101,10 +112,15 @@ longer than the window. The grid resizes to fill what the strips leave. A strip 
   nothing reaches the board filter the backend or the MCP sees, so the conformance corpus is
   unchanged.
 - Each strip is shown or hidden by the Zen View's **own per-tab toggle**, **both on by default**,
-  independent of the List View's row-kind selector: **`Alt+C`** toggles the Commitments strip and
-  **`Alt+E`** the Expectations strip. The toggles are kept with the tab (`zenCommitments`,
-  `zenExpectations` in its view state); a tab stored before the Zen View existed has neither field
-  and reads as both on, so it loads unchanged.
+  independent of the List View's row-kind selector. The toggles are switched **from the Filter
+  menu, the way the List View's row kinds are** (ruled by the user, 2026-09-29): a **Commitments**
+  and an **Expectations** switch at the top of the switch block, drawn while the Zen View is active,
+  with the same keys while the menu is open — `c` / `e` toggle one (Alt too), Shift shows that strip
+  alone — and the same `Ctrl+F` results. There is no Tasks switch: the grid is always shown, so
+  both strips may be off. **Reset** turns both back on (and clears the Agentic pill). There is no
+  view binding for them, as the List View has none for its kinds. The toggles are kept with the tab
+  (`zenCommitments`, `zenExpectations` in its view state); a tab stored before the Zen View existed
+  has neither field and reads as both on, so it loads unchanged.
 
 ## Keyboard
 
@@ -112,7 +128,8 @@ The Zen View has **its own selection**, as each view does, and takes **the List 
 bindings, except every create key** — no `Tab`, `Shift+Enter`, `Shift+E` or any other chord that
 makes a node. The bindings are not copied: the Zen table is built from the List View's own binding
 modules, re-sectioned for the cheat-sheet, with the create modules left out. So a key's meaning can
-never drift between the two views.
+never drift between the two views. The strips and the Agentic pill are switched from the Filter menu
+(`Alt+F`, then `c` / `e` / `a`), as the List View's row kinds and flags are.
 
 - `↑` `↓` `←` `→` — move in **two dimensions** (below)
 - `Enter` — on a Task, cycle its status (disabled while it is blocked; on a check task, complete the
@@ -128,7 +145,6 @@ never drift between the two views.
 - `Ctrl+Home` / `Ctrl+End` — the first / last card in drawn order (the Commitments strip, then the
   Expectations strip, then the grid)
 - `J` / `K` — scroll the grid without moving the selection, when it scrolls at all
-- `Alt+C` / `Alt+E` — show or hide the Commitments / Expectations strip
 - `Escape` — deselect; `F` with nothing selected — the board alone
 - `Ctrl+Z` / `Ctrl+Shift+Z` — undo and redo
 - `Ctrl+J` shows this view; `Ctrl+O`, `Shift+Escape`, `Ctrl+Escape`, `Alt+F`, `Ctrl+F` are the
@@ -161,5 +177,6 @@ on). Per-badge settings are deliberately not offered.
 - **Creating** anything. Every create key is absent, not refused.
 - Mixing Commitments and Expectations into the grid ("option B" in the mock) — they have their
   strips.
-- Reading the List View's pill dimensions, its row-kind selector or its Asynchronous-first setting.
+- Reading the List View's pills other than Agentic, its row-kind selector or its Asynchronous-first
+  setting.
 - Anything to the List View's own behaviour.

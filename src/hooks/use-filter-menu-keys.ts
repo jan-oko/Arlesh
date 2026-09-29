@@ -10,6 +10,8 @@ import { YES_VALUE, modeFromModifiers } from "@/utils/filter-modes";
 import type { YesNoDimension } from "@/utils/filter-modes";
 import { flagForCode, rowKindForCode } from "@/utils/filter-menu-keys";
 import type { ListRowKind } from "@/utils/list-filter";
+import type { View } from "@/stores/use-view-store";
+import { flagsFor, rowKindsFor } from "@/utils/filter-layout";
 
 /** Whether the key was pressed in a text box, where letters must type. */
 function inTextBox(event: KeyboardEvent): boolean {
@@ -18,10 +20,11 @@ function inTextBox(event: KeyboardEvent): boolean {
 
 /**
  * The Filter menu's keys (see `filter-menu-keys.ts`), as a keydown handler for the menu: `Ctrl+P`
- * in every view, the letters in the List View. A key typed into one of its search boxes is left to
- * type.
+ * in every view, and the letters for whatever row kinds and flags `view` offers — all of them in
+ * the List View, `c` / `e` (its strips) and `a` (Agentic) in the Zen View. A key typed into one of
+ * its search boxes is left to type.
  */
-export function useFilterMenuKeys(lettersEnabled: boolean): (event: KeyboardEvent) => void {
+export function useFilterMenuKeys(view: View): (event: KeyboardEvent) => void {
   const { t } = useTranslation("filter");
   const privateMode = useFilterStore((s) => s.filter.privateMode);
   const setPrivateMode = useSetPrivateMode();
@@ -58,9 +61,10 @@ export function useFilterMenuKeys(lettersEnabled: boolean): (event: KeyboardEven
       setPrivateMode(!privateMode);
       return;
     }
-    if (!lettersEnabled) return;
-    const kind = rowKindForCode(event.code);
-    const flag = flagForCode(event.code);
+    const kindCandidate = rowKindForCode(event.code);
+    const flagCandidate = flagForCode(event.code);
+    const kind = kindCandidate !== null && rowKindsFor(view).includes(kindCandidate) ? kindCandidate : null;
+    const flag = flagCandidate !== null && flagsFor(view).includes(flagCandidate) ? flagCandidate : null;
     if (kind === null && flag === null) return;
     event.preventDefault();
     if (kind !== null) onRowKind(kind, event);

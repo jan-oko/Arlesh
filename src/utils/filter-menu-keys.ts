@@ -32,6 +32,11 @@ export const FILTER_MENU_CODES: readonly string[] = [
   ...Object.values(ROW_KIND_KEYS), ...Object.values(FLAG_KEYS), PRIVATE_MODE_TOKEN,
 ];
 
+/** The letter keys the Filter menu takes in a view: its row kinds' and its flags'. */
+export function filterMenuCodesFor(kinds: readonly ListRowKind[], flags: readonly YesNoDimension[]): string[] {
+  return [...kinds.map((kind) => ROW_KIND_KEYS[kind]), ...flags.map((flag) => FLAG_KEYS[flag])];
+}
+
 /** The row kind a key code toggles, or `null`. */
 export function rowKindForCode(code: string): ListRowKind | null {
   return LIST_ROW_KINDS.find((kind) => ROW_KIND_KEYS[kind] === code) ?? null;

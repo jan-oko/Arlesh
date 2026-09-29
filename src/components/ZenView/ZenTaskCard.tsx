@@ -31,9 +31,11 @@ interface Props {
  * card is tall enough and the setting allows — the badge row every other view draws, from the same
  * component. Washed in its aspect's colour like a List row or a Steps card.
  *
- * The title is `dir="auto"`, so a Hebrew title runs right to left and starts at its own edge. The
- * path line is left to right with each title isolated — the Plan View's rule — because `›` is
- * mirrored between two right-to-left titles otherwise.
+ * The three are **centred** on the card, across and down, and scale together: the path and the
+ * badges keep to the title's proportions (see `zenTextSize`). The title is `dir="auto"`, so a Hebrew
+ * title reads right to left; the path line is left to right with each title isolated — the Plan
+ * View's rule — because `›` is mirrored between two right-to-left titles otherwise. Centred, both
+ * sit under the title whatever its direction.
  *
  * A click selects, a double click opens the editor; there is no status control (Enter is the
  * gesture). `R` swaps the title for an inline input, as a List row does.
@@ -58,6 +60,8 @@ export default function ZenTaskCard({
     height,
     "--zen-title-size": `${text.title}px`,
     "--zen-path-size": `${text.path}px`,
+    "--zen-badge-size": `${text.badge}px`,
+    "--zen-padding": `${text.padding}px`,
     "--zen-title-lines": text.titleLines,
   };
 
@@ -99,7 +103,11 @@ export default function ZenTaskCard({
           ))}
         </span>
       )}
-      {showBadges && <TaskRowBadges node={node} indicators={deriveStatusIndicators(node)} />}
+      {showBadges && (
+        <span className={styles.badges}>
+          <TaskRowBadges node={node} indicators={deriveStatusIndicators(node)} />
+        </span>
+      )}
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useSetPrivateMode } from "@/hooks/use-private-mode";
 import type { View } from "@/stores/use-view-store";
-import { filterSwitchesFor } from "@/utils/filter-layout";
+import { filterSwitchesFor, rowKindsFor } from "@/utils/filter-layout";
 import type { StatusMode } from "@/utils/filter-tree";
 import Switch from "@/components/Switch/Switch";
 import OverridePill from "./OverridePill";
@@ -16,7 +16,8 @@ interface Props {
 }
 
 /**
- * The switch block at the top of the Filter menu. The List View's row kinds or the Mindmap's
+ * The switch block at the top of the Filter menu. The List View's row kinds (the Zen View's strips)
+ * or the Mindmap's
  * Info / Flow pills (with **Include flows** while the preset is Plan or Start), then, in every view,
  * the Private switch and the Archived and Backlog tri-state pills.
  */
@@ -34,7 +35,7 @@ export default function FilterSwitches({ view, statusMode }: Props) {
 
   return (
     <div className={styles.switches}>
-      {view === "list" && <RowKindSelector />}
+      {rowKindsFor(view).length > 0 && <RowKindSelector />}
       {view === "mindmap" && (
         <div className={styles.pills} role="group" aria-label={t("nodeTypesLabel")}>
           <button type="button" aria-pressed={filter.showInfo} className={`${styles.typePill}${filter.showInfo ? ` ${styles.typePillActive}` : ""}`} onClick={toggleShowInfo}>

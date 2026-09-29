@@ -1,21 +1,24 @@
 /* A Zen card: washed in its aspect's colour, flat, from the same stylesheet a List row and a Steps
-   card take. Its size is set inline from the grid's fit; the text sizes arrive as custom properties
-   so they scale with it (see `zenTextSize`). The vertical padding is the 12px `zenTextSize` allows. */
+   card take. Its size is set inline from the grid's fit; its content sizes arrive as custom
+   properties so they scale with it (see `zenTextSize`). The title, the path and the badges are one
+   block, centred across and down. */
 .card {
   composes: wash from "@/styles/aspect-wash.module.css";
   --card-base: var(--surface-raised);
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
+  align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: calc(var(--zen-padding, 6px) / 3);
   box-sizing: border-box;
   overflow: hidden;
-  padding: 6px var(--space-3);
+  padding: var(--zen-padding, 6px);
   border: 1px solid var(--node-border);
   border-radius: 10px;
   cursor: pointer;
   font-family: var(--font-sans);
+  text-align: center;
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
@@ -36,6 +39,7 @@
    pushing the path off the card. The full title is the card's tooltip. */
 .title {
   display: -webkit-box;
+  max-width: 100%;
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: var(--zen-title-lines, 1);
@@ -45,7 +49,7 @@
   font-weight: 500;
   line-height: 1.2;
   overflow-wrap: anywhere;
-  text-align: start;
+  text-align: center;
 }
 
 .titleInput {
@@ -59,13 +63,31 @@
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: var(--zen-title-size, var(--text-base));
+  text-align: center;
 }
 
 .path {
+  max-width: 100%;
   overflow: hidden;
   color: var(--card-text-muted);
   font-size: var(--zen-path-size, var(--text-sm));
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The shared badge row, drawn at the card's scale: its icons are SVGs with a fixed viewBox, so
+   sizing the element scales the glyph. */
+.badges {
+  display: flex;
+  justify-content: center;
+}
+
+.badges > span {
+  gap: calc(var(--zen-badge-size, 12px) * 0.4);
+}
+
+.badges svg {
+  width: var(--zen-badge-size, 12px);
+  height: var(--zen-badge-size, 12px);
 }

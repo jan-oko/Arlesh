@@ -6,9 +6,9 @@ import { useViewStore } from "@/stores/use-view-store";
 import { useFilterDimensions } from "@/hooks/use-filter-dimensions";
 import { useFilterEntries } from "@/hooks/use-filter-entries";
 import { useFilterMenuKeys } from "@/hooks/use-filter-menu-keys";
-import { FILTER_MENU_CODES, PRIVATE_MODE_TOKEN } from "@/utils/filter-menu-keys";
+import { PRIVATE_MODE_TOKEN, filterMenuCodesFor } from "@/utils/filter-menu-keys";
 import { lockedStatusMode } from "@/utils/view-preset";
-import { filterMenuRows, isSearchedDimension, offeredDimensions } from "@/utils/filter-layout";
+import { filterMenuRows, flagsFor, isSearchedDimension, offeredDimensions, rowKindsFor } from "@/utils/filter-layout";
 import type { FilterRowId } from "@/utils/filter-layout";
 import FilterRow from "./FilterRow";
 import FilterSwitches from "./FilterSwitches";
@@ -20,8 +20,9 @@ import styles from "./FilterPopover.module.css";
  * The Filter menu, opened from the top-bar Filter button or `Alt+F`: the switch block, then one
  * compact labelled row per dimension, in untitled groups split by a thin rule. An added value stays
  * in its row wearing its chip's mode, in step with the top-bar chips. The List View lists its own
- * dimensions; every other view filters by tag. In the List View, letter keys act while focus is in
- * the menu (see `filter-menu-keys.ts`); focus moves into it when it opens.
+ * dimensions, the Zen View tags and Agentic; every other view filters by tag. In the List and Zen
+ * Views, letter keys act while focus is in the menu (see `filter-menu-keys.ts`); focus moves into it
+ * when it opens.
  */
 export default function FilterPopover() {
   const { t } = useTranslation(["filter", "common"]);
@@ -34,7 +35,9 @@ export default function FilterPopover() {
   const view = useViewStore((s) => s.view);
   const catalogue = useFilterDimensions();
   const entries = useFilterEntries();
-  const onKeyDown = useFilterMenuKeys(view === "list");
+  const onKeyDown = useFilterMenuKeys(view);
+  const showAllZenStrips = useViewStore((s) => s.showAllZenStrips);
+  const agenticPills = useListFilterStore((s) => s.filter.pills.agentic);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Focus lands in the menu when it opens, so its letter keys work at once — from Alt+F too.
@@ -54,7 +57,7 @@ export default function FilterPopover() {
       className={styles.popover}
       role="dialog"
       aria-label={t("common:filter")}
-      data-owns-keys={view === "list" ? FILTER_MENU_CODES.join(" ") : PRIVATE_MODE_TOKEN}
+      data-owns-keys={[...filterMenuCodesFor(rowKindsFor(view), flagsFor(view)), PRIVATE_MODE_TOKEN].join(" ")}
       onKeyDown={onKeyDown}
     >
       <FilterSwitches view={view} statusMode={lockedStatusMode(view) ?? statusMode} />
@@ -72,9 +75,13 @@ export default function FilterPopover() {
           className={styles.reset}
           onClick={() => {
             reset();
-            if (view === "list") listReset();
+            if (view === "list") { listReset(); return; }
             // Reset turns Private Mode off, which takes the Private pill with it in every view.
-            else for (const pill of privatePills) removePill("private", pill.value);
+            for (const pill of privatePills) removePill("private", pill.value);
+            // The Zen View's own switches: both strips back on, and its Agentic pill cleared.
+            if (view !== "zen") return;
+            showAllZenStrips();
+            for (const pill of agenticPills) removePill("agentic", pill.value);
           }}
         >
           {t("reset")}

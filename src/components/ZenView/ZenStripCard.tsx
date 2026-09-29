@@ -3,7 +3,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { aspectWashStyle } from "@/utils/node-visuals";
 import styles from "./ZenStrip.module.css";
 
-const ICON_R = 8;
+const ICON_R = 9;
 
 interface Props {
   node: MindmapNode;

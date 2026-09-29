@@ -4,7 +4,7 @@ import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import type { FilterState } from "@/utils/filter-tree";
 import { flattenCommitmentRows, flattenExpectationRows, flattenTaskRows } from "@/utils/list-data";
 import { zenContents } from "./zen-contents";
-import type { ZenSourceRows, ZenStripsShown } from "./zen-contents";
+import type { ZenOptions, ZenSourceRows } from "./zen-contents";
 
 function n(id: string, kind: NodeKind, over: Partial<MindmapNode> = {}): MindmapNode {
   return { id, kind, title: id, position: 0, tagIds: [], children: [], rowId: 1, ...over };
@@ -21,7 +21,7 @@ const root = n("root", "domain", {
         }),
         n("task-todo", "task", { status: "todo" }),
         n("task-done", "task", { status: "done" }),
-        n("task-second", "task", { status: "in_progress", tagIds: [7] }),
+        n("task-second", "task", { status: "in_progress", tagIds: [7], agentic: true }),
       ],
     }),
     n("commitment-open", "commitment", { verdict: "unresolved" }),
@@ -39,13 +39,13 @@ const source: ZenSourceRows = {
   expectations: flattenExpectationRows(root),
 };
 
-const BOTH: ZenStripsShown = { commitments: true, expectations: true };
+const BOTH: ZenOptions = { commitments: true, expectations: true, agentic: [] };
 
 function ids(rows: ReadonlyArray<{ node: { id: string } }>): string[] {
   return rows.map((row) => row.node.id);
 }
 
-function read(shared: Partial<FilterState> = {}, strips: ZenStripsShown = BOTH, focusedId: string | null = null) {
+function read(shared: Partial<FilterState> = {}, strips: ZenOptions = BOTH, focusedId: string | null = null) {
   return zenContents(source, { ...DEFAULT_FILTER, ...shared }, strips, focusedId);
 }
 
@@ -69,7 +69,7 @@ describe("zenContents", () => {
   });
 
   it("draws nothing in a strip the tab has hidden", () => {
-    const contents = read({}, { commitments: false, expectations: false });
+    const contents = read({}, { commitments: false, expectations: false, agentic: [] });
     expect(contents.commitments.rows).toEqual([]);
     expect(contents.expectations.rows).toEqual([]);
     expect(ids(contents.tasks.rows)).toHaveLength(3);
@@ -78,6 +78,15 @@ describe("zenContents", () => {
   it("still applies the shared tag filter", () => {
     const contents = read({ tagFilters: [{ tagId: 7, mode: "all" }] });
     expect(ids(contents.tasks.rows)).toEqual(["task-second"]);
+  });
+
+  it("narrows the grid by the Agentic pill, in its modes, and leaves the strips alone", () => {
+    const agentic = read({}, { ...BOTH, agentic: [{ value: "agentic", mode: "all" }] });
+    expect(ids(agentic.tasks.rows)).toEqual(["task-second"]);
+    expect(ids(agentic.commitments.rows)).toEqual(["commitment-open"]);
+    expect(ids(agentic.expectations.rows)).toEqual(["expectation-live", "expectation-checked"]);
+    const notAgentic = read({}, { ...BOTH, agentic: [{ value: "agentic", mode: "exclude" }] });
+    expect(ids(notAgentic.tasks.rows)).toEqual(["task-doing", "task-doing-child"]);
   });
 
   it("keeps the selected card when it stops matching, and says it is exempted", () => {

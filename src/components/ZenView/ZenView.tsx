@@ -23,6 +23,7 @@ import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useDisplayStore } from "@/stores/use-display-store";
+import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { findNode } from "@/utils/mindmap-tree";
 import { neighbourAfterDelete } from "@/utils/neighbour-after-delete";
@@ -75,8 +76,8 @@ export default function ZenView() {
   const clearToast = useMindmapStore((s) => s.clearToast);
   const showCommitments = useViewStore((s) => s.zenCommitments);
   const showExpectations = useViewStore((s) => s.zenExpectations);
-  const toggleZenStrip = useViewStore((s) => s.toggleZenStrip);
   const badgesSetting = useDisplayStore((s) => s.zenShowBadges);
+  const agenticPills = useListFilterStore((s) => s.filter.pills.agentic);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
 
   const nodeEditor = useNodeEditor({ tree, allTasksAndGoals, reload });
@@ -104,16 +105,16 @@ export default function ZenView() {
     showToast,
   });
 
-  const strips = useMemo(
-    () => ({ commitments: showCommitments, expectations: showExpectations }),
-    [showCommitments, showExpectations],
+  const options = useMemo(
+    () => ({ commitments: showCommitments, expectations: showExpectations, agentic: agenticPills }),
+    [showCommitments, showExpectations, agenticPills],
   );
   // Keyed on the raw selection, as the List View's is: the exemption has to know what is selected
   // before the filter runs, and it ends with any filter, subtree or strip change.
-  const focusExemptId = useFocusExemption(selectedId, [sharedFilter, subtreeRootId, strips]);
+  const focusExemptId = useFocusExemption(selectedId, [sharedFilter, subtreeRootId, options]);
   const contents = useMemo(
-    () => zenContents({ tasks: rows, commitments: commitmentRows, expectations: expectationRows }, sharedFilter, strips, focusExemptId),
-    [rows, commitmentRows, expectationRows, sharedFilter, strips, focusExemptId],
+    () => zenContents({ tasks: rows, commitments: commitmentRows, expectations: expectationRows }, sharedFilter, options, focusExemptId),
+    [rows, commitmentRows, expectationRows, sharedFilter, options, focusExemptId],
   );
 
   const { ref: gridRef, layout } = useZenGrid(contents.tasks.rows.length);
@@ -193,7 +194,6 @@ export default function ZenView() {
     onQuickPlan: quickPlan.open,
     onQuickDependency: quickDependency.open,
     onToggleFullscreen: toggleFullscreen,
-    onToggleStrip: toggleZenStrip,
     onRefuseStatusPreset: () => showToast({ nodeId: PRESET_TOAST_ANCHOR, message: t("zenView:presetLocked") }),
     onUndo,
     onRedo,

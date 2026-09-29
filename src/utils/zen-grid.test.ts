@@ -64,14 +64,16 @@ describe("fitZenGrid", () => {
 
 describe("zenTextSize", () => {
   it("draws a minimum card's title at the normal text size, on one line", () => {
-    expect(zenTextSize(ZEN_MIN_CARD_WIDTH_PX, ZEN_MIN_CARD_HEIGHT_PX, false)).toEqual({ title: 14, path: 12, titleLines: 1 });
+    expect(zenTextSize(ZEN_MIN_CARD_WIDTH_PX, ZEN_MIN_CARD_HEIGHT_PX, false)).toEqual({
+      title: 14, path: 12, badge: 12, padding: 6, titleLines: 1,
+    });
   });
 
-  it("scales the title with a big card, up to its cap", () => {
+  it("scales the title with a big card, and the path, badges and padding with the title", () => {
     const medium = zenTextSize(600, 250, true);
-    expect(medium.title).toBe(54);
-    expect(medium.path).toBe(20);
-    expect(zenTextSize(3000, 1200, true).title).toBe(64);
+    expect(medium).toMatchObject({ title: 48, path: 24, badge: 19, padding: 14 });
+    // One card across a full-HD window — the usual case — gets the largest title.
+    expect(zenTextSize(1880, 840, true)).toMatchObject({ title: 112, path: 56, badge: 45, padding: 34 });
   });
 
   it("gives a tall card room for more title lines", () => {

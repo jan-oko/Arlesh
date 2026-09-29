@@ -16,7 +16,6 @@ import { LIST_STATUS_BINDINGS, type ListStatusContext } from "./list/status";
 import { asZenBindings } from "./zen/from-list";
 import { ZEN_NAVIGATE_BINDINGS, type ZenNavigateContext } from "./zen/navigate";
 import { ZEN_STATUS_PRESET_BINDINGS, type ZenStatusPresetContext } from "./zen/status-presets";
-import { ZEN_STRIP_BINDINGS, type ZenStripsContext } from "./zen/strips";
 
 /**
  * What the Zen View bindings act on. The List View's own slices — the Zen View has one selection
@@ -42,23 +41,23 @@ export interface ZenContext extends
   ListScrollContext,
   ListStatusContext,
   ZenNavigateContext,
-  ZenStatusPresetContext,
-  ZenStripsContext {}
+  ZenStatusPresetContext {}
 
 /**
  * The List View's Expectation bindings the Zen View does **not** take: `Shift+E` creates a wait, and
- * `Alt+E` chooses the list's Expectations option — the Zen View creates nothing and always reads
- * under Do, and `Alt+E` toggles its Expectations strip instead.
+ * `Alt+E` chooses the list's Expectations option — the Zen View creates nothing, and always reads
+ * under Do, so `Alt+E` is refused with the presets (`zen/status-presets.ts`).
  */
 const NOT_IN_ZEN: ReadonlySet<string> = new Set(["listView.createExpectation", "listView.preset.expectations"]);
 
 /**
  * The Zen View's bindings: **the List View's, except every create key**, plus the grid's own
- * two-dimensional arrows, the strip toggles and the preset refusals.
+ * two-dimensional arrows and the preset refusals. The strips are switched from the Filter menu, as
+ * the List View's row kinds are (`c` / `e` while it is open), not from a view binding.
  *
  * The List View's are borrowed from its modules rather than restated (see `asZenBindings`). Left out:
- * `list/create.ts` (`Tab`, `Shift+Enter`), `Shift+E`, and the list's presets (`Alt+A/P/S/D/B/U`,
- * `Alt+E`), which the Zen View answers with a refusal because it always reads under Do. Its row
+ * `list/create.ts` (`Tab`, `Shift+Enter`), `Shift+E`, and the list's presets (`Alt+A/P/S/D/B/U/E`),
+ * which the Zen View answers with a refusal because it always reads under Do. Its row
  * navigation is replaced by `zen/navigate.ts`.
  *
  * Bare `Enter` is shared three ways, exactly as in the List View and on the same complementary
@@ -67,7 +66,6 @@ const NOT_IN_ZEN: ReadonlySet<string> = new Set(["listView.createExpectation", "
 export const ZEN_BINDINGS: readonly Binding<ZenContext>[] = [
   ...asZenBindings(LIST_FULLSCREEN_BINDINGS),
   ...ZEN_STATUS_PRESET_BINDINGS,
-  ...ZEN_STRIP_BINDINGS,
   ...ZEN_NAVIGATE_BINDINGS,
   ...asZenBindings(LIST_JUMP_BINDINGS, {
     "listView.jumpToFirst": "jumpToFirstCard",

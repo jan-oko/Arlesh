@@ -1,6 +1,8 @@
 import type { View } from "@/stores/use-view-store";
-import type { FilterDimension } from "@/utils/filter-modes";
+import type { FilterDimension, YesNoDimension } from "@/utils/filter-modes";
 import { YES_NO_DIMENSIONS } from "@/utils/filter-modes";
+import { LIST_ROW_KINDS } from "@/utils/list-filter";
+import type { ListRowKind } from "@/utils/list-filter";
 
 /**
  * One labelled row of the Filter menu: a single dimension, or the **Yes / no** row that carries one
@@ -41,12 +43,39 @@ const LIST_ROWS: readonly (readonly FilterRowId[])[] = [
 /** Every other view filters on tags alone below the switches. */
 const TAG_ROWS: readonly (readonly FilterRowId[])[] = [["tag"]];
 
+/** The Zen View filters by tag, and by the one List View pill it reads: Agentic. */
+const ZEN_ROWS: readonly (readonly FilterRowId[])[] = [["tag"], ["agentic"]];
+
 /**
  * The Filter menu's dimension rows for a view, as groups separated by a thin rule. The List View
- * has its own pill dimensions; the Mindmap, Steps and Plan views filter by tag.
+ * has its own pill dimensions; the Zen View tags and Agentic; the Mindmap, Steps and Plan views
+ * filter by tag.
  */
 export function filterMenuRows(view: View): readonly (readonly FilterRowId[])[] {
-  return view === "list" ? LIST_ROWS : TAG_ROWS;
+  if (view === "list") return LIST_ROWS;
+  if (view === "zen") return ZEN_ROWS;
+  return TAG_ROWS;
+}
+
+/** The Zen View's strips, as the row kinds they draw. Tasks are its grid and always shown. */
+const ZEN_ROW_KINDS: readonly ListRowKind[] = ["commitment", "expectation"];
+
+/**
+ * The row kinds a view's Filter menu switches at the top of its switch block — the List View's
+ * three, and the Zen View's two strips (on the Zen View's own per-tab toggles) — or none.
+ */
+export function rowKindsFor(view: View): readonly ListRowKind[] {
+  if (view === "list") return LIST_ROW_KINDS;
+  if (view === "zen") return ZEN_ROW_KINDS;
+  return [];
+}
+
+/** The yes/no flags a view offers as pills (and as Filter-menu letters): all of them in the List
+ * View, Agentic alone in the Zen View, none elsewhere. */
+export function flagsFor(view: View): readonly YesNoDimension[] {
+  if (view === "list") return YES_NO_DIMENSIONS;
+  if (view === "zen") return ["agentic"];
+  return [];
 }
 
 /** The tri-state and on/off filters every view carries in its switch block. */

@@ -54,6 +54,13 @@ export interface ViewState {
 /** One of the Zen View's two strips. */
 export type ZenStrip = "commitments" | "expectations";
 
+/** The strip that draws a row kind, or `null` for Tasks — the Zen View's grid, always shown. */
+export function zenStripForKind(kind: "task" | "commitment" | "expectation"): ZenStrip | null {
+  if (kind === "commitment") return "commitments";
+  if (kind === "expectation") return "expectations";
+  return null;
+}
+
 export interface ViewStore extends ViewState {
   setView: (view: View) => void;
   toggleMindmapOrientation: () => void;
@@ -61,6 +68,10 @@ export interface ViewStore extends ViewState {
   setStepsZoom: (zoom: StepsZoom) => void;
   /** Shows the Zen View's strip if it is hidden, hides it if it is shown. */
   toggleZenStrip: (strip: ZenStrip) => void;
+  /** Shows that strip alone — the Filter menu's Shift+letter, as the List View's row kinds have. */
+  showOnlyZenStrip: (strip: ZenStrip) => void;
+  /** Shows both strips again — the Filter menu's Reset. */
+  showAllZenStrips: () => void;
 }
 
 export const DEFAULT_VIEW_STATE: ViewState = {
@@ -94,6 +105,9 @@ export function createViewStore(seed: ViewState = DEFAULT_VIEW_STATE): StoreApi<
     setStepsZoom: (stepsZoom) => set({ stepsZoom }),
     toggleZenStrip: (strip) =>
       set((s) => (strip === "commitments" ? { zenCommitments: !s.zenCommitments } : { zenExpectations: !s.zenExpectations })),
+    showOnlyZenStrip: (strip) =>
+      set({ zenCommitments: strip === "commitments", zenExpectations: strip === "expectations" }),
+    showAllZenStrips: () => set({ zenCommitments: true, zenExpectations: true }),
   }));
 }
 

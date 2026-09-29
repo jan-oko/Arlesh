@@ -20,12 +20,17 @@ export const ZEN_BADGE_MIN_CARD_HEIGHT_PX = 72;
 
 /** The normal text size: the smallest a card title is drawn. */
 const TITLE_MIN_PX = 14;
-const TITLE_MAX_PX = 64;
+/** Big enough for one to three cards — the usual number in progress — to read across a room. */
+const TITLE_MAX_PX = 112;
 const TITLE_PER_HEIGHT = 0.28;
-const TITLE_PER_WIDTH = 0.09;
-const PATH_PER_TITLE = 0.45;
+const TITLE_PER_WIDTH = 0.08;
+/** The path and the badges keep to the title's scale, so the three read as one block. */
+const PATH_PER_TITLE = 0.5;
 const PATH_MIN_PX = 12;
-const PATH_MAX_PX = 20;
+const BADGE_PER_TITLE = 0.4;
+const BADGE_MIN_PX = 12;
+const PADDING_PER_TITLE = 0.3;
+const PADDING_MIN_PX = 6;
 
 /** How the grid is drawn in an area of a given size. */
 export interface ZenGridLayout {
@@ -117,29 +122,34 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-/** A card's text sizes, in px. */
+/** How a card's content is drawn, in px: every size scales from the title's. */
 export interface ZenTextSize {
   title: number;
   path: number;
+  /** One badge icon's side. */
+  badge: number;
+  /** The card's inner padding, and the space between the title, the path and the badges. */
+  padding: number;
   /** How many lines of title the card has room for beside its path line (and badges). */
   titleLines: number;
 }
 
-/** Vertical padding inside a card, top and bottom together — mirrors `ZenTaskCard.module.css`. */
-const CARD_PADDING_Y_PX = 12;
 const LINE_HEIGHT = 1.2;
-/** The badge row's own height, where it is drawn. */
-const BADGE_ROW_PX = 16;
 
 /**
- * How big a card's title and path are drawn: the title scales with the card, from the normal text
- * size on a minimum card up to 64px, and the path follows at a little under half of it.
+ * How big a card's content is drawn. The title scales with the card — from the normal text size on
+ * a minimum card up to 112px on a big one — and the path (half the title), the badge icons (0.4 of
+ * it) and the padding (0.3 of it) scale with the title, so the block keeps its proportions at every
+ * size rather than a big title sitting over a line of small print.
  */
 export function zenTextSize(cardWidth: number, cardHeight: number, withBadges: boolean): ZenTextSize {
   const title = Math.round(clamp(Math.min(cardHeight * TITLE_PER_HEIGHT, cardWidth * TITLE_PER_WIDTH), TITLE_MIN_PX, TITLE_MAX_PX));
-  const path = Math.round(clamp(title * PATH_PER_TITLE, PATH_MIN_PX, PATH_MAX_PX));
-  const room = cardHeight - CARD_PADDING_Y_PX - path * LINE_HEIGHT - (withBadges ? BADGE_ROW_PX : 0);
-  return { title, path, titleLines: Math.max(1, Math.floor(room / (title * LINE_HEIGHT))) };
+  const path = Math.max(PATH_MIN_PX, Math.round(title * PATH_PER_TITLE));
+  const badge = Math.max(BADGE_MIN_PX, Math.round(title * BADGE_PER_TITLE));
+  const padding = Math.max(PADDING_MIN_PX, Math.round(title * PADDING_PER_TITLE));
+  const gap = Math.round(padding / 3);
+  const room = cardHeight - 2 * padding - gap - path * LINE_HEIGHT - (withBadges ? badge + gap : 0);
+  return { title, path, badge, padding, titleLines: Math.max(1, Math.floor(room / (title * LINE_HEIGHT))) };
 }
 
 /** Whether a card of this height draws its badge row, given the setting. */

@@ -6,6 +6,8 @@ import { useFilterStore } from "@/stores/use-filter-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { useDisplayStore } from "@/stores/use-display-store";
+import { useListFilterStore } from "@/stores/use-list-filter-store";
+import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { flattenCommitmentRows, flattenExpectationRows, flattenTaskRows } from "@/utils/list-data";
 import { fixtureRowId } from "@/test/node-fixture";
@@ -115,6 +117,7 @@ beforeEach(() => {
   useMindmapStore.setState({ subtreeRootId: null, pendingToast: null, searchOpen: false });
   useViewStore.setState({ view: "zen", zenCommitments: true, zenExpectations: true });
   useDisplayStore.setState({ zenShowBadges: true, startHidesCheckedWaits: false });
+  useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   mockBoard(standardBoard());
 });
 
@@ -162,18 +165,31 @@ describe("what the Zen View draws", () => {
   });
 });
 
-describe("the strip toggles", () => {
-  it("hides and shows the Commitments strip with Alt+C and the Expectations strip with Alt+E", () => {
+describe("the tab's own switches", () => {
+  it("draws no strip the tab has switched off (from the Filter menu)", () => {
+    useViewStore.setState({ zenCommitments: false });
     render(<ZenViewInApp />);
-    press("KeyC", { altKey: true });
     expect(screen.queryByRole("region", { name: "zenView:commitmentsStrip" })).not.toBeInTheDocument();
-    expect(useViewStore.getState().zenCommitments).toBe(false);
+    expect(screen.getByRole("region", { name: "zenView:expectationsStrip" })).toBeInTheDocument();
+  });
 
+  it("narrows the grid by the Agentic pill", () => {
+    mockBoard([
+      n("task-1", "task", { status: "in_progress", agentic: true }),
+      n("task-2", "task", { status: "in_progress" }),
+    ]);
+    useListFilterStore.setState({
+      filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills, agentic: [{ value: "agentic", mode: "all" }] } },
+    });
+    render(<ZenViewInApp />);
+    expect(taskCards()).toEqual(["task-1"]);
+  });
+
+  it("does not toggle a strip on Alt+E, which is the List View's Expectations option: it says Zen reads under Do", () => {
+    render(<ZenViewInApp />);
     press("KeyE", { altKey: true });
-    expect(screen.queryByRole("region", { name: "zenView:expectationsStrip" })).not.toBeInTheDocument();
-
-    press("KeyC", { altKey: true });
-    expect(screen.getByRole("region", { name: "zenView:commitmentsStrip" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "zenView:expectationsStrip" })).toBeInTheDocument();
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("zenView:presetLocked");
   });
 });
 
