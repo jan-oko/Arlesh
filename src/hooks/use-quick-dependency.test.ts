@@ -36,16 +36,18 @@ interface Backend {
 /** A backend that serves the board's edges and journals every write with its Gesture. */
 function installBackend({ edges = [], refuseEdges, refuseWrite }: Backend = {}): { writes: Write[]; gestures: () => number } {
   const writes: Write[] = [];
+  let depth = 0;
   let started = 0;
   let current: string | null = null;
   vi.mocked(tauriInvoke).mockImplementation((command: string, args?: unknown) => {
     if (command === "open_gesture") {
-      started += 1;
-      current = `gesture-${started}`;
+      depth += 1;
+      if (depth === 1) { started += 1; current = `gesture-${started}`; }
       return Promise.resolve(current);
     }
     if (command === "close_gesture") {
-      current = null;
+      depth -= 1;
+      if (depth === 0) current = null;
       return Promise.resolve(null);
     }
     if (command === "list_all_task_dependencies") {
@@ -159,13 +161,16 @@ describe("useQuickDependency — adding", () => {
     const wait = result.current.target?.candidates?.find((c) => c.id === "expectation-7");
     if (wait === undefined) throw new Error("the wait was not offered");
 
+    // Every call through the api door opens a Gesture of its own — the edge read included — so
+    // count only what the add opens.
+    const before = backend.gestures();
     await act(async () => { await result.current.apply(wait); });
     expect(backend.writes).toEqual([{
       command: "add_task_dependency",
       args: { taskId: 1, dependency: { type: "expectation", id: 7 } },
-      gesture: "gesture-1",
+      gesture: `gesture-${before + 1}`,
     }]);
-    expect(backend.gestures()).toBe(1);
+    expect(backend.gestures()).toBe(before + 1);
     expect(result.current.target).toBeNull();
     expect(reload).toHaveBeenCalledTimes(1);
   });
