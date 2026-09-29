@@ -1,0 +1,50 @@
+/* The view fills what the shell leaves below the top bar (a zero basis, as the List View's does), and
+   splits it into the strips, at their own height, and the grid area, which takes the rest. */
+.container {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  padding: var(--space-4);
+  box-sizing: border-box;
+  background: var(--canvas-bg);
+}
+
+.strips {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.strips:empty {
+  display: none;
+}
+
+/* What is measured to fit the cards. No padding, so its client box is exactly the room they have.
+   It scrolls only when the cards are at their minimum size and still do not fit. */
+.gridArea {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Rows of equal cards; a short last row is centred under the full ones. */
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  justify-content: center;
+}
+
+.centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+}

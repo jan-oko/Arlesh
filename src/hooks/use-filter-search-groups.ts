@@ -1,14 +1,13 @@
 import { useTranslation } from "react-i18next";
 import { useFilterStore } from "@/stores/use-filter-store";
-import { useListFilterStore } from "@/stores/use-list-filter-store";
 import type { View } from "@/stores/use-view-store";
 import type { FilterDimensions } from "@/hooks/use-filter-dimensions";
 import type { FilterEntries } from "@/hooks/use-filter-entries";
 import { NO_VALUE, isYesNoDimension } from "@/utils/filter-modes";
 import { filterMenuRows, filterSwitchesFor, offeredDimensions } from "@/utils/filter-layout";
+import { useRowKindToggle } from "@/hooks/use-row-kind-toggle";
 import type { FilterRowId } from "@/utils/filter-layout";
 import type { RowKindResult, SearchGroup, SearchResult, SearchSwitch, SwitchResult } from "@/utils/filter-search";
-import { LIST_ROW_KINDS } from "@/utils/list-filter";
 
 /** Rows whose values are every node: their results are capped. */
 function isNodeSearch(row: FilterRowId): boolean {
@@ -29,7 +28,7 @@ function searchSwitches(view: View): SearchSwitch[] {
 export function useFilterSearchGroups(view: View, catalogue: FilterDimensions, entries: FilterEntries): SearchGroup[] {
   const { t } = useTranslation(["filter", "listView"]);
   const filter = useFilterStore((s) => s.filter);
-  const kinds = useListFilterStore((s) => s.filter.kinds);
+  const rowKindToggle = useRowKindToggle();
 
   function valueResults(row: FilterRowId): SearchResult[] {
     return offeredDimensions(row, filter.privateMode).flatMap((dimension) => {
@@ -47,11 +46,12 @@ export function useFilterSearchGroups(view: View, catalogue: FilterDimensions, e
     return target === "archived" ? t("archivedPill") : t("backlogPill");
   }
 
-  const rowKinds: RowKindResult[] = view !== "list" ? [] : LIST_ROW_KINDS.map((kind) => ({
+  // The List View's row kinds, or the Zen View's strips — whatever the view's switch block holds.
+  const rowKinds: RowKindResult[] = rowKindToggle.kinds.map((kind) => ({
     kind: "rowKind",
     target: kind,
     label: t(`listView:rowKind.${kind}`),
-    shown: kinds.includes(kind),
+    shown: rowKindToggle.isShown(kind),
     matchText: t(`listView:rowKind.${kind}`),
   }));
 

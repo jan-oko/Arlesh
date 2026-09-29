@@ -5,10 +5,12 @@ import { TAB_BINDINGS } from "./tab-bindings";
 import { MINDMAP_BINDINGS } from "./mindmap-bindings";
 import { LIST_BINDINGS } from "./list-bindings";
 import { PLAN_BINDINGS } from "./plan-bindings";
+import { ZEN_BINDINGS } from "./zen-bindings";
 import type { BindingMeta } from "./chord";
 
 const ALL: readonly BindingMeta[] = [
   ...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS, ...PLAN_BINDINGS,
+  ...ZEN_BINDINGS,
 ];
 
 function hasKey(locale: Record<string, string>, key: string): boolean {
@@ -37,24 +39,28 @@ describe("hotkey labels", () => {
  */
 const LABELS_SPANNING_SECTIONS: Readonly<Record<string, readonly string[]>> = {
   // Acts on the view's own selection, which no global table can see.
-  deselect: ["mindmap", "listView", "planView"],
-  openEditor: ["mindmap", "listView", "planView"],
-  rename: ["mindmap", "listView"],
-  delete: ["mindmap", "listView"],
-  markBroken: ["mindmap", "listView"],
-  toggleBacklog: ["mindmap", "listView"],
-  toggleAgentic: ["mindmap", "listView"],
-  toggleAsynchronous: ["mindmap", "listView"],
-  quickPlan: ["mindmap", "listView"],
-  quickDependency: ["mindmap", "listView"],
-  bindWait: ["mindmap", "listView"],
+  deselect: ["mindmap", "listView", "planView", "zenView"],
+  openEditor: ["mindmap", "listView", "planView", "zenView"],
+  rename: ["mindmap", "listView", "zenView"],
+  delete: ["mindmap", "listView", "zenView"],
+  markBroken: ["mindmap", "listView", "zenView"],
+  toggleBacklog: ["mindmap", "listView", "zenView"],
+  toggleAgentic: ["mindmap", "listView", "zenView"],
+  toggleAsynchronous: ["mindmap", "listView", "zenView"],
+  quickPlan: ["mindmap", "listView", "zenView"],
+  quickDependency: ["mindmap", "listView", "zenView"],
+  bindWait: ["mindmap", "listView", "zenView"],
   // The List View creates Tasks alone except for a wait, which it opens the editor for.
   createExpectationChild: ["mindmap", "listView"],
+  // The Zen View borrows the List View's bindings for these (see `zen-bindings.ts`): the same
+  // action, on the Zen View's own selection.
+  cycleVerdict: ["listView", "zenView"],
+  toggleRelease: ["listView", "zenView"],
   // Same key, different movement: cells on a canvas against rows in a list against two panes.
   navigateRows: ["listView", "planView"],
   // F11 is global; bare F is declared per view because eligibility depends on the view's selection
   // — and on the Mindmap the same key also converts a node to a Flow.
-  toggleFullscreen: ["global", "mindmap", "listView", "planView"],
+  toggleFullscreen: ["global", "mindmap", "listView", "planView", "zenView"],
   // Identical chords and identical run bodies, but the List View's handler writes its own preset
   // as well as the shared one — which is how any of them takes the list back out of Unblock. A
   // single global handler would silently drop that half.
@@ -65,8 +71,8 @@ const LABELS_SPANNING_SECTIONS: Readonly<Record<string, readonly string[]>> = {
   statusBacklog: ["mindmap", "listView"],
   // Identical everywhere, and the one group that is blocked on architecture rather than on
   // meaning: `useUndo` needs the board reload, which each view owns its own copy of.
-  undo: ["mindmap", "listView", "planView"],
-  redo: ["mindmap", "listView", "planView"],
+  undo: ["mindmap", "listView", "planView", "zenView"],
+  redo: ["mindmap", "listView", "planView", "zenView"],
 };
 
 describe("cheat-sheet rows", () => {

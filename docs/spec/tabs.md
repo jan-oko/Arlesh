@@ -101,10 +101,13 @@ one keystroke. Every tab shortcut stays live while the strip is hidden — the b
 on it being drawn.
 
 **Switching views.** Each view has a chord of its own — `Ctrl+M` for the Mindmap, `Ctrl+L` for the
-List, `Ctrl+P` for the [Plan View](plan-view.md) and `Ctrl+S` for the [Steps View](steps-view.md) —
+List, `Ctrl+P` for the [Plan View](plan-view.md), `Ctrl+S` for the [Steps View](steps-view.md) and
+`Ctrl+J` for the [Zen View](zen-view.md) —
 rather than one chord that cycles. Every view is then one press from any other, there is no cycle
 order to learn, and a new view costs one binding rather than a re-think. `Ctrl+S` was held for Steps
 from the moment the scheme was settled and was spent on it unchanged, which is that promise kept.
+The Zen View took `Ctrl+J` the same way (2026-09-29): `Ctrl+Z` is undo, and `Ctrl+J` was bound
+nowhere.
 
 The switcher sits on **`Ctrl`** because `Alt` was already spoken for: `Alt+A/P/S/D/B` have been the
 All/Plan/Start/Do/Backlog status presets since the presets shipped, in every view's own table. Those
@@ -121,13 +124,13 @@ takes `Ctrl+W` and `Ctrl+T` — the dispatcher reads the event in the capture ph
 a text field nothing reaches the switcher at all, because the dispatcher ignores events from a
 typing target, so a save reflex in a rename box stays a save reflex that does nothing.
 
-Unlike the tab shortcuts above, the four view chords are **suppressed while a modal or an inline
+Unlike the tab shortcuts above, the view chords are **suppressed while a modal or an inline
 editor holds the keyboard**: switching tabs is never ambiguous about what it acts on, where
 switching views behind an open editor would leave that editor over a board it no longer belongs to.
 
 **What is a global binding, and what is not.** A chord belongs in the global table when what it
 acts on belongs to the **tab** rather than to the view drawing it. On that rule these are global,
-declared once and listed once on the cheat-sheet: the four view chords above; `Ctrl+Escape` and
+declared once and listed once on the cheat-sheet: the five view chords above; `Ctrl+Escape` and
 `Shift+Escape`, which leave a subtree — and the subtree root is the tab's, shared by every view;
 `Ctrl+O`, which searches every node and re-roots the tab at the one you pick; `Alt+F`, which
 opens the Filter menu over the tab's own filter set; and `Ctrl+F`, the filter search over that same

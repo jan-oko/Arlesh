@@ -17,6 +17,7 @@ describe("HotkeysModal", () => {
     expect(screen.getByText("hotkeys:sectionListView")).toBeInTheDocument();
     expect(screen.getByText("hotkeys:sectionPlanView")).toBeInTheDocument();
     expect(screen.getByText("hotkeys:sectionStepsView")).toBeInTheDocument();
+    expect(screen.getByText("hotkeys:sectionZenView")).toBeInTheDocument();
   });
 
   it("renders the Ctrl+Shift+/ chord that opens it, and the Mindmap's own Ctrl+Alt+/", () => {

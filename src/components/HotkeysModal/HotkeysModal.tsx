@@ -8,6 +8,7 @@ import { MINDMAP_BINDINGS } from "@/utils/hotkeys/mindmap-bindings";
 import { LIST_BINDINGS } from "@/utils/hotkeys/list-bindings";
 import { PLAN_BINDINGS } from "@/utils/hotkeys/plan-bindings";
 import { STEPS_BINDINGS } from "@/utils/hotkeys/steps-bindings";
+import { ZEN_BINDINGS } from "@/utils/hotkeys/zen-bindings";
 import { FILTER_GESTURES } from "@/utils/hotkeys/filter-gestures";
 import { SCOPE_PICKER_KEYS } from "@/utils/hotkeys/scope-picker-keys";
 import { useInputCapture } from "@/hooks/use-input-capture";
@@ -24,12 +25,13 @@ const SECTIONS: ReadonlyArray<{ section: Section; titleKey: HotkeyLabelKey }> = 
   { section: "listView", titleKey: "sectionListView" },
   { section: "planView", titleKey: "sectionPlanView" },
   { section: "stepsView", titleKey: "sectionStepsView" },
+  { section: "zenView", titleKey: "sectionZenView" },
 ];
 
 /** Every binding in the app, display-side only — the same tables the handlers dispatch from. */
 const ALL_BINDINGS: readonly BindingMeta[] = [
   ...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS, ...PLAN_BINDINGS,
-  ...STEPS_BINDINGS,
+  ...STEPS_BINDINGS, ...ZEN_BINDINGS,
 ];
 
 interface Row {

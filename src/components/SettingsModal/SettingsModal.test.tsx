@@ -49,7 +49,7 @@ describe("SettingsModal", () => {
     open();
 
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
-      "page.general", "page.mindmap", "page.list", "page.steps", "page.plan", "page.windows",
+      "page.general", "page.mindmap", "page.list", "page.steps", "page.plan", "page.zen", "page.windows",
       "page.expectations", "page.mcp",
     ]);
   });
@@ -184,6 +184,17 @@ describe("SettingsModal", () => {
     goTo("steps");
 
     expect(screen.getByLabelText("zoomLabel")).toBeInTheDocument();
+  });
+
+  it("offers the Zen View's badge switch under Zen, on by default", () => {
+    useDisplayStore.setState({ zenShowBadges: true });
+    open();
+    goTo("zen");
+
+    const badges = screen.getByRole("checkbox", { name: "showBadges" });
+    expect(badges).toBeChecked();
+    fireEvent.click(badges);
+    expect(useDisplayStore.getState().zenShowBadges).toBe(false);
   });
 
   it("holds both Plan panes' switches under Plan", () => {

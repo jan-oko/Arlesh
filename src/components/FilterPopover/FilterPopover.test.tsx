@@ -557,3 +557,70 @@ describe("FilterPopover row-kind selector", () => {
     expect(useListFilterStore.getState().filter.kinds).toEqual(["task", "commitment", "expectation"]);
   });
 });
+
+describe("FilterPopover — the Zen View", () => {
+  beforeEach(() => {
+    useViewStore.setState({ view: "zen", zenCommitments: true, zenExpectations: true });
+  });
+
+  const menu = () => screen.getByRole("dialog", { name: "common:filter" });
+  const press = (code: string, keys: Partial<KeyboardEventInit> = {}) => fireEvent.keyDown(menu(), { code, ...keys });
+  const kindButton = (kind: string) => screen.getByRole("button", { name: `rowKind.${kind}` });
+  const strips = () => {
+    const { zenCommitments, zenExpectations } = useViewStore.getState();
+    return { commitments: zenCommitments, expectations: zenExpectations };
+  };
+
+  it("switches its two strips at the top of the switch block, and offers no Tasks switch", () => {
+    render(<FilterPopover />);
+    const selector = screen.getByRole("group", { name: "rowKindsLabel" });
+    expect(screen.getAllByRole("group")[0]).toBe(selector);
+    expect(kindButton("commitment")).toHaveAttribute("aria-pressed", "true");
+    expect(kindButton("expectation")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: "rowKind.task" })).not.toBeInTheDocument();
+
+    fireEvent.click(kindButton("commitment"));
+    expect(strips()).toEqual({ commitments: false, expectations: true });
+    expect(kindButton("commitment")).toHaveAttribute("aria-pressed", "false");
+    // The List View's own kinds are not what these switch.
+    expect(useListFilterStore.getState().filter.kinds).toEqual(["task", "commitment", "expectation"]);
+  });
+
+  it("c / e toggle a strip as they toggle a List View kind; Shift shows that strip alone; t does nothing", () => {
+    render(<FilterPopover />);
+    press("KeyE");
+    expect(strips()).toEqual({ commitments: true, expectations: false });
+    press("KeyE");
+    expect(strips()).toEqual({ commitments: true, expectations: true });
+    press("KeyE", { shiftKey: true });
+    expect(strips()).toEqual({ commitments: false, expectations: true });
+    press("KeyC");
+    press("KeyE");
+    // Both off is allowed: the grid of Tasks is always there.
+    expect(strips()).toEqual({ commitments: true, expectations: false });
+    press("KeyT");
+    expect(strips()).toEqual({ commitments: true, expectations: false });
+    expect(useListFilterStore.getState().filter.kinds).toEqual(["task", "commitment", "expectation"]);
+  });
+
+  it("offers Tags and Agentic, and a adds Agentic in the key's mode while the other flags stay off", () => {
+    render(<FilterPopover />);
+    expect(rowLabels()).toEqual(["rows.tag", "rows.agentic"]);
+    press("KeyA", { altKey: true });
+    press("KeyW");
+    press("KeyB");
+    const pills = useListFilterStore.getState().filter.pills;
+    expect(pills.agentic).toEqual([{ value: "agentic", mode: "exclude" }]);
+    expect(pills.asynchronous).toEqual([]);
+    expect(pills.blocked).toEqual([]);
+  });
+
+  it("Reset shows both strips again and clears Agentic", () => {
+    useViewStore.setState({ zenCommitments: false, zenExpectations: false });
+    useListFilterStore.getState().addPill("agentic", "agentic", "all");
+    render(<FilterPopover />);
+    fireEvent.click(screen.getByRole("button", { name: "reset" }));
+    expect(strips()).toEqual({ commitments: true, expectations: true });
+    expect(useListFilterStore.getState().filter.pills.agentic).toEqual([]);
+  });
+});

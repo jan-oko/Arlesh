@@ -9,6 +9,7 @@ import type { ListContext } from "./list-bindings";
 import { MINDMAP_BINDINGS } from "./mindmap-bindings";
 import { PLAN_BINDINGS } from "./plan-bindings";
 import { STEPS_BINDINGS } from "./steps-bindings";
+import { ZEN_BINDINGS } from "./zen-bindings";
 import type { MindmapContext } from "./mindmap-bindings";
 import { PLAN_KIND_BINDINGS, SCOPE_KIND_KEYS } from "./plan/kind";
 import type { PlanKindContext } from "./plan/kind";
@@ -48,6 +49,8 @@ const SHARED_CHORDS: Readonly<Record<string, readonly string[]>> = {
   "mindmap F": ["mindmap.convertToFlow", "mindmap.toggleFullscreen"],
   // Complementary: a List View selection is a Task, a Commitment or an Expectation, never two.
   "listView Enter": ["listView.cycleStatus", "listView.cycleVerdict", "listView.toggleReleaseEnter"],
+  // The same three, borrowed by the Zen View: its selection is one kind too.
+  "zenView Enter": ["zenView.cycleStatus", "zenView.cycleVerdict", "zenView.toggleReleaseEnter"],
   // Complementary: a subscope mnemonic needs a selection, a kind letter needs none.
   "planView S": ["planView.subscope.S", "planView.kind.season"],
   "planView M": ["planView.subscope.M", "planView.kind.month"],
@@ -58,7 +61,7 @@ const SHARED_CHORDS: Readonly<Record<string, readonly string[]>> = {
 
 const ALL: readonly BindingMeta[] = [
   ...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS, ...PLAN_BINDINGS,
-  ...STEPS_BINDINGS,
+  ...STEPS_BINDINGS, ...ZEN_BINDINGS,
 ];
 
 /**
@@ -216,6 +219,7 @@ describe("chords a view shares with an always-live table", () => {
       ...crossTableGroups("listView", LIST_BINDINGS),
       ...crossTableGroups("planView", PLAN_BINDINGS),
       ...crossTableGroups("stepsView", STEPS_BINDINGS),
+      ...crossTableGroups("zenView", ZEN_BINDINGS),
     }).toEqual(CROSS_TABLE_CHORDS);
   });
 });

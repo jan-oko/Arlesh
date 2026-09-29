@@ -21,6 +21,12 @@ export type StatusMode = "all" | "plan" | "start" | "do" | "backlog";
 export const PLAN_VIEW_STATUS_MODE: StatusMode = "plan";
 
 /**
+ * The status preset the **Zen View** always reads under — what is in progress — on the Plan View's
+ * terms: read, never written into the tab's filter.
+ */
+export const ZEN_VIEW_STATUS_MODE: StatusMode = "do";
+
+/**
  * How the Plan preset's scope narrowing matches a Task's window: `contained` (the default) keeps a
  * Task whose effective Time Scope lies wholly inside the scope, `overlapping` one whose window
  * shares any instant with it. Mirrors the Rust `ScopeMatch`.

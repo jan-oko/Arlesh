@@ -38,6 +38,34 @@ describe("reading one tab's stored state", () => {
     expect(state.filter.statusMode).toBe("plan");
   });
 
+  it("reads a tab stored before the Zen View existed as showing both of its strips", () => {
+    const state = parseTabState({
+      subtreeRootId: null,
+      view: { view: "list", mindmapOrientation: "vertical", planScopeKind: "day", stepsZoom: 4 },
+      filter: DEFAULT_FILTER,
+      listFilter: DEFAULT_LIST_FILTER,
+    });
+
+    expect(state.view).toEqual({
+      view: "list", mindmapOrientation: "vertical", planScopeKind: "day", stepsZoom: 4,
+      zenCommitments: true, zenExpectations: true,
+    });
+  });
+
+  it("keeps a Zen strip a tab hid, and a tab left on the Zen View", () => {
+    const state = parseTabState({
+      subtreeRootId: null,
+      view: { view: "zen", mindmapOrientation: "horizontal", zenCommitments: false, zenExpectations: "yes" },
+      filter: DEFAULT_FILTER,
+      listFilter: DEFAULT_LIST_FILTER,
+    });
+
+    expect(state.view.view).toBe("zen");
+    expect(state.view.zenCommitments).toBe(false);
+    // Anything but an explicit `false` reads as the default: shown.
+    expect(state.view.zenExpectations).toBe(true);
+  });
+
   it("keeps a stored Plan scope, and drops a malformed one and any stored match", () => {
     const read = (planScope: unknown) => parseTabState({
       subtreeRootId: null,

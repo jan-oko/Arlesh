@@ -8,6 +8,7 @@ import MindmapPage from "./MindmapPage";
 import ListPage from "./ListPage";
 import StepsPage from "./StepsPage";
 import PlanPage from "./PlanPage";
+import ZenPage from "./ZenPage";
 import WindowsPage from "./WindowsPage";
 import ExpectationsPage from "./ExpectationsPage";
 import McpAccessPage from "./McpAccessPage";
@@ -15,10 +16,10 @@ import styles from "./SettingsModal.module.css";
 
 /** The modal's pages, in the order the sidebar lists them. */
 export type SettingsPage =
-  | "general" | "mindmap" | "list" | "steps" | "plan" | "windows" | "expectations" | "mcp";
+  | "general" | "mindmap" | "list" | "steps" | "plan" | "zen" | "windows" | "expectations" | "mcp";
 
 const PAGES: readonly SettingsPage[] = [
-  "general", "mindmap", "list", "steps", "plan", "windows", "expectations", "mcp",
+  "general", "mindmap", "list", "steps", "plan", "zen", "windows", "expectations", "mcp",
 ];
 
 const CLOSE_GLYPH = "×";
@@ -81,6 +82,7 @@ export default function SettingsModal({ onClose, onOpenHotkeys, initialPage = "g
     list: <ListPage />,
     steps: <StepsPage />,
     plan: <PlanPage />,
+    zen: <ZenPage />,
     windows: <WindowsPage />,
     expectations: <ExpectationsPage />,
     mcp: <McpAccessPage />,

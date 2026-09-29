@@ -46,7 +46,9 @@ export interface GlobalContext {
  * `Ctrl+S` was held for the Steps View (Arlesh-c1g) while that view was being built, and is now
  * spent on it — which is the scheme working as intended: a fourth view cost one binding.
  *
- * These four are the one part of this table that is **not** always live: unlike quitting or the
+ * `Ctrl+J` shows the Zen View, the fifth — one binding again.
+ *
+ * The view chords are the one part of this table that is **not** always live: unlike quitting or the
  * cheat-sheet, switching views behind an open modal would leave the modal sitting over a board it
  * no longer belongs to.
  */
@@ -82,6 +84,15 @@ export const GLOBAL_BINDINGS: readonly Binding<GlobalContext>[] = [
     labelKey: "viewSteps",
     when: (c) => !c.isInputCaptured,
     run: (c) => c.onSetView("steps"),
+  },
+  {
+    // J for the Zen View: Ctrl+Z is undo, and Ctrl+J was bound nowhere in the app.
+    id: "global.viewZen",
+    section: "global",
+    chord: { code: "KeyJ", ctrl: true },
+    labelKey: "viewZen",
+    when: (c) => !c.isInputCaptured,
+    run: (c) => c.onSetView("zen"),
   },
   {
     // F11 is the key every app uses for this, and it is free here. The board-alone mode is also on

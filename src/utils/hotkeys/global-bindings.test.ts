@@ -34,6 +34,7 @@ describe("GLOBAL_BINDINGS", () => {
     { code: "KeyL", view: "list" },
     { code: "KeyP", view: "plan" },
     { code: "KeyS", view: "steps" },
+    { code: "KeyJ", view: "zen" },
   ])("when Ctrl+$code is pressed, shows the $view view", ({ code, view }) => {
     const ctx = makeContext();
     expect(runFor(code, { ctrlKey: true }, ctx)).toBe(true);
@@ -43,7 +44,7 @@ describe("GLOBAL_BINDINGS", () => {
   it("names each view outright, so no chord depends on which view you are on", () => {
     const setters = GLOBAL_BINDINGS.filter((b) => b.id.startsWith("global.view"));
     expect(setters.map((b) => b.id)).toEqual([
-      "global.viewMindmap", "global.viewList", "global.viewPlan", "global.viewSteps",
+      "global.viewMindmap", "global.viewList", "global.viewPlan", "global.viewSteps", "global.viewZen",
     ]);
   });
 
@@ -245,6 +246,7 @@ describe("the chords promoted out of the view tables", () => {
       "global.viewMindmap",
       "global.viewPlan",
       "global.viewSteps",
+      "global.viewZen",
     ]);
   });
 });
