@@ -409,3 +409,21 @@ describe("useKeyboardListView — quick Plan picker (P)", () => {
     expect(options.onSetStatusMode).toHaveBeenCalledWith("plan");
   });
 });
+
+describe("useKeyboardListView — quick dependency picker (D)", () => {
+  it("plain D opens the dependency picker on the selected row", () => {
+    const options = listKeyboardContext();
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("d");
+    expect(options.onQuickDependency).toHaveBeenCalledWith(["task-1"]);
+  });
+
+  it("does nothing with no row selected, and leaves Alt+D to the Do preset", () => {
+    const options = listKeyboardContext({ selectedTaskId: null });
+    renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
+    fireKey("d");
+    fireKey("d", { altKey: true });
+    expect(options.onQuickDependency).not.toHaveBeenCalled();
+    expect(options.onSetStatusMode).toHaveBeenCalledWith("do");
+  });
+});

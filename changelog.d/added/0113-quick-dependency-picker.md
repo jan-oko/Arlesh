@@ -1,0 +1,3 @@
+- **`D` adds a dependency without opening the editor.** With a Task selected on the Mindmap, in the List View or in the Steps View, `D` opens a small search bar right at the selected node, row or card. Type to find the Task, Goal or Expectation it should wait on, move with the arrow keys, and press Enter (or click) to add it; Esc closes without a change. The search leaves out the Task itself, what it already depends on, and anything that would make a circle of dependencies, and one `Ctrl+Z` takes the new dependency back.
+
+  Only a Task can depend on something, so `D` on anything else says so in a toast, and so does `D` on a Mindmap multi-selection — pick one Task.

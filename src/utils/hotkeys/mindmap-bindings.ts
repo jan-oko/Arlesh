@@ -15,6 +15,7 @@ import { MINDMAP_FLAGS_BINDINGS, type MindmapFlagsContext } from "./mindmap/flag
 import { MINDMAP_FULLSCREEN_BINDINGS, type MindmapFullscreenContext } from "./mindmap/fullscreen";
 import { MINDMAP_HISTORY_BINDINGS, type MindmapHistoryContext } from "./mindmap/history";
 import { MINDMAP_NAVIGATE_BINDINGS, type MindmapNavigateContext } from "./mindmap/navigate";
+import { MINDMAP_DEPENDENCY_BINDINGS, type MindmapDependencyContext } from "./mindmap/dependency";
 import { MINDMAP_PLAN_BINDINGS, type MindmapPlanContext } from "./mindmap/plan";
 import { MINDMAP_RENAME_BINDINGS, type MindmapRenameContext } from "./mindmap/rename";
 import { MINDMAP_REORDER_BINDINGS, type MindmapReorderContext } from "./mindmap/reorder";
@@ -51,6 +52,7 @@ export interface MindmapContext extends
   MindmapHistoryContext,
   MindmapNavigateContext,
   MindmapPlanContext,
+  MindmapDependencyContext,
   MindmapRenameContext,
   MindmapReorderContext,
   MindmapStartFlowContext,
@@ -90,5 +92,6 @@ export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
   ...MINDMAP_EDITOR_BINDINGS,
   ...MINDMAP_FLAGS_BINDINGS,
   ...MINDMAP_PLAN_BINDINGS,
+  ...MINDMAP_DEPENDENCY_BINDINGS,
   ...MINDMAP_HISTORY_BINDINGS,
 ];

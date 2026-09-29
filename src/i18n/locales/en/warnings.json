@@ -73,5 +73,9 @@
   "quickPlanFailedSome_one": "{{count}} of {{total}} tasks couldn't be planned — “{{title}}”: {{message}}",
   "quickPlanFailedSome_other": "{{count}} of {{total}} tasks couldn't be planned — first, “{{title}}”: {{message}}",
   "quickPlanSkippedNotTask_one": "{{count}} selected node isn't a Task, so it was left unplanned — only a Task holds a Plan.",
-  "quickPlanSkippedNotTask_other": "{{count}} selected nodes aren't Tasks, so they were left unplanned — only a Task holds a Plan."
+  "quickPlanSkippedNotTask_other": "{{count}} selected nodes aren't Tasks, so they were left unplanned — only a Task holds a Plan.",
+  "quickDependencyNotTask": "“{{title}}” can't depend on anything — only a Task has dependencies.",
+  "quickDependencyOneAtATime": "D adds a dependency to one Task at a time — select just one.",
+  "quickDependencyLoadFailed": "Couldn't read the dependencies to search: {{message}}",
+  "quickDependencyFailed": "Couldn't make “{{title}}” depend on “{{prerequisite}}”: {{message}}"
 }

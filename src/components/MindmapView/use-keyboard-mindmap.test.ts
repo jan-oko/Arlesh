@@ -1144,3 +1144,36 @@ describe("useKeyboardMindmap — quick Plan picker (P)", () => {
     expect(none.onQuickPlan).not.toHaveBeenCalled();
   });
 });
+
+describe("useKeyboardMindmap — quick dependency picker (D)", () => {
+  it("plain D opens the dependency picker on the selected node", () => {
+    const opts = mindmapKeyboardContext();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("d");
+    expect(opts.onQuickDependency).toHaveBeenCalledWith(["task-1"]);
+  });
+
+  it("hands over the whole selection, the anchor first, so the handler can ask to narrow it", () => {
+    const selected: ReadonlySet<string> = new Set(["task-1", "task-2"]);
+    const opts = mindmapKeyboardContext({ selectedNodeId: "task-2", selectedNodeIds: selected });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("d");
+    expect(opts.onQuickDependency).toHaveBeenCalledWith(["task-2", "task-1"]);
+  });
+
+  it("leaves Shift+D to create a Domain and Alt+D to the Do preset, and does nothing with nothing selected", () => {
+    const opts = mindmapKeyboardContext();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("D", { shiftKey: true });
+    fireKey("d", { altKey: true });
+    expect(opts.onQuickDependency).not.toHaveBeenCalled();
+    expect(opts.onCreateTypedChild).toHaveBeenCalledWith("task-1", "domain");
+    expect(opts.onSetStatusMode).toHaveBeenCalledWith("do");
+
+    const empty: ReadonlySet<string> = new Set();
+    const none = mindmapKeyboardContext({ selectedNodeId: null, selectedNodeIds: empty });
+    renderHook(() => useKeyboardMindmap(none));
+    fireKey("d");
+    expect(none.onQuickDependency).not.toHaveBeenCalled();
+  });
+});
