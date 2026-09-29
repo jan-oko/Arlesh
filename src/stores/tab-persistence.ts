@@ -111,7 +111,11 @@ function readViewState(value: unknown): ViewState {
     : DEFAULT_VIEW_STATE.planScopeKind;
   const storedZoom = source["stepsZoom"];
   const stepsZoom = isStepsZoom(storedZoom) ? storedZoom : DEFAULT_VIEW_STATE.stepsZoom;
-  return { view, mindmapOrientation, planScopeKind, stepsZoom };
+  // The Zen View's strips are on unless a tab says otherwise: a tab stored before the view existed
+  // has neither field, and reads as both on.
+  const zenCommitments = source["zenCommitments"] !== false;
+  const zenExpectations = source["zenExpectations"] !== false;
+  return { view, mindmapOrientation, planScopeKind, stepsZoom, zenCommitments, zenExpectations };
 }
 
 /**

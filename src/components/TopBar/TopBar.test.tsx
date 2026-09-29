@@ -107,7 +107,7 @@ describe("TopBar", () => {
     render(<TopBar />);
     fireEvent.click(screen.getByRole("button", { name: "common:viewSelectorLabel" }));
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
-      "common:viewMindmap", "common:viewList", "common:viewPlan", "common:viewSteps",
+      "common:viewMindmap", "common:viewList", "common:viewPlan", "common:viewSteps", "common:viewZen",
     ]);
   });
 
@@ -176,6 +176,24 @@ describe("TopBar", () => {
 
       fireEvent.click(screen.getByRole("option", { name: "listView:preset.all" }));
       expect(useFilterStore.getState().filter.statusMode).toBe("do");
+    });
+
+    it("shows Do active and every other preset disabled while the Zen View is active, without writing Do", () => {
+      useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "start" } });
+      useViewStore.setState({ view: "zen" });
+      render(<TopBar />);
+      const trigger = screen.getByRole("button", { name: "listView:statusPresetLabel" });
+      expect(trigger).toHaveTextContent("listView:preset.do");
+      expect(trigger).toHaveAttribute("title", "zenView:presetLocked");
+
+      fireEvent.click(trigger);
+      expect(screen.getByRole("option", { name: "listView:preset.do" })).not.toHaveAttribute("aria-disabled");
+      for (const preset of ["all", "plan", "start", "backlog"]) {
+        const option = screen.getByRole("option", { name: `listView:preset.${preset}` });
+        expect(option).toHaveAttribute("aria-disabled", "true");
+        expect(option).toHaveAttribute("title", "zenView:presetLocked");
+      }
+      expect(useFilterStore.getState().filter.statusMode).toBe("start");
     });
 
     it("gives the tab its own preset back on leaving the Plan View", () => {

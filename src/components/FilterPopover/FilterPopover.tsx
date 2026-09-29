@@ -7,7 +7,7 @@ import { useFilterDimensions } from "@/hooks/use-filter-dimensions";
 import { useFilterEntries } from "@/hooks/use-filter-entries";
 import { useFilterMenuKeys } from "@/hooks/use-filter-menu-keys";
 import { FILTER_MENU_CODES, PRIVATE_MODE_TOKEN } from "@/utils/filter-menu-keys";
-import { PLAN_VIEW_STATUS_MODE } from "@/utils/filter-tree";
+import { lockedStatusMode } from "@/utils/view-preset";
 import { filterMenuRows, isSearchedDimension, offeredDimensions } from "@/utils/filter-layout";
 import type { FilterRowId } from "@/utils/filter-layout";
 import FilterRow from "./FilterRow";
@@ -57,7 +57,7 @@ export default function FilterPopover() {
       data-owns-keys={view === "list" ? FILTER_MENU_CODES.join(" ") : PRIVATE_MODE_TOKEN}
       onKeyDown={onKeyDown}
     >
-      <FilterSwitches view={view} statusMode={view === "plan" ? PLAN_VIEW_STATUS_MODE : statusMode} />
+      <FilterSwitches view={view} statusMode={lockedStatusMode(view) ?? statusMode} />
       {filterMenuRows(view).map((group, index) => (
         <Fragment key={index}>
           <hr className={styles.separator} />

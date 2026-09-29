@@ -1,0 +1,45 @@
+/* One row, never wrapping: a long strip scrolls sideways and leaves the grid its height. */
+.strip {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: var(--space-1);
+}
+
+.card {
+  composes: wash from "@/styles/aspect-wash.module.css";
+  --card-base: var(--surface-raised);
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 280px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--node-border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+.card:hover {
+  border-color: var(--node-border-selected);
+}
+
+.cardSelected {
+  border-color: var(--node-border-selected);
+  box-shadow: 0 0 0 1px var(--node-border-selected);
+}
+
+.cardFocusExempt {
+  opacity: 0.45;
+}
+
+.title {
+  overflow: hidden;
+  color: var(--card-text-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

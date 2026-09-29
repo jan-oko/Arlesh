@@ -6,7 +6,7 @@ import { useViewStore, ALL_VIEWS, isView } from "@/stores/use-view-store";
 import type { View } from "@/stores/use-view-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 import { LIST_PRESET_VALUES, isListOnlyPreset, isListPreset } from "@/utils/list-filter";
-import { PLAN_VIEW_STATUS_MODE } from "@/utils/filter-tree";
+import { lockedStatusMode } from "@/utils/view-preset";
 import type { ListPreset } from "@/utils/list-filter";
 import FilterPopover from "@/components/FilterPopover/FilterPopover";
 import FilterChips from "@/components/FilterChips/FilterChips";
@@ -32,7 +32,7 @@ function FunnelIcon() {
 }
 
 export default function TopBar() {
-  const { t } = useTranslation(["common", "listView", "planView", "filter"]);
+  const { t } = useTranslation(["common", "listView", "planView", "zenView", "filter"]);
   const statusMode = useFilterStore((s) => s.filter.statusMode);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
   const planScope = useFilterStore((s) => s.filter.planScope);
@@ -58,23 +58,27 @@ export default function TopBar() {
     list: t("common:viewList"),
     plan: t("common:viewPlan"),
     steps: t("common:viewSteps"),
+    zen: t("common:viewZen"),
   };
 
-  // The Plan View always reads under Plan (see `PLAN_VIEW_STATUS_MODE`). It *reads* as Plan rather
-  // than writing Plan into the tab's filter, so leaving it gives the tab back the preset it had.
-  const planLocked = view === "plan";
-  const activePreset: ListPreset = planLocked
-    ? PLAN_VIEW_STATUS_MODE
-    : view === "list" && isListOnlyPreset(listPreset) ? listPreset : statusMode;
+  // The Plan View always reads under Plan, and the Zen View under Do (see `lockedStatusMode`). Each
+  // *reads* as its preset rather than writing it into the tab's filter, so leaving it gives the tab
+  // back the preset it had.
+  const lockedPreset = lockedStatusMode(view);
+  const activePreset: ListPreset = lockedPreset
+    ?? (view === "list" && isListOnlyPreset(listPreset) ? listPreset : statusMode);
   const presetOptions = view === "list" ? LIST_PRESET_VALUES : MINDMAP_PRESETS;
-  const presetLockedReason = planLocked ? t("planView:presetLocked") : undefined;
+  const presetLockedReason = view === "plan"
+    ? t("planView:presetLocked")
+    : view === "zen" ? t("zenView:presetLocked") : undefined;
   // The Plan preset's scope sits beside the preset it belongs to, and only while it is the one
-  // chosen. Never in the Plan View, which reads under Plan with a scope of its own.
-  const showPlanScope = !planLocked && activePreset === "plan";
+  // chosen. Never in a view with a preset of its own: the Plan View reads under Plan with a scope
+  // of its own, and the Zen View never reads under Plan at all.
+  const showPlanScope = lockedPreset === null && activePreset === "plan";
 
   function selectPreset(value: string) {
     if (!isListPreset(value)) return;
-    if (planLocked) return;
+    if (lockedPreset !== null) return;
     if (value === "unblock" || value === "expectations") {
       setListPreset(value);
       return;
@@ -122,7 +126,7 @@ export default function TopBar() {
             options={presetOptions.map((preset) => ({
               value: preset,
               label: t(`listView:preset.${preset}`),
-              ...(planLocked && preset !== PLAN_VIEW_STATUS_MODE ? { disabled: true, title: presetLockedReason ?? "" } : {}),
+              ...(lockedPreset !== null && preset !== lockedPreset ? { disabled: true, title: presetLockedReason ?? "" } : {}),
             }))}
             onChange={selectPreset}
             ariaLabel={t("listView:statusPresetLabel")}

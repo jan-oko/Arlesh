@@ -18,6 +18,7 @@ import en_planView from "./locales/en/planView.json";
 import en_expectation from "./locales/en/expectation.json";
 import en_stepsView from "./locales/en/stepsView.json";
 import en_settings from "./locales/en/settings.json";
+import en_zenView from "./locales/en/zenView.json";
 
 // English is the only locale. i18next stays in place so every user-facing string keeps a key
 // (see docs/TRANSLATIONS.md) and a second locale can be added without touching components.
@@ -41,6 +42,7 @@ void i18n.use(initReactI18next).init({
       expectation: en_expectation,
       stepsView: en_stepsView,
       settings: en_settings,
+      zenView: en_zenView,
     },
   },
   lng: "en",

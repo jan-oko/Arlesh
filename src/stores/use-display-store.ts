@@ -115,6 +115,14 @@ interface DisplayStore {
    */
   searchIncludesArchived: boolean;
   toggleSearchIncludesArchived: () => void;
+  /**
+   * Whether a Zen View task card draws the status-badge row, where it is tall enough to.
+   *
+   * **On by default.** App-wide: how much a card says is a preference about reading the view, not a
+   * question one tab asks. One switch for the whole row — per-badge settings are not offered.
+   */
+  zenShowBadges: boolean;
+  toggleZenShowBadges: () => void;
 }
 
 /** Keeps a stored or typed threshold inside the range the setting offers. */
@@ -176,6 +184,8 @@ export const useDisplayStore = create<DisplayStore>()(
       searchIncludesArchived: false,
       toggleSearchIncludesArchived: () =>
         set((s) => ({ searchIncludesArchived: !s.searchIncludesArchived })),
+      zenShowBadges: true,
+      toggleZenShowBadges: () => set((s) => ({ zenShowBadges: !s.zenShowBadges })),
     }),
     { name: "arlesh-display" },
   ),

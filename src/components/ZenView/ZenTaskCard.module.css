@@ -1,0 +1,71 @@
+/* A Zen card: washed in its aspect's colour, flat, from the same stylesheet a List row and a Steps
+   card take. Its size is set inline from the grid's fit; the text sizes arrive as custom properties
+   so they scale with it (see `zenTextSize`). The vertical padding is the 12px `zenTextSize` allows. */
+.card {
+  composes: wash from "@/styles/aspect-wash.module.css";
+  --card-base: var(--surface-raised);
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 6px var(--space-3);
+  border: 1px solid var(--node-border);
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.card:hover {
+  border-color: var(--node-border-selected);
+}
+
+.cardSelected {
+  border-color: var(--node-border-selected);
+  box-shadow: 0 0 0 1px var(--node-border-selected);
+}
+
+.cardFocusExempt {
+  opacity: 0.45;
+}
+
+/* Clamped to the lines the card has room for, so a long title ends in an ellipsis rather than
+   pushing the path off the card. The full title is the card's tooltip. */
+.title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--zen-title-lines, 1);
+  line-clamp: var(--zen-title-lines, 1);
+  color: var(--card-text-strong);
+  font-size: var(--zen-title-size, var(--text-base));
+  font-weight: 500;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+
+.titleInput {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0 4px;
+  border: 1px solid var(--node-border-selected);
+  border-radius: 4px;
+  outline: none;
+  background: var(--node-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--zen-title-size, var(--text-base));
+}
+
+.path {
+  overflow: hidden;
+  color: var(--card-text-muted);
+  font-size: var(--zen-path-size, var(--text-sm));
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

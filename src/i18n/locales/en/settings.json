@@ -10,7 +10,8 @@
     "plan": "Plan",
     "windows": "Windows & tray",
     "expectations": "Expectations",
-    "mcp": "MCP access"
+    "mcp": "MCP access",
+    "zen": "Zen"
   },
   "planCandidates": "Candidates pane",
   "planPlanned": "Planned pane",

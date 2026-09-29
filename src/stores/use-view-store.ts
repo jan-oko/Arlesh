@@ -11,10 +11,10 @@ import { DEFAULT_STEPS_ZOOM } from "@/utils/steps-grid";
  * Adding one is a union member plus a chord — deliberately, because the alternative considered was
  * an ordered cycle, and a cycle makes every view's shortcut depend on how many other views exist.
  */
-export type View = "mindmap" | "list" | "plan" | "steps";
+export type View = "mindmap" | "list" | "plan" | "steps" | "zen";
 
 /** Every view, in the order the top bar draws them and the cheat-sheet lists them. */
-export const ALL_VIEWS: readonly View[] = ["mindmap", "list", "plan", "steps"];
+export const ALL_VIEWS: readonly View[] = ["mindmap", "list", "plan", "steps", "zen"];
 
 /** Type guard for a stored or selected view. */
 export function isView(value: string): value is View {
@@ -42,13 +42,25 @@ export interface ViewState {
    * other across a window resize.
    */
   stepsZoom: StepsZoom;
+  /**
+   * Whether the Zen View draws its **Commitments** strip above the grid, and whether it draws its
+   * **Expectations** strip. Per tab, both on by default, and independent of the List View's
+   * row-kind selector: the strips are the Zen View's own question.
+   */
+  zenCommitments: boolean;
+  zenExpectations: boolean;
 }
+
+/** One of the Zen View's two strips. */
+export type ZenStrip = "commitments" | "expectations";
 
 export interface ViewStore extends ViewState {
   setView: (view: View) => void;
   toggleMindmapOrientation: () => void;
   setPlanScopeKind: (kind: ViewKind) => void;
   setStepsZoom: (zoom: StepsZoom) => void;
+  /** Shows the Zen View's strip if it is hidden, hides it if it is shown. */
+  toggleZenStrip: (strip: ZenStrip) => void;
 }
 
 export const DEFAULT_VIEW_STATE: ViewState = {
@@ -56,6 +68,8 @@ export const DEFAULT_VIEW_STATE: ViewState = {
   mindmapOrientation: "horizontal",
   planScopeKind: "week",
   stepsZoom: DEFAULT_STEPS_ZOOM,
+  zenCommitments: true,
+  zenExpectations: true,
 };
 
 /**
@@ -78,6 +92,8 @@ export function createViewStore(seed: ViewState = DEFAULT_VIEW_STATE): StoreApi<
       set((s) => ({ mindmapOrientation: s.mindmapOrientation === "horizontal" ? "vertical" : "horizontal" })),
     setPlanScopeKind: (planScopeKind) => set({ planScopeKind }),
     setStepsZoom: (stepsZoom) => set({ stepsZoom }),
+    toggleZenStrip: (strip) =>
+      set((s) => (strip === "commitments" ? { zenCommitments: !s.zenCommitments } : { zenExpectations: !s.zenExpectations })),
   }));
 }
 

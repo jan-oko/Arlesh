@@ -1,0 +1,8 @@
+{
+  "presetLocked": "The Zen View always reads under the Do preset. Switch to another view to use a different one.",
+  "gridLabel": "In progress",
+  "commitmentsStrip": "Commitments",
+  "expectationsStrip": "Expectations",
+  "empty": "Nothing is in progress.",
+  "showBadges": "Show badges on cards"
+}
