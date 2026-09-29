@@ -246,6 +246,7 @@ describe("the chords promoted out of the view tables", () => {
       "global.viewMindmap",
       "global.viewPlan",
       "global.viewSteps",
+      "global.viewZen",
     ]);
   });
 });
