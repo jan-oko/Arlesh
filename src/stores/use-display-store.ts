@@ -149,6 +149,14 @@ interface DisplayStore {
    */
   zenShowsStarted: boolean;
   toggleZenShowsStarted: () => void;
+  /**
+   * Whether a Zen View task card draws the amber **Overdue** border — the one sign of Overdue every
+   * other view draws unconditionally. **On by default.** App-wide, beside `zenShowBadges`: Zen is
+   * the view for doing rather than triaging, so how loudly lateness shows there is the reader's to
+   * decide. Off, the card still says it is Overdue to a screen reader.
+   */
+  zenShowOverdueBorder: boolean;
+  toggleZenShowOverdueBorder: () => void;
 }
 
 /** Keeps a stored or typed threshold inside the range the setting offers. */
@@ -218,6 +226,9 @@ export const useDisplayStore = create<DisplayStore>()(
       toggleZenShowBadges: () => set((s) => ({ zenShowBadges: !s.zenShowBadges })),
       zenShowsStarted: false,
       toggleZenShowsStarted: () => set((s) => ({ zenShowsStarted: !s.zenShowsStarted })),
+      zenShowOverdueBorder: true,
+      toggleZenShowOverdueBorder: () =>
+        set((s) => ({ zenShowOverdueBorder: !s.zenShowOverdueBorder })),
     }),
     { name: "arlesh-display" },
   ),

@@ -2,15 +2,18 @@ import type { RowId } from "@/api/node-id";
 import { invoke } from "./gesture";
 import type { Verdict } from "@/api/verdict";
 
-/** What happens to a scoped item once its Time Scope has fully passed unfinished. */
+/** What happens to a scoped item once its Time Scope has fully passed unfinished. `keep` is
+ * **Keep Overdue** — it stays live, its default due is its Time Scope, and so it is flagged Overdue
+ * once that passes; `archive` lapses it Missed, with no default due. */
 export type OnScopeExit = "archive" | "keep";
 
 /** An item's window position relative to "now" (never persisted). Independent of resolution —
  * unscoped items are always "active". */
 export type Timing = "pending" | "active" | "lapsed";
 
-/** Only meaningful once `Timing` is "lapsed": how the item was resolved by then. */
-export type Resolution = "completed" | "missed" | "overdue";
+/** Only meaningful once `Timing` is "lapsed": how the lapse settled the item. An unfinished Keep
+ * Overdue item has none — it is flagged `overdue` instead, which is not a Resolution. */
+export type Resolution = "completed" | "missed";
 
 /** An item's effective archived/frozen/live state. "frozen" is Goal/Project-only and "backlog"
  * Task-only; both lose to "archived" when a lapsed window forces it. */
@@ -29,6 +32,9 @@ export interface ItemLifecycle {
   node_id: RowId;
   timing: Timing;
   resolution?: Resolution;
+  /** The **Overdue** flag: unfinished, not effectively archived, and past the end of its due.
+   * Sent only when set. */
+  overdue?: boolean;
   verdict?: Verdict;
   archival: Archival;
   archival_conflict: boolean;

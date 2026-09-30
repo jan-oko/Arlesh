@@ -28,6 +28,7 @@ import {
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { propagateAgentic } from "@/utils/agentic";
+import { propagateInheritedScope } from "@/utils/inherited-scope";
 import { listMcpAccess } from "@/api/mcp-access";
 import type { McpVisibility } from "@/api/mcp-access";
 import { applyMcpVisibility } from "@/utils/mcp-visibility";
@@ -60,6 +61,7 @@ export function applyLifecycles(node: MindmapNode, byId: Map<string, ItemLifecyc
     node.timing = entry.timing;
     if (entry.plan_timing !== undefined) node.planTiming = entry.plan_timing;
     if (entry.resolution !== undefined) node.resolution = entry.resolution;
+    if (entry.overdue === true) node.overdue = true;
     // A Commitment's verdict comes back on the same envelope, in place of a Resolution. It is
     // already on the node from its own row; re-stamping it keeps the two from disagreeing when
     // a derivation and a row read land out of order.
@@ -414,6 +416,7 @@ export function buildTree(
       timeScope: task.time_scope,
       onScopeExit: task.on_scope_exit,
       plan: task.plan,
+      dueScope: task.due_scope ?? null,
       backlogged: task.archival === TASK_ARCHIVAL.BACKLOG,
       agentic: task.agentic,
       delegate: task.delegate_to,
@@ -704,6 +707,8 @@ export function buildTree(
   // Agentic inherits downward and is overridable, exactly as a delegate does, so the value a node
   // reads is resolved here once rather than by an ancestor walk at every badge and filter.
   propagateAgentic(root, false);
+  // The window a node inherits, for the editor's Due field: held to it, and hidden under it.
+  propagateInheritedScope(root, null);
   return root;
 }
 

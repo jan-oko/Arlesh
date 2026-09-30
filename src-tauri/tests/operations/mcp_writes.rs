@@ -164,6 +164,7 @@ fn edit(
         time_scope: None,
         on_scope_exit: None,
         plan: None,
+        due_scope: None,
         asynchronous: None,
         add_dependencies: Vec::new(),
         remove_dependencies: Vec::new(),

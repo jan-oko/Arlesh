@@ -17,6 +17,7 @@ mod helpers;
 mod agentic;
 mod async_templates;
 mod block_reasons;
+mod due_scope;
 mod expectations;
 mod plan_overdue;
 mod tasks;

@@ -12,7 +12,7 @@ use arlesh_lib::{
         delete_expectation, delete_task, derive_all_scope_lifecycles,
         error::TaskError,
         get_task_with_blockers,
-        lifecycle::{Archival, Resolution, Timing},
+        lifecycle::{Archival, Timing},
         model::{
             CreateExpectationRequest, CreateTaskRequest, Dependency, DurationSpec, Expectation,
             ExpectationArchival, ExpectationId, ExpectationStatus, TaskId, TimeScope,
@@ -326,7 +326,8 @@ async fn the_lifecycle_entries_time_the_next_check_and_carry_the_archive() {
     })
     .node_id();
     assert_eq!(entry("task", check.clone()).timing, Timing::Lapsed);
-    assert_eq!(entry("task", check).resolution, Some(Resolution::Overdue));
+    assert_eq!(entry("task", check.clone()).resolution, None);
+    assert!(entry("task", check).overdue);
     // The wait's own entry times its (absent) Time Scope and carries its archive.
     assert_eq!(entry("expectation", late.id.clone()).timing, Timing::Active);
     assert_eq!(

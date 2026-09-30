@@ -18,6 +18,7 @@ fn delegated(id: NodeId) -> Task {
         time_scope: None,
         on_scope_exit: None,
         plan: None,
+        due_scope: None,
         archival: TaskArchival::Live,
         tag_ids: vec![],
         position: 0,

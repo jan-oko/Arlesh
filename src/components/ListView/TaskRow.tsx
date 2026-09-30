@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import type { TaskListRow } from "@/utils/list-filter";
@@ -9,6 +9,8 @@ import { useTagNames } from "@/hooks/use-tag-names";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import TaskIcon from "@/components/NodeIcon/TaskIcon";
 import TaskRowBadges from "./TaskRowBadges";
+import OverdueNote from "@/components/OverdueNote/OverdueNote";
+import { isOverdue } from "@/utils/overdue";
 import styles from "./TaskRow.module.css";
 
 const ICON_R = 10;
@@ -48,7 +50,9 @@ export default function TaskRow({
   const { t } = useTranslation(["listView", "nodeKinds"]);
   const tagNames = useTagNames();
   const inputRef = useRef<HTMLInputElement>(null);
+  const overdueNoteId = useId();
   const { node } = row;
+  const overdue = isOverdue(node);
 
   // Mirrors the Mindmap node's own gating: a task advances only while unblocked — a Habit
   // occurrence included, since it is a Task like any other.
@@ -72,13 +76,15 @@ export default function TaskRow({
 
   return (
     <div
-      className={`${styles.card} ${indentClass}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}`}
+      className={`${styles.card} ${indentClass}${overdue ? ` ${styles.cardOverdue}` : ""}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}`}
       // How the list's scroller finds this row to bring it into view when it becomes the selection.
       data-row-id={node.id}
+      aria-describedby={overdue ? overdueNoteId : undefined}
       style={cardStyle}
       onClick={() => onSelect(node.id)}
       onDoubleClick={() => onOpenEditor(node.id)}
     >
+      {overdue && <OverdueNote id={overdueNoteId} />}
       <button
         type="button"
         className={styles.statusButton}

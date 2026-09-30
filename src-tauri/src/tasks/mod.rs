@@ -74,7 +74,7 @@ fn time_scope_columns(
 }
 
 /// The `on_scope_exit` column value for a write: absent (NULL) when the item is unscoped, otherwise
-/// the requested behavior defaulted to `keep` (the UI always supplies an explicit choice; this keeps
+/// the requested behavior defaulted to `keep` — Keep Overdue (the UI always supplies an explicit choice; this keeps
 /// the DB invariant "scoped ⟺ on-exit set" satisfied even when a caller omits it).
 fn on_scope_exit_column(
     time_scope: &Option<TimeScope>,
@@ -244,6 +244,8 @@ struct TaskRow {
     on_scope_exit: Option<String>,
     plan_start_id: Option<ScopeKey>,
     plan_end_id: Option<ScopeKey>,
+    due_scope_start_id: Option<ScopeKey>,
+    due_scope_end_id: Option<ScopeKey>,
     archival: String,
     position: i64,
     is_private: bool,
@@ -272,6 +274,12 @@ impl From<TaskRow> for Task {
             ),
             on_scope_exit: row.on_scope_exit.as_deref().and_then(OnScopeExit::from_db),
             plan: time_scope_from_row(row.plan_start_id, row.plan_end_id, None, None),
+            due_scope: time_scope_from_row(
+                row.due_scope_start_id,
+                row.due_scope_end_id,
+                None,
+                None,
+            ),
             // An unrecognised spelling reads as Live — the least surprising fallback, and the one
             // that never hides work. The CHECK constraint is what keeps it from arising.
             archival: TaskArchival::from_db(&row.archival).unwrap_or_default(),
@@ -476,6 +484,8 @@ struct TaskWrite {
     on_scope_exit: Option<OnScopeExit>,
     /// Final Plan window, or `None`.
     plan: Option<TimeScope>,
+    /// Final explicit due window, or `None` for the derived default.
+    due_scope: Option<TimeScope>,
     /// Final archival state. Never `Backlog` alongside a `Some` `plan` — [`update_task`] refuses
     /// that pair rather than writing it.
     archival: TaskArchival,
@@ -536,6 +546,10 @@ impl TaskWrite {
             Some(new_plan) => new_plan,
             None => stored.plan,
         };
+        let due_scope = match request.due_scope {
+            Some(new_due) => new_due,
+            None => stored.due_scope,
+        };
         // Scheduling a backlogged task takes it out of the backlog. The gesture is unambiguous —
         // nobody plans a week for work they mean to leave aside — so it is done rather than asked
         // about; the caller raises a toast, which is what keeps it from being silent. The reverse
@@ -571,6 +585,7 @@ impl TaskWrite {
             time_scope,
             on_scope_exit: request.on_scope_exit.unwrap_or(stored.on_scope_exit),
             plan,
+            due_scope,
             archival,
             position: request.position.unwrap_or(stored.position),
             is_private: request.is_private.unwrap_or(stored.is_private),
@@ -896,6 +911,7 @@ impl<'session> TaskOperator<'session> {
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let on_exit = on_scope_exit_column(&request.time_scope, request.on_scope_exit);
         let (plan_start, plan_end, _, _) = time_scope_columns(&request.plan);
+        let (due_start, due_end, _, _) = time_scope_columns(&request.due_scope);
         let archival = request.archival.unwrap_or_default();
         let agentic = request.agentic.unwrap_or_default().as_column();
         let asynchronous = request.asynchronous.unwrap_or(false);
@@ -911,9 +927,9 @@ impl<'session> TaskOperator<'session> {
             "INSERT INTO tasks
                 (title, parent_type, parent_id, status,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n,
-                 time_scope_duration_kind, on_scope_exit, plan_start_id, plan_end_id, archival,
-                 agentic, asynchronous, done_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 time_scope_duration_kind, on_scope_exit, plan_start_id, plan_end_id,
+                 due_scope_start_id, due_scope_end_id, archival, agentic, asynchronous, done_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -926,6 +942,8 @@ impl<'session> TaskOperator<'session> {
         .bind(on_exit)
         .bind(plan_start)
         .bind(plan_end)
+        .bind(due_start)
+        .bind(due_end)
         .bind(archival.as_str())
         .bind(agentic)
         .bind(asynchronous)
@@ -1056,6 +1074,7 @@ impl<'session> TaskOperator<'session> {
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&write.time_scope);
         let on_exit = on_scope_exit_column(&write.time_scope, write.on_scope_exit);
         let (plan_start, plan_end, _, _) = time_scope_columns(&write.plan);
+        let (due_start, due_end, _, _) = time_scope_columns(&write.due_scope);
         let (delegate_kind, delegate_id) = Delegate::columns(write.delegate_to);
 
         if let Some((new_parent_type, new_parent_id)) = &write.reparent {
@@ -1071,6 +1090,7 @@ impl<'session> TaskOperator<'session> {
             "UPDATE tasks SET title=?, status=?, delegate_kind=?, delegate_id=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
                 time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?,
+                due_scope_start_id=?, due_scope_end_id=?,
                 archival=?, agentic=?, asynchronous=?, position=?, is_private=?,
                 done_at = CASE WHEN ? = 'done'
                                THEN CASE WHEN status = 'done' THEN done_at ELSE ? END
@@ -1088,6 +1108,8 @@ impl<'session> TaskOperator<'session> {
         .bind(on_exit)
         .bind(plan_start)
         .bind(plan_end)
+        .bind(due_start)
+        .bind(due_end)
         .bind(write.archival.as_str())
         .bind(write.agentic)
         .bind(write.asynchronous)
@@ -1454,8 +1476,9 @@ pub async fn create_task(
     create_task_at(db, request, expectations::now()).await
 }
 
-/// [`create_task`] as of `now` — the instant that decides whether the task is written **Overdue**,
-/// which lifts the bound on its Plan by its own Time Scope (see `scope_rules::is_overdue`). A
+/// [`create_task`] as of `now` — the instant that decides whether the task is written flagged
+/// **Overdue**, which lifts the bound on its Plan by its own Time Scope (see
+/// `scope_rules::is_overdue`). An explicit due is held within the task's effective Time Scope. A
 /// command passes the one `now` it read, so every decision in one request agrees on the time.
 #[tracing::instrument(skip(db))]
 pub async fn create_task_at(
@@ -1466,20 +1489,20 @@ pub async fn create_task_at(
     reject_backlog_with_plan(request.archival.unwrap_or_default(), &request.plan)?;
     // No Spec check here: creating a task is not starting one. The one path that creates a task
     // already in progress is a duplicate, and a copy of work underway is not a start either.
-    let overdue = scope_rules::is_overdue(
-        &request.time_scope,
-        request.on_scope_exit,
-        request.status == Some(TaskStatus::Done),
-        now,
-    );
     scope_rules::validate_task_containment(
         db,
         None,
         &request.parent_type,
         request.parent_id.require_stored()?,
-        &request.time_scope,
-        &request.plan,
-        overdue,
+        &scope_rules::WrittenTask {
+            time_scope: &request.time_scope,
+            on_exit: request.on_scope_exit,
+            plan: &request.plan,
+            due_scope: &request.due_scope,
+            archival: request.archival.unwrap_or_default(),
+            done: request.status == Some(TaskStatus::Done),
+        },
+        now,
     )
     .await?;
     db.tasks().insert(request).await
@@ -1523,7 +1546,7 @@ pub async fn update_task(
     update_task_at(db, id, request, expectations::now()).await
 }
 
-/// [`update_task`] as of `now` — the instant that decides whether the task, as written, is
+/// [`update_task`] as of `now` — the instant that decides whether the task, as written, is flagged
 /// **Overdue**, which lifts the bound on its Plan by its own Time Scope (see
 /// `scope_rules::is_overdue`). The merged row is what is judged, so a write that reopens a lapsed
 /// task and plans it in one go is judged as the reopened task it leaves.
@@ -1552,20 +1575,20 @@ pub async fn update_task_at(
         )
         .await?;
     }
-    let overdue = scope_rules::is_overdue(
-        &write.time_scope,
-        write.on_scope_exit,
-        write.status == TaskStatus::Done.as_str(),
-        now,
-    );
     scope_rules::validate_task_containment(
         db,
         Some(id),
         &write.parent_type,
         write.parent_id,
-        &write.time_scope,
-        &write.plan,
-        overdue,
+        &scope_rules::WrittenTask {
+            time_scope: &write.time_scope,
+            on_exit: write.on_scope_exit,
+            plan: &write.plan,
+            due_scope: &write.due_scope,
+            archival: write.archival,
+            done: write.status == TaskStatus::Done.as_str(),
+        },
+        now,
     )
     .await?;
     // Nothing else is written for the wait an Asynchronous task spawns: it is derived from the task

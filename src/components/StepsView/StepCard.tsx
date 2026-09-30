@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -12,6 +12,8 @@ import { isRtlText } from "@/utils/text-direction";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import NodeIcon from "@/components/NodeIcon/NodeIcon";
 import TaskRowBadges from "@/components/ListView/TaskRowBadges";
+import OverdueNote from "@/components/OverdueNote/OverdueNote";
+import { isOverdue } from "@/utils/overdue";
 import StepCardFields from "./StepCardFields";
 import styles from "./StepCard.module.css";
 
@@ -76,9 +78,12 @@ export default function StepCard({
     inputRef.current?.select();
   }, [isEditingTitle]);
 
+  const overdueNoteId = useId();
+  const overdue = node !== null && isOverdue(node);
   const className = [
     styles.card,
     isHeader ? styles.header : styles.child,
+    overdue ? styles.overdue : "",
     isSelected ? styles.selected : "",
   ].filter((name) => name !== "").join(" ");
 
@@ -109,6 +114,7 @@ export default function StepCard({
       style={cardStyle}
       data-step-card={node.id}
       aria-current={isSelected ? "true" : undefined}
+      aria-describedby={overdue ? overdueNoteId : undefined}
       // A folded run of Habit history names its day span here, as its Mindmap node does.
       title={node.habitGroup?.spanLabel}
       onClick={onSelect}
@@ -117,6 +123,7 @@ export default function StepCard({
       // key away on `E`. Inspecting and descending stay different gestures either way.
       onDoubleClick={onDescend}
     >
+      {overdue && <OverdueNote id={overdueNoteId} />}
       <span className={styles.top}>
         {/* No slot for a kind with no glyph — an Aspect — or its title starts after an empty gap. */}
         {cardDrawsGlyph(node.kind) && (

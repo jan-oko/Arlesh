@@ -1,7 +1,6 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
 import { pathToNode } from "@/utils/mindmap-tree";
-import type { Resolution } from "@/api/scope-lifecycle";
 
 /** Opacity for a node the view is showing but the filter is not asking for: an archived item, or one
  * held on screen only by the focus exemption. Dim enough to read as dropped, legible enough to act on. */
@@ -15,11 +14,31 @@ export interface NodeAppearance {
   fillOpacity: number;
   label: string;
   textFill: string;
-  /** Derived resolution outcome, once the node's scope has lapsed (Task/Goal only). Drives the
-   * overdue accent border. */
-  resolution: Resolution | undefined;
+  /** The derived Overdue flag. Drives the overdue accent border. */
+  overdue: boolean;
   /** Whole-node opacity multiplier — archived items are dimmed to read as dropped from the view. */
   nodeOpacity: number;
+}
+
+/** What a Mindmap node's outline says, most important first. */
+export interface NodeOutlineState {
+  isSelected: boolean;
+  isDragTarget: boolean;
+  overdue: boolean;
+}
+
+/**
+ * The colour of a Mindmap node's outline. The selection wins, then a drag's drop target, then
+ * Overdue's amber — except that a node **selected and Overdue** takes a selection colour of its own,
+ * `--overdue-selected` (ruled by the user, 2026-09-30): it still reads as the selection, and does not
+ * lose the only sign that it is Overdue. Blocked and the focus exemption draw no outline, so they
+ * combine with whichever this picks.
+ */
+export function nodeStrokeColor({ isSelected, isDragTarget, overdue }: NodeOutlineState): string {
+  if (isSelected) return overdue ? "var(--overdue-selected)" : "var(--node-border-selected)";
+  if (isDragTarget) return "var(--accent)";
+  if (overdue) return "var(--overdue)";
+  return "var(--node-border)";
 }
 
 export function computeNodeAppearance(node: MindmapNode, depth: number): NodeAppearance {
@@ -44,7 +63,7 @@ export function computeNodeAppearance(node: MindmapNode, depth: number): NodeApp
 
   return {
     isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill,
-    resolution: node.resolution, nodeOpacity,
+    overdue: node.overdue === true, nodeOpacity,
   };
 }
 
