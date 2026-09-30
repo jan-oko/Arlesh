@@ -1,9 +1,13 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
-import shared from "./overdue-outline.module.css?raw";
-import listRow from "@/components/ListView/TaskRow.module.css?raw";
-import stepsCard from "@/components/StepsView/StepCard.module.css?raw";
-import planCard from "@/components/PlanView/PlanTaskCard.module.css?raw";
-import zenCard from "@/components/ZenView/ZenTaskCard.module.css?raw";
+
+// Read as files: a CSS module imported into a test comes back as a class-name proxy, `?raw` or not.
+const read = (path: string): string => readFileSync(path, "utf8");
+const shared = read("src/styles/overdue-outline.module.css");
+const listRow = read("src/components/ListView/TaskRow.module.css");
+const stepsCard = read("src/components/StepsView/StepCard.module.css");
+const planCard = read("src/components/PlanView/PlanTaskCard.module.css");
+const zenCard = read("src/components/ZenView/ZenTaskCard.module.css");
 
 /** The body of the first rule in `css` whose selector is exactly `.name`. */
 function rule(css: string, name: string): string {
