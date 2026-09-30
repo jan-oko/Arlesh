@@ -19,6 +19,7 @@
   "refusedAlreadyHere": "You are already standing on “{{title}}”. Descend into one of the cards below it.",
   "refusedSiblingOfStep": "“{{title}}” is the Step you are standing on, so a node beside it would land outside this Step. Select a card to add one beside it, or climb out first.",
   "refusedParentOfStep": "“{{title}}” is the Step you are standing on, so a parent above it would land outside this Step. Climb out first.",
+  "refusedBlocked": "“{{title}}” is blocked ({{reasons}}), so its status stays as it is. Clear the block first.",
   "refusedDeleteStep": "“{{title}}” is the Step you are standing on. Climb out first to delete it.",
   "titleLabel": "Title",
   "pageLabel": "Page {{page}} of {{pages}}",
