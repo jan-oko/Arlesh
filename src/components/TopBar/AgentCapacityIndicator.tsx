@@ -1,6 +1,5 @@
 import { useTranslation } from "react-i18next";
 import { useAgentCapacity } from "@/hooks/use-agent-capacity";
-import { useDisplayStore } from "@/stores/use-display-store";
 import styles from "./AgentCapacityIndicator.module.css";
 
 /** A small gauge glyph, needle at the top of its range. */
@@ -14,14 +13,12 @@ function GaugeIcon() {
 }
 
 /**
- * The top bar's word that agents are at capacity: drawn only while the lock is on, and a click
- * clears it. Its hover says whether Start is hiding Agentic tasks because of it, since the setting
- * that decides that lives a few pages away.
+ * The top bar's word that agents are at capacity: drawn only while the lock is on — while every
+ * Agentic Task not yet Done is blocked by it — and a click clears it.
  */
 export default function AgentCapacityIndicator() {
   const { t } = useTranslation("common");
   const { atCapacity, setAtCapacity } = useAgentCapacity();
-  const hides = useDisplayStore((s) => s.startHidesAgenticAtCapacity);
   if (!atCapacity) return null;
 
   return (
@@ -29,7 +26,7 @@ export default function AgentCapacityIndicator() {
       className={styles.indicator}
       type="button"
       aria-label={t("agentCapacity.clear")}
-      title={hides ? t("agentCapacity.titleHiding") : t("agentCapacity.titleShowing")}
+      title={t("agentCapacity.title")}
       onClick={() => { void setAtCapacity(false); }}
     >
       <GaugeIcon />

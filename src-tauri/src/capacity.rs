@@ -2,10 +2,11 @@
 //!
 //! An agent — or whoever runs a fleet of them — sets it over the MCP when it cannot take on more
 //! Agentic work, and clears it when there is room again; the user can set and clear it from the
-//! app as well. While it is on, and the app-wide setting lets it, the app's **Start** preset stops
-//! offering any Agentic Task not yet Done, so the user is not invited to hand out work nobody can
-//! pick up. The MCP snapshot's own Start filter ignores it: agents still see the
-//! work. See `docs/spec/mcp-server.md`, "Agent capacity".
+//! app as well. While it is on, every Agentic Task not yet Done is **derived blocked** — it acts
+//! as a dependency every Agentic Task has — and everything blocked already does follows: Start
+//! hides it, the app refuses to start it, the blocked glyph shows. That derivation is
+//! [`blocks`], and it is the same for the app and the MCP. See `docs/spec/mcp-server.md`,
+//! "Agent capacity".
 //!
 //! # Where it lives
 //!
@@ -25,6 +26,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
+
+pub mod blocks;
 
 #[cfg(test)]
 mod tests;

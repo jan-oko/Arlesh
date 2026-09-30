@@ -46,8 +46,7 @@
   "checkTaskPrefixReset": "Default",
   "agentCapacity": {
     "indicator": "Agents at capacity",
-    "titleHiding": "Agents are at capacity, so Start hides Agentic tasks. Click to clear.",
-    "titleShowing": "Agents are at capacity. Start still shows Agentic tasks (Settings → MCP access). Click to clear.",
+    "title": "Agents are at capacity, so every Agentic task not yet done is blocked. Click to clear.",
     "clear": "Clear the agent capacity lock"
   }
 }

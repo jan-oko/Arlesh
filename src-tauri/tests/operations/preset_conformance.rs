@@ -49,32 +49,6 @@ struct Case {
     /// could only ever be empty.
     #[serde(default)]
     expectations: Vec<String>,
-    /// Which evaluators the case holds to. Omitted, both. A case for a rule only one side has —
-    /// the agent capacity lock, which the app applies and the MCP deliberately does not — names
-    /// that side alone, and the other skips it.
-    #[serde(default)]
-    sides: Option<Vec<Side>>,
-}
-
-/// One of the two evaluators the corpus holds to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum Side {
-    /// The frontend's own predicates, which the views run. Only ever read by the frontend's half,
-    /// so nothing here names it but the parse.
-    #[allow(dead_code)]
-    App,
-    /// `crate::filters`, which answers the MCP.
-    Mcp,
-}
-
-impl Case {
-    /// Whether this evaluator — the MCP's — is held to the case.
-    fn covers_mcp(&self) -> bool {
-        self.sides
-            .as_ref()
-            .is_none_or(|sides| sides.contains(&Side::Mcp))
-    }
 }
 
 /// A corpus filter. Spelled the way the frontend spells its own filter state, and converted here,
@@ -178,7 +152,7 @@ fn every_case_agrees_with_the_shared_corpus() {
     let corpus: Corpus = serde_json::from_str(CORPUS).expect("the corpus parses");
     assert!(!corpus.cases.is_empty(), "the corpus has cases");
 
-    for case in corpus.cases.iter().filter(|case| case.covers_mcp()) {
+    for case in &corpus.cases {
         let mut root = corpus
             .boards
             .get(&case.board)

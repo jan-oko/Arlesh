@@ -36,11 +36,13 @@ pub async fn set_agent_capacity(
         .map_err(|error| WireError::internal(error.to_string()))
 }
 
-/// A [`Notify`] that tells **every** window the lock's new state.
+/// A [`Notify`] that tells **every** window the lock's new state, and that the board changed.
 ///
-/// Every window rather than every window but one, unlike a board change: the payload is the state
-/// itself rather than a signal to reload, so hearing it twice costs nothing, and a change can come
-/// from the MCP, which is no window at all.
+/// Every window rather than every window but one: the payload is the state itself rather than a
+/// signal to reload, so hearing it twice costs nothing, and a change can come from the MCP, which
+/// is no window at all. The board announcement follows because the lock **is** a change to the
+/// board as drawn — it blocks or unblocks every Agentic Task — so each window takes the same reload
+/// any other change gets, and re-derives the block with it.
 pub fn notifier<R: Runtime>(app: &tauri::AppHandle<R>) -> Notify {
     let app = app.clone();
     std::sync::Arc::new(move |state: CapacityState| {
@@ -50,5 +52,6 @@ pub fn notifier<R: Runtime>(app: &tauri::AppHandle<R>) -> Notify {
                 tracing::warn!(error = %error, label = %label, "could not tell a window the agent capacity lock changed");
             }
         }
+        crate::commands::board::announce(&app, None);
     })
 }

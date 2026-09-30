@@ -858,6 +858,7 @@ fn push_reasons(out: &mut Vec<BlockReason>, kind: &str, id: &NodeId, reasons: Ve
             owner_id: id.clone(),
             reason,
             position: i64::try_from(position).unwrap_or(i64::MAX),
+            derived: None,
         });
     }
 }

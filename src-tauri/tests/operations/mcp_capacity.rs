@@ -1,5 +1,5 @@
 //! The agent capacity lock over the MCP: reading and setting it, sharing it with the app, and the
-//! one thing it must never do — narrow what an agent reads.
+//! block it derives — the same in the snapshot, in `get` and in the app's own load.
 
 use crate::helpers;
 use helpers::StoredId;
@@ -7,6 +7,7 @@ use helpers::StoredId;
 use arlesh_lib::capacity::AgentCapacity;
 use arlesh_lib::filters::model::{BoardFilter, Preset};
 use arlesh_lib::mcp::{params, ArleshMcp};
+use arlesh_lib::nodes::id::NodeId;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use tauri::Manager;
@@ -89,17 +90,20 @@ fn task_ids(result: &CallToolResult) -> Vec<i64> {
         .collect()
 }
 
-#[tokio::test]
-async fn the_snapshots_start_filter_ignores_the_lock() {
+/// A To Do Task under the root Aspect, marked Agentic when `agentic`.
+async fn task(
+    app: &tauri::App<tauri::test::MockRuntime>,
+    pool: &sqlx::SqlitePool,
+    title: &str,
+    agentic: bool,
+) -> i64 {
     use arlesh_lib::commands::tasks as task_commands;
     use arlesh_lib::tasks::model::CreateTaskRequest;
 
-    let pool = helpers::test_pool().await;
-    let app = helpers::command_host(&pool);
-    let task_id = task_commands::create_task(
+    let id = task_commands::create_task(
         app.state(),
         CreateTaskRequest {
-            title: "Agent work".into(),
+            title: title.into(),
             parent_type: "domain".into(),
             parent_id: 1.into(),
             ..Default::default()
@@ -109,45 +113,123 @@ async fn the_snapshots_start_filter_ignores_the_lock() {
     .unwrap()
     .id
     .sid();
-    helpers::make_agentic(&pool, task_id).await;
-    let capacity = AgentCapacity::in_memory();
-    capacity.set(true).await.unwrap();
-    let mcp = helpers::mcp_over_whole_board(&pool)
-        .await
-        .with_capacity(capacity);
-
-    // The filter has no field for the lock — the app fills its own in on the frontend — so even a
-    // caller that names one gets it ignored rather than applied.
-    let filters = [
-        BoardFilter::preset(Preset::Start),
-        serde_json::from_value(serde_json::json!({
-            "preset": "start",
-            "start_hides_agentic": true,
-            "agents_at_capacity": true,
-        }))
-        .unwrap(),
-    ];
-    for filter in filters {
-        let result = mcp
-            .snapshot(Parameters(params::SnapshotOperation::Load {
-                now: None,
-                sections: None,
-                cursor: None,
-                filter: Some(filter),
-                agentic: None,
-            }))
-            .await
-            .unwrap();
-        assert_ne!(
-            result.is_error,
-            Some(true),
-            "{:?}",
-            result.structured_content
-        );
-        assert_eq!(
-            task_ids(&result),
-            vec![task_id],
-            "an Agentic To Do task is still startable to an agent while the lock is on"
-        );
+    if agentic {
+        helpers::make_agentic(pool, id).await;
     }
+    id
+}
+
+async fn start(mcp: &ArleshMcp) -> CallToolResult {
+    let result = mcp
+        .snapshot(Parameters(params::SnapshotOperation::Load {
+            now: None,
+            sections: None,
+            cursor: None,
+            filter: Some(BoardFilter::preset(Preset::Start)),
+            agentic: None,
+        }))
+        .await
+        .unwrap();
+    assert_ne!(
+        result.is_error,
+        Some(true),
+        "{:?}",
+        result.structured_content
+    );
+    result
+}
+
+#[tokio::test]
+async fn while_the_lock_is_on_the_snapshots_start_offers_no_agentic_work() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let agentic = task(&app, &pool, "Agent work", true).await;
+    let plain = task(&app, &pool, "My work", false).await;
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
+
+    let mut open = task_ids(&start(&mcp).await);
+    open.sort_unstable();
+    assert_eq!(open, vec![agentic, plain], "with room, Start offers both");
+
+    run(&mcp, CapacityOperation::Set { at_capacity: true }).await;
+    let at_capacity = start(&mcp).await;
+    assert_eq!(
+        task_ids(&at_capacity),
+        vec![plain],
+        "at capacity, the Agentic task is blocked and Start drops it"
+    );
+
+    run(&mcp, CapacityOperation::Set { at_capacity: false }).await;
+    assert_eq!(
+        task_ids(&start(&mcp).await).len(),
+        2,
+        "clearing the lock unblocks it"
+    );
+}
+
+#[tokio::test]
+async fn the_snapshot_and_get_carry_the_derived_reason() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let agentic = task(&app, &pool, "Agent work", true).await;
+    let mcp = helpers::mcp_over_whole_board(&pool).await;
+    run(&mcp, CapacityOperation::Set { at_capacity: true }).await;
+
+    let whole = mcp
+        .snapshot(Parameters(params::SnapshotOperation::Load {
+            now: None,
+            sections: Some(vec![arlesh_lib::mcp::paging::Section::BlockReasons]),
+            cursor: None,
+            filter: None,
+            agentic: None,
+        }))
+        .await
+        .unwrap();
+    let reasons = whole
+        .structured_content
+        .as_ref()
+        .and_then(|payload| payload.get("block_reasons"))
+        .and_then(|section| section.as_array())
+        .cloned()
+        .expect("a block_reasons section");
+    assert!(
+        reasons.iter().any(|reason| {
+            reason["owner_type"] == "task"
+                && reason["owner_id"] == agentic
+                && reason["reason"] == "Agents at capacity"
+                && reason["derived"] == "agent_capacity"
+        }),
+        "{reasons:?}"
+    );
+
+    let got = mcp
+        .tasks(Parameters(params::TasksOperation::Get {
+            id: agentic.into(),
+        }))
+        .await
+        .unwrap();
+    let body = got.structured_content.expect("get answers");
+    assert_eq!(
+        body["block_reasons"],
+        serde_json::json!(["Agents at capacity"])
+    );
+}
+
+#[tokio::test]
+async fn the_apps_load_is_blocked_by_the_lock_the_app_holds() {
+    use arlesh_lib::commands::mindmap::load_mindmap;
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let agentic = task(&app, &pool, "Agent work", true).await;
+    let now = chrono::Local::now().naive_local();
+
+    let before = load_mindmap(app.state(), app.state(), now).await.unwrap();
+    assert!(before.block_reasons.is_empty());
+
+    app.state::<AgentCapacity>().set(true).await.unwrap();
+    let after = load_mindmap(app.state(), app.state(), now).await.unwrap();
+    assert_eq!(after.block_reasons.len(), 1);
+    assert_eq!(after.block_reasons[0].owner_id, NodeId::from(agentic));
+    assert!(after.block_reasons[0].derived.is_some());
 }

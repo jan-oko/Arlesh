@@ -8,7 +8,6 @@ import type { ScopeKey } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import { scopeKeyFrom } from "@/utils/scope-key";
 import { DEFAULT_FILTER, filterTree } from "@/utils/filter-tree";
-import { propagateAgentic } from "@/utils/agentic";
 import type { ListFilterState, ListPreset } from "@/utils/list-filter";
 import {
   DEFAULT_LIST_FILTER, filterCommitmentList, filterExpectationList, filterTaskList, isListPreset,
@@ -48,8 +47,6 @@ interface CorpusNode {
   isHabitOccurrence?: boolean;
   delegated?: boolean;
   hasCheck?: boolean;
-  /** The node's own Agentic flag; inheritance is resolved from it as the board resolves it. */
-  agentic?: boolean;
   tagIds?: number[];
   timeScope?: TimeScope;
   children?: CorpusNode[];
@@ -72,13 +69,7 @@ interface CorpusFilter {
   startHidesCheckedWaits?: boolean;
   startShowsStarted?: boolean;
   doShowsStarted?: boolean;
-  startHidesAgentic?: boolean;
 }
-
-/** One of the two evaluators the corpus holds to. */
-type Side = "app" | "mcp";
-
-const SIDES: readonly Side[] = ["app", "mcp"];
 
 /** One case: a board, a filter, and what each of the three surfaces keeps. */
 interface CorpusCase {
@@ -91,8 +82,6 @@ interface CorpusCase {
   commitments: string[];
   /** The Expectation rows the List View keeps — empty on a board with none. */
   expectations: string[];
-  /** The evaluators the case holds to; both unless it says otherwise. */
-  sides: readonly Side[];
 }
 
 interface Corpus {
@@ -151,7 +140,6 @@ function parseNode(value: unknown, what: string): CorpusNode {
     ...flag(raw.isHabitOccurrence, "isHabitOccurrence", what),
     ...flag(raw.delegated, "delegated", what),
     ...flag(raw.hasCheck, "hasCheck", what),
-    ...flag(raw.agentic, "agentic", what),
     ...(raw.timeScope !== undefined ? { timeScope: parseTimeScope(raw.timeScope, `${what}.timeScope`) } : {}),
   };
 }
@@ -241,13 +229,7 @@ function parseFilter(value: unknown, what: string): CorpusFilter {
     ...flag(raw.startHidesCheckedWaits, "startHidesCheckedWaits", what),
     ...flag(raw.startShowsStarted, "startShowsStarted", what),
     ...flag(raw.doShowsStarted, "doShowsStarted", what),
-    ...flag(raw.startHidesAgentic, "startHidesAgentic", what),
   };
-}
-
-function parseSides(value: unknown, what: string): readonly Side[] {
-  if (value === undefined) return SIDES;
-  return ids(value, what).map((side) => SIDES.find((candidate) => candidate === side) ?? fail(`${what} names no side: ${side}`));
 }
 
 function parseCorpus(): Corpus {
@@ -270,7 +252,6 @@ function parseCorpus(): Corpus {
         list: ids(value.list, `cases[${name}].list`),
         commitments: ids(value.commitments, `cases[${name}].commitments`),
         expectations: value.expectations === undefined ? [] : ids(value.expectations, `cases[${name}].expectations`),
-        sides: parseSides(value.sides, `cases[${name}].sides`),
       };
     }),
     boards: Object.fromEntries(
@@ -309,7 +290,6 @@ function toMindmapNode(node: CorpusNode): MindmapNode {
     ...(node.isHabitOccurrence === true ? occurrenceRow() : {}),
     ...(node.delegated === true ? { delegate: { kind: "agent" as const } } : {}),
     ...(node.hasCheck === true ? { checkEvery: { n: 1, kind: "day" } } : {}),
-    ...(node.agentic !== undefined ? { agentic: node.agentic } : {}),
     ...(node.timeScope !== undefined ? { timeScope: node.timeScope } : {}),
   };
 }
@@ -333,7 +313,6 @@ function toSharedFilter(filter: CorpusFilter): FilterState {
     ...(filter.startHidesCheckedWaits !== undefined ? { startHidesCheckedWaits: filter.startHidesCheckedWaits } : {}),
     ...(filter.startShowsStarted !== undefined ? { startShowsStarted: filter.startShowsStarted } : {}),
     ...(filter.doShowsStarted !== undefined ? { doShowsStarted: filter.doShowsStarted } : {}),
-    ...(filter.startHidesAgentic !== undefined ? { startHidesAgentic: filter.startHidesAgentic } : {}),
   };
 }
 
@@ -366,12 +345,10 @@ describe("preset conformance corpus", () => {
     }
   });
 
-  for (const testCase of corpus.cases.filter((candidate) => candidate.sides.includes("app"))) {
+  for (const testCase of corpus.cases) {
     describe(testCase.name, () => {
       const board = corpus.boards[testCase.board];
       const root = toMindmapNode(board ?? fail(`no board named ${testCase.board}`));
-      // The board resolves inherited Agentic on load; a corpus board is loaded here.
-      propagateAgentic(root, false);
       const shared = toSharedFilter(testCase.filter);
       const listFilter = toListFilter(testCase.filter);
 

@@ -98,7 +98,8 @@ impl ArleshMcp {
             Err(error) => return result::failed(error),
         };
         let now = self.now();
-        let board = attempt!(Board::read(&mut db, now).await);
+        let board =
+            attempt!(Board::read(&mut db, now, self.capacity.get().await.at_capacity).await);
 
         let write = match operation {
             TasksOperation::Get { id } => return get(&mut db, &board, &id).await,
@@ -330,6 +331,16 @@ async fn get(db: &mut Db<Transactional>, board: &Board, id: &NodeIdParam) -> Ans
     let dependencies = attempt!(db.tasks().list_dependencies(TaskId(row)).await);
     access::restrict_task(&mut found.task, &board.map);
     access::restrict_block_reasons(&mut found.block_reasons, &dependencies, &board.map);
+    // The derived reasons — the agent capacity lock's — are on the board, not in the table.
+    found.block_reasons.extend(
+        board
+            .load
+            .block_reasons
+            .iter()
+            .filter(|reason| reason.derived.is_some())
+            .filter(|reason| reason.owner_type == "task" && reason.owner_id == NodeId::Stored(row))
+            .map(|reason| reason.reason.clone()),
+    );
     let mut found = serde_json::to_value(found).unwrap_or(Value::Null);
     if let Some(task) = found.get_mut("task") {
         board.names.stamp(task, NodeTable::Task);

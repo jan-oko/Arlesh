@@ -7,6 +7,12 @@ export interface BlockReason {
   owner_id: RowId;
   reason: string;
   position: number;
+  /**
+   * Present on a reason the backend **derived** rather than stored — `agent_capacity`: the agent
+   * capacity lock is on and the owner is an Agentic Task not yet Done. No one wrote it and no editor
+   * removes it; only clearing the lock does.
+   */
+  derived?: "agent_capacity";
 }
 
 /** Every explicit block reason across all tasks and goals (for the mindmap bulk load). */

@@ -130,7 +130,6 @@ function readFilterState(value: unknown): FilterState {
   delete merged.startHidesCheckedWaits;
   delete merged.startShowsStarted;
   delete merged.doShowsStarted;
-  delete merged.startHidesAgentic;
   return { ...merged, planScope: scopeKeyFrom(merged.planScope) };
 }
 

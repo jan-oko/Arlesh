@@ -458,6 +458,7 @@ impl WaitRows {
                     owner_id: id.clone(),
                     reason,
                     position: i64::try_from(position).unwrap_or(i64::MAX),
+                    derived: None,
                 });
             }
         }

@@ -351,13 +351,22 @@ export function buildTree(
   delegationWaitTitle: (taskTitle: string) => string = (taskTitle) => taskTitle,
   /** The title a wait's check task is drawn with, from the wait's own: the settings' prefix. */
   checkTitle: (waitTitle: string) => string = (waitTitle) => waitTitle,
+  /** How the agent capacity lock's derived reason reads, in place of the backend's English. */
+  capacityReason = "Agents at capacity",
 ): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
-  // Explicit block reasons, grouped per owner in stored (position) order.
+  // Explicit block reasons, grouped per owner in stored (position) order. A reason the backend
+  // derived — the agent capacity lock's — is not the owner's to edit, so it is kept apart and drawn
+  // among the virtual blockers.
   const manualBlockers = new Map<string, string[]>();
+  const capacityBlocked = new Set<string>();
   for (const br of blockReasons) {
     const key = `${br.owner_type}-${br.owner_id}`;
+    if (br.derived !== undefined) {
+      capacityBlocked.add(key);
+      continue;
+    }
     const list = manualBlockers.get(key);
     if (list === undefined) manualBlockers.set(key, [br.reason]);
     else list.push(br.reason);
@@ -412,7 +421,8 @@ export function buildTree(
       ...(isCheck ? { rowTitle: task.title } : {}),
       status: task.status,
       blockReasons: manualBlockers.get(`task-${task.id}`) ?? [],
-      virtualBlockers: [],
+      virtualBlockers: capacityBlocked.has(`task-${task.id}`) ? [capacityReason] : [],
+      ...(capacityBlocked.has(`task-${task.id}`) ? { capacityBlocked: true } : {}),
       timeScope: task.time_scope,
       onScopeExit: task.on_scope_exit,
       plan: task.plan,
@@ -808,14 +818,16 @@ async function loadMcpVisibility(): Promise<McpVisibility[]> {
 }
 
 export function useMindmapData(): MindmapData {
-  const { t } = useTranslation(["undo", "expectation"]);
+  const { t } = useTranslation(["undo", "expectation", "editor"]);
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
   // Read through a ref, set in an effect, so `load` does not change identity with `t` — which
   // would re-run the mount effect and reload for nothing. Declared before that effect, so the
   // first load already has it.
   const delegationWaitTitle = useRef((title: string) => title);
+  const capacityReason = useRef("Agents at capacity");
   useEffect(() => {
     delegationWaitTitle.current = (title: string) => t("expectation:delegationWaitTitle", { title });
+    capacityReason.current = t("editor:agentsAtCapacity");
   }, [t]);
   // A check task is titled `{prefix}{wait title}`, the prefix a display setting. Unlike the
   // translation above it is a dependency of `load`: changing it redraws the board with the new
@@ -851,7 +863,7 @@ export function useMindmapData(): MindmapData {
           data.flow_goals, data.flow_tasks, data.flow_cycles, data.flow_dependencies,
           data.block_reasons, data.task_dependencies, data.flow_instance_nodes,
           data.expectations, (title) => delegationWaitTitle.current(title),
-          (title) => `${checkPrefix}${title}`,
+          (title) => `${checkPrefix}${title}`, capacityReason.current,
         );
         applyLifecycles(built, lifecycleMap(data.lifecycles));
         // A Habit's occurrences are ordinary rows, already built into the tree above. A flow whose

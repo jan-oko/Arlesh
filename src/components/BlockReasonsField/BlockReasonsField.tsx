@@ -6,14 +6,17 @@ interface Props {
   onChange: (reasons: string[]) => void;
   /** Derived "Blocked by …" reasons from unmet dependencies — shown read-only, not editable here. */
   virtualBlockers?: string[];
+  /** Blocked by the agent capacity lock — shown read-only, removed only by clearing the lock. */
+  capacityBlocked?: boolean;
 }
 
 /**
  * Edits a task/goal's ordered list of explicit block reasons — each an inline text row that can be
  * removed, plus an "add" button. Any **virtual** blockers (from unmet dependencies) follow as
  * immutable rows so the full blocked picture is visible; they're changed by editing the dependencies.
+ * The agent capacity lock's reason follows in a group of its own: nothing in the editor changes it.
  */
-export default function BlockReasonsField({ reasons, onChange, virtualBlockers = [] }: Props) {
+export default function BlockReasonsField({ reasons, onChange, virtualBlockers = [], capacityBlocked = false }: Props) {
   const { t } = useTranslation("editor");
   return (
     <div className={styles.label}>
@@ -46,6 +49,12 @@ export default function BlockReasonsField({ reasons, onChange, virtualBlockers =
             {virtualBlockers.map((reason, i) => (
               <div key={`v-${i}`} className={styles.virtualBlockerRow}>{reason}</div>
             ))}
+          </div>
+        )}
+        {capacityBlocked && (
+          <div className={styles.virtualBlockers}>
+            <span className={styles.virtualBlockersLabel}>{t("capacityBlockLabel")}</span>
+            <div className={styles.virtualBlockerRow}>{t("agentsAtCapacity")}</div>
           </div>
         )}
       </div>

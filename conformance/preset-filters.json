@@ -17,13 +17,7 @@
     "`filter.expectations` is the List View's Expectations option, which, like Unblock, leaves the",
     "preset where it was. A case's `expectations` lists the Expectation rows the List View keeps;",
     "omitted, it is empty. A delegated Task's virtual Expectation and an Expectation's virtual",
-    "check task are written into a board as the ordinary nodes they are drawn as.",
-    "",
-    "`sides` names the evaluators a case holds to: `app` (the frontend's predicates) and `mcp`",
-    "(`crate::filters`). Omitted, both. A rule only one side has names that side alone — the agent",
-    "capacity lock (`filter.startHidesAgentic`) hides Agentic work from the app's Start and is",
-    "deliberately absent from the MCP's filter, so its case is `app` only. A node's `agentic` is its",
-    "own flag; the frontend resolves inheritance from it, as the board does on load."
+    "check task are written into a board as the ordinary nodes they are drawn as."
   ],
   "cases": [
     {
@@ -1642,30 +1636,17 @@
       "commitments": []
     },
     {
-      "name": "start shows agentic work while agents have room",
-      "spec": "mcp-server.md, Agent capacity — the lock hides nothing while it is off, and the MCP's Start filter never reads it: an agent's Start is this, lock or no lock.",
+      "name": "agents at capacity: start drops every agentic task not done, with its subtree",
+      "spec": "mcp-server.md, Agent capacity — while the lock is on, every Agentic Task not yet Done is derived blocked (the backend adds the reason; the facts here are what it derives: task-agentic-child inherits Agentic, task-opted-out is marked Not agentic, task-agentic-done is Done). A blocked Task drops from Start together with its subtree, so the Not-agentic child under an Agentic parent goes too; an Agentic wait is not a Task and is not blocked: on the Mindmap it goes with the Task it hangs under, and the List View's waits still list it.",
       "filter": {
         "preset": "start"
       },
-      "board": "agentic",
+      "board": "agent-capacity",
       "mindmap": [
         "domain-agentic",
-        "expectation-agentic",
-        "task-agentic-child",
-        "task-agentic-inprogress",
-        "task-agentic-parent",
-        "task-agentic-started",
-        "task-agentic-todo",
-        "task-opted-out",
         "task-plain"
       ],
       "list": [
-        "task-agentic-child",
-        "task-agentic-inprogress",
-        "task-agentic-parent",
-        "task-agentic-started",
-        "task-agentic-todo",
-        "task-opted-out",
         "task-plain"
       ],
       "commitments": [],
@@ -1674,32 +1655,34 @@
       ]
     },
     {
-      "name": "while agents are at capacity, start hides every agentic task that is not done",
-      "spec": "mcp-server.md, Agent capacity — while the lock is on (and its setting lets it hide), the app's Start hides every Agentic Task not yet Done, an In Progress one with a To Do child included; it fails the Task's own match, so a child marked Not agentic keeps its parent as an ancestor. Agentic waits show as normal. App only: the MCP's filter has no such field.",
-      "sides": [
-        "app"
-      ],
+      "name": "agents at capacity: unblock lists the agentic tasks the lock blocks",
+      "spec": "mcp-server.md, Agent capacity — a capacity-blocked Task is blocked like any other, so the List View's Unblock lists it.",
       "filter": {
-        "preset": "start",
-        "startHidesAgentic": true
+        "preset": "all",
+        "unblock": true
       },
-      "board": "agentic",
+      "board": "agent-capacity",
       "mindmap": [
         "domain-agentic",
         "expectation-agentic",
+        "task-agentic-child",
+        "task-agentic-done",
+        "task-agentic-inprogress",
         "task-agentic-parent",
+        "task-agentic-started",
         "task-agentic-todo",
         "task-opted-out",
         "task-plain"
       ],
       "list": [
-        "task-opted-out",
-        "task-plain"
+        "task-agentic-child",
+        "task-agentic-inprogress",
+        "task-agentic-parent",
+        "task-agentic-started",
+        "task-agentic-todo"
       ],
       "commitments": [],
-      "expectations": [
-        "expectation-agentic"
-      ]
+      "expectations": []
     }
   ],
   "boards": {
@@ -2716,7 +2699,7 @@
         }
       ]
     },
-    "agentic": {
+    "agent-capacity": {
       "id": "root",
       "kind": "aspect",
       "children": [
@@ -2729,53 +2712,52 @@
               "id": "task-agentic-todo",
               "kind": "task",
               "status": "todo",
-              "agentic": true,
               "children": [
                 {
                   "id": "expectation-agentic",
                   "kind": "expectation",
                   "status": "pending"
                 }
-              ]
+              ],
+              "isBlocked": true
             },
             {
               "id": "task-agentic-started",
               "kind": "task",
               "status": "started",
-              "agentic": true
+              "isBlocked": true
             },
             {
               "id": "task-agentic-inprogress",
               "kind": "task",
               "status": "in_progress",
-              "agentic": true,
               "children": [
                 {
                   "id": "task-agentic-child",
                   "kind": "task",
-                  "status": "todo"
+                  "status": "todo",
+                  "isBlocked": true
                 }
-              ]
+              ],
+              "isBlocked": true
             },
             {
               "id": "task-agentic-parent",
               "kind": "task",
               "status": "in_progress",
-              "agentic": true,
               "children": [
                 {
                   "id": "task-opted-out",
                   "kind": "task",
-                  "status": "todo",
-                  "agentic": false
+                  "status": "todo"
                 }
-              ]
+              ],
+              "isBlocked": true
             },
             {
               "id": "task-agentic-done",
               "kind": "task",
-              "status": "done",
-              "agentic": true
+              "status": "done"
             },
             {
               "id": "task-plain",

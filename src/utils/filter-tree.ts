@@ -8,7 +8,6 @@ import type { ScopeKey } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import { intervalContains, intervalsOverlap } from "@/utils/scope-interval";
 import { keyWindow, timeScopeWindowOf } from "@/utils/scope-window";
-import { isAgentic } from "@/utils/agentic";
 
 /** Status preset a filter is in. `all` disables status filtering; `backlog` inverts it, showing
  * only what has been deliberately set aside. */
@@ -95,13 +94,6 @@ export interface FilterState {
    * filled in by the views (see `use-board-filter`). Absent reads as **on**.
    */
   startShowsStarted?: boolean;
-  /**
-   * Whether **Start** hides every Agentic Task that is not Done: on while the **agent capacity
-   * lock** is on and its setting lets it hide. **Not persisted with the tab**: the views fill it in
-   * (see `use-board-filter`). Absent reads as **off**. App-side only — the MCP's filter has no such
-   * field, so an agent's own Start read never hides its work.
-   */
-  startHidesAgentic?: boolean;
   /**
    * Whether **Do** shows a **Started** Task beside the In Progress ones. **Not persisted with the
    * tab**: an app-wide setting, filled in by the views; the Zen View puts its own there. Absent
@@ -416,30 +408,15 @@ function passesStatus(
 /**
  * Start's rule on a Task's own status: never Done; In Progress only while it still has something
  * to start (a direct To Do child); **Started** by the app-wide setting, on by default — a paused
- * task is something to pick back up; and, while `startHidesAgentic` is on (the agent capacity lock),
- * no Agentic Task at all. Shared by the Mindmap and the List View; mirrors
+ * task is something to pick back up. Shared by the Mindmap and the List View; mirrors
  * `passes_start` in `src-tauri/src/filters/rules.rs`.
  */
 export function passesStartStatus(node: MindmapNode, f: FilterState): boolean {
   if (node.status === "done") return false;
-  // Agents are at capacity: no Agentic work is anybody's to start now.
-  if (hidesForCapacity(node, f)) return false;
   // An in-progress task with nothing left to start (no direct todo child) drops out.
   if (node.status === "in_progress") return node.children.some((c) => c.kind === "task" && c.status === "todo");
   if (node.status === "started") return f.startShowsStarted !== false;
   return true;
-}
-
-/**
- * Whether the agent capacity lock takes `node` out of Start: any **Agentic** Task that is not Done
- * — To Do, Started, and In Progress too, even one a To Do child would otherwise keep (ruled by the
- * user, 2026-09-30) — while `startHidesAgentic` is on. It fails the Task's own match only, so a
- * child that still shows (a Task marked Not agentic) keeps it on screen as its ancestor. Agentic
- * waits are not Tasks and are untouched. App-side only; the Rust `passes_start` has no counterpart,
- * deliberately (see `docs/spec/mcp-server.md`, "Agent capacity").
- */
-function hidesForCapacity(node: MindmapNode, f: FilterState): boolean {
-  return f.startHidesAgentic === true && isAgentic(node);
 }
 
 /**

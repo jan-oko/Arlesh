@@ -488,51 +488,57 @@ Passing `null` clears the link. Setting one on an item that does not exist is an
 
 ## Agent capacity
 
-Ruled with the user on 2026-09-30 (`cdd`). The **agent capacity lock** is one app-wide on/off state
-meaning "agents are at capacity". An agent — or whoever runs a fleet of them — sets it with
+Ruled with the user on 2026-09-30 and revised on 2026-10-01 (`cdd`): "it essentially acts like a
+dependency of agentic tasks. When it's on, these tasks are derived blocked. The rest of the logic
+should follow." The **agent capacity lock** is one app-wide on/off state meaning "agents are at
+capacity". An agent — or whoever runs a fleet of them — sets it with
 `arlesh_capacity.set(at_capacity: true)` when it cannot take on more Agentic work and clears it with
 `at_capacity: false` as soon as there is room; `get` reads it. The user sets and clears it too.
 Both answer `{"at_capacity": bool}`.
 
-**What it does.** While it is on, the app's **Start** preset — in every view that has it — hides
-every **Agentic Task that is not Done**: To Do, Started, and In Progress, including an In Progress
-one a To Do child would otherwise keep on Start. It fails the Task's own match, so a child that still
-shows (a Task marked Not agentic) keeps its parent on screen as an ancestor, as every such rule
-does. **Agentic waits** are not Tasks and show as normal. No other preset changes.
+**What it does.** While it is on, every **Agentic Task not yet Done** — To Do, Started or In
+Progress; its own flag or inherited, by the rule the board is drawn by — is **blocked**, with the
+derived reason **Agents at capacity**. Everything blocked already does follows, here and in the
+app alike: the snapshot's `block_reasons` section carries the reason (marked
+`"derived": "agent_capacity"`), `arlesh_tasks.get` lists it among the task's block reasons, Start
+drops the task with its subtree, Unblock lists it, and the app shows the stop-sign and refuses to
+start it. **Agentic waits** are not Tasks and are never blocked by it. See
+[*Tasks*](resources.md), *Blockers*.
 
-**Not for agents.** The snapshot's own Start filter **ignores** the lock: agents still see the
-work. `BoardFilter` has no field for it — a field there would be one an agent could set from the
-snapshot's `filter` — and the Rust filter never learns whether a node is Agentic at all. The rule
-lives only in the frontend's filter (see [*Filtering Logic*](filtering-logic.md)).
+**One derivation.** `capacity::blocks` runs over a board load and appends the reasons to its
+`block_reasons`, before anything reads it: the app's `load_mindmap`, the snapshot, and the board
+every `arlesh_tasks` / `arlesh_waits` / `arlesh_infos` call reads (before the roots cut it, since
+whether a Task reads as Agentic can come from above them). The filters, the snapshot and the app
+never learn the lock exists; they see a block. Neither the lifecycles nor `BoardFilter` change.
 
-**The setting.** *Hide Agentic tasks from Start while agents are at capacity* (Settings → MCP
-access, **on** by default, app-wide, in the persisted `arlesh-display` store as
-`startHidesAgenticAtCapacity`) decides whether the lock hides anything, not whether it is on: with
-it off the lock is still recorded and still shown, and Start shows what it otherwise would.
+**Agents may carry on.** `arlesh_tasks.set_status` has never checked blocks and still does not:
+an agent that already holds work may move it along — into In Progress included — while the lock is
+on. Only the app refuses to start a blocked Task, as it does for any block.
 
 **Where it lives.** A file in the app's data directory, `agent-capacity.json`, beside the port's
 `mcp.json` and for the same reason: it is operational state about the agents working this board,
 not board data. A row would be journaled, and Ctrl+Z would flip the lock; so there is no
-migration, and setting it is never an undoable step. One `AgentCapacity` in the backend holds it for
-the Tauri commands (`agent_capacity`, `set_agent_capacity`) and every MCP session. It survives a
-restart and starts **off** on a fresh install, or when its file cannot be read — a lock nobody can
-read must not hide work.
+migration, and setting it is never an undoable step. One `AgentCapacity` in the backend holds it
+for the Tauri commands (`agent_capacity`, `set_agent_capacity`) and every MCP session. It survives
+a restart and starts **off** on a fresh install, or when its file cannot be read — a lock nobody can
+read must not block work.
 
-**Live in every window.** Each change, from the app or the MCP, is announced to **every** window as
-the `agent-capacity-changed` event carrying the new state — through the same per-window `emit_to` and
-`listenHere` door `board-changed` uses, so nothing in `crate::mcp` knows what a window is. Every
-window, the one that set it included, because the payload is the state rather than a signal to
-reload. A window reads the lock once on start and then takes each announcement.
+**Live in every window.** Each change, from the app or the MCP, is announced to **every** window
+twice over, through the per-window `emit_to` / `listenHere` door `board-changed` uses (so nothing in
+`crate::mcp` knows what a window is): as `agent-capacity-changed`, carrying the new state, which the
+Settings switch and the top-bar indicator read; and as an ordinary `board-changed`, so every window
+— the one that flipped it included — takes the same reload any board change gets and re-derives the
+block with it. A window reads the lock once on start and then takes each announcement.
 
-**In the app.** The Settings switch above sits beside its own switch, **Agents are at capacity**,
-which sets and clears the lock. While the lock is on, the top bar shows an amber **Agents at
-capacity** pill beside the Filter button; its hover says whether Start is hiding Agentic tasks
-because of it (or that the setting is off), and a click clears the lock.
+**In the app.** Settings → MCP access → *Agent capacity* has the lock's switch, **Agents are at
+capacity**. While the lock is on, the top bar shows an amber **Agents at capacity** pill beside the
+Filter button; its hover says every Agentic task not yet done is blocked, and a click clears the
+lock. There is no setting for whether the lock blocks: the lock is the only control.
 
 ## What writes
 
 `arlesh_tasks`, `arlesh_beads`, `arlesh_waits` and `arlesh_infos` write to the board, and
-`arlesh_capacity` sets the agent capacity lock, which is no part of the board and not journaled; every other tool is annotated
+`arlesh_capacity` sets the agent capacity lock, which is stored apart from the board and not journaled; every other tool is annotated
 `read_only_hint = true` and writes nothing at all.
 `arlesh_snapshot` used to be the exception: deriving a Habit's iterations minted the scope rows
 their windows landed on, and it had to commit them or the payload would name ids that no longer

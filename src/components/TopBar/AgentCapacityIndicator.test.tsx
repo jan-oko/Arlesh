@@ -3,7 +3,6 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import AgentCapacityIndicator from "./AgentCapacityIndicator";
 import { setAgentCapacity } from "@/api/agent-capacity";
 import { useAgentCapacityStore } from "@/stores/use-agent-capacity-store";
-import { useDisplayStore } from "@/stores/use-display-store";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -15,7 +14,6 @@ vi.mock("@/api/agent-capacity", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useDisplayStore.setState({ startHidesAgenticAtCapacity: true });
 });
 
 describe("AgentCapacityIndicator", () => {
@@ -26,21 +24,13 @@ describe("AgentCapacityIndicator", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("says agents are at capacity, and that Start is hiding their tasks", () => {
+  it("says agents are at capacity, and what that blocks", () => {
     useAgentCapacityStore.setState({ atCapacity: true });
     render(<AgentCapacityIndicator />);
 
     const indicator = screen.getByRole("button", { name: "agentCapacity.clear" });
     expect(indicator.textContent).toContain("agentCapacity.indicator");
-    expect(indicator.getAttribute("title")).toBe("agentCapacity.titleHiding");
-  });
-
-  it("says Start still shows them when the setting is off", () => {
-    useAgentCapacityStore.setState({ atCapacity: true });
-    useDisplayStore.setState({ startHidesAgenticAtCapacity: false });
-    render(<AgentCapacityIndicator />);
-
-    expect(screen.getByRole("button").getAttribute("title")).toBe("agentCapacity.titleShowing");
+    expect(indicator.getAttribute("title")).toBe("agentCapacity.title");
   });
 
   it("clears the lock on click", async () => {

@@ -200,6 +200,9 @@ export interface MindmapNode {
   blockReasons?: string[];
   /** Derived, read-only "Blocked by …" reasons from this task's unmet dependencies. */
   virtualBlockers?: string[];
+  /** Blocked by the **agent capacity lock** (Tasks only): the backend derived it, and its reason is
+   * among `virtualBlockers`. Only clearing the lock removes it. */
+  capacityBlocked?: boolean;
   knowledgeBaseDirectory?: string | null;
   /** Optional multi-line details on an `info` node (e.g. a traceback). */
   infoDetails?: string | null;
