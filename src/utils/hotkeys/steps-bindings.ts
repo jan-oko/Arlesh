@@ -1,4 +1,4 @@
-import type { Binding } from "./chord";
+import { inGroup, type Binding } from "./chord";
 import type { StepsSelectionContext, StepsTarget } from "./steps/selection";
 import { STEPS_CREATE_BINDINGS, type StepsCreateContext } from "./steps/create";
 import { STEPS_DELETE_BINDINGS, type StepsDeleteContext } from "./steps/delete";
@@ -57,20 +57,20 @@ export interface StepsContext extends
  * `chord-sharing.test.ts` fails on any chord that becomes shared without being declared.
  */
 export const STEPS_BINDINGS: readonly Binding<StepsContext>[] = [
-  ...STEPS_FULLSCREEN_BINDINGS,
-  ...STEPS_STATUS_PRESET_BINDINGS,
-  ...STEPS_NAVIGATE_BINDINGS,
-  ...STEPS_DESCEND_BINDINGS,
-  ...STEPS_PAGE_BINDINGS,
-  ...STEPS_ZOOM_BINDINGS,
-  ...STEPS_STATUS_BINDINGS,
-  ...STEPS_FLAGS_BINDINGS,
-  ...STEPS_PLAN_BINDINGS,
-  ...STEPS_DEPENDENCY_BINDINGS,
-  ...STEPS_EXPECTATION_BINDINGS,
-  ...STEPS_EDITOR_BINDINGS,
-  ...STEPS_CREATE_BINDINGS,
-  ...STEPS_DELETE_BINDINGS,
-  ...STEPS_DESELECT_BINDINGS,
-  ...STEPS_HISTORY_BINDINGS,
+  ...inGroup("groupDisplay", STEPS_FULLSCREEN_BINDINGS),
+  ...inGroup("groupPresets", STEPS_STATUS_PRESET_BINDINGS),
+  ...inGroup("groupMove", STEPS_NAVIGATE_BINDINGS),
+  ...inGroup("groupMove", STEPS_DESCEND_BINDINGS),
+  ...inGroup("groupMove", STEPS_PAGE_BINDINGS),
+  ...inGroup("groupDisplay", STEPS_ZOOM_BINDINGS),
+  ...inGroup("groupEdit", STEPS_STATUS_BINDINGS),
+  ...inGroup("groupEdit", STEPS_FLAGS_BINDINGS),
+  ...inGroup("groupEdit", STEPS_PLAN_BINDINGS),
+  ...inGroup("groupEdit", STEPS_DEPENDENCY_BINDINGS),
+  ...inGroup("groupEdit", STEPS_EXPECTATION_BINDINGS),
+  ...inGroup("groupEdit", STEPS_EDITOR_BINDINGS),
+  ...inGroup("groupCreate", STEPS_CREATE_BINDINGS),
+  ...inGroup("groupEdit", STEPS_DELETE_BINDINGS),
+  ...inGroup("groupMove", STEPS_DESELECT_BINDINGS),
+  ...inGroup("groupEdit", STEPS_HISTORY_BINDINGS),
 ];

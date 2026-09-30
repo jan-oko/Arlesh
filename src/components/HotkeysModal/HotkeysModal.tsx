@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { BindingMeta, Chord, HotkeyLabelKey, Section } from "@/utils/hotkeys/chord";
-import { formatChord } from "@/utils/hotkeys/chord";
+import type { BindingMeta, Chord, HotkeyGroup, HotkeyLabelKey, Section } from "@/utils/hotkeys/chord";
+import { formatChord, HOTKEY_GROUPS } from "@/utils/hotkeys/chord";
+import type { View } from "@/stores/use-view-store";
 import { GLOBAL_BINDINGS } from "@/utils/hotkeys/global-bindings";
 import { TAB_BINDINGS } from "@/utils/hotkeys/tab-bindings";
 import { MINDMAP_BINDINGS } from "@/utils/hotkeys/mindmap-bindings";
@@ -16,7 +17,12 @@ import styles from "./HotkeysModal.module.css";
 
 interface Props {
   onClose: () => void;
+  /** The view the sheet was opened over: it opens on that view's tab. None opens on Global. */
+  view?: View | undefined;
 }
+
+/** A tab of the sheet: a binding section, or one of the two lists of keys that are not bindings. */
+type SheetKey = Section | "filters" | "scopePicker";
 
 const SECTIONS: ReadonlyArray<{ section: Section; titleKey: HotkeyLabelKey }> = [
   { section: "global", titleKey: "sectionGlobal" },
@@ -28,6 +34,14 @@ const SECTIONS: ReadonlyArray<{ section: Section; titleKey: HotkeyLabelKey }> = 
   { section: "zenView", titleKey: "sectionZenView" },
 ];
 
+const VIEW_SECTION: Readonly<Record<View, Section>> = {
+  mindmap: "mindmap",
+  list: "listView",
+  plan: "planView",
+  steps: "stepsView",
+  zen: "zenView",
+};
+
 /** Every binding in the app, display-side only — the same tables the handlers dispatch from. */
 const ALL_BINDINGS: readonly BindingMeta[] = [
   ...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS, ...PLAN_BINDINGS,
@@ -37,6 +51,7 @@ const ALL_BINDINGS: readonly BindingMeta[] = [
 interface Row {
   labelKey: HotkeyLabelKey;
   chords: string[];
+  group: HotkeyGroup | null;
 }
 
 /**
@@ -44,12 +59,14 @@ interface Row {
  * as a single "← → ↑ ↓ move between cells" row rather than four identical lines. Order follows each
  * action's first appearance in the table.
  */
-function groupRows(entries: ReadonlyArray<{ labelKey: HotkeyLabelKey; chord: Chord }>): Row[] {
+function groupRows(
+  entries: ReadonlyArray<{ labelKey: HotkeyLabelKey; chord: Chord; group?: HotkeyGroup }>,
+): Row[] {
   const rows: Row[] = [];
   for (const entry of entries) {
     const chord = formatChord(entry.chord);
     const existing = rows.find((r) => r.labelKey === entry.labelKey);
-    if (existing === undefined) rows.push({ labelKey: entry.labelKey, chords: [chord] });
+    if (existing === undefined) rows.push({ labelKey: entry.labelKey, chords: [chord], group: entry.group ?? null });
     else if (!existing.chords.includes(chord)) existing.chords.push(chord);
   }
   return rows;
@@ -64,10 +81,14 @@ interface SheetRow {
   key: string;
   chords: string[];
   description: string;
+  group: HotkeyGroup | null;
 }
 
 interface SheetSection {
-  key: string;
+  key: SheetKey;
+  /** The tab's name. */
+  tab: string;
+  /** The heading over its rows in search results — the tab's name, or a longer one. */
   title: string;
   rows: SheetRow[];
 }
@@ -75,7 +96,9 @@ interface SheetSection {
 type Translate = (key: HotkeyLabelKey) => string;
 
 function sheetRows(rows: readonly Row[], translate: Translate): SheetRow[] {
-  return rows.map((row) => ({ key: row.labelKey, chords: row.chords, description: translate(row.labelKey) }));
+  return rows.map((row) => ({
+    key: row.labelKey, chords: row.chords, description: translate(row.labelKey), group: row.group,
+  }));
 }
 
 /** The filter gestures: how a value is added in each mode, cycled and removed. Keys and clicks,
@@ -88,23 +111,26 @@ function filterGesturesSection(translate: Translate): SheetSection {
       ...(gesture.clickKey === null ? [] : [translate(gesture.clickKey)]),
     ],
     description: translate(gesture.labelKey),
+    group: null,
   }));
-  return { key: "filters", title: translate("sectionFilters"), rows };
+  return { key: "filters", tab: translate("tabFilters"), title: translate("sectionFilters"), rows };
 }
 
 /** Keys that act inside any Scope Picker while it has the focus — not bindings of a view. */
 function scopePickerSection(translate: Translate): SheetSection {
   return {
     key: "scopePicker",
+    tab: translate("tabScopePicker"),
     title: translate("sectionScopePicker"),
     rows: sheetRows(groupRows(SCOPE_PICKER_KEYS), translate),
   };
 }
 
-/** Every section of the sheet, in the order it is drawn. */
+/** Every section of the sheet, in the order its tabs are drawn. */
 function sheetSections(translate: Translate): SheetSection[] {
   return SECTIONS.flatMap(({ section, titleKey }) => {
-    const drawn = { key: section, title: translate(titleKey), rows: sheetRows(rowsFor(section), translate) };
+    const title = translate(titleKey);
+    const drawn = { key: section, tab: title, title, rows: sheetRows(rowsFor(section), translate) };
     // The filter gestures sit right after the Global section, where Alt+F and Ctrl+F are.
     if (section === "global") return [drawn, filterGesturesSection(translate)];
     // The picker's keys follow the Plan View, whose `[` `]` `\` they borrow.
@@ -126,53 +152,113 @@ function searchSections(sections: readonly SheetSection[], query: string): Sheet
     .filter((section) => section.rows.length > 0);
 }
 
-function SheetSectionBlock({ section }: { section: SheetSection }) {
+interface RowBlock {
+  group: HotkeyGroup | null;
+  rows: SheetRow[];
+}
+
+/** Rows under their sub-headings, in `HOTKEY_GROUPS` order; rows with no group come first, bare. */
+function rowBlocks(rows: readonly SheetRow[]): RowBlock[] {
+  const blocks: RowBlock[] = [{ group: null, rows: rows.filter((row) => row.group === null) }];
+  for (const group of HOTKEY_GROUPS) blocks.push({ group, rows: rows.filter((row) => row.group === group) });
+  return blocks.filter((block) => block.rows.length > 0);
+}
+
+/** A section's rows, flowed into columns. A group keeps together; a bare row never splits. */
+function SectionRows({ rows }: { rows: readonly SheetRow[] }) {
+  const { t } = useTranslation(["hotkeys"]);
   return (
-    <section className={styles.section}>
-      <h3 className={styles.sectionTitle}>{section.title}</h3>
-      <dl className={styles.list}>
-        {section.rows.map((row) => (
-          <div key={row.key} className={styles.row}>
-            <dt className={styles.chord}>
-              {row.chords.map((chord) => <kbd key={chord}>{chord}</kbd>)}
-            </dt>
-            <dd className={styles.label}>{row.description}</dd>
+    <div className={styles.columns}>
+      {rowBlocks(rows).map((block) => {
+        const list = (
+          <dl className={styles.list}>
+            {block.rows.map((row) => (
+              <div key={row.key} className={styles.row}>
+                <dt className={styles.chord}>
+                  {row.chords.map((chord) => <kbd key={chord}>{chord}</kbd>)}
+                </dt>
+                <dd className={styles.label}>{row.description}</dd>
+              </div>
+            ))}
+          </dl>
+        );
+        if (block.group === null) return <Fragment key="ungrouped">{list}</Fragment>;
+        return (
+          <div key={block.group} className={styles.group}>
+            <h4 className={styles.groupTitle}>{t(`hotkeys:${block.group}`)}</h4>
+            {list}
           </div>
-        ))}
-      </dl>
-    </section>
+        );
+      })}
+    </div>
   );
 }
 
+function isArrowStep(event: KeyboardEvent): boolean {
+  const bare = !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
+  return bare && (event.code === "ArrowLeft" || event.code === "ArrowRight");
+}
+
 /**
- * Ctrl+Shift+/ cheat-sheet: every keyboard binding, grouped by the surface it applies to, with a
- * search field that narrows it to the rows whose description or keys hold what is typed.
+ * Ctrl+Shift+/ cheat-sheet: every keyboard binding, one tab per surface, opening on the view it was
+ * opened over. A search field narrows it to the rows whose description or keys hold what is typed,
+ * across every tab at once.
  */
-export default function HotkeysModal({ onClose }: Props) {
+export default function HotkeysModal({ onClose, view }: Props) {
   useInputCapture();
   const { t } = useTranslation(["hotkeys"]);
+  const hereKey: SheetKey | null = view === undefined ? null : VIEW_SECTION[view];
   const [query, setQuery] = useState("");
+  const [selectedKey, setSelectedKey] = useState<SheetKey>(hereKey ?? "global");
   const searchRef = useRef<HTMLInputElement>(null);
+  const tabRefs = useRef(new Map<SheetKey, HTMLButtonElement>());
+  const idPrefix = useId();
+  const tabId = (key: SheetKey) => `${idPrefix}-tab-${key}`;
+  const panelId = `${idPrefix}-panel`;
+
+  const sections = useMemo(() => sheetSections((key) => t(`hotkeys:${key}`)), [t]);
+  const searching = query.trim() !== "";
+  const shown = useMemo(() => searchSections(sections, query), [sections, query]);
+  const selected = sections.find((section) => section.key === selectedKey);
 
   useEffect(() => {
     searchRef.current?.focus();
   }, []);
 
   useEffect(() => {
-    // Esc empties a typed search first, so a second Esc is what closes the sheet.
+    /** ← / → step through the tabs, but only while the search is empty: with text typed they are
+     * the caret's. From a focused tab the focus follows, as a tablist's arrows do. */
+    function stepTab(event: KeyboardEvent) {
+      const keys = sections.map((section) => section.key);
+      const at = keys.indexOf(selectedKey);
+      const next = keys[(at + (event.code === "ArrowRight" ? 1 : keys.length - 1)) % keys.length];
+      if (next === undefined) return;
+      const onTab = [...tabRefs.current.values()].some((tab) => tab === document.activeElement);
+      setSelectedKey(next);
+      if (onTab) tabRefs.current.get(next)?.focus();
+    }
     function handleKeyDown(event: KeyboardEvent) {
+      if (isArrowStep(event) && query === "") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        stepTab(event);
+        return;
+      }
       if (event.code !== "Escape") return;
       event.preventDefault();
       event.stopImmediatePropagation();
+      // Esc empties a typed search first, so a second Esc is what closes the sheet.
       if (query !== "") setQuery("");
       else onClose();
     }
     window.addEventListener("keydown", handleKeyDown, { capture: true });
     return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
-  }, [onClose, query]);
+  }, [onClose, query, sections, selectedKey]);
 
-  const sections = useMemo(() => sheetSections((key) => t(`hotkeys:${key}`)), [t]);
-  const shown = useMemo(() => searchSections(sections, query), [sections, query]);
+  function pickTab(key: SheetKey) {
+    setSelectedKey(key);
+    setQuery("");
+  }
 
   return (
     <div className={styles.overlay} onClick={onClose}>
@@ -187,13 +273,45 @@ export default function HotkeysModal({ onClose }: Props) {
           placeholder={t("hotkeys:searchPlaceholder")}
           aria-label={t("hotkeys:searchPlaceholder")}
         />
-        {shown.length === 0 ? (
-          <p className={styles.noMatch}>{t("hotkeys:searchNoMatch", { query: query.trim() })}</p>
-        ) : (
-          <div className={styles.sections}>
-            {shown.map((section) => <SheetSectionBlock key={section.key} section={section} />)}
+        <div role="tablist" aria-label={t("hotkeys:sectionTabsLabel")} className={styles.tabs}>
+          {sections.map((section) => {
+            const isSelected = !searching && section.key === selectedKey;
+            return (
+              <button
+                key={section.key}
+                ref={(element) => {
+                  if (element === null) tabRefs.current.delete(section.key);
+                  else tabRefs.current.set(section.key, element);
+                }}
+                type="button"
+                role="tab"
+                id={tabId(section.key)}
+                aria-selected={isSelected}
+                aria-controls={isSelected ? panelId : undefined}
+                tabIndex={section.key === selectedKey ? 0 : -1}
+                className={styles.tab}
+                onClick={() => pickTab(section.key)}
+              >
+                {section.tab}
+                {section.key === hereKey && <span className={styles.here}>{t("hotkeys:tabHere")}</span>}
+              </button>
+            );
+          })}
+        </div>
+        {!searching && selected !== undefined && (
+          <div role="tabpanel" id={panelId} aria-labelledby={tabId(selected.key)}>
+            <SectionRows rows={selected.rows} />
           </div>
         )}
+        {searching && shown.length === 0 && (
+          <p className={styles.noMatch}>{t("hotkeys:searchNoMatch", { query: query.trim() })}</p>
+        )}
+        {searching && shown.map((section) => (
+          <section key={section.key} className={styles.result}>
+            <h3 className={styles.sectionTitle}>{section.title}</h3>
+            <SectionRows rows={section.rows} />
+          </section>
+        ))}
       </div>
     </div>
   );

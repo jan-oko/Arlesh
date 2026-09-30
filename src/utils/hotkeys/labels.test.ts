@@ -6,7 +6,8 @@ import { MINDMAP_BINDINGS } from "./mindmap-bindings";
 import { LIST_BINDINGS } from "./list-bindings";
 import { PLAN_BINDINGS } from "./plan-bindings";
 import { ZEN_BINDINGS } from "./zen-bindings";
-import type { BindingMeta } from "./chord";
+import { STEPS_BINDINGS } from "./steps-bindings";
+import type { BindingMeta, Section } from "./chord";
 
 const ALL: readonly BindingMeta[] = [
   ...GLOBAL_BINDINGS, ...TAB_BINDINGS, ...MINDMAP_BINDINGS, ...LIST_BINDINGS, ...PLAN_BINDINGS,
@@ -86,5 +87,30 @@ describe("cheat-sheet rows", () => {
     }
     const spanning = Object.fromEntries([...sections].filter(([, list]) => list.length > 1));
     expect(spanning).toEqual(LABELS_SPANNING_SECTIONS);
+  });
+});
+
+/**
+ * The long sections of the cheat-sheet are split under sub-headings; the short ones read as one
+ * list. A section is one or the other, never both — a row with no group in a grouped section would
+ * sit under no heading. So a binding added to a grouped section needs a `group`.
+ */
+const GROUPED_SECTIONS: readonly Section[] = ["global", "mindmap", "listView", "stepsView"];
+
+describe("cheat-sheet groups", () => {
+  const listed = [...ALL, ...STEPS_BINDINGS].filter((binding) => binding.hidden !== true);
+
+  it("gives every listed binding in a grouped section a group", () => {
+    const ungrouped = listed
+      .filter((binding) => GROUPED_SECTIONS.includes(binding.section) && binding.group === undefined)
+      .map((binding) => binding.id);
+    expect(ungrouped).toEqual([]);
+  });
+
+  it("gives none in a flat section a group", () => {
+    const grouped = listed
+      .filter((binding) => !GROUPED_SECTIONS.includes(binding.section) && binding.group !== undefined)
+      .map((binding) => binding.id);
+    expect(grouped).toEqual([]);
   });
 });
