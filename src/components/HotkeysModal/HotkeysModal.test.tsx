@@ -271,6 +271,53 @@ describe("HotkeysModal — search", () => {
   });
 });
 
+describe("HotkeysModal — scrolling", () => {
+  /** jsdom lays nothing out, so the body's scroll offset is recorded rather than measured. */
+  function trackScroll(): { body: HTMLElement; writes: number[] } {
+    const body = screen.getByTestId("hotkeys-body");
+    const writes: number[] = [];
+    let top = 0;
+    Object.defineProperty(body, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (value: number) => { top = value; writes.push(value); },
+    });
+    return { body, writes };
+  }
+
+  it("scrolls the body, below the fixed title, search and tabs", () => {
+    render(<HotkeysModal onClose={vi.fn()} view="mindmap" />);
+    const body = screen.getByTestId("hotkeys-body");
+    expect(body.className).toMatch(/body/);
+    expect(body).toContainElement(screen.getByRole("tabpanel"));
+    expect(body).not.toContainElement(screen.getByRole("searchbox"));
+    expect(body).not.toContainElement(screen.getByRole("tablist"));
+  });
+
+  it("when the tab or the query changes, puts the body back at its top", () => {
+    render(<HotkeysModal onClose={vi.fn()} view="mindmap" />);
+    const { body } = trackScroll();
+    body.scrollTop = 300;
+    openTab("hotkeys:sectionListView");
+    expect(body.scrollTop).toBe(0);
+    body.scrollTop = 300;
+    search("zoom");
+    expect(body.scrollTop).toBe(0);
+  });
+
+  it("when PgDn and PgUp are pressed in the search field, pages the body", () => {
+    render(<HotkeysModal onClose={vi.fn()} view="mindmap" />);
+    const { body } = trackScroll();
+    press("PageDown");
+    press("PageDown");
+    const paged = body.scrollTop;
+    expect(paged).toBeGreaterThan(0);
+    press("PageUp");
+    expect(body.scrollTop).toBeLessThan(paged);
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+  });
+});
+
 describe("HotkeysModal — closing", () => {
   it("when Escape is pressed with an empty search, closes", () => {
     const onClose = vi.fn();

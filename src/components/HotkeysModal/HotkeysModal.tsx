@@ -194,6 +194,20 @@ function SectionRows({ rows }: { rows: readonly SheetRow[] }) {
   );
 }
 
+function scrollBody(body: HTMLElement | null, by: number): void {
+  if (body !== null) body.scrollTop += by;
+}
+
+/** Scrolls the body a page, less a line of overlap so the reader keeps their place. */
+function pageBody(body: HTMLElement | null, direction: 1 | -1): void {
+  scrollBody(body, direction * Math.max((body?.clientHeight ?? 0) - 40, 40));
+}
+
+function isPageKey(event: KeyboardEvent): boolean {
+  const bare = !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
+  return bare && (event.code === "PageUp" || event.code === "PageDown");
+}
+
 function isArrowStep(event: KeyboardEvent): boolean {
   const bare = !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
   return bare && (event.code === "ArrowLeft" || event.code === "ArrowRight");
@@ -211,6 +225,7 @@ export default function HotkeysModal({ onClose, view }: Props) {
   const [query, setQuery] = useState("");
   const [selectedKey, setSelectedKey] = useState<SheetKey>(hereKey ?? "global");
   const searchRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef(new Map<SheetKey, HTMLButtonElement>());
   const idPrefix = useId();
   const tabId = (key: SheetKey) => `${idPrefix}-tab-${key}`;
@@ -225,6 +240,11 @@ export default function HotkeysModal({ onClose, view }: Props) {
     searchRef.current?.focus();
   }, []);
 
+  // A new tab or a new query is a new list, read from its top.
+  useEffect(() => {
+    if (bodyRef.current !== null) bodyRef.current.scrollTop = 0;
+  }, [selectedKey, query]);
+
   useEffect(() => {
     /** ← / → step through the tabs, but only while the search is empty: with text typed they are
      * the caret's. From a focused tab the focus follows, as a tablist's arrows do. */
@@ -238,6 +258,13 @@ export default function HotkeysModal({ onClose, view }: Props) {
       if (onTab) tabRefs.current.get(next)?.focus();
     }
     function handleKeyDown(event: KeyboardEvent) {
+      // PgUp / PgDn page the body from anywhere in the sheet: a one-line field has no use for them.
+      if (isPageKey(event)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        pageBody(bodyRef.current, event.code === "PageDown" ? 1 : -1);
+        return;
+      }
       if (isArrowStep(event) && query === "") {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -263,55 +290,60 @@ export default function HotkeysModal({ onClose, view }: Props) {
   return (
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={t("hotkeys:title")}>
-        <h2 className={styles.title}>{t("hotkeys:title")}</h2>
-        <input
-          ref={searchRef}
-          type="search"
-          className={styles.search}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("hotkeys:searchPlaceholder")}
-          aria-label={t("hotkeys:searchPlaceholder")}
-        />
-        <div role="tablist" aria-label={t("hotkeys:sectionTabsLabel")} className={styles.tabs}>
-          {sections.map((section) => {
-            const isSelected = !searching && section.key === selectedKey;
-            return (
-              <button
-                key={section.key}
-                ref={(element) => {
-                  if (element === null) tabRefs.current.delete(section.key);
-                  else tabRefs.current.set(section.key, element);
-                }}
-                type="button"
-                role="tab"
-                id={tabId(section.key)}
-                aria-selected={isSelected}
-                aria-controls={isSelected ? panelId : undefined}
-                tabIndex={section.key === selectedKey ? 0 : -1}
-                className={styles.tab}
-                onClick={() => pickTab(section.key)}
-              >
-                {section.tab}
-                {section.key === hereKey && <span className={styles.here}>{t("hotkeys:tabHere")}</span>}
-              </button>
-            );
-          })}
-        </div>
-        {!searching && selected !== undefined && (
-          <div role="tabpanel" id={panelId} aria-labelledby={tabId(selected.key)}>
-            <SectionRows rows={selected.rows} />
+        {/* The header stays put; a wheel over it scrolls the body, since nothing up here scrolls. */}
+        <div className={styles.header} onWheel={(e) => scrollBody(bodyRef.current, e.deltaY)}>
+          <h2 className={styles.title}>{t("hotkeys:title")}</h2>
+          <input
+            ref={searchRef}
+            type="search"
+            className={styles.search}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("hotkeys:searchPlaceholder")}
+            aria-label={t("hotkeys:searchPlaceholder")}
+          />
+          <div role="tablist" aria-label={t("hotkeys:sectionTabsLabel")} className={styles.tabs}>
+            {sections.map((section) => {
+              const isSelected = !searching && section.key === selectedKey;
+              return (
+                <button
+                  key={section.key}
+                  ref={(element) => {
+                    if (element === null) tabRefs.current.delete(section.key);
+                    else tabRefs.current.set(section.key, element);
+                  }}
+                  type="button"
+                  role="tab"
+                  id={tabId(section.key)}
+                  aria-selected={isSelected}
+                  aria-controls={isSelected ? panelId : undefined}
+                  tabIndex={section.key === selectedKey ? 0 : -1}
+                  className={styles.tab}
+                  onClick={() => pickTab(section.key)}
+                >
+                  {section.tab}
+                  {section.key === hereKey && <span className={styles.here}>{t("hotkeys:tabHere")}</span>}
+                </button>
+              );
+            })}
           </div>
-        )}
-        {searching && shown.length === 0 && (
-          <p className={styles.noMatch}>{t("hotkeys:searchNoMatch", { query: query.trim() })}</p>
-        )}
-        {searching && shown.map((section) => (
-          <section key={section.key} className={styles.result}>
-            <h3 className={styles.sectionTitle}>{section.title}</h3>
-            <SectionRows rows={section.rows} />
-          </section>
-        ))}
+        </div>
+        <div ref={bodyRef} className={styles.body} data-testid="hotkeys-body">
+          {!searching && selected !== undefined && (
+            <div role="tabpanel" id={panelId} aria-labelledby={tabId(selected.key)}>
+              <SectionRows rows={selected.rows} />
+            </div>
+          )}
+          {searching && shown.length === 0 && (
+            <p className={styles.noMatch}>{t("hotkeys:searchNoMatch", { query: query.trim() })}</p>
+          )}
+          {searching && shown.map((section) => (
+            <section key={section.key} className={styles.result}>
+              <h3 className={styles.sectionTitle}>{section.title}</h3>
+              <SectionRows rows={section.rows} />
+            </section>
+          ))}
+        </div>
       </div>
     </div>
   );
