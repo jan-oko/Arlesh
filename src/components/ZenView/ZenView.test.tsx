@@ -383,4 +383,12 @@ describe("the overdue border", () => {
     expect(zenCard("task-5").className).not.toMatch(/cardOverdue/);
     expect(zenCard("task-5")).toHaveAccessibleDescription("overdue");
   });
+
+  it("gives a selected Overdue card both classes, so its selection takes the selected-and-Overdue colour", () => {
+    render(<ZenViewInApp />);
+    act(() => { fireEvent.click(zenCard("task-5")); });
+    expect(selectedCard()).toBe("task-5");
+    expect(zenCard("task-5").className).toMatch(/cardOverdue/);
+    expect(zenCard("task-5").className).toMatch(/cardSelected/);
+  });
 });

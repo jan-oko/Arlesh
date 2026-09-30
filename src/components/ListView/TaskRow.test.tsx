@@ -295,3 +295,12 @@ describe("TaskRow — Overdue", () => {
     expect(rowCard(container)).not.toHaveAttribute("aria-describedby");
   });
 });
+
+describe("TaskRow — selected and Overdue", () => {
+  it("carries both classes, so its selection takes the selected-and-Overdue colour", () => {
+    const { container } = render(<TaskRow {...baseProps({ isSelected: true, row: row({ node: n("task-1", "task", { status: "todo", overdue: true }) }) })} />);
+    const element = container.querySelector<HTMLElement>("[data-row-id]");
+    expect(element?.className).toMatch(/cardOverdue/);
+    expect(element?.className).toMatch(/cardSelected/);
+  });
+});

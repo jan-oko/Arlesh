@@ -889,4 +889,13 @@ describe("an Overdue card", () => {
     expect(stepCard("task-2").className).not.toMatch(/overdue/);
     expect(stepCard("task-2")).not.toHaveAttribute("aria-describedby");
   });
+
+  it("carries both the Overdue and the selected class when selected, so its ring takes the selected-and-Overdue colour", () => {
+    mockTree([n("task-1", "task", { status: "todo", overdue: true })]);
+    render(<StepsView />);
+    press("ArrowDown");
+    expect(selectedCardId()).toBe("task-1");
+    expect(stepCard("task-1").className).toMatch(/overdue/);
+    expect(stepCard("task-1").className).toMatch(/selected/);
+  });
 });

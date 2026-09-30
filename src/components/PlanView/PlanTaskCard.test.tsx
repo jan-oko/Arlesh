@@ -133,3 +133,11 @@ describe("PlanTaskCard — Overdue", () => {
     expect(cardOf(container)).not.toHaveAttribute("aria-describedby");
   });
 });
+
+describe("PlanTaskCard — selected and Overdue", () => {
+  it("carries both classes, so its selection takes the selected-and-Overdue colour", () => {
+    const { container } = render(<PlanTaskCard {...props(row({ node: n("task-1", "task", { status: "todo", overdue: true }) }))} isSelected />);
+    expect(cardOf(container).className).toMatch(/cardOverdue/);
+    expect(cardOf(container).className).toMatch(/cardSelected/);
+  });
+});
