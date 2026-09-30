@@ -1,4 +1,4 @@
-import type { Binding } from "./chord";
+import { inGroup, type Binding } from "./chord";
 import type { MindmapSelectionContext } from "./mindmap/selection";
 import { MINDMAP_CENTER_BINDINGS, type MindmapCenterContext } from "./mindmap/center";
 import { MINDMAP_CLIPBOARD_BINDINGS, type MindmapClipboardContext } from "./mindmap/clipboard";
@@ -72,26 +72,26 @@ export interface MindmapContext extends
  * existing chord is a red test rather than a silent no-op.
  */
 export const MINDMAP_BINDINGS: readonly Binding<MindmapContext>[] = [
-  ...MINDMAP_STATUS_PRESET_BINDINGS,
-  ...MINDMAP_REORDER_BINDINGS,
-  ...MINDMAP_NAVIGATE_BINDINGS,
-  ...MINDMAP_RENAME_BINDINGS,
-  ...MINDMAP_CREATE_BINDINGS,
-  ...MINDMAP_ENTER_BINDINGS,
-  ...MINDMAP_COMMITMENT_BINDINGS,
-  ...MINDMAP_EXPECTATION_BINDINGS,
-  ...MINDMAP_DELETE_BINDINGS,
-  ...MINDMAP_COLLAPSE_BINDINGS,
-  ...MINDMAP_ZOOM_BINDINGS,
-  ...MINDMAP_DESELECT_BINDINGS,
-  ...MINDMAP_CLIPBOARD_BINDINGS,
-  ...MINDMAP_START_FLOW_BINDINGS,
-  ...MINDMAP_CENTER_BINDINGS,
-  ...MINDMAP_CONVERT_TO_FLOW_BINDINGS,
-  ...MINDMAP_FULLSCREEN_BINDINGS,
-  ...MINDMAP_EDITOR_BINDINGS,
-  ...MINDMAP_FLAGS_BINDINGS,
-  ...MINDMAP_PLAN_BINDINGS,
-  ...MINDMAP_DEPENDENCY_BINDINGS,
-  ...MINDMAP_HISTORY_BINDINGS,
+  ...inGroup("groupPresets", MINDMAP_STATUS_PRESET_BINDINGS),
+  ...inGroup("groupMove", MINDMAP_REORDER_BINDINGS),
+  ...inGroup("groupMove", MINDMAP_NAVIGATE_BINDINGS),
+  ...inGroup("groupEdit", MINDMAP_RENAME_BINDINGS),
+  ...inGroup("groupCreate", MINDMAP_CREATE_BINDINGS),
+  ...inGroup("groupEdit", MINDMAP_ENTER_BINDINGS),
+  ...inGroup("groupEdit", MINDMAP_COMMITMENT_BINDINGS),
+  ...inGroup("groupEdit", MINDMAP_EXPECTATION_BINDINGS),
+  ...inGroup("groupEdit", MINDMAP_DELETE_BINDINGS),
+  ...inGroup("groupDisplay", MINDMAP_COLLAPSE_BINDINGS),
+  ...inGroup("groupDisplay", MINDMAP_ZOOM_BINDINGS),
+  ...inGroup("groupMove", MINDMAP_DESELECT_BINDINGS),
+  ...inGroup("groupEdit", MINDMAP_CLIPBOARD_BINDINGS),
+  ...inGroup("groupEdit", MINDMAP_START_FLOW_BINDINGS),
+  ...inGroup("groupDisplay", MINDMAP_CENTER_BINDINGS),
+  ...inGroup("groupEdit", MINDMAP_CONVERT_TO_FLOW_BINDINGS),
+  ...inGroup("groupDisplay", MINDMAP_FULLSCREEN_BINDINGS),
+  ...inGroup("groupEdit", MINDMAP_EDITOR_BINDINGS),
+  ...inGroup("groupEdit", MINDMAP_FLAGS_BINDINGS),
+  ...inGroup("groupEdit", MINDMAP_PLAN_BINDINGS),
+  ...inGroup("groupEdit", MINDMAP_DEPENDENCY_BINDINGS),
+  ...inGroup("groupEdit", MINDMAP_HISTORY_BINDINGS),
 ];

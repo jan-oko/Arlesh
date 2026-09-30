@@ -4,19 +4,39 @@
   background: rgba(0, 0, 0, 0.4);
   z-index: 200;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  padding: 8vh 16px 16px;
-  overflow-y: auto;
+  padding: 16px;
+  /* Nothing behind the sheet scrolls: only its body does. */
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
+/* One fixed size on every tab, so switching tabs never moves the sheet's edges. */
 .modal {
   background: var(--surface-raised);
   border: 1px solid var(--node-border);
   border-radius: 8px;
-  max-width: 720px;
-  width: 100%;
-  padding: 20px 24px 24px;
+  width: min(1100px, 92vw);
+  height: min(820px, 88vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Title, search and tabs: fixed at the top of the sheet. */
+.header {
+  flex: 0 0 auto;
+  padding: 20px 24px 0;
+}
+
+/* The one thing that scrolls: the tab's rows, or the search results. */
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 24px 24px;
 }
 
 .title {
@@ -26,10 +46,96 @@
   color: var(--text-primary);
 }
 
-.sections {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 20px 32px;
+.search {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 16px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--node-border);
+  border-radius: 6px;
+  background: var(--node-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.search:focus {
+  border-color: var(--text-secondary);
+}
+
+.noMatch {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* One button per section, underlined when selected; wraps rather than scrolls. */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 0 0 12px;
+  border-bottom: 1px solid var(--node-border);
+}
+
+.tab {
+  margin-bottom: -1px;
+  padding: 6px 10px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+}
+
+.tab[aria-selected="true"] {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Marks the tab of the view the sheet was opened over. */
+.here {
+  margin-inline-start: 4px;
+  font-size: 0.8em;
+  color: var(--accent);
+}
+
+/* Two columns, one when narrow. A group is kept whole; so is a bare row. */
+.columns {
+  columns: 2 320px;
+  column-gap: 32px;
+}
+
+.group {
+  break-inside: avoid;
+  margin-bottom: 12px;
+}
+
+.groupTitle {
+  margin: 0 0 4px;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* A section of search results: its heading, then its rows as a tab draws them. */
+.result {
+  margin-bottom: 20px;
 }
 
 .sectionTitle {
@@ -43,15 +149,14 @@
 
 .list {
   margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
 
 .row {
   display: flex;
   align-items: baseline;
   gap: 10px;
+  padding: 2px 0;
+  break-inside: avoid;
 }
 
 .chord {
