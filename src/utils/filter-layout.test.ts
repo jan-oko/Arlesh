@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { filterMenuRows, filterSwitchesFor, flagsFor, offeredDimensions, rowDimensions, rowKindsFor } from "./filter-layout";
+import type { FilterDotState } from "./filter-layout";
+import { chipDimensions, filterMenuRows, filterSwitchesFor, hasUndrawnFilters, undrawnPillDimensions, flagsFor, offeredDimensions, rowDimensions, rowKindsFor } from "./filter-layout";
 
 describe("filterMenuRows", () => {
   it("lists the List View's rows grouped: Under, Tags, Depends on | Scope, Yes / no | Task, Goal, Project, Verdict", () => {
@@ -50,5 +51,33 @@ describe("filterSwitchesFor", () => {
   it("offers Private, Archived and Backlog, leaving Backlog out of the Plan View, which answers it itself", () => {
     expect(filterSwitchesFor("list")).toEqual(["private", "archived", "backlog"]);
     expect(filterSwitchesFor("plan")).toEqual(["private", "archived"]);
+  });
+});
+
+describe("undrawnPillDimensions", () => {
+  it("is Agentic in the Zen View, and nothing in the List View or the tag-only views", () => {
+    expect(undrawnPillDimensions("zen")).toEqual(["agentic"]);
+    expect(undrawnPillDimensions("list")).toEqual([]);
+    expect(undrawnPillDimensions("mindmap")).toEqual([]);
+    expect(chipDimensions("zen")).toEqual(["tag"]);
+  });
+});
+
+describe("hasUndrawnFilters", () => {
+  const clean: FilterDotState = { archivedMode: "inactive", backlogMode: "inactive", valueCount: () => 0 };
+
+  it("is false with everything at its default", () => {
+    expect(hasUndrawnFilters("mindmap", clean)).toBe(false);
+  });
+
+  it("is true for Backlog off its default, except in the Plan View which does not offer it", () => {
+    const backlog: FilterDotState = { ...clean, backlogMode: "exclude" };
+    expect(hasUndrawnFilters("steps", backlog)).toBe(true);
+    expect(hasUndrawnFilters("plan", backlog)).toBe(false);
+  });
+
+  it("ignores tags, which are always chips", () => {
+    const tagged: FilterDotState = { ...clean, valueCount: (d) => (d === "tag" ? 1 : 0) };
+    expect(hasUndrawnFilters("zen", tagged)).toBe(false);
   });
 });
