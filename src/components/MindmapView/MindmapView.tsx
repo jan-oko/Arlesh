@@ -57,6 +57,7 @@ import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useOpenAsyncTemplate } from "@/hooks/use-open-async-template";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
+import { useTaskConsistence } from "@/hooks/use-task-consistence";
 import { useQuickPlan } from "@/hooks/use-quick-plan";
 import { useQuickDependency } from "@/hooks/use-quick-dependency";
 import QuickDependencyPicker from "@/components/QuickDependencyPicker/QuickDependencyPicker";
@@ -331,6 +332,7 @@ export default function MindmapView() {
 
   const { toggleAgentic } = useTaskAgentic({ findNode: findNodeById, reload, showToast });
   const { toggleAsynchronous } = useTaskAsynchronous({ findNode: findNodeById, reload, showToast });
+  const { toggleConsistence } = useTaskConsistence({ findNode: findNodeById, reload, showToast });
   // The same hook the List View's tick and cross go through, so the canvas grows no second write
   // route: a real Commitment updates its row, a Habit iteration its Modification.
   const { markBroken, cycleVerdict } = useCommitmentVerdict({
@@ -524,6 +526,7 @@ export default function MindmapView() {
     onRedo,
     onToggleAgentic: toggleAgentic,
     onToggleAsynchronous: toggleAsynchronous,
+    onToggleConsistence: toggleConsistence,
     onQuickPlan: quickPlan.open,
     onQuickDependency: quickDependency.open,
     findNodeById,

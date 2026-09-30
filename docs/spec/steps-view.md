@@ -435,7 +435,7 @@ the last card of a page, with more cards one page on, read as the end of the Ste
   (`Shift+E` an **Expectation**); the
   `Shift`+initial chords also with nothing selected, onto this Step
 - `Delete` — delete the selected card, after confirming
-- `B` / `A` / `W` — backlog, agentic, asynchronous, the same bare letters the other views bind
+- `B` / `A` / `W` / `V` — backlog, agentic, asynchronous, consistence, the same bare letters the other views bind (see [*Consistence*](resources.md#consistence))
 - `P` — set the selected Task card's **Plan** in a quick picker drawn at the card, as on the Mindmap; any other card, a fold card and the board card are refused by name (see [*The quick Plan picker*](time-scopes.md#the-quick-plan-picker-p))
 - `D` — make the selected Task card **depend on** a Task, a Goal or an Expectation, picked in a small search bar drawn at the card, as on the Mindmap; any other card, a fold card and the board card are refused by name (see [*The quick dependency picker*](resources.md#quick-dependency))
 - `Escape` — deselect; `F` with nothing selected — the board alone

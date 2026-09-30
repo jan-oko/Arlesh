@@ -240,6 +240,11 @@ export interface MindmapNode {
    * concrete action, and a subtask of an asynchronous Task is usually the work you do *after* the
    * wait. There is no `inheritedAsynchronous` for that reason, and there should not be one. */
   asynchronous?: boolean;
+  /** Whether this Task **consists of its sub-items** (stored Tasks only): its `status` is then the
+   * one the backend derived from its whole subtree on this load, and is never set by hand — every
+   * status write refuses it (`useStatusCycle`, the editor). Its own flag; it does not inherit. The
+   * status glyph draws its outer ring dashed while it is on. */
+  consistent?: boolean;
   /** A Commitment's recorded Verdict (Commitments only) — `unresolved` / `kept` / `broken`.
    * Never derived from the window passing or from children completing: `unresolved` means the
    * user has not said, which is information in its own right. */

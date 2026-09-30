@@ -150,6 +150,22 @@
   color: white;
 }
 
+/* A consistent task's pills: they show the derived status and take no clicks. */
+.statusPill:disabled {
+  cursor: default;
+}
+
+.statusPill:disabled:not(.statusPillActive):hover {
+  border-color: var(--node-border);
+  color: var(--text-secondary);
+}
+
+.fieldHint {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: normal;
+}
+
 .depSection {
   display: flex;
   flex-direction: column;

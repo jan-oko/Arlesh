@@ -64,7 +64,7 @@ function setup() {
 const saveData: TaskSaveData = {
   title: "Task", status: "todo", blockReasons: [], tagIds: [],
   addedDeps: [], removedDeps: [], timeScope: { start_id: testKey(1), end_id: testKey(1) },
-  onScopeExit: null, plan: null, archival: "live", agentic: "inherit", asynchronous: false, asyncTemplate: null, agenticBrief: null, isPrivate: false,
+  onScopeExit: null, plan: null, archival: "live", agentic: "inherit", asynchronous: false, consistent: false, asyncTemplate: null, agenticBrief: null, isPrivate: false,
 };
 
 beforeEach(() => vi.clearAllMocks());
@@ -179,6 +179,39 @@ describe("useNodeEditor — delegation", () => {
     const result = setup();
     await act(async () => { await result.current.onTaskSave(saveData); });
     expect(vi.mocked(updateTask).mock.calls[0]?.[1]).not.toHaveProperty("delegate_to");
+  });
+});
+
+describe("useNodeEditor — Consistence", () => {
+  function setupWith(node: MindmapNode) {
+    const reload = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useNodeEditor({ tree: { ...root, children: [node] }, allTasksAndGoals: [node], reload }),
+    );
+    act(() => result.current.setEditorModal({ nodeId: node.id, node }));
+    return result;
+  }
+
+  it("sends no status for a task that consists of its sub-items and still does", async () => {
+    const result = setupWith({ ...taskNode, consistent: true, status: "in_progress" });
+    await act(async () => { await result.current.onTaskSave({ ...saveData, timeScope: null, consistent: true }); });
+    const request = vi.mocked(updateTask).mock.calls[0]?.[1];
+    expect(request).not.toHaveProperty("status");
+    expect(request).not.toHaveProperty("consistent");
+  });
+
+  it("switching it off sends the status shown with the flag, so both land in one write", async () => {
+    const result = setupWith({ ...taskNode, consistent: true, status: "started" });
+    await act(async () => {
+      await result.current.onTaskSave({ ...saveData, timeScope: null, status: "started", consistent: false });
+    });
+    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ status: "started", consistent: false }));
+  });
+
+  it("switching it on sends the flag", async () => {
+    const result = setupWith(taskNode);
+    await act(async () => { await result.current.onTaskSave({ ...saveData, timeScope: null, consistent: true }); });
+    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ consistent: true }));
   });
 });
 

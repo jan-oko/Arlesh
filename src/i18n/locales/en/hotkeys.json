@@ -76,6 +76,7 @@
   "toggleStarted": "Set a task Started, or pause / resume one in progress",
   "toggleAgentic": "Mark Agentic / Not agentic",
   "toggleAsynchronous": "Mark Asynchronous / Not asynchronous",
+  "toggleConsistence": "Consists of its sub-items / Status set by hand",
   "quickPlan": "Set the Plan in a quick picker drawn at the selection",
   "quickDependency": "Make the selected Task depend on a Task, a Goal or an Expectation, from a quick search drawn at the selection",
   "cycleVerdict": "Cycle the selected commitment's verdict (Unresolved → Kept → Broken)",

@@ -4,6 +4,7 @@ import { useListData } from "@/hooks/use-list-data";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
+import { useTaskConsistence } from "@/hooks/use-task-consistence";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { findNode } from "@/utils/mindmap-tree";
@@ -111,6 +112,11 @@ export default function ListView() {
     showToast,
   });
   const { toggleAsynchronous } = useTaskAsynchronous({
+    findNode: (id) => findNode(tree, id),
+    reload,
+    showToast,
+  });
+  const { toggleConsistence } = useTaskConsistence({
     findNode: (id) => findNode(tree, id),
     reload,
     showToast,
@@ -338,6 +344,7 @@ export default function ListView() {
     onToggleBacklog: toggleBacklog,
     onToggleAgentic: toggleAgentic,
     onToggleAsynchronous: toggleAsynchronous,
+    onToggleConsistence: toggleConsistence,
     onQuickPlan: quickPlan.open,
     onQuickDependency: quickDependency.open,
     onCycleVerdict: cycleVerdict,

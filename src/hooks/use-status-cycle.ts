@@ -60,8 +60,16 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
   // One Task status write, through the completion guard. Beginning a set-aside task — In Progress
   // or Started — takes it out of the backlog, in the same write and so in the same undo step. The
   // row that comes back says whether it did; it is never assumed.
+  //
+  // A Task that consists of its sub-items has no status of its own to write: it is refused here,
+  // out loud, for every caller at once — the glyph, `Enter` and `Alt+Enter` in every view. The
+  // backend refuses the same write, so this is the courtesy of saying why before asking.
   const writeTaskStatus = useCallback(
     (node: MindmapNode, next: string, onError: (err: unknown) => void) => {
+      if (node.consistent === true) {
+        showToast({ nodeId: node.id, message: t("warnings:consistentStatusRefused") });
+        return;
+      }
       guard(node, async (confirmed) => {
         const updated = await updateTask(rowIdOf(node), { status: next }, ...acknowledged(confirmed));
         if (cameOutOfBacklog(node, updated)) {

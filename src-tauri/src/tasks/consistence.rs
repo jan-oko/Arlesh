@@ -12,7 +12,11 @@
 //! # What counts
 //!
 //! The whole subtree, except what is **effectively Archived** (with everything beneath it) and
-//! Infos, which are not work. Backlogged and delegated items still count. How each kind reads:
+//! Infos, which are not work. Backlogged and delegated items still count. An item archived *by
+//! finishing* — a Done Task whose window has passed, which Resolution archives — still reads as
+//! Done and still counts: left out, a consistent Task whose steps were all done inside its window
+//! would fall back to To Do the moment the window closed, and then lapse unfinished. How each
+//! kind reads:
 //!
 //! - a Task: its status — for a consistent Task inside, its **derived** status;
 //! - a Goal: Achieved reads as Done, anything else as To Do;
@@ -281,34 +285,34 @@ pub async fn settle<M: SessionMode>(
         expectations,
         lifecycles,
     } = board;
-    let mut waits = derive_waits(db, now, tasks).await?;
+    let mut waits = derive_waits(db, now, &*tasks).await?;
     if !tasks.iter().any(|task| task.consistent) {
         return Ok(waits);
     }
-    let governance = governance_of(db, tasks).await?;
-    let mut drawn_for = delegated_done(tasks);
+    let governance = governance_of(db, &*tasks).await?;
+    let mut drawn_for = delegated_done(&*tasks);
     for _ in 0..MAX_ROUNDS {
         let outcomes = derive(
             &Rows {
-                tasks,
+                tasks: &*tasks,
                 checks: &waits.tasks,
                 goals,
                 commitments,
                 expectations,
                 waits: &waits.expectations,
-                lifecycles,
+                lifecycles: &*lifecycles,
                 wait_lifecycles: &waits.lifecycles,
             },
             &governance,
             now,
         );
-        apply(&outcomes, tasks, lifecycles);
-        let settled = delegated_done(tasks);
+        apply(&outcomes, &mut *tasks, &mut *lifecycles);
+        let settled = delegated_done(&*tasks);
         if settled == drawn_for {
             return Ok(waits);
         }
         drawn_for = settled;
-        waits = derive_waits(db, now, tasks).await?;
+        waits = derive_waits(db, now, &*tasks).await?;
     }
     tracing::warn!(
         rounds = MAX_ROUNDS,
@@ -553,7 +557,9 @@ impl Evaluation<'_> {
             };
         }
         let mut tally = Tally::default();
-        self.count_beneath(&(Kind::Task, id.clone()), id, &mut tally);
+        let top = (Kind::Task, id.clone());
+        let mut walked = HashSet::from([top.clone()]);
+        self.count_beneath(&top, id, &mut tally, &mut walked);
         let status = tally.status();
         let state = self.governance.get(id).map(|governance| {
             derive_item_state(
@@ -575,12 +581,22 @@ impl Evaluation<'_> {
     }
 
     /// Counts everything beneath `parent` into `tally`, for the consistent Task `root`.
-    fn count_beneath(&mut self, parent: &Key, root: &NodeId, tally: &mut Tally) {
+    /// `walked` is every node this walk has reached, so a corrupt parent loop ends it.
+    fn count_beneath(
+        &mut self,
+        parent: &Key,
+        root: &NodeId,
+        tally: &mut Tally,
+        walked: &mut HashSet<Key>,
+    ) {
         let tree = self.tree;
         let Some(children) = tree.children.get(parent) else {
             return;
         };
         for child in children {
+            if !walked.insert(child.clone()) {
+                continue;
+            }
             let Some(item) = tree.items.get(child) else {
                 continue;
             };
@@ -589,11 +605,14 @@ impl Evaluation<'_> {
                 continue;
             }
             let (reading, archived) = self.reading(child, item);
-            if archived {
+            // Archived by finishing — a Done Task whose window passed, an Achieved Goal, a
+            // settled Commitment — is still finished, and counts as Done. Anything else archived
+            // was put away, and is left out with everything beneath it.
+            if archived && reading != TaskStatus::Done {
                 continue;
             }
             tally.count(reading);
-            self.count_beneath(child, root, tally);
+            self.count_beneath(child, root, tally, walked);
         }
     }
 

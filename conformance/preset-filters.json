@@ -17,7 +17,9 @@
     "`filter.expectations` is the List View's Expectations option, which, like Unblock, leaves the",
     "preset where it was. A case's `expectations` lists the Expectation rows the List View keeps;",
     "omitted, it is empty. A delegated Task's virtual Expectation and an Expectation's virtual",
-    "check task are written into a board as the ordinary nodes they are drawn as."
+    "check task are written into a board as the ordinary nodes they are drawn as. So is a Task that",
+    "consists of its sub-items: it carries the status the board load derived for it, since the",
+    "derivation runs before either evaluator reads the board, and is judged exactly as that status."
   ],
   "cases": [
     {
