@@ -38,7 +38,7 @@ pill works exactly as the List View's: added as All, Shift Any, Alt Not, a click
 the List View reads, per tab, so one set in either view applies in both. It narrows the **grid**
 only: Agentic asks about Tasks, and a Commitment or a wait does not answer it. It draws **no chip**
 under the top bar, like the Mindmap's own filters — it is set and seen in the Filter menu (and
-`Ctrl+F`). The List View's other pills (Under, Depends on, Scope, Blocked, Asynchronous, Private,
+`Ctrl+F`), and while it is set the Filter button wears its [dot](mindmap-view.md#filter-dot). The List View's other pills (Under, Depends on, Scope, Blocked, Asynchronous, Private,
 Task/Goal/Project status, Verdict) do not apply here and are not offered, so none can narrow this
 view unseen.
 

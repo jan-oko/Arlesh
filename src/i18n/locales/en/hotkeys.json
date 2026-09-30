@@ -122,6 +122,7 @@
   "filterAltClick": "Alt+click",
   "filterKindKeys": "In the Filter menu (List View): show or hide Tasks / Commitments / Expectations; with Shift, show only that kind. In the Zen View, c / e show or hide its Commitments / Expectations strips",
   "filterFlagKeys": "In the Filter menu (List View; Agentic alone in the Zen View): Agentic / Asynchronous / Blocked / Private — adds as All (Shift Any, Alt Not); on a set flag, switches it to that mode, or removes it if already in it",
+  "filterCloseMenu": "Close the Filter menu (in a search box with a query, the first Esc clears it)",
   "filterPrivateMode": "In the Filter menu: turn Private Mode on or off",
   "filterRemoveSearch": "In Ctrl+F: remove the highlighted active filter",
   "sectionScopePicker": "Scope pickers (the P quick picker, and the editors' scope fields)",
