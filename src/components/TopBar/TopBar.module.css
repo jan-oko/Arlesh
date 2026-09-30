@@ -65,6 +65,7 @@
 }
 
 .filterBtn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -81,6 +82,18 @@
 .filterBtn:hover {
   background: var(--surface-raised);
   color: var(--text-primary);
+}
+
+/* The dot on the Filter button's top-end corner: the menu holds a setting nothing outside it shows. */
+.filterDot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--surface);
 }
 
 /* Click-catcher behind an open popover. */

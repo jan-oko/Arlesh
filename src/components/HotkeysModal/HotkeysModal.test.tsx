@@ -143,6 +143,7 @@ describe("HotkeysModal — rows", () => {
       ["hotkeys:filterKindKeys", ["T", "C", "E"]],
       ["hotkeys:filterFlagKeys", ["A", "W", "B", "P"]],
       ["hotkeys:filterPrivateMode", ["Ctrl+P"]],
+      ["hotkeys:filterCloseMenu", ["Esc"]],
       ["hotkeys:filterRemoveSearch", ["Delete"]],
     ] as const) {
       const row = rowOf(panel, label);
