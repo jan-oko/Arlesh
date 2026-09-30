@@ -4500,6 +4500,37 @@ async fn starting_a_backlogged_task_takes_it_out_of_the_backlog() {
 }
 
 #[tokio::test]
+async fn setting_a_backlogged_task_started_takes_it_out_of_the_backlog() {
+    let pool = helpers::test_pool().await;
+    let project_id = make_project(&pool).await;
+    let task = new_task(
+        &pool,
+        CreateTaskRequest {
+            title: "Set aside".into(),
+            parent_type: "project".into(),
+            parent_id: project_id.into(),
+            archival: Some(TaskArchival::Backlog),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    // Started is begun work too, so the Backlog rule reads it as In Progress.
+    let started = try_update(
+        &pool,
+        task.id.sid(),
+        UpdateTaskRequest {
+            status: Some(TaskStatus::Started),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("setting a backlogged task Started is never refused");
+    assert_eq!(started.archival, TaskArchival::Live);
+    assert_eq!(started.status, TaskStatus::Started.as_str());
+}
+
+#[tokio::test]
 async fn finishing_a_backlogged_task_leaves_it_in_the_backlog() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;

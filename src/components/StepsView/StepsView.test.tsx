@@ -371,6 +371,28 @@ describe("acting on the selected card", () => {
     expect(updateTask).toHaveBeenCalledWith(1, { status: "in_progress" });
   });
 
+  it("sets a Task Started on Alt+Enter, and resumes a Started one", () => {
+    mockTree([n("task-1", "task", { status: "in_progress" }), n("task-2", "task", { status: "started" })]);
+    render(<StepsView />);
+
+    press("ArrowDown");
+    act(() => { fireEvent.keyDown(window, { code: "Enter", altKey: true }); });
+    expect(updateTask).toHaveBeenCalledWith(1, { status: "started" });
+
+    press("ArrowRight");
+    act(() => { fireEvent.keyDown(window, { code: "Enter", altKey: true }); });
+    expect(updateTask).toHaveBeenCalledWith(2, { status: "in_progress" });
+  });
+
+  it("refuses Alt+Enter on a blocked Task", () => {
+    mockTree([n("task-1", "task", { status: "todo", blockReasons: ["waiting"] })]);
+    render(<StepsView />);
+
+    press("ArrowDown");
+    act(() => { fireEvent.keyDown(window, { code: "Enter", altKey: true }); });
+    expect(updateTask).not.toHaveBeenCalled();
+  });
+
   it("opens the editor on E", () => {
     mockTree([n("task-1", "task", { status: "todo" })]);
     render(<StepsView />);

@@ -159,6 +159,7 @@ function mockRows(rows: TaskListRow[]): void {
     error: null,
     reload,
     onCycleStatus: vi.fn(),
+    onToggleStarted: vi.fn(),
     // The Plan View never cycles a status and never triages a virtual occurrence, so the
     // occurrence-completion prompt cannot be raised from it; it is stubbed only to satisfy the
     // shape `useListData` returns.

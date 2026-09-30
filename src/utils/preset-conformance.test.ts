@@ -67,6 +67,8 @@ interface CorpusFilter {
   planScope?: ScopeKey;
   scopeMatch?: ScopeMatch;
   startHidesCheckedWaits?: boolean;
+  startShowsStarted?: boolean;
+  doShowsStarted?: boolean;
 }
 
 /** One case: a board, a filter, and what each of the three surfaces keeps. */
@@ -225,6 +227,8 @@ function parseFilter(value: unknown, what: string): CorpusFilter {
     ...(raw.planScope !== undefined ? { planScope: parseScopeKey(raw.planScope, `${what}.planScope`) } : {}),
     ...(raw.scopeMatch !== undefined ? { scopeMatch: parseScopeMatch(raw.scopeMatch, `${what}.scopeMatch`) } : {}),
     ...flag(raw.startHidesCheckedWaits, "startHidesCheckedWaits", what),
+    ...flag(raw.startShowsStarted, "startShowsStarted", what),
+    ...flag(raw.doShowsStarted, "doShowsStarted", what),
   };
 }
 
@@ -307,6 +311,8 @@ function toSharedFilter(filter: CorpusFilter): FilterState {
     ...(filter.planScope !== undefined ? { planScope: filter.planScope } : {}),
     ...(filter.scopeMatch !== undefined ? { scopeMatch: filter.scopeMatch } : {}),
     ...(filter.startHidesCheckedWaits !== undefined ? { startHidesCheckedWaits: filter.startHidesCheckedWaits } : {}),
+    ...(filter.startShowsStarted !== undefined ? { startShowsStarted: filter.startShowsStarted } : {}),
+    ...(filter.doShowsStarted !== undefined ? { doShowsStarted: filter.doShowsStarted } : {}),
   };
 }
 

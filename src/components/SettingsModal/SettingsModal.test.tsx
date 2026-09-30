@@ -130,6 +130,20 @@ describe("SettingsModal", () => {
     expect(useDisplayStore.getState().startHidesCheckedWaits).toBe(false);
   });
 
+  it("switches Started in Start and in Do separately on General: shown in Start, hidden in Do", () => {
+    useDisplayStore.setState({ startShowsStarted: true, doShowsStarted: false });
+    open();
+
+    const start = screen.getByRole("checkbox", { name: "startShowsStarted" });
+    const inDo = screen.getByRole("checkbox", { name: "doShowsStarted" });
+    expect(start).toBeChecked();
+    expect(inDo).not.toBeChecked();
+    fireEvent.click(start);
+    expect(useDisplayStore.getState().startShowsStarted).toBe(false);
+    fireEvent.click(inDo);
+    expect(useDisplayStore.getState().doShowsStarted).toBe(true);
+  });
+
   it("turns close-to-tray off under Windows & tray", () => {
     open();
     goTo("windows");
@@ -195,6 +209,17 @@ describe("SettingsModal", () => {
     expect(badges).toBeChecked();
     fireEvent.click(badges);
     expect(useDisplayStore.getState().zenShowBadges).toBe(false);
+  });
+
+  it("offers the Zen View's own Started switch under Zen, off by default", () => {
+    useDisplayStore.setState({ zenShowsStarted: false });
+    open();
+    goTo("zen");
+
+    const started = screen.getByRole("checkbox", { name: "showsStarted" });
+    expect(started).not.toBeChecked();
+    fireEvent.click(started);
+    expect(useDisplayStore.getState().zenShowsStarted).toBe(true);
   });
 
   it("holds both Plan panes' switches under Plan", () => {

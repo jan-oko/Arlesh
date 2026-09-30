@@ -39,6 +39,7 @@ import {
 import type { StepCursor, StepDirection, StepsZoom } from "@/utils/steps-grid";
 import type { StepsTarget } from "@/utils/hotkeys/steps-bindings";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { isNodeBlocked } from "@/utils/tree-layout";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import QuickPlanPicker from "@/components/QuickPlanPicker/QuickPlanPicker";
 import { useQuickPlan } from "@/hooks/use-quick-plan";
@@ -216,7 +217,7 @@ export default function StepsView() {
   }
   const selectedNode = cursorNode();
 
-  const { cycleStatus, occurrencePrompt, confirmOccurrence, cancelOccurrence } = useStatusCycle({
+  const { cycleStatus, toggleStarted, occurrencePrompt, confirmOccurrence, cancelOccurrence } = useStatusCycle({
     findNode: (id) => findNode(tree, id), reload, showToast,
   });
   const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({
@@ -443,6 +444,8 @@ export default function StepsView() {
     onStepPage,
     onStepZoom,
     onCycleStatus: unlessDrawing(cycleStatus),
+    isSelectedBlocked: selectedNode !== null && isNodeBlocked(selectedNode),
+    onToggleStarted: unlessDrawing(toggleStarted),
     onToggleBacklog: unlessDrawing(toggleBacklog),
     onToggleAgentic: unlessDrawing(toggleAgentic),
     onToggleAsynchronous: unlessDrawing(toggleAsynchronous),

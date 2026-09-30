@@ -4,7 +4,7 @@ import { updateTask } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
 import { getErrorMessage } from "@/api/errors";
 import { GOAL_STATUS, TASK_STATUS } from "@/utils/status-mapping";
-import { cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
+import { backlogClearedMessage, cameOutOfBacklog, nextStartedStatus, nextTaskStatus } from "@/utils/task-status-cycle";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
 import { acknowledged, useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
@@ -22,6 +22,9 @@ interface Options {
 interface StatusCycle {
   /** Advances the node's status by one — the same step a click on its glyph takes. */
   cycleStatus: (nodeId: string) => void;
+  /** `Alt+Enter`: sets a Task **Started**, or resumes a Started one to In Progress. Anything that
+   * is not a Task is left alone — Started is a Task status only. */
+  toggleStarted: (nodeId: string) => void;
   /** The occurrence completion the backend is holding for confirmation, or `null`. */
   occurrencePrompt: OccurrencePrompt | null;
   /** Answers that prompt: marks the occurrence done and leaves its children in place. */
@@ -54,6 +57,22 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
     cancel: cancelOccurrence } = useOccurrenceCompletion();
   const { toggleRelease } = useExpectationActions({ findNode, reload, showToast });
 
+  // One Task status write, through the completion guard. Beginning a set-aside task — In Progress
+  // or Started — takes it out of the backlog, in the same write and so in the same undo step. The
+  // row that comes back says whether it did; it is never assumed.
+  const writeTaskStatus = useCallback(
+    (node: MindmapNode, next: string, onError: (err: unknown) => void) => {
+      guard(node, async (confirmed) => {
+        const updated = await updateTask(rowIdOf(node), { status: next }, ...acknowledged(confirmed));
+        if (cameOutOfBacklog(node, updated)) {
+          showToast({ nodeId: node.id, message: t(backlogClearedMessage(next)) });
+        }
+        await reload();
+      }, onError);
+    },
+    [guard, reload, showToast, t],
+  );
+
   const cycleStatus = useCallback(
     (nodeId: string) => {
       const node = findNode(nodeId);
@@ -79,20 +98,22 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
         return;
       }
       if (node.kind !== "task") return;
-      const dbId = rowIdOf(node);
-      const next = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
-      guard(node, async (confirmed) => {
-        const updated = await updateTask(dbId, { status: next }, ...acknowledged(confirmed));
-        // Starting a set-aside task takes it out of the backlog, in the same write and so in the
-        // same undo step. The row that comes back says whether it did; it is never assumed.
-        if (cameOutOfBacklog(node, updated)) {
-          showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
-        }
-        await reload();
-      }, failed("status cycle failed"));
+      writeTaskStatus(node, nextTaskStatus(node.status ?? TASK_STATUS.TODO), failed("status cycle failed"));
     },
-    [findNode, reload, guard, showToast, t, toggleRelease],
+    [findNode, reload, guard, showToast, t, toggleRelease, writeTaskStatus],
   );
 
-  return { cycleStatus, occurrencePrompt, confirmOccurrence, cancelOccurrence };
+  const toggleStarted = useCallback(
+    (nodeId: string) => {
+      const node = findNode(nodeId);
+      if (node?.kind !== "task") return;
+      writeTaskStatus(node, nextStartedStatus(node.status ?? TASK_STATUS.TODO), (err: unknown) => {
+        console.error(`${LOG_PREFIX} started toggle failed:`, err);
+        showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
+      });
+    },
+    [findNode, showToast, t, writeTaskStatus],
+  );
+
+  return { cycleStatus, toggleStarted, occurrencePrompt, confirmOccurrence, cancelOccurrence };
 }

@@ -81,6 +81,10 @@ struct CorpusFilter {
     scope_match: ScopeMatch,
     #[serde(default)]
     start_hides_checked_waits: bool,
+    #[serde(default = "yes")]
+    start_shows_started: bool,
+    #[serde(default)]
+    do_shows_started: bool,
 }
 
 fn yes() -> bool {
@@ -117,6 +121,8 @@ impl From<&CorpusFilter> for BoardFilter {
             plan_scope: filter.plan_scope,
             scope_match: filter.scope_match,
             start_hides_checked_waits: filter.start_hides_checked_waits,
+            start_shows_started: filter.start_shows_started,
+            do_shows_started: filter.do_shows_started,
         }
     }
 }

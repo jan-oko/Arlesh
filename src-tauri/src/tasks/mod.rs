@@ -548,9 +548,10 @@ impl TaskWrite {
         // set-aside task remembers where the work stood — so it fires on the *request* moving the
         // task into progress, not on the merged status, and never on some other edit to a task that
         // was already in progress. The caller raises the toast here as well.
+        // Started counts as a start here too: a paused task is still begun work.
         let starts_a_backlogged_task = request.archival.is_none()
             && stored.archival == TaskArchival::Backlog
-            && matches!(request.status, Some(TaskStatus::InProgress));
+            && request.status.as_ref().is_some_and(TaskStatus::is_begun);
         let archival = if plans_a_backlogged_task || starts_a_backlogged_task {
             TaskArchival::Live
         } else {
@@ -1492,7 +1493,7 @@ pub async fn create_task_at(
 /// and the caller answers by asking again with `plan: Some(None)` alongside the backlog. The
 /// opposite order is not refused at all — a request that *sets* a Plan on a backlogged task takes
 /// it out of the backlog on its way through [`TaskWrite::merge`], and so does one that sets its
-/// status to `in_progress`.
+/// status to `in_progress` or `started`.
 ///
 /// Reads the stored row, merges the request over it, validates, then writes — all on one
 /// transactional session, so the row cannot move underneath the check. This is the **only** way to
@@ -1534,10 +1535,11 @@ pub async fn update_task_at(
     now: NaiveDateTime,
 ) -> Result<Task, TaskError> {
     let stored = db.tasks().get(id).await?;
-    // Starting is the move into In Progress from anywhere else; a write to a task already in
-    // progress is not a start, so an edit to one never trips the Spec rule.
-    let starts = matches!(request.status, Some(TaskStatus::InProgress))
-        && stored.status != TaskStatus::InProgress.as_str();
+    // Starting is the move into begun work — In Progress or Started — from To Do or Done; a write
+    // to a task already begun is not a start (pausing and resuming included), so an edit to one
+    // never trips the Spec rule.
+    let starts = request.status.as_ref().is_some_and(TaskStatus::is_begun)
+        && !TaskStatus::is_begun_str(&stored.status);
     let write = TaskWrite::merge(stored, request)?;
     reject_backlog_with_plan(write.archival, &write.plan)?;
     if starts {

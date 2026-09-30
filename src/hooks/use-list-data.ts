@@ -7,7 +7,7 @@ import type { TaskDependencyEdge } from "@/api/tasks";
 import { updateTask } from "@/api/tasks";
 import type { TaskAgentic } from "@/api/tasks";
 import { TASK_STATUS } from "@/utils/status-mapping";
-import { cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
+import { backlogClearedMessage, cameOutOfBacklog, nextStartedStatus, nextTaskStatus } from "@/utils/task-status-cycle";
 import { findNode, collectTasksAndGoals } from "@/utils/mindmap-tree";
 import { storedSubtreeBase } from "@/utils/drawn-path";
 import { rowIdOf } from "@/utils/node-identity";
@@ -38,6 +38,9 @@ interface ListData {
   reload: () => Promise<void>;
   /** Cycles a row's status (todo → in_progress → done), through the occurrence completion guard. */
   onCycleStatus: (nodeId: string) => void;
+  /** `Alt+Enter`: sets a row's Task Started, or resumes a Started one to In Progress — through the
+   * same guard and Backlog toast as `onCycleStatus`. */
+  onToggleStarted: (nodeId: string) => void;
   /** The occurrence completion the backend is holding for confirmation, or `null`. */
   occurrencePrompt: OccurrencePrompt | null;
   /** Answers that prompt: marks the occurrence done and leaves its children in place. */
@@ -91,21 +94,23 @@ export function useListData(): ListData {
     return acc;
   }, [tree]);
 
-  const onCycleStatus = useCallback(
-    (nodeId: string) => {
+  // One status write for a row's Task, `pick` choosing the next status from the current one.
+  const writeRowStatus = useCallback(
+    (nodeId: string, pick: (current: string) => string) => {
       const node = findNode(tree, nodeId);
       if (node === undefined || node.kind !== "task") return;
       // A wait's check task is a Task row: marking it done records the check.
       // Through the completion guard, exactly as the Mindmap's status click is: the same
       // occurrence closed from either view asks the same question.
       const dbId = rowIdOf(node);
-      const next = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
+      const next = pick(node.status ?? TASK_STATUS.TODO);
       guard(node, async (confirmed) => {
         const updated = await updateTask(dbId, { status: next }, ...acknowledged(confirmed));
-        // Starting a set-aside task takes it out of the backlog, in the same write and so in the
-        // same undo step. The row that comes back says whether it did; it is never assumed.
+        // Beginning a set-aside task (In Progress or Started) takes it out of the backlog, in the
+        // same write and so in the same undo step. The row that comes back says whether it did;
+        // it is never assumed.
         if (cameOutOfBacklog(node, updated)) {
-          showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
+          showToast({ nodeId, message: t(backlogClearedMessage(next)) });
         }
         await reload();
       }, (err: unknown) => {
@@ -115,6 +120,16 @@ export function useListData(): ListData {
       });
     },
     [tree, reload, guard, showToast, t],
+  );
+
+  const onCycleStatus = useCallback(
+    (nodeId: string) => writeRowStatus(nodeId, nextTaskStatus),
+    [writeRowStatus],
+  );
+
+  const onToggleStarted = useCallback(
+    (nodeId: string) => writeRowStatus(nodeId, nextStartedStatus),
+    [writeRowStatus],
   );
 
   const createTask = useCallback(
@@ -130,7 +145,7 @@ export function useListData(): ListData {
 
   return {
     tree, rows, commitmentRows, expectationRows, listRoot, toggleRelease,
-    allTasksAndGoals, isLoading, error, reload, onCycleStatus,
+    allTasksAndGoals, isLoading, error, reload, onCycleStatus, onToggleStarted,
     renameNode, createTask, deleteTask, removeNode,
     occurrencePrompt, confirmOccurrence, cancelOccurrence,
   };

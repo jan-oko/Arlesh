@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import { renderHook } from "@testing-library/react";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
-import { mindmapKeyboardContext } from "@/test/keyboard-context";
+import { makeFixtureTask, mindmapKeyboardContext } from "@/test/keyboard-context";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { TypedChildKind } from "@/utils/node-meta";
 
@@ -393,6 +393,33 @@ describe("useKeyboardMindmap — Ctrl+Enter inserts intermediate parent", () => 
     const opts = mindmapKeyboardContext();
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("Enter", { ctrlKey: true });
+    expect(opts.onCycleStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("useKeyboardMindmap — Alt+Enter sets a task Started", () => {
+  it("calls onToggleStarted, not onCycleStatus, for an unblocked task", () => {
+    const opts = mindmapKeyboardContext();
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Enter", { altKey: true });
+    expect(opts.onToggleStarted).toHaveBeenCalledWith("task-1");
+    expect(opts.onCycleStatus).not.toHaveBeenCalled();
+  });
+
+  it("does nothing on a blocked task", () => {
+    const blocked: MindmapNode = { ...makeFixtureTask("task-1"), blockReasons: ["waiting"] };
+    const opts = mindmapKeyboardContext({ findNodeById: (id) => (id === "task-1" ? blocked : undefined) });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Enter", { altKey: true });
+    expect(opts.onToggleStarted).not.toHaveBeenCalled();
+  });
+
+  it("does nothing on a goal", () => {
+    const goal: MindmapNode = { id: "goal-1", kind: "goal", title: "g", status: "active", position: 0, tagIds: [], children: [] };
+    const opts = mindmapKeyboardContext({ selectedNodeId: "goal-1", findNodeById: (id) => (id === "goal-1" ? goal : undefined) });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("Enter", { altKey: true });
+    expect(opts.onToggleStarted).not.toHaveBeenCalled();
     expect(opts.onCycleStatus).not.toHaveBeenCalled();
   });
 });

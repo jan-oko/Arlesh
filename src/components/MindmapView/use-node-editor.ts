@@ -45,6 +45,7 @@ import { findNode } from "@/utils/mindmap-tree";
 import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { TASK_STATUS } from "@/utils/status-mapping";
+import { backlogClearedMessage } from "@/utils/task-status-cycle";
 
 /** A flow item's id on the fork an "Archive & new" save landed on — or its own, with no fork. */
 function forkedItemId(forked: ForkedTemplate | null, type: FlowItemType, id: number): number {
@@ -217,8 +218,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       // rather than left to be noticed.
       if (node.backlogged === true && data.archival === TASK_ARCHIVAL.LIVE) {
         if (data.plan !== null) showToast({ nodeId, message: t("backlogClearedByPlan") });
-        else if (data.status === TASK_STATUS.IN_PROGRESS) {
-          showToast({ nodeId, message: t("backlogClearedByStart") });
+        else if (data.status === TASK_STATUS.IN_PROGRESS || data.status === TASK_STATUS.STARTED) {
+          showToast({ nodeId, message: t(backlogClearedMessage(data.status)) });
         }
       }
       await setBlockReasons("task", dbId, data.blockReasons);
