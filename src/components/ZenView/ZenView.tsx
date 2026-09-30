@@ -272,7 +272,6 @@ export default function ZenView() {
                 height={layout.cardHeight}
                 text={text}
                 showBadges={showBadges}
-                showsStarted={showsStarted}
                 isSelected={row.node.id === activeId}
                 isFocusExempt={contents.tasks.exemptedIds.has(row.node.id)}
                 isEditingTitle={row.node.id === editingTaskId}

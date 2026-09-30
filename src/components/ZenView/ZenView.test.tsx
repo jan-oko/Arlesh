@@ -171,9 +171,10 @@ describe("what the Zen View draws", () => {
     expect(taskCards()).toEqual(["task-1", "task-2"]);
   });
 
-  it("leads a Started card's title with the Started glyph while its setting is on, badges or not", () => {
+  it("draws the status icon in a card's badge row for every status but In Progress", () => {
     mockBoard([n("task-1", "task", { status: "in_progress" }), n("task-2", "task", { status: "started" })]);
-    useDisplayStore.setState({ zenShowsStarted: true, zenShowBadges: false });
+    useDisplayStore.setState({ zenShowsStarted: true });
+    withArea(1200, 800);
     render(<ZenViewInApp />);
     const icons = [...document.querySelectorAll("[data-zen-status-icon]")];
     expect(icons.map((icon) => icon.closest("[data-row-id]")?.getAttribute("data-row-id"))).toEqual(["task-2"]);
@@ -290,6 +291,30 @@ describe("keyboard", () => {
     press("Enter", { altKey: true });
     expect(onToggleStarted).toHaveBeenCalledWith("task-1");
     expect(onCycleStatus).not.toHaveBeenCalled();
+  });
+
+  it("keeps a card your own edit stops matching on screen, dimmed and iconed, until the selection moves", () => {
+    withArea(1200, 800);
+    const { rerender } = render(<ZenViewInApp />);
+    press("ArrowDown");
+    expect(selectedCard()).toBe("task-1");
+
+    // The write lands and the board reloads with task-1 Done: it no longer matches Do.
+    const board = standardBoard();
+    const goal = board[0];
+    if (goal === undefined) throw new Error("no goal");
+    goal.children = goal.children.map((child) => (child.id === "task-1" ? { ...child, status: "done" } : child));
+    mockBoard(board);
+    rerender(<ZenViewInApp />);
+
+    expect(taskCards()).toContain("task-1");
+    const card = document.querySelector('[data-row-id="task-1"]');
+    expect(card?.className).toMatch(/cardFocusExempt/);
+    expect(card?.querySelector("[data-zen-status-icon]")?.getAttribute("data-zen-status-icon")).toBe("done");
+    expect(selectedCard()).toBe("task-1");
+
+    press("ArrowRight");
+    expect(taskCards()).not.toContain("task-1");
   });
 
   it("opens the editor with E", () => {

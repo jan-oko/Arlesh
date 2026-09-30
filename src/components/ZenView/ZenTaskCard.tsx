@@ -8,12 +8,13 @@ import { useInputCapture } from "@/hooks/use-input-capture";
 import TaskRowBadges from "@/components/ListView/TaskRowBadges";
 import TaskIcon from "@/components/NodeIcon/TaskIcon";
 import { TASK_STATUS } from "@/utils/status-mapping";
+import { isTaskStatusValue } from "@/utils/list-filter";
 import { useTranslation } from "react-i18next";
 import styles from "./ZenTaskCard.module.css";
 
 const PATH_SEPARATOR = " › ";
 
-/** The status glyph's own box: TaskIcon draws in a square this wide, then CSS scales it. */
+/** The status glyph's own box: TaskIcon draws in a square this wide; the badge row's CSS scales it. */
 const ICON_BOX = 24;
 
 interface Props {
@@ -22,9 +23,6 @@ interface Props {
   height: number;
   text: ZenTextSize;
   showBadges: boolean;
-  /** The *Show Started tasks on the grid* setting. While it is on, a Started card leads its title
-   * with the Started glyph, so a paused task is told apart from the work in progress around it. */
-  showsStarted: boolean;
   isSelected: boolean;
   /** Held on screen only because it is selected: the filter would have dropped it. Dimmed. */
   isFocusExempt: boolean;
@@ -50,16 +48,17 @@ interface Props {
  * gesture). `R` swaps the title for an inline input, as a List row does.
  */
 export default function ZenTaskCard({
-  row, width, height, text, showBadges, showsStarted, isSelected, isFocusExempt, isEditingTitle,
+  row, width, height, text, showBadges, isSelected, isFocusExempt, isEditingTitle,
   onSelect, onOpenEditor, onCommitTitle, onCancelTitleEdit,
 }: Props) {
   useInputCapture(isEditingTitle);
   const inputRef = useRef<HTMLInputElement>(null);
   const { t } = useTranslation("status");
   const { node } = row;
-  // Independent of the badge row: it is part of the title line, not a badge, so it is drawn on a
-  // card too short for badges and with *Show badges on cards* off.
-  const showsStartedIcon = showsStarted && node.status === TASK_STATUS.STARTED;
+  // The grid is In Progress work, so only a card that is something else — Started, or a card the
+  // focus exemption holds after your own edit made it To Do or Done — says its status.
+  const status = node.status ?? TASK_STATUS.TODO;
+  const showsStatusIcon = status !== TASK_STATUS.IN_PROGRESS && isTaskStatusValue(status);
 
   useEffect(() => {
     if (!isEditingTitle) return;
@@ -104,23 +103,7 @@ export default function ZenTaskCard({
           onBlur={(event) => onCommitTitle(node.id, event.currentTarget.value)}
         />
       ) : (
-        <span className={styles.titleLine}>
-          {showsStartedIcon && (
-            <svg
-              className={styles.statusIcon}
-              data-zen-status-icon={node.status}
-              viewBox={`0 0 ${ICON_BOX} ${ICON_BOX}`}
-              role="img"
-              aria-label={t("task.started")}
-            >
-              <TaskIcon
-                cx={ICON_BOX / 2} cy={ICON_BOX / 2} r={ICON_BOX * 0.45}
-                color="var(--card-text-strong)" opacity={1} status={node.status} isBlocked={false}
-              />
-            </svg>
-          )}
-          <span className={styles.title} dir="auto">{node.title}</span>
-        </span>
+        <span className={styles.title} dir="auto">{node.title}</span>
       )}
       {row.ancestors.length > 0 && (
         <span className={styles.path} dir="ltr">
@@ -134,6 +117,20 @@ export default function ZenTaskCard({
       )}
       {showBadges && (
         <span className={styles.badges}>
+          {showsStatusIcon && (
+            <svg
+              className={styles.statusIcon}
+              data-zen-status-icon={status}
+              viewBox={`0 0 ${ICON_BOX} ${ICON_BOX}`}
+              role="img"
+              aria-label={t(`task.${status}`)}
+            >
+              <TaskIcon
+                cx={ICON_BOX / 2} cy={ICON_BOX / 2} r={ICON_BOX * 0.45}
+                color="var(--card-text-strong)" opacity={1} status={status} isBlocked={false}
+              />
+            </svg>
+          )}
           <TaskRowBadges node={node} indicators={deriveStatusIndicators(node)} />
         </span>
       )}

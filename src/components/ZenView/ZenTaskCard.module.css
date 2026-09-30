@@ -35,27 +35,10 @@
   opacity: 0.45;
 }
 
-/* The title, led on a Started card by the Started glyph. The glyph keeps to the title's scale:
-   0.8 of the title's size, centred on its lines. */
-.titleLine {
-  display: flex;
-  max-width: 100%;
-  align-items: center;
-  justify-content: center;
-  gap: calc(var(--zen-title-size, var(--text-base)) * 0.25);
-}
-
-.statusIcon {
-  flex: 0 0 auto;
-  width: calc(var(--zen-title-size, var(--text-base)) * 0.8);
-  height: calc(var(--zen-title-size, var(--text-base)) * 0.8);
-}
-
 /* Clamped to the lines the card has room for, so a long title ends in an ellipsis rather than
    pushing the path off the card. The full title is the card's tooltip. */
 .title {
   display: -webkit-box;
-  min-width: 0;
   max-width: 100%;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -97,7 +80,9 @@
    sizing the element scales the glyph. */
 .badges {
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: calc(var(--zen-badge-size, 12px) * 0.4);
 }
 
 .badges > span {
