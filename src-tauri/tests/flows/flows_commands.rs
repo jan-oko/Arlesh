@@ -16,8 +16,8 @@ use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::flows::{
     self,
     model::{
-        ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowId,
-        FlowItemType, InstanceType, SetRecurrenceRequest, StartFlowRequest, TargetRef,
+        ClockKind, CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowId, FlowItemType,
+        InstanceType, MissPolicy, SetRecurrenceRequest, StartFlowRequest, TargetRef,
         UpdateFlowItemRequest, UpdateFlowRequest,
     },
 };
@@ -346,9 +346,8 @@ async fn the_set_flow_recurrence_command_commits_the_recurrence() {
             gap_n: None,
             gap_kind: None,
             end_scope_id: None,
-            consumption_kind: ConsumptionKind::Destructive,
-            blocking_mode: None,
-            catchup_policy: None,
+            clock: ClockKind::Window,
+            miss_policy: Some(MissPolicy::Archive),
         },
     )
     .await
@@ -502,9 +501,8 @@ async fn the_duplicate_flow_command_commits_the_copy_and_its_recurrence() {
             gap_n: None,
             gap_kind: None,
             end_scope_id: None,
-            consumption_kind: ConsumptionKind::Destructive,
-            blocking_mode: None,
-            catchup_policy: None,
+            clock: ClockKind::Window,
+            miss_policy: Some(MissPolicy::Archive),
         },
     )
     .await

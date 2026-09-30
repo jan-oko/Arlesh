@@ -103,6 +103,11 @@ pub struct IterationScope {
     pub kind: Option<String>,
     /// The iteration's derived state at the reference instant.
     pub status: IterationStatus,
+    /// Under Window + Overdue, the date the **first missed** window this iteration carries starts
+    /// on: its relevance reaches back to it and its root is drawn "W3 from W1". Absent when it
+    /// carries nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub missed_from: Option<NaiveDate>,
 }
 
 #[cfg(test)]

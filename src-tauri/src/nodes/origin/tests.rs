@@ -14,6 +14,7 @@ fn habit() -> Origin {
             scope_id: ScopeKey::day(NaiveDate::from_ymd_opt(2026, 9, 20).unwrap()),
             kind: Some("day".to_string()),
             status: IterationStatus::Active,
+            missed_from: None,
         },
         item_type: TemplateKind::FlowRoot,
         item_id: 3,

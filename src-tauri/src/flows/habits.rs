@@ -14,9 +14,9 @@
 
 use std::collections::HashMap;
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDate, NaiveDateTime};
 
-use super::model::{HabitIteration, InstanceTiming, IterationStatus};
+use super::model::{HabitIteration, InstanceTiming, IterationStatus, MissPolicy};
 use crate::scopes::key::ScopeKey;
 
 /// A precomputed iteration window: its ordinal, anchoring scope, and half-open `[start, end)`
@@ -29,35 +29,42 @@ pub struct SlotWindow {
     pub scope_id: ScopeKey,
     /// Inclusive start of the window.
     pub start: NaiveDateTime,
-    /// Exclusive end of the window (the window has passed once `now >= end`).
+    /// Exclusive end of the window (the window has passed once `now >= end`). An Unscoped Interval
+    /// Habit's instance has no window; its end is [`UNBOUNDED`], which nothing ever reaches.
     pub end: NaiveDateTime,
 }
 
-/// Parsed Consumption behavior — how a Habit treats unfinished instances as iterations pass.
+/// The end of an instance that has **no window** — an Unscoped Interval Habit's: the last second
+/// of the year 9999. Past every instant the app will ever be asked about, so nothing lapses by it,
+/// and it is never a due, since an Unscoped instance has none. Not `NaiveDateTime::MAX`, whose
+/// six-digit signed year would sort *before* today as the text the frontend compares.
+pub const UNBOUNDED: NaiveDateTime = match NaiveDate::from_ymd_opt(9999, 12, 31) {
+    Some(date) => match date.and_hms_opt(23, 59, 59) {
+        Some(instant) => instant,
+        None => NaiveDateTime::MAX,
+    },
+    None => NaiveDateTime::MAX,
+};
+
+/// A Habit's **clock**, parsed — what decides when its occurrences fall and what becomes of one
+/// left unfinished (`docs/spec/habits.md`, *Clocks*).
+///
+/// An enum rather than a pair of flags because a miss policy only means anything under a Window
+/// clock: an Interval Habit has one open instance and nothing it could miss.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Consumption {
-    /// Unfinished iterations lapse (Archive-on-exit) once their window ends.
-    Destructive,
-    /// Unfinished iterations survive and pile up; every started iteration is Active or Done.
-    Overlapping,
-    /// New iterations are withheld while the open one is unresolved; on completion, `Catchup` runs.
-    Blocking(Catchup),
+pub enum Clock {
+    /// Iterations tile from the Start anchor; the policy says what a passed unfinished one does.
+    Window(MissPolicy),
+    /// One open instance; the next is placed by the last one's completion.
+    Interval,
 }
 
-/// How a Blocking Habit advances when its open iteration completes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Catchup {
-    /// Release every backlogged iteration up to the completion instant at once.
-    AllPending,
-    /// Release exactly the next iteration.
-    Next,
-    /// Jump to the iteration containing the completion instant; intermediate ones become Missed.
-    Latest,
-}
-
-/// The last slot whose window started on or before `at`, or `None` if `at` precedes them all.
-fn slot_at(slots: &[SlotWindow], at: NaiveDateTime) -> Option<usize> {
-    slots.iter().rposition(|slot| slot.start <= at)
+impl Clock {
+    /// Whether an occurrence whose own window has passed unfinished lapses (and archives) on the
+    /// way past, rather than staying open to be flagged Overdue.
+    pub fn lapses_on_exit(self) -> bool {
+        self == Self::Window(MissPolicy::Archive)
+    }
 }
 
 fn iteration(slot: &SlotWindow, status: IterationStatus) -> HabitIteration {
@@ -67,6 +74,7 @@ fn iteration(slot: &SlotWindow, status: IterationStatus) -> HabitIteration {
         anchor_date: slot.start.format("%Y-%m-%d").to_string(),
         window_end: slot.end.format("%Y-%m-%dT%H:%M:%S").to_string(),
         status,
+        missed_from: None,
         // Empty here by construction: resolving an occurrence's window is calendar work, and this
         // module deliberately has none. The repository fills it after classification.
         instances: Vec::new(),
@@ -74,8 +82,8 @@ fn iteration(slot: &SlotWindow, status: IterationStatus) -> HabitIteration {
 }
 
 /// Where one **occurrence** inside an iteration sits relative to its own half-open
-/// `[start, end)` window — the Consumption rule the iteration itself is classified by, applied one
-/// level down, with the not-yet-opened case in front of it.
+/// `[start, end)` window — the rule the iteration itself is classified by, applied one level down,
+/// with the not-yet-opened case in front of it.
 ///
 /// A Cycle Scope gives an occurrence a window of its own, strictly inside the iteration's. Before
 /// that window opens the occurrence is **Pending**: this evening's item, seen at breakfast. It is
@@ -83,19 +91,19 @@ fn iteration(slot: &SlotWindow, status: IterationStatus) -> HabitIteration {
 /// contract is that it shows everything — where dropping it here would put it beyond every
 /// preset's reach.
 ///
-/// Once the window opens, **Destructive** is what bounds it: a Morning item is Lapsed from noon,
-/// hours before the day it sits in ends, which is the whole point of scoping it to the morning.
-/// Under **Accumulating** nothing lapses on the way past — an overlapping Habit's unfinished
-/// occurrence piles up exactly as its unfinished iteration does, and if a morning routine should
-/// vanish at noon, Destructive is what says so. This reads the window alone, not whether the
-/// occurrence is done: a *done* one whose window has passed is Lapsed whatever the Consumption,
-/// which the occurrence's row settles once its state is known (`occurrences::settled_timing`).
+/// Once the window opens, **Window + Archive** is what bounds it: a Morning item is Lapsed from
+/// noon, hours before the day it sits in ends, which is the whole point of scoping it to the
+/// morning. Under every other clock nothing lapses on the way past — an unfinished occurrence stays
+/// open and is flagged Overdue past its due instead — and if a morning routine should vanish at
+/// noon, Archive is what says so. This reads the window alone, not whether the occurrence is done:
+/// a *done* one whose window has passed is Lapsed whatever the clock, which the occurrence's row
+/// settles once its state is known (`occurrences::settled_timing`).
 ///
 /// An iteration that is itself Lapsed or Missed carries every *started* occurrence in it with it,
-/// whatever its Consumption: a Blocking `latest` skip is not a window passing, and nothing under a
-/// skipped iteration is still open.
+/// whatever its clock: a Missed iteration's work has moved on to the one open now, and nothing
+/// under it is still open.
 pub fn instance_timing(
-    consumption: Consumption,
+    clock: Clock,
     iteration_status: IterationStatus,
     window: (NaiveDateTime, NaiveDateTime),
     now: NaiveDateTime,
@@ -110,7 +118,7 @@ pub fn instance_timing(
     ) {
         return InstanceTiming::Lapsed;
     }
-    if consumption == Consumption::Destructive && end <= now {
+    if clock.lapses_on_exit() && end <= now {
         return InstanceTiming::Lapsed;
     }
     InstanceTiming::Active
@@ -121,23 +129,27 @@ pub fn instance_timing(
 /// `resolved` maps a slot index to the instant that iteration was completed (present iff every
 /// instance in it is done). Only completed iterations appear in the map; `now` bounds the schedule
 /// (all `slots` are assumed to have started on or before it).
+///
+/// An **Interval** Habit's slots are already its chain — each placed by the completion before it
+/// ([`super::interval_slots`]) — so every one but the last is Done by construction, and it
+/// classifies as Window + Owed does: nothing it holds lapses.
 pub fn classify_iterations(
     slots: &[SlotWindow],
-    consumption: Consumption,
+    clock: Clock,
     resolved: &HashMap<i64, NaiveDateTime>,
     now: NaiveDateTime,
 ) -> Vec<HabitIteration> {
-    match consumption {
-        Consumption::Destructive => classify_destructive(slots, resolved, now),
-        Consumption::Overlapping => classify_overlapping(slots, resolved),
-        Consumption::Blocking(catchup) => classify_blocking(slots, resolved, catchup),
+    match clock {
+        Clock::Window(MissPolicy::Archive) => classify_archive(slots, resolved, now),
+        Clock::Window(MissPolicy::Owed) | Clock::Interval => classify_owed(slots, resolved),
+        Clock::Window(MissPolicy::Overdue) => classify_overdue(slots, resolved),
     }
 }
 
 /// Bounds a **commitment** Habit's iterations by its Verdict Window.
 ///
-/// A commitment Habit is fixed to Accumulating + Overlapping, so nothing it generates ever lapses
-/// on the Consumption path — every started iteration classifies Active until it is answered. That
+/// A commitment Habit is fixed to Window + Owed, so nothing it generates ever lapses on the way
+/// past its window — every started iteration classifies Active until it is answered. That
 /// is right while the answer is still owed and wrong forever after: without this, an iteration
 /// from a year ago keeps offering its Kept/Broken controls indefinitely. The Verdict Window is the
 /// bounding mechanism instead, and this is where it bites.
@@ -173,8 +185,9 @@ pub fn expire_unanswered(
         .collect()
 }
 
-/// Destructive: a passed unfinished iteration is Lapsed; only the current window can be Active.
-fn classify_destructive(
+/// Window + Archive: a passed unfinished iteration is Lapsed; only the current window can be
+/// Active.
+fn classify_archive(
     slots: &[SlotWindow],
     resolved: &HashMap<i64, NaiveDateTime>,
     now: NaiveDateTime,
@@ -194,8 +207,9 @@ fn classify_destructive(
         .collect()
 }
 
-/// Accumulating + Overlapping: every started iteration is Done or Active; nothing lapses.
-fn classify_overlapping(
+/// Window + Owed (and an Interval chain): every started iteration is Done or Active; nothing
+/// lapses.
+fn classify_owed(
     slots: &[SlotWindow],
     resolved: &HashMap<i64, NaiveDateTime>,
 ) -> Vec<HabitIteration> {
@@ -212,93 +226,39 @@ fn classify_overlapping(
         .collect()
 }
 
-/// Accumulating + Blocking: iterations are withheld beyond the released frontier. `Next` and
-/// `Latest` keep a single open iteration; `AllPending` releases the whole backlog to the completion
-/// instant. Withheld (future) iterations are omitted — the ellipsis node represents them.
-fn classify_blocking(
-    slots: &[SlotWindow],
-    resolved: &HashMap<i64, NaiveDateTime>,
-    catchup: Catchup,
-) -> Vec<HabitIteration> {
-    match catchup {
-        Catchup::Next => classify_blocking_next(slots, resolved),
-        Catchup::Latest => classify_blocking_latest(slots, resolved),
-        Catchup::AllPending => classify_blocking_all_pending(slots, resolved),
-    }
-}
-
-/// Single open iteration; each completion releases exactly the next. The done iterations form a
-/// contiguous prefix, followed by one Active iteration (the current open one).
-fn classify_blocking_next(
+/// Window + Overdue: the **latest started** iteration is the open one — Active until it is done,
+/// however long ago its own window passed. Every earlier unfinished iteration is Missed, and the
+/// first iteration after a run of Missed ones (the open one, or one done since) carries the run:
+/// its `missed_from` names the run's first iteration.
+///
+/// Which iterations are Missed is read off completions alone, so it is stable: completing the open
+/// iteration does not rewrite what came before it, and the done iteration keeps saying which
+/// windows it made up for.
+fn classify_overdue(
     slots: &[SlotWindow],
     resolved: &HashMap<i64, NaiveDateTime>,
 ) -> Vec<HabitIteration> {
-    let mut result = Vec::new();
-    for slot in slots {
-        if resolved.contains_key(&slot.index) {
-            result.push(iteration(slot, IterationStatus::Done));
+    let open = slots.len().checked_sub(1);
+    let mut run_start: Option<i64> = None;
+    let mut result = Vec::with_capacity(slots.len());
+    for (position, slot) in slots.iter().enumerate() {
+        let done = resolved.contains_key(&slot.index);
+        if !done && Some(position) != open {
+            run_start.get_or_insert(slot.index);
+            result.push(iteration(slot, IterationStatus::Missed));
+            continue;
+        }
+        let status = if done {
+            IterationStatus::Done
         } else {
-            result.push(iteration(slot, IterationStatus::Active));
-            break; // The open iteration blocks everything after it.
-        }
-    }
-    result
-}
-
-/// Single open iteration; completing it jumps to the slot containing the completion instant, turning
-/// the skipped intermediate iterations into Missed.
-fn classify_blocking_latest(
-    slots: &[SlotWindow],
-    resolved: &HashMap<i64, NaiveDateTime>,
-) -> Vec<HabitIteration> {
-    let mut result = Vec::new();
-    let mut cursor = 0usize;
-    while cursor < slots.len() {
-        let slot = &slots[cursor];
-        let Some(resolved_on) = resolved.get(&slot.index) else {
-            result.push(iteration(slot, IterationStatus::Active));
-            break; // Open iteration blocks the rest.
+            IterationStatus::Active
         };
-        result.push(iteration(slot, IterationStatus::Done));
-        // Jump to the slot the completion instant falls in; the gap between becomes Missed.
-        let target = slot_at(slots, *resolved_on)
-            .unwrap_or(cursor)
-            .max(cursor + 1);
-        for missed in &slots[cursor + 1..target.min(slots.len())] {
-            result.push(iteration(missed, IterationStatus::Missed));
-        }
-        cursor = target;
+        result.push(HabitIteration {
+            missed_from: run_start.take(),
+            ..iteration(slot, status)
+        });
     }
     result
-}
-
-/// Completing an iteration releases the whole backlog up to that completion instant; released-but-
-/// unfinished iterations are Active. Beyond the frontier, blocking resumes (omitted here).
-fn classify_blocking_all_pending(
-    slots: &[SlotWindow],
-    resolved: &HashMap<i64, NaiveDateTime>,
-) -> Vec<HabitIteration> {
-    // The frontier reaches the furthest of: any completed slot, and the slot each completion landed
-    // in. With no completions it stays at slot 0 (only the first iteration is released).
-    let mut frontier = 0usize;
-    for slot in slots {
-        if let Some(resolved_on) = resolved.get(&slot.index) {
-            let landed = slot_at(slots, *resolved_on).unwrap_or(0);
-            frontier = frontier.max(slot.index as usize).max(landed);
-        }
-    }
-    slots
-        .iter()
-        .take(frontier + 1)
-        .map(|slot| {
-            let status = if resolved.contains_key(&slot.index) {
-                IterationStatus::Done
-            } else {
-                IterationStatus::Active
-            };
-            iteration(slot, status)
-        })
-        .collect()
 }
 
 #[cfg(test)]

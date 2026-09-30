@@ -198,12 +198,6 @@ impl ArleshMcp {
                          its Habit's, so on_scope_exit cannot be set on it"
                     ));
                 }
-                if due_scope.is_some() && matches!(id, NodeId::Derived(_)) {
-                    return result::refused(format!(
-                        "task {id} is a Habit occurrence; when it is due is its Habit's, so \
-                         due_scope cannot be set on it"
-                    ));
-                }
                 let relations = found!(Relations::read(
                     &board,
                     Asked {

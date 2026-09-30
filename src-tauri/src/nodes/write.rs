@@ -127,7 +127,7 @@ pub async fn create_commitment(
     request.parent_type = host.host_type.clone();
     request.parent_id = NodeId::Stored(host.host_id);
     if request.time_scope.is_none() {
-        request.time_scope = Some(host.window.clone());
+        request.time_scope = host.window.clone();
     }
     let mut commitment = crate::tasks::create_commitment(db, request).await?;
     occurrence_edit::attach(

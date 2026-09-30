@@ -27,9 +27,14 @@ use crate::{
 impl ArleshMcp {
     /// Flow reads that `arlesh_snapshot` does not cover.
     ///
-    /// `recurrence` returns a Habit's stored configuration — the repetition and consumption rules
-    /// — as opposed to the iterations the snapshot derives from it, and is `null` for a flow that
-    /// is not a Habit. `origins` maps materialised nodes back to the flow they were started from.
+    /// `recurrence` returns a Habit's stored configuration — its repetition (`start_scope_id`,
+    /// `gap_n`/`gap_kind`, `end_scope_id`) and its **clock**: `clock` `window` (iterations tile from
+    /// the start; `miss_policy` says what one left unfinished does — `archive`: it lapses; `owed`:
+    /// it stays open, due at its own window; `overdue`: it is archived as missed and the open
+    /// iteration carries it, due at the first missed window) or `interval` (one open instance; the
+    /// next starts the unit after the one the last was completed in, plus the gap; `miss_policy`
+    /// null) — as opposed to the iterations the snapshot derives from it, and is `null` for a flow
+    /// that is not a Habit. `origins` maps materialised nodes back to the flow they were started from.
     ///
     /// Every id is a row id or a short id. A flow or node outside the MCP roots is refused as
     /// `not_permitted`, and an origin in a flow the MCP cannot read is left out.

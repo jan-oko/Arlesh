@@ -13,8 +13,8 @@ use arlesh_lib::commands::{
     tasks as task_commands,
 };
 use arlesh_lib::flows::model::{
-    ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType,
-    InstanceType, SetRecurrenceRequest,
+    ClockKind, CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType,
+    InstanceType, MissPolicy, SetRecurrenceRequest,
 };
 use arlesh_lib::mindmap::model::MindmapLoad;
 use arlesh_lib::nodes::{
@@ -92,9 +92,8 @@ async fn daily_habit(
             gap_n: None,
             gap_kind: None,
             end_scope_id: None,
-            consumption_kind: ConsumptionKind::Accumulating,
-            blocking_mode: Some(arlesh_lib::flows::model::BlockingMode::Overlapping),
-            catchup_policy: None,
+            clock: ClockKind::Window,
+            miss_policy: Some(MissPolicy::Owed),
         },
     )
     .await
@@ -1123,9 +1122,8 @@ async fn a_root_and_an_item_cycle_plan_resolve_onto_their_occurrences() {
             gap_n: None,
             gap_kind: None,
             end_scope_id: None,
-            consumption_kind: ConsumptionKind::Accumulating,
-            blocking_mode: Some(arlesh_lib::flows::model::BlockingMode::Overlapping),
-            catchup_policy: None,
+            clock: ClockKind::Window,
+            miss_policy: Some(MissPolicy::Owed),
         },
     )
     .await
@@ -1273,9 +1271,8 @@ async fn a_root_and_a_whole_scope_pair_planned_into_the_window_are_planned_into_
             gap_n: None,
             gap_kind: None,
             end_scope_id: None,
-            consumption_kind: ConsumptionKind::Accumulating,
-            blocking_mode: Some(arlesh_lib::flows::model::BlockingMode::Overlapping),
-            catchup_policy: None,
+            clock: ClockKind::Window,
+            miss_policy: Some(MissPolicy::Owed),
         },
     )
     .await
