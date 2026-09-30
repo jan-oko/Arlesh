@@ -314,6 +314,7 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
             time_scope: Some(at(week)),
             on_scope_exit: Some(OnScopeExit::Archive),
             plan: Some(at(week)),
+            due_scope: None,
             archival: None,
             agentic: Some(TaskAgentic::Yes),
             asynchronous: Some(true),
