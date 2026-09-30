@@ -845,7 +845,8 @@ describe("TaskEditorModal — the Due field", () => {
 
   it("saves a stored due, and Clear sends it back to the default", async () => {
     const onSave = await openEditor(mkNode({ timeScope: JULY_WEEK, onScopeExit: "keep", dueScope: JULY_WEEK }));
-    fireEvent.click(screen.getByRole("button", { name: "scopeClear" }));
+    // The Time Scope has a Clear of its own; this is the one in the Due field.
+    fireEvent.click(within(screen.getByText("fieldDue")).getByRole("button", { name: "scopeClear" }));
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ dueScope: null });
