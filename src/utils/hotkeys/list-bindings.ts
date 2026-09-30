@@ -1,4 +1,4 @@
-import type { Binding } from "./chord";
+import { inGroup, type Binding, type HotkeyGroup } from "./chord";
 import type { ListSelectionContext } from "./list/selection";
 import { LIST_COMMITMENT_BINDINGS, type ListCommitmentContext } from "./list/commitment";
 import { LIST_CREATE_BINDINGS, type ListCreateContext } from "./list/create";
@@ -50,6 +50,13 @@ export interface ListContext extends
   ListStatusPresetContext,
   ListUnblockPresetContext {}
 
+/** `list/expectation.ts` holds a preset and a create key beside its edits; the sheet lists them
+ * with their kind. */
+const EXPECTATION_GROUPS: Readonly<Record<string, HotkeyGroup>> = {
+  "listView.preset.expectations": "groupPresets",
+  "listView.createExpectation": "groupCreate",
+};
+
 /**
  * List View's bindings, mirroring the Mindmap's where they translate to a flat list.
  *
@@ -60,22 +67,22 @@ export interface ListContext extends
  * chord is a red test rather than a silent no-op.
  */
 export const LIST_BINDINGS: readonly Binding<ListContext>[] = [
-  ...LIST_FULLSCREEN_BINDINGS,
-  ...LIST_STATUS_PRESET_BINDINGS,
-  ...LIST_UNBLOCK_PRESET_BINDINGS,
-  ...LIST_NAVIGATE_BINDINGS,
-  ...LIST_JUMP_BINDINGS,
-  ...LIST_SCROLL_BINDINGS,
-  ...LIST_STATUS_BINDINGS,
-  ...LIST_COMMITMENT_BINDINGS,
-  ...LIST_EXPECTATION_BINDINGS,
-  ...LIST_EDITOR_BINDINGS,
-  ...LIST_RENAME_BINDINGS,
-  ...LIST_CREATE_BINDINGS,
-  ...LIST_DELETE_BINDINGS,
-  ...LIST_FLAGS_BINDINGS,
-  ...LIST_PLAN_BINDINGS,
-  ...LIST_DEPENDENCY_BINDINGS,
-  ...LIST_DESELECT_BINDINGS,
-  ...LIST_HISTORY_BINDINGS,
+  ...inGroup("groupDisplay", LIST_FULLSCREEN_BINDINGS),
+  ...inGroup("groupPresets", LIST_STATUS_PRESET_BINDINGS),
+  ...inGroup("groupPresets", LIST_UNBLOCK_PRESET_BINDINGS),
+  ...inGroup("groupMove", LIST_NAVIGATE_BINDINGS),
+  ...inGroup("groupMove", LIST_JUMP_BINDINGS),
+  ...inGroup("groupMove", LIST_SCROLL_BINDINGS),
+  ...inGroup("groupEdit", LIST_STATUS_BINDINGS),
+  ...inGroup("groupEdit", LIST_COMMITMENT_BINDINGS),
+  ...inGroup("groupEdit", LIST_EXPECTATION_BINDINGS, EXPECTATION_GROUPS),
+  ...inGroup("groupEdit", LIST_EDITOR_BINDINGS),
+  ...inGroup("groupEdit", LIST_RENAME_BINDINGS),
+  ...inGroup("groupCreate", LIST_CREATE_BINDINGS),
+  ...inGroup("groupEdit", LIST_DELETE_BINDINGS),
+  ...inGroup("groupEdit", LIST_FLAGS_BINDINGS),
+  ...inGroup("groupEdit", LIST_PLAN_BINDINGS),
+  ...inGroup("groupEdit", LIST_DEPENDENCY_BINDINGS),
+  ...inGroup("groupMove", LIST_DESELECT_BINDINGS),
+  ...inGroup("groupEdit", LIST_HISTORY_BINDINGS),
 ];
