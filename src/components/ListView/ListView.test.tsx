@@ -148,7 +148,9 @@ beforeEach(() => {
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   mockUseListData.mockReturnValue(listData());
   useMindmapStore.setState({ subtreeRootId: null, subtreeNav: null });
-  useDisplayStore.setState({ asynchronousFirst: false, searchIncludesArchived: false });
+  useDisplayStore.setState({
+    asynchronousFirst: false, overdueFirst: true, listShowOverdueBorder: true, searchIncludesArchived: false,
+  });
 });
 
 describe("ListView — Asynchronous first", () => {
@@ -390,6 +392,81 @@ describe("ListView — Asynchronous first", () => {
     }
     // The band first, then the section, then what the section left behind — no dead stop, nothing skipped.
     expect(selected).toEqual(["commitment-1", "task-wait", "task-plain"]);
+  });
+});
+
+describe("ListView — Overdue first", () => {
+  const aspect = () => n("aspect-1", "aspect");
+  const goal = () => n("goal-1", "goal", { status: "active" });
+
+  function overdueRows() {
+    return [
+      row({ node: n("task-plain", "task", { status: "todo" }), ancestors: [aspect(), goal()] }),
+      row({
+        node: n("task-late", "task", { status: "todo", timing: "lapsed", overdue: true }),
+        ancestors: [aspect(), goal()],
+      }),
+      row({
+        node: n("task-wait", "task", { status: "todo", asynchronous: true }),
+        ancestors: [aspect(), goal()],
+        isAsynchronous: true,
+      }),
+    ];
+  }
+
+  /** Section headings, rules and rows, in the order they are drawn. */
+  function renderedBlocks(container: HTMLElement): string[] {
+    const drawn = container.querySelectorAll<HTMLElement>("h2, [class*='sectionEnd'], [class*='card']");
+    return Array.from(drawn).map((element) => {
+      if (element.tagName === "H2") return `section:${element.textContent}`;
+      if (element.className.includes("sectionEnd")) return "rule";
+      return `row:${element.querySelector("button[class*='title']")?.textContent ?? ""}`;
+    });
+  }
+
+  function underStart() {
+    useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "start" } });
+    useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, preset: "start", pills: { ...DEFAULT_LIST_FILTER.pills } } });
+  }
+
+  it("under Start, lifts the Overdue row into a section above the Asynchronous one", () => {
+    underStart();
+    useDisplayStore.setState({ overdueFirst: true, asynchronousFirst: true });
+    mockUseListData.mockReturnValue(listData({ rows: overdueRows() }));
+    const { container } = render(<ListViewInApp />);
+    expect(renderedBlocks(container)).toEqual([
+      "section:listView:overdueHeading", "row:task-late", "rule",
+      "section:listView:asynchronousHeading", "row:task-wait", "rule",
+      "row:task-plain",
+    ]);
+  });
+
+  it("draws no Overdue section with its setting off", () => {
+    underStart();
+    useDisplayStore.setState({ overdueFirst: false });
+    mockUseListData.mockReturnValue(listData({ rows: overdueRows() }));
+    render(<ListViewInApp />);
+    expect(screen.queryByText("listView:overdueHeading")).not.toBeInTheDocument();
+  });
+
+  it("draws no Overdue section under any preset but Start", () => {
+    useDisplayStore.setState({ overdueFirst: true });
+    mockUseListData.mockReturnValue(listData({ rows: overdueRows() }));
+    render(<ListViewInApp />);
+    expect(screen.queryByText("listView:overdueHeading")).not.toBeInTheDocument();
+  });
+
+  it("drops the amber border on rows while the List setting is off", () => {
+    useDisplayStore.setState({ listShowOverdueBorder: false });
+    mockUseListData.mockReturnValue(listData({ rows: overdueRows() }));
+    const { container } = render(<ListViewInApp />);
+    expect(container.querySelector("[class*='cardOverdue']")).toBeNull();
+  });
+
+  it("draws the amber border on an Overdue row by default", () => {
+    mockUseListData.mockReturnValue(listData({ rows: overdueRows() }));
+    const { container } = render(<ListViewInApp />);
+    expect(container.querySelector("[class*='cardOverdue']")).not.toBeNull();
   });
 });
 

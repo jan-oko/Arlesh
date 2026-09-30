@@ -2,13 +2,30 @@ import { describe, it, expect } from "vitest";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { ListRowEntry } from "@/utils/list-data";
-import { withAsynchronousSection } from "./async-first";
+import { DEFAULT_FILTER } from "@/utils/filter-tree";
+import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
+import { showsOverdueSection, withListSections } from "./list-sections";
 
+/** `o*` (and `oa*`) is Overdue; nothing else is. */
 function node(id: string): MindmapNode {
-  return { id, kind: "task", title: id, position: 0, tagIds: [], children: [] };
+  return {
+    id, kind: "task", title: id, position: 0, tagIds: [], children: [],
+    ...(id.startsWith("o") ? { overdue: true } : {}),
+  };
 }
 
-/** `a*` is asynchronous, anything else is not; the ancestors are given as ids, outermost first. */
+/** The Asynchronous section alone — the setting on, the list not under Start. */
+function withAsynchronousSection(rows: readonly TaskListRow[]): ListRowEntry[] {
+  return withListSections(rows.map((row) => ({ type: "task" as const, row })), { overdue: false, asynchronous: true });
+}
+
+/** Both sections asked for, as under Start with Asynchronous first on. */
+function withBothSections(rows: readonly TaskListRow[]): ListRowEntry[] {
+  return withListSections(rows.map((row) => ({ type: "task" as const, row })), { overdue: true, asynchronous: true });
+}
+
+/** `a*` and `oa*` are asynchronous, anything else is not; the ancestors are given as ids, outermost
+ * first. */
 function row(id: string, ancestorIds: readonly string[] = []): TaskListRow {
   return {
     node: node(id),
@@ -21,18 +38,20 @@ function row(id: string, ancestorIds: readonly string[] = []): TaskListRow {
     isBlocked: false,
     hasBlockedAncestor: false,
     isAgentic: false,
-    isAsynchronous: id.startsWith("a"),
+    isAsynchronous: id.startsWith("a") || id.startsWith("oa"),
     hasPrivateAncestor: false,
     scopeTokens: [],
   };
 }
 
-/** The rendered shape, for assertions: the section heading as `~`, the rule that closes it as `—`,
- * a header as `#a›b`, a task as `id:depth`. */
+/** The rendered shape, for assertions: the Asynchronous heading as `~` and its closing rule as `—`,
+ * the Overdue heading as `!` and its rule as `=`, a header as `#a›b`, a task as `id:depth`. */
 function shapeOf(entries: readonly ListRowEntry[]): string[] {
   return entries.map((entry) => {
     if (entry.type === "asynchronous") return "~";
     if (entry.type === "asynchronousEnd") return "—";
+    if (entry.type === "overdue") return "!";
+    if (entry.type === "overdueEnd") return "=";
     if (entry.type === "path") return `#${entry.segments.map((segment) => segment.id).join("›")}`;
     return `${entry.row.node.id}:${entry.visibleDepth}`;
   });
@@ -126,5 +145,80 @@ describe("withAsynchronousSection", () => {
 
   it("returns an empty list unchanged", () => {
     expect(withAsynchronousSection([])).toEqual([]);
+  });
+});
+
+describe("withListSections with the Overdue section", () => {
+  it("lifts an Overdue row into a section above the Asynchronous one", () => {
+    const entries = withBothSections([
+      row("s1", ["goal"]),
+      row("a1", ["goal"]),
+      row("o1", ["goal"]),
+    ]);
+    expect(shapeOf(entries)).toEqual([
+      "!", "#goal", "o1:0", "=",
+      "~", "#goal", "a1:0", "—",
+      "#goal", "s1:0",
+    ]);
+  });
+
+  it("puts a row that is both Overdue and asynchronous in the Overdue section, once", () => {
+    const entries = withBothSections([row("oa1", ["goal"]), row("s1", ["goal"])]);
+    expect(shapeOf(entries)).toEqual(["!", "#goal", "oa1:0", "=", "#goal", "s1:0"]);
+  });
+
+  it("carries an Overdue row's subtree with it, asynchronous children included", () => {
+    const entries = withBothSections([
+      row("o1", ["goal"]),
+      row("a1", ["goal", "o1"]),
+      row("s1", ["goal", "o1"]),
+      row("s2", ["goal"]),
+    ]);
+    expect(shapeOf(entries)).toEqual(["!", "#goal", "o1:0", "a1:1", "s1:1", "=", "#goal", "s2:0"]);
+  });
+
+  it("draws no Overdue heading when nothing is Overdue", () => {
+    const entries = withBothSections([row("a1", ["goal"]), row("s1", ["goal"])]);
+    expect(shapeOf(entries)).toEqual(["~", "#goal", "a1:0", "—", "#goal", "s1:0"]);
+  });
+
+  it("closes the Overdue section when only the Asynchronous section follows it", () => {
+    const entries = withBothSections([row("o1", ["goal"]), row("a1", ["goal"])]);
+    expect(shapeOf(entries)).toEqual(["!", "#goal", "o1:0", "=", "~", "#goal", "a1:0"]);
+  });
+
+  it("draws no closing rule when every row is Overdue", () => {
+    const entries = withBothSections([row("o1", ["goal"]), row("o2", ["goal"])]);
+    expect(shapeOf(entries)).toEqual(["!", "#goal", "o1:0", "o2:0"]);
+  });
+
+  it("leaves an Overdue row where the tree put it when the section is not asked for", () => {
+    const entries = withAsynchronousSection([row("s1", ["goal"]), row("o1", ["goal"])]);
+    expect(shapeOf(entries)).toEqual(["#goal", "s1:0", "o1:0"]);
+  });
+});
+
+describe("showsOverdueSection", () => {
+  const start = { ...DEFAULT_FILTER, statusMode: "start" as const };
+
+  it("draws it under Start while the setting is on", () => {
+    expect(showsOverdueSection(true, start, { ...DEFAULT_LIST_FILTER, preset: "start" })).toBe(true);
+  });
+
+  it("does not draw it with the setting off", () => {
+    expect(showsOverdueSection(false, start, { ...DEFAULT_LIST_FILTER, preset: "start" })).toBe(false);
+  });
+
+  it("does not draw it under any other preset", () => {
+    for (const statusMode of ["all", "plan", "do", "backlog"] as const) {
+      expect(showsOverdueSection(true, { ...DEFAULT_FILTER, statusMode }, { ...DEFAULT_LIST_FILTER, preset: statusMode }))
+        .toBe(false);
+    }
+  });
+
+  it("does not draw it under the Unblock or Expectations option, which replace Start's question", () => {
+    for (const preset of ["unblock", "expectations"] as const) {
+      expect(showsOverdueSection(true, start, { ...DEFAULT_LIST_FILTER, preset })).toBe(false);
+    }
   });
 });

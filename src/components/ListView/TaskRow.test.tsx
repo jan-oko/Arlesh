@@ -40,6 +40,7 @@ function baseProps(overrides: Partial<ComponentProps<typeof TaskRow>> = {}) {
     isSelected: false,
     isFocusExempt: false,
     isEditingTitle: false,
+    showOverdueBorder: true,
     onSelect: vi.fn(),
     onCycleStatus: vi.fn(),
     onOpenEditor: vi.fn(),
@@ -286,6 +287,15 @@ describe("TaskRow — Overdue", () => {
   it("draws the amber border and says Overdue in its description", () => {
     const { container } = render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", overdue: true }) }) })} />);
     expect(rowCard(container).className).toMatch(/cardOverdue/);
+    expect(rowCard(container)).toHaveAccessibleDescription("overdue");
+  });
+
+  it("with the List setting off, draws no amber border but still says Overdue", () => {
+    const { container } = render(<TaskRow {...baseProps({
+      showOverdueBorder: false,
+      row: row({ node: n("task-1", "task", { status: "todo", overdue: true }) }),
+    })} />);
+    expect(rowCard(container).className).not.toMatch(/cardOverdue/);
     expect(rowCard(container)).toHaveAccessibleDescription("overdue");
   });
 

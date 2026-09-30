@@ -22,6 +22,9 @@ interface Props {
   /** In the list only because it is selected: the filter would have dropped it, so it renders dimmed. */
   isFocusExempt: boolean;
   isEditingTitle: boolean;
+  /** Whether an Overdue row draws its amber border — the List page's setting. Its description says
+   * Overdue either way. */
+  showOverdueBorder: boolean;
   onSelect: (nodeId: string) => void;
   onCycleStatus: (nodeId: string) => void;
   onOpenEditor: (nodeId: string) => void;
@@ -43,7 +46,7 @@ interface Props {
  * title drifting away from them. Ancestors the filter hides are named in the path header instead, so
  * a row never indents under something that is not on screen. */
 export default function TaskRow({
-  row, visibleDepth, isSelected, isFocusExempt, isEditingTitle, onSelect, onCycleStatus, onOpenEditor, onCommitTitle, onCancelTitleEdit,
+  row, visibleDepth, isSelected, isFocusExempt, isEditingTitle, showOverdueBorder, onSelect, onCycleStatus, onOpenEditor, onCommitTitle, onCancelTitleEdit,
   onAddTagFilter,
 }: Props) {
   useInputCapture(isEditingTitle);
@@ -76,7 +79,7 @@ export default function TaskRow({
 
   return (
     <div
-      className={`${styles.card} ${indentClass}${overdue ? ` ${styles.cardOverdue}` : ""}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}`}
+      className={`${styles.card} ${indentClass}${overdue && showOverdueBorder ? ` ${styles.cardOverdue}` : ""}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}`}
       // How the list's scroller finds this row to bring it into view when it becomes the selection.
       data-row-id={node.id}
       aria-describedby={overdue ? overdueNoteId : undefined}

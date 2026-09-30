@@ -130,20 +130,23 @@ export interface CommitmentEntry { type: "commitment"; row: CommitmentListRow; v
 export interface ExpectationEntry { type: "expectation"; row: ExpectationListRow; visibleDepth: number }
 
 /** One rendered List View entry: a **path header** naming a run's location, a row carrying the
- * depth it is indented to, or one of the two markers that bracket the **Asynchronous section**.
+ * depth it is indented to, or one of the markers that bracket the **Overdue** and **Asynchronous**
+ * sections.
  * Header and depth partition a row's ancestors — the header names every ancestor *not* rendered as
  * a row above it, the depth counts every ancestor that *is* — so the list never implies a parent
  * that is not on screen.
  *
  * A row is a Task, or — when Commitments and Expectations are drawn as rows rather than in bands —
- * one of those. The two section markers carry nothing, and are drawn at most once each:
- * `asynchronous` is the heading that opens the section at the very top of the list,
- * `asynchronousEnd` the rule that closes it off from the ordinary list below. They are markers in
- * the stream rather than a wrapper around one, for the same reason a path header is: the list is
- * one flat run of rows, and the keyboard walks it in exactly the order it is drawn (see
- * `withAsynchronousSection`). */
+ * one of those. The section markers carry nothing, and are drawn at most once each:
+ * `overdue` and `asynchronous` are the headings that open their sections at the top of the list,
+ * `overdueEnd` and `asynchronousEnd` the rules that close them off from what follows. They are
+ * markers in the stream rather than a wrapper around one, for the same reason a path header is: the
+ * list is one flat run of rows, and the keyboard walks it in exactly the order it is drawn (see
+ * `withListSections`). */
 export type ListRowEntry =
   | PathEntry | TaskEntry | CommitmentEntry | ExpectationEntry
+  | { type: "overdue" }
+  | { type: "overdueEnd" }
   | { type: "asynchronous" }
   | { type: "asynchronousEnd" };
 
