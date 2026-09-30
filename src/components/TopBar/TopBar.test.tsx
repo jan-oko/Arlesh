@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import TopBar from "./TopBar";
+import { useHotkeys } from "@/hooks/use-hotkeys";
+import type { Binding } from "@/utils/hotkeys/chord";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
@@ -294,6 +296,83 @@ describe("TopBar", () => {
       mockUseFilterDisplay.mockReturnValue({ ...EMPTY_DISPLAY, tagName: () => "urgent" });
       render(<TopBar />);
       expect(screen.getByText("urgent")).toBeInTheDocument();
+    });
+  });
+
+  describe("the Filter button's dot", () => {
+    const DOT_LABEL = "filter:filterButtonUndrawnLabel";
+
+    it("shows in the Zen View while its Agentic pill is set, which draws no chip there", () => {
+      useViewStore.setState({ view: "zen" });
+      useListFilterStore.getState().addPill("agentic", "agentic", "all");
+      render(<TopBar />);
+      expect(screen.getByRole("button", { name: DOT_LABEL })).toBeInTheDocument();
+    });
+
+    it("does not show in the List View for the same Agentic pill, which is drawn as a chip", () => {
+      useViewStore.setState({ view: "list" });
+      useListFilterStore.getState().addPill("agentic", "agentic", "all");
+      render(<TopBar />);
+      expect(screen.queryByRole("button", { name: DOT_LABEL })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "common:filter" })).toBeInTheDocument();
+    });
+
+    it("shows in the List View while Archived is off its default", () => {
+      useViewStore.setState({ view: "list" });
+      useFilterStore.getState().setArchivedMode("exclude");
+      render(<TopBar />);
+      expect(screen.getByRole("button", { name: DOT_LABEL })).toHaveAttribute("title", "filter:filterButtonTitleUndrawn");
+    });
+
+    it("does not show in the Zen View for a strip switched off", () => {
+      useViewStore.setState({ view: "zen", zenCommitments: false });
+      render(<TopBar />);
+      expect(screen.queryByRole("button", { name: DOT_LABEL })).not.toBeInTheDocument();
+    });
+
+    it("does not show in the Plan View for Backlog, which that view does not offer", () => {
+      useViewStore.setState({ view: "plan" });
+      useFilterStore.getState().setBacklogMode("include");
+      render(<TopBar />);
+      expect(screen.queryByRole("button", { name: DOT_LABEL })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Esc in the Filter menu", () => {
+    /** A view's own bare-Esc binding (the Mindmap's deselect), to prove the menu keeps the key. */
+    function ViewEscape({ onEscape }: { onEscape: () => void }) {
+      const bindings: readonly Binding<null>[] = [
+        { id: "test-escape", section: "mindmap", chord: { code: "Escape" }, labelKey: "filterCloseMenu", run: onEscape },
+      ];
+      useHotkeys(bindings, null, true);
+      return null;
+    }
+
+    it("closes the menu, gives focus back to where it was, and never reaches the view", () => {
+      const viewEscape = vi.fn();
+      render(<><ViewEscape onEscape={viewEscape} /><TopBar /></>);
+      const button = screen.getByRole("button", { name: "common:filter" });
+      button.focus();
+      fireEvent.click(button);
+      const menu = screen.getByRole("dialog", { name: "common:filter" });
+      expect(menu).toHaveFocus();
+      fireEvent.keyDown(menu, { key: "Escape", code: "Escape" });
+      expect(useFilterStore.getState().popoverOpen).toBe(false);
+      expect(screen.queryByRole("dialog", { name: "common:filter" })).not.toBeInTheDocument();
+      expect(button).toHaveFocus();
+      expect(viewEscape).not.toHaveBeenCalled();
+    });
+
+    it("in a search box with a query, clears the query first and closes on the second Esc", () => {
+      useFilterStore.setState({ popoverOpen: true });
+      render(<TopBar />);
+      const box = screen.getByRole("combobox", { name: "rows.tag" });
+      fireEvent.change(box, { target: { value: "urg" } });
+      fireEvent.keyDown(box, { key: "Escape", code: "Escape" });
+      expect(box).toHaveValue("");
+      expect(useFilterStore.getState().popoverOpen).toBe(true);
+      fireEvent.keyDown(box, { key: "Escape", code: "Escape" });
+      expect(useFilterStore.getState().popoverOpen).toBe(false);
     });
   });
 });

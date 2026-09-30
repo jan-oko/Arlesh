@@ -22,7 +22,7 @@ import styles from "./FilterPopover.module.css";
  * in its row wearing its chip's mode, in step with the top-bar chips. The List View lists its own
  * dimensions, the Zen View tags and Agentic; every other view filters by tag. In the List and Zen
  * Views, letter keys act while focus is in the menu (see `filter-menu-keys.ts`); focus moves into it
- * when it opens.
+ * when it opens, `Esc` closes it, and focus goes back where it was.
  */
 export default function FilterPopover() {
   const { t } = useTranslation(["filter", "common"]);
@@ -40,8 +40,17 @@ export default function FilterPopover() {
   const agenticPills = useListFilterStore((s) => s.filter.pills.agentic);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Focus lands in the menu when it opens, so its letter keys work at once — from Alt+F too.
-  useEffect(() => { menuRef.current?.focus(); }, []);
+  // Focus lands in the menu when it opens, so its letter keys work at once — from Alt+F too — and
+  // goes back where it was when it closes. Only when closing left it nowhere: a modal opened in the
+  // same stroke (Ctrl+F) has taken it on purpose.
+  useEffect(() => {
+    const before = document.activeElement;
+    menuRef.current?.focus();
+    return () => {
+      const lost = document.activeElement === null || document.activeElement === document.body;
+      if (lost && before instanceof HTMLElement && before.isConnected) before.focus();
+    };
+  }, []);
 
   function rowBody(row: FilterRowId) {
     if (row !== "yesNo" && isSearchedDimension(row)) {
