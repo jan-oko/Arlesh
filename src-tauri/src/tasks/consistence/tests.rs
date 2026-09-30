@@ -9,7 +9,7 @@ use crate::{
     },
 };
 
-use TaskStatus::{Done, InProgress, Started, Todo};
+use crate::tasks::model::TaskStatus::{Done, InProgress, Started, Todo};
 
 fn at(hour: u32) -> NaiveDateTime {
     chrono::NaiveDate::from_ymd_opt(2026, 9, 30)
