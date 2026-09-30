@@ -217,7 +217,7 @@ export default function StepsView() {
   }
   const selectedNode = cursorNode();
 
-  const { cycleStatus, occurrencePrompt, confirmOccurrence, cancelOccurrence } = useStatusCycle({
+  const { cycleStatus, toggleStarted, occurrencePrompt, confirmOccurrence, cancelOccurrence } = useStatusCycle({
     findNode: (id) => findNode(tree, id), reload, showToast,
   });
   const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({
@@ -458,6 +458,8 @@ export default function StepsView() {
     onStepPage,
     onStepZoom,
     onCycleStatus: unlessDrawing(unlessBlocked(cycleStatus)),
+    isSelectedBlocked: selectedNode !== null && isNodeBlocked(selectedNode),
+    onToggleStarted: unlessDrawing(toggleStarted),
     onToggleBacklog: unlessDrawing(toggleBacklog),
     onToggleAgentic: unlessDrawing(toggleAgentic),
     onToggleAsynchronous: unlessDrawing(toggleAsynchronous),

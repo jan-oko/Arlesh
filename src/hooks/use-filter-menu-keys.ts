@@ -18,8 +18,14 @@ function inTextBox(event: KeyboardEvent): boolean {
   return event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
 }
 
+/** A bare Escape — no modifier held. */
+function isBareEscape(event: KeyboardEvent): boolean {
+  return event.key === "Escape" && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
+}
+
 /**
- * The Filter menu's keys (see `filter-menu-keys.ts`), as a keydown handler for the menu: `Ctrl+P`
+ * The Filter menu's keys (see `filter-menu-keys.ts`), as a keydown handler for the menu: `Esc`
+ * closes it (a search box with a query clears that first, and stops the key there), `Ctrl+P`
  * in every view, and the letters for whatever row kinds and flags `view` offers — all of them in
  * the List View, `c` / `e` (its strips) and `a` (Agentic) in the Zen View. A key typed into one of
  * its search boxes is left to type.
@@ -32,6 +38,7 @@ export function useFilterMenuKeys(view: View): (event: KeyboardEvent) => void {
   const rowKinds = useRowKindToggle();
   const entries = useFilterEntries();
   const setPillMode = useListFilterStore((s) => s.setPillMode);
+  const setFilterPopover = useFilterStore((s) => s.setFilterPopover);
 
   function onRowKind(kind: ListRowKind, event: KeyboardEvent) {
     if (event.shiftKey) rowKinds.showOnly(kind);
@@ -53,6 +60,11 @@ export function useFilterMenuKeys(view: View): (event: KeyboardEvent) => void {
   }
 
   return (event) => {
+    if (isBareEscape(event)) {
+      event.preventDefault();
+      setFilterPopover(false);
+      return;
+    }
     if (inTextBox(event) || event.metaKey) return;
     if (event.ctrlKey) {
       // Ctrl+P: Private Mode itself. The only Ctrl chord the menu takes (see `PRIVATE_MODE_TOKEN`).

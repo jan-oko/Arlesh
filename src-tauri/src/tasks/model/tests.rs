@@ -4,14 +4,30 @@ use super::*;
 fn task_status_as_str_covers_all_variants() {
     assert_eq!(TaskStatus::Todo.as_str(), "todo");
     assert_eq!(TaskStatus::InProgress.as_str(), "in_progress");
+    assert_eq!(TaskStatus::Started.as_str(), "started");
     assert_eq!(TaskStatus::Done.as_str(), "done");
 }
 
 #[test]
 fn task_status_from_db_roundtrips_every_variant() {
-    for status in [TaskStatus::Todo, TaskStatus::InProgress, TaskStatus::Done] {
+    for status in [
+        TaskStatus::Todo,
+        TaskStatus::InProgress,
+        TaskStatus::Started,
+        TaskStatus::Done,
+    ] {
         assert_eq!(TaskStatus::from_db(status.as_str()), Some(status));
     }
+}
+
+#[test]
+fn only_in_progress_and_started_are_begun() {
+    assert!(TaskStatus::InProgress.is_begun());
+    assert!(TaskStatus::Started.is_begun());
+    assert!(!TaskStatus::Todo.is_begun());
+    assert!(!TaskStatus::Done.is_begun());
+    assert!(TaskStatus::is_begun_str("started"));
+    assert!(!TaskStatus::is_begun_str("bogus"));
 }
 
 #[test]

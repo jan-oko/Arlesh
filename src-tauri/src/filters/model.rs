@@ -146,6 +146,14 @@ pub struct BoardFilter {
     /// beneath it. Off by default: under Start a pending, live wait shows whether it is checked on
     /// or not. An app-wide preference in the UI, carried here so an MCP read asks it either way.
     pub start_hides_checked_waits: bool,
+    /// Whether **Start** shows a **Started** Task — begun and paused. **On by default**: a paused
+    /// task is something to pick back up. An app-wide preference in the UI, carried here as
+    /// [`Self::start_hides_checked_waits`] is.
+    pub start_shows_started: bool,
+    /// Whether **Do** shows a **Started** Task beside the In Progress ones. **Off by default**: Do
+    /// asks what is being worked on now, and a paused task is not. App-wide, like the one above.
+    /// The Zen View reads under Do with its own setting in place of this one.
+    pub do_shows_started: bool,
 }
 
 impl Default for BoardFilter {
@@ -165,6 +173,8 @@ impl Default for BoardFilter {
             plan_scope: None,
             scope_match: ScopeMatch::Contained,
             start_hides_checked_waits: false,
+            start_shows_started: true,
+            do_shows_started: false,
         }
     }
 }

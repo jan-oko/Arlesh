@@ -80,7 +80,9 @@
    sizing the element scales the glyph. */
 .badges {
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: calc(var(--zen-badge-size, 12px) * 0.4);
 }
 
 .badges > span {

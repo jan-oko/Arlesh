@@ -216,13 +216,13 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
     if (next !== null) setIsBacklogged(false);
   }
 
-  // Starting a set-aside task takes it out of the backlog — you cannot be actively doing something
+  // Starting a set-aside task — In Progress or Started — takes it out of the backlog — you cannot be doing something
   // you have put down — and the backend does exactly this to a bare status change. Here the switch
   // moves in front of the user instead, so the save is not the first they hear of it. Only this
   // direction: a task already in progress may still be set aside, and keeps its status when it is.
   function setStatusAndClearBacklog(next: string) {
     setStatus(next);
-    if (next === TASK_STATUS.IN_PROGRESS) setIsBacklogged(false);
+    if (next === TASK_STATUS.IN_PROGRESS || next === TASK_STATUS.STARTED) setIsBacklogged(false);
   }
 
   function handleKeyDown(event: React.KeyboardEvent) {

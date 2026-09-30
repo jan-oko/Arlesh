@@ -270,6 +270,9 @@ pub enum TaskStatusParam {
     Todo,
     /// Under way. Starting an Agentic Task needs a Spec in its brief.
     InProgress,
+    /// Begun and paused: not being worked on right now. Starting an Agentic Task this way needs a
+    /// Spec too.
+    Started,
     /// Finished.
     Done,
 }
@@ -279,6 +282,7 @@ impl From<TaskStatusParam> for model::TaskStatus {
         match status {
             TaskStatusParam::Todo => Self::Todo,
             TaskStatusParam::InProgress => Self::InProgress,
+            TaskStatusParam::Started => Self::Started,
             TaskStatusParam::Done => Self::Done,
         }
     }

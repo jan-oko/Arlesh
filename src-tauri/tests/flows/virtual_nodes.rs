@@ -238,6 +238,33 @@ async fn editing_an_occurrence_writes_that_occurrence_only() {
 }
 
 #[tokio::test]
+async fn an_occurrence_can_be_set_started_and_reads_back_so() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let (_, item_id) = daily_habit(&pool, &app, InstanceType::Task).await;
+    load(&app, "2026-01-06T09:00:00").await;
+
+    let today = item(item_id, ymd(2026, 1, 6));
+    let edited = task_commands::update_task(
+        app.state(),
+        today.clone(),
+        UpdateTaskRequest {
+            status: Some(TaskStatus::Started),
+            ..Default::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(edited.status, "started");
+
+    // The overlay's own status column holds it, as it holds In Progress.
+    let board = load(&app, "2026-01-06T09:00:00").await;
+    let reread = board.tasks.iter().find(|task| task.id == today).unwrap();
+    assert_eq!(reread.status, "started");
+}
+
+#[tokio::test]
 async fn setting_a_field_back_to_its_templates_value_clears_the_override() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);

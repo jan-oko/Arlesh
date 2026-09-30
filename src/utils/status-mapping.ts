@@ -1,6 +1,8 @@
 export const TASK_STATUS = {
   TODO: "todo",
   IN_PROGRESS: "in_progress",
+  /** Begun and left in a middle state, not being worked on right now. Set by `Alt+Enter`. */
+  STARTED: "started",
   DONE: "done",
 } as const;
 

@@ -89,6 +89,17 @@ export interface FilterState {
    * `use-board-filter`). Absent reads as off — Start then shows the wait, checked on or not.
    */
   startHidesCheckedWaits?: boolean;
+  /**
+   * Whether **Start** shows a **Started** Task. **Not persisted with the tab**: an app-wide setting,
+   * filled in by the views (see `use-board-filter`). Absent reads as **on**.
+   */
+  startShowsStarted?: boolean;
+  /**
+   * Whether **Do** shows a **Started** Task beside the In Progress ones. **Not persisted with the
+   * tab**: an app-wide setting, filled in by the views; the Zen View puts its own there. Absent
+   * reads as **off**.
+   */
+  doShowsStarted?: boolean;
 }
 
 /** The neutral, indicator-off filter — shows everything except nodes marked private. */
@@ -380,22 +391,41 @@ function passesStatus(
       // A delegated Task drops out with them: nothing someone else holds is yours to start.
       if (!isInWindow(node) || isDelegated(node)) return withArchivedOverride(node, f, false);
       if (node.kind === "goal") return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? ""));
-      if (node.status === "done") return false;
-      // An in-progress task with nothing left to start (no direct todo child) drops out.
-      if (node.status === "in_progress" && !node.children.some((c) => c.kind === "task" && c.status === "todo")) {
-        return false;
-      }
-      return true;
+      return passesStartStatus(node, f);
     }
     case "do":
-      // Only in-progress tasks match; goals/structure appear solely as ancestors. archivedMode does
-      // not apply here — Do's "in-progress tasks only" invariant isn't about archived/lapsed status.
-      return node.kind === "task" && node.status === "in_progress";
+      // Only in-progress tasks match (and Started ones, by the setting); goals/structure appear
+      // solely as ancestors. archivedMode does not apply here — Do's "in-progress tasks only"
+      // invariant isn't about archived/lapsed status.
+      return node.kind === "task" && passesDoStatus(node, f);
     case "backlog":
       // The inverse of every other preset: only what was deliberately set aside, plus everything
       // beneath it. Structural containers already dropped to ancestor-only above.
       return underBacklog || isBacklogged(node);
   }
+}
+
+/**
+ * Start's rule on a Task's own status: never Done; In Progress only while it still has something
+ * to start (a direct To Do child); **Started** by the app-wide setting, on by default — a paused
+ * task is something to pick back up. Shared by the Mindmap and the List View; mirrors
+ * `passes_start` in `src-tauri/src/filters/rules.rs`.
+ */
+export function passesStartStatus(node: MindmapNode, f: FilterState): boolean {
+  if (node.status === "done") return false;
+  // An in-progress task with nothing left to start (no direct todo child) drops out.
+  if (node.status === "in_progress") return node.children.some((c) => c.kind === "task" && c.status === "todo");
+  if (node.status === "started") return f.startShowsStarted !== false;
+  return true;
+}
+
+/**
+ * Do's rule on a Task's own status: In Progress always, **Started** only while the setting in
+ * `doShowsStarted` is on (off by default). Mirrors `passes_do_status` in `rules.rs`.
+ */
+export function passesDoStatus(node: MindmapNode, f: FilterState): boolean {
+  if (node.status === "in_progress") return true;
+  return node.status === "started" && f.doShowsStarted === true;
 }
 
 /**

@@ -428,6 +428,7 @@ the last card of a page, with more cards one page on, read as the end of the Ste
   this one. On a **blocked** Task or Goal it is refused out loud, naming the block reasons, and
   nothing is written — the same rule that keeps the Mindmap's and List View's `Enter` from moving
   blocked work. Until 2026-09-30 `Space` cycled a blocked card's status regardless
+- `Alt+Enter` — on a Task card, set it **Started** from To Do or Done, or flip In Progress ↔ Started, as in every other view; refused while it is blocked. Plain `Enter` descending is no reason to move the modified chord
 - `Shift+W` — on a Task card, open its editor at the Expectation section with Asynchronous on, as on the Mindmap
 - `E` — open the selected card's editor
 - `Tab`, `Shift+Enter`, `Ctrl+Enter`, `Shift+D`/`P`/`G`/`T`/`C`/`E`/`I`/`F`/`H` — create, as above

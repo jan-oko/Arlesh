@@ -48,6 +48,7 @@ export default function StepCardFields({ node, fields }: Props) {
     if (node.kind === "task") {
       if (status === TASK_STATUS.TODO) return t("status:task.todo");
       if (status === TASK_STATUS.IN_PROGRESS) return t("status:task.in_progress");
+      if (status === TASK_STATUS.STARTED) return t("status:task.started");
       if (status === TASK_STATUS.DONE) return t("status:task.done");
       return status;
     }

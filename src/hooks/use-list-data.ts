@@ -33,6 +33,9 @@ interface ListData {
   /** Cycles a row's status (todo → in_progress → done) — `useStatusCycle`'s gesture, so through
    * the occurrence completion guard and with the Backlog toast, exactly as on the Mindmap. */
   onCycleStatus: (nodeId: string) => void;
+  /** `Alt+Enter`: sets a row's Task Started, or resumes a Started one to In Progress — through the
+   * same guard and Backlog toast as `onCycleStatus`. */
+  onToggleStarted: (nodeId: string) => void;
   /** The occurrence completion the backend is holding for confirmation, or `null`. */
   occurrencePrompt: OccurrencePrompt | null;
   /** Answers that prompt: marks the occurrence done and leaves its children in place. */
@@ -79,8 +82,10 @@ export function useListData(): ListData {
   });
   // The Mindmap's and Steps View's own status gesture, so a row cycles exactly as its node does:
   // the same completion guard, the same Backlog toast, the same refusal out loud.
-  const { cycleStatus: onCycleStatus, occurrencePrompt, confirmOccurrence, cancelOccurrence } =
-    useStatusCycle({ findNode: (id) => findNode(tree, id), reload, showToast });
+  const {
+    cycleStatus: onCycleStatus, toggleStarted: onToggleStarted,
+    occurrencePrompt, confirmOccurrence, cancelOccurrence,
+  } = useStatusCycle({ findNode: (id) => findNode(tree, id), reload, showToast });
   const allTasksAndGoals = useMemo(() => {
     const acc: MindmapNode[] = [];
     collectTasksAndGoals(tree, acc);
@@ -100,7 +105,7 @@ export function useListData(): ListData {
 
   return {
     tree, rows, commitmentRows, expectationRows, listRoot, toggleRelease,
-    allTasksAndGoals, isLoading, error, reload, onCycleStatus,
+    allTasksAndGoals, isLoading, error, reload, onCycleStatus, onToggleStarted,
     renameNode, createTask, deleteTask, removeNode,
     occurrencePrompt, confirmOccurrence, cancelOccurrence,
   };

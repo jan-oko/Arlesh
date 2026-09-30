@@ -1534,6 +1534,106 @@
         "expectation-window-now",
         "expectation-window-lapsed"
       ]
+    },
+    {
+      "name": "plan shows a started task",
+      "spec": "resources.md, Tasks — Started: begun and left in a middle state, not being done right now. Plan shows Started tasks, as it shows every unfinished one.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "started",
+      "mindmap": [
+        "domain-started",
+        "task-inprogress",
+        "task-started",
+        "task-todo",
+        "task-todo-child"
+      ],
+      "list": [
+        "task-inprogress",
+        "task-started",
+        "task-todo",
+        "task-todo-child"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "start shows a started task by default",
+      "spec": "resources.md, Tasks — Started: begun and left in a middle state, not being done right now. Start shows them by default (the app-wide \"Start shows Started tasks\" setting, on by default).",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "started",
+      "mindmap": [
+        "domain-started",
+        "task-inprogress",
+        "task-started",
+        "task-todo",
+        "task-todo-child"
+      ],
+      "list": [
+        "task-inprogress",
+        "task-started",
+        "task-todo",
+        "task-todo-child"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "with its setting off, start hides a started task",
+      "spec": "resources.md, Tasks — Started: begun and left in a middle state, not being done right now. With \"Start shows Started tasks\" off, Start hides them; nothing else changes.",
+      "filter": {
+        "preset": "start",
+        "startShowsStarted": false
+      },
+      "board": "started",
+      "mindmap": [
+        "domain-started",
+        "task-inprogress",
+        "task-todo",
+        "task-todo-child"
+      ],
+      "list": [
+        "task-inprogress",
+        "task-todo",
+        "task-todo-child"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "do hides a started task by default",
+      "spec": "resources.md, Tasks — Started: begun and left in a middle state, not being done right now. Do does not show them by default: it asks what is being worked on now.",
+      "filter": {
+        "preset": "do"
+      },
+      "board": "started",
+      "mindmap": [
+        "domain-started",
+        "task-inprogress"
+      ],
+      "list": [
+        "task-inprogress"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "with its setting on, do shows a started task beside the in-progress ones",
+      "spec": "resources.md, Tasks — Started: begun and left in a middle state, not being done right now. With \"Do shows Started tasks\" on, Do shows them too.",
+      "filter": {
+        "preset": "do",
+        "doShowsStarted": true
+      },
+      "board": "started",
+      "mindmap": [
+        "domain-started",
+        "task-inprogress",
+        "task-started"
+      ],
+      "list": [
+        "task-inprogress",
+        "task-started"
+      ],
+      "commitments": []
     }
   ],
   "boards": {
@@ -2505,6 +2605,46 @@
               "kind": "expectation",
               "status": "pending",
               "timing": "lapsed"
+            }
+          ]
+        }
+      ]
+    },
+    "started": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-started",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-started",
+              "kind": "task",
+              "status": "started"
+            },
+            {
+              "id": "task-inprogress",
+              "kind": "task",
+              "status": "in_progress",
+              "children": [
+                {
+                  "id": "task-todo-child",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-todo",
+              "kind": "task",
+              "status": "todo"
+            },
+            {
+              "id": "task-done",
+              "kind": "task",
+              "status": "done"
             }
           ]
         }
