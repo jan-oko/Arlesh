@@ -371,6 +371,28 @@ describe("acting on the selected card", () => {
     expect(updateTask).toHaveBeenCalledWith(1, { status: "in_progress" });
   });
 
+  it("refuses Space on a blocked Task out loud, and writes nothing", () => {
+    mockTree([n("task-1", "task", { status: "todo", virtualBlockers: ["Blocked by Spec"] })]);
+    render(<StepsView />);
+
+    press("ArrowDown");
+    press("Space");
+
+    expect(updateTask).not.toHaveBeenCalled();
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedBlocked");
+  });
+
+  it("refuses Space on a Task with a block reason of its own", () => {
+    mockTree([n("task-1", "task", { status: "in_progress", blockReasons: ["waiting on legal"] })]);
+    render(<StepsView />);
+
+    press("ArrowDown");
+    press("Space");
+
+    expect(updateTask).not.toHaveBeenCalled();
+    expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedBlocked");
+  });
+
   it("opens the editor on E", () => {
     mockTree([n("task-1", "task", { status: "todo" })]);
     render(<StepsView />);

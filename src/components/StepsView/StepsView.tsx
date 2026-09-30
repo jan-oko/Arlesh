@@ -39,6 +39,7 @@ import {
 import type { StepCursor, StepDirection, StepsZoom } from "@/utils/steps-grid";
 import type { StepsTarget } from "@/utils/hotkeys/steps-bindings";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { isNodeBlocked } from "@/utils/tree-layout";
 import AnchoredToast from "@/components/AnchoredToast/AnchoredToast";
 import QuickPlanPicker from "@/components/QuickPlanPicker/QuickPlanPicker";
 import { useQuickPlan } from "@/hooks/use-quick-plan";
@@ -290,6 +291,20 @@ export default function StepsView() {
     return (id) => { if (!refusedOnDrawing(id, "refusedActOnDrawing")) act(id); };
   }
 
+  /**
+   * `act`, unless `id` is a blocked Task or Goal, which refuses it out loud with its reasons — the
+   * same `isNodeBlocked` rule that keeps the Mindmap's and List View's `Enter` from moving blocked
+   * work, since starting it is exactly what the block forbids.
+   */
+  function unlessBlocked(act: (id: string) => void): (id: string) => void {
+    return (id) => {
+      const node = lookup(id);
+      if (node === undefined || !isNodeBlocked(node)) { act(id); return; }
+      const reasons = [...(node.blockReasons ?? []), ...(node.virtualBlockers ?? [])].join("; ");
+      showToast({ nodeId: id, message: t("stepsView:refusedBlocked", { title: node.title, reasons }) });
+    };
+  }
+
   /** Refuses a gesture that would act on the Step you are standing on from inside it. */
   function refuseOnStep(id: string, key: "refusedSiblingOfStep" | "refusedParentOfStep" | "refusedDeleteStep"): void {
     const node = findNode(tree, id);
@@ -442,7 +457,7 @@ export default function StepsView() {
     onDescend,
     onStepPage,
     onStepZoom,
-    onCycleStatus: unlessDrawing(cycleStatus),
+    onCycleStatus: unlessDrawing(unlessBlocked(cycleStatus)),
     onToggleBacklog: unlessDrawing(toggleBacklog),
     onToggleAgentic: unlessDrawing(toggleAgentic),
     onToggleAsynchronous: unlessDrawing(toggleAsynchronous),

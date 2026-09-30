@@ -1,23 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
 import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { listAllTaskDependencies } from "@/api/tasks";
 import type { TaskDependencyEdge } from "@/api/tasks";
-import { updateTask } from "@/api/tasks";
 import type { TaskAgentic } from "@/api/tasks";
-import { TASK_STATUS } from "@/utils/status-mapping";
-import { cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
 import { findNode, collectTasksAndGoals } from "@/utils/mindmap-tree";
 import { storedSubtreeBase } from "@/utils/drawn-path";
-import { rowIdOf } from "@/utils/node-identity";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { CommitmentListRow, ExpectationListRow, TaskListRow } from "@/utils/list-filter";
 import { flattenCommitmentRows, flattenExpectationRows, flattenTaskRows } from "@/utils/list-data";
 import { useExpectationActions } from "@/hooks/use-expectation-actions";
-import { getErrorMessage } from "@/api/errors";
-import { acknowledged, useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
 import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
+import { useStatusCycle } from "@/hooks/use-status-cycle";
 
 interface ListData {
   tree: MindmapNode;
@@ -36,7 +30,8 @@ interface ListData {
   isLoading: boolean;
   error: string | null;
   reload: () => Promise<void>;
-  /** Cycles a row's status (todo → in_progress → done), through the occurrence completion guard. */
+  /** Cycles a row's status (todo → in_progress → done) — `useStatusCycle`'s gesture, so through
+   * the occurrence completion guard and with the Backlog toast, exactly as on the Mindmap. */
   onCycleStatus: (nodeId: string) => void;
   /** The occurrence completion the backend is holding for confirmation, or `null`. */
   occurrencePrompt: OccurrencePrompt | null;
@@ -60,12 +55,9 @@ interface ListData {
 /** List View's data source: reuses the Mindmap's own tree (so the two views never drift out of
  * sync), plus the raw dependency edges the tree doesn't carry, flattened to one row per Task. */
 export function useListData(): ListData {
-  const { t } = useTranslation(["warnings"]);
   const { tree, isLoading, error, reload, renameNode, createNode, removeNode } = useMindmapData();
   const subtreeRootId = useMindmapStore((s) => s.subtreeRootId);
   const showToast = useMindmapStore((s) => s.showToast);
-  const { prompt: occurrencePrompt, guard, confirm: confirmOccurrence,
-    cancel: cancelOccurrence } = useOccurrenceCompletion();
   const [taskDeps, setTaskDeps] = useState<TaskDependencyEdge[]>([]);
 
   useEffect(() => {
@@ -85,37 +77,15 @@ export function useListData(): ListData {
   const { toggleRelease } = useExpectationActions({
     findNode: (id) => findNode(tree, id), reload, showToast,
   });
+  // The Mindmap's and Steps View's own status gesture, so a row cycles exactly as its node does:
+  // the same completion guard, the same Backlog toast, the same refusal out loud.
+  const { cycleStatus: onCycleStatus, occurrencePrompt, confirmOccurrence, cancelOccurrence } =
+    useStatusCycle({ findNode: (id) => findNode(tree, id), reload, showToast });
   const allTasksAndGoals = useMemo(() => {
     const acc: MindmapNode[] = [];
     collectTasksAndGoals(tree, acc);
     return acc;
   }, [tree]);
-
-  const onCycleStatus = useCallback(
-    (nodeId: string) => {
-      const node = findNode(tree, nodeId);
-      if (node === undefined || node.kind !== "task") return;
-      // A wait's check task is a Task row: marking it done records the check.
-      // Through the completion guard, exactly as the Mindmap's status click is: the same
-      // occurrence closed from either view asks the same question.
-      const dbId = rowIdOf(node);
-      const next = nextTaskStatus(node.status ?? TASK_STATUS.TODO);
-      guard(node, async (confirmed) => {
-        const updated = await updateTask(dbId, { status: next }, ...acknowledged(confirmed));
-        // Starting a set-aside task takes it out of the backlog, in the same write and so in the
-        // same undo step. The row that comes back says whether it did; it is never assumed.
-        if (cameOutOfBacklog(node, updated)) {
-          showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
-        }
-        await reload();
-      }, (err: unknown) => {
-        // Refused out loud, as the Mindmap's status click is: an Agentic task with no Spec cannot
-        // start, and a refusal nobody sees reads as a click that did nothing.
-        showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
-      });
-    },
-    [tree, reload, guard, showToast, t],
-  );
 
   const createTask = useCallback(
     (parentId: string, parentKind: NodeKind, agentic?: TaskAgentic): Promise<MindmapNode> =>

@@ -425,7 +425,9 @@ the last card of a page, with more cards one page on, read as the end of the Ste
   nowhere else and reads as a toggle rather than a move. On an **Expectation** it releases the wait
   or takes the release back, and on its check task it completes the check (or reopens a done one).
   Neither has a key of its own: `D` and `L` were removed by the user on 2026-09-24 as proxies for
-  this one
+  this one. On a **blocked** Task or Goal it is refused out loud, naming the block reasons, and
+  nothing is written — the same rule that keeps the Mindmap's and List View's `Enter` from moving
+  blocked work. Until 2026-09-30 `Space` cycled a blocked card's status regardless
 - `Shift+W` — on a Task card, open its editor at the Expectation section with Asynchronous on, as on the Mindmap
 - `E` — open the selected card's editor
 - `Tab`, `Shift+Enter`, `Ctrl+Enter`, `Shift+D`/`P`/`G`/`T`/`C`/`E`/`I`/`F`/`H` — create, as above
