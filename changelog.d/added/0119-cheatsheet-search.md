@@ -1,0 +1,1 @@
+- **Search the keyboard cheat-sheet.** The cheat-sheet (`Ctrl+Shift+/`) opens with a search field focused: type part of a description (`flow`) or a key (`shift+t`) and only the matching shortcuts stay, with empty sections hidden and a message when nothing matches. `Esc` clears the search first; a second `Esc` closes the sheet.

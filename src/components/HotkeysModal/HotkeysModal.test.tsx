@@ -4,7 +4,8 @@ import HotkeysModal from "./HotkeysModal";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    // The key, standing in for the English — so a description search types a key's text.
+    t: (key: string, options?: { query?: string }) => (options?.query === undefined ? key : `${key}:${options.query}`),
     i18n: { dir: () => "ltr" },
   }),
 }));
@@ -83,7 +84,7 @@ describe("HotkeysModal", () => {
     expect(chords).toEqual(["←", "→", "↑", "↓"]);
   });
 
-  it("when Escape is pressed, closes", () => {
+  it("when Escape is pressed with an empty search, closes", () => {
     const onClose = vi.fn();
     render(<HotkeysModal onClose={onClose} />);
     fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
@@ -145,5 +146,62 @@ describe("HotkeysModal — typed-child chords", () => {
       const row = list.getByText(label).closest("div");
       for (const chord of chords) expect(row).toHaveTextContent(chord);
     }
+  });
+});
+
+describe("HotkeysModal — search", () => {
+  function search(query: string) {
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: query } });
+  }
+
+  it("focuses the search field when it opens", () => {
+    render(<HotkeysModal onClose={vi.fn()} />);
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+  });
+
+  it("when searching a description, keeps only the rows that say it, in any case", () => {
+    render(<HotkeysModal onClose={vi.fn()} />);
+    search("HOTKEYS:ZOOMIN");
+    expect(screen.getAllByText("hotkeys:zoomIn").length).toBeGreaterThan(0);
+    expect(screen.queryByText("hotkeys:navigate")).toBeNull();
+    expect(screen.queryByText("hotkeys:toggleHotkeys")).toBeNull();
+  });
+
+  it("when searching a key label such as shift+t, keeps the rows bound to it", () => {
+    render(<HotkeysModal onClose={vi.fn()} />);
+    search("shift+t");
+    const mindmap = screen.getByText("hotkeys:sectionMindmap").closest("section");
+    expect(mindmap).not.toBeNull();
+    if (mindmap === null) return;
+    expect(within(mindmap).getByText("hotkeys:createTaskChild")).toBeInTheDocument();
+    expect(within(mindmap).queryByText("hotkeys:createGoalChild")).toBeNull();
+  });
+
+  it("hides a section left with no matching rows", () => {
+    render(<HotkeysModal onClose={vi.fn()} />);
+    search("hotkeys:pickerApply");
+    expect(screen.getByText("hotkeys:sectionScopePicker")).toBeInTheDocument();
+    expect(screen.queryByText("hotkeys:sectionGlobal")).toBeNull();
+    expect(screen.queryByText("hotkeys:sectionFilters")).toBeNull();
+    expect(screen.queryByText("hotkeys:sectionMindmap")).toBeNull();
+  });
+
+  it("when nothing matches, says so and draws no section", () => {
+    render(<HotkeysModal onClose={vi.fn()} />);
+    search("zzz-no-such-shortcut");
+    expect(screen.getByText("hotkeys:searchNoMatch:zzz-no-such-shortcut")).toBeInTheDocument();
+    expect(screen.queryAllByRole("heading", { level: 3 })).toHaveLength(0);
+  });
+
+  it("when Escape is pressed with a search typed, clears it first and closes on the second press", () => {
+    const onClose = vi.fn();
+    render(<HotkeysModal onClose={onClose} />);
+    search("zoom");
+    fireEvent.keyDown(screen.getByRole("searchbox"), { key: "Escape", code: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(screen.getByText("hotkeys:sectionGlobal")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("searchbox"), { key: "Escape", code: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

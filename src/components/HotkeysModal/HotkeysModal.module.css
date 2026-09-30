@@ -26,6 +26,32 @@
   color: var(--text-primary);
 }
 
+.search {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 16px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--node-border);
+  border-radius: 6px;
+  background: var(--node-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.search:focus {
+  border-color: var(--text-secondary);
+}
+
+.noMatch {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
 .sections {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

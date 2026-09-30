@@ -1,5 +1,7 @@
 {
   "title": "Keyboard shortcuts",
+  "searchPlaceholder": "Search shortcuts",
+  "searchNoMatch": "No shortcut matches “{{query}}”",
   "sectionGlobal": "Global",
   "sectionTabs": "Tabs",
   "sectionMindmap": "Mindmap",
