@@ -3,7 +3,8 @@ import { act, renderHook } from "@testing-library/react";
 import { useBoardFilter } from "./use-board-filter";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useDisplayStore } from "@/stores/use-display-store";
-import { DEFAULT_FILTER, passesExpectationPreset } from "@/utils/filter-tree";
+import { useAgentCapacityStore } from "@/stores/use-agent-capacity-store";
+import { DEFAULT_FILTER, passesExpectationPreset, passesStartStatus } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER, filterTaskList } from "@/utils/list-filter";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -64,6 +65,28 @@ describe("useBoardFilter", () => {
     expect(passesExpectationPreset(checked, result.current)).toBe(false);
     expect(passesExpectationPreset({ ...checked, checkEvery: null }, result.current)).toBe(true);
     expect(useFilterStore.getState().filter.startHidesCheckedWaits).toBeUndefined();
+  });
+
+  it("hides Agentic work from Start only while the lock is on and its setting lets it", () => {
+    const agentic: MindmapNode = {
+      id: "agent-work", kind: "task", title: "agent work", position: 0, tagIds: [], children: [],
+      status: "todo", agentic: true,
+    };
+    useAgentCapacityStore.setState({ atCapacity: false });
+    useDisplayStore.setState({ startHidesAgenticAtCapacity: true });
+    const { result } = renderHook(() => useBoardFilter());
+    expect(result.current.startHidesAgentic).toBe(false);
+    expect(passesStartStatus(agentic, result.current)).toBe(true);
+
+    act(() => { useAgentCapacityStore.getState().receive(true); });
+    expect(result.current.startHidesAgentic).toBe(true);
+    expect(passesStartStatus(agentic, result.current)).toBe(false);
+    expect(passesStartStatus({ ...agentic, agentic: false }, result.current)).toBe(true);
+
+    act(() => { useDisplayStore.getState().toggleStartHidesAgenticAtCapacity(); });
+    expect(result.current.startHidesAgentic).toBe(false);
+    expect(passesStartStatus(agentic, result.current)).toBe(true);
+    expect(useFilterStore.getState().filter.startHidesAgentic).toBeUndefined();
   });
 
   it("leaves the tab's stored filter without a match of its own", () => {

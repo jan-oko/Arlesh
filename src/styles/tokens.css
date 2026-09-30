@@ -59,6 +59,9 @@ html, body, #root {
   --accent: #7c7cff;
   --danger: #e74c3c;
   --overdue: #d99a2b;
+  /* The top bar's "agents at capacity" indicator: a held, not an alarming, state — the overdue amber,
+     named for its own use so the two can part. Follows the theme through --overdue. */
+  --agent-capacity: var(--overdue);
 
   /* Filter pill modes (Any/All/Exclude) — muted hues so a chip's mode reads as a quiet accent, not a shout */
   --mode-any: #6b8cae;

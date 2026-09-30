@@ -116,6 +116,16 @@ interface DisplayStore {
   startShowsStarted: boolean;
   toggleStartShowsStarted: () => void;
   /**
+   * Whether **Start** hides every Agentic Task that is not Done while the **agent capacity
+   * lock** is on (`use-agent-capacity-store`) — work nobody can pick up just now.
+   *
+   * **On by default** (ruled by the user, 2026-09-30). It decides whether the lock hides anything,
+   * not whether the lock is on: with it off, the lock is still recorded and still shown in the top
+   * bar, but Start shows everything it otherwise would. App-wide.
+   */
+  startHidesAgenticAtCapacity: boolean;
+  toggleStartHidesAgenticAtCapacity: () => void;
+  /**
    * Whether the **Do** preset shows a **Started** Task beside the In Progress ones.
    *
    * **Off by default** (ruled by the user, 2026-09-30): Do asks what is being worked on now, and a
@@ -209,6 +219,9 @@ export const useDisplayStore = create<DisplayStore>()(
         set((s) => ({ startHidesCheckedWaits: !s.startHidesCheckedWaits })),
       startShowsStarted: true,
       toggleStartShowsStarted: () => set((s) => ({ startShowsStarted: !s.startShowsStarted })),
+      startHidesAgenticAtCapacity: true,
+      toggleStartHidesAgenticAtCapacity: () =>
+        set((s) => ({ startHidesAgenticAtCapacity: !s.startHidesAgenticAtCapacity })),
       doShowsStarted: false,
       toggleDoShowsStarted: () => set((s) => ({ doShowsStarted: !s.doShowsStarted })),
       searchIncludesArchived: false,

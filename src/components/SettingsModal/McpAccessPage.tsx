@@ -4,6 +4,7 @@ import { mcpNodeKeyString } from "@/api/mcp-access";
 import { useMcpRoots } from "@/hooks/use-mcp-roots";
 import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import McpEndpointSection from "./McpEndpointSection";
+import AgentCapacitySection from "./AgentCapacitySection";
 import styles from "./SettingsModal.module.css";
 
 const REMOVE_GLYPH = "×";
@@ -11,7 +12,7 @@ const REMOVE_GLYPH = "×";
 /**
  * The MCP roots: the parts of the board the MCP may see. Add one with the node search `Ctrl+O`
  * uses, remove one with its ×. Each change is one undoable step. Below them, the endpoint's port
- * and whether it is listening.
+ * and whether it is listening, then the agent capacity lock.
  */
 export default function McpAccessPage() {
   const { t } = useTranslation(["settings", "nodeKinds"]);
@@ -63,6 +64,7 @@ export default function McpAccessPage() {
         />
       )}
       <McpEndpointSection />
+      <AgentCapacitySection />
     </div>
   );
 }

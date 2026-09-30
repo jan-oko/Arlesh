@@ -43,5 +43,11 @@
   "windowUnnamed": "Another window",
   "tearOffLastTab": "This is the window's only tab — tearing it off would leave the window empty. Open another tab first, or move this one into a window that is already open.",
   "checkTaskPrefix": "Check task prefix",
-  "checkTaskPrefixReset": "Default"
+  "checkTaskPrefixReset": "Default",
+  "agentCapacity": {
+    "indicator": "Agents at capacity",
+    "titleHiding": "Agents are at capacity, so Start hides Agentic tasks. Click to clear.",
+    "titleShowing": "Agents are at capacity. Start still shows Agentic tasks (Settings → MCP access). Click to clear.",
+    "clear": "Clear the agent capacity lock"
+  }
 }

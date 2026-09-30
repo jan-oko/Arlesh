@@ -1,0 +1,3 @@
+- **Agent capacity lock.** Agents can now say they are at capacity, and while they are, the Start preset stops offering Agentic tasks, so you are not invited to hand out work nobody can pick up. An agent sets and clears the lock over the MCP (`arlesh_capacity`). You can do the same under Settings → MCP access, and while the lock is on an amber **Agents at capacity** pill in the top bar clears it with a click. Agentic waits still show, and the agents' own Start reading of the board is unaffected. Every open window updates as soon as the lock changes.
+
+  To keep the lock without the hiding, turn off **Hide Agentic tasks from Start while agents are at capacity** on the same settings page (it is on by default).

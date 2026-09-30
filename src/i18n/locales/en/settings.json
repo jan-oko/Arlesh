@@ -35,6 +35,12 @@
       "failed": "Not listening on port {{port}}: {{reason}}",
       "restart": "Restart",
       "envOverride": "ARLESH_MCP_PORT is set, so the endpoint uses port {{port}} instead of this setting until it is unset."
+    },
+    "capacity": {
+      "heading": "Agent capacity",
+      "note": "Agents set this over the MCP when they cannot take on more Agentic work, and clear it when there is room. You can set and clear it here, or clear it from the top bar.",
+      "lock": "Agents are at capacity",
+      "hides": "Hide Agentic tasks from Start while agents are at capacity"
     }
   }
 }

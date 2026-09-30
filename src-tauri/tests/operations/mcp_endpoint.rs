@@ -7,6 +7,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 
 use arlesh_lib::board;
+use arlesh_lib::capacity::AgentCapacity;
 use arlesh_lib::mcp::endpoint::{
     read_port_setting, EndpointError, ListenerState, McpEndpoint, SETTINGS_FILE,
 };
@@ -34,6 +35,7 @@ async fn endpoint(settings: PathBuf, env_override: Option<u16>) -> McpEndpoint {
     McpEndpoint::new(
         helpers::session_factory(&pool),
         board::silent(),
+        AgentCapacity::in_memory(),
         settings,
         env_override,
     )
@@ -96,6 +98,7 @@ async fn changing_the_port_moves_the_listener_without_a_restart_of_the_app() {
     let reopened = McpEndpoint::new(
         helpers::session_factory(&helpers::test_pool().await),
         board::silent(),
+        AgentCapacity::in_memory(),
         settings,
         None,
     );

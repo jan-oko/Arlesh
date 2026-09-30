@@ -1,0 +1,20 @@
+/* A quiet amber pill: a state the user may want to clear, not an error. Sized to sit beside the
+   Filter button without out-shouting it. */
+.indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--agent-capacity) 55%, transparent);
+  background: color-mix(in srgb, var(--agent-capacity) 14%, transparent);
+  color: var(--agent-capacity);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.indicator:hover {
+  background: color-mix(in srgb, var(--agent-capacity) 24%, transparent);
+}

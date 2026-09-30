@@ -139,7 +139,7 @@ resolver in `src-tauri/src/access/`:
 
 ## Tools
 
-Eight tools rather than one per backend command, because an MCP client pays context for every tool
+Nine tools rather than one per backend command, because an MCP client pays context for every tool
 definition it loads.
 
 | Tool | Operations |
@@ -152,6 +152,7 @@ definition it loads.
 | `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`. See *Agentic waits* below |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
 | `arlesh_beads` | `set(node_type, node_id, beads_id)` — a write; `node_type` is `task`, `goal`, `commitment` or `project`, and the item must be writable (an Agentic Task inside a root). See below |
+| `arlesh_capacity` | `get`, `set(at_capacity)` — the agent capacity lock, app-wide and on no node. See *Agent capacity* below |
 
 **One flat input schema per tool** (2026-09-25). Each tool takes an `operation`-tagged union, and
 Claude Code reads a top-level `oneOf` by merging its branches' parameters while keeping
@@ -481,9 +482,53 @@ Passing `null` clears the link. Setting one on an item that does not exist is an
 (`not_permitted`, like any node outside the roots) rather than a silent no-op, and only the
 `project` subtype of Domain accepts a link — an Aspect, Domain or Tag is refused.
 
+## Agent capacity
+
+Ruled with the user on 2026-09-30 (`cdd`). The **agent capacity lock** is one app-wide on/off state
+meaning "agents are at capacity". An agent — or whoever runs a fleet of them — sets it with
+`arlesh_capacity.set(at_capacity: true)` when it cannot take on more Agentic work and clears it with
+`at_capacity: false` as soon as there is room; `get` reads it. The user sets and clears it too.
+Both answer `{"at_capacity": bool}`.
+
+**What it does.** While it is on, the app's **Start** preset — in every view that has it — hides
+every **Agentic Task that is not Done**: To Do, Started, and In Progress, including an In Progress
+one a To Do child would otherwise keep on Start. It fails the Task's own match, so a child that still
+shows (a Task marked Not agentic) keeps its parent on screen as an ancestor, as every such rule
+does. **Agentic waits** are not Tasks and show as normal. No other preset changes.
+
+**Not for agents.** The snapshot's own Start filter **ignores** the lock: agents still see the
+work. `BoardFilter` has no field for it — a field there would be one an agent could set from the
+snapshot's `filter` — and the Rust filter never learns whether a node is Agentic at all. The rule
+lives only in the frontend's filter (see [*Filtering Logic*](filtering-logic.md)).
+
+**The setting.** *Hide Agentic tasks from Start while agents are at capacity* (Settings → MCP
+access, **on** by default, app-wide, in the persisted `arlesh-display` store as
+`startHidesAgenticAtCapacity`) decides whether the lock hides anything, not whether it is on: with
+it off the lock is still recorded and still shown, and Start shows what it otherwise would.
+
+**Where it lives.** A file in the app's data directory, `agent-capacity.json`, beside the port's
+`mcp.json` and for the same reason: it is operational state about the agents working this board,
+not board data. A row would be journaled, and Ctrl+Z would flip the lock; so there is no
+migration, and setting it is never an undoable step. One `AgentCapacity` in the backend holds it for
+the Tauri commands (`agent_capacity`, `set_agent_capacity`) and every MCP session. It survives a
+restart and starts **off** on a fresh install, or when its file cannot be read — a lock nobody can
+read must not hide work.
+
+**Live in every window.** Each change, from the app or the MCP, is announced to **every** window as
+the `agent-capacity-changed` event carrying the new state — through the same per-window `emit_to` and
+`listenHere` door `board-changed` uses, so nothing in `crate::mcp` knows what a window is. Every
+window, the one that set it included, because the payload is the state rather than a signal to
+reload. A window reads the lock once on start and then takes each announcement.
+
+**In the app.** The Settings switch above sits beside its own switch, **Agents are at capacity**,
+which sets and clears the lock. While the lock is on, the top bar shows an amber **Agents at
+capacity** pill beside the Filter button; its hover says whether Start is hiding Agentic tasks
+because of it (or that the setting is off), and a click clears the lock.
+
 ## What writes
 
-`arlesh_tasks`, `arlesh_beads`, `arlesh_waits` and `arlesh_infos` write; every other tool is annotated
+`arlesh_tasks`, `arlesh_beads`, `arlesh_waits` and `arlesh_infos` write to the board, and
+`arlesh_capacity` sets the agent capacity lock, which is no part of the board and not journaled; every other tool is annotated
 `read_only_hint = true` and writes nothing at all.
 `arlesh_snapshot` used to be the exception: deriving a Habit's iterations minted the scope rows
 their windows landed on, and it had to commit them or the payload would name ids that no longer
