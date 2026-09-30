@@ -3,7 +3,7 @@ import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
 import {
   typeHardHidden, passesTags, withArchivedOverride, isShelvedProject, isHiddenBacklog,
   isUnopenedOccurrence, isUnopenedWait, passesCommitmentPreset, passesExpectationPreset, isArchived, isDelegated,
-  isLiveExpectation, isPlannedAhead, isOutsidePlanScope, passesStartStatus, passesDoStatus,
+  isLiveExpectation, isPlannedAhead, isOutsidePlanScope, passesStartStatus, passesDoStatus, isStartableWindow,
 } from "@/utils/filter-tree";
 import type { TimeScope } from "@/api/time-scope";
 import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
@@ -416,8 +416,9 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
       if (row.isBlocked || row.hasBlockedAncestor) return false;
       // A flat list has no walk to carry a Plan down, so the row asks its own chain.
       if (isPlannedAhead(row.node, f, inheritedPlan(row.ancestors))) return false;
-      // A window that has passed or has not begun drops out, as on the canvas.
-      if (row.node.timing === "lapsed" || row.node.timing === "pending" || isDelegated(row.node)) {
+      // A window that has passed or has not begun drops out, as on the canvas — unless the row is
+      // Overdue.
+      if (!isStartableWindow(row.node) || isDelegated(row.node)) {
         return withArchivedOverride(row.node, f, false);
       }
       return passesStartStatus(row.node, f);

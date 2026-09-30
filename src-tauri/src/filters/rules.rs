@@ -331,10 +331,11 @@ pub fn passes_expectation_preset(node: &NodeFacts, filter: &BoardFilter) -> bool
     match filter.preset {
         Preset::All => true,
         Preset::Plan => is_live_expectation(node),
-        // A window that has passed, or has not begun, drops out of Start, as a Task's does.
+        // A window that has passed, or has not begun, drops out of Start, as a Task's does —
+        // unless the wait is Overdue: pending past its window.
         Preset::Start => {
             let hidden_for_its_check = filter.start_hides_checked_waits && node.has_check;
-            is_live_expectation(node) && !hidden_for_its_check && is_in_window(node)
+            is_live_expectation(node) && !hidden_for_its_check && is_startable_window(node)
         }
         Preset::Do | Preset::Backlog => false,
     }
@@ -409,10 +410,17 @@ fn passes_plan(node: &NodeFacts, filter: &BoardFilter) -> bool {
     }
 }
 
-/// Whether a node's effective window is open now: neither still ahead (Pending) nor passed
-/// (Lapsed). An unscoped node, or one no lifecycle was derived for, is always in its window.
-fn is_in_window(node: &NodeFacts) -> bool {
-    !matches!(node.timing, Some(Timing::Pending | Timing::Lapsed))
+/// Whether Start reads a node's window as open: neither still ahead (Pending) nor passed
+/// (Lapsed) — or passed, but the node is **Overdue**. An unscoped node, or one no lifecycle was
+/// derived for, is always in its window.
+///
+/// Start shows Overdue items (ruled by the user, 2026-09-30): work that is late is exactly what
+/// should be begun now, so a Keep Overdue Task, Goal or wait whose window has passed unfinished
+/// stays. The flag already excludes what a lapse archived (Missed) and what is finished, and every
+/// other reason to drop out — blocked, backlogged, delegated, a Plan still ahead — is judged on
+/// its own, so an Overdue item still drops for any of those.
+fn is_startable_window(node: &NodeFacts) -> bool {
+    node.overdue || !matches!(node.timing, Some(Timing::Pending | Timing::Lapsed))
 }
 
 /// Start's own branch: things that can be begun now.
@@ -423,6 +431,9 @@ fn is_in_window(node: &NodeFacts) -> bool {
 /// 2026-09-27): what is not in scope yet is no more startable than what has left it. Blocked Tasks
 /// and Goals are dropped earlier, as a hard-hidden subtree.
 ///
+/// The exception is an **Overdue** item, which stays although its window has passed
+/// ([`is_startable_window`]); the flag is never set on an archived or finished one.
+///
 /// A window still ahead fails the node's **own** match rather than gating its subtree, as a
 /// lapsed one and a Plan still ahead ([`is_planned_ahead`]) do. A child with no window of its own
 /// reads its parent's, so it is Pending too and drops on its own account; a child whose own
@@ -431,9 +442,10 @@ fn passes_start(node: &NodeFacts, filter: &BoardFilter) -> bool {
     if !matches!(node.kind, NodeKind::Task | NodeKind::Goal) {
         return true;
     }
-    // A window outside now drops out, and so does a delegated Task: it is archived in every
-    // effect but name, and nothing someone else holds is yours to start.
-    if !is_in_window(node) || node.delegated {
+    // A window outside now drops out — unless the item is Overdue — and so does a delegated Task,
+    // Overdue or not: it is archived in every effect but name, and nothing someone else holds is
+    // yours to start.
+    if !is_startable_window(node) || node.delegated {
         return with_archived_override(node, filter, false);
     }
     if node.kind == NodeKind::Goal {

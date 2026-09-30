@@ -1634,6 +1634,66 @@
         "task-started"
       ],
       "commitments": []
+    },
+    {
+      "name": "start shows an overdue task, goal or wait, and still drops a missed, delegated, backlogged, blocked or planned-ahead one",
+      "spec": "mindmap-view.md, Start — Start shows Overdue items (ruled by the user, 2026-09-30): an item flagged Overdue stays although its window has lapsed, and so does one Overdue by a due inside its open window. A Missed item is effectively Archived and never Overdue, and a done one is not either. Blocked, backlogged and delegated items, and a Task rescheduled into a Plan still ahead, drop out as before.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "start-overdue",
+      "mindmap": [
+        "domain-start-overdue",
+        "expectation-overdue",
+        "goal-overdue",
+        "task-overdue-child",
+        "task-overdue-lapsed",
+        "task-overdue-open",
+        "task-overdue-parent"
+      ],
+      "list": [
+        "task-overdue-lapsed",
+        "task-overdue-open",
+        "task-overdue-parent",
+        "task-overdue-child"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-overdue"
+      ]
+    },
+    {
+      "name": "plan shows every overdue item that is not delegated or backlogged",
+      "spec": "mindmap-view.md, Plan — Plan hides what is effectively Archived, and an Overdue item never is; a delegated Task reads as archived and a backlogged one is set aside.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "start-overdue",
+      "mindmap": [
+        "domain-start-overdue",
+        "expectation-overdue",
+        "goal-overdue",
+        "task-overdue-blocked",
+        "task-overdue-child",
+        "task-overdue-lapsed",
+        "task-overdue-open",
+        "task-overdue-parent",
+        "task-overdue-planned-ahead",
+        "task-under-overdue-blocked"
+      ],
+      "list": [
+        "task-overdue-lapsed",
+        "task-overdue-open",
+        "task-overdue-blocked",
+        "task-under-overdue-blocked",
+        "task-overdue-planned-ahead",
+        "task-overdue-parent",
+        "task-overdue-child"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-overdue"
+      ]
     }
   ],
   "boards": {
@@ -2645,6 +2705,118 @@
               "id": "task-done",
               "kind": "task",
               "status": "done"
+            }
+          ]
+        }
+      ]
+    },
+    "start-overdue": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-start-overdue",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-overdue-lapsed",
+              "kind": "task",
+              "status": "todo",
+              "timing": "lapsed",
+              "overdue": true
+            },
+            {
+              "id": "task-overdue-open",
+              "kind": "task",
+              "status": "todo",
+              "timing": "active",
+              "overdue": true
+            },
+            {
+              "id": "task-missed",
+              "kind": "task",
+              "status": "todo",
+              "timing": "lapsed",
+              "archived": true
+            },
+            {
+              "id": "task-done-lapsed",
+              "kind": "task",
+              "status": "done",
+              "timing": "lapsed",
+              "archived": true
+            },
+            {
+              "id": "goal-overdue",
+              "kind": "goal",
+              "status": "active",
+              "timing": "lapsed",
+              "overdue": true
+            },
+            {
+              "id": "task-overdue-delegated",
+              "kind": "task",
+              "status": "todo",
+              "timing": "lapsed",
+              "overdue": true,
+              "delegated": true
+            },
+            {
+              "id": "task-overdue-backlogged",
+              "kind": "task",
+              "status": "todo",
+              "timing": "lapsed",
+              "overdue": true,
+              "backlogged": true
+            },
+            {
+              "id": "task-overdue-blocked",
+              "kind": "task",
+              "status": "todo",
+              "timing": "lapsed",
+              "overdue": true,
+              "isBlocked": true,
+              "children": [
+                {
+                  "id": "task-under-overdue-blocked",
+                  "kind": "task",
+                  "status": "todo",
+                  "timing": "lapsed",
+                  "overdue": true
+                }
+              ]
+            },
+            {
+              "id": "task-overdue-planned-ahead",
+              "kind": "task",
+              "status": "todo",
+              "timing": "lapsed",
+              "overdue": true,
+              "planTiming": "pending"
+            },
+            {
+              "id": "task-overdue-parent",
+              "kind": "task",
+              "status": "todo",
+              "timing": "lapsed",
+              "overdue": true,
+              "children": [
+                {
+                  "id": "task-overdue-child",
+                  "kind": "task",
+                  "status": "todo",
+                  "timing": "lapsed",
+                  "overdue": true
+                }
+              ]
+            },
+            {
+              "id": "expectation-overdue",
+              "kind": "expectation",
+              "status": "pending",
+              "timing": "lapsed",
+              "overdue": true
             }
           ]
         }

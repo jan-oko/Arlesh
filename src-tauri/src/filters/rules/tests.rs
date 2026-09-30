@@ -82,6 +82,79 @@ fn start_drops_a_lapsed_window_even_when_nothing_else_would() {
     assert!(!matches(&node, Preset::Start));
 }
 
+fn overdue(mut node: NodeFacts) -> NodeFacts {
+    node.timing = Some(Timing::Lapsed);
+    node.overdue = true;
+    node
+}
+
+#[test]
+fn start_keeps_an_overdue_task_or_goal_whose_window_has_lapsed() {
+    for node in [overdue(task("todo")), overdue(goal("active"))] {
+        assert!(matches(&node, Preset::Start), "{:?}", node.kind);
+        assert!(matches(&node, Preset::Plan), "{:?}", node.kind);
+    }
+}
+
+#[test]
+fn start_keeps_a_task_overdue_inside_its_open_window() {
+    let mut node = task("todo");
+    node.timing = Some(Timing::Active);
+    node.overdue = true;
+    assert!(matches(&node, Preset::Start));
+}
+
+#[test]
+fn an_overdue_item_still_drops_out_of_start_for_every_other_reason() {
+    let mut delegated = overdue(task("todo"));
+    delegated.delegated = true;
+    assert!(!matches(&delegated, Preset::Start), "delegated");
+
+    let mut blocked = overdue(task("todo"));
+    blocked.is_blocked = true;
+    assert!(
+        type_hard_hidden(&blocked, &BoardFilter::preset(Preset::Start)),
+        "blocked"
+    );
+
+    let mut backlogged = overdue(task("todo"));
+    backlogged.backlogged = true;
+    assert!(
+        is_hidden_backlog(&backlogged, &BoardFilter::preset(Preset::Start)),
+        "backlogged"
+    );
+
+    let mut planned_ahead = overdue(task("todo"));
+    planned_ahead.plan_timing = Some(Timing::Pending);
+    assert!(
+        is_planned_ahead(&planned_ahead, &BoardFilter::preset(Preset::Start), None),
+        "rescheduled into a Plan still ahead"
+    );
+
+    let bare_in_progress = overdue(task("in_progress"));
+    assert!(
+        !matches(&bare_in_progress, Preset::Start),
+        "in progress with nothing left to start"
+    );
+}
+
+#[test]
+fn a_missed_item_is_never_overdue_and_drops_out_of_start() {
+    let mut missed = task("todo");
+    missed.timing = Some(Timing::Lapsed);
+    missed.archived = true;
+    assert!(!matches(&missed, Preset::Start));
+}
+
+#[test]
+fn start_keeps_a_pending_wait_that_is_overdue() {
+    let wait = overdue(expectation("pending"));
+    assert!(passes_expectation_preset(
+        &wait,
+        &BoardFilter::preset(Preset::Start)
+    ));
+}
+
 #[test]
 fn start_drops_a_task_or_goal_whose_window_has_not_begun_and_no_other_preset_does() {
     for mut node in [task("todo"), goal("active")] {

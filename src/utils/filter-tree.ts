@@ -234,9 +234,17 @@ export function isUnopenedWait(node: MindmapNode, f: FilterState): boolean {
   return !(f.archivedMode === "include" && isArchived(node));
 }
 
-/** Whether a node's effective window is open now: neither still ahead nor passed. An unscoped node,
- * or one with no derived lifecycle, is always in its window. */
-function isInWindow(node: MindmapNode): boolean {
+/**
+ * Whether **Start** reads a node's window as open: neither still ahead nor passed — or passed, but the
+ * node is **Overdue**. An unscoped node, or one with no derived lifecycle, is always in its window.
+ *
+ * Start shows Overdue items (ruled by the user, 2026-09-30): late work is exactly what should be begun
+ * now. The flag is never set on a finished or effectively Archived (Missed) item, and every other reason
+ * to drop out — blocked, backlogged, delegated, a Plan still ahead — is judged on its own. Mirrors
+ * `is_startable_window` in `src-tauri/src/filters/rules.rs`.
+ */
+export function isStartableWindow(node: MindmapNode): boolean {
+  if (node.overdue === true) return true;
   return node.timing !== "pending" && node.timing !== "lapsed";
 }
 
@@ -383,13 +391,14 @@ function passesStatus(
       return true;
     case "start": {
       if (node.kind !== "task" && node.kind !== "goal") return true;
-      // Start = things you can begin now: drop anything whose window has passed or has not begun.
+      // Start = things you can begin now: drop anything whose window has passed or has not begun —
+      // except an Overdue item, whose passed window is exactly why it should be begun now.
       // (Blocked task/goals are dropped earlier, as a hard-hidden subtree — see typeHardHidden.) A
       // window still ahead fails only the node's own match, as a lapsed one and a Plan still ahead do:
       // a child with no window of its own reads its parent's and drops too, while one whose own window
       // is open still shows, holding its parent as an ancestor.
       // A delegated Task drops out with them: nothing someone else holds is yours to start.
-      if (!isInWindow(node) || isDelegated(node)) return withArchivedOverride(node, f, false);
+      if (!isStartableWindow(node) || isDelegated(node)) return withArchivedOverride(node, f, false);
       if (node.kind === "goal") return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? ""));
       return passesStartStatus(node, f);
     }
@@ -476,11 +485,12 @@ export function passesExpectationPreset(node: MindmapNode, f: FilterState): bool
       return true;
     case "plan":
       return isLiveExpectation(node);
-    // A wait whose window has passed, or has not begun, drops out of Start, as a Task's does.
+    // A wait whose window has passed, or has not begun, drops out of Start, as a Task's does —
+    // unless it is Overdue: still pending past its window.
     case "start":
       return isLiveExpectation(node)
         && !(f.startHidesCheckedWaits === true && (node.checkEvery ?? null) !== null)
-        && isInWindow(node);
+        && isStartableWindow(node);
     case "do":
     case "backlog":
       return false;

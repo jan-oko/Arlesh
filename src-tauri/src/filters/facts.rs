@@ -194,9 +194,9 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.tag_ids.clone_from(&expectation.tag_ids);
         node.time_scope.clone_from(&expectation.time_scope);
         // Its own Time Scope's Timing — the stored archive, not the lifecycle, says archived.
-        node.timing = lifecycles
-            .get(&(expectations::EXPECTATION, expectation.id.clone()))
-            .map(|lifecycle| lifecycle.timing);
+        let lifecycle = lifecycles.get(&(expectations::EXPECTATION, expectation.id.clone()));
+        node.timing = lifecycle.map(|lifecycle| lifecycle.timing);
+        node.overdue = lifecycle.is_some_and(|lifecycle| lifecycle.overdue);
         facts.push(node);
         parents.push(Some(content_parent_id(
             &expectation.parent_type,
@@ -273,6 +273,7 @@ fn apply_lifecycle(node: &mut NodeFacts, lifecycle: Option<&ItemLifecycle>) {
     };
     node.timing = Some(lifecycle.timing);
     node.plan_timing = lifecycle.plan_timing;
+    node.overdue = lifecycle.overdue;
     node.archived = lifecycle.archival == Archival::Archived;
 }
 
