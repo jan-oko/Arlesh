@@ -440,6 +440,7 @@ async fn a_duplicated_task_is_set_aside_if_the_original_was() {
             time_scope: None,
             on_scope_exit: None,
             plan: None,
+            due_scope: None,
             archival: Some(TaskArchival::Backlog),
             agentic: None,
             asynchronous: None,

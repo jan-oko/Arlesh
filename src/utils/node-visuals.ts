@@ -1,7 +1,6 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
 import { pathToNode } from "@/utils/mindmap-tree";
-import type { Resolution } from "@/api/scope-lifecycle";
 
 /** Opacity for a node the view is showing but the filter is not asking for: an archived item, or one
  * held on screen only by the focus exemption. Dim enough to read as dropped, legible enough to act on. */
@@ -15,9 +14,8 @@ export interface NodeAppearance {
   fillOpacity: number;
   label: string;
   textFill: string;
-  /** Derived resolution outcome, once the node's scope has lapsed (Task/Goal only). Drives the
-   * overdue accent border. */
-  resolution: Resolution | undefined;
+  /** The derived Overdue flag. Drives the overdue accent border. */
+  overdue: boolean;
   /** Whole-node opacity multiplier — archived items are dimmed to read as dropped from the view. */
   nodeOpacity: number;
 }
@@ -44,7 +42,7 @@ export function computeNodeAppearance(node: MindmapNode, depth: number): NodeApp
 
   return {
     isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill,
-    resolution: node.resolution, nodeOpacity,
+    overdue: node.overdue === true, nodeOpacity,
   };
 }
 

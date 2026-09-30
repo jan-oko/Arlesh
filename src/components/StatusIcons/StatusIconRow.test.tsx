@@ -39,7 +39,7 @@ describe("StatusIconRow", () => {
 
   it("renders a tooltip per indicator (keys resolve to i18n text at runtime)", () => {
     const scope = { start_id: testKey(1), end_id: testKey(2), duration: { n: 1, kind: "week" } };
-    const titles = renderRow(node("task", { status: "todo", timeScope: scope, timing: "lapsed", resolution: "overdue" }));
+    const titles = renderRow(node("task", { status: "todo", timeScope: scope, timing: "lapsed", overdue: true }));
     // scope clock (crossed) + overdue exclamation.
     expect(titles).toEqual(["scope", "overdue"]);
   });

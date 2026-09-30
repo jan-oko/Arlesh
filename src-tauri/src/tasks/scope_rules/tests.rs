@@ -28,6 +28,7 @@ fn a_task_nested_inside_every_window_above_it_is_accepted() {
         plan: Some(july(12, 14)),
         ancestor_scope: Some(july(1, 31)),
         ancestor_plan: Some(july(11, 15)),
+        due: Some(july(19, 20)),
         overdue: false,
     };
 
@@ -85,6 +86,7 @@ fn the_first_violation_is_the_only_one_reported() {
         plan: Some(july(1, 31)),
         ancestor_scope: Some(july(12, 18)),
         ancestor_plan: Some(july(13, 14)),
+        due: Some(july(1, 31)),
         overdue: false,
     };
 
@@ -207,9 +209,13 @@ fn a_lapsed_unfinished_keep_on_exit_task_is_overdue() {
     let scope = Some(july_day_scope(10));
 
     assert!(is_overdue(
-        &scope,
-        Some(OnScopeExit::Keep),
-        false,
+        OverdueFacts {
+            time_scope: &scope,
+            on_exit: Some(OnScopeExit::Keep),
+            due_scope: &None,
+            archival: TaskArchival::Live,
+            done: false,
+        },
         july_day(20)
     ));
 }
@@ -219,9 +225,13 @@ fn a_task_whose_window_has_not_passed_is_not_overdue() {
     let scope = Some(july_day_scope(10));
 
     assert!(!is_overdue(
-        &scope,
-        Some(OnScopeExit::Keep),
-        false,
+        OverdueFacts {
+            time_scope: &scope,
+            on_exit: Some(OnScopeExit::Keep),
+            due_scope: &None,
+            archival: TaskArchival::Live,
+            done: false,
+        },
         july_day(5)
     ));
 }
@@ -231,9 +241,13 @@ fn a_done_task_is_not_overdue() {
     let scope = Some(july_day_scope(10));
 
     assert!(!is_overdue(
-        &scope,
-        Some(OnScopeExit::Keep),
-        true,
+        OverdueFacts {
+            time_scope: &scope,
+            on_exit: Some(OnScopeExit::Keep),
+            due_scope: &None,
+            archival: TaskArchival::Live,
+            done: true,
+        },
         july_day(20)
     ));
 }
@@ -244,9 +258,13 @@ fn a_missed_task_is_not_overdue() {
     let scope = Some(july_day_scope(10));
 
     assert!(!is_overdue(
-        &scope,
-        Some(OnScopeExit::Archive),
-        false,
+        OverdueFacts {
+            time_scope: &scope,
+            on_exit: Some(OnScopeExit::Archive),
+            due_scope: &None,
+            archival: TaskArchival::Live,
+            done: false,
+        },
         july_day(20)
     ));
 }
@@ -254,9 +272,95 @@ fn a_missed_task_is_not_overdue() {
 #[test]
 fn a_task_with_no_time_scope_of_its_own_is_not_overdue() {
     assert!(!is_overdue(
-        &None,
-        Some(OnScopeExit::Keep),
-        false,
+        OverdueFacts {
+            time_scope: &None,
+            on_exit: Some(OnScopeExit::Keep),
+            due_scope: &None,
+            archival: TaskArchival::Live,
+            done: false,
+        },
+        july_day(20)
+    ));
+}
+
+#[test]
+fn a_due_escaping_its_own_time_scope_is_rejected() {
+    let windows = ContainmentWindows {
+        own_scope: Some(july(10, 20)),
+        due: Some(july(18, 25)),
+        ..Default::default()
+    };
+
+    assert_eq!(
+        violation(check_containment(windows)),
+        "due is not within the task's time scope"
+    );
+}
+
+#[test]
+fn a_due_on_a_task_with_no_window_of_its_own_is_held_to_the_inherited_one() {
+    let inside = ContainmentWindows {
+        ancestor_scope: Some(july(10, 20)),
+        due: Some(july(12, 13)),
+        ..Default::default()
+    };
+    assert!(check_containment(inside).is_ok());
+
+    let outside = ContainmentWindows {
+        ancestor_scope: Some(july(10, 20)),
+        due: Some(july(21, 22)),
+        ..Default::default()
+    };
+    assert_eq!(
+        violation(check_containment(outside)),
+        "due is not within the task's time scope"
+    );
+}
+
+#[test]
+fn a_due_on_an_unscoped_task_is_unbounded() {
+    let windows = ContainmentWindows {
+        due: Some(july(1, 2)),
+        ..Default::default()
+    };
+
+    assert!(check_containment(windows).is_ok());
+}
+
+#[test]
+fn a_task_past_an_explicit_due_inside_its_open_window_is_overdue() {
+    // Window: the 10th–20th of July, Archive-on-exit; due the 10th; now the 15th.
+    let scope = Some(TimeScope {
+        start_id: july_day_scope(10).start_id,
+        end_id: july_day_scope(20).end_id,
+        duration: None,
+    });
+    let due = Some(july_day_scope(10));
+
+    assert!(is_overdue(
+        OverdueFacts {
+            time_scope: &scope,
+            on_exit: Some(OnScopeExit::Archive),
+            due_scope: &due,
+            archival: TaskArchival::Live,
+            done: false,
+        },
+        july_day(15)
+    ));
+}
+
+#[test]
+fn a_backlogged_task_with_no_explicit_due_is_not_overdue() {
+    let scope = Some(july_day_scope(10));
+
+    assert!(!is_overdue(
+        OverdueFacts {
+            time_scope: &scope,
+            on_exit: Some(OnScopeExit::Keep),
+            due_scope: &None,
+            archival: TaskArchival::Backlog,
+            done: false,
+        },
         july_day(20)
     ));
 }
@@ -297,6 +401,7 @@ fn entry(node_type: &str, id: i64, timing: Timing) -> ItemLifecycle {
         node_id: NodeId::Stored(id),
         timing,
         resolution: None,
+        overdue: false,
         verdict: None,
         archival: Archival::Live,
         archival_conflict: false,

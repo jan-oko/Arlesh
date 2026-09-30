@@ -342,13 +342,17 @@ so the conformance corpus is untouched.
 - **`update`** changes a Task's title, its brief — each brief field given replaces that field, the
   rest stay — and whether it is set aside in the **Backlog**.
 - **`create` and `update` carry the rest of the Task** (2026-09-26), so an agent can keep its work
-  in Arlesh as it would in `bd`: its **Time Scope** and **Plan** (scope ids, the shape
-  `containment_conflicts` takes), `on_scope_exit` (`keep` or `archive`), `asynchronous`, its
+  in Arlesh as it would in `bd`: its **Time Scope**, **Plan** and **due** (`due_scope`; scope ids,
+  the shape `containment_conflicts` takes; the due within the Time Scope, added 2026-09-30),
+  `on_scope_exit` (`keep` — **Keep Overdue** — or `archive`), `asynchronous`, its
   explicit **block reasons** (the ordered list, replaced whole), its **tags** (by Tag id) and its
   **prerequisites** — the Tasks, Goals or waits it comes after. "X after Y" is X depending on Y.
   `create` takes `dependencies` and `tags` as lists; `update` takes `add_dependencies` /
   `remove_dependencies` and `add_tags` / `remove_tags`, removals applied first. On `update` a
-  field left out is unchanged and `null` clears it (`time_scope`, `plan`, `block_reasons`).
+  field left out is unchanged and `null` clears it (`time_scope`, `plan`, `due_scope`,
+  `block_reasons`). A Habit occurrence's `due_scope`, like its `on_scope_exit`, is its Habit's
+  and is refused. Each lifecycle entry in the snapshot carries `overdue: true` when the item is
+  flagged Overdue; `resolution` is only ever `completed` or `missed`.
   Each goes through the same backend write the app's own command uses (`nodes::write` —
   `update_task`, `add_dependency`, `remove_dependency`, `set_tag`, `set_block_reasons`), so its
   rules are the app's: a Plan outside the Time Scope or a window outside an ancestor's is

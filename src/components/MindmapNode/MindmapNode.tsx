@@ -52,7 +52,7 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
   const activeHeight = isEditing ? computeEditHeight(position.depth, editLineCount) : height;
 
   const iconR = (iconWidth - 8) / 2;
-  const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill, resolution, nodeOpacity } = computeNodeAppearance(node, position.depth);
+  const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill, overdue, nodeOpacity } = computeNodeAppearance(node, position.depth);
   // Held on screen by the focus exemption: dimmed like an archived node, so it reads as something the
   // filter no longer wants rather than as an ordinary match. Its status badges already say why.
   const opacity = isFocusExempt ? DIMMED_OPACITY : nodeOpacity;
@@ -62,7 +62,7 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
     ? "var(--node-border-selected)"
     : isDragTarget
       ? "var(--accent)"
-      : resolution === "overdue"
+      : overdue
         ? "var(--overdue)"
         : "var(--node-border)";
   // A Commitment — stored or a Habit iteration — has no status to cycle here: its verdict is

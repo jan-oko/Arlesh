@@ -82,7 +82,7 @@ describe("deriveStatusIndicators", () => {
   });
 
   it("crosses out the clock and adds an exclamation for an overdue (kept) item", () => {
-    const indicators = deriveStatusIndicators(node("task", { timeScope: scope, timing: "lapsed", resolution: "overdue" }));
+    const indicators = deriveStatusIndicators(node("task", { timeScope: scope, timing: "lapsed", overdue: true }));
     expect(indicators).toEqual([
       { type: "scope", outOfScope: true },
       { type: "overdue" },

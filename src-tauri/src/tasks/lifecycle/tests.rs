@@ -85,19 +85,16 @@ fn lapsed_unresolved_archive_on_exit_is_missed() {
 }
 
 #[test]
-fn lapsed_unresolved_keep_on_exit_is_overdue() {
+fn lapsed_unresolved_keep_overdue_has_no_resolution() {
     assert_eq!(
         derive_resolution(Timing::Lapsed, false, Some(OnScopeExit::Keep)),
-        Some(Resolution::Overdue)
+        None
     );
 }
 
 #[test]
-fn lapsed_unresolved_missing_on_exit_defensively_falls_back_to_overdue() {
-    assert_eq!(
-        derive_resolution(Timing::Lapsed, false, None),
-        Some(Resolution::Overdue)
-    );
+fn lapsed_unresolved_missing_on_exit_defensively_reads_as_keep_overdue() {
+    assert_eq!(derive_resolution(Timing::Lapsed, false, None), None);
 }
 
 // --- Archival ---
@@ -109,10 +106,6 @@ fn no_forcing_resolution_keeps_the_stored_value() {
         Archival::Frozen
     );
     assert_eq!(
-        derive_archival(Some(Archival::Frozen), Some(Resolution::Overdue)).effective,
-        Archival::Frozen
-    );
-    assert_eq!(
         derive_archival(Some(Archival::Archived), None).effective,
         Archival::Archived
     );
@@ -121,13 +114,6 @@ fn no_forcing_resolution_keeps_the_stored_value() {
 #[test]
 fn nothing_stored_and_no_forcing_defaults_to_live() {
     let result = derive_archival(None, None);
-    assert_eq!(result.effective, Archival::Live);
-    assert!(!result.conflict);
-}
-
-#[test]
-fn overdue_never_forces_archival() {
-    let result = derive_archival(Some(Archival::Live), Some(Resolution::Overdue));
     assert_eq!(result.effective, Archival::Live);
     assert!(!result.conflict);
 }
@@ -169,11 +155,9 @@ fn forcing_archival_over_live_or_already_archived_is_not_a_conflict() {
 
 #[test]
 fn a_backlogged_task_reads_as_backlogged_while_nothing_forces_it() {
-    for resolution in [None, Some(Resolution::Overdue)] {
-        let result = derive_archival(Some(Archival::Backlog), resolution);
-        assert_eq!(result.effective, Archival::Backlog);
-        assert!(!result.conflict);
-    }
+    let result = derive_archival(Some(Archival::Backlog), None);
+    assert_eq!(result.effective, Archival::Backlog);
+    assert!(!result.conflict);
 }
 
 /// The whole point of the uniform rule: setting a scoped task aside does not exempt it from
@@ -199,6 +183,7 @@ fn a_scoped_backlogged_task_that_lapses_unfinished_archives_as_missed_with_a_con
     let state = derive_item_state(
         Some(window()),
         Some(OnScopeExit::Archive),
+        None,
         false,
         Some(Archival::Backlog),
         at("2026-01-20T00:00:00"),
@@ -213,6 +198,7 @@ fn a_backlogged_task_inside_its_window_is_simply_backlogged() {
     let state = derive_item_state(
         Some(window()),
         Some(OnScopeExit::Archive),
+        None,
         false,
         Some(Archival::Backlog),
         at("2026-01-08T00:00:00"),
@@ -225,6 +211,7 @@ fn a_backlogged_task_inside_its_window_is_simply_backlogged() {
 #[test]
 fn an_unscoped_backlogged_task_is_never_forced_into_anything() {
     let state = derive_item_state(
+        None,
         None,
         None,
         false,
@@ -284,6 +271,7 @@ fn a_done_item_past_its_window_is_now_archived_not_silently_active() {
     let state = derive_item_state(
         Some(window()),
         Some(OnScopeExit::Archive),
+        None,
         true,
         None,
         at("2026-02-01T00:00:00"),
@@ -299,6 +287,7 @@ fn a_resolved_item_within_its_window_is_still_just_active() {
     let state = derive_item_state(
         Some(window()),
         Some(OnScopeExit::Archive),
+        None,
         true,
         None,
         at("2026-01-08T00:00:00"),
@@ -313,6 +302,7 @@ fn an_unscoped_item_is_never_forced_into_anything() {
     let state = derive_item_state(
         None,
         None,
+        None,
         false,
         Some(Archival::Frozen),
         at("2030-01-01T00:00:00"),
@@ -324,16 +314,130 @@ fn an_unscoped_item_is_never_forced_into_anything() {
 }
 
 #[test]
-fn passed_keep_item_is_overdue_and_stays_live() {
+fn passed_keep_overdue_item_is_flagged_overdue_with_no_resolution_and_stays_live() {
+    let governance = Some((window(), OnScopeExit::Keep));
     let state = derive_item_state(
         Some(window()),
         Some(OnScopeExit::Keep),
+        effective_due(None, governance, false),
         false,
         Some(Archival::Live),
         at("2026-01-20T00:00:00"),
     );
-    assert_eq!(state.resolution, Some(Resolution::Overdue));
+    assert_eq!(state.timing, Timing::Lapsed);
+    assert_eq!(state.resolution, None);
+    assert!(state.overdue);
     assert_eq!(state.archival, Archival::Live);
+}
+
+#[test]
+fn passed_archive_item_is_missed_and_never_overdue_even_with_an_explicit_due() {
+    let due = Some((at("2026-01-05T00:00:00"), at("2026-01-06T00:00:00")));
+    let state = derive_item_state(
+        Some(window()),
+        Some(OnScopeExit::Archive),
+        due,
+        false,
+        Some(Archival::Live),
+        at("2026-01-20T00:00:00"),
+    );
+    assert_eq!(state.resolution, Some(Resolution::Missed));
+    assert!(!state.overdue, "an archived item is not overdue");
+}
+
+#[test]
+fn an_explicit_due_inside_the_window_makes_an_active_item_overdue() {
+    let due = Some((at("2026-01-05T00:00:00"), at("2026-01-06T00:00:00")));
+    let state = derive_item_state(
+        Some(window()),
+        Some(OnScopeExit::Archive),
+        due,
+        false,
+        Some(Archival::Live),
+        at("2026-01-08T00:00:00"),
+    );
+    assert_eq!(state.timing, Timing::Active);
+    assert!(state.overdue);
+}
+
+#[test]
+fn a_done_item_is_never_overdue() {
+    let state = derive_item_state(
+        Some(window()),
+        Some(OnScopeExit::Keep),
+        Some(window()),
+        true,
+        None,
+        at("2026-01-20T00:00:00"),
+    );
+    assert!(!state.overdue);
+}
+
+// --- The due ---
+
+#[test]
+fn an_explicit_due_wins_over_every_default() {
+    let explicit = Some((at("2026-01-05T00:00:00"), at("2026-01-06T00:00:00")));
+    for governance in [
+        None,
+        Some((window(), OnScopeExit::Keep)),
+        Some((window(), OnScopeExit::Archive)),
+    ] {
+        assert_eq!(effective_due(explicit, governance, false), explicit);
+        assert_eq!(effective_due(explicit, governance, true), explicit);
+    }
+}
+
+#[test]
+fn keep_overdue_makes_the_window_the_due_and_archive_leaves_none() {
+    assert_eq!(
+        effective_due(None, Some((window(), OnScopeExit::Keep)), false),
+        Some(window())
+    );
+    assert_eq!(
+        effective_due(None, Some((window(), OnScopeExit::Archive)), false),
+        None
+    );
+    assert_eq!(effective_due(None, None, false), None);
+}
+
+#[test]
+fn a_backlogged_task_has_no_default_due() {
+    assert_eq!(
+        effective_due(None, Some((window(), OnScopeExit::Keep)), true),
+        None
+    );
+}
+
+#[test]
+fn an_unscoped_task_with_an_explicit_due_is_overdue_once_it_passes() {
+    let due = Some((at("2026-01-05T00:00:00"), at("2026-01-06T00:00:00")));
+    let state = derive_item_state(None, None, due, false, None, at("2026-01-07T00:00:00"));
+    assert_eq!(state.timing, Timing::Active);
+    assert!(state.overdue);
+}
+
+#[test]
+fn overdue_is_judged_against_effective_archival_not_backlog() {
+    let due = Some(window());
+    let now = at("2026-01-20T00:00:00");
+    assert!(derive_overdue(due, false, Archival::Backlog, now));
+    assert!(derive_overdue(due, false, Archival::Live, now));
+    assert!(!derive_overdue(due, false, Archival::Archived, now));
+    assert!(!derive_overdue(due, true, Archival::Live, now));
+    // The due's end is half-open, like any window's.
+    assert!(!derive_overdue(
+        due,
+        false,
+        Archival::Live,
+        at("2026-01-11T23:59:59")
+    ));
+    assert!(derive_overdue(
+        due,
+        false,
+        Archival::Live,
+        at("2026-01-12T00:00:00")
+    ));
 }
 
 #[test]
@@ -341,6 +445,7 @@ fn passed_archive_item_is_missed_and_becomes_archived() {
     let state = derive_item_state(
         Some(window()),
         Some(OnScopeExit::Archive),
+        None,
         false,
         Some(Archival::Live),
         at("2026-01-20T00:00:00"),
@@ -355,6 +460,7 @@ fn the_half_open_end_is_already_passed() {
     let state = derive_item_state(
         Some(window()),
         Some(OnScopeExit::Archive),
+        None,
         false,
         None,
         at("2026-01-12T00:00:00"),

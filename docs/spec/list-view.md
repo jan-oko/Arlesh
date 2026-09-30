@@ -80,7 +80,7 @@ On top of the shared filters, the List View adds its own filter dimensions — a
 | Goal status | The resolved nearest-ancestor Goal's status |
 | Project status | The resolved nearest-ancestor Project's status |
 | Verdict | Unresolved / Kept / Broken — applies to the commitments section only |
-| Scope | Unscoped / Active / Overdue / Lapsed / Planned / Unplanned — independent axes, so e.g. Unscoped + Planned can both apply to the same task |
+| Scope | Unscoped / Active / Overdue / Lapsed / Planned / Unplanned — independent axes, so e.g. Unscoped + Planned can both apply to the same task. **Overdue** is the Overdue flag (see [*Time Scopes*](time-scopes.md#due-scope-and-the-overdue-flag)) and wins over the other three: an Unscoped task past a due of its own reads Overdue |
 | Blocked | One yes/no pill: Blocked, or with Alt, Not blocked (see [*Yes/no dimensions*](filtering-logic.md#adding-modes)) |
 | Agentic | One yes/no pill: Agentic / Not agentic — the flag as the task *reads* it, its own or inherited (see [*Tasks*](resources.md)). Independent of the delegated/undelegated question |
 | Private | One yes/no pill, offered only while Private Mode is on: Private / Not private — the node marked Private, or under one that is. Applies to every row kind. Turning Private Mode off removes it, with a toast |

@@ -152,6 +152,9 @@ fn refuse_changes(current: &Task, request: &UpdateTaskRequest) -> Result<(), App
     if request.asynchronous == Some(true) || matches!(request.async_template, Some(Some(_))) {
         return Err(refused("a check task does not start a wait of its own"));
     }
+    if matches!(request.due_scope, Some(Some(_))) {
+        return Err(refused("a check task is due the day its check fell due"));
+    }
     Ok(())
 }
 

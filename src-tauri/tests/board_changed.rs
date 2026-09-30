@@ -82,6 +82,7 @@ async fn create_task(app: &App<MockRuntime>, project_id: i64, title: &str) -> i6
             time_scope: None,
             on_scope_exit: None,
             plan: None,
+            due_scope: None,
             archival: None,
             agentic: None,
             asynchronous: None,

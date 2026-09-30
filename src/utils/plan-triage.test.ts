@@ -357,13 +357,13 @@ describe("planRefusal", () => {
   });
 
   it("lets an overdue task leave its own window, which has already passed", () => {
-    const rows = row({ node: node("task-1", { timeScope: scope(2), resolution: "overdue" }) });
+    const rows = row({ node: node("task-1", { timeScope: scope(2), overdue: true }) });
     expect(planRefusal(rows, WEEK, WINDOWS)).toBeNull();
   });
 
   it("still holds an overdue task to its nearest planned ancestor's Plan", () => {
     const rows = row({
-      node: node("task-1", { timeScope: scope(2), resolution: "overdue" }),
+      node: node("task-1", { timeScope: scope(2), overdue: true }),
       ancestors: [node("task-0", { plan: scope(2) })],
     });
     expect(planRefusal(rows, WEEK, WINDOWS)).toBe("parentPlan");

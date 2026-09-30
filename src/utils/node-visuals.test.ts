@@ -17,19 +17,19 @@ function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
 describe("computeNodeAppearance — scope lifecycle", () => {
   it("leaves a node with no lifecycle fully opaque and unmarked", () => {
     const a = computeNodeAppearance(mkNode(), 1);
-    expect(a.resolution).toBeUndefined();
+    expect(a.overdue).toBe(false);
     expect(a.nodeOpacity).toBe(1);
   });
 
-  it("keeps an overdue node opaque but exposes the resolution for the accent", () => {
-    const a = computeNodeAppearance(mkNode({ timing: "lapsed", resolution: "overdue" }), 1);
-    expect(a.resolution).toBe("overdue");
+  it("keeps an overdue node opaque but exposes the flag for the accent", () => {
+    const a = computeNodeAppearance(mkNode({ timing: "lapsed", overdue: true }), 1);
+    expect(a.overdue).toBe(true);
     expect(a.nodeOpacity).toBe(1);
   });
 
   it("dims an archived node so it reads as dropped from the active view", () => {
     const a = computeNodeAppearance(mkNode({ timing: "lapsed", resolution: "missed", archived: true }), 1);
-    expect(a.resolution).toBe("missed");
+    expect(a.overdue).toBe(false);
     expect(a.nodeOpacity).toBeLessThan(1);
   });
 

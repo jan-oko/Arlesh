@@ -214,13 +214,13 @@ that carried its rows outside the scope being filled and so off the pane.
 the task's own window is **not** widened on the user's behalf: a window is a statement about when
 work *matters*, and changing one is an editing decision, made in the editor.
 
-**An Overdue task is exempt from the first bound** (ruled by the user, 2026-09-26): one whose own
-window has passed while it is not done and Keep-on-exit — its Resolution reads **Overdue** (see
-[Time Scopes & Planning](time-scopes.md)). That is exactly when it needs rescheduling, and its own
-window can only ever refuse now and later, so it may be planned into any scope; its window stays as
-it was. The second bound still holds — it answers to its nearest planned ancestor's Plan like any
-task. A task that lapsed **Done** or **Missed** is not exempt, and nor is a Habit occurrence, whose
-lifecycle never reads Overdue: it stays within its iteration's window. The exemption is about what a
+**An Overdue task is exempt from the first bound** (ruled by the user, 2026-09-26): one flagged
+**Overdue** — unfinished, not archived, and past the end of its due; by default, a Keep Overdue task
+whose own window has passed (see [Time Scopes & Planning](time-scopes.md), *Due scope and the
+Overdue flag*). That is exactly when it needs rescheduling, and a passed due can only ever refuse
+now and later, so it may be planned into any scope; its window stays as it was. The second bound still holds — it answers to its nearest planned ancestor's Plan like any
+task. A task that lapsed **Done** or **Missed** is not exempt, and nor is a Habit occurrence, which has
+no due yet and so is never Overdue: it stays within its iteration's window. The exemption is about what a
 move may do, not about where the task is offered: which scopes show it as a candidate is still
 *The candidates*' rule, unchanged.
 

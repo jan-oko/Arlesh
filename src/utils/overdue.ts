@@ -1,14 +1,14 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 
 /**
- * Whether a node reads **Overdue**: its window has fully passed, it is not done, and it is
- * Keep-on-exit — the lifecycle's own Resolution, derived by the backend, not a second definition.
+ * Whether a node is flagged **Overdue**: unfinished, not effectively archived, and past the end of
+ * its due — the lifecycle's own flag, derived by the backend, not a second definition.
  *
- * An Overdue Task's Plan is not bound by its own Time Scope, so work whose window passed unfinished
- * can be rescheduled into now or later without the window being widened on the user's behalf. The
+ * An Overdue Task's Plan is not bound by its own Time Scope, so work past its due can be
+ * rescheduled into now or later without the window being widened on the user's behalf. The
  * backend lifts the same bound on the way in. A Missed task has been archived and a Completed one is
- * done, so neither is exempt; nor is a Habit occurrence, whose lifecycle never reads Overdue.
+ * done, so neither is exempt; nor, for now, is a Habit occurrence, which has no due yet.
  */
 export function isOverdue(node: MindmapNode): boolean {
-  return node.resolution === "overdue";
+  return node.overdue === true;
 }

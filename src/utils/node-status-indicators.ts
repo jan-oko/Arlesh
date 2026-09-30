@@ -55,7 +55,7 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   if (node.timeScope != null) {
     indicators.push({ type: "scope", outOfScope: isPastWindow(node) });
   }
-  if (node.resolution === "overdue") {
+  if (node.overdue === true) {
     indicators.push({ type: "overdue" });
   }
   if (node.status === "archived" || node.archived === true) {

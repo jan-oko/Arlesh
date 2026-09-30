@@ -528,6 +528,7 @@ async fn an_added_child_holds_children_of_its_own_in_the_ordinary_way() {
             time_scope: None,
             on_scope_exit: None,
             plan: None,
+            due_scope: None,
             archival: None,
             agentic: None,
             asynchronous: None,

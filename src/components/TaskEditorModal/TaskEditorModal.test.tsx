@@ -786,8 +786,68 @@ describe("TaskEditorModal — the Plan picker's bound", () => {
   });
 
   it("lifts the bound for an overdue task, whose window has already passed", async () => {
-    await openPlanPicker(mkNode({ timeScope: JULY_WEEK, onScopeExit: "keep", resolution: "overdue" }));
+    await openPlanPicker(mkNode({ timeScope: JULY_WEEK, onScopeExit: "keep", overdue: true }));
     await screen.findByRole("group", { name: "plan picker" });
     expect(resolvedScopes()).toEqual([]);
+  });
+});
+
+describe("TaskEditorModal — the Due field", () => {
+  const JULY_WEEK = { start_id: testKey(7), end_id: testKey(7) };
+
+  async function openEditor(node: MindmapNode) {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={node} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+    return onSave;
+  }
+
+  it("sits beside the on-exit pills on a task with its own Time Scope, naming the default", async () => {
+    await openEditor(mkNode({ timeScope: JULY_WEEK, onScopeExit: "keep" }));
+    expect(screen.getByText("fieldOnScopeExit")).toBeInTheDocument();
+    expect(screen.getByText("fieldDue")).toBeInTheDocument();
+    expect(screen.getByText("dueDefaultTimeScope")).toBeInTheDocument();
+  });
+
+  it("names no default due under Archive", async () => {
+    await openEditor(mkNode({ timeScope: JULY_WEEK, onScopeExit: "archive" }));
+    expect(screen.getByText("dueDefaultNone")).toBeInTheDocument();
+  });
+
+  it("shows on its own row, without the pills, on an Unscoped task", async () => {
+    await openEditor(mkNode({ inheritedTimeScope: null }));
+    expect(screen.queryByText("fieldOnScopeExit")).not.toBeInTheDocument();
+    expect(screen.getByText("fieldDue")).toBeInTheDocument();
+  });
+
+  it("is hidden on a task that inherits its window, which derives its due from it", async () => {
+    await openEditor(mkNode({ inheritedTimeScope: JULY_WEEK }));
+    expect(screen.queryByText("fieldDue")).not.toBeInTheDocument();
+  });
+
+  it("is hidden on a Habit occurrence, whose due is its Habit's", async () => {
+    const onSave = await openEditor(mkNode({
+      rowId: "0b3f0f9e-7a52-5a4e-9d3c-1c2b3a4d5e6f",
+      timeScope: JULY_WEEK,
+      origin: {
+        kind: "habit", habit_id: 3, item_type: "flow_task", item_id: 4, cycle_id: 0,
+        iteration_scope: {
+          index: 4, start_date: "2026-01-05", window_end: "2026-01-06T00:00:00",
+          scope_id: { kind: "day", date: "2026-01-05" }, kind: "day", status: "active",
+        },
+      },
+    }));
+    expect(screen.queryByText("fieldDue")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty("dueScope");
+  });
+
+  it("saves a stored due, and Clear sends it back to the default", async () => {
+    const onSave = await openEditor(mkNode({ timeScope: JULY_WEEK, onScopeExit: "keep", dueScope: JULY_WEEK }));
+    fireEvent.click(screen.getByRole("button", { name: "scopeClear" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ dueScope: null });
   });
 });

@@ -1,21 +1,26 @@
 //! Derived scope-lifecycle state for scoped Tasks, Goals and Commitments.
 //!
-//! Three independent axes, none persisted — everything here is a pure function of an item's
-//! effective governance (its own window and On-exit behavior when explicitly scoped, otherwise the
-//! nearest scoped ancestor's), its own resolution status, and the reference instant:
+//! Three independent axes and one flag, none persisted — everything here is a pure function of an
+//! item's effective governance (its own window and On-exit behavior when explicitly scoped,
+//! otherwise the nearest scoped ancestor's), its due, its own resolution status, and the reference
+//! instant:
 //!
 //! - [`Timing`] — the item's window position: `Pending` / `Active` / `Lapsed`. Independent of
 //!   whether the item is resolved.
-//! - [`Resolution`] — only meaningful once `Timing` is `Lapsed`: `Completed` (resolved by the time
-//!   its window lapsed), `Missed` (unresolved, Archive-on-exit), or `Overdue` (unresolved,
-//!   Keep-on-exit). The single-occurrence analogue of a Habit's Consumption root (Archive =
-//!   Destructive, Keep = Accumulating).
+//! - [`Resolution`] — how a Lapsed item settled: `Completed` (resolved by the time its window
+//!   lapsed) or `Missed` (unresolved, Archive-on-exit). An unresolved **Keep Overdue** item has no
+//!   Resolution: its window passing settled nothing, so it stays live. The single-occurrence
+//!   analogue of a Habit's Consumption root (Archive = Destructive, Keep Overdue = Accumulating).
 //! - [`Archival`] — the item's effective archived/frozen/live state. Every item may carry its own
 //!   manually-set Archival (via [`derive_archival`]'s `stored` parameter): a Goal or Project
 //!   through its status (`Frozen` / `Archived`), a Task through its **Backlog** column. A
 //!   `Completed` or `Missed` `Resolution` unconditionally forces `Archived` regardless of
 //!   `stored`, flagging a conflict when it silently overrides a manually-set `Frozen` **or**
 //!   `Backlog`.
+//! - **Overdue** ([`derive_overdue`]) — a flag, not a Resolution: the item is unresolved, not
+//!   effectively Archived, and `now` is past the end of its **due** ([`effective_due`]). Timing and
+//!   the flag are independent: an explicit due ends inside the window, so an Active item can be
+//!   Overdue, and an Archive item never is once its lapse has archived it.
 
 use serde::{Deserialize, Serialize};
 
@@ -57,7 +62,12 @@ pub fn derive_timing(window: Option<Bounds>, now: NaiveDateTime) -> Timing {
     }
 }
 
-/// How a Lapsed item relates to its own completion. Only defined once [`Timing`] is `Lapsed`.
+/// How a Lapsed item settled. Only defined once [`Timing`] is `Lapsed`, and not always then: an
+/// unresolved Keep Overdue item has none.
+///
+/// **Overdue is not here.** It used to be the third variant, the unresolved Keep-on-exit outcome;
+/// it is now a flag of its own ([`derive_overdue`]), because it is judged against the item's due
+/// rather than its window, and can hold while the window is still open.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Resolution {
@@ -65,12 +75,12 @@ pub enum Resolution {
     Completed,
     /// Unresolved, and Archive-on-exit: the single-occurrence analogue of a Destructive Habit.
     Missed,
-    /// Unresolved, and Keep-on-exit: the single-occurrence analogue of an Accumulating Habit.
-    Overdue,
 }
 
 /// Derives an item's Resolution. Returns `None` unless `timing` is `Lapsed` — Resolution has no
-/// meaning for a Pending or Active item.
+/// meaning for a Pending or Active item — and `None` for an unresolved item that is not
+/// Archive-on-exit: a Keep Overdue item whose window passed is still open work, not a settled
+/// outcome, so it keeps no Resolution and stays whatever its stored Archival says.
 pub fn derive_resolution(
     timing: Timing,
     resolved: bool,
@@ -82,11 +92,56 @@ pub fn derive_resolution(
     if resolved {
         return Some(Resolution::Completed);
     }
-    Some(match on_exit {
-        Some(OnScopeExit::Archive) => Resolution::Missed,
-        // Keep — or, defensively, a scoped item missing its (invariant-guaranteed) on-exit value.
-        _ => Resolution::Overdue,
-    })
+    match on_exit {
+        Some(OnScopeExit::Archive) => Some(Resolution::Missed),
+        // Keep Overdue — or, defensively, a scoped item missing its (invariant-guaranteed) on-exit
+        // value, which reads as the Keep Overdue default.
+        Some(OnScopeExit::Keep) | None => None,
+    }
+}
+
+/// The due an item is judged **Overdue** against, as a window: its end is the deadline.
+///
+/// - `explicit` — the due set on the item itself — always wins. Only a Task can carry one.
+/// - Otherwise a **backlogged** Task has none: work set aside is not late.
+/// - Otherwise the due follows the effective On-exit behavior, inherited with the window: **Keep
+///   Overdue** makes the effective Time Scope the due, **Archive** leaves none, and so does having
+///   no window at all. A child with no window of its own reads its nearest scoped ancestor's
+///   governance, so it derives its due from the inherited window; a child with its own window
+///   derives it from that.
+///
+/// A Habit occurrence's due is its Habit's to decide, not this function's — see
+/// `flows::occurrences`.
+pub fn effective_due(
+    explicit: Option<Bounds>,
+    governance: Option<(Bounds, OnScopeExit)>,
+    backlogged: bool,
+) -> Option<Bounds> {
+    if explicit.is_some() {
+        return explicit;
+    }
+    if backlogged {
+        return None;
+    }
+    match governance {
+        Some((window, OnScopeExit::Keep)) => Some(window),
+        Some((_, OnScopeExit::Archive)) | None => None,
+    }
+}
+
+/// Whether an item is **Overdue** at `now`: it has a due, `now` is at or past the due's end, it is
+/// unresolved, and its **effective** Archival is not Archived. A delegated Task can be Overdue —
+/// delegation is not archival on this axis — and so can a backlogged one with an explicit due.
+pub fn derive_overdue(
+    due: Option<Bounds>,
+    resolved: bool,
+    archival: Archival,
+    now: NaiveDateTime,
+) -> bool {
+    let Some((_, end)) = due else {
+        return false;
+    };
+    !resolved && archival != Archival::Archived && now >= end
 }
 
 /// An item's effective archived/frozen/live state.
@@ -168,8 +223,8 @@ fn is_deliberate(stored: Option<Archival>) -> bool {
 /// with no archival column at all. A `Completed` or `Missed` [`Resolution`] unconditionally forces
 /// `Archived`, regardless of `stored` — scope resolution always wins for a scoped, lapsed item, so
 /// backlogging a scoped Task does **not** exempt it from lapsing Missed when its window closes
-/// unfinished. `Overdue` never forces anything: the item stays whatever `stored` says (or `Live`
-/// when nothing is stored).
+/// unfinished. No Resolution forces nothing: a lapsed Keep Overdue item stays whatever `stored`
+/// says (or `Live` when nothing is stored).
 ///
 /// `Backlog` loses to a forced `Archived` on exactly the terms `Frozen` does, conflict flag and
 /// all. That uniformity is a deliberate choice over letting Backlog win; inverting it later is a
@@ -192,14 +247,17 @@ pub fn derive_archival(stored: Option<Archival>, resolution: Option<Resolution>)
     }
 }
 
-/// One item's fully-derived lifecycle state (Timing/Resolution/Archival), without node identity —
-/// see [`ItemLifecycle`] for the keyed wire form sent to the frontend.
+/// One item's fully-derived lifecycle state (Timing/Resolution/Archival and the Overdue flag),
+/// without node identity — see [`ItemLifecycle`] for the keyed wire form sent to the frontend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DerivedState {
     /// Window position.
     pub timing: Timing,
-    /// Resolution outcome, present iff `timing` is `Lapsed`.
+    /// Resolution outcome: present only once `timing` is `Lapsed`, and then only when the lapse
+    /// settled the item (Completed or Missed).
     pub resolution: Option<Resolution>,
+    /// The Overdue flag — see [`derive_overdue`].
+    pub overdue: bool,
     /// Effective archived/frozen/live state.
     pub archival: Archival,
     /// True when `archival` silently overrode a manually-set `Frozen` or `Backlog`.
@@ -207,10 +265,12 @@ pub struct DerivedState {
 }
 
 /// Derives an item's full lifecycle state at `now`. See the module docs for what each axis means;
-/// `stored` is the item's own manually-set Archival (a Goal's Frozen/Archived, a Task's Backlog).
+/// `stored` is the item's own manually-set Archival (a Goal's Frozen/Archived, a Task's Backlog),
+/// and `due` its [`effective_due`].
 pub fn derive_item_state(
     window: Option<Bounds>,
     on_exit: Option<OnScopeExit>,
+    due: Option<Bounds>,
     resolved: bool,
     stored: Option<Archival>,
     now: NaiveDateTime,
@@ -224,6 +284,7 @@ pub fn derive_item_state(
     DerivedState {
         timing,
         resolution,
+        overdue: derive_overdue(due, resolved, effective, now),
         archival: effective,
         archival_conflict: conflict,
     }
@@ -239,10 +300,15 @@ pub struct ItemLifecycle {
     pub node_id: crate::nodes::id::NodeId,
     /// Window position.
     pub timing: Timing,
-    /// Resolution outcome, present iff `timing` is `Lapsed`. Always absent for a Commitment,
-    /// whose Resolution axis is replaced by [`Self::verdict`].
+    /// Resolution outcome: present only once `timing` is `Lapsed` and the lapse settled the item.
+    /// Always absent for a Commitment, whose Resolution axis is replaced by [`Self::verdict`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolution: Option<Resolution>,
+    /// The **Overdue** flag: unresolved, not effectively Archived, and past the end of its due
+    /// (see [`derive_overdue`]). Always false for a Commitment, and for a Habit occurrence until
+    /// its Habit's miss policy gives it a due. Sent only when set, as `resolution` is.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub overdue: bool,
     /// The recorded verdict, present only for a Commitment. Carried on the same wire type as a
     /// Task's Resolution rather than on a parallel one, because it occupies the same slot in the
     /// model — "how did this end" — and every consumer keys all three kinds off one map.
@@ -378,10 +444,10 @@ mod commitment_tests;
 /// Derives a lifecycle entry for a wait, at `now`, over `window` — its Time Scope, or the day its
 /// next check is due.
 ///
-/// Timing reads the window as any window is read. A window that has passed while the wait is
-/// still **pending** resolves [`Resolution::Overdue`]: nothing about a wait archives it for being
-/// late, so it stays on screen like a Keep-on-exit Task. A released wait has nothing left to be
-/// late for, and so no Resolution.
+/// Timing reads the window as any window is read, and the window is also the wait's due. A window
+/// that has passed while the wait is still **pending** flags it **Overdue**, with no Resolution:
+/// nothing about a wait archives it for being late, so it stays on screen like a Keep Overdue
+/// Task. A released wait has nothing left to be late for.
 pub fn derive_expectation_state(
     window: Option<Bounds>,
     status: ExpectationStatus,
@@ -389,17 +455,16 @@ pub fn derive_expectation_state(
     now: NaiveDateTime,
 ) -> DerivedState {
     let timing = derive_timing(window, now);
-    let resolution = match status {
-        ExpectationStatus::Pending => derive_resolution(timing, false, Some(OnScopeExit::Keep)),
-        ExpectationStatus::Released => None,
+    let archival = match stored {
+        ExpectationArchival::Live => Archival::Live,
+        ExpectationArchival::Archived => Archival::Archived,
     };
+    let released = status == ExpectationStatus::Released;
     DerivedState {
         timing,
-        resolution,
-        archival: match stored {
-            ExpectationArchival::Live => Archival::Live,
-            ExpectationArchival::Archived => Archival::Archived,
-        },
+        resolution: None,
+        overdue: derive_overdue(window, released, archival, now),
+        archival,
         archival_conflict: false,
     }
 }
