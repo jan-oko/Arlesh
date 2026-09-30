@@ -1,0 +1,1 @@
+- **Steps View: `Space` no longer moves a blocked card.** Cycling the status of a blocked Task or Goal is now refused, as `Enter` is in the Mindmap and the List View, with a notice naming what blocks it; nothing is written.
