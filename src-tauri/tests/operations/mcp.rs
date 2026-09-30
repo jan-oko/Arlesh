@@ -1374,6 +1374,7 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
                 "on_scope_exit",
                 "plan",
                 "asynchronous",
+                "consistent",
                 "dependencies",
                 "add_dependencies",
                 "remove_dependencies",
