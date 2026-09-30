@@ -209,8 +209,18 @@ export interface MindmapNode {
   onScopeExit?: OnScopeExit | null;
   /** Derived window position at "now" (Task/Goal only); set by the view, never persisted. */
   timing?: Timing;
-  /** Derived resolution outcome once `timing` is "lapsed" (Task/Goal only). */
+  /** Derived resolution outcome once `timing` is "lapsed" and the lapse settled it (Task/Goal
+   * only). */
   resolution?: Resolution;
+  /** The derived **Overdue** flag: unfinished, not effectively archived, and past the end of its
+   * due. Set by the view from the lifecycle, never persisted. */
+  overdue?: boolean;
+  /** A Task's own explicit **due** (Tasks only); absent or `null` takes the default. */
+  dueScope?: TimeScope | null;
+  /** The nearest scoped ancestor's Time Scope — the window a node with none of its own inherits.
+   * Resolved on load by `propagateInheritedScope`, never persisted; `null` when nothing above is
+   * scoped. */
+  inheritedTimeScope?: TimeScope | null;
   /** Effective archived-ness (Task/Goal only) — true forces the archived badge/filter regardless of
    * `status`; may diverge from a manually-set Frozen `status` (see `archivalConflict`). */
   archived?: boolean;

@@ -208,6 +208,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         time_scope: data.timeScope,
         on_scope_exit: data.onScopeExit,
         plan: data.plan,
+        ...(data.dueScope !== undefined ? { due_scope: data.dueScope } : {}),
         archival: data.archival,
         agentic: data.agentic,
         asynchronous: data.asynchronous,

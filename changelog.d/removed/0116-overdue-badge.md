@@ -1,0 +1,1 @@
+- **The red exclamation badge for Overdue items.** An Overdue item is marked by its amber border alone; the badge row no longer repeats it.

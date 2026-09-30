@@ -83,8 +83,13 @@ describe("deriveScopeStateTokens", () => {
   });
 
   it("scope lifecycle token when scoped", () => {
-    const node = n("t", "task", { timeScope: { start_id: testKey(1), end_id: testKey(1) }, timing: "lapsed", resolution: "overdue" });
+    const node = n("t", "task", { timeScope: { start_id: testKey(1), end_id: testKey(1) }, timing: "lapsed", overdue: true });
     expect(deriveScopeStateTokens(node)).toContain("overdue");
+  });
+
+  it("an unscoped task past a due of its own reads overdue", () => {
+    const node = n("t", "task", { timing: "active", overdue: true });
+    expect(deriveScopeStateTokens(node)).toEqual(["overdue", "unplanned"]);
   });
 
   it("a completed-but-lapsed task still reads as active here (dimension predates archivedMode)", () => {
@@ -280,7 +285,7 @@ describe("filterTaskList — archived tasks under the Plan preset", () => {
 
   it("plan preset still shows an unfinished task that is merely overdue, not archived", () => {
     const overdue = n("task-overdue", "task", {
-      status: "todo", timeScope: { start_id: testKey(1), end_id: testKey(1) }, timing: "lapsed", resolution: "overdue",
+      status: "todo", timeScope: { start_id: testKey(1), end_id: testKey(1) }, timing: "lapsed", overdue: true,
     });
     const kept = filterTaskList([row({ node: overdue })], sf({ statusMode: "plan" }), lf());
     expect(kept.map((r) => r.node.id)).toEqual(["task-overdue"]);

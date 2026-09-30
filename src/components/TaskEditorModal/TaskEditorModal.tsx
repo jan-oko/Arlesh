@@ -26,6 +26,7 @@ import AgenticBriefFields from "./AgenticBriefFields";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import PlanField from "@/components/ScopePicker/PlanField";
+import DueField from "@/components/ScopePicker/DueField";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import { useBeadsIdClear } from "@/hooks/use-beads-id-clear";
 import Switch from "@/components/Switch/Switch";
@@ -44,6 +45,9 @@ export interface TaskSaveData {
   timeScope: TimeScope | null;
   onScopeExit: OnScopeExit | null;
   plan: TimeScope | null;
+  /** The task's own explicit due, `null` for the default. Absent when the form has no Due field —
+   * a Habit occurrence's or a wait's check task's — so the save says nothing about it. */
+  dueScope?: TimeScope | null;
   /** `backlog` when deliberately set aside. Never `backlog` while `plan` is set — the form keeps
    * the two exclusive, so the save never has to be refused for it. */
   archival: TaskArchival;
@@ -115,6 +119,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
   const [onScopeExit, setOnScopeExit] = useState<OnScopeExit | null>(node.onScopeExit ?? null);
   const [plan, setPlan] = useState<TimeScope | null>(node.plan ?? null);
+  const [dueScope, setDueScope] = useState<TimeScope | null>(node.dueScope ?? null);
   const [isBacklogged, setIsBacklogged] = useState(node.backlogged === true);
   const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(node.agentic));
   const [isAsynchronous, setIsAsynchronous] = useState(node.asynchronous === true || openAtTemplate);
@@ -188,6 +193,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           tagIds, addedDeps, removedDeps, timeScope,
           onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
           plan,
+          ...(hasDueField ? { dueScope } : {}),
           archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
           agentic,
           asynchronous: isAsynchronous,
@@ -238,6 +244,24 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   // The one-click delegate button is offered on a task that reads as agentic — its own flag, or an
   // inherited one while it is on Inherit — and on any task already delegated to the Agent, so an
   // Agent delegate can always be taken back even after the flag that earned it is gone.
+  // The Due field. An occurrence's due is its Habit's and a check task's is the day it fell due, so
+  // neither has one. While the task has its own window it shares the on-exit pills' row, held to
+  // that window; otherwise it is a row of its own below the Plan — on an unscoped task, or on one
+  // that inherits its window, which derives its due from it and so shows the row only to take back
+  // an explicit due already set.
+  const isFixedWindow = isOccurrence(node) || checkOrigin(node.origin) !== undefined;
+  const inheritedScope = node.inheritedTimeScope ?? null;
+  const hasDueField = !isFixedWindow && (timeScope !== null || inheritedScope === null || dueScope !== null);
+  const dueDefaultLabel = timeScope !== null && (onScopeExit ?? "keep") === "keep" && !isBacklogged
+    ? t("dueDefaultTimeScope")
+    : t("dueDefaultNone");
+  const dueField = (
+    <div className={styles.label}>
+      {t("fieldDue")}
+      <DueField value={dueScope} bound={timeScope ?? inheritedScope} defaultLabel={dueDefaultLabel} onChange={setDueScope} />
+    </div>
+  );
+
   const readsAgentic = agentic === TASK_AGENTIC.YES || (agentic === TASK_AGENTIC.INHERIT && node.inheritedAgentic === true);
   const delegatedToAgent = isDelegatedToAgent(delegate);
 
@@ -299,20 +323,24 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         />
       </div>
       {timeScope !== null && (
-        <div className={styles.label}>
-          {t("fieldOnScopeExit")}
-          <OnScopeExitField value={onScopeExit} onChange={setOnScopeExit} />
+        <div className={styles.fieldPair}>
+          <div className={styles.label}>
+            {t("fieldOnScopeExit")}
+            <OnScopeExitField value={onScopeExit} onChange={setOnScopeExit} />
+          </div>
+          {hasDueField && dueField}
         </div>
       )}
       <div className={styles.label}>
         {t("fieldPlan")}
-        {/* An overdue task's window has passed: its Plan may leave it, as the backend allows. */}
+        {/* An overdue task is past its due: its Plan may leave its window, as the backend allows. */}
         <PlanField
           value={plan}
           timeScope={isOverdue(node) && status !== TASK_STATUS.DONE ? null : timeScope}
           onChange={setPlanAndClearBacklog}
         />
       </div>
+      {timeScope === null && hasDueField && dueField}
       <div className={styles.label}>
         {t("fieldBacklog")}
         <Switch

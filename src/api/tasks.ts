@@ -113,6 +113,9 @@ export interface Task {
   // Present iff time_scope is (inherited with the window otherwise).
   on_scope_exit: OnScopeExit | null;
   plan: TimeScope | null;
+  // The task's own explicit due; null (or absent) takes the default — its Time Scope under Keep
+  // Overdue, none under Archive or while backlogged.
+  due_scope?: TimeScope | null;
   archival: TaskArchival;
   tag_ids: number[];
   position: number;
@@ -133,6 +136,8 @@ export interface CreateTaskRequest {
   // Applied only when time_scope is set (defaults to "keep").
   on_scope_exit?: OnScopeExit;
   plan?: TimeScope;
+  // Must fall within the task's effective Time Scope.
+  due_scope?: TimeScope;
   archival?: TaskArchival;
   agentic?: TaskAgentic;
   asynchronous?: boolean;
@@ -164,6 +169,8 @@ export interface UpdateTaskRequest {
   // Forced null when the scope is cleared; defaulted to "keep" when a scope is set without one.
   on_scope_exit?: OnScopeExit | null;
   plan?: TimeScope | null;
+  // Absent = leave unchanged, null = back to the default, value = set (within the Time Scope).
+  due_scope?: TimeScope | null;
   // Absent = leave unchanged. Backlogging a task that keeps its Plan is refused — see
   // `backlogNeedsPlanCleared` — so the two are sent together to clear the plan and backlog at once.
   archival?: TaskArchival;

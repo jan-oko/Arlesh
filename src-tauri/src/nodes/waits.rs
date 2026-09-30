@@ -485,6 +485,7 @@ impl WaitRows {
             time_scope: Some(draw.due),
             on_scope_exit: None,
             plan,
+            due_scope: None,
             archival: overlay
                 .archival
                 .as_deref()

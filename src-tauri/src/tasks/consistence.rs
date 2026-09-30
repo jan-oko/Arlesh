@@ -57,10 +57,10 @@ use crate::{
 
 use super::{
     expectations::EXPECTATION,
-    lifecycle::{derive_item_state, Archival, DerivedState, ItemLifecycle},
+    lifecycle::{derive_item_state, effective_due, Archival, DerivedState, ItemLifecycle},
     model::{
         Commitment, Expectation, ExpectationArchival, ExpectationStatus, Goal, GoalStatus,
-        OnScopeExit, Task, TaskId, TaskStatus, UpdateTaskRequest, Verdict,
+        OnScopeExit, Task, TaskArchival, TaskId, TaskStatus, TimeScope, UpdateTaskRequest, Verdict,
     },
     scope_rules::scope_governance,
 };
@@ -165,6 +165,8 @@ pub struct Governance {
     pub window: Option<Bounds>,
     /// Its effective on-exit behaviour, present with the window.
     pub on_exit: Option<OnScopeExit>,
+    /// Its effective due — see [`effective_due`] — which decides whether it is Overdue.
+    pub due: Option<Bounds>,
     /// Its own stored Archival.
     pub stored: Archival,
 }
@@ -246,6 +248,7 @@ pub fn apply(outcomes: &[Outcome], tasks: &mut [Task], lifecycles: &mut [ItemLif
         };
         entry.timing = state.timing;
         entry.resolution = state.resolution;
+        entry.overdue = state.overdue;
         entry.archival = state.archival;
         entry.archival_conflict = state.archival_conflict;
     }
@@ -368,15 +371,19 @@ async fn governance_of<M: SessionMode>(
         let Some(row) = task.id.stored() else {
             continue;
         };
-        let (window, on_exit) = match scope_governance(db, "task", row).await? {
-            Some((window, on_exit)) => (Some(window), Some(on_exit)),
-            None => (None, None),
-        };
+        let governed = scope_governance(db, "task", row).await?;
+        let (window, on_exit) = governed.unzip();
+        let due = effective_due(
+            task.due_scope.as_ref().map(TimeScope::window),
+            governed,
+            task.archival == TaskArchival::Backlog,
+        );
         out.insert(
             task.id.clone(),
             Governance {
                 window,
                 on_exit,
+                due,
                 stored: Archival::from(task.archival),
             },
         );
@@ -565,6 +572,7 @@ impl Evaluation<'_> {
             derive_item_state(
                 governance.window,
                 governance.on_exit,
+                governance.due,
                 status == TaskStatus::Done,
                 Some(governance.stored),
                 self.now,

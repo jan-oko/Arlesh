@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useId } from "react";
 import type { CSSProperties, DragEvent, MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { TaskListRow } from "@/utils/list-filter";
@@ -7,6 +7,8 @@ import { aspectWashStyle } from "@/utils/node-visuals";
 import { isRtlText } from "@/utils/text-direction";
 import TaskIcon from "@/components/NodeIcon/TaskIcon";
 import TaskRowBadges from "@/components/ListView/TaskRowBadges";
+import OverdueNote from "@/components/OverdueNote/OverdueNote";
+import { isOverdue } from "@/utils/overdue";
 import styles from "./PlanTaskCard.module.css";
 
 const ICON_R = 9;
@@ -55,6 +57,8 @@ export default function PlanTaskCard({
 }: Props) {
   const { t } = useTranslation("planView");
   const { node } = row;
+  const overdueNoteId = useId();
+  const overdue = isOverdue(node);
   const indicators = deriveStatusIndicators(node);
   // Washed in its aspect's colour, flat — the same wash a List View row and a Steps card take, so a
   // Task reads as the same part of the board on every surface. `node.color` is the aspect's,
@@ -70,14 +74,16 @@ export default function PlanTaskCard({
 
   return (
     <div
-      className={`${styles.card}${isSelected ? ` ${styles.cardSelected}` : ""}`}
+      className={`${styles.card}${overdue ? ` ${styles.cardOverdue}` : ""}${isSelected ? ` ${styles.cardSelected}` : ""}`}
       data-plan-card-id={node.id}
+      aria-describedby={overdue ? overdueNoteId : undefined}
       style={cardStyle}
       draggable
       onDragStart={(event) => onDragStart(event, node.id)}
       onClick={select}
       onDoubleClick={() => onOpenEditor(node.id)}
     >
+      {overdue && <OverdueNote id={overdueNoteId} />}
       <span className={styles.glyph} aria-hidden="true">
         <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`}>
           <TaskIcon

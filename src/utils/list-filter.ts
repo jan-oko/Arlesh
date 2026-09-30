@@ -341,14 +341,17 @@ export function matchesPillGroup(filters: readonly PillFilter[], rowValues: read
  * token — independent axes, so e.g. "unscoped" + "planned" can both apply to the same task. This
  * dimension's own semantics predate the archivedMode filter and are deliberately preserved exactly:
  * a Completed (done, lapsed) item still reads as "active" here, same as before Resolution existed —
- * only a Missed or Overdue resolution earns the "lapsed"/"overdue" token. */
+ * only a Missed resolution earns "lapsed", and only the Overdue flag earns "overdue". The flag wins
+ * over the rest, because it is judged against the due rather than the window: an Unscoped task with
+ * a due of its own, or a scoped one past a due inside its open window, reads "overdue". */
 export function deriveScopeStateTokens(node: MindmapNode): string[] {
   const tokens: string[] = [];
-  if (node.timeScope == null) {
+  if (node.overdue === true) {
+    tokens.push("overdue");
+  } else if (node.timeScope == null) {
     tokens.push("unscoped");
   } else if (node.timing !== undefined) {
     if (node.resolution === "missed") tokens.push("lapsed");
-    else if (node.resolution === "overdue") tokens.push("overdue");
     else tokens.push("active");
   }
   tokens.push(node.plan != null ? "planned" : "unplanned");

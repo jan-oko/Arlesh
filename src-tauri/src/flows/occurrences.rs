@@ -926,6 +926,17 @@ fn settled_timing(timing: InstanceTiming, done: bool, closes_when_done: bool) ->
     timing
 }
 
+/// Whether a Habit occurrence is flagged **Overdue**: never, for now.
+///
+/// An occurrence's due is its Habit's **miss policy** to decide (Window + Archive: none; Window +
+/// Owed: its own window; Window + Overdue: the missed window; Interval: its window), and an
+/// explicit due in its overlay would win — Task #245 builds those. Until then it has no due, which
+/// keeps every occurrence exactly where it stood when Overdue was a Resolution its lifecycle never
+/// read. This is the one place that answer changes.
+fn occurrence_overdue() -> bool {
+    false
+}
+
 /// A Task or Goal occurrence's lifecycle, by the Habit's rules: pending until its window opens,
 /// active while it is open, and once past — Lapsed under Destructive, with its iteration Lapsed or
 /// Missed, or done (see [`settled_timing`]) — archived as a unit, Completed if it was done and
@@ -970,6 +981,7 @@ fn work_lifecycle(
         node_id: id,
         timing,
         resolution,
+        overdue: occurrence_overdue(),
         verdict: None,
         archival,
         archival_conflict: archived && backlogged,
@@ -1041,6 +1053,7 @@ fn task_row(
         on_scope_exit: on_exit(consumption, &occurrence.time_scope),
         time_scope: occurrence.time_scope,
         plan,
+        due_scope: None,
         archival,
         tag_ids: occurrence.fields.tag_ids.clone(),
         position: overlay.position.unwrap_or(occurrence.position),
@@ -1123,6 +1136,8 @@ fn commitment_row(
         node_id: id.clone(),
         timing: state.timing,
         resolution: None,
+        // Nothing on a Commitment comes due: it is judged by its Verdict.
+        overdue: false,
         verdict: Some(state.verdict),
         archival: if overlay.tombstone.is_some() {
             Archival::Archived

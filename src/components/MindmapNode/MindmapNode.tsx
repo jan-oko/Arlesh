@@ -1,15 +1,16 @@
-import { useCallback, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import type { MindmapNode as MindmapNodeData, NodeKind, Position } from "@/utils/tree-layout";
 import { isRtlText } from "@/utils/text-direction";
 import { computeNodeDimensions, computeEditHeight } from "@/utils/node-meta";
-import { computeNodeAppearance, DIMMED_OPACITY } from "@/utils/node-visuals";
+import { computeNodeAppearance, DIMMED_OPACITY, nodeStrokeColor } from "@/utils/node-visuals";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import NodeContextMenu from "@/components/NodeContextMenu/NodeContextMenu";
 import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
 import StatusIconRow from "@/components/StatusIcons/StatusIconRow";
 import NodeRect from "./NodeRect";
 import NodeLabel from "./NodeLabel";
+import OverdueNote from "@/components/OverdueNote/OverdueNote";
 
 interface Props {
   node: MindmapNodeData;
@@ -44,6 +45,7 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
   // React's getDerivedStateFromProps pattern: setting state during render is safe when
   // guarded by a changed-value check (no infinite loop, React re-renders once).
   const [editLineCount, setEditLineCount] = useState(displayLineCount);
+  const overdueNoteId = useId();
   const [wasEditing, setWasEditing] = useState(isEditing);
   if (isEditing !== wasEditing) {
     setWasEditing(isEditing);
@@ -52,19 +54,13 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
   const activeHeight = isEditing ? computeEditHeight(position.depth, editLineCount) : height;
 
   const iconR = (iconWidth - 8) / 2;
-  const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill, resolution, nodeOpacity } = computeNodeAppearance(node, position.depth);
+  const { isBlocked, iconColor, iconOpacity, fillColor, fillOpacity, label, textFill, overdue, nodeOpacity } = computeNodeAppearance(node, position.depth);
   // Held on screen by the focus exemption: dimmed like an archived node, so it reads as something the
   // filter no longer wants rather than as an ordinary match. Its status badges already say why.
   const opacity = isFocusExempt ? DIMMED_OPACITY : nodeOpacity;
   const isRtl = isRtlText(node.title);
   const iconCx = isRtl ? width - iconWidth / 2 : iconWidth / 2;
-  const strokeColor = isSelected
-    ? "var(--node-border-selected)"
-    : isDragTarget
-      ? "var(--accent)"
-      : resolution === "overdue"
-        ? "var(--overdue)"
-        : "var(--node-border)";
+  const strokeColor = nodeStrokeColor({ isSelected, isDragTarget, overdue });
   // A Commitment — stored or a Habit iteration — has no status to cycle here: its verdict is
   // recorded through the two controls in List View, never through one cycling click.
   // A wait's control releases it (a delegated Task's wait is released by the Task, and refuses out
@@ -100,6 +96,7 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
       transform={`translate(${position.x - width / 2}, ${position.y - activeHeight / 2})`}
       role="treeitem"
       aria-selected={isSelected}
+      aria-describedby={overdue ? overdueNoteId : undefined}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
@@ -109,6 +106,7 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
       {/* A folded run says what it stands for on the node and *when* in its tooltip: the span is
           what tells this September's history from last September's, and it would not fit. */}
       {node.habitGroup !== undefined && <title>{node.habitGroup.spanLabel}</title>}
+      {overdue && <OverdueNote id={overdueNoteId} svg />}
       <NodeRect node={node} width={width} height={activeHeight} iconWidth={iconWidth} iconCx={iconCx} iconCy={activeHeight / 2} iconR={iconR} fillColor={fillColor} fillOpacity={fillOpacity} strokeColor={strokeColor} isSelected={isSelected} isCollapsed={isCollapsed} iconColor={iconColor} iconOpacity={iconOpacity} isBlocked={isBlocked} canClickStatus={canClickStatus} isRtl={isRtl} onStatusIconClick={handleStatusIconClick} />
       <NodeLabel node={node} isEditing={isEditing} iconWidth={iconWidth} width={width} height={activeHeight} fontSize={fontSize} lineHeight={lineHeight} displayLineCount={displayLineCount} editLineCount={editLineCount} onEditLineCountChange={setEditLineCount} label={label} textFill={textFill} isRtl={isRtl} onCommitEdit={onCommitEdit} onCancelEdit={onCancelEdit} />
       {statusIndicators.length > 0 && (

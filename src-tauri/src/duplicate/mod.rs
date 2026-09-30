@@ -325,6 +325,8 @@ async fn clone_task(
             time_scope: original.time_scope.clone(),
             on_scope_exit: original.on_scope_exit,
             plan: original.plan.clone(),
+            // The due is copied with the window it sits in, on the same terms as the Plan.
+            due_scope: original.due_scope.clone(),
             // A copy is set aside if the original was. The clone already carries status, plan,
             // privacy, delegate, tags and block reasons — dropping only the Backlog would be the
             // silent discard the confirmation prompts exist to prevent. Safe against the stored

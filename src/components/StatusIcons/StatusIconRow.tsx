@@ -14,7 +14,6 @@ import BacklogIcon from "./BacklogIcon";
 import AgenticIcon from "./AgenticIcon";
 import AsyncIcon from "./AsyncIcon";
 import ArchiveIcon from "./ArchiveIcon";
-import ExclamationIcon from "./ExclamationIcon";
 import EllipsisIcon from "./EllipsisIcon";
 import McpIcon from "./McpIcon";
 import PrivateIcon from "./PrivateIcon";
@@ -58,8 +57,6 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
           tooltip: t("scope", { value: scopeLabel ?? t("loading") }),
           icon: <ClockIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} crossedOut={indicator.outOfScope === true} />,
         };
-      case "overdue":
-        return { tooltip: t("overdue"), icon: <ExclamationIcon cx={cx} cy={rowY} r={ICON_R} color={DANGER} /> };
       case "archived":
         return {
           tooltip: indicator.conflict === true ? t("archivedConflict") : t("archived"),

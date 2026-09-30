@@ -27,6 +27,7 @@ fn check() -> Task {
         time_scope: Some(day(20)),
         on_scope_exit: None,
         plan: None,
+        due_scope: None,
         archival: TaskArchival::Live,
         tag_ids: vec![],
         position: 0,

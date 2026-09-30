@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, useEffect, useId, useRef } from "react";
 import type { CSSProperties } from "react";
 import type { TaskListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
@@ -10,6 +10,8 @@ import TaskIcon from "@/components/NodeIcon/TaskIcon";
 import { TASK_STATUS } from "@/utils/status-mapping";
 import { isTaskStatusValue } from "@/utils/list-filter";
 import { useTranslation } from "react-i18next";
+import OverdueNote from "@/components/OverdueNote/OverdueNote";
+import { isOverdue } from "@/utils/overdue";
 import styles from "./ZenTaskCard.module.css";
 
 const PATH_SEPARATOR = " › ";
@@ -23,6 +25,9 @@ interface Props {
   height: number;
   text: ZenTextSize;
   showBadges: boolean;
+  /** Whether an Overdue card draws its amber border — the Zen setting. Its description says Overdue
+   * either way. */
+  showOverdueBorder: boolean;
   isSelected: boolean;
   /** Held on screen only because it is selected: the filter would have dropped it. Dimmed. */
   isFocusExempt: boolean;
@@ -48,13 +53,15 @@ interface Props {
  * gesture). `R` swaps the title for an inline input, as a List row does.
  */
 export default function ZenTaskCard({
-  row, width, height, text, showBadges, isSelected, isFocusExempt, isEditingTitle,
+  row, width, height, text, showBadges, showOverdueBorder, isSelected, isFocusExempt, isEditingTitle,
   onSelect, onOpenEditor, onCommitTitle, onCancelTitleEdit,
 }: Props) {
   useInputCapture(isEditingTitle);
   const inputRef = useRef<HTMLInputElement>(null);
   const { t } = useTranslation("status");
+  const overdueNoteId = useId();
   const { node } = row;
+  const overdue = isOverdue(node);
   // The grid is In Progress work, so only a card that is something else — Started, or a card the
   // focus exemption holds after your own edit made it To Do or Done — says its status.
   const status = node.status ?? TASK_STATUS.TODO;
@@ -79,8 +86,9 @@ export default function ZenTaskCard({
 
   return (
     <div
-      className={`${styles.card}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}`}
+      className={`${styles.card}${overdue && showOverdueBorder ? ` ${styles.cardOverdue}` : ""}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}`}
       data-row-id={node.id}
+      aria-describedby={overdue ? overdueNoteId : undefined}
       data-zen-card="task"
       aria-current={isSelected ? "true" : undefined}
       style={cardStyle}
@@ -88,6 +96,7 @@ export default function ZenTaskCard({
       onClick={() => onSelect(node.id)}
       onDoubleClick={() => onOpenEditor(node.id)}
     >
+      {overdue && <OverdueNote id={overdueNoteId} />}
       {isEditingTitle ? (
         <input
           ref={inputRef}

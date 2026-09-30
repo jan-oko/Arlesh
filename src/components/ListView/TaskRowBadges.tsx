@@ -14,7 +14,6 @@ import BacklogIcon from "@/components/StatusIcons/BacklogIcon";
 import AgenticIcon from "@/components/StatusIcons/AgenticIcon";
 import AsyncIcon from "@/components/StatusIcons/AsyncIcon";
 import ArchiveIcon from "@/components/StatusIcons/ArchiveIcon";
-import ExclamationIcon from "@/components/StatusIcons/ExclamationIcon";
 import EllipsisIcon from "@/components/StatusIcons/EllipsisIcon";
 import McpIcon from "@/components/StatusIcons/McpIcon";
 import PrivateIcon from "@/components/StatusIcons/PrivateIcon";
@@ -49,8 +48,6 @@ export default function TaskRowBadges({ node, indicators }: Props) {
           tooltip: t("scope", { value: scopeLabel ?? t("loading") }),
           icon: <ClockIcon cx={R} cy={R} r={R} color={MUTED} crossedOut={indicator.outOfScope === true} />,
         };
-      case "overdue":
-        return { tooltip: t("overdue"), icon: <ExclamationIcon cx={R} cy={R} r={R} color={DANGER} /> };
       case "archived":
         return {
           tooltip: indicator.conflict === true ? t("archivedConflict") : t("archived"),

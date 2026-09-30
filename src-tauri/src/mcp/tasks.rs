@@ -59,10 +59,11 @@ impl ArleshMcp {
     ///
     /// Writes: `create` makes a Task, always Agentic, anywhere inside the MCP roots that holds one
     /// — except under a Task explicitly marked Not agentic. `update`, `set_status`, `move` and
-    /// `archive` need a Task that reads as Agentic. `create` and `update` also set its Time Scope
-    /// and Plan (scope ids, as `containment_conflicts` takes them; the Plan within the Time Scope),
-    /// `on_scope_exit`, `asynchronous`, its explicit `block_reasons`, its tags (Tag ids) and its
-    /// prerequisites — what it comes after, a task, goal or wait: `dependencies` on create,
+    /// `archive` need a Task that reads as Agentic. `create` and `update` also set its Time Scope,
+    /// Plan and due (scope ids, as `containment_conflicts` takes them; the Plan and the due within
+    /// the Time Scope), `on_scope_exit` (`keep` is Keep Overdue), `asynchronous`, its explicit
+    /// `block_reasons`, its tags (Tag ids) and its prerequisites — what it comes after, a task,
+    /// goal or wait: `dependencies` on create,
     /// `add_dependencies`/`remove_dependencies` (and `add_tags`/`remove_tags`) on update. A
     /// prerequisite or tag need only be visible; one that is not is `not_permitted`, and a
     /// dependency cycle is `invalid_request`. An update is one transaction: all of it lands or none
@@ -138,6 +139,7 @@ impl ArleshMcp {
                 time_scope,
                 on_scope_exit,
                 plan,
+                due_scope,
                 asynchronous,
                 dependencies,
                 tags,
@@ -169,6 +171,7 @@ impl ArleshMcp {
                         time_scope: attempt!(time_scope.map(TimeScope::try_from).transpose()),
                         on_scope_exit: on_scope_exit.map(Into::into),
                         plan: attempt!(plan.map(TimeScope::try_from).transpose()),
+                        due_scope: attempt!(due_scope.map(TimeScope::try_from).transpose()),
                         asynchronous,
                         ..Default::default()
                     },
@@ -183,6 +186,7 @@ impl ArleshMcp {
                 time_scope,
                 on_scope_exit,
                 plan,
+                due_scope,
                 asynchronous,
                 consistent,
                 add_dependencies,
@@ -196,6 +200,12 @@ impl ArleshMcp {
                     return result::refused(format!(
                         "task {id} is a Habit occurrence; what it does when its window passes is \
                          its Habit's, so on_scope_exit cannot be set on it"
+                    ));
+                }
+                if due_scope.is_some() && matches!(id, NodeId::Derived(_)) {
+                    return result::refused(format!(
+                        "task {id} is a Habit occurrence; when it is due is its Habit's, so \
+                         due_scope cannot be set on it"
                     ));
                 }
                 let relations = found!(Relations::read(
@@ -220,6 +230,7 @@ impl ArleshMcp {
                         time_scope: attempt!(window_change(time_scope)),
                         on_scope_exit: on_scope_exit.map(|exit| Some(exit.into())),
                         plan: attempt!(window_change(plan)),
+                        due_scope: attempt!(window_change(due_scope)),
                         asynchronous,
                         consistent,
                         ..Default::default()

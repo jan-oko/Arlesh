@@ -14,8 +14,15 @@
   cursor: pointer;
 }
 
+/* Overdue: the amber border, and the selected-and-Overdue colour for the selection below — see
+   `overdue-outline.module.css`. Declared before the selection, which wins where both apply. */
+.cardOverdue {
+  composes: overdue from "@/styles/overdue-outline.module.css";
+  border-color: var(--overdue);
+}
+
 .cardSelected {
-  border-color: var(--node-border-selected);
+  border-color: var(--card-selection, var(--node-border-selected));
 }
 
 .glyph {

@@ -184,6 +184,7 @@ fn task_request(parent_type: &str, parent_id: i64, title: &str) -> CreateTaskReq
         time_scope: None,
         on_scope_exit: None,
         plan: None,
+        due_scope: None,
         archival: None,
         agentic: None,
         asynchronous: None,

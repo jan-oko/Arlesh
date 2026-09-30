@@ -33,6 +33,7 @@ fn task(id: i64, parent: (&str, i64), status: TaskStatus) -> Task {
         time_scope: None,
         on_scope_exit: None,
         plan: None,
+        due_scope: None,
         archival: TaskArchival::Live,
         tag_ids: Vec::new(),
         position: id,
@@ -112,6 +113,7 @@ fn archived(node_type: &str, id: i64) -> ItemLifecycle {
         node_id: id.into(),
         timing: Timing::Lapsed,
         resolution: None,
+        overdue: false,
         verdict: None,
         archival: Archival::Archived,
         archival_conflict: false,
@@ -361,6 +363,7 @@ fn a_done_consistent_task_whose_window_passed_is_archived_and_still_counts_as_do
         Governance {
             window: Some(window),
             on_exit: Some(OnScopeExit::Keep),
+            due: Some(window),
             stored: Archival::Live,
         },
     )]);
@@ -403,6 +406,7 @@ fn apply_writes_the_status_and_the_lifecycle_onto_the_board() {
     let state = derive_item_state(
         Some((at(0), at(6))),
         Some(OnScopeExit::Keep),
+        Some((at(0), at(6))),
         true,
         Some(Archival::Live),
         at(12),

@@ -1,0 +1,15 @@
+/* **An Overdue item's outline**, shared by the List View's rows and the Steps, Plan and Zen View
+   cards — the CSS half of the rule `nodeStrokeColor` (`src/utils/node-visuals.ts`) applies to a
+   Mindmap node, so every view draws Overdue the same way.
+
+   A card's Overdue class composes this and sets the amber border itself, in its own file, so that
+   the selection rule declared after it in the same file wins by order — a border set here, in
+   another stylesheet, would race the selection across files. What this sets is
+   `--card-selection`, which every card's selection rule reads for its border and its ring (falling
+   back to the ordinary `--node-border-selected`): a card both selected and Overdue keeps its own
+   view's selection treatment — ring, inset or plain border — in the selected-and-Overdue colour
+   instead, so it still reads as the selection without losing the one sign that it is Overdue
+   (ruled by the user, 2026-09-30). */
+.overdue {
+  --card-selection: var(--overdue-selected);
+}
