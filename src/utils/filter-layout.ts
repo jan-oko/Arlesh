@@ -1,8 +1,9 @@
 import type { View } from "@/stores/use-view-store";
 import type { FilterDimension, YesNoDimension } from "@/utils/filter-modes";
 import { YES_NO_DIMENSIONS } from "@/utils/filter-modes";
-import { LIST_ROW_KINDS } from "@/utils/list-filter";
+import { LIST_ROW_KINDS, PILL_DIMENSIONS } from "@/utils/list-filter";
 import type { ListRowKind } from "@/utils/list-filter";
+import type { OverrideMode } from "@/utils/filter-tree";
 
 /**
  * One labelled row of the Filter menu: a single dimension, or the **Yes / no** row that carries one
@@ -89,4 +90,44 @@ export type FilterSwitch = "private" | "archived" | "backlog";
 export function filterSwitchesFor(view: View): readonly FilterSwitch[] {
   if (view === "plan") return ["private", "archived"];
   return ["private", "archived", "backlog"];
+}
+
+/** The dimensions whose added values the chip row under the top bar draws: tags everywhere, and the
+ * List View's pills there. */
+export function chipDimensions(view: View): readonly FilterDimension[] {
+  return view === "list" ? ["tag", ...PILL_DIMENSIONS] : ["tag"];
+}
+
+/**
+ * The dimensions a view's Filter menu offers as pills but the chip row does not draw — a value set
+ * in one is seen only by opening the menu. The Zen View's Agentic, today; none in the List View,
+ * whose chips draw every pill it offers.
+ */
+export function undrawnPillDimensions(view: View): readonly FilterDimension[] {
+  const drawn = chipDimensions(view);
+  return filterMenuRows(view)
+    .flat()
+    .flatMap(rowDimensions)
+    .filter((dimension) => !drawn.includes(dimension));
+}
+
+/** What the Filter button's dot reads: the tri-state switches, and how many values each dimension
+ * holds. */
+export interface FilterDotState {
+  archivedMode: OverrideMode;
+  backlogMode: OverrideMode;
+  valueCount: (dimension: FilterDimension) => number;
+}
+
+/**
+ * Whether the Filter menu holds a setting nothing outside it shows — the Filter button's dot: a pill
+ * set in a dimension the chips do not draw, or an **Archived** or **Backlog** pill the view offers
+ * set off *as the preset says*. The row kinds, the Zen strips, Private Mode and the Mindmap's
+ * Info/Flow toggles are switches rather than pills and never count; tags are always chips.
+ */
+export function hasUndrawnFilters(view: View, state: FilterDotState): boolean {
+  const switches = filterSwitchesFor(view);
+  if (switches.includes("archived") && state.archivedMode !== "inactive") return true;
+  if (switches.includes("backlog") && state.backlogMode !== "inactive") return true;
+  return undrawnPillDimensions(view).some((dimension) => state.valueCount(dimension) > 0);
 }

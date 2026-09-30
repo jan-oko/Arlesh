@@ -93,6 +93,8 @@
     "activeHeading": "Active"
   },
   "filterButtonTitle": "Filter (Alt+F) · search the filters with Ctrl+F",
+  "filterButtonTitleUndrawn": "Filter (Alt+F) · search the filters with Ctrl+F · some filters are set in this menu",
+  "filterButtonUndrawnLabel": "Filter, some filters are set in this menu",
   "privateState": {
     "private": "Private",
     "not_private": "Not private"

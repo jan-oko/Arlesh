@@ -5,6 +5,7 @@ import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore, ALL_VIEWS, isView } from "@/stores/use-view-store";
 import type { View } from "@/stores/use-view-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
+import { useFilterDot } from "@/hooks/use-filter-dot";
 import { LIST_PRESET_VALUES, isListOnlyPreset, isListPreset } from "@/utils/list-filter";
 import { lockedStatusMode } from "@/utils/view-preset";
 import type { ListPreset } from "@/utils/list-filter";
@@ -50,6 +51,7 @@ export default function TopBar() {
   const setListPreset = useListFilterStore((s) => s.setPreset);
   const toggleHotkeys = useHotkeysStore((s) => s.toggle);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const filterDot = useFilterDot();
 
   // Unblock is List-View-only and doesn't touch the shared status mode — so its "active" state must
   // itself be gated on the current view, or a stale Unblock selection would leak into the Mindmap.
@@ -150,8 +152,18 @@ export default function TopBar() {
 
         <div className={`${styles.side} ${styles.sideEnd}`}>
           <div className={styles.anchor}>
-            <button className={styles.filterBtn} type="button" aria-expanded={filterOpen} title={t("filter:filterButtonTitle")} onClick={toggleFilterPopover}>
+            {/* The dot says the menu holds a setting nothing outside it shows — a pill the chips
+                do not draw, or Archived / Backlog off "as the preset says". */}
+            <button
+              className={styles.filterBtn}
+              type="button"
+              aria-expanded={filterOpen}
+              title={filterDot ? t("filter:filterButtonTitleUndrawn") : t("filter:filterButtonTitle")}
+              {...(filterDot ? { "aria-label": t("filter:filterButtonUndrawnLabel") } : {})}
+              onClick={toggleFilterPopover}
+            >
               <FunnelIcon />{t("common:filter")}
+              {filterDot && <span className={styles.filterDot} aria-hidden="true" />}
             </button>
             {filterOpen && (
               <>

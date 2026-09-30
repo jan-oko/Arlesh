@@ -296,4 +296,43 @@ describe("TopBar", () => {
       expect(screen.getByText("urgent")).toBeInTheDocument();
     });
   });
+
+  describe("the Filter button's dot", () => {
+    const DOT_LABEL = "filter:filterButtonUndrawnLabel";
+
+    it("shows in the Zen View while its Agentic pill is set, which draws no chip there", () => {
+      useViewStore.setState({ view: "zen" });
+      useListFilterStore.getState().addPill("agentic", "agentic", "all");
+      render(<TopBar />);
+      expect(screen.getByRole("button", { name: DOT_LABEL })).toBeInTheDocument();
+    });
+
+    it("does not show in the List View for the same Agentic pill, which is drawn as a chip", () => {
+      useViewStore.setState({ view: "list" });
+      useListFilterStore.getState().addPill("agentic", "agentic", "all");
+      render(<TopBar />);
+      expect(screen.queryByRole("button", { name: DOT_LABEL })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "common:filter" })).toBeInTheDocument();
+    });
+
+    it("shows in the List View while Archived is off its default", () => {
+      useViewStore.setState({ view: "list" });
+      useFilterStore.getState().setArchivedMode("exclude");
+      render(<TopBar />);
+      expect(screen.getByRole("button", { name: DOT_LABEL })).toHaveAttribute("title", "filter:filterButtonTitleUndrawn");
+    });
+
+    it("does not show in the Zen View for a strip switched off", () => {
+      useViewStore.setState({ view: "zen", zenCommitments: false });
+      render(<TopBar />);
+      expect(screen.queryByRole("button", { name: DOT_LABEL })).not.toBeInTheDocument();
+    });
+
+    it("does not show in the Plan View for Backlog, which that view does not offer", () => {
+      useViewStore.setState({ view: "plan" });
+      useFilterStore.getState().setBacklogMode("include");
+      render(<TopBar />);
+      expect(screen.queryByRole("button", { name: DOT_LABEL })).not.toBeInTheDocument();
+    });
+  });
 });
