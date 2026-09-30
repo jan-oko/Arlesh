@@ -69,7 +69,10 @@ impl ArleshMcp {
     /// does. `set_status` is a
     /// compare-and-set: it names the status you last saw, and if the Task has moved on since it
     /// is refused as `status_changed` with the current status, writing nothing. Starting an
-    /// Agentic Task needs a Spec in its brief. `move` needs create permission at both the old and
+    /// Agentic Task needs a Spec in its brief. A Task that **consists of its sub-items**
+    /// (`consistent`, set with `update`) has its status derived from its whole subtree, so
+    /// `set_status` on it is refused; `update` with `consistent: false` switches that off and
+    /// keeps the status it showed. `move` needs create permission at both the old and
     /// the new parent; a Habit occurrence cannot move. `archive` never deletes, and takes only a Habit
     /// occurrence, archived as the app archives one; archiving a stored Task by hand is not
     /// supported yet and is refused as `not_permitted`. A write to a Habit occurrence lands in its
@@ -181,6 +184,7 @@ impl ArleshMcp {
                 on_scope_exit,
                 plan,
                 asynchronous,
+                consistent,
                 add_dependencies,
                 remove_dependencies,
                 add_tags,
@@ -217,6 +221,7 @@ impl ArleshMcp {
                         on_scope_exit: on_scope_exit.map(|exit| Some(exit.into())),
                         plan: attempt!(window_change(plan)),
                         asynchronous,
+                        consistent,
                         ..Default::default()
                     },
                     relations,
@@ -315,7 +320,17 @@ async fn get(db: &mut Db<Transactional>, board: &Board, id: &NodeIdParam) -> Ans
     if !access::reads(&board.map, "task", row) {
         return access::refuse("task", row, AccessLevel::Read);
     }
-    let mut found = attempt!(crate::tasks::get_task_with_blockers(db, TaskId(row)).await);
+    // A consistent Task's status is the board's, derived from its sub-items; the rows hold
+    // whatever they last did.
+    let served: std::collections::HashMap<i64, String> = board
+        .load
+        .tasks
+        .iter()
+        .filter(|task| task.consistent)
+        .filter_map(|task| Some((task.id.stored()?, task.status.clone())))
+        .collect();
+    let mut found =
+        attempt!(crate::tasks::get_task_with_blockers_as(db, TaskId(row), &served).await);
     let dependencies = attempt!(db.tasks().list_dependencies(TaskId(row)).await);
     access::restrict_task(&mut found.task, &board.map);
     access::restrict_block_reasons(&mut found.block_reasons, &dependencies, &board.map);
@@ -365,11 +380,13 @@ async fn run(
             return Ok(None);
         }
     };
-    if relations.is_empty() {
+    // A consistent Task's row carries its stored status; the board serves the derived one.
+    if relations.is_empty() && !task.consistent {
         return Ok(Some(task));
     }
     relations.write(db, &task.id, now).await?;
-    // Read back, for the tags just written: the row the write returned predates them.
+    // Read back, for the tags just written: the row the write returned predates them — and for
+    // a consistent Task's derived status.
     let reread = crate::mindmap::load(db, now)
         .await?
         .tasks

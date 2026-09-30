@@ -443,6 +443,7 @@ async fn a_duplicated_task_is_set_aside_if_the_original_was() {
             archival: Some(TaskArchival::Backlog),
             agentic: None,
             asynchronous: None,
+            consistent: None,
             async_template: None,
             agentic_brief: None,
         },

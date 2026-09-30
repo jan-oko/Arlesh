@@ -3541,6 +3541,7 @@ async fn write_plan(
                         agentic_brief: None,
                         // and nothing infers that doing a materialized instance starts a wait.
                         asynchronous: None,
+                        consistent: None,
                     },
                 )
                 .await?;

@@ -74,6 +74,18 @@ pub enum TaskError {
     /// closes the question, so a release without one would lose it.
     #[error("this wait is a question; write the answer before releasing it")]
     AgenticAnswerMissing,
+    /// A status was written to a Task that **consists of its sub-items**: its status is derived
+    /// from its subtree, so there is nothing for a manual write to set. Refused out loud; the
+    /// answer is to change the sub-items, or to switch consistence off.
+    #[error(
+        "task {0} consists of its sub-items, so its status follows them; change the sub-items, \
+         or turn consistence off"
+    )]
+    ConsistentStatus(i64),
+    /// Consistence was asked of a derived row — a Habit occurrence or a wait's check task. Only a
+    /// stored Task carries the flag.
+    #[error("only a stored task can consist of its sub-items; this one is derived")]
+    ConsistenceOnDerived,
     /// A write would break a scope-containment invariant (e.g. a Plan wider than its Time Scope).
     #[error("scope containment violation: {0}")]
     ScopeContainment(String),

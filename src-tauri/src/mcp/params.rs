@@ -436,6 +436,11 @@ pub enum TasksOperation {
         /// `true` makes it Asynchronous, `false` not (dropping its wait template).
         #[serde(default)]
         asynchronous: Option<bool>,
+        /// `true` makes it **consist of its sub-items**: its status is then derived from its
+        /// whole subtree and `set_status` on it is refused. `false` switches that off, keeping
+        /// the status it showed as its own. A Habit occurrence cannot be made consistent.
+        #[serde(default)]
+        consistent: Option<bool>,
         /// Prerequisites to add — tasks, goals or waits it comes after — by id. Each must be
         /// visible to you.
         #[serde(default)]

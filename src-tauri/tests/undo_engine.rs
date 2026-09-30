@@ -187,6 +187,8 @@ fn task_request(parent_type: &str, parent_id: i64, title: &str) -> CreateTaskReq
         archival: None,
         agentic: None,
         asynchronous: None,
+        consistent: None,
+        consistent: None,
         async_template: None,
         agentic_brief: None,
     }

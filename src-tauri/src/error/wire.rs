@@ -268,6 +268,10 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
         TaskError::AgenticSpecMissing
         | TaskError::AgenticWaitOutsideAgenticTask
         | TaskError::AgenticAnswerMissing => WireErrorKind::InvalidRequest,
+        // Change the sub-items, or switch consistence off; only a stored Task carries the flag.
+        TaskError::ConsistentStatus(_) | TaskError::ConsistenceOnDerived => {
+            WireErrorKind::InvalidRequest
+        }
         // Not `InvalidRequest`: the request is well-formed and could be carried out. The backend
         // is asking whether to throw the Plan away, and the caller answers by asking again with
         // the Plan cleared.

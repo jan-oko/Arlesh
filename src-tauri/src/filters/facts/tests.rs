@@ -55,6 +55,7 @@ fn task_row(id: i64, parent_type: &str, parent_id: i64, status: &str) -> Task {
         delegate_to: None,
         agentic: None,
         asynchronous: false,
+        consistent: false,
         async_template: None,
         agentic_brief: None,
         time_scope: None,

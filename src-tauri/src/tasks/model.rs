@@ -379,6 +379,13 @@ pub struct Task {
     /// wait" is a property of one concrete action.
     #[serde(default)]
     pub asynchronous: bool,
+    /// Whether this task **consists of its sub-items**: its status is derived from its whole
+    /// subtree on every board load (see [`crate::tasks::consistence`]) and never set by hand. A
+    /// plain flag that does not inherit. Stored Tasks only. While it is on, [`Self::status`] as a
+    /// board load serves it is the derived status; as read straight from the row it is whatever
+    /// the column last held.
+    #[serde(default)]
+    pub consistent: bool,
     /// The task's optional **Expectation template**, kept only while it is Asynchronous.
     /// Completing the task spawns a virtual Expectation from it; without one, nothing is spawned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -518,6 +525,9 @@ pub struct CreateTaskRequest {
     /// `Some(true)` makes the new task Asynchronous. Nothing arrives asynchronous otherwise.
     #[serde(default)]
     pub asynchronous: Option<bool>,
+    /// `Some(true)` makes the new task consistent — a duplicate carrying its source's flag.
+    #[serde(default)]
+    pub consistent: Option<bool>,
     /// The new task's Expectation template, when it is created Asynchronous with one in hand — a
     /// duplicate carrying its source's. Dropped unless [`Self::asynchronous`] is `Some(true)`.
     #[serde(default)]
@@ -544,6 +554,11 @@ pub struct UpdateTaskRequest {
     /// New Asynchronous flag (if provided). Turning it off removes the task's template too: a
     /// template only exists while the flag is on.
     pub asynchronous: Option<bool>,
+    /// New Consistence flag (if provided). While a task is consistent its status is derived and a
+    /// request naming a status is refused — unless the same request switches the flag off, when
+    /// the status it names is what is kept. Switched off with no status named, the stored column
+    /// is left as it is; `nodes::write::update_task` names the derived status for the caller.
+    pub consistent: Option<bool>,
     /// The Expectation template to set (None leaves it unchanged, Some(None) removes it). Dropped
     /// when the task ends up not Asynchronous.
     #[serde(default, deserialize_with = "crate::wire::null_clears")]

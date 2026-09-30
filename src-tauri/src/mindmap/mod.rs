@@ -88,8 +88,21 @@ pub async fn load_within(
     lifecycles.extend(derived.lifecycles);
     block_reasons.extend(derived.block_reasons);
     task_dependencies.extend(derived.dependencies);
-    // A wait's rows hang on the Tasks, a Habit's occurrences included.
-    let waits = crate::nodes::waits::derive_waits(db, now, &tasks).await?;
+    // A wait's rows hang on the Tasks, a Habit's occurrences included. Drawn together with every
+    // consistent Task's derived status, since each reads the other (see `tasks::consistence`):
+    // from here on a consistent Task's `status` is the one its sub-items give it.
+    let waits = crate::tasks::consistence::settle(
+        db,
+        now,
+        crate::tasks::consistence::Board {
+            tasks: &mut tasks,
+            goals: &goals,
+            commitments: &commitments,
+            expectations: &expectations,
+            lifecycles: &mut lifecycles,
+        },
+    )
+    .await?;
     tasks.extend(waits.tasks);
     expectations.extend(waits.expectations);
     block_reasons.extend(waits.block_reasons);

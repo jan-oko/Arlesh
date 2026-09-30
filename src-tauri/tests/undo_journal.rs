@@ -135,6 +135,8 @@ fn task_request(project_id: i64, title: &str) -> CreateTaskRequest {
         archival: None,
         agentic: None,
         asynchronous: None,
+        consistent: None,
+        consistent: None,
         async_template: None,
         agentic_brief: None,
     }
