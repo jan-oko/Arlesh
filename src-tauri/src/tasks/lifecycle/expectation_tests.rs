@@ -18,6 +18,7 @@ fn no_window_is_always_active_and_never_late() {
     );
     assert_eq!(state.timing, Timing::Active);
     assert_eq!(state.resolution, None);
+    assert!(!state.overdue);
     assert_eq!(state.archival, Archival::Live);
 }
 
@@ -48,7 +49,8 @@ fn a_passed_window_on_a_pending_wait_is_overdue_and_stays_live() {
         at("2026-01-08T00:00:00"),
     );
     assert_eq!(state.timing, Timing::Lapsed);
-    assert_eq!(state.resolution, Some(Resolution::Overdue));
+    assert_eq!(state.resolution, None);
+    assert!(state.overdue);
     assert_eq!(state.archival, Archival::Live);
 }
 
@@ -61,6 +63,7 @@ fn a_released_wait_has_nothing_to_be_late_for() {
         at("2026-01-08T00:00:00"),
     );
     assert_eq!(state.resolution, None);
+    assert!(!state.overdue);
 }
 
 #[test]

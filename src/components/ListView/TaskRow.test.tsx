@@ -275,3 +275,32 @@ describe("TaskRow — Private badge", () => {
     expect(screen.queryByTitle("private")).not.toBeInTheDocument();
   });
 });
+
+describe("TaskRow — Overdue", () => {
+  function rowCard(container: HTMLElement): HTMLElement {
+    const element = container.querySelector<HTMLElement>("[data-row-id]");
+    if (element === null) throw new Error("no row rendered");
+    return element;
+  }
+
+  it("draws the amber border and says Overdue in its description", () => {
+    const { container } = render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", overdue: true }) }) })} />);
+    expect(rowCard(container).className).toMatch(/cardOverdue/);
+    expect(rowCard(container)).toHaveAccessibleDescription("overdue");
+  });
+
+  it("draws neither on a task that is not Overdue", () => {
+    const { container } = render(<TaskRow {...baseProps()} />);
+    expect(rowCard(container).className).not.toMatch(/cardOverdue/);
+    expect(rowCard(container)).not.toHaveAttribute("aria-describedby");
+  });
+});
+
+describe("TaskRow — selected and Overdue", () => {
+  it("carries both classes, so its selection takes the selected-and-Overdue colour", () => {
+    const { container } = render(<TaskRow {...baseProps({ isSelected: true, row: row({ node: n("task-1", "task", { status: "todo", overdue: true }) }) })} />);
+    const element = container.querySelector<HTMLElement>("[data-row-id]");
+    expect(element?.className).toMatch(/cardOverdue/);
+    expect(element?.className).toMatch(/cardSelected/);
+  });
+});

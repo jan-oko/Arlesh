@@ -288,12 +288,18 @@ impl GoalStatus {
 
 /// What happens to a scoped item once its Time Scope has fully passed while still unfinished.
 /// The single-occurrence form of a Habit's Consumption root.
+///
+/// It also decides the item's **default due** (see [`crate::tasks::lifecycle::effective_due`]):
+/// Keep Overdue makes the Time Scope the due, Archive leaves the item with none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OnScopeExit {
-    /// The item **Lapses** — drops out of the active view.
+    /// The item **Lapses** — its Resolution reads Missed and it is archived. Its default due is
+    /// none, so it is never Overdue unless a due was set on it explicitly.
     Archive,
-    /// The item stays, flagged **Overdue**.
+    /// **Keep Overdue**: the item stays live, and its default due is its Time Scope, so once the
+    /// window passes unfinished it is flagged **Overdue**. Stored and sent as `keep` — only the
+    /// label changed when Overdue became a flag, so no row was rewritten.
     Keep,
 }
 
@@ -392,6 +398,11 @@ pub struct Task {
     pub on_scope_exit: Option<OnScopeExit>,
     /// Scheduling window this task is planned into (if any). Must be contained in `time_scope`.
     pub plan: Option<TimeScope>,
+    /// The task's own **due scope**, when one was set explicitly: the window whose end makes it
+    /// Overdue. Must lie within its effective Time Scope. `None` means the due is derived — see
+    /// [`crate::tasks::lifecycle::effective_due`].
+    #[serde(default)]
+    pub due_scope: Option<TimeScope>,
     /// Manually-set archival state: `Live`, or `Backlog` when deliberately set aside. Never both
     /// `Backlog` and planned — see [`TaskArchival::allows_plan`].
     #[serde(default)]
@@ -503,12 +514,15 @@ pub struct CreateTaskRequest {
     /// Initial relevance window.
     #[serde(default)]
     pub time_scope: Option<TimeScope>,
-    /// On-exit behavior; applied only when `time_scope` is set (defaults to Keep).
+    /// On-exit behavior; applied only when `time_scope` is set (defaults to Keep Overdue).
     #[serde(default)]
     pub on_scope_exit: Option<OnScopeExit>,
     /// Initial Plan (scheduling window).
     #[serde(default)]
     pub plan: Option<TimeScope>,
+    /// Initial explicit due scope; must lie within the task's effective Time Scope.
+    #[serde(default)]
+    pub due_scope: Option<TimeScope>,
     /// Initial archival state (defaults to Live). Rejected together with a `plan`.
     #[serde(default)]
     pub archival: Option<TaskArchival>,
@@ -556,12 +570,16 @@ pub struct UpdateTaskRequest {
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub time_scope: Option<Option<TimeScope>>,
     /// On-exit behavior to set (None leaves unchanged); forced NULL when the scope is cleared,
-    /// defaulted to Keep when a scope is set without one.
+    /// defaulted to Keep Overdue when a scope is set without one.
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub on_scope_exit: Option<Option<OnScopeExit>>,
     /// Plan window to set (None leaves unchanged, Some(None) clears it).
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub plan: Option<Option<TimeScope>>,
+    /// Explicit due scope to set (None leaves unchanged, Some(None) clears it back to the derived
+    /// default). Must lie within the task's effective Time Scope as written.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub due_scope: Option<Option<TimeScope>>,
     /// Archival state to set (None leaves unchanged).
     ///
     /// Left unset, a request that *sets* a Plan on a backlogged task silently resolves the
@@ -595,7 +613,7 @@ pub struct CreateGoalRequest {
     /// Initial relevance window.
     #[serde(default)]
     pub time_scope: Option<TimeScope>,
-    /// On-exit behavior; applied only when `time_scope` is set (defaults to Keep).
+    /// On-exit behavior; applied only when `time_scope` is set (defaults to Keep Overdue).
     #[serde(default)]
     pub on_scope_exit: Option<OnScopeExit>,
 }
@@ -614,7 +632,7 @@ pub struct UpdateGoalRequest {
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub time_scope: Option<Option<TimeScope>>,
     /// On-exit behavior to set (None leaves unchanged); forced NULL when the scope is cleared,
-    /// defaulted to Keep when a scope is set without one.
+    /// defaulted to Keep Overdue when a scope is set without one.
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub on_scope_exit: Option<Option<OnScopeExit>>,
     /// New parent entity type for re-parenting (must be set together with parent_id).

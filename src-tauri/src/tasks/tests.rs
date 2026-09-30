@@ -39,6 +39,7 @@ fn stored_task() -> Task {
             end_id: test_key(12),
             duration: None,
         }),
+        due_scope: None,
         archival: TaskArchival::Live,
         tag_ids: vec![],
         position: 100,

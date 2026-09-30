@@ -44,7 +44,7 @@
   },
   "value": {
     "onExitArchive": "Archive",
-    "onExitKeep": "Keep",
+    "onExitKeep": "Keep Overdue",
     "loading": "…"
   }
 }

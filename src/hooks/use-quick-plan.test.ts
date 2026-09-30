@@ -85,7 +85,7 @@ describe("useQuickPlan — opening", () => {
   });
 
   it("lifts the Time Scope bound for an Overdue Task, as the editor does", () => {
-    const { result } = setup([node("task-5", "task", { timeScope: JUNE, resolution: "overdue", status: "todo" })]);
+    const { result } = setup([node("task-5", "task", { timeScope: JUNE, overdue: true, status: "todo" })]);
     act(() => { result.current.open(["task-5"]); });
     expect(result.current.target?.timeScope).toBeNull();
   });

@@ -60,7 +60,7 @@ the same component. The three are **one block, centred** on the card both across
 the user, 2026-09-29), so the path and the badges sit under the title whatever its direction. The
 title is drawn with `dir="auto"`, so a Hebrew or Arabic title reads right-to-left. The card is
 washed in its **aspect's colour**, flat, from the shared stylesheet the List and Steps cards use. A
-selected card has the selected border; the card carries no status control (the badge row and the
+selected card has the selected border, and an **Overdue** card the amber overdue border while **Show the overdue border on cards** is on (see *Settings*), the selection winning on a card that is both; the card carries no status control (the badge row and the
 title are the whole card, as decided) — `Enter` is the status gesture.
 
 **Size to fit.** The grid **always fills the area left below the strips**, and never scrolls while
@@ -182,11 +182,14 @@ never drift between the two views. The strips and the Agentic pill are switched 
 
 ## Settings
 
-A **Zen** page in the settings modal, with two app-wide switches: **Show badges on cards** (default
-on), and **Show Started tasks on the grid** (default **off**; ruled by the user 2026-09-30). The
+A **Zen** page in the settings modal, with three app-wide switches: **Show badges on cards** (default
+on), **Show Started tasks on the grid** (default **off**; ruled by the user 2026-09-30). The
 second stands in for the Do preset's own *Do shows Started tasks* while the view reads under Do: the
 two are separate settings, so a paused task can be in the Do list and off the focus grid, or the
-other way round (see [*Tasks*](resources.md)). Per-badge settings are deliberately not offered.
+other way round (see [*Tasks*](resources.md)). Per-badge settings are deliberately not offered. The third is **Show the overdue border on cards**
+(default on; ruled by the user, 2026-09-30, "in zen it's toggleable in settings"): off, an Overdue
+card is drawn with the ordinary border, but still says *Overdue* in its accessible description. Zen
+is the only view where the border can be turned off; everywhere else it is always drawn.
 
 ## What this view does not do
 

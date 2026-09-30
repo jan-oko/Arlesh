@@ -302,13 +302,15 @@ impl From<TaskStatusParam> for model::TaskStatus {
     }
 }
 
-/// What a scoped Task does once its Time Scope has passed while it is unfinished.
+/// What a scoped Task does once its Time Scope has passed while it is unfinished — and so what
+/// its default due is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OnScopeExitParam {
-    /// It lapses: drops out of the active view.
+    /// Archive: it lapses Missed and is archived. Its default due is none.
     Archive,
-    /// It stays, flagged Overdue. The default.
+    /// Keep Overdue: it stays live, and its default due is its Time Scope, so once that passes
+    /// unfinished it is flagged Overdue. The default.
     Keep,
 }
 
@@ -406,6 +408,11 @@ pub enum TasksOperation {
         /// Its Plan — when it is to be worked — which must fall within its Time Scope.
         #[serde(default)]
         plan: Option<TimeScope>,
+        /// Its due — past the end of it, unfinished, it is flagged Overdue — which must fall
+        /// within its effective Time Scope. Omit it for the default: its Time Scope under
+        /// `keep`, none under `archive`.
+        #[serde(default)]
+        due_scope: Option<TimeScope>,
         /// `true` makes it Asynchronous: finishing it spawns a wait.
         #[serde(default)]
         asynchronous: Option<bool>,
@@ -420,7 +427,7 @@ pub enum TasksOperation {
         #[serde(default)]
         block_reasons: Vec<String>,
     },
-    /// Edits an Agentic Task: its title, brief, backlog, Time Scope, Plan, on-scope-exit,
+    /// Edits an Agentic Task: its title, brief, backlog, Time Scope, Plan, due, on-scope-exit,
     /// Asynchronous flag, prerequisites, tags and block reasons. One transaction: every change
     /// lands, or none does.
     Update {
@@ -447,6 +454,10 @@ pub enum TasksOperation {
         /// out of the Backlog.
         #[serde(default, deserialize_with = "crate::wire::null_clears")]
         plan: Option<Option<TimeScope>>,
+        /// New explicit due, within its effective Time Scope; `null` clears it back to the
+        /// default. Not for a Habit occurrence, whose Habit decides it.
+        #[serde(default, deserialize_with = "crate::wire::null_clears")]
+        due_scope: Option<Option<TimeScope>>,
         /// `true` makes it Asynchronous, `false` not (dropping its wait template).
         #[serde(default)]
         asynchronous: Option<bool>,

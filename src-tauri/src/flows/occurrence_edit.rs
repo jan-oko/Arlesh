@@ -251,6 +251,14 @@ pub async fn update_task(
         request.time_scope.as_ref(),
         &current.time_scope,
     )?;
+    // An occurrence's due is its Habit's miss policy to decide, and its overlay has no column for
+    // one yet; a request asking to set one is refused rather than dropped. Clearing — what a full
+    // editor save of a task with no due sends — asks for nothing.
+    if matches!(request.due_scope, Some(Some(_))) {
+        return Err(FlowError::Refused(
+            "a habit occurrence's due is its Habit's, and cannot be set on it".to_string(),
+        ));
+    }
     let async_template = request.async_template.clone();
     let template = template_values(db, &flow, key, iteration_index(&current.origin)).await?;
     let mut overlay = db.overlays().task(key).await?;

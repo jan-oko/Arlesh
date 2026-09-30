@@ -2963,7 +2963,9 @@ async fn derives_overdue_missed_and_archives_a_completed_item() {
 
     let keep_state = task_state(&states, keep.id.sid());
     assert_eq!(keep_state.timing, Timing::Lapsed);
-    assert_eq!(keep_state.resolution, Some(Resolution::Overdue));
+    // Keep Overdue: no Resolution — the lapse settled nothing — and the Overdue flag instead.
+    assert_eq!(keep_state.resolution, None);
+    assert!(keep_state.overdue);
     assert_eq!(keep_state.archival, Archival::Live); // Overdue never forces archival
 
     let archive_state = task_state(&states, archive.id.sid());
@@ -3135,7 +3137,8 @@ async fn derives_goal_overdue_missed_and_archives_an_achieved_goal() {
 
     let keep_state = goal_state(&states, keep.id.sid());
     assert_eq!(keep_state.timing, Timing::Lapsed);
-    assert_eq!(keep_state.resolution, Some(Resolution::Overdue));
+    assert_eq!(keep_state.resolution, None);
+    assert!(keep_state.overdue);
     assert_eq!(keep_state.archival, Archival::Live);
 
     let archive_state = goal_state(&states, archive.id.sid());

@@ -873,3 +873,29 @@ describe("D, the quick dependency picker", () => {
     expect(useMindmapStore.getState().pendingToast?.message).toBe("warnings:quickDependencyNotTask");
   });
 });
+
+describe("an Overdue card", () => {
+  function stepCard(id: string): HTMLElement {
+    const element = document.querySelector<HTMLElement>(`[data-step-card="${id}"]`);
+    if (element === null) throw new Error(`no card for ${id}`);
+    return element;
+  }
+
+  it("draws the amber border and says Overdue in its description", () => {
+    mockTree([n("task-1", "task", { status: "todo", overdue: true }), n("task-2", "task", { status: "todo" })]);
+    render(<StepsView />);
+    expect(stepCard("task-1").className).toMatch(/overdue/);
+    expect(stepCard("task-1")).toHaveAccessibleDescription("overdue");
+    expect(stepCard("task-2").className).not.toMatch(/overdue/);
+    expect(stepCard("task-2")).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("carries both the Overdue and the selected class when selected, so its ring takes the selected-and-Overdue colour", () => {
+    mockTree([n("task-1", "task", { status: "todo", overdue: true })]);
+    render(<StepsView />);
+    press("ArrowDown");
+    expect(selectedCardId()).toBe("task-1");
+    expect(stepCard("task-1").className).toMatch(/overdue/);
+    expect(stepCard("task-1").className).toMatch(/selected/);
+  });
+});

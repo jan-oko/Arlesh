@@ -3529,6 +3529,8 @@ async fn write_plan(
                         status: None,
                         time_scope: node.time_scope.clone(),
                         plan: node.plan.clone(),
+                        // A flow item carries no due of its own; the instance takes the default.
+                        due_scope: None,
                         on_scope_exit: None,
                         // A materialized instance always arrives in play. Nothing enters the
                         // backlog without the user putting it there.

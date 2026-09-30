@@ -81,12 +81,9 @@ describe("deriveStatusIndicators", () => {
     expect(indicators).toEqual([{ type: "scope", outOfScope: false }]);
   });
 
-  it("crosses out the clock and adds an exclamation for an overdue (kept) item", () => {
-    const indicators = deriveStatusIndicators(node("task", { timeScope: scope, timing: "lapsed", resolution: "overdue" }));
-    expect(indicators).toEqual([
-      { type: "scope", outOfScope: true },
-      { type: "overdue" },
-    ]);
+  it("crosses out the clock and adds no badge for an overdue item — its border says so", () => {
+    const indicators = deriveStatusIndicators(node("task", { timeScope: scope, timing: "lapsed", overdue: true }));
+    expect(indicators).toEqual([{ type: "scope", outOfScope: true }]);
   });
 
   it("crosses out the clock and adds an archive mark for a missed (archived) item", () => {
@@ -143,7 +140,7 @@ describe("deriveStatusIndicators", () => {
     expect(types(node("task", { status: "todo", tagIds: [] }))).toEqual([]);
   });
 
-  it("orders indicators consistently: scope, overdue, archived, planned, frozen, info, flowInstance, tags", () => {
+  it("orders indicators consistently: scope, archived, planned, frozen, info, flowInstance, tags", () => {
     // A lapsed, planned, flow-originated task with tags exercises several at once.
     const busy = node("task", {
       status: "todo",

@@ -476,3 +476,16 @@
   font-family: var(--font-sans);
   padding: 0 var(--space-1);
 }
+
+/* Two fields side by side that answer one question — the on-exit pills and the Due beside them —
+   wrapping onto two lines when the modal is too narrow for both. */
+.fieldPair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.fieldPair > * {
+  flex: 1 1 12rem;
+}

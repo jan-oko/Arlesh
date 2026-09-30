@@ -30,12 +30,13 @@ use super::commitments;
 use super::error::TaskError;
 use super::expectations::{self, EXPECTATION};
 use super::lifecycle::{
-    derive_commitment_state, derive_expectation_state, derive_item_state, derive_resolution,
-    derive_timing, Archival, ItemLifecycle, Resolution, Timing,
+    derive_archival, derive_commitment_state, derive_expectation_state, derive_item_state,
+    derive_overdue, derive_resolution, derive_timing, effective_due, Archival, ItemLifecycle,
+    Timing,
 };
 use super::model::{
     CommitmentId, Expectation, ExpectationArchival, ExpectationStatus, GoalId, GoalStatus,
-    OnScopeExit, TaskId, TaskStatus, TimeScope,
+    OnScopeExit, TaskArchival, TaskId, TaskStatus, TimeScope,
 };
 
 /// Maps a Goal's stored status to its baseline Archival value, for [`derive_item_state`]'s `stored`
@@ -80,10 +81,14 @@ pub(super) async fn scope_governance<M: SessionMode>(
     Ok(Some((time_scope.window(), on_exit)))
 }
 
-/// Derives the full lifecycle state (Timing / Resolution / Archival — see `lifecycle`'s module
-/// docs) of every Task, Goal and Commitment at `now`, using each item's effective governance. A
-/// Task is resolved once Done; a Goal once Achieved or Archived. Both carry a stored Archival: a
-/// Task its Backlog column, a Goal its status via [`goal_stored_archival`].
+/// Derives the full lifecycle state (Timing / Resolution / Archival and the Overdue flag — see
+/// `lifecycle`'s module docs) of every Task, Goal and Commitment at `now`, using each item's
+/// effective governance. A Task is resolved once Done; a Goal once Achieved or Archived. Both carry
+/// a stored Archival: a Task its Backlog column, a Goal its status via [`goal_stored_archival`].
+///
+/// Each is judged Overdue against its [`effective_due`]: a Task's explicit due when it has one,
+/// else the default its governance and Backlog give it. A Goal carries no explicit due, so it has
+/// only the default.
 ///
 /// A Commitment takes the third branch, and it is not a special case of the first two: its
 /// Resolution axis is replaced by a recorded Verdict that nothing here derives, and its Archival
@@ -97,14 +102,16 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
 ) -> Result<Vec<ItemLifecycle>, TaskError> {
     let mut out = Vec::new();
     for task in db.tasks().list().await? {
-        let (window, on_exit) =
-            match scope_governance(db, "task", task.id.require_stored()?).await? {
-                Some((w, e)) => (Some(w), Some(e)),
-                None => (None, None),
-            };
+        let governance = scope_governance(db, "task", task.id.require_stored()?).await?;
+        let (window, on_exit) = governance.unzip();
         let resolved = TaskStatus::from_db(&task.status) == Some(TaskStatus::Done);
         let stored = Some(Archival::from(task.archival));
-        let state = derive_item_state(window, on_exit, resolved, stored, now);
+        let due = effective_due(
+            task.due_scope.as_ref().map(TimeScope::window),
+            governance,
+            task.archival == TaskArchival::Backlog,
+        );
+        let state = derive_item_state(window, on_exit, due, resolved, stored, now);
         let plan_timing = task
             .plan
             .as_ref()
@@ -114,6 +121,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             node_id: task.id,
             timing: state.timing,
             resolution: state.resolution,
+            overdue: state.overdue,
             verdict: None,
             archival: state.archival,
             archival_conflict: state.archival_conflict,
@@ -121,23 +129,22 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         });
     }
     for goal in db.goals().list().await? {
-        let (window, on_exit) =
-            match scope_governance(db, "goal", goal.id.require_stored()?).await? {
-                Some((w, e)) => (Some(w), Some(e)),
-                None => (None, None),
-            };
+        let governance = scope_governance(db, "goal", goal.id.require_stored()?).await?;
+        let (window, on_exit) = governance.unzip();
         let parsed_status = GoalStatus::from_db(&goal.status);
         let resolved = matches!(
             parsed_status,
             Some(GoalStatus::Achieved) | Some(GoalStatus::Archived)
         );
         let stored = Some(goal_stored_archival(&goal.status));
-        let state = derive_item_state(window, on_exit, resolved, stored, now);
+        let due = effective_due(None, governance, false);
+        let state = derive_item_state(window, on_exit, due, resolved, stored, now);
         out.push(ItemLifecycle {
             node_type: "goal".to_string(),
             node_id: goal.id,
             timing: state.timing,
             resolution: state.resolution,
+            overdue: state.overdue,
             verdict: None,
             archival: state.archival,
             archival_conflict: state.archival_conflict,
@@ -162,6 +169,8 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
             // Resolution is the Task/Goal axis; a Commitment answers with its Verdict instead,
             // and sending both would invite a consumer to read one as a fallback for the other.
             resolution: None,
+            // Nothing on a Commitment comes due: it is judged by its Verdict, not by lateness.
+            overdue: false,
             verdict: Some(state.verdict),
             archival: state.archival,
             // Nothing on a Commitment is manually archived, so nothing can be overridden.
@@ -173,7 +182,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
     // A wait's entries: `expectation` times a wait's own Time Scope — a stored one, or the wait an
     // Asynchronous task's completion spawned, under its derived row id — and `task` the day its
     // open check task is due, under the check task's row id. A wait is never Missed, so a passed
-    // window with the wait pending is Overdue.
+    // window with the wait pending is flagged Overdue.
     let windows = super::waits::derive_wait_windows(db, now).await?;
     let checks: std::collections::HashMap<i64, (TimeScope, chrono::NaiveDateTime)> = windows
         .expectation_checks
@@ -247,7 +256,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
 }
 
 /// The lifecycle a wait — or its open check task — is sent: its window's Timing, never Missed (a
-/// passed window with the wait pending is Overdue), and the wait's own archive.
+/// passed window with the wait pending is flagged Overdue), and the wait's own archive.
 pub fn wait_lifecycle(
     node_type: &str,
     node_id: NodeId,
@@ -262,6 +271,7 @@ pub fn wait_lifecycle(
         node_id,
         timing: state.timing,
         resolution: state.resolution,
+        overdue: state.overdue,
         verdict: None,
         archival: state.archival,
         // Nothing is derived over a wait's own archive, so nothing can be overridden.
@@ -301,6 +311,7 @@ pub fn mark_waits_under_pending(expectations: &[Expectation], lifecycles: &mut V
         {
             entry.timing = Timing::Pending;
             entry.resolution = None;
+            entry.overdue = false;
             found = true;
         }
         if !found {
@@ -342,7 +353,7 @@ fn reject_unless_contained(outer: Bounds, inner: Bounds, message: &str) -> Resul
     }
 }
 
-/// The four already-resolved windows the containment rules are checked over.
+/// The already-resolved windows the containment rules are checked over.
 ///
 /// Every field is optional because every rule is conditional: a rule whose two inputs are not
 /// both present has nothing to say and is skipped, which is how a task with no Plan and a goal
@@ -357,16 +368,20 @@ struct ContainmentWindows {
     ancestor_scope: Option<Bounds>,
     /// The nearest planned task ancestor's Plan window.
     ancestor_plan: Option<Bounds>,
-    /// The item reads **Overdue** (see [`is_overdue`]), which lifts rule one alone: its Plan may
-    /// leave the window that has already passed. The two ancestor rules still hold.
+    /// The item's explicit due window, which must lie within its effective Time Scope — its own,
+    /// else the nearest scoped ancestor's. Unbounded when neither is set.
+    due: Option<Bounds>,
+    /// The item is flagged **Overdue** (see [`is_overdue`]), which lifts rule one alone: its Plan
+    /// may leave its Time Scope. The ancestor rules, and the due's own, still hold.
     overdue: bool,
 }
 
-/// Checks the three containment rules and reports the **first** violation.
+/// Checks the containment rules and reports the **first** violation.
 ///
 /// Rule one — Plan within the item's own Time Scope — is skipped for an Overdue item, so work
-/// whose window passed unfinished can be rescheduled into now or later without its window being
-/// widened on the user's behalf.
+/// past its due can be rescheduled into now or later without its window being widened on the
+/// user's behalf. The last — an explicit due within the effective Time Scope — is `Due ⊆
+/// TimeScope`, checked after the three older rules so their messages have not changed.
 ///
 /// Pure: every window is resolved before it arrives, each exactly once, where the old code
 /// climbed twice and re-resolved the same Time Scope up to twice more.
@@ -388,28 +403,51 @@ fn check_containment(windows: ContainmentWindows) -> Result<(), TaskError> {
     if let (Some(ancestor), Some(plan)) = (windows.ancestor_plan, windows.plan) {
         reject_unless_contained(ancestor, plan, "plan is not within the parent task's plan")?;
     }
+    if let (Some(scope), Some(due)) = (windows.own_scope.or(windows.ancestor_scope), windows.due) {
+        reject_unless_contained(scope, due, "due is not within the task's time scope")?;
+    }
     Ok(())
 }
 
-/// Whether a task written with this **own** Time Scope, On-exit behavior and completion reads
-/// **Overdue** at `now` — the lifecycle's own Resolution, derived exactly as
-/// [`derive_all_scope_lifecycles`] derives it: the window has fully passed, the task is not Done,
-/// and it is Keep-on-exit. A Missed task (Archive-on-exit) is archived, not overdue, and so is not
-/// exempt from anything.
+/// The fields of a task, as a write leaves it, that the containment rules and the Overdue flag
+/// read.
+pub(super) struct WrittenTask<'write> {
+    /// Its own Time Scope.
+    pub time_scope: &'write Option<TimeScope>,
+    /// Its own On-exit behavior.
+    pub on_exit: Option<OnScopeExit>,
+    /// Its Plan.
+    pub plan: &'write Option<TimeScope>,
+    /// Its explicit due.
+    pub due_scope: &'write Option<TimeScope>,
+    /// Its stored Archival.
+    pub archival: TaskArchival,
+    /// Whether it is Done.
+    pub done: bool,
+}
+
+/// Whether a task, as a write leaves it, is flagged **Overdue** at `now` — the lifecycle's own
+/// flag, derived exactly as [`derive_all_scope_lifecycles`] derives it, over the task's **own**
+/// window: unfinished, not effectively Archived, and past the end of its due. A Missed task
+/// (Archive-on-exit, window passed) is archived, not overdue, and so is not exempt from anything.
 ///
 /// Only the task's own window is read. An inherited window never bounded the Plan in the first
 /// place (rule one reads the own Time Scope alone), so there is nothing for it to lift.
-pub(super) fn is_overdue(
-    time_scope: &Option<TimeScope>,
-    on_exit: Option<OnScopeExit>,
-    done: bool,
-    now: NaiveDateTime,
-) -> bool {
-    let Some(own) = time_scope else {
+pub(super) fn is_overdue(task: &WrittenTask<'_>, now: NaiveDateTime) -> bool {
+    let Some(own) = task.time_scope else {
         return false;
     };
-    let timing = derive_timing(Some(own.window()), now);
-    derive_resolution(timing, done, on_exit) == Some(Resolution::Overdue)
+    let window = own.window();
+    let timing = derive_timing(Some(window), now);
+    let resolution = derive_resolution(timing, task.done, task.on_exit);
+    let archival = derive_archival(Some(Archival::from(task.archival)), resolution).effective;
+    let governance = Some((window, task.on_exit.unwrap_or(OnScopeExit::Keep)));
+    let due = effective_due(
+        task.due_scope.as_ref().map(TimeScope::window),
+        governance,
+        task.archival == TaskArchival::Backlog,
+    );
+    derive_overdue(due, task.done, archival, now)
 }
 
 /// The window of the nearest ancestor of `(parent_type, parent_id)` — itself included — that has
@@ -473,10 +511,10 @@ async fn write_chain<M: SessionMode>(
 }
 
 /// Rejects a task write that breaks a containment invariant: Plan ⊆ own Time Scope, own Time
-/// Scope ⊆ nearest scoped ancestor, and Plan ⊆ nearest planned ancestor. `parent_type`/`parent_id`
-/// is the task's effective parent (the new one when reparenting), and `id` the task being written
-/// when it already exists — see [`write_chain`]. `overdue` is the written task's [`is_overdue`],
-/// which lifts the first rule alone.
+/// Scope ⊆ nearest scoped ancestor, Plan ⊆ nearest planned ancestor, and an explicit Due ⊆ its
+/// effective Time Scope. `parent_type`/`parent_id` is the task's effective parent (the new one when
+/// reparenting), and `id` the task being written when it already exists — see [`write_chain`].
+/// Whether the task is [`is_overdue`] at `now`, which lifts the first rule alone, is judged here.
 ///
 /// **Climbs once.** The old shape walked the chain twice — once for the scoped ancestor and once
 /// for the planned one — and resolved the item's own Time Scope up to twice more on top. Here
@@ -491,18 +529,25 @@ pub(super) async fn validate_task_containment<M: SessionMode>(
     id: Option<TaskId>,
     parent_type: &str,
     parent_id: i64,
-    time_scope: &Option<TimeScope>,
-    plan: &Option<TimeScope>,
-    overdue: bool,
+    task: &WrittenTask<'_>,
+    now: NaiveDateTime,
 ) -> Result<(), TaskError> {
-    if time_scope.is_none() && plan.is_none() {
+    let WrittenTask {
+        time_scope,
+        plan,
+        due_scope,
+        ..
+    } = *task;
+    if time_scope.is_none() && plan.is_none() && due_scope.is_none() {
         return Ok(());
     }
     let node = id.map(|id| (ancestry::NodeKind::Task, id.0));
     let chain = write_chain(db, node, parent_type, parent_id).await?;
-    let ancestor_scope = match time_scope {
-        Some(_) => chain.nearest_scoped().or_reject()?.map(|(scope, _)| scope),
-        None => None,
+    // The due of a task with no window of its own is held to the inherited one, so the scoped
+    // ancestor is read for either.
+    let ancestor_scope = match (time_scope, due_scope) {
+        (None, None) => None,
+        _ => chain.nearest_scoped().or_reject()?.map(|(scope, _)| scope),
     };
     let ancestor_plan = match plan {
         Some(_) => chain.nearest_planned().or_reject()?,
@@ -519,7 +564,8 @@ pub(super) async fn validate_task_containment<M: SessionMode>(
         plan: plan_window,
         ancestor_scope,
         ancestor_plan,
-        overdue,
+        due: due_scope.as_ref().map(TimeScope::window),
+        overdue: is_overdue(task, now),
     })
 }
 
