@@ -317,6 +317,7 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
             archival: None,
             agentic: Some(TaskAgentic::Yes),
             asynchronous: Some(true),
+            consistent: None,
             async_template: None,
             agentic_brief: Some(arlesh_lib::tasks::model::AgenticBrief {
                 priority: Some(arlesh_lib::tasks::model::AgenticPriority::A),

@@ -165,6 +165,7 @@ fn edit(
         on_scope_exit: None,
         plan: None,
         asynchronous: None,
+        consistent: None,
         add_dependencies: Vec::new(),
         remove_dependencies: Vec::new(),
         add_tags: Vec::new(),
