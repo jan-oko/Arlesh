@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import TopBar from "./TopBar";
+import { useHotkeys } from "@/hooks/use-hotkeys";
+import type { Binding } from "@/utils/hotkeys/chord";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
@@ -333,6 +335,44 @@ describe("TopBar", () => {
       useFilterStore.getState().setBacklogMode("include");
       render(<TopBar />);
       expect(screen.queryByRole("button", { name: DOT_LABEL })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Esc in the Filter menu", () => {
+    /** A view's own bare-Esc binding (the Mindmap's deselect), to prove the menu keeps the key. */
+    function ViewEscape({ onEscape }: { onEscape: () => void }) {
+      const bindings: readonly Binding<null>[] = [
+        { id: "test-escape", section: "mindmap", chord: { code: "Escape" }, labelKey: "filterCloseMenu", run: onEscape },
+      ];
+      useHotkeys(bindings, null, true);
+      return null;
+    }
+
+    it("closes the menu, gives focus back to where it was, and never reaches the view", () => {
+      const viewEscape = vi.fn();
+      render(<><ViewEscape onEscape={viewEscape} /><TopBar /></>);
+      const button = screen.getByRole("button", { name: "common:filter" });
+      button.focus();
+      fireEvent.click(button);
+      const menu = screen.getByRole("dialog", { name: "common:filter" });
+      expect(menu).toHaveFocus();
+      fireEvent.keyDown(menu, { key: "Escape", code: "Escape" });
+      expect(useFilterStore.getState().popoverOpen).toBe(false);
+      expect(screen.queryByRole("dialog", { name: "common:filter" })).not.toBeInTheDocument();
+      expect(button).toHaveFocus();
+      expect(viewEscape).not.toHaveBeenCalled();
+    });
+
+    it("in a search box with a query, clears the query first and closes on the second Esc", () => {
+      useFilterStore.setState({ popoverOpen: true });
+      render(<TopBar />);
+      const box = screen.getByRole("combobox", { name: "rows.tag" });
+      fireEvent.change(box, { target: { value: "urg" } });
+      fireEvent.keyDown(box, { key: "Escape", code: "Escape" });
+      expect(box).toHaveValue("");
+      expect(useFilterStore.getState().popoverOpen).toBe(true);
+      fireEvent.keyDown(box, { key: "Escape", code: "Escape" });
+      expect(useFilterStore.getState().popoverOpen).toBe(false);
     });
   });
 });
