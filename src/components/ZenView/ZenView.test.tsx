@@ -171,6 +171,15 @@ describe("what the Zen View draws", () => {
     expect(taskCards()).toEqual(["task-1", "task-2"]);
   });
 
+  it("leads a Started card's title with the Started glyph while its setting is on, badges or not", () => {
+    mockBoard([n("task-1", "task", { status: "in_progress" }), n("task-2", "task", { status: "started" })]);
+    useDisplayStore.setState({ zenShowsStarted: true, zenShowBadges: false });
+    render(<ZenViewInApp />);
+    const icons = [...document.querySelectorAll("[data-zen-status-icon]")];
+    expect(icons.map((icon) => icon.closest("[data-row-id]")?.getAttribute("data-row-id"))).toEqual(["task-2"]);
+    expect(icons[0]?.getAttribute("data-zen-status-icon")).toBe("started");
+  });
+
   it("says so when nothing is in progress", () => {
     mockBoard([n("task-1", "task", { status: "todo" })]);
     render(<ZenViewInApp />);
