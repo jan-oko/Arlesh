@@ -239,23 +239,16 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   // The one-click delegate button is offered on a task that reads as agentic — its own flag, or an
   // inherited one while it is on Inherit — and on any task already delegated to the Agent, so an
   // Agent delegate can always be taken back even after the flag that earned it is gone.
-  // The Due field. An occurrence's due is its Habit's and a check task's is the day it fell due, so
-  // neither has one. Otherwise it sits beside the on-exit pills while the task has its own window,
-  // and on its own row while it has none — held to the inherited window, if there is one. A task
-  // that inherits its window derives its due from it, so there the row shows only to take back an
-  // explicit due already set.
+  // The Due field, on its own row below the Plan. An occurrence's due is its Habit's and a check
+  // task's is the day it fell due, so neither has one. A task that inherits its window derives its
+  // due from it, so there the row shows only to take back an explicit due already set; otherwise it
+  // is held to the task's own window, or the inherited one, or nothing when unscoped.
   const isFixedWindow = isOccurrence(node) || checkOrigin(node.origin) !== undefined;
   const inheritedScope = node.inheritedTimeScope ?? null;
   const hasDueField = !isFixedWindow && (timeScope !== null || inheritedScope === null || dueScope !== null);
   const dueDefaultLabel = timeScope !== null && (onScopeExit ?? "keep") === "keep" && !isBacklogged
     ? t("dueDefaultTimeScope")
     : t("dueDefaultNone");
-  const dueField = (
-    <div className={styles.label}>
-      {t("fieldDue")}
-      <DueField value={dueScope} bound={timeScope ?? inheritedScope} defaultLabel={dueDefaultLabel} onChange={setDueScope} />
-    </div>
-  );
 
   const readsAgentic = agentic === TASK_AGENTIC.YES || (agentic === TASK_AGENTIC.INHERIT && node.inheritedAgentic === true);
   const delegatedToAgent = isDelegatedToAgent(delegate);
@@ -313,15 +306,12 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           {...(checkOrigin(node.origin) !== undefined ? { lockedReason: t("editor:scopeLockedCheck") } : {})}
         />
       </div>
-      {timeScope !== null ? (
-        <div className={styles.fieldPair}>
-          <div className={styles.label}>
-            {t("fieldOnScopeExit")}
-            <OnScopeExitField value={onScopeExit} onChange={setOnScopeExit} />
-          </div>
-          {hasDueField && dueField}
+      {timeScope !== null && (
+        <div className={styles.label}>
+          {t("fieldOnScopeExit")}
+          <OnScopeExitField value={onScopeExit} onChange={setOnScopeExit} />
         </div>
-      ) : hasDueField && dueField}
+      )}
       <div className={styles.label}>
         {t("fieldPlan")}
         {/* An overdue task is past its due: its Plan may leave its window, as the backend allows. */}
@@ -331,6 +321,12 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           onChange={setPlanAndClearBacklog}
         />
       </div>
+      {hasDueField && (
+        <div className={styles.label}>
+          {t("fieldDue")}
+          <DueField value={dueScope} bound={timeScope ?? inheritedScope} defaultLabel={dueDefaultLabel} onChange={setDueScope} />
+        </div>
+      )}
       <div className={styles.label}>
         {t("fieldBacklog")}
         <Switch

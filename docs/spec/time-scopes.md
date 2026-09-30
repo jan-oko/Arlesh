@@ -97,10 +97,10 @@ So a **child** with no window of its own derives its due from the window it inhe
 
 The **presets** never read the Resolution's Overdue and are unchanged: Plan shows an Overdue item because it is not archived, and Start hides a Lapsed one by its Timing, as before. A Task Overdue by an explicit due inside its still-open window therefore shows under Start, as any item in its window does. How Overdue items are *displayed* — the amber border on every one, the "W2 from W1" label, the Overdue section at the top of Start — is #244's.
 
-**The editor.** The **Due** field is a Plan-shaped picker held to the Task's effective Time Scope, with **Clear** to go back to the default and a summary naming that default while there is no explicit due — *The time scope (default)* under Keep Overdue, *None* under Archive, while backlogged, or unscoped. It is placed:
+**The editor.** The **Due** field is a Plan-shaped picker held to the Task's effective Time Scope, with **Clear** to go back to the default and a summary naming that default while there is no explicit due — *The time scope (default)* under Keep Overdue, *None* under Archive, while backlogged, or unscoped. It is **its own row, directly below the Plan** (ruled by the user on review, 2026-09-30, replacing a first placement beside the Keep Overdue / Archive pills, which stay where they were, under the Time Scope). The row shows:
 
-- **beside the Keep Overdue / Archive pills**, on one row, while the Task has a Time Scope of its **own**;
-- **on its own row, with no pills**, on an **Unscoped** Task — one with no window of its own and none above it. There is no on-exit choice to sit beside, since an Unscoped Task has no window to exit, and its due is the only thing that can make it Overdue;
+- on a Task with a Time Scope of its **own**, held to that window;
+- on an **Unscoped** Task — one with no window of its own and none above it — unbounded; there are no pills there, since an Unscoped Task has no window to exit, and its due is the only thing that can make it Overdue;
 - **not at all** on a Task that **inherits** its window — it derives its due from it — unless it already carries an explicit due, when the row shows so the due can be seen and cleared; on a **Habit occurrence**; or on a wait's **check task**, whose window is the day it fell due.
 
 ## Plan (scheduling)
