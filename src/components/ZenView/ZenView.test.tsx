@@ -83,7 +83,7 @@ function standardBoard(): MindmapNode[] {
         n("task-2", "task", { title: "לכתוב את הקוד", status: "in_progress" }),
         n("task-3", "task", { title: "Not started", status: "todo" }),
         n("task-4", "task", { title: "Review", status: "in_progress", asynchronous: true }),
-        n("task-5", "task", { title: "Ship", status: "in_progress" }),
+        n("task-5", "task", { title: "Ship", status: "in_progress", overdue: true }),
       ],
     }),
     n("commitment-1", "commitment", { title: "Call home", verdict: "unresolved" }),
@@ -116,7 +116,7 @@ beforeEach(() => {
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "all" } });
   useMindmapStore.setState({ subtreeRootId: null, pendingToast: null, searchOpen: false });
   useViewStore.setState({ view: "zen", zenCommitments: true, zenExpectations: true });
-  useDisplayStore.setState({ zenShowBadges: true, startHidesCheckedWaits: false });
+  useDisplayStore.setState({ zenShowBadges: true, zenShowOverdueBorder: true, startHidesCheckedWaits: false });
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   mockBoard(standardBoard());
 });
@@ -305,5 +305,27 @@ describe("keyboard", () => {
     render(<ZenViewInApp />);
     press("KeyJ", { ctrlKey: true });
     expect(useViewStore.getState().view).toBe("zen");
+  });
+});
+
+describe("the overdue border", () => {
+  function zenCard(id: string): HTMLElement {
+    const element = document.querySelector<HTMLElement>(`[data-zen-card="task"][data-row-id="${id}"]`);
+    if (element === null) throw new Error(`no card for ${id}`);
+    return element;
+  }
+
+  it("is drawn on an Overdue card, and says Overdue in its description", () => {
+    render(<ZenViewInApp />);
+    expect(zenCard("task-5").className).toMatch(/cardOverdue/);
+    expect(zenCard("task-5")).toHaveAccessibleDescription("overdue");
+    expect(zenCard("task-1").className).not.toMatch(/cardOverdue/);
+  });
+
+  it("is not drawn with the setting off, though the card still says Overdue", () => {
+    useDisplayStore.setState({ zenShowOverdueBorder: false });
+    render(<ZenViewInApp />);
+    expect(zenCard("task-5").className).not.toMatch(/cardOverdue/);
+    expect(zenCard("task-5")).toHaveAccessibleDescription("overdue");
   });
 });

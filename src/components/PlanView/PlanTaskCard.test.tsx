@@ -119,3 +119,17 @@ describe("PlanTaskCard — Private badge", () => {
     expect(screen.queryByTitle("private")).not.toBeInTheDocument();
   });
 });
+
+describe("PlanTaskCard — Overdue", () => {
+  it("draws the amber border and says Overdue in its description", () => {
+    const { container } = render(<PlanTaskCard {...props(row({ node: n("task-1", "task", { status: "todo", overdue: true }) }))} />);
+    expect(cardOf(container).className).toMatch(/cardOverdue/);
+    expect(cardOf(container)).toHaveAccessibleDescription("overdue");
+  });
+
+  it("draws neither on a task that is not Overdue", () => {
+    const { container } = render(<PlanTaskCard {...props(row())} />);
+    expect(cardOf(container).className).not.toMatch(/cardOverdue/);
+    expect(cardOf(container)).not.toHaveAttribute("aria-describedby");
+  });
+});

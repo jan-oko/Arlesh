@@ -20,6 +20,27 @@ export interface NodeAppearance {
   nodeOpacity: number;
 }
 
+/** What a Mindmap node's outline says, most important first. */
+export interface NodeOutlineState {
+  isSelected: boolean;
+  isDragTarget: boolean;
+  overdue: boolean;
+}
+
+/**
+ * The colour of a Mindmap node's outline. The selection wins, then a drag's drop target, then
+ * Overdue's amber — except that a node **selected and Overdue** takes a selection colour of its own,
+ * `--overdue-selected` (ruled by the user, 2026-09-30): it still reads as the selection, and does not
+ * lose the only sign that it is Overdue. Blocked and the focus exemption draw no outline, so they
+ * combine with whichever this picks.
+ */
+export function nodeStrokeColor({ isSelected, isDragTarget, overdue }: NodeOutlineState): string {
+  if (isSelected) return overdue ? "var(--overdue-selected)" : "var(--node-border-selected)";
+  if (isDragTarget) return "var(--accent)";
+  if (overdue) return "var(--overdue)";
+  return "var(--node-border)";
+}
+
 export function computeNodeAppearance(node: MindmapNode, depth: number): NodeAppearance {
   const isBlocked = isNodeBlocked(node);
 

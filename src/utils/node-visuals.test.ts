@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { aspectColorOf, aspectWashStyle, computeNodeAppearance } from "./node-visuals";
+import { aspectColorOf, aspectWashStyle, computeNodeAppearance, nodeStrokeColor } from "./node-visuals";
 import type { MindmapNode } from "./tree-layout";
 
 function mkNode(overrides: Partial<MindmapNode> = {}): MindmapNode {
@@ -73,5 +73,32 @@ describe("aspectColorOf", () => {
 
   it("is undefined outside any aspect", () => {
     expect(aspectColorOf(tree, "root")).toBeUndefined();
+  });
+});
+
+describe("nodeStrokeColor — a Mindmap node's outline", () => {
+  const plain = { isSelected: false, isDragTarget: false, overdue: false };
+
+  it("draws the amber border on an Overdue node", () => {
+    expect(nodeStrokeColor({ ...plain, overdue: true })).toBe("var(--overdue)");
+  });
+
+  it("gives a selected Overdue node a selection colour of its own, neither the plain selection nor the amber", () => {
+    const both = nodeStrokeColor({ ...plain, isSelected: true, overdue: true });
+    expect(both).toBe("var(--overdue-selected)");
+    expect(both).not.toBe(nodeStrokeColor({ ...plain, isSelected: true }));
+    expect(both).not.toBe(nodeStrokeColor({ ...plain, overdue: true }));
+  });
+
+  it("keeps the plain selection colour on a selected node that is not Overdue", () => {
+    expect(nodeStrokeColor({ ...plain, isSelected: true })).toBe("var(--node-border-selected)");
+  });
+
+  it("lets a drop target's accent win over the amber", () => {
+    expect(nodeStrokeColor({ ...plain, isDragTarget: true, overdue: true })).toBe("var(--accent)");
+  });
+
+  it("draws the ordinary border otherwise", () => {
+    expect(nodeStrokeColor(plain)).toBe("var(--node-border)");
   });
 });

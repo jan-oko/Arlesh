@@ -26,6 +26,12 @@
   border-color: var(--node-border-selected);
 }
 
+/* Overdue, while the Zen setting allows: the amber border, before the selection so the selection
+   wins, as everywhere. */
+.cardOverdue {
+  border-color: var(--overdue);
+}
+
 .cardSelected {
   border-color: var(--node-border-selected);
   box-shadow: 0 0 0 1px var(--node-border-selected);

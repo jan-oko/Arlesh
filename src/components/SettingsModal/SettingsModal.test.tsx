@@ -197,6 +197,17 @@ describe("SettingsModal", () => {
     expect(useDisplayStore.getState().zenShowBadges).toBe(false);
   });
 
+  it("offers the Zen View's overdue-border switch under Zen, on by default", () => {
+    useDisplayStore.setState({ zenShowOverdueBorder: true });
+    open();
+    goTo("zen");
+
+    const border = screen.getByRole("checkbox", { name: "showOverdueBorder" });
+    expect(border).toBeChecked();
+    fireEvent.click(border);
+    expect(useDisplayStore.getState().zenShowOverdueBorder).toBe(false);
+  });
+
   it("holds both Plan panes' switches under Plan", () => {
     open();
     goTo("plan");

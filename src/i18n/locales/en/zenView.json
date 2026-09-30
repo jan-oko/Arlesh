@@ -4,5 +4,6 @@
   "commitmentsStrip": "Commitments",
   "expectationsStrip": "Expectations",
   "empty": "Nothing is in progress.",
-  "showBadges": "Show badges on cards"
+  "showBadges": "Show badges on cards",
+  "showOverdueBorder": "Show the overdue border on cards"
 }

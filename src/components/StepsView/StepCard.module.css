@@ -45,6 +45,11 @@
   font-weight: 600;
 }
 
+/* Overdue: the amber border, before the selection ring so the selection wins, as on a Mindmap node. */
+.overdue {
+  border-color: var(--overdue);
+}
+
 /* The selection ring is drawn **inside** the card: the border takes the accent and an inset shadow
    doubles it to 2px. An outline outside the card was clipped by the card area's `overflow: hidden`
    on the top and left of every card in the first row and first column, which sit flush against

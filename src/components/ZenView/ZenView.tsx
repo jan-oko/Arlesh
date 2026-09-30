@@ -77,6 +77,7 @@ export default function ZenView() {
   const showCommitments = useViewStore((s) => s.zenCommitments);
   const showExpectations = useViewStore((s) => s.zenExpectations);
   const badgesSetting = useDisplayStore((s) => s.zenShowBadges);
+  const showOverdueBorder = useDisplayStore((s) => s.zenShowOverdueBorder);
   const agenticPills = useListFilterStore((s) => s.filter.pills.agentic);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
 
@@ -270,6 +271,7 @@ export default function ZenView() {
                 height={layout.cardHeight}
                 text={text}
                 showBadges={showBadges}
+                showOverdueBorder={showOverdueBorder}
                 isSelected={row.node.id === activeId}
                 isFocusExempt={contents.tasks.exemptedIds.has(row.node.id)}
                 isEditingTitle={row.node.id === editingTaskId}

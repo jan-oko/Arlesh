@@ -14,6 +14,11 @@
   cursor: pointer;
 }
 
+/* Overdue: the amber border, before the selection so the selection wins, as on a Mindmap node. */
+.cardOverdue {
+  border-color: var(--overdue);
+}
+
 .cardSelected {
   border-color: var(--node-border-selected);
 }
