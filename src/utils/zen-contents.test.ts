@@ -39,7 +39,7 @@ const source: ZenSourceRows = {
   expectations: flattenExpectationRows(root),
 };
 
-const BOTH: ZenOptions = { commitments: true, expectations: true, agentic: [] };
+const BOTH: ZenOptions = { commitments: true, expectations: true, agentic: [], showsStarted: false };
 
 function ids(rows: ReadonlyArray<{ node: { id: string } }>): string[] {
   return rows.map((row) => row.node.id);
@@ -69,7 +69,7 @@ describe("zenContents", () => {
   });
 
   it("draws nothing in a strip the tab has hidden", () => {
-    const contents = read({}, { commitments: false, expectations: false, agentic: [] });
+    const contents = read({}, { commitments: false, expectations: false, agentic: [], showsStarted: false });
     expect(contents.commitments.rows).toEqual([]);
     expect(contents.expectations.rows).toEqual([]);
     expect(ids(contents.tasks.rows)).toHaveLength(3);

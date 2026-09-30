@@ -5,6 +5,10 @@ import { hasSelection, withNode } from "./selection";
 /** What cycling the selected card's status acts on. */
 export interface StepsStatusContext extends StepsSelectionContext {
   onCycleStatus: (id: string) => void;
+  /** Whether the selected card is a blocked node — gates `Alt+Enter`, as in every other view. */
+  isSelectedBlocked: boolean;
+  /** Sets the selected Task Started, or resumes a Started one to In Progress. */
+  onToggleStarted: (id: string) => void;
 }
 
 /**
@@ -23,5 +27,14 @@ export const STEPS_STATUS_BINDINGS: readonly Binding<StepsStatusContext>[] = [
     labelKey: "stepsCycleStatus",
     when: (c) => hasSelection(c),
     run: (c) => withNode(c, c.onCycleStatus),
+  },
+  {
+    // `Alt+Enter` sets Started here too — the same chord as the other views, since plain `Enter`
+    // descending is no reason to move the modified one. Only a Task takes it; the handler leaves
+    // any other kind alone.
+    id: "stepsView.toggleStarted", section: "stepsView", chord: { code: "Enter", alt: true },
+    labelKey: "toggleStarted",
+    when: (c) => hasSelection(c) && !c.isSelectedBlocked,
+    run: (c) => withNode(c, c.onToggleStarted),
   },
 ];

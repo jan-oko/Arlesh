@@ -94,6 +94,16 @@ ellipsis; its full text is the card's tooltip.
 **Badges** are drawn only when the card is at least **72px** tall and the **Show badges on cards**
 setting is on — see *Settings*.
 
+**The status icon.** The grid is In Progress work, so a card says its status only when it is
+**something else**: a **Started** card (with *Show Started tasks on the grid* on), or a card the
+focus exemption holds after your own edit made it **To Do**, **Done** or Started. Such a card leads
+its **badge row** with the Task status glyph every other view draws — Started is In Progress's glyph
+with the inner circle unfilled — at the badge row's scale, like the badges beside it (ruled by the
+user, 2026-09-30; a first cut put a Started glyph on the title line). An In Progress card draws
+none. The icon is part of the badge row, so it **hides when the row hides**: with *Show badges on
+cards* off, or on a card shorter than 72px. (Chosen as the least surprising reading of "the status
+row": one switch and one height rule for everything under the title.)
+
 ## The strips
 
 Above the grid, **Commitments first, then Expectations**, each a **single horizontal row of small
@@ -134,6 +144,9 @@ never drift between the two views. The strips and the Agentic pill are switched 
 - `↑` `↓` `←` `→` — move in **two dimensions** (below)
 - `Enter` — on a Task, cycle its status (disabled while it is blocked; on a check task, complete the
   check); on a Commitment, cycle its verdict; on an Expectation, release it or take the release back
+- `Alt+Enter` — on a Task, set it **Started** from To Do or Done, or flip In Progress ↔ Started
+  (disabled while it is blocked). A Task set Started leaves the grid unless *Show Started tasks on
+  the grid* is on, under the focus exemption like any card an edit stops matching
 - `X` — mark the selected Commitment Broken
 - `E` — open the selected card's editor; a **double click** does the same, a click selects
 - `R` — rename the selected Task in place, in its card
@@ -169,9 +182,12 @@ never drift between the two views. The strips and the Agentic pill are switched 
 
 ## Settings
 
-A **Zen** page in the settings modal, with two app-wide switches: **Show badges on cards** (default
-on) — per-badge settings are deliberately not offered — and **Show the overdue border on cards**
-(default on; ruled by the user, 2026-09-30, "in zen it's toggleable in settings"). Off, an Overdue
+A **Zen** page in the settings modal, with three app-wide switches: **Show badges on cards** (default
+on), **Show Started tasks on the grid** (default **off**; ruled by the user 2026-09-30). The
+second stands in for the Do preset's own *Do shows Started tasks* while the view reads under Do: the
+two are separate settings, so a paused task can be in the Do list and off the focus grid, or the
+other way round (see [*Tasks*](resources.md)). Per-badge settings are deliberately not offered. The third is **Show the overdue border on cards**
+(default on; ruled by the user, 2026-09-30, "in zen it's toggleable in settings"): off, an Overdue
 card is drawn with the ordinary border, but still says *Overdue* in its accessible description. Zen
 is the only view where the border can be turned off; everywhere else it is always drawn.
 

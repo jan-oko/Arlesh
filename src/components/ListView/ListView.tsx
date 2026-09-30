@@ -58,7 +58,7 @@ import { useDisplayStore } from "@/stores/use-display-store";
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor", "expectation"]);
   const { tree, rows, commitmentRows, expectationRows, listRoot: flattenRoot, toggleRelease,
-    allTasksAndGoals, isLoading, error, reload, onCycleStatus, renameNode,
+    allTasksAndGoals, isLoading, error, reload, onCycleStatus, onToggleStarted, renameNode,
     createTask, deleteTask, removeNode,
     occurrencePrompt, confirmOccurrence, cancelOccurrence } = useListData();
 
@@ -322,6 +322,7 @@ export default function ListView() {
     },
     onToggleFullscreen: toggleFullscreen,
     isSelectedBlocked,
+    onToggleStarted,
     onNavigate: handleNavigate,
     onJumpToEdge: handleJumpToEdge,
     onScrollList: startScroll,

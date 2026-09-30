@@ -33,12 +33,19 @@ fn documented_values(label: &str) -> Vec<String> {
 }
 
 fn task_statuses() -> Vec<&'static str> {
-    [TaskStatus::Todo, TaskStatus::InProgress, TaskStatus::Done]
-        .iter()
-        .map(|status| match status {
-            TaskStatus::Todo | TaskStatus::InProgress | TaskStatus::Done => status.as_str(),
-        })
-        .collect()
+    [
+        TaskStatus::Todo,
+        TaskStatus::InProgress,
+        TaskStatus::Started,
+        TaskStatus::Done,
+    ]
+    .iter()
+    .map(|status| match status {
+        TaskStatus::Todo | TaskStatus::InProgress | TaskStatus::Started | TaskStatus::Done => {
+            status.as_str()
+        }
+    })
+    .collect()
 }
 
 fn goal_statuses() -> Vec<&'static str> {

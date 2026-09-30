@@ -1480,7 +1480,7 @@ impl<'session> FlowOperator<'session> {
             _ => {
                 let mut overlay = overlays.task(key).await?;
                 overlay.status = match status {
-                    Some(status @ ("in_progress" | "done")) => Some(status.to_string()),
+                    Some(status @ ("in_progress" | "started" | "done")) => Some(status.to_string()),
                     _ => None,
                 };
                 overlay.resolved_at =

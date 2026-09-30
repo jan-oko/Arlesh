@@ -21,6 +21,8 @@ export interface ZenOptions {
   expectations: boolean;
   /** The tab's **Agentic** pill — the one List View pill the Zen View reads. */
   agentic: readonly PillFilter[];
+  /** The app-wide *Show Started tasks on the grid* setting: read in place of Do's own. */
+  showsStarted: boolean;
 }
 
 /** What the Zen View draws: the grid's cards and each strip's, with the focus exemption applied. */
@@ -54,7 +56,8 @@ function sharedUnder(shared: FilterState, mode: FilterState["statusMode"]): Filt
  * The Zen View's contents, from the List View's rows.
  *
  * - **The grid** is the List View's Task rows under **Do**, in the order they came — plain board
- *   pre-order, with no Asynchronous-first partition.
+ *   pre-order, with no Asynchronous-first partition. Whether a **Started** Task counts is the Zen
+ *   View's own setting (`showsStarted`), not the Do preset's.
  * - **The Commitments strip** is what the List View shows under Do: the unresolved ones.
  * - **The Expectations strip** is what **Start** shows — Do shows no Expectation at all, so this
  *   strip alone reads another preset. The shared filter already carries the app-wide *Start hides
@@ -70,7 +73,7 @@ export function zenContents(
   options: ZenOptions,
   focusedId: string | null,
 ): ZenContents {
-  const underDo = sharedUnder(shared, ZEN_VIEW_STATUS_MODE);
+  const underDo = { ...sharedUnder(shared, ZEN_VIEW_STATUS_MODE), doShowsStarted: options.showsStarted };
   const doFilter = listFilterUnder(ZEN_VIEW_STATUS_MODE, options.agentic);
   return {
     tasks: filterTaskListWithFocus(source.tasks, underDo, doFilter, focusedId),

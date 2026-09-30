@@ -6,6 +6,8 @@
   "lightMode": "Light mode",
   "planScopeOverlapping": "Plan scope keeps Tasks that overlap it, not only those within it",
   "startHidesCheckedWaits": "Start hides waits that have checks (shows their check task instead)",
+  "startShowsStarted": "Start shows Started tasks",
+  "doShowsStarted": "Do shows Started tasks",
   "searchIncludesArchived": "Include archived nodes in search (Ctrl+O, and nodes in Ctrl+F and the Filter menu)",
   "closeToTray": "Close to tray",
   "keyboardShortcuts": "Keyboard shortcuts",

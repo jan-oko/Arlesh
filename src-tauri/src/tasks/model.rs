@@ -44,6 +44,8 @@ pub enum TaskStatus {
     Todo,
     /// Currently being worked on.
     InProgress,
+    /// Begun and left in a middle state, but not being worked on right now — paused.
+    Started,
     /// Completed.
     Done,
 }
@@ -54,6 +56,7 @@ impl TaskStatus {
         match self {
             Self::Todo => "todo",
             Self::InProgress => "in_progress",
+            Self::Started => "started",
             Self::Done => "done",
         }
     }
@@ -63,9 +66,24 @@ impl TaskStatus {
         match value {
             "todo" => Some(Self::Todo),
             "in_progress" => Some(Self::InProgress),
+            "started" => Some(Self::Started),
             "done" => Some(Self::Done),
             _ => None,
         }
+    }
+
+    /// Whether work on the Task has begun and not finished: **In Progress** or **Started**.
+    ///
+    /// Moving into one of these from To Do or Done is what *starting* a Task means — the move the
+    /// Spec rule guards and the one that takes a Task out of the Backlog. Moving between the two
+    /// (pausing, resuming) is not a start: the work was already begun.
+    pub fn is_begun(&self) -> bool {
+        matches!(self, Self::InProgress | Self::Started)
+    }
+
+    /// [`Self::is_begun`] for a status as stored; an unrecognised spelling has not begun.
+    pub fn is_begun_str(value: &str) -> bool {
+        Self::from_db(value).is_some_and(|status| status.is_begun())
     }
 }
 
@@ -566,7 +584,7 @@ pub struct UpdateTaskRequest {
     ///
     /// Left unset, a request that *sets* a Plan on a backlogged task silently resolves the
     /// conflict in the Plan's favour — see [`UpdateTaskRequest`]'s merge — and so does one that
-    /// sets the task's status to `InProgress`, since work under way is not work set aside. Set to
+    /// sets the task's status to `InProgress` or `Started`, since begun work is not work set aside. Set to
     /// `Backlog` on a task that keeps its Plan, the write is refused until the caller also clears
     /// the Plan; set to `Backlog` alongside `InProgress`, it is taken at its word, because a task
     /// already under way may still be put down and keeps its status when it is.

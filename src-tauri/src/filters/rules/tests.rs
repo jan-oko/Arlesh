@@ -124,6 +124,51 @@ fn do_shows_in_progress_tasks_and_nothing_else() {
 }
 
 #[test]
+fn plan_shows_a_started_task_and_start_shows_one_by_default_and_do_does_not() {
+    let started = task("started");
+    assert!(matches(&started, Preset::All));
+    assert!(matches(&started, Preset::Plan));
+    assert!(
+        matches(&started, Preset::Start),
+        "Start shows Started by default"
+    );
+    assert!(
+        !matches(&started, Preset::Do),
+        "Do hides Started by default"
+    );
+    assert!(!matches(&started, Preset::Backlog));
+}
+
+#[test]
+fn the_two_settings_switch_started_in_start_and_do() {
+    let started = task("started");
+    let start_off = BoardFilter {
+        start_shows_started: false,
+        ..BoardFilter::preset(Preset::Start)
+    };
+    assert!(!passes_status(&started, &start_off, UNSET_STATUS, false));
+    let do_on = BoardFilter {
+        do_shows_started: true,
+        ..BoardFilter::preset(Preset::Do)
+    };
+    assert!(passes_status(&started, &do_on, UNSET_STATUS, false));
+    // Neither setting reaches any other status.
+    assert!(passes_status(
+        &task("in_progress"),
+        &do_on,
+        UNSET_STATUS,
+        false
+    ));
+    assert!(!passes_status(&task("todo"), &do_on, UNSET_STATUS, false));
+    assert!(passes_status(
+        &task("todo"),
+        &start_off,
+        UNSET_STATUS,
+        false
+    ));
+}
+
+#[test]
 fn backlog_shows_what_was_set_aside_and_what_sits_under_it() {
     let mut node = task("todo");
     node.backlogged = true;
@@ -561,6 +606,8 @@ fn the_default_filter_is_the_neutral_one() {
     assert!(!filter.private_mode);
     assert_eq!(filter.archived, OverrideMode::Inactive);
     assert_eq!(filter.backlog, OverrideMode::Inactive);
+    assert!(filter.start_shows_started, "Start shows Started by default");
+    assert!(!filter.do_shows_started, "Do hides Started by default");
 }
 
 #[test]

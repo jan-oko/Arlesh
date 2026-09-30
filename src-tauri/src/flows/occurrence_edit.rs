@@ -266,8 +266,8 @@ pub async fn update_task(
     // Starting an occurrence that reads as Agentic needs a Spec, exactly as starting a stored Task
     // does — Agentic resolved by the one resolver the app's tree agrees with: its own value, its
     // template tree, then the Habit's host.
-    if matches!(request.status, Some(TaskStatus::InProgress))
-        && current.status != TaskStatus::InProgress.as_str()
+    if request.status.as_ref().is_some_and(TaskStatus::is_begun)
+        && !TaskStatus::is_begun_str(&current.status)
     {
         let agentic = match request.agentic.map(|agentic| agentic.as_column()) {
             Some(Some(flag)) => flag,
@@ -291,8 +291,8 @@ pub async fn update_task(
     }
     if let Some(status) = &request.status {
         apply_task_status(&mut overlay, status, now);
-        // Work under way is not work set aside — the same rule a stored Task follows.
-        if *status == TaskStatus::InProgress && request.archival.is_none() {
+        // Begun work is not work set aside — the same rule a stored Task follows.
+        if status.is_begun() && request.archival.is_none() {
             overlay.archival = (template.fields.archival != TaskArchival::Live)
                 .then(|| TaskArchival::Live.as_str().to_string());
         }

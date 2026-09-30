@@ -107,6 +107,23 @@ interface DisplayStore {
   startHidesCheckedWaits: boolean;
   toggleStartHidesCheckedWaits: () => void;
   /**
+   * Whether the **Start** preset shows a **Started** Task — begun and paused.
+   *
+   * **On by default** (ruled by the user, 2026-09-30): a paused task is something to pick back up.
+   * App-wide, like `startHidesCheckedWaits`; one of three separate Started switches, beside
+   * `doShowsStarted` and `zenShowsStarted`.
+   */
+  startShowsStarted: boolean;
+  toggleStartShowsStarted: () => void;
+  /**
+   * Whether the **Do** preset shows a **Started** Task beside the In Progress ones.
+   *
+   * **Off by default** (ruled by the user, 2026-09-30): Do asks what is being worked on now, and a
+   * paused task is not. App-wide. The Zen View, which reads under Do, asks `zenShowsStarted` instead.
+   */
+  doShowsStarted: boolean;
+  toggleDoShowsStarted: () => void;
+  /**
    * Whether the node searches — `Ctrl+O`, and the node results of `Ctrl+F` and the Filter menu's
    * Under / Depends on boxes — offer **archived** nodes and what lies beneath them.
    *
@@ -123,6 +140,15 @@ interface DisplayStore {
    */
   zenShowBadges: boolean;
   toggleZenShowBadges: () => void;
+  /**
+   * Whether the Zen View's grid shows **Started** Tasks beside the In Progress ones.
+   *
+   * **Off by default** (ruled by the user, 2026-09-30), and separate from `doShowsStarted` although
+   * the view reads under Do: a paused task on the focus grid is a different question from one in
+   * the Do list. App-wide.
+   */
+  zenShowsStarted: boolean;
+  toggleZenShowsStarted: () => void;
   /**
    * Whether a Zen View task card draws the amber **Overdue** border — the one sign of Overdue every
    * other view draws unconditionally. **On by default.** App-wide, beside `zenShowBadges`: Zen is
@@ -189,11 +215,17 @@ export const useDisplayStore = create<DisplayStore>()(
       startHidesCheckedWaits: false,
       toggleStartHidesCheckedWaits: () =>
         set((s) => ({ startHidesCheckedWaits: !s.startHidesCheckedWaits })),
+      startShowsStarted: true,
+      toggleStartShowsStarted: () => set((s) => ({ startShowsStarted: !s.startShowsStarted })),
+      doShowsStarted: false,
+      toggleDoShowsStarted: () => set((s) => ({ doShowsStarted: !s.doShowsStarted })),
       searchIncludesArchived: false,
       toggleSearchIncludesArchived: () =>
         set((s) => ({ searchIncludesArchived: !s.searchIncludesArchived })),
       zenShowBadges: true,
       toggleZenShowBadges: () => set((s) => ({ zenShowBadges: !s.zenShowBadges })),
+      zenShowsStarted: false,
+      toggleZenShowsStarted: () => set((s) => ({ zenShowsStarted: !s.zenShowsStarted })),
       zenShowOverdueBorder: true,
       toggleZenShowOverdueBorder: () =>
         set((s) => ({ zenShowOverdueBorder: !s.zenShowOverdueBorder })),

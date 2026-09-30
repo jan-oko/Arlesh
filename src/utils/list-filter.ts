@@ -3,7 +3,7 @@ import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
 import {
   typeHardHidden, passesTags, withArchivedOverride, isShelvedProject, isHiddenBacklog,
   isUnopenedOccurrence, isUnopenedWait, passesCommitmentPreset, passesExpectationPreset, isArchived, isDelegated,
-  isLiveExpectation, isPlannedAhead, isOutsidePlanScope,
+  isLiveExpectation, isPlannedAhead, isOutsidePlanScope, passesStartStatus, passesDoStatus,
 } from "@/utils/filter-tree";
 import type { TimeScope } from "@/api/time-scope";
 import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
@@ -420,14 +420,10 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
       if (row.node.timing === "lapsed" || row.node.timing === "pending" || isDelegated(row.node)) {
         return withArchivedOverride(row.node, f, false);
       }
-      if (row.node.status === "done") return false;
-      if (row.node.status === "in_progress" && !row.node.children.some((c) => c.kind === "task" && c.status === "todo")) {
-        return false;
-      }
-      return true;
+      return passesStartStatus(row.node, f);
     }
     case "do":
-      return row.node.status === "in_progress";
+      return passesDoStatus(row.node, f);
     case "backlog":
       // Everything set aside, plus everything beneath it — the Mindmap's subtree rule, flattened.
       return row.node.backlogged === true || row.ancestors.some((a) => a.backlogged === true);

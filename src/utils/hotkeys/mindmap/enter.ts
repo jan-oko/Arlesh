@@ -8,6 +8,8 @@ export interface MindmapEnterContext extends MindmapSelectionContext {
   /** Timestamp of the last plain Enter, for the double-tap that enters a subtree. */
   lastEnterMs: { current: number };
   onCycleStatus: (id: string) => void;
+  /** `Alt+Enter`: sets a Task Started, or resumes a Started one to In Progress. */
+  onToggleStarted: (id: string) => void;
   /** Advances the selected Commitment's verdict: Unresolved → Kept → Broken → Unresolved.
    *
    * The same press may turn out to be the first half of the double tap that enters the
@@ -76,5 +78,16 @@ export const MINDMAP_ENTER_BINDINGS: readonly Binding<MindmapEnterContext>[] = [
         c.onCycleStatus(c.selectedNodeId);
       }
     },
+  },
+  {
+    // Started: To Do or Done → Started, and In Progress ↔ Started (pause / resume). A Task only —
+    // a Habit occurrence is one — and never while it is blocked, as plain Enter's cycle is not.
+    id: "mindmap.toggleStarted", section: "mindmap", chord: { code: "Enter", alt: true },
+    labelKey: "toggleStarted",
+    when: (c) => {
+      const node = selectedNode(c);
+      return node?.kind === "task" && !isNodeBlocked(node);
+    },
+    run: (c) => { if (c.selectedNodeId !== null) c.onToggleStarted(c.selectedNodeId); },
   },
 ];

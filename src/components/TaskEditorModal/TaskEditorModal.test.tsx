@@ -328,6 +328,19 @@ describe("TaskEditorModal — Backlog control", () => {
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "in_progress", archival: "live" });
   });
 
+  it("turns the switch off when the task is set Started, which is begun work too", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ backlogged: true })} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "status:task.started" }));
+    expect(screen.getByRole("checkbox", { name: "backlogOff" })).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "started", archival: "live" });
+  });
+
   it("still lets a task already In Progress be set aside", async () => {
     // The rule is one-directional: a task under way may be put down, and keeps its status so it
     // says where the work stood when it is picked back up.

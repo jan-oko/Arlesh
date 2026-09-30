@@ -221,6 +221,60 @@ async fn an_agentic_task_without_a_spec_cannot_start() {
     ));
 }
 
+async fn set(pool: &sqlx::SqlitePool, id: i64, status: TaskStatus) -> Result<Task, TaskError> {
+    update(
+        pool,
+        id,
+        UpdateTaskRequest {
+            status: Some(status),
+            ..Default::default()
+        },
+    )
+    .await
+}
+
+#[tokio::test]
+async fn setting_an_agentic_task_without_a_spec_started_is_a_start_and_is_refused() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let bare = task(&pool, ("project", project), TaskAgentic::Yes, None).await;
+
+    assert!(matches!(
+        set(&pool, bare, TaskStatus::Started).await,
+        Err(TaskError::AgenticSpecMissing)
+    ));
+}
+
+#[tokio::test]
+async fn pausing_and_resuming_begun_work_is_not_a_start() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let id = task(
+        &pool,
+        ("project", project),
+        TaskAgentic::Yes,
+        with_spec("Build it"),
+    )
+    .await;
+    start(&pool, id).await.unwrap();
+    update(
+        &pool,
+        id,
+        UpdateTaskRequest {
+            agentic_brief: Some(None),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    // The work was begun while it had a Spec; pausing and resuming it asks nothing again.
+    let paused = set(&pool, id, TaskStatus::Started).await.unwrap();
+    assert_eq!(paused.status, TaskStatus::Started.as_str());
+    let resumed = set(&pool, id, TaskStatus::InProgress).await.unwrap();
+    assert_eq!(resumed.status, TaskStatus::InProgress.as_str());
+}
+
 #[tokio::test]
 async fn an_agentic_task_with_a_spec_starts() {
     let pool = helpers::test_pool().await;

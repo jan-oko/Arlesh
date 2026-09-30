@@ -390,7 +390,7 @@ export default function MindmapView() {
 
 
   const {
-    onStatusClick, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling, onInsertParent,
+    onStatusClick, onToggleStarted, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling, onInsertParent,
     onDelete, onPaste, occurrencePrompt, confirmOccurrence, cancelOccurrence,
   } = useNodeActions({
     tree, clipboard, moveNode, duplicateNode, onRequestDelete: setDeleteTargets, reload, renameNode,
@@ -502,6 +502,7 @@ export default function MindmapView() {
     onToggleCollapsed: toggleCollapsedOrGroup,
     onToggleSubtreeCollapsed: toggleSubtreeCollapsed,
     onCycleStatus: onStatusClick,
+    onToggleStarted,
     onCycleVerdict: cycleVerdict,
     onMarkBroken: markBroken,
     onBindWait: openAsyncTemplate,

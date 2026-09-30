@@ -25,6 +25,16 @@ export default function TaskIcon({ cx, cy, r, color, opacity, status, isBlocked 
     );
   }
 
+  // Started — begun and paused — is In Progress's glyph with the inner circle left unfilled.
+  if (status === "started") {
+    return (
+      <g opacity={opacity}>
+        <circle cx={cx} cy={cy} r={cr} stroke={color} strokeWidth={sw} fill="none" />
+        <circle cx={cx} cy={cy} r={r * 0.4} stroke={color} strokeWidth={sw * 0.7} fill="none" />
+      </g>
+    );
+  }
+
   if (status === "in_progress") {
     return (
       <g opacity={opacity}>

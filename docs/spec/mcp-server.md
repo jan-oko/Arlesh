@@ -374,8 +374,9 @@ so the conformance corpus is untouched.
   and the one to set. The session holds SQLite's single writer lock from before the compare until
   the write commits, so the two are one step: if the Task's status is no longer `expected`, the
   call is refused as `status_changed`, naming the current status in `details.current`, and nothing
-  is written. Two agents both expecting `todo` cannot both win. Starting a Task that reads as
-  Agentic needs a Spec, as in the app.
+  is written. Two agents both expecting `todo` cannot both win. The statuses are `todo`,
+  `in_progress`, `started` (begun and paused) and `done`. Starting a Task that reads as Agentic —
+  moving it into `in_progress` or `started` from `todo` or `done` — needs a Spec, as in the app.
 - **`move`** re-parents a Task. It needs write on the Task and create permission at **both** its
   old and its new parent, so a Task can leave a subtree only for one it could have been made in.
 - **`archive`** never deletes, and for now takes **only a Habit occurrence**, archived as the app

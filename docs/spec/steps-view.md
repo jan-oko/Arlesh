@@ -426,6 +426,7 @@ the last card of a page, with more cards one page on, read as the end of the Ste
   or takes the release back, and on its check task it completes the check (or reopens a done one).
   Neither has a key of its own: `D` and `L` were removed by the user on 2026-09-24 as proxies for
   this one
+- `Alt+Enter` — on a Task card, set it **Started** from To Do or Done, or flip In Progress ↔ Started, as in every other view; refused while it is blocked. Plain `Enter` descending is no reason to move the modified chord
 - `Shift+W` — on a Task card, open its editor at the Expectation section with Asynchronous on, as on the Mindmap
 - `E` — open the selected card's editor
 - `Tab`, `Shift+Enter`, `Ctrl+Enter`, `Shift+D`/`P`/`G`/`T`/`C`/`E`/`I`/`F`/`H` — create, as above
