@@ -209,8 +209,9 @@ fn a_lapsed_unfinished_keep_on_exit_task_is_overdue() {
     let scope = Some(july_day_scope(10));
 
     assert!(is_overdue(
-        OverdueFacts {
+        &WrittenTask {
             time_scope: &scope,
+            plan: &None,
             on_exit: Some(OnScopeExit::Keep),
             due_scope: &None,
             archival: TaskArchival::Live,
@@ -225,8 +226,9 @@ fn a_task_whose_window_has_not_passed_is_not_overdue() {
     let scope = Some(july_day_scope(10));
 
     assert!(!is_overdue(
-        OverdueFacts {
+        &WrittenTask {
             time_scope: &scope,
+            plan: &None,
             on_exit: Some(OnScopeExit::Keep),
             due_scope: &None,
             archival: TaskArchival::Live,
@@ -241,8 +243,9 @@ fn a_done_task_is_not_overdue() {
     let scope = Some(july_day_scope(10));
 
     assert!(!is_overdue(
-        OverdueFacts {
+        &WrittenTask {
             time_scope: &scope,
+            plan: &None,
             on_exit: Some(OnScopeExit::Keep),
             due_scope: &None,
             archival: TaskArchival::Live,
@@ -258,8 +261,9 @@ fn a_missed_task_is_not_overdue() {
     let scope = Some(july_day_scope(10));
 
     assert!(!is_overdue(
-        OverdueFacts {
+        &WrittenTask {
             time_scope: &scope,
+            plan: &None,
             on_exit: Some(OnScopeExit::Archive),
             due_scope: &None,
             archival: TaskArchival::Live,
@@ -272,8 +276,9 @@ fn a_missed_task_is_not_overdue() {
 #[test]
 fn a_task_with_no_time_scope_of_its_own_is_not_overdue() {
     assert!(!is_overdue(
-        OverdueFacts {
+        &WrittenTask {
             time_scope: &None,
+            plan: &None,
             on_exit: Some(OnScopeExit::Keep),
             due_scope: &None,
             archival: TaskArchival::Live,
@@ -338,8 +343,9 @@ fn a_task_past_an_explicit_due_inside_its_open_window_is_overdue() {
     let due = Some(july_day_scope(10));
 
     assert!(is_overdue(
-        OverdueFacts {
+        &WrittenTask {
             time_scope: &scope,
+            plan: &None,
             on_exit: Some(OnScopeExit::Archive),
             due_scope: &due,
             archival: TaskArchival::Live,
@@ -354,8 +360,9 @@ fn a_backlogged_task_with_no_explicit_due_is_not_overdue() {
     let scope = Some(july_day_scope(10));
 
     assert!(!is_overdue(
-        OverdueFacts {
+        &WrittenTask {
             time_scope: &scope,
+            plan: &None,
             on_exit: Some(OnScopeExit::Keep),
             due_scope: &None,
             archival: TaskArchival::Backlog,

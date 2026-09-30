@@ -409,12 +409,15 @@ fn check_containment(windows: ContainmentWindows) -> Result<(), TaskError> {
     Ok(())
 }
 
-/// The fields of a task as a write leaves it that decide whether it is **Overdue**.
-pub(super) struct OverdueFacts<'write> {
+/// The fields of a task, as a write leaves it, that the containment rules and the Overdue flag
+/// read.
+pub(super) struct WrittenTask<'write> {
     /// Its own Time Scope.
     pub time_scope: &'write Option<TimeScope>,
     /// Its own On-exit behavior.
     pub on_exit: Option<OnScopeExit>,
+    /// Its Plan.
+    pub plan: &'write Option<TimeScope>,
     /// Its explicit due.
     pub due_scope: &'write Option<TimeScope>,
     /// Its stored Archival.
@@ -430,7 +433,7 @@ pub(super) struct OverdueFacts<'write> {
 ///
 /// Only the task's own window is read. An inherited window never bounded the Plan in the first
 /// place (rule one reads the own Time Scope alone), so there is nothing for it to lift.
-pub(super) fn is_overdue(task: OverdueFacts<'_>, now: NaiveDateTime) -> bool {
+pub(super) fn is_overdue(task: &WrittenTask<'_>, now: NaiveDateTime) -> bool {
     let Some(own) = task.time_scope else {
         return false;
     };
@@ -511,7 +514,7 @@ async fn write_chain<M: SessionMode>(
 /// Scope ⊆ nearest scoped ancestor, Plan ⊆ nearest planned ancestor, and an explicit Due ⊆ its
 /// effective Time Scope. `parent_type`/`parent_id` is the task's effective parent (the new one when
 /// reparenting), and `id` the task being written when it already exists — see [`write_chain`].
-/// `overdue` is the written task's [`is_overdue`], which lifts the first rule alone.
+/// Whether the task is [`is_overdue`] at `now`, which lifts the first rule alone, is judged here.
 ///
 /// **Climbs once.** The old shape walked the chain twice — once for the scoped ancestor and once
 /// for the planned one — and resolved the item's own Time Scope up to twice more on top. Here
@@ -526,11 +529,15 @@ pub(super) async fn validate_task_containment<M: SessionMode>(
     id: Option<TaskId>,
     parent_type: &str,
     parent_id: i64,
-    time_scope: &Option<TimeScope>,
-    plan: &Option<TimeScope>,
-    due_scope: &Option<TimeScope>,
-    overdue: bool,
+    task: &WrittenTask<'_>,
+    now: NaiveDateTime,
 ) -> Result<(), TaskError> {
+    let WrittenTask {
+        time_scope,
+        plan,
+        due_scope,
+        ..
+    } = *task;
     if time_scope.is_none() && plan.is_none() && due_scope.is_none() {
         return Ok(());
     }
@@ -558,7 +565,7 @@ pub(super) async fn validate_task_containment<M: SessionMode>(
         ancestor_scope,
         ancestor_plan,
         due: due_scope.as_ref().map(TimeScope::window),
-        overdue,
+        overdue: is_overdue(task, now),
     })
 }
 

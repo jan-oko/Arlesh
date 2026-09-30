@@ -1488,25 +1488,20 @@ pub async fn create_task_at(
     reject_backlog_with_plan(request.archival.unwrap_or_default(), &request.plan)?;
     // No Spec check here: creating a task is not starting one. The one path that creates a task
     // already in progress is a duplicate, and a copy of work underway is not a start either.
-    let overdue = scope_rules::is_overdue(
-        scope_rules::OverdueFacts {
-            time_scope: &request.time_scope,
-            on_exit: request.on_scope_exit,
-            due_scope: &request.due_scope,
-            archival: request.archival.unwrap_or_default(),
-            done: request.status == Some(TaskStatus::Done),
-        },
-        now,
-    );
     scope_rules::validate_task_containment(
         db,
         None,
         &request.parent_type,
         request.parent_id.require_stored()?,
-        &request.time_scope,
-        &request.plan,
-        &request.due_scope,
-        overdue,
+        &scope_rules::WrittenTask {
+            time_scope: &request.time_scope,
+            on_exit: request.on_scope_exit,
+            plan: &request.plan,
+            due_scope: &request.due_scope,
+            archival: request.archival.unwrap_or_default(),
+            done: request.status == Some(TaskStatus::Done),
+        },
+        now,
     )
     .await?;
     db.tasks().insert(request).await
@@ -1578,25 +1573,20 @@ pub async fn update_task_at(
         )
         .await?;
     }
-    let overdue = scope_rules::is_overdue(
-        scope_rules::OverdueFacts {
-            time_scope: &write.time_scope,
-            on_exit: write.on_scope_exit,
-            due_scope: &write.due_scope,
-            archival: write.archival,
-            done: write.status == TaskStatus::Done.as_str(),
-        },
-        now,
-    );
     scope_rules::validate_task_containment(
         db,
         Some(id),
         &write.parent_type,
         write.parent_id,
-        &write.time_scope,
-        &write.plan,
-        &write.due_scope,
-        overdue,
+        &scope_rules::WrittenTask {
+            time_scope: &write.time_scope,
+            on_exit: write.on_scope_exit,
+            plan: &write.plan,
+            due_scope: &write.due_scope,
+            archival: write.archival,
+            done: write.status == TaskStatus::Done.as_str(),
+        },
+        now,
     )
     .await?;
     // Nothing else is written for the wait an Asynchronous task spawns: it is derived from the task
