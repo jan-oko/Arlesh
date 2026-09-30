@@ -502,6 +502,7 @@ impl TaskWrite {
         stored: Task,
         request: UpdateTaskRequest,
     ) -> Result<Self, crate::nodes::id::NotStored> {
+        let releases = releases_consistence(&stored, &request);
         let reparent = match (request.parent_type, request.parent_id) {
             (Some(parent_type), Some(parent_id)) => {
                 Some((parent_type, parent_id.require_stored()?))
@@ -518,7 +519,6 @@ impl TaskWrite {
             .map(|s| s.as_str())
             .unwrap_or(&stored.status)
             .to_string();
-        let releases = releases_consistence(&stored, &request);
         let consistent = request.consistent.unwrap_or(stored.consistent);
         let delegate_to = match request.delegate_to {
             Some(new_delegate) => new_delegate,

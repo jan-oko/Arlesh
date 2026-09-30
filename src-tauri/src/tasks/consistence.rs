@@ -519,7 +519,7 @@ impl Tree {
 }
 
 /// A consistent Task, resolved.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Resolved {
     status: TaskStatus,
     state: Option<DerivedState>,
@@ -541,7 +541,7 @@ impl Evaluation<'_> {
     /// A consistent Task's derived status, and the lifecycle it leaves it with.
     fn resolve(&mut self, id: &NodeId) -> Resolved {
         if let Some(resolved) = self.resolved.get(id) {
-            return *resolved;
+            return resolved.clone();
         }
         let own_archived = self
             .tree
@@ -576,7 +576,7 @@ impl Evaluation<'_> {
             archived: state.map_or(own_archived, |state| state.archival == Archival::Archived),
         };
         self.visiting.remove(id);
-        self.resolved.insert(id.clone(), resolved);
+        self.resolved.insert(id.clone(), resolved.clone());
         resolved
     }
 
@@ -623,6 +623,6 @@ impl Evaluation<'_> {
             let resolved = self.resolve(&key.1);
             return (resolved.status, resolved.archived);
         }
-        (item.reading, item.archived)
+        (item.reading.clone(), item.archived)
     }
 }
