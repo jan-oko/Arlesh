@@ -802,12 +802,12 @@ describe("TaskEditorModal — the Due field", () => {
     return onSave;
   }
 
-  it("is its own row directly below the Plan on a scoped task, naming the default", async () => {
+  it("shares the on-exit pills' row on a task with its own Time Scope, naming the default", async () => {
     await openEditor(mkNode({ timeScope: JULY_WEEK, onScopeExit: "keep" }));
-    const planRow = screen.getByText("fieldPlan");
+    const pillsRow = screen.getByText("fieldOnScopeExit");
     const dueRow = screen.getByText("fieldDue");
-    expect(planRow.nextElementSibling).toBe(dueRow);
-    expect(screen.getByText("fieldOnScopeExit")).toBeInTheDocument();
+    expect(pillsRow.nextElementSibling).toBe(dueRow);
+    expect(screen.getByText("fieldPlan").nextElementSibling).not.toBe(dueRow);
     expect(screen.getByText("dueDefaultTimeScope")).toBeInTheDocument();
   });
 
@@ -816,10 +816,10 @@ describe("TaskEditorModal — the Due field", () => {
     expect(screen.getByText("dueDefaultNone")).toBeInTheDocument();
   });
 
-  it("shows below the Plan, without the pills, on an Unscoped task", async () => {
+  it("is its own row directly below the Plan, without the pills, on an Unscoped task", async () => {
     await openEditor(mkNode({ inheritedTimeScope: null }));
     expect(screen.queryByText("fieldOnScopeExit")).not.toBeInTheDocument();
-    expect(screen.getByText("fieldDue")).toBeInTheDocument();
+    expect(screen.getByText("fieldPlan").nextElementSibling).toBe(screen.getByText("fieldDue"));
   });
 
   it("is hidden on a task that inherits its window, which derives its due from it", async () => {

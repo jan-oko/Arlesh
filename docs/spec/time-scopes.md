@@ -97,11 +97,12 @@ So a **child** with no window of its own derives its due from the window it inhe
 
 The **presets** never read the Resolution's Overdue and are unchanged: Plan shows an Overdue item because it is not archived, and Start hides a Lapsed one by its Timing, as before. A Task Overdue by an explicit due inside its still-open window therefore shows under Start, as any item in its window does. How Overdue items are *displayed* — the amber border on every one, the "W2 from W1" label, the Overdue section at the top of Start — is #244's.
 
-**The editor.** The **Due** field is a Plan-shaped picker held to the Task's effective Time Scope, with **Clear** to go back to the default and a summary naming that default while there is no explicit due — *The time scope (default)* under Keep Overdue, *None* under Archive, while backlogged, or unscoped. It is **its own row, directly below the Plan** (ruled by the user on review, 2026-09-30, replacing a first placement beside the Keep Overdue / Archive pills, which stay where they were, under the Time Scope). The row shows:
+**The editor.** The **Due** field is a Plan-shaped picker held to the Task's effective Time Scope, with **Clear** to go back to the default and a summary naming that default while there is no explicit due — *The time scope (default)* under Keep Overdue, *None* under Archive, while backlogged, or unscoped. Where it sits depends on whether the Task has a window of its own (ruled by the user on review, 2026-09-30, over two rounds: a row of its own below the Plan throughout, then back beside the pills whenever a Time Scope is set):
 
-- on a Task with a Time Scope of its **own**, held to that window;
-- on an **Unscoped** Task — one with no window of its own and none above it — unbounded; there are no pills there, since an Unscoped Task has no window to exit, and its due is the only thing that can make it Overdue;
-- **not at all** on a Task that **inherits** its window — it derives its due from it — unless it already carries an explicit due, when the row shows so the due can be seen and cleared; on a **Habit occurrence**; or on a wait's **check task**, whose window is the day it fell due.
+- on a Task with a Time Scope of its **own**: **beside the Keep Overdue / Archive pills**, on their row under the Time Scope, held to that window — no row of its own;
+- on an **Unscoped** Task — one with no window of its own and none above it — **its own row, directly below the Plan**, unbounded. There are no pills there to sit beside, since an Unscoped Task has no window to exit, and its due is the only thing that can make it Overdue;
+- on a Task that **inherits** its window, it derives its due from it, so the field is hidden — unless the Task already carries an explicit due, when it shows as **its own row below the Plan**, held to the inherited window, so the due can be seen and cleared;
+- **not at all** on a **Habit occurrence**, or on a wait's **check task**, whose window is the day it fell due.
 
 ## Plan (scheduling)
 
