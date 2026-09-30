@@ -110,7 +110,7 @@ export function useListData(): ListData {
         // same write and so in the same undo step. The row that comes back says whether it did;
         // it is never assumed.
         if (cameOutOfBacklog(node, updated)) {
-          showToast({ nodeId, message: t(backlogClearedMessage(next)) });
+          showToast({ nodeId, message: t(`warnings:${backlogClearedMessage(next)}`) });
         }
         await reload();
       }, (err: unknown) => {

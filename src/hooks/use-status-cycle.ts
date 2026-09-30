@@ -65,7 +65,7 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
       guard(node, async (confirmed) => {
         const updated = await updateTask(rowIdOf(node), { status: next }, ...acknowledged(confirmed));
         if (cameOutOfBacklog(node, updated)) {
-          showToast({ nodeId: node.id, message: t(backlogClearedMessage(next)) });
+          showToast({ nodeId: node.id, message: t(`warnings:${backlogClearedMessage(next)}`) });
         }
         await reload();
       }, onError);
