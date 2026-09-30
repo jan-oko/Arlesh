@@ -178,20 +178,24 @@ export async function listFlowInstanceNodes(): Promise<TargetRef[]> {
 
 // --- Recurrence: a flow becomes a Habit (Phase 8.1) ---
 
-export type ConsumptionKind = "destructive" | "accumulating";
-export type BlockingMode = "overlapping" | "blocking";
-export type CatchupPolicy = "all_pending" | "next" | "latest";
+/**
+ * A Habit's **clock**: `window` tiles iterations from the Start, `interval` keeps one open instance
+ * and places the next the unit after the last completion, plus the Gap.
+ */
+export type ClockKind = "window" | "interval";
+/** What a Window Habit does with an iteration left unfinished. */
+export type MissPolicy = "archive" | "overdue" | "owed";
 
-/** A Habit's Recurrence — Repetition (start/gap/end) plus the Consumption config. */
+/** A Habit's Recurrence — Repetition (start/gap/end) plus its clock. */
 export interface FlowRecurrence {
   flow_id: number;
   start_scope_id: ScopeKey;
   gap_n: number | null;
   gap_kind: string | null;
   end_scope_id: ScopeKey | null;
-  consumption_kind: ConsumptionKind;
-  blocking_mode: BlockingMode | null;
-  catchup_policy: CatchupPolicy | null;
+  clock: ClockKind;
+  /** Set exactly when the clock is `window`. */
+  miss_policy: MissPolicy | null;
 }
 
 export interface SetRecurrenceRequest {
@@ -199,9 +203,8 @@ export interface SetRecurrenceRequest {
   gap_n?: number | null;
   gap_kind?: string | null;
   end_scope_id?: ScopeKey | null;
-  consumption_kind: ConsumptionKind;
-  blocking_mode?: BlockingMode | null;
-  catchup_policy?: CatchupPolicy | null;
+  clock: ClockKind;
+  miss_policy: MissPolicy | null;
 }
 
 /** Sets (creates or replaces) a flow's Recurrence, making it a Habit. */

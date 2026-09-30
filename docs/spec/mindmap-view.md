@@ -189,7 +189,7 @@ subtree can be pasted into several places.
 **Copying a Flow.** A Flow is usually built by copying the one next to it and changing the schedule
 or the target, so the copy is a **complete** clone of the template *and* its Recurrence: the flow
 row, its items, their Cycle Scope / Cycle Plan pairs, intra-flow dependencies remapped onto the
-clone, the Repetition (Start anchor, Gap, end), the Consumption tree and privacy. **Copying a Habit
+clone, the Repetition (Start anchor, Gap, end), the clock and privacy. **Copying a Habit
 gives you a Habit**, recurring on the same schedule from the same anchor — the Start is deliberately
 *not* moved to today, because the copy is about to be edited anyway and a rule that quietly re-dated
 it would be the bigger surprise. A copy of a daily Habit started in July therefore renders every

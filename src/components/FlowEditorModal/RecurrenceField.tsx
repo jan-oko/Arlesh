@@ -1,32 +1,43 @@
 import { useTranslation } from "react-i18next";
-import type { ConsumptionKind, BlockingMode, CatchupPolicy } from "@/api/flows";
+import type { ClockKind, MissPolicy } from "@/api/flows";
 import { recurrenceStartKind, type RecurrenceUi } from "./recurrence-ui";
 import Switch from "@/components/Switch/Switch";
 import AnchorScopeField from "@/components/ScopePicker/AnchorScopeField";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
 const GAP_KINDS = ["day", "week", "month", "season"] as const;
-const CATCHUP_POLICIES: CatchupPolicy[] = ["all_pending", "next", "latest"];
+const CLOCKS: ClockKind[] = ["window", "interval"];
+const MISS_POLICIES: MissPolicy[] = ["archive", "overdue", "owed"];
 
 interface Props {
   value: RecurrenceUi;
   onChange: (value: RecurrenceUi) => void;
   /** The owning flow's Duration kind; the Recurrence anchors to a scope of this kind. */
   durationKind: string | null;
+  /**
+   * Whether the flow has a window. An Unscoped Habit can only keep an Interval clock, so the
+   * Window choice is offered but disabled, with the reason beside it.
+   */
+  scoped: boolean;
 }
 
 /**
  * Edits a flow's **Recurrence** — the Repetition (Start, optional Gap, optional end) and the
- * Consumption tree (Destructive vs Accumulating → Overlapping vs Blocking → catch-up policy) that
- * turn it into a **Habit**. Controlled; the parent turns dates into scope keys and persists.
+ * **clock** (Window, with what a missed iteration does, or Interval) that turn it into a
+ * **Habit**. Controlled; the parent turns dates into scope keys and persists.
  */
-export default function RecurrenceField({ value, onChange, durationKind }: Props) {
+export default function RecurrenceField({ value, onChange, durationKind, scoped }: Props) {
   const { t } = useTranslation("editor");
   const set = (patch: Partial<RecurrenceUi>) => onChange({ ...value, ...patch });
   const anchorKind = recurrenceStartKind(durationKind);
+  // Unscoped, the clock is Interval whatever was last picked: a Window has nothing to repeat.
+  const clock: ClockKind = scoped ? value.clock : "interval";
 
-  const catchupLabel = (policy: CatchupPolicy): string =>
-    policy === "all_pending" ? t("catchupAllPending") : policy === "next" ? t("catchupNext") : t("catchupLatest");
+  const clockLabel = (kind: ClockKind): string => (kind === "window" ? t("clockWindow") : t("clockInterval"));
+  const policyLabel = (policy: MissPolicy): string =>
+    policy === "archive" ? t("missPolicyArchive") : policy === "overdue" ? t("missPolicyOverdue") : t("missPolicyOwed");
+  const policyHint = (policy: MissPolicy): string =>
+    policy === "archive" ? t("missPolicyArchiveHint") : policy === "overdue" ? t("missPolicyOverdueHint") : t("missPolicyOwedHint");
 
   return (
     <div className={styles.label}>
@@ -68,51 +79,43 @@ export default function RecurrenceField({ value, onChange, durationKind }: Props
           )}
 
           <div className={styles.label}>
-            {t("consumption")}
+            {t("clock")}
             <div className={styles.statusPills}>
-              {(["destructive", "accumulating"] as ConsumptionKind[]).map((kind) => (
+              {CLOCKS.map((kind) => (
                 <button
                   key={kind}
                   type="button"
-                  className={`${styles.statusPill}${value.consumptionKind === kind ? ` ${styles.statusPillActive}` : ""}`}
-                  onClick={() => set({ consumptionKind: kind })}
+                  className={`${styles.statusPill}${clock === kind ? ` ${styles.statusPillActive}` : ""}`}
+                  aria-pressed={clock === kind}
+                  disabled={kind === "window" && !scoped}
+                  onClick={() => set({ clock: kind })}
                 >
-                  {t(kind === "destructive" ? "consumptionDestructive" : "consumptionAccumulating")}
+                  {clockLabel(kind)}
                 </button>
               ))}
             </div>
+            <span className={styles.depKind}>
+              {!scoped ? t("clockWindowNeedsScope") : clock === "window" ? t("clockWindowHint") : t("clockIntervalHint")}
+            </span>
           </div>
 
-          {value.consumptionKind === "accumulating" && (
-            <div className={styles.statusPills}>
-              {(["overlapping", "blocking"] as BlockingMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className={`${styles.statusPill}${value.blockingMode === mode ? ` ${styles.statusPillActive}` : ""}`}
-                  onClick={() => set({ blockingMode: mode })}
-                >
-                  {t(mode === "overlapping" ? "blockingOverlapping" : "blockingBlocking")}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {value.consumptionKind === "accumulating" && value.blockingMode === "blocking" && (
+          {clock === "window" && (
             <div className={styles.label}>
-              {t("catchup")}
+              {t("missPolicy")}
               <div className={styles.statusPills}>
-                {CATCHUP_POLICIES.map((policy) => (
+                {MISS_POLICIES.map((policy) => (
                   <button
                     key={policy}
                     type="button"
-                    className={`${styles.statusPill}${value.catchupPolicy === policy ? ` ${styles.statusPillActive}` : ""}`}
-                    onClick={() => set({ catchupPolicy: policy })}
+                    className={`${styles.statusPill}${value.missPolicy === policy ? ` ${styles.statusPillActive}` : ""}`}
+                    aria-pressed={value.missPolicy === policy}
+                    onClick={() => set({ missPolicy: policy })}
                   >
-                    {catchupLabel(policy)}
+                    {policyLabel(policy)}
                   </button>
                 ))}
               </div>
+              <span className={styles.depKind}>{policyHint(value.missPolicy)}</span>
             </div>
           )}
         </>

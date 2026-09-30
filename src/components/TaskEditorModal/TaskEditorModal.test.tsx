@@ -840,7 +840,7 @@ describe("TaskEditorModal — the Due field", () => {
     expect(screen.queryByText("fieldDue")).not.toBeInTheDocument();
   });
 
-  it("is hidden on a Habit occurrence, whose due is its Habit's", async () => {
+  it("is offered on a Habit occurrence, naming its Habit's clock as the default", async () => {
     const onSave = await openEditor(mkNode({
       rowId: "0b3f0f9e-7a52-5a4e-9d3c-1c2b3a4d5e6f",
       timeScope: JULY_WEEK,
@@ -852,10 +852,11 @@ describe("TaskEditorModal — the Due field", () => {
         },
       },
     }));
-    expect(screen.queryByText("fieldDue")).not.toBeInTheDocument();
+    expect(screen.getByText("fieldDue")).toBeInTheDocument();
+    expect(screen.getByText("dueDefaultHabit")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty("dueScope");
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ dueScope: null });
   });
 
   it("saves a stored due, and Clear sends it back to the default", async () => {

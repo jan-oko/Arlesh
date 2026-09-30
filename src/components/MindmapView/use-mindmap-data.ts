@@ -108,14 +108,20 @@ export function holdsUnrenderableGoalItems(flow: Flow, flowGoals: readonly FlowG
   return flow.instance_type === "commitment" && flowGoals.some((goal) => goal.flow_id === flow.id);
 }
 
+/** Draws an iteration root that carries missed windows: `{title} {scope} from {first}`. */
+export type CarriesMissedTitle = (parts: { title: string; scope: string; first: string }) => string;
+
 /**
  * What the board draws on a Habit's **iteration roots**, beyond the rows themselves.
  *
  * A Habit's occurrences arrive as ordinary Task, Goal and Commitment rows (ADR 0008) and are
  * built into the tree like any other; only an iteration root is drawn differently, and only here:
  *
- *  - its title reads `{title} {start scope}` ("Exercise W22"). The row's own title is kept as
- *    `rowTitle`, which is what an editor edits — the label is how it is drawn, not what it is;
+ *  - its title reads `{title} {start scope}` ("Exercise W22"), and — under Window + Overdue, for
+ *    the iteration carrying a run of missed ones — `{title} {start scope} from {first missed}`
+ *    ("Water the plants W3 from W1"), through `carriesMissed`, which localises it. The row's own
+ *    title is kept as `rowTitle`, which is what an editor edits — the label is how it is drawn,
+ *    not what it is;
  *  - it carries the `habitIteration` the collapse of passed iterations folds by, read off its
  *    `origin`: where its window sits, whether that window has passed at `now`, and how it ended.
  */
@@ -124,6 +130,7 @@ export function decorateIterationRoots(
   flows: readonly Flow[],
   labels: ScopeLabelFns,
   now: string,
+  carriesMissed: CarriesMissedTitle,
 ): void {
   const byId = new Map(flows.map((flow) => [flow.id, flow]));
   const visit = (current: MindmapNode): void => {
@@ -132,7 +139,14 @@ export function decorateIterationRoots(
     if (habit !== undefined && habit.item_type === "flow_root" && flow !== undefined) {
       const iteration = habit.iteration_scope;
       current.rowTitle = current.title;
-      current.title = `${current.title} ${iterationAnchorLabel(flow, iteration.start_date, labels)}`;
+      const scope = iterationAnchorLabel(flow, iteration.start_date, labels);
+      current.title = iteration.missed_from === undefined
+        ? `${current.title} ${scope}`
+        : carriesMissed({
+            title: current.title,
+            scope,
+            first: iterationAnchorLabel(flow, iteration.missed_from, labels),
+          });
       current.habitIteration = {
         flowId: flow.id,
         flowTitle: flow.title,
@@ -808,14 +822,16 @@ async function loadMcpVisibility(): Promise<McpVisibility[]> {
 }
 
 export function useMindmapData(): MindmapData {
-  const { t } = useTranslation(["undo", "expectation"]);
+  const { t } = useTranslation(["undo", "expectation", "habits"]);
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
   // Read through a ref, set in an effect, so `load` does not change identity with `t` — which
   // would re-run the mount effect and reload for nothing. Declared before that effect, so the
   // first load already has it.
   const delegationWaitTitle = useRef((title: string) => title);
+  const carriesMissedTitle = useRef<CarriesMissedTitle>(({ title, scope }) => `${title} ${scope}`);
   useEffect(() => {
     delegationWaitTitle.current = (title: string) => t("expectation:delegationWaitTitle", { title });
+    carriesMissedTitle.current = (parts) => t("habits:carriesMissed", parts);
   }, [t]);
   // A check task is titled `{prefix}{wait title}`, the prefix a display setting. Unlike the
   // translation above it is a dependency of `load`: changing it redraws the board with the new
@@ -857,7 +873,7 @@ export function useMindmapData(): MindmapData {
         // A Habit's occurrences are ordinary rows, already built into the tree above. A flow whose
         // derivation failed has none, and says so as a load condition below — it is not silently
         // indistinguishable from a flow that simply has no iterations.
-        decorateIterationRoots(built, data.flows, scopeLabels, now);
+        decorateIterationRoots(built, data.flows, scopeLabels, now, (parts) => carriesMissedTitle.current(parts));
         // Last, so every row — derived ones included — has its place and can take its answer.
         applyMcpVisibility(built, mcpVisible);
         latestTree.current = built;
