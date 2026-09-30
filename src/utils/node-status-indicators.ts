@@ -5,7 +5,6 @@ import { isAgentic } from "@/utils/agentic";
 /** The status badges that can appear in a node's indicator row, in display order. */
 export type StatusIndicatorType =
   | "scope"
-  | "overdue"
   | "archived"
   | "planned"
   | "frozen"
@@ -54,9 +53,6 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
 
   if (node.timeScope != null) {
     indicators.push({ type: "scope", outOfScope: isPastWindow(node) });
-  }
-  if (node.overdue === true) {
-    indicators.push({ type: "overdue" });
   }
   if (node.status === "archived" || node.archived === true) {
     indicators.push({ type: "archived", conflict: node.archivalConflict === true });

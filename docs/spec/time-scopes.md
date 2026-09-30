@@ -91,7 +91,7 @@ So a **child** with no window of its own derives its due from the window it inhe
 **Every consumer of the old Overdue Resolution now reads the flag.** The derivation (`tasks/lifecycle.rs`: `effective_due`, `derive_overdue`) sends it on each lifecycle entry as `overdue: true` (omitted when false), beside `resolution`, which can now only be `completed` or `missed`:
 
 - the **Plan exemption** — the backend's containment check, the Task editor's Plan picker, the `P` quick picker and the Plan View's pre-check (see *Containment invariants* below);
-- the status-icon row's **red exclamation** and the Mindmap node's **overdue border**, on the Mindmap, List View rows and the Steps and Plan View cards;
+- the Mindmap node's **amber overdue border** — the one sign of Overdue on screen. The status-icon row's red exclamation that used to flag it was removed (ruled by the user, 2026-09-30: "border is enough"), so a List View row or a Steps or Plan View card shows no Overdue sign of its own until #244 brings the border to every Overdue item;
 - the List View's **Overdue** scope-state filter token, which the flag now earns ahead of Unscoped / Active / Lapsed — an Unscoped Task past a due of its own, or a scoped one past a due inside its open window, reads Overdue;
 - the **MCP** snapshot's `lifecycles` section, and each Task's `due_scope` in the snapshot and `arlesh_tasks.get`. `arlesh_tasks.create` and `update` write `due_scope` (`null` on update clears it back to the default).
 
