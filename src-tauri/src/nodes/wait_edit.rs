@@ -214,12 +214,11 @@ async fn set_status(
             }
             overlay.status = None;
         }
-        TaskStatus::Todo | TaskStatus::InProgress => {
+        TaskStatus::Todo | TaskStatus::InProgress | TaskStatus::Started => {
             if was_done {
                 waits::reopen_latest(db, &key.wait, key.due_at).await?;
             }
-            overlay.status =
-                (status == TaskStatus::InProgress).then(|| status.as_str().to_string());
+            overlay.status = status.is_begun().then(|| status.as_str().to_string());
         }
     }
     Ok(())

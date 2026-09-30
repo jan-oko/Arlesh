@@ -6,6 +6,8 @@ export interface ListStatusContext extends ListSelectionContext {
   /** Whether the selected row is currently blocked (and not a Habit instance) — gates Enter. */
   isSelectedBlocked: boolean;
   onCycleStatus: (id: string) => void;
+  /** Sets the selected Task Started, or resumes a Started one to In Progress. */
+  onToggleStarted: (id: string) => void;
 }
 
 export const LIST_STATUS_BINDINGS: readonly Binding<ListStatusContext>[] = [
@@ -17,5 +19,14 @@ export const LIST_STATUS_BINDINGS: readonly Binding<ListStatusContext>[] = [
     labelKey: "cycleRowStatus",
     when: (c) => c.selectedTaskId !== null && !c.isSelectedBlocked,
     run: (c) => { if (c.selectedTaskId !== null) c.onCycleStatus(c.selectedTaskId); },
+  },
+  {
+    // Started: To Do or Done → Started, and In Progress ↔ Started (pause / resume). Gated on
+    // blocking exactly as Enter is, since starting blocked work is what the block forbids. The
+    // Filter menu's own Alt+Enter (add as Not) lives in the menu, which holds the keys while open.
+    id: "listView.toggleStarted", section: "listView", chord: { code: "Enter", alt: true },
+    labelKey: "toggleStarted",
+    when: (c) => c.selectedTaskId !== null && !c.isSelectedBlocked,
+    run: (c) => { if (c.selectedTaskId !== null) c.onToggleStarted(c.selectedTaskId); },
   },
 ];

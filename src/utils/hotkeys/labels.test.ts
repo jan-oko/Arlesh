@@ -48,6 +48,7 @@ const LABELS_SPANNING_SECTIONS: Readonly<Record<string, readonly string[]>> = {
   toggleBacklog: ["mindmap", "listView", "zenView"],
   toggleAgentic: ["mindmap", "listView", "zenView"],
   toggleAsynchronous: ["mindmap", "listView", "zenView"],
+  toggleStarted: ["mindmap", "listView", "zenView"],
   quickPlan: ["mindmap", "listView", "zenView"],
   quickDependency: ["mindmap", "listView", "zenView"],
   bindWait: ["mindmap", "listView", "zenView"],

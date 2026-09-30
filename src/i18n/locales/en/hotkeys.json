@@ -88,6 +88,7 @@
   "statusUnblock": "Status preset: Unblock (blocked tasks only, List View)",
   "statusExpectations": "Status preset: Expectations (pending waits only, List View)",
   "toggleBacklog": "Put in / take out of the backlog",
+  "toggleStarted": "Set a task Started, or pause / resume one in progress",
   "toggleAgentic": "Mark Agentic / Not agentic",
   "toggleAsynchronous": "Mark Asynchronous / Not asynchronous",
   "quickPlan": "Set the Plan in a quick picker drawn at the selection",

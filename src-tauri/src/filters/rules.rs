@@ -381,8 +381,9 @@ pub fn passes_status(
         Preset::All => true,
         Preset::Plan => passes_plan(node, filter),
         Preset::Start => passes_start(node, filter),
-        // Only in-progress Tasks match; Goals and structure appear solely as ancestors.
-        Preset::Do => node.kind == NodeKind::Task && node.status_str() == "in_progress",
+        // Only in-progress Tasks match — and Started ones while the setting says so; Goals and
+        // structure appear solely as ancestors.
+        Preset::Do => node.kind == NodeKind::Task && passes_do_status(node.status_str(), filter),
         // The inverse of every other preset: only what was deliberately set aside, plus everything
         // beneath it. Structural containers already dropped to ancestor-only above.
         Preset::Backlog => under_backlog || node.backlogged,
@@ -442,7 +443,19 @@ fn passes_start(node: &NodeFacts, filter: &BoardFilter) -> bool {
         "done" => false,
         // An in-progress Task with nothing left to start — no direct todo child — drops out.
         "in_progress" => node.has_todo_child,
+        // A paused Task is something to pick back up, unless the setting says otherwise.
+        "started" => filter.start_shows_started,
         _ => true,
+    }
+}
+
+/// Do's status rule: In Progress always, Started only while [`BoardFilter::do_shows_started`] is
+/// on. The Zen View asks the same question with its own setting in that field.
+fn passes_do_status(status: &str, filter: &BoardFilter) -> bool {
+    match status {
+        "in_progress" => true,
+        "started" => filter.do_shows_started,
+        _ => false,
     }
 }
 

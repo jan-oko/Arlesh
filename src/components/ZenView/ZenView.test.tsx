@@ -45,6 +45,7 @@ function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): Mindma
 }
 
 const onCycleStatus = vi.fn();
+const onToggleStarted = vi.fn();
 const toggleRelease = vi.fn();
 const createTask = vi.fn(() => Promise.resolve(n("task-99", "task")));
 
@@ -62,6 +63,7 @@ function mockBoard(children: MindmapNode[]): void {
     error: null,
     reload: vi.fn(() => Promise.resolve()),
     onCycleStatus,
+    onToggleStarted,
     renameNode: vi.fn(() => Promise.resolve()),
     createTask,
     deleteTask: vi.fn(() => Promise.resolve()),
@@ -116,7 +118,7 @@ beforeEach(() => {
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER, statusMode: "all" } });
   useMindmapStore.setState({ subtreeRootId: null, pendingToast: null, searchOpen: false });
   useViewStore.setState({ view: "zen", zenCommitments: true, zenExpectations: true });
-  useDisplayStore.setState({ zenShowBadges: true, startHidesCheckedWaits: false });
+  useDisplayStore.setState({ zenShowBadges: true, startHidesCheckedWaits: false, zenShowsStarted: false, doShowsStarted: false });
   useListFilterStore.setState({ filter: { ...DEFAULT_LIST_FILTER, pills: { ...DEFAULT_LIST_FILTER.pills } } });
   mockBoard(standardBoard());
 });
@@ -156,6 +158,27 @@ describe("what the Zen View draws", () => {
     render(<ZenViewInApp />);
     expect(screen.queryByRole("region", { name: "zenView:commitmentsStrip" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "zenView:expectationsStrip" })).not.toBeInTheDocument();
+  });
+
+  it("leaves a Started Task off the grid by default, and shows it with its own setting, not Do's", () => {
+    mockBoard([n("task-1", "task", { status: "in_progress" }), n("task-2", "task", { status: "started" })]);
+    useDisplayStore.setState({ doShowsStarted: true });
+    const { unmount } = render(<ZenViewInApp />);
+    expect(taskCards()).toEqual(["task-1"]);
+    unmount();
+    useDisplayStore.setState({ doShowsStarted: false, zenShowsStarted: true });
+    render(<ZenViewInApp />);
+    expect(taskCards()).toEqual(["task-1", "task-2"]);
+  });
+
+  it("draws the status icon in a card's badge row for every status but In Progress", () => {
+    mockBoard([n("task-1", "task", { status: "in_progress" }), n("task-2", "task", { status: "started" })]);
+    useDisplayStore.setState({ zenShowsStarted: true });
+    withArea(1200, 800);
+    render(<ZenViewInApp />);
+    const icons = [...document.querySelectorAll("[data-zen-status-icon]")];
+    expect(icons.map((icon) => icon.closest("[data-row-id]")?.getAttribute("data-row-id"))).toEqual(["task-2"]);
+    expect(icons[0]?.getAttribute("data-zen-status-icon")).toBe("started");
   });
 
   it("says so when nothing is in progress", () => {
@@ -260,6 +283,38 @@ describe("keyboard", () => {
     press("ArrowUp");
     press("Enter");
     expect(toggleRelease).toHaveBeenCalledWith("expectation-1");
+  });
+
+  it("sets the selected Task Started with Alt+Enter", () => {
+    render(<ZenViewInApp />);
+    press("ArrowDown");
+    press("Enter", { altKey: true });
+    expect(onToggleStarted).toHaveBeenCalledWith("task-1");
+    expect(onCycleStatus).not.toHaveBeenCalled();
+  });
+
+  it("keeps a card your own edit stops matching on screen, dimmed and iconed, until the selection moves", () => {
+    withArea(1200, 800);
+    const { rerender } = render(<ZenViewInApp />);
+    press("ArrowDown");
+    expect(selectedCard()).toBe("task-1");
+
+    // The write lands and the board reloads with task-1 Done: it no longer matches Do.
+    const board = standardBoard();
+    const goal = board[0];
+    if (goal === undefined) throw new Error("no goal");
+    goal.children = goal.children.map((child) => (child.id === "task-1" ? { ...child, status: "done" } : child));
+    mockBoard(board);
+    rerender(<ZenViewInApp />);
+
+    expect(taskCards()).toContain("task-1");
+    const card = document.querySelector('[data-row-id="task-1"]');
+    expect(card?.className).toMatch(/cardFocusExempt/);
+    expect(card?.querySelector("[data-zen-status-icon]")?.getAttribute("data-zen-status-icon")).toBe("done");
+    expect(selectedCard()).toBe("task-1");
+
+    press("ArrowRight");
+    expect(taskCards()).not.toContain("task-1");
   });
 
   it("opens the editor with E", () => {

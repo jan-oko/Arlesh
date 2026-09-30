@@ -62,7 +62,7 @@ export default function ZenView() {
   const { t } = useTranslation(["common", "zenView"]);
   const {
     tree, rows, commitmentRows, expectationRows, toggleRelease, allTasksAndGoals, isLoading, error, reload,
-    onCycleStatus, renameNode, createTask, deleteTask, removeNode, occurrencePrompt, confirmOccurrence, cancelOccurrence,
+    onCycleStatus, onToggleStarted, renameNode, createTask, deleteTask, removeNode, occurrencePrompt, confirmOccurrence, cancelOccurrence,
   } = useListData();
   const sharedFilter = useBoardFilter();
   const isInputCaptured = useIsInputCaptured();
@@ -77,6 +77,7 @@ export default function ZenView() {
   const showCommitments = useViewStore((s) => s.zenCommitments);
   const showExpectations = useViewStore((s) => s.zenExpectations);
   const badgesSetting = useDisplayStore((s) => s.zenShowBadges);
+  const showsStarted = useDisplayStore((s) => s.zenShowsStarted);
   const agenticPills = useListFilterStore((s) => s.filter.pills.agentic);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
 
@@ -106,8 +107,8 @@ export default function ZenView() {
   });
 
   const options = useMemo(
-    () => ({ commitments: showCommitments, expectations: showExpectations, agentic: agenticPills }),
-    [showCommitments, showExpectations, agenticPills],
+    () => ({ commitments: showCommitments, expectations: showExpectations, agentic: agenticPills, showsStarted }),
+    [showCommitments, showExpectations, agenticPills, showsStarted],
   );
   // Keyed on the raw selection, as the List View's is: the exemption has to know what is selected
   // before the filter runs, and it ends with any filter, subtree or strip change.
@@ -172,6 +173,7 @@ export default function ZenView() {
     selectedExpectationId,
     selectedRowId: activeId,
     isSelectedBlocked: selectedTask !== undefined && selectedTask.isBlocked,
+    onToggleStarted,
     onNavigate: handleNavigate,
     onJumpToEdge: handleJumpToEdge,
     onScrollList: startScroll,
