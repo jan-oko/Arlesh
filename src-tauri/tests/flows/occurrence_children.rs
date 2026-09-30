@@ -16,7 +16,7 @@ use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::commands::tasks as task_commands;
 use arlesh_lib::flows::model::{
     ClockKind, CreateFlowItemRequest, CreateFlowRequest, FlowId, HabitInstanceChild, InstanceType,
-    MissPolicy, SetRecurrenceRequest, TargetRef,
+    SetRecurrenceRequest, TargetRef,
 };
 use arlesh_lib::nodes::id::NodeId;
 use arlesh_lib::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind};
