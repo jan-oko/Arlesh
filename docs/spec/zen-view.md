@@ -94,16 +94,15 @@ ellipsis; its full text is the card's tooltip.
 **Badges** are drawn only when the card is at least **72px** tall and the **Show badges on cards**
 setting is on — see *Settings*.
 
-**The Started glyph.** While **Show Started tasks on the grid** is on, a **Started** card leads its
-title with the Started status icon — In Progress's glyph with the inner circle unfilled — so a
-paused task reads apart from the work in progress around it (asked for by the user, 2026-09-30). It
-sits on the title's line, before it, and keeps to the title's scale: **0.8 of the title's size**,
-with a quarter of it between the glyph and the title, centred on the title's lines. It is part of
-the title line, not a badge, so it is drawn **whatever the badge setting and the card's height** —
-a minimum card and a card with badges off show it too. An In Progress card carries no glyph (every
-other card on the grid is In Progress), and neither does a Started card held on screen only by the
-focus exemption while the setting is off. The Zen View alone draws it; the other views already
-draw every status in their own status control or node glyph.
+**The status icon.** The grid is In Progress work, so a card says its status only when it is
+**something else**: a **Started** card (with *Show Started tasks on the grid* on), or a card the
+focus exemption holds after your own edit made it **To Do**, **Done** or Started. Such a card leads
+its **badge row** with the Task status glyph every other view draws — Started is In Progress's glyph
+with the inner circle unfilled — at the badge row's scale, like the badges beside it (ruled by the
+user, 2026-09-30; a first cut put a Started glyph on the title line). An In Progress card draws
+none. The icon is part of the badge row, so it **hides when the row hides**: with *Show badges on
+cards* off, or on a card shorter than 72px. (Chosen as the least surprising reading of "the status
+row": one switch and one height rule for everything under the title.)
 
 ## The strips
 
