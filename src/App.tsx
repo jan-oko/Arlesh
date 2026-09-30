@@ -68,7 +68,9 @@ export default function App() {
           <ActiveTab />
         </TabStoresContext.Provider>
       )}
-      {hotkeysOpen && <HotkeysModal onClose={closeHotkeys} />}
+      {/* Read once, as the sheet opens: the view chords are off while it holds the keyboard, so the
+          view it opened over is the view it closes over. */}
+      {hotkeysOpen && <HotkeysModal onClose={closeHotkeys} view={active?.stores.view.getState().view} />}
     </div>
   );
 }
