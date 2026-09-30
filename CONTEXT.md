@@ -102,7 +102,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Commitment verdict:** `unresolved` (Unresolved) · `kept` (Kept) · `broken` (Broken)
 
-**Task status:** `todo` (To Do) · `in_progress` (In Progress) · `done` (Done)
+**Task status:** `todo` (To Do) · `in_progress` (In Progress) · `started` (Started — begun and paused, not being done right now) · `done` (Done)
 
 **Goal status:** `active` (Active) · `achieved` (Achieved) · `frozen` (Frozen) · `archived` (Archived)
 

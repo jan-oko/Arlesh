@@ -64,6 +64,8 @@ interface Result {
   /** Declines it. Nothing was written, so nothing is undone. */
   cancelOccurrence: () => void;
   onStatusClick: (nodeId: string) => void;
+  /** `Alt+Enter`: sets a Task Started, or resumes a Started one to In Progress. */
+  onToggleStarted: (nodeId: string) => void;
   onCommitEdit: (nodeId: string, title: string) => void;
   onCreateChild: (nodeId: string) => void;
   onCreateTypedChild: (nodeId: string, childKind: TypedChildKind) => void;
@@ -80,7 +82,7 @@ export function useNodeActions({
   const { t } = useTranslation(["warnings", "nodeKinds", "undo"]);
   // Advancing a status is one definition, shared with every other surface that draws the gesture
   // — the occurrence completion guard and the Backlog clearing travel with it.
-  const { cycleStatus, occurrencePrompt, confirmOccurrence, cancelOccurrence } = useStatusCycle({
+  const { cycleStatus, toggleStarted, occurrencePrompt, confirmOccurrence, cancelOccurrence } = useStatusCycle({
     findNode: (id) => findNode(tree, id), reload, showToast,
   });
 
@@ -443,7 +445,7 @@ export function useNodeActions({
   );
 
   return {
-    onStatusClick, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling,
+    onStatusClick, onToggleStarted: toggleStarted, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling,
     onInsertParent, onDelete, onPaste,
     occurrencePrompt, confirmOccurrence, cancelOccurrence,
   };

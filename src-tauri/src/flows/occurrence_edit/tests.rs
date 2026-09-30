@@ -113,6 +113,10 @@ fn completing_records_when_and_lifts_a_tombstone() {
     assert_eq!(overlay.status.as_deref(), Some("in_progress"));
     assert_eq!(overlay.resolved_at, None);
 
+    apply_task_status(&mut overlay, &TaskStatus::Started, noon());
+    assert_eq!(overlay.status.as_deref(), Some("started"));
+    assert_eq!(overlay.resolved_at, None);
+
     apply_task_status(&mut overlay, &TaskStatus::Todo, noon());
     assert!(
         overlay.is_empty(),

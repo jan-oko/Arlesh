@@ -129,6 +129,7 @@ function listData(overrides: Partial<ReturnType<typeof useListData>> = {}) {
     error: null,
     reload: vi.fn(),
     onCycleStatus: vi.fn(),
+    onToggleStarted: vi.fn(),
     renameNode: vi.fn(),
     createTask: vi.fn(() => Promise.resolve(n("task-new", "task", { status: "todo" }))),
     deleteTask: vi.fn(() => Promise.resolve()),
@@ -834,6 +835,25 @@ describe("ListView", () => {
       fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
       fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
       expect(data.onCycleStatus).not.toHaveBeenCalled();
+    });
+
+    it("Alt+Enter sets the selected row Started", () => {
+      const data = twoRows();
+      mockUseListData.mockReturnValue(data);
+      render(<ListViewInApp />);
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+      fireEvent.keyDown(window, { key: "Enter", code: "Enter", altKey: true });
+      expect(data.onToggleStarted).toHaveBeenCalledWith("task-a");
+      expect(data.onCycleStatus).not.toHaveBeenCalled();
+    });
+
+    it("Alt+Enter does nothing for a blocked selected row", () => {
+      const data = listData({ rows: [row({ isBlocked: true })] });
+      mockUseListData.mockReturnValue(data);
+      render(<ListViewInApp />);
+      fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
+      fireEvent.keyDown(window, { key: "Enter", code: "Enter", altKey: true });
+      expect(data.onToggleStarted).not.toHaveBeenCalled();
     });
 
     it("R starts an inline rename of the selected row", () => {

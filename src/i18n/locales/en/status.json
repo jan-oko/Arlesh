@@ -2,6 +2,7 @@
   "task": {
     "todo": "To Do",
     "in_progress": "In Progress",
+    "started": "Started",
     "done": "Done"
   },
   "goal": {
