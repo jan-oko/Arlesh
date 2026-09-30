@@ -338,7 +338,7 @@ async fn get(db: &mut Db<Transactional>, board: &Board, id: &NodeIdParam) -> Ans
             .block_reasons
             .iter()
             .filter(|reason| reason.derived.is_some())
-            .filter(|reason| reason.owner_type == "task" && reason.owner_id == NodeId::Stored(row))
+            .filter(|reason| reason.owner_type == "task" && reason.owner_id.stored() == Some(row))
             .map(|reason| reason.reason.clone()),
     );
     let mut found = serde_json::to_value(found).unwrap_or(Value::Null);

@@ -147,7 +147,7 @@ fn on_it_adds_one_derived_reason_per_blocked_task_after_its_own() {
         .all(|reason| reason.reason == AGENT_CAPACITY_REASON));
     let on_20 = derived
         .iter()
-        .find(|reason| reason.owner_id == NodeId::from(20))
+        .find(|reason| reason.owner_id.stored() == Some(20))
         .unwrap();
     assert_eq!(on_20.position, 1, "numbered on from the Task's own reason");
 }
