@@ -10,6 +10,25 @@ export type Section = "global" | "tabs" | "mindmap" | "listView" | "planView" | 
 export type HotkeyLabelKey = keyof typeof en_hotkeys;
 
 /**
+ * The sub-headings a long section of the cheat-sheet is split into, in the order they are drawn.
+ * Each is a key of the `hotkeys` namespace, so the heading's words live with the rest of the sheet.
+ */
+export const HOTKEY_GROUPS = [
+  "groupViews",
+  "groupSubtree",
+  "groupFilters",
+  "groupPresets",
+  "groupMove",
+  "groupCreate",
+  "groupEdit",
+  "groupDisplay",
+  "groupApp",
+] as const satisfies readonly HotkeyLabelKey[];
+
+/** One of the cheat-sheet's sub-headings — see `HOTKEY_GROUPS`. */
+export type HotkeyGroup = (typeof HOTKEY_GROUPS)[number];
+
+/**
  * A physical-key chord. Matching is strict: a modifier left unspecified must be ABSENT for the
  * chord to match, so `Ctrl+Shift+/` never fires a binding declared as `Ctrl+/`.
  */
@@ -33,6 +52,11 @@ export interface BindingMeta {
    * the numpad zoom aliases, and the Shift+Arrow navigate/pan fall-throughs.
    */
   hidden?: boolean;
+  /**
+   * The sub-heading the cheat-sheet lists it under. A section is grouped whole or not at all:
+   * `labels.test.ts` holds which sections are, so a new binding in one of them needs a group.
+   */
+  group?: HotkeyGroup;
 }
 
 /** A binding plus the behaviour it dispatches, in some context `Ctx`. */
@@ -41,6 +65,22 @@ export interface Binding<Ctx> extends BindingMeta {
   run: (ctx: Ctx) => void;
   /** Defaults to true. Set false for actions that must not fire on key auto-repeat. */
   allowRepeat?: boolean;
+}
+
+/**
+ * Files a feature module's bindings under one cheat-sheet group, as a section table spreads them
+ * in. `overrides` names, by binding id, the few in the module that belong under another heading.
+ * Display only: the bindings, their order and their dispatch are unchanged.
+ */
+export function inGroup<B extends BindingMeta>(
+  group: HotkeyGroup,
+  bindings: readonly B[],
+  overrides: Readonly<Record<string, HotkeyGroup>> = {},
+): B[] {
+  return bindings.map((binding) => ({
+    ...binding,
+    group: Object.prototype.hasOwnProperty.call(overrides, binding.id) ? overrides[binding.id] ?? group : group,
+  }));
 }
 
 export function matchesChord(event: KeyboardEvent, chord: Chord): boolean {
