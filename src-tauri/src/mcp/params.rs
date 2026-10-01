@@ -262,28 +262,34 @@ pub enum KbOperation {
     ListThreads,
 }
 
-/// A Task status, as the status write names it.
+/// An **Agentic** Task's status, as the status write names it — the only model the MCP writes,
+/// since it writes only Tasks that read as Agentic. Its own type, not the ordinary Task status: there
+/// is no `in_progress` or `started` here, and no `on_agent` there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum TaskStatusParam {
-    /// Not started.
+pub enum AgenticStatusParam {
+    /// Ready to be claimed.
     Todo,
-    /// Under way. Starting an Agentic Task needs a Spec in its brief.
-    InProgress,
-    /// Begun and paused: not being worked on right now. Starting an Agentic Task this way needs a
-    /// Spec too.
-    Started,
+    /// An agent holds it: what claiming a Task sets, from `todo`. Claiming needs a Spec in its
+    /// brief.
+    OnAgent,
+    /// On Agent with a question of the agent's open for the user. Derived, never set: raise a
+    /// question with `arlesh_waits.ask` instead. `expected` may name it.
+    Review,
+    /// The user is on it. Never set by an agent; `expected` may name it.
+    Doing,
     /// Finished.
     Done,
 }
 
-impl From<TaskStatusParam> for model::TaskStatus {
-    fn from(status: TaskStatusParam) -> Self {
+impl From<AgenticStatusParam> for model::AgenticStatus {
+    fn from(status: AgenticStatusParam) -> Self {
         match status {
-            TaskStatusParam::Todo => Self::Todo,
-            TaskStatusParam::InProgress => Self::InProgress,
-            TaskStatusParam::Started => Self::Started,
-            TaskStatusParam::Done => Self::Done,
+            AgenticStatusParam::Todo => Self::Todo,
+            AgenticStatusParam::OnAgent => Self::OnAgent,
+            AgenticStatusParam::Review => Self::Review,
+            AgenticStatusParam::Doing => Self::Doing,
+            AgenticStatusParam::Done => Self::Done,
         }
     }
 }
@@ -471,13 +477,15 @@ pub enum TasksOperation {
     },
     /// Changes an Agentic Task's status **if it is still `expected`** — one compare-and-set step.
     /// Otherwise refused as `status_changed`, naming the current status, and nothing is written.
+    /// An agent sets `on_agent` (claiming it, from `todo`; needs a Spec), `done` or `todo`; `doing`
+    /// and `review` are refused.
     SetStatus {
         /// Task id: a row id or a short id.
         id: NodeIdParam,
-        /// The status you last saw.
-        expected: TaskStatusParam,
-        /// The status to set.
-        status: TaskStatusParam,
+        /// The status you last saw — `review` included.
+        expected: AgenticStatusParam,
+        /// The status to set: `on_agent`, `done` or `todo`.
+        status: AgenticStatusParam,
     },
     /// Moves an Agentic Task under another parent. Needs create permission at both its old and
     /// its new parent. A Habit occurrence cannot move.

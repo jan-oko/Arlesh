@@ -270,7 +270,7 @@ const SPAWNED_SELECT: &str = "SELECT t.id AS task_id, t.done_at, o.status, o.arc
      FROM tasks t
      JOIN task_async_templates a ON a.task_id = t.id
      LEFT JOIN spawned_waits o ON o.task_id = t.id
-     WHERE t.status = 'done' AND t.asynchronous = 1";
+     WHERE t.status IN ('done', 'agentic_done') AND t.asynchronous = 1";
 
 fn duration(n: Option<i64>, kind: Option<String>) -> Option<DurationSpec> {
     Some(DurationSpec { n: n?, kind: kind? })

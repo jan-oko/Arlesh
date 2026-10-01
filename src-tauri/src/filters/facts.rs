@@ -144,7 +144,7 @@ fn index_blocked(load: &MindmapLoad) -> BlockIndex {
 fn index_todo_parents(load: &MindmapLoad) -> HashSet<String> {
     load.tasks
         .iter()
-        .filter(|task| task.status == "todo")
+        .filter(|task| task.status.is_todo())
         .map(|task| content_parent_id(&task.parent_type, &task.parent_id))
         .collect()
 }
@@ -187,7 +187,8 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
     }
     for task in &load.tasks {
         let mut node = NodeFacts::new(format!("task-{}", task.id), NodeKind::Task);
-        node.status = Some(task.status.clone());
+        node.status = Some(task.status.as_str().to_string());
+        node.agentic = task.status.is_agentic();
         node.is_private = task.is_private;
         node.backlogged = task.archival == TaskArchival::Backlog;
         node.delegated = task.delegate_to.is_some();

@@ -11,7 +11,7 @@ use crate::{
         lifecycle::ItemLifecycle,
         model::{
             CreateGoalRequest, CreateTaskRequest, Dependency, Goal, GoalId, GoalStatus, Task,
-            TaskDependencyEdge, TaskId, TaskStatus, TaskWithBlockers, TimeScope, UpdateGoalRequest,
+            TaskDependencyEdge, TaskId, TaskWithBlockers, TimeScope, UpdateGoalRequest,
             UpdateTaskRequest,
         },
         ReparentConflicts, ViolatingDescendant,
@@ -73,7 +73,7 @@ pub async fn update_task(
 ) -> Result<Task, WireError> {
     let now = chrono::Local::now().naive_local();
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    if matches!(request.status, Some(TaskStatus::Done)) && confirmed != Some(true) {
+    if request.status.is_some_and(|status| status.is_done()) && confirmed != Some(true) {
         let open = write::unfinished_children(&mut db, &id, now)
             .await
             .map_err(WireError::from_error)?;

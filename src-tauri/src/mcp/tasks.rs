@@ -21,7 +21,7 @@ use serde_json::Value;
 use super::{
     access,
     lookup::{found, Answer, Board},
-    params::{BriefParam, NodeIdParam, TaskStatusParam, TasksOperation},
+    params::{BriefParam, NodeIdParam, TasksOperation},
     relations::{Asked, Relations},
     result,
     result::attempt,
@@ -32,8 +32,8 @@ use crate::{
     database::session::{Db, Transactional},
     nodes::id::NodeId,
     tasks::model::{
-        AgenticBrief, CreateTaskRequest, Task, TaskAgentic, TaskArchival, TaskId, TaskStatus,
-        TimeScope, UpdateTaskRequest,
+        AgenticBrief, AgenticStatus, CreateTaskRequest, Status, Task, TaskAgentic, TaskArchival,
+        TaskId, TimeScope, UpdateTaskRequest,
     },
     undo::model::WriteSource,
 };
@@ -69,8 +69,13 @@ impl ArleshMcp {
     /// dependency cycle is `invalid_request`. An update is one transaction: all of it lands or none
     /// does. `set_status` is a
     /// compare-and-set: it names the status you last saw, and if the Task has moved on since it
-    /// is refused as `status_changed` with the current status, writing nothing. Starting an
-    /// Agentic Task needs a Spec in its brief. A Task that **consists of its sub-items**
+    /// is refused as `status_changed` with the current status, writing nothing. An Agentic Task's
+    /// status is `todo`, `on_agent` (an agent holds it), `review` (on_agent with your question
+    /// open — derived, never set), `doing` (the user is on it) or `done`. You claim one with
+    /// `todo` → `on_agent`, which needs a Spec in its brief, hand it back with `todo` and finish
+    /// it with `done`; `doing` and `review` are refused. To leave it with the user, raise a
+    /// question (`arlesh_waits.ask`): it reads `review` until answered, and `expected` may name
+    /// `review`. A Task that **consists of its sub-items**
     /// (`compound`, set with `update`) has its status derived from its whole subtree, so
     /// `set_status` on it is refused; `update` with `compound: false` switches that off and
     /// keeps the status it showed. `move` needs create permission at both the old and
@@ -238,16 +243,21 @@ impl ArleshMcp {
                 status,
             } => {
                 let (id, task) = found!(writable(&mut db, &board, &id, now).await);
-                // The compare half of the compare-and-set. The session holds SQLite's one writer
-                // lock from its first statement, so nothing can change the status between this
-                // read and the write below.
-                if task.status != spelling(expected) {
-                    return result::status_changed(&task.status);
+                // The compare half of the compare-and-set, against the status the board shows —
+                // Review included. The session holds SQLite's one writer lock from its first
+                // statement, so nothing can change the status between this read and the write.
+                let expected = Status::Agentic(expected.into());
+                if task.status != expected {
+                    return result::status_changed(task.status.as_str());
+                }
+                let status = AgenticStatus::from(status);
+                if let Some(refusal) = refused_status_write(task.status, status) {
+                    return result::refused(refusal);
                 }
                 Write::Update(
                     id,
                     UpdateTaskRequest {
-                        status: Some(status.into()),
+                        status: Some(Status::Agentic(status)),
                         ..Default::default()
                     },
                     Relations::default(),
@@ -325,14 +335,13 @@ async fn get(db: &mut Db<Transactional>, board: &Board, id: &NodeIdParam) -> Ans
     if !access::reads(&board.map, "task", row) {
         return access::refuse("task", row, AccessLevel::Read);
     }
-    // A compound Task's status is the board's, derived from its sub-items; the rows hold
-    // whatever they last did.
-    let served: std::collections::HashMap<i64, String> = board
+    // A compound Task's status is derived from its sub-items, and an Agentic one's Review from its
+    // questions: the board serves both, so every Task's status is read from it.
+    let served: std::collections::HashMap<i64, Status> = board
         .load
         .tasks
         .iter()
-        .filter(|task| task.compound)
-        .filter_map(|task| Some((task.id.stored()?, task.status.clone())))
+        .filter_map(|task| Some((task.id.stored()?, task.status)))
         .collect();
     let mut found =
         attempt!(crate::tasks::get_task_with_blockers_as(db, TaskId(row), &served).await);
@@ -424,7 +433,27 @@ fn merged(brief: BriefParam, task: &Task) -> AgenticBrief {
     brief.over(task.agentic_brief.clone().unwrap_or_default())
 }
 
-/// A status as a Task row spells it.
-fn spelling(status: TaskStatusParam) -> &'static str {
-    TaskStatus::from(status).as_str()
+/// Why an agent may not move an Agentic Task from `current` to `status`, if it may not.
+///
+/// An agent claims a Task (`on_agent`, from `todo`), hands it back (`todo`) or finishes it
+/// (`done`). `doing` says the user is working, which only the user says; `review` is derived from a
+/// question the agent raises, never set.
+fn refused_status_write(current: Status, status: AgenticStatus) -> Option<String> {
+    match status {
+        AgenticStatus::Doing => Some(
+            "`doing` says the user is working on it, which only the user sets; an agent holds a \
+             task as `on_agent`"
+                .to_string(),
+        ),
+        AgenticStatus::Review => Some(
+            "`review` is not set: raise a question under the task with `arlesh_waits.ask`, and \
+             it reads `review` until the question is answered"
+                .to_string(),
+        ),
+        AgenticStatus::OnAgent if current != Status::Agentic(AgenticStatus::Todo) => Some(format!(
+            "an agent claims a task from `todo`; this one is `{}`",
+            current.as_str()
+        )),
+        _ => None,
+    }
 }
