@@ -134,7 +134,9 @@ async fn a_verdict_records_when_and_unresolved_clears_it() {
     .await
     .unwrap();
     let id = commitment.id.sid();
+    db.commit().await.unwrap();
     assert_eq!(instant(&pool, "commitments", "verdict_at", id).await, None);
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let verdict = |verdict| UpdateCommitmentRequest {
         verdict: Some(verdict),
         ..Default::default()
