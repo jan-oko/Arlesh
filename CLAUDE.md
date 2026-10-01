@@ -33,7 +33,6 @@ Work is tracked as **Agentic Tasks under the ARLESH project** on the user's Arle
 | Dependencies, Time Scope, Plan, tags, block reasons | the matching `arlesh_tasks.update` / `create` fields |
 | Ask the user and wait for the answer | `arlesh_waits.ask` (`arlesh_waits.raise` with `question: false` to wait on something else, e.g. CI) |
 | Add a note under a Task | `arlesh_infos.create` |
-| Link a bd-era issue id | `arlesh_beads.set` |
 
 Priorities are `MW`, `A`, `B`, `C`, most urgent first; backlogged work has no priority.
 

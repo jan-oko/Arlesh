@@ -59,9 +59,4 @@ fn template_fields_default_to_what_a_template_said_before_it_had_them() {
     assert_eq!(fields.agentic, None);
     assert!(!fields.asynchronous);
     assert_eq!(fields.archival, TaskArchival::Live);
-    let wire = serde_json::to_value(&fields).unwrap();
-    assert!(
-        wire.get("beads_id").is_none(),
-        "no issue is sent as no field"
-    );
 }

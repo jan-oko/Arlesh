@@ -251,7 +251,6 @@ struct TaskRow {
     archival: String,
     position: i64,
     is_private: bool,
-    beads_id: Option<String>,
 }
 
 impl From<TaskRow> for Task {
@@ -289,7 +288,6 @@ impl From<TaskRow> for Task {
             tag_ids: vec![],
             position: row.position,
             is_private: row.is_private,
-            beads_id: row.beads_id,
             origin: Origin::Manual,
         }
     }
@@ -309,7 +307,6 @@ struct GoalRow {
     on_scope_exit: Option<String>,
     position: i64,
     is_private: bool,
-    beads_id: Option<String>,
 }
 
 impl From<GoalRow> for Goal {
@@ -330,7 +327,6 @@ impl From<GoalRow> for Goal {
             tag_ids: vec![],
             position: row.position,
             is_private: row.is_private,
-            beads_id: row.beads_id,
             origin: Origin::Manual,
         }
     }
@@ -837,38 +833,6 @@ impl<'session> GoalOperator<'session> {
         Ok(())
     }
 
-    /// Links a goal to the `bd` issue tracking it, or unlinks it when given `None`.
-    ///
-    /// **The only setter of `beads_id`, and the MCP server is its only *source*.**
-    /// [`UpdateGoalRequest`] has no field for it, so no gesture can author or edit a link from the
-    /// UI. Two commands reach this method, and neither can produce a value `bd` did not issue:
-    /// [`clear_beads_id`](crate::commands::beads::clear_beads_id) passes `None` — the × on the
-    /// Issue row, SPEC's one UI-writable case — and
-    /// [`duplicate_subtree`](crate::duplicate::duplicate_subtree) *propagates* an id a node already
-    /// carries onto its copy.
-    ///
-    /// `bd` owns the issue; the app only mirrors which one a node belongs to.
-    ///
-    /// One statement over one column, so it needs no containment check and no transaction of its
-    /// own. Errors with [`TaskError::GoalNotFound`] when no goal has that id, rather than reporting
-    /// success for a write that landed nowhere.
-    pub async fn set_beads_id(
-        &mut self,
-        id: GoalId,
-        beads_id: Option<String>,
-    ) -> Result<(), TaskError> {
-        let affected = sqlx::query("UPDATE goals SET beads_id = ? WHERE id = ?")
-            .bind(&beads_id)
-            .bind(id.0)
-            .execute(&mut *self.connection)
-            .await?
-            .rows_affected();
-        if affected == 0 {
-            return Err(TaskError::GoalNotFound(id.0));
-        }
-        Ok(())
-    }
-
     /// Attaches a tag to a goal.
     pub async fn add_tag(&mut self, goal_id: GoalId, tag_id: i64) -> Result<(), TaskError> {
         sqlx::query("INSERT OR IGNORE INTO tags_on_goals (goal_id, tag_id) VALUES (?, ?)")
@@ -1294,38 +1258,6 @@ impl<'session> TaskOperator<'session> {
             .bind(id.0)
             .execute(&mut *self.connection)
             .await?;
-        Ok(())
-    }
-
-    /// Links a task to the `bd` issue tracking it, or unlinks it when given `None`.
-    ///
-    /// **The only setter of `beads_id`, and the MCP server is its only *source*.**
-    /// [`UpdateTaskRequest`] has no field for it, so no gesture can author or edit a link from the
-    /// UI. Two commands reach this method, and neither can produce a value `bd` did not issue:
-    /// [`clear_beads_id`](crate::commands::beads::clear_beads_id) passes `None` — the × on the
-    /// Issue row, SPEC's one UI-writable case — and
-    /// [`duplicate_subtree`](crate::duplicate::duplicate_subtree) *propagates* an id a node already
-    /// carries onto its copy.
-    ///
-    /// `bd` owns the issue; the app only mirrors which one a node belongs to.
-    ///
-    /// One statement over one column, so it needs no containment check and no transaction of its
-    /// own. Errors with [`TaskError::TaskNotFound`] when no task has that id, rather than reporting
-    /// success for a write that landed nowhere.
-    pub async fn set_beads_id(
-        &mut self,
-        id: TaskId,
-        beads_id: Option<String>,
-    ) -> Result<(), TaskError> {
-        let affected = sqlx::query("UPDATE tasks SET beads_id = ? WHERE id = ?")
-            .bind(&beads_id)
-            .bind(id.0)
-            .execute(&mut *self.connection)
-            .await?
-            .rows_affected();
-        if affected == 0 {
-            return Err(TaskError::TaskNotFound(id.0));
-        }
         Ok(())
     }
 

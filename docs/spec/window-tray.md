@@ -88,7 +88,7 @@ Two writes the journal cannot see announce themselves directly. **Undo and redo*
 journalling for the length of their own transaction — reversing a change must not become a change
 to reverse — so the two commands that make one say so. And an **MCP write** does not go through the
 Gesture protocol at all; the endpoint gets a way to announce of its own, which also fixes something
-that was already wrong: an agent setting a `beads_id` used to leave an open window showing the old
+that was already wrong: an agent's write used to leave an open window showing the old
 value.
 
 **Every window listens for events addressed to itself, by its own label.** Tauri's `listen` with

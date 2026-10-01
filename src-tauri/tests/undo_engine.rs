@@ -11,7 +11,6 @@
 
 mod helpers;
 
-use arlesh_lib::commands::beads::clear_beads_id;
 use arlesh_lib::commands::block_reasons as block_reason_commands;
 use arlesh_lib::commands::tasks as task_commands;
 use arlesh_lib::commands::undo as undo_commands;
@@ -687,13 +686,13 @@ async fn an_mcp_write_between_the_users_change_and_their_undo_is_not_reversed() 
     close_gesture(&app).await;
 
     let result = mcp
-        .beads(Parameters(params::BeadsOperation::Set {
-            node_type: params::BeadsNode::Task,
-            node_id: agents_task.id.sid().into(),
-            beads_id: Some("Arlesh-h2u".into()),
+        .infos(Parameters(params::InfosOperation::Create {
+            task_id: agents_task.id.sid().into(),
+            body: "the agent's note".into(),
+            details: None,
         }))
         .await
-        .expect("the beads tool returned no result");
+        .expect("the infos tool returned no result");
     assert_ne!(
         result.is_error,
         Some(true),
@@ -704,12 +703,11 @@ async fn an_mcp_write_between_the_users_change_and_their_undo_is_not_reversed() 
     undo(&app).await.expect("undo");
 
     assert_eq!(
-        sqlx::query_scalar::<_, Option<String>>("SELECT beads_id FROM tasks WHERE id = ?")
-            .bind(agents_task.id.sid())
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM infos WHERE body = 'the agent''s note'")
             .fetch_one(&pool)
             .await
-            .expect("read beads id"),
-        Some("Arlesh-h2u".into()),
+            .expect("count the agent's notes"),
+        1,
         "Ctrl+Z reverses what the user did and never what an agent did"
     );
     assert_eq!(
@@ -742,13 +740,13 @@ async fn an_mcp_write_made_while_a_user_gesture_is_open_is_not_reversed_with_it(
         .await
         .expect("create task");
     let result = mcp
-        .beads(Parameters(params::BeadsOperation::Set {
-            node_type: params::BeadsNode::Task,
-            node_id: agents_task.id.sid().into(),
-            beads_id: Some("Arlesh-h2u".into()),
+        .infos(Parameters(params::InfosOperation::Create {
+            task_id: agents_task.id.sid().into(),
+            body: "the agent's note".into(),
+            details: None,
         }))
         .await
-        .expect("the beads tool returned no result");
+        .expect("the infos tool returned no result");
     assert_ne!(
         result.is_error,
         Some(true),
@@ -787,12 +785,11 @@ async fn an_mcp_write_made_while_a_user_gesture_is_open_is_not_reversed_with_it(
     undo(&app).await.expect("undo");
 
     assert_eq!(
-        sqlx::query_scalar::<_, Option<String>>("SELECT beads_id FROM tasks WHERE id = ?")
-            .bind(agents_task.id.sid())
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM infos WHERE body = 'the agent''s note'")
             .fetch_one(&pool)
             .await
-            .expect("read beads id"),
-        Some("Arlesh-h2u".into()),
+            .expect("count the agent's notes"),
+        1,
         "an entry tagged mcp is never on the user's stack, whatever gesture it landed inside"
     );
 }
@@ -909,71 +906,6 @@ async fn undoing_an_edit_that_cleared_agentic_puts_the_flag_back() {
         agentic(&pool, task.id.sid()).await,
         None,
         "and redo must clear it again"
-    );
-}
-
-/// The `bd` issue link as the database holds it, read straight off the table.
-async fn beads_id(pool: &SqlitePool, task_id: i64) -> Option<String> {
-    sqlx::query_scalar("SELECT beads_id FROM tasks WHERE id = ?")
-        .bind(task_id)
-        .fetch_one(pool)
-        .await
-        .expect("read beads_id")
-}
-
-#[tokio::test]
-async fn undoing_a_cleared_issue_link_puts_the_id_back() {
-    let pool = helpers::test_pool().await;
-    let app = helpers::command_host(&pool);
-    let project_id = make_project(&pool).await;
-    let task = task_commands::create_task(
-        app.state(),
-        task_request("project", project_id, "tracked in bd"),
-    )
-    .await
-    .expect("create task");
-
-    // Established the only way a link is ever established: through the MCP server. That write is
-    // agent-sourced and deliberately not on the user's stack, so the undo below can only be
-    // reversing the user's clear.
-    helpers::make_agentic(&pool, task.id.sid()).await;
-    let mcp = helpers::mcp_over_whole_board(&pool).await;
-    mcp.beads(Parameters(params::BeadsOperation::Set {
-        node_type: params::BeadsNode::Task,
-        node_id: task.id.sid().into(),
-        beads_id: Some("Arlesh-ncy".into()),
-    }))
-    .await
-    .expect("link the task to its issue");
-    assert_eq!(
-        beads_id(&pool, task.id.sid()).await,
-        Some("Arlesh-ncy".into())
-    );
-
-    open_gesture(&app).await;
-    clear_beads_id(app.state(), "task".into(), task.id.clone())
-        .await
-        .expect("clear the link");
-    close_gesture(&app).await;
-    assert_eq!(
-        beads_id(&pool, task.id.sid()).await,
-        None,
-        "the × writes NULL, not an empty string"
-    );
-
-    undo(&app).await.expect("there is something to undo");
-    assert_eq!(
-        beads_id(&pool, task.id.sid()).await,
-        Some("Arlesh-ncy".into()),
-        "the clear is a user-sourced write, so Ctrl+Z puts the link back — the reason it needs no \
-         confirmation dialog"
-    );
-
-    redo(&app).await.expect("there is something to redo");
-    assert_eq!(
-        beads_id(&pool, task.id.sid()).await,
-        None,
-        "and redo drops it again"
     );
 }
 

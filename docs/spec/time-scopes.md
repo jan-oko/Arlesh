@@ -151,7 +151,7 @@ The picker opens with the scope it was handed **selected**, not merely shown: th
 
 **Apply** commits the selection and closes. An empty selection means *unanswered*, not *no scope* — Apply with nothing selected changes nothing. Once the selection is seeded that case is only reachable for an item that has no scope at all, or a stored scope that names no cell; it is a second guard on the same rule rather than a gesture with a meaning of its own. Apply never clears.
 
-**Clear** is the only way to remove a Time Scope or a Plan. It sits in the field's summary row beside the edit button, shown only when there is a value to remove, and asks for no confirmation — the same call as the beads-id row in the editors: nothing is written until the editor is saved, and a saved clear is undone with Ctrl+Z.
+**Clear** is the only way to remove a Time Scope or a Plan. It sits in the field's summary row beside the edit button, shown only when there is a value to remove, and asks for no confirmation: nothing is written until the editor is saved, and a saved clear is undone with Ctrl+Z.
 
 ### The quick Plan picker (`P`)
 

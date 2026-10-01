@@ -8,8 +8,8 @@
 //! polymorphic `(parent_type, parent_id)` pair with no foreign key to walk. So the clone is a
 //! breadth-first pass: each node is cloned under its already-cloned new parent, and its children
 //! are discovered only once that parent's new id exists. Everything the node holds — status,
-//! tags, block reasons, Time Scope, on-exit behaviour, Plan, delegate, privacy, position,
-//! dependencies and its `beads_id` — is copied with it.
+//! tags, block reasons, Time Scope, on-exit behaviour, Plan, delegate, privacy, position and
+//! dependencies — is copied with it.
 //!
 //! Two things deliberately do **not** happen here:
 //!
@@ -262,7 +262,6 @@ async fn clone_domain(
             },
         )
         .await?;
-    carry_beads_id(db, DuplicableKind::Domain, created.id, original.beads_id).await?;
     Ok(ClonedNode {
         new_id: created.id,
         kind: original.subtype,
@@ -302,7 +301,6 @@ async fn clone_goal(
         db.goals().add_tag(GoalId(created_id), *tag_id).await?;
     }
     carry_block_reasons(db, "goal", item.old_id, created_id).await?;
-    carry_beads_id(db, DuplicableKind::Goal, created_id, original.beads_id).await?;
     Ok(ClonedNode {
         new_id: created_id,
         kind: "goal".to_string(),
@@ -369,7 +367,6 @@ async fn clone_task(
     for dependency in db.tasks().list_dependencies(TaskId(item.old_id)).await? {
         crate::tasks::add_task_dependency(db, TaskId(created_id), dependency).await?;
     }
-    carry_beads_id(db, DuplicableKind::Task, created_id, original.beads_id).await?;
     Ok(ClonedNode {
         new_id: created_id,
         kind: "task".to_string(),
@@ -421,35 +418,5 @@ async fn carry_block_reasons(
         return Ok(());
     }
     db.block_reasons().set(owner_type, new_id, &reasons).await?;
-    Ok(())
-}
-
-/// Propagates the source's `beads_id` onto its clone, when it has one.
-///
-/// **The one Tauri-reachable writer of that column**, and a named exception to SPEC's *Beads id*
-/// invariant: the MCP server remains the only *source* of a beads id, and duplication only
-/// carries an id that already exists. Nothing here can author, edit or clear one — a source with
-/// no link produces a copy with no link, which is why this returns early rather than writing a
-/// `NULL`.
-async fn carry_beads_id(
-    db: &mut Db<Transactional>,
-    kind: DuplicableKind,
-    new_id: i64,
-    beads_id: Option<String>,
-) -> Result<(), AppError> {
-    if beads_id.is_none() {
-        return Ok(());
-    }
-    match kind {
-        DuplicableKind::Domain => {
-            db.domains()
-                .set_beads_id(DomainId(new_id), beads_id)
-                .await?
-        }
-        DuplicableKind::Goal => db.goals().set_beads_id(GoalId(new_id), beads_id).await?,
-        DuplicableKind::Task => db.tasks().set_beads_id(TaskId(new_id), beads_id).await?,
-        // Infos carry no issue link — there is no column to write.
-        DuplicableKind::Info => {}
-    }
     Ok(())
 }

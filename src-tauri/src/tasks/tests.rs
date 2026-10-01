@@ -45,9 +45,6 @@ fn stored_task() -> Task {
         tag_ids: vec![],
         position: 100,
         is_private: false,
-        // Tracked in `bd`. `TaskWrite` has no counterpart field, so the merge below cannot
-        // carry it either way — which is the write-path constraint, stated in the type.
-        beads_id: Some("Arlesh-5fs".to_string()),
         origin: Default::default(),
     }
 }
@@ -449,8 +446,6 @@ fn a_goal_update_merges_its_request_over_the_stored_row() {
         tag_ids: vec![],
         position: 5,
         is_private: true,
-        // As in `stored_task`: `GoalWrite` has no `beads_id`, so an update cannot reach it.
-        beads_id: Some("Arlesh-5fs".to_string()),
         origin: Default::default(),
     };
     let write = GoalWrite::merge(

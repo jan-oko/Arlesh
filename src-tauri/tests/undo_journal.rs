@@ -431,13 +431,13 @@ async fn an_mcp_write_is_journaled_as_mcp_and_leaves_the_source_as_it_found_it()
     clear_journal(&pool).await;
 
     let result = mcp
-        .beads(Parameters(params::BeadsOperation::Set {
-            node_type: params::BeadsNode::Task,
-            node_id: task.id.sid().into(),
-            beads_id: Some("Arlesh-npt".into()),
+        .infos(Parameters(params::InfosOperation::Create {
+            task_id: task.id.sid().into(),
+            body: "a note from the agent".into(),
+            details: None,
         }))
         .await
-        .expect("the beads tool returned no result");
+        .expect("the infos tool returned no result");
     assert_ne!(
         result.is_error,
         Some(true),
@@ -446,13 +446,17 @@ async fn an_mcp_write_is_journaled_as_mcp_and_leaves_the_source_as_it_found_it()
     );
 
     let entries = journal(&pool).await;
-    assert_eq!(entries.len(), 1, "one UPDATE, one entry: {entries:?}");
-    let entry = &entries[0];
-    assert_eq!(entry.source, WriteSource::Mcp.as_str());
-    assert_eq!(
-        entry.gesture_id, None,
-        "an agent's write belongs to no gesture of the user's"
+    assert!(
+        entries.iter().any(|entry| entry.table_name == "infos"),
+        "the Info's INSERT is journaled: {entries:?}"
     );
+    for entry in &entries {
+        assert_eq!(entry.source, WriteSource::Mcp.as_str(), "{entry:?}");
+        assert_eq!(
+            entry.gesture_id, None,
+            "an agent's write belongs to no gesture of the user's"
+        );
+    }
 
     // The tag must not outlive the write, or the next thing the user does is attributed to the
     // agent and Ctrl+Z quietly stops offering it.

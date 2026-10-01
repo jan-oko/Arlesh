@@ -24,7 +24,6 @@ fn domain_row(id: i64, parent: Option<i64>) -> Domain {
         knowledge_base_directory: None,
         position: id,
         is_private: false,
-        beads_id: None,
     }
 }
 
@@ -40,7 +39,6 @@ fn goal_row(id: i64, parent_type: &str, parent_id: i64) -> Goal {
         tag_ids: Vec::new(),
         position: id,
         is_private: false,
-        beads_id: None,
         origin: Default::default(),
     }
 }
@@ -72,7 +70,6 @@ fn task_row(
         tag_ids: Vec::new(),
         position: id,
         is_private: false,
-        beads_id: None,
         origin: Default::default(),
     }
 }

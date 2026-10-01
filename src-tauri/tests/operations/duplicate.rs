@@ -354,10 +354,6 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
         )
         .await
         .unwrap();
-    db.tasks()
-        .set_beads_id(TaskId(task.id.sid()), Some("Arlesh-je5".into()))
-        .await
-        .unwrap();
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
@@ -401,11 +397,6 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
         copy.tag_ids,
         vec![tag],
         "the copy keeps the original's tags, not copies of them"
-    );
-    assert_eq!(
-        copy.beads_id.as_deref(),
-        Some("Arlesh-je5"),
-        "the issue link carries — the one Tauri-reachable write of beads_id"
     );
 
     let reasons = helpers::session_factory(&pool)
@@ -488,7 +479,7 @@ async fn a_duplicated_task_is_set_aside_if_the_original_was() {
 }
 
 #[tokio::test]
-async fn a_duplicated_goal_carries_status_scope_tags_reasons_and_its_issue_link() {
+async fn a_duplicated_goal_carries_status_scope_tags_and_reasons() {
     let pool = helpers::test_pool().await;
     let aspect = growth_aspect_id(&pool).await;
     let project = make_domain(&pool, "Rocket", DomainSubtype::Project, aspect).await;
@@ -527,10 +518,6 @@ async fn a_duplicated_goal_carries_status_scope_tags_reasons_and_its_issue_link(
         .set("goal", goal.id.sid(), &["no launch window".to_string()])
         .await
         .unwrap();
-    db.goals()
-        .set_beads_id(GoalId(goal.id.sid()), Some("Arlesh-a4u".into()))
-        .await
-        .unwrap();
     db.commit().await.unwrap();
 
     let app = helpers::command_host(&pool);
@@ -545,7 +532,6 @@ async fn a_duplicated_goal_carries_status_scope_tags_reasons_and_its_issue_link(
     assert_eq!(copy.position, 9);
     assert!(copy.is_private);
     assert_eq!(copy.tag_ids, vec![tag]);
-    assert_eq!(copy.beads_id.as_deref(), Some("Arlesh-a4u"));
 
     let reasons = helpers::session_factory(&pool)
         .connect()
@@ -559,7 +545,7 @@ async fn a_duplicated_goal_carries_status_scope_tags_reasons_and_its_issue_link(
 }
 
 #[tokio::test]
-async fn a_duplicated_project_carries_its_description_status_directory_and_issue_link() {
+async fn a_duplicated_project_carries_its_description_status_and_directory() {
     let pool = helpers::test_pool().await;
     let aspect = growth_aspect_id(&pool).await;
 
@@ -578,14 +564,6 @@ async fn a_duplicated_project_carries_its_description_status_directory_and_issue
         })
         .await
         .unwrap();
-    helpers::session_factory(&pool)
-        .connect()
-        .await
-        .unwrap()
-        .domains()
-        .set_beads_id(DomainId(project.id), Some("Arlesh-n66".into()))
-        .await
-        .unwrap();
 
     let app = helpers::command_host(&pool);
     let copy = duplicate_domain(app.state(), project.id, aspect, 3)
@@ -599,7 +577,6 @@ async fn a_duplicated_project_carries_its_description_status_directory_and_issue
         copy.knowledge_base_directory.as_deref(),
         Some("Vault/Rocket")
     );
-    assert_eq!(copy.beads_id.as_deref(), Some("Arlesh-n66"));
 }
 
 #[tokio::test]

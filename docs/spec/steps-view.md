@@ -157,7 +157,7 @@ three.
 **It costs no extra loading.** `MindmapNode` already carries nearly everything the editors edit,
 resolved on load: status, block reasons, virtual blockers, Time Scope, on-exit behaviour, timing,
 resolution, archival, backlog, agentic (own and inherited), asynchronous, verdict, Verdict Window,
-Plan, tags, beads id, privacy, knowledge-base directory, info details and the flow/habit data.
+Plan, tags, privacy, knowledge-base directory, info details and the flow/habit data.
 **No per-card fetch, no N+1.**
 
 **The field set is per kind**, derived as the editors derive theirs rather than rendering everything
@@ -203,7 +203,8 @@ Expectation editor, as on any Expectation row (see [Derived nodes](virtual-nodes
 | Flow | Instance Type |
 | Flow item | Time Scope |
 
-Every kind then reads **Blocked by**, **Tags** and **Issue** after its own. A Project's
+Every kind then reads **Blocked by** and **Tags** after its own. (It read **Issue**, the bd
+issue id, too, until the beads id was removed on 2026-10-01.) A Project's
 Status stays a field because no icon draws it and no badge carries it.
 
 **Under the fields, the node's first Info notes, as bullets — as many as the card's height leaves

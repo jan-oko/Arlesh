@@ -51,10 +51,6 @@ pub struct TaskOverlay {
     pub archival: Option<String>,
     /// Its own privacy.
     pub is_private: Option<bool>,
-    /// Its own beads id.
-    pub beads_id: Option<String>,
-    /// Whether the beads id above is its own, possibly none.
-    pub beads_id_set: bool,
     /// Its own sort position among its siblings.
     pub position: Option<i64>,
     /// Whether its block reasons are its own list rather than its template's.
@@ -153,10 +149,6 @@ pub struct GoalOverlay {
     pub title: Option<String>,
     /// Its own privacy.
     pub is_private: Option<bool>,
-    /// Its own beads id.
-    pub beads_id: Option<String>,
-    /// Whether the beads id above is its own, possibly none.
-    pub beads_id_set: bool,
     /// Its own sort position.
     pub position: Option<i64>,
     /// Whether its block reasons are its own list.
@@ -183,10 +175,6 @@ pub struct CommitmentOverlay {
     pub title: Option<String>,
     /// Its own privacy.
     pub is_private: Option<bool>,
-    /// Its own beads id.
-    pub beads_id: Option<String>,
-    /// Whether the beads id above is its own, possibly none.
-    pub beads_id_set: bool,
     /// Its own sort position.
     pub position: Option<i64>,
 }
@@ -237,14 +225,12 @@ struct KeyedCommitment {
 
 const TASK_COLUMNS: &str = "status, resolved_at, tombstone, title, plan_start_id, plan_end_id, \
      plan_set, delegate_kind, delegate_id, delegate_set, agentic, agentic_set, asynchronous, \
-     archival, is_private, beads_id, beads_id_set, position, block_reasons_set, brief_priority, \
-     brief_priority_set, brief_spec, brief_design, brief_acceptance, brief_notes, \
+     archival, is_private, position, block_reasons_set, brief_priority, brief_priority_set, \
+     brief_spec, brief_design, brief_acceptance, brief_notes, \
      due_scope_start_id, due_scope_end_id";
 const GOAL_COLUMNS: &str =
-    "status, resolved_at, tombstone, title, is_private, beads_id, beads_id_set, position, \
-     block_reasons_set";
-const COMMITMENT_COLUMNS: &str =
-    "verdict, resolved_at, tombstone, title, is_private, beads_id, beads_id_set, position";
+    "status, resolved_at, tombstone, title, is_private, position, block_reasons_set";
+const COMMITMENT_COLUMNS: &str = "verdict, resolved_at, tombstone, title, is_private, position";
 
 /// An occurrence's own Expectation template as stored, beside its node key.
 #[derive(sqlx::FromRow)]
@@ -387,11 +373,11 @@ impl<'session> OverlayOperator<'session> {
                 (origin, flow_id, item_type, item_id, iteration_scope, cycle_id,
                  status, resolved_at, tombstone, title, plan_start_id, plan_end_id, plan_set,
                  delegate_kind, delegate_id, delegate_set, agentic, agentic_set, asynchronous,
-                 archival, is_private, beads_id, beads_id_set, position, block_reasons_set,
+                 archival, is_private, position, block_reasons_set,
                  brief_priority, brief_priority_set, brief_spec, brief_design, brief_acceptance,
                  brief_notes, due_scope_start_id, due_scope_end_id)
              VALUES ('habit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                     ?, ?, ?, ?, ?, ?, ?, ?)
+                     ?, ?, ?, ?, ?, ?)
              ON CONFLICT(node_key) DO UPDATE SET
                 status = excluded.status, resolved_at = excluded.resolved_at,
                 tombstone = excluded.tombstone, title = excluded.title,
@@ -400,8 +386,7 @@ impl<'session> OverlayOperator<'session> {
                 delegate_id = excluded.delegate_id, delegate_set = excluded.delegate_set,
                 agentic = excluded.agentic, agentic_set = excluded.agentic_set,
                 asynchronous = excluded.asynchronous, archival = excluded.archival,
-                is_private = excluded.is_private, beads_id = excluded.beads_id,
-                beads_id_set = excluded.beads_id_set, position = excluded.position,
+                is_private = excluded.is_private, position = excluded.position,
                 block_reasons_set = excluded.block_reasons_set,
                 brief_priority = excluded.brief_priority,
                 brief_priority_set = excluded.brief_priority_set,
@@ -430,8 +415,6 @@ impl<'session> OverlayOperator<'session> {
         .bind(overlay.asynchronous)
         .bind(&overlay.archival)
         .bind(overlay.is_private)
-        .bind(&overlay.beads_id)
-        .bind(overlay.beads_id_set)
         .bind(overlay.position)
         .bind(overlay.block_reasons_set)
         .bind(overlay.brief_priority)
@@ -490,11 +473,11 @@ impl<'session> OverlayOperator<'session> {
                 (origin, wait_key, due_at,
                  status, resolved_at, tombstone, title, plan_start_id, plan_end_id, plan_set,
                  delegate_kind, delegate_id, delegate_set, agentic, agentic_set, asynchronous,
-                 archival, is_private, beads_id, beads_id_set, position, block_reasons_set,
+                 archival, is_private, position, block_reasons_set,
                  brief_priority, brief_priority_set, brief_spec, brief_design, brief_acceptance,
                  brief_notes)
              VALUES ('check', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                     ?, ?, ?, ?, ?, ?)",
+                     ?, ?, ?, ?)",
         )
         .bind(key.wait_key())
         .bind(crate::tasks::waits::instant_column(key.due_at))
@@ -513,8 +496,6 @@ impl<'session> OverlayOperator<'session> {
         .bind(overlay.asynchronous)
         .bind(&overlay.archival)
         .bind(overlay.is_private)
-        .bind(&overlay.beads_id)
-        .bind(overlay.beads_id_set)
         .bind(overlay.position)
         .bind(overlay.block_reasons_set)
         .bind(overlay.brief_priority)
@@ -545,13 +526,12 @@ impl<'session> OverlayOperator<'session> {
         sqlx::query(
             "INSERT INTO goal_overlays
                 (flow_id, item_type, item_id, iteration_scope, cycle_id, status, resolved_at,
-                 tombstone, title, is_private, beads_id, beads_id_set, position, block_reasons_set)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 tombstone, title, is_private, position, block_reasons_set)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(node_key) DO UPDATE SET
                 status = excluded.status, resolved_at = excluded.resolved_at,
                 tombstone = excluded.tombstone, title = excluded.title,
-                is_private = excluded.is_private, beads_id = excluded.beads_id,
-                beads_id_set = excluded.beads_id_set, position = excluded.position,
+                is_private = excluded.is_private, position = excluded.position,
                 block_reasons_set = excluded.block_reasons_set",
         )
         .bind(flow_id)
@@ -564,8 +544,6 @@ impl<'session> OverlayOperator<'session> {
         .bind(&overlay.tombstone)
         .bind(&overlay.title)
         .bind(overlay.is_private)
-        .bind(&overlay.beads_id)
-        .bind(overlay.beads_id_set)
         .bind(overlay.position)
         .bind(overlay.block_reasons_set)
         .execute(&mut *self.connection)
@@ -590,13 +568,12 @@ impl<'session> OverlayOperator<'session> {
         sqlx::query(
             "INSERT INTO commitment_overlays
                 (flow_id, item_type, item_id, iteration_scope, cycle_id, verdict, resolved_at,
-                 tombstone, title, is_private, beads_id, beads_id_set, position)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 tombstone, title, is_private, position)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(node_key) DO UPDATE SET
                 verdict = excluded.verdict, resolved_at = excluded.resolved_at,
                 tombstone = excluded.tombstone, title = excluded.title,
-                is_private = excluded.is_private, beads_id = excluded.beads_id,
-                beads_id_set = excluded.beads_id_set, position = excluded.position",
+                is_private = excluded.is_private, position = excluded.position",
         )
         .bind(flow_id)
         .bind(key.item.item_type.as_str())
@@ -608,8 +585,6 @@ impl<'session> OverlayOperator<'session> {
         .bind(&overlay.tombstone)
         .bind(&overlay.title)
         .bind(overlay.is_private)
-        .bind(&overlay.beads_id)
-        .bind(overlay.beads_id_set)
         .bind(overlay.position)
         .execute(&mut *self.connection)
         .await?;

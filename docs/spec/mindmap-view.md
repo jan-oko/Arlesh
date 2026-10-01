@@ -135,8 +135,7 @@ cut then differ only in whether the original survives, which is what the two ges
 everywhere else. It is deep by default, with no prompt: the copy is a real, independent subtree, and
 editing one side never changes the other. The duplicate **keeps the original's title** (no
 `" (copy)"` suffix) and carries everything the original holds — status, tags, notes, Time Scope,
-on-exit behaviour, Plan, delegate, block reasons, privacy, position, its **beads id** (see *Beads
-id*), and its dependencies. Those dependencies point at the **same targets** the original's did, even
+on-exit behaviour, Plan, delegate, block reasons, privacy, position, and its dependencies. Those dependencies point at the **same targets** the original's did, even
 when a target was itself inside the copied subtree: copying a subtree whose members depend on each
 other produces a copy whose members still wait on the originals. (That mirrors a plain reparent and
 is the conservative reading; Flow instances solve the same problem by remapping per instance, and

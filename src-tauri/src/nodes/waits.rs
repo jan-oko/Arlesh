@@ -495,7 +495,6 @@ impl WaitRows {
             tag_ids,
             position: overlay.position.unwrap_or(i64::MIN),
             is_private: overlay.is_private.unwrap_or(draw.is_private),
-            beads_id: None,
             origin,
         });
     }

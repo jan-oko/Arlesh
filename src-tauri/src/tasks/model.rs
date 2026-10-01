@@ -420,12 +420,6 @@ pub struct Task {
     pub position: i64,
     /// Whether this node is private (hidden unless Private Mode is on).
     pub is_private: bool,
-    /// The `bd` issue tracking this task, if any (e.g. `"Arlesh-5fs"`). Sourced only from the MCP
-    /// server, through [`TaskOperator::set_beads_id`](crate::tasks::TaskOperator::set_beads_id);
-    /// [`UpdateTaskRequest`] deliberately has no field for it. Duplicating a node propagates
-    /// the id it already has, and the Issue row's × drops the link — neither writes a new one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub beads_id: Option<String>,
     /// Where the row came from: made by hand, or derived (a Habit occurrence).
     #[serde(default)]
     pub origin: Origin,
@@ -475,12 +469,6 @@ pub struct Goal {
     pub position: i64,
     /// Whether this node is private (hidden unless Private Mode is on).
     pub is_private: bool,
-    /// The `bd` issue tracking this goal, if any (e.g. `"Arlesh-5fs"`). Sourced only from the MCP
-    /// server, through [`GoalOperator::set_beads_id`](crate::tasks::GoalOperator::set_beads_id);
-    /// [`UpdateGoalRequest`] deliberately has no field for it. Duplicating a node propagates
-    /// the id it already has, and the Issue row's × drops the link — neither writes a new one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub beads_id: Option<String>,
     /// Where the row came from: made by hand, or derived (a Habit occurrence).
     #[serde(default)]
     pub origin: Origin,
@@ -759,11 +747,6 @@ pub struct Commitment {
     pub position: i64,
     /// Whether this node is private (hidden unless Private Mode is on).
     pub is_private: bool,
-    /// The `bd` issue tracking this commitment, if any. Sourced only from the MCP server, through
-    /// [`CommitmentOperator::set_beads_id`](crate::tasks::CommitmentOperator::set_beads_id); the
-    /// UI can drop the link but never write one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub beads_id: Option<String>,
     /// Where the row came from: made by hand, or derived (a Habit occurrence).
     #[serde(default)]
     pub origin: Origin,
@@ -1037,7 +1020,7 @@ impl ExpectationArchival {
 ///
 /// It carries a Time Scope and tags, like a Task. Note what is absent, since the absences are the
 /// design: no Plan and no On-exit behaviour (a wait is not something you schedule, and it is never
-/// Missed), no beads id, no block reasons and no dependencies of its own — it depends on nothing,
+/// Missed), no block reasons and no dependencies of its own — it depends on nothing,
 /// only Tasks depend on it. Beside its Time Scope it carries the optional **Check every**.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Expectation {
