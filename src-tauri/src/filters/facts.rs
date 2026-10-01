@@ -73,12 +73,20 @@ fn index_lifecycles(load: &MindmapLoad) -> HashMap<(&str, NodeId), &ItemLifecycl
         .collect()
 }
 
+/// The blocked nodes, and what each blocked Task's unmet dependencies are.
+struct BlockIndex {
+    /// The node ids that are blocked, for any reason.
+    blocked: HashSet<String>,
+    /// Each Task's unmet dependencies, as node ids.
+    unmet_dependencies: HashMap<String, Vec<String>>,
+}
+
 /// The node ids that are blocked: by an explicit block reason, or by a dependency on a Task that
-/// is not done or a Goal that is not achieved.
+/// is not done or a Goal that is not achieved — and, for the second kind, which dependencies.
 ///
 /// The second half mirrors the frontend's "virtual blockers", which it derives from the same bulk
 /// dependency edges — a dependency on something already finished does not block.
-fn index_blocked(load: &MindmapLoad) -> HashSet<String> {
+fn index_blocked(load: &MindmapLoad) -> BlockIndex {
     let mut blocked: HashSet<String> = load
         .block_reasons
         .iter()
@@ -101,6 +109,7 @@ fn index_blocked(load: &MindmapLoad) -> HashSet<String> {
         .map(|expectation| (&expectation.id, expectation.status))
         .collect();
 
+    let mut unmet_dependencies: HashMap<String, Vec<String>> = HashMap::new();
     // A done Asynchronous task is done: what depends on it does not wait on the wait it spawned
     // (ruled by the user, 2026-09-23).
     for edge in &load.task_dependencies {
@@ -116,10 +125,18 @@ fn index_blocked(load: &MindmapLoad) -> HashSet<String> {
                 .is_some_and(|status| *status != "achieved"),
         };
         if unmet {
-            blocked.insert(format!("task-{}", edge.task_id));
+            let owner = format!("task-{}", edge.task_id);
+            blocked.insert(owner.clone());
+            unmet_dependencies
+                .entry(owner)
+                .or_default()
+                .push(format!("{}-{}", edge.dependency_type, edge.dependency_id));
         }
     }
-    blocked
+    BlockIndex {
+        blocked,
+        unmet_dependencies,
+    }
 }
 
 /// The node ids with at least one direct child Task whose status is `todo` — what decides whether
@@ -138,7 +155,10 @@ fn index_todo_parents(load: &MindmapLoad) -> HashSet<String> {
 /// a database inconsistency, and giving it a place on the board would hide that.
 pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
     let lifecycles = index_lifecycles(load);
-    let blocked = index_blocked(load);
+    let BlockIndex {
+        blocked,
+        unmet_dependencies,
+    } = index_blocked(load);
     let todo_parents = index_todo_parents(load);
 
     let mut facts: Vec<NodeFacts> = Vec::new();
@@ -174,6 +194,10 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.tag_ids.clone_from(&task.tag_ids);
         node.time_scope.clone_from(&task.time_scope);
         node.is_blocked = blocked.contains(&node.id);
+        node.blocking_dependencies = unmet_dependencies
+            .get(&node.id)
+            .cloned()
+            .unwrap_or_default();
         node.has_todo_child = todo_parents.contains(&node.id);
         apply_lifecycle(
             &mut node,

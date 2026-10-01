@@ -1713,6 +1713,70 @@
       ],
       "commitments": [],
       "expectations": []
+    },
+    {
+      "name": "start lets a blocked task's child dependency through with its subtree, and hides the rest of the blocked subtree",
+      "spec": "filtering-logic.md — a block from a child dependency does not hide that dependency (ruled by the user, 2026-10-01). The blocked task still fails its own match and stands only as the dependency's ancestor; its other children stay hidden, and so does everything under a task blocked by an explicit reason or by a dependency outside its subtree. A task with both an explicit reason and a child dependency still lets the dependency through.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "child-dependency",
+      "mindmap": [
+        "domain-child-dependency",
+        "task-blocked-by-both",
+        "task-child-dependency",
+        "task-dependency-of-both",
+        "task-elsewhere",
+        "task-under-child-dependency",
+        "task-waits-on-child"
+      ],
+      "list": [
+        "task-child-dependency",
+        "task-under-child-dependency",
+        "task-dependency-of-both",
+        "task-elsewhere"
+      ],
+      "commitments": [],
+      "expectations": []
+    },
+    {
+      "name": "plan shows the whole blocked subtree, child dependency or not",
+      "spec": "mindmap-view.md — only Start gates a blocked subtree.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "child-dependency",
+      "mindmap": [
+        "domain-child-dependency",
+        "task-beside-dependency-of-both",
+        "task-blocked-by-both",
+        "task-blocked-by-reason",
+        "task-child-dependency",
+        "task-dependency-of-both",
+        "task-elsewhere",
+        "task-sibling-of-dependency",
+        "task-under-child-dependency",
+        "task-under-outside",
+        "task-under-reason",
+        "task-waits-on-child",
+        "task-waits-outside"
+      ],
+      "list": [
+        "task-waits-on-child",
+        "task-child-dependency",
+        "task-under-child-dependency",
+        "task-sibling-of-dependency",
+        "task-blocked-by-reason",
+        "task-under-reason",
+        "task-blocked-by-both",
+        "task-dependency-of-both",
+        "task-beside-dependency-of-both",
+        "task-waits-outside",
+        "task-under-outside",
+        "task-elsewhere"
+      ],
+      "commitments": [],
+      "expectations": []
     }
   ],
   "boards": {
@@ -2884,6 +2948,102 @@
                   "planTiming": "lapsed"
                 }
               ]
+            }
+          ]
+        }
+      ]
+    },
+    "child-dependency": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-child-dependency",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-waits-on-child",
+              "kind": "task",
+              "status": "todo",
+              "isBlocked": true,
+              "blockingDependencies": [
+                "task-child-dependency"
+              ],
+              "children": [
+                {
+                  "id": "task-child-dependency",
+                  "kind": "task",
+                  "status": "todo",
+                  "children": [
+                    {
+                      "id": "task-under-child-dependency",
+                      "kind": "task",
+                      "status": "todo"
+                    }
+                  ]
+                },
+                {
+                  "id": "task-sibling-of-dependency",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-blocked-by-reason",
+              "kind": "task",
+              "status": "todo",
+              "isBlocked": true,
+              "children": [
+                {
+                  "id": "task-under-reason",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-blocked-by-both",
+              "kind": "task",
+              "status": "todo",
+              "isBlocked": true,
+              "blockingDependencies": [
+                "task-dependency-of-both"
+              ],
+              "children": [
+                {
+                  "id": "task-dependency-of-both",
+                  "kind": "task",
+                  "status": "todo"
+                },
+                {
+                  "id": "task-beside-dependency-of-both",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-waits-outside",
+              "kind": "task",
+              "status": "todo",
+              "isBlocked": true,
+              "blockingDependencies": [
+                "task-elsewhere"
+              ],
+              "children": [
+                {
+                  "id": "task-under-outside",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-elsewhere",
+              "kind": "task",
+              "status": "todo"
             }
           ]
         }

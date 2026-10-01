@@ -295,6 +295,11 @@ pub struct NodeFacts {
     /// Whether a Task/Goal has any block reason, explicit or implied by an unmet dependency.
     #[serde(default)]
     pub is_blocked: bool,
+    /// The node ids of the unmet dependencies a Task waits on — what its implied block reasons
+    /// are made of. Under Start a blocked node still lets these through when they lie beneath it
+    /// (see [`super::rules::gate_below`]).
+    #[serde(default)]
+    pub blocking_dependencies: Vec<String>,
     /// Whether the node has a direct child Task whose status is `todo` — what decides whether an
     /// in-progress Task still has something under it to start.
     #[serde(default)]
@@ -332,6 +337,7 @@ impl NodeFacts {
             delegated: false,
             has_check: false,
             is_blocked: false,
+            blocking_dependencies: Vec::new(),
             has_todo_child: false,
             is_habit_flow: false,
             is_habit_occurrence: false,

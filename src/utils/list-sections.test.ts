@@ -36,7 +36,7 @@ function row(id: string, ancestorIds: readonly string[] = []): TaskListRow {
     projectStatus: null,
     dependencyRefs: [],
     isBlocked: false,
-    hasBlockedAncestor: false,
+    heldByBlockedAncestor: false,
     isAgentic: false,
     isAsynchronous: id.startsWith("a") || id.startsWith("oa"),
     hasPrivateAncestor: false,

@@ -103,7 +103,7 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
     isBlocked: false,
     isAgentic: false,
     isAsynchronous: false,
-    hasBlockedAncestor: false,
+    heldByBlockedAncestor: false,
     hasPrivateAncestor: false,
     scopeTokens: ["unscoped", "unplanned"],
     ...over,
@@ -470,7 +470,7 @@ describe("ListView — Overdue first", () => {
         row({
           node: n("task-ask", "task", { status: "todo", timing: "active", overdue: true }),
           ancestors: [aspect(), goal(), parent],
-          hasBlockedAncestor: true,
+          heldByBlockedAncestor: true,
         }),
       ],
     }));

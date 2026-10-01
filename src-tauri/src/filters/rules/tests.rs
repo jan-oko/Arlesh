@@ -113,7 +113,7 @@ fn an_overdue_item_still_drops_out_of_start_for_every_other_reason() {
     let mut blocked = overdue(task("todo"));
     blocked.is_blocked = true;
     assert!(
-        type_hard_hidden(&blocked, &BoardFilter::preset(Preset::Start)),
+        is_held_by_block(&blocked, &None, &BoardFilter::preset(Preset::Start)),
         "blocked"
     );
 
@@ -576,11 +576,23 @@ fn private_info_and_flow_hiding_all_gate_the_subtree() {
 }
 
 #[test]
-fn start_hard_hides_a_blocked_task_and_only_a_task_or_goal_is_blocked() {
+fn start_holds_back_a_blocked_task_and_only_a_task_or_goal_is_blocked() {
     let mut node = task("todo");
     node.is_blocked = true;
-    assert!(type_hard_hidden(&node, &BoardFilter::preset(Preset::Start)));
-    assert!(!type_hard_hidden(&node, &BoardFilter::preset(Preset::Plan)));
+    assert!(is_held_by_block(
+        &node,
+        &None,
+        &BoardFilter::preset(Preset::Start)
+    ));
+    assert!(!is_held_by_block(
+        &node,
+        &None,
+        &BoardFilter::preset(Preset::Plan)
+    ));
+    assert!(
+        !type_hard_hidden(&node, &BoardFilter::preset(Preset::Start)),
+        "held back, not hard-hidden: it can still stand over a child dependency"
+    );
 
     let mut domain = NodeFacts::new("domain-1", NodeKind::Domain);
     domain.is_blocked = true;
@@ -867,5 +879,74 @@ fn only_the_plan_preset_narrows_by_scope_and_only_a_task() {
         &unscoped,
         &BoardFilter::preset(Preset::Plan),
         None
+    ));
+}
+
+fn blocked_on(id: &str, dependencies: &[&str]) -> NodeFacts {
+    let mut node = NodeFacts::new(id, NodeKind::Task);
+    node.status = Some("todo".to_string());
+    node.is_blocked = true;
+    node.blocking_dependencies = dependencies.iter().map(|id| (*id).to_string()).collect();
+    node
+}
+
+#[test]
+fn a_blocked_node_gates_its_children_except_its_unmet_dependencies() {
+    let start = BoardFilter::preset(Preset::Start);
+    let parent = blocked_on("task-1", &["task-2"]);
+    let gate = gate_below(&parent, &None, &start);
+    assert!(is_admitted_by(
+        &NodeFacts::new("task-2", NodeKind::Task),
+        &gate
+    ));
+    assert!(!is_admitted_by(
+        &NodeFacts::new("task-3", NodeKind::Task),
+        &gate
+    ));
+    assert!(
+        gate_below(&parent, &None, &BoardFilter::preset(Preset::Plan)).is_none(),
+        "only Start gates"
+    );
+}
+
+#[test]
+fn an_admitted_dependency_lifts_the_gate_for_its_own_subtree() {
+    let start = BoardFilter::preset(Preset::Start);
+    let parent = blocked_on("task-1", &["task-2"]);
+    let gate = gate_below(&parent, &None, &start);
+    let mut dependency = task("todo");
+    dependency.id = "task-2".to_string();
+    assert!(gate_below(&dependency, &gate, &start).is_none());
+}
+
+#[test]
+fn a_blocked_node_still_held_by_an_outer_gate_narrows_it_to_what_both_name() {
+    let start = BoardFilter::preset(Preset::Start);
+    let outer = blocked_on("task-1", &["task-3", "task-4"]);
+    let gate = gate_below(&outer, &None, &start);
+    let inner = blocked_on("task-2", &["task-3", "task-5"]);
+    let narrowed = gate_below(&inner, &gate, &start);
+    assert!(is_admitted_by(
+        &NodeFacts::new("task-3", NodeKind::Task),
+        &narrowed
+    ));
+    assert!(!is_admitted_by(
+        &NodeFacts::new("task-4", NodeKind::Task),
+        &narrowed
+    ));
+    assert!(!is_admitted_by(
+        &NodeFacts::new("task-5", NodeKind::Task),
+        &narrowed
+    ));
+}
+
+#[test]
+fn an_explicit_reason_alone_admits_nothing() {
+    let start = BoardFilter::preset(Preset::Start);
+    let parent = blocked_on("task-1", &[]);
+    let gate = gate_below(&parent, &None, &start);
+    assert!(!is_admitted_by(
+        &NodeFacts::new("task-2", NodeKind::Task),
+        &gate
     ));
 }

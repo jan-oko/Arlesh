@@ -27,7 +27,7 @@ function row(over: Partial<TaskListRow> = {}): TaskListRow {
     isBlocked: false,
     isAgentic: false,
     isAsynchronous: false,
-    hasBlockedAncestor: false,
+    heldByBlockedAncestor: false,
     hasPrivateAncestor: false,
     scopeTokens: ["unscoped", "unplanned"],
     ...over,
@@ -120,7 +120,7 @@ describe("filterTaskList", () => {
   });
 
   it("start preset drops a task with a blocked ancestor even though the task itself isn't blocked", () => {
-    const rows = [row({ hasBlockedAncestor: true })];
+    const rows = [row({ heldByBlockedAncestor: true })];
     expect(filterTaskList(rows, sf({ statusMode: "start" }), lf())).toHaveLength(0);
   });
 

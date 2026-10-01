@@ -44,6 +44,7 @@ interface CorpusNode {
   verdict?: Verdict;
   isPrivate?: boolean;
   isBlocked?: boolean;
+  blockingDependencies?: string[];
   isHabitFlow?: boolean;
   isHabitOccurrence?: boolean;
   delegated?: boolean;
@@ -143,6 +144,9 @@ function parseNode(value: unknown, what: string): CorpusNode {
     ...flag(raw.delegated, "delegated", what),
     ...flag(raw.hasCheck, "hasCheck", what),
     ...(raw.timeScope !== undefined ? { timeScope: parseTimeScope(raw.timeScope, `${what}.timeScope`) } : {}),
+    ...(raw.blockingDependencies !== undefined
+      ? { blockingDependencies: ids(raw.blockingDependencies, `${what}.blockingDependencies`) }
+      : {}),
   };
 }
 
@@ -289,6 +293,7 @@ function toMindmapNode(node: CorpusNode): MindmapNode {
     ...(node.backlogged === true ? { backlogged: true } : {}),
     ...(node.isPrivate === true ? { isPrivate: true } : {}),
     ...(node.isBlocked === true ? { blockReasons: ["blocked"] } : {}),
+    ...(node.blockingDependencies !== undefined ? { blockingDependencyIds: node.blockingDependencies } : {}),
     ...(node.isHabitFlow === true ? { flow: HABIT_FLOW } : {}),
     ...(node.isHabitOccurrence === true ? occurrenceRow() : {}),
     ...(node.delegated === true ? { delegate: { kind: "agent" as const } } : {}),

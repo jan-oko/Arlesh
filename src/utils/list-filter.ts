@@ -237,7 +237,9 @@ export interface TaskListRow {
   /** This task's own dependency edges, as target node ids ("task-<id>" / "goal-<id>"). */
   dependencyRefs: string[];
   isBlocked: boolean;
-  hasBlockedAncestor: boolean;
+  /** Whether, under Start, a blocked ancestor holds the row back: one stands above it and the row
+   * is not among its child dependencies, nor beneath one (see `BlockGate`). */
+  heldByBlockedAncestor: boolean;
   /** Whether the task reads as Agentic — its own flag, or the nearest flagged ancestor's. Resolved
    * once when the row is built, the same way the row's blocked-ness is. */
   isAgentic: boolean;
@@ -413,7 +415,7 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
       if (isOutsidePlanScope(row.node, f, inheritedTimeScope(row.ancestors))) return false;
       return withArchivedOverride(row.node, f, row.node.status !== "done" && !isArchived(row.node));
     case "start": {
-      if (row.isBlocked || row.hasBlockedAncestor) return false;
+      if (row.isBlocked || row.heldByBlockedAncestor) return false;
       // A flat list has no walk to carry a Plan down, so the row asks its own chain.
       if (isPlannedAhead(row.node, f, inheritedPlan(row.ancestors))) return false;
       // A window that has passed or has not begun drops out, as on the canvas — unless the row is

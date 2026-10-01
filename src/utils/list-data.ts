@@ -1,6 +1,8 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { RowId } from "@/api/node-id";
 import { isNodeBlocked, entityNodeId } from "@/utils/tree-layout";
+import { isAdmittedBy, startGateBelow } from "@/utils/filter-tree";
+import type { BlockGate } from "@/utils/filter-tree";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import type { CommitmentListRow, ExpectationListRow, TaskListRow } from "@/utils/list-filter";
 import { deriveScopeStateTokens } from "@/utils/list-filter";
@@ -28,7 +30,9 @@ function buildRow(node: MindmapNode, ancestors: readonly MindmapNode[], depsByTa
     // A node that draws no row (a wait's check task) is named by no dependency edge.
     dependencyRefs: (node.rowId === undefined ? undefined : depsByTask.get(node.rowId)) ?? [],
     isBlocked: isNodeBlocked(node),
-    hasBlockedAncestor: ancestors.some(isNodeBlocked),
+    // Under Start a blocked ancestor holds the row back unless the row is one of that ancestor's
+    // child dependencies, or sits beneath one.
+    heldByBlockedAncestor: !isAdmittedBy(node, ancestors.reduce<BlockGate>(startGateBelow, undefined)),
     isAgentic: isAgentic(node),
     isAsynchronous: node.asynchronous === true,
     hasPrivateAncestor: ancestors.some((a) => a.isPrivate === true),

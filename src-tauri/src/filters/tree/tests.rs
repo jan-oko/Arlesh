@@ -184,3 +184,50 @@ fn start_drops_a_wait_whose_window_has_not_begun_with_the_check_due_beneath_it()
     let plan = prune(&root, &BoardFilter::preset(Preset::Plan)).expect("Plan keeps the wait");
     assert_eq!(ids(&plan), ["domain-1", "expectation-1", "task-check"]);
 }
+
+fn blocked_on(id: &str, dependencies: &[&str]) -> NodeFacts {
+    let mut facts = NodeFacts::new(id, NodeKind::Task);
+    facts.status = Some("todo".to_string());
+    facts.is_blocked = true;
+    facts.blocking_dependencies = dependencies.iter().map(|id| (*id).to_string()).collect();
+    facts
+}
+
+#[test]
+fn under_start_a_blocked_task_lets_its_child_dependency_through_and_stands_over_it() {
+    let root = domain(
+        "root",
+        vec![FactNode::with_children(
+            blocked_on("task-1", &["task-2"]),
+            vec![
+                FactNode::with_children(
+                    NodeFacts {
+                        status: Some("todo".to_string()),
+                        ..NodeFacts::new("task-2", NodeKind::Task)
+                    },
+                    vec![task("task-4", "todo")],
+                ),
+                task("task-3", "todo"),
+            ],
+        )],
+    );
+    assert_eq!(
+        ids(&prune_tree(&root, &BoardFilter::preset(Preset::Start))),
+        ["root", "task-1", "task-2", "task-4"]
+    );
+}
+
+#[test]
+fn under_start_a_blocked_task_with_no_child_dependency_still_hides_its_subtree() {
+    let root = domain(
+        "root",
+        vec![FactNode::with_children(
+            blocked_on("task-1", &["task-9"]),
+            vec![task("task-2", "todo")],
+        )],
+    );
+    assert_eq!(
+        ids(&prune_tree(&root, &BoardFilter::preset(Preset::Start))),
+        ["root"]
+    );
+}

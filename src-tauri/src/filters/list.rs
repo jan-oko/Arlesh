@@ -59,6 +59,14 @@ impl<'a> Row<'a> {
             .find_map(|ancestor| ancestor.time_scope.as_ref())
     }
 
+    /// The gate the row's blocked ancestors set over it under Start, folded down its chain as the
+    /// tree walk folds it (see [`rules::BlockGate`]).
+    fn block_gate(&self, filter: &BoardFilter) -> rules::BlockGate<'a> {
+        self.ancestors.iter().fold(None, |gate, ancestor| {
+            rules::gate_below(ancestor, &gate, filter)
+        })
+    }
+
     /// Whether any ancestor gates the whole subtree beneath it under this filter.
     fn has_gating_ancestor(&self, filter: &BoardFilter) -> bool {
         self.ancestors.iter().any(|ancestor| {
@@ -108,8 +116,8 @@ pub fn passes_row(row: Row<'_>, filter: &BoardFilter) -> bool {
 /// Unblock is not a sixth preset combined with the one already set — the List View's dropdown holds
 /// a single value, and picking Unblock *is* the whole question ("what is blocking me?"). The preset
 /// left in the filter belongs to the Mindmap, which keeps it, and it must not answer here:
-/// [`rules::type_hard_hidden`] under [`Preset::Start`] drops a blocked node together with its
-/// subtree, which is precisely the set Unblock exists to show, so reading it left Unblock-over-Start
+/// [`Preset::Start`] drops a blocked node together with most of its subtree, which is precisely
+/// the set Unblock exists to show, so reading it left Unblock-over-Start
 /// an empty list. Mirrors `unblockSharedFilter` in `src/utils/list-filter.ts`.
 fn unblock_filter(filter: &BoardFilter) -> BoardFilter {
     BoardFilter {
@@ -123,16 +131,16 @@ fn unblock_filter(filter: &BoardFilter) -> BoardFilter {
 /// The preset's own verdict is [`rules::passes_status`], unchanged — the same call the Mindmap
 /// makes. What a list has to add is the subtree gates it cannot get from pruning: a shelved
 /// Project, a backlogged Task or an unopened Habit occurrence above the row, and, under Start, a
-/// blocked ancestor or a wait whose window has not begun (which is what hides its check task). A row's ancestors also carry the Backlog preset's "and everything beneath
+/// blocked ancestor (unless the row is one of its child dependencies, or under one) or a wait whose window has not begun (which is what hides its check task). A row's ancestors also carry the Backlog preset's "and everything beneath
 /// it", and Start's inherited Plan, which the tree walk would otherwise have accumulated on the
 /// way down.
 fn passes_row_preset(row: Row<'_>, filter: &BoardFilter) -> bool {
     if row.has_gating_ancestor(filter) {
         return false;
     }
-    if filter.preset == Preset::Start
-        && (rules::is_blocked(row.node) || row.ancestors.iter().any(rules::is_blocked))
-    {
+    // Blocked itself, or under a blocked ancestor whose block does not let it through as a child
+    // dependency.
+    if rules::is_held_by_block(row.node, &row.block_gate(filter), filter) {
         return false;
     }
     if rules::is_planned_ahead(row.node, filter, row.inherited_plan()) {
