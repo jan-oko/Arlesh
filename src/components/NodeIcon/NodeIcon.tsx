@@ -23,6 +23,8 @@ interface Props {
   isArchived?: boolean | undefined;
   isBlocked: boolean;
   isHabit: boolean;
+  /** A Task that consists of its sub-items: its glyph's outer ring is dashed. */
+  compound?: boolean | undefined;
   cx: number;
   cy: number;
   r: number;
@@ -30,14 +32,14 @@ interface Props {
   opacity: number;
 }
 
-export default function NodeIcon({ kind, status, verdict, isArchived = false, isBlocked, isHabit, cx, cy, r, color, opacity }: Props) {
+export default function NodeIcon({ kind, status, verdict, isArchived = false, isBlocked, isHabit, compound = false, cx, cy, r, color, opacity }: Props) {
   if (kind === "aspect") return null;
   if (kind === "domain") return <DomainIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   if (kind === "project") return <ProjectIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   if (kind === "goal") return <GoalIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} isBlocked={isBlocked} />;
   if (kind === "tag") return <TagIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   if (kind === "info") return <InfoIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
-  if (kind === "task") return <TaskIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} isBlocked={isBlocked} />;
+  if (kind === "task") return <TaskIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} isBlocked={isBlocked} compound={compound} />;
   if (kind === "commitment") {
     return <CommitmentIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} state={commitmentGlyphState(verdict, isArchived)} />;
   }

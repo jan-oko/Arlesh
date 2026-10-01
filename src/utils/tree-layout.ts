@@ -203,6 +203,9 @@ export interface MindmapNode {
   /** The node ids of those unmet dependencies — what Start still lets through beneath this task
    * when one of them is its own descendant (see `gateBelow` in `filter-tree.ts`). */
   blockingDependencyIds?: string[];
+  /** Blocked because it is a **Compound** Task whose open sub-items are all blocked (Tasks only):
+   * the backend derived it, and its reason is among `virtualBlockers`. */
+  compoundBlocked?: boolean;
   knowledgeBaseDirectory?: string | null;
   /** Optional multi-line details on an `info` node (e.g. a traceback). */
   infoDetails?: string | null;
@@ -253,6 +256,11 @@ export interface MindmapNode {
    * concrete action, and a subtask of an asynchronous Task is usually the work you do *after* the
    * wait. There is no `inheritedAsynchronous` for that reason, and there should not be one. */
   asynchronous?: boolean;
+  /** Whether this Task **consists of its sub-items** (stored Tasks only): its `status` is then the
+   * one the backend derived from its whole subtree on this load, and is never set by hand — every
+   * status write refuses it (`useStatusCycle`, the editor). Its own flag; it does not inherit. The
+   * status glyph draws its outer ring dashed while it is on. */
+  compound?: boolean;
   /** A Commitment's recorded Verdict (Commitments only) — `unresolved` / `kept` / `broken`.
    * Never derived from the window passing or from children completing: `unresolved` means the
    * user has not said, which is information in its own right. */

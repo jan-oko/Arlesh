@@ -137,6 +137,7 @@ export default function ZenTaskCard({
               <TaskIcon
                 cx={ICON_BOX / 2} cy={ICON_BOX / 2} r={ICON_BOX * 0.45}
                 color="var(--card-text-strong)" opacity={1} status={status} isBlocked={false}
+                compound={node.compound === true}
               />
             </svg>
           )}

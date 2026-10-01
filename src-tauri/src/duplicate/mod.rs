@@ -340,6 +340,9 @@ async fn clone_task(
             // A copy starts the same wait the original starts: the flag describes the action, and
             // the copy is the same action. Dropping it would be the same silent discard.
             asynchronous: Some(original.asynchronous),
+            // A copy consists of its sub-items if the original did: its status is the one thing
+            // the flag decides, and the copied subtree is what it reads.
+            compound: Some(original.compound),
             async_template: original.async_template.clone(),
             agentic_brief: original.agentic_brief.clone(),
         },

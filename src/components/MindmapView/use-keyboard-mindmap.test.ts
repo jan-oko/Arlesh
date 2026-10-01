@@ -744,6 +744,30 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
     expect(opts.onToggleAgentic).not.toHaveBeenCalled();
   });
 
+  it("plain V switches the anchor task's Compound, and Ctrl+V stays Paste", () => {
+    const opts = mindmapKeyboardContext({
+      selectedNodeId: "task-1",
+      findNodeById: (id: string) => (id === "task-1" ? makeTask("task-1") : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("v");
+    expect(opts.onToggleCompound).toHaveBeenCalledTimes(1);
+    expect(opts.onToggleCompound).toHaveBeenCalledWith("task-1");
+    fireKey("v", { ctrlKey: true });
+    expect(opts.onToggleCompound).toHaveBeenCalledTimes(1);
+  });
+
+  it("plain V does nothing on a goal — only a Task consists of its sub-items", () => {
+    const goal: MindmapNode = { id: "goal-1", kind: "goal", title: "Goal", position: 0, tagIds: [], children: [] };
+    const opts = mindmapKeyboardContext({
+      selectedNodeId: "goal-1",
+      findNodeById: (id: string) => (id === "goal-1" ? goal : undefined),
+    });
+    renderHook(() => useKeyboardMindmap(opts));
+    fireKey("v");
+    expect(opts.onToggleCompound).not.toHaveBeenCalled();
+  });
+
   it("plain W does nothing on a goal — only a Task starts a wait by being done", () => {
     const goal: MindmapNode = { id: "goal-1", kind: "goal", title: "Goal", position: 0, tagIds: [], children: [] };
     const opts = mindmapKeyboardContext({

@@ -238,6 +238,17 @@ describe("SettingsModal", () => {
     expect(useDisplayStore.getState().zenShowsStarted).toBe(true);
   });
 
+  it("offers the Zen View's compound switch under Zen, on by default", () => {
+    useDisplayStore.setState({ zenShowsCompound: true });
+    open();
+    goTo("zen");
+
+    const compound = screen.getByRole("checkbox", { name: "showsCompound" });
+    expect(compound).toBeChecked();
+    fireEvent.click(compound);
+    expect(useDisplayStore.getState().zenShowsCompound).toBe(false);
+  });
+
   it("offers the Zen View's overdue-border switch under Zen, on by default", () => {
     useDisplayStore.setState({ zenShowOverdueBorder: true });
     open();
