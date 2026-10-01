@@ -15,8 +15,8 @@ use crate::helpers;
 use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::commands::tasks as task_commands;
 use arlesh_lib::flows::model::{
-    BlockingMode, CatchupPolicy, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, FlowId,
-    HabitInstanceChild, InstanceType, SetRecurrenceRequest, TargetRef,
+    ClockKind, CreateFlowItemRequest, CreateFlowRequest, FlowId, HabitInstanceChild, InstanceType,
+    SetRecurrenceRequest, TargetRef,
 };
 use arlesh_lib::nodes::id::NodeId;
 use arlesh_lib::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind};
@@ -127,7 +127,7 @@ fn at(instant: &str) -> chrono::NaiveDateTime {
     chrono::NaiveDateTime::parse_from_str(instant, "%Y-%m-%dT%H:%M:%S").unwrap()
 }
 
-/// A day-long Habit starting 2026-01-05, and the anchor scope of its first iteration.
+/// A day-long Interval Habit starting 2026-01-05, and the anchor scope of its first iteration.
 async fn habit_with_one_day(
     pool: &sqlx::SqlitePool,
     app: &tauri::App<tauri::test::MockRuntime>,
@@ -144,9 +144,8 @@ async fn habit_with_one_day(
             gap_n: None,
             gap_kind: None,
             end_scope_id: None,
-            consumption_kind: ConsumptionKind::Accumulating,
-            blocking_mode: Some(BlockingMode::Blocking),
-            catchup_policy: Some(CatchupPolicy::Next),
+            clock: ClockKind::Interval,
+            miss_policy: None,
         },
     )
     .await
@@ -196,10 +195,10 @@ async fn a_flow_or_a_flow_item_is_refused_by_name() {
 
 #[tokio::test]
 async fn an_unfinished_child_never_withholds_the_habits_next_iteration() {
-    // The highest-value test in the feature, and a negative one: under Blocking consumption an
-    // unresolved iteration withholds every iteration after it. Added children are not instances,
-    // so an occurrence carrying one must resolve exactly as it would without it — otherwise
-    // something jotted against tonight could stall the habit forever.
+    // The highest-value test in the feature, and a negative one: under an Interval clock the one
+    // open instance withholds the next until it is done. Added children are not instances, so an
+    // occurrence carrying one must resolve exactly as it would without it — otherwise something
+    // jotted against tonight could stall the habit forever.
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let (flow_id, _start) = habit_with_one_day(&pool, &app).await;
@@ -211,10 +210,12 @@ async fn an_unfinished_child_never_withholds_the_habits_next_iteration() {
     complete_root(&app, flow_id, Some(true)).await.unwrap();
 
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    // The next instance falls the day after the completion, which was recorded at the real clock.
+    let after_the_next_opens = chrono::Local::now().naive_local() + chrono::Duration::days(2);
     let iterations = arlesh_lib::flows::generate_habit_iterations(
         &mut db,
         FlowId(flow_id),
-        at("2026-01-07T09:00:00"),
+        after_the_next_opens,
     )
     .await
     .unwrap();

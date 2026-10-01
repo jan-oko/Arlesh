@@ -5,8 +5,8 @@ use arlesh_lib::flows::{
     error::FlowError,
     fork_flow, generate_habit_iterations,
     model::{
-        BlockingMode, CatchupPolicy, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest,
-        Flow, FlowCycleInput, FlowId, FlowItemType, HabitInstanceRef, InstanceTiming, InstanceType,
+        ClockKind, CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowId,
+        FlowItemType, HabitInstanceRef, InstanceTiming, InstanceType, MissPolicy,
         SetRecurrenceRequest, StartFlowRequest, TargetRef, UpdateFlowItemRequest,
         UpdateFlowRequest, NO_CYCLE,
     },
@@ -29,16 +29,15 @@ async fn week_scope_id(_pool: &sqlx::SqlitePool, date: chrono::NaiveDate) -> Sco
         .id
 }
 
-/// A minimal valid Recurrence: continuous (no gap), open-ended, Destructive.
-fn destructive_recurrence(start_scope_id: ScopeKey) -> SetRecurrenceRequest {
+/// A minimal valid Recurrence: continuous (no gap), open-ended, Window + Archive.
+fn archive_recurrence(start_scope_id: ScopeKey) -> SetRecurrenceRequest {
     SetRecurrenceRequest {
         start_scope_id,
         gap_n: None,
         gap_kind: None,
         end_scope_id: None,
-        consumption_kind: ConsumptionKind::Destructive,
-        blocking_mode: None,
-        catchup_policy: None,
+        clock: ClockKind::Window,
+        miss_policy: Some(MissPolicy::Archive),
     }
 }
 
@@ -1297,9 +1296,8 @@ async fn setting_a_recurrence_makes_a_flow_a_habit() {
                 gap_n: Some(1),
                 gap_kind: Some("week".into()),
                 end_scope_id: None,
-                consumption_kind: ConsumptionKind::Accumulating,
-                blocking_mode: Some(BlockingMode::Blocking),
-                catchup_policy: Some(CatchupPolicy::AllPending),
+                clock: ClockKind::Window,
+                miss_policy: Some(MissPolicy::Overdue),
             },
         )
         .await;
@@ -1310,9 +1308,8 @@ async fn setting_a_recurrence_makes_a_flow_a_habit() {
     }
     .unwrap();
     assert_eq!(recurrence.start_scope_id, start);
-    assert_eq!(recurrence.consumption_kind, "accumulating");
-    assert_eq!(recurrence.blocking_mode.as_deref(), Some("blocking"));
-    assert_eq!(recurrence.catchup_policy.as_deref(), Some("all_pending"));
+    assert_eq!(recurrence.clock, "window");
+    assert_eq!(recurrence.miss_policy.as_deref(), Some("overdue"));
 
     let fetched = helpers::session_factory(&pool)
         .connect()
@@ -1340,8 +1337,7 @@ async fn setting_a_recurrence_replaces_the_previous_one() {
 
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), archive_recurrence(start)).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -1354,9 +1350,8 @@ async fn setting_a_recurrence_replaces_the_previous_one() {
             &mut db,
             FlowId(flow.id),
             SetRecurrenceRequest {
-                consumption_kind: ConsumptionKind::Accumulating,
-                blocking_mode: Some(BlockingMode::Overlapping),
-                ..destructive_recurrence(start)
+                miss_policy: Some(MissPolicy::Owed),
+                ..archive_recurrence(start)
             },
         )
         .await;
@@ -1376,8 +1371,8 @@ async fn setting_a_recurrence_replaces_the_previous_one() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(fetched.consumption_kind, "accumulating");
-    assert_eq!(fetched.blocking_mode.as_deref(), Some("overlapping"));
+    assert_eq!(fetched.clock, "window");
+    assert_eq!(fetched.miss_policy.as_deref(), Some("owed"));
 }
 
 #[tokio::test]
@@ -1394,8 +1389,7 @@ async fn deleting_a_recurrence_demotes_the_habit_back_to_a_plain_flow() {
     let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap()).await;
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), archive_recurrence(start)).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -1424,7 +1418,7 @@ async fn deleting_a_recurrence_demotes_the_habit_back_to_a_plain_flow() {
 }
 
 #[tokio::test]
-async fn a_recurrence_requires_a_scoped_flow() {
+async fn a_window_recurrence_requires_a_scoped_flow_and_an_interval_one_does_not() {
     let pool = helpers::test_pool().await;
     let flow = helpers::session_factory(&pool)
         .connect()
@@ -1439,18 +1433,40 @@ async fn a_recurrence_requires_a_scoped_flow() {
         })
         .await
         .unwrap(); // Unscoped
-    let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap()).await;
+    let start = arlesh_lib::scopes::model::Scope::containing(
+        ScopeKind::Day,
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+    )
+    .unwrap()
+    .id;
 
-    assert!({
-        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
-        if __r.is_ok() {
-            db.commit().await.unwrap();
+    let set = |request: SetRecurrenceRequest| {
+        let pool = pool.clone();
+        let flow_id = flow.id;
+        async move {
+            let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+            let result = set_flow_recurrence(&mut db, FlowId(flow_id), request).await;
+            if result.is_ok() {
+                db.commit().await.unwrap();
+            }
+            result
         }
-        __r
-    }
-    .is_err());
+    };
+    assert!(
+        set(archive_recurrence(start)).await.is_err(),
+        "a window has nothing to tile on an unscoped flow"
+    );
+    let interval = set(SetRecurrenceRequest {
+        clock: ClockKind::Interval,
+        miss_policy: None,
+        gap_n: Some(3),
+        gap_kind: Some("day".into()),
+        ..archive_recurrence(start)
+    })
+    .await
+    .expect("an interval habit may be unscoped");
+    assert_eq!(interval.clock, "interval");
+    assert_eq!(interval.miss_policy, None);
 }
 
 #[tokio::test]
@@ -1469,7 +1485,7 @@ async fn a_gap_finer_than_the_habit_scope_is_rejected() {
     let day_gap = SetRecurrenceRequest {
         gap_n: Some(3),
         gap_kind: Some("day".into()),
-        ..destructive_recurrence(start)
+        ..archive_recurrence(start)
     };
     assert!({
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
@@ -1485,7 +1501,7 @@ async fn a_gap_finer_than_the_habit_scope_is_rejected() {
 #[tokio::test]
 async fn generating_a_habit_derives_and_classifies_its_iterations() {
     let pool = helpers::test_pool().await;
-    // A 1-week-window Destructive habit with a single item.
+    // A 1-week-window Window + Archive habit with a single item.
     let flow = helpers::session_factory(&pool)
         .connect()
         .await
@@ -1518,8 +1534,7 @@ async fn generating_a_habit_derives_and_classifies_its_iterations() {
     let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()).await;
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), archive_recurrence(start)).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -1590,7 +1605,7 @@ async fn generating_iterations_requires_a_habit() {
 }
 
 #[tokio::test]
-async fn an_inconsistent_consumption_tree_is_rejected() {
+async fn a_miss_policy_is_set_exactly_when_the_clock_is_window() {
     let pool = helpers::test_pool().await;
     let flow = helpers::session_factory(&pool)
         .connect()
@@ -1602,51 +1617,36 @@ async fn an_inconsistent_consumption_tree_is_rejected() {
         .unwrap();
     let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap()).await;
 
-    // Destructive must not carry a blocking mode.
-    let destructive_with_mode = SetRecurrenceRequest {
-        blocking_mode: Some(BlockingMode::Blocking),
-        ..destructive_recurrence(start)
-    };
-    assert!({
-        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), destructive_with_mode).await;
-        if __r.is_ok() {
-            db.commit().await.unwrap();
+    let set = |request: SetRecurrenceRequest| {
+        let pool = pool.clone();
+        let flow_id = flow.id;
+        async move {
+            let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+            let result = set_flow_recurrence(&mut db, FlowId(flow_id), request).await;
+            if result.is_ok() {
+                db.commit().await.unwrap();
+            }
+            result
         }
-        __r
-    }
-    .is_err());
-
-    // Accumulating must carry a blocking mode.
-    let accumulating_without_mode = SetRecurrenceRequest {
-        consumption_kind: ConsumptionKind::Accumulating,
-        ..destructive_recurrence(start)
     };
-    assert!({
-        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), accumulating_without_mode).await;
-        if __r.is_ok() {
-            db.commit().await.unwrap();
-        }
-        __r
-    }
-    .is_err());
-
-    // Blocking must carry a catch-up policy.
-    let blocking_without_catchup = SetRecurrenceRequest {
-        consumption_kind: ConsumptionKind::Accumulating,
-        blocking_mode: Some(BlockingMode::Blocking),
-        ..destructive_recurrence(start)
-    };
-    assert!({
-        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), blocking_without_catchup).await;
-        if __r.is_ok() {
-            db.commit().await.unwrap();
-        }
-        __r
-    }
-    .is_err());
+    assert!(
+        set(SetRecurrenceRequest {
+            miss_policy: None,
+            ..archive_recurrence(start)
+        })
+        .await
+        .is_err(),
+        "a window clock names what a missed iteration does"
+    );
+    assert!(
+        set(SetRecurrenceRequest {
+            clock: ClockKind::Interval,
+            ..archive_recurrence(start)
+        })
+        .await
+        .is_err(),
+        "an interval clock has nothing to miss"
+    );
 }
 
 // --- Phase (sub-day) Flow Window model round-trip (Feature B / S3) ---
@@ -1762,9 +1762,8 @@ async fn exact_phase_habit_recurs_at_the_fixed_time_each_day() {
                 gap_n: Some(1),
                 gap_kind: Some("day".into()),
                 end_scope_id: None,
-                consumption_kind: ConsumptionKind::Destructive,
-                blocking_mode: None,
-                catchup_policy: None,
+                clock: ClockKind::Window,
+                miss_policy: Some(MissPolicy::Archive),
             },
         )
         .await;
@@ -1792,7 +1791,7 @@ async fn exact_phase_habit_recurs_at_the_fixed_time_each_day() {
         vec!["2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08"]
     );
     let kinds: Vec<_> = iters.iter().map(|it| format!("{:?}", it.status)).collect();
-    // The three passed days lapsed (Destructive, unfinished); today's window is still open.
+    // The three passed days lapsed (Window + Archive, unfinished); today's window is still open.
     assert_eq!(kinds, vec!["Lapsed", "Lapsed", "Lapsed", "Active"]);
 }
 
@@ -1830,9 +1829,8 @@ async fn part_phase_habit_recurs_every_gap_days_in_the_same_band() {
                 gap_n: Some(2),
                 gap_kind: Some("day".into()),
                 end_scope_id: None,
-                consumption_kind: ConsumptionKind::Destructive,
-                blocking_mode: None,
-                catchup_policy: None,
+                clock: ClockKind::Window,
+                miss_policy: Some(MissPolicy::Archive),
             },
         )
         .await;
@@ -1997,8 +1995,7 @@ async fn completing_an_iteration_marks_it_done_and_uncompleting_reverts() {
     let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), archive_recurrence(start)).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -2006,7 +2003,7 @@ async fn completing_an_iteration_marks_it_done_and_uncompleting_reverts() {
     }
     .unwrap();
 
-    // Well past the first window → Destructive lapses it while unfinished.
+    // Well past the first window → Archive lapses it while unfinished.
     let now = ymd(2026, 3, 1).and_hms_opt(12, 0, 0).unwrap();
     let before = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
@@ -2108,8 +2105,7 @@ async fn iteration_resolves_only_when_the_root_and_every_item_are_done() {
     let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), archive_recurrence(start)).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -2295,8 +2291,7 @@ async fn an_in_progress_instance_is_listed_but_does_not_resolve_the_iteration() 
     let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), archive_recurrence(start)).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -2405,8 +2400,7 @@ async fn an_item_less_habit_resolves_by_completing_its_root() {
     let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), archive_recurrence(start)).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -2662,8 +2656,7 @@ async fn clearing_modifications_drops_completions_and_reverts_iterations() {
     let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), archive_recurrence(start)).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -3098,8 +3091,7 @@ async fn is_habit_flag_reflects_the_recurrence() {
     let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), archive_recurrence(start)).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -3185,7 +3177,7 @@ fn an_explicit_null_target_in_an_update_payload_clears_it() {
 }
 
 // ===========================================================================
-// A commitment Habit's Verdict Window, and the Consumption it is not allowed to have
+// A commitment Habit's Verdict Window, and the clock it is not allowed to have
 // ===========================================================================
 
 /// A daily commitment Habit, the shape a nightly rule takes.
@@ -3268,10 +3260,10 @@ async fn a_forked_commitment_habit_keeps_its_verdict_window() {
 }
 
 #[tokio::test]
-async fn a_commitment_habits_consumption_cannot_be_anything_but_accumulating_overlapping() {
-    // Under Destructive a past iteration classifies Lapsed — a derived "went unfinished", which is
-    // exactly the conclusion this kind forbids. Under Blocking, one unanswered night would withhold
-    // every night after it. The Verdict Window bounds the accumulation instead.
+async fn a_commitment_habits_clock_cannot_be_anything_but_window_and_owed() {
+    // Under Archive a past iteration classifies Lapsed — a derived "went unfinished", which is
+    // exactly the conclusion this kind forbids. Under Overdue, one unanswered night would be folded
+    // into the next, and an Interval has nothing to complete. The Verdict Window bounds it instead.
     let pool = helpers::test_pool().await;
     let flow = helpers::session_factory(&pool)
         .connect()
@@ -3296,35 +3288,39 @@ async fn a_commitment_habits_consumption_cannot_be_anything_but_accumulating_ove
         }
     };
 
-    assert!(
-        refused(destructive_recurrence(start)).await.is_err(),
-        "destructive"
-    );
+    assert!(refused(archive_recurrence(start)).await.is_err(), "archive");
     assert!(
         refused(SetRecurrenceRequest {
-            consumption_kind: ConsumptionKind::Accumulating,
-            blocking_mode: Some(BlockingMode::Blocking),
-            catchup_policy: Some(CatchupPolicy::Next),
-            ..destructive_recurrence(start)
+            miss_policy: Some(MissPolicy::Overdue),
+            ..archive_recurrence(start)
         })
         .await
         .is_err(),
-        "blocking",
+        "overdue",
     );
     assert!(
         refused(SetRecurrenceRequest {
-            consumption_kind: ConsumptionKind::Accumulating,
-            blocking_mode: Some(BlockingMode::Overlapping),
-            ..destructive_recurrence(start)
+            clock: ClockKind::Interval,
+            miss_policy: None,
+            ..archive_recurrence(start)
+        })
+        .await
+        .is_err(),
+        "interval",
+    );
+    assert!(
+        refused(SetRecurrenceRequest {
+            miss_policy: Some(MissPolicy::Owed),
+            ..archive_recurrence(start)
         })
         .await
         .is_ok(),
-        "accumulating + overlapping is the one shape it may take",
+        "window + owed is the one shape it may take",
     );
 }
 
 #[tokio::test]
-async fn a_task_habit_may_still_be_destructive() {
+async fn a_task_habit_may_still_archive_what_it_misses() {
     // The rule is about the Commitment kind, not about Habits: nothing here narrows what a
     // repeating piece of *work* may do with its unfinished instances.
     let pool = helpers::test_pool().await;
@@ -3338,7 +3334,7 @@ async fn a_task_habit_may_still_be_destructive() {
         .unwrap();
     let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap()).await;
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-    let result = set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+    let result = set_flow_recurrence(&mut db, FlowId(flow.id), archive_recurrence(start)).await;
     assert!(result.is_ok());
     db.commit().await.unwrap();
 }
@@ -3372,9 +3368,8 @@ async fn a_commitment_habits_iterations_stop_offering_a_verdict_once_the_window_
             &mut db,
             FlowId(flow.id),
             SetRecurrenceRequest {
-                consumption_kind: ConsumptionKind::Accumulating,
-                blocking_mode: Some(BlockingMode::Overlapping),
-                ..destructive_recurrence(start)
+                miss_policy: Some(MissPolicy::Owed),
+                ..archive_recurrence(start)
             },
         )
         .await
@@ -3724,14 +3719,14 @@ fn cycle(kind: &str, index: i64) -> FlowCycleInput {
 }
 
 /// A one-`kind`-period Habit under aspect 1, with one task item carrying `cycles`, recurring from
-/// `start` under `consumption`. Returns `(flow id, item id)`.
+/// `start` under a Window clock with `policy`. Returns `(flow id, item id)`.
 async fn habit_with_cycles(
     pool: &sqlx::SqlitePool,
     duration_kind: &str,
     window_part: Option<&str>,
     cycles: &[FlowCycleInput],
     start: chrono::NaiveDate,
-    consumption: ConsumptionKind,
+    policy: MissPolicy,
 ) -> (i64, i64) {
     let flow = helpers::session_factory(pool)
         .connect()
@@ -3788,12 +3783,8 @@ async fn habit_with_cycles(
                 gap_n: None,
                 gap_kind: None,
                 end_scope_id: None,
-                consumption_kind: consumption,
-                blocking_mode: match consumption {
-                    ConsumptionKind::Accumulating => Some(BlockingMode::Overlapping),
-                    ConsumptionKind::Destructive => None,
-                },
-                catchup_policy: None,
+                clock: ClockKind::Window,
+                miss_policy: Some(policy),
             },
         )
         .await;
@@ -3834,7 +3825,7 @@ async fn a_daily_habit_turns_over_at_02_00_not_at_midnight() {
     let pool = helpers::test_pool().await;
     let start = ymd(2026, 1, 5);
     let (flow_id, _item_id) =
-        habit_with_cycles(&pool, "day", None, &[], start, ConsumptionKind::Destructive).await;
+        habit_with_cycles(&pool, "day", None, &[], start, MissPolicy::Archive).await;
 
     let half_past_one = iterations_at(
         &pool,
@@ -3867,7 +3858,7 @@ async fn a_daily_habit_turns_over_at_02_00_not_at_midnight() {
     assert_eq!(
         half_past_two[0].status,
         arlesh_lib::flows::model::IterationStatus::Lapsed,
-        "and the 5th's has passed unfinished: Destructive archives it",
+        "and the 5th's has passed unfinished: Archive archives it",
     );
     assert_eq!(
         half_past_two[1].status,
@@ -3876,7 +3867,7 @@ async fn a_daily_habit_turns_over_at_02_00_not_at_midnight() {
 }
 
 #[tokio::test]
-async fn a_sub_day_cycle_is_active_only_during_its_band_under_a_destructive_habit() {
+async fn a_sub_day_cycle_is_active_only_during_its_band_under_an_archive_habit() {
     let pool = helpers::test_pool().await;
     let day = ymd(2026, 1, 5);
     // A daily Habit whose one item is scoped to the Morning band (06:00–12:00).
@@ -3886,7 +3877,7 @@ async fn a_sub_day_cycle_is_active_only_during_its_band_under_a_destructive_habi
         None,
         &[cycle("part_of_day", 1)],
         day,
-        ConsumptionKind::Destructive,
+        MissPolicy::Archive,
     )
     .await;
 
@@ -3937,12 +3928,12 @@ async fn a_sub_day_cycle_is_active_only_during_its_band_under_a_destructive_habi
     assert_eq!(
         afternoon[0].instances[0].timing,
         InstanceTiming::Lapsed,
-        "but the morning has: Destructive lapses it",
+        "but the morning has: Archive lapses it",
     );
 }
 
 #[tokio::test]
-async fn an_accumulating_habits_occurrence_survives_its_own_band() {
+async fn an_owed_habits_occurrence_survives_its_own_band() {
     let pool = helpers::test_pool().await;
     let day = ymd(2026, 1, 5);
     let (flow_id, _) = habit_with_cycles(
@@ -3951,7 +3942,7 @@ async fn an_accumulating_habits_occurrence_survives_its_own_band() {
         None,
         &[cycle("part_of_day", 1)],
         day,
-        ConsumptionKind::Accumulating,
+        MissPolicy::Owed,
     )
     .await;
 
@@ -3959,7 +3950,7 @@ async fn an_accumulating_habits_occurrence_survives_its_own_band() {
     assert_eq!(
         afternoon[0].instances[0].timing,
         InstanceTiming::Active,
-        "a sub-day window obeys Consumption like every other size — Destructive is what makes it vanish",
+        "a sub-day window obeys the clock like every other size — Archive is what makes it vanish",
     );
 }
 
@@ -3975,7 +3966,7 @@ async fn a_day_cycle_inside_a_week_habit_is_active_only_on_its_day() {
         None,
         &[cycle("day", 3)],
         monday,
-        ConsumptionKind::Destructive,
+        MissPolicy::Archive,
     )
     .await;
 
@@ -4031,7 +4022,7 @@ async fn an_item_with_three_cycle_pairs_renders_three_instances_each_with_its_ow
             cycle("part_of_day", 4),
         ],
         day,
-        ConsumptionKind::Destructive,
+        MissPolicy::Archive,
     )
     .await;
 
@@ -4082,7 +4073,7 @@ async fn a_phase_windowed_habit_resolves_its_items_cycles_too() {
         Some("evening"),
         &[cycle("part_of_day", 4)],
         day,
-        ConsumptionKind::Destructive,
+        MissPolicy::Archive,
     )
     .await;
 
@@ -4106,7 +4097,7 @@ async fn an_unpaired_item_still_renders_once_with_no_window_of_its_own() {
     let pool = helpers::test_pool().await;
     let day = ymd(2026, 1, 5);
     let (flow_id, item_id) =
-        habit_with_cycles(&pool, "day", None, &[], day, ConsumptionKind::Destructive).await;
+        habit_with_cycles(&pool, "day", None, &[], day, MissPolicy::Archive).await;
 
     let noon = iterations_at(&pool, flow_id, day.and_hms_opt(12, 0, 0).unwrap()).await;
     assert_eq!(noon[0].instances.len(), 1);
@@ -4130,7 +4121,7 @@ async fn each_occurrence_of_an_item_is_completed_separately() {
         None,
         &[cycle("part_of_day", 1), cycle("part_of_day", 4)],
         day,
-        ConsumptionKind::Accumulating,
+        MissPolicy::Owed,
     )
     .await;
 
@@ -4328,8 +4319,7 @@ async fn copying_a_habit_gives_a_habit_on_the_same_schedule_under_the_new_parent
     let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), archive_recurrence(start)).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -4362,7 +4352,8 @@ async fn copying_a_habit_gives_a_habit_on_the_same_schedule_under_the_new_parent
         recurrence.start_scope_id, start,
         "the same Start anchor — the copy is not re-anchored to today"
     );
-    assert_eq!(recurrence.consumption_kind, "destructive");
+    assert_eq!(recurrence.clock, "window");
+    assert_eq!(recurrence.miss_policy.as_deref(), Some("archive"));
 
     let new_goals = helpers::session_factory(&pool)
         .connect()
@@ -4516,8 +4507,7 @@ async fn a_copied_habit_carries_no_completion_history() {
     let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), archive_recurrence(start)).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -4730,9 +4720,8 @@ async fn copying_a_commitment_flow_gives_a_commitment_flow_with_no_goal_items() 
             &mut db,
             FlowId(flow.id),
             SetRecurrenceRequest {
-                consumption_kind: ConsumptionKind::Accumulating,
-                blocking_mode: Some(BlockingMode::Overlapping),
-                ..destructive_recurrence(start)
+                miss_policy: Some(MissPolicy::Owed),
+                ..archive_recurrence(start)
             },
         )
         .await;
@@ -4769,12 +4758,9 @@ async fn copying_a_commitment_flow_gives_a_commitment_flow_with_no_goal_items() 
         .unwrap()
         .unwrap();
     assert_eq!(
-        (
-            recurrence.consumption_kind.as_str(),
-            recurrence.blocking_mode.as_deref()
-        ),
-        ("accumulating", Some("overlapping")),
-        "the one Consumption a commitment Habit is allowed, carried across intact",
+        (recurrence.clock.as_str(), recurrence.miss_policy.as_deref()),
+        ("window", Some("owed")),
+        "the one clock a commitment Habit is allowed, carried across intact",
     );
 }
 
@@ -4792,8 +4778,7 @@ async fn a_fork_still_keeps_the_original_s_parent_and_drops_its_recurrence() {
     let start = week_scope_id(&pool, ymd(2026, 1, 5)).await;
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        let __r =
-            set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start)).await;
+        let __r = set_flow_recurrence(&mut db, FlowId(flow.id), archive_recurrence(start)).await;
         if __r.is_ok() {
             db.commit().await.unwrap();
         }
@@ -5270,7 +5255,7 @@ async fn archive_and_fork_stops_the_original_recurring() {
     let start = week_scope_id(&pool, chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()).await;
     {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
-        set_flow_recurrence(&mut db, FlowId(flow.id), destructive_recurrence(start))
+        set_flow_recurrence(&mut db, FlowId(flow.id), archive_recurrence(start))
             .await
             .unwrap();
         db.commit().await.unwrap();

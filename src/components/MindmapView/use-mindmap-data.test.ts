@@ -1270,10 +1270,22 @@ describe("decorateIterationRoots", () => {
   }
 
   const LABELS = useScopeLabels();
+  const CARRIES = ({ title, scope, first }: { title: string; scope: string; first: string }): string =>
+    `${title} ${scope} from ${first}`;
+
+  it("draws a root carrying missed windows as `{title} {scope} from {first}`", () => {
+    const root = rootNode("task");
+    const habit = root.origin?.kind === "habit" ? root.origin : undefined;
+    if (habit === undefined) throw new Error("an iteration root carries a habit origin");
+    habit.iteration_scope.missed_from = "2025-12-22";
+    decorateIterationRoots(root, [mkHabit()], LABELS, "2026-01-06T09:00:00", CARRIES);
+    expect(root.title).toBe("Exercise W2 from W52");
+    expect(root.rowTitle).toBe("Exercise");
+  });
 
   it("draws the root as `{title} {start scope}` and keeps the row's own title for the editor", () => {
     const root = rootNode("task");
-    decorateIterationRoots(root, [mkHabit()], LABELS, "2026-01-06T09:00:00");
+    decorateIterationRoots(root, [mkHabit()], LABELS, "2026-01-06T09:00:00", CARRIES);
     expect(root.title).toBe("Exercise W2");
     expect(root.rowTitle).toBe("Exercise");
   });
@@ -1281,8 +1293,8 @@ describe("decorateIterationRoots", () => {
   it("reads where the window sits, whether it has passed and how it ended off the origin", () => {
     const open = rootNode("task", { status: "todo" });
     const done = rootNode("task", { id: "task-done", status: "done" });
-    decorateIterationRoots(open, [mkHabit()], LABELS, "2026-01-06T09:00:00");
-    decorateIterationRoots(done, [mkHabit()], LABELS, "2026-02-01T09:00:00");
+    decorateIterationRoots(open, [mkHabit()], LABELS, "2026-01-06T09:00:00", CARRIES);
+    decorateIterationRoots(done, [mkHabit()], LABELS, "2026-02-01T09:00:00", CARRIES);
     expect(open.habitIteration).toEqual({
       flowId: 3, flowTitle: "Exercise", index: 2, scopeKind: "week",
       anchorDate: "2026-01-05", windowEnd: "2026-01-12T00:00:00", passed: false, done: false,
@@ -1291,12 +1303,24 @@ describe("decorateIterationRoots", () => {
     expect(done.habitIteration?.done).toBe(true);
   });
 
+  it("marks an owed iteration so the fold leaves it in view", () => {
+    const owed = rootNode("task", { status: "todo" });
+    const habit = owed.origin?.kind === "habit" ? owed.origin : undefined;
+    if (habit === undefined) throw new Error("an iteration root carries a habit origin");
+    habit.iteration_scope.owed = true;
+    const plain = rootNode("task", { id: "task-plain", status: "todo" });
+    decorateIterationRoots(owed, [mkHabit()], LABELS, "2026-02-01T09:00:00", CARRIES);
+    decorateIterationRoots(plain, [mkHabit()], LABELS, "2026-02-01T09:00:00", CARRIES);
+    expect(owed.habitIteration?.owed).toBe(true);
+    expect(plain.habitIteration?.owed).toBeUndefined();
+  });
+
   it("counts a goal root done once achieved, and a commitment root only once kept", () => {
     const goal = rootNode("goal", { status: "achieved" });
     const broken = rootNode("commitment", { verdict: "broken" });
     const kept = rootNode("commitment", { id: "commitment-kept", verdict: "kept" });
     for (const node of [goal, broken, kept]) {
-      decorateIterationRoots(node, [mkHabit()], LABELS, "2026-02-01T09:00:00");
+      decorateIterationRoots(node, [mkHabit()], LABELS, "2026-02-01T09:00:00", CARRIES);
     }
     expect(goal.habitIteration?.done).toBe(true);
     expect(broken.habitIteration?.done).toBe(false);
@@ -1305,7 +1329,7 @@ describe("decorateIterationRoots", () => {
 
   it("falls back to the raw start date for a sub-day window, which has no scope label", () => {
     const root = rootNode("task");
-    decorateIterationRoots(root, [mkHabit({ flow_duration_kind: "exact" })], LABELS, "2026-01-06T09:00:00");
+    decorateIterationRoots(root, [mkHabit({ flow_duration_kind: "exact" })], LABELS, "2026-01-06T09:00:00", CARRIES);
     expect(root.title).toBe("Exercise 2026-01-05");
     expect(root.habitIteration?.scopeKind).toBeNull();
   });
@@ -1317,7 +1341,7 @@ describe("decorateIterationRoots", () => {
     };
     const stored: MindmapNode = { id: "task-1", rowId: 1, kind: "task", title: "Plain", position: 0, tagIds: [], children: [] };
     const parent: MindmapNode = { id: "root", kind: "domain", title: "", position: 0, tagIds: [], children: [item, stored] };
-    decorateIterationRoots(parent, [mkHabit()], LABELS, "2026-01-06T09:00:00");
+    decorateIterationRoots(parent, [mkHabit()], LABELS, "2026-01-06T09:00:00", CARRIES);
     expect(item.title).toBe("Stretch");
     expect(item.habitIteration).toBeUndefined();
     expect(stored.title).toBe("Plain");

@@ -31,12 +31,19 @@ fn flow_id_roundtrip() {
 }
 
 #[test]
-fn consumption_enums_cover_all_variants() {
-    assert_eq!(ConsumptionKind::Destructive.as_str(), "destructive");
-    assert_eq!(ConsumptionKind::Accumulating.as_str(), "accumulating");
-    assert_eq!(BlockingMode::Overlapping.as_str(), "overlapping");
-    assert_eq!(BlockingMode::Blocking.as_str(), "blocking");
-    assert_eq!(CatchupPolicy::AllPending.as_str(), "all_pending");
-    assert_eq!(CatchupPolicy::Next.as_str(), "next");
-    assert_eq!(CatchupPolicy::Latest.as_str(), "latest");
+fn clock_enums_roundtrip_every_variant() {
+    for clock in [ClockKind::Window, ClockKind::Interval] {
+        assert_eq!(ClockKind::from_db(clock.as_str()), Some(clock));
+    }
+    for policy in [MissPolicy::Archive, MissPolicy::Overdue, MissPolicy::Owed] {
+        assert_eq!(MissPolicy::from_db(policy.as_str()), Some(policy));
+    }
+    assert_eq!(ClockKind::Window.as_str(), "window");
+    assert_eq!(ClockKind::Interval.as_str(), "interval");
+    assert_eq!(MissPolicy::Archive.as_str(), "archive");
+    assert_eq!(MissPolicy::Overdue.as_str(), "overdue");
+    assert_eq!(MissPolicy::Owed.as_str(), "owed");
+    // The retired Consumption vocabulary is not a clock.
+    assert_eq!(ClockKind::from_db("destructive"), None);
+    assert_eq!(MissPolicy::from_db("blocking"), None);
 }

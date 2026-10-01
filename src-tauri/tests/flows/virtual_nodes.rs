@@ -13,8 +13,8 @@ use arlesh_lib::commands::{
     tasks as task_commands,
 };
 use arlesh_lib::flows::model::{
-    ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType,
-    InstanceType, SetRecurrenceRequest,
+    ClockKind, CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType,
+    InstanceType, MissPolicy, SetRecurrenceRequest,
 };
 use arlesh_lib::mindmap::model::MindmapLoad;
 use arlesh_lib::nodes::{
@@ -92,9 +92,8 @@ async fn daily_habit(
             gap_n: None,
             gap_kind: None,
             end_scope_id: None,
-            consumption_kind: ConsumptionKind::Accumulating,
-            blocking_mode: Some(arlesh_lib::flows::model::BlockingMode::Overlapping),
-            catchup_policy: None,
+            clock: ClockKind::Window,
+            miss_policy: Some(MissPolicy::Owed),
         },
     )
     .await
@@ -363,24 +362,52 @@ async fn an_occurrence_plans_backlogs_and_delegates_like_a_task() {
 async fn a_plan_outside_the_occurrences_window_is_refused() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let (_, item_id) = daily_habit(&pool, &app, InstanceType::Task).await;
+    let (flow_id, item_id) = daily_habit(&pool, &app, InstanceType::Task).await;
     load(&app, "2026-01-05T09:00:00").await;
     let tomorrow = scope(&pool, ScopeKind::Day, ymd(2026, 1, 6)).await;
-    let refused = task_commands::update_task(
+    let plan_tomorrow = || UpdateTaskRequest {
+        plan: Some(Some(TimeScope {
+            start_id: tomorrow,
+            end_id: tomorrow,
+            duration: None,
+        })),
+        ..Default::default()
+    };
+
+    // The command reads the real clock, long past the 5th: under Window + Owed the occurrence is
+    // Overdue by then, and an Overdue Task may be planned past its window.
+    task_commands::update_task(
         app.state(),
         item(item_id, ymd(2026, 1, 5)),
-        UpdateTaskRequest {
-            plan: Some(Some(TimeScope {
-                start_id: tomorrow,
-                end_id: tomorrow,
-                duration: None,
-            })),
-            ..Default::default()
-        },
+        plan_tomorrow(),
         None,
     )
     .await
-    .expect_err("an occurrence is planned within its own window");
+    .expect("an Overdue occurrence may be rescheduled past its window");
+
+    // Under Window + Archive it has lapsed rather than come due, so its window still binds.
+    flow_commands::set_flow_recurrence(
+        app.state(),
+        flow_id,
+        SetRecurrenceRequest {
+            start_scope_id: scope(&pool, ScopeKind::Day, ymd(2026, 1, 5)).await,
+            gap_n: None,
+            gap_kind: None,
+            end_scope_id: None,
+            clock: ClockKind::Window,
+            miss_policy: Some(MissPolicy::Archive),
+        },
+    )
+    .await
+    .unwrap();
+    let refused = task_commands::update_task(
+        app.state(),
+        item(item_id, ymd(2026, 1, 5)),
+        plan_tomorrow(),
+        None,
+    )
+    .await
+    .expect_err("an occurrence that is not Overdue is planned within its own window");
     assert_eq!(
         serde_json::to_value(&refused).unwrap()["kind"],
         "containment_violated"
@@ -1123,9 +1150,8 @@ async fn a_root_and_an_item_cycle_plan_resolve_onto_their_occurrences() {
             gap_n: None,
             gap_kind: None,
             end_scope_id: None,
-            consumption_kind: ConsumptionKind::Accumulating,
-            blocking_mode: Some(arlesh_lib::flows::model::BlockingMode::Overlapping),
-            catchup_policy: None,
+            clock: ClockKind::Window,
+            miss_policy: Some(MissPolicy::Owed),
         },
     )
     .await
@@ -1273,9 +1299,8 @@ async fn a_root_and_a_whole_scope_pair_planned_into_the_window_are_planned_into_
             gap_n: None,
             gap_kind: None,
             end_scope_id: None,
-            consumption_kind: ConsumptionKind::Accumulating,
-            blocking_mode: Some(arlesh_lib::flows::model::BlockingMode::Overlapping),
-            catchup_policy: None,
+            clock: ClockKind::Window,
+            miss_policy: Some(MissPolicy::Owed),
         },
     )
     .await

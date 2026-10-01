@@ -432,90 +432,95 @@ pub struct FlowDependency {
     pub depends_on_id: i64,
 }
 
-/// How a Habit treats unfinished instances as their iterations pass.
+/// Which **clock** a Habit keeps: what decides when its next occurrence falls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ConsumptionKind {
-    /// Unfinished instances lapse (Archive-on-exit) once their iteration passes.
-    Destructive,
-    /// Unfinished instances survive past their iteration.
-    Accumulating,
+pub enum ClockKind {
+    /// Iterations tile from the Start anchor, one per window (plus the Gap), whether or not the
+    /// last was done. What happens to one that passes unfinished is its [`MissPolicy`].
+    Window,
+    /// One open instance at a time: the next one's window starts the unit after the one the last
+    /// was completed in, plus the Gap. The flow may be Unscoped.
+    Interval,
 }
 
-impl ConsumptionKind {
+impl ClockKind {
     /// The database string representation.
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Destructive => "destructive",
-            Self::Accumulating => "accumulating",
+            Self::Window => "window",
+            Self::Interval => "interval",
+        }
+    }
+
+    /// Parses the database string representation.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "window" => Some(Self::Window),
+            "interval" => Some(Self::Interval),
+            _ => None,
         }
     }
 }
 
-/// Whether an Accumulating Habit keeps generating iterations while unresolved instances exist.
+/// What a **Window** Habit does with an iteration whose window passes unfinished.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum BlockingMode {
-    /// New iterations generate regardless of unresolved instances.
-    Overlapping,
-    /// New iterations are withheld while unresolved instances exist.
-    Blocking,
+pub enum MissPolicy {
+    /// It lapses: Missed, and archived with its window. It is never Overdue. (Was Destructive.)
+    Archive,
+    /// It is archived as Missed, and the iteration open now carries it: its relevance reaches
+    /// back to the first missed window, and it is due at that window, so it reads Overdue until
+    /// one is completed ("Water the plants W3 from W1"). (Was Accumulating + Blocking.)
+    Overdue,
+    /// It stays open, due at its own window, so it is flagged Overdue past it, and later
+    /// iterations keep coming beside it. (Was Accumulating + Overlapping.)
+    Owed,
 }
 
-impl BlockingMode {
+impl MissPolicy {
     /// The database string representation.
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Overlapping => "overlapping",
-            Self::Blocking => "blocking",
+            Self::Archive => "archive",
+            Self::Overdue => "overdue",
+            Self::Owed => "owed",
+        }
+    }
+
+    /// Parses the database string representation.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "archive" => Some(Self::Archive),
+            "overdue" => Some(Self::Overdue),
+            "owed" => Some(Self::Owed),
+            _ => None,
         }
     }
 }
 
-/// When a Blocking Habit's open iteration completes, how it advances.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CatchupPolicy {
-    /// Generate every missed iteration, in order.
-    AllPending,
-    /// Advance by a single iteration.
-    Next,
-    /// Jump to the current iteration, recording skipped ones as missed tombstones.
-    Latest,
-}
-
-impl CatchupPolicy {
-    /// The database string representation.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::AllPending => "all_pending",
-            Self::Next => "next",
-            Self::Latest => "latest",
-        }
-    }
-}
-
-/// A Habit's Recurrence: Repetition (Start, optional Gap, optional end) plus the Consumption config.
-/// Its presence marks the owning flow as a Habit. Consumption fields follow the tree — `blocking_mode`
-/// is set iff Accumulating, `catchup_policy` iff Blocking.
+/// A Habit's Recurrence: Repetition (Start, optional Gap, optional end) plus its **clock**. Its
+/// presence marks the owning flow as a Habit. `miss_policy` is set exactly when the clock is
+/// `window`.
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct FlowRecurrence {
     /// Owning flow (also the primary key — one recurrence per flow).
     pub flow_id: i64,
-    /// The scope the recurrence starts on (of the flow's Duration kind).
+    /// The scope the recurrence starts on (of the flow's Duration kind, or a Day for a sub-day or
+    /// Unscoped flow).
     pub start_scope_id: ScopeKey,
-    /// Idle span between one iteration window's end and the next's start; `None` = continuous.
+    /// Under a Window clock, the idle span between one iteration window's end and the next's
+    /// start; under an Interval clock, the rest between the unit a completion falls in and the
+    /// next window. `None` = no gap.
     pub gap_n: Option<i64>,
     /// Kind of the Gap span (`day`/`week`/`month`/`season`); travels with `gap_n`.
     pub gap_kind: Option<String>,
     /// Optional end scope; `None` = open-ended.
     pub end_scope_id: Option<ScopeKey>,
-    /// Destructive vs Accumulating.
-    pub consumption_kind: String,
-    /// Overlapping vs Blocking (set iff Accumulating).
-    pub blocking_mode: Option<String>,
-    /// Catch-up policy (set iff Blocking).
-    pub catchup_policy: Option<String>,
+    /// `window` or `interval`.
+    pub clock: String,
+    /// `archive`, `overdue` or `owed` (set iff the clock is `window`).
+    pub miss_policy: Option<String>,
 }
 
 /// Request to set (create or replace) a flow's Recurrence, making it a Habit.
@@ -523,18 +528,17 @@ pub struct FlowRecurrence {
 pub struct SetRecurrenceRequest {
     /// The scope the recurrence starts on (of the flow's Duration kind).
     pub start_scope_id: ScopeKey,
-    /// Gap magnitude; `None` = continuous (no gap).
+    /// Gap magnitude; `None` = no gap.
     pub gap_n: Option<i64>,
-    /// Gap kind; must accompany `gap_n` and be no finer than the flow's Duration kind.
+    /// Gap kind; must accompany `gap_n`, and under a Window clock be no finer than the flow's
+    /// Duration kind.
     pub gap_kind: Option<String>,
     /// Optional end scope; `None` = open-ended.
     pub end_scope_id: Option<ScopeKey>,
-    /// Destructive vs Accumulating.
-    pub consumption_kind: ConsumptionKind,
-    /// Overlapping vs Blocking; required iff Accumulating.
-    pub blocking_mode: Option<BlockingMode>,
-    /// Catch-up policy; required iff Blocking.
-    pub catchup_policy: Option<CatchupPolicy>,
+    /// The clock.
+    pub clock: ClockKind,
+    /// The miss policy; required iff the clock is `window`.
+    pub miss_policy: Option<MissPolicy>,
 }
 
 /// The derived state of a Habit iteration on a given day (nothing is persisted — see the pure
@@ -546,10 +550,11 @@ pub enum IterationStatus {
     Active,
     /// Every instance in the iteration is complete.
     Done,
-    /// Passed unfinished under a Destructive (Archive-on-exit) habit. Distinct from the deliberate
-    /// goal `Archived` status — this is the derived "scope passed unfinished" state.
+    /// Passed unfinished under a Window + Archive habit. Distinct from the deliberate goal
+    /// `Archived` status — this is the derived "scope passed unfinished" state.
     Lapsed,
-    /// Skipped by a Blocking `latest` catch-up.
+    /// Passed unfinished under a Window + Overdue habit: archived as Missed, its work carried by
+    /// the iteration open now.
     Missed,
     /// An iteration whose window has not begun. Only derived when something asks for it — an edit
     /// already made to one of its occurrences, or a caller naming a window that reaches it (the
@@ -559,7 +564,7 @@ pub enum IterationStatus {
     ///
     /// Not a fifth verdict and not a failure: the Verdict stays unresolved for good, and only the
     /// Archival moves — the chance to say has gone. Distinct from [`Self::Lapsed`], which is a
-    /// Destructive habit's unfinished *work* passing its window; a Commitment's work is never
+    /// Window + Archive habit's unfinished *work* passing its window; a Commitment's work is never
     /// what passes, and nothing here ever concludes that one was broken.
     Expired,
 }
@@ -582,9 +587,9 @@ pub use crate::nodes::key::NO_CYCLE;
 pub enum InstanceTiming {
     /// Its window has not opened yet — this evening's item, seen at breakfast.
     Pending,
-    /// Its window is open, or has passed without the Habit's Consumption closing it.
+    /// Its window is open, or has passed without the Habit's clock closing it.
     Active,
-    /// Its window has gone, under the Habit's Consumption — a Destructive Habit's Morning item is
+    /// Its window has gone, under the Habit's clock — a Window + Archive Habit's Morning item is
     /// Lapsed from noon, while the iteration around it is still open.
     Lapsed,
 }
@@ -638,11 +643,17 @@ pub struct HabitIteration {
     /// Sent because the frontend cannot derive it: the offset arithmetic that turns a Repetition
     /// into windows lives here, and a renderer redoing it is exactly the disagreement this module
     /// exists to prevent. It is what the Mindmap's collapse of passed iterations reads — under
-    /// Overlapping Consumption nothing lapses, so [`IterationStatus`] alone cannot tell a window
+    /// Window + Owed nothing lapses, so [`IterationStatus`] alone cannot tell a window
     /// that has closed from one that is still open.
     pub window_end: String,
     /// Derived state on the reference day.
     pub status: IterationStatus,
+    /// Under Window + Overdue, the index of the **first missed** iteration of the unbroken run of
+    /// Missed ones just before this one, which this iteration carries: its relevance reaches back
+    /// to that window and it is due there ("W3 from W1"). `None` when nothing is missed before it,
+    /// and under every other clock.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub missed_from: Option<i64>,
     /// Every occurrence this iteration renders, in item order and then pair order. Empty from the
     /// pure classifier, which has no calendar; filled by [`generate_habit_iterations`].
     ///

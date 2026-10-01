@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { rowIdOf } from "@/utils/node-identity";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
-import type { InstanceType, ConsumptionKind, BlockingMode, CatchupPolicy } from "@/api/flows";
+import type { InstanceType, ClockKind, MissPolicy } from "@/api/flows";
 import { getFlowRecurrence, habitCompletionCount } from "@/api/flows";
 import type { DurationSpec } from "@/api/time-scope";
 import VerdictWindowField from "@/components/CommitmentEditorModal/VerdictWindowField";
@@ -57,9 +57,9 @@ export interface RecurrenceSave {
   gapN: number | null;
   gapKind: string | null;
   endDate: string | null;
-  consumptionKind: ConsumptionKind;
-  blockingMode: BlockingMode | null;
-  catchupPolicy: CatchupPolicy | null;
+  clock: ClockKind;
+  /** Set exactly when the clock is Window. */
+  missPolicy: MissPolicy | null;
 }
 
 export interface FlowSaveData {
@@ -200,6 +200,8 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   const [recurrence, setRecurrence] = useState<RecurrenceUi>(
     () => ({ ...defaultRecurrence(todayIso()), isHabit: startAsHabit }),
   );
+  // An Unscoped Habit can only keep an Interval clock, whatever the pills last said.
+  const effectiveClock: ClockKind = scoped ? recurrence.clock : "interval";
   // For edit-habit reconciliation: how many completed iterations exist, the schedule snapshot to
   // diff against, and whether the reconcile prompt is showing.
   const [completionCount, setCompletionCount] = useState(0);
@@ -234,9 +236,8 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
         gapKind: rec.gap_kind ?? "day",
         endEnabled: endDate !== null,
         endDate: endDate ?? startDate,
-        consumptionKind: rec.consumption_kind,
-        blockingMode: rec.blocking_mode ?? "overlapping",
-        catchupPolicy: rec.catchup_policy ?? "next",
+        clock: rec.clock,
+        missPolicy: rec.miss_policy ?? "archive",
       };
       loadedRecurrenceRef.current = loaded;
       setRecurrence(loaded);
@@ -266,6 +267,8 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
     const loaded = loadedRecurrenceRef.current;
     if (loaded === null) return recurrence.isHabit; // becoming a habit for the first time
     if (recurrence.startDate !== loaded.startDate) return true;
+    // Which iterations exist is the clock's to say: switching it re-keys every one after the first.
+    if (effectiveClock !== loaded.clock) return true;
     if (recurrence.gapEnabled !== loaded.gapEnabled) return true;
     if (recurrence.gapEnabled && (recurrence.gapN !== loaded.gapN || recurrence.gapKind !== loaded.gapKind)) return true;
     if (recurrence.endEnabled !== loaded.endEnabled) return true;
@@ -277,7 +280,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
     setSaveError(null);
     try {
       const phase = isPhaseKind(durationKind);
-      // Recurrence is set/cleared only for a scoped flow that offers it.
+      // Recurrence is set/cleared for a flow that offers it; an Unscoped one keeps an Interval clock.
       const recurrenceSave: RecurrenceSave | null =
         recurrence.isHabit
           ? {
@@ -285,12 +288,8 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
               gapN: recurrence.gapEnabled ? recurrence.gapN : null,
               gapKind: recurrence.gapEnabled ? recurrence.gapKind : null,
               endDate: recurrence.endEnabled ? recurrence.endDate : null,
-              consumptionKind: recurrence.consumptionKind,
-              blockingMode: recurrence.consumptionKind === "accumulating" ? recurrence.blockingMode : null,
-              catchupPolicy:
-                recurrence.consumptionKind === "accumulating" && recurrence.blockingMode === "blocking"
-                  ? recurrence.catchupPolicy
-                  : null,
+              clock: effectiveClock,
+              missPolicy: effectiveClock === "window" ? recurrence.missPolicy : null,
             }
           : null;
       await onSave({
@@ -309,7 +308,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
         // And the Verdict Window only to a commitment one: nothing else has a verdict to bound.
         ...verdictWindowFields(instanceType === "commitment" ? verdictWindow : null),
         isPrivate,
-        ...(offersRecurrence && scoped ? { recurrence: recurrenceSave } : {}),
+        ...(offersRecurrence ? { recurrence: recurrenceSave } : {}),
         ...(reconcile !== undefined ? { reconcile } : {}),
       });
     } catch (err) {
@@ -434,11 +433,13 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
           <RootPlanField flowScopeN={durationN} flowScopeKind={durationKind} value={rootPlan} onChange={setRootPlan} />
         </div>
       )}
-      {scoped && offersRecurrence && (
-        <div className={styles.label}>
-          {t("fieldRecurrence")}
-          <RecurrenceField value={recurrence} onChange={setRecurrence} durationKind={durationKind} />
-        </div>
+      {offersRecurrence && (
+        <RecurrenceField
+          value={recurrence}
+          onChange={setRecurrence}
+          durationKind={scoped ? durationKind : null}
+          scoped={scoped}
+        />
       )}
       <div className={styles.label}>
         {t("fieldTarget")}

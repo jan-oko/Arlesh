@@ -455,7 +455,7 @@ pub enum TasksOperation {
         #[serde(default, deserialize_with = "crate::wire::null_clears")]
         plan: Option<Option<TimeScope>>,
         /// New explicit due, within its effective Time Scope; `null` clears it back to the
-        /// default. Not for a Habit occurrence, whose Habit decides it.
+        /// default. On a Habit occurrence it wins over the due its Habit's clock derives.
         #[serde(default, deserialize_with = "crate::wire::null_clears")]
         due_scope: Option<Option<TimeScope>>,
         /// `true` makes it Asynchronous, `false` not (dropping its wait template).

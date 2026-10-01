@@ -8,7 +8,9 @@
 // Two rules decide everything here:
 //   * **What folds** — every iteration whose window has passed, however it ended. Done folds with
 //     Lapsed and Missed, because the pile-up is the problem and a kept habit piles up fastest. The
-//     iteration whose window is still open always renders on its own.
+//     iteration whose window is still open always renders on its own, and so does **owed** work —
+//     a Window + Owed iteration whose window has passed with its work still open, which stays in
+//     view beside the run rather than inside it (ruled by the user, 2026-10-01).
 //   * **What the expansion looks like** — a level is inserted for a scope kind only where the run
 //     spans more than one of that unit. Five days inside one week are five day nodes and no week
 //     level; three weeks inside one month get a week level and no month level.
@@ -286,10 +288,15 @@ function foldChildren(
 
   function flush(): void {
     if (run.length === 0) return;
+    // Owed work rides along with the run it sits in, so the iterations around it still fold
+    // together, but it is never folded: it is drawn right after the run node.
+    const folding = run.filter((entry) => entry.meta.owed !== true);
     // Below the threshold the iterations stand on their own: a short run is not a pile-up, and
     // folding two nodes into one node saves nothing and hides two.
-    if (run.length >= threshold) folded.push(runNode(run, labels));
-    else for (const entry of run) folded.push(entry.node);
+    if (folding.length >= threshold) {
+      folded.push(runNode(folding, labels));
+      for (const entry of run) if (entry.meta.owed === true) folded.push(entry.node);
+    } else for (const entry of run) folded.push(entry.node);
     run = [];
   }
 
