@@ -102,6 +102,8 @@ impl ArleshMcp {
         // decide which of what survived the MCP may see. The other order would hand the filter
         // a forest whose rooted subtrees hang from parents it cannot find, and it drops those.
         access::restrict_snapshot(&mut load, &map);
+        let people = attempt!(db.people().list().await);
+        super::delegation::label_waits(&mut load, &people);
 
         // After the roots, so a context row above a match is one the MCP could see anyway.
         let matched = match &agentic {

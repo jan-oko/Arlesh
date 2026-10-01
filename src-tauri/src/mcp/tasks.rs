@@ -21,7 +21,7 @@ use serde_json::Value;
 use super::{
     access,
     lookup::{found, Answer, Board},
-    params::{BriefParam, NodeIdParam, TaskStatusParam, TasksOperation},
+    params::{BriefParam, DelegateParam, NodeIdParam, TaskStatusParam, TasksOperation},
     relations::{Asked, Relations},
     result,
     result::attempt,
@@ -30,18 +30,19 @@ use super::{
 use crate::{
     access::model::{AccessLevel, NodeTable},
     database::session::{Db, Transactional},
+    knowledge_base::model::PersonId,
     nodes::id::NodeId,
     tasks::model::{
-        AgenticBrief, CreateTaskRequest, Task, TaskAgentic, TaskArchival, TaskId, TaskStatus,
-        TimeScope, UpdateTaskRequest,
+        AgenticBrief, CreateTaskRequest, Delegate, Task, TaskAgentic, TaskArchival, TaskId,
+        TaskStatus, TimeScope, UpdateTaskRequest,
     },
     undo::model::WriteSource,
 };
 
 /// One write, checked and ready to run as the agent.
 enum Write {
-    /// A new Task, and its prerequisites, tags and block reasons.
-    Create(CreateTaskRequest, Relations),
+    /// A new Task, its delegate, and its prerequisites, tags and block reasons.
+    Create(CreateTaskRequest, Option<Delegate>, Relations),
     /// A change to an existing Task, stored or an occurrence, and to its relations.
     Update(NodeId, UpdateTaskRequest, Relations),
     /// A Habit occurrence archived.
@@ -62,8 +63,10 @@ impl ArleshMcp {
     /// `archive` need a Task that reads as Agentic. `create` and `update` also set its Time Scope,
     /// Plan and due (scope ids, as `containment_conflicts` takes them; the Plan and the due within
     /// the Time Scope), `on_scope_exit` (`keep` is Keep Overdue), `asynchronous`, its explicit
-    /// `block_reasons`, its tags (Tag ids) and its prerequisites — what it comes after, a task,
-    /// goal or wait: `dependencies` on create,
+    /// `block_reasons`, its tags (Tag ids), its `delegate` (`{"kind": "agent"}`,
+    /// `{"kind": "person", "id": N}` — an existing Person — or `null` on update to take it back;
+    /// a delegated Task is hidden wherever an archived one is, except Do) and its prerequisites —
+    /// what it comes after, a task, goal or wait: `dependencies` on create,
     /// `add_dependencies`/`remove_dependencies` (and `add_tags`/`remove_tags`) on update. A
     /// prerequisite or tag need only be visible; one that is not is `not_permitted`, and a
     /// dependency cycle is `invalid_request`. An update is one transaction: all of it lands or none
@@ -141,6 +144,7 @@ impl ArleshMcp {
                 dependencies,
                 tags,
                 block_reasons,
+                delegate,
             } => {
                 let parent = found!(board.resolve(&parent_id, &parent_type));
                 if !board.may_create_under(&parent_type, &parent) {
@@ -172,6 +176,7 @@ impl ArleshMcp {
                         asynchronous,
                         ..Default::default()
                     },
+                    found!(delegate_named(&mut db, delegate).await),
                     relations,
                 )
             }
@@ -190,8 +195,13 @@ impl ArleshMcp {
                 add_tags,
                 remove_tags,
                 block_reasons,
+                delegate,
             } => {
                 let (id, task) = found!(writable(&mut db, &board, &id, now).await);
+                let delegate_to = match delegate {
+                    Some(delegate) => Some(found!(delegate_named(&mut db, delegate).await)),
+                    None => None,
+                };
                 if on_scope_exit.is_some() && matches!(id, NodeId::Derived(_)) {
                     return result::refused(format!(
                         "task {id} is a Habit occurrence; what it does when its window passes is \
@@ -228,6 +238,7 @@ impl ArleshMcp {
                         plan: attempt!(window_change(plan)),
                         due_scope: attempt!(window_change(due_scope)),
                         asynchronous,
+                        delegate_to,
                         ..Default::default()
                     },
                     relations,
@@ -365,8 +376,20 @@ async fn run(
 ) -> Result<Option<Task>, crate::error::AppError> {
     use crate::nodes::write;
     let (task, relations) = match checked {
-        Write::Create(request, relations) => {
-            (write::create_task(db, request, now).await?, relations)
+        Write::Create(request, delegate, relations) => {
+            let task = write::create_task(db, request, now).await?;
+            let task = match delegate {
+                // The create request has no delegate; the same transaction sets it on the new row.
+                Some(delegate) => {
+                    let request = UpdateTaskRequest {
+                        delegate_to: Some(Some(delegate)),
+                        ..Default::default()
+                    };
+                    write::update_task(db, &task.id, request, now).await?
+                }
+                None => task,
+            };
+            (task, relations)
         }
         Write::Update(id, request, relations) => {
             (write::update_task(db, &id, request, now).await?, relations)
@@ -387,6 +410,20 @@ async fn run(
         .into_iter()
         .find(|row| row.id == task.id);
     Ok(Some(reread.unwrap_or(task)))
+}
+
+/// The delegate a write names, once a Person it names is known to exist — refused as `not_found`
+/// otherwise, before anything is written.
+async fn delegate_named(
+    db: &mut Db<Transactional>,
+    delegate: Option<DelegateParam>,
+) -> Result<Option<Delegate>, Answer> {
+    if let Some(DelegateParam::Person { id }) = delegate {
+        if let Err(error) = db.people().get(PersonId(id)).await {
+            return Err(result::failed(error));
+        }
+    }
+    Ok(delegate.map(Delegate::from))
 }
 
 /// A window parameter as the update request takes it: left out, cleared, or a scope to convert.

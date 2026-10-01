@@ -42,6 +42,7 @@
 mod access;
 mod agentic;
 mod beads;
+mod delegation;
 pub mod endpoint;
 mod flows;
 mod ids;

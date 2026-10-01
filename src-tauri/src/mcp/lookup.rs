@@ -58,6 +58,8 @@ impl Board {
         let map = crate::access::access_map(db).await?;
         let domains = load.domains.clone();
         access::restrict_snapshot(&mut load, &map);
+        let people = db.people().list().await?;
+        super::delegation::label_waits(&mut load, &people);
         let names = NodeNames::of(&load).with_subtypes(&domains);
         Ok(Self { map, load, names })
     }

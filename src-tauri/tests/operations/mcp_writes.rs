@@ -171,6 +171,7 @@ fn edit(
         add_tags: Vec::new(),
         remove_tags: Vec::new(),
         block_reasons: None,
+        delegate: None,
     }
 }
 
