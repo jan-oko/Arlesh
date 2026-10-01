@@ -1148,8 +1148,8 @@ mod agent_waits {
                     time_scope: None,
                     check_every: None,
                 })),
-                status: Some(arlesh_lib::tasks::model::Status::Ordinary(
-                    arlesh_lib::tasks::model::TaskStatus::Done,
+                status: Some(arlesh_lib::tasks::model::Status::Agentic(
+                    arlesh_lib::tasks::model::AgenticStatus::Done,
                 )),
                 ..Default::default()
             },

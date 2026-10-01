@@ -48,7 +48,7 @@ describe("updateTask", () => {
     mockCommandOnce(updated);
     const result = await updateTask(1, { status: { kind: "ordinary", status: "done" } });
     expect(invoke).toHaveBeenCalledWith("update_task", { id: 1, request: { status: { kind: "ordinary", status: "done" } } });
-    expect(result.status).toBe("done");
+    expect(result.status).toEqual({ kind: "ordinary", status: "done" });
   });
 });
 

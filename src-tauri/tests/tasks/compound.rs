@@ -239,7 +239,9 @@ async fn switching_it_off_while_derived_in_progress_is_not_a_start() {
     )
     .await
     .unwrap();
-    assert_eq!(written.status.as_str(), "in_progress");
+    // The step under it inherits Agentic, so it holds Doing; the parent keeps what it showed, in
+    // its own model.
+    assert_eq!(written.status.as_str(), "doing");
     assert_eq!(
         written.archival,
         arlesh_lib::tasks::model::TaskArchival::Backlog

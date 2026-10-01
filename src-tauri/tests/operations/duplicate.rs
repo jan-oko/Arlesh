@@ -311,8 +311,8 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
             title: "Cast the bell".into(),
             parent_type: "project".into(),
             parent_id: project.into(),
-            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
-                arlesh_lib::tasks::model::TaskStatus::InProgress,
+            status: Some(arlesh_lib::tasks::model::Status::Agentic(
+                arlesh_lib::tasks::model::AgenticStatus::Doing,
             )),
             time_scope: Some(at(week)),
             on_scope_exit: Some(OnScopeExit::Archive),
@@ -370,7 +370,10 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
 
     assert_ne!(copy.id, task.id);
     assert_eq!(copy.title, "Cast the bell");
-    assert_eq!(copy.status.as_str(), "in_progress");
+    assert_eq!(
+        copy.status,
+        arlesh_lib::tasks::model::Status::Agentic(arlesh_lib::tasks::model::AgenticStatus::Doing)
+    );
     assert_eq!(
         copy.agentic_brief
             .as_ref()
