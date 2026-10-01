@@ -101,7 +101,7 @@ fn root_key(flow_id: i64, iteration: ScopeKey) -> OccurrenceKey {
 }
 
 async fn load(app: &App, instant: &str) -> MindmapLoad {
-    mindmap_commands::load_mindmap(app.state(), at(instant))
+    mindmap_commands::load_mindmap(app.state(), app.state(), at(instant))
         .await
         .unwrap()
 }
