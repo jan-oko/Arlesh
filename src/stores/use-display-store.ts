@@ -157,6 +157,14 @@ interface DisplayStore {
    */
   zenShowOverdueBorder: boolean;
   toggleZenShowOverdueBorder: () => void;
+  /**
+   * Whether the Zen View's grid shows **Compound** Tasks — whose status is made of their
+   * sub-items — beside the rest. **On by default**, which is how the grid drew them before the
+   * setting existed. Off, a compound's card is not drawn and its sub-items still are, by their
+   * own status. App-wide, beside `zenShowsStarted`.
+   */
+  zenShowsCompound: boolean;
+  toggleZenShowsCompound: () => void;
 }
 
 /** Keeps a stored or typed threshold inside the range the setting offers. */
@@ -226,6 +234,8 @@ export const useDisplayStore = create<DisplayStore>()(
       toggleZenShowBadges: () => set((s) => ({ zenShowBadges: !s.zenShowBadges })),
       zenShowsStarted: false,
       toggleZenShowsStarted: () => set((s) => ({ zenShowsStarted: !s.zenShowsStarted })),
+      zenShowsCompound: true,
+      toggleZenShowsCompound: () => set((s) => ({ zenShowsCompound: !s.zenShowsCompound })),
       zenShowOverdueBorder: true,
       toggleZenShowOverdueBorder: () =>
         set((s) => ({ zenShowOverdueBorder: !s.zenShowOverdueBorder })),

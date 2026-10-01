@@ -233,3 +233,66 @@ async fn the_apps_load_is_blocked_by_the_lock_the_app_holds() {
     assert_eq!(after.block_reasons[0].owner_id, NodeId::from(agentic));
     assert!(after.block_reasons[0].derived.is_some());
 }
+
+#[tokio::test]
+async fn a_compound_whose_open_items_the_lock_blocks_is_blocked_too() {
+    use arlesh_lib::block_reasons::model::DerivedBlock;
+    use arlesh_lib::commands::mindmap::load_mindmap;
+    use arlesh_lib::commands::tasks as task_commands;
+    use arlesh_lib::tasks::model::CreateTaskRequest;
+
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    // A Compound Task of my own, holding one Agentic step.
+    let compound = task_commands::create_task(
+        app.state(),
+        CreateTaskRequest {
+            title: "Ship it".into(),
+            parent_type: "domain".into(),
+            parent_id: 1.into(),
+            compound: Some(true),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .id
+    .sid();
+    let step = task_commands::create_task(
+        app.state(),
+        CreateTaskRequest {
+            title: "Agent step".into(),
+            parent_type: "task".into(),
+            parent_id: compound.into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .id
+    .sid();
+    helpers::make_agentic(&pool, step).await;
+    let now = chrono::Local::now().naive_local();
+    let derived_on = |load: &arlesh_lib::mindmap::model::MindmapLoad, id: i64| {
+        load.block_reasons
+            .iter()
+            .filter(|reason| reason.owner_id == NodeId::from(id))
+            .filter_map(|reason| reason.derived)
+            .collect::<Vec<_>>()
+    };
+
+    let free = load_mindmap(app.state(), app.state(), now).await.unwrap();
+    assert!(
+        derived_on(&free, compound).is_empty(),
+        "its one open item is free"
+    );
+
+    app.state::<AgentCapacity>().set(true).await.unwrap();
+    let locked = load_mindmap(app.state(), app.state(), now).await.unwrap();
+    assert_eq!(derived_on(&locked, step), vec![DerivedBlock::AgentCapacity]);
+    assert_eq!(
+        derived_on(&locked, compound),
+        vec![DerivedBlock::Compound],
+        "the lock blocks its only open item, so the Compound is blocked as well"
+    );
+}

@@ -60,8 +60,7 @@ impl Board {
         now: NaiveDateTime,
         at_capacity: bool,
     ) -> Result<Self, AppError> {
-        let mut load = crate::mindmap::load(db, now).await?;
-        crate::capacity::blocks::apply(&mut load, at_capacity);
+        let mut load = crate::mindmap::load_blocked(db, now, at_capacity).await?;
         let map = crate::access::access_map(db).await?;
         let domains = load.domains.clone();
         access::restrict_snapshot(&mut load, &map);

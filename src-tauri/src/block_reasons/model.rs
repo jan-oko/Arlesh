@@ -27,4 +27,7 @@ pub enum DerivedBlock {
     /// The agent capacity lock is on, and the owner is an Agentic Task not yet Done. Clearing the
     /// lock is the only thing that removes it. See [`crate::capacity`].
     AgentCapacity,
+    /// The owner is a **Compound** Task, and every one of its open counted items is blocked. It
+    /// goes when one of them is unblocked or finished. See [`crate::tasks::compound`].
+    Compound,
 }

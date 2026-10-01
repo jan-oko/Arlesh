@@ -61,6 +61,7 @@ fn task_row(
         delegate_to: None,
         agentic,
         asynchronous: false,
+        compound: false,
         async_template: None,
         agentic_brief: None,
         time_scope: None,
@@ -111,7 +112,7 @@ fn sorted(mut ids: Vec<NodeId>) -> Vec<NodeId> {
 #[test]
 fn it_blocks_every_agentic_task_not_yet_done_own_flag_or_inherited() {
     assert_eq!(
-        sorted(blocked_tasks(&board())),
+        sorted(blocked_tasks(Rows::of(&board()))),
         sorted(vec![20.into(), 21.into(), 31.into()])
     );
 }

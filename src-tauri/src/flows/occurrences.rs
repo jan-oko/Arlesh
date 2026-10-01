@@ -1046,6 +1046,8 @@ fn task_row(
         asynchronous: overlay
             .asynchronous
             .unwrap_or(occurrence.fields.asynchronous),
+        // Only a stored Task carries Compound; an occurrence keeps its own status.
+        compound: false,
         async_template: None,
         // The template's brief, field by field, under the occurrence's own.
         agentic_brief: overlay.brief_over(occurrence.fields.agentic_brief.as_ref()),

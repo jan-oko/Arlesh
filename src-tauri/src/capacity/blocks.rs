@@ -1,8 +1,9 @@
 //! The agent capacity lock as a **derived block**: while it is on, every Agentic Task not yet Done
 //! is blocked, by a reason no one wrote and no one can remove but by clearing the lock.
 //!
-//! This is the one derivation. It runs over a [`MindmapLoad`] and adds the reasons to the load's
-//! own `block_reasons`, marked [`DerivedBlock::AgentCapacity`], so everything that already reads
+//! This is the one derivation. The board load runs it ([`crate::mindmap::load_blocked`]) and adds
+//! the reasons to the load's own `block_reasons` — before a Compound Task's own derived block reads
+//! them, so a Compound whose open items the lock blocks is blocked too — marked [`DerivedBlock::AgentCapacity`], so everything that already reads
 //! block reasons — the filters' `is_blocked` (Start, Unblock), the snapshot's `block_reasons`
 //! section, `arlesh_tasks.get`, the app's blocked glyph and its refusal to start a blocked Task —
 //! takes the lock from here without learning it exists.
@@ -11,8 +12,10 @@ use std::collections::HashMap;
 
 use crate::{
     block_reasons::model::{BlockReason, DerivedBlock},
+    domains::model::Domain,
     mindmap::model::MindmapLoad,
     nodes::id::NodeId,
+    tasks::model::{Commitment, Expectation, Goal, Task},
 };
 
 #[cfg(test)]
@@ -42,10 +45,38 @@ fn parent_key(parent_type: &str, parent_id: &NodeId) -> Key {
     }
 }
 
+/// The board rows the derivation reads: every kind a Task can hang under, and the Tasks.
+#[derive(Clone, Copy)]
+pub struct Rows<'board> {
+    /// Aspects, Projects, Domains and Tags.
+    pub domains: &'board [Domain],
+    /// Goals, stored and derived.
+    pub goals: &'board [Goal],
+    /// Tasks, stored and derived.
+    pub tasks: &'board [Task],
+    /// Commitments, stored and derived.
+    pub commitments: &'board [Commitment],
+    /// Expectations, stored and derived.
+    pub expectations: &'board [Expectation],
+}
+
+impl<'board> Rows<'board> {
+    /// The rows of a whole board load.
+    pub fn of(load: &'board MindmapLoad) -> Self {
+        Self {
+            domains: &load.domains,
+            goals: &load.goals,
+            tasks: &load.tasks,
+            commitments: &load.commitments,
+            expectations: &load.expectations,
+        }
+    }
+}
+
 /// Every node that can sit above a Task, with its parent and — for a Task — its own flag.
-fn links(load: &MindmapLoad) -> HashMap<Key, Link> {
+fn links(rows: Rows<'_>) -> HashMap<Key, Link> {
     let mut links = HashMap::new();
-    for domain in &load.domains {
+    for domain in rows.domains {
         let parent = domain.parent_id.map(|id| format!("domain-{id}"));
         links.insert(
             format!("domain-{}", domain.id),
@@ -55,19 +86,19 @@ fn links(load: &MindmapLoad) -> HashMap<Key, Link> {
             },
         );
     }
-    let content = load
+    let content = rows
         .goals
         .iter()
         .map(|goal| ("goal", &goal.id, &goal.parent_type, &goal.parent_id, None))
-        .chain(load.tasks.iter().map(|task| {
+        .chain(rows.tasks.iter().map(|task| {
             let parent = (&task.parent_type, &task.parent_id);
             ("task", &task.id, parent.0, parent.1, task.agentic)
         }))
-        .chain(load.commitments.iter().map(|commitment| {
+        .chain(rows.commitments.iter().map(|commitment| {
             let parent = (&commitment.parent_type, &commitment.parent_id);
             ("commitment", &commitment.id, parent.0, parent.1, None)
         }))
-        .chain(load.expectations.iter().map(|expectation| {
+        .chain(rows.expectations.iter().map(|expectation| {
             let parent = (&expectation.parent_type, &expectation.parent_id);
             ("expectation", &expectation.id, parent.0, parent.1, None)
         }));
@@ -95,10 +126,10 @@ fn reads_agentic(links: &HashMap<Key, Link>, key: &str) -> bool {
     false
 }
 
-/// The Tasks the lock blocks on `load`: every one that reads as Agentic and is not Done.
-pub fn blocked_tasks(load: &MindmapLoad) -> Vec<NodeId> {
-    let links = links(load);
-    load.tasks
+/// The Tasks the lock blocks among `rows`: every one that reads as Agentic and is not Done.
+pub fn blocked_tasks(rows: Rows<'_>) -> Vec<NodeId> {
+    let links = links(rows);
+    rows.tasks
         .iter()
         .filter(|task| task.status != "done")
         .filter(|task| reads_agentic(&links, &format!("task-{}", task.id)))
@@ -106,25 +137,34 @@ pub fn blocked_tasks(load: &MindmapLoad) -> Vec<NodeId> {
         .collect()
 }
 
-/// Adds the lock's block to `load` when `at_capacity`: one derived reason per Task it blocks,
-/// after the Task's own. Nothing, when the lock is off.
+/// The lock's block: one derived reason per Task it blocks among `rows`, numbered on after the
+/// Task's own reasons in `existing`. The board load adds these before anything else reads
+/// "blocked" — a Compound Task's own derived block included.
+pub fn derive(rows: Rows<'_>, existing: &[BlockReason]) -> Vec<BlockReason> {
+    blocked_tasks(rows)
+        .into_iter()
+        .map(|id| {
+            let own = existing
+                .iter()
+                .filter(|reason| reason.owner_type == "task" && reason.owner_id == id)
+                .count();
+            BlockReason {
+                owner_type: "task".to_string(),
+                owner_id: id,
+                reason: AGENT_CAPACITY_REASON.to_string(),
+                position: i64::try_from(own).unwrap_or(i64::MAX),
+                derived: Some(DerivedBlock::AgentCapacity),
+            }
+        })
+        .collect()
+}
+
+/// Adds the lock's block to a finished `load` when `at_capacity`. Nothing, when the lock is off.
+/// The board load itself derives it through [`derive`]; this is for a load already in hand.
 pub fn apply(load: &mut MindmapLoad, at_capacity: bool) {
     if !at_capacity {
         return;
     }
-    for id in blocked_tasks(load) {
-        // After the Task's own reasons, numbered on from them.
-        let own = load
-            .block_reasons
-            .iter()
-            .filter(|reason| reason.owner_type == "task" && reason.owner_id == id)
-            .count();
-        load.block_reasons.push(BlockReason {
-            owner_type: "task".to_string(),
-            owner_id: id,
-            reason: AGENT_CAPACITY_REASON.to_string(),
-            position: i64::try_from(own).unwrap_or(i64::MAX),
-            derived: Some(DerivedBlock::AgentCapacity),
-        });
-    }
+    let reasons = derive(Rows::of(load), &load.block_reasons);
+    load.block_reasons.extend(reasons);
 }

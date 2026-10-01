@@ -3,10 +3,7 @@
 use tauri::State;
 
 use crate::{
-    capacity::{blocks, AgentCapacity},
-    database::session::SessionFactory,
-    error::WireError,
-    mindmap,
+    capacity::AgentCapacity, database::session::SessionFactory, error::WireError, mindmap,
     mindmap::model::MindmapLoad,
 };
 
@@ -27,11 +24,11 @@ pub async fn load_mindmap(
     capacity: State<'_, AgentCapacity>,
     now: chrono::NaiveDateTime,
 ) -> Result<MindmapLoad, WireError> {
+    let at_capacity = capacity.get().await.at_capacity;
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let mut load = mindmap::load(&mut db, now)
+    let load = mindmap::load_blocked(&mut db, now, at_capacity)
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
-    blocks::apply(&mut load, capacity.get().await.at_capacity);
     Ok(load)
 }

@@ -8,6 +8,9 @@ interface Props {
   virtualBlockers?: string[];
   /** Blocked by the agent capacity lock — shown read-only, removed only by clearing the lock. */
   capacityBlocked?: boolean;
+  /** Blocked as a Compound Task whose open sub-items are all blocked — read-only: it goes when a
+   * sub-item is unblocked or finished. */
+  compoundBlocked?: boolean;
 }
 
 /**
@@ -16,7 +19,7 @@ interface Props {
  * immutable rows so the full blocked picture is visible; they're changed by editing the dependencies.
  * The agent capacity lock's reason follows in a group of its own: nothing in the editor changes it.
  */
-export default function BlockReasonsField({ reasons, onChange, virtualBlockers = [], capacityBlocked = false }: Props) {
+export default function BlockReasonsField({ reasons, onChange, virtualBlockers = [], capacityBlocked = false, compoundBlocked = false }: Props) {
   const { t } = useTranslation("editor");
   return (
     <div className={styles.label}>
@@ -55,6 +58,12 @@ export default function BlockReasonsField({ reasons, onChange, virtualBlockers =
           <div className={styles.virtualBlockers}>
             <span className={styles.virtualBlockersLabel}>{t("capacityBlockLabel")}</span>
             <div className={styles.virtualBlockerRow}>{t("agentsAtCapacity")}</div>
+          </div>
+        )}
+        {compoundBlocked && (
+          <div className={styles.virtualBlockers}>
+            <span className={styles.virtualBlockersLabel}>{t("compoundBlockLabel")}</span>
+            <div className={styles.virtualBlockerRow}>{t("compoundBlocked")}</div>
           </div>
         )}
       </div>

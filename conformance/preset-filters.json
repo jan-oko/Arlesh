@@ -17,7 +17,9 @@
     "`filter.expectations` is the List View's Expectations option, which, like Unblock, leaves the",
     "preset where it was. A case's `expectations` lists the Expectation rows the List View keeps;",
     "omitted, it is empty. A delegated Task's virtual Expectation and an Expectation's virtual",
-    "check task are written into a board as the ordinary nodes they are drawn as."
+    "check task are written into a board as the ordinary nodes they are drawn as. So is a Task that",
+    "consists of its sub-items: it carries the status the board load derived for it, since the",
+    "derivation runs before either evaluator reads the board, and is judged exactly as that status."
   ],
   "cases": [
     {
@@ -1636,6 +1638,49 @@
       "commitments": []
     },
     {
+      "name": "start drops a compound task whose open sub-items are all blocked, with its subtree",
+      "spec": "resources.md, Tasks — Compound: a Compound Task is served with its derived status and, when every open sub-item is blocked, a derived block reason, so it is written here as the blocked Task it reads as.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "compound",
+      "mindmap": [
+        "domain-compound",
+        "task-compound-free",
+        "task-free-open"
+      ],
+      "list": [
+        "task-compound-free",
+        "task-free-open"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "unblock shows a compound task whose open sub-items are all blocked",
+      "spec": "resources.md, Tasks — Compound: a Compound Task is served with its derived status and, when every open sub-item is blocked, a derived block reason, so it is written here as the blocked Task it reads as.",
+      "filter": {
+        "preset": "all",
+        "unblock": true
+      },
+      "board": "compound",
+      "mindmap": [
+        "domain-compound",
+        "task-compound-blocked",
+        "task-compound-free",
+        "task-free-blocked",
+        "task-free-done",
+        "task-free-open",
+        "task-sub-blocked",
+        "task-sub-done"
+      ],
+      "list": [
+        "task-compound-blocked",
+        "task-free-blocked",
+        "task-sub-blocked"
+      ],
+      "commitments": []
+    },
+    {
       "name": "agents at capacity: start drops every agentic task not done, with its subtree",
       "spec": "mcp-server.md, Agent capacity — while the lock is on, every Agentic Task not yet Done is derived blocked (the backend adds the reason; the facts here are what it derives: task-agentic-child inherits Agentic, task-opted-out is marked Not agentic, task-agentic-done is Done). A blocked Task drops from Start together with its subtree, so the Not-agentic child under an Agentic parent goes too; an Agentic wait is not a Task and is not blocked: on the Mindmap it goes with the Task it hangs under, and the List View's waits still list it.",
       "filter": {
@@ -2694,6 +2739,61 @@
               "id": "task-done",
               "kind": "task",
               "status": "done"
+            }
+          ]
+        }
+      ]
+    },
+    "compound": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-compound",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-compound-blocked",
+              "kind": "task",
+              "status": "todo",
+              "isBlocked": true,
+              "children": [
+                {
+                  "id": "task-sub-blocked",
+                  "kind": "task",
+                  "status": "todo",
+                  "isBlocked": true
+                },
+                {
+                  "id": "task-sub-done",
+                  "kind": "task",
+                  "status": "done"
+                }
+              ]
+            },
+            {
+              "id": "task-compound-free",
+              "kind": "task",
+              "status": "started",
+              "children": [
+                {
+                  "id": "task-free-blocked",
+                  "kind": "task",
+                  "status": "todo",
+                  "isBlocked": true
+                },
+                {
+                  "id": "task-free-done",
+                  "kind": "task",
+                  "status": "done"
+                },
+                {
+                  "id": "task-free-open",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
             }
           ]
         }
