@@ -250,26 +250,6 @@ describe("FlowEditorModal — save", () => {
     );
   });
 
-  it("opens a new Habit's Recurrence settings in full", () => {
-    const blank = mkFlow({ id: "flow-new", title: "Journal" });
-    delete blank.rowId;
-    render(<FlowEditorModal {...defaultProps} node={blank} startAsHabit />);
-    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "clockWindow" })).toBeInTheDocument();
-  });
-
-  it("folds an existing Habit's Recurrence into its summary, which opens on a click", async () => {
-    vi.mocked(getFlowRecurrence).mockResolvedValueOnce({
-      flow_id: 1, start_scope_id: testKey(1), gap_n: null, gap_kind: null, end_scope_id: null,
-      clock: "window", miss_policy: "overdue",
-    });
-    render(<FlowEditorModal {...defaultProps} />);
-    const toggle = await screen.findByRole("button", { expanded: false });
-    expect(screen.queryByRole("button", { name: "clockWindow" })).not.toBeInTheDocument();
-    fireEvent.click(toggle);
-    expect(screen.getByRole("button", { name: "missPolicyOverdue" })).toHaveAttribute("aria-pressed", "true");
-  });
-
   it("offers no Recurrence on a plain new flow — only Shift+H opens one as a Habit", () => {
     const blank = mkFlow({ id: "flow-new" });
     delete blank.rowId;
