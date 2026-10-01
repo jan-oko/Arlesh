@@ -24,7 +24,7 @@ export interface McpNodeKey {
   node_id: number;
 }
 
-/** One stored node as the MCP access page lists it. */
+/** One stored node as the Agents settings page lists it. */
 export interface McpCatalogueNode extends McpNodeKey {
   /** For a domain-table row, its subtype (`aspect`, `project`, `domain` or `tag`). */
   subtype: string | null;

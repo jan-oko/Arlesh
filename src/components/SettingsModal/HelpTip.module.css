@@ -1,0 +1,59 @@
+.tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* A small round "?" in the secondary text colour, like the other quiet controls on the page. */
+.mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--node-border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: var(--font-sans);
+  line-height: 1;
+  cursor: help;
+}
+
+.mark:hover {
+  color: var(--text-primary);
+}
+
+.mark:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Hidden until the mark is hovered or focused; never removed, so it still describes the mark. */
+.bubble {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  inset-inline-start: 0;
+  z-index: 10;
+  width: 280px;
+  max-width: 70vw;
+  padding: var(--space-2);
+  border-radius: 6px;
+  border: 1px solid var(--node-border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mark:hover + .bubble,
+.mark:focus-visible + .bubble {
+  visibility: visible;
+  opacity: 1;
+}

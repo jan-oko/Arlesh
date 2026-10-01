@@ -1822,6 +1822,55 @@
       ],
       "commitments": [],
       "expectations": []
+    },
+    {
+      "name": "agents at capacity: start drops every agentic task not done, with its subtree",
+      "spec": "mcp-server.md, Agent capacity — while the lock is on, every Agentic Task not yet Done is derived blocked (the backend adds the reason; the facts here are what it derives: task-agentic-child inherits Agentic, task-opted-out is marked Not agentic, task-agentic-done is Done). A blocked Task drops from Start together with its subtree, so the Not-agentic child under an Agentic parent goes too; an Agentic wait is not a Task and is not blocked: on the Mindmap it goes with the Task it hangs under, and the List View's waits still list it.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "agent-capacity",
+      "mindmap": [
+        "domain-agentic",
+        "task-plain"
+      ],
+      "list": [
+        "task-plain"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-agentic"
+      ]
+    },
+    {
+      "name": "agents at capacity: unblock lists the agentic tasks the lock blocks",
+      "spec": "mcp-server.md, Agent capacity — a capacity-blocked Task is blocked like any other, so the List View's Unblock lists it.",
+      "filter": {
+        "preset": "all",
+        "unblock": true
+      },
+      "board": "agent-capacity",
+      "mindmap": [
+        "domain-agentic",
+        "expectation-agentic",
+        "task-agentic-child",
+        "task-agentic-done",
+        "task-agentic-inprogress",
+        "task-agentic-parent",
+        "task-agentic-started",
+        "task-agentic-todo",
+        "task-opted-out",
+        "task-plain"
+      ],
+      "list": [
+        "task-agentic-child",
+        "task-agentic-inprogress",
+        "task-agentic-parent",
+        "task-agentic-started",
+        "task-agentic-todo"
+      ],
+      "commitments": [],
+      "expectations": []
     }
   ],
   "boards": {
@@ -3142,6 +3191,75 @@
             },
             {
               "id": "task-elsewhere",
+              "kind": "task",
+              "status": "todo"
+            }
+          ]
+        }
+      ]
+    },
+    "agent-capacity": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-agentic",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-agentic-todo",
+              "kind": "task",
+              "status": "todo",
+              "children": [
+                {
+                  "id": "expectation-agentic",
+                  "kind": "expectation",
+                  "status": "pending"
+                }
+              ],
+              "isBlocked": true
+            },
+            {
+              "id": "task-agentic-started",
+              "kind": "task",
+              "status": "started",
+              "isBlocked": true
+            },
+            {
+              "id": "task-agentic-inprogress",
+              "kind": "task",
+              "status": "in_progress",
+              "children": [
+                {
+                  "id": "task-agentic-child",
+                  "kind": "task",
+                  "status": "todo",
+                  "isBlocked": true
+                }
+              ],
+              "isBlocked": true
+            },
+            {
+              "id": "task-agentic-parent",
+              "kind": "task",
+              "status": "in_progress",
+              "children": [
+                {
+                  "id": "task-opted-out",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ],
+              "isBlocked": true
+            },
+            {
+              "id": "task-agentic-done",
+              "kind": "task",
+              "status": "done"
+            },
+            {
+              "id": "task-plain",
               "kind": "task",
               "status": "todo"
             }

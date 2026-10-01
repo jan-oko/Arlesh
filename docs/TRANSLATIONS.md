@@ -26,7 +26,7 @@ second locale — not because a translation is pending.
 | `planView`     | Plan View headings, scope stepper, refusals     |
 | `expectation`  | Expectation editor, gestures, refusals and prompts |
 | `hotkeys`      | Keyboard cheat-sheet action labels             |
-| `settings`     | Settings modal pages, and the MCP access page  |
+| `settings`     | Settings modal pages, and the Agents page  |
 | `zenView`      | Zen View strips, empty state, preset refusal, its settings switch |
 
 ---
