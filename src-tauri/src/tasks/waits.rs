@@ -400,12 +400,21 @@ impl TaskOperator<'_> {
         archival: ExpectationArchival,
     ) -> Result<(), TaskError> {
         sqlx::query(
-            "INSERT INTO spawned_waits (task_id, status, archival) VALUES (?, ?, ?)
-             ON CONFLICT (task_id) DO UPDATE SET status = excluded.status, archival = excluded.archival",
+            "INSERT INTO spawned_waits (task_id, status, archival, released_at)
+             VALUES (?, ?, ?, CASE WHEN ? = 'released' THEN ? END)
+             ON CONFLICT (task_id) DO UPDATE SET status = excluded.status,
+                archival = excluded.archival,
+                released_at = CASE WHEN excluded.status = 'released'
+                                   THEN CASE WHEN spawned_waits.status = 'released'
+                                             THEN spawned_waits.released_at
+                                             ELSE excluded.released_at END
+                                   ELSE NULL END",
         )
         .bind(id.0)
         .bind(status.as_str())
         .bind(archival.as_str())
+        .bind(status.as_str())
+        .bind(instant_column(super::expectations::now()))
         .execute(&mut *self.connection)
         .await?;
         Ok(())

@@ -651,8 +651,8 @@ impl<'session> GoalOperator<'session> {
             "INSERT INTO goals
                 (title, parent_type, parent_id, status,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n, time_scope_duration_kind,
-                 on_scope_exit)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 on_scope_exit, achieved_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -663,6 +663,11 @@ impl<'session> GoalOperator<'session> {
         .bind(ts_n)
         .bind(&ts_kind)
         .bind(on_exit)
+        // A goal created achieved was achieved now, as far as anything can tell.
+        .bind(
+            (status == GoalStatus::Achieved.as_str())
+                .then(|| waits::instant_column(expectations::now())),
+        )
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -789,7 +794,11 @@ impl<'session> GoalOperator<'session> {
         sqlx::query(
             "UPDATE goals SET title=?, status=?,
                 time_scope_start_id=?, time_scope_end_id=?,
-                time_scope_duration_n=?, time_scope_duration_kind=?, on_scope_exit=?, position=?, is_private=? WHERE id=?",
+                time_scope_duration_n=?, time_scope_duration_kind=?, on_scope_exit=?, position=?, is_private=?,
+                achieved_at = CASE WHEN ? = 'achieved'
+                                   THEN CASE WHEN status = 'achieved' THEN achieved_at ELSE ? END
+                                   ELSE NULL END
+             WHERE id=?",
         )
         .bind(&write.title)
         .bind(&write.status)
@@ -800,6 +809,9 @@ impl<'session> GoalOperator<'session> {
         .bind(on_exit)
         .bind(write.position)
         .bind(write.is_private)
+        // Achieved keeps the instant it was first achieved; anything else clears it.
+        .bind(&write.status)
+        .bind(waits::instant_column(expectations::now()))
         .bind(id.0)
         .execute(&mut *self.connection)
         .await?;

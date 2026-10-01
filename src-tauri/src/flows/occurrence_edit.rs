@@ -540,8 +540,15 @@ pub async fn update_commitment(
         overlay.title = (title != template.title).then_some(title);
     }
     if let Some(verdict) = request.verdict {
+        let unchanged = overlay.verdict.as_deref() == Some(verdict.as_str());
         overlay.verdict = verdict.is_resolved().then(|| verdict.as_str().to_string());
-        overlay.resolved_at = overlay.verdict.as_ref().map(|_| resolved_at_ms(now));
+        // The same verdict saved again keeps the instant it was recorded: a cooldown and an
+        // Interval's next window count from it.
+        overlay.resolved_at = match (verdict.is_resolved(), unchanged) {
+            (true, true) => overlay.resolved_at.or_else(|| Some(resolved_at_ms(now))),
+            (true, false) => Some(resolved_at_ms(now)),
+            (false, _) => None,
+        };
         overlay.tombstone = None;
     }
     if let Some(position) = request.position {
