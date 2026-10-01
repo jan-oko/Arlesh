@@ -441,6 +441,44 @@ describe("ListView — Overdue first", () => {
     ]);
   });
 
+  it("lifts an unscoped task past a due of its own, with a lapsed Plan, into the section", () => {
+    underStart();
+    useDisplayStore.setState({ overdueFirst: true });
+    const parent = n("task-parent", "task", { status: "todo", planTiming: "lapsed" });
+    mockUseListData.mockReturnValue(listData({
+      rows: [
+        row({ node: parent, ancestors: [aspect(), goal()] }),
+        row({
+          node: n("task-ask", "task", { status: "todo", timing: "active", overdue: true, planTiming: "lapsed" }),
+          ancestors: [aspect(), goal(), parent],
+        }),
+      ],
+    }));
+    const { container } = render(<ListViewInApp />);
+    expect(renderedBlocks(container)).toEqual([
+      "section:listView:overdueHeading", "row:task-ask", "rule", "row:task-parent",
+    ]);
+  });
+
+  it("shows neither the row nor the section when the Overdue task's parent is blocked", () => {
+    underStart();
+    useDisplayStore.setState({ overdueFirst: true });
+    const parent = n("task-parent", "task", { status: "todo", blockReasons: ["second opinion"] });
+    mockUseListData.mockReturnValue(listData({
+      rows: [
+        row({ node: parent, ancestors: [aspect(), goal()], isBlocked: true }),
+        row({
+          node: n("task-ask", "task", { status: "todo", timing: "active", overdue: true }),
+          ancestors: [aspect(), goal(), parent],
+          hasBlockedAncestor: true,
+        }),
+      ],
+    }));
+    render(<ListViewInApp />);
+    expect(screen.queryByText("listView:overdueHeading")).not.toBeInTheDocument();
+    expect(screen.queryByText("task-ask")).not.toBeInTheDocument();
+  });
+
   it("draws no Overdue section with its setting off", () => {
     underStart();
     useDisplayStore.setState({ overdueFirst: false });
