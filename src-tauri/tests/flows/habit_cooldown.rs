@@ -1,10 +1,11 @@
 //! A Window Habit's cooldown (Task 199), and the done date it counts from.
 //!
 //! Each test builds a Habit through the commands, completes iterations at chosen instants, and
-//! loads the board at a moment to ask whether the next iteration has opened yet.
+//! loads the board at a moment to ask whether the next iteration carries the cooldown's block.
 
 use crate::helpers;
 
+use arlesh_lib::block_reasons::model::DerivedBlock;
 use arlesh_lib::commands::{flows as flow_commands, mindmap as mindmap_commands};
 use arlesh_lib::flows::model::{
     ClockKind, CreateFlowRequest, FlowId, InstanceType, MissPolicy, SetRecurrenceRequest,
@@ -17,7 +18,6 @@ use arlesh_lib::nodes::{
 };
 use arlesh_lib::scopes::key::ScopeKey;
 use arlesh_lib::scopes::model::ScopeKind;
-use arlesh_lib::tasks::lifecycle::Timing;
 use tauri::Manager;
 
 type App = tauri::App<tauri::test::MockRuntime>;
@@ -106,14 +106,20 @@ async fn load(app: &App, instant: &str) -> MindmapLoad {
         .unwrap()
 }
 
-fn timing(board: &MindmapLoad, key: &OccurrenceKey) -> Timing {
+/// Until when the board says `key`'s root is cooling down — its derived cooldown block — if it is.
+fn cooling_until(board: &MindmapLoad, key: &OccurrenceKey) -> Option<chrono::NaiveDateTime> {
     let id = NodeId::Derived(key.id());
     board
-        .lifecycles
+        .block_reasons
         .iter()
-        .find(|lifecycle| lifecycle.node_id == id)
-        .map(|lifecycle| lifecycle.timing)
-        .unwrap_or_else(|| panic!("{} has a lifecycle", key.node_key()))
+        .find(|reason| reason.owner_id == id && reason.derived == Some(DerivedBlock::Cooldown))
+        .and_then(|reason| reason.until)
+}
+
+/// Whether the board draws `key`'s root at all.
+fn drawn(board: &MindmapLoad, key: &OccurrenceKey) -> bool {
+    let id = NodeId::Derived(key.id());
+    board.tasks.iter().any(|task| task.id == id)
 }
 
 /// Marks a whole iteration done as if at `instant`.
@@ -132,7 +138,7 @@ async fn complete_at(pool: &sqlx::SqlitePool, flow_id: i64, iteration: ScopeKey,
 }
 
 #[tokio::test]
-async fn a_weekly_habit_done_on_saturday_opens_next_week_on_monday() {
+async fn a_weekly_habit_done_on_saturday_blocks_next_week_through_sunday() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let flow_id = weekly_with_a_day_of_cooldown(&app).await;
@@ -146,23 +152,37 @@ async fn a_weekly_habit_done_on_saturday_opens_next_week_on_monday() {
     let next = root_key(flow_id, week(ymd(2026, 9, 27)));
 
     let sunday = load(&app, "2026-09-27T10:00:00").await;
-    assert_eq!(
-        timing(&sunday, &next),
-        Timing::Pending,
-        "Sunday is the cooldown: the week is drawn, but has not opened"
+    assert!(
+        drawn(&sunday, &next),
+        "the week keeps its window, and is drawn"
     );
-    let early_monday = load(&app, "2026-09-28T01:30:00").await;
     assert_eq!(
-        timing(&early_monday, &next),
-        Timing::Pending,
-        "Monday begins at 02:00"
+        cooling_until(&sunday, &next),
+        Some(at("2026-09-28T02:00:00")),
+        "Sunday is the cooldown: blocked until Monday at the day boundary"
     );
-    let monday = load(&app, "2026-09-28T02:00:00").await;
-    assert_eq!(timing(&monday, &next), Timing::Active);
+    let reason = sunday
+        .block_reasons
+        .iter()
+        .find(|reason| reason.derived == Some(DerivedBlock::Cooldown))
+        .map(|reason| reason.reason.clone());
+    assert_eq!(
+        reason.as_deref(),
+        Some("Cooling down until Mon 2026-09-28 02:00")
+    );
+    assert_eq!(
+        cooling_until(&load(&app, "2026-09-28T01:30:00").await, &next),
+        Some(at("2026-09-28T02:00:00"))
+    );
+    assert_eq!(
+        cooling_until(&load(&app, "2026-09-28T02:00:00").await, &next),
+        None,
+        "the block lifts by itself"
+    );
 }
 
 #[tokio::test]
-async fn completing_the_held_iteration_holds_the_one_after_it() {
+async fn completing_the_blocked_iteration_blocks_the_one_after_it() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let flow_id = weekly_with_a_day_of_cooldown(&app).await;
@@ -173,7 +193,6 @@ async fn completing_the_held_iteration_holds_the_one_after_it() {
         "2026-09-26T19:00:00",
     )
     .await;
-    // The held week done on its own Saturday: the week after it is held in turn.
     complete_at(
         &pool,
         flow_id,
@@ -181,36 +200,93 @@ async fn completing_the_held_iteration_holds_the_one_after_it() {
         "2026-10-03T20:00:00",
     )
     .await;
+    let blocked = root_key(flow_id, week(ymd(2026, 9, 27)));
     let after = root_key(flow_id, week(ymd(2026, 10, 4)));
 
+    let board = load(&app, "2026-10-04T10:00:00").await;
     assert_eq!(
-        timing(&load(&app, "2026-10-04T10:00:00").await, &after),
-        Timing::Pending
+        cooling_until(&board, &blocked),
+        None,
+        "done, nothing left to block"
     );
     assert_eq!(
-        timing(&load(&app, "2026-10-05T02:00:00").await, &after),
-        Timing::Active
+        cooling_until(&board, &after),
+        Some(at("2026-10-05T02:00:00"))
     );
 }
 
+/// The user's case on the branch instance (2026-10-01): a weekly Habit with a two-day cooldown,
+/// W39 (the week of 2026-09-20) completed on Thursday 2026-10-01, inside W40. W40 is blocked from
+/// then until its own window's end, on Sunday at 02:00.
 #[tokio::test]
-async fn a_completion_made_after_the_next_window_opened_leaves_it_open() {
+async fn a_late_resolution_blocks_the_iteration_already_open() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    let flow_id = weekly_with_a_day_of_cooldown(&app).await;
-    // Marked done late — on the Monday of the next week.
+    let flow_id = flow(&app, "week").await;
+    flow_commands::set_flow_recurrence(
+        app.state(),
+        flow_id,
+        recurrence(
+            week(ymd(2026, 9, 13)),
+            ClockKind::Window,
+            Some(MissPolicy::Archive),
+            Some((2, "day")),
+        ),
+    )
+    .await
+    .unwrap();
+    let w40 = root_key(flow_id, week(ymd(2026, 9, 27)));
+    assert_eq!(
+        cooling_until(&load(&app, "2026-10-01T09:00:00").await, &w40),
+        None
+    );
+
     complete_at(
         &pool,
         flow_id,
         week(ymd(2026, 9, 20)),
-        "2026-09-28T10:00:00",
+        "2026-10-01T10:00:00",
     )
     .await;
-    let next = root_key(flow_id, week(ymd(2026, 9, 27)));
-
+    let board = load(&app, "2026-10-01T10:05:00").await;
+    assert!(drawn(&board, &w40));
     assert_eq!(
-        timing(&load(&app, "2026-09-28T11:00:00").await, &next),
-        Timing::Active
+        cooling_until(&board, &w40),
+        Some(at("2026-10-04T02:00:00")),
+        "Friday and Saturday are the cooldown"
+    );
+}
+
+#[tokio::test]
+async fn an_overdue_iteration_resolved_late_blocks_the_next() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let flow_id = flow(&app, "day").await;
+    flow_commands::set_flow_recurrence(
+        app.state(),
+        flow_id,
+        recurrence(
+            ScopeKey::day(ymd(2026, 1, 5)),
+            ClockKind::Window,
+            Some(MissPolicy::Overdue),
+            Some((2, "part")),
+        ),
+    )
+    .await
+    .unwrap();
+    // The 5th is missed and carried by the 6th, which is done late, at 23:00 in the 6th's Night.
+    complete_at(
+        &pool,
+        flow_id,
+        ScopeKey::day(ymd(2026, 1, 6)),
+        "2026-01-06T23:00:00",
+    )
+    .await;
+    let board = load(&app, "2026-01-07T03:00:00").await;
+    assert_eq!(
+        cooling_until(&board, &root_key(flow_id, ScopeKey::day(ymd(2026, 1, 7)))),
+        Some(at("2026-01-07T12:00:00")),
+        "the Premorning and the Morning are the cooldown; Noon lifts it"
     );
 }
 
@@ -221,14 +297,14 @@ async fn setting_the_done_date_back_makes_the_cooldown_count_from_it() {
     let flow_id = weekly_with_a_day_of_cooldown(&app).await;
     let first = root_key(flow_id, week(ymd(2026, 9, 20)));
     let next = root_key(flow_id, week(ymd(2026, 9, 27)));
-    complete_at(&pool, flow_id, first.iteration, "2026-09-28T10:00:00").await;
+    complete_at(&pool, flow_id, first.iteration, "2026-09-30T10:00:00").await;
     assert_eq!(
-        timing(&load(&app, "2026-09-27T10:00:00").await, &next),
-        Timing::Active,
-        "a completion recorded on Monday holds nothing back on Sunday"
+        cooling_until(&load(&app, "2026-09-30T11:00:00").await, &next),
+        Some(at("2026-10-02T02:00:00")),
+        "recorded on Wednesday, the cooldown is Thursday"
     );
 
-    let now = at("2026-09-28T11:00:00");
+    let now = at("2026-09-30T11:00:00");
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let id = NodeId::Derived(first.id());
     write::set_done_at(&mut db, &id, at("2026-09-26T19:00:00"), now)
@@ -241,9 +317,9 @@ async fn setting_the_done_date_back_makes_the_cooldown_count_from_it() {
     db.commit().await.unwrap();
 
     assert_eq!(
-        timing(&load(&app, "2026-09-27T10:00:00").await, &next),
-        Timing::Pending,
-        "dated back to Saturday, Sunday is its cooldown"
+        cooling_until(&load(&app, "2026-09-30T11:00:00").await, &next),
+        None,
+        "dated back to Saturday, its cooldown was Sunday and is long over"
     );
 }
 
@@ -352,6 +428,16 @@ async fn a_cooldown_is_refused_off_a_window_clock_and_past_the_window() {
             start,
             ClockKind::Window,
             Some(MissPolicy::Owed),
+            Some((1, "day"))
+        ))
+        .await,
+        "an owed habit keeps every iteration open beside the next"
+    );
+    assert!(
+        refused(recurrence(
+            start,
+            ClockKind::Window,
+            Some(MissPolicy::Archive),
             Some((7, "day"))
         ))
         .await,
@@ -361,7 +447,7 @@ async fn a_cooldown_is_refused_off_a_window_clock_and_past_the_window() {
         refused(recurrence(
             start,
             ClockKind::Window,
-            Some(MissPolicy::Owed),
+            Some(MissPolicy::Archive),
             Some((1, "week"))
         ))
         .await,

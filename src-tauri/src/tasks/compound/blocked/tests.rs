@@ -15,6 +15,7 @@ fn reason(owner_type: &str, id: i64) -> BlockReason {
         reason: "waiting".to_string(),
         position: 0,
         derived: None,
+        until: None,
     }
 }
 

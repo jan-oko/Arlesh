@@ -198,8 +198,7 @@ fn parse_clock(recurrence: &FlowRecurrence) -> Result<Clock, FlowError> {
 }
 
 /// Refuses a cooldown the Habit cannot carry (`docs/spec/habits.md`, *Cooldown*): one on anything
-/// but a Window clock — an Interval's Gap already counts from completion — or on a commitment
-/// Habit, which completes nothing for a cooldown to count from; one counted in a unit that is not
+/// but Window + Archive or Window + Overdue (see [`takes_cooldown`]); one counted in a unit that is not
 /// finer than the Habit's window; and one that could reach the end of the window after the one it
 /// follows.
 fn check_cooldown(flow: &Flow, request: &SetRecurrenceRequest) -> Result<(), FlowError> {
@@ -208,15 +207,10 @@ fn check_cooldown(flow: &Flow, request: &SetRecurrenceRequest) -> Result<(), Flo
     let Some(parsed) = parsed else {
         return Ok(());
     };
-    if request.clock != ClockKind::Window {
+    if request.clock != ClockKind::Window || !takes_cooldown(request.miss_policy) {
         return Err(FlowError::Invalid(
-            "only a window habit has a cooldown — an interval's gap already counts from completion"
+            "only a window habit that archives or carries what it misses has a cooldown"
                 .to_string(),
-        ));
-    }
-    if flow.instance_type == "commitment" {
-        return Err(FlowError::Invalid(
-            "a commitment habit has no cooldown — nothing it draws is ever completed".to_string(),
         ));
     }
     let kind = flow.flow_duration_kind.as_deref().unwrap_or_default();
@@ -225,12 +219,28 @@ fn check_cooldown(flow: &Flow, request: &SetRecurrenceRequest) -> Result<(), Flo
         .map_err(|refusal| FlowError::Invalid(refusal.to_string()))
 }
 
-/// The cooldown a Habit's iterations are held back by, or `None` when it has none.
+/// Whether a Window Habit with this miss policy may carry a cooldown: **Archive** and **Overdue**
+/// only (ruled by the user, 2026-10-01). Not **Owed**, whose iterations all stay open beside one
+/// another — and so not a commitment Habit, which is fixed to Owed — and not an Interval, whose Gap
+/// already counts from completion and which has no miss policy.
+fn takes_cooldown(policy: Option<MissPolicy>) -> bool {
+    matches!(policy, Some(MissPolicy::Archive | MissPolicy::Overdue))
+}
+
+/// The cooldown a Habit's iterations are blocked by, or `None` when it has none.
 ///
 /// A stored cooldown that no longer fits the Habit's window — its window was changed since, to
 /// one the cooldown's unit is not finer than, or one too short for it — holds nothing back: the
 /// editor refuses to save it again until it is fixed, and until then the Habit runs without it.
 fn habit_cooldown(flow: &Flow, recurrence: &FlowRecurrence) -> Option<cooldown::Cooldown> {
+    if !takes_cooldown(
+        recurrence
+            .miss_policy
+            .as_deref()
+            .and_then(MissPolicy::from_db),
+    ) {
+        return None;
+    }
     let kind = flow.flow_duration_kind.as_deref()?;
     let parsed =
         cooldown::Cooldown::parse(recurrence.cooldown_n, recurrence.cooldown_kind.as_deref())
@@ -3107,11 +3117,6 @@ pub async fn generate_habit_iterations<M: SessionMode>(
         completions.completed_at(slot)
     })?;
     let resolved = completions.resolutions(&slots);
-    let openings = cooldown::openings(
-        &slots,
-        &resolved,
-        habit_cooldown(&flow, &recurrence).as_ref(),
-    );
     let iterations = classify_iterations(&slots, clock, &resolved, now);
     let iterations = expire_unanswered(iterations, &verdict_deadlines(&flow, &slots), now);
 
@@ -3130,10 +3135,7 @@ pub async fn generate_habit_iterations<M: SessionMode>(
         // Every classified iteration came from a slot, so the lookup always hits; an iteration
         // that somehow had no slot would simply render no occurrences rather than fail the load.
         let instances = match by_index.get(&iteration.index) {
-            Some(slot) => {
-                let opening = openings.get(&slot.index).copied().unwrap_or(slot.start);
-                resolve_iteration_instances(&shape, slot, (iteration.status, opening), now)?
-            }
+            Some(slot) => resolve_iteration_instances(&shape, slot, iteration.status, now)?,
             None => Vec::new(),
         };
         resolved_iterations.push(HabitIteration {
@@ -3171,13 +3173,10 @@ struct HabitShape<'template> {
 /// not-yet-open, so this evening's item does not sit among the morning's work while still being
 /// reachable when you ask to see it all.
 /// Dropping it here instead put it beyond every preset at once, All included.
-///
-/// `opening` is when the iteration opens — its window's start, or later while a **cooldown** holds
-/// it back ([`cooldown::openings`]); no occurrence in it opens before then.
 fn resolve_iteration_instances(
     shape: &HabitShape<'_>,
     slot: &SlotWindow,
-    (status, opening): (IterationStatus, NaiveDateTime),
+    status: IterationStatus,
     now: NaiveDateTime,
 ) -> Result<Vec<HabitInstance>, FlowError> {
     let no_pairs: Vec<FlowItemCycle> = Vec::new();
@@ -3198,12 +3197,7 @@ fn resolve_iteration_instances(
                 cycle_id: NO_CYCLE,
                 time_scope: None,
                 plan: None,
-                timing: instance_timing(
-                    shape.clock,
-                    status,
-                    (slot.start.max(opening), slot.end),
-                    now,
-                ),
+                timing: instance_timing(shape.clock, status, (slot.start, slot.end), now),
             });
             continue;
         }
@@ -3228,7 +3222,7 @@ fn resolve_iteration_instances(
                 cycle_id: pair.id,
                 time_scope,
                 plan,
-                timing: instance_timing(shape.clock, status, (start.max(opening), end), now),
+                timing: instance_timing(shape.clock, status, (start, end), now),
             });
         }
     }

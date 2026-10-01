@@ -36,7 +36,7 @@ use super::{
     whole_scope_plan,
 };
 use crate::{
-    block_reasons::model::BlockReason,
+    block_reasons::model::{BlockReason, DerivedBlock},
     database::session::{Db, SessionMode},
     flows::template::TemplateFields,
     nodes::{
@@ -297,9 +297,9 @@ struct Iteration<'a> {
     missed_from: Option<NaiveDate>,
     /// The root's Cycle Plan resolved in this iteration, when the flow carries one.
     root_plan: Option<TimeScope>,
-    /// When the iteration opens: its window's start, or later while a **cooldown** holds it back
-    /// ([`cooldown::openings`]). No occurrence in it opens before then.
-    opening: NaiveDateTime,
+    /// Until when the iteration is **cooling down** — its previous iteration was resolved less
+    /// than the Habit's cooldown ago ([`cooldown::holds`]) — or `None` when it is not.
+    cooling_until: Option<NaiveDateTime>,
 }
 
 /// A Habit's iterations within the horizon, as [`schedule`] derives them.
@@ -310,8 +310,8 @@ struct Schedule {
     slots: Vec<SlotWindow>,
     /// The Habit's clock.
     clock: Clock,
-    /// When each started slot opens, by index.
-    openings: HashMap<i64, NaiveDateTime>,
+    /// The iterations cooling down at `now`, by index, each with when it lifts.
+    holds: HashMap<i64, NaiveDateTime>,
 }
 
 /// Every occurrence of one Habit within `horizon`, as rows, at `now`.
@@ -356,7 +356,7 @@ pub async fn derive_habit<M: SessionMode>(
         iterations,
         slots,
         clock,
-        openings,
+        holds,
     } = schedule(db, flow, &recurrence, &overlays, &touched, now, horizon).await?;
     let by_index: HashMap<i64, &SlotWindow> = slots.iter().map(|slot| (slot.index, slot)).collect();
 
@@ -395,7 +395,7 @@ pub async fn derive_habit<M: SessionMode>(
             window_start,
             missed_from: missed.map(|missed| missed.start.date()),
             root_plan: resolve_root_plan(flow, window_start)?,
-            opening: openings.get(&slot.index).copied().unwrap_or(slot.start),
+            cooling_until: holds.get(&slot.index).copied(),
         };
         let built = build_iteration(
             flow,
@@ -479,10 +479,11 @@ async fn schedule<M: SessionMode>(
         slots.iter().cloned().partition(|slot| slot.start <= now);
 
     let resolved = completions.resolutions(&started);
-    let openings = cooldown::openings(
-        &started,
+    let holds = cooldown::holds(
+        &slots,
         &resolved,
         habit_cooldown(flow, recurrence).as_ref(),
+        now,
     );
     let classified = classify_iterations(&started, clock, &resolved, now);
     let mut iterations = expire_unanswered(classified, &verdict_deadlines(flow, &started), now);
@@ -505,7 +506,7 @@ async fn schedule<M: SessionMode>(
         iterations,
         slots,
         clock,
-        openings,
+        holds,
     })
 }
 
@@ -775,8 +776,6 @@ fn build_iteration(
     let root_timing = match context.iteration.status {
         IterationStatus::Upcoming => InstanceTiming::Pending,
         IterationStatus::Lapsed | IterationStatus::Missed => InstanceTiming::Lapsed,
-        // Held back by a cooldown: Pending until it opens, like a window that has not begun.
-        _ if context.opening > now => InstanceTiming::Pending,
         _ => InstanceTiming::Active,
     };
     // A commitment Habit's work is answered for by the verdict, which its Verdict Window bounds;
@@ -886,12 +885,7 @@ fn build_iteration(
                 time_scope,
                 plan,
                 due,
-                timing: instance_timing(
-                    clock,
-                    context.iteration.status,
-                    (window.0.max(context.opening), window.1),
-                    now,
-                ),
+                timing: instance_timing(clock, context.iteration.status, window, now),
                 closes_when_done: window_passed(window.1),
                 origin: origin_of(item, cycle),
                 fields: fields.clone(),
@@ -973,6 +967,16 @@ fn build_iteration(
             }
         }
     }
+    // A cooldown blocks the iteration's root — and Start drops a blocked node with its subtree.
+    if let Some(until) = context.cooling_until {
+        let kind = occurrence_kind(flow, TemplateKind::FlowRoot);
+        push_cooldown(
+            &mut rows.block_reasons,
+            kind,
+            &NodeId::Derived(root_key.id()),
+            until,
+        );
+    }
     Ok(rows)
 }
 
@@ -1028,6 +1032,24 @@ fn archive_if_held(lifecycle: &mut ItemLifecycle, aside: &HashSet<String>, node_
 }
 
 /// Appends one derived row's block reasons, in order, as the rows the load carries.
+/// The derived block a **cooldown** puts on an iteration's root until `until`, numbered on after
+/// the root's own reasons in `out`. The English names the instant for a reader with no words of its
+/// own — an agent; the app draws its own, translated, off [`DerivedBlock::Cooldown`] and `until`.
+fn push_cooldown(out: &mut Vec<BlockReason>, kind: &str, id: &NodeId, until: NaiveDateTime) {
+    let own = out
+        .iter()
+        .filter(|reason| reason.owner_type == kind && reason.owner_id == *id)
+        .count();
+    out.push(BlockReason {
+        owner_type: kind.to_string(),
+        owner_id: id.clone(),
+        reason: format!("Cooling down until {}", until.format("%a %Y-%m-%d %H:%M")),
+        position: i64::try_from(own).unwrap_or(i64::MAX),
+        derived: Some(DerivedBlock::Cooldown),
+        until: Some(until),
+    });
+}
+
 fn push_reasons(out: &mut Vec<BlockReason>, kind: &str, id: &NodeId, reasons: Vec<String>) {
     for (position, reason) in reasons.into_iter().enumerate() {
         out.push(BlockReason {
@@ -1036,6 +1058,7 @@ fn push_reasons(out: &mut Vec<BlockReason>, kind: &str, id: &NodeId, reasons: Ve
             reason,
             position: i64::try_from(position).unwrap_or(i64::MAX),
             derived: None,
+            until: None,
         });
     }
 }

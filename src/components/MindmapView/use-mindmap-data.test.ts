@@ -128,6 +128,23 @@ describe("buildTree", () => {
     expect(node?.virtualBlockers).toEqual(["Sub-items all blocked"]);
   });
 
+  it("draws a Habit cooldown's derived block as a virtual blocker that names when it lifts", () => {
+    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const task = mkTask({ id: 1, parent_type: "domain", parent_id: 1 });
+    const root = buildTree(
+      [aspect], [], [task], [], [], [], [], [], [], [],
+      [{
+        owner_type: "task", owner_id: 1, reason: "Cooling down until Mon 2026-10-05 02:00", position: 0,
+        derived: "cooldown", until: "2026-10-05T02:00:00",
+      }],
+      [], [], [], (title) => title, (title) => title, "compound", "capacity", (until) => `cool ${until}`,
+    );
+    const node = root.children[0]?.children.find((n) => n.id === "task-1");
+    expect(node?.coolingUntil).toBe("2026-10-05T02:00:00");
+    expect(node?.blockReasons).toEqual([]);
+    expect(node?.virtualBlockers).toEqual(["cool 2026-10-05T02:00:00"]);
+  });
+
   it("carries a task's stored Backlog state onto its node", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
     const aside = mkTask({ id: 1, parent_type: "domain", parent_id: 1, archival: "backlog" });

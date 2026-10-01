@@ -212,6 +212,9 @@ export interface MindmapNode {
   /** Blocked because it is a **Compound** Task whose open sub-items are all blocked (Tasks only):
    * the backend derived it, and its reason is among `virtualBlockers`. */
   compoundBlocked?: boolean;
+  /** Blocked by its **Habit's cooldown** until this local wall-clock instant (an iteration's root
+   * only): the backend derived it, its reason is among `virtualBlockers`, and it lifts by itself. */
+  coolingUntil?: string;
   knowledgeBaseDirectory?: string | null;
   /** Optional multi-line details on an `info` node (e.g. a traceback). */
   infoDetails?: string | null;

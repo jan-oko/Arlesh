@@ -89,6 +89,15 @@ export function recurrenceRequest(recurrence: RecurrenceSave, flowDurationKind: 
   };
 }
 
+/**
+ * Whether a Habit on `clock` with `missPolicy` takes a cooldown: Window + Archive and Window +
+ * Overdue only. Not Owed, and not an Interval, whose Gap already counts from completion. Mirrors
+ * the backend's `takes_cooldown`.
+ */
+export function takesCooldown(clock: ClockKind, missPolicy: MissPolicy): boolean {
+  return clock === "window" && missPolicy !== "owed";
+}
+
 /** A cooldown as it is shown and saved: a count and a unit, or none. */
 export interface CooldownChoice {
   cooldownN: number | null;
@@ -97,7 +106,7 @@ export interface CooldownChoice {
 
 /**
  * The cooldown `recurrence` stands for under a window of `durationN` × `durationKind`: none unless
- * it is switched on under a Window clock on a window that takes one. A unit the window no longer
+ * it is switched on, on a clock that takes one (see {@link takesCooldown}), on a window that does. A unit the window no longer
  * takes reads as the first one it does, and a count past the longest it takes reads as that
  * longest — so what the field shows is exactly what is saved.
  */
@@ -109,7 +118,7 @@ export function effectiveCooldown(
 ): CooldownChoice {
   const kinds = cooldownKinds(durationKind);
   const fallback = kinds[0];
-  if (!recurrence.cooldownEnabled || clock !== "window" || durationKind === null || fallback === undefined) {
+  if (!recurrence.cooldownEnabled || !takesCooldown(clock, recurrence.missPolicy) || durationKind === null || fallback === undefined) {
     return { cooldownN: null, cooldownKind: null };
   }
   const kind = kinds.includes(recurrence.cooldownKind) ? recurrence.cooldownKind : fallback;

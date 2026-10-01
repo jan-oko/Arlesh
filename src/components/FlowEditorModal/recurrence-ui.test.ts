@@ -20,8 +20,10 @@ describe("maxCooldown", () => {
 });
 
 describe("effectiveCooldown", () => {
-  it("is none off a Window clock, or switched off", () => {
+  it("is none off Window + Archive or Overdue, or switched off", () => {
     expect(effectiveCooldown(WITH_COOLDOWN, "interval", "week", 1)).toEqual({ cooldownN: null, cooldownKind: null });
+    expect(effectiveCooldown({ ...WITH_COOLDOWN, missPolicy: "owed" }, "window", "week", 1))
+      .toEqual({ cooldownN: null, cooldownKind: null });
     expect(effectiveCooldown({ ...WITH_COOLDOWN, cooldownEnabled: false }, "window", "week", 1))
       .toEqual({ cooldownN: null, cooldownKind: null });
   });

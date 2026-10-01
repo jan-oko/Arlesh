@@ -186,6 +186,8 @@ block reasons, and a Habit's stored recurrence configuration as opposed to its d
 its repetition and its **clock** (`clock` `window` or `interval`, and a Window's `miss_policy`
 `archive`, `overdue` or `owed`; see [*Clocks*](habits.md#clocks)), and a Window Habit's
 cooldown (`cooldown_n` `cooldown_kind` units, both null for none; see [*Cooldown*](habits.md#cooldown)).
+A Habit iteration's root blocked by that cooldown carries a derived block reason
+(`"derived": "cooldown"`, with `until`, the instant it lifts).
 
 A Commitment arrives with its `verdict` (`unresolved` / `kept` / `broken`) and its derived
 lifecycle. The verdict is recorded, never inferred, and `unresolved` means the user has not said

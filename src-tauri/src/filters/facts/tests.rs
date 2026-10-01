@@ -196,6 +196,7 @@ fn an_explicit_block_reason_and_an_unmet_dependency_both_read_as_blocked() {
         reason: "waiting".to_string(),
         position: 0,
         derived: None,
+        until: None,
     });
     load.task_dependencies.push(TaskDependencyEdge {
         task_id: 21.into(),
@@ -263,6 +264,7 @@ fn narrowing_cuts_the_derived_sections_to_match_the_nodes_that_survived() {
         reason: "waiting".to_string(),
         position: 0,
         derived: None,
+        until: None,
     });
     load.task_dependencies.push(TaskDependencyEdge {
         task_id: 22.into(),

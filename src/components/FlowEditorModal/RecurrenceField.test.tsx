@@ -102,9 +102,13 @@ describe("RecurrenceField", () => {
     expect(screen.getAllByText(/^W\d+ 2026$/).length).toBe(2);
   });
 
-  it("offers a cooldown only under a Window clock", () => {
+  it("offers a cooldown only under Window + Archive or Window + Overdue", () => {
     const { rerender } = render(field());
     expect(screen.getByRole("checkbox", { name: "recurrenceCooldown" })).toBeInTheDocument();
+    rerender(field({ value: { ...HABIT, missPolicy: "overdue" } }));
+    expect(screen.getByRole("checkbox", { name: "recurrenceCooldown" })).toBeInTheDocument();
+    rerender(field({ value: { ...HABIT, missPolicy: "owed" } }));
+    expect(screen.queryByRole("checkbox", { name: "recurrenceCooldown" })).not.toBeInTheDocument();
     rerender(field({ value: { ...HABIT, clock: "interval" } }));
     expect(screen.queryByRole("checkbox", { name: "recurrenceCooldown" })).not.toBeInTheDocument();
   });

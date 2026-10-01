@@ -418,6 +418,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         virtualBlockers={virtualBlockers}
         capacityBlocked={node.capacityBlocked === true}
         compoundBlocked={node.compoundBlocked === true}
+        coolingUntil={node.coolingUntil}
       />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <div className={styles.depSection}>

@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { ClockKind, CooldownKind, MissPolicy } from "@/api/flows";
-import { cooldownKinds, effectiveCooldown, maxCooldown, recurrenceStartKind, type RecurrenceUi } from "./recurrence-ui";
+import { cooldownKinds, effectiveCooldown, maxCooldown, recurrenceStartKind, takesCooldown, type RecurrenceUi } from "./recurrence-ui";
 import Switch from "@/components/Switch/Switch";
 import AnchorScopeField from "@/components/ScopePicker/AnchorScopeField";
 import editorStyles from "@/components/EditorModal/EditorModal.module.css";
@@ -121,7 +121,7 @@ export default function RecurrenceField({ value, onChange, durationKind, duratio
                 )}
               </div>
 
-              {clock === "window" && cooldown.cooldownKind !== null && durationKind !== null && (
+              {takesCooldown(clock, value.missPolicy) && cooldown.cooldownKind !== null && durationKind !== null && (
                 <div className={styles.row} title={t("recurrenceCooldownHint")}>
                   <Switch
                     checked={value.cooldownEnabled}

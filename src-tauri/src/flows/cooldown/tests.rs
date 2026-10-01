@@ -128,49 +128,62 @@ fn parse_refuses_half_a_cooldown_and_a_zero() {
     );
 }
 
+const DAY: Cooldown = Cooldown {
+    n: 1,
+    unit: CooldownUnit::Day,
+};
+
 #[test]
-fn the_window_after_a_saturday_completion_opens_on_monday() {
+fn the_week_after_a_saturday_completion_is_held_through_sunday() {
     let slots = three_weeks();
     let resolved = HashMap::from([(0, at("2026-09-26T19:00:00"))]);
-    let opens = openings(&slots, &resolved, Some(&cooldown(1, CooldownUnit::Day)));
-    assert_eq!(opens.get(&0), Some(&at("2026-09-20T02:00:00")));
-    assert_eq!(opens.get(&1), Some(&at("2026-09-28T02:00:00")));
-    assert_eq!(opens.get(&2), Some(&at("2026-10-04T02:00:00")));
+    let held = holds(&slots, &resolved, Some(&DAY), at("2026-09-27T10:00:00"));
+    assert_eq!(held, HashMap::from([(1, at("2026-09-28T02:00:00"))]));
 }
 
 #[test]
-fn a_completion_early_in_the_week_holds_nothing_back() {
+fn the_hold_lifts_by_itself_when_the_cooldown_ends() {
     let slots = three_weeks();
-    let resolved = HashMap::from([(0, at("2026-09-22T19:00:00"))]);
-    let opens = openings(&slots, &resolved, Some(&cooldown(1, CooldownUnit::Day)));
-    assert_eq!(opens.get(&1), Some(&at("2026-09-27T02:00:00")));
+    let resolved = HashMap::from([(0, at("2026-09-26T19:00:00"))]);
+    assert!(holds(&slots, &resolved, Some(&DAY), at("2026-09-28T02:00:00")).is_empty());
 }
 
 #[test]
-fn each_completion_holds_the_window_after_it() {
+fn a_completion_made_after_the_next_window_opened_still_holds_it() {
     let slots = three_weeks();
-    // Week 0 done Saturday; week 1 done on its own Saturday: week 2 is held by that completion.
+    // Week 0 resolved late, on the Thursday of week 1: week 1 is blocked until Saturday.
+    let resolved = HashMap::from([(0, at("2026-10-01T10:00:00"))]);
+    let held = holds(&slots, &resolved, Some(&DAY), at("2026-10-01T11:00:00"));
+    assert_eq!(held, HashMap::from([(1, at("2026-10-03T02:00:00"))]));
+}
+
+#[test]
+fn a_hold_reaches_only_the_iteration_right_after() {
+    let slots = three_weeks();
+    let resolved = HashMap::from([(0, at("2026-09-26T19:00:00"))]);
+    let held = holds(&slots, &resolved, Some(&DAY), at("2026-09-27T10:00:00"));
+    assert!(!held.contains_key(&2));
+}
+
+#[test]
+fn a_resolved_iteration_is_held_by_nothing() {
+    let slots = three_weeks();
     let resolved = HashMap::from([
         (0, at("2026-09-26T19:00:00")),
-        (1, at("2026-10-03T20:00:00")),
+        (1, at("2026-09-27T12:00:00")),
     ]);
-    let opens = openings(&slots, &resolved, Some(&cooldown(1, CooldownUnit::Day)));
-    assert_eq!(opens.get(&2), Some(&at("2026-10-05T02:00:00")));
+    let held = holds(&slots, &resolved, Some(&DAY), at("2026-09-27T13:00:00"));
+    assert!(!held.contains_key(&1), "done by hand inside its cooldown");
+    assert_eq!(
+        held.get(&2),
+        Some(&at("2026-09-29T02:00:00")),
+        "and that completion holds the next one in turn"
+    );
 }
 
 #[test]
-fn a_completion_made_after_a_window_opened_does_not_close_it_again() {
-    let slots = three_weeks();
-    // Week 0 caught up on the Monday of week 1: week 1 is already open and stays so.
-    let resolved = HashMap::from([(0, at("2026-09-28T10:00:00"))]);
-    let opens = openings(&slots, &resolved, Some(&cooldown(1, CooldownUnit::Day)));
-    assert_eq!(opens.get(&1), Some(&at("2026-09-27T02:00:00")));
-}
-
-#[test]
-fn no_cooldown_opens_every_window_at_its_start() {
+fn no_cooldown_holds_nothing() {
     let slots = three_weeks();
     let resolved = HashMap::from([(0, at("2026-09-26T19:00:00"))]);
-    let opens = openings(&slots, &resolved, None);
-    assert_eq!(opens.get(&1), Some(&at("2026-09-27T02:00:00")));
+    assert!(holds(&slots, &resolved, None, at("2026-09-27T10:00:00")).is_empty());
 }

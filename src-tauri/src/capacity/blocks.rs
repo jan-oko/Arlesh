@@ -154,6 +154,7 @@ pub fn derive(rows: Rows<'_>, existing: &[BlockReason]) -> Vec<BlockReason> {
                 reason: AGENT_CAPACITY_REASON.to_string(),
                 position: i64::try_from(own).unwrap_or(i64::MAX),
                 derived: Some(DerivedBlock::AgentCapacity),
+                until: None,
             }
         })
         .collect()

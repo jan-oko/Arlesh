@@ -12,8 +12,12 @@ export interface BlockReason {
    * removes it. `agent_capacity`: the agent capacity lock is on and the owner is an Agentic Task not
    * yet Done; only clearing the lock removes it. `compound`: the owner is a Compound Task and every
    * one of its open sub-items is blocked; it goes when a sub-item is unblocked or finished.
+   * `cooldown`: the owner is a Habit iteration's root, and its Habit's cooldown since the previous
+   * iteration was resolved has not passed; it lifts by itself at `until`.
    */
-  derived?: "agent_capacity" | "compound";
+  derived?: "agent_capacity" | "compound" | "cooldown";
+  /** When a derived block lifts by itself (`cooldown`): a local wall-clock `YYYY-MM-DDTHH:MM:SS`. */
+  until?: string;
 }
 
 /** Every explicit block reason across all tasks and goals (for the mindmap bulk load). */

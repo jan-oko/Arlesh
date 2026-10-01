@@ -133,6 +133,7 @@ fn on_it_adds_one_derived_reason_per_blocked_task_after_its_own() {
         reason: "waiting on review".to_string(),
         position: 0,
         derived: None,
+        until: None,
     });
 
     apply(&mut load, true);
@@ -221,6 +222,7 @@ fn a_derived_reason_is_marked_on_the_wire_and_a_stored_one_is_not() {
         reason: "x".to_string(),
         position: 0,
         derived: None,
+        until: None,
     };
     assert!(serde_json::to_value(&stored)
         .unwrap()
