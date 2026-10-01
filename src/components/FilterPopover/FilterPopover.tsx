@@ -6,9 +6,11 @@ import { useViewStore } from "@/stores/use-view-store";
 import { useFilterDimensions } from "@/hooks/use-filter-dimensions";
 import { useFilterEntries } from "@/hooks/use-filter-entries";
 import { useFilterMenuKeys } from "@/hooks/use-filter-menu-keys";
-import { PRIVATE_MODE_TOKEN, filterMenuCodesFor } from "@/utils/filter-menu-keys";
+import { PRIVATE_MODE_TOKEN, ZEN_AGENT_WAITS_KEY, filterMenuCodesFor } from "@/utils/filter-menu-keys";
 import { lockedStatusMode } from "@/utils/view-preset";
-import { filterMenuRows, flagsFor, isSearchedDimension, offeredDimensions, rowKindsFor } from "@/utils/filter-layout";
+import {
+  filterMenuRows, flagsFor, hasZenAgentWaitsSwitch, isSearchedDimension, offeredDimensions, rowKindsFor,
+} from "@/utils/filter-layout";
 import type { FilterRowId } from "@/utils/filter-layout";
 import FilterRow from "./FilterRow";
 import FilterSwitches from "./FilterSwitches";
@@ -66,7 +68,11 @@ export default function FilterPopover() {
       className={styles.popover}
       role="dialog"
       aria-label={t("common:filter")}
-      data-owns-keys={[...filterMenuCodesFor(rowKindsFor(view), flagsFor(view)), PRIVATE_MODE_TOKEN].join(" ")}
+      data-owns-keys={[
+        ...filterMenuCodesFor(rowKindsFor(view), flagsFor(view)),
+        ...(hasZenAgentWaitsSwitch(view) ? [ZEN_AGENT_WAITS_KEY] : []),
+        PRIVATE_MODE_TOKEN,
+      ].join(" ")}
       onKeyDown={onKeyDown}
     >
       <FilterSwitches view={view} statusMode={lockedStatusMode(view) ?? statusMode} />
@@ -87,7 +93,8 @@ export default function FilterPopover() {
             if (view === "list") { listReset(); return; }
             // Reset turns Private Mode off, which takes the Private pill with it in every view.
             for (const pill of privatePills) removePill("private", pill.value);
-            // The Zen View's own switches: both strips back on, and its Agentic pill cleared.
+            // The Zen View's own switches: both strips and the Agent's waits back on, and its
+            // Agentic pill cleared.
             if (view !== "zen") return;
             showAllZenStrips();
             for (const pill of agenticPills) removePill("agentic", pill.value);

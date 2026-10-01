@@ -39,7 +39,9 @@ const source: ZenSourceRows = {
   expectations: flattenExpectationRows(root),
 };
 
-const BOTH: ZenOptions = { commitments: true, expectations: true, agentic: [], showsStarted: false, showsCompound: true };
+const BOTH: ZenOptions = {
+  commitments: true, expectations: true, agentWaits: true, agentic: [], showsStarted: false, showsCompound: true,
+};
 
 function ids(rows: ReadonlyArray<{ node: { id: string } }>): string[] {
   return rows.map((row) => row.node.id);
@@ -69,7 +71,7 @@ describe("zenContents", () => {
   });
 
   it("draws nothing in a strip the tab has hidden", () => {
-    const contents = read({}, { commitments: false, expectations: false, agentic: [], showsStarted: false, showsCompound: true });
+    const contents = read({}, { ...BOTH, commitments: false, expectations: false });
     expect(contents.commitments.rows).toEqual([]);
     expect(contents.expectations.rows).toEqual([]);
     expect(ids(contents.tasks.rows)).toHaveLength(3);
@@ -108,5 +110,51 @@ describe("zenContents", () => {
     const contents = read({}, { ...BOTH, showsCompound: false }, "task-second");
     expect(ids(contents.tasks.rows)).toEqual(["task-doing", "task-doing-child", "task-second"]);
     expect(contents.tasks.exemptedIds).toEqual(new Set(["task-second"]));
+  });
+});
+
+describe("zenContents — delegation", () => {
+  const delegationWait = (id: string) => n(id, "expectation", { status: "pending", origin: { kind: "delegation_wait", task_id: 1 } });
+  const board = n("root", "domain", {
+    children: [
+      n("goal-1", "goal", {
+        status: "active",
+        children: [
+          n("task-mine", "task", { status: "in_progress" }),
+          n("task-agents", "task", {
+            status: "in_progress", delegate: { kind: "agent" }, children: [delegationWait("wait-agent")],
+          }),
+          n("task-tulis", "task", {
+            status: "in_progress", delegate: { kind: "person", id: 4 }, children: [delegationWait("wait-person")],
+          }),
+          n("wait-plain", "expectation", { status: "pending" }),
+        ],
+      }),
+    ],
+  });
+  const delegated: ZenSourceRows = {
+    tasks: flattenTaskRows(board, []),
+    commitments: flattenCommitmentRows(board),
+    expectations: flattenExpectationRows(board),
+  };
+  const zen = (options: ZenOptions = BOTH, focusedId: string | null = null) =>
+    zenContents(delegated, DEFAULT_FILTER, options, focusedId);
+
+  it("leaves every delegated Task off the grid, whoever holds it", () => {
+    expect(ids(zen().tasks.rows)).toEqual(["task-mine"]);
+  });
+
+  it("keeps a delegated card the selection is on, as exempted", () => {
+    const contents = zen(BOTH, "task-agents");
+    expect(ids(contents.tasks.rows)).toEqual(["task-mine", "task-agents"]);
+    expect(contents.tasks.exemptedIds.has("task-agents")).toBe(true);
+  });
+
+  it("shows the Agent's delegation waits with the switch on", () => {
+    expect(ids(zen().expectations.rows)).toEqual(["wait-agent", "wait-person", "wait-plain"]);
+  });
+
+  it("hides only the Agent's delegation waits with the switch off", () => {
+    expect(ids(zen({ ...BOTH, agentWaits: false }).expectations.rows)).toEqual(["wait-person", "wait-plain"]);
   });
 });

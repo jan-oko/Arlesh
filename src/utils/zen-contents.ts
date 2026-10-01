@@ -1,5 +1,6 @@
 import type { FilterState } from "@/utils/filter-tree";
-import { ZEN_VIEW_STATUS_MODE } from "@/utils/filter-tree";
+import { ZEN_VIEW_STATUS_MODE, isDelegated } from "@/utils/filter-tree";
+import { isDelegatedToAgent } from "@/utils/delegation";
 import type {
   CommitmentListRow, ExpectationListRow, FocusFilteredRows, ListFilterState, PillFilter, TaskListRow,
 } from "@/utils/list-filter";
@@ -19,6 +20,8 @@ export interface ZenOptions {
   /** Which of the two strips the tab shows. */
   commitments: boolean;
   expectations: boolean;
+  /** Whether the Expectations strip draws the waits a Task delegated to the **Agent** has. */
+  agentWaits: boolean;
   /** The tab's **Agentic** pill — the one List View pill the Zen View reads. */
   agentic: readonly PillFilter[];
   /** The app-wide *Show Started tasks on the grid* setting: read in place of Do's own. */
@@ -51,6 +54,30 @@ function withoutCompounds(
   return { rows, exemptedIds: new Set([...grid.exemptedIds, focusedId]) };
 }
 
+/**
+ * Drops the rows `hides` names from what a filter kept, under the same **focus exemption**: the
+ * focused row stays, reported as exempted, whatever `hides` says about it.
+ */
+function without<Row extends { node: { id: string } }>(
+  kept: FocusFilteredRows<Row>,
+  hides: (row: Row) => boolean,
+  focusedId: string | null,
+): FocusFilteredRows<Row> {
+  const exemptedIds = new Set(kept.exemptedIds);
+  const rows = kept.rows.filter((row) => {
+    if (!hides(row)) return true;
+    if (row.node.id !== focusedId) return false;
+    exemptedIds.add(row.node.id);
+    return true;
+  });
+  return { rows, exemptedIds };
+}
+
+/** A wait that exists because the Task it hangs under is delegated to the Agent. */
+function isAgentDelegationWait(row: ExpectationListRow): boolean {
+  return row.node.origin?.kind === "delegation_wait" && isDelegatedToAgent(row.ancestors[row.ancestors.length - 1]?.delegate);
+}
+
 /** A hidden strip: no rows, nothing exempted. */
 function none<Row>(): FocusFilteredRows<Row> {
   return { rows: [], exemptedIds: new Set<string>() };
@@ -75,12 +102,14 @@ function sharedUnder(shared: FilterState, mode: FilterState["statusMode"]): Filt
  * The Zen View's contents, from the List View's rows.
  *
  * - **The grid** is the List View's Task rows under **Do**, in the order they came — plain board
- *   pre-order, with no Asynchronous-first partition. Whether a **Started** Task counts is the Zen
- *   View's own setting (`showsStarted`), not the Do preset's.
+ *   pre-order, with no Asynchronous-first partition — **less every delegated Task**: Do still shows
+ *   an in-progress Task someone else holds, the Zen View shows only what you hold. Whether a
+ *   **Started** Task counts is the Zen View's own setting (`showsStarted`), not the Do preset's.
  * - **The Commitments strip** is what the List View shows under Do: the unresolved ones.
  * - **The Expectations strip** is what **Start** shows — Do shows no Expectation at all, so this
  *   strip alone reads another preset. The shared filter already carries the app-wide *Start hides
- *   waits that have checks* setting.
+ *   waits that have checks* setting. With `agentWaits` off it leaves out the waits of Tasks
+ *   delegated to the Agent.
  *
  * Everything else in the shared filter applies unchanged, and the Agentic pill narrows the grid. A
  * hidden strip is empty. `focusedId` is
@@ -95,13 +124,21 @@ export function zenContents(
   const underDo = { ...sharedUnder(shared, ZEN_VIEW_STATUS_MODE), doShowsStarted: options.showsStarted };
   const doFilter = listFilterUnder(ZEN_VIEW_STATUS_MODE, options.agentic);
   return {
-    tasks: withoutCompounds(filterTaskListWithFocus(source.tasks, underDo, doFilter, focusedId), options, focusedId),
+    tasks: without(
+      withoutCompounds(filterTaskListWithFocus(source.tasks, underDo, doFilter, focusedId), options, focusedId),
+      (row) => isDelegated(row.node),
+      focusedId,
+    ),
     commitments: options.commitments
       ? filterCommitmentListWithFocus(source.commitments, underDo, doFilter, focusedId)
       : none(),
     expectations: options.expectations
-      ? filterExpectationListWithFocus(
-        source.expectations, sharedUnder(shared, "start"), listFilterUnder("start", options.agentic), focusedId,
+      ? without(
+        filterExpectationListWithFocus(
+          source.expectations, sharedUnder(shared, "start"), listFilterUnder("start", options.agentic), focusedId,
+        ),
+        (row) => !options.agentWaits && isAgentDelegationWait(row),
+        focusedId,
       )
       : none(),
   };

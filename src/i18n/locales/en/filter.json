@@ -28,6 +28,9 @@
   "planScopeHint": "Shows only Tasks whose Time Scope is within this scope.",
   "planScopeHintOverlapping": "Shows only Tasks whose Time Scope overlaps this scope.",
   "switchesLabel": "Switches",
+  "zenAgentWaitsGroup": "Waits on the agent",
+  "zenAgentWaits": "Agent finish waits",
+  "zenAgentWaitsTooltip": "Show or hide the waits on Tasks delegated to the agent",
   "nodeTypesLabel": "Node types",
   "rows": {
     "antecedent": "Under",

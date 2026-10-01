@@ -24,12 +24,16 @@ export const FLAG_KEYS: Readonly<Record<YesNoDimension, string>> = {
   private: "KeyP",
 };
 
+/** The Zen View's key for its **Agent waits** switch: `d`, for delegated (any modifier but Ctrl
+ * toggles it). */
+export const ZEN_AGENT_WAITS_KEY = "KeyD";
+
 /** The chord that toggles Private Mode from the menu, as a `data-owns-keys` token. */
 export const PRIVATE_MODE_TOKEN = "Ctrl+KeyP";
 
 /** Every key the menu handles itself — what it lists in `data-owns-keys`. */
 export const FILTER_MENU_CODES: readonly string[] = [
-  ...Object.values(ROW_KIND_KEYS), ...Object.values(FLAG_KEYS), PRIVATE_MODE_TOKEN,
+  ...Object.values(ROW_KIND_KEYS), ...Object.values(FLAG_KEYS), ZEN_AGENT_WAITS_KEY, PRIVATE_MODE_TOKEN,
 ];
 
 /** The letter keys the Filter menu takes in a view: its row kinds' and its flags'. */

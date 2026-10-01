@@ -8,10 +8,11 @@ import { useRowKindToggle } from "@/hooks/use-row-kind-toggle";
 import { useSetPrivateMode } from "@/hooks/use-private-mode";
 import { YES_VALUE, modeFromModifiers } from "@/utils/filter-modes";
 import type { YesNoDimension } from "@/utils/filter-modes";
-import { flagForCode, rowKindForCode } from "@/utils/filter-menu-keys";
+import { ZEN_AGENT_WAITS_KEY, flagForCode, rowKindForCode } from "@/utils/filter-menu-keys";
 import type { ListRowKind } from "@/utils/list-filter";
+import { useViewStore } from "@/stores/use-view-store";
 import type { View } from "@/stores/use-view-store";
-import { flagsFor, rowKindsFor } from "@/utils/filter-layout";
+import { flagsFor, hasZenAgentWaitsSwitch, rowKindsFor } from "@/utils/filter-layout";
 
 /** Whether the key was pressed in a text box, where letters must type. */
 function inTextBox(event: KeyboardEvent): boolean {
@@ -27,7 +28,8 @@ function isBareEscape(event: KeyboardEvent): boolean {
  * The Filter menu's keys (see `filter-menu-keys.ts`), as a keydown handler for the menu: `Esc`
  * closes it (a search box with a query clears that first, and stops the key there), `Ctrl+P`
  * in every view, and the letters for whatever row kinds and flags `view` offers — all of them in
- * the List View, `c` / `e` (its strips) and `a` (Agentic) in the Zen View. A key typed into one of
+ * the List View, `c` / `e` (its strips), `d` (its Agent waits switch) and `a` (Agentic) in the Zen
+ * View. A key typed into one of
  * its search boxes is left to type.
  */
 export function useFilterMenuKeys(view: View): (event: KeyboardEvent) => void {
@@ -39,6 +41,7 @@ export function useFilterMenuKeys(view: View): (event: KeyboardEvent) => void {
   const entries = useFilterEntries();
   const setPillMode = useListFilterStore((s) => s.setPillMode);
   const setFilterPopover = useFilterStore((s) => s.setFilterPopover);
+  const toggleZenAgentWaits = useViewStore((s) => s.toggleZenAgentWaits);
 
   function onRowKind(kind: ListRowKind, event: KeyboardEvent) {
     if (event.shiftKey) rowKinds.showOnly(kind);
@@ -71,6 +74,11 @@ export function useFilterMenuKeys(view: View): (event: KeyboardEvent) => void {
       if (event.code !== "KeyP" || event.altKey || event.shiftKey) return;
       event.preventDefault();
       setPrivateMode(!privateMode);
+      return;
+    }
+    if (event.code === ZEN_AGENT_WAITS_KEY && hasZenAgentWaitsSwitch(view)) {
+      event.preventDefault();
+      toggleZenAgentWaits();
       return;
     }
     const kindCandidate = rowKindForCode(event.code);

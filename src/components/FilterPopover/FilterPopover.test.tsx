@@ -560,7 +560,7 @@ describe("FilterPopover row-kind selector", () => {
 
 describe("FilterPopover — the Zen View", () => {
   beforeEach(() => {
-    useViewStore.setState({ view: "zen", zenCommitments: true, zenExpectations: true });
+    useViewStore.setState({ view: "zen", zenCommitments: true, zenExpectations: true, zenAgentWaits: true });
   });
 
   const menu = () => screen.getByRole("dialog", { name: "common:filter" });
@@ -615,12 +615,28 @@ describe("FilterPopover — the Zen View", () => {
     expect(pills.blocked).toEqual([]);
   });
 
+  it("switches the Agent's delegation waits from a button and from d, shown by default", () => {
+    render(<FilterPopover />);
+    const agentWaits = screen.getByRole("button", { name: "zenAgentWaits" });
+    expect(agentWaits).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(agentWaits);
+    expect(useViewStore.getState().zenAgentWaits).toBe(false);
+    expect(agentWaits).toHaveAttribute("aria-pressed", "false");
+    press("KeyD");
+    expect(useViewStore.getState().zenAgentWaits).toBe(true);
+    press("KeyD", { shiftKey: true });
+    expect(useViewStore.getState().zenAgentWaits).toBe(false);
+    // The strips are not what it switches.
+    expect(strips()).toEqual({ commitments: true, expectations: true });
+  });
+
   it("Reset shows both strips again and clears Agentic", () => {
-    useViewStore.setState({ zenCommitments: false, zenExpectations: false });
+    useViewStore.setState({ zenCommitments: false, zenExpectations: false, zenAgentWaits: false });
     useListFilterStore.getState().addPill("agentic", "agentic", "all");
     render(<FilterPopover />);
     fireEvent.click(screen.getByRole("button", { name: "reset" }));
     expect(strips()).toEqual({ commitments: true, expectations: true });
+    expect(useViewStore.getState().zenAgentWaits).toBe(true);
     expect(useListFilterStore.getState().filter.pills.agentic).toEqual([]);
   });
 });

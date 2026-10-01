@@ -115,7 +115,9 @@ function readViewState(value: unknown): ViewState {
   // has neither field, and reads as both on.
   const zenCommitments = source["zenCommitments"] !== false;
   const zenExpectations = source["zenExpectations"] !== false;
-  return { view, mindmapOrientation, planScopeKind, stepsZoom, zenCommitments, zenExpectations };
+  // Likewise the Agent's delegation waits: shown unless the tab hid them.
+  const zenAgentWaits = source["zenAgentWaits"] !== false;
+  return { view, mindmapOrientation, planScopeKind, stepsZoom, zenCommitments, zenExpectations, zenAgentWaits };
 }
 
 /**

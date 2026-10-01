@@ -142,6 +142,7 @@ describe("HotkeysModal — rows", () => {
     for (const [label, chords] of [
       ["hotkeys:filterKindKeys", ["T", "C", "E"]],
       ["hotkeys:filterFlagKeys", ["A", "W", "B", "P"]],
+      ["hotkeys:filterZenAgentWaitsKey", ["D"]],
       ["hotkeys:filterPrivateMode", ["Ctrl+P"]],
       ["hotkeys:filterCloseMenu", ["Esc"]],
       ["hotkeys:filterRemoveSearch", ["Delete"]],

@@ -48,14 +48,16 @@ describe("reading one tab's stored state", () => {
 
     expect(state.view).toEqual({
       view: "list", mindmapOrientation: "vertical", planScopeKind: "day", stepsZoom: 4,
-      zenCommitments: true, zenExpectations: true,
+      zenCommitments: true, zenExpectations: true, zenAgentWaits: true,
     });
   });
 
   it("keeps a Zen strip a tab hid, and a tab left on the Zen View", () => {
     const state = parseTabState({
       subtreeRootId: null,
-      view: { view: "zen", mindmapOrientation: "horizontal", zenCommitments: false, zenExpectations: "yes" },
+      view: {
+        view: "zen", mindmapOrientation: "horizontal", zenCommitments: false, zenExpectations: "yes", zenAgentWaits: false,
+      },
       filter: DEFAULT_FILTER,
       listFilter: DEFAULT_LIST_FILTER,
     });
@@ -64,6 +66,7 @@ describe("reading one tab's stored state", () => {
     expect(state.view.zenCommitments).toBe(false);
     // Anything but an explicit `false` reads as the default: shown.
     expect(state.view.zenExpectations).toBe(true);
+    expect(state.view.zenAgentWaits).toBe(false);
   });
 
   it("keeps a stored Plan scope, and drops a malformed one and any stored match", () => {

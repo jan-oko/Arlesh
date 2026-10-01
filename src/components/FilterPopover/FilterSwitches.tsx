@@ -2,7 +2,8 @@ import { useTranslation } from "react-i18next";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useSetPrivateMode } from "@/hooks/use-private-mode";
 import type { View } from "@/stores/use-view-store";
-import { filterSwitchesFor, rowKindsFor } from "@/utils/filter-layout";
+import { filterSwitchesFor, hasZenAgentWaitsSwitch, rowKindsFor } from "@/utils/filter-layout";
+import { useViewStore } from "@/stores/use-view-store";
 import type { StatusMode } from "@/utils/filter-tree";
 import Switch from "@/components/Switch/Switch";
 import OverridePill from "./OverridePill";
@@ -31,11 +32,26 @@ export default function FilterSwitches({ view, statusMode }: Props) {
   const cycleArchivedMode = useFilterStore((s) => s.cycleArchivedMode);
   const cycleBacklogMode = useFilterStore((s) => s.cycleBacklogMode);
   const switches = filterSwitchesFor(view);
+  const zenAgentWaits = useViewStore((s) => s.zenAgentWaits);
+  const toggleZenAgentWaits = useViewStore((s) => s.toggleZenAgentWaits);
   const showFlowsSub = statusMode === "plan" || statusMode === "start";
 
   return (
     <div className={styles.switches}>
       {rowKindsFor(view).length > 0 && <RowKindSelector />}
+      {hasZenAgentWaitsSwitch(view) && (
+        <div className={styles.pills} role="group" aria-label={t("zenAgentWaitsGroup")}>
+          <button
+            type="button"
+            className={`${styles.typePill}${zenAgentWaits ? ` ${styles.typePillActive}` : ""}`}
+            aria-pressed={zenAgentWaits}
+            title={t("zenAgentWaitsTooltip")}
+            onClick={toggleZenAgentWaits}
+          >
+            {t("zenAgentWaits")}
+          </button>
+        </div>
+      )}
       {view === "mindmap" && (
         <div className={styles.pills} role="group" aria-label={t("nodeTypesLabel")}>
           <button type="button" aria-pressed={filter.showInfo} className={`${styles.typePill}${filter.showInfo ? ` ${styles.typePillActive}` : ""}`} onClick={toggleShowInfo}>
