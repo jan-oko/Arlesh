@@ -53,7 +53,7 @@ use crate::{
             Resolution, Timing,
         },
         model::{
-            Commitment, Delegate, DurationSpec, Goal, OnScopeExit, Task, TaskArchival,
+            Commitment, Delegate, DurationSpec, Goal, OnScopeExit, Status, Task, TaskArchival,
             TaskDependencyEdge, TimeScope, Verdict,
         },
     },
@@ -296,6 +296,9 @@ struct Iteration<'a> {
     missed_from: Option<NaiveDate>,
     /// The root's Cycle Plan resolved in this iteration, when the flow carries one.
     root_plan: Option<TimeScope>,
+    /// Whether the Habit's host reads as Agentic — what an occurrence with no flag of its own, or
+    /// above it in the template tree, reads as.
+    host_agentic: bool,
 }
 
 /// Every occurrence of one Habit within `horizon`, as rows, at `now`.
@@ -335,6 +338,11 @@ pub async fn derive_habit<M: SessionMode>(
             .collect(),
     };
     let touched = touched_iterations(db, flow.id).await?;
+    let (host_type, host_id) = match (&flow.target_type, flow.target_id) {
+        (Some(kind), Some(id)) => (target_parent_type(kind), id),
+        _ => (target_parent_type(&flow.parent_type), flow.parent_id),
+    };
+    let host_agentic = crate::tasks::agentic::reads_agentic(db, &host_type, host_id).await?;
 
     let (iterations, slots, clock) =
         schedule(db, flow, &recurrence, &overlays, &touched, now, horizon).await?;
@@ -375,6 +383,7 @@ pub async fn derive_habit<M: SessionMode>(
             window_start,
             missed_from: missed.map(|missed| missed.start.date()),
             root_plan: resolve_root_plan(flow, window_start)?,
+            host_agentic,
         };
         let built = build_iteration(
             flow,
@@ -609,7 +618,12 @@ pub(super) fn resolutions(
                 .tasks
                 .get(&node_key)
                 .filter(|overlay| {
-                    overlay.tombstone.is_none() && overlay.status.as_deref() == Some("done")
+                    overlay.tombstone.is_none()
+                        && overlay
+                            .status
+                            .as_deref()
+                            .and_then(Status::from_db)
+                            .is_some_and(|status| status.is_done())
                 })
                 .map(|overlay| overlay.resolved_at)
                 .or_else(|| {
@@ -689,6 +703,9 @@ struct Occurrence {
     /// owed over it. See [`settled_timing`].
     closes_when_done: bool,
     origin: Origin,
+    /// The occurrence it hangs under within the iteration; `None` for the iteration's root, which
+    /// hangs on the Habit's host.
+    parent_key: Option<OccurrenceKey>,
     /// What the template says beyond its title and place.
     fields: TemplateFields,
 }
@@ -771,6 +788,7 @@ fn build_iteration(
         // ticked off above work still open keeps that work company.
         closes_when_done: iteration_done && window_passed(context.slot.end),
         origin: origin_of(root_item, NO_CYCLE),
+        parent_key: None,
         fields: flow.template.clone(),
     }];
 
@@ -856,6 +874,7 @@ fn build_iteration(
                 timing: instance_timing(clock, context.iteration.status, window, now),
                 closes_when_done: window_passed(window.1),
                 origin: origin_of(item, cycle),
+                parent_key: Some(parent),
                 fields: fields.clone(),
             });
         }
@@ -867,6 +886,7 @@ fn build_iteration(
     };
     let expired = context.iteration.status == IterationStatus::Expired;
     let aside = held_by_an_archive(&occurrences, overlays);
+    let kinds = occurrence_kinds(&occurrences, overlays, context.host_agentic);
     for occurrence in occurrences {
         registry::remember(&DerivedKey::Occurrence(occurrence.key));
         let node_key = occurrence.key.node_key();
@@ -916,11 +936,13 @@ fn build_iteration(
                 let overlay = overlays.tasks.get(&node_key).cloned().unwrap_or_default();
                 let reasons = reasons_of(overlay.block_reasons_set);
                 let default = occurrence.due;
-                let (mut task, mut lifecycle) = task_row(occurrence, overlay, clock, expired);
+                let agentic = kinds.get(&node_key).copied().unwrap_or(false);
+                let (mut task, mut lifecycle) =
+                    task_row(occurrence, overlay, clock, expired, agentic);
                 archive_if_held(&mut lifecycle, &aside, &node_key);
                 let due = occurrence_due(&task, default);
                 lifecycle.overdue =
-                    derive_overdue(due, task.status == "done", lifecycle.archival, now);
+                    derive_overdue(due, task.status.is_done(), lifecycle.archival, now);
                 // Its own Expectation template, kept only while it is Asynchronous.
                 if task.asynchronous {
                     task.async_template = overlays.async_templates.get(&node_key).cloned();
@@ -1134,15 +1156,79 @@ fn work_lifecycle(
     }
 }
 
-/// A Task occurrence: its template overlaid.
+/// What each occurrence of one iteration reads as for Agentic, by node key — the tree the app
+/// draws, as `tasks::agentic` climbs it: its own value (its overlay's, else its template's), else
+/// the occurrence it hangs under, else — for the iteration's root — the Habit's host.
+///
+/// It decides which status model a Task occurrence holds.
+fn occurrence_kinds(
+    occurrences: &[Occurrence],
+    overlays: &HabitOverlays,
+    host_agentic: bool,
+) -> HashMap<String, bool> {
+    let by_key: HashMap<String, &Occurrence> = occurrences
+        .iter()
+        .map(|occurrence| (occurrence.key.node_key(), occurrence))
+        .collect();
+    let own = |occurrence: &Occurrence| -> Option<bool> {
+        match overlays.tasks.get(&occurrence.key.node_key()) {
+            Some(overlay) if overlay.agentic_set => overlay.agentic,
+            _ => occurrence.fields.agentic,
+        }
+    };
+    let mut kinds: HashMap<String, bool> = HashMap::new();
+    for occurrence in occurrences {
+        let mut chain: Vec<String> = Vec::new();
+        let mut cursor = Some(occurrence);
+        let mut reads = host_agentic;
+        while let Some(at) = cursor {
+            let key = at.key.node_key();
+            if let Some(known) = kinds.get(&key) {
+                reads = *known;
+                break;
+            }
+            if chain.contains(&key) {
+                break;
+            }
+            chain.push(key);
+            if let Some(flag) = own(at) {
+                reads = flag;
+                break;
+            }
+            cursor = at
+                .parent_key
+                .and_then(|parent| by_key.get(&parent.node_key()).copied());
+        }
+        for key in chain {
+            kinds.insert(key, reads);
+        }
+    }
+    kinds
+}
+
+/// The status a Task occurrence's overlay holds, in the model it reads as: none is the To Do of
+/// that model.
+fn occurrence_status(overlay: &TaskOverlay, agentic: bool) -> Status {
+    match overlay.status.as_deref() {
+        None => Status::todo(agentic),
+        Some(stored) => Status::from_db(stored).unwrap_or_else(|| {
+            tracing::warn!(status = stored, "an occurrence overlay holds an unknown status");
+            Status::todo(agentic)
+        }),
+    }
+}
+
+/// A Task occurrence: its template overlaid. `agentic` is what it reads as, which decides the
+/// model its status is in.
 fn task_row(
     occurrence: Occurrence,
     overlay: TaskOverlay,
     clock: Clock,
     expired: bool,
+    agentic: bool,
 ) -> (Task, ItemLifecycle) {
     let id = NodeId::Derived(occurrence.key.id());
-    let status = overlay.status.clone().unwrap_or_else(|| "todo".to_string());
+    let status = occurrence_status(&overlay, agentic);
     let archival = overlay
         .archival
         .as_deref()
@@ -1165,7 +1251,7 @@ fn task_row(
     } else {
         occurrence.fields.delegate_to
     };
-    let done = status == "done";
+    let done = status.is_done();
     let lifecycle = work_lifecycle(
         "task",
         id.clone(),

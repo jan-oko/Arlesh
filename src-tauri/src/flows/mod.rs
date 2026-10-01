@@ -41,7 +41,7 @@ use crate::scopes::resolve::{day_boundary, interval_contains};
 use crate::tasks::lifecycle::verdict_deadline;
 use crate::tasks::model::{
     CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest, Dependency,
-    DurationSpec, GoalId, TaskId, TimeScope, Verdict,
+    DurationSpec, GoalId, Status, TaskId, TimeScope, Verdict,
 };
 use crate::tasks::{
     add_task_dependency, create_commitment, create_goal, create_task, delete_goal, delete_task,
@@ -1586,12 +1586,13 @@ impl<'session> FlowOperator<'session> {
             }
             _ => {
                 let mut overlay = overlays.task(key).await?;
-                overlay.status = match status {
-                    Some(status @ ("in_progress" | "started" | "done")) => Some(status.to_string()),
-                    _ => None,
-                };
-                overlay.resolved_at =
-                    (overlay.status.as_deref() == Some("done")).then_some(resolved_at_ms);
+                // Either model's spelling is kept as given, a To Do cleared: which model the
+                // occurrence holds is settled by `tasks::agentic::reconcile` afterwards.
+                let given = status.and_then(Status::from_db).filter(|given| !given.is_todo());
+                overlay.status = given.and_then(|given| given.as_db()).map(str::to_string);
+                overlay.resolved_at = given
+                    .is_some_and(|given| given.is_done())
+                    .then_some(resolved_at_ms);
                 overlay.tombstone = None;
                 overlays.put_task(flow_id.0, key, &overlay).await?;
             }
@@ -1642,7 +1643,12 @@ impl<'session> FlowOperator<'session> {
                     let overlay = OverlayOperator::new(&mut *self.connection)
                         .task(&key)
                         .await?;
-                    overlay.tombstone.is_none() && overlay.status.as_deref() == Some("done")
+                    overlay.tombstone.is_none()
+                        && overlay
+                            .status
+                            .as_deref()
+                            .and_then(Status::from_db)
+                            .is_some_and(|status| status.is_done())
                 }
             };
             if completed {
@@ -2491,6 +2497,9 @@ pub async fn update_flow(
         .templates()
         .write(TemplateTable::Flow, is_task, id.0, &template)
         .await?;
+    // The root's Agentic flag, or the host it renders under, decides what its occurrences read
+    // as, and so the status model each holds.
+    crate::tasks::agentic::reconcile(db, vec![crate::tasks::agentic::Reach::Habit(id.0)]).await?;
     db.flows().get(id).await
 }
 
@@ -2536,6 +2545,13 @@ pub async fn update_flow_task(
         .templates()
         .write(TemplateTable::FlowTask, true, id, &template)
         .await?;
+    if template.agentic.is_some() {
+        crate::tasks::agentic::reconcile(
+            db,
+            vec![crate::tasks::agentic::Reach::Habit(task.flow_id)],
+        )
+        .await?;
+    }
     task.template = db
         .flows()
         .templates()
@@ -2577,7 +2593,12 @@ pub async fn set_iteration_done(
 ) -> Result<(), FlowError> {
     db.flows()
         .set_iteration_done(flow_id, iteration_scope_id, done, resolved_at_ms)
-        .await
+        .await?;
+    // Done is written in the ordinary spelling; an occurrence that reads as Agentic holds its
+    // own model's, which the reconciliation converts it to.
+    crate::tasks::agentic::reconcile(db, vec![crate::tasks::agentic::Reach::Habit(flow_id.0)])
+        .await?;
+    Ok(())
 }
 
 /// The window one occurrence of a Habit runs over, resolved against its own iteration.
@@ -2766,7 +2787,7 @@ async fn unfinished_children(
         let open: Option<String> = match child.child_type.as_str() {
             "task" => {
                 let task = db.tasks().get(TaskId(child.child_id)).await?;
-                (task.status != "done").then_some(task.title)
+                (!task.status.is_done()).then_some(task.title)
             }
             "goal" => {
                 let goal = db.goals().get(GoalId(child.child_id)).await?;

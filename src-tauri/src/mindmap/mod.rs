@@ -109,6 +109,9 @@ pub async fn load_within(
     lifecycles.extend(waits.lifecycles);
     // Only now is every parent's Timing in, stored and derived alike.
     crate::tasks::mark_waits_under_pending(&expectations, &mut lifecycles);
+    // Every status is final now, and every wait drawn: an On Agent Task whose agent has a
+    // question open reads Review (see `tasks::review`).
+    crate::tasks::review::derive(&mut tasks, &expectations);
     let present: std::collections::HashSet<&NodeId> = tasks
         .iter()
         .map(|task| &task.id)
