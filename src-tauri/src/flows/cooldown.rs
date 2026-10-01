@@ -1,20 +1,21 @@
 //! A Window Habit's **cooldown** (`docs/spec/habits.md`, *Cooldown*).
 //!
-//! After an iteration is resolved, the iteration after it is **blocked** until the cooldown has
-//! passed: N units of a scope kind finer than the Habit's own, counted from the unit after the one
-//! the resolution falls in. A weekly Habit done on Saturday with a one-day cooldown has next week's
+//! After an iteration is done, the iteration after it — under Window + Owed, every iteration still
+//! open — is **blocked** until the cooldown has passed: N units of a scope kind finer than the
+//! Habit's own, counted from the unit after the one the completion falls in. A weekly Habit done on Saturday with a one-day cooldown has next week's
 //! root blocked through Sunday, until Monday at 02:00.
 //!
 //! The block is a derived block reason ([`crate::block_reasons::model::DerivedBlock::Cooldown`]);
 //! the iteration's window, key, relevance, due and Timing are untouched, so no overlay is ever
 //! re-keyed by one. Like [`super::habits`], this module is pure — the caller hands it the slots and
-//! the resolution instants.
+//! the completion instants.
 
 use std::collections::HashMap;
 
 use chrono::{Duration, Months, NaiveDate, NaiveDateTime};
 
 use super::habits::SlotWindow;
+use super::model::MissPolicy;
 use crate::scopes::key::ScopeKey;
 use crate::scopes::model::{PartOfDay, ScopeKind};
 use crate::scopes::resolve::day_boundary;
@@ -207,19 +208,42 @@ fn part_after(done: NaiveDateTime, day: NaiveDate, steps: i64) -> Option<NaiveDa
 
 /// The iterations **cooling down** at `now`, each with the instant its cooldown ends.
 ///
-/// The iteration after one that is resolved — in `resolved`, by slot index, with the instant it
-/// was — is held until the cooldown begun at that instant has passed, whether or not its own
-/// window has opened yet. One that is itself resolved is held by nothing: there is nothing left
-/// in it to block. `slots` is the Habit's schedule in order, future iterations included.
+/// `resolved` maps a slot index to the instant its iteration was resolved, however it was;
+/// `done` only those that were **done** — every instance done or achieved — at the latest done
+/// date, which is what starts a cooldown. `slots` is the Habit's schedule in order, future
+/// iterations included, and `cooldown` the Habit's with its miss policy:
+///
+/// - **Archive** and **Overdue**: the iteration right after a done one is held until the cooldown
+///   begun at that instant has passed, whether or not its own window has opened yet.
+/// - **Owed**: every iteration still open — the owed ones from earlier windows, and the current
+///   or next — is held until the cooldown begun by the latest done one has passed.
+///
+/// One that is itself resolved is held by nothing: there is nothing left in it to block.
 pub fn holds(
     slots: &[SlotWindow],
-    resolved: &HashMap<i64, NaiveDateTime>,
-    cooldown: Option<&Cooldown>,
+    (resolved, done): (&HashMap<i64, NaiveDateTime>, &HashMap<i64, NaiveDateTime>),
+    cooldown: Option<(Cooldown, MissPolicy)>,
     now: NaiveDateTime,
 ) -> HashMap<i64, NaiveDateTime> {
-    let Some(cooldown) = cooldown else {
+    let Some((cooldown, policy)) = cooldown else {
         return HashMap::new();
     };
+    let open = slots
+        .iter()
+        .filter(|slot| !resolved.contains_key(&slot.index));
+    if policy == MissPolicy::Owed {
+        let Some(until) = done
+            .values()
+            .max()
+            .and_then(|latest| cooldown.ends(*latest))
+        else {
+            return HashMap::new();
+        };
+        if until <= now {
+            return HashMap::new();
+        }
+        return open.map(|slot| (slot.index, until)).collect();
+    }
     slots
         .windows(2)
         .filter_map(|pair| {
@@ -229,8 +253,7 @@ pub fn holds(
             if resolved.contains_key(&next.index) {
                 return None;
             }
-            let done = resolved.get(&previous.index)?;
-            let until = cooldown.ends(*done)?;
+            let until = cooldown.ends(*done.get(&previous.index)?)?;
             (until > now).then_some((next.index, until))
         })
         .collect()

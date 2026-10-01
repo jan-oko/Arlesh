@@ -198,7 +198,7 @@ fn parse_clock(recurrence: &FlowRecurrence) -> Result<Clock, FlowError> {
 }
 
 /// Refuses a cooldown the Habit cannot carry (`docs/spec/habits.md`, *Cooldown*): one on anything
-/// but Window + Archive or Window + Overdue (see [`takes_cooldown`]); one counted in a unit that is not
+/// but a Window clock (see [`takes_cooldown`]) or on a commitment Habit; one counted in a unit that is not
 /// finer than the Habit's window; and one that could reach the end of the window after the one it
 /// follows.
 fn check_cooldown(flow: &Flow, request: &SetRecurrenceRequest) -> Result<(), FlowError> {
@@ -209,7 +209,13 @@ fn check_cooldown(flow: &Flow, request: &SetRecurrenceRequest) -> Result<(), Flo
     };
     if request.clock != ClockKind::Window || !takes_cooldown(request.miss_policy) {
         return Err(FlowError::Invalid(
-            "only a window habit that archives or carries what it misses has a cooldown"
+            "only a window habit has a cooldown — an interval's gap already counts from completion"
+                .to_string(),
+        ));
+    }
+    if flow.instance_type == "commitment" {
+        return Err(FlowError::Invalid(
+            "a commitment habit has no cooldown — a verdict is an answer, never a completion"
                 .to_string(),
         ));
     }
@@ -219,12 +225,11 @@ fn check_cooldown(flow: &Flow, request: &SetRecurrenceRequest) -> Result<(), Flo
         .map_err(|refusal| FlowError::Invalid(refusal.to_string()))
 }
 
-/// Whether a Window Habit with this miss policy may carry a cooldown: **Archive** and **Overdue**
-/// only (ruled by the user, 2026-10-01). Not **Owed**, whose iterations all stay open beside one
-/// another — and so not a commitment Habit, which is fixed to Owed — and not an Interval, whose Gap
-/// already counts from completion and which has no miss policy.
+/// Whether a Habit with this miss policy may carry a cooldown: any **Window** Habit — Archive,
+/// Overdue and Owed alike (ruled by the user, 2026-10-01) — and not an Interval, whose Gap already
+/// counts from completion and which has no miss policy.
 fn takes_cooldown(policy: Option<MissPolicy>) -> bool {
-    matches!(policy, Some(MissPolicy::Archive | MissPolicy::Overdue))
+    policy.is_some()
 }
 
 /// The cooldown a Habit's iterations are blocked by, or `None` when it has none.

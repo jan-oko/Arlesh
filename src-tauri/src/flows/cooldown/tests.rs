@@ -133,46 +133,53 @@ const DAY: Cooldown = Cooldown {
     unit: CooldownUnit::Day,
 };
 
+/// `holds` for a Habit whose every resolved iteration in `done` was done.
+fn held(
+    done: &HashMap<i64, NaiveDateTime>,
+    policy: MissPolicy,
+    now: &str,
+) -> HashMap<i64, NaiveDateTime> {
+    holds(&three_weeks(), (done, done), Some((DAY, policy)), at(now))
+}
+
 #[test]
 fn the_week_after_a_saturday_completion_is_held_through_sunday() {
-    let slots = three_weeks();
-    let resolved = HashMap::from([(0, at("2026-09-26T19:00:00"))]);
-    let held = holds(&slots, &resolved, Some(&DAY), at("2026-09-27T10:00:00"));
-    assert_eq!(held, HashMap::from([(1, at("2026-09-28T02:00:00"))]));
+    let done = HashMap::from([(0, at("2026-09-26T19:00:00"))]);
+    assert_eq!(
+        held(&done, MissPolicy::Archive, "2026-09-27T10:00:00"),
+        HashMap::from([(1, at("2026-09-28T02:00:00"))])
+    );
 }
 
 #[test]
 fn the_hold_lifts_by_itself_when_the_cooldown_ends() {
-    let slots = three_weeks();
-    let resolved = HashMap::from([(0, at("2026-09-26T19:00:00"))]);
-    assert!(holds(&slots, &resolved, Some(&DAY), at("2026-09-28T02:00:00")).is_empty());
+    let done = HashMap::from([(0, at("2026-09-26T19:00:00"))]);
+    assert!(held(&done, MissPolicy::Overdue, "2026-09-28T02:00:00").is_empty());
 }
 
 #[test]
 fn a_completion_made_after_the_next_window_opened_still_holds_it() {
-    let slots = three_weeks();
-    // Week 0 resolved late, on the Thursday of week 1: week 1 is blocked until Saturday.
-    let resolved = HashMap::from([(0, at("2026-10-01T10:00:00"))]);
-    let held = holds(&slots, &resolved, Some(&DAY), at("2026-10-01T11:00:00"));
-    assert_eq!(held, HashMap::from([(1, at("2026-10-03T02:00:00"))]));
+    // Week 0 done late, on the Thursday of week 1: week 1 is blocked until Saturday.
+    let done = HashMap::from([(0, at("2026-10-01T10:00:00"))]);
+    assert_eq!(
+        held(&done, MissPolicy::Archive, "2026-10-01T11:00:00"),
+        HashMap::from([(1, at("2026-10-03T02:00:00"))])
+    );
 }
 
 #[test]
 fn a_hold_reaches_only_the_iteration_right_after() {
-    let slots = three_weeks();
-    let resolved = HashMap::from([(0, at("2026-09-26T19:00:00"))]);
-    let held = holds(&slots, &resolved, Some(&DAY), at("2026-09-27T10:00:00"));
-    assert!(!held.contains_key(&2));
+    let done = HashMap::from([(0, at("2026-09-26T19:00:00"))]);
+    assert!(!held(&done, MissPolicy::Archive, "2026-09-27T10:00:00").contains_key(&2));
 }
 
 #[test]
 fn a_resolved_iteration_is_held_by_nothing() {
-    let slots = three_weeks();
-    let resolved = HashMap::from([
+    let done = HashMap::from([
         (0, at("2026-09-26T19:00:00")),
         (1, at("2026-09-27T12:00:00")),
     ]);
-    let held = holds(&slots, &resolved, Some(&DAY), at("2026-09-27T13:00:00"));
+    let held = held(&done, MissPolicy::Archive, "2026-09-27T13:00:00");
     assert!(!held.contains_key(&1), "done by hand inside its cooldown");
     assert_eq!(
         held.get(&2),
@@ -182,8 +189,47 @@ fn a_resolved_iteration_is_held_by_nothing() {
 }
 
 #[test]
+fn an_iteration_resolved_without_being_done_starts_no_cooldown() {
+    let resolved = HashMap::from([(0, at("2026-09-27T02:00:00"))]);
+    let done = HashMap::new();
+    let held = holds(
+        &three_weeks(),
+        (&resolved, &done),
+        Some((DAY, MissPolicy::Archive)),
+        at("2026-09-27T10:00:00"),
+    );
+    assert!(held.is_empty(), "set aside by hand is not done");
+}
+
+#[test]
+fn under_owed_a_completion_holds_every_iteration_still_open() {
+    // Weeks 0 and 1 owed, week 2 current; week 1 caught up on week 2's Monday.
+    let done = HashMap::from([(1, at("2026-10-05T10:00:00"))]);
+    let held = held(&done, MissPolicy::Owed, "2026-10-05T11:00:00");
+    assert_eq!(
+        held,
+        HashMap::from([
+            (0, at("2026-10-07T02:00:00")),
+            (2, at("2026-10-07T02:00:00")),
+        ])
+    );
+    assert!(super::holds(
+        &three_weeks(),
+        (&done, &done),
+        Some((DAY, MissPolicy::Owed)),
+        at("2026-10-07T02:00:00")
+    )
+    .is_empty());
+}
+
+#[test]
 fn no_cooldown_holds_nothing() {
-    let slots = three_weeks();
-    let resolved = HashMap::from([(0, at("2026-09-26T19:00:00"))]);
-    assert!(holds(&slots, &resolved, None, at("2026-09-27T10:00:00")).is_empty());
+    let done = HashMap::from([(0, at("2026-09-26T19:00:00"))]);
+    assert!(holds(
+        &three_weeks(),
+        (&done, &done),
+        None,
+        at("2026-09-27T10:00:00")
+    )
+    .is_empty());
 }

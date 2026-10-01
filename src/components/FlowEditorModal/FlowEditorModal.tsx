@@ -296,7 +296,10 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
               endDate: recurrence.endEnabled ? recurrence.endDate : null,
               clock: effectiveClock,
               missPolicy: effectiveClock === "window" ? recurrence.missPolicy : null,
-              ...effectiveCooldown(recurrence, effectiveClock, scoped ? durationKind : null, durationN),
+              // A commitment Habit records verdicts and never completes, so nothing could start one.
+              ...(instanceType === "commitment"
+                ? { cooldownN: null, cooldownKind: null }
+                : effectiveCooldown(recurrence, effectiveClock, scoped ? durationKind : null, durationN)),
             }
           : null;
       await onSave({
@@ -447,6 +450,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
           durationKind={scoped ? durationKind : null}
           durationN={durationN}
           scoped={scoped}
+          offersCooldown={instanceType !== "commitment"}
         />
       )}
       <div className={styles.label}>

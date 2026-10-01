@@ -22,6 +22,8 @@ interface Props {
    * choice is not offered at all.
    */
   scoped: boolean;
+  /** Whether the Habit can take a cooldown at all: not a commitment one, which never completes. */
+  offersCooldown?: boolean;
 }
 
 /**
@@ -30,7 +32,7 @@ interface Props {
  * Controls run clock, miss policy (Window only), Starts, Gap, Ends; each choice explains itself in
  * its tooltip. Controlled; the parent turns dates into scope keys and persists.
  */
-export default function RecurrenceField({ value, onChange, durationKind, durationN, scoped }: Props) {
+export default function RecurrenceField({ value, onChange, durationKind, durationN, scoped, offersCooldown = true }: Props) {
   const { t } = useTranslation("editor");
   const set = (patch: Partial<RecurrenceUi>) => onChange({ ...value, ...patch });
   const anchorKind = recurrenceStartKind(durationKind);
@@ -121,7 +123,7 @@ export default function RecurrenceField({ value, onChange, durationKind, duratio
                 )}
               </div>
 
-              {takesCooldown(clock, value.missPolicy) && cooldown.cooldownKind !== null && durationKind !== null && (
+              {offersCooldown && takesCooldown(clock) && cooldown.cooldownKind !== null && durationKind !== null && (
                 <div className={styles.row} title={t("recurrenceCooldownHint")}>
                   <Switch
                     checked={value.cooldownEnabled}

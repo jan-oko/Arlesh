@@ -297,8 +297,8 @@ struct Iteration<'a> {
     missed_from: Option<NaiveDate>,
     /// The root's Cycle Plan resolved in this iteration, when the flow carries one.
     root_plan: Option<TimeScope>,
-    /// Until when the iteration is **cooling down** — its previous iteration was resolved less
-    /// than the Habit's cooldown ago ([`cooldown::holds`]) — or `None` when it is not.
+    /// Until when the iteration is **cooling down** — blocked by its Habit's cooldown since an
+    /// iteration was done ([`cooldown::holds`]) — or `None` when it is not.
     cooling_until: Option<NaiveDateTime>,
 }
 
@@ -479,10 +479,16 @@ async fn schedule<M: SessionMode>(
         slots.iter().cloned().partition(|slot| slot.start <= now);
 
     let resolved = completions.resolutions(&started);
+    let done = done_instants(&started, &template_keys, overlays);
     let holds = cooldown::holds(
         &slots,
-        &resolved,
-        habit_cooldown(flow, recurrence).as_ref(),
+        (&resolved, &done),
+        habit_cooldown(flow, recurrence).zip(
+            recurrence
+                .miss_policy
+                .as_deref()
+                .and_then(MissPolicy::from_db),
+        ),
         now,
     );
     let classified = classify_iterations(&started, clock, &resolved, now);
@@ -671,6 +677,52 @@ pub(super) fn resolutions(
         }
     }
     resolved
+}
+
+/// Maps each slot whose iteration is **done** to the instant it was: every one of its instances
+/// done (a Task) or achieved (a Goal), with none set aside — so an iteration resolved only because
+/// its open work was archived by hand is not here — at the latest of their done dates. What starts
+/// a Habit's cooldown (ruled by the user, 2026-10-01: "only done should start the cooldown"). A
+/// root Commitment is never done, so a commitment Habit has none.
+fn done_instants(
+    slots: &[SlotWindow],
+    keys: &[InstanceKey],
+    overlays: &HabitOverlays,
+) -> HashMap<i64, NaiveDateTime> {
+    slots
+        .iter()
+        .filter_map(|slot| {
+            let mut latest: Option<i64> = None;
+            for (item, cycle) in keys {
+                let node_key = OccurrenceKey {
+                    item: *item,
+                    iteration: slot.scope_id,
+                    cycle: *cycle,
+                }
+                .node_key();
+                let done = |status: Option<&str>, tombstone: &Option<String>, wanted: &str| {
+                    tombstone.is_none() && status == Some(wanted)
+                };
+                let at = overlays
+                    .tasks
+                    .get(&node_key)
+                    .filter(|overlay| done(overlay.status.as_deref(), &overlay.tombstone, "done"))
+                    .map(|overlay| overlay.resolved_at)
+                    .or_else(|| {
+                        overlays
+                            .goals
+                            .get(&node_key)
+                            .filter(|overlay| {
+                                done(overlay.status.as_deref(), &overlay.tombstone, "achieved")
+                            })
+                            .map(|overlay| overlay.resolved_at)
+                    })?;
+                latest = latest.max(at);
+            }
+            let instant = latest.and_then(chrono::DateTime::from_timestamp_millis)?;
+            Some((slot.index, instant.naive_utc()))
+        })
+        .collect()
 }
 
 /// Whether the occurrence under `node_key` was archived by hand, whichever kind it draws.

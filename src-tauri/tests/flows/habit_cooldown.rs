@@ -290,6 +290,70 @@ async fn an_overdue_iteration_resolved_late_blocks_the_next() {
     );
 }
 
+/// Window + Owed (ruled 2026-10-01): a cooldown blocks every iteration still open — the owed
+/// ones and the current one — until it has passed, and then all lift together.
+#[tokio::test]
+async fn under_owed_a_completion_blocks_every_open_iteration() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let flow_id = flow(&app, "week").await;
+    flow_commands::set_flow_recurrence(
+        app.state(),
+        flow_id,
+        recurrence(
+            week(ymd(2026, 9, 13)),
+            ClockKind::Window,
+            Some(MissPolicy::Owed),
+            Some((1, "day")),
+        ),
+    )
+    .await
+    .unwrap();
+    let first = root_key(flow_id, week(ymd(2026, 9, 13)));
+    let caught_up = root_key(flow_id, week(ymd(2026, 9, 20)));
+    let current = root_key(flow_id, week(ymd(2026, 9, 27)));
+    complete_at(&pool, flow_id, caught_up.iteration, "2026-10-01T10:00:00").await;
+
+    let board = load(&app, "2026-10-01T11:00:00").await;
+    for open in [&first, &current] {
+        assert!(drawn(&board, open));
+        assert_eq!(
+            cooling_until(&board, open),
+            Some(at("2026-10-03T02:00:00")),
+            "{} is blocked until the cooldown has passed",
+            open.node_key()
+        );
+    }
+    assert_eq!(cooling_until(&board, &caught_up), None, "done");
+
+    let later = load(&app, "2026-10-03T02:00:00").await;
+    for open in [&first, &current] {
+        assert_eq!(cooling_until(&later, open), None, "all lift together");
+    }
+}
+
+/// An iteration resolved only because its open work was archived by hand was not done, and
+/// starts no cooldown (ruled 2026-10-01: "only done should start the cooldown").
+#[tokio::test]
+async fn an_iteration_set_aside_by_hand_starts_no_cooldown() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let flow_id = weekly_with_a_day_of_cooldown(&app).await;
+    let first = root_key(flow_id, week(ymd(2026, 9, 20)));
+    let next = root_key(flow_id, week(ymd(2026, 9, 27)));
+    load(&app, "2026-09-26T19:00:00").await;
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    arlesh_lib::flows::occurrence_edit::archive(&mut db, &first)
+        .await
+        .unwrap();
+    db.commit().await.unwrap();
+
+    assert_eq!(
+        cooling_until(&load(&app, "2026-09-27T10:00:00").await, &next),
+        None
+    );
+}
+
 #[tokio::test]
 async fn setting_the_done_date_back_makes_the_cooldown_count_from_it() {
     let pool = helpers::test_pool().await;
@@ -424,14 +488,14 @@ async fn a_cooldown_is_refused_off_a_window_clock_and_past_the_window() {
         "an interval's gap already counts from completion"
     );
     assert!(
-        refused(recurrence(
+        !refused(recurrence(
             start,
             ClockKind::Window,
             Some(MissPolicy::Owed),
             Some((1, "day"))
         ))
         .await,
-        "an owed habit keeps every iteration open beside the next"
+        "an owed habit takes one"
     );
     assert!(
         refused(recurrence(

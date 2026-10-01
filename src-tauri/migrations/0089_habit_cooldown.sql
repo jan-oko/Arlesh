@@ -1,19 +1,17 @@
--- Habit cooldown (Task 199): a Window + Archive or Window + Overdue Habit may carry a cooldown —
--- N units of a scope kind finer than the habit's own (a weekly habit's in days, a monthly one's in
--- weeks or days, a daily one's in parts of the day). After an iteration is resolved, the next one
--- is blocked until the cooldown has passed (docs/spec/habits.md, "Cooldown").
+-- Habit cooldown (Task 199): a Window Habit may carry a cooldown — N units of a scope kind finer
+-- than the habit's own (a weekly habit's in days, a monthly one's in weeks or days, a daily one's
+-- in parts of the day). After an iteration is done, the next one — under Owed, every one still
+-- open — is blocked until the cooldown has passed (docs/spec/habits.md, "Cooldown").
 --
--- Two nullable columns, set together, and only on those two clocks: not on Window + Owed, and not
--- on an Interval, whose Gap already counts from completion. Every existing Habit has none, so
--- nothing is rewritten.
+-- Two nullable columns, set together, and only on a Window clock: an Interval's Gap already counts
+-- from completion. Every existing Habit has none, so nothing is rewritten.
 
 ALTER TABLE flow_recurrences ADD COLUMN cooldown_n INTEGER
     CHECK (cooldown_n IS NULL OR cooldown_n >= 1);
 ALTER TABLE flow_recurrences ADD COLUMN cooldown_kind TEXT
     CHECK ((cooldown_kind IS NULL) = (cooldown_n IS NULL)
            AND (cooldown_kind IS NULL OR (cooldown_kind IN ('part', 'day', 'week', 'month')
-                                          AND clock = 'window'
-                                          AND miss_policy IN ('archive', 'overdue'))));
+                                          AND clock = 'window')));
 
 -- The undo journal's images name every column, so the three `flow_recurrences` triggers are
 -- rebuilt with the two new ones.

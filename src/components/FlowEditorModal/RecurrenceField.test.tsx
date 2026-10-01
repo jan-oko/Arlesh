@@ -102,13 +102,13 @@ describe("RecurrenceField", () => {
     expect(screen.getAllByText(/^W\d+ 2026$/).length).toBe(2);
   });
 
-  it("offers a cooldown only under Window + Archive or Window + Overdue", () => {
+  it("offers a cooldown under every Window miss policy, and none under an Interval", () => {
     const { rerender } = render(field());
     expect(screen.getByRole("checkbox", { name: "recurrenceCooldown" })).toBeInTheDocument();
     rerender(field({ value: { ...HABIT, missPolicy: "overdue" } }));
     expect(screen.getByRole("checkbox", { name: "recurrenceCooldown" })).toBeInTheDocument();
     rerender(field({ value: { ...HABIT, missPolicy: "owed" } }));
-    expect(screen.queryByRole("checkbox", { name: "recurrenceCooldown" })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "recurrenceCooldown" })).toBeInTheDocument();
     rerender(field({ value: { ...HABIT, clock: "interval" } }));
     expect(screen.queryByRole("checkbox", { name: "recurrenceCooldown" })).not.toBeInTheDocument();
   });
@@ -141,5 +141,10 @@ describe("RecurrenceField", () => {
     render(field({ onChange }));
     fireEvent.click(screen.getByRole("checkbox", { name: "recurrenceCooldown" }));
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ cooldownEnabled: true, cooldownKind: "day" }));
+  });
+
+  it("offers no cooldown on a commitment Habit, which never completes", () => {
+    render(<RecurrenceField value={HABIT} onChange={vi.fn()} durationKind="week" durationN={1} scoped offersCooldown={false} />);
+    expect(screen.queryByRole("checkbox", { name: "recurrenceCooldown" })).not.toBeInTheDocument();
   });
 });
