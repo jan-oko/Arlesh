@@ -10,7 +10,7 @@
 //! - [`Resolution`] — how a Lapsed item settled: `Completed` (resolved by the time its window
 //!   lapsed) or `Missed` (unresolved, Archive-on-exit). An unresolved **Keep Overdue** item has no
 //!   Resolution: its window passing settled nothing, so it stays live. The single-occurrence
-//!   analogue of a Habit's Consumption root (Archive = Destructive, Keep Overdue = Accumulating).
+//!   analogue of a Window Habit's miss policy (Archive = Archive, Keep Overdue = Owed).
 //! - [`Archival`] — the item's effective archived/frozen/live state. Every item may carry its own
 //!   manually-set Archival (via [`derive_archival`]'s `stored` parameter): a Goal or Project
 //!   through its status (`Frozen` / `Archived`), a Task through its **Backlog** column. A
@@ -73,7 +73,8 @@ pub fn derive_timing(window: Option<Bounds>, now: NaiveDateTime) -> Timing {
 pub enum Resolution {
     /// Resolved (Task Done / Goal Achieved or Archived) by the time its window lapsed.
     Completed,
-    /// Unresolved, and Archive-on-exit: the single-occurrence analogue of a Destructive Habit.
+    /// Unresolved, and Archive-on-exit: the single-occurrence analogue of a Window + Archive
+    /// Habit.
     Missed,
 }
 
@@ -110,8 +111,8 @@ pub fn derive_resolution(
 ///   governance, so it derives its due from the inherited window; a child with its own window
 ///   derives it from that.
 ///
-/// A Habit occurrence's due is its Habit's to decide, not this function's — see
-/// `flows::occurrences`.
+/// A Habit occurrence's default due is its Habit's clock to decide
+/// (`flows::occurrences::default_due`), and is passed here as a Keep Overdue window.
 pub fn effective_due(
     explicit: Option<Bounds>,
     governance: Option<(Bounds, OnScopeExit)>,
@@ -305,8 +306,8 @@ pub struct ItemLifecycle {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolution: Option<Resolution>,
     /// The **Overdue** flag: unresolved, not effectively Archived, and past the end of its due
-    /// (see [`derive_overdue`]). Always false for a Commitment, and for a Habit occurrence until
-    /// its Habit's miss policy gives it a due. Sent only when set, as `resolution` is.
+    /// (see [`derive_overdue`]). Always false for a Commitment. A Habit occurrence's due comes
+    /// from its Habit's clock, or its own overlay. Sent only when set, as `resolution` is.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub overdue: bool,
     /// The recorded verdict, present only for a Commitment. Carried on the same wire type as a

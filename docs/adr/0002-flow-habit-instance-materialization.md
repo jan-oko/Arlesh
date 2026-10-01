@@ -45,3 +45,16 @@ How a virtual instance is represented, keyed and edited is replaced by
 [ADR 0008](0008-virtual-node-tables.md): a derived node is an ordinary row of its kind, read through
 a per-kind virtual table over a per-kind overlay, with a UUID-v5 id and an `origin` field. This ADR's
 decision to keep Habit instances virtual, with storage proportional to divergences, stands.
+
+## Amendment, 2026-10-01 — Consumption replaced by a clock
+
+The consequence "**Consumption** is a per-habit configurable tree (Destructive/Accumulating →
+Overlapping/Blocking → Catch-up)" no longer holds. Task #245 replaced it with a **clock**
+(`docs/spec/habits.md`, *Clocks*): **Window**, with a miss policy of **Archive** (was Destructive),
+**Owed** (was Accumulating + Overlapping) or **Overdue** (every Accumulating + Blocking Habit,
+whatever its catch-up policy), or **Interval**, one open instance whose next window is placed by its
+completion. Migration 0087 rewrote only `flow_recurrences`; the decision this ADR records stands
+unchanged — an Interval Habit's instances are virtual too, and its chain is derived from the
+completions its overlays already record, so storage stays proportional to divergences. An Unscoped
+Interval instance keys on an Exact scope one second long at the instant it appears, which is a value,
+not a row, so it too is true without anything being written to name it.

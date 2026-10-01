@@ -22,8 +22,8 @@ use arlesh_lib::commands::{
     infos as info_commands, mindmap as mindmap_commands, tasks as task_commands,
 };
 use arlesh_lib::flows::model::{
-    ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType,
-    InstanceType, SetRecurrenceRequest, UpdateFlowRequest,
+    ClockKind, CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType,
+    InstanceType, MissPolicy, SetRecurrenceRequest, UpdateFlowRequest,
 };
 use arlesh_lib::infos::model::CreateInfoRequest;
 use arlesh_lib::mindmap::model::FlowHabitResult;
@@ -59,9 +59,8 @@ fn weekly_from(start_scope_id: ScopeKey) -> SetRecurrenceRequest {
         gap_n: None,
         gap_kind: None,
         end_scope_id: None,
-        consumption_kind: ConsumptionKind::Destructive,
-        blocking_mode: None,
-        catchup_policy: None,
+        clock: ClockKind::Window,
+        miss_policy: Some(MissPolicy::Archive),
     }
 }
 

@@ -181,7 +181,9 @@ name and is resolved as that kind.
 
 `arlesh_snapshot.load` is the entry point and covers the common case. The other reads
 exist for what it does not carry: the knowledge base, scope resolution, a task's dependency-derived
-block reasons, and a Habit's stored recurrence configuration as opposed to its derived iterations.
+block reasons, and a Habit's stored recurrence configuration as opposed to its derived iterations —
+its repetition and its **clock** (`clock` `window` or `interval`, and a Window's `miss_policy`
+`archive`, `overdue` or `owed`; see [*Clocks*](habits.md#clocks)).
 
 A Commitment arrives with its `verdict` (`unresolved` / `kept` / `broken`) and its derived
 lifecycle. The verdict is recorded, never inferred, and `unresolved` means the user has not said
@@ -350,8 +352,9 @@ so the conformance corpus is untouched.
   `create` takes `dependencies` and `tags` as lists; `update` takes `add_dependencies` /
   `remove_dependencies` and `add_tags` / `remove_tags`, removals applied first. On `update` a
   field left out is unchanged and `null` clears it (`time_scope`, `plan`, `due_scope`,
-  `block_reasons`). A Habit occurrence's `due_scope`, like its `on_scope_exit`, is its Habit's
-  and is refused. Each lifecycle entry in the snapshot carries `overdue: true` when the item is
+  `block_reasons`). A Habit occurrence's `on_scope_exit` is its Habit's and is refused; its
+  `due_scope` may be set, landing in its overlay and winning over the due its Habit's clock
+  derives (see [*Clocks*](habits.md#clocks)). Each lifecycle entry in the snapshot carries `overdue: true` when the item is
   flagged Overdue; `resolution` is only ever `completed` or `missed`.
   Each goes through the same backend write the app's own command uses (`nodes::write` —
   `update_task`, `add_dependency`, `remove_dependency`, `set_tag`, `set_block_reasons`), so its
