@@ -147,7 +147,7 @@ definition it loads.
 | `arlesh_snapshot` | `load(now?, sections?, cursor?, filter?, agentic?)` — `now` is a local date-time string (`"2026-09-25T09:00:00"`) and defaults to the server's current time; the whole planning graph: domains, goals, tasks, **commitments**, notes, flows, flow items, cycles, dependencies, block reasons, materialised instance nodes, every item's derived lifecycle, each flow's habit iterations and statuses, and which occurrence each **added child** hangs on. Paged; see below |
 | `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` — `id` is a scope's value key, a JSON object such as `{"kind":"week","date":"2026-09-20"}` |
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
-| `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, compound?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`. See *Writing tasks* below |
+| `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?, delegate?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, compound?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?, delegate?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`. See *Writing tasks* below |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
 | `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`. See *Agentic waits* below |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
@@ -239,7 +239,8 @@ details an agent reads the payload by.
   (`{"kind": "delegation_wait", …}`) are expectations too. An agentic wait carries `agentic_note`,
   `question` and `answer` (see *Agentic waits*).
 - **Delegation.** A task's `delegate_to` is `null`, `{"kind": "person", "id": N}` (read the Person
-  with `arlesh_kb`) or `{"kind": "agent"}`, independent of `agentic`.
+  with `arlesh_kb`) or `{"kind": "agent"}`, independent of `agentic`; `arlesh_tasks` writes it
+  (`delegate`, see *Writing tasks*).
 - **Parents.** A node under a domain-table row names its parent `project` (a Project) or `domain`
   (any other subtype), derived from the parent row; its subtype is on that row in `domains`.
 
@@ -366,10 +367,24 @@ so the conformance corpus is untouched.
   **One transaction**: every id is read before anything is written, the row is written, then its
   relations; a refusal anywhere writes none of it, and a success announces one board change. Not
   exposed: the Agentic flag (what an agent creates is always Agentic, and it cannot un-flag
-  anything), `is_private`, the issue link (`arlesh_beads`), delegation, and an Asynchronous Task's
-  wait template. On a **Habit occurrence** each lands in its overlay; its Time Scope is its
+  anything), `is_private`, the issue link (`arlesh_beads`) and an Asynchronous Task's wait
+  template. On a **Habit occurrence** each lands in its overlay; its Time Scope is its
   iteration's and a change is refused, and `on_scope_exit` — its Habit's to decide — is refused
   as `invalid_request` before anything is written.
+- **Delegation** (2026-10-01). `create` and `update` take **`delegate`**, in the snapshot's own
+  `delegate_to` shape: `{"kind": "agent"}`, `{"kind": "person", "id": N}`, or — on `update` —
+  `null` to take the delegation back (left out, it is unchanged). It is written through the app's
+  own `update_task`, under the ordinary access rule (a Task that reads as Agentic, or one the agent
+  is creating), in the same transaction as the rest of the call; `create` writes the row and then
+  its delegate. Its refusals: a Person id that names no Person is **`not_found`**, checked before
+  anything is written (any existing Person will do — visibility does not apply, since a Person is
+  visible exactly when a visible Task is delegated to them, which this write makes so); a wait's
+  **check task** is refused as the app refuses it ("a check on a wait is yours to make, and cannot
+  be delegated", `invalid_request`); a **Habit occurrence** takes a delegate of its own into its
+  overlay, as the editor's *Delegate to agent* does, so it is not refused. A Task the agent may not
+  write is `not_permitted`. The **delegation wait** a delegated Task carries is named on the MCP
+  as the app draws it — `"Agent finish: <title>"` or `"<name> finish: <title>"` — in the
+  snapshot's `expectations` and in `arlesh_waits.get`, while its title is still its Task's.
 - **`compound`** on `update` switches a Task's **Compound** (see
   [*Compound*](resources.md#compound)): `true` makes its status derived from its sub-items,
   `false` switches that off and keeps the status it showed, in the same write. A Habit occurrence

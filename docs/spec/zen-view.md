@@ -52,6 +52,17 @@ View's setting says (ruled by the user). The **focus exemption** holds as elsewh
 Logic](filtering-logic.md)): a card your own edit stops matching — cycling it to Done with `Enter` —
 stays where it is, dimmed, until the selection leaves it.
 
+**Only what you hold** (ruled by the user, 2026-10-01). A **delegated** Task — to the Agent or to a
+Person — gets **no card**, In Progress or not, so the grid shows only work you are doing yourself.
+Do itself is unchanged: an in-progress delegated Task still shows in the List View under Do (see
+*Delegation* in [*Tasks*](resources.md)). The rule is the Zen View's own, applied in `zenContents`
+after the List View's Do filter, not part of the Do preset, so neither the backend, the MCP nor
+the conformance corpus sees it. It is under the **focus exemption** like every other filter here:
+a card you have just delegated stays, dimmed, until the selection leaves it. It is independent of
+the **Agentic** pill, which narrows what is left: the pill asks whether the work suits an agent,
+delegation who holds it, and a delegated Task is gone whatever the pill says. What a delegated Task
+waits on still reaches the Expectations strip (below).
+
 **A card** carries its **title**, large; beneath it the **parent path** — every ancestor between the
 view's frame and the Task, `Growth › CODE › ARLESH`, the line left-to-right with each title isolated
 so a Hebrew title reads correctly inside it (the Plan View's rule); and, when the card is tall
@@ -121,13 +132,25 @@ of padding, aspect-washed — that **scrolls sideways** when it is longer than t
   strip only. It is a frontend reading: the List View's Expectation filter is asked under Start, and
   nothing reaches the board filter the backend or the MCP sees, so the conformance corpus is
   unchanged.
+- **Agent finish waits** (ruled by the user, 2026-10-01). A Task delegated to the **Agent** carries a
+  wait, *Agent finish: …*, which the Expectations strip shows like any other. A per-tab switch,
+  **Agent finish waits**, **on by default**, takes those waits out of the strip when turned off;
+  a Person's delegation wait (*Tuli finish: …*) and every ordinary wait stay. A wait counts when it
+  is a delegation wait and the Task it hangs under is delegated to the Agent. It is drawn in the
+  Filter menu's switch block beside the strips' toggles, as a toggle like theirs, and `d` toggles
+  it while the menu is open (Shift and Alt alike; listed in the cheat-sheet's **Filters** section).
+  Unlike the strips' toggles it **lights the Filter button's [dot](mindmap-view.md#filter-dot)**
+  while off, since the waits it hides leave nothing on screen to say so. **Reset** turns it back on.
+  It is not offered in `Ctrl+F`. It is kept with the tab (`zenAgentWaits` in its view state); a tab
+  stored without the field reads as on. Like the grid's delegated rule it is applied in
+  `zenContents`, under the focus exemption.
 - Each strip is shown or hidden by the Zen View's **own per-tab toggle**, **both on by default**,
   independent of the List View's row-kind selector. The toggles are switched **from the Filter
   menu, the way the List View's row kinds are** (ruled by the user, 2026-09-29): a **Commitments**
   and an **Expectations** switch at the top of the switch block, drawn while the Zen View is active,
   with the same keys while the menu is open — `c` / `e` toggle one (Alt too), Shift shows that strip
   alone — and the same `Ctrl+F` results. There is no Tasks switch: the grid is always shown, so
-  both strips may be off. **Reset** turns both back on (and clears the Agentic pill). There is no
+  both strips may be off. **Reset** turns both back on (and Agent finish waits, and clears the Agentic pill). There is no
   view binding for them, as the List View has none for its kinds. The toggles are kept with the tab
   (`zenCommitments`, `zenExpectations` in its view state); a tab stored before the Zen View existed
   has neither field and reads as both on, so it loads unchanged.
@@ -138,8 +161,9 @@ The Zen View has **its own selection**, as each view does, and takes **the List 
 bindings, except every create key** — no `Tab`, `Shift+Enter`, `Shift+E` or any other chord that
 makes a node. The bindings are not copied: the Zen table is built from the List View's own binding
 modules, re-sectioned for the cheat-sheet, with the create modules left out. So a key's meaning can
-never drift between the two views. The strips and the Agentic pill are switched from the Filter menu
-(`Alt+F`, then `c` / `e` / `a`), as the List View's row kinds and flags are.
+never drift between the two views. The strips, the Agent finish waits switch and the Agentic pill are
+switched from the Filter menu (`Alt+F`, then `c` / `e` / `d` / `a`), as the List View's row kinds
+and flags are.
 
 - `↑` `↓` `←` `→` — move in **two dimensions** (below)
 - `Enter` — on a Task, cycle its status (disabled while it is blocked; on a check task, complete the
