@@ -1,0 +1,1 @@
+- **Agentic waits are no longer drawn in the Zen View's Expectations strip.** The strip now shows only waits on people. An agent's question is drawn on its Review card, and an agent's wait on something else, such as CI, is the agent's own business. Both still show under their task in the Mindmap and the List View.
