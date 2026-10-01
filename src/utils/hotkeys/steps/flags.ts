@@ -7,11 +7,12 @@ export interface StepsFlagsContext extends StepsSelectionContext {
   onToggleBacklog: (id: string) => void;
   onToggleAgentic: (id: string) => void;
   onToggleAsynchronous: (id: string) => void;
+  onToggleCompound: (id: string) => void;
 }
 
 /**
- * The same three bare letters the Mindmap and the List View bind — `B` backlog, `A` agentic, `W`
- * for the **wait** an asynchronous Task starts.
+ * The same four bare letters the Mindmap and the List View bind — `B` backlog, `A` agentic, `W`
+ * for the **wait** an asynchronous Task starts, `V` for **compound**.
  *
  * Bare, because a flag on the selected Task is a bare letter in every view, and `Alt+letter` is a
  * status preset in every view; strict chord matching keeps `A` and `Alt+A` apart. A card that is
@@ -36,5 +37,12 @@ export const STEPS_FLAGS_BINDINGS: readonly Binding<StepsFlagsContext>[] = [
     labelKey: "toggleAsynchronous",
     when: (c) => hasSelection(c),
     run: (c) => withNode(c, c.onToggleAsynchronous),
+  },
+  {
+    // V for **compound**: the Task consists of its sub-items.
+    id: "stepsView.toggleCompound", section: "stepsView", chord: { code: "KeyV" },
+    labelKey: "toggleCompound",
+    when: (c) => hasSelection(c),
+    run: (c) => withNode(c, c.onToggleCompound),
   },
 ];

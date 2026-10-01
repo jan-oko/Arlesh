@@ -25,6 +25,7 @@ impl From<BlockReasonRow> for BlockReason {
             owner_id: row.owner_id.into(),
             reason: row.reason,
             position: row.position,
+            derived: None,
         }
     }
 }

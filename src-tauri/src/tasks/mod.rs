@@ -13,6 +13,7 @@
 pub(crate) mod agentic;
 mod ancestry;
 pub mod commitments;
+pub mod compound;
 pub mod error;
 pub mod expectations;
 pub mod lifecycle;
@@ -20,7 +21,7 @@ pub mod model;
 mod scope_rules;
 pub mod waits;
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::database::session::{Db, SessionMode, Transactional};
@@ -237,6 +238,7 @@ struct TaskRow {
     delegate_id: Option<i64>,
     agentic: Option<bool>,
     asynchronous: bool,
+    compound: bool,
     time_scope_start_id: Option<ScopeKey>,
     time_scope_end_id: Option<ScopeKey>,
     time_scope_duration_n: Option<i64>,
@@ -263,6 +265,7 @@ impl From<TaskRow> for Task {
             delegate_to: Delegate::from_columns(row.delegate_kind.as_deref(), row.delegate_id),
             agentic: row.agentic,
             asynchronous: row.asynchronous,
+            compound: row.compound,
             // Read after the row, from its own table.
             async_template: None,
             agentic_brief: None,
@@ -474,6 +477,8 @@ struct TaskWrite {
     agentic: Option<bool>,
     /// Final Asynchronous flag.
     asynchronous: bool,
+    /// Final Compound flag.
+    compound: bool,
     /// Final Expectation template; always `None` when `asynchronous` is false.
     async_template: Option<AsyncTemplate>,
     /// Final agentic brief — kept whatever the flag says, since the flag can be inherited.
@@ -495,12 +500,19 @@ struct TaskWrite {
     is_private: bool,
 }
 
+/// Whether `request` switches a compound `stored` Task's compound off — the one write that may
+/// name its status, since what it names is the derived status being kept.
+fn releases_compound(stored: &Task, request: &UpdateTaskRequest) -> bool {
+    stored.compound && request.compound == Some(false)
+}
+
 impl TaskWrite {
     /// Merges `request` over the `stored` row. Pure — it reads nothing and writes nothing.
     fn merge(
         stored: Task,
         request: UpdateTaskRequest,
     ) -> Result<Self, crate::nodes::id::NotStored> {
+        let releases = releases_compound(&stored, &request);
         let reparent = match (request.parent_type, request.parent_id) {
             (Some(parent_type), Some(parent_id)) => {
                 Some((parent_type, parent_id.require_stored()?))
@@ -517,6 +529,7 @@ impl TaskWrite {
             .map(|s| s.as_str())
             .unwrap_or(&stored.status)
             .to_string();
+        let compound = request.compound.unwrap_or(stored.compound);
         let delegate_to = match request.delegate_to {
             Some(new_delegate) => new_delegate,
             None => stored.delegate_to,
@@ -563,7 +576,10 @@ impl TaskWrite {
         // task into progress, not on the merged status, and never on some other edit to a task that
         // was already in progress. The caller raises the toast here as well.
         // Started counts as a start here too: a paused task is still begun work.
+        // Switching compound off keeps the status the Task already showed: nothing is begun,
+        // so nothing is taken out of the backlog either.
         let starts_a_backlogged_task = request.archival.is_none()
+            && !releases
             && stored.archival == TaskArchival::Backlog
             && request.status.as_ref().is_some_and(TaskStatus::is_begun);
         let archival = if plans_a_backlogged_task || starts_a_backlogged_task {
@@ -580,6 +596,7 @@ impl TaskWrite {
             delegate_to,
             agentic,
             asynchronous,
+            compound,
             async_template,
             agentic_brief,
             time_scope,
@@ -915,6 +932,7 @@ impl<'session> TaskOperator<'session> {
         let archival = request.archival.unwrap_or_default();
         let agentic = request.agentic.unwrap_or_default().as_column();
         let asynchronous = request.asynchronous.unwrap_or(false);
+        let compound = request.compound.unwrap_or(false);
         let async_template = if asynchronous {
             request.async_template.clone()
         } else {
@@ -928,8 +946,9 @@ impl<'session> TaskOperator<'session> {
                 (title, parent_type, parent_id, status,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n,
                  time_scope_duration_kind, on_scope_exit, plan_start_id, plan_end_id,
-                 due_scope_start_id, due_scope_end_id, archival, agentic, asynchronous, done_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 due_scope_start_id, due_scope_end_id, archival, agentic, asynchronous, done_at,
+                 compound)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -948,6 +967,7 @@ impl<'session> TaskOperator<'session> {
         .bind(agentic)
         .bind(asynchronous)
         .bind(done_at)
+        .bind(compound)
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -1091,7 +1111,7 @@ impl<'session> TaskOperator<'session> {
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
                 time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?,
                 due_scope_start_id=?, due_scope_end_id=?,
-                archival=?, agentic=?, asynchronous=?, position=?, is_private=?,
+                archival=?, agentic=?, asynchronous=?, compound=?, position=?, is_private=?,
                 done_at = CASE WHEN ? = 'done'
                                THEN CASE WHEN status = 'done' THEN done_at ELSE ? END
                                ELSE NULL END
@@ -1113,6 +1133,7 @@ impl<'session> TaskOperator<'session> {
         .bind(write.archival.as_str())
         .bind(write.agentic)
         .bind(write.asynchronous)
+        .bind(write.compound)
         .bind(write.position)
         .bind(write.is_private)
         // Completing a task records when; it is when the wait its template spawns begins. Staying
@@ -1558,10 +1579,19 @@ pub async fn update_task_at(
     now: NaiveDateTime,
 ) -> Result<Task, TaskError> {
     let stored = db.tasks().get(id).await?;
+    // A compound Task's status is derived from its sub-items, so a request naming one is
+    // refused — unless the same request switches compound off, when the status it names is
+    // the one kept (see `nodes::write::update_task`, which names the derived one).
+    let releases = releases_compound(&stored, &request);
+    if stored.compound && !releases && request.status.is_some() {
+        return Err(TaskError::CompoundStatus(id.0));
+    }
     // Starting is the move into begun work — In Progress or Started — from To Do or Done; a write
     // to a task already begun is not a start (pausing and resuming included), so an edit to one
-    // never trips the Spec rule.
-    let starts = request.status.as_ref().is_some_and(TaskStatus::is_begun)
+    // never trips the Spec rule. Nor does switching compound off: the status it keeps is the
+    // one the Task already showed, so nothing begins.
+    let starts = !releases
+        && request.status.as_ref().is_some_and(TaskStatus::is_begun)
         && !TaskStatus::is_begun_str(&stored.status);
     let write = TaskWrite::merge(stored, request)?;
     reject_backlog_with_plan(write.archival, &write.plan)?;
@@ -1649,7 +1679,23 @@ pub async fn get_task_with_blockers<M: SessionMode>(
     db: &mut Db<M>,
     id: TaskId,
 ) -> Result<TaskWithBlockers, TaskError> {
-    let task = db.tasks().get(id).await?;
+    get_task_with_blockers_as(db, id, &HashMap::new()).await
+}
+
+/// [`get_task_with_blockers`], reading each stored Task's status from `served` where it has one
+/// — the board's status, which for a compound Task is the one derived from its sub-items
+/// ([`compound`]), not the one its row last held. The Task's own status and every Task
+/// dependency's are read this way, so the answer agrees with the board.
+#[tracing::instrument(skip(db, served))]
+pub async fn get_task_with_blockers_as<M: SessionMode>(
+    db: &mut Db<M>,
+    id: TaskId,
+    served: &HashMap<i64, String>,
+) -> Result<TaskWithBlockers, TaskError> {
+    let mut task = db.tasks().get(id).await?;
+    if let Some(status) = served.get(&id.0) {
+        task.status.clone_from(status);
+    }
     // Explicit reasons first (from the block_reasons table), then virtual ones from unmet dependencies.
     let mut reasons = db.block_reasons().list_for("task", id.0).await?;
 
@@ -1657,11 +1703,10 @@ pub async fn get_task_with_blockers<M: SessionMode>(
     for dependency in dependencies {
         match dependency {
             Dependency::Task { id: dependency_id } => {
-                let dependency_task = db
-                    .tasks()
-                    .get(TaskId(dependency_id.require_stored()?))
-                    .await?;
-                if dependency_task.status != TaskStatus::Done.as_str() {
+                let row = dependency_id.require_stored()?;
+                let dependency_task = db.tasks().get(TaskId(row)).await?;
+                let status = served.get(&row).unwrap_or(&dependency_task.status);
+                if status != TaskStatus::Done.as_str() {
                     reasons.push(format!(
                         "Blocked by task {} ({})",
                         dependency_id, dependency_task.title

@@ -14,6 +14,7 @@ import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
+import { useTaskCompound } from "@/hooks/use-task-compound";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useUndo } from "@/hooks/use-undo";
 import { useClipboardStore } from "@/stores/use-clipboard-store";
@@ -225,6 +226,9 @@ export default function StepsView() {
   });
   const { toggleAgentic } = useTaskAgentic({ findNode: (id) => findNode(tree, id), reload, showToast });
   const { toggleAsynchronous } = useTaskAsynchronous({
+    findNode: (id) => findNode(tree, id), reload, showToast,
+  });
+  const { toggleCompound } = useTaskCompound({
     findNode: (id) => findNode(tree, id), reload, showToast,
   });
   const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
@@ -463,6 +467,7 @@ export default function StepsView() {
     onToggleBacklog: unlessDrawing(toggleBacklog),
     onToggleAgentic: unlessDrawing(toggleAgentic),
     onToggleAsynchronous: unlessDrawing(toggleAsynchronous),
+    onToggleCompound: unlessDrawing(toggleCompound),
     onQuickPlan: quickPlan.open,
     onQuickDependency: quickDependency.open,
     onBindWait: unlessDrawing(openAsyncTemplate),
