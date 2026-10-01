@@ -449,8 +449,8 @@ fn apply_writes_the_status_and_the_lifecycle_onto_the_board() {
         &mut tasks,
         &mut lifecycles,
     );
-    assert_eq!(tasks[0].status, "done");
-    assert_eq!(tasks[1].status, "done");
+    assert_eq!(tasks[0].status.as_str(), "done");
+    assert_eq!(tasks[1].status.as_str(), "done");
     assert_eq!(lifecycles[0].archival, Archival::Archived);
 }
 

@@ -14,7 +14,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 const mockTask: Task = {
   id: 1, title: "Write tests", parent_type: "domain", parent_id: 2,
-  status: "todo", delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null,
+  status: { kind: "ordinary", status: "todo" }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null,
   archival: "live", tag_ids: [], position: 0, is_private: false,
 };
 
@@ -46,7 +46,7 @@ describe("updateTask", () => {
   it("calls invoke with update_task, the id, and the partial request", async () => {
     const updated = { ...mockTask, status: "done" };
     mockCommandOnce(updated);
-    const result = await updateTask(1, { status: "done" });
+    const result = await updateTask(1, { status: { kind: "ordinary", status: "done" } });
     expect(invoke).toHaveBeenCalledWith("update_task", { id: 1, request: { status: "done" } });
     expect(result.status).toBe("done");
   });

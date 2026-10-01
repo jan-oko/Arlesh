@@ -636,6 +636,6 @@ impl Evaluation<'_> {
             let resolved = self.resolve(&key.1);
             return (resolved.status, resolved.archived);
         }
-        (item.reading.clone(), item.archived)
+        (item.reading, item.archived)
     }
 }

@@ -70,6 +70,11 @@ export function isListPreset(value: string): value is ListPreset {
 }
 
 export const TASK_STATUS_VALUES = Object.values(TASK_STATUS);
+/** The Agentic model's statuses the ordinary model does not spell — To Do and Done are spelled
+ * alike, and one pill each matches both models. */
+export const AGENTIC_ONLY_STATUS_VALUES = ["on_agent", "review", "doing"] as const;
+/** The Task status dimension's pills: both models' statuses, each spelling once. */
+export const TASK_STATUS_FILTER_VALUES = [...TASK_STATUS_VALUES, ...AGENTIC_ONLY_STATUS_VALUES] as const;
 export const GOAL_STATUS_VALUES = Object.values(GOAL_STATUS);
 export const PROJECT_STATUS_VALUES = Object.values(PROJECT_STATUS);
 export const VERDICT_FILTER_VALUES = VERDICT_VALUES;
@@ -92,6 +97,12 @@ export type AsynchronousValue = (typeof ASYNCHRONOUS_VALUES)[number];
 
 export function isTaskStatusValue(value: string): value is TaskStatusValue {
   return (TASK_STATUS_VALUES as readonly string[]).includes(value);
+}
+
+export type AgenticOnlyStatusValue = (typeof AGENTIC_ONLY_STATUS_VALUES)[number];
+
+export function isAgenticOnlyStatusValue(value: string): value is AgenticOnlyStatusValue {
+  return AGENTIC_ONLY_STATUS_VALUES.some((candidate) => candidate === value);
 }
 
 export function isGoalStatusValue(value: string): value is GoalStatusValue {

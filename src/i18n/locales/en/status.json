@@ -5,6 +5,13 @@
     "started": "Started",
     "done": "Done"
   },
+  "agentic": {
+    "todo": "To Do",
+    "on_agent": "On Agent",
+    "review": "Review",
+    "doing": "Doing",
+    "done": "Done"
+  },
   "goal": {
     "active": "Active",
     "achieved": "Achieved",

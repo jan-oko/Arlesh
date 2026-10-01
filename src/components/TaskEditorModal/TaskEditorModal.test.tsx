@@ -143,7 +143,7 @@ describe("TaskEditorModal — save", () => {
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "in_progress" }),
+        expect.objectContaining({ status: { kind: "ordinary", status: "in_progress" } }),
       ),
     );
   });
@@ -310,7 +310,7 @@ describe("TaskEditorModal — Backlog control", () => {
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     // Both axes independent: finished, and still set aside.
-    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "done", archival: "backlog" });
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: { kind: "ordinary", status: "done" }, archival: "backlog" });
   });
 
   it("turns the switch off in front of the user when the task is set In Progress", async () => {
@@ -326,7 +326,7 @@ describe("TaskEditorModal — Backlog control", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "in_progress", archival: "live" });
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: { kind: "ordinary", status: "in_progress" }, archival: "live" });
   });
 
   it("turns the switch off when the task is set Started, which is begun work too", async () => {
@@ -339,7 +339,7 @@ describe("TaskEditorModal — Backlog control", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "started", archival: "live" });
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: { kind: "ordinary", status: "started" }, archival: "live" });
   });
 
   it("still lets a task already In Progress be set aside", async () => {
@@ -352,7 +352,7 @@ describe("TaskEditorModal — Backlog control", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "backlogOff" }));
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "in_progress", archival: "backlog" });
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: { kind: "ordinary", status: "in_progress" }, archival: "backlog" });
   });
 });
 
@@ -531,79 +531,64 @@ describe("TaskEditorModal — Agentic", () => {
   });
 });
 
-describe("TaskEditorModal — the one-click delegate button", () => {
-  async function renderAndOpen(node: MindmapNode, onSave = vi.fn().mockResolvedValue(undefined)) {
-    render(<TaskEditorModal {...defaultProps} node={node} onSave={onSave} />);
+describe("TaskEditorModal — the Agentic status model", () => {
+  const agenticNode = (status: "todo" | "on_agent" | "review" | "doing" | "done", extra: Partial<MindmapNode> = {}) =>
+    mkNode({ agentic: true, status, taskStatus: { kind: "agentic", status }, ...extra });
+
+  it("offers To Do, On Agent, Doing and Done — no Started, no In Progress", async () => {
+    render(<TaskEditorModal {...defaultProps} node={agenticNode("todo")} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
-    return onSave;
-  }
+    for (const name of ["status:agentic.todo", "status:agentic.on_agent", "status:agentic.doing", "status:agentic.done"]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("button", { name: "status:task.started" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "status:task.in_progress" })).not.toBeInTheDocument();
+  });
 
-  function openAdvanced() {
+  it("saves the Agentic value picked", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={agenticNode("todo")} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "status:agentic.doing" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: { kind: "agentic", status: "doing" } });
+  });
+
+  it("shows Review read-only while the agent's question is open, with the question to answer", async () => {
+    const question: MindmapNode = {
+      id: "expectation-9", rowId: 9, kind: "expectation", title: "Merge PR #1?", status: "pending", position: 0, tagIds: [], children: [],
+      agentWaiting: { note: "CI is green.", question: true, answer: null },
+    };
+    const onAnswer = vi.fn().mockResolvedValue(true);
+    render(<TaskEditorModal {...defaultProps} node={agenticNode("review", { children: [question] })} onAnswer={onAnswer} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "status:agentic.review" })).toBeDisabled();
+    expect(screen.getByText("Merge PR #1?")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "agentAnswer" }), { target: { value: "Yes, merge." } });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "agentAnswer" }), { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(onAnswer).toHaveBeenCalledWith(question, "Yes, merge."));
+  });
+
+  it("converts the status shown when the flag changes the model", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ status: "in_progress", taskStatus: { kind: "ordinary", status: "in_progress" } })} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "advanced" }));
-  }
-
-  function delegateButton(): HTMLElement {
-    return screen.getByRole("button", { name: "delegateToAgent" });
-  }
-
-  it("is not offered on a task that is not agentic", async () => {
-    await renderAndOpen(mkNode());
-    openAdvanced();
-    expect(screen.queryByRole("button", { name: "delegateToAgent" })).not.toBeInTheDocument();
-  });
-
-  it("appears as soon as the task is flagged agentic", async () => {
-    await renderAndOpen(mkNode());
-    openAdvanced();
     fireEvent.click(screen.getByRole("button", { name: "agenticYes" }));
-    expect(delegateButton()).toHaveAttribute("aria-pressed", "false");
-  });
-
-  it("is offered on a task that inherits Agentic", async () => {
-    await renderAndOpen(mkNode({ inheritedAgentic: true }));
-    openAdvanced();
-    expect(delegateButton()).toBeInTheDocument();
-  });
-
-  it("delegates an agentic task to the Agent in one click", async () => {
-    const onSave = await renderAndOpen(mkNode({ agentic: true }));
-    fireEvent.click(delegateButton());
-    expect(delegateButton()).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ delegate: { kind: "agent" } });
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: { kind: "agentic", status: "doing" }, agentic: "yes" });
   });
 
-  it("takes the Agent back with a second click, saving an explicit null", async () => {
-    const onSave = await renderAndOpen(mkNode({ agentic: true, delegate: { kind: "agent" } }));
-    expect(delegateButton()).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(delegateButton());
-    fireEvent.click(screen.getByRole("button", { name: "save" }));
-    await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ delegate: null });
-  });
-
-  it("stays offered on an Agent-delegated task that is no longer agentic, so it can be taken back", async () => {
-    await renderAndOpen(mkNode({ agentic: false, delegate: { kind: "agent" } }));
-    expect(delegateButton()).toHaveAttribute("aria-pressed", "true");
-  });
-
-  it("says nothing about delegation when the button was pressed twice", async () => {
-    const onSave = await renderAndOpen(mkNode({ agentic: true }));
-    fireEvent.click(delegateButton());
-    fireEvent.click(delegateButton());
-    fireEvent.click(screen.getByRole("button", { name: "save" }));
-    await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty("delegate");
+  it("offers no Delegate to agent button: the Agent delegate is gone", async () => {
+    render(<TaskEditorModal {...defaultProps} node={agenticNode("todo")} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
+    expect(screen.queryByRole("button", { name: "delegateToAgent" })).not.toBeInTheDocument();
   });
 });
 
-/*
- * Escape is handled by a React `onKeyDown` on the dialog element, so it only fires while focus is
- * already inside the dialog. These press it with no Tab and no click first — the state the modal is
- * actually in the instant it opens — which is the one case a `fireEvent.keyDown` aimed at the input
- * cannot show.
- */
 describe("TaskEditorModal — focus on open", () => {
   it("puts focus inside the dialog when it opens", () => {
     render(<TaskEditorModal {...defaultProps} />);
@@ -826,7 +811,7 @@ describe("TaskEditorModal — Compound", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "started", compound: false });
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: { kind: "ordinary", status: "started" }, compound: false });
   });
 
   it("offers the switch on a stored task only", () => {

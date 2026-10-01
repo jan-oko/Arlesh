@@ -55,7 +55,7 @@ function mkGoal(overrides: Partial<Goal> = {}): Goal {
 function mkTask(overrides: Partial<Task> = {}): Task {
   return {
     id: 1, title: "Task", parent_type: "goal", parent_id: 1,
-    status: "todo", delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
+    status: { kind: "ordinary", status: "todo" }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
 }
@@ -262,7 +262,7 @@ describe("buildTree", () => {
 
   it("derives virtual block reasons from unmet task dependencies", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const blocker = mkTask({ id: 2, title: "Dep", status: "in_progress", parent_type: "project", parent_id: 1 });
+    const blocker = mkTask({ id: 2, title: "Dep", status: { kind: "ordinary", status: "in_progress" }, parent_type: "project", parent_id: 1 });
     const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
     const root = buildTree([aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [], [
       { task_id: 3, dependency_type: "task", dependency_id: 2 },
@@ -289,7 +289,7 @@ describe("buildTree", () => {
 
   it("omits a virtual block reason once the dependency is done", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const blocker = mkTask({ id: 2, title: "Dep", status: "done", parent_type: "project", parent_id: 1 });
+    const blocker = mkTask({ id: 2, title: "Dep", status: { kind: "ordinary", status: "done" }, parent_type: "project", parent_id: 1 });
     const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
     const root = buildTree([aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [], [
       { task_id: 3, dependency_type: "task", dependency_id: 2 },

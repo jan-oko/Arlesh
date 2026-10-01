@@ -62,7 +62,7 @@ function setup() {
 }
 
 const saveData: TaskSaveData = {
-  title: "Task", status: "todo", blockReasons: [], tagIds: [],
+  title: "Task", status: { kind: "ordinary", status: "todo" }, blockReasons: [], tagIds: [],
   addedDeps: [], removedDeps: [], timeScope: { start_id: testKey(1), end_id: testKey(1) },
   onScopeExit: null, plan: null, archival: "live", agentic: "inherit", asynchronous: false, compound: false, asyncTemplate: null, agenticBrief: null, isPrivate: false,
 };
@@ -163,8 +163,8 @@ describe("useNodeEditor — delegation", () => {
   it("sends the delegate the editor changed", async () => {
     vi.mocked(scopeContainmentConflicts).mockResolvedValue([]);
     const result = setup();
-    await act(async () => { await result.current.onTaskSave({ ...saveData, delegate: { kind: "agent" } }); });
-    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ delegate_to: { kind: "agent" } }));
+    await act(async () => { await result.current.onTaskSave({ ...saveData, delegate: { kind: "person", id: 4 } }); });
+    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ delegate_to: { kind: "person", id: 4 } }));
   });
 
   it("sends an explicit null to take the delegate back", async () => {
@@ -203,7 +203,7 @@ describe("useNodeEditor — Compound", () => {
   it("switching it off sends the status shown with the flag, so both land in one write", async () => {
     const result = setupWith({ ...taskNode, compound: true, status: "started" });
     await act(async () => {
-      await result.current.onTaskSave({ ...saveData, timeScope: null, status: "started", compound: false });
+      await result.current.onTaskSave({ ...saveData, timeScope: null, status: { kind: "ordinary", status: "started" }, compound: false });
     });
     expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ status: "started", compound: false }));
   });

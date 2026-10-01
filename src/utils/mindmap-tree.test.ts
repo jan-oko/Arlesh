@@ -422,7 +422,7 @@ describe("collectSearchableNodes with skipArchived", () => {
       { id: "goal-1", kind: "goal", title: "Done goal", status: "archived", position: 0, tagIds: [], children: [
         { id: "task-1", kind: "task", title: "Under it", status: "todo", position: 0, tagIds: [], children: [] },
       ] },
-      { id: "task-2", kind: "task", title: "Delegated", status: "todo", delegate: { kind: "agent" }, position: 1, tagIds: [], children: [] },
+      { id: "task-2", kind: "task", title: "Delegated", status: "todo", delegate: { kind: "person", id: 4 }, position: 1, tagIds: [], children: [] },
       { id: "task-3", kind: "task", title: "Live", status: "todo", position: 2, tagIds: [], children: [] },
     ],
   };

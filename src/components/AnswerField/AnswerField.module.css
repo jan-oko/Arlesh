@@ -1,0 +1,77 @@
+.answer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  min-width: 0;
+  text-align: start;
+}
+
+.question {
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.note {
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.label {
+  font-size: 0.85em;
+  color: var(--text-secondary);
+}
+
+.row {
+  display: flex;
+  gap: var(--space-1);
+  align-items: stretch;
+}
+
+.field {
+  flex: 1;
+  min-width: 0;
+  resize: vertical;
+  font-family: var(--font-sans);
+  font-size: inherit;
+  color: var(--text-primary);
+  background: var(--node-bg);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  padding: var(--space-1) var(--space-2);
+}
+
+.field:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.send {
+  font-family: var(--font-sans);
+  font-size: inherit;
+  padding: 0 var(--space-3);
+  border-radius: var(--node-radius);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--surface);
+  cursor: pointer;
+}
+
+.send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.compact {
+  font-size: 0.85em;
+}
+
+.compact .label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}

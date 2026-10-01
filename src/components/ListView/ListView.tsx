@@ -20,7 +20,7 @@ import type { ListEdge } from "@/utils/hotkeys/list-bindings";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { MixedListRow } from "@/utils/list-data";
 import { mergeInTreeOrder, preOrderIndex } from "@/utils/list-data";
-import { showsOverdueSection, withListSections } from "@/utils/list-sections";
+import { showsOverdueSection, showsReviewSection, withListSections } from "@/utils/list-sections";
 import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { BEADS_NODE_TYPE } from "@/api/beads";
@@ -93,7 +93,7 @@ export default function ListView() {
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onCommitmentSave, onExpectationSave, onClearBeadsId, checkScopeClamp,
+    onTaskSave, onAnswer, onCommitmentSave, onExpectationSave, onClearBeadsId, checkScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, reload });
 
   // One selection across both sections: a row is a Task or a Commitment, and which it is decides
@@ -193,6 +193,7 @@ export default function ListView() {
   // indentation their remaining ancestors give them. With neither on nothing is pulled out and the
   // list is exactly what the tree ordered.
   const overdueSection = showsOverdueSection(overdueFirst, sharedFilter, listFilter);
+  const reviewSection = showsReviewSection(sharedFilter, listFilter);
   const entries = useMemo(() => {
     const taskRows: MixedListRow[] = filteredRows.map((row) => ({ type: "task", row }));
     const mixed = listBands
@@ -202,8 +203,8 @@ export default function ListView() {
         ...filteredCommitments.map((row): MixedListRow => ({ type: "commitment", row })),
         ...filteredExpectations.map((row): MixedListRow => ({ type: "expectation", row })),
       ], treeOrder);
-    return withListSections(mixed, { overdue: overdueSection, asynchronous: asynchronousFirst });
-  }, [filteredRows, filteredCommitments, filteredExpectations, listBands, treeOrder, overdueSection, asynchronousFirst]);
+    return withListSections(mixed, { review: reviewSection, overdue: overdueSection, asynchronous: asynchronousFirst });
+  }, [filteredRows, filteredCommitments, filteredExpectations, listBands, treeOrder, reviewSection, overdueSection, asynchronousFirst]);
   const rowIds = useMemo(
     () => entries.flatMap((entry) =>
       entry.type === "task" || entry.type === "commitment" || entry.type === "expectation" ? [entry.row.node.id] : []),
@@ -426,8 +427,18 @@ export default function ListView() {
       ) : (
         <div className={styles.rows}>
           {entries.map((entry, index) => {
-            // The Overdue section's heading and closing rule, drawn exactly as the Asynchronous
-            // section's below.
+            // The Review section's heading and closing rule, then the Overdue section's, drawn
+            // exactly as the Asynchronous section's below.
+            if (entry.type === "review") {
+              return (
+                <h2 key="review" className={styles.sectionHeading}>
+                  {t("listView:reviewHeading")}
+                </h2>
+              );
+            }
+            if (entry.type === "reviewEnd") {
+              return <hr key="review-end" className={styles.sectionEnd} />;
+            }
             if (entry.type === "overdue") {
               return (
                 <h2 key="overdue" className={styles.sectionHeading}>
@@ -534,6 +545,7 @@ export default function ListView() {
           domainNames={domainNames}
           availableForDep={availableForDep}
           onSave={onTaskSave}
+          onAnswer={onAnswer}
           onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.TASK)}
           onCheckScopeClamp={checkScopeClamp}
           openAtTemplate={editorModal.focus === "asyncTemplate"}
