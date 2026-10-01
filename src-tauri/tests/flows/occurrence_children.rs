@@ -86,7 +86,9 @@ async fn complete_root(
         app.state(),
         NodeId::Derived(root_of(flow_id).id()),
         UpdateTaskRequest {
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
         confirmed,
@@ -289,7 +291,9 @@ async fn a_finished_child_raises_no_prompt_at_all() {
         &mut db,
         TaskId(child.node_id),
         UpdateTaskRequest {
-            status: Some(arlesh_lib::tasks::model::TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
     )

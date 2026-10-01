@@ -6,7 +6,9 @@ use crate::{
         key::{TemplateItem, TemplateKind},
         origin::Origin,
     },
-    tasks::model::{ExpectationArchival, ExpectationStatus, TaskArchival, Verdict},
+    tasks::model::{
+        ExpectationArchival, ExpectationStatus, Status, TaskArchival, TaskStatus, Verdict,
+    },
 };
 
 fn occurrence(item_type: TemplateKind, item_id: i64) -> OccurrenceKey {
@@ -23,7 +25,7 @@ fn task(id: NodeId, parent_type: &str, parent_id: NodeId) -> Task {
         title: "t".into(),
         parent_type: parent_type.into(),
         parent_id,
-        status: "todo".into(),
+        status: Status::Ordinary(TaskStatus::Todo),
         delegate_to: None,
         agentic: None,
         asynchronous: false,

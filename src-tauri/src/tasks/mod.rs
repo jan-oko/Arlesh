@@ -301,7 +301,11 @@ impl From<TaskRow> for Task {
 /// fallback that never claims work is under way — and is logged.
 fn decode_status(id: i64, stored: &str) -> Status {
     Status::from_db(stored).unwrap_or_else(|| {
-        tracing::warn!(task = id, status = stored, "a task row holds an unknown status");
+        tracing::warn!(
+            task = id,
+            status = stored,
+            "a task row holds an unknown status"
+        );
         Status::Ordinary(TaskStatus::Todo)
     })
 }
@@ -1526,8 +1530,14 @@ pub async fn create_task_at(
     request: CreateTaskRequest,
     now: NaiveDateTime,
 ) -> Result<Task, TaskError> {
-    let parent = (request.parent_type.clone(), request.parent_id.require_stored()?);
-    let own = request.agentic.map(|agentic| agentic.as_column()).unwrap_or(None);
+    let parent = (
+        request.parent_type.clone(),
+        request.parent_id.require_stored()?,
+    );
+    let own = request
+        .agentic
+        .map(|agentic| agentic.as_column())
+        .unwrap_or(None);
     let agentic = agentic::resolves_agentic(db, None, own, (&parent.0, parent.1)).await?;
     create_task_as(db, request, now, agentic).await
 }
@@ -1642,7 +1652,10 @@ pub async fn update_task_at(
         && !stored.status.is_begun();
     let requested = request.status;
     let before = stored.status;
-    let title = request.title.clone().unwrap_or_else(|| stored.title.clone());
+    let title = request
+        .title
+        .clone()
+        .unwrap_or_else(|| stored.title.clone());
     let mut write = TaskWrite::merge(stored, request)?;
     reject_backlog_with_plan(write.archival, &write.plan)?;
     // The kind the Task holds after the write — its flag, or its parent's — decides its model. A

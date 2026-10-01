@@ -1212,7 +1212,10 @@ fn occurrence_status(overlay: &TaskOverlay, agentic: bool) -> Status {
     match overlay.status.as_deref() {
         None => Status::todo(agentic),
         Some(stored) => Status::from_db(stored).unwrap_or_else(|| {
-            tracing::warn!(status = stored, "an occurrence overlay holds an unknown status");
+            tracing::warn!(
+                status = stored,
+                "an occurrence overlay holds an unknown status"
+            );
             Status::todo(agentic)
         }),
     }

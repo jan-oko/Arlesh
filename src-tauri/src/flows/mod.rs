@@ -1588,7 +1588,9 @@ impl<'session> FlowOperator<'session> {
                 let mut overlay = overlays.task(key).await?;
                 // Either model's spelling is kept as given, a To Do cleared: which model the
                 // occurrence holds is settled by `tasks::agentic::reconcile` afterwards.
-                let given = status.and_then(Status::from_db).filter(|given| !given.is_todo());
+                let given = status
+                    .and_then(Status::from_db)
+                    .filter(|given| !given.is_todo());
                 overlay.status = given.and_then(|given| given.as_db()).map(str::to_string);
                 overlay.resolved_at = given
                     .is_some_and(|given| given.is_done())

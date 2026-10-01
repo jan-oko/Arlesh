@@ -31,8 +31,8 @@ use crate::{
     },
     scopes::resolve::interval_contains,
     tasks::model::{
-        Commitment, Delegate, Goal, Status, Task, TaskArchival, TimeScope,
-        UpdateCommitmentRequest, UpdateGoalRequest, UpdateTaskRequest,
+        Commitment, Delegate, Goal, Status, Task, TaskArchival, TimeScope, UpdateCommitmentRequest,
+        UpdateGoalRequest, UpdateTaskRequest,
     },
 };
 
@@ -398,11 +398,8 @@ pub async fn update_task(
     // The occurrences beneath it in the template tree, and the rows hung on them, may change kind
     // with it.
     if request.agentic.is_some() {
-        crate::tasks::agentic::reconcile(
-            db,
-            vec![crate::tasks::agentic::Reach::Habit(flow_id.0)],
-        )
-        .await?;
+        crate::tasks::agentic::reconcile(db, vec![crate::tasks::agentic::Reach::Habit(flow_id.0)])
+            .await?;
     }
     Ok(())
 }

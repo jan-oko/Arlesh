@@ -274,11 +274,8 @@ pub async fn update_task(
             if moves {
                 // Hung on an occurrence or taken off one, it reads what its new place reads: its
                 // status is settled into that model, and so is everything beneath that inherits.
-                crate::tasks::agentic::reconcile(
-                    db,
-                    vec![crate::tasks::agentic::Reach::Task(*id)],
-                )
-                .await?;
+                crate::tasks::agentic::reconcile(db, vec![crate::tasks::agentic::Reach::Task(*id)])
+                    .await?;
                 task.status = db.tasks().get(TaskId(*id)).await?.status;
             }
             if let Some((parent_type, parent_id)) = hung {
@@ -381,7 +378,10 @@ pub async fn update_commitment(
             if onto_occurrence {
                 crate::tasks::agentic::reconcile(
                     db,
-                    vec![crate::tasks::agentic::Reach::Below("commitment".to_string(), *id)],
+                    vec![crate::tasks::agentic::Reach::Below(
+                        "commitment".to_string(),
+                        *id,
+                    )],
                 )
                 .await?;
             }

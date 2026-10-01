@@ -148,7 +148,7 @@ async fn every_occurrence_is_an_ordinary_row_with_a_habit_origin() {
         .find(|task| task.id == root(flow_id, ymd(2026, 1, 5)))
         .expect("the first iteration's root is a Task row");
     assert_eq!(first_root.title, "Morning");
-    assert_eq!(first_root.status, "todo");
+    assert_eq!(first_root.status.as_str(), "todo");
     assert_eq!(
         (first_root.parent_type.as_str(), &first_root.parent_id),
         ("project", &NodeId::Stored(1)),
@@ -206,7 +206,9 @@ async fn editing_an_occurrence_writes_that_occurrence_only() {
         today.clone(),
         UpdateTaskRequest {
             title: Some("Stretch longer".into()),
-            status: Some(TaskStatus::InProgress),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::InProgress,
+            )),
             is_private: Some(true),
             ..Default::default()
         },
@@ -216,7 +218,7 @@ async fn editing_an_occurrence_writes_that_occurrence_only() {
     .unwrap();
     assert_eq!(edited.id, today);
     assert_eq!(edited.title, "Stretch longer");
-    assert_eq!(edited.status, "in_progress");
+    assert_eq!(edited.status.as_str(), "in_progress");
     assert!(edited.is_private);
 
     let board = load(&app, "2026-01-06T09:00:00").await;
@@ -229,7 +231,7 @@ async fn editing_an_occurrence_writes_that_occurrence_only() {
         yesterday.title, "Stretch",
         "the other occurrence is untouched"
     );
-    assert_eq!(yesterday.status, "todo");
+    assert_eq!(yesterday.status.as_str(), "todo");
     let templates = flow_commands::list_flow_tasks(app.state(), flow_id)
         .await
         .unwrap();
@@ -248,19 +250,21 @@ async fn an_occurrence_can_be_set_started_and_reads_back_so() {
         app.state(),
         today.clone(),
         UpdateTaskRequest {
-            status: Some(TaskStatus::Started),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Started,
+            )),
             ..Default::default()
         },
         None,
     )
     .await
     .unwrap();
-    assert_eq!(edited.status, "started");
+    assert_eq!(edited.status.as_str(), "started");
 
     // The overlay's own status column holds it, as it holds In Progress.
     let board = load(&app, "2026-01-06T09:00:00").await;
     let reread = board.tasks.iter().find(|task| task.id == today).unwrap();
-    assert_eq!(reread.status, "started");
+    assert_eq!(reread.status.as_str(), "started");
 }
 
 #[tokio::test]
@@ -300,6 +304,7 @@ async fn an_occurrence_plans_backlogs_and_delegates_like_a_task() {
     let today = item(item_id, ymd(2026, 1, 5));
     let morning = ScopeKey::part(ymd(2026, 1, 5), PartOfDay::Morning);
 
+    let person = helpers::make_person(&pool, "Dana").await;
     let planned = task_commands::update_task(
         app.state(),
         today.clone(),
@@ -309,7 +314,9 @@ async fn an_occurrence_plans_backlogs_and_delegates_like_a_task() {
                 end_id: morning,
                 duration: None,
             })),
-            delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Agent)),
+            delegate_to: Some(Some(arlesh_lib::tasks::model::Delegate::Person {
+                id: person,
+            })),
             agentic: Some(arlesh_lib::tasks::model::TaskAgentic::Yes),
             asynchronous: Some(true),
             ..Default::default()
@@ -321,7 +328,7 @@ async fn an_occurrence_plans_backlogs_and_delegates_like_a_task() {
     assert_eq!(planned.plan.map(|plan| plan.start_id), Some(morning));
     assert_eq!(
         planned.delegate_to,
-        Some(arlesh_lib::tasks::model::Delegate::Agent)
+        Some(arlesh_lib::tasks::model::Delegate::Person { id: person })
     );
     assert_eq!(planned.agentic, Some(true));
     assert!(planned.asynchronous);
@@ -482,7 +489,9 @@ async fn deleting_an_occurrence_archives_it_and_a_status_brings_it_back() {
         app.state(),
         today.clone(),
         UpdateTaskRequest {
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
         None,
@@ -518,7 +527,7 @@ async fn a_goal_occurrence_is_achieved_and_a_commitment_iteration_judged() {
     )
     .await
     .unwrap();
-    assert_eq!(goal.status, "achieved");
+    assert_eq!(goal.status.as_str(), "achieved");
     assert_eq!(goal.title, "A good morning");
 
     let commitment = commitment_commands::update_commitment(
@@ -761,7 +770,9 @@ async fn completing_every_occurrence_resolves_the_iteration() {
             app.state(),
             id,
             UpdateTaskRequest {
-                status: Some(TaskStatus::Done),
+                status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                    arlesh_lib::tasks::model::TaskStatus::Done,
+                )),
                 ..Default::default()
             },
             None,
@@ -786,7 +797,9 @@ async fn mark_done(app: &App, id: &NodeId) {
         app.state(),
         id.clone(),
         UpdateTaskRequest {
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
         None,
@@ -869,7 +882,9 @@ async fn a_stored_task_is_still_written_where_it_always_was() {
         task.id.clone(),
         UpdateTaskRequest {
             title: Some("Still ordinary".into()),
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
         None,

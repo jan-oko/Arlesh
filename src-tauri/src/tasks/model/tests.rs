@@ -38,10 +38,18 @@ fn agentic_status_stores_spellings_disjoint_from_the_ordinary_model() {
     ] {
         let spelling = status.as_db().expect("stored");
         assert_eq!(AgenticStatus::from_db(spelling), Some(status));
-        assert_eq!(TaskStatus::from_db(spelling), None, "{spelling} must not read as ordinary");
+        assert_eq!(
+            TaskStatus::from_db(spelling),
+            None,
+            "{spelling} must not read as ordinary"
+        );
     }
     for ordinary in ["todo", "in_progress", "started", "done"] {
-        assert_eq!(AgenticStatus::from_db(ordinary), None, "{ordinary} must not read as agentic");
+        assert_eq!(
+            AgenticStatus::from_db(ordinary),
+            None,
+            "{ordinary} must not read as agentic"
+        );
     }
 }
 
@@ -60,7 +68,10 @@ fn review_is_derived_and_never_stored() {
 
 #[test]
 fn status_decodes_each_stored_spelling_into_exactly_one_model() {
-    assert_eq!(Status::from_db("todo"), Some(Status::Ordinary(TaskStatus::Todo)));
+    assert_eq!(
+        Status::from_db("todo"),
+        Some(Status::Ordinary(TaskStatus::Todo))
+    );
     assert_eq!(
         Status::from_db("agentic_todo"),
         Some(Status::Agentic(AgenticStatus::Todo))
@@ -81,9 +92,15 @@ fn status_decodes_each_stored_spelling_into_exactly_one_model() {
 #[test]
 fn status_serialises_tagged_by_its_model() {
     let doing = serde_json::to_value(Status::Agentic(AgenticStatus::Doing)).expect("json");
-    assert_eq!(doing, serde_json::json!({"kind": "agentic", "status": "doing"}));
+    assert_eq!(
+        doing,
+        serde_json::json!({"kind": "agentic", "status": "doing"})
+    );
     let started = serde_json::to_value(Status::Ordinary(TaskStatus::Started)).expect("json");
-    assert_eq!(started, serde_json::json!({"kind": "ordinary", "status": "started"}));
+    assert_eq!(
+        started,
+        serde_json::json!({"kind": "ordinary", "status": "started"})
+    );
     let back: Status = serde_json::from_value(doing).expect("parses");
     assert_eq!(back, Status::Agentic(AgenticStatus::Doing));
 }
@@ -92,25 +109,46 @@ fn status_serialises_tagged_by_its_model() {
 fn conversion_maps_the_shared_states_and_refuses_the_rest() {
     let ordinary = |status| Status::Ordinary(status);
     let agentic = |status| Status::Agentic(status);
-    assert_eq!(ordinary(TaskStatus::Todo).converted(true), Some(agentic(AgenticStatus::Todo)));
+    assert_eq!(
+        ordinary(TaskStatus::Todo).converted(true),
+        Some(agentic(AgenticStatus::Todo))
+    );
     assert_eq!(
         ordinary(TaskStatus::InProgress).converted(true),
         Some(agentic(AgenticStatus::Doing))
     );
-    assert_eq!(ordinary(TaskStatus::Done).converted(true), Some(agentic(AgenticStatus::Done)));
+    assert_eq!(
+        ordinary(TaskStatus::Done).converted(true),
+        Some(agentic(AgenticStatus::Done))
+    );
     assert_eq!(ordinary(TaskStatus::Started).converted(true), None);
-    assert_eq!(agentic(AgenticStatus::Doing).converted(false), Some(ordinary(TaskStatus::InProgress)));
+    assert_eq!(
+        agentic(AgenticStatus::Doing).converted(false),
+        Some(ordinary(TaskStatus::InProgress))
+    );
     assert_eq!(agentic(AgenticStatus::OnAgent).converted(false), None);
     assert_eq!(agentic(AgenticStatus::Review).converted(false), None);
     // Staying in its own model is the identity, Started and On Agent included.
-    assert_eq!(ordinary(TaskStatus::Started).converted(false), Some(ordinary(TaskStatus::Started)));
-    assert_eq!(agentic(AgenticStatus::OnAgent).converted(true), Some(agentic(AgenticStatus::OnAgent)));
+    assert_eq!(
+        ordinary(TaskStatus::Started).converted(false),
+        Some(ordinary(TaskStatus::Started))
+    );
+    assert_eq!(
+        agentic(AgenticStatus::OnAgent).converted(true),
+        Some(agentic(AgenticStatus::OnAgent))
+    );
 }
 
 #[test]
 fn readings_round_trip_through_each_model() {
-    assert_eq!(Status::Agentic(AgenticStatus::OnAgent).reading(), TaskStatus::Started);
-    assert_eq!(Status::Agentic(AgenticStatus::Doing).reading(), TaskStatus::InProgress);
+    assert_eq!(
+        Status::Agentic(AgenticStatus::OnAgent).reading(),
+        TaskStatus::Started
+    );
+    assert_eq!(
+        Status::Agentic(AgenticStatus::Doing).reading(),
+        TaskStatus::InProgress
+    );
     assert_eq!(
         Status::from_reading(TaskStatus::Started, true),
         Status::Agentic(AgenticStatus::OnAgent)
@@ -203,11 +241,6 @@ fn goal_id_roundtrip() {
 fn a_delegate_is_a_kind_and_an_id_on_the_wire() {
     let person = serde_json::to_value(Delegate::Person { id: 3 }).expect("serialises");
     assert_eq!(person, serde_json::json!({"kind": "person", "id": 3}));
-    let agent = serde_json::to_value(Delegate::Agent).expect("serialises");
-    assert_eq!(agent, serde_json::json!({"kind": "agent"}));
-
-    let read: Delegate = serde_json::from_str(r#"{"kind":"agent"}"#).expect("parses");
-    assert_eq!(read, Delegate::Agent);
     let read: Delegate = serde_json::from_str(r#"{"kind":"person","id":7}"#).expect("parses");
     assert_eq!(read, Delegate::Person { id: 7 });
 }
@@ -216,26 +249,20 @@ fn a_delegate_is_a_kind_and_an_id_on_the_wire() {
 fn a_person_delegate_without_an_id_is_refused_on_the_wire() {
     assert!(serde_json::from_str::<Delegate>(r#"{"kind":"person"}"#).is_err());
     assert!(serde_json::from_str::<Delegate>(r#"{"kind":"robot"}"#).is_err());
+    // The Agent delegate was removed: an agent holds a Task as On Agent, never by delegation.
+    assert!(serde_json::from_str::<Delegate>(r#"{"kind":"agent"}"#).is_err());
 }
 
 #[test]
 fn every_delegate_round_trips_through_its_columns() {
-    for delegate in [
-        None,
-        Some(Delegate::Person { id: 4 }),
-        Some(Delegate::Agent),
-    ] {
+    for delegate in [None, Some(Delegate::Person { id: 4 })] {
         let (kind, id) = Delegate::columns(delegate);
         assert_eq!(Delegate::from_columns(kind, id), delegate);
     }
 }
 
 #[test]
-fn the_agent_stores_no_id_and_a_person_stores_theirs() {
-    assert_eq!(
-        Delegate::columns(Some(Delegate::Agent)),
-        (Some("agent"), None)
-    );
+fn a_person_stores_their_id() {
     assert_eq!(
         Delegate::columns(Some(Delegate::Person { id: 9 })),
         (Some("person"), Some(9))
@@ -248,10 +275,10 @@ fn a_column_pair_the_schema_would_refuse_reads_as_no_delegate() {
     assert_eq!(Delegate::from_columns(Some("person"), None), None);
     assert_eq!(Delegate::from_columns(Some("robot"), Some(1)), None);
     assert_eq!(Delegate::from_columns(None, Some(1)), None);
+    assert_eq!(Delegate::from_columns(Some("agent"), None), None);
 }
 
 #[test]
 fn a_delegate_describes_itself_for_a_prompt() {
     assert_eq!(Delegate::Person { id: 12 }.describe(), "person 12");
-    assert_eq!(Delegate::Agent.describe(), "agent");
 }

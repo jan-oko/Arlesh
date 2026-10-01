@@ -61,14 +61,18 @@ async fn task(pool: &sqlx::SqlitePool, project: i64, title: &str) -> i64 {
 
 fn done() -> UpdateTaskRequest {
     UpdateTaskRequest {
-        status: Some(TaskStatus::Done),
+        status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+            arlesh_lib::tasks::model::TaskStatus::Done,
+        )),
         ..Default::default()
     }
 }
 
 fn reopened() -> UpdateTaskRequest {
     UpdateTaskRequest {
-        status: Some(TaskStatus::Todo),
+        status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+            arlesh_lib::tasks::model::TaskStatus::Todo,
+        )),
         ..Default::default()
     }
 }
@@ -184,7 +188,9 @@ async fn an_asynchronous_task_without_a_template_spawns_nothing() {
         id,
         UpdateTaskRequest {
             asynchronous: Some(true),
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
     )

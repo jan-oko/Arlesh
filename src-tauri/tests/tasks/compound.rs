@@ -140,7 +140,9 @@ async fn the_board_serves_a_compound_task_with_the_status_its_sub_items_give_it(
         &pool,
         done,
         UpdateTaskRequest {
-            status: Some(TaskStatus::InProgress),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::InProgress,
+            )),
             ..Default::default()
         },
     )
@@ -159,7 +161,9 @@ async fn a_status_written_to_a_compound_task_is_refused() {
         &pool,
         parent,
         UpdateTaskRequest {
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
     )
@@ -189,7 +193,7 @@ async fn switching_compound_off_keeps_the_status_it_showed() {
     .await
     .unwrap();
     assert!(!written.compound);
-    assert_eq!(written.status, "done");
+    assert_eq!(written.status.as_str(), "done");
     assert_eq!(stored_status(&pool, parent).await, "done");
     let done_at: Option<String> = sqlx::query_scalar("SELECT done_at FROM tasks WHERE id = ?")
         .bind(parent)
@@ -232,7 +236,7 @@ async fn switching_it_off_while_derived_in_progress_is_not_a_start() {
     )
     .await
     .unwrap();
-    assert_eq!(written.status, "in_progress");
+    assert_eq!(written.status.as_str(), "in_progress");
     assert_eq!(
         written.archival,
         arlesh_lib::tasks::model::TaskArchival::Backlog
@@ -251,13 +255,15 @@ async fn a_request_that_switches_it_off_may_name_the_status_to_keep() {
         parent,
         UpdateTaskRequest {
             compound: Some(false),
-            status: Some(TaskStatus::Started),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Started,
+            )),
             ..Default::default()
         },
     )
     .await
     .unwrap();
-    assert_eq!(written.status, "started");
+    assert_eq!(written.status.as_str(), "started");
 }
 
 #[tokio::test]
@@ -329,11 +335,12 @@ async fn a_delegated_compound_task_is_done_when_its_sub_items_are() {
         },
     )
     .await;
+    let person = helpers::make_person(&pool, "Dana").await;
     write_task(
         &pool,
         parent,
         UpdateTaskRequest {
-            delegate_to: Some(Some(Delegate::Agent)),
+            delegate_to: Some(Some(Delegate::Person { id: person })),
             ..Default::default()
         },
     )
@@ -356,7 +363,9 @@ async fn a_delegated_compound_task_is_done_when_its_sub_items_are() {
         &pool,
         step,
         UpdateTaskRequest {
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
     )
@@ -379,7 +388,9 @@ async fn a_compound_task_spawns_no_wait_while_it_is_compound() {
             title: "Sends the email".into(),
             parent_type: "project".into(),
             parent_id: project.into(),
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             asynchronous: Some(true),
             async_template: Some(AsyncTemplate {
                 title: "Reply".into(),

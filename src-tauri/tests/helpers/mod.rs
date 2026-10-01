@@ -120,13 +120,42 @@ pub async fn mcp_over_whole_board(pool: &SqlitePool) -> arlesh_lib::mcp::ArleshM
 
 /// Marks a Task Agentic, which is what lets the MCP write it inside a root.
 ///
-/// Straight to the column, with no Gesture open, for the same reason as [`open_board_to_mcp`].
+/// Straight to the column, with no Gesture open, for the same reason as [`open_board_to_mcp`] —
+/// and so it converts by hand what the app's write would: the Task's status, and that of every
+/// Task beneath it that inherits the flag, into the Agentic model's spelling.
 pub async fn make_agentic(pool: &SqlitePool, task_id: i64) {
     sqlx::query("UPDATE tasks SET agentic = 1 WHERE id = ?")
         .bind(task_id)
         .execute(pool)
         .await
         .expect("failed to mark the task Agentic");
+    sqlx::query(
+        "WITH RECURSIVE below(id) AS (
+             SELECT ?
+             UNION ALL
+             SELECT t.id FROM tasks t JOIN below b ON t.parent_type = 'task' AND t.parent_id = b.id
+              WHERE t.agentic IS NULL
+         )
+         UPDATE tasks SET status = CASE status
+             WHEN 'todo' THEN 'agentic_todo' WHEN 'done' THEN 'agentic_done'
+             WHEN 'in_progress' THEN 'doing' WHEN 'started' THEN 'doing' ELSE status END
+          WHERE id IN (SELECT id FROM below)",
+    )
+    .bind(task_id)
+    .execute(pool)
+    .await
+    .expect("failed to convert the task's status");
+}
+
+/// Makes a Person to delegate to, and returns their id. Straight to the table, as
+/// [`make_agentic`] writes its column.
+pub async fn make_person(pool: &SqlitePool, name: &str) -> i64 {
+    sqlx::query("INSERT INTO people (name) VALUES (?)")
+        .bind(name)
+        .execute(pool)
+        .await
+        .expect("failed to make a person")
+        .last_insert_rowid()
 }
 
 /// The integer id of a row a test made by hand. Every such row is stored, so a derived id here is

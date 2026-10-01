@@ -164,7 +164,9 @@ async fn a_done_task_is_not_exempt() {
             parent_id: project_id.into(),
             time_scope: Some(week(7, 15)),
             on_scope_exit: Some(OnScopeExit::Keep),
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
     )

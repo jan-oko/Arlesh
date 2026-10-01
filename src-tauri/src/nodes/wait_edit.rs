@@ -30,8 +30,8 @@ use crate::{
     flows::error::FlowError,
     tasks::{
         model::{
-            Expectation, ExpectationId, ExpectationStatus, Status, Task, TaskArchival, TaskId, TaskStatus,
-            UpdateExpectationRequest, UpdateSpawnedWaitRequest, UpdateTaskRequest,
+            Expectation, ExpectationId, ExpectationStatus, Status, Task, TaskArchival, TaskId,
+            TaskStatus, UpdateExpectationRequest, UpdateSpawnedWaitRequest, UpdateTaskRequest,
         },
         waits::{self, WaitRef},
     },
@@ -172,7 +172,10 @@ pub async fn update_check_task(
     if let Some(status) = request.status {
         // A check task keeps the ordinary model: its status is the check.
         let Status::Ordinary(status) = status else {
-            return Err(crate::tasks::error::TaskError::NotOrdinaryStatus(status.as_str().to_string()).into());
+            return Err(crate::tasks::error::TaskError::NotOrdinaryStatus(
+                status.as_str().to_string(),
+            )
+            .into());
         };
         set_status(db, key, &current, &mut overlay, status, now).await?;
     }

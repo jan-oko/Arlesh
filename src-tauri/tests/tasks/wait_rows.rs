@@ -120,7 +120,7 @@ async fn a_due_check_is_a_task_row_under_its_wait() {
     let check = &checks[0];
     assert!(check.id.is_derived());
     assert_eq!(check.parent_type, "expectation");
-    assert_eq!(check.status, "todo");
+    assert_eq!(check.status.as_str(), "todo");
     assert_eq!(check.title, "Reviewer replies");
     assert!(check.time_scope.is_some(), "drawn on the day it fell due");
     assert!(
@@ -142,13 +142,13 @@ async fn a_check_task_cycles_like_a_task_and_done_records_the_check() {
     let started = write_task(&pool, &check.id, status(TaskStatus::InProgress), now)
         .await
         .unwrap();
-    assert_eq!(started.status, "in_progress");
+    assert_eq!(started.status.as_str(), "in_progress");
 
     let done = write_task(&pool, &check.id, status(TaskStatus::Done), now)
         .await
         .unwrap();
     assert_eq!(done.id, check.id, "the check keeps its row id once made");
-    assert_eq!(done.status, "done");
+    assert_eq!(done.status.as_str(), "done");
     let recorded: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM wait_checks")
         .fetch_one(&pool)
         .await
@@ -158,7 +158,7 @@ async fn a_check_task_cycles_like_a_task_and_done_records_the_check() {
     let reopened = write_task(&pool, &check.id, status(TaskStatus::Todo), now)
         .await
         .unwrap();
-    assert_eq!(reopened.status, "todo");
+    assert_eq!(reopened.status.as_str(), "todo");
     let recorded: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM wait_checks")
         .fetch_one(&pool)
         .await
@@ -234,7 +234,7 @@ async fn a_check_task_cannot_leave_its_wait_or_be_delegated_or_deleted() {
         &pool,
         &check.id,
         UpdateTaskRequest {
-            delegate_to: Some(Some(Delegate::Agent)),
+            delegate_to: Some(Some(Delegate::Person { id: 1 })),
             ..Default::default()
         },
         now,
@@ -284,7 +284,9 @@ async fn a_done_asynchronous_tasks_wait_is_an_expectation_row_released_like_any_
                     kind: "week".into(),
                 }),
             })),
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
     )
@@ -333,7 +335,9 @@ async fn sent(pool: &sqlx::SqlitePool, project: i64) -> i64 {
                     kind: "week".into(),
                 }),
             })),
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
     )
@@ -514,11 +518,12 @@ async fn a_spawned_wait_cannot_leave_its_task() {
 async fn a_delegated_tasks_wait_is_a_row_nothing_but_the_task_releases() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
+    let person = helpers::make_person(&pool, "Dana").await;
     let delegated = task(
         &pool,
         project,
         UpdateTaskRequest {
-            delegate_to: Some(Some(Delegate::Agent)),
+            delegate_to: Some(Some(Delegate::Person { id: person })),
             ..Default::default()
         },
     )
