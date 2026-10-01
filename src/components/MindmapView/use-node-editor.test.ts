@@ -205,7 +205,7 @@ describe("useNodeEditor — Compound", () => {
     await act(async () => {
       await result.current.onTaskSave({ ...saveData, timeScope: null, status: { kind: "ordinary", status: "started" }, compound: false });
     });
-    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ status: "started", compound: false }));
+    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ status: { kind: "ordinary", status: "started" }, compound: false }));
   });
 
   it("switching it on sends the flag", async () => {

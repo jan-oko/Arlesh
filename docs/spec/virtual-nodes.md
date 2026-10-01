@@ -148,8 +148,8 @@ and Asynchronous flags, Backlog state and beads id; a goal template its beads id
 (`template_tags`) and block reasons (`template_block_reasons`). Every occurrence reads them unless its
 overlay says otherwise. They are edited in the flow item's editor, beside the item's cycle pairs and
 dependencies — all but the **delegate**, which a template and an occurrence carry but no editor
-offers to change yet (ruled by the user, 2026-09-24). An occurrence's own Task editor keeps the one
-delegate control every Task has, "Delegate to agent", which writes that occurrence alone.
+offers to change yet (ruled by the user, 2026-09-24). (An occurrence's Task editor had the "Delegate
+to agent" button every Task had until the Agent delegate was removed on 2026-10-01.)
 
 An Expectation template (the wait an Asynchronous Task spawns) is not part of a Habit template. An
 **occurrence** can carry one of its own, as a stored Task does (migration 0062,

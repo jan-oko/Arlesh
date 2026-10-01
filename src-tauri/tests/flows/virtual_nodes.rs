@@ -26,7 +26,7 @@ use arlesh_lib::scopes::key::ScopeKey;
 use arlesh_lib::scopes::model::{PartOfDay, ScopeKind};
 use arlesh_lib::tasks::lifecycle::{Archival, ItemLifecycle, Resolution, Timing};
 use arlesh_lib::tasks::model::{
-    CreateTaskRequest, GoalStatus, TaskArchival, TaskStatus, TimeScope, UpdateCommitmentRequest,
+    CreateTaskRequest, GoalStatus, TaskArchival, TimeScope, UpdateCommitmentRequest,
     UpdateGoalRequest, UpdateTaskRequest, Verdict,
 };
 use tauri::Manager;

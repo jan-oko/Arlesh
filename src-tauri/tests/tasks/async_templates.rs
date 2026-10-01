@@ -9,7 +9,7 @@ use arlesh_lib::{
         add_task_dependency, create_task, get_task_with_blockers,
         model::{
             AsyncTemplate, CreateTaskRequest, Dependency, DurationSpec, ExpectationStatus, TaskId,
-            TaskStatus, UpdateSpawnedWaitRequest, UpdateTaskRequest,
+            UpdateSpawnedWaitRequest, UpdateTaskRequest,
         },
         update_task,
         waits::{complete_spawned_check, derive_wait_windows, update_spawned_wait},

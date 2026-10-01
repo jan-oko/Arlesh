@@ -103,7 +103,7 @@ async fn write_task(
 
 fn status(status: TaskStatus) -> UpdateTaskRequest {
     UpdateTaskRequest {
-        status: Some(status),
+        status: Some(arlesh_lib::tasks::model::Status::Ordinary(status)),
         ..Default::default()
     }
 }

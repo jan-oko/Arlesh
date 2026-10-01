@@ -26,7 +26,7 @@ use arlesh_lib::nodes::{
 use arlesh_lib::scopes::key::ScopeKey;
 use arlesh_lib::tasks::model::{
     CreateCommitmentRequest, CreateExpectationRequest, CreateGoalRequest, CreateTaskRequest,
-    Dependency, TaskStatus, UpdateTaskRequest,
+    Dependency, UpdateTaskRequest,
 };
 use tauri::Manager;
 

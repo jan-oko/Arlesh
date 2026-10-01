@@ -11,9 +11,7 @@ use arlesh_lib::{
     tasks::{
         create_task_at,
         error::TaskError,
-        model::{
-            CreateTaskRequest, OnScopeExit, Task, TaskId, TaskStatus, TimeScope, UpdateTaskRequest,
-        },
+        model::{CreateTaskRequest, OnScopeExit, Task, TaskId, TimeScope, UpdateTaskRequest},
         update_task_at,
     },
 };

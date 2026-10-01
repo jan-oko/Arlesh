@@ -21,7 +21,7 @@ use arlesh_lib::flows::model::{
 use arlesh_lib::nodes::id::NodeId;
 use arlesh_lib::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind};
 use arlesh_lib::scopes::{key::ScopeKey, model::ScopeKind};
-use arlesh_lib::tasks::model::{Task, TaskId, TaskStatus, TimeScope, UpdateTaskRequest};
+use arlesh_lib::tasks::model::{Task, TaskId, TimeScope, UpdateTaskRequest};
 use helpers::StoredId;
 use tauri::Manager;
 
@@ -111,6 +111,8 @@ async fn root_status(app: &tauri::App<tauri::test::MockRuntime>, flow_id: i64) -
         .find(|task| task.id == root)
         .expect("the iteration root is on the board")
         .status
+        .as_str()
+        .to_string()
 }
 
 /// Every node hung on this Habit's occurrences.

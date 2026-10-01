@@ -65,7 +65,7 @@ async fn child(pool: &sqlx::SqlitePool, parent: i64, status: TaskStatus) -> i64 
             title: "Step".into(),
             parent_type: "task".into(),
             parent_id: parent.into(),
-            status: Some(status),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(status)),
             ..Default::default()
         },
     )
@@ -132,7 +132,7 @@ async fn the_board_serves_a_compound_task_with_the_status_its_sub_items_give_it(
 
     let load = board(&pool).await;
     assert!(row(&load, parent).compound);
-    assert_eq!(row(&load, parent).status, "started");
+    assert_eq!(row(&load, parent).status.as_str(), "started");
     // Never stored: the column keeps what it held.
     assert_eq!(stored_status(&pool, parent).await, "todo");
 
@@ -148,7 +148,10 @@ async fn the_board_serves_a_compound_task_with_the_status_its_sub_items_give_it(
     )
     .await
     .unwrap();
-    assert_eq!(row(&board(&pool).await, parent).status, "in_progress");
+    assert_eq!(
+        row(&board(&pool).await, parent).status.as_str(),
+        "in_progress"
+    );
 }
 
 #[tokio::test]
@@ -285,8 +288,8 @@ async fn a_compound_task_inside_another_is_counted_by_its_derived_status() {
     child(&pool, inner, TaskStatus::Done).await;
 
     let load = board(&pool).await;
-    assert_eq!(row(&load, inner).status, "done");
-    assert_eq!(row(&load, outer).status, "done");
+    assert_eq!(row(&load, inner).status.as_str(), "done");
+    assert_eq!(row(&load, outer).status.as_str(), "done");
 }
 
 #[tokio::test]
@@ -311,7 +314,7 @@ async fn a_done_compound_task_whose_window_passed_resolves_and_archives() {
     child(&pool, parent, TaskStatus::Done).await;
 
     let load = board(&pool).await;
-    assert_eq!(row(&load, parent).status, "done");
+    assert_eq!(row(&load, parent).status.as_str(), "done");
     let lifecycle = load
         .lifecycles
         .iter()
@@ -350,7 +353,7 @@ async fn a_delegated_compound_task_is_done_when_its_sub_items_are() {
 
     // Not done: its delegation wait is drawn, and does not make it Started by itself.
     let load = board(&pool).await;
-    assert_eq!(row(&load, parent).status, "todo");
+    assert_eq!(row(&load, parent).status.as_str(), "todo");
     let delegation_wait = |load: &MindmapLoad| {
         load.expectations.iter().any(|wait| {
             matches!(&wait.origin, Origin::DelegationWait(origin)
@@ -373,7 +376,7 @@ async fn a_delegated_compound_task_is_done_when_its_sub_items_are() {
     .unwrap();
     // Done — though its stored status still says To Do — so the wait is gone.
     let load = board(&pool).await;
-    assert_eq!(row(&load, parent).status, "done");
+    assert_eq!(row(&load, parent).status.as_str(), "done");
     assert!(!delegation_wait(&load));
 }
 
@@ -404,7 +407,7 @@ async fn a_compound_task_spawns_no_wait_while_it_is_compound() {
     child(&pool, parent, TaskStatus::Done).await;
 
     let load = board(&pool).await;
-    assert_eq!(row(&load, parent).status, "done");
+    assert_eq!(row(&load, parent).status.as_str(), "done");
     assert!(!load.expectations.iter().any(|wait| {
         matches!(&wait.origin, Origin::SpawnedWait(origin)
             if origin.task_id == NodeId::Stored(parent))

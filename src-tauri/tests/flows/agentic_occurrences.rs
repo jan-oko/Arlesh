@@ -20,8 +20,7 @@ use arlesh_lib::nodes::{
 };
 use arlesh_lib::scopes::key::ScopeKey;
 use arlesh_lib::tasks::model::{
-    AgenticBrief, AgenticPriority, CreateExpectationRequest, TaskAgentic, TaskStatus,
-    UpdateTaskRequest,
+    AgenticBrief, AgenticPriority, CreateExpectationRequest, TaskAgentic, UpdateTaskRequest,
 };
 use tauri::Manager;
 

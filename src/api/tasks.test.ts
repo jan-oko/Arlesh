@@ -44,10 +44,10 @@ describe("createTask", () => {
 
 describe("updateTask", () => {
   it("calls invoke with update_task, the id, and the partial request", async () => {
-    const updated = { ...mockTask, status: "done" };
+    const updated = { ...mockTask, status: { kind: "ordinary", status: "done" } };
     mockCommandOnce(updated);
     const result = await updateTask(1, { status: { kind: "ordinary", status: "done" } });
-    expect(invoke).toHaveBeenCalledWith("update_task", { id: 1, request: { status: "done" } });
+    expect(invoke).toHaveBeenCalledWith("update_task", { id: 1, request: { status: { kind: "ordinary", status: "done" } } });
     expect(result.status).toBe("done");
   });
 });

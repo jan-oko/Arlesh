@@ -368,7 +368,7 @@ describe("acting on the selected card", () => {
     press("ArrowDown");
     press("Space");
 
-    expect(updateTask).toHaveBeenCalledWith(1, { status: "in_progress" });
+    expect(updateTask).toHaveBeenCalledWith(1, { status: { kind: "ordinary", status: "in_progress" } });
   });
 
   it("refuses Space on a blocked Task out loud, and writes nothing", () => {
@@ -399,11 +399,11 @@ describe("acting on the selected card", () => {
 
     press("ArrowDown");
     act(() => { fireEvent.keyDown(window, { code: "Enter", altKey: true }); });
-    expect(updateTask).toHaveBeenCalledWith(1, { status: "started" });
+    expect(updateTask).toHaveBeenCalledWith(1, { status: { kind: "ordinary", status: "started" } });
 
     press("ArrowRight");
     act(() => { fireEvent.keyDown(window, { code: "Enter", altKey: true }); });
-    expect(updateTask).toHaveBeenCalledWith(2, { status: "in_progress" });
+    expect(updateTask).toHaveBeenCalledWith(2, { status: { kind: "ordinary", status: "in_progress" } });
   });
 
   it("refuses Alt+Enter on a blocked Task", () => {

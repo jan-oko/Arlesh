@@ -26,8 +26,7 @@ use arlesh_lib::{
         add_task_dependency, create_goal, create_task,
         model::{
             CreateGoalRequest, CreateTaskRequest, Dependency, GoalId, GoalStatus, OnScopeExit,
-            TaskAgentic, TaskArchival, TaskId, TaskStatus, TimeScope, UpdateGoalRequest,
-            UpdateTaskRequest,
+            TaskAgentic, TaskArchival, TaskId, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
         },
         update_goal, update_task,
     },
