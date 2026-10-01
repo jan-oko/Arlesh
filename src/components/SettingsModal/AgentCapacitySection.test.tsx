@@ -50,4 +50,12 @@ describe("AgentCapacitySection", () => {
     expect(useDisplayStore.getState().showAgentStatus).toBe(false);
     expect(setAgentCapacity).not.toHaveBeenCalled();
   });
+
+  it("keeps the lock's help behind a question mark that describes it", () => {
+    render(<AgentCapacitySection />);
+    const help = screen.getByRole("button", { name: "mcp.capacity.help" });
+
+    expect(help).toHaveAccessibleDescription("mcp.capacity.note");
+    expect(screen.getByRole("tooltip")).toHaveTextContent("mcp.capacity.note");
+  });
 });

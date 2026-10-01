@@ -542,7 +542,8 @@ block with it. A window reads the lock once on start and then takes each announc
 
 **In the app.** Settings → Agents → *Agent capacity* has the lock's switch, **Agents are at
 capacity**, and **Show agent status in the top bar** (on by default, app-wide; ruled by the user,
-2026-10-01). There is no setting for whether the lock blocks: the lock is the only control.
+2026-10-01). The lock's explanation sits behind a **?** beside its switch, shown on
+hover and on keyboard focus (the user, reviewing #116), rather than as a paragraph on the page. There is no setting for whether the lock blocks: the lock is the only control.
 
 **The agents' status in the top bar** (ruled by the user, 2026-10-01, from mock 3, "Row under the
 head", with the padlock and no counts). A small **bot head**, in the top bar's icon colour like the

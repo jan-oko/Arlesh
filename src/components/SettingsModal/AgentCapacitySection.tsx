@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useAgentCapacity } from "@/hooks/use-agent-capacity";
 import Switch from "@/components/Switch/Switch";
 import { useDisplayStore } from "@/stores/use-display-store";
+import HelpTip from "./HelpTip";
 import styles from "./SettingsModal.module.css";
 import own from "./McpEndpointSection.module.css";
 
@@ -19,8 +20,10 @@ export default function AgentCapacitySection() {
   return (
     <section className={own.section} aria-label={t("mcp.capacity.heading")}>
       <h3 className={styles.heading}>{t("mcp.capacity.heading")}</h3>
-      <p className={styles.note}>{t("mcp.capacity.note")}</p>
-      <Switch checked={atCapacity} onChange={(next) => { void setAtCapacity(next); }} label={t("mcp.capacity.lock")} />
+      <div className={own.row}>
+        <Switch checked={atCapacity} onChange={(next) => { void setAtCapacity(next); }} label={t("mcp.capacity.lock")} />
+        <HelpTip text={t("mcp.capacity.note")} label={t("mcp.capacity.help")} />
+      </div>
       <Switch checked={showStatus} onChange={toggleShowStatus} label={t("mcp.capacity.showStatus")} />
       {error !== null && <p className={styles.error} role="alert">{error}</p>}
     </section>

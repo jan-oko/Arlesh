@@ -40,7 +40,8 @@
       "heading": "Agent capacity",
       "note": "Agents set this over the MCP when they cannot take on more Agentic work, and clear it when there is room. While it is on, every Agentic task not yet done is blocked (“Agents at capacity”), so Start hides them and they cannot be started. You can set and clear it here, or clear it from the top bar.",
       "lock": "Agents are at capacity",
-      "showStatus": "Show agent status in the top bar"
+      "showStatus": "Show agent status in the top bar",
+      "help": "About the agent capacity lock"
     }
   }
 }
