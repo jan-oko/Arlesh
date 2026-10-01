@@ -10,7 +10,7 @@ export interface ListFlagsContext extends ListSelectionContext {
   /** Flips the selected Task's Asynchronous flag: whether doing it starts a wait. */
   onToggleAsynchronous: (id: string) => void;
   /** `V`: switches the selected Task between consisting of its sub-items and not. */
-  onToggleConsistence: (id: string) => void;
+  onToggleCompound: (id: string) => void;
 }
 
 export const LIST_FLAGS_BINDINGS: readonly Binding<ListFlagsContext>[] = [
@@ -40,11 +40,11 @@ export const LIST_FLAGS_BINDINGS: readonly Binding<ListFlagsContext>[] = [
     run: (c) => { if (c.selectedTaskId !== null) c.onToggleAsynchronous(c.selectedTaskId); },
   },
   {
-    // V for **consistence**, bare beside A, B and W; nothing else binds bare V here. A Habit
+    // V for **compound**, bare beside A, B and W; nothing else binds bare V here. A Habit
     // occurrence is turned away in the hook, out loud: only a stored Task carries the flag.
-    id: "listView.toggleConsistence", section: "listView", chord: { code: "KeyV" },
-    labelKey: "toggleConsistence",
+    id: "listView.toggleCompound", section: "listView", chord: { code: "KeyV" },
+    labelKey: "toggleCompound",
     when: (c) => c.selectedTaskId !== null,
-    run: (c) => { if (c.selectedTaskId !== null) c.onToggleConsistence(c.selectedTaskId); },
+    run: (c) => { if (c.selectedTaskId !== null) c.onToggleCompound(c.selectedTaskId); },
   },
 ];

@@ -15,7 +15,7 @@ export interface MindmapFlagsContext extends MindmapSelectionContext {
   onToggleAsynchronous: (id: string) => void;
   /** `V`: switches the anchor Task between consisting of its sub-items and having its status set
    * by hand. The anchor only, for the same reason the other flags act on one node. */
-  onToggleConsistence: (id: string) => void;
+  onToggleCompound: (id: string) => void;
 }
 
 /** A Task row — stored or a Habit occurrence — since these flags are columns on a task row. */
@@ -56,13 +56,13 @@ export const MINDMAP_FLAGS_BINDINGS: readonly Binding<MindmapFlagsContext>[] = [
     run: (c) => { if (c.selectedNodeId !== null) c.onToggleAsynchronous(c.selectedNodeId); },
   },
   {
-    // V for **consistence**: the Task consists of its sub-items, its status derived from them.
+    // V for **compound**: the Task consists of its sub-items, its status derived from them.
     // Bare, beside A, B and W, on the same rule. Bare V was free; Ctrl+V is Paste, and a chord is
     // matched on its exact modifiers, so the two never meet. A Habit occurrence is turned away by
     // the hook, out loud, since only a stored Task carries the flag.
-    id: "mindmap.toggleConsistence", section: "mindmap", chord: { code: "KeyV" },
-    labelKey: "toggleConsistence",
+    id: "mindmap.toggleCompound", section: "mindmap", chord: { code: "KeyV" },
+    labelKey: "toggleCompound",
     when: isFlaggableTask,
-    run: (c) => { if (c.selectedNodeId !== null) c.onToggleConsistence(c.selectedNodeId); },
+    run: (c) => { if (c.selectedNodeId !== null) c.onToggleCompound(c.selectedNodeId); },
   },
 ];

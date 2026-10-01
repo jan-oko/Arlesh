@@ -66,8 +66,8 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
   // backend refuses the same write, so this is the courtesy of saying why before asking.
   const writeTaskStatus = useCallback(
     (node: MindmapNode, next: string, onError: (err: unknown) => void) => {
-      if (node.consistent === true) {
-        showToast({ nodeId: node.id, message: t("warnings:consistentStatusRefused") });
+      if (node.compound === true) {
+        showToast({ nodeId: node.id, message: t("warnings:compoundStatusRefused") });
         return;
       }
       guard(node, async (confirmed) => {

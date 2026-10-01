@@ -26,7 +26,7 @@ beforeEach(() => vi.clearAllMocks());
 
 describe("useStatusCycle — a task that consists of its sub-items", () => {
   it("refuses Enter's cycle out loud and writes nothing", () => {
-    const { result, showToast } = setup([node("task-5", { consistent: true, status: "in_progress" })]);
+    const { result, showToast } = setup([node("task-5", { compound: true, status: "in_progress" })]);
 
     act(() => { result.current.cycleStatus("task-5"); });
 
@@ -35,7 +35,7 @@ describe("useStatusCycle — a task that consists of its sub-items", () => {
   });
 
   it("refuses Alt+Enter's Started out loud and writes nothing", () => {
-    const { result, showToast } = setup([node("task-5", { consistent: true, status: "todo" })]);
+    const { result, showToast } = setup([node("task-5", { compound: true, status: "todo" })]);
 
     act(() => { result.current.toggleStarted("task-5"); });
 

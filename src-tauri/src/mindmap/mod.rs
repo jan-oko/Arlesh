@@ -89,12 +89,12 @@ pub async fn load_within(
     block_reasons.extend(derived.block_reasons);
     task_dependencies.extend(derived.dependencies);
     // A wait's rows hang on the Tasks, a Habit's occurrences included. Drawn together with every
-    // consistent Task's derived status, since each reads the other (see `tasks::consistence`):
-    // from here on a consistent Task's `status` is the one its sub-items give it.
-    let waits = crate::tasks::consistence::settle(
+    // compound Task's derived status, since each reads the other (see `tasks::compound`):
+    // from here on a compound Task's `status` is the one its sub-items give it.
+    let waits = crate::tasks::compound::settle(
         db,
         now,
-        crate::tasks::consistence::Board {
+        crate::tasks::compound::Board {
             tasks: &mut tasks,
             goals: &goals,
             commitments: &commitments,

@@ -1,4 +1,4 @@
-//! Consistence: a Task that consists of its sub-items, driven through the board as the app drives
+//! Compound: a Task that consists of its sub-items, driven through the board as the app drives
 //! it — a write naming a row, then a load — and asked what the Task reads as afterwards.
 
 use crate::helpers;
@@ -39,7 +39,7 @@ async fn make_project(pool: &sqlx::SqlitePool) -> i64 {
         .unwrap()
         .domains()
         .create(CreateDomainRequest {
-            title: "Consistence".into(),
+            title: "Compound".into(),
             description: None,
             subtype: DomainSubtype::Project,
             parent_id: Some(aspect_id),
@@ -72,15 +72,15 @@ async fn child(pool: &sqlx::SqlitePool, parent: i64, status: TaskStatus) -> i64 
     .await
 }
 
-/// A consistent Task under the project, its stored status To Do.
-async fn consistent(pool: &sqlx::SqlitePool, project: i64) -> i64 {
+/// A compound Task under the project, its stored status To Do.
+async fn compound(pool: &sqlx::SqlitePool, project: i64) -> i64 {
     new_task(
         pool,
         CreateTaskRequest {
             title: "Made of steps".into(),
             parent_type: "project".into(),
             parent_id: project.into(),
-            consistent: Some(true),
+            compound: Some(true),
             ..Default::default()
         },
     )
@@ -123,15 +123,15 @@ async fn stored_status(pool: &sqlx::SqlitePool, id: i64) -> String {
 }
 
 #[tokio::test]
-async fn the_board_serves_a_consistent_task_with_the_status_its_sub_items_give_it() {
+async fn the_board_serves_a_compound_task_with_the_status_its_sub_items_give_it() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
-    let parent = consistent(&pool, project).await;
+    let parent = compound(&pool, project).await;
     let done = child(&pool, parent, TaskStatus::Done).await;
     child(&pool, parent, TaskStatus::Todo).await;
 
     let load = board(&pool).await;
-    assert!(row(&load, parent).consistent);
+    assert!(row(&load, parent).compound);
     assert_eq!(row(&load, parent).status, "started");
     // Never stored: the column keeps what it held.
     assert_eq!(stored_status(&pool, parent).await, "todo");
@@ -150,10 +150,10 @@ async fn the_board_serves_a_consistent_task_with_the_status_its_sub_items_give_i
 }
 
 #[tokio::test]
-async fn a_status_written_to_a_consistent_task_is_refused() {
+async fn a_status_written_to_a_compound_task_is_refused() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
-    let parent = consistent(&pool, project).await;
+    let parent = compound(&pool, project).await;
 
     let refused = write_task(
         &pool,
@@ -166,29 +166,29 @@ async fn a_status_written_to_a_consistent_task_is_refused() {
     .await;
     assert!(matches!(
         refused,
-        Err(AppError::Task(TaskError::ConsistentStatus(id))) if id == parent
+        Err(AppError::Task(TaskError::CompoundStatus(id))) if id == parent
     ));
     assert_eq!(stored_status(&pool, parent).await, "todo");
 }
 
 #[tokio::test]
-async fn switching_consistence_off_keeps_the_status_it_showed() {
+async fn switching_compound_off_keeps_the_status_it_showed() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
-    let parent = consistent(&pool, project).await;
+    let parent = compound(&pool, project).await;
     child(&pool, parent, TaskStatus::Done).await;
 
     let written = write_task(
         &pool,
         parent,
         UpdateTaskRequest {
-            consistent: Some(false),
+            compound: Some(false),
             ..Default::default()
         },
     )
     .await
     .unwrap();
-    assert!(!written.consistent);
+    assert!(!written.compound);
     assert_eq!(written.status, "done");
     assert_eq!(stored_status(&pool, parent).await, "done");
     let done_at: Option<String> = sqlx::query_scalar("SELECT done_at FROM tasks WHERE id = ?")
@@ -213,7 +213,7 @@ async fn switching_it_off_while_derived_in_progress_is_not_a_start() {
             title: "Made of steps".into(),
             parent_type: "project".into(),
             parent_id: project.into(),
-            consistent: Some(true),
+            compound: Some(true),
             agentic: Some(arlesh_lib::tasks::model::TaskAgentic::Yes),
             archival: Some(arlesh_lib::tasks::model::TaskArchival::Backlog),
             ..Default::default()
@@ -226,7 +226,7 @@ async fn switching_it_off_while_derived_in_progress_is_not_a_start() {
         &pool,
         parent,
         UpdateTaskRequest {
-            consistent: Some(false),
+            compound: Some(false),
             ..Default::default()
         },
     )
@@ -243,14 +243,14 @@ async fn switching_it_off_while_derived_in_progress_is_not_a_start() {
 async fn a_request_that_switches_it_off_may_name_the_status_to_keep() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
-    let parent = consistent(&pool, project).await;
+    let parent = compound(&pool, project).await;
     child(&pool, parent, TaskStatus::Done).await;
 
     let written = write_task(
         &pool,
         parent,
         UpdateTaskRequest {
-            consistent: Some(false),
+            compound: Some(false),
             status: Some(TaskStatus::Started),
             ..Default::default()
         },
@@ -261,17 +261,17 @@ async fn a_request_that_switches_it_off_may_name_the_status_to_keep() {
 }
 
 #[tokio::test]
-async fn a_consistent_task_inside_another_is_counted_by_its_derived_status() {
+async fn a_compound_task_inside_another_is_counted_by_its_derived_status() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
-    let outer = consistent(&pool, project).await;
+    let outer = compound(&pool, project).await;
     let inner = new_task(
         &pool,
         CreateTaskRequest {
             title: "Inner".into(),
             parent_type: "task".into(),
             parent_id: outer.into(),
-            consistent: Some(true),
+            compound: Some(true),
             ..Default::default()
         },
     )
@@ -284,7 +284,7 @@ async fn a_consistent_task_inside_another_is_counted_by_its_derived_status() {
 }
 
 #[tokio::test]
-async fn a_done_consistent_task_whose_window_passed_resolves_and_archives() {
+async fn a_done_compound_task_whose_window_passed_resolves_and_archives() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
     let day = arlesh_lib::scopes::key::ScopeKey::Day {
@@ -296,7 +296,7 @@ async fn a_done_consistent_task_whose_window_passed_resolves_and_archives() {
             title: "Made of steps".into(),
             parent_type: "project".into(),
             parent_id: project.into(),
-            consistent: Some(true),
+            compound: Some(true),
             time_scope: Some(TimeScope::single(day)),
             ..Default::default()
         },
@@ -315,7 +315,7 @@ async fn a_done_consistent_task_whose_window_passed_resolves_and_archives() {
 }
 
 #[tokio::test]
-async fn a_delegated_consistent_task_is_done_when_its_sub_items_are() {
+async fn a_delegated_compound_task_is_done_when_its_sub_items_are() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
     let parent = new_task(
@@ -324,7 +324,7 @@ async fn a_delegated_consistent_task_is_done_when_its_sub_items_are() {
             title: "Handed over".into(),
             parent_type: "project".into(),
             parent_id: project.into(),
-            consistent: Some(true),
+            compound: Some(true),
             ..Default::default()
         },
     )
@@ -369,7 +369,7 @@ async fn a_delegated_consistent_task_is_done_when_its_sub_items_are() {
 }
 
 #[tokio::test]
-async fn a_consistent_task_spawns_no_wait_while_it_is_consistent() {
+async fn a_compound_task_spawns_no_wait_while_it_is_compound() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
     // Stored Done and Asynchronous with a template: as a plain Task it would spawn a wait.
@@ -385,7 +385,7 @@ async fn a_consistent_task_spawns_no_wait_while_it_is_consistent() {
                 title: "Reply".into(),
                 ..Default::default()
             }),
-            consistent: Some(true),
+            compound: Some(true),
             ..Default::default()
         },
     )
@@ -404,7 +404,7 @@ async fn a_consistent_task_spawns_no_wait_while_it_is_consistent() {
 async fn a_duplicate_carries_the_flag() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
-    let parent = consistent(&pool, project).await;
+    let parent = compound(&pool, project).await;
     let mut db = helpers::session_factory(&pool).begin().await.unwrap();
     let copy = arlesh_lib::duplicate::duplicate_subtree(
         &mut db,
@@ -418,5 +418,5 @@ async fn a_duplicate_carries_the_flag() {
     .unwrap();
     db.commit().await.unwrap();
     let load = board(&pool).await;
-    assert!(row(&load, copy).consistent);
+    assert!(row(&load, copy).compound);
 }

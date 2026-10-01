@@ -15,38 +15,38 @@ interface Options {
 interface Result {
   /** `V`: switches the Task between consisting of its sub-items and having its status set by
    * hand. One node, never a multi-selection — the scope every flag key acts at. */
-  toggleConsistence: (nodeId: string) => void;
+  toggleCompound: (nodeId: string) => void;
 }
 
 /**
- * The Consistence toggle every view shares: read the Task's own flag, write the opposite.
+ * The Compound toggle every view shares: read the Task's own flag, write the opposite.
  *
  * Switching it **off** sends the flag alone: the backend keeps the status the Task was showing —
  * the one its sub-items gave it — as its own, in the same write, so one `Ctrl+Z` takes both back.
  * Only a stored Task carries the flag; a Habit occurrence or a check task is turned away out loud
  * rather than left looking like a key that did nothing.
  */
-export function useTaskConsistence({ findNode, reload, showToast }: Options): Result {
+export function useTaskCompound({ findNode, reload, showToast }: Options): Result {
   const { t } = useTranslation("warnings");
 
-  const toggleConsistence = useCallback(
+  const toggleCompound = useCallback(
     (nodeId: string) => {
       const node = findNode(nodeId);
       if (node === undefined || node.kind !== "task" || node.rowId === undefined) return;
       const rowId = rowIdOf(node);
       if (isDerivedId(rowId)) {
-        showToast({ nodeId, message: t("consistenceOnDerived") });
+        showToast({ nodeId, message: t("compoundOnDerived") });
         return;
       }
-      void updateTask(rowId, { consistent: node.consistent !== true }).then(
+      void updateTask(rowId, { compound: node.compound !== true }).then(
         () => reload(),
         (error: unknown) => {
-          showToast({ nodeId, message: t("consistenceFailed", { message: getErrorMessage(error) }) });
+          showToast({ nodeId, message: t("compoundFailed", { message: getErrorMessage(error) }) });
         },
       );
     },
     [findNode, reload, showToast, t],
   );
 
-  return { toggleConsistence };
+  return { toggleCompound };
 }

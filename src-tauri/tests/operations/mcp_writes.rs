@@ -166,7 +166,7 @@ fn edit(
         plan: None,
         due_scope: None,
         asynchronous: None,
-        consistent: None,
+        compound: None,
         add_dependencies: Vec::new(),
         remove_dependencies: Vec::new(),
         add_tags: Vec::new(),

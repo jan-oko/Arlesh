@@ -151,8 +151,8 @@ never drift between the two views. The strips and the Agentic pill are switched 
 - `E` — open the selected card's editor; a **double click** does the same, a click selects
 - `R` — rename the selected Task in place, in its card
 - `P` — the quick Plan picker at the card; `D` — the quick dependency picker at the card
-- `B` / `A` / `W` / `V` — backlog, agentic, asynchronous, consistence (see
-  [*Consistence*](resources.md#consistence)); `Shift+W` — the Task's editor at its
+- `B` / `A` / `W` / `V` — backlog, agentic, asynchronous, compound (see
+  [*Compound*](resources.md#compound)); `Shift+W` — the Task's editor at its
   Expectation section, with Asynchronous on
 - `Delete` — delete the selected card after the usual confirmation, with the List View's cascade
   and its "next card, else the one before" rule for where the selection goes

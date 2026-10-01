@@ -342,7 +342,7 @@ async fn clone_task(
             asynchronous: Some(original.asynchronous),
             // A copy consists of its sub-items if the original did: its status is the one thing
             // the flag decides, and the copied subtree is what it reads.
-            consistent: Some(original.consistent),
+            compound: Some(original.compound),
             async_template: original.async_template.clone(),
             agentic_brief: original.agentic_brief.clone(),
         },

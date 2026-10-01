@@ -88,7 +88,7 @@ export default function PlanTaskCard({
         <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`}>
           <TaskIcon
             cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--text-primary)" opacity={1}
-            status={node.status} isBlocked={row.isBlocked} consistent={node.consistent === true}
+            status={node.status} isBlocked={row.isBlocked} compound={node.compound === true}
           />
         </svg>
       </span>

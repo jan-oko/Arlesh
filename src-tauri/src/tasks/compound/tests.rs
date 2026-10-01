@@ -1,4 +1,4 @@
-//! The progress rule, and deriving consistent Tasks' statuses over a board.
+//! The progress rule, and deriving compound Tasks' statuses over a board.
 
 use super::*;
 use crate::{
@@ -27,7 +27,7 @@ fn task(id: i64, parent: (&str, i64), status: TaskStatus) -> Task {
         delegate_to: None,
         agentic: None,
         asynchronous: false,
-        consistent: false,
+        compound: false,
         async_template: None,
         agentic_brief: None,
         time_scope: None,
@@ -43,9 +43,9 @@ fn task(id: i64, parent: (&str, i64), status: TaskStatus) -> Task {
     }
 }
 
-fn consistent(id: i64, parent: (&str, i64)) -> Task {
+fn compound(id: i64, parent: (&str, i64)) -> Task {
     Task {
-        consistent: true,
+        compound: true,
         ..task(id, parent, Todo)
     }
 }
@@ -121,7 +121,7 @@ fn archived(node_type: &str, id: i64) -> ItemLifecycle {
     }
 }
 
-/// A board of rows, derived with no governance, and each consistent Task's status read back.
+/// A board of rows, derived with no governance, and each compound Task's status read back.
 #[derive(Default)]
 struct Board {
     tasks: Vec<Task>,
@@ -185,9 +185,9 @@ fn each_kind_reads_as_the_rule_counts_it() {
 }
 
 #[test]
-fn a_consistent_task_with_nothing_beneath_it_is_to_do() {
+fn a_compound_task_with_nothing_beneath_it_is_to_do() {
     let board = Board {
-        tasks: vec![consistent(1, ("project", 100))],
+        tasks: vec![compound(1, ("project", 100))],
         ..Board::default()
     };
     assert_eq!(board.status_of(1), Todo);
@@ -197,7 +197,7 @@ fn a_consistent_task_with_nothing_beneath_it_is_to_do() {
 fn the_whole_subtree_counts_not_only_the_children() {
     let board = Board {
         tasks: vec![
-            consistent(1, ("project", 100)),
+            compound(1, ("project", 100)),
             task(2, ("task", 1), Done),
             task(3, ("task", 2), InProgress),
         ],
@@ -209,7 +209,7 @@ fn the_whole_subtree_counts_not_only_the_children() {
 #[test]
 fn every_kind_beneath_it_counts() {
     let mut board = Board {
-        tasks: vec![consistent(1, ("project", 100)), task(2, ("task", 1), Done)],
+        tasks: vec![compound(1, ("project", 100)), task(2, ("task", 1), Done)],
         goals: vec![goal(3, ("task", 1), "achieved")],
         commitments: vec![commitment(4, ("task", 1), Verdict::Kept)],
         expectations: vec![wait(5, ("task", 1), ExpectationStatus::Released)],
@@ -230,7 +230,7 @@ fn every_kind_beneath_it_counts() {
 #[test]
 fn a_goal_not_yet_achieved_counts_as_to_do() {
     let board = Board {
-        tasks: vec![consistent(1, ("project", 100)), task(2, ("task", 1), Done)],
+        tasks: vec![compound(1, ("project", 100)), task(2, ("task", 1), Done)],
         goals: vec![goal(3, ("task", 1), "active")],
         ..Board::default()
     };
@@ -241,7 +241,7 @@ fn a_goal_not_yet_achieved_counts_as_to_do() {
 fn an_effectively_archived_item_is_left_out_with_everything_beneath_it() {
     let board = Board {
         tasks: vec![
-            consistent(1, ("project", 100)),
+            compound(1, ("project", 100)),
             task(2, ("task", 1), Done),
             task(3, ("task", 1), Todo),
             task(4, ("task", 3), InProgress),
@@ -255,7 +255,7 @@ fn an_effectively_archived_item_is_left_out_with_everything_beneath_it() {
 #[test]
 fn an_archived_wait_is_left_out() {
     let board = Board {
-        tasks: vec![consistent(1, ("project", 100)), task(2, ("task", 1), Done)],
+        tasks: vec![compound(1, ("project", 100)), task(2, ("task", 1), Done)],
         expectations: vec![Expectation {
             archival: ExpectationArchival::Archived,
             ..wait(5, ("task", 1), ExpectationStatus::Pending)
@@ -269,7 +269,7 @@ fn an_archived_wait_is_left_out() {
 fn backlogged_and_delegated_items_still_count() {
     let board = Board {
         tasks: vec![
-            consistent(1, ("project", 100)),
+            compound(1, ("project", 100)),
             Task {
                 archival: TaskArchival::Backlog,
                 ..task(2, ("task", 1), Todo)
@@ -287,7 +287,7 @@ fn backlogged_and_delegated_items_still_count() {
 #[test]
 fn a_check_task_beneath_a_wait_counts_as_a_task() {
     let board = Board {
-        tasks: vec![consistent(1, ("project", 100))],
+        tasks: vec![compound(1, ("project", 100))],
         expectations: vec![wait(5, ("task", 1), ExpectationStatus::Released)],
         checks: vec![task(6, ("expectation", 5), InProgress)],
         ..Board::default()
@@ -296,12 +296,12 @@ fn a_check_task_beneath_a_wait_counts_as_a_task() {
 }
 
 #[test]
-fn a_consistent_task_inside_is_counted_by_its_derived_status() {
+fn a_compound_task_inside_is_counted_by_its_derived_status() {
     // The inner one's own stored status is To Do; what it reads as is Done, from its child.
     let board = Board {
         tasks: vec![
-            consistent(1, ("project", 100)),
-            consistent(2, ("task", 1)),
+            compound(1, ("project", 100)),
+            compound(2, ("task", 1)),
             task(3, ("task", 2), Done),
         ],
         ..Board::default()
@@ -311,10 +311,10 @@ fn a_consistent_task_inside_is_counted_by_its_derived_status() {
 }
 
 #[test]
-fn a_consistent_task_does_not_count_the_wait_its_own_delegation_draws() {
+fn a_compound_task_does_not_count_the_wait_its_own_delegation_draws() {
     let delegated = Task {
         delegate_to: Some(Delegate::Agent),
-        ..consistent(1, ("project", 100))
+        ..compound(1, ("project", 100))
     };
     let own_wait = Expectation {
         origin: Origin::DelegationWait(WaitOrigin {
@@ -331,10 +331,10 @@ fn a_consistent_task_does_not_count_the_wait_its_own_delegation_draws() {
 }
 
 #[test]
-fn an_ancestor_does_count_the_wait_a_consistent_task_inside_draws() {
+fn an_ancestor_does_count_the_wait_a_compound_task_inside_draws() {
     let inner = Task {
         delegate_to: Some(Delegate::Agent),
-        ..consistent(2, ("task", 1))
+        ..compound(2, ("task", 1))
     };
     let inner_wait = Expectation {
         origin: Origin::DelegationWait(WaitOrigin {
@@ -344,7 +344,7 @@ fn an_ancestor_does_count_the_wait_a_consistent_task_inside_draws() {
     };
     let board = Board {
         tasks: vec![
-            consistent(1, ("project", 100)),
+            compound(1, ("project", 100)),
             inner,
             task(3, ("task", 2), Todo),
         ],
@@ -356,7 +356,7 @@ fn an_ancestor_does_count_the_wait_a_consistent_task_inside_draws() {
 }
 
 #[test]
-fn a_done_consistent_task_whose_window_passed_is_archived_and_still_counts_as_done() {
+fn a_done_compound_task_whose_window_passed_is_archived_and_still_counts_as_done() {
     let window = (at(0), at(6));
     let governance = HashMap::from([(
         NodeId::Stored(2),
@@ -369,8 +369,8 @@ fn a_done_consistent_task_whose_window_passed_is_archived_and_still_counts_as_do
     )]);
     let board = Board {
         tasks: vec![
-            consistent(1, ("project", 100)),
-            consistent(2, ("task", 1)),
+            compound(1, ("project", 100)),
+            compound(2, ("task", 1)),
             task(3, ("task", 2), Done),
             task(4, ("task", 1), Done),
         ],
@@ -398,7 +398,7 @@ fn a_done_consistent_task_whose_window_passed_is_archived_and_still_counts_as_do
 
 #[test]
 fn apply_writes_the_status_and_the_lifecycle_onto_the_board() {
-    let mut tasks = vec![consistent(1, ("project", 100)), task(2, ("task", 1), Done)];
+    let mut tasks = vec![compound(1, ("project", 100)), task(2, ("task", 1), Done)];
     let mut lifecycles = vec![ItemLifecycle {
         archival: Archival::Live,
         ..archived("task", 1)
@@ -427,9 +427,9 @@ fn apply_writes_the_status_and_the_lifecycle_onto_the_board() {
 
 #[test]
 fn a_parent_loop_is_caught_rather_than_followed() {
-    // Corrupt data: two consistent tasks each under the other.
+    // Corrupt data: two compound tasks each under the other.
     let board = Board {
-        tasks: vec![consistent(1, ("task", 2)), consistent(2, ("task", 1))],
+        tasks: vec![compound(1, ("task", 2)), compound(2, ("task", 1))],
         ..Board::default()
     };
     let outcomes = board.derive_with(&HashMap::new());

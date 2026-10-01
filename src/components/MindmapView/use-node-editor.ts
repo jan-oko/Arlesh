@@ -200,11 +200,11 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         await clampDescendants(conflicts, data.timeScope);
       }
       // A task that consists of its sub-items and still does has no status to save: it is derived.
-      const keepsDerived = node.consistent === true && data.consistent;
+      const keepsDerived = node.compound === true && data.compound;
       await updateTask(dbId, {
         title: data.title,
         ...(keepsDerived ? {} : { status: data.status }),
-        ...(data.consistent !== (node.consistent === true) ? { consistent: data.consistent } : {}),
+        ...(data.compound !== (node.compound === true) ? { compound: data.compound } : {}),
         time_scope: data.timeScope,
         on_scope_exit: data.onScopeExit,
         plan: data.plan,

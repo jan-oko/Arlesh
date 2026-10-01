@@ -806,32 +806,32 @@ describe("TaskEditorModal — the Plan picker's bound", () => {
   });
 });
 
-describe("TaskEditorModal — Consistence", () => {
-  it("shows a consistent task's status and takes no clicks on it, saying why", async () => {
-    render(<TaskEditorModal {...defaultProps} node={mkNode({ consistent: true, status: "in_progress" })} />);
+describe("TaskEditorModal — Compound", () => {
+  it("shows a compound task's status and takes no clicks on it, saying why", async () => {
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ compound: true, status: "in_progress" })} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
 
-    expect(screen.getByRole("checkbox", { name: "consistentOn" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "compoundOn" })).toBeChecked();
     expect(screen.getByRole("button", { name: "status:task.done" })).toBeDisabled();
     expect(screen.getByText("statusFromSubItems")).toBeInTheDocument();
   });
 
-  it("frees the status pills when Consistence is switched off, starting from the status shown", async () => {
+  it("frees the status pills when Compound is switched off, starting from the status shown", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    render(<TaskEditorModal {...defaultProps} node={mkNode({ consistent: true, status: "started" })} onSave={onSave} />);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ compound: true, status: "started" })} onSave={onSave} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "consistentOn" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "compoundOn" }));
     expect(screen.getByRole("button", { name: "status:task.done" })).toBeEnabled();
 
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "started", consistent: false });
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "started", compound: false });
   });
 
   it("offers the switch on a stored task only", () => {
     render(<TaskEditorModal {...defaultProps} node={mkNode({ ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }) })} />);
-    expect(screen.queryByRole("checkbox", { name: "consistentOff" })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "compoundOff" })).toBeNull();
   });
 });
 

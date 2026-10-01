@@ -744,17 +744,17 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
     expect(opts.onToggleAgentic).not.toHaveBeenCalled();
   });
 
-  it("plain V switches the anchor task's Consistence, and Ctrl+V stays Paste", () => {
+  it("plain V switches the anchor task's Compound, and Ctrl+V stays Paste", () => {
     const opts = mindmapKeyboardContext({
       selectedNodeId: "task-1",
       findNodeById: (id: string) => (id === "task-1" ? makeTask("task-1") : undefined),
     });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("v");
-    expect(opts.onToggleConsistence).toHaveBeenCalledTimes(1);
-    expect(opts.onToggleConsistence).toHaveBeenCalledWith("task-1");
+    expect(opts.onToggleCompound).toHaveBeenCalledTimes(1);
+    expect(opts.onToggleCompound).toHaveBeenCalledWith("task-1");
     fireKey("v", { ctrlKey: true });
-    expect(opts.onToggleConsistence).toHaveBeenCalledTimes(1);
+    expect(opts.onToggleCompound).toHaveBeenCalledTimes(1);
   });
 
   it("plain V does nothing on a goal — only a Task consists of its sub-items", () => {
@@ -765,7 +765,7 @@ describe("useKeyboardMindmap — filter shortcuts (Alt)", () => {
     });
     renderHook(() => useKeyboardMindmap(opts));
     fireKey("v");
-    expect(opts.onToggleConsistence).not.toHaveBeenCalled();
+    expect(opts.onToggleCompound).not.toHaveBeenCalled();
   });
 
   it("plain W does nothing on a goal — only a Task starts a wait by being done", () => {

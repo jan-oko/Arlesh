@@ -108,11 +108,11 @@ describe("useKeyboardListView", () => {
     expect(options.onToggleAgentic).not.toHaveBeenCalled();
   });
 
-  it("plain V switches the selected row's Consistence", () => {
+  it("plain V switches the selected row's Compound", () => {
     const options = listKeyboardContext();
     renderHook((opts) => useKeyboardListView(opts), { initialProps: options });
     fireKey("v");
-    expect(options.onToggleConsistence).toHaveBeenCalledWith("task-1");
+    expect(options.onToggleCompound).toHaveBeenCalledWith("task-1");
   });
 
   it("plain W does nothing with no row selected", () => {

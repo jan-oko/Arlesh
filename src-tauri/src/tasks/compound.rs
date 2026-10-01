@@ -1,42 +1,42 @@
-//! **Consistence**: a Task that *consists of its sub-items*, its status derived from its subtree.
+//! **Compound**: a Task that *consists of its sub-items*, its status derived from its subtree.
 //!
-//! A consistent Task's status is never set by hand. It is read off everything beneath it — Tasks
+//! A compound Task's status is never set by hand. It is read off everything beneath it — Tasks
 //! (Habit occurrences and a wait's check tasks included), Goals, waits and Commitments — by the
 //! [`progress`] rule, on **every board load**. It is never stored: a descendant changing, a Habit
 //! deriving a new occurrence or a window passing all change it without a write, and a stored copy
 //! would go stale on exactly those. So the derivation lives here, on the backend, where the board
 //! load runs it before anything reads the board: the frontend, the filters, the MCP snapshot and
 //! lookups all see the derived status as the Task's `status`, and none of them knows the
-//! difference (see `docs/spec/resources.md`, "Consistence").
+//! difference (see `docs/spec/resources.md`, "Compound").
 //!
 //! # What counts
 //!
 //! The whole subtree, except what is **effectively Archived** (with everything beneath it) and
 //! Infos, which are not work. Backlogged and delegated items still count. An item archived *by
 //! finishing* — a Done Task whose window has passed, which Resolution archives — still reads as
-//! Done and still counts: left out, a consistent Task whose steps were all done inside its window
+//! Done and still counts: left out, a compound Task whose steps were all done inside its window
 //! would fall back to To Do the moment the window closed, and then lapse unfinished. How each
 //! kind reads:
 //!
-//! - a Task: its status — for a consistent Task inside, its **derived** status;
+//! - a Task: its status — for a compound Task inside, its **derived** status;
 //! - a Goal: Achieved reads as Done, anything else as To Do;
 //! - a wait: Pending reads as Started, Released as Done;
 //! - a Commitment: Unresolved reads as Started, a verdict (Kept or Broken) as Done.
 //!
-//! One exception, forced rather than chosen: the waits a consistent Task **itself** draws — its
+//! One exception, forced rather than chosen: the waits a compound Task **itself** draws — its
 //! delegation wait, which exists exactly while it is not done — are consequences of its status,
 //! not constituents of it, so the Task does not count them (an ancestor still does). Counting them
-//! would leave a delegated consistent Task unable ever to be Done. (A consistent Task spawns no
+//! would leave a delegated compound Task unable ever to be Done. (A compound Task spawns no
 //! Asynchronous wait at all: see [`crate::nodes::waits::derive_waits`].)
 //!
 //! # Order
 //!
-//! A consistent Task's own lifecycle depends on its derived status — Done resolves its window, and
+//! A compound Task's own lifecycle depends on its derived status — Done resolves its window, and
 //! a Done Task whose window has passed is Archived — and an Archived item drops out of every
-//! ancestor's count. So a consistent Task is resolved before any consistent ancestor reads it
+//! ancestor's count. So a compound Task is resolved before any compound ancestor reads it
 //! ([`derive`] resolves on demand, innermost first), and its lifecycle is re-derived as it is.
 //!
-//! A delegated consistent Task's delegation wait is drawn from its status, so the waits are drawn
+//! A delegated compound Task's delegation wait is drawn from its status, so the waits are drawn
 //! again whenever a derived status changes which of those exist ([`settle`]). Each round settles
 //! at least one more level of nesting, so it ends.
 
@@ -68,7 +68,7 @@ use super::{
 #[cfg(test)]
 mod tests;
 
-/// The **progress rule**: what a consistent Task reads as, given what each counted item reads as.
+/// The **progress rule**: what a compound Task reads as, given what each counted item reads as.
 ///
 /// Done when every item is Done. Otherwise In Progress if any item is In Progress. Otherwise
 /// Started if any item is Started or Done. Otherwise To Do — and To Do when nothing is counted.
@@ -157,7 +157,7 @@ pub fn commitment_reading(verdict: Verdict) -> TaskStatus {
     }
 }
 
-/// What a consistent Task's own lifecycle is re-derived from, besides its derived status: its
+/// What a compound Task's own lifecycle is re-derived from, besides its derived status: its
 /// effective window and on-exit behaviour, and its own stored Archival (its Backlog).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Governance {
@@ -191,7 +191,7 @@ pub struct Rows<'rows> {
     pub wait_lifecycles: &'rows [ItemLifecycle],
 }
 
-/// One consistent Task's derived status, and its lifecycle re-derived from it.
+/// One compound Task's derived status, and its lifecycle re-derived from it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Outcome {
     /// The Task.
@@ -203,7 +203,7 @@ pub struct Outcome {
     pub state: Option<DerivedState>,
 }
 
-/// Derives every consistent Task's status in `rows` at `now`.
+/// Derives every compound Task's status in `rows` at `now`.
 pub fn derive(
     rows: &Rows<'_>,
     governance: &HashMap<NodeId, Governance>,
@@ -219,7 +219,7 @@ pub fn derive(
     };
     rows.tasks
         .iter()
-        .filter(|task| task.consistent)
+        .filter(|task| task.compound)
         .map(|task| {
             let resolved = evaluation.resolve(&task.id);
             Outcome {
@@ -231,10 +231,10 @@ pub fn derive(
         .collect()
 }
 
-/// Writes `outcomes` onto the board: each consistent Task's `status`, and its lifecycle.
+/// Writes `outcomes` onto the board: each compound Task's `status`, and its lifecycle.
 pub fn apply(outcomes: &[Outcome], tasks: &mut [Task], lifecycles: &mut [ItemLifecycle]) {
     let by_id: HashMap<&NodeId, &Outcome> = outcomes.iter().map(|out| (&out.id, out)).collect();
-    for task in tasks.iter_mut().filter(|task| task.consistent) {
+    for task in tasks.iter_mut().filter(|task| task.compound) {
         if let Some(outcome) = by_id.get(&task.id) {
             task.status = outcome.status.as_str().to_string();
         }
@@ -256,7 +256,7 @@ pub fn apply(outcomes: &[Outcome], tasks: &mut [Task], lifecycles: &mut [ItemLif
 
 /// The board a load has read so far, which [`settle`] completes with its waits.
 pub struct Board<'rows> {
-    /// Tasks: stored rows and Habit occurrences. Consistent ones leave with their derived status.
+    /// Tasks: stored rows and Habit occurrences. Compound ones leave with their derived status.
     pub tasks: &'rows mut [Task],
     /// Goals, stored and derived.
     pub goals: &'rows [Goal],
@@ -264,17 +264,17 @@ pub struct Board<'rows> {
     pub commitments: &'rows [Commitment],
     /// Stored Expectations.
     pub expectations: &'rows [Expectation],
-    /// Every lifecycle derived so far. Consistent Tasks' leave re-derived.
+    /// Every lifecycle derived so far. Compound Tasks' leave re-derived.
     pub lifecycles: &'rows mut [ItemLifecycle],
 }
 
-/// The most rounds [`settle`] takes. Each round settles at least one more level of consistent
+/// The most rounds [`settle`] takes. Each round settles at least one more level of compound
 /// Tasks nested inside each other, so only a board nested deeper than this could reach it.
 const MAX_ROUNDS: usize = 16;
 
-/// Draws the board's waits and derives every consistent Task's status, until the two agree.
+/// Draws the board's waits and derives every compound Task's status, until the two agree.
 ///
-/// A board with no consistent Task costs exactly the one [`derive_waits`] it always did.
+/// A board with no compound Task costs exactly the one [`derive_waits`] it always did.
 #[tracing::instrument(skip(db, board))]
 pub async fn settle<M: SessionMode>(
     db: &mut Db<M>,
@@ -289,7 +289,7 @@ pub async fn settle<M: SessionMode>(
         lifecycles,
     } = board;
     let mut waits = derive_waits(db, now, &*tasks).await?;
-    if !tasks.iter().any(|task| task.consistent) {
+    if !tasks.iter().any(|task| task.compound) {
         return Ok(waits);
     }
     let governance = governance_of(db, &*tasks).await?;
@@ -319,12 +319,12 @@ pub async fn settle<M: SessionMode>(
     }
     tracing::warn!(
         rounds = MAX_ROUNDS,
-        "consistent tasks did not settle; serving the last round"
+        "compound tasks did not settle; serving the last round"
     );
     Ok(waits)
 }
 
-/// Names the status a consistent Task is showing, when `request` switches its consistence off
+/// Names the status a compound Task is showing, when `request` switches its compound off
 /// without naming one — so switching it off **keeps** that status, in the same write, and one undo
 /// takes both back. A request that names a status is taken at its word, and any other request is
 /// left alone.
@@ -335,10 +335,10 @@ pub async fn keep_derived_status(
     request: &mut UpdateTaskRequest,
     now: NaiveDateTime,
 ) -> Result<(), AppError> {
-    if request.consistent != Some(false) || request.status.is_some() {
+    if request.compound != Some(false) || request.status.is_some() {
         return Ok(());
     }
-    if !db.tasks().get(id).await?.consistent {
+    if !db.tasks().get(id).await?.compound {
         return Ok(());
     }
     let row = NodeId::Stored(id.0);
@@ -351,23 +351,23 @@ pub async fn keep_derived_status(
     Ok(())
 }
 
-/// Whether each delegated consistent Task reads as done — what decides whether its delegation
+/// Whether each delegated compound Task reads as done — what decides whether its delegation
 /// wait is drawn.
 fn delegated_done(tasks: &[Task]) -> HashMap<NodeId, bool> {
     tasks
         .iter()
-        .filter(|task| task.consistent && task.delegate_to.is_some())
+        .filter(|task| task.compound && task.delegate_to.is_some())
         .map(|task| (task.id.clone(), task.status == TaskStatus::Done.as_str()))
         .collect()
 }
 
-/// Each consistent stored Task's [`Governance`].
+/// Each compound stored Task's [`Governance`].
 async fn governance_of<M: SessionMode>(
     db: &mut Db<M>,
     tasks: &[Task],
 ) -> Result<HashMap<NodeId, Governance>, AppError> {
     let mut out = HashMap::new();
-    for task in tasks.iter().filter(|task| task.consistent) {
+    for task in tasks.iter().filter(|task| task.compound) {
         let Some(row) = task.id.stored() else {
             continue;
         };
@@ -426,12 +426,12 @@ impl Kind {
 /// A node of the tree: its kind and id.
 type Key = (Kind, NodeId);
 
-/// One counted item, as it reads before any consistence is derived.
+/// One counted item, as it reads before any compound is derived.
 #[derive(Debug, Clone)]
 struct Item {
     reading: TaskStatus,
     archived: bool,
-    consistent: bool,
+    compound: bool,
     /// The Task whose own status draws this wait, for a spawned or delegation wait.
     drawn_by: Option<NodeId>,
 }
@@ -463,7 +463,7 @@ impl Tree {
                 Item {
                     reading: task_reading(&task.status),
                     archived: is_archived(Kind::Task, &task.id),
-                    consistent: task.consistent,
+                    compound: task.compound,
                     drawn_by: None,
                 },
             );
@@ -475,7 +475,7 @@ impl Tree {
                 Item {
                     reading: goal_reading(&goal.status),
                     archived: is_archived(Kind::Goal, &goal.id),
-                    consistent: false,
+                    compound: false,
                     drawn_by: None,
                 },
             );
@@ -487,7 +487,7 @@ impl Tree {
                 Item {
                     reading: commitment_reading(commitment.verdict),
                     archived: is_archived(Kind::Commitment, &commitment.id),
-                    consistent: false,
+                    compound: false,
                     drawn_by: None,
                 },
             );
@@ -506,7 +506,7 @@ impl Tree {
                     reading: expectation_reading(wait.status),
                     archived: wait.archival == ExpectationArchival::Archived
                         || is_archived(Kind::Expectation, &wait.id),
-                    consistent: false,
+                    compound: false,
                     drawn_by,
                 },
             );
@@ -525,7 +525,7 @@ impl Tree {
     }
 }
 
-/// A consistent Task, resolved.
+/// A compound Task, resolved.
 #[derive(Debug, Clone)]
 struct Resolved {
     status: TaskStatus,
@@ -533,19 +533,19 @@ struct Resolved {
     archived: bool,
 }
 
-/// One derivation over a [`Tree`], remembering each consistent Task once it is resolved.
+/// One derivation over a [`Tree`], remembering each compound Task once it is resolved.
 struct Evaluation<'tree> {
     tree: &'tree Tree,
     governance: &'tree HashMap<NodeId, Governance>,
     now: NaiveDateTime,
     resolved: HashMap<NodeId, Resolved>,
-    /// The consistent Tasks being resolved right now, so a corrupt parent loop is caught rather
+    /// The compound Tasks being resolved right now, so a corrupt parent loop is caught rather
     /// than followed forever.
     visiting: HashSet<NodeId>,
 }
 
 impl Evaluation<'_> {
-    /// A consistent Task's derived status, and the lifecycle it leaves it with.
+    /// A compound Task's derived status, and the lifecycle it leaves it with.
     fn resolve(&mut self, id: &NodeId) -> Resolved {
         if let Some(resolved) = self.resolved.get(id) {
             return resolved.clone();
@@ -556,7 +556,7 @@ impl Evaluation<'_> {
             .get(&(Kind::Task, id.clone()))
             .is_some_and(|item| item.archived);
         if !self.visiting.insert(id.clone()) {
-            tracing::warn!(task = %id, "a consistent task's subtree loops back on itself");
+            tracing::warn!(task = %id, "a compound task's subtree loops back on itself");
             return Resolved {
                 status: TaskStatus::Todo,
                 state: None,
@@ -588,7 +588,7 @@ impl Evaluation<'_> {
         resolved
     }
 
-    /// Counts everything beneath `parent` into `tally`, for the consistent Task `root`.
+    /// Counts everything beneath `parent` into `tally`, for the compound Task `root`.
     /// `walked` is every node this walk has reached, so a corrupt parent loop ends it.
     fn count_beneath(
         &mut self,
@@ -624,10 +624,10 @@ impl Evaluation<'_> {
         }
     }
 
-    /// What `item` reads as, and whether it is effectively Archived: a consistent Task's derived
+    /// What `item` reads as, and whether it is effectively Archived: a compound Task's derived
     /// status and re-derived lifecycle, anything else as the load served it.
     fn reading(&mut self, key: &Key, item: &Item) -> (TaskStatus, bool) {
-        if key.0 == Kind::Task && item.consistent {
+        if key.0 == Kind::Task && item.compound {
             let resolved = self.resolve(&key.1);
             return (resolved.status, resolved.archived);
         }

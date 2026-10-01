@@ -150,7 +150,7 @@
   color: white;
 }
 
-/* A consistent task's pills: they show the derived status and take no clicks. */
+/* A compound task's pills: they show the derived status and take no clicks. */
 .statusPill:disabled {
   cursor: default;
 }

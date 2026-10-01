@@ -1375,7 +1375,7 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
                 "plan",
                 "due_scope",
                 "asynchronous",
-                "consistent",
+                "compound",
                 "dependencies",
                 "add_dependencies",
                 "remove_dependencies",

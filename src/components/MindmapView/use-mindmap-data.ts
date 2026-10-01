@@ -421,7 +421,7 @@ export function buildTree(
       agentic: task.agentic,
       delegate: task.delegate_to,
       asynchronous: task.asynchronous,
-      ...(task.consistent === true ? { consistent: true } : {}),
+      ...(task.compound === true ? { compound: true } : {}),
       asyncTemplate: task.async_template ?? null,
       agenticBrief: task.agentic_brief ?? null,
       position: task.position,

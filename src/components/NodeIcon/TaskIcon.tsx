@@ -1,7 +1,7 @@
 import BlockedMark from "./BlockedMark";
 
-/** How many dashes the outer ring of a consistent Task's glyph is cut into. */
-const CONSISTENT_RING_DASHES = 8;
+/** How many dashes the outer ring of a compound Task's glyph is cut into. */
+const COMPOUND_RING_DASHES = 8;
 
 interface Props {
   cx: number;
@@ -13,20 +13,20 @@ interface Props {
   isBlocked: boolean;
   /** The Task **consists of its sub-items**: `status` is derived, and the outer ring is drawn
    * dashed to say so. Nothing else about the glyph changes. */
-  consistent?: boolean | undefined;
+  compound?: boolean | undefined;
 }
 
-export default function TaskIcon({ cx, cy, r, color, opacity, status, isBlocked, consistent = false }: Props) {
+export default function TaskIcon({ cx, cy, r, color, opacity, status, isBlocked, compound = false }: Props) {
   if (isBlocked) return <BlockedMark cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
 
   const cr = r * 0.85;
   const sw = r * 0.22;
   // Equal dashes and gaps, a whole number of each round the ring, so it closes evenly.
-  const dash = (2 * Math.PI * cr) / (CONSISTENT_RING_DASHES * 2);
-  const dashes = consistent ? `${dash} ${dash}` : undefined;
-  const marked = consistent ? "true" : undefined;
+  const dash = (2 * Math.PI * cr) / (COMPOUND_RING_DASHES * 2);
+  const dashes = compound ? `${dash} ${dash}` : undefined;
+  const marked = compound ? "true" : undefined;
   const ring = (
-    <circle cx={cx} cy={cy} r={cr} stroke={color} strokeWidth={sw} fill="none" strokeDasharray={dashes} data-consistent={marked} />
+    <circle cx={cx} cy={cy} r={cr} stroke={color} strokeWidth={sw} fill="none" strokeDasharray={dashes} data-compound={marked} />
   );
 
   if (status === "done") {
@@ -57,5 +57,5 @@ export default function TaskIcon({ cx, cy, r, color, opacity, status, isBlocked,
     );
   }
 
-  return <circle cx={cx} cy={cy} r={cr} stroke={color} strokeWidth={sw} fill="none" strokeDasharray={dashes} data-consistent={marked} opacity={opacity} />;
+  return <circle cx={cx} cy={cy} r={cr} stroke={color} strokeWidth={sw} fill="none" strokeDasharray={dashes} data-compound={marked} opacity={opacity} />;
 }

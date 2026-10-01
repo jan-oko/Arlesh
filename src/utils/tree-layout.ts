@@ -254,7 +254,7 @@ export interface MindmapNode {
    * one the backend derived from its whole subtree on this load, and is never set by hand — every
    * status write refuses it (`useStatusCycle`, the editor). Its own flag; it does not inherit. The
    * status glyph draws its outer ring dashed while it is on. */
-  consistent?: boolean;
+  compound?: boolean;
   /** A Commitment's recorded Verdict (Commitments only) — `unresolved` / `kept` / `broken`.
    * Never derived from the window passing or from children completing: `unresolved` means the
    * user has not said, which is information in its own right. */

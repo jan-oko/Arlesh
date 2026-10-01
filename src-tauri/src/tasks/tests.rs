@@ -26,7 +26,7 @@ fn stored_task() -> Task {
         delegate_to: Some(Delegate::Person { id: 3 }),
         agentic: None,
         asynchronous: false,
-        consistent: false,
+        compound: false,
         async_template: None,
         agentic_brief: None,
         time_scope: Some(TimeScope {
@@ -233,7 +233,7 @@ fn delegating_to_the_agent_replaces_a_person_delegate() {
 fn asynchronous_task() -> Task {
     Task {
         asynchronous: true,
-        consistent: false,
+        compound: false,
         async_template: Some(AsyncTemplate {
             title: "Reviewer replies".to_string(),
             tag_ids: vec![4],
@@ -276,7 +276,7 @@ fn each_asynchronous_answer_writes_itself() {
         let write = TaskWrite::merge(
             Task {
                 asynchronous: stored,
-                consistent: false,
+                compound: false,
                 ..stored_task()
             },
             UpdateTaskRequest {
@@ -365,7 +365,7 @@ fn asynchronous_and_agentic_are_merged_independently() {
     let write = TaskWrite::merge(
         Task {
             asynchronous: true,
-            consistent: false,
+            compound: false,
             async_template: asynchronous_task().async_template,
             ..agentic_task()
         },

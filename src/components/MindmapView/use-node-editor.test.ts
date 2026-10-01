@@ -64,7 +64,7 @@ function setup() {
 const saveData: TaskSaveData = {
   title: "Task", status: "todo", blockReasons: [], tagIds: [],
   addedDeps: [], removedDeps: [], timeScope: { start_id: testKey(1), end_id: testKey(1) },
-  onScopeExit: null, plan: null, archival: "live", agentic: "inherit", asynchronous: false, consistent: false, asyncTemplate: null, agenticBrief: null, isPrivate: false,
+  onScopeExit: null, plan: null, archival: "live", agentic: "inherit", asynchronous: false, compound: false, asyncTemplate: null, agenticBrief: null, isPrivate: false,
 };
 
 beforeEach(() => vi.clearAllMocks());
@@ -182,7 +182,7 @@ describe("useNodeEditor — delegation", () => {
   });
 });
 
-describe("useNodeEditor — Consistence", () => {
+describe("useNodeEditor — Compound", () => {
   function setupWith(node: MindmapNode) {
     const reload = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>
@@ -193,25 +193,25 @@ describe("useNodeEditor — Consistence", () => {
   }
 
   it("sends no status for a task that consists of its sub-items and still does", async () => {
-    const result = setupWith({ ...taskNode, consistent: true, status: "in_progress" });
-    await act(async () => { await result.current.onTaskSave({ ...saveData, timeScope: null, consistent: true }); });
+    const result = setupWith({ ...taskNode, compound: true, status: "in_progress" });
+    await act(async () => { await result.current.onTaskSave({ ...saveData, timeScope: null, compound: true }); });
     const request = vi.mocked(updateTask).mock.calls[0]?.[1];
     expect(request).not.toHaveProperty("status");
-    expect(request).not.toHaveProperty("consistent");
+    expect(request).not.toHaveProperty("compound");
   });
 
   it("switching it off sends the status shown with the flag, so both land in one write", async () => {
-    const result = setupWith({ ...taskNode, consistent: true, status: "started" });
+    const result = setupWith({ ...taskNode, compound: true, status: "started" });
     await act(async () => {
-      await result.current.onTaskSave({ ...saveData, timeScope: null, status: "started", consistent: false });
+      await result.current.onTaskSave({ ...saveData, timeScope: null, status: "started", compound: false });
     });
-    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ status: "started", consistent: false }));
+    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ status: "started", compound: false }));
   });
 
   it("switching it on sends the flag", async () => {
     const result = setupWith(taskNode);
-    await act(async () => { await result.current.onTaskSave({ ...saveData, timeScope: null, consistent: true }); });
-    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ consistent: true }));
+    await act(async () => { await result.current.onTaskSave({ ...saveData, timeScope: null, compound: true }); });
+    expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ compound: true }));
   });
 });
 

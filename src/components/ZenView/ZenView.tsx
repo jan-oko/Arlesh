@@ -5,7 +5,7 @@ import { useBoardFilter } from "@/hooks/use-board-filter";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
-import { useTaskConsistence } from "@/hooks/use-task-consistence";
+import { useTaskCompound } from "@/hooks/use-task-compound";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useQuickPlan } from "@/hooks/use-quick-plan";
 import { useQuickDependency } from "@/hooks/use-quick-dependency";
@@ -91,7 +91,7 @@ export default function ZenView() {
   const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({ findNode: find, reload, showToast });
   const { toggleAgentic } = useTaskAgentic({ findNode: find, reload, showToast });
   const { toggleAsynchronous } = useTaskAsynchronous({ findNode: find, reload, showToast });
-  const { toggleConsistence } = useTaskConsistence({ findNode: find, reload, showToast });
+  const { toggleCompound } = useTaskCompound({ findNode: find, reload, showToast });
   const quickPlan = useQuickPlan({ findNode: find, reload, showToast });
   const quickDependency = useQuickDependency({ tree, findNode: find, reload, showToast });
   const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
@@ -196,7 +196,7 @@ export default function ZenView() {
     onToggleBacklog: toggleBacklog,
     onToggleAgentic: toggleAgentic,
     onToggleAsynchronous: toggleAsynchronous,
-    onToggleConsistence: toggleConsistence,
+    onToggleCompound: toggleCompound,
     onQuickPlan: quickPlan.open,
     onQuickDependency: quickDependency.open,
     onToggleFullscreen: toggleFullscreen,

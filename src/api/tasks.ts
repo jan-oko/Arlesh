@@ -102,7 +102,7 @@ export interface Task {
   asynchronous: boolean;
   // Whether this task consists of its sub-items: its `status` is then derived from its subtree
   // on every load, never set by hand. Its own flag; stored Tasks only. Absent reads as false.
-  consistent?: boolean;
+  compound?: boolean;
   // Its optional Expectation template, only while asynchronous. While the task is done, a virtual
   // wait is drawn from it; without one, nothing is spawned.
   async_template?: AsyncTemplate;
@@ -141,7 +141,7 @@ export interface CreateTaskRequest {
   archival?: TaskArchival;
   agentic?: TaskAgentic;
   asynchronous?: boolean;
-  consistent?: boolean;
+  compound?: boolean;
   async_template?: AsyncTemplate;
   agentic_brief?: AgenticBrief;
 }
@@ -155,10 +155,10 @@ export interface UpdateTaskRequest {
   agentic?: TaskAgentic;
   // Absent = leave unchanged. Turning it off removes the template too.
   asynchronous?: boolean;
-  // Absent = leave unchanged. While a task is consistent a request naming a `status` is refused,
+  // Absent = leave unchanged. While a task is compound a request naming a `status` is refused,
   // unless it also sets this false — the status it names is then the one kept. Set false with no
   // status, the backend keeps the status the task was showing.
-  consistent?: boolean;
+  compound?: boolean;
   // Absent = leave unchanged, null = no template, value = this template. Dropped unless the task
   // ends up asynchronous.
   async_template?: AsyncTemplate | null;
