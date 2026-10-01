@@ -206,6 +206,9 @@ export interface MindmapNode {
   /** The node ids of those unmet dependencies — what Start still lets through beneath this task
    * when one of them is its own descendant (see `gateBelow` in `filter-tree.ts`). */
   blockingDependencyIds?: string[];
+  /** Blocked by the **agent capacity lock** (Tasks only): the backend derived it, and its reason is
+   * among `virtualBlockers`. Only clearing the lock removes it. */
+  capacityBlocked?: boolean;
   /** Blocked because it is a **Compound** Task whose open sub-items are all blocked (Tasks only):
    * the backend derived it, and its reason is among `virtualBlockers`. */
   compoundBlocked?: boolean;

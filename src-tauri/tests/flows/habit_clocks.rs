@@ -96,7 +96,7 @@ fn week(date: chrono::NaiveDate) -> ScopeKey {
 }
 
 async fn load(app: &App, instant: &str) -> MindmapLoad {
-    mindmap_commands::load_mindmap(app.state(), at(instant))
+    mindmap_commands::load_mindmap(app.state(), app.state(), at(instant))
         .await
         .unwrap()
 }
