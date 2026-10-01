@@ -18,20 +18,17 @@ export type StatusIndicatorType =
   | "mcp"
   | "private";
 
-/** One badge to render below a node. `outOfScope` applies only to the `scope` clock; `conflict`
- * only to `archived`. */
+/** One badge to render below a node. `conflict` applies only to `archived`.
+ *
+ * The `scope` clock is drawn the same whatever the window's position. It used to be crossed out
+ * with a red X once the window had passed; the user had it removed (2026-10-01, "remove the red x
+ * over the clock status for tasks past scope"): an Overdue item says so with its amber border, and a
+ * Missed or Completed one with the archive box. */
 export interface StatusIndicator {
   type: StatusIndicatorType;
-  /** For `scope`: the relevance window has passed, so the clock is drawn crossed-out. */
-  outOfScope?: boolean;
   /** For `archived`: this effective archival came from a scope Resolution overriding a
    * manually-set Frozen status. */
   conflict?: boolean;
-}
-
-/** A scoped item whose window has passed. */
-function isPastWindow(node: MindmapNode): boolean {
-  return node.timing === "lapsed";
 }
 
 function hasInfoDetails(node: MindmapNode): boolean {
@@ -52,7 +49,7 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   const indicators: StatusIndicator[] = [];
 
   if (node.timeScope != null) {
-    indicators.push({ type: "scope", outOfScope: isPastWindow(node) });
+    indicators.push({ type: "scope" });
   }
   if (node.status === "archived" || node.archived === true) {
     indicators.push({ type: "archived", conflict: node.archivalConflict === true });

@@ -18,7 +18,7 @@ function row(id: string, timeScope?: TimeScope): TaskListRow {
     node, ancestors: [],
     goalRef: null, goalStatus: null, projectRef: null, projectStatus: null,
     dependencyRefs: [], isBlocked: false, isAgentic: false, isAsynchronous: false,
-    hasBlockedAncestor: false, hasPrivateAncestor: false, scopeTokens: [],
+    heldByBlockedAncestor: false, hasPrivateAncestor: false, scopeTokens: [],
   };
 }
 

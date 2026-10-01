@@ -1,6 +1,8 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { RowId } from "@/api/node-id";
 import { isNodeBlocked, entityNodeId } from "@/utils/tree-layout";
+import { isAdmittedBy, startGateBelow } from "@/utils/filter-tree";
+import type { BlockGate } from "@/utils/filter-tree";
 import type { TaskDependencyEdge } from "@/api/tasks";
 import type { CommitmentListRow, ExpectationListRow, TaskListRow } from "@/utils/list-filter";
 import { deriveScopeStateTokens } from "@/utils/list-filter";
@@ -28,7 +30,9 @@ function buildRow(node: MindmapNode, ancestors: readonly MindmapNode[], depsByTa
     // A node that draws no row (a wait's check task) is named by no dependency edge.
     dependencyRefs: (node.rowId === undefined ? undefined : depsByTask.get(node.rowId)) ?? [],
     isBlocked: isNodeBlocked(node),
-    hasBlockedAncestor: ancestors.some(isNodeBlocked),
+    // Under Start a blocked ancestor holds the row back unless the row is one of that ancestor's
+    // child dependencies, or sits beneath one.
+    heldByBlockedAncestor: !isAdmittedBy(node, ancestors.reduce<BlockGate>(startGateBelow, undefined)),
     isAgentic: isAgentic(node),
     isAsynchronous: node.asynchronous === true,
     hasPrivateAncestor: ancestors.some((a) => a.isPrivate === true),
@@ -130,20 +134,23 @@ export interface CommitmentEntry { type: "commitment"; row: CommitmentListRow; v
 export interface ExpectationEntry { type: "expectation"; row: ExpectationListRow; visibleDepth: number }
 
 /** One rendered List View entry: a **path header** naming a run's location, a row carrying the
- * depth it is indented to, or one of the two markers that bracket the **Asynchronous section**.
+ * depth it is indented to, or one of the markers that bracket the **Overdue** and **Asynchronous**
+ * sections.
  * Header and depth partition a row's ancestors — the header names every ancestor *not* rendered as
  * a row above it, the depth counts every ancestor that *is* — so the list never implies a parent
  * that is not on screen.
  *
  * A row is a Task, or — when Commitments and Expectations are drawn as rows rather than in bands —
- * one of those. The two section markers carry nothing, and are drawn at most once each:
- * `asynchronous` is the heading that opens the section at the very top of the list,
- * `asynchronousEnd` the rule that closes it off from the ordinary list below. They are markers in
- * the stream rather than a wrapper around one, for the same reason a path header is: the list is
- * one flat run of rows, and the keyboard walks it in exactly the order it is drawn (see
- * `withAsynchronousSection`). */
+ * one of those. The section markers carry nothing, and are drawn at most once each:
+ * `overdue` and `asynchronous` are the headings that open their sections at the top of the list,
+ * `overdueEnd` and `asynchronousEnd` the rules that close them off from what follows. They are
+ * markers in the stream rather than a wrapper around one, for the same reason a path header is: the
+ * list is one flat run of rows, and the keyboard walks it in exactly the order it is drawn (see
+ * `withListSections`). */
 export type ListRowEntry =
   | PathEntry | TaskEntry | CommitmentEntry | ExpectationEntry
+  | { type: "overdue" }
+  | { type: "overdueEnd" }
   | { type: "asynchronous" }
   | { type: "asynchronousEnd" };
 

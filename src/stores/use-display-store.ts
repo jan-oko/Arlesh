@@ -24,6 +24,22 @@ interface DisplayStore {
   asynchronousFirst: boolean;
   toggleAsynchronousFirst: () => void;
   /**
+   * Whether the List View collects the **Overdue** work into its own section at the very top, above
+   * the Asynchronous one, while the list reads the **Start** preset.
+   *
+   * **On by default** (ruled by the user, 2026-09-30): unlike Asynchronous first, which reorders a
+   * list for a working style, late work leading what to begin now is what Start is for. App-wide.
+   */
+  overdueFirst: boolean;
+  toggleOverdueFirst: () => void;
+  /**
+   * Whether a List View row draws the amber **Overdue** border — the List View's counterpart of
+   * `zenShowOverdueBorder`. **On by default**, matching Zen and the views that draw it
+   * unconditionally. Off, the row still says it is Overdue to a screen reader.
+   */
+  listShowOverdueBorder: boolean;
+  toggleListShowOverdueBorder: () => void;
+  /**
    * Whether the Plan View's **candidates** pane draws a path header above each run of rows sharing
    * a location, as the List View does.
    *
@@ -203,6 +219,11 @@ export const useDisplayStore = create<DisplayStore>()(
       setHabitCollapseThreshold: (value) => set({ habitCollapseThreshold: clampThreshold(value) }),
       asynchronousFirst: false,
       toggleAsynchronousFirst: () => set((s) => ({ asynchronousFirst: !s.asynchronousFirst })),
+      overdueFirst: true,
+      toggleOverdueFirst: () => set((s) => ({ overdueFirst: !s.overdueFirst })),
+      listShowOverdueBorder: true,
+      toggleListShowOverdueBorder: () =>
+        set((s) => ({ listShowOverdueBorder: !s.listShowOverdueBorder })),
       planCandidatesPathGrouping: true,
       togglePlanCandidatesPathGrouping: () =>
         set((s) => ({ planCandidatesPathGrouping: !s.planCandidatesPathGrouping })),

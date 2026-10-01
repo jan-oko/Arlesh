@@ -268,6 +268,8 @@ describe("buildTree", () => {
     ]);
     const node = root.children[0]?.children.find((c) => c.id === "task-3");
     expect(node?.virtualBlockers).toEqual(["Blocked by task 2 (Dep)"]);
+    // The unmet dependency's own node id, which Start's child-dependency rule reads.
+    expect(node?.blockingDependencyIds).toEqual(["task-2"]);
   });
 
   it("omits a virtual block reason once the dependency is done", () => {
@@ -279,6 +281,7 @@ describe("buildTree", () => {
     ]);
     const node = root.children[0]?.children.find((c) => c.id === "task-3");
     expect(node?.virtualBlockers).toEqual([]);
+    expect(node?.blockingDependencyIds).toBeUndefined();
   });
 
   it("stores task tag_ids on the node", () => {
