@@ -32,7 +32,8 @@ pub enum Preset {
     /// What is still to be planned: no done tasks, no achieved/frozen/archived goals, nothing
     /// whose effective Archival is Archived.
     Plan,
-    /// What can be begun now: Plan, minus items whose window has lapsed or has not begun yet
+    /// What can be begun now: Plan, minus items whose window has lapsed — unless they are
+    /// Overdue, which Start keeps — or has not begun yet
     /// (Tasks, Goals and waits — a wait still ahead takes its check tasks with it), minus
     /// in-progress tasks with nothing left under them to start, minus Habit flows, minus blocked
     /// subtrees, minus Tasks planned into a scope that has not begun yet.
@@ -269,6 +270,11 @@ pub struct NodeFacts {
     /// status.
     #[serde(default)]
     pub archived: bool,
+    /// The derived **Overdue** flag: unfinished, not effectively Archived, and past the end of its
+    /// due. Start keeps an Overdue item whose window has lapsed (see
+    /// `is_startable_window` in [`super::rules`]).
+    #[serde(default)]
+    pub overdue: bool,
     /// The Task's own stored Backlog flag.
     #[serde(default)]
     pub backlogged: bool,
@@ -289,6 +295,11 @@ pub struct NodeFacts {
     /// Whether a Task/Goal has any block reason, explicit or implied by an unmet dependency.
     #[serde(default)]
     pub is_blocked: bool,
+    /// The node ids of the unmet dependencies a Task waits on — what its implied block reasons
+    /// are made of. Under Start a blocked node still lets these through when they lie beneath it
+    /// (see [`super::rules::gate_below`]).
+    #[serde(default)]
+    pub blocking_dependencies: Vec<String>,
     /// Whether the node has a direct child Task whose status is `todo` — what decides whether an
     /// in-progress Task still has something under it to start.
     #[serde(default)]
@@ -318,6 +329,7 @@ impl NodeFacts {
             status: None,
             timing: None,
             plan_timing: None,
+            overdue: false,
             archived: false,
             backlogged: false,
             verdict: None,
@@ -325,6 +337,7 @@ impl NodeFacts {
             delegated: false,
             has_check: false,
             is_blocked: false,
+            blocking_dependencies: Vec::new(),
             has_todo_child: false,
             is_habit_flow: false,
             is_habit_occurrence: false,

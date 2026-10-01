@@ -200,6 +200,9 @@ export interface MindmapNode {
   blockReasons?: string[];
   /** Derived, read-only "Blocked by …" reasons from this task's unmet dependencies. */
   virtualBlockers?: string[];
+  /** The node ids of those unmet dependencies — what Start still lets through beneath this task
+   * when one of them is its own descendant (see `gateBelow` in `filter-tree.ts`). */
+  blockingDependencyIds?: string[];
   /** Blocked because it is a **Compound** Task whose open sub-items are all blocked (Tasks only):
    * the backend derived it, and its reason is among `virtualBlockers`. */
   compoundBlocked?: boolean;

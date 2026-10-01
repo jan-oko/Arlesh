@@ -76,29 +76,29 @@ describe("deriveStatusIndicators", () => {
     expect(deriveStatusIndicators(node("task", { status: "todo" }))).toEqual([]);
   });
 
-  it("shows a scope clock (not out of scope) for an active scoped task", () => {
+  it("shows a scope clock for an active scoped task", () => {
     const indicators = deriveStatusIndicators(node("task", { timeScope: scope, timing: "active" }));
-    expect(indicators).toEqual([{ type: "scope", outOfScope: false }]);
+    expect(indicators).toEqual([{ type: "scope" }]);
   });
 
-  it("crosses out the clock and adds no badge for an overdue item — its border says so", () => {
+  it("draws the same plain clock and no badge for an overdue item past its window — its border says so", () => {
     const indicators = deriveStatusIndicators(node("task", { timeScope: scope, timing: "lapsed", overdue: true }));
-    expect(indicators).toEqual([{ type: "scope", outOfScope: true }]);
+    expect(indicators).toEqual([{ type: "scope" }]);
   });
 
-  it("crosses out the clock and adds an archive mark for a missed (archived) item", () => {
+  it("adds an archive mark beside the plain clock for a missed (archived) item", () => {
     const indicators = deriveStatusIndicators(node("task", { timeScope: scope, timing: "lapsed", resolution: "missed", archived: true }));
     expect(indicators).toEqual([
-      { type: "scope", outOfScope: true },
+      { type: "scope" },
       { type: "archived", conflict: false },
     ]);
   });
 
-  it("crosses out the clock and adds an archive mark for a completed-but-past-window item too", () => {
+  it("adds an archive mark beside the plain clock for a completed-but-past-window item too", () => {
     // The original bug report: a Done/Achieved item beyond its scope should also archive.
     const indicators = deriveStatusIndicators(node("task", { status: "done", timeScope: scope, timing: "lapsed", resolution: "completed", archived: true }));
     expect(indicators).toEqual([
-      { type: "scope", outOfScope: true },
+      { type: "scope" },
       { type: "archived", conflict: false },
     ]);
   });

@@ -39,10 +39,12 @@ interface CorpusNode {
   timing?: Timing;
   planTiming?: Timing;
   archived?: boolean;
+  overdue?: boolean;
   backlogged?: boolean;
   verdict?: Verdict;
   isPrivate?: boolean;
   isBlocked?: boolean;
+  blockingDependencies?: string[];
   isHabitFlow?: boolean;
   isHabitOccurrence?: boolean;
   delegated?: boolean;
@@ -133,6 +135,7 @@ function parseNode(value: unknown, what: string): CorpusNode {
     ...(raw.verdict !== undefined ? { verdict: parseVerdict(raw.verdict, `${what}.verdict`) } : {}),
     ...(raw.tagIds !== undefined ? { tagIds: parseTagIds(raw.tagIds, `${what}.tagIds`) } : {}),
     ...flag(raw.archived, "archived", what),
+    ...flag(raw.overdue, "overdue", what),
     ...flag(raw.backlogged, "backlogged", what),
     ...flag(raw.isPrivate, "isPrivate", what),
     ...flag(raw.isBlocked, "isBlocked", what),
@@ -141,6 +144,9 @@ function parseNode(value: unknown, what: string): CorpusNode {
     ...flag(raw.delegated, "delegated", what),
     ...flag(raw.hasCheck, "hasCheck", what),
     ...(raw.timeScope !== undefined ? { timeScope: parseTimeScope(raw.timeScope, `${what}.timeScope`) } : {}),
+    ...(raw.blockingDependencies !== undefined
+      ? { blockingDependencies: ids(raw.blockingDependencies, `${what}.blockingDependencies`) }
+      : {}),
   };
 }
 
@@ -283,9 +289,11 @@ function toMindmapNode(node: CorpusNode): MindmapNode {
     ...(node.planTiming !== undefined ? { planTiming: node.planTiming } : {}),
     ...(node.verdict !== undefined ? { verdict: node.verdict } : {}),
     ...(node.archived === true ? { archived: true } : {}),
+    ...(node.overdue === true ? { overdue: true } : {}),
     ...(node.backlogged === true ? { backlogged: true } : {}),
     ...(node.isPrivate === true ? { isPrivate: true } : {}),
     ...(node.isBlocked === true ? { blockReasons: ["blocked"] } : {}),
+    ...(node.blockingDependencies !== undefined ? { blockingDependencyIds: node.blockingDependencies } : {}),
     ...(node.isHabitFlow === true ? { flow: HABIT_FLOW } : {}),
     ...(node.isHabitOccurrence === true ? occurrenceRow() : {}),
     ...(node.delegated === true ? { delegate: { kind: "agent" as const } } : {}),

@@ -55,7 +55,7 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
       case "scope":
         return {
           tooltip: t("scope", { value: scopeLabel ?? t("loading") }),
-          icon: <ClockIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} crossedOut={indicator.outOfScope === true} />,
+          icon: <ClockIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} />,
         };
       case "archived":
         return {

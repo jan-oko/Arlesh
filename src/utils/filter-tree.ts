@@ -234,9 +234,17 @@ export function isUnopenedWait(node: MindmapNode, f: FilterState): boolean {
   return !(f.archivedMode === "include" && isArchived(node));
 }
 
-/** Whether a node's effective window is open now: neither still ahead nor passed. An unscoped node,
- * or one with no derived lifecycle, is always in its window. */
-function isInWindow(node: MindmapNode): boolean {
+/**
+ * Whether **Start** reads a node's window as open: neither still ahead nor passed — or passed, but the
+ * node is **Overdue**. An unscoped node, or one with no derived lifecycle, is always in its window.
+ *
+ * Start shows Overdue items (ruled by the user, 2026-09-30): late work is exactly what should be begun
+ * now. The flag is never set on a finished or effectively Archived (Missed) item, and every other reason
+ * to drop out — blocked, backlogged, delegated, a Plan still ahead — is judged on its own. Mirrors
+ * `is_startable_window` in `src-tauri/src/filters/rules.rs`.
+ */
+export function isStartableWindow(node: MindmapNode): boolean {
+  if (node.overdue === true) return true;
   return node.timing !== "pending" && node.timing !== "lapsed";
 }
 
@@ -297,14 +305,55 @@ export function isShelvedProject(node: MindmapNode, f: FilterState): boolean {
   return !(f.archivedMode === "include" && isArchived(node));
 }
 
+/**
+ * Under **Start**, what the blocked ancestors above a node still let through beneath them:
+ * `undefined` while no blocked ancestor stands over it, otherwise the ids it may still show.
+ *
+ * A blocked Task or Goal gates its subtree — it stands in the way of everything under it — **except
+ * its child dependencies**: a descendant it depends on and has not had met is the work that unblocks
+ * it, so the block does not hide it, and that descendant's own subtree comes with it (ruled by the
+ * user, 2026-10-01: "a block from a child dependency does not hide that dependency"). Whatever else
+ * blocks it — an explicit reason, a dependency outside its subtree — still hides everything else.
+ * Mirrors `BlockGate` in `src-tauri/src/filters/rules.rs`.
+ */
+export type BlockGate = ReadonlySet<string> | undefined;
+
+/** Whether `gate` lets `node` through: no gate stands over it, or the gate names it. */
+export function isAdmittedBy(node: MindmapNode, gate: BlockGate): boolean {
+  return gate === undefined || gate.has(node.id);
+}
+
+/**
+ * The gate `node`'s children sit under, given the gate `node` itself sits under. A node the gate
+ * admits lifts it for its whole subtree; a blocked node closes one of its own naming only its unmet
+ * dependencies, narrowed to what an outer gate also names while that outer gate still holds it.
+ * Outside Start nothing is gated. Mirrors `gate_below`.
+ */
+export function gateBelow(node: MindmapNode, gate: BlockGate, f: FilterState): BlockGate {
+  return f.statusMode === "start" ? startGateBelow(gate, node) : undefined;
+}
+
+/** {@link gateBelow} as Start reads it, with no filter to ask — what the List View folds down a row's
+ * chain once, when it builds the row. Argument order suits `reduce`. */
+export function startGateBelow(gate: BlockGate, node: MindmapNode): BlockGate {
+  const inherited = isAdmittedBy(node, gate) ? undefined : gate;
+  if (!isNodeBlocked(node)) return inherited;
+  const own = node.blockingDependencyIds ?? [];
+  return new Set(inherited === undefined ? own : own.filter((id) => inherited.has(id)));
+}
+
+/** Whether Start holds `node` back for a block: blocked itself, or not admitted by a blocked
+ * ancestor's gate. It never matches on its own account, but may still stand as the ancestor of a
+ * child dependency its block lets through. Mirrors `is_held_by_block`. */
+export function isHeldByBlock(node: MindmapNode, gate: BlockGate, f: FilterState): boolean {
+  return f.statusMode === "start" && (isNodeBlocked(node) || !isAdmittedBy(node, gate));
+}
+
 /** Kinds hidden outright (their subtree is removed, not kept as an ancestor). */
 export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   // Outside Private Mode, a private node and everything beneath it are dropped, regardless of kind.
   if (!f.privateMode && node.isPrivate === true) return true;
   if (node.kind === "info" && !f.showInfo) return true;
-  // In Start, a blocked task/goal gates its whole subtree: drop it outright rather than merely
-  // failing its self-match, which would otherwise keep it as an ancestor of a startable descendant.
-  if (f.statusMode === "start" && isNodeBlocked(node)) return true;
   // archivedMode Exclude gates the whole subtree, same as blocked/private above — otherwise an excluded
   // Habit-instance goal with one still-undone (also-excluded) item and one already-`done` item would
   // stay visible anyway, kept as an ancestor of that unrelated, ordinarily-visible done sibling.
@@ -383,13 +432,15 @@ function passesStatus(
       return true;
     case "start": {
       if (node.kind !== "task" && node.kind !== "goal") return true;
-      // Start = things you can begin now: drop anything whose window has passed or has not begun.
-      // (Blocked task/goals are dropped earlier, as a hard-hidden subtree — see typeHardHidden.) A
+      // Start = things you can begin now: drop anything whose window has passed or has not begun —
+      // except an Overdue item, whose passed window is exactly why it should be begun now.
+      // (Blocked task/goals, and what their blocks hold back, are judged by the walk — see
+      // isHeldByBlock.) A
       // window still ahead fails only the node's own match, as a lapsed one and a Plan still ahead do:
       // a child with no window of its own reads its parent's and drops too, while one whose own window
       // is open still shows, holding its parent as an ancestor.
       // A delegated Task drops out with them: nothing someone else holds is yours to start.
-      if (!isInWindow(node) || isDelegated(node)) return withArchivedOverride(node, f, false);
+      if (!isStartableWindow(node) || isDelegated(node)) return withArchivedOverride(node, f, false);
       if (node.kind === "goal") return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? ""));
       return passesStartStatus(node, f);
     }
@@ -476,11 +527,12 @@ export function passesExpectationPreset(node: MindmapNode, f: FilterState): bool
       return true;
     case "plan":
       return isLiveExpectation(node);
-    // A wait whose window has passed, or has not begun, drops out of Start, as a Task's does.
+    // A wait whose window has passed, or has not begun, drops out of Start, as a Task's does —
+    // unless it is Overdue: still pending past its window.
     case "start":
       return isLiveExpectation(node)
         && !(f.startHidesCheckedWaits === true && (node.checkEvery ?? null) !== null)
-        && isInWindow(node);
+        && isStartableWindow(node);
     case "do":
     case "backlog":
       return false;
@@ -551,6 +603,7 @@ function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string
     underBacklog: boolean,
     inheritedPlan: Timing | undefined,
     inheritedTimeScope: TimeScope | undefined,
+    gate: BlockGate,
   ): MindmapNode | null {
     const isExempt = exempt.has(node.id);
     const hardHidden = typeHardHidden(node, f);
@@ -568,12 +621,16 @@ function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string
     const planForChildren = node.kind === "expectation" ? undefined : node.planTiming ?? inheritedPlan;
     // A Time Scope is inherited from the nearest scoped ancestor, as it is everywhere else.
     const timeScopeForChildren = node.timeScope ?? inheritedTimeScope;
+    // Under Start a blocked node gates what lies beneath it, letting only its child dependencies
+    // through; it and everything it holds back can still stand as the ancestors of those.
+    const gateForChildren = gateBelow(node, gate, f);
+    const held = isHeldByBlock(node, gate, f);
     const children: MindmapNode[] = [];
     let hasContentMatch = false;
     for (const child of node.children) {
       // A hard-hidden node is on screen only to carry the focused node: nothing else beneath it returns.
       if (hardHidden && !exempt.has(child.id)) continue;
-      const pruned = prune(child, inheritedForChildren, backlogForChildren, planForChildren, timeScopeForChildren);
+      const pruned = prune(child, inheritedForChildren, backlogForChildren, planForChildren, timeScopeForChildren, gateForChildren);
       if (pruned === null) continue;
       children.push(pruned);
       // A child kept only by the exemption is not a match, so it must not keep its parent either —
@@ -586,7 +643,8 @@ function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string
     }
     // Info is carried by its parent's decision (visibility already handled by typeHardHidden above).
     if (node.kind === "info") return { ...node, children };
-    const matches = selfMatches(node, f, inheritedStatus, underBacklog)
+    const matches = !held
+      && selfMatches(node, f, inheritedStatus, underBacklog)
       && !isPlannedAhead(node, f, inheritedPlan)
       && !isOutsidePlanScope(node, f, inheritedTimeScope);
     if (matches || hasContentMatch) return { ...node, children };
@@ -597,5 +655,5 @@ function pruneTree(root: MindmapNode, f: FilterState, exempt: ReadonlySet<string
     return null;
   }
 
-  return { root: prune(root, UNSET_STATUS, false, undefined, undefined) ?? { ...root, children: [] }, exemptedIds };
+  return { root: prune(root, UNSET_STATUS, false, undefined, undefined, undefined) ?? { ...root, children: [] }, exemptedIds };
 }
