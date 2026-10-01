@@ -79,6 +79,7 @@ export default function ZenView() {
   const showExpectations = useViewStore((s) => s.zenExpectations);
   const badgesSetting = useDisplayStore((s) => s.zenShowBadges);
   const showsStarted = useDisplayStore((s) => s.zenShowsStarted);
+  const showsCompound = useDisplayStore((s) => s.zenShowsCompound);
   const showOverdueBorder = useDisplayStore((s) => s.zenShowOverdueBorder);
   const agenticPills = useListFilterStore((s) => s.filter.pills.agentic);
   const toggleFullscreen = useFullscreenStore((s) => s.toggle);
@@ -110,8 +111,8 @@ export default function ZenView() {
   });
 
   const options = useMemo(
-    () => ({ commitments: showCommitments, expectations: showExpectations, agentic: agenticPills, showsStarted }),
-    [showCommitments, showExpectations, agenticPills, showsStarted],
+    () => ({ commitments: showCommitments, expectations: showExpectations, agentic: agenticPills, showsStarted, showsCompound }),
+    [showCommitments, showExpectations, agenticPills, showsStarted, showsCompound],
   );
   // Keyed on the raw selection, as the List View's is: the exemption has to know what is selected
   // before the filter runs, and it ends with any filter, subtree or strip change.
