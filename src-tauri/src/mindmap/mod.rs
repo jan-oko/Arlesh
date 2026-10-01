@@ -88,6 +88,7 @@ pub async fn load_within(
     lifecycles.extend(derived.lifecycles);
     block_reasons.extend(derived.block_reasons);
     task_dependencies.extend(derived.dependencies);
+    let occurrence_states = derived.compound_states;
     // A wait's rows hang on the Tasks, a Habit's occurrences included. Drawn together with every
     // compound Task's derived status, since each reads the other (see `tasks::compound`):
     // from here on a compound Task's `status` is the one its sub-items give it.
@@ -100,6 +101,7 @@ pub async fn load_within(
             commitments: &commitments,
             expectations: &expectations,
             lifecycles: &mut lifecycles,
+            occurrences: &occurrence_states,
         },
     )
     .await?;

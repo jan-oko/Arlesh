@@ -61,7 +61,7 @@ fn an_iteration_resolves_only_when_every_instance_is_done() {
     let resolved = resolutions(
         &[slot(0, 20), slot(1, 21)],
         &keys,
-        &overlays,
+        (&overlays, &HashSet::new()),
         &HashMap::new(),
     );
     assert_eq!(resolved.len(), 1, "the second iteration has undone items");
@@ -92,7 +92,7 @@ fn a_missed_or_in_progress_instance_does_not_count_as_done() {
     assert!(resolutions(
         &[slot(0, 20), slot(1, 21)],
         &keys,
-        &overlays,
+        (&overlays, &HashSet::new()),
         &HashMap::new()
     )
     .is_empty());
@@ -134,7 +134,12 @@ fn an_archived_root_sets_its_whole_iteration_aside_and_the_iteration_resolves() 
     assert_eq!(aside.len(), 4);
     let mut overlays = HabitOverlays::default();
     overlays.tasks.insert(key_on(root(1), 20, 0), archived());
-    let resolved = resolutions(&[slot(0, 20)], &keys, &overlays, &parents);
+    let resolved = resolutions(
+        &[slot(0, 20)],
+        &keys,
+        (&overlays, &HashSet::new()),
+        &parents,
+    );
     assert_eq!(
         resolved.get(&0).copied(),
         Some(at(21, 2)),
@@ -151,10 +156,22 @@ fn an_archived_occurrence_takes_what_is_nested_under_it_and_nothing_else() {
     let mut overlays = HabitOverlays::default();
     overlays.tasks.insert(key_on(item(5), 20, 7), archived());
     overlays.tasks.insert(key_on(root(1), 20, 0), done_task(5));
-    assert!(resolutions(&[slot(0, 20)], &keys, &overlays, &parents).is_empty());
+    assert!(resolutions(
+        &[slot(0, 20)],
+        &keys,
+        (&overlays, &HashSet::new()),
+        &parents
+    )
+    .is_empty());
     overlays.tasks.insert(key_on(item(5), 20, 8), done_task(9));
     assert_eq!(
-        resolutions(&[slot(0, 20)], &keys, &overlays, &parents).len(),
+        resolutions(
+            &[slot(0, 20)],
+            &keys,
+            (&overlays, &HashSet::new()),
+            &parents
+        )
+        .len(),
         1
     );
 }
@@ -170,7 +187,12 @@ fn an_achieved_goal_counts_and_a_missing_instant_falls_back_to_the_window_end() 
             ..GoalOverlay::default()
         },
     );
-    let resolved = resolutions(&[slot(0, 20)], &keys, &overlays, &HashMap::new());
+    let resolved = resolutions(
+        &[slot(0, 20)],
+        &keys,
+        (&overlays, &HashSet::new()),
+        &HashMap::new(),
+    );
     assert_eq!(resolved.get(&0).copied(), Some(at(21, 2)));
 }
 
@@ -517,4 +539,126 @@ fn block_reasons_travel_in_order_under_their_owner() {
     assert_eq!(out[1].position, 1);
     assert_eq!(out[1].owner_type, "task");
     assert_eq!(out[1].owner_id, id);
+}
+
+#[test]
+fn an_iteration_does_not_wait_on_a_compound_occurrence() {
+    let keys = vec![
+        (root(1), NO_CYCLE),
+        (item(5), NO_CYCLE),
+        (item(6), NO_CYCLE),
+    ];
+    let mut overlays = HabitOverlays::default();
+    overlays.tasks.insert(key_on(root(1), 20, 0), done_task(10));
+    overlays.tasks.insert(key_on(item(6), 20, 0), done_task(30));
+    let compound = HashSet::from([5]);
+
+    let resolved = resolutions(
+        &[slot(0, 20)],
+        &keys,
+        (&overlays, &compound),
+        &HashMap::new(),
+    );
+    assert_eq!(
+        resolved.get(&0).copied(),
+        chrono::DateTime::from_timestamp_millis(30).map(|at| at.naive_utc()),
+        "item 5 is compound, so the iteration resolves on the others"
+    );
+    assert!(
+        resolutions(
+            &[slot(0, 20)],
+            &keys,
+            (&overlays, &HashSet::new()),
+            &HashMap::new()
+        )
+        .is_empty(),
+        "not compound, item 5 is still owed"
+    );
+}
+
+#[test]
+fn an_occurrences_own_compound_flag_decides_whether_its_iteration_waits_on_it() {
+    let keys = vec![(root(1), NO_CYCLE), (item(5), NO_CYCLE)];
+    let mut overlays = HabitOverlays::default();
+    overlays.tasks.insert(key_on(root(1), 20, 0), done_task(10));
+    overlays.tasks.insert(
+        key_on(item(5), 20, 0),
+        TaskOverlay {
+            compound: Some(false),
+            ..TaskOverlay::default()
+        },
+    );
+    let compound = HashSet::from([5]);
+    assert!(
+        resolutions(
+            &[slot(0, 20)],
+            &keys,
+            (&overlays, &compound),
+            &HashMap::new()
+        )
+        .is_empty(),
+        "switched off on the occurrence, it is waited on like any instance"
+    );
+
+    overlays.tasks.insert(
+        key_on(item(5), 20, 0),
+        TaskOverlay {
+            compound: Some(true),
+            ..TaskOverlay::default()
+        },
+    );
+    assert_eq!(
+        resolutions(
+            &[slot(0, 20)],
+            &keys,
+            (&overlays, &HashSet::new()),
+            &HashMap::new()
+        )
+        .len(),
+        1,
+        "switched on on the occurrence alone, it is not"
+    );
+}
+
+#[test]
+fn a_compound_occurrences_lifecycle_reads_completed_or_missed_by_its_derived_done() {
+    let lapsed = LifecycleRule {
+        timing: InstanceTiming::Lapsed,
+        closes_when_done: false,
+        expired: false,
+        tombstoned: false,
+        held: false,
+    };
+    let done = lapsed.state(true, false, None, at(22, 12));
+    assert_eq!(done.resolution, Some(Resolution::Completed));
+    assert_eq!(done.archival, Archival::Archived);
+    let open = lapsed.state(false, false, None, at(22, 12));
+    assert_eq!(open.resolution, Some(Resolution::Missed));
+
+    let active = LifecycleRule {
+        timing: InstanceTiming::Active,
+        closes_when_done: true,
+        ..lapsed
+    };
+    let due = Some((at(20, 2), at(21, 2)));
+    let finished = active.state(true, false, due, at(22, 12));
+    assert_eq!(
+        finished.resolution,
+        Some(Resolution::Completed),
+        "done in a window that has passed settles it"
+    );
+    assert!(!finished.overdue, "done is never overdue");
+    let late = active.state(false, false, due, at(22, 12));
+    assert_eq!(late.timing, Timing::Active);
+    assert!(late.overdue, "open past its due is overdue");
+
+    let held = LifecycleRule {
+        held: true,
+        ..active
+    };
+    assert_eq!(
+        held.state(false, false, None, at(22, 12)).archival,
+        Archival::Archived,
+        "an archive above it holds it"
+    );
 }

@@ -151,11 +151,17 @@ dependencies — all but the **delegate**, which a template and an occurrence ca
 offers to change yet (ruled by the user, 2026-09-24). An occurrence's own Task editor keeps the one
 delegate control every Task has, "Delegate to agent", which writes that occurrence alone.
 
-An Expectation template (the wait an Asynchronous Task spawns) is not part of a Habit template. An
-**occurrence** can carry one of its own, as a stored Task does (migration 0062,
-`occurrence_async_templates`): while the occurrence is Asynchronous and done, the wait it spawned is
-an Expectation row beneath it (`origin` `spawned_wait`), its state in `occurrence_spawned_waits` and
-its checks in `wait_checks` under the occurrence's node key.
+A **flow Task item** also carries the two Task fields that came later (migration 0090, Task 611):
+**Compound** (`flow_tasks.compound`) and the **Expectation template** an Asynchronous Task spawns its
+wait from (`flow_task_async_templates`), both set in the flow item's editor. A Flow root and a flow
+Goal item carry neither. An occurrence reads the flag from its overlay's `compound` (NULL inherits),
+and the template **whole**: an **occurrence** can carry one of its own, as a stored Task does
+(migration 0062, `occurrence_async_templates`); with no such row, its overlay's
+`async_template_set` overrides it to none at all, and unset, it reads its item's. While the occurrence is
+Asynchronous and done, the wait it spawned is an Expectation row beneath it (`origin`
+`spawned_wait`), its state in `occurrence_spawned_waits` and its checks in `wait_checks` under the
+occurrence's node key — drawn from whichever template it reads. A compound occurrence spawns none,
+as a compound Task does not (see *Compound* in [Resources](resources.md#compound)).
 
 **Changing an item's cycle pairs keeps every pair that survives.** A pair whose Cycle Scope is still
 there keeps its id, so its occurrences keep what they recorded. A change that would drop a pair some

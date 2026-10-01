@@ -301,7 +301,9 @@ impl WaitRows {
         let Some(habit) = task.origin.habit() else {
             return Ok(());
         };
-        if !task.asynchronous || task.status != "done" {
+        // A compound occurrence is never done by hand, so it spawns no wait, as a compound Task
+        // does not.
+        if !task.asynchronous || task.status != "done" || task.compound {
             return Ok(());
         }
         let key = occurrence_key(habit);

@@ -65,3 +65,48 @@ fn template_fields_default_to_what_a_template_said_before_it_had_them() {
         "no issue is sent as no field"
     );
 }
+
+#[test]
+fn compound_and_a_wait_template_are_a_flow_task_items_alone() {
+    let compound = TemplateUpdate {
+        compound: Some(true),
+        ..TemplateUpdate::default()
+    };
+    let template = TemplateUpdate {
+        async_template: Some(None),
+        ..TemplateUpdate::default()
+    };
+    for update in [compound, template] {
+        assert!(update.touches_flow_task_columns());
+        assert!(
+            update.touches_task_columns(),
+            "a goal template is refused them too"
+        );
+    }
+    assert!(!TemplateUpdate {
+        asynchronous: Some(true),
+        ..TemplateUpdate::default()
+    }
+    .touches_flow_task_columns());
+}
+
+#[test]
+fn a_template_update_reads_null_as_removing_the_wait_template() {
+    let removed: TemplateUpdate = serde_json::from_str(r#"{"async_template": null}"#).unwrap();
+    assert_eq!(removed.async_template, Some(None));
+    let untouched: TemplateUpdate = serde_json::from_str("{}").unwrap();
+    assert_eq!(untouched.async_template, None);
+    assert_eq!(untouched.compound, None);
+}
+
+#[test]
+fn a_durations_columns_round_trip() {
+    let spec = DurationSpec {
+        n: 3,
+        kind: "week".into(),
+    };
+    let (n, kind) = duration_columns(Some(&spec));
+    assert_eq!(duration(n, kind.map(str::to_string)), Some(spec));
+    assert_eq!(duration_columns(None), (None, None));
+    assert_eq!(duration(Some(1), None), None);
+}

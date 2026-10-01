@@ -76,6 +76,11 @@ pub struct TaskOverlay {
     pub due_scope_start_id: Option<ScopeKey>,
     /// Its own explicit due's end boundary scope.
     pub due_scope_end_id: Option<ScopeKey>,
+    /// Its own Compound flag; `None` reads its flow Task item's.
+    pub compound: Option<bool>,
+    /// Whether its wait template is its own — its `occurrence_async_templates` row, or with none,
+    /// no template at all — rather than its flow Task item's.
+    pub async_template_set: bool,
 }
 
 impl TaskOverlay {
@@ -239,7 +244,7 @@ const TASK_COLUMNS: &str = "status, resolved_at, tombstone, title, plan_start_id
      plan_set, delegate_kind, delegate_id, delegate_set, agentic, agentic_set, asynchronous, \
      archival, is_private, beads_id, beads_id_set, position, block_reasons_set, brief_priority, \
      brief_priority_set, brief_spec, brief_design, brief_acceptance, brief_notes, \
-     due_scope_start_id, due_scope_end_id";
+     due_scope_start_id, due_scope_end_id, compound, async_template_set";
 const GOAL_COLUMNS: &str =
     "status, resolved_at, tombstone, title, is_private, beads_id, beads_id_set, position, \
      block_reasons_set";
@@ -389,9 +394,9 @@ impl<'session> OverlayOperator<'session> {
                  delegate_kind, delegate_id, delegate_set, agentic, agentic_set, asynchronous,
                  archival, is_private, beads_id, beads_id_set, position, block_reasons_set,
                  brief_priority, brief_priority_set, brief_spec, brief_design, brief_acceptance,
-                 brief_notes, due_scope_start_id, due_scope_end_id)
+                 brief_notes, due_scope_start_id, due_scope_end_id, compound, async_template_set)
              VALUES ('habit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                     ?, ?, ?, ?, ?, ?, ?, ?)
+                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(node_key) DO UPDATE SET
                 status = excluded.status, resolved_at = excluded.resolved_at,
                 tombstone = excluded.tombstone, title = excluded.title,
@@ -408,7 +413,9 @@ impl<'session> OverlayOperator<'session> {
                 brief_spec = excluded.brief_spec, brief_design = excluded.brief_design,
                 brief_acceptance = excluded.brief_acceptance, brief_notes = excluded.brief_notes,
                 due_scope_start_id = excluded.due_scope_start_id,
-                due_scope_end_id = excluded.due_scope_end_id",
+                due_scope_end_id = excluded.due_scope_end_id,
+                compound = excluded.compound,
+                async_template_set = excluded.async_template_set",
         )
         .bind(flow_id)
         .bind(key.item.item_type.as_str())
@@ -442,6 +449,8 @@ impl<'session> OverlayOperator<'session> {
         .bind(&overlay.brief_notes)
         .bind(overlay.due_scope_start_id)
         .bind(overlay.due_scope_end_id)
+        .bind(overlay.compound)
+        .bind(overlay.async_template_set)
         .execute(&mut *self.connection)
         .await?;
         Ok(())

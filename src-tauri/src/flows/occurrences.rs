@@ -48,9 +48,10 @@ use crate::{
     },
     scopes::{key::ScopeKey, resolve::Bounds},
     tasks::{
+        compound::OccurrenceStates,
         lifecycle::{
-            derive_commitment_state, derive_overdue, derive_timing, Archival, ItemLifecycle,
-            Resolution, Timing,
+            derive_commitment_state, derive_overdue, derive_timing, Archival, DerivedState,
+            ItemLifecycle, Resolution, Timing,
         },
         model::{
             Commitment, Delegate, DurationSpec, Goal, OnScopeExit, Task, TaskArchival,
@@ -82,6 +83,10 @@ pub struct DerivedRows {
     /// The dependency edges the template's own wiring draws between one iteration's occurrences,
     /// less any an occurrence removed.
     pub dependencies: Vec<TaskDependencyEdge>,
+    /// What each **compound** Task occurrence's lifecycle reads as, Done or not, by its Habit's
+    /// rules: its status is derived from its subtree in the board load, after these rows exist,
+    /// and the load picks the one its derived status calls for (see [`crate::tasks::compound`]).
+    pub compound_states: HashMap<NodeId, OccurrenceStates>,
 }
 
 impl DerivedRows {
@@ -93,6 +98,7 @@ impl DerivedRows {
         self.lifecycles.extend(other.lifecycles);
         self.block_reasons.extend(other.block_reasons);
         self.dependencies.extend(other.dependencies);
+        self.compound_states.extend(other.compound_states);
     }
 }
 
@@ -446,10 +452,12 @@ async fn schedule<M: SessionMode>(
         });
     let template_keys = instance_keys(db, flow).await?;
     let parents = occurrence_parents(db, FlowId(flow.id), &template_keys).await?;
+    let compound = compound_items(&db.flows().list_tasks(FlowId(flow.id)).await?);
     let completions = Completions {
         keys: &template_keys,
         overlays,
         parents: &parents,
+        compound: &compound,
     };
     let slots = clock_slots(flow, recurrence, clock, furthest, |slot| {
         completions.completed_at(slot)
@@ -487,12 +495,19 @@ pub(super) struct Completions<'a> {
     pub(super) overlays: &'a HabitOverlays,
     /// Each instance's parent instance.
     pub(super) parents: &'a HashMap<InstanceKey, InstanceKey>,
+    /// The flow Task items marked Compound.
+    pub(super) compound: &'a HashSet<i64>,
 }
 
 impl Completions<'_> {
     /// Each of `slots` that is complete, with the instant it was — see [`resolutions`].
     pub(super) fn resolutions(&self, slots: &[SlotWindow]) -> HashMap<i64, NaiveDateTime> {
-        resolutions(slots, self.keys, self.overlays, self.parents)
+        resolutions(
+            slots,
+            self.keys,
+            (self.overlays, self.compound),
+            self.parents,
+        )
     }
 
     /// The instant the iteration in `slot` was completed, or `None` while it is not.
@@ -512,6 +527,8 @@ pub(super) struct CompletionInputs {
     pub(super) overlays: HabitOverlays,
     /// Each instance's parent instance.
     pub(super) parents: HashMap<InstanceKey, InstanceKey>,
+    /// The flow Task items marked Compound.
+    pub(super) compound: HashSet<i64>,
 }
 
 impl CompletionInputs {
@@ -521,6 +538,7 @@ impl CompletionInputs {
             keys: &self.keys,
             overlays: &self.overlays,
             parents: &self.parents,
+            compound: &self.compound,
         }
     }
 
@@ -533,6 +551,33 @@ impl CompletionInputs {
     pub(super) fn completed_at(&self, slot: &SlotWindow) -> Option<NaiveDateTime> {
         self.completions().completed_at(slot)
     }
+}
+
+/// The flow Task items among `tasks` marked Compound — whose occurrences their iteration does not
+/// wait on, unless an occurrence switched it off (see [`resolutions`]).
+pub(super) fn compound_items(tasks: &[FlowTask]) -> HashSet<i64> {
+    tasks
+        .iter()
+        .filter(|task| task.template.compound)
+        .map(|task| task.id)
+        .collect()
+}
+
+/// Whether the occurrence of `item` under `node_key` is compound: its overlay's own flag, or its
+/// flow Task item's.
+fn is_compound(
+    overlays: &HabitOverlays,
+    compound: &HashSet<i64>,
+    item: TemplateItem,
+    node_key: &str,
+) -> bool {
+    overlays
+        .tasks
+        .get(node_key)
+        .and_then(|overlay| overlay.compound)
+        .unwrap_or_else(|| {
+            item.item_type == TemplateKind::FlowTask && compound.contains(&item.item_id)
+        })
 }
 
 /// Every instance one iteration holds, as `(template item, cycle pair)`: the root, then each item
@@ -572,10 +617,14 @@ async fn instance_keys<M: SessionMode>(
 /// Maps each started slot to the instant its iteration was completed — present only when every
 /// one of its instances is done and none is tombstoned. A root Commitment is never *done*: a
 /// verdict is an answer, not a completion.
+///
+/// A **compound** occurrence is not waited on: its status is drawn from its subtree, whose
+/// template-derived part are instances this already waits on, and whose hung-on part never
+/// withholds an iteration (`docs/spec/habits.md`, "Iteration resolution").
 pub(super) fn resolutions(
     slots: &[SlotWindow],
     keys: &[InstanceKey],
-    overlays: &HabitOverlays,
+    (overlays, compound): (&HabitOverlays, &HashSet<i64>),
     parents: &HashMap<InstanceKey, InstanceKey>,
 ) -> HashMap<i64, NaiveDateTime> {
     let mut resolved = HashMap::new();
@@ -605,6 +654,9 @@ pub(super) fn resolutions(
                 cycle: *cycle,
             }
             .node_key();
+            if is_compound(overlays, compound, *item, &node_key) {
+                continue;
+            }
             let done_at = overlays
                 .tasks
                 .get(&node_key)
@@ -916,14 +968,38 @@ fn build_iteration(
                 let overlay = overlays.tasks.get(&node_key).cloned().unwrap_or_default();
                 let reasons = reasons_of(overlay.block_reasons_set);
                 let default = occurrence.due;
+                let rule = LifecycleRule {
+                    timing: occurrence.timing,
+                    closes_when_done: occurrence.closes_when_done,
+                    expired,
+                    tombstoned: overlay.tombstone.is_some(),
+                    held: aside.contains(&node_key),
+                };
+                let own_template = overlay.async_template_set;
+                let item_template = occurrence.fields.async_template.clone();
                 let (mut task, mut lifecycle) = task_row(occurrence, overlay, clock, expired);
                 archive_if_held(&mut lifecycle, &aside, &node_key);
                 let due = occurrence_due(&task, default);
                 lifecycle.overdue =
                     derive_overdue(due, task.status == "done", lifecycle.archival, now);
-                // Its own Expectation template, kept only while it is Asynchronous.
+                // Its Expectation template, kept only while it is Asynchronous: its own when it
+                // has one — or, overridden with none, no template — and otherwise its item's.
                 if task.asynchronous {
-                    task.async_template = overlays.async_templates.get(&node_key).cloned();
+                    task.async_template = match overlays.async_templates.get(&node_key) {
+                        Some(own) => Some(own.clone()),
+                        None if own_template => None,
+                        None => item_template,
+                    };
+                }
+                if task.compound {
+                    let backlogged = task.archival == TaskArchival::Backlog;
+                    rows.compound_states.insert(
+                        task.id.clone(),
+                        OccurrenceStates {
+                            done: rule.state(true, backlogged, due, now),
+                            open: rule.state(false, backlogged, due, now),
+                        },
+                    );
                 }
                 if let Some(plan) = &task.plan {
                     lifecycle.plan_timing = Some(derive_timing(Some(plan.window()), now));
@@ -936,6 +1012,49 @@ fn build_iteration(
         }
     }
     Ok(rows)
+}
+
+/// What a Task occurrence's lifecycle is worked out from besides whether it is done — kept for a
+/// **compound** occurrence, whose Done is only known once the board load has derived it.
+#[derive(Debug, Clone, Copy)]
+struct LifecycleRule {
+    timing: InstanceTiming,
+    closes_when_done: bool,
+    expired: bool,
+    tombstoned: bool,
+    /// Whether an archive holds it — see [`held_by_an_archive`].
+    held: bool,
+}
+
+impl LifecycleRule {
+    /// Its lifecycle, Done or not, exactly as [`task_row`] and the caller would derive it.
+    fn state(
+        self,
+        done: bool,
+        backlogged: bool,
+        due: Option<Bounds>,
+        now: NaiveDateTime,
+    ) -> DerivedState {
+        let mut lifecycle = work_lifecycle(
+            "task",
+            NodeId::Stored(0),
+            settled_timing(self.timing, done, self.closes_when_done),
+            done,
+            self.expired,
+            self.tombstoned,
+            backlogged,
+        );
+        if self.held {
+            lifecycle.archival = Archival::Archived;
+        }
+        DerivedState {
+            timing: lifecycle.timing,
+            resolution: lifecycle.resolution,
+            overdue: derive_overdue(due, done, lifecycle.archival, now),
+            archival: lifecycle.archival,
+            archival_conflict: lifecycle.archival_conflict,
+        }
+    }
 }
 
 /// Whether an iteration is **owed** work: under Window + Owed, its window has passed and it is
@@ -1190,8 +1309,8 @@ fn task_row(
         asynchronous: overlay
             .asynchronous
             .unwrap_or(occurrence.fields.asynchronous),
-        // Only a stored Task carries Compound; an occurrence keeps its own status.
-        compound: false,
+        // Its flow Task item's Compound, under its own; a Flow root has none.
+        compound: overlay.compound.unwrap_or(occurrence.fields.compound),
         async_template: None,
         // The template's brief, field by field, under the occurrence's own.
         agentic_brief: overlay.brief_over(occurrence.fields.agentic_brief.as_ref()),

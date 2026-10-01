@@ -266,10 +266,22 @@ pub async fn update_task(
     let template = template_values(db, &flow, key, iteration_index(&current.origin)).await?;
     let mut overlay = db.overlays().task(key).await?;
 
+    // A compound occurrence's status is derived from its sub-items, as a compound Task's is: a
+    // status is refused, unless the same request switches compound off, when the status it names
+    // (the derived one, which `nodes::write` names when the caller does not) is the one kept.
+    let releases = current.compound && request.compound == Some(false);
+    if current.compound && !releases && request.status.is_some() {
+        return Err(crate::tasks::error::TaskError::CompoundOccurrenceStatus.into());
+    }
+    if let Some(compound) = request.compound {
+        overlay.compound = (compound != template.fields.compound).then_some(compound);
+    }
+
     // Starting an occurrence that reads as Agentic needs a Spec, exactly as starting a stored Task
     // does — Agentic resolved by the one resolver the app's tree agrees with: its own value, its
-    // template tree, then the Habit's host.
-    if request.status.as_ref().is_some_and(TaskStatus::is_begun)
+    // template tree, then the Habit's host. Keeping a compound's derived status is not a start.
+    if !releases
+        && request.status.as_ref().is_some_and(TaskStatus::is_begun)
         && !TaskStatus::is_begun_str(&current.status)
     {
         let agentic = match request.agentic.map(|agentic| agentic.as_column()) {
@@ -294,8 +306,9 @@ pub async fn update_task(
     }
     if let Some(status) = &request.status {
         apply_task_status(&mut overlay, status, now);
-        // Begun work is not work set aside — the same rule a stored Task follows.
-        if status.is_begun() && request.archival.is_none() {
+        // Begun work is not work set aside — the same rule a stored Task follows. Keeping a
+        // compound's derived status begins nothing.
+        if status.is_begun() && request.archival.is_none() && !releases {
             overlay.archival = (template.fields.archival != TaskArchival::Live)
                 .then(|| TaskArchival::Live.as_str().to_string());
         }
@@ -369,21 +382,29 @@ pub async fn update_task(
         overlay.is_private = (is_private != template.is_private).then_some(is_private);
     }
     // An occurrence's own Expectation template, kept — as a stored Task's is — only while the
-    // occurrence is Asynchronous.
+    // occurrence is Asynchronous. One the same as its item's goes back to reading the item's; any
+    // other — none included — is its own.
     let asynchronous = overlay.asynchronous.unwrap_or(template.fields.asynchronous);
     let node_key = key.node_key();
-    match (asynchronous, async_template) {
+    let own_template = match (asynchronous, async_template) {
         (false, _) => {
-            db.overlays()
-                .put_async_template(flow_id.0, &node_key, None)
-                .await?
+            overlay.async_template_set = false;
+            Some(None)
+        }
+        (true, Some(wanted)) if wanted == template.fields.async_template => {
+            overlay.async_template_set = false;
+            Some(None)
         }
         (true, Some(wanted)) => {
-            db.overlays()
-                .put_async_template(flow_id.0, &node_key, wanted.as_ref())
-                .await?
+            overlay.async_template_set = true;
+            Some(wanted)
         }
-        (true, None) => {}
+        (true, None) => None,
+    };
+    if let Some(own) = own_template {
+        db.overlays()
+            .put_async_template(flow_id.0, &node_key, own.as_ref())
+            .await?;
     }
     db.overlays().put_task(flow_id.0, key, &overlay).await?;
     Ok(())

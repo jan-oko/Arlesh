@@ -2404,9 +2404,11 @@ impl<'session> FlowOperator<'session> {
         let overlays = OverlayOperator::new(&mut *self.connection)
             .for_habit(flow_id.0)
             .await?;
+        let tasks = self.list_tasks(flow_id).await?;
+        let compound = occurrences::compound_items(&tasks);
         let template = (
             self.list_goals(flow_id).await?,
-            self.list_tasks(flow_id).await?,
+            tasks,
             self.cycles_by_item(flow_id).await?,
         );
         let parents = occurrences::occurrence_parents_of(flow_id, template, &keys);
@@ -2414,6 +2416,7 @@ impl<'session> FlowOperator<'session> {
             keys,
             overlays,
             parents,
+            compound,
         })
     }
 
@@ -3821,8 +3824,9 @@ pub async fn start(
 }
 
 /// Copies what a template says about the rows it draws onto one row a start just made: a Task's
-/// delegate, Agentic and Asynchronous flags and Backlog, and every kind's tags, block reasons and
-/// beads id — so a started flow's copy is the template, not merely its title.
+/// delegate, Agentic, Asynchronous and Compound flags, wait template and Backlog, and every kind's
+/// tags, block reasons and beads id — so a started flow's copy is the template, not merely its
+/// title. The copy is the Task's own: a later edit to the template changes nothing started.
 async fn apply_template_fields(
     db: &mut Db<Transactional>,
     node_type: &str,
@@ -3844,6 +3848,9 @@ async fn apply_template_fields(
                         archival: Some(fields.archival),
                         // A started Flow's Task carries its template's brief as its own.
                         agentic_brief: Some(fields.agentic_brief.clone()),
+                        // And a flow Task item's Compound flag and wait template (Task 611).
+                        compound: Some(fields.compound),
+                        async_template: Some(fields.async_template.clone()),
                         ..Default::default()
                     },
                 )

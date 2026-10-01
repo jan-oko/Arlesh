@@ -387,7 +387,8 @@ pub struct Task {
     pub asynchronous: bool,
     /// Whether this task **consists of its sub-items**: its status is derived from its whole
     /// subtree on every board load (see [`crate::tasks::compound`]) and never set by hand. A
-    /// plain flag that does not inherit. Stored Tasks only. While it is on, [`Self::status`] as a
+    /// plain flag that does not inherit. A stored Task's own, or a Habit occurrence's, drawn from
+    /// its flow Task item under its overlay. While it is on, [`Self::status`] as a
     /// board load serves it is the derived status; as read straight from the row it is whatever
     /// the column last held.
     #[serde(default)]

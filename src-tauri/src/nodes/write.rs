@@ -10,7 +10,7 @@ use chrono::NaiveDateTime;
 
 use super::{
     id::{DerivedId, NodeId},
-    key::{DerivedKey, OccurrenceKey},
+    key::{DerivedKey, OccurrenceKey, TemplateKind},
     relations::Endpoint,
     table::{resolve_key, resolve_occurrence},
     wait_edit,
@@ -246,7 +246,13 @@ pub async fn update_task(
 ) -> Result<Task, AppError> {
     let derived = match id {
         NodeId::Stored(id) => {
-            crate::tasks::compound::keep_derived_status(db, TaskId(*id), &mut request, now).await?;
+            crate::tasks::compound::keep_derived_status(
+                db,
+                &NodeId::Stored(*id),
+                &mut request,
+                now,
+            )
+            .await?;
             let moved = move_stored(
                 db,
                 "task",
@@ -271,12 +277,20 @@ pub async fn update_task(
         }
         NodeId::Derived(derived) => derived,
     };
-    // Only a stored Task carries Compound; switching it off on a derived row asks nothing.
-    if request.compound == Some(true) {
-        return Err(crate::tasks::error::TaskError::CompoundOnDerived.into());
-    }
     let key = match resolve_key(db, derived, now).await? {
-        DerivedKey::Occurrence(key) => key,
+        // An occurrence of a flow Task item reads Compound from its item, and may say otherwise;
+        // an iteration's root has no item to read it from. Switching it off asks nothing.
+        DerivedKey::Occurrence(key) => {
+            if request.compound == Some(true) && key.item.item_type != TemplateKind::FlowTask {
+                return Err(crate::tasks::error::TaskError::CompoundOnDerived.into());
+            }
+            crate::tasks::compound::keep_derived_status(db, id, &mut request, now).await?;
+            key
+        }
+        // A check task's status is the check itself.
+        DerivedKey::Check(_) if request.compound == Some(true) => {
+            return Err(crate::tasks::error::TaskError::CompoundOnDerived.into());
+        }
         DerivedKey::Check(check) => {
             wait_edit::update_check_task(db, &check, request, now).await?;
             return wait_edit::check_row(db, &check, now).await;
