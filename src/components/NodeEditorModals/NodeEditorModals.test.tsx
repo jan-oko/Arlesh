@@ -71,7 +71,6 @@ function editorOn(node: MindmapNode): NodeEditorHandles {
     onSimpleSave: vi.fn(() => resolved),
     onProjectSave: vi.fn(() => resolved),
     onInfoSave: vi.fn(() => resolved),
-    onClearBeadsId: vi.fn(() => resolved),
     onFlowSave: vi.fn(() => resolved),
     onFlowItemSave: vi.fn(() => resolved),
     checkScopeClamp: vi.fn(() => Promise.resolve(true)),

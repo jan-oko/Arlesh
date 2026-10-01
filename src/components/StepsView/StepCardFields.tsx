@@ -99,8 +99,6 @@ export default function StepCardFields({ node, fields }: Props) {
         return node.knowledgeBaseDirectory ?? "";
       case "instanceType":
         return t(`nodeKinds:${node.flow?.instanceType ?? "task"}`);
-      case "beadsId":
-        return node.beadsId ?? "";
       case "tags":
         return node.tagIds.map((id) => tagNames.get(id) ?? `#${id}`).join(TAG_SEPARATOR);
     }

@@ -5,7 +5,6 @@ import type { NodeEditorHandles } from "@/components/MindmapView/use-node-editor
 import { findParent } from "@/utils/mindmap-tree";
 import { allFlowItemNodes, flowTargetNodes, targetSelectionFor } from "@/utils/flow-target";
 import { hasNodeEditor } from "@/utils/node-meta";
-import { BEADS_NODE_TYPE } from "@/api/beads";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import GoalEditorModal from "@/components/GoalEditorModal/GoalEditorModal";
 import CommitmentEditorModal from "@/components/CommitmentEditorModal/CommitmentEditorModal";
@@ -45,7 +44,7 @@ export default function NodeEditorModals({ tree, editor }: Props) {
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep,
     onTaskSave, onGoalSave, onCommitmentSave, onExpectationSave, onSimpleSave, onProjectSave, onInfoSave,
-    onClearBeadsId, onFlowSave, onFlowItemSave, checkScopeClamp,
+    onFlowSave, onFlowItemSave, checkScopeClamp,
   } = editor;
 
   const flowTargets = useMemo(() => flowTargetNodes(tree), [tree]);
@@ -71,7 +70,7 @@ export default function NodeEditorModals({ tree, editor }: Props) {
       return (
         <TaskEditorModal
           node={node} allTags={allTags} domainNames={domainNames} availableForDep={availableForDep}
-          onSave={onTaskSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.TASK)}
+          onSave={onTaskSave}
           onCheckScopeClamp={checkScopeClamp} openAtTemplate={editorModal.focus === "asyncTemplate"}
           onClose={close}
         />
@@ -80,7 +79,7 @@ export default function NodeEditorModals({ tree, editor }: Props) {
       return (
         <GoalEditorModal
           node={node} allTags={allTags} domainNames={domainNames}
-          onSave={onGoalSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.GOAL)}
+          onSave={onGoalSave}
           onCheckScopeClamp={checkScopeClamp} onClose={close}
         />
       );
@@ -88,7 +87,7 @@ export default function NodeEditorModals({ tree, editor }: Props) {
       return (
         <CommitmentEditorModal
           node={node} allTags={allTags} domainNames={domainNames}
-          onSave={onCommitmentSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.COMMITMENT)}
+          onSave={onCommitmentSave}
           onClose={close}
         />
       );
@@ -115,8 +114,7 @@ export default function NodeEditorModals({ tree, editor }: Props) {
     case "project":
       return (
         <ProjectEditorModal
-          node={node} onSave={onProjectSave}
-          onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.PROJECT)} onClose={close}
+          node={node} onSave={onProjectSave} onClose={close}
         />
       );
     case "info":

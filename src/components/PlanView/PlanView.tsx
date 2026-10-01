@@ -21,7 +21,6 @@ import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
-import { BEADS_NODE_TYPE } from "@/api/beads";
 import type { FilterState } from "@/utils/filter-tree";
 import { PLAN_VIEW_STATUS_MODE } from "@/utils/filter-tree";
 import type { TaskListRow } from "@/utils/list-filter";
@@ -97,7 +96,7 @@ export default function PlanView() {
 
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick, onTaskSave,
-    onClearBeadsId, checkScopeClamp,
+    checkScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, reload });
 
   // The view always reads under the **Plan** preset, whatever the tab's is: it is read as Plan here
@@ -566,7 +565,6 @@ export default function PlanView() {
           domainNames={domainNames}
           availableForDep={availableForDep}
           onSave={onTaskSave}
-          onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.TASK)}
           onCheckScopeClamp={checkScopeClamp}
           onClose={() => setEditorModal(null)}
         />

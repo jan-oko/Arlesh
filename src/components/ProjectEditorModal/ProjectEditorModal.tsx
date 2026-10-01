@@ -5,9 +5,7 @@ import { getErrorMessage } from "@/api/errors";
 import { withAtomicGesture } from "@/api/gesture";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
-import BeadsIdField from "@/components/EditorModal/BeadsIdField";
 import { useInputCapture } from "@/hooks/use-input-capture";
-import { useBeadsIdClear } from "@/hooks/use-beads-id-clear";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { PROJECT_STATUS } from "@/utils/status-mapping";
 
@@ -23,14 +21,10 @@ const PROJECT_STATUSES = Object.values(PROJECT_STATUS);
 interface Props {
   node: MindmapNode;
   onSave: (data: ProjectSaveData) => Promise<void>;
-  /** Drops the node's `bd` issue link. Called by Save once the row's × has staged the drop, never
-   * by the × itself, so Cancel discards it like any other unsaved field. Omitted — as on the blank
-   * node a create path opens, which has no link to drop — the Issue row stays wholly read-only. */
-  onClearBeadsId?: (() => Promise<void>) | undefined;
   onClose: () => void;
 }
 
-export default function ProjectEditorModal({ node, onSave, onClearBeadsId, onClose }: Props) {
+export default function ProjectEditorModal({ node, onSave, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "status", "undo"]);
   const [title, setTitle] = useState(node.title);
@@ -39,7 +33,6 @@ export default function ProjectEditorModal({ node, onSave, onClearBeadsId, onClo
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const beadsClear = useBeadsIdClear(onClearBeadsId);
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
@@ -49,13 +42,8 @@ export default function ProjectEditorModal({ node, onSave, onClearBeadsId, onClo
     setIsSaving(true);
     setSaveError(null);
     try {
-      // One Gesture, all or nothing: the beads clear and the update are two commands but one thing
-      // the user filled in, so they are one Ctrl+Z — and a refusal partway takes back the one that
-      // landed rather than leaving a form half-applied.
+      // One Gesture, so the save is one Ctrl+Z however many commands the update takes.
       await withAtomicGesture(t("undo:gestures.editProject"), async () => {
-        // Before the update, not after: a refused clear then leaves the node exactly as it was,
-        // rather than half-saved, and the refusal reaches the save error line below the fields.
-        await beadsClear.commitClear();
         await onSave({ title: title.trim(), status, knowledgeBaseDirectory: kbDir.trim(), isPrivate });
       });
     } catch (err) {
@@ -75,7 +63,6 @@ export default function ProjectEditorModal({ node, onSave, onClearBeadsId, onClo
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
       </label>
-      <BeadsIdField beadsId={node.beadsId} isCleared={beadsClear.isCleared} onClear={beadsClear.stageClear} />
       <div className={styles.label}>
         {t("fieldStatus")}
         <div className={styles.statusPills}>

@@ -306,9 +306,6 @@ export interface MindmapNode {
   flowItem?: FlowItemData;
   /** Whether this node is marked private — hidden (with its subtree) outside Private Mode. */
   isPrivate?: boolean;
-  /** The `bd` issue this Task, Goal or Project is tracked as; absent when it is tracked as none.
-   * Read-only in this app — only the MCP server writes it. */
-  beadsId?: string;
   /** Present when the MCP can see this node: the title of the MCP root it is seen through. Set on
    * load from the backend's own resolution (`list_mcp_access`), never persisted; a derived node
    * takes its nearest stored ancestor's. See docs/spec/mcp-server.md, "Access". */

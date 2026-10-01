@@ -43,7 +43,6 @@ vi.mock("@/components/MindmapView/use-node-editor", () => ({
     availableForDep: [],
     onDoubleClick: vi.fn(),
     onTaskSave: vi.fn(),
-    onClearBeadsId: vi.fn(),
     checkScopeClamp: vi.fn(),
   }),
 }));
