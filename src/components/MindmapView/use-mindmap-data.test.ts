@@ -269,6 +269,8 @@ describe("buildTree", () => {
     ]);
     const node = root.children[0]?.children.find((c) => c.id === "task-3");
     expect(node?.virtualBlockers).toEqual(["Blocked by task 2 (Dep)"]);
+    // The unmet dependency's own node id, which Start's child-dependency rule reads.
+    expect(node?.blockingDependencyIds).toEqual(["task-2"]);
   });
 
   it("draws the agent capacity lock's derived reason as a virtual blocker, in its own words", () => {
@@ -294,6 +296,7 @@ describe("buildTree", () => {
     ]);
     const node = root.children[0]?.children.find((c) => c.id === "task-3");
     expect(node?.virtualBlockers).toEqual([]);
+    expect(node?.blockingDependencyIds).toBeUndefined();
   });
 
   it("stores task tag_ids on the node", () => {

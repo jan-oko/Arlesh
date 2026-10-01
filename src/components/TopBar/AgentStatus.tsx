@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAgentStatus } from "@/hooks/use-agent-status";
+import { useDisplayStore } from "@/stores/use-display-store";
 import AgentHeadIcon from "./AgentHeadIcon";
 import AgentCapacityIcon from "./AgentCapacityIcon";
 import AgentQuestionIcon from "./AgentQuestionIcon";
@@ -11,13 +12,15 @@ import styles from "./AgentStatus.module.css";
 /**
  * The agents' status in the top bar: a small bot head with a row of icons under it — the capacity
  * lock, questions waiting for you, waits on something else, Agentic Tasks In Progress, in that
- * order, each only while it applies, and no counts. Drawn only while at least one applies. The
+ * order, each only while it applies, and no counts. Drawn only while at least one applies, and
+ * never while the "Show agent status in the top bar" setting is off. The
  * tooltip spells each out with its count; a click opens a small menu with one line each — Clear on
  * the lock, Show on the others.
  */
 export default function AgentStatus() {
   const { t } = useTranslation("common");
   const status = useAgentStatus();
+  const shown = useDisplayStore((s) => s.showAgentStatus);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -27,7 +30,7 @@ export default function AgentStatus() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  if (!status.isActive) return null;
+  if (!shown || !status.isActive) return null;
 
   const lines: string[] = [
     ...(status.atCapacity ? [t("agentStatus.capacity")] : []),

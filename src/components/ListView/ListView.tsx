@@ -19,8 +19,8 @@ import type { StatusMode } from "@/utils/filter-tree";
 import type { ListEdge } from "@/utils/hotkeys/list-bindings";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { MixedListRow } from "@/utils/list-data";
-import { groupMixedRowsByPath, mergeInTreeOrder, preOrderIndex } from "@/utils/list-data";
-import { withAsynchronousSectionMixed } from "@/utils/async-first";
+import { mergeInTreeOrder, preOrderIndex } from "@/utils/list-data";
+import { showsOverdueSection, withListSections } from "@/utils/list-sections";
 import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { useNodeEditor } from "@/components/MindmapView/use-node-editor";
 import { BEADS_NODE_TYPE } from "@/api/beads";
@@ -78,6 +78,8 @@ export default function ListView() {
   const searchOpen = useMindmapStore((s) => s.searchOpen);
   const closeSearch = useMindmapStore((s) => s.closeSearch);
   const asynchronousFirst = useDisplayStore((s) => s.asynchronousFirst);
+  const overdueFirst = useDisplayStore((s) => s.overdueFirst);
+  const showOverdueBorder = useDisplayStore((s) => s.listShowOverdueBorder);
   // Bands above the rows, or rows among them — for Commitments and Expectations together.
   const listBands = useDisplayStore((s) => s.listBands);
   // Publishes the tab's subtree descriptor for the top bar; the exits themselves are global
@@ -184,11 +186,13 @@ export default function ListView() {
   // Commitment or a wait sits exactly where it hangs, under the same path headers.
   const bandCommitments = useMemo(() => (listBands ? filteredCommitments : []), [listBands, filteredCommitments]);
   const bandExpectations = useMemo(() => (listBands ? filteredExpectations : []), [listBands, filteredExpectations]);
-  // Split first, then grouped: with the setting on, the asynchronous work is pulled out of the
-  // filtered set before any header is drawn, so each half is grouped by path on its own terms — the
-  // section's rows gain the parent they left behind as a header segment, and the rows left below
-  // keep the header and indentation their remaining ancestors give them. With it off nothing is
-  // pulled out and the list is exactly what the tree ordered.
+  // Split first, then grouped: the Overdue work (under Start, while its setting is on) and then the
+  // asynchronous work (while Asynchronous first is on) are pulled out of the filtered set before any
+  // header is drawn, so each part is grouped by path on its own terms — a section's rows gain the
+  // parent they left behind as a header segment, and the rows left below keep the header and
+  // indentation their remaining ancestors give them. With neither on nothing is pulled out and the
+  // list is exactly what the tree ordered.
+  const overdueSection = showsOverdueSection(overdueFirst, sharedFilter, listFilter);
   const entries = useMemo(() => {
     const taskRows: MixedListRow[] = filteredRows.map((row) => ({ type: "task", row }));
     const mixed = listBands
@@ -198,8 +202,8 @@ export default function ListView() {
         ...filteredCommitments.map((row): MixedListRow => ({ type: "commitment", row })),
         ...filteredExpectations.map((row): MixedListRow => ({ type: "expectation", row })),
       ], treeOrder);
-    return asynchronousFirst ? withAsynchronousSectionMixed(mixed) : groupMixedRowsByPath(mixed);
-  }, [filteredRows, filteredCommitments, filteredExpectations, listBands, treeOrder, asynchronousFirst]);
+    return withListSections(mixed, { overdue: overdueSection, asynchronous: asynchronousFirst });
+  }, [filteredRows, filteredCommitments, filteredExpectations, listBands, treeOrder, overdueSection, asynchronousFirst]);
   const rowIds = useMemo(
     () => entries.flatMap((entry) =>
       entry.type === "task" || entry.type === "commitment" || entry.type === "expectation" ? [entry.row.node.id] : []),
@@ -422,6 +426,18 @@ export default function ListView() {
       ) : (
         <div className={styles.rows}>
           {entries.map((entry, index) => {
+            // The Overdue section's heading and closing rule, drawn exactly as the Asynchronous
+            // section's below.
+            if (entry.type === "overdue") {
+              return (
+                <h2 key="overdue" className={styles.sectionHeading}>
+                  {t("listView:overdueHeading")}
+                </h2>
+              );
+            }
+            if (entry.type === "overdueEnd") {
+              return <hr key="overdue-end" className={styles.sectionEnd} />;
+            }
             // The Asynchronous section's heading: drawn in the list's own flow rather than wrapped
             // in a section element, because the rows it collects are path-grouped runs like any
             // other and share the one arrow-key order.
@@ -435,7 +451,7 @@ export default function ListView() {
             // The rule that closes it. A wrapper with a border — the way the commitments band is
             // drawn — is not available here: the section's rows are entries in the same flat list
             // as everything below, and the keyboard walks that one order. So the boundary is an
-            // entry too, and `withAsynchronousSection` omits it when nothing follows the section.
+            // entry too, and `withListSections` omits it when nothing follows the section.
             if (entry.type === "asynchronousEnd") {
               return <hr key="asynchronous-end" className={styles.sectionEnd} />;
             }
@@ -490,6 +506,7 @@ export default function ListView() {
                 isSelected={entry.row.node.id === activeSelectedId}
                 isFocusExempt={focusExemptIds.has(entry.row.node.id)}
                 isEditingTitle={entry.row.node.id === editingTaskId}
+                showOverdueBorder={showOverdueBorder}
                 onSelect={setSelectedRowId}
                 onCycleStatus={onCycleStatus}
                 onOpenEditor={onDoubleClick}

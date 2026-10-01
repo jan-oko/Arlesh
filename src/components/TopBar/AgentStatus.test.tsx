@@ -9,6 +9,7 @@ import type { AgentActivity } from "@/utils/agent-activity";
 import { useViewStore } from "@/stores/use-view-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useFilterStore } from "@/stores/use-filter-store";
+import { useDisplayStore } from "@/stores/use-display-store";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -32,6 +33,7 @@ function glyphs(): string[] {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useDisplayStore.setState({ showAgentStatus: true });
 });
 
 describe("AgentStatus", () => {
@@ -109,5 +111,14 @@ describe("AgentStatus", () => {
     fireEvent.keyDown(window, { key: "Escape" });
 
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("draws no head with its setting off, even with the lock on and waits pending", () => {
+    given(true, { questions: 1, waits: 1, inProgress: 1 });
+    useDisplayStore.setState({ showAgentStatus: false });
+    render(<AgentStatus />);
+
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(glyphs()).toEqual([]);
   });
 });

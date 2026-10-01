@@ -87,7 +87,7 @@ is what they describe, and every window and the MCP endpoint read the same list.
 root belongs to its row: deleting the node drops the root in the same Gesture, and undoing the
 delete brings both back — otherwise SQLite reusing the freed row id would open an unrelated node.
 
-**Where the user sets them.** On the *MCP access* page of the settings modal (see
+**Where the user sets them.** On the *Agents* page of the settings modal (called *MCP access* until 2026-10-01) (see
 [*Mindmap*](mindmap-view.md), *Top bar*): the roots are listed with their path and kind, added with
 the node search `Ctrl+O` uses, and removed with each row's ×. A root the MCP cannot see because it
 is private is flagged as such rather than hidden from the list.
@@ -540,12 +540,14 @@ Settings switch and the top-bar indicator read; and as an ordinary `board-change
 — the one that flipped it included — takes the same reload any board change gets and re-derives the
 block with it. A window reads the lock once on start and then takes each announcement.
 
-**In the app.** Settings → MCP access → *Agent capacity* has the lock's switch, **Agents are at
-capacity**. There is no setting for whether the lock blocks: the lock is the only control.
+**In the app.** Settings → Agents → *Agent capacity* has the lock's switch, **Agents are at
+capacity**, and **Show agent status in the top bar** (on by default, app-wide; ruled by the user,
+2026-10-01). There is no setting for whether the lock blocks: the lock is the only control.
 
 **The agents' status in the top bar** (ruled by the user, 2026-10-01, from mock 3, "Row under the
 head", with the padlock and no counts). A small **bot head**, in the top bar's icon colour like the
-gear, sits just before the Filter button, with a tiny row of icons under it. The head shows **only
+gear, sits just before the Filter button, with a tiny row of icons under it. With **Show agent status in the top bar** off the head never shows, whatever holds — the lock
+included; it is then set and cleared from Settings alone. With it on, the head shows **only
 while at least one of these holds** — whether or not the MCP endpoint is listening, since the lock
 can be on with the endpoint off and must stay clearable, and the waits and work are facts of the
 board either way:
@@ -604,7 +606,7 @@ expose.)
 
 `not_permitted` is the MCP's own: the request names a node the MCP may not touch — outside every
 root, private, or (for a write) not an Agentic Task — or one that does not exist, which it
-deliberately cannot tell apart. The fix is the user's, on the *MCP access* page; an agent that
+deliberately cannot tell apart. The fix is the user's, on the *Agents* page; an agent that
 gets one should say what it needs rather than retry. The app's own commands never raise it.
 
 `ambiguous_id` and `status_changed` are the MCP's too (see *Short ids* and *Writing tasks*): the

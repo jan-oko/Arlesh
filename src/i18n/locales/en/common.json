@@ -13,6 +13,8 @@
   "keyboardShortcuts": "Keyboard shortcuts",
   "verticalLayout": "Vertical layout",
   "asynchronousFirst": "Asynchronous first",
+  "overdueFirst": "Overdue first under Start",
+  "listShowOverdueBorder": "Show the overdue border on rows",
   "filter": "Filter",
   "viewMindmap": "Mindmap",
   "viewList": "List",

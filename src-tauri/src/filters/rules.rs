@@ -4,6 +4,8 @@
 //! Mindmap's tree and [`list`](super::list) applies them to a flat row and its ancestor chain, so
 //! the two cannot answer the same node differently.
 
+use std::collections::HashSet;
+
 use crate::{
     scopes::resolve::{interval_contains, Bounds},
     tasks::{
@@ -42,6 +44,66 @@ fn is_resolved_goal(status: &str) -> bool {
 /// through `isNodeBlocked`.
 pub fn is_blocked(node: &NodeFacts) -> bool {
     matches!(node.kind, NodeKind::Task | NodeKind::Goal) && node.is_blocked
+}
+
+/// Under **Start**, what the blocked ancestors above a node still let through beneath them:
+/// `None` while no blocked ancestor stands over it, otherwise the ids it may still show.
+///
+/// A blocked Task or Goal gates its subtree — it stands in the way of everything under it, so
+/// nothing there is startable — **except its child dependencies**: a descendant it depends on
+/// and has not had met is exactly the work that unblocks it, so the block does not hide it, and
+/// that descendant's own subtree comes with it (ruled by the user, 2026-10-01: "a block from a
+/// child dependency does not hide that dependency"). Whatever else blocks the ancestor — an
+/// explicit reason, a dependency on something outside its subtree — still hides everything else.
+pub type BlockGate<'a> = Option<HashSet<&'a str>>;
+
+/// Whether `gate` lets `node` through: no gate stands over it, or the gate names it.
+pub fn is_admitted_by(node: &NodeFacts, gate: &BlockGate<'_>) -> bool {
+    match gate {
+        None => true,
+        Some(admitted) => admitted.contains(node.id.as_str()),
+    }
+}
+
+/// The gate `node`'s children sit under, given the gate `node` itself sits under.
+///
+/// A node the gate admits lifts it for its whole subtree. A blocked node closes a gate of its
+/// own, naming only its unmet dependencies; one that is itself still held by an outer gate
+/// narrows that gate to what both name, so neither block is lifted by the other alone. Outside
+/// Start nothing is gated.
+pub fn gate_below<'a>(
+    node: &'a NodeFacts,
+    gate: &BlockGate<'a>,
+    filter: &BoardFilter,
+) -> BlockGate<'a> {
+    if filter.preset != Preset::Start {
+        return None;
+    }
+    let inherited = if is_admitted_by(node, gate) {
+        None
+    } else {
+        gate.clone()
+    };
+    if !is_blocked(node) {
+        return inherited;
+    }
+    let own: HashSet<&str> = node
+        .blocking_dependencies
+        .iter()
+        .map(String::as_str)
+        .collect();
+    Some(match inherited {
+        None => own,
+        Some(outer) => outer.intersection(&own).copied().collect(),
+    })
+}
+
+/// Whether Start holds `node` back for a block: it is blocked itself, or a blocked ancestor's
+/// gate does not admit it. Such a node never matches on its own account, but — unlike a
+/// hard-hidden one — may still stand on screen as the ancestor of a child dependency its block
+/// lets through.
+pub fn is_held_by_block(node: &NodeFacts, gate: &BlockGate<'_>, filter: &BoardFilter) -> bool {
+    filter.preset == Preset::Start && (is_blocked(node) || !is_admitted_by(node, gate))
 }
 
 /// An Archived-status node, one whose effective Archival was derived as Archived, or a delegated
@@ -260,11 +322,6 @@ pub fn type_hard_hidden(node: &NodeFacts, filter: &BoardFilter) -> bool {
     if node.kind == NodeKind::Info && !filter.show_info {
         return true;
     }
-    // In Start a blocked Task/Goal gates its whole subtree: it is what stands in the way of
-    // everything under it, so nothing there is startable either.
-    if filter.preset == Preset::Start && is_blocked(node) {
-        return true;
-    }
     // `Exclude` gates the whole subtree the way blocked and private do — otherwise an excluded
     // Habit-instance goal with one still-undone item and one already-done sibling would stay
     // visible as that sibling's ancestor.
@@ -331,10 +388,11 @@ pub fn passes_expectation_preset(node: &NodeFacts, filter: &BoardFilter) -> bool
     match filter.preset {
         Preset::All => true,
         Preset::Plan => is_live_expectation(node),
-        // A window that has passed, or has not begun, drops out of Start, as a Task's does.
+        // A window that has passed, or has not begun, drops out of Start, as a Task's does —
+        // unless the wait is Overdue: pending past its window.
         Preset::Start => {
             let hidden_for_its_check = filter.start_hides_checked_waits && node.has_check;
-            is_live_expectation(node) && !hidden_for_its_check && is_in_window(node)
+            is_live_expectation(node) && !hidden_for_its_check && is_startable_window(node)
         }
         Preset::Do | Preset::Backlog => false,
     }
@@ -409,10 +467,17 @@ fn passes_plan(node: &NodeFacts, filter: &BoardFilter) -> bool {
     }
 }
 
-/// Whether a node's effective window is open now: neither still ahead (Pending) nor passed
-/// (Lapsed). An unscoped node, or one no lifecycle was derived for, is always in its window.
-fn is_in_window(node: &NodeFacts) -> bool {
-    !matches!(node.timing, Some(Timing::Pending | Timing::Lapsed))
+/// Whether Start reads a node's window as open: neither still ahead (Pending) nor passed
+/// (Lapsed) — or passed, but the node is **Overdue**. An unscoped node, or one no lifecycle was
+/// derived for, is always in its window.
+///
+/// Start shows Overdue items (ruled by the user, 2026-09-30): work that is late is exactly what
+/// should be begun now, so a Keep Overdue Task, Goal or wait whose window has passed unfinished
+/// stays. The flag already excludes what a lapse archived (Missed) and what is finished, and every
+/// other reason to drop out — blocked, backlogged, delegated, a Plan still ahead — is judged on
+/// its own, so an Overdue item still drops for any of those.
+fn is_startable_window(node: &NodeFacts) -> bool {
+    node.overdue || !matches!(node.timing, Some(Timing::Pending | Timing::Lapsed))
 }
 
 /// Start's own branch: things that can be begun now.
@@ -421,7 +486,10 @@ fn is_in_window(node: &NodeFacts) -> bool {
 /// — effective Archival only ever becomes Archived once a window has lapsed, or once a Goal says
 /// so in its own status. So does anything whose window has **not begun** (ruled by the user,
 /// 2026-09-27): what is not in scope yet is no more startable than what has left it. Blocked Tasks
-/// and Goals are dropped earlier, as a hard-hidden subtree.
+/// and Goals, and what their blocks hold back, are judged by the walk ([`is_held_by_block`]).
+///
+/// The exception is an **Overdue** item, which stays although its window has passed
+/// ([`is_startable_window`]); the flag is never set on an archived or finished one.
 ///
 /// A window still ahead fails the node's **own** match rather than gating its subtree, as a
 /// lapsed one and a Plan still ahead ([`is_planned_ahead`]) do. A child with no window of its own
@@ -431,9 +499,10 @@ fn passes_start(node: &NodeFacts, filter: &BoardFilter) -> bool {
     if !matches!(node.kind, NodeKind::Task | NodeKind::Goal) {
         return true;
     }
-    // A window outside now drops out, and so does a delegated Task: it is archived in every
-    // effect but name, and nothing someone else holds is yours to start.
-    if !is_in_window(node) || node.delegated {
+    // A window outside now drops out — unless the item is Overdue — and so does a delegated Task,
+    // Overdue or not: it is archived in every effect but name, and nothing someone else holds is
+    // yours to start.
+    if !is_startable_window(node) || node.delegated {
         return with_archived_override(node, filter, false);
     }
     if node.kind == NodeKind::Goal {

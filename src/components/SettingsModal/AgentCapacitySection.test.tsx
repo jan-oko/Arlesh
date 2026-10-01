@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import AgentCapacitySection from "./AgentCapacitySection";
 import { setAgentCapacity } from "@/api/agent-capacity";
 import { useAgentCapacityStore } from "@/stores/use-agent-capacity-store";
+import { useDisplayStore } from "@/stores/use-display-store";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -15,6 +16,7 @@ vi.mock("@/api/agent-capacity", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   useAgentCapacityStore.setState({ atCapacity: false, error: null });
+  useDisplayStore.setState({ showAgentStatus: true });
 });
 
 describe("AgentCapacitySection", () => {
@@ -36,5 +38,16 @@ describe("AgentCapacitySection", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "mcp.capacity.lock" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("disk full");
+  });
+
+  it("turns the top bar's agent status off without touching the lock", () => {
+    render(<AgentCapacitySection />);
+    const show = screen.getByRole("checkbox", { name: "mcp.capacity.showStatus" });
+    expect(show).toBeChecked();
+
+    fireEvent.click(show);
+
+    expect(useDisplayStore.getState().showAgentStatus).toBe(false);
+    expect(setAgentCapacity).not.toHaveBeenCalled();
   });
 });

@@ -213,6 +213,15 @@ fn an_explicit_block_reason_and_an_unmet_dependency_both_read_as_blocked() {
     assert!(find(&forest, "goal-10").is_some_and(|node| node.facts.is_blocked));
     assert!(find(&forest, "task-21").is_some_and(|node| node.facts.is_blocked));
     assert!(find(&forest, "task-20").is_some_and(|node| !node.facts.is_blocked));
+    // Only the unmet dependency is named; an explicit reason names none.
+    assert!(find(&forest, "task-21")
+        .is_some_and(|node| node.facts.blocking_dependencies == ["task-20"]));
+    assert!(
+        find(&forest, "task-20").is_some_and(|node| node.facts.blocking_dependencies.is_empty())
+    );
+    assert!(
+        find(&forest, "goal-10").is_some_and(|node| node.facts.blocking_dependencies.is_empty())
+    );
 }
 
 #[test]

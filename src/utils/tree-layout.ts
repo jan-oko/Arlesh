@@ -200,6 +200,9 @@ export interface MindmapNode {
   blockReasons?: string[];
   /** Derived, read-only "Blocked by …" reasons from this task's unmet dependencies. */
   virtualBlockers?: string[];
+  /** The node ids of those unmet dependencies — what Start still lets through beneath this task
+   * when one of them is its own descendant (see `gateBelow` in `filter-tree.ts`). */
+  blockingDependencyIds?: string[];
   /** Blocked by the **agent capacity lock** (Tasks only): the backend derived it, and its reason is
    * among `virtualBlockers`. Only clearing the lock removes it. */
   capacityBlocked?: boolean;

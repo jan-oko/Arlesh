@@ -361,6 +361,24 @@ fn an_explicit_due_inside_the_window_makes_an_active_item_overdue() {
 }
 
 #[test]
+fn an_unscoped_task_past_an_explicit_due_of_its_own_is_overdue_and_active() {
+    // The shape a review found (task 214 on the branch instance): no window anywhere above it, a
+    // due of its own that has passed.
+    let due = Some((at("2026-01-05T00:00:00"), at("2026-01-06T00:00:00")));
+    let state = derive_item_state(
+        None,
+        None,
+        effective_due(due, None, false),
+        false,
+        Some(Archival::Live),
+        at("2026-01-08T00:00:00"),
+    );
+    assert_eq!(state.timing, Timing::Active);
+    assert_eq!(state.resolution, None);
+    assert!(state.overdue);
+}
+
+#[test]
 fn a_done_item_is_never_overdue() {
     let state = derive_item_state(
         Some(window()),

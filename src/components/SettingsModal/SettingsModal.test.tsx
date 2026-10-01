@@ -21,6 +21,7 @@ beforeEach(() => {
   useViewStore.setState({ view: "mindmap", mindmapOrientation: "horizontal" });
   useDisplayStore.setState({
     asynchronousFirst: false, listBands: true, habitCollapseThreshold: 3,
+    overdueFirst: true, listShowOverdueBorder: true,
     planCandidatesPathGrouping: false, planCandidatesParentOnly: false,
     planSplitBySubscope: false, planIncludePremorning: false,
   });
@@ -193,6 +194,21 @@ describe("SettingsModal", () => {
     expect(useDisplayStore.getState().listBands).toBe(false);
   });
 
+  it("switches Overdue first and the overdue border under List, both on by default", () => {
+    open();
+    goTo("list");
+
+    const overdueFirst = screen.getByRole("checkbox", { name: "overdueFirst" });
+    const border = screen.getByRole("checkbox", { name: "listShowOverdueBorder" });
+    expect(overdueFirst).toBeChecked();
+    expect(border).toBeChecked();
+    fireEvent.click(overdueFirst);
+    fireEvent.click(border);
+
+    expect(useDisplayStore.getState().overdueFirst).toBe(false);
+    expect(useDisplayStore.getState().listShowOverdueBorder).toBe(false);
+  });
+
   it("offers the card size under Steps", () => {
     open();
     goTo("steps");
@@ -267,7 +283,7 @@ describe("SettingsModal", () => {
     expect(screen.getByLabelText("common:checkTaskPrefix")).toBeInTheDocument();
   });
 
-  it("shows the MCP roots under MCP access", () => {
+  it("shows the MCP roots under Agents", () => {
     open();
     goTo("mcp");
 

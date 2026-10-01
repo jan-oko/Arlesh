@@ -81,7 +81,7 @@ describe("flattenTaskRows", () => {
     expect(row?.projectRef).toBe("project-1");
   });
 
-  it("hasBlockedAncestor is true when a blocked task/goal sits above it in the chain", () => {
+  it("heldByBlockedAncestor is true when a blocked task/goal sits above it in the chain", () => {
     const tree = n("root", "domain", {}, [
       n("aspect-1", "aspect", {}, [
         n("task-parent", "task", { status: "todo", blockReasons: ["stuck"] }, [
@@ -93,9 +93,25 @@ describe("flattenTaskRows", () => {
     const parentRow = rows.find((r) => r.node.id === "task-parent");
     const childRow = rows.find((r) => r.node.id === "task-child");
     expect(parentRow?.isBlocked).toBe(true);
-    expect(parentRow?.hasBlockedAncestor).toBe(false);
+    expect(parentRow?.heldByBlockedAncestor).toBe(false);
     expect(childRow?.isBlocked).toBe(false);
-    expect(childRow?.hasBlockedAncestor).toBe(true);
+    expect(childRow?.heldByBlockedAncestor).toBe(true);
+  });
+
+  it("heldByBlockedAncestor is false on a blocked ancestor's child dependency and beneath it, true on its sibling", () => {
+    const tree = n("root", "domain", {}, [
+      n("aspect-1", "aspect", {}, [
+        n("task-parent", "task", { status: "todo", virtualBlockers: ["Blocked by task"], blockingDependencyIds: ["task-dep"] }, [
+          n("task-dep", "task", { status: "todo" }, [n("task-under-dep", "task", { status: "todo" })]),
+          n("task-sibling", "task", { status: "todo" }),
+        ]),
+      ]),
+    ]);
+    const rows = flattenTaskRows(tree, []);
+    const held = (id: string) => rows.find((r) => r.node.id === id)?.heldByBlockedAncestor;
+    expect(held("task-dep")).toBe(false);
+    expect(held("task-under-dep")).toBe(false);
+    expect(held("task-sibling")).toBe(true);
   });
 
   it("hasPrivateAncestor is true when any ancestor (e.g. the Project) is marked private, not just a direct parent", () => {
