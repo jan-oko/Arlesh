@@ -155,6 +155,12 @@ pub async fn derive_waits<M: SessionMode>(
         let Some(task) = by_id.get(&NodeId::Stored(task_id)) else {
             continue;
         };
+        // A compound Task is never done by hand, so nothing is done that starts a wait: it
+        // spawns none while it consists of its sub-items. Switching compound off at Done
+        // records the completion, and the wait begins then.
+        if task.compound {
+            continue;
+        }
         let Some(template) = db.tasks().async_template(TaskId(task_id)).await? else {
             continue;
         };
@@ -458,6 +464,7 @@ impl WaitRows {
                     owner_id: id.clone(),
                     reason,
                     position: i64::try_from(position).unwrap_or(i64::MAX),
+                    derived: None,
                 });
             }
         }
@@ -473,6 +480,7 @@ impl WaitRows {
             delegate_to: None,
             agentic: overlay.agentic,
             asynchronous: false,
+            compound: false,
             async_template: None,
             agentic_brief: None,
             time_scope: Some(draw.due),

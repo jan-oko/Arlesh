@@ -88,8 +88,21 @@ pub async fn load_within(
     lifecycles.extend(derived.lifecycles);
     block_reasons.extend(derived.block_reasons);
     task_dependencies.extend(derived.dependencies);
-    // A wait's rows hang on the Tasks, a Habit's occurrences included.
-    let waits = crate::nodes::waits::derive_waits(db, now, &tasks).await?;
+    // A wait's rows hang on the Tasks, a Habit's occurrences included. Drawn together with every
+    // compound Task's derived status, since each reads the other (see `tasks::compound`):
+    // from here on a compound Task's `status` is the one its sub-items give it.
+    let waits = crate::tasks::compound::settle(
+        db,
+        now,
+        crate::tasks::compound::Board {
+            tasks: &mut tasks,
+            goals: &goals,
+            commitments: &commitments,
+            expectations: &expectations,
+            lifecycles: &mut lifecycles,
+        },
+    )
+    .await?;
     tasks.extend(waits.tasks);
     expectations.extend(waits.expectations);
     block_reasons.extend(waits.block_reasons);
@@ -103,6 +116,23 @@ pub async fn load_within(
         .collect();
     let added = table::added_edges(db, &present).await?;
     task_dependencies.extend(added);
+    // Only now is every status final and every edge in: a Compound Task whose open sub-items are
+    // all blocked is blocked itself, by a reason derived here (see `tasks::compound::blocked`).
+    let compound_blocks = crate::tasks::compound::blocked::derive(
+        &crate::tasks::compound::Rows {
+            tasks: &tasks,
+            checks: &[],
+            goals: &goals,
+            commitments: &commitments,
+            expectations: &expectations,
+            waits: &[],
+            lifecycles: &lifecycles,
+            wait_lifecycles: &[],
+        },
+        &block_reasons,
+        &task_dependencies,
+    );
+    block_reasons.extend(compound_blocks);
 
     let habits = flows
         .iter()

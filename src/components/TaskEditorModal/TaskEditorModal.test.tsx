@@ -17,6 +17,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { testKey } from "@/test/scope-key";
+import { occurrenceRow } from "@/test/occurrence";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -802,6 +803,35 @@ describe("TaskEditorModal — the Plan picker's bound", () => {
     await openPlanPicker(mkNode({ timeScope: JULY_WEEK, onScopeExit: "keep", overdue: true }));
     await screen.findByRole("group", { name: "plan picker" });
     expect(resolvedScopes()).toEqual([]);
+  });
+});
+
+describe("TaskEditorModal — Compound", () => {
+  it("shows a compound task's status and takes no clicks on it, saying why", async () => {
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ compound: true, status: "in_progress" })} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    expect(screen.getByRole("checkbox", { name: "compoundOn" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "status:task.done" })).toBeDisabled();
+    expect(screen.getByText("statusFromSubItems")).toBeInTheDocument();
+  });
+
+  it("frees the status pills when Compound is switched off, starting from the status shown", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ compound: true, status: "started" })} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "compoundOn" }));
+    expect(screen.getByRole("button", { name: "status:task.done" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: "started", compound: false });
+  });
+
+  it("offers the switch on a stored task only", () => {
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }) })} />);
+    expect(screen.queryByRole("checkbox", { name: "compoundOff" })).toBeNull();
   });
 });
 

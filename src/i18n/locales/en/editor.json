@@ -107,6 +107,10 @@
   "fieldAsynchronous": "Asynchronous",
   "asynchronousOn": "Starts a wait",
   "asynchronousOff": "Finishes something",
+  "fieldCompound": "Compound",
+  "compoundOn": "Status from its sub-items",
+  "compoundOff": "Status set by hand",
+  "statusFromSubItems": "From the sub-items. Turn Compound off to set it by hand.",
   "editCommitment": "Edit commitment",
   "fieldVerdict": "Verdict",
   "fieldVerdictWindow": "Verdict window",
@@ -143,5 +147,7 @@
   "quickDependencyPicker": "Add a dependency",
   "quickDependencyHeading": "“{{title}}” depends on…",
   "quickDependencyPlaceholder": "Search Tasks, Goals and Expectations",
-  "quickDependencyLoading": "Loading…"
+  "quickDependencyLoading": "Loading…",
+  "compoundBlocked": "All open sub-items are blocked",
+  "compoundBlockLabel": "From its sub-items — clears when one is unblocked or finished"
 }

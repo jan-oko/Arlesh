@@ -10,6 +10,8 @@ export default function ZenPage() {
   const toggleShowBadges = useDisplayStore((s) => s.toggleZenShowBadges);
   const showsStarted = useDisplayStore((s) => s.zenShowsStarted);
   const toggleShowsStarted = useDisplayStore((s) => s.toggleZenShowsStarted);
+  const showsCompound = useDisplayStore((s) => s.zenShowsCompound);
+  const toggleShowsCompound = useDisplayStore((s) => s.toggleZenShowsCompound);
   const showOverdueBorder = useDisplayStore((s) => s.zenShowOverdueBorder);
   const toggleShowOverdueBorder = useDisplayStore((s) => s.toggleZenShowOverdueBorder);
 
@@ -17,6 +19,7 @@ export default function ZenPage() {
     <div className={styles.page}>
       <Switch checked={showBadges} onChange={toggleShowBadges} label={t("showBadges")} />
       <Switch checked={showsStarted} onChange={toggleShowsStarted} label={t("showsStarted")} />
+      <Switch checked={showsCompound} onChange={toggleShowsCompound} label={t("showsCompound")} />
       <Switch checked={showOverdueBorder} onChange={toggleShowOverdueBorder} label={t("showOverdueBorder")} />
     </div>
   );

@@ -21,7 +21,7 @@ const root = n("root", "domain", {
         }),
         n("task-todo", "task", { status: "todo" }),
         n("task-done", "task", { status: "done" }),
-        n("task-second", "task", { status: "in_progress", tagIds: [7], agentic: true }),
+        n("task-second", "task", { status: "in_progress", tagIds: [7], agentic: true, compound: true }),
       ],
     }),
     n("commitment-open", "commitment", { verdict: "unresolved" }),
@@ -39,7 +39,7 @@ const source: ZenSourceRows = {
   expectations: flattenExpectationRows(root),
 };
 
-const BOTH: ZenOptions = { commitments: true, expectations: true, agentic: [], showsStarted: false };
+const BOTH: ZenOptions = { commitments: true, expectations: true, agentic: [], showsStarted: false, showsCompound: true };
 
 function ids(rows: ReadonlyArray<{ node: { id: string } }>): string[] {
   return rows.map((row) => row.node.id);
@@ -69,7 +69,7 @@ describe("zenContents", () => {
   });
 
   it("draws nothing in a strip the tab has hidden", () => {
-    const contents = read({}, { commitments: false, expectations: false, agentic: [], showsStarted: false });
+    const contents = read({}, { commitments: false, expectations: false, agentic: [], showsStarted: false, showsCompound: true });
     expect(contents.commitments.rows).toEqual([]);
     expect(contents.expectations.rows).toEqual([]);
     expect(ids(contents.tasks.rows)).toHaveLength(3);
@@ -93,5 +93,20 @@ describe("zenContents", () => {
     const contents = read({}, BOTH, "task-done");
     expect(ids(contents.tasks.rows)).toEqual(["task-doing", "task-doing-child", "task-done", "task-second"]);
     expect(contents.tasks.exemptedIds).toEqual(new Set(["task-done"]));
+  });
+
+  it("shows a compound task on the grid while the setting is on", () => {
+    expect(ids(read().tasks.rows)).toContain("task-second");
+  });
+
+  it("leaves a compound task off the grid while the setting is off, and keeps its sub-items", () => {
+    const off = { ...BOTH, showsCompound: false };
+    expect(ids(read({}, off).tasks.rows)).toEqual(["task-doing", "task-doing-child"]);
+  });
+
+  it("keeps a selected compound task on the grid with the setting off, as exempted", () => {
+    const contents = read({}, { ...BOTH, showsCompound: false }, "task-second");
+    expect(ids(contents.tasks.rows)).toEqual(["task-doing", "task-doing-child", "task-second"]);
+    expect(contents.tasks.exemptedIds).toEqual(new Set(["task-second"]));
   });
 });

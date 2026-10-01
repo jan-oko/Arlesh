@@ -7,6 +7,12 @@ export interface BlockReason {
   owner_id: RowId;
   reason: string;
   position: number;
+  /**
+   * Present on a reason the backend **derived** rather than stored — `compound`: the owner is a
+   * Compound Task and every one of its open sub-items is blocked. No one wrote it and no editor
+   * removes it; it goes when a sub-item is unblocked or finished.
+   */
+  derived?: "compound";
 }
 
 /** Every explicit block reason across all tasks and goals (for the mindmap bulk load). */

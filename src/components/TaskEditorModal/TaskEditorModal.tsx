@@ -57,6 +57,9 @@ export interface TaskSaveData {
   /** Whether doing this task starts a wait. A plain boolean — the flag does not inherit, so
    * there is no third "unset" state for it to be in. */
   asynchronous: boolean;
+  /** Whether the task **consists of its sub-items**: its status is then derived, and the save
+   * leaves it alone. Only ever true for a stored task. */
+  compound: boolean;
   /** The optional **Expectation template** — the wait finishing the task spawns. `null` when the
    * section is empty, and always `null` when the task is not asynchronous. */
   asyncTemplate: AsyncTemplate | null;
@@ -120,6 +123,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [isBacklogged, setIsBacklogged] = useState(node.backlogged === true);
   const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(node.agentic));
   const [isAsynchronous, setIsAsynchronous] = useState(node.asynchronous === true || openAtTemplate);
+  const [isCompound, setIsCompound] = useState(node.compound === true);
   const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate>(node.asyncTemplate ?? EMPTY_TEMPLATE);
   const [agenticBrief, setAgenticBrief] = useState<AgenticBrief>(node.agenticBrief ?? EMPTY_AGENTIC_BRIEF);
   const templateRef = useRef<HTMLDivElement>(null);
@@ -193,6 +197,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
           agentic,
           asynchronous: isAsynchronous,
+          compound: isCompound,
           // An empty section is no template; one with anything in it but a title takes the default.
           asyncTemplate: !isAsynchronous || isEmptyTemplate(asyncTemplate) ? null : {
             ...asyncTemplate,
@@ -300,13 +305,17 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       <BeadsIdField beadsId={node.beadsId} isCleared={beadsClear.isCleared} onClear={beadsClear.stageClear} />
       <div className={styles.label}>
         {t("fieldStatus")}
+        {/* A compound task's status is derived from its sub-items: the pills show it and take
+            no clicks, and say why. Switching Compound off below frees them, starting from the
+            status the task was showing. */}
         <div className={styles.statusPills}>
           {TASK_STATUSES.map((s) => (
-            <button key={s} type="button" className={`${styles.statusPill}${status === s ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatusAndClearBacklog(s)}>
+            <button key={s} type="button" disabled={isCompound} className={`${styles.statusPill}${status === s ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatusAndClearBacklog(s)}>
               {t(`status:task.${s}`)}
             </button>
           ))}
         </div>
+        {isCompound && <span className={styles.fieldHint}>{t("statusFromSubItems")}</span>}
       </div>
       <div className={styles.label}>
         {t("fieldTimeScope")}
@@ -357,6 +366,18 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           label={isAsynchronous ? t("asynchronousOn") : t("asynchronousOff")}
         />
       </div>
+      {/* Compound: the status follows the sub-items. A stored task's flag only — a Habit
+          occurrence or a check task keeps a status of its own. */}
+      {!isDerivedId(dbId) && (
+        <div className={styles.label}>
+          {t("fieldCompound")}
+          <Switch
+            checked={isCompound}
+            onChange={setIsCompound}
+            label={isCompound ? t("compoundOn") : t("compoundOff")}
+          />
+        </div>
+      )}
       {isAsynchronous && (
         <div ref={templateRef} role="group" aria-label={t("expectation:templateSection")}>
           <span className={styles.label}>{t("expectation:templateSection")}</span>
@@ -369,7 +390,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           />
         </div>
       )}
-      <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={virtualBlockers} />
+      <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={virtualBlockers} compoundBlocked={node.compoundBlocked === true} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <div className={styles.depSection}>
         <span className={styles.label}>{t("fieldDependencies")}</span>

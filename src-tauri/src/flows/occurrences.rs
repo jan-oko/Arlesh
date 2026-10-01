@@ -985,6 +985,7 @@ fn push_reasons(out: &mut Vec<BlockReason>, kind: &str, id: &NodeId, reasons: Ve
             owner_id: id.clone(),
             reason,
             position: i64::try_from(position).unwrap_or(i64::MAX),
+            derived: None,
         });
     }
 }
@@ -1177,6 +1178,8 @@ fn task_row(
         asynchronous: overlay
             .asynchronous
             .unwrap_or(occurrence.fields.asynchronous),
+        // Only a stored Task carries Compound; an occurrence keeps its own status.
+        compound: false,
         async_template: None,
         // The template's brief, field by field, under the occurrence's own.
         agentic_brief: overlay.brief_over(occurrence.fields.agentic_brief.as_ref()),

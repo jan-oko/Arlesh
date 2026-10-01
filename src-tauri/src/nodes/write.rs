@@ -246,6 +246,7 @@ pub async fn update_task(
 ) -> Result<Task, AppError> {
     let derived = match id {
         NodeId::Stored(id) => {
+            crate::tasks::compound::keep_derived_status(db, TaskId(*id), &mut request, now).await?;
             let moved = move_stored(
                 db,
                 "task",
@@ -270,6 +271,10 @@ pub async fn update_task(
         }
         NodeId::Derived(derived) => derived,
     };
+    // Only a stored Task carries Compound; switching it off on a derived row asks nothing.
+    if request.compound == Some(true) {
+        return Err(crate::tasks::error::TaskError::CompoundOnDerived.into());
+    }
     let key = match resolve_key(db, derived, now).await? {
         DerivedKey::Occurrence(key) => key,
         DerivedKey::Check(check) => {
