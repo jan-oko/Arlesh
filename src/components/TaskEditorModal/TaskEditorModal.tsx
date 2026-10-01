@@ -250,6 +250,14 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const dueDefaultLabel = timeScope !== null && (onScopeExit ?? "keep") === "keep" && !isBacklogged
     ? t("dueDefaultTimeScope")
     : t("dueDefaultNone");
+  // Archive leaves a task no due (ruled by the user, 2026-09-30, and restated on review 2026-10-01:
+  // "choosing archive under the scope no longer nullifies the due scope"). Picking it clears an
+  // explicit due too, in the same Save — one Gesture, so one undo takes both back — and the field
+  // then names the default, None.
+  function chooseOnScopeExit(value: OnScopeExit) {
+    setOnScopeExit(value);
+    if (value === "archive") setDueScope(null);
+  }
   const dueField = (
     <div className={styles.label}>
       {t("fieldDue")}
@@ -317,7 +325,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         <div className={styles.fieldPair}>
           <div className={styles.label}>
             {t("fieldOnScopeExit")}
-            <OnScopeExitField value={onScopeExit} onChange={setOnScopeExit} />
+            <OnScopeExitField value={onScopeExit} onChange={chooseOnScopeExit} />
           </div>
           {hasDueField && dueField}
         </div>

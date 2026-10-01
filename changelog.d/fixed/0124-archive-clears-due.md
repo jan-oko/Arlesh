@@ -1,0 +1,1 @@
+- **Choosing Archive clears a Task's Due.** In the Task editor, picking **Archive** under the Time Scope left an explicit Due in place, so the Task could still turn Overdue. Archive now clears the Due in the same save, and the Due field reads *None*. One undo restores both.

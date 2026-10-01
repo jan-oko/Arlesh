@@ -829,6 +829,30 @@ describe("TaskEditorModal — the Due field", () => {
     expect(screen.getByText("dueDefaultNone")).toBeInTheDocument();
   });
 
+  it("switches the default to None as the pills move from Keep Overdue to Archive", async () => {
+    await openEditor(mkNode({ timeScope: JULY_WEEK, onScopeExit: "keep" }));
+    fireEvent.click(screen.getByRole("button", { name: "onScopeExitArchive" }));
+    expect(screen.getByText("dueDefaultNone")).toBeInTheDocument();
+    expect(screen.queryByText("dueDefaultTimeScope")).not.toBeInTheDocument();
+  });
+
+  it("clears an explicit due when Archive is picked, in the same save", async () => {
+    const onSave = await openEditor(mkNode({ timeScope: JULY_WEEK, onScopeExit: "keep", dueScope: JULY_WEEK }));
+    fireEvent.click(screen.getByRole("button", { name: "onScopeExitArchive" }));
+    expect(screen.getByText("dueDefaultNone")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ onScopeExit: "archive", dueScope: null });
+  });
+
+  it("keeps an explicit due when Keep Overdue is picked", async () => {
+    const onSave = await openEditor(mkNode({ timeScope: JULY_WEEK, onScopeExit: "keep", dueScope: JULY_WEEK }));
+    fireEvent.click(screen.getByRole("button", { name: "onScopeExitKeep" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ onScopeExit: "keep", dueScope: JULY_WEEK });
+  });
+
   it("is its own row directly below the Plan, without the pills, on an Unscoped task", async () => {
     await openEditor(mkNode({ inheritedTimeScope: null }));
     expect(screen.queryByText("fieldOnScopeExit")).not.toBeInTheDocument();
