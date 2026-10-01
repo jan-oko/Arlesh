@@ -332,6 +332,73 @@ async fn under_owed_a_completion_blocks_every_open_iteration() {
     }
 }
 
+/// A weekly Owed Habit with `days` of cooldown from the week of 2026-09-27, done on Friday
+/// 2026-10-02. Returns the next week's root.
+async fn owed_done_on_friday(app: &App, pool: &sqlx::SqlitePool, days: i64) -> OccurrenceKey {
+    let flow_id = flow(app, "week").await;
+    flow_commands::set_flow_recurrence(
+        app.state(),
+        flow_id,
+        recurrence(
+            week(ymd(2026, 9, 27)),
+            ClockKind::Window,
+            Some(MissPolicy::Owed),
+            Some((days, "day")),
+        ),
+    )
+    .await
+    .unwrap();
+    complete_at(pool, flow_id, week(ymd(2026, 9, 27)), "2026-10-02T18:00:00").await;
+    root_key(flow_id, week(ymd(2026, 10, 4)))
+}
+
+/// Under Owed, a cooldown begun on Friday also blocks the week that only appears on Sunday: the
+/// hold is worked out at every load over the iterations open then. Three days after a Friday
+/// completion are Saturday, Sunday and Monday, so the new week is blocked until Tuesday 02:00;
+/// two days lift it on Monday at 02:00.
+#[tokio::test]
+async fn under_owed_a_cooldown_blocks_the_week_that_appears_after_it() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let three = owed_done_on_friday(&app, &pool, 3).await;
+    let two = owed_done_on_friday(&app, &pool, 2).await;
+
+    let saturday = load(&app, "2026-10-03T12:00:00").await;
+    assert!(
+        !drawn(&saturday, &three),
+        "the new week has not appeared yet"
+    );
+
+    let sunday = load(&app, "2026-10-04T03:00:00").await;
+    assert!(drawn(&sunday, &three));
+    assert_eq!(
+        cooling_until(&sunday, &three),
+        Some(at("2026-10-06T02:00:00"))
+    );
+    assert_eq!(
+        cooling_until(&sunday, &two),
+        Some(at("2026-10-05T02:00:00"))
+    );
+
+    let monday = load(&app, "2026-10-05T03:00:00").await;
+    assert_eq!(
+        cooling_until(&monday, &three),
+        Some(at("2026-10-06T02:00:00"))
+    );
+    assert_eq!(
+        cooling_until(&monday, &two),
+        None,
+        "two days lift on Monday"
+    );
+
+    let tuesday = load(&app, "2026-10-06T02:00:00").await;
+    assert_eq!(
+        cooling_until(&tuesday, &three),
+        None,
+        "three days lift on Tuesday"
+    );
+}
+
 /// An iteration resolved only because its open work was archived by hand was not done, and
 /// starts no cooldown (ruled 2026-10-01: "only done should start the cooldown").
 #[tokio::test]
