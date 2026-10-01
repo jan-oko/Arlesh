@@ -24,12 +24,12 @@ describe("AgentCapacityIndicator", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("says agents are at capacity, and what that blocks", () => {
+  it("is an icon whose name and tooltip say agents are at capacity", () => {
     useAgentCapacityStore.setState({ atCapacity: true });
     render(<AgentCapacityIndicator />);
 
-    const indicator = screen.getByRole("button", { name: "agentCapacity.clear" });
-    expect(indicator.textContent).toContain("agentCapacity.indicator");
+    const indicator = screen.getByRole("button", { name: "agentCapacity.title" });
+    expect(indicator.textContent).toBe("");
     expect(indicator.getAttribute("title")).toBe("agentCapacity.title");
   });
 
@@ -37,7 +37,7 @@ describe("AgentCapacityIndicator", () => {
     useAgentCapacityStore.setState({ atCapacity: true });
     render(<AgentCapacityIndicator />);
 
-    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(screen.getByRole("button", { name: "agentCapacity.title" }));
 
     expect(setAgentCapacity).toHaveBeenCalledWith(false);
     await vi.waitFor(() => expect(screen.queryByRole("button")).toBeNull());

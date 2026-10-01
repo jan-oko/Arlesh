@@ -45,8 +45,6 @@
   "checkTaskPrefix": "Check task prefix",
   "checkTaskPrefixReset": "Default",
   "agentCapacity": {
-    "indicator": "Agents at capacity",
-    "title": "Agents are at capacity, so every Agentic task not yet done is blocked. Click to clear.",
-    "clear": "Clear the agent capacity lock"
+    "title": "Agents at capacity: Agentic tasks are blocked. Click to clear."
   }
 }

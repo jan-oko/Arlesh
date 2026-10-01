@@ -531,9 +531,10 @@ Settings switch and the top-bar indicator read; and as an ordinary `board-change
 block with it. A window reads the lock once on start and then takes each announcement.
 
 **In the app.** Settings → MCP access → *Agent capacity* has the lock's switch, **Agents are at
-capacity**. While the lock is on, the top bar shows an amber **Agents at capacity** pill beside the
-Filter button; its hover says every Agentic task not yet done is blocked, and a click clears the
-lock. There is no setting for whether the lock blocks: the lock is the only control.
+capacity**. While the lock is on, the top bar shows a **gauge icon** in amber beside the Filter
+button — an icon only, sized and targeted like the gear, with no text or badge (the user, reviewing
+#116). Its tooltip and accessible name read *Agents at capacity: Agentic tasks are blocked. Click to
+clear.*, it takes a visible focus ring, and a click clears the lock. There is no setting for whether the lock blocks: the lock is the only control.
 
 ## What writes
 
