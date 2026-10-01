@@ -276,7 +276,7 @@ async fn a_compound_whose_open_items_the_lock_blocks_is_blocked_too() {
     let derived_on = |load: &arlesh_lib::mindmap::model::MindmapLoad, id: i64| {
         load.block_reasons
             .iter()
-            .filter(|reason| reason.owner_id == NodeId::from(id))
+            .filter(|reason| reason.owner_id.stored() == Some(id))
             .filter_map(|reason| reason.derived)
             .collect::<Vec<_>>()
     };
