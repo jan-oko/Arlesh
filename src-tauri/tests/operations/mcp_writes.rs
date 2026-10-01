@@ -1772,3 +1772,134 @@ mod task_fields {
         assert_eq!(refused(&created), "containment_violated");
     }
 }
+
+mod delegation {
+    //! `delegate` on `create` and `update`, and what a delegated Task's wait is called on the MCP.
+
+    use super::*;
+    use serde_json::json;
+
+    async fn person(pool: &sqlx::SqlitePool, name: &str) -> i64 {
+        sqlx::query_scalar("INSERT INTO people (name) VALUES (?) RETURNING id")
+            .bind(name)
+            .fetch_one(pool)
+            .await
+            .expect("insert a person")
+    }
+
+    /// The titles of the delegation waits the snapshot carries under `task`.
+    async fn delegation_wait_titles(mcp: &ArleshMcp, task: i64) -> Vec<String> {
+        snapshot(mcp, "expectations")
+            .await
+            .into_iter()
+            .filter(|wait| wait["origin"]["kind"] == "delegation_wait" && wait["parent_id"] == task)
+            .filter_map(|wait| wait["title"].as_str().map(str::to_string))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn an_agentic_task_is_delegated_to_the_agent_and_taken_back() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        helpers::make_agentic(&pool, board.inside_task).await;
+        let mcp = mcp(&pool);
+        let id = board.inside_task;
+
+        let set = run(
+            &mcp,
+            operation(json!({
+                "operation": "update",
+                "id": id.to_string(),
+                "delegate": { "kind": "agent" },
+            })),
+        )
+        .await;
+        assert_eq!(succeeded(&set)["delegate_to"], json!({ "kind": "agent" }));
+        assert_eq!(
+            delegation_wait_titles(&mcp, id).await,
+            vec!["Agent finish: Visible work".to_string()]
+        );
+
+        let cleared = run(
+            &mcp,
+            operation(json!({ "operation": "update", "id": id.to_string(), "delegate": null })),
+        )
+        .await;
+        assert!(succeeded(&cleared)["delegate_to"].is_null());
+        assert!(delegation_wait_titles(&mcp, id).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_task_is_created_delegated_to_a_person_and_its_wait_names_them() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        let tuli = person(&pool, "Tuli").await;
+        let mcp = mcp(&pool);
+
+        let created = run(
+            &mcp,
+            operation(json!({
+                "operation": "create",
+                "parent_type": "project",
+                "parent_id": board.inside.to_string(),
+                "title": "Book the venue",
+                "delegate": { "kind": "person", "id": tuli },
+            })),
+        )
+        .await;
+        let created = succeeded(&created).clone();
+        assert_eq!(
+            created["delegate_to"],
+            json!({ "kind": "person", "id": tuli })
+        );
+        let id = created["id"].as_i64().expect("a stored row");
+        assert_eq!(
+            delegation_wait_titles(&mcp, id).await,
+            vec!["Tuli finish: Book the venue".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_person_who_does_not_exist_is_refused_and_nothing_is_written() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        helpers::make_agentic(&pool, board.inside_task).await;
+        let mcp = mcp(&pool);
+
+        let refusal = run(
+            &mcp,
+            operation(json!({
+                "operation": "update",
+                "id": board.inside_task.to_string(),
+                "title": "Renamed",
+                "delegate": { "kind": "person", "id": 9999 },
+            })),
+        )
+        .await;
+        assert_eq!(refused(&refusal), "not_found");
+        assert_eq!(title_of(&pool, board.inside_task).await, "Visible work");
+    }
+
+    #[tokio::test]
+    async fn a_task_that_is_not_agentic_cannot_be_delegated() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        not_agentic(&pool, board.inside_task).await;
+        let mcp = mcp(&pool);
+
+        let refusal = run(
+            &mcp,
+            operation(json!({
+                "operation": "update",
+                "id": board.inside_task.to_string(),
+                "delegate": { "kind": "agent" },
+            })),
+        )
+        .await;
+        assert_eq!(refused(&refusal), "not_permitted");
+    }
+}
