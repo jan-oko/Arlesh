@@ -126,7 +126,8 @@ of padding, aspect-washed — that **scrolls sideways** when it is longer than t
   Commitment (the Commitment rule the presets share, `passesCommitmentPreset`), with the same
   subtree gates and hard-hide rules.
 - **The Expectations strip** holds what **Start** shows for Expectations — a pending, live wait
-  whose window is open (neither Pending nor Lapsed), honouring the app-wide **Start hides waits that
+  whose window is open (neither Pending nor Lapsed) or which is **Overdue**, pending past its window
+  (Start shows Overdue items, 2026-09-30), honouring the app-wide **Start hides waits that
   have checks** setting — with the same subtree gates. Do shows no Expectations at all, so this
   strip is the one place the Zen View reads a preset other than Do; it overrides the preset for this
   strip only. It is a frontend reading: the List View's Expectation filter is asked under Start, and

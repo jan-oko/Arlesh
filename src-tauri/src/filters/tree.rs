@@ -60,6 +60,7 @@ pub fn prune(root: &FactNode, filter: &BoardFilter) -> Option<FactNode> {
             plan: None,
             time_scope: None,
         },
+        &None,
     )
 }
 
@@ -117,7 +118,14 @@ struct Inherited<'a> {
     time_scope: Option<&'a TimeScope>,
 }
 
-fn prune_at(node: &FactNode, filter: &BoardFilter, inherited: Inherited<'_>) -> Option<FactNode> {
+/// `gate` is what the blocked ancestors above `node` still let through under Start (see
+/// [`rules::BlockGate`]).
+fn prune_at<'a>(
+    node: &'a FactNode,
+    filter: &BoardFilter,
+    inherited: Inherited<'a>,
+    gate: &rules::BlockGate<'a>,
+) -> Option<FactNode> {
     let Inherited {
         status: inherited_status,
         under_backlog,
@@ -147,6 +155,10 @@ fn prune_at(node: &FactNode, filter: &BoardFilter, inherited: Inherited<'_>) -> 
 
     // A Time Scope is inherited from the nearest scoped ancestor, as it is everywhere else.
     let time_scope_for_children = node.facts.time_scope.as_ref().or(inherited_time_scope);
+    // Under Start a blocked node gates what lies beneath it, letting only its child dependencies
+    // through; it and everything it holds back can still stand as the ancestors of those.
+    let gate_for_children = rules::gate_below(&node.facts, gate, filter);
+    let held = rules::is_held_by_block(&node.facts, gate, filter);
 
     let mut children = Vec::new();
     let mut has_content_match = false;
@@ -160,6 +172,7 @@ fn prune_at(node: &FactNode, filter: &BoardFilter, inherited: Inherited<'_>) -> 
                 plan: plan_for_children,
                 time_scope: time_scope_for_children,
             },
+            &gate_for_children,
         ) else {
             continue;
         };
@@ -175,7 +188,8 @@ fn prune_at(node: &FactNode, filter: &BoardFilter, inherited: Inherited<'_>) -> 
         return Some(FactNode::with_children(node.facts.clone(), children));
     }
     if has_content_match
-        || (rules::self_matches(&node.facts, filter, inherited_status, under_backlog)
+        || (!held
+            && rules::self_matches(&node.facts, filter, inherited_status, under_backlog)
             && !rules::is_planned_ahead(&node.facts, filter, inherited_plan)
             && !rules::is_outside_plan_scope(&node.facts, filter, inherited_time_scope))
     {

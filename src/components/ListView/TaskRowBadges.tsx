@@ -48,7 +48,7 @@ export default function TaskRowBadges({ node, indicators }: Props) {
       case "scope":
         return {
           tooltip: t("scope", { value: scopeLabel ?? t("loading") }),
-          icon: <ClockIcon cx={R} cy={R} r={R} color={MUTED} crossedOut={indicator.outOfScope === true} />,
+          icon: <ClockIcon cx={R} cy={R} r={R} color={MUTED} />,
         };
       case "archived":
         return {

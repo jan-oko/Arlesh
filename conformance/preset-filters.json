@@ -1679,6 +1679,149 @@
         "task-sub-blocked"
       ],
       "commitments": []
+    },
+    {
+      "name": "start shows an overdue task, goal or wait, and still drops a missed, delegated, backlogged, blocked or planned-ahead one",
+      "spec": "mindmap-view.md, Start — Start shows Overdue items (ruled by the user, 2026-09-30): an item flagged Overdue stays although its window has lapsed, and so does one Overdue by a due inside its open window. A Missed item is effectively Archived and never Overdue, and a done one is not either. Blocked, backlogged and delegated items, and a Task rescheduled into a Plan still ahead, drop out as before.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "start-overdue",
+      "mindmap": [
+        "domain-start-overdue",
+        "expectation-overdue",
+        "goal-overdue",
+        "task-overdue-child",
+        "task-overdue-lapsed",
+        "task-overdue-open",
+        "task-overdue-parent"
+      ],
+      "list": [
+        "task-overdue-lapsed",
+        "task-overdue-open",
+        "task-overdue-parent",
+        "task-overdue-child"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-overdue"
+      ]
+    },
+    {
+      "name": "plan shows every overdue item that is not delegated or backlogged",
+      "spec": "mindmap-view.md, Plan — Plan hides what is effectively Archived, and an Overdue item never is; a delegated Task reads as archived and a backlogged one is set aside.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "start-overdue",
+      "mindmap": [
+        "domain-start-overdue",
+        "expectation-overdue",
+        "goal-overdue",
+        "task-overdue-blocked",
+        "task-overdue-child",
+        "task-overdue-lapsed",
+        "task-overdue-open",
+        "task-overdue-parent",
+        "task-overdue-planned-ahead",
+        "task-under-overdue-blocked"
+      ],
+      "list": [
+        "task-overdue-lapsed",
+        "task-overdue-open",
+        "task-overdue-blocked",
+        "task-under-overdue-blocked",
+        "task-overdue-planned-ahead",
+        "task-overdue-parent",
+        "task-overdue-child"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-overdue"
+      ]
+    },
+    {
+      "name": "start shows an unscoped task past a due of its own, and still hides one under a blocked parent",
+      "spec": "time-scopes.md, Due scope and the Overdue flag — an Unscoped Task may carry a due of its own and is Overdue past it, its Timing still Active. mindmap-view.md, Start — a Plan that has ended unfulfilled leaves the Task visible; a blocked task is dropped together with its whole subtree, Overdue children included.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "start-overdue-unscoped",
+      "mindmap": [
+        "domain-cupboard",
+        "task-unscoped-parent",
+        "task-unscoped-past-due"
+      ],
+      "list": [
+        "task-unscoped-parent",
+        "task-unscoped-past-due"
+      ],
+      "commitments": [],
+      "expectations": []
+    },
+    {
+      "name": "start lets a blocked task's child dependency through with its subtree, and hides the rest of the blocked subtree",
+      "spec": "filtering-logic.md — a block from a child dependency does not hide that dependency (ruled by the user, 2026-10-01). The blocked task still fails its own match and stands only as the dependency's ancestor; its other children stay hidden, and so does everything under a task blocked by an explicit reason or by a dependency outside its subtree. A task with both an explicit reason and a child dependency still lets the dependency through.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "child-dependency",
+      "mindmap": [
+        "domain-child-dependency",
+        "task-blocked-by-both",
+        "task-child-dependency",
+        "task-dependency-of-both",
+        "task-elsewhere",
+        "task-under-child-dependency",
+        "task-waits-on-child"
+      ],
+      "list": [
+        "task-child-dependency",
+        "task-under-child-dependency",
+        "task-dependency-of-both",
+        "task-elsewhere"
+      ],
+      "commitments": [],
+      "expectations": []
+    },
+    {
+      "name": "plan shows the whole blocked subtree, child dependency or not",
+      "spec": "mindmap-view.md — only Start gates a blocked subtree.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "child-dependency",
+      "mindmap": [
+        "domain-child-dependency",
+        "task-beside-dependency-of-both",
+        "task-blocked-by-both",
+        "task-blocked-by-reason",
+        "task-child-dependency",
+        "task-dependency-of-both",
+        "task-elsewhere",
+        "task-sibling-of-dependency",
+        "task-under-child-dependency",
+        "task-under-outside",
+        "task-under-reason",
+        "task-waits-on-child",
+        "task-waits-outside"
+      ],
+      "list": [
+        "task-waits-on-child",
+        "task-child-dependency",
+        "task-under-child-dependency",
+        "task-sibling-of-dependency",
+        "task-blocked-by-reason",
+        "task-under-reason",
+        "task-blocked-by-both",
+        "task-dependency-of-both",
+        "task-beside-dependency-of-both",
+        "task-waits-outside",
+        "task-under-outside",
+        "task-elsewhere"
+      ],
+      "commitments": [],
+      "expectations": []
     }
   ],
   "boards": {
@@ -2745,6 +2888,262 @@
                   "status": "todo"
                 }
               ]
+            }
+          ]
+        }
+      ]
+    },
+    "start-overdue": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-start-overdue",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-overdue-lapsed",
+              "kind": "task",
+              "status": "todo",
+              "timing": "lapsed",
+              "overdue": true
+            },
+            {
+              "id": "task-overdue-open",
+              "kind": "task",
+              "status": "todo",
+              "timing": "active",
+              "overdue": true
+            },
+            {
+              "id": "task-missed",
+              "kind": "task",
+              "status": "todo",
+              "timing": "lapsed",
+              "archived": true
+            },
+            {
+              "id": "task-done-lapsed",
+              "kind": "task",
+              "status": "done",
+              "timing": "lapsed",
+              "archived": true
+            },
+            {
+              "id": "goal-overdue",
+              "kind": "goal",
+              "status": "active",
+              "timing": "lapsed",
+              "overdue": true
+            },
+            {
+              "id": "task-overdue-delegated",
+              "kind": "task",
+              "status": "todo",
+              "timing": "lapsed",
+              "overdue": true,
+              "delegated": true
+            },
+            {
+              "id": "task-overdue-backlogged",
+              "kind": "task",
+              "status": "todo",
+              "timing": "lapsed",
+              "overdue": true,
+              "backlogged": true
+            },
+            {
+              "id": "task-overdue-blocked",
+              "kind": "task",
+              "status": "todo",
+              "timing": "lapsed",
+              "overdue": true,
+              "isBlocked": true,
+              "children": [
+                {
+                  "id": "task-under-overdue-blocked",
+                  "kind": "task",
+                  "status": "todo",
+                  "timing": "lapsed",
+                  "overdue": true
+                }
+              ]
+            },
+            {
+              "id": "task-overdue-planned-ahead",
+              "kind": "task",
+              "status": "todo",
+              "timing": "lapsed",
+              "overdue": true,
+              "planTiming": "pending"
+            },
+            {
+              "id": "task-overdue-parent",
+              "kind": "task",
+              "status": "todo",
+              "timing": "lapsed",
+              "overdue": true,
+              "children": [
+                {
+                  "id": "task-overdue-child",
+                  "kind": "task",
+                  "status": "todo",
+                  "timing": "lapsed",
+                  "overdue": true
+                }
+              ]
+            },
+            {
+              "id": "expectation-overdue",
+              "kind": "expectation",
+              "status": "pending",
+              "timing": "lapsed",
+              "overdue": true
+            }
+          ]
+        }
+      ]
+    },
+    "start-overdue-unscoped": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-cupboard",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-unscoped-parent",
+              "kind": "task",
+              "status": "todo",
+              "timing": "active",
+              "planTiming": "lapsed",
+              "children": [
+                {
+                  "id": "task-unscoped-past-due",
+                  "kind": "task",
+                  "status": "todo",
+                  "timing": "active",
+                  "overdue": true,
+                  "planTiming": "lapsed"
+                }
+              ]
+            },
+            {
+              "id": "task-blocked-parent",
+              "kind": "task",
+              "status": "todo",
+              "timing": "active",
+              "planTiming": "lapsed",
+              "isBlocked": true,
+              "children": [
+                {
+                  "id": "task-past-due-under-blocked",
+                  "kind": "task",
+                  "status": "todo",
+                  "timing": "active",
+                  "overdue": true,
+                  "planTiming": "lapsed"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "child-dependency": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-child-dependency",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-waits-on-child",
+              "kind": "task",
+              "status": "todo",
+              "isBlocked": true,
+              "blockingDependencies": [
+                "task-child-dependency"
+              ],
+              "children": [
+                {
+                  "id": "task-child-dependency",
+                  "kind": "task",
+                  "status": "todo",
+                  "children": [
+                    {
+                      "id": "task-under-child-dependency",
+                      "kind": "task",
+                      "status": "todo"
+                    }
+                  ]
+                },
+                {
+                  "id": "task-sibling-of-dependency",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-blocked-by-reason",
+              "kind": "task",
+              "status": "todo",
+              "isBlocked": true,
+              "children": [
+                {
+                  "id": "task-under-reason",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-blocked-by-both",
+              "kind": "task",
+              "status": "todo",
+              "isBlocked": true,
+              "blockingDependencies": [
+                "task-dependency-of-both"
+              ],
+              "children": [
+                {
+                  "id": "task-dependency-of-both",
+                  "kind": "task",
+                  "status": "todo"
+                },
+                {
+                  "id": "task-beside-dependency-of-both",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-waits-outside",
+              "kind": "task",
+              "status": "todo",
+              "isBlocked": true,
+              "blockingDependencies": [
+                "task-elsewhere"
+              ],
+              "children": [
+                {
+                  "id": "task-under-outside",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-elsewhere",
+              "kind": "task",
+              "status": "todo"
             }
           ]
         }

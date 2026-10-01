@@ -1,0 +1,1 @@
+- **No red X over the Time Scope clock.** An item whose window has passed no longer draws its clock badge crossed out, on the Mindmap, in the List View or on the Steps, Plan and Zen cards. An Overdue item shows the amber border, and a Missed or Completed one shows the archive box.

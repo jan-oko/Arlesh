@@ -524,16 +524,19 @@ export function buildTree(
       const target = expectationById.get(waitId);
       if (target !== undefined && target.status === EXPECTATION_STATUS.PENDING) {
         node.virtualBlockers?.push(`Blocked by expectation ${dep.dependency_id} (${target.title})`);
+        node.blockingDependencyIds = [...(node.blockingDependencyIds ?? []), expectationNodeId(waitId)];
       }
     } else if (dep.dependency_type === "task") {
       const target = taskById.get(dep.dependency_id);
       if (target !== undefined && target.status !== "done") {
         node.virtualBlockers?.push(`Blocked by task ${dep.dependency_id} (${target.title})`);
+        node.blockingDependencyIds = [...(node.blockingDependencyIds ?? []), `task-${dep.dependency_id}`];
       }
     } else {
       const target = goalById.get(dep.dependency_id);
       if (target !== undefined && target.status !== "achieved") {
         node.virtualBlockers?.push(`Blocked by goal ${dep.dependency_id} (${target.title})`);
+        node.blockingDependencyIds = [...(node.blockingDependencyIds ?? []), `goal-${dep.dependency_id}`];
       }
     }
   }

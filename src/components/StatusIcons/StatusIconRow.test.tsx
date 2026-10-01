@@ -52,8 +52,21 @@ describe("StatusIconRow", () => {
   it("renders a tooltip per indicator (keys resolve to i18n text at runtime)", () => {
     const scope = { start_id: testKey(1), end_id: testKey(2), duration: { n: 1, kind: "week" } };
     const titles = renderRow(node("task", { status: "todo", timeScope: scope, timing: "lapsed", overdue: true }));
-    // The crossed scope clock alone: Overdue is drawn as the node's border, not as a badge.
+    // The scope clock alone: Overdue is drawn as the node's border, not as a badge.
     expect(titles).toEqual(["scope"]);
+  });
+
+  it("draws no red X over the scope clock of an item past its window", () => {
+    const scope = { start_id: testKey(1), end_id: testKey(2), duration: { n: 1, kind: "week" } };
+    for (const extra of [{ overdue: true }, { resolution: "missed" as const, archived: true }]) {
+      const n = node("task", { status: "todo", timeScope: scope, timing: "lapsed", ...extra });
+      const { container } = render(
+        <svg>
+          <StatusIconRow node={n} indicators={deriveStatusIndicators(n)} top={36} />
+        </svg>,
+      );
+      expect(container.querySelector("[stroke='var(--danger)']")).toBeNull();
+    }
   });
 
   it("uses a distinct tooltip for an archived badge that overrode a manual Frozen status", () => {

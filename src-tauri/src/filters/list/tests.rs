@@ -84,6 +84,30 @@ fn a_blocked_ancestor_takes_the_row_out_of_start() {
 }
 
 #[test]
+fn a_blocked_ancestor_lets_its_child_dependency_and_its_subtree_through_under_start() {
+    let mut blocked = task("task-1", "todo");
+    blocked.is_blocked = true;
+    blocked.blocking_dependencies = vec!["task-2".to_string()];
+    let root = FactNode::with_children(
+        NodeFacts::new("root", NodeKind::Aspect),
+        vec![FactNode::with_children(
+            blocked,
+            vec![
+                FactNode::with_children(
+                    task("task-2", "todo"),
+                    vec![FactNode::leaf(task("task-4", "todo"))],
+                ),
+                FactNode::leaf(task("task-3", "todo")),
+            ],
+        )],
+    );
+    assert_eq!(
+        rows_of(&root, &BoardFilter::preset(Preset::Start)),
+        ["task-2", "task-4"]
+    );
+}
+
+#[test]
 fn an_unopened_occurrence_above_a_row_takes_the_row_with_it() {
     let mut unopened = task("task-1", "todo");
     unopened.is_habit_occurrence = true;
