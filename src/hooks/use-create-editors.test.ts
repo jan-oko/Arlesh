@@ -55,7 +55,7 @@ describe("useCreateEditors", () => {
         ...PLAIN_FLOW,
         recurrence: {
           startDate: "2026-09-27", gapN: null, gapKind: null, endDate: null,
-          consumptionKind: "destructive", blockingMode: null, catchupPolicy: null,
+          clock: "window", missPolicy: "archive",
         },
       });
     });
@@ -63,7 +63,7 @@ describe("useCreateEditors", () => {
     expect(createFlow).toHaveBeenCalledWith(expect.objectContaining({ title: "Journal", parent_type: "goal" }));
     expect(setFlowRecurrence).toHaveBeenCalledWith(31, {
       start_scope_id: { kind: "week", date: "2026-09-27" }, gap_n: null, gap_kind: null, end_scope_id: null,
-      consumption_kind: "destructive", blocking_mode: null, catchup_policy: null,
+      clock: "window", miss_policy: "archive",
     });
     expect(reload).toHaveBeenCalled();
     expect(hook.result.current.flowParent).toBeNull();
@@ -85,7 +85,7 @@ describe("useCreateEditors", () => {
     ["Habit", "onNewHabit", {
       recurrence: {
         startDate: "2026-09-27", gapN: null, gapKind: null, endDate: null,
-        consumptionKind: "destructive", blockingMode: null, catchupPolicy: null,
+        clock: "window", missPolicy: "archive",
       },
     }],
   ] as const)("creates a new %s marked Private as private", async (_label, open, extra) => {

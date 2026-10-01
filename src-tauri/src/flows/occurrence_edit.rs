@@ -11,7 +11,7 @@
 //! Delete does to one. A request that merely repeats the occurrence's current window or parent,
 //! as a full editor save does, is not a move and is let through.
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDate, NaiveDateTime};
 
 use super::{
     error::FlowError,
@@ -55,12 +55,12 @@ async fn template_values(
 ) -> Result<TemplateValues, FlowError> {
     match key.item.item_type {
         TemplateKind::FlowRoot => {
-            let (_, window_start) = super::resolve_flow_window(flow, key.iteration.start_date())?;
+            let window_start = window_start_of(flow, key)?;
             Ok(TemplateValues {
                 title: flow.title.clone(),
                 is_private: flow.is_private,
                 position: position_of_root,
-                plan: resolve_root_plan(flow, Some(window_start))?,
+                plan: resolve_root_plan(flow, window_start)?,
                 fields: flow.template.clone(),
             })
         }
@@ -89,10 +89,10 @@ async fn template_values(
                 .find(|task| task.id == key.item.item_id)
                 .ok_or_else(|| FlowError::NodeNotFound(key.node_key()))?;
             let pair = db.flows().cycle(key.cycle).await?;
-            let (_, window_start) = super::resolve_flow_window(flow, key.iteration.start_date())?;
-            let plan = match resolve_cycle(pair.as_ref(), Some(window_start))? {
+            let window_start = window_start_of(flow, key)?;
+            let plan = match resolve_cycle(pair.as_ref(), window_start)? {
                 Some(resolved) => resolved.plan,
-                None => super::whole_scope_plan(pair.as_ref(), Some(window_start))?,
+                None => super::whole_scope_plan(pair.as_ref(), window_start)?,
             };
             Ok(TemplateValues {
                 title: task.title,
@@ -103,6 +103,12 @@ async fn template_values(
             })
         }
     }
+}
+
+/// The first day of the window an occurrence's iteration runs over, or `None` for an Unscoped
+/// Interval Habit's, which has none.
+fn window_start_of(flow: &Flow, key: &OccurrenceKey) -> Result<Option<NaiveDate>, FlowError> {
+    Ok(super::iteration_window(flow, key.iteration)?.map(|(_, start)| start))
 }
 
 /// The ordinal of the iteration an occurrence is in — an iteration root's default position.
@@ -139,9 +145,10 @@ pub async fn template_fields<M: SessionMode>(
     })
 }
 
-/// The occurrence as the virtual table serves it now, by kind.
+/// The occurrence as the virtual table serves it now, by kind. A Task carries whether it is
+/// flagged Overdue now, which lifts the bound its window puts on its Plan.
 enum Current {
-    Task(Box<Task>),
+    Task(Box<Task>, bool),
     Goal(Box<Goal>),
     Commitment(Box<Commitment>),
 }
@@ -164,7 +171,11 @@ async fn current(
     .await?;
     let id = NodeId::Derived(key.id());
     if let Some(task) = rows.tasks.into_iter().find(|task| task.id == id) {
-        return Ok(Current::Task(Box::new(task)));
+        let overdue = rows
+            .lifecycles
+            .iter()
+            .any(|lifecycle| lifecycle.node_id == id && lifecycle.overdue);
+        return Ok(Current::Task(Box::new(task), overdue));
     }
     if let Some(goal) = rows.goals.into_iter().find(|goal| goal.id == id) {
         return Ok(Current::Goal(Box::new(goal)));
@@ -185,7 +196,7 @@ pub async fn occurrence_row(
     let flow_id = db.flows().occurrence_flow_id(key).await?;
     let flow = db.flows().get(flow_id).await?;
     Ok(match current(db, &flow, key, now).await? {
-        Current::Task(task) => (Some(*task), None, None),
+        Current::Task(task, _) => (Some(*task), None, None),
         Current::Goal(goal) => (None, Some(*goal), None),
         Current::Commitment(commitment) => (None, None, Some(*commitment)),
     })
@@ -240,7 +251,7 @@ pub async fn update_task(
 ) -> Result<(), FlowError> {
     let flow_id = db.flows().occurrence_flow_id(key).await?;
     let flow = db.flows().get(flow_id).await?;
-    let Current::Task(current) = current(db, &flow, key, now).await? else {
+    let Current::Task(current, overdue) = current(db, &flow, key, now).await? else {
         return Err(FlowError::Refused(
             "this occurrence is not a task".to_string(),
         ));
@@ -251,14 +262,6 @@ pub async fn update_task(
         request.time_scope.as_ref(),
         &current.time_scope,
     )?;
-    // An occurrence's due is its Habit's miss policy to decide, and its overlay has no column for
-    // one yet; a request asking to set one is refused rather than dropped. Clearing — what a full
-    // editor save of a task with no due sends — asks for nothing.
-    if matches!(request.due_scope, Some(Some(_))) {
-        return Err(FlowError::Refused(
-            "a habit occurrence's due is its Habit's, and cannot be set on it".to_string(),
-        ));
-    }
     let async_template = request.async_template.clone();
     let template = template_values(db, &flow, key, iteration_index(&current.origin)).await?;
     let mut overlay = db.overlays().task(key).await?;
@@ -313,8 +316,20 @@ pub async fn update_task(
         overlay.asynchronous =
             (asynchronous != template.fields.asynchronous).then_some(asynchronous);
     }
+    // An explicit due lands in the overlay, where it wins over the one its Habit's clock derives;
+    // clearing it goes back to that default. It is held within the occurrence's window, as a
+    // stored Task's is within its Time Scope.
+    if let Some(due) = request.due_scope {
+        if let Some(due) = &due {
+            check_due(db, &flow, key, current.time_scope.as_ref(), due).await?;
+        }
+        overlay.due_scope_start_id = due.as_ref().map(|due| due.start_id);
+        overlay.due_scope_end_id = due.as_ref().map(|due| due.end_id);
+    }
     if let Some(plan) = request.plan {
-        if let Some(plan) = &plan {
+        // An Overdue occurrence may be planned past its window, as an Overdue stored Task may:
+        // late work has to be rescheduled somewhere, and that is only ever later.
+        if let (Some(plan), false) = (&plan, overdue) {
             check_plan(db, &flow, key, plan).await?;
         }
         let same_as_template = plan.as_ref().map(|plan| (plan.start_id, plan.end_id))
@@ -392,12 +407,40 @@ async fn check_plan(
     key: &OccurrenceKey,
     plan: &TimeScope,
 ) -> Result<(), FlowError> {
-    let window = occurrence_window(db, flow, key).await?;
+    let Some(window) = occurrence_window(db, flow, key).await? else {
+        return Ok(());
+    };
     if interval_contains(window.window(), plan.window()) {
         return Ok(());
     }
     Err(crate::tasks::error::TaskError::ScopeContainment(
         "a plan must fall within the occurrence's window".to_string(),
+    )
+    .into())
+}
+
+/// Refuses a due outside the occurrence's relevance — its own Time Scope when it carries one
+/// (an iteration root's reaches back over the windows it carries), else its window. An
+/// occurrence of an Unscoped Interval Habit has neither, and may be given any due.
+async fn check_due(
+    db: &mut Db<Transactional>,
+    flow: &Flow,
+    key: &OccurrenceKey,
+    time_scope: Option<&TimeScope>,
+    due: &TimeScope,
+) -> Result<(), FlowError> {
+    let window = match time_scope {
+        Some(scope) => Some(scope.clone()),
+        None => occurrence_window(db, flow, key).await?,
+    };
+    let Some(window) = window else {
+        return Ok(());
+    };
+    if interval_contains(window.window(), due.window()) {
+        return Ok(());
+    }
+    Err(crate::tasks::error::TaskError::ScopeContainment(
+        "due is not within the task's time scope".to_string(),
     )
     .into())
 }
@@ -541,8 +584,8 @@ pub struct OccurrenceHost {
     pub flow_id: FlowId,
     /// What the occurrence is: `task`, `goal` or `commitment`.
     pub parent_kind: &'static str,
-    /// The occurrence's window.
-    pub window: TimeScope,
+    /// The occurrence's window; `None` for an Unscoped Interval Habit's, which has none.
+    pub window: Option<TimeScope>,
     /// The host's parent type, as a child row spells it.
     pub host_type: String,
     /// The host's row id.
@@ -581,7 +624,9 @@ pub fn check_within(
     time_scope: Option<&TimeScope>,
     plan: Option<&TimeScope>,
 ) -> Result<(), FlowError> {
-    let outer = host.window.window();
+    let Some(outer) = host.window.as_ref().map(TimeScope::window) else {
+        return Ok(());
+    };
     let escapes = |inner: &TimeScope| !interval_contains(outer, inner.window());
     if time_scope.is_some_and(escapes) || plan.is_some_and(escapes) {
         return Err(crate::tasks::error::TaskError::ScopeContainment(
@@ -610,7 +655,7 @@ pub async fn attach(
             host.flow_id,
             host.parent_kind,
             key,
-            Some(&host.window),
+            host.window.as_ref(),
             child_type,
             child_id,
         )

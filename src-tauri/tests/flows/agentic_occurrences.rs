@@ -7,7 +7,7 @@ use crate::helpers;
 use arlesh_lib::commands::flows as flow_commands;
 use arlesh_lib::flows::{
     model::{
-        BlockingMode, ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, InstanceType,
+        ClockKind, CreateFlowItemRequest, CreateFlowRequest, InstanceType, MissPolicy,
         SetRecurrenceRequest, UpdateFlowItemRequest,
     },
     template::TemplateUpdate,
@@ -74,9 +74,8 @@ async fn habit(app: &App, template: TemplateUpdate) -> i64 {
             gap_n: None,
             gap_kind: None,
             end_scope_id: None,
-            consumption_kind: ConsumptionKind::Accumulating,
-            blocking_mode: Some(BlockingMode::Overlapping),
-            catchup_policy: None,
+            clock: ClockKind::Window,
+            miss_policy: Some(MissPolicy::Owed),
         },
     )
     .await

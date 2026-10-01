@@ -24,7 +24,9 @@ const FLOW = 7;
 /** One day-long iteration anchored on `date`, whose window closed at 02:00 the next morning. */
 function dayIteration(
   date: string,
-  options: { done?: boolean; passed?: boolean; flowId?: number; flowTitle?: string; index?: number } = {},
+  options: {
+    done?: boolean; passed?: boolean; owed?: boolean; flowId?: number; flowTitle?: string; index?: number;
+  } = {},
 ): MindmapNode {
   const next = new Date(`${date}T00:00:00Z`);
   next.setUTCDate(next.getUTCDate() + 1);
@@ -37,6 +39,7 @@ function dayIteration(
     windowEnd: `${next.toISOString().slice(0, 10)}T02:00:00`,
     passed: options.passed ?? true,
     done: options.done ?? false,
+    ...(options.owed === true ? { owed: true } : {}),
   };
   return {
     id: `habit-${meta.flowId}-${date}-virtual`,
@@ -169,6 +172,36 @@ describe("foldHabitRuns", () => {
     const folded = foldHabitRuns(tree, 3, LABELS);
 
     expect(titles(folded.children)).toEqual(["Journal: 3 passed · 0 done, 3 missed", "2026-09-17"]);
+  });
+
+  it("keeps owed work out of the fold, drawn beside the run it sits in", () => {
+    const tree = host([
+      dayIteration("2026-09-14", { done: true, index: 0 }),
+      dayIteration("2026-09-15", { owed: true, index: 1 }),
+      dayIteration("2026-09-16", { done: true, index: 2 }),
+      dayIteration("2026-09-17", { done: true, index: 3 }),
+      dayIteration("2026-09-18", { index: 4, passed: false }),
+    ]);
+
+    const folded = foldHabitRuns(tree, 3, LABELS);
+
+    expect(titles(folded.children)).toEqual([
+      "Journal: 3 passed · 3 done, 0 missed",
+      "2026-09-15",
+      "2026-09-18",
+    ]);
+  });
+
+  it("does not fold a run made short by the owed work taken out of it", () => {
+    const tree = host([
+      dayIteration("2026-09-14", { done: true, index: 0 }),
+      dayIteration("2026-09-15", { owed: true, index: 1 }),
+      dayIteration("2026-09-16", { done: true, index: 2 }),
+    ]);
+
+    const folded = foldHabitRuns(tree, 3, LABELS);
+
+    expect(titles(folded.children)).toEqual(["2026-09-14", "2026-09-15", "2026-09-16"]);
   });
 
   it("folds each Habit's iterations only with its own", () => {
