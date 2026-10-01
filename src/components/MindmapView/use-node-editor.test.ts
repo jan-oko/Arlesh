@@ -4,7 +4,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { useNodeEditor } from "./use-node-editor";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
-import { updateTask, scopeContainmentConflicts } from "@/api/tasks";
+import { updateTask, scopeContainmentConflicts, setTaskDoneAt } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
 import { flowOrigins, setFlowItemCycles, updateFlowTask, addFlowDependency } from "@/api/flows";
 import { testKey } from "@/test/scope-key";
@@ -21,6 +21,7 @@ vi.mock("@/api/tasks", () => ({
   addTaskDependency: vi.fn().mockResolvedValue(undefined),
   removeTaskDependency: vi.fn().mockResolvedValue(undefined),
   scopeContainmentConflicts: vi.fn().mockResolvedValue([]),
+  setTaskDoneAt: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/api/goals", () => ({
   updateGoal: vi.fn().mockResolvedValue(undefined),
@@ -179,6 +180,28 @@ describe("useNodeEditor — delegation", () => {
     const result = setup();
     await act(async () => { await result.current.onTaskSave(saveData); });
     expect(vi.mocked(updateTask).mock.calls[0]?.[1]).not.toHaveProperty("delegate_to");
+  });
+});
+
+describe("useNodeEditor — done date", () => {
+  it("sets the done date after the update, when the editor changed it", async () => {
+    vi.mocked(scopeContainmentConflicts).mockResolvedValue([]);
+    const result = setup();
+    await act(async () => {
+      await result.current.onTaskSave({ ...saveData, status: "done", doneAt: "2026-09-26T19:00:00" });
+    });
+    expect(setTaskDoneAt).toHaveBeenCalledWith(5, "2026-09-26T19:00:00");
+    const updated = vi.mocked(updateTask).mock.invocationCallOrder[0] ?? 0;
+    const dated = vi.mocked(setTaskDoneAt).mock.invocationCallOrder[0] ?? 0;
+    expect(dated).toBeGreaterThan(updated);
+  });
+
+  it("leaves the done date alone when the editor did not touch it", async () => {
+    vi.mocked(scopeContainmentConflicts).mockResolvedValue([]);
+    vi.mocked(setTaskDoneAt).mockClear();
+    const result = setup();
+    await act(async () => { await result.current.onTaskSave(saveData); });
+    expect(setTaskDoneAt).not.toHaveBeenCalled();
   });
 });
 

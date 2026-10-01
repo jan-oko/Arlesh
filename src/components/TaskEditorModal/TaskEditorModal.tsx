@@ -15,7 +15,8 @@ import { storedAgenticState } from "@/utils/agentic";
 import { isDelegatedToAgent, toggledAgentDelegate } from "@/utils/delegation";
 import type { TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
-import { listTaskDependencies } from "@/api/tasks";
+import { fetchTaskDoneAt, listTaskDependencies } from "@/api/tasks";
+import { fromDoneDateInput, nowDoneDateInput, toDoneDateInput } from "@/utils/done-date";
 import { getErrorMessage } from "@/api/errors";
 import { withAtomicGesture } from "@/api/gesture";
 import EditorModal from "@/components/EditorModal/EditorModal";
@@ -71,6 +72,9 @@ export interface TaskSaveData {
    * says nothing about delegation at all, so a save that never touched it cannot overwrite it. */
   delegate?: Delegate | null;
   isPrivate: boolean;
+  /** The task's new done date (`YYYY-MM-DDTHH:MM:SS`, local), present only when the form changed
+   * it on a task saved Done. Absent leaves the recorded one alone. */
+  doneAt?: string;
 }
 
 const TASK_STATUSES = Object.values(TASK_STATUS);
@@ -132,6 +136,9 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);
   const [currentDeps, setCurrentDeps] = useState<Dependency[]>([]);
   const [depSearch, setDepSearch] = useState("");
+  // The done date, as the Advanced field holds it, and as it was loaded — saved only when changed.
+  const [doneAt, setDoneAt] = useState("");
+  const [loadedDoneAt, setLoadedDoneAt] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const beadsClear = useBeadsIdClear(onClearBeadsId);
@@ -152,6 +159,19 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   useEffect(() => {
     void listTaskDependencies(dbId).then((deps) => { setInitialDeps(deps); setCurrentDeps(deps); });
   }, [dbId]);
+
+  // A wait's check task has no done date of its own: its completion is the check it records.
+  const hasDoneDate = checkOrigin(node.origin) === undefined;
+  useEffect(() => {
+    if (!hasDoneDate || node.status !== TASK_STATUS.DONE) return;
+    let cancelled = false;
+    void fetchTaskDoneAt(dbId).then((at) => {
+      if (cancelled) return;
+      setDoneAt(toDoneDateInput(at));
+      setLoadedDoneAt(toDoneDateInput(at));
+    });
+    return () => { cancelled = true; };
+  }, [dbId, hasDoneDate, node.status]);
 
 
   function removeDep(dep: Dependency) {
@@ -206,6 +226,8 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           agenticBrief: isEmptyBrief(agenticBrief) ? null : agenticBrief,
           ...(delegate !== (node.delegate ?? null) ? { delegate } : {}),
           isPrivate,
+          ...(status === TASK_STATUS.DONE && doneAt !== "" && doneAt !== loadedDoneAt
+            ? { doneAt: fromDoneDateInput(doneAt) } : {}),
         });
       });
     } catch (err) {
@@ -427,6 +449,21 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         onPrivateChange={setIsPrivate}
         startOpen={agentic !== TASK_AGENTIC.INHERIT || delegatedToAgent || (readsAgentic && !isEmptyBrief(agenticBrief))}
       >
+        {/* The done date: when a Done task was done, set back for work marked done late — an
+            Interval's next window and a cooldown count from it. Left empty on a task marked Done
+            in this save, it is the moment of saving. */}
+        {hasDoneDate && status === TASK_STATUS.DONE && (
+          <label className={styles.label} title={t("doneAtHint")}>
+            {t("fieldDoneAt")}
+            <input
+              type="datetime-local"
+              className={styles.input}
+              value={doneAt}
+              max={nowDoneDateInput()}
+              onChange={(e) => setDoneAt(e.target.value)}
+            />
+          </label>
+        )}
         <AgenticField
           value={agentic}
           inherited={node.inheritedAgentic === true}

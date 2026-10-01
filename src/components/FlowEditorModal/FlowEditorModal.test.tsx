@@ -243,7 +243,7 @@ describe("FlowEditorModal — save", () => {
         expect.objectContaining({
           recurrence: {
             startDate: expect.any(String), gapN: null, gapKind: null, endDate: null,
-            clock: "window", missPolicy: "archive",
+            clock: "window", missPolicy: "archive", cooldownN: null, cooldownKind: null,
           },
         }),
       ),
@@ -260,7 +260,7 @@ describe("FlowEditorModal — save", () => {
   it("prompts to reconcile when a schedule change collides with completed iterations", async () => {
     vi.mocked(getFlowRecurrence).mockResolvedValueOnce({
       flow_id: 1, start_scope_id: testKey(1), gap_n: null, gap_kind: null, end_scope_id: null,
-      clock: "window", miss_policy: "archive",
+      clock: "window", miss_policy: "archive", cooldown_n: null, cooldown_kind: null,
     });
     vi.mocked(habitCompletionCount).mockResolvedValueOnce(2);
     render(<FlowEditorModal {...defaultProps} />);

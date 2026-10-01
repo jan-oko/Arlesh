@@ -32,6 +32,7 @@ import {
   addTagToTask,
   removeTagFromTask,
   updateTask,
+  setTaskDoneAt,
   addTaskDependency,
   removeTaskDependency,
   scopeContainmentConflicts,
@@ -217,6 +218,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         is_private: data.isPrivate,
         ...(data.delegate !== undefined ? { delegate_to: data.delegate } : {}),
       });
+      // After the update, which is what makes a task newly marked Done Done at all.
+      if (data.doneAt !== undefined) await setTaskDoneAt(dbId, data.doneAt);
       // Scheduling a set-aside task puts it back in play, and so does starting one. The editor
       // already showed the switch go off, but the save is where it becomes true, so it is named
       // rather than left to be noticed.
