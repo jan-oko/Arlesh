@@ -10,7 +10,7 @@
     "plan": "Plan",
     "windows": "Windows & tray",
     "expectations": "Expectations",
-    "mcp": "MCP access",
+    "mcp": "Agents",
     "zen": "Zen"
   },
   "planCandidates": "Candidates pane",
@@ -35,6 +35,15 @@
       "failed": "Not listening on port {{port}}: {{reason}}",
       "restart": "Restart",
       "envOverride": "ARLESH_MCP_PORT is set, so the endpoint uses port {{port}} instead of this setting until it is unset."
-    }
+    },
+    "capacity": {
+      "heading": "Agent capacity",
+      "note": "Agents set this over the MCP when they cannot take on more Agentic work, and clear it when there is room. While it is on, every Agentic task not yet done is blocked (“Agents at capacity”), so Start hides them and they cannot be started. You can set and clear it here, or clear it from the top bar.",
+      "lock": "Agents are at capacity",
+      "showStatus": "Show agent status in the top bar",
+      "help": "About the agent capacity lock"
+    },
+    "rootsHeading": "MCP roots",
+    "rootsHelp": "About MCP roots"
   }
 }

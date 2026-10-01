@@ -283,7 +283,7 @@ describe("SettingsModal", () => {
     expect(screen.getByLabelText("common:checkTaskPrefix")).toBeInTheDocument();
   });
 
-  it("shows the MCP roots under MCP access", () => {
+  it("shows the MCP roots under Agents", () => {
     open();
     goTo("mcp");
 

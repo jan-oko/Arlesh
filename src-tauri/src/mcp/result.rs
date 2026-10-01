@@ -52,6 +52,15 @@ pub(super) fn refused(message: impl Into<String>) -> Result<CallToolResult, Erro
     )?))
 }
 
+/// A tool result for a failure outside the database and every domain rule — the agent capacity
+/// lock's file, which could not be saved. Reported as `internal`, since the agent can do nothing
+/// about it but try again.
+pub(super) fn internal(message: impl Into<String>) -> Result<CallToolResult, ErrorData> {
+    Ok(CallToolResult::structured_error(structured(
+        WireError::internal(message),
+    )?))
+}
+
 /// A tool result for a failure that happened before any operation could run — opening the session.
 pub(super) fn failed(error: impl Into<AppError>) -> Result<CallToolResult, ErrorData> {
     Ok(CallToolResult::structured_error(structured(

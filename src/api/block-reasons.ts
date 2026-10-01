@@ -8,11 +8,12 @@ export interface BlockReason {
   reason: string;
   position: number;
   /**
-   * Present on a reason the backend **derived** rather than stored — `compound`: the owner is a
-   * Compound Task and every one of its open sub-items is blocked. No one wrote it and no editor
-   * removes it; it goes when a sub-item is unblocked or finished.
+   * Present on a reason the backend **derived** rather than stored. No one wrote it and no editor
+   * removes it. `agent_capacity`: the agent capacity lock is on and the owner is an Agentic Task not
+   * yet Done; only clearing the lock removes it. `compound`: the owner is a Compound Task and every
+   * one of its open sub-items is blocked; it goes when a sub-item is unblocked or finished.
    */
-  derived?: "compound";
+  derived?: "agent_capacity" | "compound";
 }
 
 /** Every explicit block reason across all tasks and goals (for the mindmap bulk load). */
