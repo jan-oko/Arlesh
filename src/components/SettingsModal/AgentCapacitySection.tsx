@@ -1,0 +1,31 @@
+import { useTranslation } from "react-i18next";
+import { useAgentCapacity } from "@/hooks/use-agent-capacity";
+import Switch from "@/components/Switch/Switch";
+import { useDisplayStore } from "@/stores/use-display-store";
+import HelpTip from "./HelpTip";
+import styles from "./SettingsModal.module.css";
+import own from "./McpEndpointSection.module.css";
+
+/**
+ * The agent capacity lock's switch, and whether the top bar shows the agents' status. The lock is
+ * shared with every window and with agents over the MCP, which set and clear it too; while it is
+ * on, every Agentic Task not yet Done is blocked.
+ */
+export default function AgentCapacitySection() {
+  const { t } = useTranslation("settings");
+  const { atCapacity, error, setAtCapacity } = useAgentCapacity();
+  const showStatus = useDisplayStore((s) => s.showAgentStatus);
+  const toggleShowStatus = useDisplayStore((s) => s.toggleShowAgentStatus);
+
+  return (
+    <section className={own.section} aria-label={t("mcp.capacity.heading")}>
+      <h3 className={styles.heading}>{t("mcp.capacity.heading")}</h3>
+      <div className={own.row}>
+        <Switch checked={atCapacity} onChange={(next) => { void setAtCapacity(next); }} label={t("mcp.capacity.lock")} />
+        <HelpTip text={t("mcp.capacity.note")} label={t("mcp.capacity.help")} />
+      </div>
+      <Switch checked={showStatus} onChange={toggleShowStatus} label={t("mcp.capacity.showStatus")} />
+      {error !== null && <p className={styles.error} role="alert">{error}</p>}
+    </section>
+  );
+}

@@ -11,6 +11,7 @@ import { TabStoresContext } from "@/stores/tab-stores-context";
 import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useTabCommands } from "@/hooks/use-tab-commands";
 import { useCloseToTraySync } from "@/hooks/use-close-to-tray";
+import { useAgentCapacitySync } from "@/hooks/use-agent-capacity";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
 import { useForgetClosedWindows, useTabInbox } from "@/hooks/use-window-session";
 import { TAB_BINDINGS } from "@/utils/hotkeys/tab-bindings";
@@ -30,6 +31,9 @@ export default function App() {
   const isInputCaptured = useIsInputCaptured();
 
   useCloseToTraySync();
+  // The agent capacity lock is the backend's, shared with every window and with agents over the
+  // MCP; this keeps this window's copy of it current.
+  useAgentCapacitySync();
   // Every window is the same thing, so this is all it takes to be one of several: accept a tab
   // another window hands over, and — in the first window only — forget the tabs of windows that
   // are no longer open.

@@ -98,9 +98,13 @@ async fn complete_root(
 
 /// The iteration root's status as the board reads it.
 async fn root_status(app: &tauri::App<tauri::test::MockRuntime>, flow_id: i64) -> String {
-    let load = arlesh_lib::commands::mindmap::load_mindmap(app.state(), at("2026-01-05T09:00:00"))
-        .await
-        .unwrap();
+    let load = arlesh_lib::commands::mindmap::load_mindmap(
+        app.state(),
+        app.state(),
+        at("2026-01-05T09:00:00"),
+    )
+    .await
+    .unwrap();
     let root = NodeId::Derived(root_of(flow_id).id());
     load.tasks
         .into_iter()

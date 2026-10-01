@@ -36,6 +36,15 @@ describe("McpAccessPage", () => {
     expect(screen.getByText("settings:mcp.none")).toBeInTheDocument();
   });
 
+  it("heads the roots with a short title whose question mark holds the explanation", () => {
+    vi.mocked(useMcpRoots).mockReturnValue(roots());
+    render(<McpAccessPage />);
+
+    expect(screen.getByRole("heading", { name: "settings:mcp.rootsHeading" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "settings:mcp.rootsHelp" }))
+      .toHaveAccessibleDescription("settings:mcp.intro");
+  });
+
   it("lists each root with its path and kind, and flags one the MCP cannot see", () => {
     vi.mocked(useMcpRoots).mockReturnValue(roots({
       roots: [

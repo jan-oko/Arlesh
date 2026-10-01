@@ -61,6 +61,8 @@ pub fn command_host(pool: &SqlitePool) -> tauri::App<tauri::test::MockRuntime> {
     // onto them, so a host without them would fail to resolve state for a command that half the
     // journal tests already call.
     app.manage(UndoStacks::new());
+    // The agent capacity lock, off, which `load_mindmap` reads to derive its block.
+    app.manage(arlesh_lib::capacity::AgentCapacity::in_memory());
     // And every host has a window, because a command that announces a board change takes the
     // window that issued it — that is how the other windows are told and this one is not.
     // `mock_app` builds none of its own.

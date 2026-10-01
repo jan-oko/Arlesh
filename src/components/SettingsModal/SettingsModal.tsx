@@ -37,7 +37,7 @@ interface Props {
  *
  * It replaced a popover whose view-scoped switches appeared and disappeared with the active view:
  * a setting could only be found from the view it acted on, and the popover had nowhere to put a
- * page like MCP access. Here every page is always reachable, and the settings themselves are the
+ * page like MCP access (now *Agents*). Here every page is always reachable, and the settings themselves are the
  * same stores they always were — this is where they are shown, not how they are kept.
  *
  * Keyboard: focus starts on the current page's tab and stays inside the modal; ↑/↓ (and Home/End)

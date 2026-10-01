@@ -157,6 +157,15 @@ interface DisplayStore {
   zenShowBadges: boolean;
   toggleZenShowBadges: () => void;
   /**
+   * Whether the top bar draws the **agents' status** — the bot head and its row — while anything
+   * applies (the capacity lock, an agent's pending wait, Agentic work In Progress).
+   *
+   * **On by default** (ruled by the user, 2026-10-01). With it off the head never shows, whatever
+   * applies; the lock is still set and cleared under Settings → Agents. App-wide.
+   */
+  showAgentStatus: boolean;
+  toggleShowAgentStatus: () => void;
+  /**
    * Whether the Zen View's grid shows **Started** Tasks beside the In Progress ones.
    *
    * **Off by default** (ruled by the user, 2026-09-30), and separate from `doShowsStarted` although
@@ -253,6 +262,8 @@ export const useDisplayStore = create<DisplayStore>()(
         set((s) => ({ searchIncludesArchived: !s.searchIncludesArchived })),
       zenShowBadges: true,
       toggleZenShowBadges: () => set((s) => ({ zenShowBadges: !s.zenShowBadges })),
+      showAgentStatus: true,
+      toggleShowAgentStatus: () => set((s) => ({ showAgentStatus: !s.showAgentStatus })),
       zenShowsStarted: false,
       toggleZenShowsStarted: () => set((s) => ({ zenShowsStarted: !s.zenShowsStarted })),
       zenShowsCompound: true,

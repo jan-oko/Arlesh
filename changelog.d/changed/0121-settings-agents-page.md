@@ -1,0 +1,1 @@
+- **Settings: *MCP access* is now *Agents*.** The settings page with the MCP roots and the endpoint has been renamed **Agents**. It now also holds the agent capacity lock and the switch for the agent status in the top bar.

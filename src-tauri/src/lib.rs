@@ -5,6 +5,7 @@
 pub mod access;
 pub mod block_reasons;
 pub mod board;
+pub mod capacity;
 pub mod commands;
 pub mod database;
 pub mod domains;
@@ -80,9 +81,17 @@ pub fn run() {
             // changed, so an agent's write refreshes the windows that are open rather than leaving
             // them showing the old value. A bind failure is recorded in its status, for the
             // settings page to show and retry: an occupied port must not take the windows down.
+            // The agent capacity lock is shared by the endpoint's sessions and the settings
+            // commands, and tells every window when either side changes it.
+            let capacity = capacity::AgentCapacity::open(
+                app_dir.join(capacity::CAPACITY_FILE),
+                commands::capacity::notifier(app.handle()),
+            );
+            app.manage(capacity.clone());
             let endpoint = mcp::endpoint::McpEndpoint::new(
                 factory.clone(),
                 commands::board::announcer(app.handle()),
+                capacity,
                 app_dir.join(mcp::endpoint::SETTINGS_FILE),
                 mcp::endpoint::env_port(),
             );
@@ -134,6 +143,8 @@ pub fn run() {
             commands::mcp_endpoint::mcp_endpoint_status,
             commands::mcp_endpoint::restart_mcp_endpoint,
             commands::mcp_endpoint::set_mcp_port,
+            commands::capacity::agent_capacity,
+            commands::capacity::set_agent_capacity,
             commands::block_reasons::list_all_block_reasons,
             commands::block_reasons::set_block_reasons,
             commands::infos::create_info,

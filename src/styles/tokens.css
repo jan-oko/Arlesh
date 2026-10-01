@@ -62,6 +62,12 @@ html, body, #root {
   /* A Mindmap node that is selected *and* Overdue: brighter than the unselected amber and far from
      the accent, so it reads as both at once. 7.7:1 on the selected node fill. */
   --overdue-selected: #ffc233;
+  /* The agents' status row's capacity padlock: a held, not an alarming, state — the overdue amber,
+     named for its own use so the two can part. Follows the theme through --overdue. */
+  --agent-capacity: var(--overdue);
+  /* The agents' status row: a question waiting for you, and a wait on something else. */
+  --ask: #ff7a6b;
+  --wait: #6cc3e0;
 
   /* Filter pill modes (Any/All/Exclude) — muted hues so a chip's mode reads as a quiet accent, not a shout */
   --mode-any: #6b8cae;
@@ -119,6 +125,8 @@ html, body, #root {
   --accent: #5546d8;
   --danger: #c0392b;
   --overdue: #9c6510;
+  --ask: #c0392b;
+  --wait: #2f7a9a;
   /* Selected and Overdue: a vivid orange, apart from both the brown amber and the accent.
      3.7:1 on the selected node fill, 4.6:1 on white. */
   --overdue-selected: #c25400;

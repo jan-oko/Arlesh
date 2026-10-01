@@ -106,7 +106,8 @@ impl ArleshMcp {
             Err(error) => return result::failed(error),
         };
         let now = self.now();
-        let board = attempt!(Board::read(&mut db, now).await);
+        let board =
+            attempt!(Board::read(&mut db, now, self.capacity.get().await.at_capacity).await);
 
         let write = match operation {
             TasksOperation::Get { id } => return get(&mut db, &board, &id).await,
@@ -345,7 +346,8 @@ async fn get(db: &mut Db<Transactional>, board: &Board, id: &NodeIdParam) -> Ans
         .collect();
     let mut found =
         attempt!(crate::tasks::get_task_with_blockers_as(db, TaskId(row), &served).await);
-    // A block the board derived — a Compound Task's — is on the board, not in a row.
+    // A block the board derived — the agent capacity lock's, or a Compound Task's — is on the
+    // board, not in a row.
     found.block_reasons.extend(
         board
             .load

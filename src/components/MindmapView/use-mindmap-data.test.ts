@@ -13,6 +13,7 @@ import type { Info } from "@/api/infos";
 import type { Flow, FlowGoal, FlowTask } from "@/api/flows";
 import type { MindmapLoad } from "@/api/mindmap";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { isNodeBlocked } from "@/utils/tree-layout";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -270,6 +271,20 @@ describe("buildTree", () => {
     expect(node?.virtualBlockers).toEqual(["Blocked by task 2 (Dep)"]);
     // The unmet dependency's own node id, which Start's child-dependency rule reads.
     expect(node?.blockingDependencyIds).toEqual(["task-2"]);
+  });
+
+  it("draws the agent capacity lock's derived reason as a virtual blocker, in its own words", () => {
+    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const task = mkTask({ id: 3, title: "Agent work", parent_type: "project", parent_id: 1 });
+    const root = buildTree([aspect], [], [task], [], [], [], [], [], [], [], [
+      { owner_type: "task", owner_id: 3, reason: "waiting on review", position: 0 },
+      { owner_type: "task", owner_id: 3, reason: "Agents at capacity", position: 1, derived: "agent_capacity" },
+    ], [], [], [], (title) => title, (title) => title, "COMPOUND", "LOCKED");
+    const node = root.children[0]?.children.find((c) => c.id === "task-3");
+    expect(node?.blockReasons).toEqual(["waiting on review"]);
+    expect(node?.virtualBlockers).toEqual(["LOCKED"]);
+    expect(node?.capacityBlocked).toBe(true);
+    expect(node !== undefined && isNodeBlocked(node)).toBe(true);
   });
 
   it("omits a virtual block reason once the dependency is done", () => {

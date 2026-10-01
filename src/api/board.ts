@@ -22,7 +22,8 @@ import { parsePersistedTab } from "@/stores/tab-persistence";
  * move does. See `utils/tab-drag`.
  *
  * All three are wrapped here rather than called from a hook, so `@tauri-apps/api/event` has one door
- * the way `invoke` has one in `src/api/gesture.ts`.
+ * the way `invoke` has one in `src/api/gesture.ts`. Another domain's event (the agent capacity lock,
+ * `src/api/agent-capacity.ts`) comes through the same door, {@link listenHere}.
  */
 
 /** The backend's event name. Must match `BOARD_CHANGED` in `src-tauri/src/board.rs`. */
@@ -41,7 +42,7 @@ export interface TabClaim {
 }
 
 /** Unsubscribes nothing, for a webview with no event bus — a unit test's jsdom. */
-function unsubscribed(): void {}
+export function unsubscribed(): void {}
 
 /**
  * Listens for `event` sent to **this window**, and only to it.
@@ -53,7 +54,7 @@ function unsubscribed(): void {}
  * announced once per other window, made every window reload once per other window. Naming this
  * window's label as the target is what makes `emitTo` mean "to that window".
  */
-function listenHere<T>(event: string, handler: (event: Event<T>) => void): Promise<UnlistenFn> {
+export function listenHere<T>(event: string, handler: (event: Event<T>) => void): Promise<UnlistenFn> {
   return listen<T>(event, handler, { target: currentWindowLabel() });
 }
 
