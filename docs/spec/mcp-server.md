@@ -147,7 +147,7 @@ definition it loads.
 | `arlesh_snapshot` | `load(now?, sections?, cursor?, filter?, agentic?)` — `now` is a local date-time string (`"2026-09-25T09:00:00"`) and defaults to the server's current time; the whole planning graph: domains, goals, tasks, **commitments**, notes, flows, flow items, cycles, dependencies, block reasons, materialised instance nodes, every item's derived lifecycle, each flow's habit iterations and statuses, and which occurrence each **added child** hangs on. Paged; see below |
 | `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` — `id` is a scope's value key, a JSON object such as `{"kind":"week","date":"2026-09-20"}` |
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
-| `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`. See *Writing tasks* below |
+| `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, compound?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`. See *Writing tasks* below |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
 | `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`. See *Agentic waits* below |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
@@ -370,6 +370,13 @@ so the conformance corpus is untouched.
   wait template. On a **Habit occurrence** each lands in its overlay; its Time Scope is its
   iteration's and a change is refused, and `on_scope_exit` — its Habit's to decide — is refused
   as `invalid_request` before anything is written.
+- **`compound`** on `update` switches a Task's **Compound** (see
+  [*Compound*](resources.md#compound)): `true` makes its status derived from its sub-items,
+  `false` switches that off and keeps the status it showed, in the same write. A Habit occurrence
+  cannot be made compound (`invalid_request`). The Task an update returns, and `get`, carry the
+  derived status, as the snapshot does.
+- **`set_status`** on a compound Task is refused as `invalid_request` — its status follows its
+  sub-items; change them, or switch compound off.
 - **`set_status`** is a **compare-and-set**: it names the status the agent last saw (`expected`)
   and the one to set. The session holds SQLite's single writer lock from before the compare until
   the write commits, so the two are one step: if the Task's status is no longer `expected`, the

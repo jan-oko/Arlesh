@@ -23,6 +23,9 @@ export interface ZenOptions {
   agentic: readonly PillFilter[];
   /** The app-wide *Show Started tasks on the grid* setting: read in place of Do's own. */
   showsStarted: boolean;
+  /** The app-wide *Show compound tasks on the grid* setting. Off, a Compound Task's card is not
+   * drawn — its sub-items still are, by their own status — unless it is the focused one. */
+  showsCompound: boolean;
 }
 
 /** What the Zen View draws: the grid's cards and each strip's, with the focus exemption applied. */
@@ -30,6 +33,22 @@ export interface ZenContents {
   tasks: FocusFilteredRows<TaskListRow>;
   commitments: FocusFilteredRows<CommitmentListRow>;
   expectations: FocusFilteredRows<ExpectationListRow>;
+}
+
+/**
+ * The grid without its Compound Tasks, when the setting says so. The focused card stays, named as
+ * exempted, so a card just changed does not vanish from under the cursor.
+ */
+function withoutCompounds(
+  grid: FocusFilteredRows<TaskListRow>,
+  options: ZenOptions,
+  focusedId: string | null,
+): FocusFilteredRows<TaskListRow> {
+  if (options.showsCompound) return grid;
+  const rows = grid.rows.filter((row) => row.node.compound !== true || row.node.id === focusedId);
+  const focusedCompound = rows.some((row) => row.node.compound === true);
+  if (!focusedCompound || focusedId === null) return { rows, exemptedIds: grid.exemptedIds };
+  return { rows, exemptedIds: new Set([...grid.exemptedIds, focusedId]) };
 }
 
 /** A hidden strip: no rows, nothing exempted. */
@@ -76,7 +95,7 @@ export function zenContents(
   const underDo = { ...sharedUnder(shared, ZEN_VIEW_STATUS_MODE), doShowsStarted: options.showsStarted };
   const doFilter = listFilterUnder(ZEN_VIEW_STATUS_MODE, options.agentic);
   return {
-    tasks: filterTaskListWithFocus(source.tasks, underDo, doFilter, focusedId),
+    tasks: withoutCompounds(filterTaskListWithFocus(source.tasks, underDo, doFilter, focusedId), options, focusedId),
     commitments: options.commitments
       ? filterCommitmentListWithFocus(source.commitments, underDo, doFilter, focusedId)
       : none(),

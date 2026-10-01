@@ -199,9 +199,12 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         const conflicts = await scopeContainmentConflicts("task", dbId, data.timeScope);
         await clampDescendants(conflicts, data.timeScope);
       }
+      // A task that consists of its sub-items and still does has no status to save: it is derived.
+      const keepsDerived = node.compound === true && data.compound;
       await updateTask(dbId, {
         title: data.title,
-        status: data.status,
+        ...(keepsDerived ? {} : { status: data.status }),
+        ...(data.compound !== (node.compound === true) ? { compound: data.compound } : {}),
         time_scope: data.timeScope,
         on_scope_exit: data.onScopeExit,
         plan: data.plan,

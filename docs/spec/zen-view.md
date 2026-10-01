@@ -151,7 +151,8 @@ never drift between the two views. The strips and the Agentic pill are switched 
 - `E` — open the selected card's editor; a **double click** does the same, a click selects
 - `R` — rename the selected Task in place, in its card
 - `P` — the quick Plan picker at the card; `D` — the quick dependency picker at the card
-- `B` / `A` / `W` — backlog, agentic, asynchronous; `Shift+W` — the Task's editor at its
+- `B` / `A` / `W` / `V` — backlog, agentic, asynchronous, compound (see
+  [*Compound*](resources.md#compound)); `Shift+W` — the Task's editor at its
   Expectation section, with Asynchronous on
 - `Delete` — delete the selected card after the usual confirmation, with the List View's cascade
   and its "next card, else the one before" rule for where the selection goes
@@ -182,14 +183,20 @@ never drift between the two views. The strips and the Agentic pill are switched 
 
 ## Settings
 
-A **Zen** page in the settings modal, with three app-wide switches: **Show badges on cards** (default
+A **Zen** page in the settings modal, with four app-wide switches: **Show badges on cards** (default
 on), **Show Started tasks on the grid** (default **off**; ruled by the user 2026-09-30). The
 second stands in for the Do preset's own *Do shows Started tasks* while the view reads under Do: the
 two are separate settings, so a paused task can be in the Do list and off the focus grid, or the
 other way round (see [*Tasks*](resources.md)). Per-badge settings are deliberately not offered. The third is **Show the overdue border on cards**
 (default on; ruled by the user, 2026-09-30, "in zen it's toggleable in settings"): off, an Overdue
 card is drawn with the ordinary border, but still says *Overdue* in its accessible description. Zen
-is the only view where the border can be turned off; everywhere else it is always drawn.
+is the only view where the border can be turned off; everywhere else it is always drawn. The fourth
+is **Show compound tasks on the grid** (asked for by the user in review of the Compound Task,
+2026-10-01: "add a settings toggle on their appearance in zen"), default **on**, which is how the grid
+drew them before the switch: off, a [**Compound**](resources.md#compound) Task's card is not drawn,
+while its sub-items still are, each by its own status. The focus exemption still applies — a card you
+just made compound stays under the cursor, dimmed, until the selection moves. Stored with the other
+display settings (`zenShowsCompound`).
 
 ## What this view does not do
 

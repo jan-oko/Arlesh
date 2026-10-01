@@ -55,6 +55,7 @@ fn task_row(id: i64, parent_type: &str, parent_id: i64, status: &str) -> Task {
         delegate_to: None,
         agentic: None,
         asynchronous: false,
+        compound: false,
         async_template: None,
         agentic_brief: None,
         time_scope: None,
@@ -194,6 +195,7 @@ fn an_explicit_block_reason_and_an_unmet_dependency_both_read_as_blocked() {
         owner_id: 10.into(),
         reason: "waiting".to_string(),
         position: 0,
+        derived: None,
     });
     load.task_dependencies.push(TaskDependencyEdge {
         task_id: 21.into(),
@@ -251,6 +253,7 @@ fn narrowing_cuts_the_derived_sections_to_match_the_nodes_that_survived() {
         owner_id: 22.into(),
         reason: "waiting".to_string(),
         position: 0,
+        derived: None,
     });
     load.task_dependencies.push(TaskDependencyEdge {
         task_id: 22.into(),
