@@ -386,7 +386,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           />
         </div>
       )}
-      <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={virtualBlockers} />
+      <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={virtualBlockers} compoundBlocked={node.compoundBlocked === true} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <div className={styles.depSection}>
         <span className={styles.label}>{t("fieldDependencies")}</span>

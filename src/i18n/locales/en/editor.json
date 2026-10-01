@@ -144,5 +144,7 @@
   "quickDependencyPicker": "Add a dependency",
   "quickDependencyHeading": "“{{title}}” depends on…",
   "quickDependencyPlaceholder": "Search Tasks, Goals and Expectations",
-  "quickDependencyLoading": "Loading…"
+  "quickDependencyLoading": "Loading…",
+  "compoundBlocked": "All open sub-items are blocked",
+  "compoundBlockLabel": "From its sub-items — clears when one is unblocked or finished"
 }

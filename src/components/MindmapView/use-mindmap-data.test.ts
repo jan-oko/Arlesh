@@ -113,6 +113,20 @@ describe("buildTree", () => {
     });
   });
 
+  it("draws a Compound Task's derived block among its virtual blockers, never as a stored reason", () => {
+    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const task = mkTask({ id: 1, parent_type: "domain", parent_id: 1, compound: true });
+    const root = buildTree(
+      [aspect], [], [task], [], [], [], [], [], [], [],
+      [{ owner_type: "task", owner_id: 1, reason: "All open sub-items are blocked", position: 0, derived: "compound" }],
+      [], [], [], (title) => title, (title) => title, "Sub-items all blocked",
+    );
+    const node = root.children[0]?.children.find((n) => n.id === "task-1");
+    expect(node?.compoundBlocked).toBe(true);
+    expect(node?.blockReasons).toEqual([]);
+    expect(node?.virtualBlockers).toEqual(["Sub-items all blocked"]);
+  });
+
   it("carries a task's stored Backlog state onto its node", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
     const aside = mkTask({ id: 1, parent_type: "domain", parent_id: 1, archival: "backlog" });

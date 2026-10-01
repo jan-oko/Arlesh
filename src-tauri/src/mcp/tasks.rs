@@ -342,6 +342,16 @@ async fn get(db: &mut Db<Transactional>, board: &Board, id: &NodeIdParam) -> Ans
         .collect();
     let mut found =
         attempt!(crate::tasks::get_task_with_blockers_as(db, TaskId(row), &served).await);
+    // A block the board derived — a Compound Task's — is on the board, not in a row.
+    found.block_reasons.extend(
+        board
+            .load
+            .block_reasons
+            .iter()
+            .filter(|reason| reason.derived.is_some())
+            .filter(|reason| reason.owner_type == "task" && reason.owner_id == NodeId::Stored(row))
+            .map(|reason| reason.reason.clone()),
+    );
     let dependencies = attempt!(db.tasks().list_dependencies(TaskId(row)).await);
     access::restrict_task(&mut found.task, &board.map);
     access::restrict_block_reasons(&mut found.block_reasons, &dependencies, &board.map);

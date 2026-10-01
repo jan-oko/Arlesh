@@ -116,6 +116,23 @@ pub async fn load_within(
         .collect();
     let added = table::added_edges(db, &present).await?;
     task_dependencies.extend(added);
+    // Only now is every status final and every edge in: a Compound Task whose open sub-items are
+    // all blocked is blocked itself, by a reason derived here (see `tasks::compound::blocked`).
+    let compound_blocks = crate::tasks::compound::blocked::derive(
+        &crate::tasks::compound::Rows {
+            tasks: &tasks,
+            checks: &[],
+            goals: &goals,
+            commitments: &commitments,
+            expectations: &expectations,
+            waits: &[],
+            lifecycles: &lifecycles,
+            wait_lifecycles: &[],
+        },
+        &block_reasons,
+        &task_dependencies,
+    );
+    block_reasons.extend(compound_blocks);
 
     let habits = flows
         .iter()

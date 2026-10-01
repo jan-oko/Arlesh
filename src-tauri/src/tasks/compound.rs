@@ -65,6 +65,8 @@ use super::{
     scope_rules::scope_governance,
 };
 
+pub mod blocked;
+
 #[cfg(test)]
 mod tests;
 

@@ -420,3 +420,69 @@ async fn a_duplicate_carries_the_flag() {
     let load = board(&pool).await;
     assert!(row(&load, copy).compound);
 }
+
+async fn block(pool: &sqlx::SqlitePool, id: i64) {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    write::set_block_reasons(
+        &mut db,
+        "task",
+        &NodeId::Stored(id),
+        &["waiting on a part".to_string()],
+        at(NOW),
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+}
+
+fn derived_block_of(load: &MindmapLoad, id: i64) -> bool {
+    load.block_reasons.iter().any(|reason| {
+        reason.owner_type == "task"
+            && reason.owner_id == NodeId::Stored(id)
+            && reason.derived == Some(arlesh_lib::block_reasons::model::DerivedBlock::Compound)
+    })
+}
+
+#[tokio::test]
+async fn a_compound_whose_open_sub_items_are_all_blocked_is_blocked() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let parent = compound(&pool, project).await;
+    let stuck = child(&pool, parent, TaskStatus::Todo).await;
+    child(&pool, parent, TaskStatus::Done).await;
+    let free = child(&pool, parent, TaskStatus::Todo).await;
+    block(&pool, stuck).await;
+
+    // One open sub-item is free: not blocked.
+    assert!(!derived_block_of(&board(&pool).await, parent));
+
+    block(&pool, free).await;
+    let load = board(&pool).await;
+    assert!(derived_block_of(&load, parent));
+    // Derived, never stored.
+    let stored: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM block_reasons WHERE owner_type = 'task' AND owner_id = ?",
+    )
+    .bind(parent)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stored, 0);
+}
+
+#[tokio::test]
+async fn the_board_serves_a_compound_block_with_its_derived_reason() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let parent = compound(&pool, project).await;
+    let stuck = child(&pool, parent, TaskStatus::Todo).await;
+    block(&pool, stuck).await;
+
+    let load = board(&pool).await;
+    let reason = load
+        .block_reasons
+        .iter()
+        .find(|reason| reason.owner_id == NodeId::Stored(parent))
+        .unwrap();
+    assert_eq!(reason.reason, arlesh_lib::tasks::compound::blocked::REASON);
+}

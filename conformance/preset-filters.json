@@ -1636,6 +1636,49 @@
         "task-started"
       ],
       "commitments": []
+    },
+    {
+      "name": "start drops a compound task whose open sub-items are all blocked, with its subtree",
+      "spec": "resources.md, Tasks — Compound: a Compound Task is served with its derived status and, when every open sub-item is blocked, a derived block reason, so it is written here as the blocked Task it reads as.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "compound",
+      "mindmap": [
+        "domain-compound",
+        "task-compound-free",
+        "task-free-open"
+      ],
+      "list": [
+        "task-compound-free",
+        "task-free-open"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "unblock shows a compound task whose open sub-items are all blocked",
+      "spec": "resources.md, Tasks — Compound: a Compound Task is served with its derived status and, when every open sub-item is blocked, a derived block reason, so it is written here as the blocked Task it reads as.",
+      "filter": {
+        "preset": "all",
+        "unblock": true
+      },
+      "board": "compound",
+      "mindmap": [
+        "domain-compound",
+        "task-compound-blocked",
+        "task-compound-free",
+        "task-free-blocked",
+        "task-free-done",
+        "task-free-open",
+        "task-sub-blocked",
+        "task-sub-done"
+      ],
+      "list": [
+        "task-compound-blocked",
+        "task-free-blocked",
+        "task-sub-blocked"
+      ],
+      "commitments": []
     }
   ],
   "boards": {
@@ -2647,6 +2690,61 @@
               "id": "task-done",
               "kind": "task",
               "status": "done"
+            }
+          ]
+        }
+      ]
+    },
+    "compound": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-compound",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-compound-blocked",
+              "kind": "task",
+              "status": "todo",
+              "isBlocked": true,
+              "children": [
+                {
+                  "id": "task-sub-blocked",
+                  "kind": "task",
+                  "status": "todo",
+                  "isBlocked": true
+                },
+                {
+                  "id": "task-sub-done",
+                  "kind": "task",
+                  "status": "done"
+                }
+              ]
+            },
+            {
+              "id": "task-compound-free",
+              "kind": "task",
+              "status": "started",
+              "children": [
+                {
+                  "id": "task-free-blocked",
+                  "kind": "task",
+                  "status": "todo",
+                  "isBlocked": true
+                },
+                {
+                  "id": "task-free-done",
+                  "kind": "task",
+                  "status": "done"
+                },
+                {
+                  "id": "task-free-open",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
             }
           ]
         }

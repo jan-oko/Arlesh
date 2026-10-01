@@ -11,13 +11,13 @@ use crate::{
 
 use crate::tasks::model::TaskStatus::{Done, InProgress, Started, Todo};
 
-fn at(hour: u32) -> NaiveDateTime {
+pub(super) fn at(hour: u32) -> NaiveDateTime {
     chrono::NaiveDate::from_ymd_opt(2026, 9, 30)
         .and_then(|day| day.and_hms_opt(hour, 0, 0))
         .unwrap()
 }
 
-fn task(id: i64, parent: (&str, i64), status: TaskStatus) -> Task {
+pub(super) fn task(id: i64, parent: (&str, i64), status: TaskStatus) -> Task {
     Task {
         id: id.into(),
         title: format!("task {id}"),
@@ -43,14 +43,14 @@ fn task(id: i64, parent: (&str, i64), status: TaskStatus) -> Task {
     }
 }
 
-fn compound(id: i64, parent: (&str, i64)) -> Task {
+pub(super) fn compound(id: i64, parent: (&str, i64)) -> Task {
     Task {
         compound: true,
         ..task(id, parent, Todo)
     }
 }
 
-fn goal(id: i64, parent: (&str, i64), status: &str) -> Goal {
+pub(super) fn goal(id: i64, parent: (&str, i64), status: &str) -> Goal {
     Goal {
         id: id.into(),
         title: format!("goal {id}"),
@@ -67,7 +67,7 @@ fn goal(id: i64, parent: (&str, i64), status: &str) -> Goal {
     }
 }
 
-fn commitment(id: i64, parent: (&str, i64), verdict: Verdict) -> Commitment {
+pub(super) fn commitment(id: i64, parent: (&str, i64), verdict: Verdict) -> Commitment {
     Commitment {
         id: id.into(),
         title: format!("commitment {id}"),
@@ -84,7 +84,7 @@ fn commitment(id: i64, parent: (&str, i64), verdict: Verdict) -> Commitment {
     }
 }
 
-fn wait(id: i64, parent: (&str, i64), status: ExpectationStatus) -> Expectation {
+pub(super) fn wait(id: i64, parent: (&str, i64), status: ExpectationStatus) -> Expectation {
     Expectation {
         id: id.into(),
         title: format!("wait {id}"),
@@ -107,7 +107,7 @@ fn wait(id: i64, parent: (&str, i64), status: ExpectationStatus) -> Expectation 
     }
 }
 
-fn archived(node_type: &str, id: i64) -> ItemLifecycle {
+pub(super) fn archived(node_type: &str, id: i64) -> ItemLifecycle {
     ItemLifecycle {
         node_type: node_type.to_string(),
         node_id: id.into(),
@@ -123,14 +123,14 @@ fn archived(node_type: &str, id: i64) -> ItemLifecycle {
 
 /// A board of rows, derived with no governance, and each compound Task's status read back.
 #[derive(Default)]
-struct Board {
-    tasks: Vec<Task>,
-    checks: Vec<Task>,
-    goals: Vec<Goal>,
-    commitments: Vec<Commitment>,
-    expectations: Vec<Expectation>,
-    waits: Vec<Expectation>,
-    lifecycles: Vec<ItemLifecycle>,
+pub(super) struct Board {
+    pub(super) tasks: Vec<Task>,
+    pub(super) checks: Vec<Task>,
+    pub(super) goals: Vec<Goal>,
+    pub(super) commitments: Vec<Commitment>,
+    pub(super) expectations: Vec<Expectation>,
+    pub(super) waits: Vec<Expectation>,
+    pub(super) lifecycles: Vec<ItemLifecycle>,
 }
 
 impl Board {
