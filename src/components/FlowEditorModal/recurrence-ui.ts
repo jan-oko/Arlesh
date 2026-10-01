@@ -59,3 +59,49 @@ export function defaultRecurrence(startDate: string): RecurrenceUi {
     missPolicy: "archive",
   };
 }
+
+/** How often a Habit's windows come, as its collapsed summary names it. */
+export type RecurrenceCadence = "day" | "week" | "month" | "season" | "unscoped";
+
+/** What the collapsed Recurrence summary says, before it is put into words. */
+export interface RecurrenceSummaryParts {
+  /** The window's kind — a sub-day (Phase) window recurs daily — or `unscoped`. */
+  cadence: RecurrenceCadence;
+  /** How many of `cadence` one window spans (1 for a sub-day or Unscoped flow). */
+  cadenceCount: number;
+  clock: ClockKind;
+  /** The miss policy, only under a Window clock. */
+  missPolicy: MissPolicy | null;
+  /** The Gap, or `null` for none. */
+  gap: { n: number; kind: string } | null;
+  /** The last anchor's start day, or `null` for open-ended. */
+  endDate: string | null;
+}
+
+/**
+ * The settings the collapsed Recurrence line summarises ("Weekly · Window, Overdue · gap 2 week ·
+ * ends never"): what the editor would save, so an Unscoped flow reads as Interval whatever the
+ * pills last held, and a Window clock alone carries a miss policy.
+ */
+export function recurrenceSummaryParts(
+  recurrence: RecurrenceUi,
+  durationKind: string | null,
+  durationN: number,
+  scoped: boolean,
+): RecurrenceSummaryParts {
+  const clock: ClockKind = scoped ? recurrence.clock : "interval";
+  const cadence: RecurrenceCadence = !scoped
+    ? "unscoped"
+    : durationKind === "week" || durationKind === "month" || durationKind === "season"
+      ? durationKind
+      : "day";
+  const phase = durationKind === "part" || durationKind === "exact";
+  return {
+    cadence,
+    cadenceCount: !scoped || phase ? 1 : Math.max(1, durationN),
+    clock,
+    missPolicy: clock === "window" ? recurrence.missPolicy : null,
+    gap: recurrence.gapEnabled ? { n: recurrence.gapN, kind: recurrence.gapKind } : null,
+    endDate: recurrence.endEnabled ? recurrence.endDate : null,
+  };
+}

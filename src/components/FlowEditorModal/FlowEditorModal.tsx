@@ -200,6 +200,9 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   const [recurrence, setRecurrence] = useState<RecurrenceUi>(
     () => ({ ...defaultRecurrence(todayIso()), isHabit: startAsHabit }),
   );
+  // The Recurrence settings open while a Habit is being made, and fold into their summary on an
+  // existing one, which is mostly opened to change something else. Not remembered across opens.
+  const [recurrenceExpanded, setRecurrenceExpanded] = useState(!isEdit);
   // An Unscoped Habit can only keep an Interval clock, whatever the pills last said.
   const effectiveClock: ClockKind = scoped ? recurrence.clock : "interval";
   // For edit-habit reconciliation: how many completed iterations exist, the schedule snapshot to
@@ -221,7 +224,9 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
       const rec = await getFlowRecurrence(flowId);
       if (cancelled) return;
       if (rec === null) {
+        // A plain flow: switching Repeating on is making a Habit, so its settings show in full.
         loadedRecurrenceRef.current = null;
+        setRecurrenceExpanded(true);
         return;
       }
       const startDate = keyStartDate(rec.start_scope_id);
@@ -434,15 +439,15 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
         </div>
       )}
       {offersRecurrence && (
-        <div className={styles.label}>
-          {t("fieldRecurrence")}
-          <RecurrenceField
-            value={recurrence}
-            onChange={setRecurrence}
-            durationKind={scoped ? durationKind : null}
-            scoped={scoped}
-          />
-        </div>
+        <RecurrenceField
+          value={recurrence}
+          onChange={setRecurrence}
+          durationKind={scoped ? durationKind : null}
+          durationN={durationN}
+          scoped={scoped}
+          expanded={recurrenceExpanded}
+          onToggleExpanded={() => setRecurrenceExpanded((open) => !open)}
+        />
       )}
       <div className={styles.label}>
         {t("fieldTarget")}
