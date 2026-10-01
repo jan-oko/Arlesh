@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useTranslation } from "react-i18next";
+import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
+import { agentActivityOf } from "@/utils/agent-activity";
 import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
 import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
 import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment } from "@/api/commitments";
@@ -874,6 +876,8 @@ export function useMindmapData(): MindmapData {
         applyMcpVisibility(built, mcpVisible);
         latestTree.current = built;
         setTree(built);
+        // The whole board, before any view narrows it to a subtree: the top bar's agent status.
+        useAgentActivityStore.getState().receive(agentActivityOf(built));
         setLoadCondition(collectLoadConditions(data));
       } catch (err) {
         setError(getErrorMessage(err));

@@ -17,7 +17,7 @@ import PlanScopeField from "@/components/ScopePicker/PlanScopeField";
 import { useDisplayStore } from "@/stores/use-display-store";
 import SettingsModal from "@/components/SettingsModal/SettingsModal";
 import SubtreeBreadcrumb from "./SubtreeBreadcrumb";
-import AgentCapacityIndicator from "./AgentCapacityIndicator";
+import AgentStatus from "./AgentStatus";
 import styles from "./TopBar.module.css";
 
 const GEAR_ICON = "⚙";
@@ -152,8 +152,9 @@ export default function TopBar() {
         </div>
 
         <div className={`${styles.side} ${styles.sideEnd}`}>
-          {/* Drawn only while agents are at capacity; a click clears the lock. */}
-          <AgentCapacityIndicator />
+          {/* The agents' status: drawn only while something applies — the capacity lock, a pending
+              agentic wait, or Agentic work In Progress. */}
+          <AgentStatus />
           <div className={styles.anchor}>
             {/* The dot says the menu holds a setting nothing outside it shows — a pill the chips
                 do not draw, or Archived / Backlog off "as the preset says". */}

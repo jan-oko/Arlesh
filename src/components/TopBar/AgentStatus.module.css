@@ -1,0 +1,115 @@
+/* Positions the menu under the button. */
+.anchor {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* The head with its status row tucked under it, in the top bar's icon colour like the gear. */
+.agent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  height: 32px;
+  min-width: 26px;
+  padding: 1px 5px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.agent:hover {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+}
+
+.agent:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.head svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.row svg {
+  display: block;
+  width: 10px;
+  height: 10px;
+}
+
+.capacity { color: var(--agent-capacity); }
+.ask { color: var(--ask); }
+.wait { color: var(--wait); }
+/* In Progress keeps the bar's own icon colour, as the head does. */
+.progress { color: inherit; }
+
+/* Click-catcher behind the open menu, as the Filter menu has. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  inset-inline-end: 0;
+  z-index: 100;
+  min-width: 240px;
+  max-width: calc(100vw - 2 * var(--space-4));
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  background: var(--surface-raised);
+  border: 1px solid var(--node-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.lineText {
+  flex: 1;
+  min-width: 0;
+}
+
+.lineAction {
+  padding: 1px var(--space-2);
+  border-radius: 4px;
+  border: 1px solid var(--node-border);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.lineAction:hover {
+  background: var(--surface);
+}
+
+.lineAction:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

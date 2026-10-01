@@ -531,10 +531,34 @@ Settings switch and the top-bar indicator read; and as an ordinary `board-change
 block with it. A window reads the lock once on start and then takes each announcement.
 
 **In the app.** Settings → MCP access → *Agent capacity* has the lock's switch, **Agents are at
-capacity**. While the lock is on, the top bar shows a **gauge icon** in amber beside the Filter
-button — an icon only, sized and targeted like the gear, with no text or badge (the user, reviewing
-#116). Its tooltip and accessible name read *Agents at capacity: Agentic tasks are blocked. Click to
-clear.*, it takes a visible focus ring, and a click clears the lock. There is no setting for whether the lock blocks: the lock is the only control.
+capacity**. There is no setting for whether the lock blocks: the lock is the only control.
+
+**The agents' status in the top bar** (ruled by the user, 2026-10-01, from mock 3, "Row under the
+head", with the padlock and no counts). A small **bot head**, in the top bar's icon colour like the
+gear, sits just before the Filter button, with a tiny row of icons under it. The head shows **only
+while at least one of these holds** — whether or not the MCP endpoint is listening, since the lock
+can be on with the endpoint off and must stay clearable, and the waits and work are facts of the
+board either way:
+
+- the capacity lock is on — an amber **padlock** (`--agent-capacity`);
+- a pending agentic wait asks the user something (`question: true`) — a red **!** (`--ask`);
+- a pending agentic wait is on something else, CI say — a blue **hourglass** (`--wait`);
+- an Agentic Task is In Progress — the app's **In Progress** glyph, in the bar's icon colour.
+
+The row shows only what applies, in that order, and **no counts**. The tooltip and the accessible
+name spell out each line with its count — *Agents at capacity: Agentic tasks are blocked. 1 question
+waiting for you. 2 agent waits. 3 agentic tasks in progress. Click for details.* A click opens a
+small menu with one line per thing that applies: **Clear** on the capacity line, which clears the
+lock, and **Show** on the others — the waits open the List View under its Expectations option, and
+the work In Progress opens the List View under Do with the Agentic pill. `Escape` or a click outside
+closes it. Each glyph is its own component, so the questions and the other waits can be merged into
+one icon by swapping two files for one.
+
+The counts cover the **whole board**, not the tab's subtree. They come from the load every view
+already makes: after each load, `use-mindmap-data` counts them over the whole tree it built
+(`agent-activity`) and hands them to an app-wide store the top bar reads — no request of its own.
+Every edit, every other window's change, every MCP write and every lock flip ends in that reload,
+so the row is live; the lock's own state arrives with `agent-capacity-changed` as well.
 
 ## What writes
 
