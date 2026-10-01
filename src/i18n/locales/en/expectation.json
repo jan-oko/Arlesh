@@ -1,5 +1,7 @@
 {
-  "delegationWaitTitle": "“{{title}}” done by its delegate",
+  "delegationWaitTitle": "{{delegate}} finish: {{title}}",
+  "delegateAgent": "Agent",
+  "delegatePersonUnnamed": "Their delegate",
   "editHeading": "Edit expectation",
   "newHeading": "New expectation",
   "archived": "Archived",

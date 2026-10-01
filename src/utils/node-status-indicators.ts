@@ -1,6 +1,7 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isOccurrence } from "@/utils/node-identity";
 import { isAgentic } from "@/utils/agentic";
+import { isDelegated } from "@/utils/filter-tree";
 
 /** The status badges that can appear in a node's indicator row, in display order. */
 export type StatusIndicatorType =
@@ -10,6 +11,7 @@ export type StatusIndicatorType =
   | "frozen"
   | "backlog"
   | "agentic"
+  | "delegated"
   | "asynchronous"
   | "agentWaiting"
   | "info"
@@ -75,6 +77,11 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   // branch marked in one edit would otherwise look unmarked everywhere below the node it was set on.
   if (isAgentic(node)) {
     indicators.push({ type: "agentic" });
+  }
+  // Who holds it, beside whether it suits an agent: the two are independent, and a Task may carry
+  // both. The Task's own delegate — delegation does not inherit.
+  if (isDelegated(node)) {
+    indicators.push({ type: "delegated" });
   }
   // Read off the node's own flag and nothing else. Agentic is badged through `isAgentic` because it
   // inherits; this one does not, so a subtask of a Task that starts a wait shows no hourglass — it

@@ -254,3 +254,15 @@ describe("deriveStatusIndicators — Private", () => {
     expect(types(derivedWait)).toContain("private");
   });
 });
+
+describe("deriveStatusIndicators — Delegated", () => {
+  it("badges a task delegated to the Agent or to a Person, right after Agentic", () => {
+    expect(types(node("task", { status: "todo", agentic: true, asynchronous: true, delegate: { kind: "agent" } })))
+      .toEqual(["agentic", "delegated", "asynchronous"]);
+    expect(types(node("task", { status: "todo", delegate: { kind: "person", id: 4 } }))).toEqual(["delegated"]);
+  });
+
+  it("does not badge a task nobody holds", () => {
+    expect(types(node("task", { status: "todo", delegate: null }))).not.toContain("delegated");
+  });
+});

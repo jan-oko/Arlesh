@@ -11,7 +11,7 @@ import { EXPECTATION_STATUS, EXPECTATION_ARCHIVAL } from "@/api/expectation-stat
 import type { Expectation } from "@/api/expectations";
 import { expectationNodeId } from "@/utils/node-uuid";
 import { VERDICT } from "@/api/verdict";
-import type { TaskAgentic, TaskDependencyEdge } from "@/api/tasks";
+import type { Delegate, TaskAgentic, TaskDependencyEdge } from "@/api/tasks";
 import type { BlockReason } from "@/api/block-reasons";
 import { createGoal, updateGoal, deleteGoal, duplicateGoal } from "@/api/goals";
 import { createInfo, updateInfo, deleteInfo, duplicateInfo } from "@/api/infos";
@@ -30,6 +30,9 @@ import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { propagateAgentic } from "@/utils/agentic";
 import { propagateInheritedScope } from "@/utils/inherited-scope";
 import { listMcpAccess } from "@/api/mcp-access";
+import { listPeople } from "@/api/people";
+import { delegateHolder, namesAPerson } from "@/utils/delegation";
+import type { DelegateHolder } from "@/utils/delegation";
 import type { McpVisibility } from "@/api/mcp-access";
 import { applyMcpVisibility } from "@/utils/mcp-visibility";
 import { useMcpAccessStore } from "@/stores/use-mcp-access-store";
@@ -332,6 +335,14 @@ function toCyclePair(cycle: FlowItemCycle): FlowCyclePair {
 }
 
 
+/** A Task's `delegateName` field: its Person delegate's name, when it has one that is known. */
+function personNameOf(
+  delegate: Delegate | null | undefined, personNames: ReadonlyMap<number, string>,
+): { delegateName?: string } {
+  const name = delegate?.kind === "person" ? personNames.get(delegate.id) : undefined;
+  return name === undefined ? {} : { delegateName: name };
+}
+
 export function buildTree(
   domains: Domain[],
   goals: Goal[],
@@ -347,12 +358,14 @@ export function buildTree(
   taskDeps: TaskDependencyEdge[] = [],
   flowInstanceRefs: TargetRef[] = [],
   expectations: Expectation[] = [],
-  /** The title a delegated Task's wait is drawn with, from the Task's own. */
-  delegationWaitTitle: (taskTitle: string) => string = (taskTitle) => taskTitle,
+  /** The title a delegated Task's wait is drawn with, from the Task's own and who holds it. */
+  delegationWaitTitle: (taskTitle: string, holder: DelegateHolder) => string = (taskTitle) => taskTitle,
   /** The title a wait's check task is drawn with, from the wait's own: the settings' prefix. */
   checkTitle: (waitTitle: string) => string = (waitTitle) => waitTitle,
   /** How a Compound Task's derived block reads, in place of the backend's English. */
   compoundReason = "All open sub-items are blocked",
+  /** Every known Person's name, by id — what a Person delegate is called. */
+  personNames: ReadonlyMap<number, string> = new Map(),
 ): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
@@ -430,6 +443,7 @@ export function buildTree(
       backlogged: task.archival === TASK_ARCHIVAL.BACKLOG,
       agentic: task.agentic,
       delegate: task.delegate_to,
+      ...personNameOf(task.delegate_to, personNames),
       asynchronous: task.asynchronous,
       ...(task.compound === true ? { compound: true } : {}),
       asyncTemplate: task.async_template ?? null,
@@ -465,14 +479,15 @@ export function buildTree(
     const id = expectationNodeId(expectation.id);
     // A delegated Task's wait is drawn as what it waits on while its title is the Task's; one given
     // a title of its own is drawn with it. The row's title is what its editor edits.
-    const labelled = expectation.origin?.kind === "delegation_wait"
-      && taskById.get(expectation.parent_id)?.title === expectation.title;
+    const holderTask = expectation.origin?.kind === "delegation_wait" ? taskById.get(expectation.parent_id) : undefined;
+    const holder = holderTask?.delegate_to != null ? delegateHolder(holderTask.delegate_to, personNames) : undefined;
+    const labelled = holder !== undefined && holderTask?.title === expectation.title;
     nodeMap.set(id, {
       id,
       rowId: expectation.id,
       origin: expectation.origin ?? { kind: "manual" },
       kind: "expectation",
-      title: labelled ? delegationWaitTitle(expectation.title) : expectation.title,
+      title: labelled ? delegationWaitTitle(expectation.title, holder) : expectation.title,
       ...(labelled ? { rowTitle: expectation.title } : {}),
       status: expectation.status,
       archived: expectation.archival === EXPECTATION_ARCHIVAL.ARCHIVED,
@@ -818,16 +833,31 @@ async function loadMcpVisibility(): Promise<McpVisibility[]> {
   }
 }
 
+/** Every Person's name, by id. A failed read draws a Person delegate unnamed rather than failing
+ * the board, as a failed MCP read draws no antenna. */
+async function loadPersonNames(): Promise<Map<number, string>> {
+  try {
+    const people = await listPeople();
+    return new Map((people ?? []).map((person) => [person.id, person.name]));
+  } catch (error: unknown) {
+    console.warn("[arlesh] could not read people's names:", error);
+    return new Map();
+  }
+}
+
 export function useMindmapData(): MindmapData {
   const { t } = useTranslation(["undo", "expectation", "editor"]);
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
   // Read through a ref, set in an effect, so `load` does not change identity with `t` — which
   // would re-run the mount effect and reload for nothing. Declared before that effect, so the
   // first load already has it.
-  const delegationWaitTitle = useRef((title: string) => title);
+  const delegationWaitTitle = useRef((title: string, _holder: DelegateHolder) => title);
   const compoundReason = useRef("All open sub-items are blocked");
   useEffect(() => {
-    delegationWaitTitle.current = (title: string) => t("expectation:delegationWaitTitle", { title });
+    delegationWaitTitle.current = (title: string, holder: DelegateHolder) => t("expectation:delegationWaitTitle", {
+      title,
+      delegate: holder.kind === "agent" ? t("expectation:delegateAgent") : holder.name ?? t("expectation:delegatePersonUnnamed"),
+    });
     compoundReason.current = t("editor:compoundBlocked");
   }, [t]);
   // A check task is titled `{prefix}{wait title}`, the prefix a display setting. Unlike the
@@ -859,12 +889,17 @@ export function useMindmapData(): MindmapData {
       try {
         const now = localNowIso();
         const [data, mcpVisible] = await Promise.all([loadMindmap(now), loadMcpVisibility()]);
+        // People are read only when a Task is delegated to one: their names are what a Person
+        // delegate's badge and wait are labelled with, and nothing else on the board needs them.
+        const personNames = namesAPerson(data.tasks.map((task) => task.delegate_to))
+          ? await loadPersonNames()
+          : new Map<number, string>();
         const built = buildTree(
           data.domains, data.goals, data.tasks, data.infos, data.commitments, data.flows,
           data.flow_goals, data.flow_tasks, data.flow_cycles, data.flow_dependencies,
           data.block_reasons, data.task_dependencies, data.flow_instance_nodes,
-          data.expectations, (title) => delegationWaitTitle.current(title),
-          (title) => `${checkPrefix}${title}`, compoundReason.current,
+          data.expectations, (title, holder) => delegationWaitTitle.current(title, holder),
+          (title) => `${checkPrefix}${title}`, compoundReason.current, personNames,
         );
         applyLifecycles(built, lifecycleMap(data.lifecycles));
         // A Habit's occurrences are ordinary rows, already built into the tree above. A flow whose

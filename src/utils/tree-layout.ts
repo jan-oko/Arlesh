@@ -246,6 +246,9 @@ export interface MindmapNode {
   /** Who holds this Task, when it is delegated (Tasks only): a Person or the Agent. The task's
    * **own** stored delegate — absent or `null` when it has none of its own. */
   delegate?: Delegate | null;
+  /** A Person delegate's name, read on load — absent for the Agent, for no delegate, and for a
+   * Person whose name could not be read. */
+  delegateName?: string;
   /** Whether doing this Task starts a **wait** rather than finishing something (Tasks only) —
    * send the email, order the part, kick off the build. Its own flag; `asyncTemplate` is optional.
    *
