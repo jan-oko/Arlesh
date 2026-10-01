@@ -323,6 +323,8 @@ function templateFieldsOf(item: FlowGoal | FlowTask): TemplateFields {
     ...(item.archival !== undefined ? { archival: item.archival } : {}),
     ...(item.beads_id !== undefined ? { beads_id: item.beads_id } : {}),
     ...(item.agentic_brief !== undefined ? { agentic_brief: item.agentic_brief } : {}),
+    ...(item.compound !== undefined ? { compound: item.compound } : {}),
+    ...(item.async_template !== undefined ? { async_template: item.async_template } : {}),
     tag_ids: item.tag_ids ?? [],
     block_reasons: item.block_reasons ?? [],
   };

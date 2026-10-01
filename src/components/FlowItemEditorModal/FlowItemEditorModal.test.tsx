@@ -99,9 +99,75 @@ describe("FlowItemEditorModal", () => {
       expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
         template: {
           tag_ids: [4], block_reasons: ["waiting on parts"], archival: "backlog", asynchronous: true, agentic: "yes",
-          // An empty brief section is no brief.
+          compound: false,
+          // An empty Expectation section is no template, and an empty brief section no brief.
+          async_template: null,
           agentic_brief: null,
         },
+      })),
+    );
+  });
+
+  it("saves Compound, which every instance of a task item takes", async () => {
+    render(<FlowItemEditorModal {...defaultProps} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "compoundOff" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
+        template: expect.objectContaining({ compound: true }),
+      })),
+    );
+  });
+
+  it("edits the wait template under Asynchronous, and saves it", async () => {
+    const node = mkItem({
+      flowItem: {
+        itemType: "flow_task", flowId: 5, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [],
+        template: { asynchronous: true, async_template: { title: "Waiting on the bank", tag_ids: [] } },
+      },
+    });
+    render(<FlowItemEditorModal {...defaultProps} node={node} />);
+    const titleField = screen.getByDisplayValue("Waiting on the bank");
+    fireEvent.change(titleField, { target: { value: "Waiting on the post " } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
+        template: expect.objectContaining({
+          asynchronous: true, async_template: { title: "Waiting on the post", tag_ids: [] },
+        }),
+      })),
+    );
+  });
+
+  it("drops the wait template when Asynchronous is switched off", async () => {
+    const node = mkItem({
+      flowItem: {
+        itemType: "flow_task", flowId: 5, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [],
+        template: { asynchronous: true, async_template: { title: "Waiting on the bank", tag_ids: [] } },
+      },
+    });
+    render(<FlowItemEditorModal {...defaultProps} node={node} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "asynchronousOn" }));
+    expect(screen.queryByRole("group", { name: "expectation:templateSection" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
+        template: expect.objectContaining({ asynchronous: false, async_template: null }),
+      })),
+    );
+  });
+
+  it("offers neither Compound nor a wait template on a goal item", async () => {
+    const goal = mkItem({
+      id: "flowgoal-3", kind: "flow_goal",
+      flowItem: { itemType: "flow_goal", flowId: 5, flowScopeN: 2, flowScopeKind: "week", cycles: [], dependsOn: [], template: {} },
+    });
+    render(<FlowItemEditorModal {...defaultProps} node={goal} />);
+    expect(screen.queryByRole("checkbox", { name: "compoundOff" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
+        template: { tag_ids: [], block_reasons: [] },
       })),
     );
   });

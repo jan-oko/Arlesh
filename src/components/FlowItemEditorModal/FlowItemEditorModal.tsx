@@ -19,8 +19,10 @@ import TagPicker from "@/components/TagPicker/TagPicker";
 import Switch from "@/components/Switch/Switch";
 import AgenticField from "@/components/TaskEditorModal/AgenticField";
 import AgenticBriefFields from "@/components/TaskEditorModal/AgenticBriefFields";
-import type { AgenticBrief } from "@/api/tasks";
+import type { AgenticBrief, AsyncTemplate } from "@/api/tasks";
 import { EMPTY_AGENTIC_BRIEF, TASK_AGENTIC, isEmptyBrief } from "@/api/tasks";
+import AsyncTemplateFields from "@/components/AsyncTemplateEditor/AsyncTemplateFields";
+import { EMPTY_ASYNC_TEMPLATE, asyncTemplateToSave } from "@/utils/async-template";
 import FlowCycleField from "./FlowCycleField";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
@@ -62,11 +64,11 @@ interface Props {
  * Edits a flow item (flow-goal / flow-task) — the template its occurrences are drawn from: its
  * title, relative cycle pairs and intra-flow dependencies, and the fields of its kind each
  * occurrence reads unless it says otherwise (block reasons, tags; for a task, Backlog,
- * Asynchronous and Agentic).
+ * Asynchronous with the wait template under it, Compound and Agentic).
  */
 export default function FlowItemEditorModal({ node, availableDeps, allTags, domainNames, onSave, onClose }: Props) {
   useInputCapture();
-  const { t } = useTranslation(["editor", "nodeKinds"]);
+  const { t } = useTranslation(["editor", "nodeKinds", "expectation"]);
   const itemType: FlowItemType = node.flowItem?.itemType ?? "flow_task";
 
   const [title, setTitle] = useState(node.title);
@@ -78,6 +80,8 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
   const [tagIds, setTagIds] = useState<number[]>(template.tag_ids ?? []);
   const [isBacklogged, setIsBacklogged] = useState(template.archival === TASK_ARCHIVAL.BACKLOG);
   const [isAsynchronous, setIsAsynchronous] = useState(template.asynchronous === true);
+  const [isCompound, setIsCompound] = useState(template.compound === true);
+  const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate>(template.async_template ?? EMPTY_ASYNC_TEMPLATE);
   const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(template.agentic ?? null));
   const [agenticBrief, setAgenticBrief] = useState<AgenticBrief>(template.agentic_brief ?? EMPTY_AGENTIC_BRIEF);
   const [orphanedCount, setOrphanedCount] = useState<number | null>(null);
@@ -107,6 +111,11 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
       ...shared,
       archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
       asynchronous: isAsynchronous,
+      compound: isCompound,
+      // What every instance's completion spawns its wait from; an empty section is no template.
+      async_template: asyncTemplateToSave(
+        asyncTemplate, isAsynchronous, t("expectation:templateDefaultTitle", { title: title.trim() }),
+      ),
       agentic,
       // The template's brief is what every occurrence reads until it writes its own; an empty
       // section is no brief.
@@ -228,6 +237,29 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
               label={isAsynchronous ? t("asynchronousOn") : t("asynchronousOff")}
             />
           </div>
+          {/* Compound, beside Asynchronous as in the Task editor: every instance's status follows
+              its sub-items. */}
+          <div className={styles.label}>
+            {t("fieldCompound")}
+            <Switch
+              checked={isCompound}
+              onChange={setIsCompound}
+              label={isCompound ? t("compoundOn") : t("compoundOff")}
+            />
+          </div>
+          {/* The wait every instance's completion spawns, with the Task editor's fields. */}
+          {isAsynchronous && (
+            <div role="group" aria-label={t("expectation:templateSection")}>
+              <span className={styles.label}>{t("expectation:templateSection")}</span>
+              <AsyncTemplateFields
+                value={asyncTemplate}
+                onChange={setAsyncTemplate}
+                titlePlaceholder={t("expectation:templateDefaultTitle", { title: title.trim() })}
+                allTags={allTags}
+                domainNames={domainNames}
+              />
+            </div>
+          )}
         </>
       )}
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />

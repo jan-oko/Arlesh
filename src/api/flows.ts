@@ -1,7 +1,7 @@
 import { invoke } from "./gesture";
 import { isWireError } from "@/api/errors";
 import type { ScopeKey } from "@/api/scopes";
-import type { AgenticBrief, Delegate, TaskAgentic, TaskArchival } from "@/api/tasks";
+import type { AgenticBrief, AsyncTemplate, Delegate, TaskAgentic, TaskArchival } from "@/api/tasks";
 
 /**
  * What a Flow's root materializes as. `commitment` is how a repeating rule — a nightly
@@ -354,6 +354,11 @@ export interface TemplateFields {
   block_reasons?: string[];
   /** The agentic brief every occurrence reads, field by field, until it says otherwise. */
   agentic_brief?: AgenticBrief | null;
+  /** Whether every instance consists of its sub-items. A flow Task item's alone. */
+  compound?: boolean;
+  /** The wait every instance's completion spawns, while the item is Asynchronous. A flow Task
+   * item's alone. */
+  async_template?: AsyncTemplate | null;
 }
 
 /** A change to a template row's own columns and relations; each field absent stays as it is. */
@@ -366,6 +371,10 @@ export interface TemplateUpdate {
   block_reasons?: string[];
   // Absent = leave unchanged, null = no brief, value = this brief.
   agentic_brief?: AgenticBrief | null;
+  /** A flow Task item's alone. */
+  compound?: boolean;
+  // A flow Task item's alone. Absent = leave unchanged, null = no template, value = this one.
+  async_template?: AsyncTemplate | null;
 }
 
 /** A flow-goal template item. */

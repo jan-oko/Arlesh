@@ -58,8 +58,8 @@ export const MINDMAP_FLAGS_BINDINGS: readonly Binding<MindmapFlagsContext>[] = [
   {
     // V for **compound**: the Task consists of its sub-items, its status derived from them.
     // Bare, beside A, B and W, on the same rule. Bare V was free; Ctrl+V is Paste, and a chord is
-    // matched on its exact modifiers, so the two never meet. A Habit occurrence is turned away by
-    // the hook, out loud, since only a stored Task carries the flag.
+    // matched on its exact modifiers, so the two never meet. An iteration's root or a check task
+    // is turned away by the hook, out loud (see `takesCompound`).
     id: "mindmap.toggleCompound", section: "mindmap", chord: { code: "KeyV" },
     labelKey: "toggleCompound",
     when: isFlaggableTask,
