@@ -42,6 +42,8 @@
       "lock": "Agents are at capacity",
       "showStatus": "Show agent status in the top bar",
       "help": "About the agent capacity lock"
-    }
+    },
+    "rootsHeading": "MCP roots",
+    "rootsHelp": "About MCP roots"
   }
 }
