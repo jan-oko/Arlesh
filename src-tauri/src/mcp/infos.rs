@@ -64,7 +64,8 @@ impl ArleshMcp {
             Err(error) => return result::failed(error),
         };
         let now = self.now();
-        let board = attempt!(Board::read(&mut db, now).await);
+        let board =
+            attempt!(Board::read(&mut db, now, self.capacity.get().await.at_capacity).await);
 
         let task_id = found!(board.resolve(&task_id, "task"));
         if !attempt!(board.writes_task(&mut db, &task_id, now).await) {

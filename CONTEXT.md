@@ -86,7 +86,7 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Write source** — Who caused a write: the user, or the MCP server. Both are journaled; only the user's enter the Undo Stack.
 
-**MCP root** — A stored node whose subtree the MCP endpoint may see. The MCP reads everything inside a root and nothing outside every root; with no roots it sees nothing. Inside a root an **Agentic** Task is writable too and everything else is read-only; private nodes stay hidden throughout. Stored on the board (`mcp_roots`), journaled, and set on the settings modal's *MCP access* page.
+**MCP root** — A stored node whose subtree the MCP endpoint may see. The MCP reads everything inside a root and nothing outside every root; with no roots it sees nothing. Inside a root an **Agentic** Task is writable too and everything else is read-only; private nodes stay hidden throughout. Stored on the board (`mcp_roots`), journaled, and set on the settings modal's *Agents* page (called *MCP access* until 2026-10-01).
 
 **Undo Stack / Redo Stack** — The gestures Ctrl+Z will reverse and Ctrl+Shift+Z will reapply. One pair for the whole app, not one per tab or window. Session-scoped: closing Arlesh empties both.
 

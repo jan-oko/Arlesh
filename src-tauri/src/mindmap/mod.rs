@@ -40,16 +40,30 @@ use model::{FlowHabitEntry, FlowHabitResult, MindmapLoad};
 /// seeing an empty Habit.
 #[tracing::instrument(skip(db))]
 pub async fn load(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<MindmapLoad, AppError> {
-    load_within(db, now, Horizon::default()).await
+    load_within(db, now, Horizon::default(), false).await
+}
+
+/// [`load`], blocked by the agent capacity lock when `at_capacity`: every Agentic Task not yet
+/// Done carries its derived reason (see [`crate::capacity::blocks`]). What every reader of
+/// "blocked" loads — the app's board, the MCP's snapshot and lookups; [`load`] is for the readers
+/// that take statuses, rows or lifecycles off the board and never its blocks.
+#[tracing::instrument(skip(db))]
+pub async fn load_blocked(
+    db: &mut Db<Transactional>,
+    now: NaiveDateTime,
+    at_capacity: bool,
+) -> Result<MindmapLoad, AppError> {
+    load_within(db, now, Horizon::default(), at_capacity).await
 }
 
 /// [`load`], deriving the Habits' future occurrences as far as `horizon` names — the Plan View
-/// filling a month that has not begun.
+/// filling a month that has not begun — and blocked by the agent capacity lock when `at_capacity`.
 #[tracing::instrument(skip(db))]
 pub async fn load_within(
     db: &mut Db<Transactional>,
     now: NaiveDateTime,
     horizon: Horizon,
+    at_capacity: bool,
 ) -> Result<MindmapLoad, AppError> {
     // Operators are borrowed per call and never held: each line takes the session, uses it, and
     // gives it back. Two bound at once would not compile.
@@ -116,6 +130,21 @@ pub async fn load_within(
         .collect();
     let added = table::added_edges(db, &present).await?;
     task_dependencies.extend(added);
+    // The agent capacity lock blocks every Agentic Task not yet Done — before the Compound block
+    // below reads "blocked", so a Compound whose open items the lock blocks is blocked too.
+    if at_capacity {
+        let capacity_blocks = crate::capacity::blocks::derive(
+            crate::capacity::blocks::Rows {
+                domains: &domains,
+                goals: &goals,
+                tasks: &tasks,
+                commitments: &commitments,
+                expectations: &expectations,
+            },
+            &block_reasons,
+        );
+        block_reasons.extend(capacity_blocks);
+    }
     // Only now is every status final and every edge in: a Compound Task whose open sub-items are
     // all blocked is blocked itself, by a reason derived here (see `tasks::compound::blocked`).
     let compound_blocks = crate::tasks::compound::blocked::derive(

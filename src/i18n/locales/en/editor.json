@@ -146,6 +146,8 @@
   "quickDependencyHeading": "“{{title}}” depends on…",
   "quickDependencyPlaceholder": "Search Tasks, Goals and Expectations",
   "quickDependencyLoading": "Loading…",
+  "agentsAtCapacity": "Agents at capacity",
+  "capacityBlockLabel": "From the agent capacity lock — clears when the lock does",
   "compoundBlocked": "All open sub-items are blocked",
   "compoundBlockLabel": "From its sub-items — clears when one is unblocked or finished"
 }

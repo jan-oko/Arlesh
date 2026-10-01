@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{net::TcpListener, sync::Mutex, task::JoinHandle};
 
 use super::{router, DEFAULT_PORT, PORT_ENV_VAR};
-use crate::{board::Announce, database::session::SessionFactory};
+use crate::{board::Announce, capacity::AgentCapacity, database::session::SessionFactory};
 
 /// The file in the app's data directory that holds the MCP port setting.
 pub const SETTINGS_FILE: &str = "mcp.json";
@@ -131,6 +131,7 @@ pub struct McpEndpoint {
 struct Inner {
     factory: SessionFactory,
     announce: Announce,
+    capacity: AgentCapacity,
     settings: PathBuf,
     env_override: Option<u16>,
     running: Mutex<Running>,
@@ -145,11 +146,12 @@ struct Running {
 
 impl McpEndpoint {
     /// An endpoint over `factory` whose port setting lives at `settings`, overridden by
-    /// `env_override` when set (the app passes [`env_port`]). Nothing is bound until
-    /// [`McpEndpoint::restart`].
+    /// `env_override` when set (the app passes [`env_port`]). Every session it serves shares
+    /// `capacity`, the agent capacity lock. Nothing is bound until [`McpEndpoint::restart`].
     pub fn new(
         factory: SessionFactory,
         announce: Announce,
+        capacity: AgentCapacity,
         settings: PathBuf,
         env_override: Option<u16>,
     ) -> Self {
@@ -159,6 +161,7 @@ impl McpEndpoint {
             inner: Arc::new(Inner {
                 factory,
                 announce,
+                capacity,
                 settings,
                 env_override,
                 running: Mutex::new(Running {
@@ -210,7 +213,11 @@ impl McpEndpoint {
         match TcpListener::bind(address).await {
             Ok(listener) => {
                 tracing::info!(%address, "MCP endpoint listening at /mcp");
-                let app = router(self.inner.factory.clone(), self.inner.announce.clone());
+                let app = router(
+                    self.inner.factory.clone(),
+                    self.inner.announce.clone(),
+                    self.inner.capacity.clone(),
+                );
                 running.server = Some(tokio::spawn(async move {
                     if let Err(error) = axum::serve(listener, app).await {
                         tracing::error!(error = %error, "MCP endpoint stopped");

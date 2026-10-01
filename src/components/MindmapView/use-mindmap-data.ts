@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useTranslation } from "react-i18next";
+import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
+import { agentActivityOf } from "@/utils/agent-activity";
 import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
 import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
 import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment } from "@/api/commitments";
@@ -369,17 +371,25 @@ export function buildTree(
   checkTitle: (waitTitle: string) => string = (waitTitle) => waitTitle,
   /** How a Compound Task's derived block reads, in place of the backend's English. */
   compoundReason = "All open sub-items are blocked",
+  /** How the agent capacity lock's derived reason reads, in place of the backend's English. */
+  capacityReason = "Agents at capacity",
 ): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
   // Explicit block reasons, grouped per owner in stored (position) order. A reason the backend
-  // derived — a Compound Task's — is not the owner's to edit, so it is kept apart and drawn among
-  // the virtual blockers; an editor save then never writes it back as a stored reason.
+  // derived — the agent capacity lock's, or a Compound Task's — is not the owner's to edit, so it is
+  // kept apart, by its kind, and drawn among the virtual blockers in the app's own words; an editor
+  // save then never writes it back as a stored reason.
   const manualBlockers = new Map<string, string[]>();
+  const capacityBlocked = new Set<string>();
   const compoundBlocked = new Set<string>();
   for (const br of blockReasons) {
     const key = `${br.owner_type}-${br.owner_id}`;
-    if (br.derived !== undefined) {
+    if (br.derived === "agent_capacity") {
+      capacityBlocked.add(key);
+      continue;
+    }
+    if (br.derived === "compound") {
       compoundBlocked.add(key);
       continue;
     }
@@ -435,7 +445,11 @@ export function buildTree(
       ...(isCheck ? { rowTitle: task.title } : {}),
       status: task.status,
       blockReasons: manualBlockers.get(`task-${task.id}`) ?? [],
-      virtualBlockers: compoundBlocked.has(`task-${task.id}`) ? [compoundReason] : [],
+      virtualBlockers: [
+        ...(capacityBlocked.has(`task-${task.id}`) ? [capacityReason] : []),
+        ...(compoundBlocked.has(`task-${task.id}`) ? [compoundReason] : []),
+      ],
+      ...(capacityBlocked.has(`task-${task.id}`) ? { capacityBlocked: true } : {}),
       ...(compoundBlocked.has(`task-${task.id}`) ? { compoundBlocked: true } : {}),
       timeScope: task.time_scope,
       onScopeExit: task.on_scope_exit,
@@ -840,10 +854,12 @@ export function useMindmapData(): MindmapData {
   // would re-run the mount effect and reload for nothing. Declared before that effect, so the
   // first load already has it.
   const delegationWaitTitle = useRef((title: string) => title);
+  const capacityReason = useRef("Agents at capacity");
   const carriesMissedTitle = useRef<CarriesMissedTitle>(({ title, scope }) => `${title} ${scope}`);
   const compoundReason = useRef("All open sub-items are blocked");
   useEffect(() => {
     delegationWaitTitle.current = (title: string) => t("expectation:delegationWaitTitle", { title });
+    capacityReason.current = t("editor:agentsAtCapacity");
     carriesMissedTitle.current = (parts) => t("habits:carriesMissed", parts);
     compoundReason.current = t("editor:compoundBlocked");
   }, [t]);
@@ -881,7 +897,7 @@ export function useMindmapData(): MindmapData {
           data.flow_goals, data.flow_tasks, data.flow_cycles, data.flow_dependencies,
           data.block_reasons, data.task_dependencies, data.flow_instance_nodes,
           data.expectations, (title) => delegationWaitTitle.current(title),
-          (title) => `${checkPrefix}${title}`, compoundReason.current,
+          (title) => `${checkPrefix}${title}`, compoundReason.current, capacityReason.current,
         );
         applyLifecycles(built, lifecycleMap(data.lifecycles));
         // A Habit's occurrences are ordinary rows, already built into the tree above. A flow whose
@@ -892,6 +908,8 @@ export function useMindmapData(): MindmapData {
         applyMcpVisibility(built, mcpVisible);
         latestTree.current = built;
         setTree(built);
+        // The whole board, before any view narrows it to a subtree: the top bar's agent status.
+        useAgentActivityStore.getState().receive(agentActivityOf(built));
         setLoadCondition(collectLoadConditions(data));
       } catch (err) {
         setError(getErrorMessage(err));

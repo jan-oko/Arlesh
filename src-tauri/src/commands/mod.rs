@@ -5,6 +5,7 @@ pub mod access;
 pub mod beads;
 pub mod block_reasons;
 pub mod board;
+pub mod capacity;
 pub mod commitments;
 pub mod domains;
 pub mod expectations;
