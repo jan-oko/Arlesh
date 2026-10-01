@@ -82,6 +82,28 @@ pub enum TaskError {
          or turn compound off"
     )]
     CompoundStatus(i64),
+    /// A status write named **Review**, which is never set: it is derived from an On Agent Task
+    /// with an open agentic question beneath it. An agent raises a question instead.
+    #[error(
+        "review is not set: an On Agent task reads Review while its agent has a question open; \
+         raise the question instead"
+    )]
+    ReviewIsDerived,
+    /// A status of the ordinary model was written to a Task that reads as **Agentic**, whose
+    /// status is a model of its own (To Do, On Agent, Review, Doing, Done).
+    #[error("{0} is not an Agentic status")]
+    NotAgenticStatus(String),
+    /// A status of the Agentic model was written to a Task that does not read as Agentic.
+    #[error("{0} is an Agentic status, and this task is not Agentic")]
+    NotOrdinaryStatus(String),
+    /// A flag change or a move would change whether these Tasks read as Agentic, and their status
+    /// has no counterpart in the model they would then hold — an ordinary Started, or an On Agent.
+    /// Refused out loud, naming them, so the user settles their statuses first.
+    #[error(
+        "this would change whether these tasks read as Agentic, and their status has no \
+         counterpart there: {0}. Set their status first"
+    )]
+    KindConversion(String),
     /// Compound was asked of a derived row — a Habit occurrence or a wait's check task. Only a
     /// stored Task carries the flag.
     #[error("only a stored task can consist of its sub-items; this one is derived")]
