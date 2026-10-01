@@ -15,6 +15,7 @@ fn habit() -> Origin {
             kind: Some("day".to_string()),
             status: IterationStatus::Active,
             missed_from: None,
+            owed: false,
         },
         item_type: TemplateKind::FlowRoot,
         item_id: 3,

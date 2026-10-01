@@ -716,6 +716,7 @@ fn build_iteration(
             .or_else(|| flow.flow_duration_kind.clone()),
         status: context.iteration.status,
         missed_from: context.missed_from,
+        owed: owed(flow, clock, context, now),
     };
     let origin_of = |item: TemplateItem, cycle: i64| {
         Origin::Habit(HabitOrigin {
@@ -935,6 +936,17 @@ fn build_iteration(
         }
     }
     Ok(rows)
+}
+
+/// Whether an iteration is **owed** work: under Window + Owed, its window has passed and it is
+/// still open (unfinished, so Active). The board draws it outside the Habit's folded history
+/// (ruled by the user, 2026-10-01). Not a commitment Habit's: an unanswered night is a verdict
+/// still owed, which its Verdict Window already bounds, not open work.
+fn owed(flow: &Flow, clock: Clock, context: &Iteration<'_>, now: NaiveDateTime) -> bool {
+    clock == Clock::Window(MissPolicy::Owed)
+        && flow.instance_type != "commitment"
+        && context.iteration.status == IterationStatus::Active
+        && context.slot.end <= now
 }
 
 /// The node keys of one iteration's occurrences an archive holds: each one archived by hand, and

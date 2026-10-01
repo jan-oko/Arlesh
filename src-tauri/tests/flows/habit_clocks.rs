@@ -253,6 +253,25 @@ async fn window_owed_keeps_a_missed_iteration_open_and_overdue_beside_the_next()
     );
     assert!(owed.overdue, "due at its own window, which has passed");
     assert!(!lifecycle(&board, &root_key(flow_id, day(ymd(2026, 1, 7)))).overdue);
+
+    // Owed work is said so on the origin, which keeps it out of the board's folded history.
+    let is_owed = |date| {
+        task(&board, &root_key(flow_id, day(date)))
+            .unwrap()
+            .origin
+            .habit()
+            .unwrap()
+            .iteration_scope
+            .owed
+    };
+    assert!(is_owed(ymd(2026, 1, 5)), "passed and still open: owed");
+    assert!(!is_owed(ymd(2026, 1, 7)), "its window is still open");
+
+    // Done, it is no longer owed and folds like any passed iteration.
+    complete_at(&pool, flow_id, day(ymd(2026, 1, 5)), "2026-01-07T08:00:00").await;
+    let board = load(&app, "2026-01-07T09:00:00").await;
+    let done = task(&board, &root_key(flow_id, day(ymd(2026, 1, 5)))).unwrap();
+    assert!(!done.origin.habit().unwrap().iteration_scope.owed);
 }
 
 #[tokio::test]
@@ -273,6 +292,11 @@ async fn window_archive_is_never_overdue() {
     let lapsed = lifecycle(&board, &root_key(flow_id, day(ymd(2026, 1, 5))));
     assert_eq!(lapsed.resolution, Some(Resolution::Missed));
     assert!(!lapsed.overdue);
+    let row = task(&board, &root_key(flow_id, day(ymd(2026, 1, 5)))).unwrap();
+    assert!(
+        !row.origin.habit().unwrap().iteration_scope.owed,
+        "only Window + Owed keeps passed work out of the fold"
+    );
 }
 
 #[tokio::test]

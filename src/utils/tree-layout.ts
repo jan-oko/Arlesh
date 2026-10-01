@@ -151,6 +151,9 @@ export interface HabitIterationMeta {
   /** Whether the iteration was finished, as opposed to Lapsed, Missed or Expired. Drives the
    * `9 done, 5 missed` half of a group's tally. */
   done: boolean;
+  /** Owed work: under Window + Owed, its window has passed with its work still open. It is never
+   * folded into a run, but drawn beside it. Absent when not owed. */
+  owed?: boolean;
 }
 
 /** Which unit of time a `habit_group` node stands for. `run` is the whole folded run; the rest are

@@ -3,3 +3,4 @@
   Under Window + Overdue the open occurrence is drawn "Water the plants W3 from W1": its window reaches back to the first one you missed, and it has the amber Overdue border until it is done.
   Habit occurrences can now be Overdue — Owed and Overdue ones past their due, Interval ones past their window — and a Habit occurrence's Task editor offers the **Due** field, so you can give one occurrence a due of its own.
   In the Flow editor the Habit settings are sparser and start with the clock, then what happens to a missed one, then Starts, Gap and Ends. Each choice explains itself in its tooltip.
+  Under Window + Owed, an occurrence still open past its window is never folded into the Habit's collapsed history: it stays drawn beside it, where you can see it is owed.

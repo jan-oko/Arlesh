@@ -108,6 +108,11 @@ pub struct IterationScope {
     /// carries nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub missed_from: Option<NaiveDate>,
+    /// Under Window + Owed, whether this iteration's window has passed with its work still open:
+    /// owed work, which the board keeps in view rather than folding into the Habit's history.
+    /// Sent only when true.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub owed: bool,
 }
 
 #[cfg(test)]

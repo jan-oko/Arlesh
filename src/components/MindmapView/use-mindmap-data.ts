@@ -161,6 +161,8 @@ export function decorateIterationRoots(
         done: current.kind === "commitment"
           ? current.verdict === VERDICT.KEPT
           : current.status === TASK_STATUS.DONE || current.status === GOAL_STATUS.ACHIEVED,
+        // Owed work stays in view rather than folding into the Habit's history.
+        ...(iteration.owed === true ? { owed: true } : {}),
       };
     }
     for (const child of current.children) visit(child);

@@ -1288,6 +1288,18 @@ describe("decorateIterationRoots", () => {
     expect(done.habitIteration?.done).toBe(true);
   });
 
+  it("marks an owed iteration so the fold leaves it in view", () => {
+    const owed = rootNode("task", { status: "todo" });
+    const habit = owed.origin?.kind === "habit" ? owed.origin : undefined;
+    if (habit === undefined) throw new Error("an iteration root carries a habit origin");
+    habit.iteration_scope.owed = true;
+    const plain = rootNode("task", { id: "task-plain", status: "todo" });
+    decorateIterationRoots(owed, [mkHabit()], LABELS, "2026-02-01T09:00:00", CARRIES);
+    decorateIterationRoots(plain, [mkHabit()], LABELS, "2026-02-01T09:00:00", CARRIES);
+    expect(owed.habitIteration?.owed).toBe(true);
+    expect(plain.habitIteration?.owed).toBeUndefined();
+  });
+
   it("counts a goal root done once achieved, and a commitment root only once kept", () => {
     const goal = rootNode("goal", { status: "achieved" });
     const broken = rootNode("commitment", { verdict: "broken" });
