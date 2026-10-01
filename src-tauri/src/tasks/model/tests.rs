@@ -26,8 +26,102 @@ fn only_in_progress_and_started_are_begun() {
     assert!(TaskStatus::Started.is_begun());
     assert!(!TaskStatus::Todo.is_begun());
     assert!(!TaskStatus::Done.is_begun());
-    assert!(TaskStatus::is_begun_str("started"));
-    assert!(!TaskStatus::is_begun_str("bogus"));
+}
+
+#[test]
+fn agentic_status_stores_spellings_disjoint_from_the_ordinary_model() {
+    for status in [
+        AgenticStatus::Todo,
+        AgenticStatus::OnAgent,
+        AgenticStatus::Doing,
+        AgenticStatus::Done,
+    ] {
+        let spelling = status.as_db().expect("stored");
+        assert_eq!(AgenticStatus::from_db(spelling), Some(status));
+        assert_eq!(TaskStatus::from_db(spelling), None, "{spelling} must not read as ordinary");
+    }
+    for ordinary in ["todo", "in_progress", "started", "done"] {
+        assert_eq!(AgenticStatus::from_db(ordinary), None, "{ordinary} must not read as agentic");
+    }
+}
+
+#[test]
+fn review_is_derived_and_never_stored() {
+    assert_eq!(AgenticStatus::Review.as_db(), None);
+    assert_eq!(AgenticStatus::from_db("review"), None);
+    assert_eq!(AgenticStatus::Review.stored(), AgenticStatus::OnAgent);
+    assert_eq!(AgenticStatus::Review.as_str(), "review");
+    assert!(AgenticStatus::Review.is_begun());
+    assert!(AgenticStatus::OnAgent.is_begun());
+    assert!(AgenticStatus::Doing.is_begun());
+    assert!(!AgenticStatus::Todo.is_begun());
+    assert!(!AgenticStatus::Done.is_begun());
+}
+
+#[test]
+fn status_decodes_each_stored_spelling_into_exactly_one_model() {
+    assert_eq!(Status::from_db("todo"), Some(Status::Ordinary(TaskStatus::Todo)));
+    assert_eq!(
+        Status::from_db("agentic_todo"),
+        Some(Status::Agentic(AgenticStatus::Todo))
+    );
+    assert_eq!(
+        Status::from_db("doing"),
+        Some(Status::Agentic(AgenticStatus::Doing))
+    );
+    assert_eq!(
+        Status::from_db("in_progress"),
+        Some(Status::Ordinary(TaskStatus::InProgress))
+    );
+    assert_eq!(Status::from_db("review"), None);
+    assert_eq!(Status::from_db("bogus"), None);
+    assert_eq!(Status::Agentic(AgenticStatus::Review).as_db(), None);
+}
+
+#[test]
+fn status_serialises_tagged_by_its_model() {
+    let doing = serde_json::to_value(Status::Agentic(AgenticStatus::Doing)).expect("json");
+    assert_eq!(doing, serde_json::json!({"kind": "agentic", "status": "doing"}));
+    let started = serde_json::to_value(Status::Ordinary(TaskStatus::Started)).expect("json");
+    assert_eq!(started, serde_json::json!({"kind": "ordinary", "status": "started"}));
+    let back: Status = serde_json::from_value(doing).expect("parses");
+    assert_eq!(back, Status::Agentic(AgenticStatus::Doing));
+}
+
+#[test]
+fn conversion_maps_the_shared_states_and_refuses_the_rest() {
+    let ordinary = |status| Status::Ordinary(status);
+    let agentic = |status| Status::Agentic(status);
+    assert_eq!(ordinary(TaskStatus::Todo).converted(true), Some(agentic(AgenticStatus::Todo)));
+    assert_eq!(
+        ordinary(TaskStatus::InProgress).converted(true),
+        Some(agentic(AgenticStatus::Doing))
+    );
+    assert_eq!(ordinary(TaskStatus::Done).converted(true), Some(agentic(AgenticStatus::Done)));
+    assert_eq!(ordinary(TaskStatus::Started).converted(true), None);
+    assert_eq!(agentic(AgenticStatus::Doing).converted(false), Some(ordinary(TaskStatus::InProgress)));
+    assert_eq!(agentic(AgenticStatus::OnAgent).converted(false), None);
+    assert_eq!(agentic(AgenticStatus::Review).converted(false), None);
+    // Staying in its own model is the identity, Started and On Agent included.
+    assert_eq!(ordinary(TaskStatus::Started).converted(false), Some(ordinary(TaskStatus::Started)));
+    assert_eq!(agentic(AgenticStatus::OnAgent).converted(true), Some(agentic(AgenticStatus::OnAgent)));
+}
+
+#[test]
+fn readings_round_trip_through_each_model() {
+    assert_eq!(Status::Agentic(AgenticStatus::OnAgent).reading(), TaskStatus::Started);
+    assert_eq!(Status::Agentic(AgenticStatus::Doing).reading(), TaskStatus::InProgress);
+    assert_eq!(
+        Status::from_reading(TaskStatus::Started, true),
+        Status::Agentic(AgenticStatus::OnAgent)
+    );
+    assert_eq!(
+        Status::from_reading(TaskStatus::Started, false),
+        Status::Ordinary(TaskStatus::Started)
+    );
+    assert!(Status::Agentic(AgenticStatus::Done).is_done());
+    assert!(Status::todo(true).is_todo());
+    assert!(!Status::todo(false).is_agentic());
 }
 
 #[test]
