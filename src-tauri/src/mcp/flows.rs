@@ -33,8 +33,11 @@ impl ArleshMcp {
     /// it stays open, due at its own window; `overdue`: it is archived as missed and the open
     /// iteration carries it, due at the first missed window) or `interval` (one open instance; the
     /// next starts the unit after the one the last was completed in, plus the gap; `miss_policy`
-    /// null) — as opposed to the iterations the snapshot derives from it, and is `null` for a flow
-    /// that is not a Habit. `origins` maps materialised nodes back to the flow they were started from.
+    /// null), and a Window Habit's **cooldown**, `cooldown_n` `cooldown_kind` units (`part`, `day`,
+    /// `week` or `month`; both null for none): after an iteration is completed, the next one opens
+    /// only once the cooldown has passed, counted from the unit after the completion — as opposed
+    /// to the iterations the snapshot derives from it, and is `null` for a flow that is not a
+    /// Habit. `origins` maps materialised nodes back to the flow they were started from.
     ///
     /// Every id is a row id or a short id. A flow or node outside the MCP roots is refused as
     /// `not_permitted`, and an origin in a flow the MCP cannot read is left out.

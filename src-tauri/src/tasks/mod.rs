@@ -14,6 +14,7 @@ pub(crate) mod agentic;
 mod ancestry;
 pub mod commitments;
 pub mod compound;
+pub mod done_date;
 pub mod error;
 pub mod expectations;
 pub mod lifecycle;

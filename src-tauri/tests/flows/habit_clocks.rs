@@ -67,6 +67,8 @@ async fn habit(
             end_scope_id: None,
             clock,
             miss_policy: policy,
+            cooldown_n: None,
+            cooldown_kind: None,
         },
     )
     .await

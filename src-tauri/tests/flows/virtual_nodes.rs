@@ -94,6 +94,8 @@ async fn daily_habit(
             end_scope_id: None,
             clock: ClockKind::Window,
             miss_policy: Some(MissPolicy::Owed),
+            cooldown_n: None,
+            cooldown_kind: None,
         },
     )
     .await
@@ -396,6 +398,8 @@ async fn a_plan_outside_the_occurrences_window_is_refused() {
             end_scope_id: None,
             clock: ClockKind::Window,
             miss_policy: Some(MissPolicy::Archive),
+            cooldown_n: None,
+            cooldown_kind: None,
         },
     )
     .await
@@ -1152,6 +1156,8 @@ async fn a_root_and_an_item_cycle_plan_resolve_onto_their_occurrences() {
             end_scope_id: None,
             clock: ClockKind::Window,
             miss_policy: Some(MissPolicy::Owed),
+            cooldown_n: None,
+            cooldown_kind: None,
         },
     )
     .await
@@ -1301,6 +1307,8 @@ async fn a_root_and_a_whole_scope_pair_planned_into_the_window_are_planned_into_
             end_scope_id: None,
             clock: ClockKind::Window,
             miss_policy: Some(MissPolicy::Owed),
+            cooldown_n: None,
+            cooldown_kind: None,
         },
     )
     .await

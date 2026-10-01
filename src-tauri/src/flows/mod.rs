@@ -13,7 +13,9 @@
 //! `habit_slots` — are pure: a scope is derived from its value key (ADR 0009), so resolving a
 //! window reads and writes nothing.
 
+pub mod cooldown;
 pub mod cycles;
+pub mod done_date;
 pub mod error;
 pub mod habits;
 pub mod model;
@@ -193,6 +195,51 @@ fn parse_clock(recurrence: &FlowRecurrence) -> Result<Clock, FlowError> {
             recurrence.clock
         ))),
     }
+}
+
+/// Refuses a cooldown the Habit cannot carry (`docs/spec/habits.md`, *Cooldown*): one on anything
+/// but a Window clock — an Interval's Gap already counts from completion — or on a commitment
+/// Habit, which completes nothing for a cooldown to count from; one counted in a unit that is not
+/// finer than the Habit's window; and one that could reach the end of the window after the one it
+/// follows.
+fn check_cooldown(flow: &Flow, request: &SetRecurrenceRequest) -> Result<(), FlowError> {
+    let parsed = cooldown::Cooldown::parse(request.cooldown_n, request.cooldown_kind.as_deref())
+        .map_err(|refusal| FlowError::Invalid(refusal.to_string()))?;
+    let Some(parsed) = parsed else {
+        return Ok(());
+    };
+    if request.clock != ClockKind::Window {
+        return Err(FlowError::Invalid(
+            "only a window habit has a cooldown — an interval's gap already counts from completion"
+                .to_string(),
+        ));
+    }
+    if flow.instance_type == "commitment" {
+        return Err(FlowError::Invalid(
+            "a commitment habit has no cooldown — nothing it draws is ever completed".to_string(),
+        ));
+    }
+    let kind = flow.flow_duration_kind.as_deref().unwrap_or_default();
+    parsed
+        .fits(kind, flow.flow_duration_n.unwrap_or(1))
+        .map_err(|refusal| FlowError::Invalid(refusal.to_string()))
+}
+
+/// The cooldown a Habit's iterations are held back by, or `None` when it has none.
+///
+/// A stored cooldown that no longer fits the Habit's window — its window was changed since, to
+/// one the cooldown's unit is not finer than, or one too short for it — holds nothing back: the
+/// editor refuses to save it again until it is fixed, and until then the Habit runs without it.
+fn habit_cooldown(flow: &Flow, recurrence: &FlowRecurrence) -> Option<cooldown::Cooldown> {
+    let kind = flow.flow_duration_kind.as_deref()?;
+    let parsed =
+        cooldown::Cooldown::parse(recurrence.cooldown_n, recurrence.cooldown_kind.as_deref())
+            .ok()
+            .flatten()?;
+    parsed
+        .fits(kind, flow.flow_duration_n.unwrap_or(1))
+        .is_ok()
+        .then_some(parsed)
 }
 
 /// Fine-to-coarse ordinal for a scope kind (`exact` < `part` < `day` < `week` < `month` <
@@ -1405,6 +1452,7 @@ impl<'session> FlowOperator<'session> {
                 "a miss policy is set exactly when the clock is window".to_string(),
             ));
         }
+        check_cooldown(&flow, &request)?;
 
         match (request.gap_n, request.gap_kind.as_deref()) {
             (Some(n), Some(kind)) => {
@@ -1446,12 +1494,14 @@ impl<'session> FlowOperator<'session> {
 
         sqlx::query(
             "INSERT INTO flow_recurrences
-                (flow_id, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+                (flow_id, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy,
+                 cooldown_n, cooldown_kind)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(flow_id) DO UPDATE SET
                 start_scope_id = excluded.start_scope_id, gap_n = excluded.gap_n,
                 gap_kind = excluded.gap_kind, end_scope_id = excluded.end_scope_id,
-                clock = excluded.clock, miss_policy = excluded.miss_policy",
+                clock = excluded.clock, miss_policy = excluded.miss_policy,
+                cooldown_n = excluded.cooldown_n, cooldown_kind = excluded.cooldown_kind",
         )
         .bind(flow_id.0)
         .bind(request.start_scope_id)
@@ -1460,6 +1510,8 @@ impl<'session> FlowOperator<'session> {
         .bind(request.end_scope_id)
         .bind(request.clock.as_str())
         .bind(request.miss_policy.map(|policy| policy.as_str()))
+        .bind(request.cooldown_n)
+        .bind(&request.cooldown_kind)
         .execute(&mut *self.connection)
         .await?;
 
@@ -1474,7 +1526,8 @@ impl<'session> FlowOperator<'session> {
         flow_id: FlowId,
     ) -> Result<Option<FlowRecurrence>, FlowError> {
         let recurrence = sqlx::query_as::<_, FlowRecurrence>(
-            "SELECT flow_id, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy
+            "SELECT flow_id, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy,
+                    cooldown_n, cooldown_kind
              FROM flow_recurrences WHERE flow_id = ?",
         )
         .bind(flow_id.0)
@@ -2169,8 +2222,10 @@ impl<'session> FlowOperator<'session> {
     async fn copy_recurrence(&mut self, from: FlowId, to: FlowId) -> Result<(), FlowError> {
         sqlx::query(
             "INSERT INTO flow_recurrences
-                (flow_id, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy)
-             SELECT ?, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy
+                (flow_id, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy,
+                 cooldown_n, cooldown_kind)
+             SELECT ?, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy,
+                    cooldown_n, cooldown_kind
              FROM flow_recurrences WHERE flow_id = ?",
         )
         .bind(to.0)
@@ -3052,6 +3107,11 @@ pub async fn generate_habit_iterations<M: SessionMode>(
         completions.completed_at(slot)
     })?;
     let resolved = completions.resolutions(&slots);
+    let openings = cooldown::openings(
+        &slots,
+        &resolved,
+        habit_cooldown(&flow, &recurrence).as_ref(),
+    );
     let iterations = classify_iterations(&slots, clock, &resolved, now);
     let iterations = expire_unanswered(iterations, &verdict_deadlines(&flow, &slots), now);
 
@@ -3070,7 +3130,10 @@ pub async fn generate_habit_iterations<M: SessionMode>(
         // Every classified iteration came from a slot, so the lookup always hits; an iteration
         // that somehow had no slot would simply render no occurrences rather than fail the load.
         let instances = match by_index.get(&iteration.index) {
-            Some(slot) => resolve_iteration_instances(&shape, slot, iteration.status, now)?,
+            Some(slot) => {
+                let opening = openings.get(&slot.index).copied().unwrap_or(slot.start);
+                resolve_iteration_instances(&shape, slot, (iteration.status, opening), now)?
+            }
             None => Vec::new(),
         };
         resolved_iterations.push(HabitIteration {
@@ -3108,10 +3171,13 @@ struct HabitShape<'template> {
 /// not-yet-open, so this evening's item does not sit among the morning's work while still being
 /// reachable when you ask to see it all.
 /// Dropping it here instead put it beyond every preset at once, All included.
+///
+/// `opening` is when the iteration opens — its window's start, or later while a **cooldown** holds
+/// it back ([`cooldown::openings`]); no occurrence in it opens before then.
 fn resolve_iteration_instances(
     shape: &HabitShape<'_>,
     slot: &SlotWindow,
-    status: IterationStatus,
+    (status, opening): (IterationStatus, NaiveDateTime),
     now: NaiveDateTime,
 ) -> Result<Vec<HabitInstance>, FlowError> {
     let no_pairs: Vec<FlowItemCycle> = Vec::new();
@@ -3132,7 +3198,12 @@ fn resolve_iteration_instances(
                 cycle_id: NO_CYCLE,
                 time_scope: None,
                 plan: None,
-                timing: instance_timing(shape.clock, status, (slot.start, slot.end), now),
+                timing: instance_timing(
+                    shape.clock,
+                    status,
+                    (slot.start.max(opening), slot.end),
+                    now,
+                ),
             });
             continue;
         }
@@ -3157,7 +3228,7 @@ fn resolve_iteration_instances(
                 cycle_id: pair.id,
                 time_scope,
                 plan,
-                timing: instance_timing(shape.clock, status, (start, end), now),
+                timing: instance_timing(shape.clock, status, (start.max(opening), end), now),
             });
         }
     }

@@ -38,6 +38,8 @@ fn archive_recurrence(start_scope_id: ScopeKey) -> SetRecurrenceRequest {
         end_scope_id: None,
         clock: ClockKind::Window,
         miss_policy: Some(MissPolicy::Archive),
+        cooldown_n: None,
+        cooldown_kind: None,
     }
 }
 
@@ -1298,6 +1300,8 @@ async fn setting_a_recurrence_makes_a_flow_a_habit() {
                 end_scope_id: None,
                 clock: ClockKind::Window,
                 miss_policy: Some(MissPolicy::Overdue),
+                cooldown_n: None,
+                cooldown_kind: None,
             },
         )
         .await;
@@ -1764,6 +1768,8 @@ async fn exact_phase_habit_recurs_at_the_fixed_time_each_day() {
                 end_scope_id: None,
                 clock: ClockKind::Window,
                 miss_policy: Some(MissPolicy::Archive),
+                cooldown_n: None,
+                cooldown_kind: None,
             },
         )
         .await;
@@ -1831,6 +1837,8 @@ async fn part_phase_habit_recurs_every_gap_days_in_the_same_band() {
                 end_scope_id: None,
                 clock: ClockKind::Window,
                 miss_policy: Some(MissPolicy::Archive),
+                cooldown_n: None,
+                cooldown_kind: None,
             },
         )
         .await;
@@ -3785,6 +3793,8 @@ async fn habit_with_cycles(
                 end_scope_id: None,
                 clock: ClockKind::Window,
                 miss_policy: Some(policy),
+                cooldown_n: None,
+                cooldown_kind: None,
             },
         )
         .await;

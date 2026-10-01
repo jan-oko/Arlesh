@@ -136,3 +136,16 @@ fn a_completion_instant_reads_back_as_the_same_wall_clock() {
 fn an_iteration_root_defaults_to_its_iteration_ordinal() {
     assert_eq!(iteration_index(&Origin::Manual), 0);
 }
+
+#[test]
+fn saving_a_done_occurrence_as_done_again_keeps_when_it_was_done() {
+    let done_at = noon() - chrono::Duration::days(2);
+    let mut overlay = TaskOverlay::default();
+    apply_task_status(&mut overlay, &TaskStatus::Done, done_at);
+    apply_task_status(&mut overlay, &TaskStatus::Done, noon());
+    assert_eq!(
+        overlay.resolved_at,
+        Some(resolved_at_ms(done_at)),
+        "the completion an Interval and a cooldown count from does not move on a re-save"
+    );
+}

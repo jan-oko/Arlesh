@@ -80,6 +80,8 @@ async fn habit(app: &App) -> (i64, i64) {
             end_scope_id: None,
             clock: ClockKind::Window,
             miss_policy: Some(MissPolicy::Owed),
+            cooldown_n: None,
+            cooldown_kind: None,
         },
     )
     .await

@@ -227,6 +227,37 @@ pub async fn list_task_dependencies(
     Ok(dependencies)
 }
 
+/// When a Done task was done — a stored one, or a Habit occurrence — as a local wall-clock
+/// instant, or `None` while it is not Done.
+#[tauri::command]
+pub async fn task_done_at(
+    factory: State<'_, SessionFactory>,
+    id: NodeId,
+) -> Result<Option<chrono::NaiveDateTime>, WireError> {
+    // A transaction only because resolving a derived id reads through one; it writes nothing.
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let done_at = write::done_at(&mut db, &id, chrono::Local::now().naive_local())
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(done_at)
+}
+
+/// Sets a Done task's done date — when it was really done, for work marked done late. Refused for
+/// a task that is not Done and for an instant in the future.
+#[tauri::command]
+pub async fn set_task_done_at(
+    factory: State<'_, SessionFactory>,
+    id: NodeId,
+    at: chrono::NaiveDateTime,
+) -> Result<(), WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    write::set_done_at(&mut db, &id, at, chrono::Local::now().naive_local())
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)
+}
+
 /// Lists every task-dependency edge on the board, stored and derived.
 #[tauri::command]
 pub async fn list_all_task_dependencies(

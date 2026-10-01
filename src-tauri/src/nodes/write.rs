@@ -841,3 +841,46 @@ pub async fn delete(
     occurrence_edit::archive(db, &key).await?;
     Ok(())
 }
+
+/// The instant a Done Task was done — a stored Task or a Habit occurrence — or `None` while it is
+/// not Done. A wait's check task has none: its completion is the check it records.
+#[tracing::instrument(skip(db))]
+pub async fn done_at(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    now: NaiveDateTime,
+) -> Result<Option<NaiveDateTime>, AppError> {
+    let derived = match id {
+        NodeId::Stored(id) => return Ok(crate::tasks::done_date::stored_done_at(db, *id).await?),
+        NodeId::Derived(derived) => derived,
+    };
+    match resolve_key(db, derived, now).await? {
+        DerivedKey::Occurrence(key) => {
+            Ok(crate::flows::done_date::occurrence_done_at(db, &key).await?)
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Sets a Done Task's done date to `at` — a stored Task's `done_at`, or a Habit occurrence's
+/// completion in its overlay, which an Interval's next window and a cooldown count from.
+#[tracing::instrument(skip(db))]
+pub async fn set_done_at(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    at: NaiveDateTime,
+    now: NaiveDateTime,
+) -> Result<(), AppError> {
+    let derived = match id {
+        NodeId::Stored(id) => {
+            return Ok(crate::tasks::done_date::set_stored_done_at(db, *id, at, now).await?)
+        }
+        NodeId::Derived(derived) => derived,
+    };
+    match resolve_key(db, derived, now).await? {
+        DerivedKey::Occurrence(key) => {
+            Ok(crate::flows::done_date::set_occurrence_done_at(db, &key, at, now).await?)
+        }
+        _ => Err(wrong_kind(id, "task with a done date")),
+    }
+}

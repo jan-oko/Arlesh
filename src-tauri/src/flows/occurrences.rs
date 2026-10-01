@@ -23,8 +23,9 @@ use std::collections::{HashMap, HashSet};
 use chrono::{NaiveDate, NaiveDateTime};
 
 use super::{
-    clock_slots,
+    clock_slots, cooldown,
     error::FlowError,
+    habit_cooldown,
     habits::{classify_iterations, expire_unanswered, instance_timing, Clock, SlotWindow},
     iteration_window,
     model::{
@@ -296,6 +297,21 @@ struct Iteration<'a> {
     missed_from: Option<NaiveDate>,
     /// The root's Cycle Plan resolved in this iteration, when the flow carries one.
     root_plan: Option<TimeScope>,
+    /// When the iteration opens: its window's start, or later while a **cooldown** holds it back
+    /// ([`cooldown::openings`]). No occurrence in it opens before then.
+    opening: NaiveDateTime,
+}
+
+/// A Habit's iterations within the horizon, as [`schedule`] derives them.
+struct Schedule {
+    /// The iterations, classified.
+    iterations: Vec<HabitIteration>,
+    /// The slot each came from.
+    slots: Vec<SlotWindow>,
+    /// The Habit's clock.
+    clock: Clock,
+    /// When each started slot opens, by index.
+    openings: HashMap<i64, NaiveDateTime>,
 }
 
 /// Every occurrence of one Habit within `horizon`, as rows, at `now`.
@@ -336,8 +352,12 @@ pub async fn derive_habit<M: SessionMode>(
     };
     let touched = touched_iterations(db, flow.id).await?;
 
-    let (iterations, slots, clock) =
-        schedule(db, flow, &recurrence, &overlays, &touched, now, horizon).await?;
+    let Schedule {
+        iterations,
+        slots,
+        clock,
+        openings,
+    } = schedule(db, flow, &recurrence, &overlays, &touched, now, horizon).await?;
     let by_index: HashMap<i64, &SlotWindow> = slots.iter().map(|slot| (slot.index, slot)).collect();
 
     let mut rows = DerivedRows::default();
@@ -375,6 +395,7 @@ pub async fn derive_habit<M: SessionMode>(
             window_start,
             missed_from: missed.map(|missed| missed.start.date()),
             root_plan: resolve_root_plan(flow, window_start)?,
+            opening: openings.get(&slot.index).copied().unwrap_or(slot.start),
         };
         let built = build_iteration(
             flow,
@@ -432,7 +453,7 @@ async fn schedule<M: SessionMode>(
     touched: &HashSet<ScopeKey>,
     now: NaiveDateTime,
     horizon: Horizon,
-) -> Result<(Vec<HabitIteration>, Vec<SlotWindow>, Clock), FlowError> {
+) -> Result<Schedule, FlowError> {
     let clock = parse_clock(recurrence)?;
 
     // The furthest day anything asks for: now, the named window, and the latest touched date.
@@ -458,6 +479,11 @@ async fn schedule<M: SessionMode>(
         slots.iter().cloned().partition(|slot| slot.start <= now);
 
     let resolved = completions.resolutions(&started);
+    let openings = cooldown::openings(
+        &started,
+        &resolved,
+        habit_cooldown(flow, recurrence).as_ref(),
+    );
     let classified = classify_iterations(&started, clock, &resolved, now);
     let mut iterations = expire_unanswered(classified, &verdict_deadlines(flow, &started), now);
     for slot in &future {
@@ -475,7 +501,12 @@ async fn schedule<M: SessionMode>(
             });
         }
     }
-    Ok((iterations, slots, clock))
+    Ok(Schedule {
+        iterations,
+        slots,
+        clock,
+        openings,
+    })
 }
 
 /// What decides whether one of a Habit's iterations is complete, read once and asked of each
@@ -744,6 +775,8 @@ fn build_iteration(
     let root_timing = match context.iteration.status {
         IterationStatus::Upcoming => InstanceTiming::Pending,
         IterationStatus::Lapsed | IterationStatus::Missed => InstanceTiming::Lapsed,
+        // Held back by a cooldown: Pending until it opens, like a window that has not begun.
+        _ if context.opening > now => InstanceTiming::Pending,
         _ => InstanceTiming::Active,
     };
     // A commitment Habit's work is answered for by the verdict, which its Verdict Window bounds;
@@ -853,7 +886,12 @@ fn build_iteration(
                 time_scope,
                 plan,
                 due,
-                timing: instance_timing(clock, context.iteration.status, window, now),
+                timing: instance_timing(
+                    clock,
+                    context.iteration.status,
+                    (window.0.max(context.opening), window.1),
+                    now,
+                ),
                 closes_when_done: window_passed(window.1),
                 origin: origin_of(item, cycle),
                 fields: fields.clone(),

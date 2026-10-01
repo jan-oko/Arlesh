@@ -142,6 +142,8 @@ async fn habit_with_one_day(
             end_scope_id: None,
             clock: ClockKind::Interval,
             miss_policy: None,
+            cooldown_n: None,
+            cooldown_kind: None,
         },
     )
     .await

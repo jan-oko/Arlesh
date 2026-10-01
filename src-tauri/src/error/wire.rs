@@ -272,6 +272,8 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
         TaskError::CompoundStatus(_) | TaskError::CompoundOnDerived => {
             WireErrorKind::InvalidRequest
         }
+        // Mark it done first, or name an instant that has already been.
+        TaskError::NotDone | TaskError::DoneInFuture => WireErrorKind::InvalidRequest,
         // Not `InvalidRequest`: the request is well-formed and could be carried out. The backend
         // is asking whether to throw the Plan away, and the caller answers by asking again with
         // the Plan cleared.

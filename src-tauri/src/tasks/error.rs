@@ -82,6 +82,12 @@ pub enum TaskError {
          or turn compound off"
     )]
     CompoundStatus(i64),
+    /// A done date was given to a Task that is not Done: it has no completion to date.
+    #[error("only a done task has a done date")]
+    NotDone,
+    /// A done date in the future was given: nothing has been done later than now.
+    #[error("a done date cannot be in the future")]
+    DoneInFuture,
     /// Compound was asked of a derived row — a Habit occurrence or a wait's check task. Only a
     /// stored Task carries the flag.
     #[error("only a stored task can consist of its sub-items; this one is derived")]

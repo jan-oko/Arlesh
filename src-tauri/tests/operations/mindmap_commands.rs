@@ -61,6 +61,8 @@ fn weekly_from(start_scope_id: ScopeKey) -> SetRecurrenceRequest {
         end_scope_id: None,
         clock: ClockKind::Window,
         miss_policy: Some(MissPolicy::Archive),
+        cooldown_n: None,
+        cooldown_kind: None,
     }
 }
 
