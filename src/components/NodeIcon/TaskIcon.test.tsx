@@ -24,11 +24,17 @@ describe("TaskIcon — Compound", () => {
 });
 
 describe("TaskIcon — Agentic statuses", () => {
-  it("draws On Agent and Review each with a glyph of its own", () => {
+  it("draws On Agent with a glyph of its own", () => {
     expect(draw("on_agent", false).querySelector("[data-agentic-status='on_agent']")).not.toBeNull();
-    expect(draw("review", false).querySelector("[data-agentic-status='review']")).not.toBeNull();
-    expect(draw("review", false).innerHTML).not.toEqual(draw("started", false).innerHTML);
-    expect(draw("review", false).innerHTML).not.toEqual(draw("on_agent", false).innerHTML);
+    expect(draw("on_agent", false).innerHTML).not.toEqual(draw("started", false).innerHTML);
+  });
+
+  it("draws Review as Started, marked so the two can still be told apart", () => {
+    const review = draw("review", false);
+    expect(review.querySelector("[data-agentic-status='review']")).not.toBeNull();
+    expect(draw("started", false).querySelector("[data-agentic-status]")).toBeNull();
+    const shapes = (container: HTMLElement) => Array.from(container.querySelectorAll("circle")).map((circle) => circle.outerHTML);
+    expect(shapes(review)).toEqual(shapes(draw("started", false)));
   });
 
   it("draws Doing as In Progress, since it means the same to the user", () => {

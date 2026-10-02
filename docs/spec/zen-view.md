@@ -108,8 +108,8 @@ row": one switch and one height rule for everything under the title.)
 The grid reads under Do, so of the Agentic Tasks it holds **Doing** (drawn as In Progress, with no
 icon), **Review** always, and **On Agent** only while the Filter menu's **On Agent** pill is on. A
 **Review** card — an agent idle until its question is answered — comes **first** in the grid, says
-its status with the **Review glyph** (an inbox tray with an arrow into it, inside the ring) whether
-or not badges are shown, and draws the agent's open question — its title, its note on hover — with
+its status with **Started's glyph** (the ring with a hollow centre; ruled by the user, 2026-10-02)
+whether or not badges are shown, and draws the agent's open question — its title, its note on hover — with
 an **answer field**: **Send**, or `Ctrl+Enter` in the field, stores the answer and releases the
 question, and the Task reads On Agent again (leaving the grid unless the On Agent pill is on). An On
 Agent card says its status with the **On Agent glyph** (a small bot head inside the ring).

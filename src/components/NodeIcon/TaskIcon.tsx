@@ -39,9 +39,12 @@ export default function TaskIcon({ cx, cy, r, color, opacity, status, isBlocked,
   }
 
   // Started — begun and paused — is In Progress's glyph with the inner circle left unfilled.
-  if (status === "started") {
+  // Review, an Agentic Task the agent hands to the user, draws the same (ruled by the user,
+  // 2026-10-02): begun, held by the user, not active — what Started means on an ordinary Task, and
+  // an Agentic Task has no Started to clash with. The marker tells the two apart for selectors.
+  if (status === "started" || status === "review") {
     return (
-      <g opacity={opacity}>
+      <g opacity={opacity} data-agentic-status={status === "review" ? "review" : undefined}>
         {ring}
         <circle cx={cx} cy={cy} r={r * 0.4} stroke={color} strokeWidth={sw * 0.7} fill="none" />
       </g>
@@ -61,29 +64,6 @@ export default function TaskIcon({ cx, cy, r, color, opacity, status, isBlocked,
         <circle cx={cx} cy={top - r * 0.26} r={r * 0.08} fill={color} />
         <circle cx={cx - w * 0.22} cy={top + h * 0.48} r={r * 0.09} fill={color} />
         <circle cx={cx + w * 0.22} cy={top + h * 0.48} r={r * 0.09} fill={color} />
-      </g>
-    );
-  }
-
-  // Review — the agent is waiting on you: an inbox tray inside the ring, with an arrow coming
-  // down into it. Its own glyph, apart from Started's and On Agent's at a glance.
-  if (status === "review") {
-    const w = r * 0.96;
-    const left = cx - w / 2;
-    const right = cx + w / 2;
-    const rim = cy + r * 0.04;
-    const floor = cy + r * 0.4;
-    const lip = rim + r * 0.16;
-    const tray = `M ${left},${rim} L ${left},${floor} L ${right},${floor} L ${right},${rim}`
-      + ` M ${left},${rim} L ${cx - w * 0.2},${rim} L ${cx - w * 0.12},${lip} L ${cx + w * 0.12},${lip}`
-      + ` L ${cx + w * 0.2},${rim} L ${right},${rim}`;
-    const arrow = `M ${cx},${cy - r * 0.48} L ${cx},${cy - r * 0.02} M ${cx - r * 0.18},${cy - r * 0.2}`
-      + ` L ${cx},${cy - r * 0.02} L ${cx + r * 0.18},${cy - r * 0.2}`;
-    return (
-      <g opacity={opacity} data-agentic-status="review">
-        {ring}
-        <path d={tray} stroke={color} strokeWidth={sw * 0.6} fill="none" strokeLinejoin="round" strokeLinecap="round" />
-        <path d={arrow} stroke={color} strokeWidth={sw * 0.6} fill="none" strokeLinejoin="round" strokeLinecap="round" />
       </g>
     );
   }
