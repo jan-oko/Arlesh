@@ -335,9 +335,16 @@ async fn snapshot_returns_what_the_mindmap_command_returns() {
     let expected = arlesh_lib::commands::mindmap::load_mindmap(app.state(), app.state(), now())
         .await
         .unwrap();
+    // The app's load also carries every node's short id as a map, for its "Blocked by …" text; the
+    // snapshot stamps each node with its own instead.
+    let mut expected = serde_json::to_value(&expected).unwrap();
+    expected
+        .as_object_mut()
+        .expect("the load is an object")
+        .remove("short_ids");
     assert_eq!(
         unstamped(&sections),
-        serde_json::to_value(&expected).unwrap(),
+        expected,
         "snapshot.load section-for-section"
     );
     assert!(

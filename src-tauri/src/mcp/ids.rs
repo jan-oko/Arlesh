@@ -346,6 +346,30 @@ impl NodeNames {
             .map(|node| node.short_id.as_str())
     }
 
+    /// Every Task's, Goal's, Commitment's and Expectation's short id among these nodes, keyed the
+    /// way the board keys a node: `task-12`, `goal-3`, `task-<uuid>` for a derived row. What a
+    /// "Blocked by …" reason names its target by.
+    pub fn short_ids_by_key(&self) -> HashMap<String, String> {
+        self.nodes
+            .iter()
+            .filter(|node| {
+                matches!(
+                    node.table,
+                    NodeTable::Task
+                        | NodeTable::Goal
+                        | NodeTable::Commitment
+                        | NodeTable::Expectation
+                )
+            })
+            .map(|node| {
+                (
+                    format!("{}-{}", node.table.as_str(), node.node_id),
+                    node.short_id.clone(),
+                )
+            })
+            .collect()
+    }
+
     /// The short id the node with full id `full` goes by among these nodes — whether or not it is
     /// one of them, as a node written a moment ago is not.
     pub fn short_id_among(&self, full: &str) -> String {
@@ -471,6 +495,13 @@ fn path_above(mut cursor: Option<(NodeTable, NodeId)>, titles: &Titles) -> Strin
     }
     segments.reverse();
     segments.join(" › ")
+}
+
+/// Every node's short id on the **whole** `load` — the app's board, which sees everything — keyed
+/// as the board keys a node (see [`NodeNames::short_ids_by_key`]). Unique among every node, so each
+/// is also unique among the fewer the MCP can see, and reads back there to the same node.
+pub(crate) fn board_short_ids(load: &MindmapLoad) -> HashMap<String, String> {
+    NodeNames::of(load).short_ids_by_key()
 }
 
 #[cfg(test)]

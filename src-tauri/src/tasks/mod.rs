@@ -14,6 +14,7 @@ pub(crate) mod agentic;
 mod ancestry;
 pub mod commitments;
 pub mod compound;
+pub mod done_date;
 pub mod error;
 pub mod expectations;
 pub mod lifecycle;
@@ -27,6 +28,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::InfoId;
+use crate::nodes::id::NodeId;
 use crate::nodes::origin::Origin;
 use crate::scopes::key::ScopeKey;
 use ancestry::{AncestryLink, NodeKind, NodeRef};
@@ -666,8 +668,8 @@ impl<'session> GoalOperator<'session> {
             "INSERT INTO goals
                 (title, parent_type, parent_id, status,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n, time_scope_duration_kind,
-                 on_scope_exit)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 on_scope_exit, achieved_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -678,6 +680,11 @@ impl<'session> GoalOperator<'session> {
         .bind(ts_n)
         .bind(&ts_kind)
         .bind(on_exit)
+        // A goal created achieved was achieved now, as far as anything can tell.
+        .bind(
+            (status == GoalStatus::Achieved.as_str())
+                .then(|| waits::instant_column(expectations::now())),
+        )
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -804,7 +811,11 @@ impl<'session> GoalOperator<'session> {
         sqlx::query(
             "UPDATE goals SET title=?, status=?,
                 time_scope_start_id=?, time_scope_end_id=?,
-                time_scope_duration_n=?, time_scope_duration_kind=?, on_scope_exit=?, position=?, is_private=? WHERE id=?",
+                time_scope_duration_n=?, time_scope_duration_kind=?, on_scope_exit=?, position=?, is_private=?,
+                achieved_at = CASE WHEN ? = 'achieved'
+                                   THEN CASE WHEN status = 'achieved' THEN achieved_at ELSE ? END
+                                   ELSE NULL END
+             WHERE id=?",
         )
         .bind(&write.title)
         .bind(&write.status)
@@ -815,6 +826,9 @@ impl<'session> GoalOperator<'session> {
         .bind(on_exit)
         .bind(write.position)
         .bind(write.is_private)
+        // Achieved keeps the instant it was first achieved; anything else clears it.
+        .bind(&write.status)
+        .bind(waits::instant_column(expectations::now()))
         .bind(id.0)
         .execute(&mut *self.connection)
         .await?;
@@ -1751,19 +1765,30 @@ pub async fn get_task_with_blockers<M: SessionMode>(
     db: &mut Db<M>,
     id: TaskId,
 ) -> Result<TaskWithBlockers, TaskError> {
-    get_task_with_blockers_as(db, id, &HashMap::new()).await
+    get_task_with_blockers_as(db, id, &HashMap::new(), &HashMap::new()).await
+}
+
+/// How a "Blocked by …" reason names the node it is blocked by: its **short id** from `names` —
+/// keyed as the board keys a node, `task-12` — or, for a node `names` does not hold, its id.
+pub fn dependency_name(names: &HashMap<String, String>, kind: &str, id: &NodeId) -> String {
+    names
+        .get(&format!("{kind}-{id}"))
+        .cloned()
+        .unwrap_or_else(|| id.to_string())
 }
 
 /// [`get_task_with_blockers`], reading each stored Task's status from `served` where it has one
 /// — the board's status, which for a compound Task is the one derived from its sub-items
 /// ([`compound`]) and for an Agentic one may be the derived Review ([`review`]), not the one its
 /// row last held. The Task's own status and every Task
-/// dependency's are read this way, so the answer agrees with the board.
-#[tracing::instrument(skip(db, served))]
+/// dependency's are read this way, so the answer agrees with the board. Each dependency it is
+/// blocked by is named by its short id in `names` ([`dependency_name`]).
+#[tracing::instrument(skip(db, served, names))]
 pub async fn get_task_with_blockers_as<M: SessionMode>(
     db: &mut Db<M>,
     id: TaskId,
     served: &HashMap<i64, Status>,
+    names: &HashMap<String, String>,
 ) -> Result<TaskWithBlockers, TaskError> {
     let mut task = db.tasks().get(id).await?;
     if let Some(status) = served.get(&id.0) {
@@ -1782,7 +1807,8 @@ pub async fn get_task_with_blockers_as<M: SessionMode>(
                 if !status.is_done() {
                     reasons.push(format!(
                         "Blocked by task {} ({})",
-                        dependency_id, dependency_task.title
+                        dependency_name(names, "task", &dependency_id),
+                        dependency_task.title
                     ));
                 }
             }
@@ -1794,7 +1820,8 @@ pub async fn get_task_with_blockers_as<M: SessionMode>(
                 if goal_status != GoalStatus::Achieved.as_str() {
                     reasons.push(format!(
                         "Blocked by goal {} ({})",
-                        dependency_id, goal_title
+                        dependency_name(names, "goal", &dependency_id),
+                        goal_title
                     ));
                 }
             }
@@ -1803,7 +1830,8 @@ pub async fn get_task_with_blockers_as<M: SessionMode>(
                 if expectation.status == ExpectationStatus::Pending {
                     reasons.push(format!(
                         "Blocked by expectation {} ({})",
-                        dependency_id, expectation.title
+                        dependency_name(names, "expectation", &NodeId::Stored(dependency_id)),
+                        expectation.title
                     ));
                 }
             }

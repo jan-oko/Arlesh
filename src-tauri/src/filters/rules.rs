@@ -39,11 +39,15 @@ fn is_resolved_goal(status: &str) -> bool {
 
 /// Whether a node is blocked.
 ///
-/// Only a Task or a Goal can be: a block reason on anything else is not a state the model has, so
-/// `is_blocked` is read through this rather than directly, exactly as the frontend reads it
-/// through `isNodeBlocked`.
+/// A Task, a Goal or a Commitment can be: a block reason on anything else is not a state the model
+/// has, so `is_blocked` is read through this rather than directly, exactly as the frontend reads it
+/// through `isNodeBlocked`. A Commitment carries **derived** reasons only — a Habit cooldown's —
+/// since no one can write one on it (ruled by the user, 2026-10-02).
 pub fn is_blocked(node: &NodeFacts) -> bool {
-    matches!(node.kind, NodeKind::Task | NodeKind::Goal) && node.is_blocked
+    matches!(
+        node.kind,
+        NodeKind::Task | NodeKind::Goal | NodeKind::Commitment
+    ) && node.is_blocked
 }
 
 /// Under **Start**, what the blocked ancestors above a node still let through beneath them:

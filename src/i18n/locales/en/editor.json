@@ -59,6 +59,14 @@
   "recurrenceStart": "Starts",
   "recurrenceGap": "Gap",
   "recurrenceEnd": "Ends",
+  "recurrenceCooldown": "Cooldown",
+  "recurrenceCooldownHint": "After one is done, the next opens only once this much time has passed",
+  "cooldownUnitPart": "parts of the day",
+  "cooldownUnitDay": "days",
+  "cooldownUnitWeek": "weeks",
+  "cooldownUnitMonth": "months",
+  "fieldDoneAt": "Done",
+  "doneAtHint": "When it was done. Set it back when it was marked done late.",
   "clock": "Clock",
   "clockWindow": "Window",
   "clockInterval": "Interval",
@@ -151,6 +159,8 @@
   "capacityBlockLabel": "From the agent capacity lock — clears when the lock does",
   "compoundBlocked": "All open sub-items are blocked",
   "compoundBlockLabel": "From its sub-items — clears when one is unblocked or finished",
+  "cooldownBlocked": "Cooling down until {{when}}",
+  "cooldownBlockLabel": "From its Habit's cooldown",
   "statusReviewDerived": "The agent has a question open: answer it below, or take the task over",
   "agenticQuestionSection": "The agent's question"
 }

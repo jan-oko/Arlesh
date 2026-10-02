@@ -470,6 +470,7 @@ impl WaitRows {
                     reason,
                     position: i64::try_from(position).unwrap_or(i64::MAX),
                     derived: None,
+                    until: None,
                 });
             }
         }

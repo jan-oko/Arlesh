@@ -34,7 +34,8 @@ export function isNodeKind(value: string): value is NodeKind {
 
 /** A task/goal is blocked when it has any block reason — explicit or virtual (from an unmet dependency). */
 export function isNodeBlocked(node: MindmapNode): boolean {
-  if (node.kind !== "task" && node.kind !== "goal") return false;
+  // A Commitment carries derived reasons only — its Habit's cooldown — and is blocked by them.
+  if (node.kind !== "task" && node.kind !== "goal" && node.kind !== "commitment") return false;
   return (node.blockReasons?.length ?? 0) + (node.virtualBlockers?.length ?? 0) > 0;
 }
 
@@ -218,6 +219,12 @@ export interface MindmapNode {
   /** Blocked because it is a **Compound** Task whose open sub-items are all blocked (Tasks only):
    * the backend derived it, and its reason is among `virtualBlockers`. */
   compoundBlocked?: boolean;
+  /** Its short id on the board — the one the MCP shows an agent — for a Task, Goal, Commitment or
+   * wait. What a "Blocked by …" reason names it by. */
+  shortId?: string;
+  /** Blocked by its **Habit's cooldown** until this local wall-clock instant (an iteration's root
+   * only): the backend derived it, its reason is among `virtualBlockers`, and it lifts by itself. */
+  coolingUntil?: string;
   knowledgeBaseDirectory?: string | null;
   /** Optional multi-line details on an `info` node (e.g. a traceback). */
   infoDetails?: string | null;

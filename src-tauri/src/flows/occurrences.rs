@@ -23,8 +23,9 @@ use std::collections::{HashMap, HashSet};
 use chrono::{NaiveDate, NaiveDateTime};
 
 use super::{
-    clock_slots,
+    clock_slots, cooldown,
     error::FlowError,
+    habit_cooldown, habit_verdict_window,
     habits::{classify_iterations, expire_unanswered, instance_timing, Clock, SlotWindow},
     iteration_window,
     model::{
@@ -35,7 +36,7 @@ use super::{
     whole_scope_plan,
 };
 use crate::{
-    block_reasons::model::BlockReason,
+    block_reasons::model::{BlockReason, DerivedBlock},
     database::session::{Db, SessionMode},
     flows::template::TemplateFields,
     nodes::{
@@ -53,7 +54,7 @@ use crate::{
             Resolution, Timing,
         },
         model::{
-            Commitment, Delegate, DurationSpec, Goal, OnScopeExit, Status, Task, TaskArchival,
+            Commitment, Delegate, Goal, OnScopeExit, Status, Task, TaskArchival,
             TaskDependencyEdge, TimeScope, Verdict,
         },
     },
@@ -299,6 +300,21 @@ struct Iteration<'a> {
     /// Whether the Habit's host reads as Agentic — what an occurrence with no flag of its own, or
     /// above it in the template tree, reads as.
     host_agentic: bool,
+    /// Until when the iteration is **cooling down** — blocked by its Habit's cooldown since an
+    /// iteration was done ([`cooldown::holds`]) — or `None` when it is not.
+    cooling_until: Option<NaiveDateTime>,
+}
+
+/// A Habit's iterations within the horizon, as [`schedule`] derives them.
+struct Schedule {
+    /// The iterations, classified.
+    iterations: Vec<HabitIteration>,
+    /// The slot each came from.
+    slots: Vec<SlotWindow>,
+    /// The Habit's clock.
+    clock: Clock,
+    /// The iterations cooling down at `now`, by index, each with when it lifts.
+    holds: HashMap<i64, NaiveDateTime>,
 }
 
 /// Every occurrence of one Habit within `horizon`, as rows, at `now`.
@@ -344,8 +360,12 @@ pub async fn derive_habit<M: SessionMode>(
     };
     let host_agentic = crate::tasks::agentic::reads_agentic(db, &host_type, host_id).await?;
 
-    let (iterations, slots, clock) =
-        schedule(db, flow, &recurrence, &overlays, &touched, now, horizon).await?;
+    let Schedule {
+        iterations,
+        slots,
+        clock,
+        holds,
+    } = schedule(db, flow, &recurrence, &overlays, &touched, now, horizon).await?;
     let by_index: HashMap<i64, &SlotWindow> = slots.iter().map(|slot| (slot.index, slot)).collect();
 
     let mut rows = DerivedRows::default();
@@ -383,6 +403,7 @@ pub async fn derive_habit<M: SessionMode>(
             window_start,
             missed_from: missed.map(|missed| missed.start.date()),
             root_plan: resolve_root_plan(flow, window_start)?,
+            cooling_until: holds.get(&slot.index).copied(),
             host_agentic,
         };
         let built = build_iteration(
@@ -441,7 +462,7 @@ async fn schedule<M: SessionMode>(
     touched: &HashSet<ScopeKey>,
     now: NaiveDateTime,
     horizon: Horizon,
-) -> Result<(Vec<HabitIteration>, Vec<SlotWindow>, Clock), FlowError> {
+) -> Result<Schedule, FlowError> {
     let clock = parse_clock(recurrence)?;
 
     // The furthest day anything asks for: now, the named window, and the latest touched date.
@@ -459,6 +480,7 @@ async fn schedule<M: SessionMode>(
         keys: &template_keys,
         overlays,
         parents: &parents,
+        by_verdict: flow.instance_type == "commitment",
     };
     let slots = clock_slots(flow, recurrence, clock, furthest, |slot| {
         completions.completed_at(slot)
@@ -467,8 +489,24 @@ async fn schedule<M: SessionMode>(
         slots.iter().cloned().partition(|slot| slot.start <= now);
 
     let resolved = completions.resolutions(&started);
+    let done = completions.finished(&started);
+    // Settled: resolved, or — a commitment iteration — answered; neither is open to block.
+    let mut settled = resolved.clone();
+    settled.extend(done.iter().map(|(index, at)| (*index, *at)));
+    let holds = cooldown::holds(
+        &slots,
+        (&settled, &done),
+        habit_cooldown(flow, recurrence).zip(
+            recurrence
+                .miss_policy
+                .as_deref()
+                .and_then(MissPolicy::from_db),
+        ),
+        now,
+    );
     let classified = classify_iterations(&started, clock, &resolved, now);
-    let mut iterations = expire_unanswered(classified, &verdict_deadlines(flow, &started), now);
+    let mut iterations =
+        expire_unanswered(classified, &verdict_deadlines(flow, clock, &started), now);
     for slot in &future {
         let date = slot.start.date();
         let named = horizon.through.is_some_and(|through| date <= through);
@@ -484,7 +522,12 @@ async fn schedule<M: SessionMode>(
             });
         }
     }
-    Ok((iterations, slots, clock))
+    Ok(Schedule {
+        iterations,
+        slots,
+        clock,
+        holds,
+    })
 }
 
 /// What decides whether one of a Habit's iterations is complete, read once and asked of each
@@ -496,6 +539,9 @@ pub(super) struct Completions<'a> {
     pub(super) overlays: &'a HabitOverlays,
     /// Each instance's parent instance.
     pub(super) parents: &'a HashMap<InstanceKey, InstanceKey>,
+    /// Whether the Habit is a **commitment** one, whose iterations are finished by a verdict on
+    /// their root rather than by work being done.
+    pub(super) by_verdict: bool,
 }
 
 impl Completions<'_> {
@@ -504,11 +550,26 @@ impl Completions<'_> {
         resolutions(slots, self.keys, self.overlays, self.parents)
     }
 
-    /// The instant the iteration in `slot` was completed, or `None` while it is not.
+    /// Each of `slots` that is **finished**, with the instant it was: what starts a cooldown and
+    /// places an Interval's next instance. For a work Habit, every instance done
+    /// ([`done_instants`]); for a commitment Habit, a verdict on its root ([`verdict_instants`]).
+    pub(super) fn finished(&self, slots: &[SlotWindow]) -> HashMap<i64, NaiveDateTime> {
+        if self.by_verdict {
+            return verdict_instants(slots, self.keys, self.overlays);
+        }
+        done_instants(slots, self.keys, self.overlays)
+    }
+
+    /// The instant the iteration in `slot` was completed, or `None` while it is not — what places
+    /// an Interval Habit's next instance. A commitment Habit's is its verdict's.
     pub(super) fn completed_at(&self, slot: &SlotWindow) -> Option<NaiveDateTime> {
-        self.resolutions(std::slice::from_ref(slot))
-            .get(&slot.index)
-            .copied()
+        let one = std::slice::from_ref(slot);
+        let finished = if self.by_verdict {
+            self.finished(one)
+        } else {
+            self.resolutions(one)
+        };
+        finished.get(&slot.index).copied()
     }
 }
 
@@ -521,6 +582,8 @@ pub(super) struct CompletionInputs {
     pub(super) overlays: HabitOverlays,
     /// Each instance's parent instance.
     pub(super) parents: HashMap<InstanceKey, InstanceKey>,
+    /// Whether the Habit is a commitment one — see [`Completions::by_verdict`].
+    pub(super) by_verdict: bool,
 }
 
 impl CompletionInputs {
@@ -530,6 +593,7 @@ impl CompletionInputs {
             keys: &self.keys,
             overlays: &self.overlays,
             parents: &self.parents,
+            by_verdict: self.by_verdict,
         }
     }
 
@@ -653,6 +717,96 @@ pub(super) fn resolutions(
         }
     }
     resolved
+}
+
+/// Maps each slot whose iteration is **done** to the instant it was: every one of its instances
+/// done (a Task) or achieved (a Goal), with none set aside — so an iteration resolved only because
+/// its open work was archived by hand is not here — at the latest of their done dates. What starts
+/// a Habit's cooldown (ruled by the user, 2026-10-01: "only done should start the cooldown"). A
+/// root Commitment is never done, so a commitment Habit has none.
+fn done_instants(
+    slots: &[SlotWindow],
+    keys: &[InstanceKey],
+    overlays: &HabitOverlays,
+) -> HashMap<i64, NaiveDateTime> {
+    slots
+        .iter()
+        .filter_map(|slot| {
+            let mut latest: Option<i64> = None;
+            for (item, cycle) in keys {
+                let node_key = OccurrenceKey {
+                    item: *item,
+                    iteration: slot.scope_id,
+                    cycle: *cycle,
+                }
+                .node_key();
+                // Done in either model — an Agentic occurrence's Done is `agentic_done`.
+                let at = overlays
+                    .tasks
+                    .get(&node_key)
+                    .filter(|overlay| {
+                        overlay.tombstone.is_none() && Status::is_done_db(overlay.status.as_deref())
+                    })
+                    .map(|overlay| overlay.resolved_at)
+                    .or_else(|| {
+                        overlays
+                            .goals
+                            .get(&node_key)
+                            .filter(|overlay| {
+                                overlay.tombstone.is_none()
+                                    && overlay.status.as_deref() == Some("achieved")
+                            })
+                            .map(|overlay| overlay.resolved_at)
+                    })?;
+                latest = latest.max(at);
+            }
+            let instant = latest.and_then(chrono::DateTime::from_timestamp_millis)?;
+            Some((slot.index, instant.naive_utc()))
+        })
+        .collect()
+}
+
+/// Which verdicts **finish** a commitment Habit's iteration — start its cooldown and place its next
+/// Interval instance: any verdict, Kept or Broken (ruled by the user, 2026-10-01: "any verdict").
+/// The one place that says so.
+fn verdict_finishes(verdict: Verdict) -> bool {
+    verdict.is_resolved()
+}
+
+/// Maps each slot of a **commitment** Habit whose root carries a finishing verdict
+/// ([`verdict_finishes`]) to the instant it was recorded. Clearing the verdict clears the instant,
+/// so whatever it started goes with it.
+fn verdict_instants(
+    slots: &[SlotWindow],
+    keys: &[InstanceKey],
+    overlays: &HabitOverlays,
+) -> HashMap<i64, NaiveDateTime> {
+    let Some((root, _)) = keys
+        .iter()
+        .find(|(item, _)| item.item_type == TemplateKind::FlowRoot)
+    else {
+        return HashMap::new();
+    };
+    slots
+        .iter()
+        .filter_map(|slot| {
+            let node_key = OccurrenceKey {
+                item: *root,
+                iteration: slot.scope_id,
+                cycle: NO_CYCLE,
+            }
+            .node_key();
+            let overlay = overlays.commitments.get(&node_key)?;
+            let verdict = overlay.verdict.as_deref().and_then(Verdict::from_db)?;
+            if overlay.tombstone.is_some() || !verdict_finishes(verdict) {
+                return None;
+            }
+            let instant = overlay
+                .resolved_at
+                .and_then(chrono::DateTime::from_timestamp_millis)?;
+            Some((slot.index, instant.naive_utc()))
+        })
+        .collect()
 }
 
 /// Whether the occurrence under `node_key` was archived by hand, whichever kind it draws.
@@ -926,7 +1080,7 @@ fn build_iteration(
                     .unwrap_or_default();
                 let window = (context.slot.start, context.slot.end);
                 let (mut commitment, mut lifecycle) =
-                    commitment_row(flow, occurrence, overlay, window, now);
+                    commitment_row(flow, clock, occurrence, overlay, window, now);
                 archive_if_held(&mut lifecycle, &aside, &node_key);
                 commitment.tag_ids = tag_ids;
                 rows.commitments.push(commitment);
@@ -956,6 +1110,16 @@ fn build_iteration(
                 rows.lifecycles.push(lifecycle);
             }
         }
+    }
+    // A cooldown blocks the iteration's root — and Start drops a blocked node with its subtree.
+    if let Some(until) = context.cooling_until {
+        let kind = occurrence_kind(flow, TemplateKind::FlowRoot);
+        push_cooldown(
+            &mut rows.block_reasons,
+            kind,
+            &NodeId::Derived(root_key.id()),
+            until,
+        );
     }
     Ok(rows)
 }
@@ -1012,6 +1176,24 @@ fn archive_if_held(lifecycle: &mut ItemLifecycle, aside: &HashSet<String>, node_
 }
 
 /// Appends one derived row's block reasons, in order, as the rows the load carries.
+/// The derived block a **cooldown** puts on an iteration's root until `until`, numbered on after
+/// the root's own reasons in `out`. The English names the instant for a reader with no words of its
+/// own — an agent; the app draws its own, translated, off [`DerivedBlock::Cooldown`] and `until`.
+fn push_cooldown(out: &mut Vec<BlockReason>, kind: &str, id: &NodeId, until: NaiveDateTime) {
+    let own = out
+        .iter()
+        .filter(|reason| reason.owner_type == kind && reason.owner_id == *id)
+        .count();
+    out.push(BlockReason {
+        owner_type: kind.to_string(),
+        owner_id: id.clone(),
+        reason: format!("Cooling down until {}", until.format("%a %Y-%m-%d %H:%M")),
+        position: i64::try_from(own).unwrap_or(i64::MAX),
+        derived: Some(DerivedBlock::Cooldown),
+        until: Some(until),
+    });
+}
+
 fn push_reasons(out: &mut Vec<BlockReason>, kind: &str, id: &NodeId, reasons: Vec<String>) {
     for (position, reason) in reasons.into_iter().enumerate() {
         out.push(BlockReason {
@@ -1020,6 +1202,7 @@ fn push_reasons(out: &mut Vec<BlockReason>, kind: &str, id: &NodeId, reasons: Ve
             reason,
             position: i64::try_from(position).unwrap_or(i64::MAX),
             derived: None,
+            until: None,
         });
     }
 }
@@ -1356,6 +1539,7 @@ fn goal_row(
 /// the Habit's Verdict Window, derived exactly as a stored Commitment's lifecycle is.
 fn commitment_row(
     flow: &Flow,
+    clock: Clock,
     occurrence: Occurrence,
     overlay: CommitmentOverlay,
     window: (NaiveDateTime, NaiveDateTime),
@@ -1367,10 +1551,8 @@ fn commitment_row(
         .as_deref()
         .and_then(Verdict::from_db)
         .unwrap_or(Verdict::Unresolved);
-    let verdict_window = flow
-        .verdict_window_n
-        .zip(flow.verdict_window_kind.clone())
-        .map(|(n, kind)| DurationSpec { n, kind });
+    // An Interval instance never expires: no Verdict Window applies to it.
+    let verdict_window = habit_verdict_window(flow, clock);
     let state = derive_commitment_state(Some(window), verdict, verdict_window.as_ref(), now);
     let lifecycle = ItemLifecycle {
         node_type: "commitment".to_string(),

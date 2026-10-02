@@ -222,6 +222,14 @@ impl Status {
         matches!(self, Self::Agentic(_))
     }
 
+    /// Whether a stored spelling — a row's or an overlay's `status`, `None` for To Do — is
+    /// finished, in either model: `done` or `agentic_done`.
+    pub fn is_done_db(value: Option<&str>) -> bool {
+        value
+            .and_then(Self::from_db)
+            .is_some_and(|status| status.is_done())
+    }
+
     /// Finished, in either model.
     pub fn is_done(&self) -> bool {
         matches!(

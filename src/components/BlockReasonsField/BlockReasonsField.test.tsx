@@ -45,4 +45,10 @@ describe("BlockReasonsField", () => {
     // One editable reason → one remove button; the virtual row adds none.
     expect(screen.getAllByRole("button", { name: "removeBlockReason" })).toHaveLength(1);
   });
+
+  it("shows a cooldown block read-only, under a heading of its own", () => {
+    render(<BlockReasonsField reasons={[]} onChange={vi.fn()} coolingUntil="2026-10-05T02:00:00" />);
+    expect(screen.getByText("cooldownBlockLabel")).toBeInTheDocument();
+    expect(screen.getByText("cooldownBlocked")).toBeInTheDocument();
+  });
 });

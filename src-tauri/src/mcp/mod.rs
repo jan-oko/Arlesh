@@ -47,7 +47,7 @@ mod capacity;
 mod delegation;
 pub mod endpoint;
 mod flows;
-mod ids;
+pub(crate) mod ids;
 mod infos;
 mod kb;
 mod lookup;

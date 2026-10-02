@@ -303,6 +303,23 @@ export async function listTaskDependencies(taskId: RowId): Promise<Dependency[]>
   return invoke<Dependency[]>("list_task_dependencies", { taskId });
 }
 
+/**
+ * When a Done task was done — a stored one or a Habit occurrence — as a local wall-clock instant
+ * (`YYYY-MM-DDTHH:MM:SS`), or `null` while it is not Done.
+ */
+export async function fetchTaskDoneAt(id: RowId): Promise<string | null> {
+  return invoke<string | null>("task_done_at", { id });
+}
+
+/**
+ * Sets a Done task's done date — when it was really done, for work marked done late. An
+ * Interval's next window and a cooldown count from it. Refused for a task that is not Done and for
+ * an instant in the future.
+ */
+export async function setTaskDoneAt(id: RowId, at: string): Promise<void> {
+  return invoke<void>("set_task_done_at", { id, at });
+}
+
 /** A single dependency edge: `task_id` depends on `(dependency_type, dependency_id)`. */
 export interface TaskDependencyEdge {
   task_id: RowId;

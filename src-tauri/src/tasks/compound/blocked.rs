@@ -61,6 +61,7 @@ pub fn derive(
             reason: REASON.to_string(),
             position: i64::MAX,
             derived: Some(DerivedBlock::Compound),
+            until: None,
         })
         .collect()
 }

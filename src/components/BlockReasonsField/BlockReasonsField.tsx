@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import styles from "@/components/EditorModal/EditorModal.module.css";
+import { formatCooldownUntil } from "@/utils/cooldown-until";
 
 interface Props {
   reasons: string[];
@@ -11,6 +12,8 @@ interface Props {
   /** Blocked as a Compound Task whose open sub-items are all blocked — read-only: it goes when a
    * sub-item is unblocked or finished. */
   compoundBlocked?: boolean;
+  /** Blocked by its Habit's cooldown until this local instant — read-only: it lifts by itself. */
+  coolingUntil?: string | undefined;
 }
 
 /**
@@ -19,7 +22,7 @@ interface Props {
  * immutable rows so the full blocked picture is visible; they're changed by editing the dependencies.
  * The agent capacity lock's reason follows in a group of its own: nothing in the editor changes it.
  */
-export default function BlockReasonsField({ reasons, onChange, virtualBlockers = [], capacityBlocked = false, compoundBlocked = false }: Props) {
+export default function BlockReasonsField({ reasons, onChange, virtualBlockers = [], capacityBlocked = false, compoundBlocked = false, coolingUntil }: Props) {
   const { t } = useTranslation("editor");
   return (
     <div className={styles.label}>
@@ -64,6 +67,12 @@ export default function BlockReasonsField({ reasons, onChange, virtualBlockers =
           <div className={styles.virtualBlockers}>
             <span className={styles.virtualBlockersLabel}>{t("compoundBlockLabel")}</span>
             <div className={styles.virtualBlockerRow}>{t("compoundBlocked")}</div>
+          </div>
+        )}
+        {coolingUntil !== undefined && (
+          <div className={styles.virtualBlockers}>
+            <span className={styles.virtualBlockersLabel}>{t("cooldownBlockLabel")}</span>
+            <div className={styles.virtualBlockerRow}>{t("cooldownBlocked", { when: formatCooldownUntil(coolingUntil) })}</div>
           </div>
         )}
       </div>

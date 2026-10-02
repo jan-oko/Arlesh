@@ -13,7 +13,9 @@
 //! `habit_slots` — are pure: a scope is derived from its value key (ADR 0009), so resolving a
 //! window reads and writes nothing.
 
+pub mod cooldown;
 pub mod cycles;
+pub mod done_date;
 pub mod error;
 pub mod habits;
 pub mod model;
@@ -193,6 +195,60 @@ fn parse_clock(recurrence: &FlowRecurrence) -> Result<Clock, FlowError> {
             recurrence.clock
         ))),
     }
+}
+
+/// Refuses a cooldown the Habit cannot carry (`docs/spec/habits.md`, *Cooldown*): one on anything
+/// but a Window clock (see [`takes_cooldown`]) or on a commitment Habit; one counted in a unit that is not
+/// finer than the Habit's window; and one that could reach the end of the window after the one it
+/// follows.
+fn check_cooldown(flow: &Flow, request: &SetRecurrenceRequest) -> Result<(), FlowError> {
+    let parsed = cooldown::Cooldown::parse(request.cooldown_n, request.cooldown_kind.as_deref())
+        .map_err(|refusal| FlowError::Invalid(refusal.to_string()))?;
+    let Some(parsed) = parsed else {
+        return Ok(());
+    };
+    if request.clock != ClockKind::Window || !takes_cooldown(request.miss_policy) {
+        return Err(FlowError::Invalid(
+            "only a window habit has a cooldown — an interval's gap already counts from completion"
+                .to_string(),
+        ));
+    }
+    let kind = flow.flow_duration_kind.as_deref().unwrap_or_default();
+    parsed
+        .fits(kind, flow.flow_duration_n.unwrap_or(1))
+        .map_err(|refusal| FlowError::Invalid(refusal.to_string()))
+}
+
+/// Whether a Habit with this miss policy may carry a cooldown: any **Window** Habit — Archive,
+/// Overdue and Owed alike (ruled by the user, 2026-10-01) — and not an Interval, whose Gap already
+/// counts from completion and which has no miss policy.
+fn takes_cooldown(policy: Option<MissPolicy>) -> bool {
+    policy.is_some()
+}
+
+/// The cooldown a Habit's iterations are blocked by, or `None` when it has none.
+///
+/// A stored cooldown that no longer fits the Habit's window — its window was changed since, to
+/// one the cooldown's unit is not finer than, or one too short for it — holds nothing back: the
+/// editor refuses to save it again until it is fixed, and until then the Habit runs without it.
+fn habit_cooldown(flow: &Flow, recurrence: &FlowRecurrence) -> Option<cooldown::Cooldown> {
+    if !takes_cooldown(
+        recurrence
+            .miss_policy
+            .as_deref()
+            .and_then(MissPolicy::from_db),
+    ) {
+        return None;
+    }
+    let kind = flow.flow_duration_kind.as_deref()?;
+    let parsed =
+        cooldown::Cooldown::parse(recurrence.cooldown_n, recurrence.cooldown_kind.as_deref())
+            .ok()
+            .flatten()?;
+    parsed
+        .fits(kind, flow.flow_duration_n.unwrap_or(1))
+        .is_ok()
+        .then_some(parsed)
 }
 
 /// Fine-to-coarse ordinal for a scope kind (`exact` < `part` < `day` < `week` < `month` <
@@ -1405,6 +1461,7 @@ impl<'session> FlowOperator<'session> {
                 "a miss policy is set exactly when the clock is window".to_string(),
             ));
         }
+        check_cooldown(&flow, &request)?;
 
         match (request.gap_n, request.gap_kind.as_deref()) {
             (Some(n), Some(kind)) => {
@@ -1436,22 +1493,24 @@ impl<'session> FlowOperator<'session> {
         // next, and an Interval has nothing to complete. Window + Owed is the only shape that
         // leaves an unanswered iteration alone, and the Verdict Window is what bounds it instead.
         if flow.instance_type == "commitment"
-            && !(request.clock == ClockKind::Window
-                && request.miss_policy == Some(MissPolicy::Owed))
+            && request.clock == ClockKind::Window
+            && request.miss_policy != Some(MissPolicy::Owed)
         {
             return Err(FlowError::Invalid(
-                "a commitment habit's clock is fixed to window + owed".to_string(),
+                "a commitment habit's clock is window + owed or interval".to_string(),
             ));
         }
 
         sqlx::query(
             "INSERT INTO flow_recurrences
-                (flow_id, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+                (flow_id, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy,
+                 cooldown_n, cooldown_kind)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(flow_id) DO UPDATE SET
                 start_scope_id = excluded.start_scope_id, gap_n = excluded.gap_n,
                 gap_kind = excluded.gap_kind, end_scope_id = excluded.end_scope_id,
-                clock = excluded.clock, miss_policy = excluded.miss_policy",
+                clock = excluded.clock, miss_policy = excluded.miss_policy,
+                cooldown_n = excluded.cooldown_n, cooldown_kind = excluded.cooldown_kind",
         )
         .bind(flow_id.0)
         .bind(request.start_scope_id)
@@ -1460,6 +1519,8 @@ impl<'session> FlowOperator<'session> {
         .bind(request.end_scope_id)
         .bind(request.clock.as_str())
         .bind(request.miss_policy.map(|policy| policy.as_str()))
+        .bind(request.cooldown_n)
+        .bind(&request.cooldown_kind)
         .execute(&mut *self.connection)
         .await?;
 
@@ -1474,7 +1535,8 @@ impl<'session> FlowOperator<'session> {
         flow_id: FlowId,
     ) -> Result<Option<FlowRecurrence>, FlowError> {
         let recurrence = sqlx::query_as::<_, FlowRecurrence>(
-            "SELECT flow_id, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy
+            "SELECT flow_id, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy,
+                    cooldown_n, cooldown_kind
              FROM flow_recurrences WHERE flow_id = ?",
         )
         .bind(flow_id.0)
@@ -2177,8 +2239,10 @@ impl<'session> FlowOperator<'session> {
     async fn copy_recurrence(&mut self, from: FlowId, to: FlowId) -> Result<(), FlowError> {
         sqlx::query(
             "INSERT INTO flow_recurrences
-                (flow_id, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy)
-             SELECT ?, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy
+                (flow_id, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy,
+                 cooldown_n, cooldown_kind)
+             SELECT ?, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy,
+                    cooldown_n, cooldown_kind
              FROM flow_recurrences WHERE flow_id = ?",
         )
         .bind(to.0)
@@ -2418,10 +2482,12 @@ impl<'session> FlowOperator<'session> {
             self.cycles_by_item(flow_id).await?,
         );
         let parents = occurrences::occurrence_parents_of(flow_id, template, &keys);
+        let by_verdict = self.get(flow_id).await?.instance_type == "commitment";
         Ok(occurrences::CompletionInputs {
             keys,
             overlays,
             parents,
+            by_verdict,
         })
     }
 
@@ -3076,7 +3142,7 @@ pub async fn generate_habit_iterations<M: SessionMode>(
     })?;
     let resolved = completions.resolutions(&slots);
     let iterations = classify_iterations(&slots, clock, &resolved, now);
-    let iterations = expire_unanswered(iterations, &verdict_deadlines(&flow, &slots), now);
+    let iterations = expire_unanswered(iterations, &verdict_deadlines(&flow, clock, &slots), now);
 
     // Each iteration's occurrences: the same items, resolved against that iteration's own window.
     let items = db.flows().instance_items(flow_id).await?;
@@ -3194,14 +3260,20 @@ fn resolve_iteration_instances(
 /// with no Verdict Window set is answerable indefinitely, which is what the kind does whenever
 /// nothing sets one. The arithmetic is the same [`verdict_deadline`] a real Commitment's Archival
 /// is decided by, so a Habit's iterations and a hand-made Commitment expire by one rule.
-fn verdict_deadlines(flow: &Flow, slots: &[SlotWindow]) -> HashMap<i64, NaiveDateTime> {
+///
+/// Empty, too, on an **Interval** clock: an Interval instance never expires — it stays open until
+/// it is resolved (ruled by the user, 2026-10-02) — so no Verdict Window applies to one.
+fn verdict_deadlines(
+    flow: &Flow,
+    clock: Clock,
+    slots: &[SlotWindow],
+) -> HashMap<i64, NaiveDateTime> {
     if flow.instance_type != "commitment" {
         return HashMap::new();
     }
-    let Some((n, kind)) = flow.verdict_window_n.zip(flow.verdict_window_kind.clone()) else {
+    let Some(duration) = habit_verdict_window(flow, clock) else {
         return HashMap::new();
     };
-    let duration = DurationSpec { n, kind };
     slots
         .iter()
         .filter_map(|slot| {
@@ -3209,6 +3281,17 @@ fn verdict_deadlines(flow: &Flow, slots: &[SlotWindow]) -> HashMap<i64, NaiveDat
                 .map(|deadline| (slot.index, deadline))
         })
         .collect()
+}
+
+/// The Verdict Window a commitment Habit's iterations answer to under `clock`: the flow's own on a
+/// Window clock, and none on an **Interval**, whose instance stays open until it is answered.
+pub(crate) fn habit_verdict_window(flow: &Flow, clock: Clock) -> Option<DurationSpec> {
+    if clock == Clock::Interval {
+        return None;
+    }
+    flow.verdict_window_n
+        .zip(flow.verdict_window_kind.clone())
+        .map(|(n, kind)| DurationSpec { n, kind })
 }
 
 /// Filters `candidates` to the targets a flow of the given `duration` may materialise under.
