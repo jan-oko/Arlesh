@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Arlesh Model Map</title>
+<meta name="description" content="How Arlesh's concepts fit together: why each one exists and what would break without it.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Fraunces:opsz,wght@9..144,500;9..144,650&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Arlesh's own palette (src/styles/tokens.css), in a light and a dark form. */
+:root{
+  --bg:#f5f5fa; --surface:#ffffff; --raised:#ececf6; --text:#1b1b2f; --muted:#5d5d74;
+  --line:#d7d7e6; --accent:#4f41d1; --accent-soft:#4f41d11a; --amber:#9a640f;
+  --stored:#2f7d55; --derived:#4f41d1; --read:#9a640f;
+  --a-body:#c0392b; --a-conn:#8e44ad; --a-growth:#1e8449; --a-duty:#2471a3; --a-flow:#7f8c8d; --a-self:#95a5a6;
+  --serif:"Fraunces", Georgia, "Times New Roman", serif;
+  --sans:"Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#13131f; --surface:#1a1a2e; --raised:#22223a; --text:#e0e0f0; --muted:#9a9ab2;
+    --line:#33334f; --accent:#8f8fff; --accent-soft:#8f8fff1f; --amber:#e0a43a;
+    --stored:#5fbf8a; --derived:#8f8fff; --read:#e0a43a;
+    --a-self:#bdc3c7; --a-flow:#95a5a6;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#13131f; --surface:#1a1a2e; --raised:#22223a; --text:#e0e0f0; --muted:#9a9ab2;
+  --line:#33334f; --accent:#8f8fff; --accent-soft:#8f8fff1f; --amber:#e0a43a;
+  --stored:#5fbf8a; --derived:#8f8fff; --read:#e0a43a;
+  --a-self:#bdc3c7; --a-flow:#95a5a6;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 var(--sans);padding-inline:16px;padding-block:32px 64px}
+.wrap{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:40px}
+header{display:flex;flex-direction:column;gap:12px;max-width:68ch}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font:650 clamp(30px,5vw,44px)/1.1 var(--serif);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h2{font:650 24px/1.2 var(--serif);margin:0;text-wrap:balance}
+h3{font:700 16px/1.3 var(--sans);margin:0}
+p{margin:0}
+.lede{font-size:18px;color:var(--muted)}
+a{color:var(--accent)}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+code{font:13px/1.4 var(--mono);background:var(--raised);padding:1px 5px;border-radius:4px;word-break:break-word}
+nav ol{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+nav a{display:inline-flex;gap:8px;align-items:baseline;text-decoration:none;color:var(--text);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:14px;background:var(--surface)}
+nav a span{font:500 12px var(--mono);color:var(--muted)}
+nav a:hover{border-color:var(--accent)}
+figure{margin:0;display:flex;flex-direction:column;gap:12px}
+.diagram{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px}
+.diagram svg{display:block;width:100%;min-width:720px;height:auto;color:var(--text)}
+figcaption{color:var(--muted);font-size:15px;max-width:72ch}
+.legend{display:flex;flex-wrap:wrap;gap:16px;font-size:14px;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+section.group{display:flex;flex-direction:column;gap:16px;scroll-margin-top:16px}
+.group-head{display:flex;flex-direction:column;gap:6px;max-width:72ch;padding-left:14px;border-left:3px solid var(--band,var(--accent))}
+.group-head .eyebrow{color:var(--band,var(--muted))}
+.group-head p{color:var(--muted)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.card dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;font-size:15px}
+.card dt{font:500 11px/1.9 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.card dd{margin:0}
+.card dd.where{font:12.5px/1.5 var(--mono);color:var(--muted);word-break:break-word}
+.card p.is{font-size:15px}
+footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);padding-top:16px;max-width:72ch}
+@media (max-width:520px){
+  .card dl{grid-template-columns:1fr}
+  .card dt{line-height:1.2;margin-top:4px}
+}
+@media (prefers-reduced-motion:no-preference){ html{scroll-behavior:smooth} }
+.graph-wrap{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.graph-scroll{overflow-anchor:none}
+.graph-scroll svg{min-width:1040px}
+#dgraph .node{cursor:pointer;outline:none}
+#dgraph .node rect{fill:var(--surface);stroke-width:1.6;transition:opacity .15s}
+#dgraph .node.in rect{stroke:var(--stored)}
+#dgraph .node.dv rect{stroke:var(--derived)}
+#dgraph .node.rd rect{stroke:var(--read)}
+#dgraph .node text{fill:var(--text);font:13px var(--sans);pointer-events:none}
+#dgraph .edge{fill:none;stroke:var(--muted);stroke-width:1.1;opacity:.35;transition:opacity .15s}
+#dgraph .edge.far{stroke-dasharray:5 4}
+#dgraph.active .node{opacity:.28}
+#dgraph.active .edge{opacity:.07}
+#dgraph.active .node.lit,#dgraph.active .node.self{opacity:1}
+#dgraph .node.self rect{fill:var(--accent-soft);stroke:var(--accent);stroke-width:2.4}
+#dgraph .node.lit rect{fill:var(--accent-soft)}
+#dgraph.active .edge.lit{opacity:1;stroke:var(--accent);stroke-width:1.8}
+#dgraph .node:focus-visible rect{stroke:var(--accent);stroke-width:3}
+.hint{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;height:220px;overflow-y:auto;overflow-anchor:none;max-width:80ch}
+.hint > *{flex:none}
+.hint .hint-title{font:700 15px var(--sans)}
+.hint .hint-kind{font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.hint p{font-size:15px}
+.hint .hint-io{font-size:14px;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){#dgraph .node rect,#dgraph .edge{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">Arlesh · conceptual model</span>
+  <h1>How Arlesh fits together</h1>
+  <p class="lede">Arlesh stores very little and derives a great deal. This page is the map: what is written down, what is worked out from it on every load, and how that reaches the screen and the agents. Each card says why a concept exists and what would break without it.</p>
+  <p>It is not the specification. The rules themselves live in <a href="../SPEC.md">SPEC.md</a> and <code>docs/spec/</code>; an agent-friendly copy of this page, with fuller code pointers, is <a href="model-map.md">model-map.md</a>.</p>
+</header>
+
+<nav aria-label="Groups">
+  <ol>
+    <li><a href="#stored"><span>1</span>What's stored</a></li>
+    <li><a href="#derived"><span>2</span>What's derived</a></li>
+    <li><a href="#time"><span>3</span>Time</a></li>
+    <li><a href="#lifecycle"><span>4</span>Lifecycle</a></li>
+    <li><a href="#inheritance"><span>5</span>Inheritance</a></li>
+    <li><a href="#blocks"><span>6</span>Blocks</a></li>
+    <li><a href="#reading"><span>7</span>Reading it out</a></li>
+    <li><a href="#honest"><span>8</span>Keeping it honest</a></li>
+  </ol>
+</nav>
+
+<figure>
+  <div class="diagram">
+  <svg viewBox="0 0 980 430" role="img" aria-label="Pipeline: stored rows in SQLite are read on every board load, which derives occurrences, lifecycles, statuses and blocks without storing them; the filters read the derived board; the views and the MCP read the filtered board; edits from either go back only into stored rows and overlays, and SQL triggers journal every write for undo.">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+      </marker>
+    </defs>
+    <g font-family="Atkinson Hyperlegible, system-ui, sans-serif" font-size="13" fill="currentColor">
+      <!-- 1 stored -->
+      <rect x="10" y="40" width="200" height="250" rx="10" fill="none" stroke="var(--stored)" stroke-width="2"/>
+      <text x="110" y="28" text-anchor="middle" font-weight="700" fill="var(--stored)">Stored · SQLite</text>
+      <text x="26" y="70">Node rows by kind</text>
+      <text x="26" y="94">Parent tree</text>
+      <text x="26" y="118">Flow &amp; Habit templates</text>
+      <text x="26" y="142">Overlays (edits to</text>
+      <text x="26" y="160">derived rows)</text>
+      <text x="26" y="184">Dependencies, reasons</text>
+      <text x="26" y="208">Statuses, done instants</text>
+      <text x="26" y="232">Time Scope, Plan, due</text>
+      <text x="26" y="256" fill="var(--muted)">scope keys, never</text>
+      <text x="26" y="274" fill="var(--muted)">scope rows</text>
+
+      <!-- 2 board load -->
+      <rect x="270" y="40" width="250" height="250" rx="10" fill="none" stroke="var(--derived)" stroke-width="2"/>
+      <text x="395" y="28" text-anchor="middle" font-weight="700" fill="var(--derived)">Board load · derived, never stored</text>
+      <g>
+        <rect x="286" y="54" width="218" height="30" rx="6" fill="var(--accent-soft)"/>
+        <text x="298" y="74">Scope lifecycles: Timing, Overdue</text>
+        <rect x="286" y="92" width="218" height="30" rx="6" fill="var(--accent-soft)"/>
+        <text x="298" y="112">Habit occurrences, cooldown</text>
+        <rect x="286" y="130" width="218" height="30" rx="6" fill="var(--accent-soft)"/>
+        <text x="298" y="150">Waits and check tasks</text>
+        <rect x="286" y="168" width="218" height="30" rx="6" fill="var(--accent-soft)"/>
+        <text x="298" y="188">Compound status, Review</text>
+        <rect x="286" y="206" width="218" height="30" rx="6" fill="var(--accent-soft)"/>
+        <text x="298" y="226">Blocks: reasons, deps, capacity</text>
+        <text x="298" y="262" fill="var(--muted)">in this order, every load</text>
+        <line x1="395" y1="84" x2="395" y2="92" stroke="currentColor"/>
+        <line x1="395" y1="122" x2="395" y2="130" stroke="currentColor"/>
+        <line x1="395" y1="160" x2="395" y2="168" stroke="currentColor"/>
+        <line x1="395" y1="198" x2="395" y2="206" stroke="currentColor"/>
+      </g>
+
+      <!-- 3 filters -->
+      <rect x="580" y="95" width="160" height="140" rx="10" fill="none" stroke="var(--read)" stroke-width="2"/>
+      <text x="660" y="83" text-anchor="middle" font-weight="700" fill="var(--read)">Filters</text>
+      <text x="596" y="124">Presets: Plan,</text>
+      <text x="596" y="144">Start, Do, Backlog</text>
+      <text x="596" y="168">Pills: Any / All / Not</text>
+      <text x="596" y="192" fill="var(--muted)">Rust and TS twins,</text>
+      <text x="596" y="210" fill="var(--muted)">one shared corpus</text>
+
+      <!-- 4 consumers -->
+      <rect x="800" y="40" width="170" height="110" rx="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="885" y="66" text-anchor="middle" font-weight="700">Views</text>
+      <text x="816" y="92">Mindmap · List</text>
+      <text x="816" y="112">Plan · Steps · Zen</text>
+      <text x="816" y="134" fill="var(--muted)">you</text>
+      <rect x="800" y="180" width="170" height="110" rx="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="885" y="206" text-anchor="middle" font-weight="700">MCP</text>
+      <text x="816" y="232">roots · private</text>
+      <text x="816" y="252">writes Agentic only</text>
+      <text x="816" y="274" fill="var(--muted)">agents</text>
+
+      <!-- forward arrows -->
+      <g stroke="currentColor" stroke-width="1.5" fill="none" marker-end="url(#ah)">
+        <line x1="212" y1="165" x2="266" y2="165"/>
+        <line x1="522" y1="165" x2="576" y2="165"/>
+        <path d="M742 140 C770 140 770 95 796 95"/>
+        <path d="M742 190 C770 190 770 235 796 235"/>
+      </g>
+      <text x="239" y="155" text-anchor="middle" font-size="12" fill="var(--muted)">read</text>
+      <text x="549" y="155" text-anchor="middle" font-size="12" fill="var(--muted)">facts</text>
+
+      <!-- write-back -->
+      <path d="M885 290 L885 350 L110 350 L110 294" fill="none" stroke="var(--stored)" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+      <line x1="885" y1="150" x2="885" y2="178" stroke="var(--stored)" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <text x="497" y="342" text-anchor="middle" font-size="12" fill="var(--stored)">edits write stored rows and overlays only, never a derived value</text>
+
+      <!-- undo journal -->
+      <rect x="10" y="378" width="200" height="40" rx="8" fill="none" stroke="currentColor" stroke-dasharray="3 3"/>
+      <text x="110" y="403" text-anchor="middle">undo journal</text>
+      <line x1="60" y1="290" x2="60" y2="374" stroke="currentColor" stroke-width="1.2" marker-end="url(#ah)"/>
+      <text x="236" y="403" font-size="12" fill="var(--muted)">SQL triggers record every row write; Ctrl+Z replays it backwards</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption>One direction of data. Everything in the middle box is recomputed from the stored rows on every load, so nothing derived can go stale. Both the views and the MCP read the same derived board through the same filter definitions, and every edit lands back in a stored row or an overlay.</figcaption>
+  <div class="legend" aria-hidden="true">
+    <span><i style="background:var(--stored)"></i>stored</span>
+    <span><i style="background:var(--derived)"></i>derived on load</span>
+    <span><i style="background:var(--read)"></i>read side</span>
+  </div>
+</figure>
+
+<section class="group" id="graph" style="--band:var(--derived)">
+  <div class="group-head">
+    <span class="eyebrow">Derivation graph</span>
+    <h2>What each state is worked out from</h2>
+    <p>Stored inputs on the left, states the board load derives in the middle, the presets that read them on the right. Hover, focus or tap a box to see what it is and light up what it reads and what reads it. Tap again, or press Escape, to let go. For the graph on its own, with several concepts selected at once and their cards beside it, open <a href="model-graph.html">model-graph.html</a>.</p>
+  </div>
+  <div class="graph-wrap">
+    <div class="diagram graph-scroll">
+      <svg id="dgraph" viewBox="0 0 1260 690" role="group" aria-label="Derivation graph: each derived state with arrows from the facts it is computed from."></svg>
+    </div>
+    <div class="hint" id="dhint" aria-live="polite">
+      <p class="hint-title">Pick a box</p>
+      <p>Each arrow is a value the code reads to compute the state it points at. Dashed arrows read the same state on a <em>different</em> node, such as a compound's sub-items or a dependency's target.</p>
+    </div>
+  </div>
+  <div class="legend" aria-hidden="true">
+    <span><i style="background:var(--stored)"></i>stored input</span>
+    <span><i style="background:var(--derived)"></i>derived on load</span>
+    <span><i style="background:var(--read)"></i>preset that reads it</span>
+  </div>
+</section>
+
+<!-- 1 -->
+<section class="group" id="stored" style="--band:var(--stored)">
+  <div class="group-head">
+    <span class="eyebrow">1 · What's stored</span>
+    <h2>The few things written down</h2>
+    <p>Rows of each kind, the tree they hang in, the templates that generate work, and the edits made to generated work.</p>
+  </div>
+  <div class="cards">
+    <article class="card"><h3>Node kinds</h3>
+      <p class="is">Six fixed Aspects at the top, then Projects, Domains and Tags to organise; Goals (desired states), Tasks (actions), Commitments (rules you keep or break), Expectations (waits) and Infos (notes).</p>
+      <dl><dt>Why</dt><dd>Each kind answers a different question: do it, reach it, keep it, wait for it. Each resolves its own way.</dd>
+      <dt>Without</dt><dd>One "item" type with a flag for every behaviour; a Goal could be ticked off like a chore.</dd>
+      <dt>Lives</dt><dd class="where">one table per kind; domains/ · tasks/ · infos/ · ADR 0005</dd></dl></article>
+    <article class="card"><h3>The parent tree</h3>
+      <p class="is">Every node has exactly one parent. The tree is the board: views draw it, and context flows down it.</p>
+      <dl><dt>Why</dt><dd>Windows, the Agentic flag, privacy and archival all reach children through it, so a branch is set once.</dd>
+      <dt>Without</dt><dd>Every node carries all its own context, and moving a branch means editing every row in it.</dd>
+      <dt>Lives</dt><dd class="where">parent_type / parent_id on each kind; tasks/ancestry.rs</dd></dl></article>
+    <article class="card"><h3>Flows and Habits</h3>
+      <p class="is">A Flow is a template of items placed relatively in time. Starting it copies real nodes. A Habit is a Flow with a Recurrence: its instances are derived, never copied.</p>
+      <dl><dt>Why</dt><dd>Repeated structure without retyping it, and recurring work without a growing pile of rows.</dd>
+      <dt>Without</dt><dd>Weekly chores retyped every week, or thousands of stored copies a daily habit would leave behind.</dd>
+      <dt>Lives</dt><dd class="where">flows/ (template.rs, habits.rs) · ADR 0002</dd></dl></article>
+    <article class="card"><h3>Overlays</h3>
+      <p class="is">The difference between one Habit occurrence and its template: a status, a done time, any field edited on that one occurrence. An empty column means "as the template says".</p>
+      <dl><dt>Why</dt><dd>Storage grows with what you change, not with how many weeks pass, and editing the template still reaches every untouched occurrence.</dd>
+      <dt>Without</dt><dd>Touching an occurrence would freeze a full copy, cut off from later template edits.</dd>
+      <dt>Lives</dt><dd class="where">task_/goal_/commitment_/expectation_overlays; nodes/overlay.rs</dd></dl></article>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="group" id="derived" style="--band:var(--derived)">
+  <div class="group-head">
+    <span class="eyebrow">2 · What's derived</span>
+    <h2>Rows that exist because something else does</h2>
+    <p>Worked out on every load from the stored rows, and treated exactly like stored rows by everything downstream.</p>
+  </div>
+  <div class="cards">
+    <article class="card"><h3>Derived nodes</h3>
+      <p class="is">Habit occurrences, a wait's check tasks, the wait an Asynchronous Task spawns when done, and the wait a delegated Task has on its person. Each is an ordinary row of its kind with an <code>origin</code> saying why it exists.</p>
+      <dl><dt>Why</dt><dd>Every view, filter and the MCP read one row shape; none needs a second code path.</dd>
+      <dt>Without</dt><dd>Each surface special-cases each source, and they drift apart.</dd>
+      <dt>Lives</dt><dd class="where">nodes/ (origin, table, waits) · flows/occurrences.rs · ADR 0008</dd></dl></article>
+    <article class="card"><h3>Three kinds of id</h3>
+      <p class="is">A stored row has an integer row id. Every node has a full id, a UUID. A short id is the shortest unique prefix of it, at least three characters, that is never a row id.</p>
+      <dl><dt>Why</dt><dd>Derived rows have no row number, and people need a handle shorter than a UUID that can't be mistaken for a row or PR number.</dd>
+      <dt>Without</dt><dd>Two id types in every request, and "224" meaning three different things.</dd>
+      <dt>Lives</dt><dd class="where">nodes/id.rs · mcp/ids.rs · src/utils/uuid-v5.ts</dd></dl></article>
+    <article class="card"><h3>Two status models</h3>
+      <p class="is">An ordinary Task is To Do, In Progress, Started or Done. A Task that reads as Agentic is To Do, On Agent, Review, Doing or Done. The two are separate types.</p>
+      <dl><dt>Why</dt><dd>The board has to say who holds the work. On Agent is the agent's; Doing is yours.</dd>
+      <dt>Without</dt><dd>An agent's work reads as yours, and fills Do and Zen with things you are not doing.</dd>
+      <dt>Lives</dt><dd class="where">tasks/model.rs · src/utils/status-mapping.ts, task-status-cycle.ts</dd></dl></article>
+    <article class="card"><h3>Review</h3>
+      <p class="is">Never set: an On Agent Task with an open agent question beneath it. Answering the question puts it back On Agent.</p>
+      <dl><dt>Why</dt><dd>It is the only way an agent hands work back, and the question says what you need to do.</dd>
+      <dt>Without</dt><dd>Agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.</dd>
+      <dt>Lives</dt><dd class="where">tasks/review.rs · src/utils/open-question.ts</dd></dl></article>
+    <article class="card"><h3>Compound</h3>
+      <p class="is">A Task whose status is read off its sub-items: Done when they all are, In Progress or Started as they progress. Never stored, and you cannot set it by hand.</p>
+      <dl><dt>Why</dt><dd>A Task that is just the sum of its steps should never disagree with them.</dd>
+      <dt>Without</dt><dd>A parent says Done while a step is open, or To Do after everything finished.</dd>
+      <dt>Lives</dt><dd class="where">tasks/compound.rs · flows/compound_readings.rs</dd></dl></article>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="group" id="time" style="--band:var(--a-duty)">
+  <div class="group-head">
+    <span class="eyebrow">3 · Time</span>
+    <h2>Windows, slots, lateness and clocks</h2>
+    <p>Time is arithmetic over a calendar, not rows in a table. Every time-based state is read off "now" at load.</p>
+  </div>
+  <div class="cards">
+    <article class="card"><h3>Scopes and the 02:00 day</h3>
+      <p class="is">Season, Month, Week (Sunday to Saturday), Day, Part of Day and Exact windows, named by small value keys and never stored. Every canonical scope starts and ends at 02:00.</p>
+      <dl><dt>Why</dt><dd>A Day must contain its own Night (22:00 to 02:00); a scope contains exactly its parts.</dd>
+      <dt>Without</dt><dd>Between midnight and 02:00 the Day says "today" while its Night says "yesterday", and everything derived from it flips early.</dd>
+      <dt>Lives</dt><dd class="where">scopes/ (key, derive, resolve) · ADR 0009</dd></dl></article>
+    <article class="card"><h3>Time Scope and Plan</h3>
+      <p class="is">A Time Scope is when something matters; a Plan is the slot you mean to do it in, inside that window. An empty Time Scope inherits the nearest window above.</p>
+      <dl><dt>Why</dt><dd>"Relevant this month" and "doing it Tuesday morning" are different facts that change at different rates.</dd>
+      <dt>Without</dt><dd>Either everything is scheduled rigidly or nothing knows when it stops mattering.</dd>
+      <dt>Lives</dt><dd class="where">tasks/scope_rules.rs · ADR 0001</dd></dl></article>
+    <article class="card"><h3>Timing</h3>
+      <p class="is">Pending before the window, Active in it, Lapsed after. Worked out from the effective window, own or inherited.</p>
+      <dl><dt>Why</dt><dd>Start should only offer what is in scope now.</dd>
+      <dt>Without</dt><dd>Next month's work and last month's both crowd today.</dd>
+      <dt>Lives</dt><dd class="where">tasks/lifecycle.rs</dd></dl></article>
+    <article class="card"><h3>Due and Overdue</h3>
+      <p class="is">A due is the window whose end makes work late: one set on the Task, or by default its window under Keep Overdue. Overdue is a flag: unfinished, not archived, past the due's end. It shows as an amber border.</p>
+      <dl><dt>Why</dt><dd>Being late is separate from being relevant; late work stays live.</dd>
+      <dt>Without</dt><dd>Lateness had to be a resolution, which settled and hid work that was still open.</dd>
+      <dt>Lives</dt><dd class="where">tasks/lifecycle.rs (effective_due, derive_overdue)</dd></dl></article>
+    <article class="card"><h3>Habit clocks</h3>
+      <p class="is">A Window clock lays iterations side by side; a missed one is Archived, carried into the next (Overdue), or left Owed. An Interval clock keeps one open instance and counts the Gap from completion.</p>
+      <dl><dt>Why</dt><dd>Habits fail differently: a missed run is gone, a missed bill is still owed.</dd>
+      <dt>Without</dt><dd>One rule that is wrong for half the habits.</dd>
+      <dt>Lives</dt><dd class="where">flows/habits.rs · flow_recurrences.clock, miss_policy</dd></dl></article>
+    <article class="card"><h3>Cooldown and done times</h3>
+      <p class="is">A cooldown blocks the next iteration for N units after one is done; under Owed it blocks every open one. Every finish records when it happened, and a Task's done date can be corrected.</p>
+      <dl><dt>Why</dt><dd>Done on Saturday should not count again on Sunday, and a habit ticked late should count from when it was really done.</dd>
+      <dt>Without</dt><dd>Back-to-back completions across a window edge, and clocks counting from the moment you remembered to tick.</dd>
+      <dt>Lives</dt><dd class="where">flows/cooldown.rs · tasks/done_date.rs</dd></dl></article>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="group" id="lifecycle" style="--band:var(--a-flow)">
+  <div class="group-head">
+    <span class="eyebrow">4 · Lifecycle</span>
+    <h2>Status says where the work stands; archival says whether it is in play</h2>
+    <p>Kept apart on purpose, so neither has to grow values that belong to the other.</p>
+  </div>
+  <div class="cards">
+    <article class="card"><h3>Resolution</h3>
+      <p class="is">How a passed window settled an item: Completed, or Missed under Archive. A Habit iteration resolves when every occurrence its template made is done, compound ones by their derived status.</p>
+      <dl><dt>Why</dt><dd>A passed window needs an answer, and the Habit clocks count from it.</dd>
+      <dt>Without</dt><dd>Old work hangs on with no verdict, and clocks have nothing to count from.</dd>
+      <dt>Lives</dt><dd class="where">tasks/lifecycle.rs · flows/occurrences.rs (resolutions)</dd></dl></article>
+    <article class="card"><h3>Archival and Backlog</h3>
+      <p class="is">Live, Backlog, Frozen or Archived. Set by hand (a Goal or Project's status, a Task's Backlog) or derived: a settled window archives, and a delegated Task reads as archived.</p>
+      <dl><dt>Why</dt><dd>"Set aside" and "finished" are different questions; a backlogged Task keeps its real status.</dd>
+      <dt>Without</dt><dd>Statuses multiply ("done-ish", "paused-forever") and every filter has to know them all.</dd>
+      <dt>Lives</dt><dd class="where">tasks/lifecycle.rs · filters/facts.rs</dd></dl></article>
+    <article class="card"><h3>Commitment verdicts</h3>
+      <p class="is">A Commitment is judged, not done: Kept, Broken or still Unresolved. Its Verdict Window bounds how long the answer stays owed; past it, it Expires.</p>
+      <dl><dt>Why</dt><dd>A rule like "phone off by 23:00" is kept or broken, and an unanswered night may well have been kept.</dd>
+      <dt>Without</dt><dd>A missed check-in would count as a broken commitment.</dd>
+      <dt>Lives</dt><dd class="where">tasks/commitments.rs · ADR 0005</dd></dl></article>
+  </div>
+</section>
+
+<!-- 5 -->
+<section class="group" id="inheritance" style="--band:var(--a-growth)">
+  <div class="group-head">
+    <span class="eyebrow">5 · Inheritance</span>
+    <h2>Set it once on a branch</h2>
+    <p>Worked out on read by climbing ancestors, never copied down.</p>
+  </div>
+  <div class="cards">
+    <article class="card"><h3>Agentic</h3>
+      <p class="is">A three-state flag (unset, yes, no) that inherits down and can be overridden. It decides the status model, and what the MCP may write. Each Agentic Task has its own brief, and needs a Spec before it can start.</p>
+      <dl><dt>Why</dt><dd>Mark a project for agents in one edit, and pull one Task back out of it.</dd>
+      <dt>Without</dt><dd>Flagging every Task by hand, and agents writing into your own work.</dd>
+      <dt>Lives</dt><dd class="where">tasks/agentic.rs · src/utils/agentic.ts</dd></dl></article>
+    <article class="card"><h3>Scope containment</h3>
+      <p class="is">A child's window sits inside its parent's, a Plan inside its window, a due inside its window. Checked on every write; narrowing a parent offers to clamp its children.</p>
+      <dl><dt>Why</dt><dd>A step can't matter outside the window of the thing it is a step of.</dd>
+      <dt>Without</dt><dd>Children outliving their parents and plans scheduled after the work stopped mattering.</dd>
+      <dt>Lives</dt><dd class="where">tasks/scope_rules.rs</dd></dl></article>
+    <article class="card"><h3>Link inheritance</h3>
+      <p class="is">Time Scope and Agentic inherit today. Asynchronous deliberately does not. Tags, knowledge-base links and delegation are specified to inherit but not built.</p>
+      <dl><dt>Why</dt><dd>Context belongs on the branch; a filter on a parent's tag should find its children.</dd>
+      <dt>Without</dt><dd>Re-tagging every child, or filters that miss half a project.</dd>
+      <dt>Lives</dt><dd class="where">docs/spec/link-inheritance.md</dd></dl></article>
+    <article class="card"><h3>Privacy</h3>
+      <p class="is">A node's own Private flag hides it and everything beneath it, outside Private Mode and from the MCP even inside its roots.</p>
+      <dl><dt>Why</dt><dd>One switch keeps a whole area out of sight and out of agents' context.</dd>
+      <dt>Without</dt><dd>Hiding a subtree node by node, and leaking whatever was missed.</dd>
+      <dt>Lives</dt><dd class="where">access/ · src/utils/mcp-visibility.ts</dd></dl></article>
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="group" id="blocks" style="--band:var(--a-body)">
+  <div class="group-head">
+    <span class="eyebrow">6 · Blocks</span>
+    <h2>Why something can't start yet</h2>
+    <p>A block always carries its reason. Blocks gate starting work; they never change a status.</p>
+  </div>
+  <div class="cards">
+    <article class="card"><h3>Block reasons</h3>
+      <p class="is">An ordered list of reasons written on a Task or Goal by hand.</p>
+      <dl><dt>Why</dt><dd>Some obstacles are not on the board ("waiting for the landlord").</dd>
+      <dt>Without</dt><dd>Blocked work looks startable.</dd>
+      <dt>Lives</dt><dd class="where">block_reasons/</dd></dl></article>
+    <article class="card"><h3>Dependencies</h3>
+      <p class="is">A Task can depend on a Task, a Goal or a stored wait. Until it is met, the Task reads "Blocked by task 6f3 (title)". Cycles are refused.</p>
+      <dl><dt>Why</dt><dd>Order between pieces of work is a fact worth recording once.</dd>
+      <dt>Without</dt><dd>You remember the order yourself, and Start offers things out of turn.</dd>
+      <dt>Lives</dt><dd class="where">tasks/mod.rs · src/utils/blocked-by.ts</dd></dl></article>
+    <article class="card"><h3>Derived blocks</h3>
+      <p class="is">Blocks no one writes: the agent capacity lock on every unfinished Agentic Task, a Habit's cooldown, and a compound Task whose open sub-items are all blocked.</p>
+      <dl><dt>Why</dt><dd>One mechanism, so filters, badges and the MCP need nothing new for each.</dd>
+      <dt>Without</dt><dd>A special filter rule per feature, each one missing a view.</dd>
+      <dt>Lives</dt><dd class="where">capacity/blocks.rs · flows/cooldown.rs · tasks/compound.rs</dd></dl></article>
+  </div>
+</section>
+
+<!-- 7 -->
+<section class="group" id="reading" style="--band:var(--read)">
+  <div class="group-head">
+    <span class="eyebrow">7 · Reading it out</span>
+    <h2>One board, many readers</h2>
+    <p>You and an agent must never disagree about what is live.</p>
+  </div>
+  <div class="cards">
+    <article class="card"><h3>Presets</h3>
+      <p class="is">All, Plan, Start, Do, Backlog and Unblock: each a rule over derived facts. Start, for example, drops blocked, pending, lapsed (but not Overdue) and planned-ahead work.</p>
+      <dl><dt>Why</dt><dd>"What can I begin now?" should have one answer, everywhere.</dd>
+      <dt>Without</dt><dd>Each view invents its own idea of "now".</dd>
+      <dt>Lives</dt><dd class="where">filters/ (Rust) · src/utils/filter-tree.ts, list-filter.ts</dd></dl></article>
+    <article class="card"><h3>The conformance pair</h3>
+      <p class="is">The presets are written twice, in Rust for the MCP and in TypeScript for the views, and one shared case file runs against both.</p>
+      <dl><dt>Why</dt><dd>The views filter instantly on every keystroke, without a round trip; the corpus keeps the two copies honest.</dd>
+      <dt>Without</dt><dd>The agent's board and yours drift apart silently.</dd>
+      <dt>Lives</dt><dd class="where">conformance/preset-filters.json · preset-conformance.test.ts</dd></dl></article>
+    <article class="card"><h3>Pills and the focus exemption</h3>
+      <p class="is">Filters combine as Any, All and Not. The selected node stays on screen, dimmed, even after your own edit stops it matching.</p>
+      <dl><dt>Why</dt><dd>Completing a Task under Plan should not make it vanish from under the cursor.</dd>
+      <dt>Without</dt><dd>Every edit risks losing your place.</dd>
+      <dt>Lives</dt><dd class="where">src/utils/filter-modes.ts, focus-exemption.ts</dd></dl></article>
+    <article class="card"><h3>Views</h3>
+      <p class="is">Mindmap (the tree), List (rows), Plan (triage into scopes), Steps (one level at a time) and Zen (what's in progress). One tree and one filter model under all of them.</p>
+      <dl><dt>Why</dt><dd>Different jobs need different shapes of the same truth.</dd>
+      <dt>Without</dt><dd>Five boards to keep in step.</dd>
+      <dt>Lives</dt><dd class="where">src/components/*View · docs/spec/*-view.md</dd></dl></article>
+    <article class="card"><h3>The MCP</h3>
+      <p class="is">Agents' door to the board. They see only inside the roots you open, never what is private, and write only Agentic Tasks. They hand work back by asking a question.</p>
+      <dl><dt>Why</dt><dd>A clean, bounded context for an agent, on the same derived board you see.</dd>
+      <dt>Without</dt><dd>Agents read everything, or a separate copy that disagrees.</dd>
+      <dt>Lives</dt><dd class="where">mcp/ · access/ · capacity/</dd></dl></article>
+  </div>
+</section>
+
+<!-- 8 -->
+<section class="group" id="honest" style="--band:var(--accent)">
+  <div class="group-head">
+    <span class="eyebrow">8 · Keeping it honest</span>
+    <h2>Trustworthy history and a truthful board</h2>
+    <p>The board is only useful if what it says is true and every change can be taken back.</p>
+  </div>
+  <div class="cards">
+    <article class="card"><h3>The undo journal</h3>
+      <p class="is">SQL triggers on every table record each row's before and after. One gesture is one step; Ctrl+Z replays it in reverse, across windows.</p>
+      <dl><dt>Why</dt><dd>A trigger can't be forgotten by a command that doesn't know it exists.</dd>
+      <dt>Without</dt><dd>An inverse to write for every one of eighty-odd commands, and the next one missing it.</dd>
+      <dt>Lives</dt><dd class="where">undo/ · scripts/generate-undo-triggers.sh · ADR 0006</dd></dl></article>
+    <article class="card"><h3>Migrations</h3>
+      <p class="is">Numbered schema steps, applied in order and never edited once applied. Data is moved aside, never dropped.</p>
+      <dl><dt>Why</dt><dd>Your real database must reach every new shape without losing anything.</dd>
+      <dt>Without</dt><dd>Upgrades that refuse to start, or quietly discard history.</dd>
+      <dt>Lives</dt><dd class="where">src-tauri/migrations/</dd></dl></article>
+    <article class="card"><h3>A truthful board</h3>
+      <p class="is">Nothing derived is stored, so nothing derived goes stale. Every window hears about every change. An agent whose next step is yours must say so with a question.</p>
+      <dl><dt>Why</dt><dd>You act on what the board says; a board that lies costs more than none.</dd>
+      <dt>Without</dt><dd>Stale copies, windows that disagree, and work that looks held when it is waiting on you.</dd>
+      <dt>Lives</dt><dd class="where">board.rs (board-changed) · AGENTS.md</dd></dl></article>
+  </div>
+</section>
+
+<footer>
+  Keep this page and <code>docs/model-map.md</code> in step: a change that adds, removes or changes the meaning of a concept updates both in the same pull request, as it updates the spec.
+</footer>
+
+</div>
+<script>
+(function () {
+  "use strict";
+  // Where spec links point. Relative inside the repo; the published copy rewrites it.
+  const SPEC_BASE = "spec/";
+  const COLS = [16, 252, 466, 680, 894, 1092];
+  const W = [176, 168, 168, 168, 162, 150];
+  const ROW = 34, TOP = 22, H = 26;
+
+  // [id, label, column, row, kind, hint, spec]. Kind: in = stored input, dv = derived, rd = preset.
+  const NODES = [
+    ["now", "Now (02:00 day)", 0, 0, "in", "The reference instant every derivation reads. Days, weeks and months turn over at 02:00, not midnight.", "time-scopes.md#the-day-boundary"],
+    ["ts", "Time Scope", 0, 1, "in", "When the item matters: its own window, or the nearest scoped ancestor's.", "time-scopes.md#time-scope-relevance"],
+    ["exit", "On scope exit", 0, 2, "in", "Keep Overdue or Archive: what happens to unfinished work once its window passes. Inherited with the window.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],
+    ["duex", "Explicit due", 0, 3, "in", "A due set on the Task itself. It always wins over the default.", "time-scopes.md#due-scope-and-the-overdue-flag"],
+    ["plan", "Plan", 0, 4, "in", "The slot the Task is scheduled into, inside its window. Tasks only.", "time-scopes.md#plan-scheduling"],
+    ["backlog", "Backlog flag", 0, 5, "in", "A Task deliberately set aside. Stored as its Archival, beside its real status.", "resources.md#tasks"],
+    ["gstatus", "Goal / Project status", 0, 6, "in", "Frozen or Archived set by hand on a Goal or Project.", "resources.md#goals"],
+    ["delegate", "Delegate", 0, 7, "in", "The Person a Task is handed to. It has every effect of archival in the presets.", "resources.md#tasks"],
+    ["status", "Status", 0, 8, "in", "Where the work stands, in the ordinary model (To Do, In Progress, Started, Done) or the Agentic one (To Do, On Agent, Doing, Done). Dashed arrows from here read a dependency target's status.", "resources.md#tasks"],
+    ["subs", "Compound, sub-items", 0, 9, "in", "Whether a Task is Compound, and the items beneath it: Tasks, Goals, waits and Commitments in its whole subtree.", "resources.md#tasks"],
+    ["aflag", "Agentic flag (own)", 0, 10, "in", "Yes, No or unset on the Task itself. Unset reads the nearest flagged ancestor.", "link-inheritance.md"],
+    ["question", "Agent question waits", 0, 11, "in", "Pending, live agentic waits raised as questions under a Task.", "mcp-server.md#agentic-waits"],
+    ["lock", "Capacity lock", 0, 12, "in", "One app-wide switch meaning agents are at capacity, set from the app or the MCP.", "mcp-server.md#agent-capacity"],
+    ["clock", "Clock, miss policy", 0, 13, "in", "Window (Archive, Overdue or Owed) or Interval. Decides what a missed iteration becomes and its default due.", "habits.md#clocks"],
+    ["cool", "Cooldown", 0, 14, "in", "N units a Window Habit rests after an iteration is done.", "habits.md#cooldown"],
+    ["verdict", "Verdict, its window", 0, 15, "in", "A Commitment's Kept, Broken or Unresolved, and how long past its window an answer is still owed.", "resources.md#commitments"],
+    ["reasons", "Block reasons", 0, 16, "in", "Reasons written on a Task or Goal by hand.", "resources.md#tasks"],
+    ["deps", "Dependencies", 0, 17, "in", "Edges from a Task to the Tasks, Goals and stored waits it depends on.", "resources.md#tasks"],
+    ["pill", "On Agent pill", 0, 18, "in", "A filter switch, per tab, asking Start, Do and Zen to show work an agent holds.", "filtering-logic.md"],
+
+    ["timing", "Timing", 1, 0.5, "dv", "Pending before the window, Active in it, Lapsed after it. Unscoped is always Active.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],
+    ["due", "Effective due", 1, 3, "dv", "The window whose end makes work late: the explicit due; otherwise none while backlogged; otherwise the window under Keep Overdue and none under Archive. A Habit occurrence's default comes from its clock.", "time-scopes.md#due-scope-and-the-overdue-flag"],
+    ["planpos", "Plan position", 1, 4.5, "dv", "Whether the Task's Plan is still ahead, current or past, read like Timing.", "filtering-logic.md"],
+    ["agentic", "Agentic (inherited)", 1, 10, "dv", "Whether a Task reads as Agentic: its own flag, else its nearest flagged ancestor's. It picks the status model and what the MCP may write.", "link-inheritance.md"],
+    ["expired", "Expired", 1, 15, "dv", "A Commitment still Unresolved once its Verdict Window has run out. Only Archival moves; the verdict stays Unresolved.", "resources.md#commitments"],
+
+    ["resolution", "Resolution", 2, 1.5, "dv", "How a passed window settled an item: Completed if it was done, Missed if unfinished under Archive. Nothing under Keep Overdue.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],
+    ["compound", "Compound status", 2, 9, "dv", "Done when every counted sub-item is Done; else In Progress if any is; else Started if any is Started or Done; else To Do. Effectively archived sub-items are not counted, except those archived by finishing.", "resources.md#tasks"],
+    ["review", "Review", 2, 11, "dv", "An On Agent Task with an open agent question beneath it. Never stored; answering returns it to On Agent.", "resources.md#agentic-statuses"],
+    ["capblock", "Capacity block", 2, 12.3, "dv", "While the lock is on, every Task that reads as Agentic and is not Done carries the derived reason Agents at capacity.", "mcp-server.md#agent-capacity"],
+
+    ["archived", "Archived", 3, 6, "dv", "What the presets treat as archived: effective Archival is Archived (forced by a Completed or Missed Resolution, a Missed Habit iteration, a settled or Expired Commitment, or set by hand), or the Task is delegated. Delegation is not the Archival axis itself, so it does not stop Overdue.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],
+    ["compblock", "Compound block", 3, 9.6, "dv", "A Compound Task is blocked when every one of its open counted items is blocked. A pending wait or an Unresolved Commitment keeps it unblocked.", "resources.md#tasks"],
+    ["iter", "Habit iteration", 3, 12.6, "dv", "Whether an iteration resolved (every template occurrence done, a compound one by its derived status) and, if not, what the clock makes it: Lapsed, Missed and carried, Owed, or Interval-open. It also sets an occurrence's default due.", "habits.md"],
+    ["cooldown", "Cooldown block", 3, 14.4, "dv", "After an iteration is done, the next one is blocked until the cooldown passes; under Owed, every open iteration. It counts from the latest done instant.", "habits.md#cooldown"],
+
+    ["overdue", "Overdue", 4, 3.6, "dv", "Unfinished, not effectively archived, and now is past the end of the effective due. Shown as an amber border.", "time-scopes.md#due-scope-and-the-overdue-flag"],
+    ["blocked", "Blocked", 4, 13.6, "dv", "Any reason at all: one written by hand, a dependency whose target is not Done, Achieved or Released, or a derived block (capacity, cooldown, compound). Blocks gate starting; they never change a status.", "resources.md#tasks"],
+
+    ["pplan", "Plan preset", 5, 4.5, "rd", "Hides done Tasks, archived items and backlogged Tasks.", "filtering-logic.md"],
+    ["start", "Start preset", 5, 8, "rd", "What can be begun now: drops blocked subtrees, Pending and Lapsed windows unless Overdue, delegated and backlogged work, Plans still ahead, and On Agent work unless the pill asks. Always keeps Review.", "filtering-logic.md"],
+    ["pdo", "Do preset / Zen", 5, 11.5, "rd", "What is under way: In Progress and Doing, Review always, Started and On Agent only when their switches ask.", "zen-view.md"],
+    ["pbacklog", "Backlog preset", 5, 15, "rd", "Only what was deliberately set aside, together with everything beneath it. The inverse of the other presets.", "filtering-logic.md"],
+  ];
+
+  // [from, to, far]. far = the value is read off a different node (a sub-item, a dependency's target).
+  const EDGES = [
+    ["ts", "timing"], ["now", "timing"],
+    ["duex", "due"], ["ts", "due"], ["exit", "due"], ["backlog", "due"], ["iter", "due"],
+    ["plan", "planpos"], ["now", "planpos"],
+    ["aflag", "agentic"],
+    ["verdict", "expired"], ["ts", "expired"], ["now", "expired"],
+    ["timing", "resolution"], ["status", "resolution"], ["exit", "resolution"],
+    ["subs", "compound"], ["archived", "compound", true],
+    ["agentic", "review"], ["status", "review"], ["question", "review"],
+    ["lock", "capblock"], ["agentic", "capblock"], ["status", "capblock"],
+    ["backlog", "archived"], ["gstatus", "archived"], ["delegate", "archived"], ["resolution", "archived"],
+    ["expired", "archived"], ["verdict", "archived"], ["timing", "archived"], ["iter", "archived"],
+    ["compound", "compblock"], ["blocked", "compblock", true],
+    ["status", "iter"], ["compound", "iter"], ["clock", "iter"], ["now", "iter"],
+    ["iter", "cooldown"], ["cool", "cooldown"], ["clock", "cooldown"], ["now", "cooldown"],
+    ["due", "overdue"], ["status", "overdue"], ["archived", "overdue"], ["now", "overdue"],
+    ["reasons", "blocked"], ["deps", "blocked"], ["status", "blocked", true],
+    ["capblock", "blocked"], ["cooldown", "blocked"], ["compblock", "blocked"],
+    ["status", "pplan"], ["archived", "pplan"], ["backlog", "pplan"],
+    ["timing", "start"], ["overdue", "start"], ["archived", "start"], ["blocked", "start"], ["planpos", "start"],
+    ["status", "start"], ["review", "start"], ["agentic", "start"], ["pill", "start"], ["backlog", "start"],
+    ["status", "pdo"], ["review", "pdo"], ["agentic", "pdo"], ["pill", "pdo"],
+    ["backlog", "pbacklog"],
+  ];
+
+  const svg = document.getElementById("dgraph");
+  const hint = document.getElementById("dhint");
+  if (!svg || !hint) return;
+  const NS = "http://www.w3.org/2000/svg";
+  const byId = new Map();
+  const KIND = { in: "Stored input", dv: "Derived on every load", rd: "Preset" };
+
+  NODES.forEach(([id, label, col, row, kind, text, spec]) => {
+    byId.set(id, { id, label, col, row, kind, text, spec, x: COLS[col], y: TOP + row * ROW, w: W[col], ins: [], outs: [] });
+  });
+  const edgeEls = [];
+  const edgeLayer = document.createElementNS(NS, "g");
+  const nodeLayer = document.createElementNS(NS, "g");
+  svg.append(edgeLayer, nodeLayer);
+
+  EDGES.forEach(([from, to, far]) => {
+    const a = byId.get(from), b = byId.get(to);
+    if (!a || !b) return;
+    a.outs.push(to); b.ins.push(from);
+    const ay = a.y + H / 2, by = b.y + H / 2;
+    let d;
+    if (b.col > a.col) {
+      const sx = a.x + a.w, tx = b.x - 4, mid = (sx + tx) / 2;
+      d = `M${sx} ${ay} C${mid} ${ay} ${mid} ${by} ${tx} ${by}`;
+    } else if (b.col === a.col) {
+      const sx = a.x, tx = a.x - 4, bend = a.x - 34;
+      d = `M${sx} ${ay} C${bend} ${ay} ${bend} ${by} ${tx + 4} ${by}`;
+    } else {
+      // Backward: leave from the bottom, run under, enter the target from its right side.
+      const sx = a.x + a.w / 2, sy = a.y + H, tx = b.x + b.w + 4, low = Math.max(a.y, b.y) + 60;
+      d = `M${sx} ${sy} C${sx} ${low} ${tx + 40} ${by} ${tx} ${by}`;
+    }
+    const p = document.createElementNS(NS, "path");
+    p.setAttribute("d", d);
+    p.setAttribute("class", "edge" + (far ? " far" : ""));
+    p.setAttribute("marker-end", "url(#dg-ah)");
+    p.dataset.from = from; p.dataset.to = to;
+    edgeLayer.appendChild(p);
+    edgeEls.push(p);
+  });
+
+  const defs = document.createElementNS(NS, "defs");
+  defs.innerHTML = '<marker id="dg-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>';
+  svg.insertBefore(defs, svg.firstChild);
+  svg.style.color = "var(--muted)";
+
+  const els = new Map();
+  byId.forEach((n) => {
+    const g = document.createElementNS(NS, "g");
+    g.setAttribute("class", "node " + n.kind);
+    g.setAttribute("tabindex", "0");
+    g.setAttribute("role", "button");
+    g.setAttribute("aria-label", `${n.label}: ${n.text}`);
+    const r = document.createElementNS(NS, "rect");
+    r.setAttribute("x", n.x); r.setAttribute("y", n.y);
+    r.setAttribute("width", n.w); r.setAttribute("height", H); r.setAttribute("rx", 6);
+    const t = document.createElementNS(NS, "text");
+    t.setAttribute("x", n.x + 10); t.setAttribute("y", n.y + 17.5);
+    t.textContent = n.label;
+    g.append(r, t);
+    nodeLayer.appendChild(g);
+    els.set(n.id, g);
+    g.addEventListener("mouseenter", () => { if (!pinned) show(n.id); });
+    g.addEventListener("mouseleave", () => { if (!pinned) clear(); });
+    g.addEventListener("focus", () => { if (!pinned) show(n.id); });
+    g.addEventListener("blur", () => { if (!pinned) clear(); });
+    g.addEventListener("click", (e) => { e.stopPropagation(); toggle(n.id); });
+    g.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(n.id); }
+      if (e.key === "Escape") { pinned = null; clear(); }
+    });
+  });
+
+  let pinned = null;
+  function toggle(id) { if (pinned === id) { pinned = null; clear(); } else { pinned = id; show(id); } }
+  function names(ids) { return ids.map((i) => byId.get(i).label).join(", ") || "nothing"; }
+  function show(id) {
+    const n = byId.get(id);
+    svg.classList.add("active");
+    els.forEach((g, k) => {
+      g.classList.toggle("self", k === id);
+      g.classList.toggle("lit", n.ins.includes(k) || n.outs.includes(k));
+    });
+    edgeEls.forEach((p) => p.classList.toggle("lit", p.dataset.from === id || p.dataset.to === id));
+    const link = `<a href="${SPEC_BASE}${n.spec}">${n.spec.split("#")[0]}</a>`;
+    hint.innerHTML =
+      `<span class="hint-kind">${KIND[n.kind]}${pinned === id ? " · pinned" : ""}</span>` +
+      `<p class="hint-title"></p><p class="hint-body"></p>` +
+      (n.kind === "in" ? "" : `<p class="hint-io">Reads: ${names(n.ins)}</p>`) +
+      (n.outs.length ? `<p class="hint-io">Read by: ${names(n.outs)}</p>` : "") +
+      `<p class="hint-io">Spec: ${link}</p>`;
+    hint.querySelector(".hint-title").textContent = n.label;
+    hint.querySelector(".hint-body").textContent = n.text;
+  }
+  function clear() {
+    svg.classList.remove("active");
+    els.forEach((g) => g.classList.remove("self", "lit"));
+    edgeEls.forEach((p) => p.classList.remove("lit"));
+  }
+  document.addEventListener("click", (e) => { if (pinned && !svg.contains(e.target) && !hint.contains(e.target)) { pinned = null; clear(); } });
+})();
+</script>
+</body>
+</html>
