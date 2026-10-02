@@ -179,8 +179,10 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
 
   // A wait's check task has no done date of its own: its completion is the check it records.
   const hasDoneDate = checkOrigin(node.origin) === undefined;
+  // Done as the task was opened, in either model — what has a done date to show.
+  const savedDone = isDone(taskStatusOf(node));
   useEffect(() => {
-    if (!hasDoneDate || !isDone(taskStatusOf(node))) return;
+    if (!hasDoneDate || !savedDone) return;
     let cancelled = false;
     void fetchTaskDoneAt(dbId).then((at) => {
       if (cancelled) return;
@@ -188,7 +190,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       setLoadedDoneAt(toDoneDateInput(at));
     });
     return () => { cancelled = true; };
-  }, [dbId, hasDoneDate, node.status]);
+  }, [dbId, hasDoneDate, savedDone]);
 
 
   function removeDep(dep: Dependency) {
