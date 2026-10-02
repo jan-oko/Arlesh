@@ -4,7 +4,11 @@ import { useTranslation } from "react-i18next";
 import { rowIdOf } from "@/utils/node-identity";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
-import type { InstanceType, ClockKind, CooldownKind, MissPolicy } from "@/api/flows";
+import type { InstanceType, ClockKind, CooldownKind, MissPolicy, TemplateUpdate } from "@/api/flows";
+import type { AsyncTemplate } from "@/api/tasks";
+import type { Domain } from "@/api/domains";
+import TaskTemplateFlags from "@/components/TaskTemplateFlags/TaskTemplateFlags";
+import { EMPTY_ASYNC_TEMPLATE, asyncTemplateToSave } from "@/utils/async-template";
 import { getFlowRecurrence, habitCompletionCount } from "@/api/flows";
 import type { DurationSpec } from "@/api/time-scope";
 import VerdictWindowField from "@/components/CommitmentEditorModal/VerdictWindowField";
@@ -85,6 +89,9 @@ export interface FlowSaveData {
   verdictWindowN: number | null;
   verdictWindowKind: string | null;
   isPrivate: boolean;
+  /** The root's template fields — a task-instance flow's Asynchronous and Compound flags and its
+   * wait template. Absent for any other instance type, which has none. */
+  template?: TemplateUpdate;
   /** Absent = leave recurrence untouched; present (object or null) = set-or-clear it. */
   recurrence?: RecurrenceSave | null;
   /**
@@ -158,6 +165,9 @@ interface Props {
    * defaults the switch gives an existing flow, and saving writes the Recurrence with the flow.
    */
   startAsHabit?: boolean;
+  /** Tags a task-instance root's wait template can carry. */
+  allTags: Domain[];
+  domainNames: Map<number, string>;
   onSave: (data: FlowSaveData) => Promise<void>;
   onClose: () => void;
 }
@@ -166,9 +176,9 @@ interface Props {
  * Edits a Flow template: its title, Instance Type (goal|task), Duration-form flow scope,
  * and Target Node. Flow items and their cycle scopes are edited separately (Phase 7.3).
  */
-export default function FlowEditorModal({ node, availableTargets, inheritedTarget = null, heading, startAsHabit = false, onSave, onClose }: Props) {
+export default function FlowEditorModal({ node, availableTargets, inheritedTarget = null, heading, startAsHabit = false, allTags, domainNames, onSave, onClose }: Props) {
   useInputCapture();
-  const { t } = useTranslation(["editor", "nodeKinds", "scopes"]);
+  const { t } = useTranslation(["editor", "nodeKinds", "scopes", "expectation"]);
   const [title, setTitle] = useState(node.title);
   const [instanceType, setInstanceType] = useState<InstanceType>(node.flow?.instanceType ?? "task");
   // A null flow scope means the flow's instances are Unscoped.
@@ -190,6 +200,10 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   );
   const [target, setTarget] = useState<TargetSelection | null>(targetFromNode(node, availableTargets));
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
+  const rootTemplate = node.flow?.template ?? {};
+  const [isAsynchronous, setIsAsynchronous] = useState(rootTemplate.asynchronous === true);
+  const [isCompound, setIsCompound] = useState(rootTemplate.compound === true);
+  const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate>(rootTemplate.async_template ?? EMPTY_ASYNC_TEMPLATE);
   const [targetSearch, setTargetSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -318,6 +332,16 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
         // And the Verdict Window only to a commitment one: nothing else has a verdict to bound.
         ...verdictWindowFields(takesVerdictWindow ? verdictWindow : null),
         isPrivate,
+        // Only a task-instance flow's root is a Task, and only a Task template has these.
+        ...(instanceType === "task" ? {
+          template: {
+            asynchronous: isAsynchronous,
+            compound: isCompound,
+            async_template: asyncTemplateToSave(
+              asyncTemplate, isAsynchronous, t("expectation:templateDefaultTitle", { title: title.trim() }),
+            ),
+          },
+        } : {}),
         ...(offersRecurrence ? { recurrence: recurrenceSave } : {}),
         ...(reconcile !== undefined ? { reconcile } : {}),
       });
@@ -443,14 +467,33 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
           <RootPlanField flowScopeN={durationN} flowScopeKind={durationKind} value={rootPlan} onChange={setRootPlan} />
         </div>
       )}
+      {/* A task-instance flow's root is a Task: every iteration's root, and a started flow's, takes
+          these. The Repetition group below carries a subheading of its own, so it does not read as
+          part of them. */}
+      {instanceType === "task" && (
+        <TaskTemplateFlags
+          asynchronous={isAsynchronous}
+          onAsynchronousChange={setIsAsynchronous}
+          compound={isCompound}
+          onCompoundChange={setIsCompound}
+          asyncTemplate={asyncTemplate}
+          onAsyncTemplateChange={setAsyncTemplate}
+          titlePlaceholder={t("expectation:templateDefaultTitle", { title: title.trim() })}
+          allTags={allTags}
+          domainNames={domainNames}
+        />
+      )}
       {offersRecurrence && (
-        <RecurrenceField
+        <div role="group" aria-label={t("fieldRepetition")} className={styles.advancedBody}>
+          <span className={styles.label}>{t("fieldRepetition")}</span>
+          <RecurrenceField
           value={recurrence}
           onChange={setRecurrence}
           durationKind={scoped ? durationKind : null}
           durationN={durationN}
           scoped={scoped}
         />
+        </div>
       )}
       <div className={styles.label}>
         {t("fieldTarget")}

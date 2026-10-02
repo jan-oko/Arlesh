@@ -350,6 +350,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         verdict_window_n: data.verdictWindowN,
         verdict_window_kind: data.verdictWindowKind,
         is_private: data.isPrivate,
+        ...data.template,
       } satisfies UpdateFlowRequest;
       // Persist the Recurrence for `targetId` after its flow row, so gap validation sees the new kind.
       const persistRecurrence = async (targetId: number) => {

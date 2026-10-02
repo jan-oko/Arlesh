@@ -125,6 +125,7 @@ export default function NodeEditorModals({ tree, editor }: Props) {
       return (
         <FlowEditorModal
           node={node} availableTargets={flowTargets} inheritedTarget={editedFlowParent}
+          allTags={allTags} domainNames={domainNames}
           onSave={onFlowSave} onClose={close}
         />
       );

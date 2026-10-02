@@ -102,6 +102,9 @@ pub async fn load_within(
     lifecycles.extend(derived.lifecycles);
     block_reasons.extend(derived.block_reasons);
     task_dependencies.extend(derived.dependencies);
+    // A compound Habit occurrence's status is its Habit's to derive: it decides whether its iteration
+    // resolved. The board serves it as derived rather than deriving it again.
+    let settled = derived.settled;
     // A wait's rows hang on the Tasks, a Habit's occurrences included. Drawn together with every
     // compound Task's derived status, since each reads the other (see `tasks::compound`):
     // from here on a compound Task's `status` is the one its sub-items give it.
@@ -114,9 +117,13 @@ pub async fn load_within(
             commitments: &commitments,
             expectations: &expectations,
             lifecycles: &mut lifecycles,
+            settled: &settled,
+            instants: &std::collections::HashMap::new(),
+            exit: crate::tasks::OccurrenceExit::Honoured,
         },
     )
-    .await?;
+    .await?
+    .waits;
     tasks.extend(waits.tasks);
     expectations.extend(waits.expectations);
     block_reasons.extend(waits.block_reasons);
@@ -160,6 +167,8 @@ pub async fn load_within(
             waits: &[],
             lifecycles: &lifecycles,
             wait_lifecycles: &[],
+            settled: &std::collections::HashSet::new(),
+            instants: &std::collections::HashMap::new(),
         },
         &block_reasons,
         &task_dependencies,

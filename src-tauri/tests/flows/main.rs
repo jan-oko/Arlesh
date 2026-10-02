@@ -16,6 +16,7 @@
 mod helpers;
 
 mod agentic_occurrences;
+mod compound_occurrences;
 mod flow_fan_in;
 mod flows;
 mod flows_commands;

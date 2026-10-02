@@ -46,6 +46,8 @@ fn blocked(board: &Board, reasons: &[BlockReason], edges: &[TaskDependencyEdge])
             waits: &board.waits,
             lifecycles: &board.lifecycles,
             wait_lifecycles: &[],
+            settled: &std::collections::HashSet::new(),
+            instants: &std::collections::HashMap::new(),
         },
         reasons,
         edges,

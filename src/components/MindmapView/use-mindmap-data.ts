@@ -320,7 +320,7 @@ function contentParentKey(parentType: string, parentId: RowId): string {
 }
 
 /** A template item's own fields, as the item editor edits them. */
-function templateFieldsOf(item: FlowGoal | FlowTask): TemplateFields {
+function templateFieldsOf(item: TemplateFields): TemplateFields {
   return {
     ...(item.delegate_to !== undefined ? { delegate_to: item.delegate_to } : {}),
     ...(item.agentic !== undefined ? { agentic: item.agentic } : {}),
@@ -328,6 +328,8 @@ function templateFieldsOf(item: FlowGoal | FlowTask): TemplateFields {
     ...(item.archival !== undefined ? { archival: item.archival } : {}),
     ...(item.beads_id !== undefined ? { beads_id: item.beads_id } : {}),
     ...(item.agentic_brief !== undefined ? { agentic_brief: item.agentic_brief } : {}),
+    ...(item.compound !== undefined ? { compound: item.compound } : {}),
+    ...(item.async_template !== undefined ? { async_template: item.async_template } : {}),
     tag_ids: item.tag_ids ?? [],
     block_reasons: item.block_reasons ?? [],
   };
@@ -648,6 +650,7 @@ export function buildTree(
         rootPlanEnd: flow.root_plan_end,
         verdictWindowN: flow.verdict_window_n,
         verdictWindowKind: flow.verdict_window_kind,
+        template: templateFieldsOf(flow),
       },
       tagIds: [],
       children: [],

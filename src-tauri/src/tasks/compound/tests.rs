@@ -145,6 +145,8 @@ impl Board {
                 waits: &self.waits,
                 lifecycles: &self.lifecycles,
                 wait_lifecycles: &[],
+                settled: &std::collections::HashSet::new(),
+                instants: &std::collections::HashMap::new(),
             },
             governance,
             at(12),
@@ -208,6 +210,7 @@ fn an_agentic_compound_task_shows_its_tally_in_its_own_model() {
         id: 1.into(),
         status: InProgress,
         state: None,
+        done_at: None,
     };
     apply(&[outcome], &mut tasks, &mut []);
     assert_eq!(tasks[0].status, Status::Agentic(AgenticStatus::Doing));
@@ -445,6 +448,7 @@ fn apply_writes_the_status_and_the_lifecycle_onto_the_board() {
             id: NodeId::Stored(1),
             status: Done,
             state: Some(state),
+            done_at: None,
         }],
         &mut tasks,
         &mut lifecycles,
@@ -463,4 +467,42 @@ fn a_parent_loop_is_caught_rather_than_followed() {
     };
     let outcomes = board.derive_with(&HashMap::new());
     assert_eq!(outcomes.len(), 2);
+}
+
+#[test]
+fn a_compound_tasks_done_time_is_its_latest_finish_while_it_is_done() {
+    let board = Board {
+        tasks: vec![
+            compound(1, ("project", 9)),
+            task(2, ("task", 1), Done),
+            task(3, ("task", 1), Done),
+        ],
+        ..Board::default()
+    };
+    let instants = HashMap::from([(NodeId::Stored(2), at(8)), (NodeId::Stored(3), at(10))]);
+    let rows = |board: &Board, settled: &HashSet<NodeId>| {
+        derive(
+            &Rows {
+                tasks: &board.tasks,
+                checks: &board.checks,
+                goals: &board.goals,
+                commitments: &board.commitments,
+                expectations: &board.expectations,
+                waits: &board.waits,
+                lifecycles: &board.lifecycles,
+                wait_lifecycles: &[],
+                settled,
+                instants: &instants,
+            },
+            &HashMap::new(),
+            at(12),
+        )
+    };
+    let outcomes = rows(&board, &HashSet::new());
+    assert_eq!(outcomes[0].done_at, Some(at(10)));
+
+    assert!(
+        rows(&board, &HashSet::from([NodeId::Stored(1)])).is_empty(),
+        "a compound already derived is not derived again"
+    );
 }

@@ -47,7 +47,7 @@
   "asynchronousFailed": "Could not change the Asynchronous flag: {{message}}",
   "compoundFailed": "Could not change Compound: {{message}}",
   "compoundStatusRefused": "This task is a compound: its status follows its sub-items. Change them, or turn Compound off (V).",
-  "compoundOnDerived": "Only a task of your own can be a compound; a habit occurrence or a check task keeps its own status.",
+  "compoundOnDerived": "A check task keeps its own status: it is the check itself.",
   "verdictFailed": "Could not record the verdict: {{message}}",
   "createUnderRepetition": "A Habit repetition isn't a row of its own, so nothing can be created under it — add it to the Habit's template instead.",
   "deleteRepetitionRefused": "A Habit repetition isn't a row of its own, so there is nothing to delete — change the Habit's template or its recurrence instead.",

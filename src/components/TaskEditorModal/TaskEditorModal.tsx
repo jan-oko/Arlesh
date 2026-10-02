@@ -31,6 +31,8 @@ import { useInputCapture } from "@/hooks/use-input-capture";
 import { useBeadsIdClear } from "@/hooks/use-beads-id-clear";
 import Switch from "@/components/Switch/Switch";
 import AsyncTemplateFields from "@/components/AsyncTemplateEditor/AsyncTemplateFields";
+import { EMPTY_ASYNC_TEMPLATE, asyncTemplateToSave } from "@/utils/async-template";
+import { takesCompound } from "@/utils/compound";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import {
   AGENTIC_STATUS, TASK_STATUS, agentic as agenticStatus, convertedStatus, isBegun, isDone, isReview, ordinary, taskStatusOf,
@@ -122,15 +124,6 @@ interface Props {
   onClose: () => void;
 }
 
-/** The section as the form holds it: every field, blank ones included. */
-const EMPTY_TEMPLATE: AsyncTemplate = { title: "", tag_ids: [] };
-
-/** Whether the Expectation section says anything at all — an empty one is no template. */
-function isEmptyTemplate(template: AsyncTemplate): boolean {
-  return template.title.trim() === "" && template.tag_ids.length === 0
-    && template.time_scope === undefined && template.check_every === undefined;
-}
-
 export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onClearBeadsId, onCheckScopeClamp, onAnswer, openAtTemplate = false, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "status", "nodeKinds", "undo", "expectation"]);
@@ -146,7 +139,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(node.agentic));
   const [isAsynchronous, setIsAsynchronous] = useState(node.asynchronous === true || openAtTemplate);
   const [isCompound, setIsCompound] = useState(node.compound === true);
-  const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate>(node.asyncTemplate ?? EMPTY_TEMPLATE);
+  const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate>(node.asyncTemplate ?? EMPTY_ASYNC_TEMPLATE);
   const [agenticBrief, setAgenticBrief] = useState<AgenticBrief>(node.agenticBrief ?? EMPTY_AGENTIC_BRIEF);
   const templateRef = useRef<HTMLDivElement>(null);
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
@@ -238,10 +231,9 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           asynchronous: isAsynchronous,
           compound: isCompound,
           // An empty section is no template; one with anything in it but a title takes the default.
-          asyncTemplate: !isAsynchronous || isEmptyTemplate(asyncTemplate) ? null : {
-            ...asyncTemplate,
-            title: asyncTemplate.title.trim() || t("expectation:templateDefaultTitle", { title: title.trim() }),
-          },
+          asyncTemplate: asyncTemplateToSave(
+            asyncTemplate, isAsynchronous, t("expectation:templateDefaultTitle", { title: title.trim() }),
+          ),
           agenticBrief: isEmptyBrief(agenticBrief) ? null : agenticBrief,
           isPrivate,
           ...(isDone(status) && doneAt !== "" && doneAt !== loadedDoneAt
@@ -414,18 +406,6 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           label={isAsynchronous ? t("asynchronousOn") : t("asynchronousOff")}
         />
       </div>
-      {/* Compound: the status follows the sub-items. A stored task's flag only — a Habit
-          occurrence or a check task keeps a status of its own. */}
-      {!isDerivedId(dbId) && (
-        <div className={styles.label}>
-          {t("fieldCompound")}
-          <Switch
-            checked={isCompound}
-            onChange={setIsCompound}
-            label={isCompound ? t("compoundOn") : t("compoundOff")}
-          />
-        </div>
-      )}
       {isAsynchronous && (
         <div ref={templateRef} role="group" aria-label={t("expectation:templateSection")}>
           <span className={styles.label}>{t("expectation:templateSection")}</span>
@@ -435,6 +415,18 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
             titlePlaceholder={t("expectation:templateDefaultTitle", { title: title.trim() })}
             allTags={allTags}
             domainNames={domainNames}
+          />
+        </div>
+      )}
+      {/* Compound, after Asynchronous and its wait: the status follows the sub-items. A stored
+          task's flag, or a Habit occurrence's — a check task keeps a status of its own. */}
+      {takesCompound(node) && (
+        <div className={styles.label}>
+          {t("fieldCompound")}
+          <Switch
+            checked={isCompound}
+            onChange={setIsCompound}
+            label={isCompound ? t("compoundOn") : t("compoundOff")}
           />
         </div>
       )}

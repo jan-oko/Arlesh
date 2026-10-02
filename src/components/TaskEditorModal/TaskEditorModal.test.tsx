@@ -823,9 +823,14 @@ describe("TaskEditorModal — Compound", () => {
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ status: { kind: "ordinary", status: "started" }, compound: false });
   });
 
-  it("offers the switch on a stored task only", () => {
+  it("offers the switch on an occurrence of a flow Task item, which may override its item", () => {
     render(<TaskEditorModal {...defaultProps} node={mkNode({ ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }) })} />);
-    expect(screen.queryByRole("checkbox", { name: "compoundOff" })).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "compoundOff" })).toBeInTheDocument();
+  });
+
+  it("offers the switch on an iteration's root, which reads it from its flow", () => {
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ ...occurrenceRow({ habitId: 3, itemType: "flow_root", itemId: 3 }) })} />);
+    expect(screen.getByRole("checkbox", { name: "compoundOff" })).toBeInTheDocument();
   });
 });
 

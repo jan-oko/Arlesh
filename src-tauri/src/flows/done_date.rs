@@ -12,7 +12,7 @@ use super::{
     error::FlowError,
     habits::{Clock, SlotWindow},
     occurrence_edit::resolved_at_ms,
-    occurrences::CompletionInputs,
+    occurrences::{completion_inputs, CompletionInputs},
     parse_clock,
 };
 use crate::{
@@ -56,8 +56,8 @@ pub async fn set_occurrence_done_at(
     if let Some(recurrence) = db.flows().get_recurrence(flow_id).await? {
         if parse_clock(&recurrence)? == Clock::Interval {
             let flow = db.flows().get(flow_id).await?;
-            let before = db.flows().completion_inputs(flow_id).await?;
-            let mut after = db.flows().completion_inputs(flow_id).await?;
+            let before = completion_inputs(db, &flow, now).await?;
+            let mut after = completion_inputs(db, &flow, now).await?;
             if let Some(changed) = after.overlays.tasks.get_mut(&key.node_key()) {
                 changed.resolved_at = Some(resolved_at);
             }
@@ -99,7 +99,8 @@ fn refuse_moving_completed_work(
     Ok(())
 }
 
-/// Whether any instance of the iteration in `slot` is done (a Task) or achieved (a Goal).
+/// Whether any instance of the iteration in `slot` is done (a Task — a compound one by its derived
+/// status) or achieved (a Goal).
 fn holds_completed_work(inputs: &CompletionInputs, slot: &SlotWindow) -> bool {
     inputs.keys.iter().any(|(item, cycle)| {
         let node_key = OccurrenceKey {
@@ -109,6 +110,10 @@ fn holds_completed_work(inputs: &CompletionInputs, slot: &SlotWindow) -> bool {
         }
         .node_key();
         completed(&inputs.overlays, &node_key)
+            || inputs
+                .readings
+                .get(&node_key)
+                .is_some_and(|reading| reading.status.is_done())
     })
 }
 

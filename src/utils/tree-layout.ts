@@ -95,6 +95,9 @@ export interface FlowData {
    * Duration a Commitment carries. Both null means its iterations never stop being answerable. */
   verdictWindowN: number | null;
   verdictWindowKind: string | null;
+  /** The root's own template fields, which every iteration's root reads — for a task-instance
+   * flow its Asynchronous and Compound flags and its wait template. */
+  template?: TemplateFields;
 }
 
 /** A relative (Cycle Scope, Cycle Plan) pair on a flow item. */

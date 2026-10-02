@@ -110,9 +110,15 @@ pub enum TaskError {
          counterpart there: {0}. Set their status first"
     )]
     KindConversion(String),
-    /// Compound was asked of a derived row — a Habit occurrence or a wait's check task. Only a
-    /// stored Task carries the flag.
-    #[error("only a stored task can consist of its sub-items; this one is derived")]
+    /// [`Self::CompoundStatus`], for a Habit occurrence that consists of its sub-items.
+    #[error(
+        "this occurrence consists of its sub-items, so its status follows them; change the \
+         sub-items, or turn compound off"
+    )]
+    CompoundOccurrenceStatus,
+    /// Compound was asked of a wait's check task, whose status is the check itself. A stored Task
+    /// and a Habit's Task occurrence carry the flag.
+    #[error("a check task cannot consist of its sub-items: its status is the check itself")]
     CompoundOnDerived,
     /// A write would break a scope-containment invariant (e.g. a Plan wider than its Time Scope).
     #[error("scope containment violation: {0}")]

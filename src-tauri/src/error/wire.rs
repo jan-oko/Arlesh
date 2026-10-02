@@ -268,10 +268,11 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
         TaskError::AgenticSpecMissing
         | TaskError::AgenticWaitOutsideAgenticTask
         | TaskError::AgenticAnswerMissing => WireErrorKind::InvalidRequest,
-        // Change the sub-items, or switch compound off; only a stored Task carries the flag.
-        TaskError::CompoundStatus(_) | TaskError::CompoundOnDerived => {
-            WireErrorKind::InvalidRequest
-        }
+        // Change the sub-items, or switch compound off; an iteration root or a check task
+        // carries no flag.
+        TaskError::CompoundStatus(_)
+        | TaskError::CompoundOccurrenceStatus
+        | TaskError::CompoundOnDerived => WireErrorKind::InvalidRequest,
         // Mark it done first, or name an instant that has already been.
         TaskError::NotDone | TaskError::DoneInFuture => WireErrorKind::InvalidRequest,
         // A status outside the Task's model, the derived Review, or a change of kind that would

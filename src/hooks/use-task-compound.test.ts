@@ -47,14 +47,27 @@ describe("useTaskCompound", () => {
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { compound: false }));
   });
 
-  it("turns a Habit occurrence away out loud: only a stored task carries the flag", () => {
-    const occurrence = node("task-4", { ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }) });
-    const { result, showToast } = setup([occurrence]);
+  it("switches an occurrence of a flow Task item, over its item's flag", async () => {
+    vi.mocked(updateTask).mockResolvedValue({} as never);
+    const fields = occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 });
+    const { result } = setup([node("task-4", { ...fields })]);
 
     act(() => { result.current.toggleCompound("task-4"); });
 
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(fields.rowId, { compound: true }));
+  });
+
+  it("turns a check task away out loud: its status is the check itself", () => {
+    const check = node("task-3", {
+      rowId: "00000000-0000-5000-8000-000000000003",
+      origin: { kind: "check", wait_kind: "stored", wait_id: 4, due_at: "2026-01-05T09:00:00" },
+    });
+    const { result, showToast } = setup([check]);
+
+    act(() => { result.current.toggleCompound("task-3"); });
+
     expect(updateTask).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "task-4" }));
+    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "task-3" }));
   });
 
   it("declines every node that is not a task", () => {

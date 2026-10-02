@@ -23,7 +23,9 @@ use std::collections::{HashMap, HashSet};
 use chrono::{NaiveDate, NaiveDateTime};
 
 use super::{
-    clock_slots, cooldown,
+    clock_slots,
+    compound_readings::Readings,
+    cooldown,
     error::FlowError,
     habit_cooldown, habit_verdict_window,
     habits::{classify_iterations, expire_unanswered, instance_timing, Clock, SlotWindow},
@@ -83,6 +85,9 @@ pub struct DerivedRows {
     /// The dependency edges the template's own wiring draws between one iteration's occurrences,
     /// less any an occurrence removed.
     pub dependencies: Vec<TaskDependencyEdge>,
+    /// The **compound** Task occurrences whose status their Habit derived
+    /// ([`super::compound_readings`]): the board serves it as it is rather than deriving it again.
+    pub settled: HashSet<NodeId>,
 }
 
 impl DerivedRows {
@@ -94,6 +99,7 @@ impl DerivedRows {
         self.lifecycles.extend(other.lifecycles);
         self.block_reasons.extend(other.block_reasons);
         self.dependencies.extend(other.dependencies);
+        self.settled.extend(other.settled);
     }
 }
 
@@ -303,6 +309,13 @@ struct Iteration<'a> {
     /// Until when the iteration is **cooling down** — blocked by its Habit's cooldown since an
     /// iteration was done ([`cooldown::holds`]) — or `None` when it is not.
     cooling_until: Option<NaiveDateTime>,
+    /// What each compound occurrence reads as, derived by [`super::compound_readings`].
+    readings: &'a Readings,
+    /// Whether these rows are **provisional**: drawn before the iteration is classified, to work
+    /// out its compound occurrences' statuses on. Nothing in them has lapsed or expired — what
+    /// would follow only from the iteration's window passing must not feed back into whether it
+    /// resolved — and nothing in them is served.
+    provisional: bool,
 }
 
 /// A Habit's iterations within the horizon, as [`schedule`] derives them.
@@ -317,27 +330,117 @@ struct Schedule {
     holds: HashMap<i64, NaiveDateTime>,
 }
 
-/// Every occurrence of one Habit within `horizon`, as rows, at `now`.
-///
-/// A flow with no Recurrence derives nothing. So does a commitment flow holding goal items: a
-/// Commitment cannot parent a Goal, so such a template has no valid materialisation, and the load
-/// names the flow rather than drawing a subtree the model forbids.
-///
-/// **This writes**: resolving iteration and cycle windows mints the scope rows they land on.
-#[tracing::instrument(skip(db, flow), fields(flow_id = flow.id))]
-pub async fn derive_habit<M: SessionMode>(
+/// What one Habit's rows are drawn from, read once: its Recurrence, its template, and what its
+/// occurrences record.
+pub(super) struct LoadedHabit {
+    recurrence: FlowRecurrence,
+    clock: Clock,
+    template: Template,
+    overlays: HabitOverlays,
+    relations: HabitRelations,
+    /// The iterations that carry an overlay, a relation or an attached child.
+    touched: HashSet<ScopeKey>,
+    /// Whether the Habit's host reads as Agentic.
+    host_agentic: bool,
+}
+
+impl LoadedHabit {
+    /// What its occurrences record.
+    pub(super) fn overlays(&self) -> &HabitOverlays {
+        &self.overlays
+    }
+
+    /// The iterations that carry an overlay, a relation or an attached child — the only ones in
+    /// which anything can have been done.
+    pub(super) fn touched(&self) -> &HashSet<ScopeKey> {
+        &self.touched
+    }
+
+    /// Whether any of its occurrences can be compound: its root or a Task item says so, or an
+    /// occurrence switched it on for itself.
+    pub(super) fn has_compound(&self, flow: &Flow) -> bool {
+        flow.template.compound
+            || self
+                .template
+                .tasks
+                .values()
+                .any(|task| task.template.compound)
+            || self
+                .overlays
+                .tasks
+                .values()
+                .any(|overlay| overlay.compound == Some(true))
+    }
+
+    /// One iteration's rows drawn **provisionally** — before it is classified, as if it were
+    /// open — to work out its compound occurrences' statuses on (see [`Iteration::provisional`]).
+    pub(super) fn provisional_rows(
+        &self,
+        flow: &Flow,
+        scope: ScopeKey,
+        now: NaiveDateTime,
+    ) -> Result<DerivedRows, FlowError> {
+        let window = iteration_window(flow, scope)?;
+        let window_start = window.as_ref().map(|(_, start)| *start);
+        let bounds = window.as_ref().map(|(window, _)| window.window());
+        let start = bounds.map_or_else(
+            || scope.start_date().and_time(chrono::NaiveTime::MIN),
+            |(start, _)| start,
+        );
+        let slot = SlotWindow {
+            index: 0,
+            scope_id: scope,
+            start,
+            end: bounds.map_or(super::habits::UNBOUNDED, |(_, end)| end),
+        };
+        let iteration = HabitIteration {
+            index: 0,
+            anchor_scope_id: scope,
+            anchor_date: start.date().format("%Y-%m-%d").to_string(),
+            window_end: slot.end.format("%Y-%m-%dT%H:%M:%S").to_string(),
+            status: IterationStatus::Active,
+            missed_from: None,
+            instances: Vec::new(),
+        };
+        let readings = Readings::new();
+        let context = Iteration {
+            iteration: &iteration,
+            slot: &slot,
+            relevance: window.as_ref().map(|(window, _)| window.clone()),
+            due: None,
+            window_start,
+            missed_from: None,
+            root_plan: resolve_root_plan(flow, window_start)?,
+            host_agentic: self.host_agentic,
+            cooling_until: None,
+            readings: &readings,
+            provisional: true,
+        };
+        build_iteration(
+            flow,
+            &self.template,
+            (&self.overlays, &self.relations),
+            &context,
+            self.clock,
+            now,
+        )
+    }
+}
+
+/// Reads what one Habit's rows are drawn from, or `None` when there is nothing to draw: a flow
+/// with no Recurrence, or a commitment flow holding goal items — a Commitment cannot parent a
+/// Goal, so such a template has no valid materialisation.
+pub(super) async fn load_habit<M: SessionMode>(
     db: &mut Db<M>,
     flow: &Flow,
-    now: NaiveDateTime,
-    horizon: Horizon,
-) -> Result<DerivedRows, FlowError> {
+) -> Result<Option<LoadedHabit>, FlowError> {
     let flow_id = FlowId(flow.id);
     let Some(recurrence) = db.flows().get_recurrence(flow_id).await? else {
-        return Ok(DerivedRows::default());
+        return Ok(None);
     };
     let goals = db.flows().list_goals(flow_id).await?;
     if flow.instance_type == "commitment" && !goals.is_empty() {
-        return Ok(DerivedRows::default());
+        return Ok(None);
     }
     let template = load_template(db, flow_id, goals).await?;
     let overlays = db.overlays().for_habit(flow.id).await?;
@@ -359,13 +462,61 @@ pub async fn derive_habit<M: SessionMode>(
         _ => (target_parent_type(&flow.parent_type), flow.parent_id),
     };
     let host_agentic = crate::tasks::agentic::reads_agentic(db, &host_type, host_id).await?;
+    Ok(Some(LoadedHabit {
+        clock: parse_clock(&recurrence)?,
+        recurrence,
+        template,
+        overlays,
+        relations,
+        touched,
+        host_agentic,
+    }))
+}
+
+/// Every occurrence of one Habit within `horizon`, as rows, at `now`.
+///
+/// A flow with no Recurrence derives nothing. So does a commitment flow holding goal items: a
+/// Commitment cannot parent a Goal, so such a template has no valid materialisation, and the load
+/// names the flow rather than drawing a subtree the model forbids.
+///
+/// **This writes**: resolving iteration and cycle windows mints the scope rows they land on.
+#[tracing::instrument(skip(db, flow), fields(flow_id = flow.id))]
+pub async fn derive_habit<M: SessionMode>(
+    db: &mut Db<M>,
+    flow: &Flow,
+    now: NaiveDateTime,
+    horizon: Horizon,
+) -> Result<DerivedRows, FlowError> {
+    let Some(habit) = load_habit(db, flow).await? else {
+        return Ok(DerivedRows::default());
+    };
+    let readings = super::compound_readings::readings(db, flow, &habit, now).await?;
+    let LoadedHabit {
+        recurrence,
+        template,
+        overlays,
+        relations,
+        touched,
+        host_agentic,
+        ..
+    } = &habit;
+    let host_agentic = *host_agentic;
 
     let Schedule {
         iterations,
         slots,
         clock,
         holds,
-    } = schedule(db, flow, &recurrence, &overlays, &touched, now, horizon).await?;
+    } = schedule(
+        db,
+        flow,
+        recurrence,
+        (overlays, &readings),
+        touched,
+        now,
+        horizon,
+    )
+    .await?;
     let by_index: HashMap<i64, &SlotWindow> = slots.iter().map(|slot| (slot.index, slot)).collect();
 
     let mut rows = DerivedRows::default();
@@ -405,15 +556,10 @@ pub async fn derive_habit<M: SessionMode>(
             root_plan: resolve_root_plan(flow, window_start)?,
             cooling_until: holds.get(&slot.index).copied(),
             host_agentic,
+            readings: &readings,
+            provisional: false,
         };
-        let built = build_iteration(
-            flow,
-            &template,
-            (&overlays, &relations),
-            &context,
-            clock,
-            now,
-        )?;
+        let built = build_iteration(flow, template, (overlays, relations), &context, clock, now)?;
         rows.extend(built);
     }
     Ok(rows)
@@ -458,7 +604,7 @@ async fn schedule<M: SessionMode>(
     db: &mut Db<M>,
     flow: &Flow,
     recurrence: &FlowRecurrence,
-    overlays: &HabitOverlays,
+    (overlays, readings): (&HabitOverlays, &Readings),
     touched: &HashSet<ScopeKey>,
     now: NaiveDateTime,
     horizon: Horizon,
@@ -476,10 +622,12 @@ async fn schedule<M: SessionMode>(
         });
     let template_keys = instance_keys(db, flow).await?;
     let parents = occurrence_parents(db, FlowId(flow.id), &template_keys).await?;
+    let compound = compound_items(flow, &db.flows().list_tasks(FlowId(flow.id)).await?);
     let completions = Completions {
         keys: &template_keys,
         overlays,
         parents: &parents,
+        compound: (&compound, readings),
         by_verdict: flow.instance_type == "commitment",
     };
     let slots = clock_slots(flow, recurrence, clock, furthest, |slot| {
@@ -539,6 +687,8 @@ pub(super) struct Completions<'a> {
     pub(super) overlays: &'a HabitOverlays,
     /// Each instance's parent instance.
     pub(super) parents: &'a HashMap<InstanceKey, InstanceKey>,
+    /// The template items marked Compound, and what each compound occurrence reads as.
+    pub(super) compound: (&'a HashSet<TemplateItem>, &'a Readings),
     /// Whether the Habit is a **commitment** one, whose iterations are finished by a verdict on
     /// their root rather than by work being done.
     pub(super) by_verdict: bool,
@@ -547,7 +697,12 @@ pub(super) struct Completions<'a> {
 impl Completions<'_> {
     /// Each of `slots` that is complete, with the instant it was — see [`resolutions`].
     pub(super) fn resolutions(&self, slots: &[SlotWindow]) -> HashMap<i64, NaiveDateTime> {
-        resolutions(slots, self.keys, self.overlays, self.parents)
+        resolutions(
+            slots,
+            self.keys,
+            (self.overlays, self.compound),
+            self.parents,
+        )
     }
 
     /// Each of `slots` that is **finished**, with the instant it was: what starts a cooldown and
@@ -557,7 +712,7 @@ impl Completions<'_> {
         if self.by_verdict {
             return verdict_instants(slots, self.keys, self.overlays);
         }
-        done_instants(slots, self.keys, self.overlays)
+        done_instants(slots, self.keys, (self.overlays, self.compound))
     }
 
     /// The instant the iteration in `slot` was completed, or `None` while it is not — what places
@@ -582,6 +737,10 @@ pub(super) struct CompletionInputs {
     pub(super) overlays: HabitOverlays,
     /// Each instance's parent instance.
     pub(super) parents: HashMap<InstanceKey, InstanceKey>,
+    /// The template items marked Compound.
+    pub(super) compound: HashSet<TemplateItem>,
+    /// What each compound occurrence reads as.
+    pub(super) readings: Readings,
     /// Whether the Habit is a commitment one — see [`Completions::by_verdict`].
     pub(super) by_verdict: bool,
 }
@@ -593,6 +752,7 @@ impl CompletionInputs {
             keys: &self.keys,
             overlays: &self.overlays,
             parents: &self.parents,
+            compound: (&self.compound, &self.readings),
             by_verdict: self.by_verdict,
         }
     }
@@ -606,6 +766,76 @@ impl CompletionInputs {
     pub(super) fn completed_at(&self, slot: &SlotWindow) -> Option<NaiveDateTime> {
         self.completions().completed_at(slot)
     }
+}
+
+/// [`CompletionInputs`] for a Habit that has not been read whole, with what each of its compound
+/// occurrences reads as ([`super::compound_readings`]).
+pub(super) async fn completion_inputs<M: SessionMode>(
+    db: &mut Db<M>,
+    flow: &Flow,
+    now: NaiveDateTime,
+) -> Result<CompletionInputs, FlowError> {
+    let mut inputs = db.flows().completion_inputs(FlowId(flow.id)).await?;
+    if let Some(habit) = load_habit(db, flow).await? {
+        inputs.readings = super::compound_readings::readings(db, flow, &habit, now).await?;
+    }
+    Ok(inputs)
+}
+
+/// The template items marked Compound: the flow's root, and its Task items, that say so.
+pub(super) fn compound_items<'t>(
+    flow: &Flow,
+    tasks: impl IntoIterator<Item = &'t FlowTask>,
+) -> HashSet<TemplateItem> {
+    let root = flow.template.compound.then_some(TemplateItem {
+        item_type: TemplateKind::FlowRoot,
+        item_id: flow.id,
+    });
+    tasks
+        .into_iter()
+        .filter(|task| task.template.compound)
+        .map(|task| TemplateItem {
+            item_type: TemplateKind::FlowTask,
+            item_id: task.id,
+        })
+        .chain(root)
+        .collect()
+}
+
+/// Whether the occurrence of `item` under `node_key` is compound: its overlay's own flag, or its
+/// template item's.
+pub(super) fn is_compound(
+    overlays: &HabitOverlays,
+    compound: &HashSet<TemplateItem>,
+    item: TemplateItem,
+    node_key: &str,
+) -> bool {
+    overlays
+        .tasks
+        .get(node_key)
+        .and_then(|overlay| overlay.compound)
+        .unwrap_or_else(|| compound.contains(&item))
+}
+
+/// When a compound occurrence was done, by its derived status ([`Readings`]): `Some` while it
+/// reads as Done and is not tombstoned — holding its done time, when one is known — and `None`
+/// otherwise, an occurrence nothing was derived for included.
+fn compound_done_at(
+    overlays: &HabitOverlays,
+    readings: &Readings,
+    node_key: &str,
+) -> Option<Option<i64>> {
+    let tombstoned = overlays
+        .tasks
+        .get(node_key)
+        .is_some_and(|overlay| overlay.tombstone.is_some());
+    if tombstoned {
+        return None;
+    }
+    readings
+        .get(node_key)
+        .filter(|reading| reading.status.is_done())
+        .map(|reading| reading.done_at.map(|at| at.and_utc().timestamp_millis()))
 }
 
 /// Every instance one iteration holds, as `(template item, cycle pair)`: the root, then each item
@@ -645,10 +875,14 @@ async fn instance_keys<M: SessionMode>(
 /// Maps each started slot to the instant its iteration was completed — present only when every
 /// one of its instances is done and none is tombstoned. A root Commitment is never *done*: a
 /// verdict is an answer, not a completion.
+///
+/// A **compound** occurrence is done by its derived status, worked out on its subtree before the
+/// iteration is classified ([`super::compound_readings`]), and finished at its subtree's latest
+/// finish (`docs/spec/habits.md`, "Iteration resolution").
 pub(super) fn resolutions(
     slots: &[SlotWindow],
     keys: &[InstanceKey],
-    overlays: &HabitOverlays,
+    (overlays, (compound, readings)): (&HabitOverlays, (&HashSet<TemplateItem>, &Readings)),
     parents: &HashMap<InstanceKey, InstanceKey>,
 ) -> HashMap<i64, NaiveDateTime> {
     let mut resolved = HashMap::new();
@@ -678,28 +912,11 @@ pub(super) fn resolutions(
                 cycle: *cycle,
             }
             .node_key();
-            let done_at = overlays
-                .tasks
-                .get(&node_key)
-                .filter(|overlay| {
-                    overlay.tombstone.is_none()
-                        && overlay
-                            .status
-                            .as_deref()
-                            .and_then(Status::from_db)
-                            .is_some_and(|status| status.is_done())
-                })
-                .map(|overlay| overlay.resolved_at)
-                .or_else(|| {
-                    overlays
-                        .goals
-                        .get(&node_key)
-                        .filter(|overlay| {
-                            overlay.tombstone.is_none()
-                                && overlay.status.as_deref() == Some("achieved")
-                        })
-                        .map(|overlay| overlay.resolved_at)
-                });
+            let done_at = if is_compound(overlays, compound, *item, &node_key) {
+                compound_done_at(overlays, readings, &node_key)
+            } else {
+                done_of(overlays, &node_key)
+            };
             match done_at {
                 Some(at) => latest = latest.max(at),
                 None => {
@@ -719,6 +936,27 @@ pub(super) fn resolutions(
     resolved
 }
 
+/// When a non-compound occurrence was done (a Task, either model) or achieved (a Goal) — `Some`,
+/// with its recorded instant if any, while it is and is not tombstoned.
+fn done_of(overlays: &HabitOverlays, node_key: &str) -> Option<Option<i64>> {
+    overlays
+        .tasks
+        .get(node_key)
+        .filter(|overlay| {
+            overlay.tombstone.is_none() && Status::is_done_db(overlay.status.as_deref())
+        })
+        .map(|overlay| overlay.resolved_at)
+        .or_else(|| {
+            overlays
+                .goals
+                .get(node_key)
+                .filter(|overlay| {
+                    overlay.tombstone.is_none() && overlay.status.as_deref() == Some("achieved")
+                })
+                .map(|overlay| overlay.resolved_at)
+        })
+}
+
 /// Maps each slot whose iteration is **done** to the instant it was: every one of its instances
 /// done (a Task) or achieved (a Goal), with none set aside — so an iteration resolved only because
 /// its open work was archived by hand is not here — at the latest of their done dates. What starts
@@ -727,7 +965,7 @@ pub(super) fn resolutions(
 fn done_instants(
     slots: &[SlotWindow],
     keys: &[InstanceKey],
-    overlays: &HabitOverlays,
+    (overlays, (compound, readings)): (&HabitOverlays, (&HashSet<TemplateItem>, &Readings)),
 ) -> HashMap<i64, NaiveDateTime> {
     slots
         .iter()
@@ -740,24 +978,13 @@ fn done_instants(
                     cycle: *cycle,
                 }
                 .node_key();
-                // Done in either model — an Agentic occurrence's Done is `agentic_done`.
-                let at = overlays
-                    .tasks
-                    .get(&node_key)
-                    .filter(|overlay| {
-                        overlay.tombstone.is_none() && Status::is_done_db(overlay.status.as_deref())
-                    })
-                    .map(|overlay| overlay.resolved_at)
-                    .or_else(|| {
-                        overlays
-                            .goals
-                            .get(&node_key)
-                            .filter(|overlay| {
-                                overlay.tombstone.is_none()
-                                    && overlay.status.as_deref() == Some("achieved")
-                            })
-                            .map(|overlay| overlay.resolved_at)
-                    })?;
+                // Done in either model — an Agentic occurrence's Done is `agentic_done` — and a
+                // compound one by its derived status.
+                let at = if is_compound(overlays, compound, *item, &node_key) {
+                    compound_done_at(overlays, readings, &node_key)
+                } else {
+                    done_of(overlays, &node_key)
+                }?;
                 latest = latest.max(at);
             }
             let instant = latest.and_then(chrono::DateTime::from_timestamp_millis)?;
@@ -913,6 +1140,7 @@ fn build_iteration(
         _ => (target_parent_type(&flow.parent_type), flow.parent_id),
     };
     let root_timing = match context.iteration.status {
+        _ if context.provisional => InstanceTiming::Active,
         IterationStatus::Upcoming => InstanceTiming::Pending,
         IterationStatus::Lapsed | IterationStatus::Missed => InstanceTiming::Lapsed,
         _ => InstanceTiming::Active,
@@ -924,8 +1152,9 @@ fn build_iteration(
     // its iteration is — by then the next instance has taken its place.
     let iteration_done = context.iteration.status == IterationStatus::Done;
     let unscoped = context.window_start.is_none();
-    let window_passed =
-        |end: NaiveDateTime| !verdict_owed && if unscoped { iteration_done } else { end <= now };
+    let window_passed = |end: NaiveDateTime| {
+        !context.provisional && !verdict_owed && if unscoped { iteration_done } else { end <= now }
+    };
     let mut occurrences = vec![Occurrence {
         key: root_key,
         kind: occurrence_kind(flow, TemplateKind::FlowRoot),
@@ -1025,7 +1254,11 @@ fn build_iteration(
                 time_scope,
                 plan,
                 due,
-                timing: instance_timing(clock, context.iteration.status, window, now),
+                timing: if context.provisional {
+                    InstanceTiming::Active
+                } else {
+                    instance_timing(clock, context.iteration.status, window, now)
+                },
                 closes_when_done: window_passed(window.1),
                 origin: origin_of(item, cycle),
                 parent_key: Some(parent),
@@ -1038,9 +1271,10 @@ fn build_iteration(
         dependencies: template_edges(flow, &occurrences, relations),
         ..DerivedRows::default()
     };
-    let expired = context.iteration.status == IterationStatus::Expired;
+    let expired = !context.provisional && context.iteration.status == IterationStatus::Expired;
     let aside = held_by_an_archive(&occurrences, overlays);
     let kinds = occurrence_kinds(&occurrences, overlays, context.host_agentic);
+    let compound = compound_items(flow, template.tasks.values());
     for occurrence in occurrences {
         registry::remember(&DerivedKey::Occurrence(occurrence.key));
         let node_key = occurrence.key.node_key();
@@ -1090,16 +1324,35 @@ fn build_iteration(
                 let overlay = overlays.tasks.get(&node_key).cloned().unwrap_or_default();
                 let reasons = reasons_of(overlay.block_reasons_set);
                 let default = occurrence.due;
+                let own_template = overlay.async_template_set;
+                let item_template = occurrence.fields.async_template.clone();
                 let agentic = kinds.get(&node_key).copied().unwrap_or(false);
-                let (mut task, mut lifecycle) =
-                    task_row(occurrence, overlay, clock, expired, agentic);
+                // A compound occurrence's status is its derived one, when its Habit derived it.
+                let reading = is_compound(overlays, &compound, occurrence.key.item, &node_key)
+                    .then(|| context.readings.get(&node_key))
+                    .flatten();
+                let (mut task, mut lifecycle) = task_row(
+                    occurrence,
+                    overlay,
+                    clock,
+                    expired,
+                    (agentic, reading.map(|reading| reading.status)),
+                );
+                if reading.is_some() {
+                    rows.settled.insert(task.id.clone());
+                }
                 archive_if_held(&mut lifecycle, &aside, &node_key);
                 let due = occurrence_due(&task, default);
                 lifecycle.overdue =
                     derive_overdue(due, task.status.is_done(), lifecycle.archival, now);
-                // Its own Expectation template, kept only while it is Asynchronous.
+                // Its Expectation template, kept only while it is Asynchronous: its own when it
+                // has one — or, overridden with none, no template — and otherwise its item's.
                 if task.asynchronous {
-                    task.async_template = overlays.async_templates.get(&node_key).cloned();
+                    task.async_template = match overlays.async_templates.get(&node_key) {
+                        Some(own) => Some(own.clone()),
+                        None if own_template => None,
+                        None => item_template,
+                    };
                 }
                 if let Some(plan) = &task.plan {
                     lifecycle.plan_timing = Some(derive_timing(Some(plan.window()), now));
@@ -1411,10 +1664,10 @@ fn task_row(
     overlay: TaskOverlay,
     clock: Clock,
     expired: bool,
-    agentic: bool,
+    (agentic, derived): (bool, Option<Status>),
 ) -> (Task, ItemLifecycle) {
     let id = NodeId::Derived(occurrence.key.id());
-    let status = occurrence_status(&overlay, agentic);
+    let status = derived.unwrap_or_else(|| occurrence_status(&overlay, agentic));
     let archival = overlay
         .archival
         .as_deref()
@@ -1462,8 +1715,8 @@ fn task_row(
         asynchronous: overlay
             .asynchronous
             .unwrap_or(occurrence.fields.asynchronous),
-        // Only a stored Task carries Compound; an occurrence keeps its own status.
-        compound: false,
+        // Its flow Task item's Compound, under its own; a Flow root has none.
+        compound: overlay.compound.unwrap_or(occurrence.fields.compound),
         async_template: None,
         // The template's brief, field by field, under the occurrence's own.
         agentic_brief: overlay.brief_over(occurrence.fields.agentic_brief.as_ref()),

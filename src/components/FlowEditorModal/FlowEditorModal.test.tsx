@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import FlowEditorModal from "./FlowEditorModal";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -53,6 +53,8 @@ const TARGETS = [mkGoal(7, "Backend Revamp"), mkGoal(8, "Frontend Polish")];
 const defaultProps = {
   node: mkFlow(),
   availableTargets: TARGETS,
+  allTags: [],
+  domainNames: new Map<number, string>(),
   onSave: vi.fn().mockResolvedValue(undefined),
   onClose: vi.fn(),
 };
@@ -93,9 +95,40 @@ describe("FlowEditorModal — save", () => {
         rootPlanStart: null,
         rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null,
         isPrivate: false,
+        template: { asynchronous: false, compound: false, async_template: null },
         recurrence: null,
       }),
     );
+  });
+
+  it("saves the root's Compound flag and wait template on a task-instance flow", async () => {
+    render(<FlowEditorModal {...defaultProps} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "compoundOff" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "asynchronousOff" }));
+    fireEvent.change(screen.getByLabelText("expectation:templateTitle"), { target: { value: "Reply" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
+        template: { asynchronous: true, compound: true, async_template: { title: "Reply", tag_ids: [] } },
+      })),
+    );
+  });
+
+  it("groups the repetition under its own subheading, apart from the root's own switches", () => {
+    render(<FlowEditorModal {...defaultProps} />);
+    expect(screen.getByRole("checkbox", { name: "compoundOff" })).toBeInTheDocument();
+    const repetition = screen.getByRole("group", { name: "fieldRepetition" });
+    expect(within(repetition).queryByRole("checkbox", { name: "compoundOff" })).toBeNull();
+    expect(within(repetition).getByRole("checkbox", { name: "makeHabit" })).toBeInTheDocument();
+  });
+
+  it("offers neither on a goal-instance flow, and saves none", async () => {
+    render(<FlowEditorModal {...defaultProps} />);
+    fireEvent.click(screen.getByRole("button", { name: "nodeKinds:goal" }));
+    expect(screen.queryByRole("checkbox", { name: "compoundOff" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalled());
+    expect(defaultProps.onSave.mock.calls[0]?.[0]).not.toHaveProperty("template");
   });
 
   it("saves with goal instance type after clicking the goal pill", async () => {

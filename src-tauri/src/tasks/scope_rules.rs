@@ -69,16 +69,38 @@ pub struct ViolatingDescendant {
 ///
 /// On the **read** path: a broken chain leaves the item unconstrained rather than failing, so one
 /// corrupt row cannot blank the whole mindmap. The break is logged rather than swallowed.
-pub(super) async fn scope_governance<M: SessionMode>(
+///
+/// `exit` says whether a Habit occurrence's window governs what hangs on it — see
+/// [`OccurrenceExit`].
+pub(super) async fn scope_governance_with<M: SessionMode>(
     db: &mut Db<M>,
     node_type: &str,
     node_id: i64,
+    exit: OccurrenceExit,
 ) -> Result<Option<(Bounds, OnScopeExit)>, TaskError> {
     let chain = ancestry::climb(db, node_type, node_id).await?;
+    if exit == OccurrenceExit::Ignored && chain.nearest_scoped_is_occurrence() {
+        return Ok(None);
+    }
     let Some((time_scope, on_exit)) = chain.nearest_scoped().or_unconstrained() else {
         return Ok(None);
     };
     Ok(Some((time_scope.window(), on_exit)))
+}
+
+/// Whether an added child of a Habit occurrence that has no window of its own is governed by its
+/// occurrence's window — which archives it with the occurrence when that window passes.
+///
+/// A compound occurrence's status is worked out **before** its iteration is classified
+/// (`docs/spec/habits.md`, *Iteration resolution*), so archival that comes only from the
+/// iteration's window passing must not feed back into whether the iteration resolved: that
+/// reading takes [`Self::Ignored`]; everywhere else it is [`Self::Honoured`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OccurrenceExit {
+    /// The occurrence's window governs what hangs on it, as the board shows it.
+    Honoured,
+    /// What is governed by nothing but its occurrence's window reads as unscoped.
+    Ignored,
 }
 
 /// Derives the full lifecycle state (Timing / Resolution / Archival and the Overdue flag — see
@@ -100,9 +122,19 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
     db: &mut Db<M>,
     now: NaiveDateTime,
 ) -> Result<Vec<ItemLifecycle>, TaskError> {
+    derive_scope_lifecycles(db, now, OccurrenceExit::Honoured).await
+}
+
+/// [`derive_all_scope_lifecycles`], saying whether a Habit occurrence's window governs what hangs
+/// on it — see [`OccurrenceExit`].
+pub async fn derive_scope_lifecycles<M: SessionMode>(
+    db: &mut Db<M>,
+    now: NaiveDateTime,
+    exit: OccurrenceExit,
+) -> Result<Vec<ItemLifecycle>, TaskError> {
     let mut out = Vec::new();
     for task in db.tasks().list().await? {
-        let governance = scope_governance(db, "task", task.id.require_stored()?).await?;
+        let governance = scope_governance_with(db, "task", task.id.require_stored()?, exit).await?;
         let (window, on_exit) = governance.unzip();
         let resolved = task.status.is_done();
         let stored = Some(Archival::from(task.archival));
@@ -129,7 +161,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         });
     }
     for goal in db.goals().list().await? {
-        let governance = scope_governance(db, "goal", goal.id.require_stored()?).await?;
+        let governance = scope_governance_with(db, "goal", goal.id.require_stored()?, exit).await?;
         let (window, on_exit) = governance.unzip();
         let parsed_status = GoalStatus::from_db(&goal.status);
         let resolved = matches!(
@@ -152,7 +184,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
         });
     }
     for commitment in db.commitments().list().await? {
-        let window = scope_governance(db, "commitment", commitment.id.require_stored()?)
+        let window = scope_governance_with(db, "commitment", commitment.id.require_stored()?, exit)
             .await?
             .map(|(window, _)| window);
         let verdict_window = commitments::effective_verdict_window(

@@ -13,6 +13,7 @@
 //! `habit_slots` — are pure: a scope is derived from its value key (ADR 0009), so resolving a
 //! window reads and writes nothing.
 
+mod compound_readings;
 pub mod cooldown;
 pub mod cycles;
 pub mod done_date;
@@ -2476,17 +2477,23 @@ impl<'session> FlowOperator<'session> {
         let overlays = OverlayOperator::new(&mut *self.connection)
             .for_habit(flow_id.0)
             .await?;
+        let tasks = self.list_tasks(flow_id).await?;
+        let flow = self.get(flow_id).await?;
+        let compound = occurrences::compound_items(&flow, &tasks);
         let template = (
             self.list_goals(flow_id).await?,
-            self.list_tasks(flow_id).await?,
+            tasks,
             self.cycles_by_item(flow_id).await?,
         );
         let parents = occurrences::occurrence_parents_of(flow_id, template, &keys);
-        let by_verdict = self.get(flow_id).await?.instance_type == "commitment";
+        let by_verdict = flow.instance_type == "commitment";
         Ok(occurrences::CompletionInputs {
             keys,
             overlays,
             parents,
+            compound,
+            // Filled by `occurrences::completion_inputs`, which can derive them.
+            readings: compound_readings::Readings::new(),
             by_verdict,
         })
     }
@@ -3136,7 +3143,7 @@ pub async fn generate_habit_iterations<M: SessionMode>(
         .ok_or_else(|| FlowError::Invalid("flow is not a habit".to_string()))?;
     let flow = db.flows().get(flow_id).await?;
     let clock = parse_clock(&recurrence)?;
-    let completions = db.flows().completion_inputs(flow_id).await?;
+    let completions = occurrences::completion_inputs(db, &flow, now).await?;
     let slots = clock_slots(&flow, &recurrence, clock, now, |slot| {
         completions.completed_at(slot)
     })?;
@@ -3927,8 +3934,9 @@ pub async fn start(
 }
 
 /// Copies what a template says about the rows it draws onto one row a start just made: a Task's
-/// delegate, Agentic and Asynchronous flags and Backlog, and every kind's tags, block reasons and
-/// beads id — so a started flow's copy is the template, not merely its title.
+/// delegate, Agentic, Asynchronous and Compound flags, wait template and Backlog, and every kind's
+/// tags, block reasons and beads id — so a started flow's copy is the template, not merely its
+/// title. The copy is the Task's own: a later edit to the template changes nothing started.
 async fn apply_template_fields(
     db: &mut Db<Transactional>,
     node_type: &str,
@@ -3950,6 +3958,9 @@ async fn apply_template_fields(
                         archival: Some(fields.archival),
                         // A started Flow's Task carries its template's brief as its own.
                         agentic_brief: Some(fields.agentic_brief.clone()),
+                        // And a flow Task item's Compound flag and wait template (Task 611).
+                        compound: Some(fields.compound),
+                        async_template: Some(fields.async_template.clone()),
                         ..Default::default()
                     },
                 )
