@@ -100,7 +100,7 @@ An installed build keeps its data in the same directory as dev builds (`~/.local
 
 Full spec at docs/spec/ dir, with top level reference at SPEC.md
 Important decisions reflected in docs/adr/ and changelog.d/
-Agents configured via CLAUDE.md and .claude/, with arlesh itself serving as an MCP for task management.
+Agents configured via AGENTS.md and .claude/, with arlesh itself serving as an MCP for task management.
 
 ## Stack
 

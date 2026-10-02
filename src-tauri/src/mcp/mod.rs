@@ -44,6 +44,7 @@ mod access;
 mod agentic;
 mod beads;
 mod capacity;
+mod delegation;
 pub mod endpoint;
 mod flows;
 pub(crate) mod ids;

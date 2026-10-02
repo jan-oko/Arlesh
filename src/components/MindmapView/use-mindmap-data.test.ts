@@ -10,6 +10,7 @@ import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
 import type { Task } from "@/api/tasks";
 import type { Info } from "@/api/infos";
+import type { Expectation } from "@/api/expectations";
 import type { Flow, FlowGoal, FlowTask } from "@/api/flows";
 import type { MindmapLoad } from "@/api/mindmap";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -1378,5 +1379,53 @@ describe("decorateIterationRoots", () => {
     expect(item.habitIteration).toBeUndefined();
     expect(stored.title).toBe("Plain");
     expect(stored.rowTitle).toBeUndefined();
+  });
+});
+
+describe("buildTree — a delegated Task's wait and its holder", () => {
+  function delegationWait(taskId: number, title: string): Expectation {
+    return {
+      id: "6c2e8d4f-0000-5000-8000-0000000000aa", title, parent_type: "task", parent_id: taskId,
+      status: "pending", archival: "live", time_scope: null, tag_ids: [], position: 0, is_private: false,
+      origin: { kind: "delegation_wait", task_id: taskId },
+    };
+  }
+
+  const label = (title: string, delegateName: string | null) => `${delegateName ?? "?"} finish: ${title}`;
+
+  function build(task: Task, wait: Expectation, names: ReadonlyMap<number, string> = new Map()) {
+    const root = buildTree(
+      [mkDomain()], [mkGoal()], [task], [], [], [], [], [], [], [], [], [], [], [wait], label, undefined, undefined, undefined, undefined, undefined, names,
+    );
+    const taskNode = root.children[0]?.children[0]?.children[0];
+    return { taskNode, waitNode: taskNode?.children.find((child) => child.kind === "expectation") };
+  }
+
+  it("names a Person by their name, and carries it on the Task for its badge", () => {
+    const { waitNode, taskNode } = build(
+      mkTask({ id: 9, title: "Book the venue", delegate_to: { kind: "person", id: 4 } }),
+      delegationWait(9, "Book the venue"),
+      new Map([[4, "Tuli"]]),
+    );
+    expect(waitNode?.title).toBe("Tuli finish: Book the venue");
+    expect(waitNode?.rowTitle).toBe("Book the venue");
+    expect(taskNode?.delegateName).toBe("Tuli");
+  });
+
+  it("calls a Person whose name is not known by the fallback", () => {
+    const { waitNode } = build(
+      mkTask({ id: 9, title: "Book the venue", delegate_to: { kind: "person", id: 4 } }),
+      delegationWait(9, "Book the venue"),
+    );
+    expect(waitNode?.title).toBe("? finish: Book the venue");
+  });
+
+  it("draws a wait given a title of its own with that title", () => {
+    const { waitNode } = build(
+      mkTask({ id: 9, title: "Book the venue", delegate_to: { kind: "person", id: 4 } }),
+      delegationWait(9, "Hear back about the venue"),
+      new Map([[4, "Tuli"]]),
+    );
+    expect(waitNode?.title).toBe("Hear back about the venue");
   });
 });

@@ -1391,6 +1391,7 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
                 "add_tags",
                 "remove_tags",
                 "block_reasons",
+                "delegate",
             ],
         ),
         (
