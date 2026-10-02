@@ -1,4 +1,23 @@
-# Agent Instructions
+# Arlesh — Claude Instructions
+
+## Project
+
+Task management + Obsidian knowledge-base desktop app. See `SPEC.md` for the full design specification and `README.md` for an overview.
+
+Stack: Tauri 2.0 · React · TypeScript · SQLite
+
+## Rules
+
+Additional rules live in `.claude/rules/`. Read them before starting any task.
+
+## Key conventions
+
+- The design specification is authoritative. Update it when design decisions are made or revised. It is one document in several files: `SPEC.md` is the front door — the overview, an index of the areas, and the implementation phases — and each area lives in its own file under `docs/spec/` (`resources.md`, `time-scopes.md`, `flows.md`, `habits.md`, `link-inheritance.md`, `filtering-logic.md`, `tabs.md`, `mindmap-view.md`, `list-view.md`, `mcp-server.md`, `undo.md`). Write a design change into the area file it belongs to, so two features in flight stop meeting in one file; `SPEC.md` itself changes only when an area is added, renamed or removed.
+- **Changelog fragments, and no assembled file.** Record a user-visible change as one file at `changelog.d/<heading>/<NNNN>-<slug>.md`, where the directory is the heading — `added`, `changed`, `fixed` or `removed`. The four-digit number orders the section, newest first; pick one above every number you can see. It does **not** have to be unique, so two branches picking the same number still produce two different files. The file holds the entry exactly as it should read, starting `- **Title.** …`, continuation paragraphs indented two spaces. It is user-facing: describe behaviour, not refactors. Nothing user-visible changed? Write no fragment.
+  - There is no `CHANGELOG.md` and nothing assembles one. The fragments **are** the record. `CHANGELOG.md` and the `changelog:check` CI gate were dropped on 2026-09-22 because the gate could only ever fire on master, after the merge that carried a fragment — so every such merge went red, and 17 of master's 18 red runs were that check rather than a real break, camouflaging the one genuine failure. Reassembling is tracked as `Arlesh-ab9`, deferred: it needs a credential that can push to a protected master, which the default `GITHUB_TOKEN` is not.
+
+- **Commit all changes at the end of every request.** Stage and commit everything modified during the request in a single commit with a clear message. Do not leave the working tree dirty.
+- The implementation phases, listed in `SPEC.md` and nowhere else, define sequencing. Do not implement Phase N+1 features while Phase N is in progress unless explicitly asked.
 
 ## Tracking work: the Arlesh board
 
@@ -25,27 +44,3 @@ Priorities are `MW`, `A`, `B`, `C`, most urgent first; backlogged work has no pr
 - **Always hand back with an agentic question.** When you finish your work, or otherwise pass it to the user — a PR ready for review, a spec question, anything the user must act on — raise a question wait under the Task with `arlesh_waits.ask`, its title saying what the user must do ("PR #n is green: review and merge?"). That is what puts the Task in **Review**, and it is the only way an agent hands responsibility back. Don't mark the Task `done` yourself while the user still has to act; set `done` only after their answer settles it.
 - If the MCP is unreachable, Arlesh isn't running (it must be open or in the tray): say so and ask the user to start it. Don't guess at the board, and don't fall back to bd.
 - `.beads/` is kept as a read-only archive of the closed bd history. Don't run `bd` to track new work.
-
-## Non-Interactive Shell Commands
-
-**ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.
-
-Shell commands like `cp`, `mv`, and `rm` may be aliased to include `-i` (interactive) mode on some systems, causing the agent to hang indefinitely waiting for y/n input.
-
-**Use these forms instead:**
-```bash
-# Force overwrite without prompting
-cp -f source dest           # NOT: cp source dest
-mv -f source dest           # NOT: mv source dest
-rm -f file                  # NOT: rm file
-
-# For recursive operations
-rm -rf directory            # NOT: rm -r directory
-cp -rf source dest          # NOT: cp -r source dest
-```
-
-**Other commands that may prompt:**
-- `scp` - use `-o BatchMode=yes` for non-interactive
-- `ssh` - use `-o BatchMode=yes` to fail instead of prompting
-- `apt-get` - use `-y` flag
-- `brew` - use `HOMEBREW_NO_AUTO_UPDATE=1` env var
