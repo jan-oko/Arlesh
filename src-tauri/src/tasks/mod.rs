@@ -27,6 +27,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::InfoId;
+use crate::nodes::id::NodeId;
 use crate::nodes::origin::Origin;
 use crate::scopes::key::ScopeKey;
 use ancestry::{AncestryLink, NodeKind, NodeRef};
@@ -1692,18 +1693,29 @@ pub async fn get_task_with_blockers<M: SessionMode>(
     db: &mut Db<M>,
     id: TaskId,
 ) -> Result<TaskWithBlockers, TaskError> {
-    get_task_with_blockers_as(db, id, &HashMap::new()).await
+    get_task_with_blockers_as(db, id, &HashMap::new(), &HashMap::new()).await
+}
+
+/// How a "Blocked by …" reason names the node it is blocked by: its **short id** from `names` —
+/// keyed as the board keys a node, `task-12` — or, for a node `names` does not hold, its id.
+pub fn dependency_name(names: &HashMap<String, String>, kind: &str, id: &NodeId) -> String {
+    names
+        .get(&format!("{kind}-{id}"))
+        .cloned()
+        .unwrap_or_else(|| id.to_string())
 }
 
 /// [`get_task_with_blockers`], reading each stored Task's status from `served` where it has one
 /// — the board's status, which for a compound Task is the one derived from its sub-items
 /// ([`compound`]), not the one its row last held. The Task's own status and every Task
-/// dependency's are read this way, so the answer agrees with the board.
-#[tracing::instrument(skip(db, served))]
+/// dependency's are read this way, so the answer agrees with the board. Each dependency it is
+/// blocked by is named by its short id in `names` ([`dependency_name`]).
+#[tracing::instrument(skip(db, served, names))]
 pub async fn get_task_with_blockers_as<M: SessionMode>(
     db: &mut Db<M>,
     id: TaskId,
     served: &HashMap<i64, String>,
+    names: &HashMap<String, String>,
 ) -> Result<TaskWithBlockers, TaskError> {
     let mut task = db.tasks().get(id).await?;
     if let Some(status) = served.get(&id.0) {
@@ -1722,7 +1734,8 @@ pub async fn get_task_with_blockers_as<M: SessionMode>(
                 if status != TaskStatus::Done.as_str() {
                     reasons.push(format!(
                         "Blocked by task {} ({})",
-                        dependency_id, dependency_task.title
+                        dependency_name(names, "task", &dependency_id),
+                        dependency_task.title
                     ));
                 }
             }
@@ -1734,7 +1747,8 @@ pub async fn get_task_with_blockers_as<M: SessionMode>(
                 if goal_status != GoalStatus::Achieved.as_str() {
                     reasons.push(format!(
                         "Blocked by goal {} ({})",
-                        dependency_id, goal_title
+                        dependency_name(names, "goal", &dependency_id),
+                        goal_title
                     ));
                 }
             }
@@ -1743,7 +1757,8 @@ pub async fn get_task_with_blockers_as<M: SessionMode>(
                 if expectation.status == ExpectationStatus::Pending {
                     reasons.push(format!(
                         "Blocked by expectation {} ({})",
-                        dependency_id, expectation.title
+                        dependency_name(names, "expectation", &NodeId::Stored(dependency_id)),
+                        expectation.title
                     ));
                 }
             }

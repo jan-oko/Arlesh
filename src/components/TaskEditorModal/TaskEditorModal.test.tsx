@@ -69,6 +69,15 @@ describe("TaskEditorModal — virtual blockers from dependencies", () => {
     return render(<TaskEditorModal {...defaultProps} availableForDep={[GOAL_DEP]} />);
   }
 
+  it("names the dependency by its short id", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "list_task_dependencies") return Promise.resolve([{ type: "goal", id: 9 }]);
+      return Promise.resolve(null);
+    });
+    render(<TaskEditorModal {...defaultProps} availableForDep={[{ ...GOAL_DEP, shortId: "6f3" }]} />);
+    await waitFor(() => expect(screen.getByText("Blocked by goal 6f3 (Milestone)")).toBeInTheDocument());
+  });
+
   it("shows an unmet dependency as a virtual block reason", async () => {
     withDep();
     await waitFor(() => expect(screen.getByText("Blocked by goal 9 (Milestone)")).toBeInTheDocument());

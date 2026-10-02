@@ -35,6 +35,7 @@ import AsyncTemplateFields from "@/components/AsyncTemplateEditor/AsyncTemplateF
 import styles from "@/components/EditorModal/EditorModal.module.css";
 import { TASK_STATUS } from "@/utils/status-mapping";
 import { isOverdue } from "@/utils/overdue";
+import { blockedByText } from "@/utils/blocked-by";
 
 export interface TaskSaveData {
   title: string;
@@ -310,12 +311,13 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   // non-Done task / non-Achieved goal) blocks. Recomputed live, so removing a dependency drops its row.
   const virtualBlockers = currentDeps.flatMap((dep) => {
     const target = availableForDep.find((n) => n.id === entityNodeId(dep.type, dep.id));
+    const label = blockedByText(dep.type, target?.shortId, dep.id, depTitle(dep));
     const unmet = target === undefined
       ? true
       : dep.type === "task" ? target.status !== "done"
         : dep.type === "expectation" ? target.status === EXPECTATION_STATUS.PENDING
           : target.status !== "achieved";
-    return unmet ? [`Blocked by ${dep.type} ${dep.id} (${depTitle(dep)})`] : [];
+    return unmet ? [label] : [];
   });
 
   return (

@@ -335,8 +335,10 @@ async fn get(db: &mut Db<Transactional>, board: &Board, id: &NodeIdParam) -> Ans
         .filter(|task| task.compound)
         .filter_map(|task| Some((task.id.stored()?, task.status.clone())))
         .collect();
+    // Each dependency it is blocked by is named by its short id, as the MCP shows every node.
+    let names = board.names.short_ids_by_key();
     let mut found =
-        attempt!(crate::tasks::get_task_with_blockers_as(db, TaskId(row), &served).await);
+        attempt!(crate::tasks::get_task_with_blockers_as(db, TaskId(row), &served, &names).await);
     // A block the board derived — the agent capacity lock's, or a Compound Task's — is on the
     // board, not in a row.
     found.block_reasons.extend(
@@ -350,7 +352,7 @@ async fn get(db: &mut Db<Transactional>, board: &Board, id: &NodeIdParam) -> Ans
     );
     let dependencies = attempt!(db.tasks().list_dependencies(TaskId(row)).await);
     access::restrict_task(&mut found.task, &board.map);
-    access::restrict_block_reasons(&mut found.block_reasons, &dependencies, &board.map);
+    access::restrict_block_reasons(&mut found.block_reasons, &dependencies, &board.map, &names);
     let mut found = serde_json::to_value(found).unwrap_or(Value::Null);
     if let Some(task) = found.get_mut("task") {
         board.names.stamp(task, NodeTable::Task);

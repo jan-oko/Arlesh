@@ -213,6 +213,9 @@ export interface MindmapNode {
   /** Blocked because it is a **Compound** Task whose open sub-items are all blocked (Tasks only):
    * the backend derived it, and its reason is among `virtualBlockers`. */
   compoundBlocked?: boolean;
+  /** Its short id on the board — the one the MCP shows an agent — for a Task, Goal, Commitment or
+   * wait. What a "Blocked by …" reason names it by. */
+  shortId?: string;
   /** Blocked by its **Habit's cooldown** until this local wall-clock instant (an iteration's root
    * only): the backend derived it, its reason is among `virtualBlockers`, and it lifts by itself. */
   coolingUntil?: string;

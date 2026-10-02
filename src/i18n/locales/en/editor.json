@@ -161,5 +161,5 @@
   "compoundBlocked": "All open sub-items are blocked",
   "compoundBlockLabel": "From its sub-items — clears when one is unblocked or finished",
   "cooldownBlocked": "Cooling down until {{when}}",
-  "cooldownBlockLabel": "From its Habit's cooldown — lifts by itself"
+  "cooldownBlockLabel": "From its Habit's cooldown"
 }

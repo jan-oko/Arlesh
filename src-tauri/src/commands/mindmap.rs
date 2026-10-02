@@ -26,9 +26,10 @@ pub async fn load_mindmap(
 ) -> Result<MindmapLoad, WireError> {
     let at_capacity = capacity.get().await.at_capacity;
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let load = mindmap::load_blocked(&mut db, now, at_capacity)
+    let mut load = mindmap::load_blocked(&mut db, now, at_capacity)
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
+    load.short_ids = crate::mcp::ids::board_short_ids(&load);
     Ok(load)
 }

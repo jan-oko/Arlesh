@@ -277,6 +277,21 @@ describe("buildTree", () => {
     expect(goalNode?.blockReasons).toEqual(["waiting on X", "needs sign-off"]);
   });
 
+  it("names an unmet dependency by its short id, and carries the short id on its node", () => {
+    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const blocker = mkTask({ id: 2, title: "Dep", status: "in_progress", parent_type: "project", parent_id: 1 });
+    const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
+    const root = buildTree(
+      [aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [],
+      [{ task_id: 3, dependency_type: "task", dependency_id: 2 }],
+      [], [], (title) => title, (title) => title, "compound", "capacity", (until) => until,
+      { "task-2": "6f3", "task-3": "a1c" },
+    );
+    const tasks = root.children[0]?.children ?? [];
+    expect(tasks.find((c) => c.id === "task-3")?.virtualBlockers).toEqual(["Blocked by task 6f3 (Dep)"]);
+    expect(tasks.find((c) => c.id === "task-2")?.shortId).toBe("6f3");
+  });
+
   it("derives virtual block reasons from unmet task dependencies", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
     const blocker = mkTask({ id: 2, title: "Dep", status: "in_progress", parent_type: "project", parent_id: 1 });
