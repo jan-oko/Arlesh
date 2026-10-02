@@ -19,8 +19,8 @@ interface Props {
 }
 
 /**
- * A Task template's **Asynchronous** and **Compound** switches, and under Asynchronous the wait
- * every instance's completion spawns — the Task editor's fields. Shared by the editors of a flow
+ * A Task template's **Asynchronous** switch with, directly under it, the wait every instance's
+ * completion spawns — the Task editor's fields — and then its **Compound** switch. Shared by the editors of a flow
  * Task item and of a task-instance Flow's root, the two templates that carry them.
  */
 export default function TaskTemplateFlags({
@@ -38,16 +38,6 @@ export default function TaskTemplateFlags({
           label={asynchronous ? t("asynchronousOn") : t("asynchronousOff")}
         />
       </div>
-      {/* Compound, beside Asynchronous as in the Task editor: every instance's status follows its
-          sub-items. */}
-      <div className={styles.label}>
-        {t("fieldCompound")}
-        <Switch
-          checked={compound}
-          onChange={onCompoundChange}
-          label={compound ? t("compoundOn") : t("compoundOff")}
-        />
-      </div>
       {asynchronous && (
         <div role="group" aria-label={t("expectation:templateSection")}>
           <span className={styles.label}>{t("expectation:templateSection")}</span>
@@ -60,6 +50,16 @@ export default function TaskTemplateFlags({
           />
         </div>
       )}
+      {/* Compound, after Asynchronous and its wait: every instance's status follows its
+          sub-items. */}
+      <div className={styles.label}>
+        {t("fieldCompound")}
+        <Switch
+          checked={compound}
+          onChange={onCompoundChange}
+          label={compound ? t("compoundOn") : t("compoundOff")}
+        />
+      </div>
     </>
   );
 }

@@ -406,18 +406,6 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           label={isAsynchronous ? t("asynchronousOn") : t("asynchronousOff")}
         />
       </div>
-      {/* Compound: the status follows the sub-items. A stored task's flag, or an occurrence of a
-          flow Task item's — an iteration root or a check task keeps a status of its own. */}
-      {takesCompound(node) && (
-        <div className={styles.label}>
-          {t("fieldCompound")}
-          <Switch
-            checked={isCompound}
-            onChange={setIsCompound}
-            label={isCompound ? t("compoundOn") : t("compoundOff")}
-          />
-        </div>
-      )}
       {isAsynchronous && (
         <div ref={templateRef} role="group" aria-label={t("expectation:templateSection")}>
           <span className={styles.label}>{t("expectation:templateSection")}</span>
@@ -427,6 +415,18 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
             titlePlaceholder={t("expectation:templateDefaultTitle", { title: title.trim() })}
             allTags={allTags}
             domainNames={domainNames}
+          />
+        </div>
+      )}
+      {/* Compound, after Asynchronous and its wait: the status follows the sub-items. A stored
+          task's flag, or a Habit occurrence's — a check task keeps a status of its own. */}
+      {takesCompound(node) && (
+        <div className={styles.label}>
+          {t("fieldCompound")}
+          <Switch
+            checked={isCompound}
+            onChange={setIsCompound}
+            label={isCompound ? t("compoundOn") : t("compoundOff")}
           />
         </div>
       )}
