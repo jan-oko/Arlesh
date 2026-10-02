@@ -49,6 +49,6 @@ describe("useStatusCycle — a task that consists of its sub-items", () => {
 
     act(() => { result.current.cycleStatus("task-5"); });
 
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { status: "in_progress" }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { status: { kind: "ordinary", status: "in_progress" } }));
   });
 });

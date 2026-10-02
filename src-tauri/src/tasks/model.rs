@@ -36,8 +36,11 @@ impl From<GoalId> for i64 {
     }
 }
 
-/// Task lifecycle status.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// An **ordinary** Task's status — the model a Task that does not read as Agentic holds.
+///
+/// One of the two status models (see [`Status`]): an Agentic Task holds an [`AgenticStatus`]
+/// instead, and neither model can hold the other's values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskStatus {
     /// Not yet started.
@@ -80,10 +83,235 @@ impl TaskStatus {
     pub fn is_begun(&self) -> bool {
         matches!(self, Self::InProgress | Self::Started)
     }
+}
 
-    /// [`Self::is_begun`] for a status as stored; an unrecognised spelling has not begun.
-    pub fn is_begun_str(value: &str) -> bool {
-        Self::from_db(value).is_some_and(|status| status.is_begun())
+/// An **Agentic** Task's status — the model a Task that reads as Agentic holds.
+///
+/// Its own type, not a widening of [`TaskStatus`] (ruled by the user, 2026-10-01: "they really are
+/// different things"). **Doing** means the user is actively on it, as In Progress does on an
+/// ordinary Task, but it is a variant of this model and not a reuse of that one. There is no
+/// Started here, and no On Agent or Review there.
+///
+/// **Review is derived, never stored**: an On Agent Task with an open agentic *question* wait
+/// beneath it reads Review (see [`crate::tasks::review`]). It has no database spelling, so a write
+/// naming it is refused, and [`Self::stored`] is what the row holds while it reads Review.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgenticStatus {
+    /// Ready for an agent to claim, or for the user.
+    Todo,
+    /// An agent holds it.
+    OnAgent,
+    /// Derived: On Agent, and the agent has a question open for the user.
+    Review,
+    /// The user is actively on it.
+    Doing,
+    /// Completed.
+    Done,
+}
+
+impl AgenticStatus {
+    /// The wire spelling — what the MCP and the frontend see.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Todo => "todo",
+            Self::OnAgent => "on_agent",
+            Self::Review => "review",
+            Self::Doing => "doing",
+            Self::Done => "done",
+        }
+    }
+
+    /// The database spelling, or `None` for Review, which is never stored.
+    ///
+    /// Disjoint from [`TaskStatus`]'s spellings on purpose (`agentic_todo`, `agentic_done`), so a
+    /// stored value decodes to exactly one model without knowing the row's kind — which is an
+    /// inherited flag, a tree climb away.
+    pub fn as_db(&self) -> Option<&'static str> {
+        match self {
+            Self::Todo => Some("agentic_todo"),
+            Self::OnAgent => Some("on_agent"),
+            Self::Review => None,
+            Self::Doing => Some("doing"),
+            Self::Done => Some("agentic_done"),
+        }
+    }
+
+    /// Parses the database spelling, if recognized. `review` is never stored and never parses.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "agentic_todo" => Some(Self::Todo),
+            "on_agent" => Some(Self::OnAgent),
+            "doing" => Some(Self::Doing),
+            "agentic_done" => Some(Self::Done),
+            _ => None,
+        }
+    }
+
+    /// Whether work has begun and not finished: On Agent, Review or Doing. Claiming a Task from
+    /// To Do is a start, guarded by the Spec rule; handing it between the agent and the user is
+    /// not.
+    pub fn is_begun(&self) -> bool {
+        matches!(self, Self::OnAgent | Self::Review | Self::Doing)
+    }
+
+    /// The status the row holds: Review is On Agent with a question open, everything else itself.
+    pub fn stored(&self) -> Self {
+        match self {
+            Self::Review => Self::OnAgent,
+            other => *other,
+        }
+    }
+}
+
+/// A Task's status: a value of **one** of the two models, named by its kind.
+///
+/// On the wire it is `{"kind": "ordinary", "status": "in_progress"}` or
+/// `{"kind": "agentic", "status": "doing"}`, so a reader always knows which model it holds. In
+/// the `tasks.status` and `task_overlays.status` columns the two models' spellings are disjoint
+/// ([`AgenticStatus::as_db`]), so [`Self::from_db`] is total over the CHECK's vocabulary and an
+/// Agentic row can never decode as an ordinary status or the other way round.
+///
+/// Behaviour dispatches on the kind first; the helpers here are only what the two models really
+/// share — done, to do, begun.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "status", rename_all = "snake_case")]
+pub enum Status {
+    /// An ordinary Task's status.
+    Ordinary(TaskStatus),
+    /// An Agentic Task's status.
+    Agentic(AgenticStatus),
+}
+
+impl Status {
+    /// Parses a stored spelling into the one model it belongs to.
+    pub fn from_db(value: &str) -> Option<Self> {
+        if let Some(status) = TaskStatus::from_db(value) {
+            return Some(Self::Ordinary(status));
+        }
+        AgenticStatus::from_db(value).map(Self::Agentic)
+    }
+
+    /// The stored spelling, or `None` for the derived Review.
+    pub fn as_db(&self) -> Option<&'static str> {
+        match self {
+            Self::Ordinary(status) => Some(status.as_str()),
+            Self::Agentic(status) => status.as_db(),
+        }
+    }
+
+    /// The wire spelling of the value alone, for a message that names it.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Ordinary(status) => status.as_str(),
+            Self::Agentic(status) => status.as_str(),
+        }
+    }
+
+    /// The model's To Do.
+    pub fn todo(agentic: bool) -> Self {
+        if agentic {
+            Self::Agentic(AgenticStatus::Todo)
+        } else {
+            Self::Ordinary(TaskStatus::Todo)
+        }
+    }
+
+    /// Whether this is a value of the Agentic model.
+    pub fn is_agentic(&self) -> bool {
+        matches!(self, Self::Agentic(_))
+    }
+
+    /// Whether a stored spelling — a row's or an overlay's `status`, `None` for To Do — is
+    /// finished, in either model: `done` or `agentic_done`.
+    pub fn is_done_db(value: Option<&str>) -> bool {
+        value
+            .and_then(Self::from_db)
+            .is_some_and(|status| status.is_done())
+    }
+
+    /// Finished, in either model.
+    pub fn is_done(&self) -> bool {
+        matches!(
+            self,
+            Self::Ordinary(TaskStatus::Done) | Self::Agentic(AgenticStatus::Done)
+        )
+    }
+
+    /// Not begun, in either model.
+    pub fn is_todo(&self) -> bool {
+        matches!(
+            self,
+            Self::Ordinary(TaskStatus::Todo) | Self::Agentic(AgenticStatus::Todo)
+        )
+    }
+
+    /// Begun and not finished, in either model — the move into which is a *start*.
+    pub fn is_begun(&self) -> bool {
+        match self {
+            Self::Ordinary(status) => status.is_begun(),
+            Self::Agentic(status) => status.is_begun(),
+        }
+    }
+
+    /// The value as its row stores it: Review reads On Agent.
+    pub fn stored(&self) -> Self {
+        match self {
+            Self::Agentic(status) => Self::Agentic(status.stored()),
+            other => *other,
+        }
+    }
+
+    /// The counterpart of this value in the model a Task of kind `agentic` holds — itself when
+    /// the model is already that one — or `None` when it has no counterpart: an ordinary Started
+    /// has none in the Agentic model, and On Agent (Review included) none in the ordinary one.
+    ///
+    /// This is the one **conversion** between the models, which a change of a Task's kind — its
+    /// flag, or a move under another ancestor — performs explicitly; the write is refused when it
+    /// answers `None` (see [`crate::tasks::agentic::convert_subtree`]).
+    pub fn converted(&self, agentic: bool) -> Option<Self> {
+        match (self, agentic) {
+            (Self::Ordinary(_), false) | (Self::Agentic(_), true) => Some(*self),
+            (Self::Ordinary(TaskStatus::Todo), true) => Some(Self::Agentic(AgenticStatus::Todo)),
+            (Self::Ordinary(TaskStatus::InProgress), true) => {
+                Some(Self::Agentic(AgenticStatus::Doing))
+            }
+            (Self::Ordinary(TaskStatus::Done), true) => Some(Self::Agentic(AgenticStatus::Done)),
+            (Self::Ordinary(TaskStatus::Started), true) => None,
+            (Self::Agentic(AgenticStatus::Todo), false) => Some(Self::Ordinary(TaskStatus::Todo)),
+            (Self::Agentic(AgenticStatus::Doing), false) => {
+                Some(Self::Ordinary(TaskStatus::InProgress))
+            }
+            (Self::Agentic(AgenticStatus::Done), false) => Some(Self::Ordinary(TaskStatus::Done)),
+            (Self::Agentic(AgenticStatus::OnAgent | AgenticStatus::Review), false) => None,
+        }
+    }
+
+    /// The kind-neutral **reading** of a value, for a tally that counts both models alike (the
+    /// compound rule): Doing counts as In Progress, On Agent and Review as Started.
+    pub fn reading(&self) -> TaskStatus {
+        match self {
+            Self::Ordinary(status) => *status,
+            Self::Agentic(AgenticStatus::Todo) => TaskStatus::Todo,
+            Self::Agentic(AgenticStatus::Doing) => TaskStatus::InProgress,
+            Self::Agentic(AgenticStatus::OnAgent | AgenticStatus::Review) => TaskStatus::Started,
+            Self::Agentic(AgenticStatus::Done) => TaskStatus::Done,
+        }
+    }
+
+    /// A reading put back into a model — what a compound Task of kind `agentic` shows for the
+    /// tally it got. The inverse of [`Self::reading`] as far as there is one: Started reads as
+    /// On Agent in the Agentic model, work begun that the user is not on.
+    pub fn from_reading(reading: TaskStatus, agentic: bool) -> Self {
+        if !agentic {
+            return Self::Ordinary(reading);
+        }
+        Self::Agentic(match reading {
+            TaskStatus::Todo => AgenticStatus::Todo,
+            TaskStatus::InProgress => AgenticStatus::Doing,
+            TaskStatus::Started => AgenticStatus::OnAgent,
+            TaskStatus::Done => AgenticStatus::Done,
+        })
     }
 }
 
@@ -190,18 +418,15 @@ impl TaskAgentic {
     }
 }
 
-/// Who holds a delegated Task: a **Person**, or the **Agent**.
+/// Who holds a delegated Task: a **Person**.
 ///
-/// A `(kind, id)` pair rather than a person id, so the model says what is true — delegating a
-/// Task to an agent does not have to invent a Person called "Agent". There is one Agent target,
-/// so the variant carries no id; naming individual agents is a later question.
+/// A `(kind, id)` pair rather than a bare person id — `delegate_kind` / `delegate_id` (migration
+/// 0037) — so that a kind of delegate that is not a Person can be added without inventing a Person
+/// row for it. The one such kind there was, the **Agent**, was removed on 2026-10-01 (migration
+/// 0088): an agent holds a Task through its Agentic status (`On Agent`, see [`AgenticStatus`]),
+/// never by delegation, which hands over responsibility an agent cannot hold.
 ///
-/// On the wire it is `{"kind": "person", "id": 3}` or `{"kind": "agent"}`; in the `tasks` table it
-/// is the `delegate_kind` / `delegate_id` column pair (migration 0037), whose CHECK allows exactly
-/// the shapes this enum can hold.
-///
-/// Independent of the Agentic flag: the flag says the work suits an agent, the delegate says who
-/// holds it.
+/// On the wire it is `{"kind": "person", "id": 3}`. Independent of the Agentic flag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Delegate {
@@ -210,22 +435,17 @@ pub enum Delegate {
         /// The `people` row the task is delegated to.
         id: i64,
     },
-    /// Delegated to the Agent.
-    Agent,
 }
 
 impl Delegate {
     /// `delegate_kind` for a Person delegate.
     const PERSON: &'static str = "person";
-    /// `delegate_kind` for the Agent delegate.
-    const AGENT: &'static str = "agent";
 
     /// The `(delegate_kind, delegate_id)` columns a delegate — or its absence — stores.
     pub fn columns(delegate: Option<Self>) -> (Option<&'static str>, Option<i64>) {
         match delegate {
             None => (None, None),
             Some(Self::Person { id }) => (Some(Self::PERSON), Some(id)),
-            Some(Self::Agent) => (Some(Self::AGENT), None),
         }
     }
 
@@ -235,7 +455,6 @@ impl Delegate {
     pub fn from_columns(kind: Option<&str>, id: Option<i64>) -> Option<Self> {
         match (kind?, id) {
             (Self::PERSON, Some(id)) => Some(Self::Person { id }),
-            (Self::AGENT, _) => Some(Self::Agent),
             _ => None,
         }
     }
@@ -244,7 +463,6 @@ impl Delegate {
     pub fn describe(self) -> String {
         match self {
             Self::Person { id } => format!("person {id}"),
-            Self::Agent => Self::AGENT.to_string(),
         }
     }
 }
@@ -373,9 +591,10 @@ pub struct Task {
     pub parent_type: String,
     /// Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
     pub parent_id: NodeId,
-    /// Current status.
-    pub status: String,
-    /// Who this task is delegated to — a Person or the Agent — if anyone.
+    /// Current status, in the model the Task's kind holds. As a board load serves it, Review is
+    /// derived here; as read straight from the row it is what the row holds.
+    pub status: Status,
+    /// Who this task is delegated to — a Person — if anyone.
     pub delegate_to: Option<Delegate>,
     /// Whether this task is explicitly Agentic. A null value inherits the nearest flagged
     /// ancestor; `Some` is an explicit value that replaces what would have been inherited.
@@ -516,8 +735,9 @@ pub struct CreateTaskRequest {
     pub parent_type: String,
     /// Parent entity id.
     pub parent_id: NodeId,
-    /// Initial status (defaults to Todo).
-    pub status: Option<TaskStatus>,
+    /// Initial status (defaults to the To Do of the model the new Task's kind holds). One in the
+    /// other model is refused.
+    pub status: Option<Status>,
     /// Initial relevance window.
     #[serde(default)]
     pub time_scope: Option<TimeScope>,
@@ -556,9 +776,10 @@ pub struct CreateTaskRequest {
 pub struct UpdateTaskRequest {
     /// New title (if provided).
     pub title: Option<String>,
-    /// New status (if provided).
-    pub status: Option<TaskStatus>,
-    /// Delegate to set — a Person or the Agent (None leaves unchanged, Some(None) clears it).
+    /// New status (if provided), in the model the Task holds after this write: one in the other
+    /// model is refused, as is the derived Review.
+    pub status: Option<Status>,
+    /// Delegate to set — a Person (None leaves unchanged, Some(None) clears it).
     #[serde(default, deserialize_with = "crate::wire::null_clears")]
     pub delegate_to: Option<Option<Delegate>>,
     /// Agentic state to set. `None` leaves the column unchanged; `Some(TaskAgentic::Inherit)`

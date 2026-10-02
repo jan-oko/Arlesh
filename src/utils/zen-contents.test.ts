@@ -110,3 +110,44 @@ describe("zenContents", () => {
     expect(contents.tasks.exemptedIds).toEqual(new Set(["task-second"]));
   });
 });
+
+describe("zenContents — Agentic Tasks", () => {
+  const agenticTask = (id: string, status: "todo" | "on_agent" | "review" | "doing" | "done", over: Partial<MindmapNode> = {}) =>
+    n(id, "task", { status, taskStatus: { kind: "agentic", status }, agentic: true, ...over });
+  const agentRoot = n("root", "domain", {
+    children: [
+      n("task-mine", "task", { status: "in_progress", taskStatus: { kind: "ordinary", status: "in_progress" } }),
+      agenticTask("task-held", "on_agent", {
+        children: [n("expectation-ci", "expectation", { status: "pending", agentWaiting: { note: "CI", question: false, answer: null } })],
+      }),
+      agenticTask("task-taken", "doing"),
+      agenticTask("task-asking", "review", {
+        children: [n("expectation-question", "expectation", { status: "pending", agentWaiting: { note: null, question: true, answer: null } })],
+      }),
+      n("expectation-person", "expectation", { status: "pending" }),
+    ],
+  });
+  const agentSource: ZenSourceRows = {
+    tasks: flattenTaskRows(agentRoot, []),
+    commitments: flattenCommitmentRows(agentRoot),
+    expectations: flattenExpectationRows(agentRoot),
+  };
+  const readAgents = (shared: Partial<FilterState> = {}) => zenContents(agentSource, { ...DEFAULT_FILTER, ...shared }, BOTH, null);
+
+  it("leads with Review, keeps Doing, and hides On Agent", () => {
+    expect(ids(readAgents().tasks.rows)).toEqual(["task-asking", "task-mine", "task-taken"]);
+  });
+
+  it("shows On Agent while the On Agent pill is on", () => {
+    expect(ids(readAgents({ showOnAgent: true }).tasks.rows)).toEqual(["task-asking", "task-mine", "task-held", "task-taken"]);
+  });
+
+  it("keeps every agentic wait out of the Expectations strip, question or not", () => {
+    expect(ids(readAgents().expectations.rows)).toEqual(["expectation-person"]);
+  });
+
+  it("shows Review whatever the Started setting says", () => {
+    const contents = zenContents(agentSource, DEFAULT_FILTER, { ...BOTH, showsStarted: false }, null);
+    expect(ids(contents.tasks.rows)).toContain("task-asking");
+  });
+});

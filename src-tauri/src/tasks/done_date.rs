@@ -7,7 +7,7 @@
 
 use chrono::NaiveDateTime;
 
-use super::{error::TaskError, model::TaskStatus, waits, TaskOperator};
+use super::{error::TaskError, model::Status, waits, TaskOperator};
 use crate::database::session::{Db, Transactional};
 
 /// Refuses a done date that cannot be: one for a Task that is not Done, or one in the future.
@@ -57,7 +57,7 @@ pub async fn stored_done_at(
     id: i64,
 ) -> Result<Option<NaiveDateTime>, TaskError> {
     let (status, done_at) = db.tasks().done_columns(id).await?;
-    if status != TaskStatus::Done.as_str() {
+    if !Status::is_done_db(Some(&status)) {
         return Ok(None);
     }
     Ok(waits::instant_from_column(done_at))
@@ -72,7 +72,7 @@ pub async fn set_stored_done_at(
     now: NaiveDateTime,
 ) -> Result<(), TaskError> {
     let (status, _) = db.tasks().done_columns(id).await?;
-    check_done_date(status == TaskStatus::Done.as_str(), at, now)?;
+    check_done_date(Status::is_done_db(Some(&status)), at, now)?;
     db.tasks().write_done_at(id, at).await
 }
 

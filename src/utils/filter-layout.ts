@@ -92,6 +92,16 @@ export function filterSwitchesFor(view: View): readonly FilterSwitch[] {
   return ["private", "archived", "backlog"];
 }
 
+/**
+ * Whether a view's Filter menu offers the **On Agent** pill — the explicit control that shows an
+ * Agentic Task an agent holds under Start and Do (and the Zen View, which reads under Do). Every
+ * view that reads those presets offers it; the Plan View, always under Plan, where On Agent shows
+ * anyway, does not.
+ */
+export function offersOnAgent(view: View): boolean {
+  return view !== "plan";
+}
+
 /** The dimensions whose added values the chip row under the top bar draws: tags everywhere, and the
  * List View's pills there. */
 export function chipDimensions(view: View): readonly FilterDimension[] {
@@ -116,18 +126,21 @@ export function undrawnPillDimensions(view: View): readonly FilterDimension[] {
 export interface FilterDotState {
   archivedMode: OverrideMode;
   backlogMode: OverrideMode;
+  /** The On Agent pill: a setting no chip draws, so it lights the dot while on. */
+  showOnAgent: boolean;
   valueCount: (dimension: FilterDimension) => number;
 }
 
 /**
  * Whether the Filter menu holds a setting nothing outside it shows — the Filter button's dot: a pill
  * set in a dimension the chips do not draw, or an **Archived** or **Backlog** pill the view offers
- * set off *as the preset says*. The row kinds, the Zen strips, Private Mode and the Mindmap's
+ * set off *as the preset says*, or the **On Agent** pill on. The row kinds, the Zen strips, Private Mode and the Mindmap's
  * Info/Flow toggles are switches rather than pills and never count; tags are always chips.
  */
 export function hasUndrawnFilters(view: View, state: FilterDotState): boolean {
   const switches = filterSwitchesFor(view);
   if (switches.includes("archived") && state.archivedMode !== "inactive") return true;
   if (switches.includes("backlog") && state.backlogMode !== "inactive") return true;
+  if (offersOnAgent(view) && state.showOnAgent) return true;
   return undrawnPillDimensions(view).some((dimension) => state.valueCount(dimension) > 0);
 }

@@ -134,8 +134,8 @@ export interface CommitmentEntry { type: "commitment"; row: CommitmentListRow; v
 export interface ExpectationEntry { type: "expectation"; row: ExpectationListRow; visibleDepth: number }
 
 /** One rendered List View entry: a **path header** naming a run's location, a row carrying the
- * depth it is indented to, or one of the markers that bracket the **Overdue** and **Asynchronous**
- * sections.
+ * depth it is indented to, or one of the markers that bracket the **Review**, **Overdue** and
+ * **Asynchronous** sections.
  * Header and depth partition a row's ancestors — the header names every ancestor *not* rendered as
  * a row above it, the depth counts every ancestor that *is* — so the list never implies a parent
  * that is not on screen.
@@ -149,6 +149,8 @@ export interface ExpectationEntry { type: "expectation"; row: ExpectationListRow
  * `withListSections`). */
 export type ListRowEntry =
   | PathEntry | TaskEntry | CommitmentEntry | ExpectationEntry
+  | { type: "review" }
+  | { type: "reviewEnd" }
   | { type: "overdue" }
   | { type: "overdueEnd" }
   | { type: "asynchronous" }

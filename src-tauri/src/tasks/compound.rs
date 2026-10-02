@@ -60,7 +60,8 @@ use super::{
     lifecycle::{derive_item_state, effective_due, Archival, DerivedState, ItemLifecycle},
     model::{
         Commitment, Expectation, ExpectationArchival, ExpectationStatus, Goal, GoalStatus,
-        OnScopeExit, Task, TaskArchival, TaskId, TaskStatus, TimeScope, UpdateTaskRequest, Verdict,
+        OnScopeExit, Status, Task, TaskArchival, TaskId, TaskStatus, TimeScope, UpdateTaskRequest,
+        Verdict,
     },
     scope_rules::scope_governance,
 };
@@ -127,10 +128,11 @@ impl Tally {
     }
 }
 
-/// How a Task counts: its status. An unrecognised spelling reads as To Do, which never finishes
-/// anything it should not.
-pub fn task_reading(status: &str) -> TaskStatus {
-    TaskStatus::from_db(status).unwrap_or(TaskStatus::Todo)
+/// How a Task counts: its status, read in the ordinary model's terms whichever model it holds —
+/// an Agentic Doing counts as In Progress, On Agent and Review as Started (see
+/// [`Status::reading`]).
+pub fn task_reading(status: Status) -> TaskStatus {
+    status.reading()
 }
 
 /// How a Goal counts: Achieved is Done, anything else To Do.
@@ -238,7 +240,8 @@ pub fn apply(outcomes: &[Outcome], tasks: &mut [Task], lifecycles: &mut [ItemLif
     let by_id: HashMap<&NodeId, &Outcome> = outcomes.iter().map(|out| (&out.id, out)).collect();
     for task in tasks.iter_mut().filter(|task| task.compound) {
         if let Some(outcome) = by_id.get(&task.id) {
-            task.status = outcome.status.as_str().to_string();
+            // Put back into the model the compound Task itself holds.
+            task.status = Status::from_reading(outcome.status, task.status.is_agentic());
         }
     }
     for entry in lifecycles
@@ -349,7 +352,7 @@ pub async fn keep_derived_status(
         .tasks
         .iter()
         .find(|task| task.id == row)
-        .and_then(|task| TaskStatus::from_db(&task.status));
+        .map(|task| task.status.stored());
     Ok(())
 }
 
@@ -359,7 +362,7 @@ fn delegated_done(tasks: &[Task]) -> HashMap<NodeId, bool> {
     tasks
         .iter()
         .filter(|task| task.compound && task.delegate_to.is_some())
-        .map(|task| (task.id.clone(), task.status == TaskStatus::Done.as_str()))
+        .map(|task| (task.id.clone(), task.status.is_done()))
         .collect()
 }
 
@@ -463,7 +466,7 @@ impl Tree {
                 (Kind::Task, task.id.clone()),
                 (task.parent_type.as_str(), &task.parent_id),
                 Item {
-                    reading: task_reading(&task.status),
+                    reading: task_reading(task.status),
                     archived: is_archived(Kind::Task, &task.id),
                     compound: task.compound,
                     drawn_by: None,
@@ -633,6 +636,6 @@ impl Evaluation<'_> {
             let resolved = self.resolve(&key.1);
             return (resolved.status, resolved.archived);
         }
-        (item.reading.clone(), item.archived)
+        (item.reading, item.archived)
     }
 }

@@ -19,6 +19,7 @@ pub mod error;
 pub mod expectations;
 pub mod lifecycle;
 pub mod model;
+pub mod review;
 mod scope_rules;
 pub mod waits;
 
@@ -43,7 +44,7 @@ pub use expectations::{
 use model::{AgenticBrief, AsyncTemplate, CommitmentId, ExpectationId, ExpectationStatus};
 use model::{
     CreateGoalRequest, CreateTaskRequest, Delegate, Dependency, DurationSpec, Goal, GoalId,
-    GoalStatus, OnScopeExit, Task, TaskArchival, TaskDependencyEdge, TaskId, TaskStatus,
+    GoalStatus, OnScopeExit, Status, Task, TaskArchival, TaskDependencyEdge, TaskId, TaskStatus,
     TaskWithBlockers, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
 };
 pub use scope_rules::{
@@ -263,7 +264,7 @@ impl From<TaskRow> for Task {
             title: row.title,
             parent_type: row.parent_type,
             parent_id: row.parent_id.into(),
-            status: row.status,
+            status: decode_status(row.id, &row.status),
             delegate_to: Delegate::from_columns(row.delegate_kind.as_deref(), row.delegate_id),
             agentic: row.agentic,
             asynchronous: row.asynchronous,
@@ -295,6 +296,25 @@ impl From<TaskRow> for Task {
             origin: Origin::Manual,
         }
     }
+}
+
+/// A stored status in whichever model it is spelled in. The CHECK constraint admits only the two
+/// models' spellings, so an unrecognised one is corrupt data: it reads as an ordinary To Do — the
+/// fallback that never claims work is under way — and is logged.
+fn decode_status(id: i64, stored: &str) -> Status {
+    Status::from_db(stored).unwrap_or_else(|| {
+        tracing::warn!(
+            task = id,
+            status = stored,
+            "a task row holds an unknown status"
+        );
+        Status::Ordinary(TaskStatus::Todo)
+    })
+}
+
+/// The spelling `status` is stored as, refusing the one value that is never stored: Review.
+fn status_column(status: Status) -> Result<&'static str, TaskError> {
+    status.as_db().ok_or(TaskError::ReviewIsDerived)
 }
 
 #[derive(sqlx::FromRow)]
@@ -471,8 +491,9 @@ struct TaskWrite {
     parent_id: i64,
     /// Final title.
     title: String,
-    /// Final status, as its database string.
-    status: String,
+    /// Final status, in the model the Task holds after the write — settled by
+    /// [`agentic::settle_status`] before the write is made.
+    status: Status,
     /// Final delegate, or `None`.
     delegate_to: Option<Delegate>,
     /// Final Agentic column: `None` is the NULL that inherits from the nearest flagged ancestor.
@@ -525,12 +546,7 @@ impl TaskWrite {
         let (parent_type, parent_id) = reparent
             .clone()
             .unwrap_or((stored.parent_type, stored.parent_id.require_stored()?));
-        let status = request
-            .status
-            .as_ref()
-            .map(|s| s.as_str())
-            .unwrap_or(&stored.status)
-            .to_string();
+        let status = request.status.unwrap_or(stored.status);
         let compound = request.compound.unwrap_or(stored.compound);
         let delegate_to = match request.delegate_to {
             Some(new_delegate) => new_delegate,
@@ -583,7 +599,7 @@ impl TaskWrite {
         let starts_a_backlogged_task = request.archival.is_none()
             && !releases
             && stored.archival == TaskArchival::Backlog
-            && request.status.as_ref().is_some_and(TaskStatus::is_begun);
+            && request.status.as_ref().is_some_and(Status::is_begun);
         let archival = if plans_a_backlogged_task || starts_a_backlogged_task {
             TaskArchival::Live
         } else {
@@ -934,11 +950,8 @@ impl<'session> TaskOperator<'session> {
     /// boundary, and a method that began its own could never join one. See [`create_task`] for the
     /// transactional shape.
     async fn insert(&mut self, request: CreateTaskRequest) -> Result<Task, TaskError> {
-        let status = request
-            .status
-            .as_ref()
-            .map(|s| s.as_str())
-            .unwrap_or("todo");
+        let status = request.status.unwrap_or(Status::Ordinary(TaskStatus::Todo));
+        let status_spelling = status_column(status)?;
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&request.time_scope);
         let on_exit = on_scope_exit_column(&request.time_scope, request.on_scope_exit);
         let (plan_start, plan_end, _, _) = time_scope_columns(&request.plan);
@@ -953,7 +966,8 @@ impl<'session> TaskOperator<'session> {
             None
         };
         // A task created done was completed now, as far as anything can tell.
-        let done_at = (status == TaskStatus::Done.as_str())
+        let done_at = status
+            .is_done()
             .then(|| waits::instant_column(expectations::now()));
         let id = sqlx::query(
             "INSERT INTO tasks
@@ -967,7 +981,7 @@ impl<'session> TaskOperator<'session> {
         .bind(&request.title)
         .bind(&request.parent_type)
         .bind(request.parent_id.require_stored()?)
-        .bind(status)
+        .bind(status_spelling)
         .bind(ts_start)
         .bind(ts_end)
         .bind(ts_n)
@@ -1110,6 +1124,7 @@ impl<'session> TaskOperator<'session> {
         let (plan_start, plan_end, _, _) = time_scope_columns(&write.plan);
         let (due_start, due_end, _, _) = time_scope_columns(&write.due_scope);
         let (delegate_kind, delegate_id) = Delegate::columns(write.delegate_to);
+        let status_spelling = status_column(write.status)?;
 
         if let Some((new_parent_type, new_parent_id)) = &write.reparent {
             sqlx::query("UPDATE tasks SET parent_type = ?, parent_id = ? WHERE id = ?")
@@ -1126,13 +1141,14 @@ impl<'session> TaskOperator<'session> {
                 time_scope_duration_kind=?, on_scope_exit=?, plan_start_id=?, plan_end_id=?,
                 due_scope_start_id=?, due_scope_end_id=?,
                 archival=?, agentic=?, asynchronous=?, compound=?, position=?, is_private=?,
-                done_at = CASE WHEN ? = 'done'
-                               THEN CASE WHEN status = 'done' THEN done_at ELSE ? END
+                done_at = CASE WHEN ?
+                               THEN CASE WHEN status IN ('done', 'agentic_done') THEN done_at
+                                         ELSE ? END
                                ELSE NULL END
              WHERE id=?",
         )
         .bind(&write.title)
-        .bind(&write.status)
+        .bind(status_spelling)
         .bind(delegate_kind)
         .bind(delegate_id)
         .bind(ts_start)
@@ -1152,7 +1168,7 @@ impl<'session> TaskOperator<'session> {
         .bind(write.is_private)
         // Completing a task records when; it is when the wait its template spawns begins. Staying
         // done keeps the time, and reopening clears it.
-        .bind(&write.status)
+        .bind(write.status.is_done())
         .bind(waits::instant_column(expectations::now()))
         .bind(id.0)
         .execute(&mut *self.connection)
@@ -1474,7 +1490,14 @@ pub async fn update_goal(
         &write.time_scope,
     )
     .await?;
-    db.goals().update(id, write).await
+    let moves = write.reparent.is_some();
+    let goal = db.goals().update(id, write).await?;
+    // A Goal passes the Agentic flag through: moved under another ancestor, the Tasks beneath it
+    // may change kind.
+    if moves {
+        agentic::reconcile(db, vec![agentic::Reach::Below("goal".to_string(), id.0)]).await?;
+    }
+    Ok(goal)
 }
 
 /// Deletes a goal and its entire subtree (descendant tasks/goals and their infos).
@@ -1521,6 +1544,40 @@ pub async fn create_task_at(
     request: CreateTaskRequest,
     now: NaiveDateTime,
 ) -> Result<Task, TaskError> {
+    let parent = (
+        request.parent_type.clone(),
+        request.parent_id.require_stored()?,
+    );
+    let own = request
+        .agentic
+        .map(|agentic| agentic.as_column())
+        .unwrap_or(None);
+    let agentic = agentic::resolves_agentic(db, None, own, (&parent.0, parent.1)).await?;
+    create_task_as(db, request, now, agentic).await
+}
+
+/// [`create_task_at`] for a Task whose kind the caller has already resolved — one created under a
+/// Habit occurrence reads the occurrence, which its stored parent columns do not name.
+///
+/// A new Task holds the To Do of its kind's model unless it names a status. A named one of the
+/// other model — a duplicate made under an ancestor of the other kind — is converted to its
+/// counterpart, and refused, naming the Task, when it has none.
+pub(crate) async fn create_task_as(
+    db: &mut Db<Transactional>,
+    mut request: CreateTaskRequest,
+    now: NaiveDateTime,
+    agentic: bool,
+) -> Result<Task, TaskError> {
+    request.status = Some(match request.status {
+        None => Status::todo(agentic),
+        Some(Status::Agentic(model::AgenticStatus::Review)) => {
+            return Err(TaskError::ReviewIsDerived)
+        }
+        Some(named) if named.is_agentic() == agentic => named,
+        Some(named) => named
+            .converted(agentic)
+            .ok_or_else(|| TaskError::KindConversion(agentic::stranded(&request.title, named)))?,
+    });
     reject_backlog_with_plan(request.archival.unwrap_or_default(), &request.plan)?;
     // No Spec check here: creating a task is not starting one. The one path that creates a task
     // already in progress is a duplicate, and a copy of work underway is not a start either.
@@ -1535,7 +1592,7 @@ pub async fn create_task_at(
             plan: &request.plan,
             due_scope: &request.due_scope,
             archival: request.archival.unwrap_or_default(),
-            done: request.status == Some(TaskStatus::Done),
+            done: request.status.is_some_and(|status| status.is_done()),
         },
         now,
     )
@@ -1600,24 +1657,33 @@ pub async fn update_task_at(
     if stored.compound && !releases && request.status.is_some() {
         return Err(TaskError::CompoundStatus(id.0));
     }
-    // Starting is the move into begun work — In Progress or Started — from To Do or Done; a write
-    // to a task already begun is not a start (pausing and resuming included), so an edit to one
-    // never trips the Spec rule. Nor does switching compound off: the status it keeps is the
-    // one the Task already showed, so nothing begins.
+    // Starting is the move into begun work — In Progress or Started, On Agent or Doing — from To
+    // Do or Done; a write to a task already begun is not a start (pausing, resuming, handing it
+    // between the agent and the user), so an edit to one never trips the Spec rule. Nor does
+    // switching compound off: the status it keeps is the one the Task already showed.
     let starts = !releases
-        && request.status.as_ref().is_some_and(TaskStatus::is_begun)
-        && !TaskStatus::is_begun_str(&stored.status);
-    let write = TaskWrite::merge(stored, request)?;
+        && request.status.as_ref().is_some_and(Status::is_begun)
+        && !stored.status.is_begun();
+    let requested = request.status;
+    let before = stored.status;
+    let title = request
+        .title
+        .clone()
+        .unwrap_or_else(|| stored.title.clone());
+    let mut write = TaskWrite::merge(stored, request)?;
     reject_backlog_with_plan(write.archival, &write.plan)?;
+    // The kind the Task holds after the write — its flag, or its parent's — decides its model. A
+    // change of kind converts its status explicitly, and is refused when there is no counterpart.
+    let agentic = agentic::resolves_agentic(
+        db,
+        Some(id),
+        write.agentic,
+        (write.parent_type.as_str(), write.parent_id),
+    )
+    .await?;
+    write.status = agentic::settle_status(&title, before, requested, agentic)?;
     if starts {
-        agentic::require_spec_to_start(
-            db,
-            Some(id),
-            write.agentic,
-            (write.parent_type.as_str(), write.parent_id),
-            &write.agentic_brief,
-        )
-        .await?;
+        agentic::require_spec(agentic, &write.agentic_brief)?;
     }
     scope_rules::validate_task_containment(
         db,
@@ -1630,7 +1696,7 @@ pub async fn update_task_at(
             plan: &write.plan,
             due_scope: &write.due_scope,
             archival: write.archival,
-            done: write.status == TaskStatus::Done.as_str(),
+            done: write.status.is_done(),
         },
         now,
     )
@@ -1638,7 +1704,13 @@ pub async fn update_task_at(
     // Nothing else is written for the wait an Asynchronous task spawns: it is derived from the task
     // being done and having a template, so completing and reopening — and undoing either — are
     // just this row's own status change.
-    db.tasks().update(id, write).await
+    let kind_changed = before.is_agentic() != agentic;
+    let task = db.tasks().update(id, write).await?;
+    // Everything beneath that inherits its kind from this Task changes kind with it.
+    if kind_changed {
+        agentic::reconcile(db, vec![agentic::Reach::Below("task".to_string(), id.0)]).await?;
+    }
+    Ok(task)
 }
 
 /// Adds a dependency to a task, rejecting chains that would close a cycle.
@@ -1707,19 +1779,20 @@ pub fn dependency_name(names: &HashMap<String, String>, kind: &str, id: &NodeId)
 
 /// [`get_task_with_blockers`], reading each stored Task's status from `served` where it has one
 /// — the board's status, which for a compound Task is the one derived from its sub-items
-/// ([`compound`]), not the one its row last held. The Task's own status and every Task
+/// ([`compound`]) and for an Agentic one may be the derived Review ([`review`]), not the one its
+/// row last held. The Task's own status and every Task
 /// dependency's are read this way, so the answer agrees with the board. Each dependency it is
 /// blocked by is named by its short id in `names` ([`dependency_name`]).
 #[tracing::instrument(skip(db, served, names))]
 pub async fn get_task_with_blockers_as<M: SessionMode>(
     db: &mut Db<M>,
     id: TaskId,
-    served: &HashMap<i64, String>,
+    served: &HashMap<i64, Status>,
     names: &HashMap<String, String>,
 ) -> Result<TaskWithBlockers, TaskError> {
     let mut task = db.tasks().get(id).await?;
     if let Some(status) = served.get(&id.0) {
-        task.status.clone_from(status);
+        task.status = *status;
     }
     // Explicit reasons first (from the block_reasons table), then virtual ones from unmet dependencies.
     let mut reasons = db.block_reasons().list_for("task", id.0).await?;
@@ -1731,7 +1804,7 @@ pub async fn get_task_with_blockers_as<M: SessionMode>(
                 let row = dependency_id.require_stored()?;
                 let dependency_task = db.tasks().get(TaskId(row)).await?;
                 let status = served.get(&row).unwrap_or(&dependency_task.status);
-                if status != TaskStatus::Done.as_str() {
+                if !status.is_done() {
                     reasons.push(format!(
                         "Blocked by task {} ({})",
                         dependency_name(names, "task", &dependency_id),

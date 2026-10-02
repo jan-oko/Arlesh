@@ -9,10 +9,12 @@ export function useFilterDot(): boolean {
   const view = useViewStore((s) => s.view);
   const archivedMode = useFilterStore((s) => s.filter.archivedMode);
   const backlogMode = useFilterStore((s) => s.filter.backlogMode);
+  const showOnAgent = useFilterStore((s) => s.filter.showOnAgent === true);
   const entries = useFilterEntries();
   return hasUndrawnFilters(view, {
     archivedMode,
     backlogMode,
+    showOnAgent,
     valueCount: (dimension) => entries.entries(dimension).length,
   });
 }

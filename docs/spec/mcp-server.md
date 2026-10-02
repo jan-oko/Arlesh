@@ -244,8 +244,15 @@ details an agent reads the payload by.
   `asynchronous` task's spawned wait (`{"kind": "spawned_wait", …}`) and a delegated task's wait
   (`{"kind": "delegation_wait", …}`) are expectations too. An agentic wait carries `agentic_note`,
   `question` and `answer` (see *Agentic waits*).
-- **Delegation.** A task's `delegate_to` is `null`, `{"kind": "person", "id": N}` (read the Person
-  with `arlesh_kb`) or `{"kind": "agent"}`, independent of `agentic`.
+- **Delegation.** A task's `delegate_to` is `null` or `{"kind": "person", "id": N}` (read the
+  Person with `arlesh_kb`), independent of `agentic`. There is no Agent delegate (removed
+  2026-10-01): an agent holds a Task as `on_agent`.
+- **Statuses.** A task's `status` names its model and its value: `{"kind": "ordinary", "status":
+  "todo" | "in_progress" | "started" | "done"}`, or — for a Task that reads as Agentic —
+  `{"kind": "agentic", "status": "todo" | "on_agent" | "review" | "doing" | "done"}`. `review` is
+  derived on every read: an `on_agent` Task with a pending agentic **question** beneath it reads
+  `review`, and reads `on_agent` again once the question is released. The snapshot, `get` and
+  every write's echo all report it so.
 - **Parents.** A node under a domain-table row names its parent `project` (a Project) or `domain`
   (any other subtype), derived from the parent row; its subtype is on that row in `domains`.
 
@@ -320,9 +327,19 @@ worth.
 An **Agentic** Task (see [*Tasks*](resources.md)) carries its **brief** in the snapshot's task rows as
 `agentic_brief` — `priority` (`"MW"`, `"A"`, `"B"` or `"C"`, most urgent first, or null), `spec`, `design`, `acceptance`, `notes` — or
 null when it has none. It is what an agent reads in place of `bd show`, and the server's
-instructions say so. A Task that reads as Agentic **cannot be started without a Spec**; the write
-tools change a status through the same rule, so an agent asking to start one gets the same refusal
+instructions say so. A Task that reads as Agentic **cannot be claimed without a Spec**; the write
+tools change a status through the same rule, so an agent asking to claim one gets the same refusal
 the app gives.
+
+**Its status is a model of its own** (Task 68f, 2026-10-01; see [*Agentic statuses*](resources.md#agentic-statuses)):
+`todo` (ready to claim) → `on_agent` (the agent holds it) → `done`, with `review` — `on_agent` and
+a question of the agent's open — derived, and `doing` meaning the **user** is on it. The work
+cycle an agent follows: claim it (`set_status` `todo` → `on_agent`), work, and to hand anything to
+the user raise a question (`arlesh_waits.ask`: a spec question, or "PR #n is green — review and
+merge?"); the Task reads `review` until the user answers, then `on_agent` again, and the agent
+reads the answer with `arlesh_waits.get`. A wait on something non-human (`question: false`, CI)
+leaves it `on_agent`. Finish with `done`, or hand it back unstarted with `todo`. The `start` preset
+still offers `todo` Agentic Tasks to claim; the capacity lock still blocks every one not `done`.
 
 **Asking for them.** `load` takes an `agentic` query beside `filter` (added to `Arlesh-rz0`,
 2026-09-24): `{}` narrows the board to the Tasks that **read as Agentic** — their own flag or their
@@ -388,9 +405,15 @@ so the conformance corpus is untouched.
   and the one to set. The session holds SQLite's single writer lock from before the compare until
   the write commits, so the two are one step: if the Task's status is no longer `expected`, the
   call is refused as `status_changed`, naming the current status in `details.current`, and nothing
-  is written. Two agents both expecting `todo` cannot both win. The statuses are `todo`,
-  `in_progress`, `started` (begun and paused) and `done`. Starting a Task that reads as Agentic —
-  moving it into `in_progress` or `started` from `todo` or `done` — needs a Spec, as in the app.
+  is written. Two agents both expecting `todo` cannot both win. The MCP writes only Agentic Tasks,
+  so both `expected` and `status` are the **Agentic** vocabulary, a param type of its own
+  (`AgenticStatusParam`): `todo`, `on_agent`, `review`, `doing`, `done` — no `in_progress`, no
+  `started`. `expected` may name any of them, `review` included: it is compared with the status the
+  board reads, derived Review and all, so an agent expecting `on_agent` while its question is open
+  is refused as `status_changed` with `details.current` `review`. `status` may be **`on_agent`** —
+  claiming the Task, from `todo` only, which needs a Spec as in the app — **`todo`** or **`done`**;
+  `doing` (the user's) and `review` (derived: raise a question instead) are refused as
+  `invalid_request`, and so is a claim from anything but `todo`.
 - **`move`** re-parents a Task. It needs write on the Task and create permission at **both** its
   old and its new parent, so a Task can leave a subtree only for one it could have been made in.
 - **`archive`** never deletes, and for now takes **only a Habit occurrence**, archived as the app
@@ -466,10 +489,14 @@ row ids or short ids.
 call is refused as `not_permitted`. Like `arlesh_beads` they are transactional and journaled as the
 **agent's** write, so they never enter the user's Undo Stack, and every open window is told.
 
-The user answers a question wait in the app by writing the **answer** in its editor and releasing
-it; the app refuses the release without one, from every release path. The agent reads the answer
-with `get`, or off the snapshot's `expectations`, which carry `question` and `answer`. A wait blocks
-nothing unless a Task depends on it.
+**A question is how an agent hands a Task to the user.** A pending question under an `on_agent`
+Task makes it read `review` (see *Agentic tasks*); a wait with `question: false` does not. The user
+answers a question wait in the app from the **Review** card or the Task editor's answer field — or
+in the wait's own editor — which stores the **answer** and releases it in one write, and the Task
+reads `on_agent` again; the app refuses a release without an answer, from every release path. The
+agent reads the answer with `get`, or off the snapshot's `expectations`, which carry `question` and
+`answer`. Agentic waits are not drawn in the Zen View's Expectations strip. A wait blocks nothing
+unless a Task depends on it.
 
 ## Notes
 
@@ -560,17 +587,24 @@ can be on with the endpoint off and must stay clearable, and the waits and work 
 board either way:
 
 - the capacity lock is on — an amber **padlock** (`--agent-capacity`);
-- a pending agentic wait asks the user something (`question: true`) — a red **!** (`--ask`);
+- an Agentic Task reads **Review** — its agent has a question open for the user — a red **!**
+  (`--ask`);
 - a pending agentic wait is on something else, CI say — a blue **hourglass** (`--wait`);
-- an Agentic Task is In Progress — the app's **In Progress** glyph, in the bar's icon colour.
+- an Agentic Task is **On Agent** — the app's **On Agent** glyph (a bot head in the ring), in the
+  bar's icon colour.
+
+(Ported with Task 68f, 2026-10-01: the row first counted pending questions and Agentic Tasks In
+Progress; with the Agentic status model those are Review and On Agent.)
 
 The row shows only what applies, in that order, and **no counts**. The tooltip and the accessible
-name spell out each line with its count — *Agents at capacity: Agentic tasks are blocked. 1 question
-waiting for you. 2 agent waits. 3 agentic tasks in progress. Click for details.* A click opens a
+name spell out each line with its count — *Agents at capacity: Agentic tasks are blocked. 1 agentic
+task waiting for your review. 2 agent waits. 3 agentic tasks on an agent. Click for details.* A
+click opens a
 small menu with one line per thing that applies: **Clear** on the capacity line, which clears the
-lock, and **Show** on the others — the waits open the List View under its Expectations option, and
-the work In Progress opens the List View under Do with the Agentic pill. `Escape` or a click outside
-closes it. Each glyph is its own component, so the questions and the other waits can be merged into
+lock, and **Show** on the others — Review opens the List View under Do (where Review leads) with
+the Agentic pill, the waits open it under its Expectations option, and On Agent opens it under Do
+with the Agentic pill and the On Agent pill on. `Escape` or a click outside
+closes it. Each glyph is its own component, so the Review and the other waits can be merged into
 one icon by swapping two files for one.
 
 The counts cover the **whole board**, not the tab's subtree. They come from the load every view

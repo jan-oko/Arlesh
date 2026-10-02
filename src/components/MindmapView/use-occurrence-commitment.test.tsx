@@ -62,7 +62,7 @@ function envelope(): MindmapLoad {
     }],
     tasks: [{
       id: OCCURRENCE_ROW, title: "Evening routine", parent_type: "goal", parent_id: 1,
-      status: "todo", time_scope: null, on_scope_exit: null, plan: null, tag_ids: [], position: 0,
+      status: { kind: "ordinary", status: "todo" }, time_scope: null, on_scope_exit: null, plan: null, tag_ids: [], position: 0,
       is_private: false, delegate_to: null, agentic: null, asynchronous: false,
       archival: "live",
       origin: {

@@ -100,6 +100,13 @@ export interface FilterState {
    * reads as **off**.
    */
   doShowsStarted?: boolean;
+  /**
+   * Whether **Start**, **Do** and the Zen View show an Agentic Task that is **On Agent** — held by an
+   * agent, so not the user's to begin or work on. Off by default; the Filter menu's **On Agent** pill
+   * (key `o`) turns it on, and while it is on the Filter button wears its dot. Kept with the tab.
+   * Absent reads as off. Mirrors `BoardFilter::show_on_agent`.
+   */
+  showOnAgent?: boolean;
 }
 
 /** The neutral, indicator-off filter — shows everything except nodes marked private. */
@@ -144,7 +151,7 @@ function flowHardHidden(node: MindmapNode, f: FilterState): boolean {
   return false;
 }
 
-/** A Task held by someone else — a Person or the Agent. It has every effect of archival. */
+/** A Task held by someone else — a Person. It has every effect of archival. */
 export function isDelegated(node: MindmapNode): boolean {
   return node.kind === "task" && node.delegate !== undefined && node.delegate !== null;
 }
@@ -463,6 +470,7 @@ function passesStatus(
  * `passes_start` in `src-tauri/src/filters/rules.rs`.
  */
 export function passesStartStatus(node: MindmapNode, f: FilterState): boolean {
+  if (node.taskStatus?.kind === "agentic") return passesAgenticStartStatus(node, f);
   if (node.status === "done") return false;
   // An in-progress task with nothing left to start (no direct todo child) drops out.
   if (node.status === "in_progress") return node.children.some((c) => c.kind === "task" && c.status === "todo");
@@ -471,10 +479,32 @@ export function passesStartStatus(node: MindmapNode, f: FilterState): boolean {
 }
 
 /**
- * Do's rule on a Task's own status: In Progress always, **Started** only while the setting in
- * `doShowsStarted` is on (off by default). Mirrors `passes_do_status` in `rules.rs`.
+ * Start's rule on an **Agentic** Task's status: To Do is there to be claimed; Doing is the user's own
+ * work, kept while it still has a To Do child, as In Progress is; **Review** always shows — whatever
+ * the Started settings say — since the agent is idle until the user answers; **On Agent** only while
+ * `showOnAgent` asks for it; Done never. Mirrors `passes_agentic_start` in `rules.rs`.
+ */
+function passesAgenticStartStatus(node: MindmapNode, f: FilterState): boolean {
+  switch (node.taskStatus?.status) {
+    case "todo": return true;
+    case "doing": return node.children.some((c) => c.kind === "task" && c.status === "todo");
+    case "review": return true;
+    case "on_agent": return f.showOnAgent === true;
+    default: return false;
+  }
+}
+
+/**
+ * Do's rule on a Task's own status. An ordinary Task: In Progress always, **Started** only while the
+ * setting in `doShowsStarted` is on (off by default). An **Agentic** Task: Doing and Review always,
+ * On Agent only while `showOnAgent` is on. Mirrors `passes_do_status` in `rules.rs`.
  */
 export function passesDoStatus(node: MindmapNode, f: FilterState): boolean {
+  const status = node.taskStatus;
+  if (status?.kind === "agentic") {
+    if (status.status === "doing" || status.status === "review") return true;
+    return status.status === "on_agent" && f.showOnAgent === true;
+  }
   if (node.status === "in_progress") return true;
   return node.status === "started" && f.doShowsStarted === true;
 }

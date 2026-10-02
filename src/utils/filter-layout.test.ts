@@ -64,7 +64,15 @@ describe("undrawnPillDimensions", () => {
 });
 
 describe("hasUndrawnFilters", () => {
-  const clean: FilterDotState = { archivedMode: "inactive", backlogMode: "inactive", valueCount: () => 0 };
+  const clean: FilterDotState = { archivedMode: "inactive", backlogMode: "inactive", showOnAgent: false, valueCount: () => 0 };
+
+  it("lights for the On Agent pill wherever it is offered, and not in the Plan View", () => {
+    const shown = { ...clean, showOnAgent: true };
+    expect(hasUndrawnFilters("mindmap", shown)).toBe(true);
+    expect(hasUndrawnFilters("list", shown)).toBe(true);
+    expect(hasUndrawnFilters("zen", shown)).toBe(true);
+    expect(hasUndrawnFilters("plan", shown)).toBe(false);
+  });
 
   it("is false with everything at its default", () => {
     expect(hasUndrawnFilters("mindmap", clean)).toBe(false);

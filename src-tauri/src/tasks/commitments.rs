@@ -482,7 +482,18 @@ pub async fn update_commitment(
         &write.time_scope,
     )
     .await?;
-    db.commitments().update(id, write).await
+    let moves = write.reparent.is_some();
+    let commitment = db.commitments().update(id, write).await?;
+    // A Commitment passes the Agentic flag through: moved under another ancestor, the Tasks
+    // beneath it may change kind.
+    if moves {
+        super::agentic::reconcile(
+            db,
+            vec![super::agentic::Reach::Below("commitment".to_string(), id.0)],
+        )
+        .await?;
+    }
+    Ok(commitment)
 }
 
 /// Deletes a commitment and its entire subtree (descendant tasks, goals and commitments, and the

@@ -15,6 +15,7 @@ import {
 import { flattenCommitmentRows, flattenExpectationRows, flattenTaskRows } from "@/utils/list-data";
 import type { Timing } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
+import type { AgenticStatus, OrdinaryStatus, TaskStatus } from "@/api/tasks";
 import { VERDICT_VALUES } from "@/api/verdict";
 
 /**
@@ -48,6 +49,8 @@ interface CorpusNode {
   isHabitFlow?: boolean;
   isHabitOccurrence?: boolean;
   delegated?: boolean;
+  /** A Task's status is of the Agentic model. */
+  agentic?: boolean;
   hasCheck?: boolean;
   tagIds?: number[];
   timeScope?: TimeScope;
@@ -71,6 +74,7 @@ interface CorpusFilter {
   startHidesCheckedWaits?: boolean;
   startShowsStarted?: boolean;
   doShowsStarted?: boolean;
+  showOnAgent?: boolean;
 }
 
 /** One case: a board, a filter, and what each of the three surfaces keeps. */
@@ -142,6 +146,7 @@ function parseNode(value: unknown, what: string): CorpusNode {
     ...flag(raw.isHabitFlow, "isHabitFlow", what),
     ...flag(raw.isHabitOccurrence, "isHabitOccurrence", what),
     ...flag(raw.delegated, "delegated", what),
+    ...flag(raw.agentic, "agentic", what),
     ...flag(raw.hasCheck, "hasCheck", what),
     ...(raw.timeScope !== undefined ? { timeScope: parseTimeScope(raw.timeScope, `${what}.timeScope`) } : {}),
     ...(raw.blockingDependencies !== undefined
@@ -235,6 +240,7 @@ function parseFilter(value: unknown, what: string): CorpusFilter {
     ...flag(raw.startHidesCheckedWaits, "startHidesCheckedWaits", what),
     ...flag(raw.startShowsStarted, "startShowsStarted", what),
     ...flag(raw.doShowsStarted, "doShowsStarted", what),
+    ...flag(raw.showOnAgent, "showOnAgent", what),
   };
 }
 
@@ -276,6 +282,20 @@ const HABIT_FLOW = {
   verdictWindowN: null, verdictWindowKind: null,
 } as const;
 
+const ORDINARY: readonly OrdinaryStatus[] = ["todo", "in_progress", "started", "done"];
+const AGENTIC: readonly AgenticStatus[] = ["todo", "on_agent", "review", "doing", "done"];
+
+/** A corpus Task's status in the model its `agentic` fact names; a spelling outside it fails. */
+function corpusTaskStatus(node: CorpusNode): TaskStatus {
+  const what = `${node.id}.status`;
+  if (node.agentic === true) {
+    const status = AGENTIC.find((candidate) => candidate === node.status) ?? fail(`${what} is not an Agentic status`);
+    return { kind: "agentic", status };
+  }
+  const status = ORDINARY.find((candidate) => candidate === node.status) ?? fail(`${what} is not a Task status`);
+  return { kind: "ordinary", status };
+}
+
 function toMindmapNode(node: CorpusNode): MindmapNode {
   return {
     id: node.id,
@@ -296,7 +316,8 @@ function toMindmapNode(node: CorpusNode): MindmapNode {
     ...(node.blockingDependencies !== undefined ? { blockingDependencyIds: node.blockingDependencies } : {}),
     ...(node.isHabitFlow === true ? { flow: HABIT_FLOW } : {}),
     ...(node.isHabitOccurrence === true ? occurrenceRow() : {}),
-    ...(node.delegated === true ? { delegate: { kind: "agent" as const } } : {}),
+    ...(node.delegated === true ? { delegate: { kind: "person" as const, id: 1 } } : {}),
+    ...(node.kind === "task" && node.status !== undefined ? { taskStatus: corpusTaskStatus(node) } : {}),
     ...(node.hasCheck === true ? { checkEvery: { n: 1, kind: "day" } } : {}),
     ...(node.timeScope !== undefined ? { timeScope: node.timeScope } : {}),
   };
@@ -321,6 +342,7 @@ function toSharedFilter(filter: CorpusFilter): FilterState {
     ...(filter.startHidesCheckedWaits !== undefined ? { startHidesCheckedWaits: filter.startHidesCheckedWaits } : {}),
     ...(filter.startShowsStarted !== undefined ? { startShowsStarted: filter.startShowsStarted } : {}),
     ...(filter.doShowsStarted !== undefined ? { doShowsStarted: filter.doShowsStarted } : {}),
+    ...(filter.showOnAgent !== undefined ? { showOnAgent: filter.showOnAgent } : {}),
   };
 }
 

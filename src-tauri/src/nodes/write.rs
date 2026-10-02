@@ -82,9 +82,14 @@ pub async fn create_task(
     };
     let (key, host) = occurrence_parent(db, &parent, now).await?;
     occurrence_edit::check_within(&host, request.time_scope.as_ref(), request.plan.as_ref())?;
+    // Hung on the occurrence, it reads what the occurrence reads, not the host its columns name.
+    let agentic = match request.agentic.and_then(|agentic| agentic.as_column()) {
+        Some(flag) => flag,
+        None => crate::tasks::agentic::occurrence_reads_agentic(db, &key).await?,
+    };
     request.parent_type = host.host_type.clone();
     request.parent_id = NodeId::Stored(host.host_id);
-    let mut task = crate::tasks::create_task_at(db, request, now).await?;
+    let mut task = crate::tasks::create_task_as(db, request, now, agentic).await?;
     occurrence_edit::attach(db, &host, &key, "task", task.id.require_stored()?).await?;
     (task.parent_type, task.parent_id) = hung_on(&host, &key);
     Ok(task)
@@ -263,8 +268,17 @@ pub async fn update_task(
                     request.plan.as_ref().and_then(Option::as_ref),
                 )?;
             }
+            let moves = request.parent_id.is_some();
             let mut task = crate::tasks::update_task_at(db, TaskId(*id), request, now).await?;
-            if let Some((parent_type, parent_id)) = finish_move(db, moved, "task", *id).await? {
+            let hung = finish_move(db, moved, "task", *id).await?;
+            if moves {
+                // Hung on an occurrence or taken off one, it reads what its new place reads: its
+                // status is settled into that model, and so is everything beneath that inherits.
+                crate::tasks::agentic::reconcile(db, vec![crate::tasks::agentic::Reach::Task(*id)])
+                    .await?;
+                task.status = db.tasks().get(TaskId(*id)).await?.status;
+            }
+            if let Some((parent_type, parent_id)) = hung {
                 (task.parent_type, task.parent_id) = (parent_type, parent_id);
             }
             return Ok(task);
@@ -310,8 +324,16 @@ pub async fn update_goal(
             )
             .await?;
             let mut goal = crate::tasks::update_goal(db, GoalId(*id), request).await?;
+            let onto_occurrence = moved.is_some();
             if let Some((parent_type, parent_id)) = finish_move(db, moved, "goal", *id).await? {
                 (goal.parent_type, goal.parent_id) = (parent_type, parent_id);
+            }
+            if onto_occurrence {
+                crate::tasks::agentic::reconcile(
+                    db,
+                    vec![crate::tasks::agentic::Reach::Below("goal".to_string(), *id)],
+                )
+                .await?;
             }
             return Ok(goal);
         }
@@ -347,10 +369,21 @@ pub async fn update_commitment(
             .await?;
             let mut commitment =
                 crate::tasks::update_commitment(db, CommitmentId(*id), request).await?;
+            let onto_occurrence = moved.is_some();
             if let Some((parent_type, parent_id)) =
                 finish_move(db, moved, "commitment", *id).await?
             {
                 (commitment.parent_type, commitment.parent_id) = (parent_type, parent_id);
+            }
+            if onto_occurrence {
+                crate::tasks::agentic::reconcile(
+                    db,
+                    vec![crate::tasks::agentic::Reach::Below(
+                        "commitment".to_string(),
+                        *id,
+                    )],
+                )
+                .await?;
             }
             return Ok(commitment);
         }

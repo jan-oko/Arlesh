@@ -5,7 +5,7 @@ import type { InstanceType, FlowItemType, TemplateFields } from "@/api/flows";
 import type { Origin, RowId } from "@/api/node-id";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
-import type { Delegate } from "@/api/tasks";
+import type { Delegate, TaskStatus } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
 import type { AgenticBrief, AsyncTemplate } from "@/api/tasks";
 import type { CanonicalKind } from "@/utils/scope-ref";
@@ -199,7 +199,13 @@ export interface MindmapNode {
   rowTitle?: string;
   kind: NodeKind;
   title: string;
+  /** The node's status as it is spelled — a Task's, Goal's, Project's or wait's. For a Task this
+   * spelling alone does not say which model it is in (both spell To Do and Done alike): read
+   * `taskStatus` for anything a Task does by its status. */
   status?: string;
+  /** A Task's status, typed by its model — ordinary or Agentic (Tasks only). What every behaviour
+   * that depends on a Task's status dispatches on. */
+  taskStatus?: TaskStatus;
   /** Explicit block reasons (ordered), editable in the task/goal editor. */
   blockReasons?: string[];
   /** Derived, read-only "Blocked by …" reasons from this task's unmet dependencies. */
@@ -259,8 +265,8 @@ export interface MindmapNode {
    * persisted. Read together with `agentic` through `isAgentic`, never on its own: an explicit
    * `agentic: false` overrides an agentic ancestor. */
   inheritedAgentic?: boolean;
-  /** Who holds this Task, when it is delegated (Tasks only): a Person or the Agent. The task's
-   * **own** stored delegate — absent or `null` when it has none of its own. */
+  /** Who holds this Task, when it is delegated (Tasks only): a Person. The task's **own** stored
+   * delegate — absent or `null` when it has none of its own. */
   delegate?: Delegate | null;
   /** Whether doing this Task starts a **wait** rather than finishing something (Tasks only) —
    * send the email, order the part, kick off the build. Its own flag; `asyncTemplate` is optional.

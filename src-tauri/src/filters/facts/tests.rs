@@ -51,7 +51,7 @@ fn task_row(id: i64, parent_type: &str, parent_id: i64, status: &str) -> Task {
         title: format!("task {id}"),
         parent_type: parent_type.to_string(),
         parent_id: parent_id.into(),
-        status: status.to_string(),
+        status: crate::tasks::model::Status::from_db(status).expect("a stored status"),
         delegate_to: None,
         agentic: None,
         asynchronous: false,

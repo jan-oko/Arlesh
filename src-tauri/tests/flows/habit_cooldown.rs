@@ -10,6 +10,8 @@ use arlesh_lib::commands::{flows as flow_commands, mindmap as mindmap_commands};
 use arlesh_lib::flows::model::{
     ClockKind, CreateFlowRequest, FlowId, InstanceType, MissPolicy, SetRecurrenceRequest,
 };
+use arlesh_lib::flows::model::{CreateFlowItemRequest, UpdateFlowRequest};
+use arlesh_lib::flows::template::TemplateUpdate;
 use arlesh_lib::mindmap::model::MindmapLoad;
 use arlesh_lib::nodes::{
     id::NodeId,
@@ -19,7 +21,9 @@ use arlesh_lib::nodes::{
 use arlesh_lib::scopes::key::ScopeKey;
 use arlesh_lib::scopes::model::ScopeKind;
 use arlesh_lib::tasks::lifecycle::Archival;
-use arlesh_lib::tasks::model::{UpdateCommitmentRequest, Verdict};
+use arlesh_lib::tasks::model::{
+    AgenticStatus, Status, TaskAgentic, UpdateCommitmentRequest, UpdateTaskRequest, Verdict,
+};
 use tauri::Manager;
 
 type App = tauri::App<tauri::test::MockRuntime>;
@@ -777,4 +781,71 @@ async fn an_owed_commitment_habit_blocks_its_unanswered_iterations_and_still_tak
             "cleared, the cooldown lifts"
         );
     }
+}
+
+/// An Agentic Habit (Task 68f's two status models): its occurrences' Done is `agentic_done`, and
+/// completing them resolves the iteration and starts the cooldown as an ordinary Done does.
+#[tokio::test]
+async fn an_agentic_habit_done_in_its_own_model_starts_the_cooldown() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let flow_id = weekly_with_a_day_of_cooldown(&app).await;
+    flow_commands::update_flow(
+        app.state(),
+        flow_id,
+        UpdateFlowRequest {
+            template: TemplateUpdate {
+                agentic: Some(TaskAgentic::Yes),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let item = flow_commands::create_flow_task(
+        app.state(),
+        CreateFlowItemRequest {
+            flow_id,
+            title: "Write the report".into(),
+            parent_type: "flow".into(),
+            parent_id: flow_id,
+        },
+    )
+    .await
+    .unwrap()
+    .id;
+    let iteration = week(ymd(2026, 9, 20));
+    let root = root_key(flow_id, iteration);
+    let step = OccurrenceKey {
+        item: TemplateItem {
+            item_type: TemplateKind::FlowTask,
+            item_id: item,
+        },
+        iteration,
+        cycle: 0,
+    };
+    load(&app, "2026-09-26T18:00:00").await;
+    for key in [&step, &root] {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        write::update_task(
+            &mut db,
+            &NodeId::Derived(key.id()),
+            UpdateTaskRequest {
+                status: Some(Status::Agentic(AgenticStatus::Done)),
+                ..Default::default()
+            },
+            at("2026-09-26T19:00:00"),
+        )
+        .await
+        .unwrap();
+        db.commit().await.unwrap();
+    }
+
+    let sunday = load(&app, "2026-09-27T10:00:00").await;
+    assert_eq!(
+        cooling_until(&sunday, &root_key(flow_id, week(ymd(2026, 9, 27)))),
+        Some(at("2026-09-28T02:00:00")),
+        "an Agentic Done resolves the week and starts the cooldown"
+    );
 }

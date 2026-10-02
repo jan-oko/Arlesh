@@ -18,7 +18,7 @@ use super::{
 use crate::{
     database::session::{Db, Transactional},
     nodes::{key::OccurrenceKey, overlay::HabitOverlays},
-    tasks::{done_date::check_done_date, model::TaskStatus},
+    tasks::{done_date::check_done_date, model::Status},
 };
 
 /// The instant a Task occurrence was done, or `None` while it is not Done.
@@ -27,7 +27,7 @@ pub async fn occurrence_done_at(
     key: &OccurrenceKey,
 ) -> Result<Option<NaiveDateTime>, FlowError> {
     let overlay = db.overlays().task(key).await?;
-    if overlay.status.as_deref() != Some(TaskStatus::Done.as_str()) {
+    if !Status::is_done_db(overlay.status.as_deref()) {
         return Ok(None);
     }
     Ok(overlay
@@ -51,11 +51,7 @@ pub async fn set_occurrence_done_at(
 ) -> Result<(), FlowError> {
     let flow_id = db.flows().occurrence_flow_id(key).await?;
     let mut overlay = db.overlays().task(key).await?;
-    check_done_date(
-        overlay.status.as_deref() == Some(TaskStatus::Done.as_str()),
-        at,
-        now,
-    )?;
+    check_done_date(Status::is_done_db(overlay.status.as_deref()), at, now)?;
     let resolved_at = resolved_at_ms(at);
     if let Some(recurrence) = db.flows().get_recurrence(flow_id).await? {
         if parse_clock(&recurrence)? == Clock::Interval {
@@ -120,7 +116,7 @@ fn completed(overlays: &HabitOverlays, node_key: &str) -> bool {
     overlays
         .tasks
         .get(node_key)
-        .is_some_and(|overlay| overlay.status.as_deref() == Some(TaskStatus::Done.as_str()))
+        .is_some_and(|overlay| Status::is_done_db(overlay.status.as_deref()))
         || overlays
             .goals
             .get(node_key)

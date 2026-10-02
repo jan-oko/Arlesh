@@ -26,5 +26,7 @@
   "agentNote": "The agent's question",
   "agentWaitNote": "What the agent is waiting on",
   "agentAnswer": "Your answer",
-  "agentAnswerHint": "Needed before the wait can be released"
+  "agentAnswerHint": "Needed before the wait can be released",
+  "answerHint": "Answer the agent — Ctrl+Enter sends",
+  "answerSend": "Send"
 }

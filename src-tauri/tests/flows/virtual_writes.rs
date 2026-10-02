@@ -26,7 +26,7 @@ use arlesh_lib::nodes::{
 use arlesh_lib::scopes::key::ScopeKey;
 use arlesh_lib::tasks::model::{
     CreateCommitmentRequest, CreateExpectationRequest, CreateGoalRequest, CreateTaskRequest,
-    Dependency, TaskStatus, UpdateTaskRequest,
+    Dependency, UpdateTaskRequest,
 };
 use tauri::Manager;
 
@@ -439,7 +439,9 @@ async fn a_cycle_edit_that_would_orphan_a_recorded_edit_asks_first() {
         &mut db,
         &morning,
         UpdateTaskRequest {
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
         at(NOW),
@@ -659,7 +661,9 @@ async fn an_occurrence_carries_its_own_expectation_template_and_spawns_its_wait(
         &mut db,
         &stretch,
         UpdateTaskRequest {
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
         at(NOW),
@@ -696,7 +700,9 @@ async fn an_occurrence_carries_its_own_expectation_template_and_spawns_its_wait(
         &mut db,
         &check.id,
         UpdateTaskRequest {
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
         at(later),

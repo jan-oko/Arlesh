@@ -443,9 +443,10 @@ pub fn passes_status(
         Preset::All => true,
         Preset::Plan => passes_plan(node, filter),
         Preset::Start => passes_start(node, filter),
-        // Only in-progress Tasks match — and Started ones while the setting says so; Goals and
-        // structure appear solely as ancestors.
-        Preset::Do => node.kind == NodeKind::Task && passes_do_status(node.status_str(), filter),
+        // Only in-progress Tasks match — and Started ones while the setting says so; of Agentic
+        // ones Doing and Review, and On Agent while it is asked for. Goals and structure appear
+        // solely as ancestors.
+        Preset::Do => node.kind == NodeKind::Task && passes_do_status(node, filter),
         // The inverse of every other preset: only what was deliberately set aside, plus everything
         // beneath it. Structural containers already dropped to ancestor-only above.
         Preset::Backlog => under_backlog || node.backlogged,
@@ -512,6 +513,9 @@ fn passes_start(node: &NodeFacts, filter: &BoardFilter) -> bool {
     if node.kind == NodeKind::Goal {
         return with_archived_override(node, filter, !is_resolved_goal(node.status_str()));
     }
+    if node.agentic {
+        return passes_agentic_start(node, filter);
+    }
     match node.status_str() {
         "done" => false,
         // An in-progress Task with nothing left to start — no direct todo child — drops out.
@@ -522,12 +526,31 @@ fn passes_start(node: &NodeFacts, filter: &BoardFilter) -> bool {
     }
 }
 
-/// Do's status rule: In Progress always, Started only while [`BoardFilter::do_shows_started`] is
-/// on. The Zen View asks the same question with its own setting in that field.
-fn passes_do_status(status: &str, filter: &BoardFilter) -> bool {
-    match status {
-        "in_progress" => true,
-        "started" => filter.do_shows_started,
+/// Start's rule on an **Agentic** Task's status. To Do is there to be claimed, by an agent or the
+/// user; Doing is the user's own work, kept while it has something left to start, as In Progress
+/// is; **Review** always shows — the agent is idle until the user answers — whatever the Started
+/// settings say; **On Agent** only while [`BoardFilter::show_on_agent`] asks for it, since an agent
+/// holds it; Done never.
+fn passes_agentic_start(node: &NodeFacts, filter: &BoardFilter) -> bool {
+    match node.status_str() {
+        "todo" => true,
+        "doing" => node.has_todo_child,
+        "review" => true,
+        "on_agent" => filter.show_on_agent,
+        _ => false,
+    }
+}
+
+/// Do's status rule. An ordinary Task: In Progress always, Started only while
+/// [`BoardFilter::do_shows_started`] is on — the Zen View asks the same question with its own
+/// setting in that field. An **Agentic** Task: Doing and Review always — the user is on it, or the
+/// agent is waiting on them — and On Agent only while [`BoardFilter::show_on_agent`] is on.
+fn passes_do_status(node: &NodeFacts, filter: &BoardFilter) -> bool {
+    match (node.agentic, node.status_str()) {
+        (false, "in_progress") => true,
+        (false, "started") => filter.do_shows_started,
+        (true, "doing" | "review") => true,
+        (true, "on_agent") => filter.show_on_agent,
         _ => false,
     }
 }
