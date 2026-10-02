@@ -1,4 +1,4 @@
-# Arlesh — Claude Instructions
+# Arlesh — Agent Instructions
 
 ## Project
 
@@ -41,6 +41,30 @@ Priorities are `MW`, `A`, `B`, `C`, most urgent first; backlogged work has no pr
 **Rules**
 
 - **Never create a Task, and never set or change a priority, without the user's approval** — propose it (with a suggested priority) and let them decide. Claiming or updating a Task the user assigned is fine.
-- **Always hand back with an agentic question.** When you finish your work, or otherwise pass it to the user — a PR ready for review, a spec question, anything the user must act on — raise a question wait under the Task with `arlesh_waits.ask`, its title saying what the user must do ("PR #n is green: review and merge?"). That is what puts the Task in **Review**, and it is the only way an agent hands responsibility back. Don't mark the Task `done` yourself while the user still has to act; set `done` only after their answer settles it.
+- **Always hand back with an agentic question — the board must stay truthful.** It has to show what is really happening: a Task whose next step is the user's must read **Review**, with the reason visible. So when you finish your work, or otherwise pass it to the user — a PR ready for review, a spec question, anything the user must act on — raise a question wait under the Task with `arlesh_waits.ask`. Its title (and its note, if more is needed) says why: what the user must do ("PR #n is green: review and merge?"). The question is what puts the Task in Review, and it is the only way an agent hands responsibility back; without it the Task sits **On Agent** and looks as if the agent still holds it. Don't mark the Task `done` yourself while the user still has to act; set `done` only after their answer settles it.
 - If the MCP is unreachable, Arlesh isn't running (it must be open or in the tray): say so and ask the user to start it. Don't guess at the board, and don't fall back to bd.
 - `.beads/` is kept as a read-only archive of the closed bd history. Don't run `bd` to track new work.
+
+## Non-Interactive Shell Commands
+
+**ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.
+
+Shell commands like `cp`, `mv`, and `rm` may be aliased to include `-i` (interactive) mode on some systems, causing the agent to hang indefinitely waiting for y/n input.
+
+**Use these forms instead:**
+```bash
+# Force overwrite without prompting
+cp -f source dest           # NOT: cp source dest
+mv -f source dest           # NOT: mv source dest
+rm -f file                  # NOT: rm file
+
+# For recursive operations
+rm -rf directory            # NOT: rm -r directory
+cp -rf source dest          # NOT: cp -r source dest
+```
+
+**Other commands that may prompt:**
+- `scp` - use `-o BatchMode=yes` for non-interactive
+- `ssh` - use `-o BatchMode=yes` to fail instead of prompting
+- `apt-get` - use `-y` flag
+- `brew` - use `HOMEBREW_NO_AUTO_UPDATE=1` env var

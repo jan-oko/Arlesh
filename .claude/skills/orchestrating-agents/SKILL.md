@@ -32,7 +32,7 @@ are listed at the end.
   back to 8 cap after this."). The standing goal is the last one they set, e.g.
   *"Goal set: beads board clean or at least 8 open, up to date and CI-green PRs"*.
 - **Work is tracked on the Arlesh board**, as Agentic Tasks under the ARLESH project, through
-  the `Arlesh` MCP server — not bd (see *Tracking work* in `CLAUDE.md`). The user's quotes
+  the `Arlesh` MCP server — not bd (see *Tracking work* in `AGENTS.md`). The user's quotes
   below predate that and say "bead"/"ticket"; they apply to Tasks unchanged. `.beads/` is a
   read-only archive.
 
