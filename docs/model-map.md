@@ -1,0 +1,374 @@
+# How Arlesh fits together: the model map
+
+The agent-friendly mirror of [`model-map.html`](model-map.html). It has the same groups and cards,
+in the same order, with fuller code pointers. It is a map, not the specification. The rules live in
+[`SPEC.md`](../SPEC.md) and `docs/spec/`, and each card links to the section that owns its rules.
+
+**Keep the two files in step.** A pull request that adds, removes or changes the meaning of a
+concept updates both files, as it updates the spec (see `AGENTS.md`).
+
+Paths are relative to the repo root. `src-tauri/src/` is abbreviated to `rs:` and `src/` (the
+frontend) to `ts:`.
+
+## The pipeline
+
+```
+ Stored (SQLite)          Board load (derived, never stored)        Filters              Readers
+ ───────────────          ───────────────────────────────────       ───────              ───────
+ node rows by kind   ──►  1 scope lifecycles (Timing, Overdue)  ──►  presets        ──►  Views (you)
+ parent tree              2 Habit occurrences, cooldown blocks       pills               Mindmap, List,
+ Flow/Habit templates     3 waits, check tasks                       Rust + TS twins     Plan, Steps, Zen
+ overlays                 4 compound status, Review                  shared corpus  ──►  MCP (agents)
+ dependencies, reasons    5 blocks: reasons, deps, capacity lock                         roots, private,
+ statuses, done instants                                                                 Agentic writes
+        ▲                                                                                     │
+        └──────────── edits write stored rows and overlays only, never a derived value ───────┘
+        │
+        └─► undo journal (SQL triggers on every journaled table)
+```
+
+The load is `rs:mindmap/mod.rs` (`load_within`, then `load_blocked` adds the capacity lock's
+blocks). The steps run in this order: `rs:tasks/scope_rules.rs::derive_all_scope_lifecycles`,
+then `rs:nodes/table.rs::derive_habits`, which applies `rs:flows/occurrences.rs`,
+`rs:flows/cooldown.rs` and `rs:flows/compound_readings.rs`, then `rs:tasks/compound.rs::settle`,
+which also draws the waits, then `rs:tasks/review.rs::derive`, and the capacity lock last
+(`rs:capacity/blocks.rs`). The MCP snapshot reads the same load (`rs:mcp/`).
+
+---
+
+## 1. What's stored
+
+### Node kinds
+- **Is:** the kinds of node:
+  - six fixed Aspects as roots, then Projects, Domains and Tags to organise;
+  - Goals, which are desired states;
+  - Tasks, which are actions;
+  - Commitments, which are rules you keep or break;
+  - Expectations, which are waits;
+  - Infos, which are notes.
+- **Why:** each kind answers a different question (do it, reach it, keep it, wait for it) and resolves its own way.
+- **Without:** one "item" type with a flag per behaviour, where a Goal could be ticked off like a chore.
+- **Lives:**
+  - The domain subtypes share `domains` (`rs:domains/`). Tasks are in `rs:tasks/`, Commitments in `rs:tasks/commitments.rs`, Expectations in `rs:tasks/expectations.rs` and Infos in `rs:infos/`.
+  - [ADR 0005](adr/0005-commitment-node-kind.md) covers the Commitment kind.
+- **Spec:** [Resources](spec/resources.md).
+
+### The parent tree
+- **Is:** every node has exactly one parent, and the tree is the board.
+- **Why:** windows, the Agentic flag, privacy and archival reach children through it, so a branch is set once.
+- **Without:** every node carries its own context, and moving a branch means editing every row.
+- **Lives:**
+  - `parent_type` / `parent_id` on each kind's table.
+  - Ancestor climbs live in `rs:tasks/ancestry.rs`.
+  - Frontend tree building lives in `ts:utils/mindmap-tree.ts`.
+- **Spec:** [Resources](spec/resources.md), [Mindmap](spec/mindmap-view.md).
+
+### Flows and Habits
+- **Is:** a Flow is a template of items with relative Cycle Scopes and Plans. Starting it copies real, independent nodes. A Habit is a Flow with a Recurrence (`flow_recurrences`), whose instances are derived, never copied.
+- **Why:** repeated structure without retyping it, and recurring work without a growing pile of rows.
+- **Without:** weekly chores retyped every week, or the thousands of stored copies a daily habit would leave.
+- **Lives:**
+  - Templates live in `rs:flows/template.rs`, starting a flow in `rs:flows/mod.rs` and cycles in `rs:flows/cycles.rs`.
+  - Tables: `flows`, `flow_tasks`, `flow_goals`, `flow_item_cycles`, `flow_dependencies` and `flow_recurrences`.
+  - [ADR 0002](adr/0002-flow-habit-instance-materialization.md) covers how instances are materialised.
+- **Spec:** [Flows](spec/flows.md), [Habits](spec/habits.md).
+
+### Overlays
+- **Is:** the difference between one derived row and its template: a status, a done time, any field edited on that one row. NULL inherits; a `*_set` flag marks an override *to* NULL.
+- **Why:** storage grows with edits, not with elapsed weeks, and template edits still reach every untouched occurrence.
+- **Without:** touching an occurrence would freeze a full copy, cut off from later template edits.
+- **Lives:**
+  - Tables: `task_overlays`, `goal_overlays`, `commitment_overlays` and `expectation_overlays`.
+  - Relation differences are in `derived_children`, `derived_dependencies` and `derived_tags`.
+  - Code: `rs:nodes/overlay.rs`, `rs:nodes/wait_overlay.rs` and `rs:flows/occurrence_edit.rs`.
+- **Spec:** [Derived nodes § Overlays](spec/virtual-nodes.md#overlays).
+
+## 2. What's derived
+
+### Derived nodes
+- **Is:** rows that exist because something else does, each an ordinary row of its kind with an `origin`:
+  - Habit occurrences (`habit`);
+  - a wait's check tasks (`check`);
+  - the wait an Asynchronous Task spawns when done (`spawned_wait`);
+  - the wait a delegated Task has on its person (`delegation_wait`).
+- **Why:** every view, filter and the MCP read one row shape, with no second code path.
+- **Without:** each surface special-cases each source, and they drift.
+- **Lives:**
+  - `rs:nodes/origin.rs`, `rs:nodes/table.rs`, `rs:nodes/waits.rs`, `rs:flows/occurrences.rs` and `rs:tasks/waits.rs`.
+  - Frontend: `ts:utils/derived-wait.ts`.
+  - [ADR 0008](adr/0008-virtual-node-tables.md) covers virtual node tables.
+- **Spec:** [Derived nodes](spec/virtual-nodes.md).
+
+### Three kinds of id
+- **Is:** the three ids a node can have:
+  - a stored row's integer **row id**;
+  - every node's **full id**, a UUID-v5 (a stored row's is the hash of `{kind}:{row id}`);
+  - a **short id**, the shortest prefix of at least three hex digits that is unique and is not any visible row id.
+- **Why:** derived rows have no row number, and people need a handle shorter than a UUID that can't be mistaken for a row or PR number.
+- **Without:** two id types in every request, and a number meaning three different things.
+- **Lives:**
+  - `rs:nodes/id.rs` and `rs:nodes/key.rs`.
+  - `rs:mcp/ids.rs` (`NodeNames`, `short_id_among`, `board_short_ids`).
+  - Frontend: `ts:utils/uuid-v5.ts` and `ts:utils/node-identity.ts`.
+- **Spec:** [MCP § Short ids](spec/mcp-server.md#short-ids), [Derived nodes](spec/virtual-nodes.md).
+
+### Two status models
+- **Is:** an ordinary Task is To Do, In Progress, Started or Done. A Task that reads as Agentic is To Do, On Agent, Review, Doing or Done. The two are separate types, stored in one column with disjoint spellings (`agentic_todo`, `on_agent`, `doing`, `agentic_done`).
+- **Why:** the board has to say who holds the work. On Agent is the agent's; Doing is yours.
+- **Without:** agent work reads as yours and fills Do and Zen.
+- **Lives:**
+  - `rs:tasks/model.rs` (`TaskStatus`, `AgenticStatus`, `Status`, `Status::is_done_db`).
+  - Frontend: `ts:utils/status-mapping.ts` and `ts:utils/task-status-cycle.ts`.
+  - The kind is read from `rs:tasks/agentic.rs`.
+- **Spec:** [Resources § Agentic statuses](spec/resources.md#agentic-statuses).
+
+### Review
+- **Is:** never set. A Task reads Review when it is On Agent with an open agentic question (`question: true`, pending, live) beneath it. Answering, which releases the wait, returns it to On Agent.
+- **Why:** it is the only way an agent hands work back, and the question says what you need to do.
+- **Without:** agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.
+- **Lives:**
+  - `rs:tasks/review.rs` (`derive`, `is_open_question`).
+  - Frontend: `ts:utils/open-question.ts`.
+  - The MCP side is `arlesh_waits.ask`, in `rs:mcp/`.
+- **Spec:** [Resources § Agentic statuses](spec/resources.md#agentic-statuses), [MCP § Agentic waits](spec/mcp-server.md#agentic-waits).
+
+### Compound
+- **Is:** a Task whose status is read off its whole subtree by a progress rule:
+  - Done when everything counted is Done;
+  - else In Progress if anything is;
+  - else Started if anything is Started or Done;
+  - else To Do.
+  
+  It is never stored, and manual status writes are refused. Habit occurrences can be compound too, and their derived status gates their iteration's resolution.
+- **Why:** a Task that is the sum of its steps should never disagree with them.
+- **Without:** a parent reads Done while a step is open.
+- **Lives:**
+  - `rs:tasks/compound.rs` (`settle`, the shared rule).
+  - `rs:flows/compound_readings.rs` (the Habit pass, before classification).
+  - Frontend: `ts:utils/compound.ts`.
+- **Spec:** [Resources § Compound](spec/resources.md), [Habits § Added children](spec/habits.md).
+
+## 3. Time
+
+### Scopes and the 02:00 day
+- **Is:** Season, Month, Week (Sunday to Saturday), Day, Part of Day and Exact windows. Each is named by a value key such as `{"kind":"week","date":"2026-09-20"}` and is never stored. Every canonical scope starts and ends at 02:00.
+- **Why:** a Day must contain its own Night (22:00 to 02:00). A scope contains exactly its parts.
+- **Without:** between midnight and 02:00 the Day says "today" while its Night says "yesterday", and everything derived from it flips early.
+- **Lives:**
+  - `rs:scopes/key.rs`, `rs:scopes/derive.rs` and `rs:scopes/resolve.rs`.
+  - Frontend: `ts:utils/scope-key.ts`, `ts:utils/scope-window.ts` and `ts:utils/scope-calendar.ts`.
+  - The shared case file is `conformance/scope-keys.json`.
+  - [ADR 0009](adr/0009-derived-scopes.md) covers derived scopes.
+- **Spec:** [Time Scopes § The day boundary](spec/time-scopes.md#the-day-boundary), [§ Scopes are derived](spec/time-scopes.md#scopes-are-derived).
+
+### Time Scope and Plan
+- **Is:** a Time Scope is when something matters. A Plan is the slot you mean to do it in, inside that window. A null Time Scope inherits the nearest window above it.
+- **Why:** "relevant this month" and "doing it Tuesday morning" are different facts that change at different rates.
+- **Without:** either everything is scheduled rigidly, or nothing knows when it stops mattering.
+- **Lives:**
+  - `rs:tasks/scope_rules.rs` and `rs:tasks/lifecycle.rs`.
+  - Frontend: `ts:utils/inherited-scope.ts` and `ts:utils/plan-scope.ts`.
+  - [ADR 0001](adr/0001-time-scope-model.md) covers the time-scope model.
+- **Spec:** [Time Scopes](spec/time-scopes.md).
+
+### Timing
+- **Is:** Pending before the window, Active in it, Lapsed after it. It reads the effective window, own or inherited.
+- **Why:** Start should offer only what is in scope now.
+- **Without:** next month's work and last month's both crowd today.
+- **Lives:** `rs:tasks/lifecycle.rs`; the frontend reads the backend's value (`isStartableWindow` in `ts:utils/filter-tree.ts`).
+- **Spec:** [Time Scopes § On-exit behavior](spec/time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag).
+
+### Due and Overdue
+- **Is:**
+  - **Due:** the window whose end makes work late. An explicit due wins. A backlogged Task has none. Otherwise, under Keep Overdue, it is the effective window.
+  - **Overdue:** a flag set when the work is unfinished, not archived and past the due's end. It shows as an amber border.
+- **Why:** being late is separate from being relevant, and late work stays live.
+- **Without:** lateness had to be a resolution, which settled and hid work that was still open.
+- **Lives:** `rs:tasks/lifecycle.rs` (`effective_due`, `derive_overdue`), and `ts:utils/overdue.ts` on the frontend.
+- **Spec:** [Time Scopes § Due scope and the Overdue flag](spec/time-scopes.md#due-scope-and-the-overdue-flag).
+
+### Habit clocks
+- **Is:** two clocks:
+  - **Window:** lays iterations side by side, and a missed one is Archived, carried into the next one (Overdue), or left Owed.
+  - **Interval:** keeps one open instance and counts the Gap from completion.
+- **Why:** habits fail differently: a missed run is gone, a missed bill is still owed.
+- **Without:** one rule that is wrong for half the habits.
+- **Lives:** `rs:flows/habits.rs` and `rs:flows/occurrences.rs`, reading `flow_recurrences.clock` and `miss_policy` (migration 0087).
+- **Spec:** [Habits § Clocks](spec/habits.md#clocks).
+
+### Cooldown and done times
+- **Is:** a cooldown is a derived block on the next iteration for N finer units after one is done. Under Owed it blocks every open iteration. Every finish records when it happened:
+  - `tasks.done_at`;
+  - an overlay's `resolved_at`;
+  - `achieved_at`, `released_at` and `verdict_at`, from migration 0089.
+  
+  A Task's done date can be corrected in Advanced.
+- **Why:** done on Saturday shouldn't count again on Sunday, and a habit ticked late should count from when it was really done.
+- **Without:** back-to-back completions across a window edge, and clocks counting from the moment you remembered to tick.
+- **Lives:** `rs:flows/cooldown.rs` (`holds`), `rs:flows/done_date.rs`, `rs:tasks/done_date.rs`; on the frontend, `ts:utils/cooldown-until.ts` and `ts:utils/done-date.ts`.
+- **Spec:** [Habits § Cooldown](spec/habits.md#cooldown), [Resources § Done date](spec/resources.md).
+
+## 4. Lifecycle
+
+### Resolution
+- **Is:** how a passed window settled an item: Completed, or Missed under Archive. A Habit iteration resolves when every occurrence its template made is done, a compound one by its derived status.
+- **Why:** a passed window needs an answer, and the clocks count from it.
+- **Without:** old work hangs on with no verdict, and clocks have nothing to count from.
+- **Lives:** `rs:tasks/lifecycle.rs` and `rs:flows/occurrences.rs` (`resolutions`, `done_instants`).
+- **Spec:** [Time Scopes § On-exit behavior](spec/time-scopes.md), [Habits](spec/habits.md).
+
+### Archival and Backlog
+- **Is:** Live, Backlog, Frozen or Archived.
+  - **Set by hand:** a Goal or Project's status, or a Task's Backlog flag.
+  - **Derived:** a settled window archives, and a delegated Task reads as archived in the filters.
+  
+  A Task is never both backlogged and planned.
+- **Why:** "set aside" and "finished" are different questions, and a backlogged Task keeps its real status.
+- **Without:** statuses multiply, and every filter has to know them all.
+- **Lives:** `rs:tasks/lifecycle.rs` and `rs:filters/facts.rs`, with the Backlog invariant in `rs:tasks/mod.rs`.
+- **Spec:** [Time Scopes](spec/time-scopes.md), [Resources § Tasks](spec/resources.md).
+
+### Commitment verdicts
+- **Is:** a Commitment is judged, not done: Kept, Broken or Unresolved. Its Verdict Window bounds how long the answer stays owed; past it, the Commitment Expires.
+- **Why:** a rule is kept or broken, and an unanswered night may well have been kept.
+- **Without:** a missed check-in would count as a broken commitment.
+- **Lives:** `rs:tasks/commitments.rs`, and `ts:utils/commitment-glyph.ts` on the frontend. [ADR 0005](adr/0005-commitment-node-kind.md) covers the Commitment kind.
+- **Spec:** [Resources § Commitments](spec/resources.md#commitments).
+
+## 5. Inheritance
+
+### Agentic
+- **Is:** a three-state flag (NULL, true, false) that inherits downward and can be overridden. It decides a Task's status model and what the MCP may write. Each Agentic Task has its own brief, and needs a Spec before it can start.
+- **Why:** mark a project for agents in one edit, and pull one Task back out of it.
+- **Without:** flagging every Task by hand, and agents writing into your own work.
+- **Lives:** `rs:tasks/agentic.rs`, and `ts:utils/agentic.ts` on the frontend. The brief is in `task_agentic_briefs`; MCP write access is in `rs:access/`.
+- **Spec:** [Resources § Tasks (Agentic)](spec/resources.md), [Link Inheritance](spec/link-inheritance.md).
+
+### Scope containment
+- **Is:** four containment rules: `child.TimeScope ⊆ parent.TimeScope`, `Plan ⊆ TimeScope`, `child.Plan ⊆ parent.Plan` and `Due ⊆ TimeScope`. They are checked on every write. Narrowing a parent offers to clamp its descendants.
+- **Why:** a step can't matter outside the window of the thing it is a step of.
+- **Without:** children outlive their parents, and plans are scheduled after the work stopped mattering.
+- **Lives:** `rs:tasks/scope_rules.rs`.
+- **Spec:** [Time Scopes § Containment invariants](spec/time-scopes.md#containment-invariants).
+
+### Link inheritance
+- **Is:** Time Scope and Agentic inherit today. Asynchronous deliberately does not. Tags, knowledge-base links and delegation are specified to inherit but not built.
+- **Why:** context belongs on the branch.
+- **Without:** re-tagging every child, or filters that miss half a project.
+- **Lives:** computed on read by ancestor traversal (`rs:tasks/ancestry.rs`).
+- **Spec:** [Link Inheritance](spec/link-inheritance.md).
+
+### Privacy
+- **Is:** a node's own Private flag. It hides the node and everything beneath it outside Private Mode, and hides it from the MCP even inside a root.
+- **Why:** one switch keeps an area out of sight and out of agents' context.
+- **Without:** hiding a subtree node by node, and leaking what was missed.
+- **Lives:** `rs:access/`; on the frontend, `ts:utils/mcp-visibility.ts` and the filter pass.
+- **Spec:** [Filtering Logic](spec/filtering-logic.md), [MCP § Access](spec/mcp-server.md#access).
+
+## 6. Blocks
+
+### Block reasons
+- **Is:** an ordered list of reasons written on a Task or Goal by hand.
+- **Why:** some obstacles are not on the board.
+- **Without:** blocked work looks startable.
+- **Lives:** `rs:block_reasons/` (table `block_reasons`).
+- **Spec:** [Resources § Tasks (Blockers)](spec/resources.md).
+
+### Dependencies
+- **Is:** a Task can depend on a Task, a Goal or a stored Expectation. Until the dependency is met, the Task carries the reason "Blocked by {kind} {short id} ({title})". Cycles are refused.
+- **Why:** order between pieces of work is a fact worth recording once.
+- **Without:** you remember the order yourself, and Start offers work out of turn.
+- **Lives:** `rs:tasks/mod.rs` (`add_task_dependency`, `dependency_name`), `ts:utils/blocked-by.ts` and `ts:utils/dependency-candidates.ts`.
+- **Spec:** [Resources § Tasks (Dependencies)](spec/resources.md).
+
+### Derived blocks
+- **Is:** blocks no one writes:
+  - the agent capacity lock, on every Agentic Task not yet Done;
+  - a Habit's cooldown;
+  - a compound Task whose open sub-items are all blocked.
+  
+  They gate starting work and never change a status.
+- **Why:** one mechanism, so filters, badges and the MCP need nothing new for each.
+- **Without:** a special filter rule per feature, each one missing a view.
+- **Lives:** `rs:capacity/blocks.rs` (the lock is stored in `agent-capacity.json`), `rs:flows/cooldown.rs` and `rs:tasks/compound.rs`.
+- **Spec:** [MCP § Agent capacity](spec/mcp-server.md#agent-capacity), [Habits § Cooldown](spec/habits.md#cooldown), [Filtering Logic](spec/filtering-logic.md).
+
+## 7. Reading it out
+
+### Presets
+- **Is:** All, Plan, Start, Do, Backlog and Unblock, each a rule over derived facts. Start, for example, drops:
+  - blocked subtrees;
+  - Pending and Lapsed work, but not Overdue work;
+  - work whose Plan is still ahead;
+  - On Agent work, unless asked for.
+- **Why:** "what can I begin now?" should have one answer everywhere.
+- **Without:** each view invents its own idea of "now".
+- **Lives:** `rs:filters/` (`facts.rs`, `rules.rs`, `tree.rs`, `list.rs`), and `ts:utils/filter-tree.ts` and `ts:utils/list-filter.ts` on the frontend.
+- **Spec:** [Filtering Logic](spec/filtering-logic.md), [Mindmap § status preset](spec/mindmap-view.md).
+
+### The conformance pair
+- **Is:** the presets are written twice, in Rust for the MCP and in TypeScript for the views. One shared case file runs against both.
+- **Why:** the views filter on every keystroke without a round trip, and the corpus keeps the two copies honest.
+- **Without:** the agent's board and yours drift apart silently.
+- **Lives:** `conformance/preset-filters.json`, run by `ts:utils/preset-conformance.test.ts` and by the Rust tests under `rs:filters/`.
+- **Spec:** [Filtering Logic § Where the definition lives](spec/filtering-logic.md).
+
+### Pills and the focus exemption
+- **Is:** filters combine as Any, All and Not. The selected node stays on screen, dimmed, after your own edit stops it matching.
+- **Why:** completing a Task under Plan shouldn't make it vanish from under the cursor.
+- **Without:** every edit risks losing your place.
+- **Lives:** `ts:utils/filter-modes.ts`, `ts:utils/focus-exemption.ts` and `ts:utils/filter-layout.ts`.
+- **Spec:** [Filtering Logic](spec/filtering-logic.md).
+
+### Views
+- **Is:** five views over one tree and one filter model:
+  - **Mindmap:** the tree;
+  - **List:** rows;
+  - **Plan:** triage into scopes;
+  - **Steps:** one level at a time;
+  - **Zen:** what is in progress.
+- **Why:** different jobs need different shapes of the same truth.
+- **Without:** five boards to keep in step.
+- **Lives:** `ts:components/MindmapView`, `ListView`, `PlanView`, `StepsView` and `ZenView`, with tabs in `ts:stores/`.
+- **Spec:** [Tabs](spec/tabs.md), [Mindmap](spec/mindmap-view.md), [List](spec/list-view.md), [Plan](spec/plan-view.md), [Steps](spec/steps-view.md), [Zen](spec/zen-view.md).
+
+### The MCP
+- **Is:** the agents' door to the board.
+  - Agents see only inside the roots you open, and never anything private.
+  - They write only Agentic Tasks, and create Tasks Agentic.
+  - They read the same derived board you see, paged.
+  - They hand work back by asking a question.
+- **Why:** a clean, bounded context for an agent, on the same truth you see.
+- **Without:** agents read everything, or a separate copy that disagrees.
+- **Lives:**
+  - `rs:mcp/` (snapshot, tasks, waits, `ids.rs`, `access.rs`, `capacity`) and `rs:access/` (`AccessMap`).
+  - The roots are stored in `mcp_roots`.
+- **Spec:** [MCP Server](spec/mcp-server.md).
+
+## 8. Keeping it honest
+
+### The undo journal
+- **Is:** SQL triggers on every journaled table record each row's before and after image. One gesture is one step, and Ctrl+Z replays it in reverse, across windows. MCP writes are journaled as the agent's and are not undoable from the app.
+- **Why:** a trigger can't be forgotten by a command that doesn't know it exists.
+- **Without:** an inverse to write for every one of eighty-odd commands, with the next one missing it.
+- **Lives:**
+  - `rs:undo/`, and `scripts/generate-undo-triggers.sh`, which a test compares against the schema.
+  - [ADR 0006](adr/0006-undo-via-a-trigger-written-row-journal.md) covers the trigger-written journal.
+- **Spec:** [Undo](spec/undo.md).
+
+### Migrations
+- **Is:** numbered schema steps, applied in order and never edited once applied. Data is moved aside, never dropped; for example, `retired_beads_ids` from 0091.
+- **Why:** your real database must reach every new shape without losing anything.
+- **Without:** upgrades that refuse to start, or quietly discard history.
+- **Lives:** `src-tauri/migrations/`, run by sqlx at startup (`rs:database/`).
+- **Spec:** the migration notes in each area file.
+
+### A truthful board
+- **Is:** three habits keep the board true:
+  - Nothing derived is stored, so nothing derived goes stale.
+  - Every window hears about every change.
+  - An agent whose next step is yours must say so with a question.
+- **Why:** you act on what the board says, and a board that lies costs more than none.
+- **Without:** stale copies, windows that disagree, and work that looks held when it is waiting on you.
+- **Lives:** `rs:board.rs` and `ts:api/board.ts` for the board-changed broadcast, and `AGENTS.md` for the hand-back rule.
+- **Spec:** [Windows & Tray § The board-changed broadcast](spec/window-tray.md#the-board-changed-broadcast), [MCP § Agentic waits](spec/mcp-server.md#agentic-waits).

@@ -19,6 +19,10 @@ features arrive: a change to the List View touches `list-view.md` and a change t
 `habits.md`, so two features in flight no longer meet in one file the way they used to. This page
 is the front door — start here, then take one hop.
 
+For how the concepts fit together, and why each exists, read the [model map](docs/model-map.html)
+(an agent-friendly copy is [`docs/model-map.md`](docs/model-map.md)). It is a companion to the spec,
+not part of it: the rules stay here.
+
 ### Resources and the rules they live by
 
 | Area | What is in it |
