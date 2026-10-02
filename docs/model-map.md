@@ -36,7 +36,7 @@ which also draws the waits, then `rs:tasks/review.rs::derive`, and the capacity 
 
 ## The derivation graph
 
-The HTML page draws this as an interactive graph. Every edge is a value the code reads to compute
+The HTML page draws this as an interactive graph, and [`model-graph.html`](model-graph.html) shows the same graph on its own, with selectable concepts and their cards. These tables are the mirror of both. Every edge is a value the code reads to compute
 the state. Edges marked *(of another node)* read that value on a different node: a compound's
 sub-items, or a dependency's target. All of these states are worked out on every board load and
 never stored.
