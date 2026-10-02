@@ -468,7 +468,8 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
         </div>
       )}
       {/* A task-instance flow's root is a Task: every iteration's root, and a started flow's, takes
-          these. */}
+          these. The Repetition group below carries a subheading of its own, so it does not read as
+          part of them. */}
       {instanceType === "task" && (
         <TaskTemplateFlags
           asynchronous={isAsynchronous}
@@ -483,13 +484,16 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
         />
       )}
       {offersRecurrence && (
-        <RecurrenceField
+        <div role="group" aria-label={t("fieldRepetition")} className={styles.advancedBody}>
+          <span className={styles.label}>{t("fieldRepetition")}</span>
+          <RecurrenceField
           value={recurrence}
           onChange={setRecurrence}
           durationKind={scoped ? durationKind : null}
           durationN={durationN}
           scoped={scoped}
         />
+        </div>
       )}
       <div className={styles.label}>
         {t("fieldTarget")}

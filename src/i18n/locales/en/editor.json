@@ -23,6 +23,7 @@
   "windowTimeEnd": "End time",
   "flowScoped": "Scoped instances",
   "fieldCycles": "Cycles",
+  "fieldRepetition": "Repetition",
   "cycleWholeScope": "Whole flow scope",
   "cycleScopeKind": "Cycle scope",
   "cyclePlanKind": "Cycle plan",
