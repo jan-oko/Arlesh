@@ -25,7 +25,7 @@ use chrono::{NaiveDate, NaiveDateTime};
 use super::{
     clock_slots, cooldown,
     error::FlowError,
-    habit_cooldown,
+    habit_cooldown, habit_verdict_window,
     habits::{classify_iterations, expire_unanswered, instance_timing, Clock, SlotWindow},
     iteration_window,
     model::{
@@ -54,8 +54,8 @@ use crate::{
             Resolution, Timing,
         },
         model::{
-            Commitment, Delegate, DurationSpec, Goal, OnScopeExit, Task, TaskArchival,
-            TaskDependencyEdge, TimeScope, Verdict,
+            Commitment, Delegate, Goal, OnScopeExit, Task, TaskArchival, TaskDependencyEdge,
+            TimeScope, Verdict,
         },
     },
 };
@@ -471,6 +471,7 @@ async fn schedule<M: SessionMode>(
         keys: &template_keys,
         overlays,
         parents: &parents,
+        by_verdict: flow.instance_type == "commitment",
     };
     let slots = clock_slots(flow, recurrence, clock, furthest, |slot| {
         completions.completed_at(slot)
@@ -479,10 +480,13 @@ async fn schedule<M: SessionMode>(
         slots.iter().cloned().partition(|slot| slot.start <= now);
 
     let resolved = completions.resolutions(&started);
-    let done = done_instants(&started, &template_keys, overlays);
+    let done = completions.finished(&started);
+    // Settled: resolved, or — a commitment iteration — answered; neither is open to block.
+    let mut settled = resolved.clone();
+    settled.extend(done.iter().map(|(index, at)| (*index, *at)));
     let holds = cooldown::holds(
         &slots,
-        (&resolved, &done),
+        (&settled, &done),
         habit_cooldown(flow, recurrence).zip(
             recurrence
                 .miss_policy
@@ -492,7 +496,8 @@ async fn schedule<M: SessionMode>(
         now,
     );
     let classified = classify_iterations(&started, clock, &resolved, now);
-    let mut iterations = expire_unanswered(classified, &verdict_deadlines(flow, &started), now);
+    let mut iterations =
+        expire_unanswered(classified, &verdict_deadlines(flow, clock, &started), now);
     for slot in &future {
         let date = slot.start.date();
         let named = horizon.through.is_some_and(|through| date <= through);
@@ -525,6 +530,9 @@ pub(super) struct Completions<'a> {
     pub(super) overlays: &'a HabitOverlays,
     /// Each instance's parent instance.
     pub(super) parents: &'a HashMap<InstanceKey, InstanceKey>,
+    /// Whether the Habit is a **commitment** one, whose iterations are finished by a verdict on
+    /// their root rather than by work being done.
+    pub(super) by_verdict: bool,
 }
 
 impl Completions<'_> {
@@ -533,11 +541,26 @@ impl Completions<'_> {
         resolutions(slots, self.keys, self.overlays, self.parents)
     }
 
-    /// The instant the iteration in `slot` was completed, or `None` while it is not.
+    /// Each of `slots` that is **finished**, with the instant it was: what starts a cooldown and
+    /// places an Interval's next instance. For a work Habit, every instance done
+    /// ([`done_instants`]); for a commitment Habit, a verdict on its root ([`verdict_instants`]).
+    pub(super) fn finished(&self, slots: &[SlotWindow]) -> HashMap<i64, NaiveDateTime> {
+        if self.by_verdict {
+            return verdict_instants(slots, self.keys, self.overlays);
+        }
+        done_instants(slots, self.keys, self.overlays)
+    }
+
+    /// The instant the iteration in `slot` was completed, or `None` while it is not — what places
+    /// an Interval Habit's next instance. A commitment Habit's is its verdict's.
     pub(super) fn completed_at(&self, slot: &SlotWindow) -> Option<NaiveDateTime> {
-        self.resolutions(std::slice::from_ref(slot))
-            .get(&slot.index)
-            .copied()
+        let one = std::slice::from_ref(slot);
+        let finished = if self.by_verdict {
+            self.finished(one)
+        } else {
+            self.resolutions(one)
+        };
+        finished.get(&slot.index).copied()
     }
 }
 
@@ -550,6 +573,8 @@ pub(super) struct CompletionInputs {
     pub(super) overlays: HabitOverlays,
     /// Each instance's parent instance.
     pub(super) parents: HashMap<InstanceKey, InstanceKey>,
+    /// Whether the Habit is a commitment one — see [`Completions::by_verdict`].
+    pub(super) by_verdict: bool,
 }
 
 impl CompletionInputs {
@@ -559,6 +584,7 @@ impl CompletionInputs {
             keys: &self.keys,
             overlays: &self.overlays,
             parents: &self.parents,
+            by_verdict: self.by_verdict,
         }
     }
 
@@ -720,6 +746,49 @@ fn done_instants(
                 latest = latest.max(at);
             }
             let instant = latest.and_then(chrono::DateTime::from_timestamp_millis)?;
+            Some((slot.index, instant.naive_utc()))
+        })
+        .collect()
+}
+
+/// Which verdicts **finish** a commitment Habit's iteration — start its cooldown and place its next
+/// Interval instance: any verdict, Kept or Broken (ruled by the user, 2026-10-01: "any verdict").
+/// The one place that says so.
+fn verdict_finishes(verdict: Verdict) -> bool {
+    verdict.is_resolved()
+}
+
+/// Maps each slot of a **commitment** Habit whose root carries a finishing verdict
+/// ([`verdict_finishes`]) to the instant it was recorded. Clearing the verdict clears the instant,
+/// so whatever it started goes with it.
+fn verdict_instants(
+    slots: &[SlotWindow],
+    keys: &[InstanceKey],
+    overlays: &HabitOverlays,
+) -> HashMap<i64, NaiveDateTime> {
+    let Some((root, _)) = keys
+        .iter()
+        .find(|(item, _)| item.item_type == TemplateKind::FlowRoot)
+    else {
+        return HashMap::new();
+    };
+    slots
+        .iter()
+        .filter_map(|slot| {
+            let node_key = OccurrenceKey {
+                item: *root,
+                iteration: slot.scope_id,
+                cycle: NO_CYCLE,
+            }
+            .node_key();
+            let overlay = overlays.commitments.get(&node_key)?;
+            let verdict = overlay.verdict.as_deref().and_then(Verdict::from_db)?;
+            if overlay.tombstone.is_some() || !verdict_finishes(verdict) {
+                return None;
+            }
+            let instant = overlay
+                .resolved_at
+                .and_then(chrono::DateTime::from_timestamp_millis)?;
             Some((slot.index, instant.naive_utc()))
         })
         .collect()
@@ -990,7 +1059,7 @@ fn build_iteration(
                     .unwrap_or_default();
                 let window = (context.slot.start, context.slot.end);
                 let (mut commitment, mut lifecycle) =
-                    commitment_row(flow, occurrence, overlay, window, now);
+                    commitment_row(flow, clock, occurrence, overlay, window, now);
                 archive_if_held(&mut lifecycle, &aside, &node_key);
                 commitment.tag_ids = tag_ids;
                 rows.commitments.push(commitment);
@@ -1380,6 +1449,7 @@ fn goal_row(
 /// the Habit's Verdict Window, derived exactly as a stored Commitment's lifecycle is.
 fn commitment_row(
     flow: &Flow,
+    clock: Clock,
     occurrence: Occurrence,
     overlay: CommitmentOverlay,
     window: (NaiveDateTime, NaiveDateTime),
@@ -1391,10 +1461,8 @@ fn commitment_row(
         .as_deref()
         .and_then(Verdict::from_db)
         .unwrap_or(Verdict::Unresolved);
-    let verdict_window = flow
-        .verdict_window_n
-        .zip(flow.verdict_window_kind.clone())
-        .map(|(n, kind)| DurationSpec { n, kind });
+    // An Interval instance never expires: no Verdict Window applies to it.
+    let verdict_window = habit_verdict_window(flow, clock);
     let state = derive_commitment_state(Some(window), verdict, verdict_window.as_ref(), now);
     let lifecycle = ItemLifecycle {
         node_type: "commitment".to_string(),

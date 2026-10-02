@@ -396,6 +396,15 @@ describe("FlowEditorModal — a commitment Habit's Verdict Window", () => {
     expect(screen.getByText("fieldVerdictWindow")).toBeInTheDocument();
   });
 
+  it("offers no Verdict Window on an Interval Habit, whose instance stays open until answered", async () => {
+    vi.mocked(getFlowRecurrence).mockResolvedValueOnce({
+      flow_id: 1, start_scope_id: testKey(1), gap_n: null, gap_kind: null, end_scope_id: null,
+      clock: "interval", miss_policy: null, cooldown_n: null, cooldown_kind: null,
+    });
+    render(<FlowEditorModal {...defaultProps} node={mkCommitmentFlow()} />);
+    await waitFor(() => expect(screen.queryByText("fieldVerdictWindow")).not.toBeInTheDocument());
+  });
+
   it("pre-fills the window the Habit already carries", () => {
     render(
       <FlowEditorModal

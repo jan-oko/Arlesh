@@ -1871,6 +1871,38 @@
       ],
       "commitments": [],
       "expectations": []
+    },
+    {
+      "name": "start drops a commitment blocked by its habit's cooldown",
+      "spec": "habits.md, Cooldown — a Commitment carries derived block reasons (its Habit's cooldown); blocked, it drops out of Start with its subtree, on the canvas and in the commitments band. Plan still shows it.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "blocked-commitments",
+      "mindmap": [
+        "commitment-free"
+      ],
+      "list": [],
+      "commitments": [
+        "commitment-free"
+      ]
+    },
+    {
+      "name": "plan still shows a commitment blocked by its habit's cooldown",
+      "spec": "habits.md, Cooldown — a Commitment carries derived block reasons (its Habit's cooldown); blocked, it drops out of Start with its subtree, on the canvas and in the commitments band. Plan still shows it.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "blocked-commitments",
+      "mindmap": [
+        "commitment-cooling",
+        "commitment-free"
+      ],
+      "list": [],
+      "commitments": [
+        "commitment-cooling",
+        "commitment-free"
+      ]
     }
   ],
   "boards": {
@@ -3264,6 +3296,25 @@
               "status": "todo"
             }
           ]
+        }
+      ]
+    },
+    "blocked-commitments": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "commitment-cooling",
+          "kind": "commitment",
+          "verdict": "unresolved",
+          "timing": "active",
+          "isBlocked": true
+        },
+        {
+          "id": "commitment-free",
+          "kind": "commitment",
+          "verdict": "unresolved",
+          "timing": "active"
         }
       ]
     }

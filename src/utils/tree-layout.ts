@@ -34,7 +34,8 @@ export function isNodeKind(value: string): value is NodeKind {
 
 /** A task/goal is blocked when it has any block reason — explicit or virtual (from an unmet dependency). */
 export function isNodeBlocked(node: MindmapNode): boolean {
-  if (node.kind !== "task" && node.kind !== "goal") return false;
+  // A Commitment carries derived reasons only — its Habit's cooldown — and is blocked by them.
+  if (node.kind !== "task" && node.kind !== "goal" && node.kind !== "commitment") return false;
   return (node.blockReasons?.length ?? 0) + (node.virtualBlockers?.length ?? 0) > 0;
 }
 

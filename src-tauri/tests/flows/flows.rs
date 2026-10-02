@@ -3268,10 +3268,10 @@ async fn a_forked_commitment_habit_keeps_its_verdict_window() {
 }
 
 #[tokio::test]
-async fn a_commitment_habits_clock_cannot_be_anything_but_window_and_owed() {
+async fn a_commitment_habits_clock_is_window_and_owed_or_interval() {
     // Under Archive a past iteration classifies Lapsed — a derived "went unfinished", which is
     // exactly the conclusion this kind forbids. Under Overdue, one unanswered night would be folded
-    // into the next, and an Interval has nothing to complete. The Verdict Window bounds it instead.
+    // into the next. An Interval is allowed (ruled 2026-10-01): a verdict places the next instance.
     let pool = helpers::test_pool().await;
     let flow = helpers::session_factory(&pool)
         .connect()
@@ -3313,7 +3313,7 @@ async fn a_commitment_habits_clock_cannot_be_anything_but_window_and_owed() {
             ..archive_recurrence(start)
         })
         .await
-        .is_err(),
+        .is_ok(),
         "interval",
     );
     assert!(
@@ -3323,7 +3323,7 @@ async fn a_commitment_habits_clock_cannot_be_anything_but_window_and_owed() {
         })
         .await
         .is_ok(),
-        "window + owed is the one shape it may take",
+        "and window + owed",
     );
 }
 

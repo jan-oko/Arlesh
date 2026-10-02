@@ -18,6 +18,8 @@ use arlesh_lib::nodes::{
 };
 use arlesh_lib::scopes::key::ScopeKey;
 use arlesh_lib::scopes::model::ScopeKind;
+use arlesh_lib::tasks::lifecycle::Archival;
+use arlesh_lib::tasks::model::{UpdateCommitmentRequest, Verdict};
 use tauri::Manager;
 
 type App = tauri::App<tauri::test::MockRuntime>;
@@ -601,4 +603,178 @@ async fn a_cooldown_is_refused_off_a_window_clock_and_past_the_window() {
         (stored.cooldown_n, stored.cooldown_kind.as_deref()),
         (Some(6), Some("day"))
     );
+}
+
+/// A commitment flow under the root aspect, of one `kind` period, with a one-day Verdict Window
+/// when `verdict_window` says so.
+async fn commitment_flow(app: &App, kind: &str, verdict_window: bool) -> i64 {
+    flow_commands::create_flow(
+        app.state(),
+        CreateFlowRequest {
+            title: "Asleep by 23:00".into(),
+            instance_type: Some(InstanceType::Commitment),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some(kind.to_string()),
+            verdict_window_n: verdict_window.then_some(1),
+            verdict_window_kind: verdict_window.then(|| "day".to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .id
+}
+
+/// Records `verdict` on the commitment occurrence `key` at `instant`.
+async fn give_verdict(
+    pool: &sqlx::SqlitePool,
+    key: &OccurrenceKey,
+    verdict: Verdict,
+    instant: &str,
+) {
+    let mut db = helpers::session_factory(pool).begin().await.unwrap();
+    write::update_commitment(
+        &mut db,
+        &NodeId::Derived(key.id()),
+        UpdateCommitmentRequest {
+            verdict: Some(verdict),
+            ..Default::default()
+        },
+        at(instant),
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+}
+
+/// Whether the board holds `key`'s root as a Commitment.
+fn commitment_drawn(board: &MindmapLoad, key: &OccurrenceKey) -> bool {
+    let id = NodeId::Derived(key.id());
+    board
+        .commitments
+        .iter()
+        .any(|commitment| commitment.id == id)
+}
+
+fn archival(board: &MindmapLoad, key: &OccurrenceKey) -> Archival {
+    let id = NodeId::Derived(key.id());
+    board
+        .lifecycles
+        .iter()
+        .find(|lifecycle| lifecycle.node_id == id)
+        .map(|lifecycle| lifecycle.archival)
+        .unwrap_or_else(|| panic!("{} has a lifecycle", key.node_key()))
+}
+
+/// An Interval commitment Habit (ruled 2026-10-02): its instance never expires — no Verdict Window
+/// applies — and any verdict, Broken included, places the next one after the Gap, counted from the
+/// verdict. Clearing the verdict takes the next one away again.
+#[tokio::test]
+async fn an_interval_commitment_waits_for_its_verdict_and_any_verdict_moves_it_on() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let flow_id = commitment_flow(&app, "day", true).await;
+    flow_commands::set_flow_recurrence(
+        app.state(),
+        flow_id,
+        SetRecurrenceRequest {
+            gap_n: Some(2),
+            gap_kind: Some("day".into()),
+            ..recurrence(
+                ScopeKey::day(ymd(2026, 1, 5)),
+                ClockKind::Interval,
+                None,
+                None,
+            )
+        },
+    )
+    .await
+    .unwrap();
+    let first = root_key(flow_id, ScopeKey::day(ymd(2026, 1, 5)));
+    let next = root_key(flow_id, ScopeKey::day(ymd(2026, 1, 12)));
+
+    let late = load(&app, "2026-01-09T09:00:00").await;
+    assert!(commitment_drawn(&late, &first));
+    assert_eq!(
+        archival(&late, &first),
+        Archival::Live,
+        "days past its window and its Verdict Window, it has not expired"
+    );
+
+    give_verdict(&pool, &first, Verdict::Broken, "2026-01-09T10:00:00").await;
+    let board = load(&app, "2026-01-12T03:00:00").await;
+    assert!(
+        commitment_drawn(&board, &next),
+        "broken on the 9th: the 10th and 11th are the Gap, the next falls on the 12th"
+    );
+
+    give_verdict(&pool, &first, Verdict::Unresolved, "2026-01-12T04:00:00").await;
+    let board = load(&app, "2026-01-12T05:00:00").await;
+    assert!(
+        !commitment_drawn(&board, &next),
+        "cleared, the next is un-placed"
+    );
+}
+
+/// A Window + Owed commitment Habit with a cooldown: a verdict blocks every iteration still
+/// unanswered; a verdict can still be recorded on a blocked one; clearing the verdicts lifts it.
+#[tokio::test]
+async fn an_owed_commitment_habit_blocks_its_unanswered_iterations_and_still_takes_a_verdict() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let flow_id = commitment_flow(&app, "week", false).await;
+    flow_commands::set_flow_recurrence(
+        app.state(),
+        flow_id,
+        recurrence(
+            week(ymd(2026, 9, 13)),
+            ClockKind::Window,
+            Some(MissPolicy::Owed),
+            Some((1, "day")),
+        ),
+    )
+    .await
+    .unwrap();
+    let first = root_key(flow_id, week(ymd(2026, 9, 13)));
+    let answered = root_key(flow_id, week(ymd(2026, 9, 20)));
+    let current = root_key(flow_id, week(ymd(2026, 9, 27)));
+    load(&app, "2026-10-01T09:00:00").await;
+    give_verdict(&pool, &answered, Verdict::Kept, "2026-10-01T10:00:00").await;
+
+    let board = load(&app, "2026-10-01T10:30:00").await;
+    for open in [&first, &current] {
+        assert_eq!(
+            cooling_until(&board, open),
+            Some(at("2026-10-03T02:00:00")),
+            "{} is blocked",
+            open.node_key()
+        );
+    }
+    assert_eq!(cooling_until(&board, &answered), None);
+
+    // Recording a verdict stays allowed while blocked.
+    give_verdict(&pool, &current, Verdict::Broken, "2026-10-01T11:00:00").await;
+    let board = load(&app, "2026-10-01T11:30:00").await;
+    assert_eq!(
+        cooling_until(&board, &current),
+        None,
+        "answered, nothing to block"
+    );
+    assert_eq!(
+        cooling_until(&board, &first),
+        Some(at("2026-10-03T02:00:00"))
+    );
+
+    give_verdict(&pool, &answered, Verdict::Unresolved, "2026-10-01T12:00:00").await;
+    give_verdict(&pool, &current, Verdict::Unresolved, "2026-10-01T12:00:00").await;
+    let board = load(&app, "2026-10-01T12:30:00").await;
+    for open in [&first, &answered, &current] {
+        assert_eq!(
+            cooling_until(&board, open),
+            None,
+            "cleared, the cooldown lifts"
+        );
+    }
 }

@@ -205,6 +205,9 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   );
   // An Unscoped Habit can only keep an Interval clock, whatever the pills last said.
   const effectiveClock: ClockKind = scoped ? recurrence.clock : "interval";
+  // A commitment flow's Verdict Window — but not on an Interval Habit, whose instance never expires:
+  // it stays open until it is answered.
+  const takesVerdictWindow = instanceType === "commitment" && !(recurrence.isHabit && effectiveClock === "interval");
   // For edit-habit reconciliation: how many completed iterations exist, the schedule snapshot to
   // diff against, and whether the reconcile prompt is showing.
   const [completionCount, setCompletionCount] = useState(0);
@@ -296,10 +299,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
               endDate: recurrence.endEnabled ? recurrence.endDate : null,
               clock: effectiveClock,
               missPolicy: effectiveClock === "window" ? recurrence.missPolicy : null,
-              // A commitment Habit records verdicts and never completes, so nothing could start one.
-              ...(instanceType === "commitment"
-                ? { cooldownN: null, cooldownKind: null }
-                : effectiveCooldown(recurrence, effectiveClock, scoped ? durationKind : null, durationN)),
+              ...effectiveCooldown(recurrence, effectiveClock, scoped ? durationKind : null, durationN),
             }
           : null;
       await onSave({
@@ -316,7 +316,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
         // The root Plan applies only to a task-instance flow with a Span window.
         ...planFields(instanceType === "task" && scoped && !phase ? wholeWindowFollowsLength(rootPlan, durationKind, durationN) : null),
         // And the Verdict Window only to a commitment one: nothing else has a verdict to bound.
-        ...verdictWindowFields(instanceType === "commitment" ? verdictWindow : null),
+        ...verdictWindowFields(takesVerdictWindow ? verdictWindow : null),
         isPrivate,
         ...(offersRecurrence ? { recurrence: recurrenceSave } : {}),
         ...(reconcile !== undefined ? { reconcile } : {}),
@@ -431,7 +431,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
           <span className={styles.depKind}>{t("scopes:unscoped")}</span>
         )}
       </div>
-      {instanceType === "commitment" && (
+      {takesVerdictWindow && (
         <div className={styles.label}>
           {t("fieldVerdictWindow")}
           <VerdictWindowField value={verdictWindow} onChange={setVerdictWindow} />
@@ -450,7 +450,6 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
           durationKind={scoped ? durationKind : null}
           durationN={durationN}
           scoped={scoped}
-          offersCooldown={instanceType !== "commitment"}
         />
       )}
       <div className={styles.label}>

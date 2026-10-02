@@ -236,6 +236,7 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.verdict = Some(commitment.verdict);
         node.tag_ids.clone_from(&commitment.tag_ids);
         node.time_scope.clone_from(&commitment.time_scope);
+        node.is_blocked = blocked.contains(&node.id);
         apply_lifecycle(
             &mut node,
             lifecycles

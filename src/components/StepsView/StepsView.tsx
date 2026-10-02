@@ -303,7 +303,9 @@ export default function StepsView() {
   function unlessBlocked(act: (id: string) => void): (id: string) => void {
     return (id) => {
       const node = lookup(id);
-      if (node === undefined || !isNodeBlocked(node)) { act(id); return; }
+      // A verdict is an answer, not a start: a Commitment blocked by its Habit's cooldown still
+      // takes one.
+      if (node === undefined || node.kind === "commitment" || !isNodeBlocked(node)) { act(id); return; }
       const reasons = [...(node.blockReasons ?? []), ...(node.virtualBlockers ?? [])].join("; ");
       showToast({ nodeId: id, message: t("stepsView:refusedBlocked", { title: node.title, reasons }) });
     };

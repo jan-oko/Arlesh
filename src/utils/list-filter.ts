@@ -1,4 +1,5 @@
 import type { MindmapNode } from "@/utils/tree-layout";
+import { isNodeBlocked } from "@/utils/tree-layout";
 import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
 import {
   typeHardHidden, passesTags, withArchivedOverride, isShelvedProject, isHiddenBacklog,
@@ -520,6 +521,8 @@ function commitmentPassesFilters(row: CommitmentListRow, shared: FilterState, li
   if (typeHardHidden(row.node, shared)) return false;
   if (!shared.privateMode && row.hasPrivateAncestor) return false;
   if (hasGatingAncestor(row.ancestors, shared)) return false;
+  // A Commitment blocked by its Habit's cooldown drops out of Start, as on the canvas.
+  if (shared.statusMode === "start" && isNodeBlocked(row.node)) return false;
   if (!withArchivedOverride(row.node, shared, passesCommitmentPreset(row.node, shared))) return false;
   if (!passesTags(row.node, shared)) return false;
   if (!matchesPillGroup(listFilter.pills.antecedent, ancestorRefs(row.ancestors))) return false;

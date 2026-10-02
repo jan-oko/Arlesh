@@ -143,8 +143,4 @@ describe("RecurrenceField", () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ cooldownEnabled: true, cooldownKind: "day" }));
   });
 
-  it("offers no cooldown on a commitment Habit, which never completes", () => {
-    render(<RecurrenceField value={HABIT} onChange={vi.fn()} durationKind="week" durationN={1} scoped offersCooldown={false} />);
-    expect(screen.queryByRole("checkbox", { name: "recurrenceCooldown" })).not.toBeInTheDocument();
-  });
 });

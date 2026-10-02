@@ -506,6 +506,7 @@ export function buildTree(
       title: commitment.title,
       verdict: commitment.verdict,
       verdictWindow: commitment.verdict_window ?? null,
+      ...cooldownFields(coolingUntil.get(`commitment-${commitment.id}`), cooldownReason),
       timeScope: commitment.time_scope,
       position: commitment.position,
       isPrivate: commitment.is_private,

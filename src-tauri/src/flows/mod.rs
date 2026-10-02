@@ -213,12 +213,6 @@ fn check_cooldown(flow: &Flow, request: &SetRecurrenceRequest) -> Result<(), Flo
                 .to_string(),
         ));
     }
-    if flow.instance_type == "commitment" {
-        return Err(FlowError::Invalid(
-            "a commitment habit has no cooldown — a verdict is an answer, never a completion"
-                .to_string(),
-        ));
-    }
     let kind = flow.flow_duration_kind.as_deref().unwrap_or_default();
     parsed
         .fits(kind, flow.flow_duration_n.unwrap_or(1))
@@ -1499,11 +1493,11 @@ impl<'session> FlowOperator<'session> {
         // next, and an Interval has nothing to complete. Window + Owed is the only shape that
         // leaves an unanswered iteration alone, and the Verdict Window is what bounds it instead.
         if flow.instance_type == "commitment"
-            && !(request.clock == ClockKind::Window
-                && request.miss_policy == Some(MissPolicy::Owed))
+            && request.clock == ClockKind::Window
+            && request.miss_policy != Some(MissPolicy::Owed)
         {
             return Err(FlowError::Invalid(
-                "a commitment habit's clock is fixed to window + owed".to_string(),
+                "a commitment habit's clock is window + owed or interval".to_string(),
             ));
         }
 
@@ -2480,10 +2474,12 @@ impl<'session> FlowOperator<'session> {
             self.cycles_by_item(flow_id).await?,
         );
         let parents = occurrences::occurrence_parents_of(flow_id, template, &keys);
+        let by_verdict = self.get(flow_id).await?.instance_type == "commitment";
         Ok(occurrences::CompletionInputs {
             keys,
             overlays,
             parents,
+            by_verdict,
         })
     }
 
@@ -3123,7 +3119,7 @@ pub async fn generate_habit_iterations<M: SessionMode>(
     })?;
     let resolved = completions.resolutions(&slots);
     let iterations = classify_iterations(&slots, clock, &resolved, now);
-    let iterations = expire_unanswered(iterations, &verdict_deadlines(&flow, &slots), now);
+    let iterations = expire_unanswered(iterations, &verdict_deadlines(&flow, clock, &slots), now);
 
     // Each iteration's occurrences: the same items, resolved against that iteration's own window.
     let items = db.flows().instance_items(flow_id).await?;
@@ -3241,14 +3237,20 @@ fn resolve_iteration_instances(
 /// with no Verdict Window set is answerable indefinitely, which is what the kind does whenever
 /// nothing sets one. The arithmetic is the same [`verdict_deadline`] a real Commitment's Archival
 /// is decided by, so a Habit's iterations and a hand-made Commitment expire by one rule.
-fn verdict_deadlines(flow: &Flow, slots: &[SlotWindow]) -> HashMap<i64, NaiveDateTime> {
+///
+/// Empty, too, on an **Interval** clock: an Interval instance never expires — it stays open until
+/// it is resolved (ruled by the user, 2026-10-02) — so no Verdict Window applies to one.
+fn verdict_deadlines(
+    flow: &Flow,
+    clock: Clock,
+    slots: &[SlotWindow],
+) -> HashMap<i64, NaiveDateTime> {
     if flow.instance_type != "commitment" {
         return HashMap::new();
     }
-    let Some((n, kind)) = flow.verdict_window_n.zip(flow.verdict_window_kind.clone()) else {
+    let Some(duration) = habit_verdict_window(flow, clock) else {
         return HashMap::new();
     };
-    let duration = DurationSpec { n, kind };
     slots
         .iter()
         .filter_map(|slot| {
@@ -3256,6 +3258,17 @@ fn verdict_deadlines(flow: &Flow, slots: &[SlotWindow]) -> HashMap<i64, NaiveDat
                 .map(|deadline| (slot.index, deadline))
         })
         .collect()
+}
+
+/// The Verdict Window a commitment Habit's iterations answer to under `clock`: the flow's own on a
+/// Window clock, and none on an **Interval**, whose instance stays open until it is answered.
+pub(crate) fn habit_verdict_window(flow: &Flow, clock: Clock) -> Option<DurationSpec> {
+    if clock == Clock::Interval {
+        return None;
+    }
+    flow.verdict_window_n
+        .zip(flow.verdict_window_kind.clone())
+        .map(|(n, kind)| DurationSpec { n, kind })
 }
 
 /// Filters `candidates` to the targets a flow of the given `duration` may materialise under.

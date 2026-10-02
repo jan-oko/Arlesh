@@ -92,8 +92,8 @@ export function recurrenceRequest(recurrence: RecurrenceSave, flowDurationKind: 
 /**
  * Whether a Habit on `clock` takes a cooldown: any Window clock — Archive, Overdue and Owed alike —
  * and not an Interval, whose Gap already counts from completion. Mirrors the backend's
- * `takes_cooldown`. (A commitment Habit, which never completes anything, is refused by the
- * backend; its editor offers no Recurrence choices of its own.)
+ * `takes_cooldown`. A commitment Habit is Window + Owed when it is on a Window clock, and its
+ * verdicts start its cooldown.
  */
 export function takesCooldown(clock: ClockKind): boolean {
   return clock === "window";
