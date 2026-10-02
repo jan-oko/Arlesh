@@ -329,6 +329,25 @@ impl From<OnScopeExitParam> for model::OnScopeExit {
     }
 }
 
+/// Who holds a Task: a Person — the snapshot's `delegate_to` shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DelegateParam {
+    /// A Person, by their row id (see `arlesh_kb`). The Person must exist.
+    Person {
+        /// The Person's row id.
+        id: i64,
+    },
+}
+
+impl From<DelegateParam> for model::Delegate {
+    fn from(delegate: DelegateParam) -> Self {
+        match delegate {
+            DelegateParam::Person { id } => Self::Person { id },
+        }
+    }
+}
+
 /// An agentic brief, or the fields of one to change. Each field left out stays as it is (on
 /// create: empty).
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
@@ -432,10 +451,14 @@ pub enum TasksOperation {
         /// Its explicit block reasons, in order.
         #[serde(default)]
         block_reasons: Vec<String>,
+        /// Who holds it: a Person, `{"kind": "person", "id": N}`. A delegated Task is
+        /// hidden wherever an archived one is, except Do.
+        #[serde(default)]
+        delegate: Option<DelegateParam>,
     },
     /// Edits an Agentic Task: its title, brief, backlog, Time Scope, Plan, due, on-scope-exit,
-    /// Asynchronous flag, prerequisites, tags and block reasons. One transaction: every change
-    /// lands, or none does.
+    /// Asynchronous flag, prerequisites, tags, block reasons and delegate. One transaction: every
+    /// change lands, or none does.
     Update {
         /// Task id: a row id or a short id.
         id: NodeIdParam,
@@ -488,6 +511,10 @@ pub enum TasksOperation {
         /// Its explicit block reasons, replacing the list; `null` clears it.
         #[serde(default, deserialize_with = "crate::wire::null_clears")]
         block_reasons: Option<Option<Vec<String>>>,
+        /// Who holds it: a Person, `{"kind": "person", "id": N}`; `null` takes the
+        /// delegation back. A wait's check task cannot be delegated.
+        #[serde(default, deserialize_with = "crate::wire::null_clears")]
+        delegate: Option<Option<DelegateParam>>,
     },
     /// Changes an Agentic Task's status **if it is still `expected`** — one compare-and-set step.
     /// Otherwise refused as `status_changed`, naming the current status, and nothing is written.

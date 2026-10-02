@@ -52,6 +52,17 @@ View's setting says (ruled by the user). The **focus exemption** holds as elsewh
 Logic](filtering-logic.md)): a card your own edit stops matching — cycling it to Done with `Enter` —
 stays where it is, dimmed, until the selection leaves it.
 
+**Only what you hold** (ruled by the user, 2026-10-01). A **delegated** Task — one a Person holds —
+gets **no card**, In Progress or not, so the grid shows only work you are doing yourself.
+Do itself is unchanged: an in-progress delegated Task still shows in the List View under Do (see
+*Delegation* in [*Tasks*](resources.md)). The rule is the Zen View's own, applied in `zenContents`
+after the List View's Do filter, not part of the Do preset, so neither the backend, the MCP nor
+the conformance corpus sees it. It is under the **focus exemption** like every other filter here:
+a card you have just delegated stays, dimmed, until the selection leaves it. It is independent of
+the **Agentic** pill, which narrows what is left: the pill asks whether the work suits an agent,
+delegation who holds it, and a delegated Task is gone whatever the pill says. What a delegated Task
+waits on still reaches the Expectations strip (below).
+
 **A card** carries its **title**, large; beneath it the **parent path** — every ancestor between the
 view's frame and the Task, `Growth › CODE › ARLESH`, the line left-to-right with each title isolated
 so a Hebrew title reads correctly inside it (the Plan View's rule); and, when the card is tall

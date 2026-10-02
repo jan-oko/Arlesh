@@ -1,5 +1,5 @@
 import type { FilterState } from "@/utils/filter-tree";
-import { ZEN_VIEW_STATUS_MODE } from "@/utils/filter-tree";
+import { ZEN_VIEW_STATUS_MODE, isDelegated } from "@/utils/filter-tree";
 import { isReview } from "@/utils/status-mapping";
 import type {
   CommitmentListRow, ExpectationListRow, FocusFilteredRows, ListFilterState, PillFilter, TaskListRow,
@@ -71,6 +71,22 @@ function withoutAgenticWaits(strip: FocusFilteredRows<ExpectationListRow>): Focu
   return { rows: strip.rows.filter((row) => row.node.agentWaiting === undefined), exemptedIds: strip.exemptedIds };
 }
 
+/**
+ * The grid without its **delegated** Tasks — someone else holds them, and the Zen View shows only
+ * what you hold — under the same focus exemption: a card you have just delegated stays, reported as
+ * exempted, until the selection leaves it.
+ */
+function withoutDelegated(grid: FocusFilteredRows<TaskListRow>, focusedId: string | null): FocusFilteredRows<TaskListRow> {
+  const exemptedIds = new Set(grid.exemptedIds);
+  const rows = grid.rows.filter((row) => {
+    if (!isDelegated(row.node)) return true;
+    if (row.node.id !== focusedId) return false;
+    exemptedIds.add(row.node.id);
+    return true;
+  });
+  return { rows, exemptedIds };
+}
+
 /** A hidden strip: no rows, nothing exempted. */
 function none<Row>(): FocusFilteredRows<Row> {
   return { rows: [], exemptedIds: new Set<string>() };
@@ -95,7 +111,9 @@ function sharedUnder(shared: FilterState, mode: FilterState["statusMode"]): Filt
  * The Zen View's contents, from the List View's rows.
  *
  * - **The grid** is the List View's Task rows under **Do**, in the order they came — plain board
- *   pre-order, with no Asynchronous-first partition — but with **Review** cards first. Whether a
+ *   pre-order, with no Asynchronous-first partition — but with **Review** cards first, and **less
+ *   every delegated Task**: Do still shows an in-progress Task someone else holds, the Zen View
+ *   shows only what you hold. Whether a
  *   **Started** Task counts is the Zen View's own setting (`showsStarted`), not the Do preset's; an
  *   **On Agent** one shows only while the shared filter's `showOnAgent` asks for it.
  * - **The Commitments strip** is what the List View shows under Do: the unresolved ones.
@@ -116,7 +134,10 @@ export function zenContents(
   const underDo = { ...sharedUnder(shared, ZEN_VIEW_STATUS_MODE), doShowsStarted: options.showsStarted };
   const doFilter = listFilterUnder(ZEN_VIEW_STATUS_MODE, options.agentic);
   return {
-    tasks: reviewFirst(withoutCompounds(filterTaskListWithFocus(source.tasks, underDo, doFilter, focusedId), options, focusedId)),
+    tasks: reviewFirst(withoutDelegated(
+      withoutCompounds(filterTaskListWithFocus(source.tasks, underDo, doFilter, focusedId), options, focusedId),
+      focusedId,
+    )),
     commitments: options.commitments
       ? filterCommitmentListWithFocus(source.commitments, underDo, doFilter, focusedId)
       : none(),

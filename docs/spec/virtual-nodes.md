@@ -207,8 +207,9 @@ parent — a full editor save — is not a move) and none is deleted or copied; 
 day and is not delegated; a delegation wait's status is its Task's (only the Task being done
 releases it), and nothing schedules checks on it, so it takes no Check every. None of them takes a
 Plan from where it hangs: a spawned wait does not take its Task's, and a wait cuts the Plan chain
-for what is beneath it. A delegation wait is drawn with a label round its title ("“…” done by its
-delegate") while that title is its Task's; one given a title of its own is drawn with it.
+for what is beneath it. A delegation wait is drawn with a label naming who is to finish it ("Tuli
+finish: …"; see *Delegation* in [Resources](resources.md)) while that title is its Task's; one given
+a title of its own is drawn with it.
 
 ## Horizon
 

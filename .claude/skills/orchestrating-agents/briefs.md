@@ -49,7 +49,7 @@ settled so it is not re-litigated. Include rulings the user rejected, and why.>
 resolution rule if they meet ("keep your content, then run `cargo fmt`", "5vp lands first").
 Ask the agent to tell you if it changes a shared API's shape.>
 
-## Conventions (read `CLAUDE.md` and every file in `.claude/rules/` first)
+## Conventions (read `AGENTS.md` and every file in `.claude/rules/` first)
 
 - Design decisions go in the `docs/spec/` area file, never `SPEC.md`.
 - Changelog: one fragment `changelog.d/<added|changed|fixed|removed>/<NNNN>-<slug>.md`,
@@ -177,7 +177,7 @@ Two routes. Read the undo engine and decide, then say which and why:
 
 A failed save must say what failed. `Arlesh-zlg` (#59) landed the refusal policy in `docs/spec/mindmap-view.md`: a gesture that cannot act says so out loud, with the backend's own reason appended via `getErrorMessage`. A `console.error` is a note to the developer, not an answer to the user. Note `useMindmapStore.showToast` is a **single slot** — a second call overwrites the first.
 
-## Conventions (read `CLAUDE.md` and every file in `.claude/rules/` first)
+## Conventions (read `AGENTS.md` and every file in `.claude/rules/` first)
 
 - Design decisions go in `docs/spec/undo.md`, never `SPEC.md`. It must record that an editor save is one Gesture **and what happens when one fails**.
 - **Never hand-edit `CHANGELOG.md`.** One `changelog.d/fixed/<NNNN>-<slug>.md` fragment, numbered above every number you can see. Do **not** run `npm run changelog`.
