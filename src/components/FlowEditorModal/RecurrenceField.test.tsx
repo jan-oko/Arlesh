@@ -24,6 +24,7 @@ interface Overrides {
   value?: RecurrenceUi;
   onChange?: (value: RecurrenceUi) => void;
   durationKind?: string | null;
+  durationN?: number;
   scoped?: boolean;
 }
 
@@ -33,6 +34,7 @@ function field(overrides: Overrides = {}) {
       value={overrides.value ?? HABIT}
       onChange={overrides.onChange ?? vi.fn()}
       durationKind={overrides.durationKind === undefined ? "week" : overrides.durationKind}
+      durationN={overrides.durationN ?? 1}
       scoped={overrides.scoped ?? true}
     />
   );
@@ -47,9 +49,9 @@ describe("RecurrenceField", () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ isHabit: true }));
   });
 
-  it("puts the clock first, then the miss policy, then Starts, the Gap and the end", () => {
+  it("puts the clock first, then the miss policy, then Starts, the Gap, the Cooldown and the end", () => {
     const { container } = render(field());
-    const order = ["clockWindow", "missPolicyOverdue", "recurrenceStart", "recurrenceGap", "recurrenceEnd"];
+    const order = ["clockWindow", "missPolicyOverdue", "recurrenceStart", "recurrenceGap", "recurrenceCooldown", "recurrenceEnd"];
     const text = container.textContent ?? "";
     const positions = order.map((key) => text.indexOf(key));
     expect(positions.every((position) => position >= 0)).toBe(true);
@@ -99,4 +101,46 @@ describe("RecurrenceField", () => {
     // Both the start and end anchors render as week-formatted labels ("W{n} {year}"), not raw dates.
     expect(screen.getAllByText(/^W\d+ 2026$/).length).toBe(2);
   });
+
+  it("offers a cooldown under every Window miss policy, and none under an Interval", () => {
+    const { rerender } = render(field());
+    expect(screen.getByRole("checkbox", { name: "recurrenceCooldown" })).toBeInTheDocument();
+    rerender(field({ value: { ...HABIT, missPolicy: "overdue" } }));
+    expect(screen.getByRole("checkbox", { name: "recurrenceCooldown" })).toBeInTheDocument();
+    rerender(field({ value: { ...HABIT, missPolicy: "owed" } }));
+    expect(screen.getByRole("checkbox", { name: "recurrenceCooldown" })).toBeInTheDocument();
+    rerender(field({ value: { ...HABIT, clock: "interval" } }));
+    expect(screen.queryByRole("checkbox", { name: "recurrenceCooldown" })).not.toBeInTheDocument();
+  });
+
+  it("offers no cooldown on a sub-day window, which has nothing finer to count in", () => {
+    render(field({ durationKind: "part" }));
+    expect(screen.queryByRole("checkbox", { name: "recurrenceCooldown" })).not.toBeInTheDocument();
+  });
+
+  it("counts a weekly habit's cooldown in days, short of a week", () => {
+    render(field({ value: { ...HABIT, cooldownEnabled: true, cooldownN: 2 } }));
+    expect(screen.getByRole("spinbutton", { name: "recurrenceCooldown" })).toHaveAttribute("max", "6");
+    expect(screen.getByRole("combobox", { name: "recurrenceCooldown" })).toHaveValue("day");
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["cooldownUnitDay"]);
+  });
+
+  it("counts a daily habit's cooldown in parts of the day", () => {
+    render(field({ durationKind: "day", value: { ...HABIT, cooldownEnabled: true, cooldownKind: "day" } }));
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["cooldownUnitPart"]);
+  });
+
+  it("offers a monthly habit weeks or days, with room for the week that straddles the month", () => {
+    render(field({ durationKind: "month", value: { ...HABIT, cooldownEnabled: true, cooldownKind: "week" } }));
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["cooldownUnitWeek", "cooldownUnitDay"]);
+    expect(screen.getByRole("spinbutton", { name: "recurrenceCooldown" })).toHaveAttribute("max", "3");
+  });
+
+  it("reports the cooldown switched on", () => {
+    const onChange = vi.fn();
+    render(field({ onChange }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "recurrenceCooldown" }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ cooldownEnabled: true, cooldownKind: "day" }));
+  });
+
 });

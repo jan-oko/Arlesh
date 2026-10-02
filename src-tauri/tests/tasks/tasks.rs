@@ -196,6 +196,22 @@ async fn undone_dependency_blocks_task() {
     .unwrap();
     assert_eq!(with_blockers.block_reasons.len(), 1);
     assert!(with_blockers.block_reasons[0].contains("Dependency"));
+
+    // Named by its short id, when the caller has one for it.
+    let names =
+        std::collections::HashMap::from([(format!("task-{}", dependency.id), "6f3".to_string())]);
+    let named = {
+        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+        arlesh_lib::tasks::get_task_with_blockers_as(
+            &mut db,
+            task.id.sid().into(),
+            &std::collections::HashMap::new(),
+            &names,
+        )
+        .await
+    }
+    .unwrap();
+    assert!(named.block_reasons[0].starts_with("Blocked by task 6f3 ("));
 }
 
 #[tokio::test]

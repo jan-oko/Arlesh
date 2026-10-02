@@ -44,6 +44,7 @@ fn a_reason_naming_an_unreadable_dependency_is_dropped_and_the_rest_are_kept() {
             Dependency::Goal { id: 404.into() },
         ],
         &map(),
+        &std::collections::HashMap::new(),
     );
 
     assert_eq!(
@@ -60,9 +61,38 @@ fn a_hidden_dependency_does_not_take_a_reason_whose_id_merely_starts_the_same() 
     // Task 1 is unreadable; the reason for task 11 must not be mistaken for it.
     let mut reasons = vec!["Blocked by task 11 (Readable)".to_string()];
 
-    restrict_block_reasons(&mut reasons, &[Dependency::Task { id: 1.into() }], &map());
+    restrict_block_reasons(
+        &mut reasons,
+        &[Dependency::Task { id: 1.into() }],
+        &map(),
+        &std::collections::HashMap::new(),
+    );
 
     assert_eq!(reasons.len(), 1);
+}
+
+#[test]
+fn a_reason_names_its_dependency_by_short_id_and_is_matched_that_way() {
+    let mut reasons = vec![
+        "Blocked by task 6f3 (Secret)".to_string(),
+        "Blocked by task a1c (Readable)".to_string(),
+    ];
+    let names = std::collections::HashMap::from([
+        ("task-20".to_string(), "6f3".to_string()),
+        ("task-11".to_string(), "a1c".to_string()),
+    ]);
+
+    restrict_block_reasons(
+        &mut reasons,
+        &[
+            Dependency::Task { id: 11.into() },
+            Dependency::Task { id: 20.into() },
+        ],
+        &map(),
+        &names,
+    );
+
+    assert_eq!(reasons, vec!["Blocked by task a1c (Readable)".to_string()]);
 }
 
 #[test]

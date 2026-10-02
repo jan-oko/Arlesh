@@ -17,6 +17,7 @@ import VerdictWindowField from "./VerdictWindowField";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import { useBeadsIdClear } from "@/hooks/use-beads-id-clear";
 import styles from "@/components/EditorModal/EditorModal.module.css";
+import { formatCooldownUntil } from "@/utils/cooldown-until";
 
 export interface CommitmentSaveData {
   title: string;
@@ -139,6 +140,14 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, head
         {t("fieldVerdictWindow")}
         <VerdictWindowField value={verdictWindow} onChange={setVerdictWindow} />
       </div>
+      {/* A Commitment takes no block reasons of its own; the one it can carry is its Habit's
+          cooldown, derived and read-only. A verdict may still be recorded while it is blocked. */}
+      {node.coolingUntil !== undefined && (
+        <div className={styles.virtualBlockers}>
+          <span className={styles.virtualBlockersLabel}>{t("editor:cooldownBlockLabel")}</span>
+          <div className={styles.virtualBlockerRow}>{t("editor:cooldownBlocked", { when: formatCooldownUntil(node.coolingUntil) })}</div>
+        </div>
+      )}
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} />
     </EditorModal>

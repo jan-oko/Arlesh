@@ -14,7 +14,8 @@ import { TASK_AGENTIC, TASK_ARCHIVAL } from "@/api/tasks";
 import { storedAgenticState } from "@/utils/agentic";
 import type { TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
-import { listTaskDependencies } from "@/api/tasks";
+import { fetchTaskDoneAt, listTaskDependencies } from "@/api/tasks";
+import { fromDoneDateInput, nowDoneDateInput, toDoneDateInput } from "@/utils/done-date";
 import { getErrorMessage } from "@/api/errors";
 import { withAtomicGesture } from "@/api/gesture";
 import EditorModal from "@/components/EditorModal/EditorModal";
@@ -37,6 +38,7 @@ import {
 import { openQuestion } from "@/utils/open-question";
 import AnswerField from "@/components/AnswerField/AnswerField";
 import { isOverdue } from "@/utils/overdue";
+import { blockedByText } from "@/utils/blocked-by";
 
 export interface TaskSaveData {
   title: string;
@@ -76,6 +78,9 @@ export interface TaskSaveData {
    * says nothing about delegation at all, so a save that never touched it cannot overwrite it. */
   delegate?: Delegate | null;
   isPrivate: boolean;
+  /** The task's new done date (`YYYY-MM-DDTHH:MM:SS`, local), present only when the form changed
+   * it on a task saved Done. Absent leaves the recorded one alone. */
+  doneAt?: string;
 }
 
 /** The pills each model offers, in order. Review is never picked: it shows, disabled, while the
@@ -148,6 +153,9 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);
   const [currentDeps, setCurrentDeps] = useState<Dependency[]>([]);
   const [depSearch, setDepSearch] = useState("");
+  // The done date, as the Advanced field holds it, and as it was loaded — saved only when changed.
+  const [doneAt, setDoneAt] = useState("");
+  const [loadedDoneAt, setLoadedDoneAt] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const beadsClear = useBeadsIdClear(onClearBeadsId);
@@ -168,6 +176,21 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   useEffect(() => {
     void listTaskDependencies(dbId).then((deps) => { setInitialDeps(deps); setCurrentDeps(deps); });
   }, [dbId]);
+
+  // A wait's check task has no done date of its own: its completion is the check it records.
+  const hasDoneDate = checkOrigin(node.origin) === undefined;
+  // Done as the task was opened, in either model — what has a done date to show.
+  const savedDone = isDone(taskStatusOf(node));
+  useEffect(() => {
+    if (!hasDoneDate || !savedDone) return;
+    let cancelled = false;
+    void fetchTaskDoneAt(dbId).then((at) => {
+      if (cancelled) return;
+      setDoneAt(toDoneDateInput(at));
+      setLoadedDoneAt(toDoneDateInput(at));
+    });
+    return () => { cancelled = true; };
+  }, [dbId, hasDoneDate, savedDone]);
 
 
   function removeDep(dep: Dependency) {
@@ -221,6 +244,8 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           },
           agenticBrief: isEmptyBrief(agenticBrief) ? null : agenticBrief,
           isPrivate,
+          ...(isDone(status) && doneAt !== "" && doneAt !== loadedDoneAt
+            ? { doneAt: fromDoneDateInput(doneAt) } : {}),
         });
       });
     } catch (err) {
@@ -305,12 +330,13 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   // non-Done task / non-Achieved goal) blocks. Recomputed live, so removing a dependency drops its row.
   const virtualBlockers = currentDeps.flatMap((dep) => {
     const target = availableForDep.find((n) => n.id === entityNodeId(dep.type, dep.id));
+    const label = blockedByText(dep.type, target?.shortId, dep.id, depTitle(dep));
     const unmet = target === undefined
       ? true
       : dep.type === "task" ? target.status !== "done"
         : dep.type === "expectation" ? target.status === EXPECTATION_STATUS.PENDING
           : target.status !== "achieved";
-    return unmet ? [`Blocked by ${dep.type} ${dep.id} (${depTitle(dep)})`] : [];
+    return unmet ? [label] : [];
   });
 
   return (
@@ -418,6 +444,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         virtualBlockers={virtualBlockers}
         capacityBlocked={node.capacityBlocked === true}
         compoundBlocked={node.compoundBlocked === true}
+        coolingUntil={node.coolingUntil}
       />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <div className={styles.depSection}>
@@ -455,6 +482,21 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         onPrivateChange={setIsPrivate}
         startOpen={agentic !== TASK_AGENTIC.INHERIT || question !== undefined || (readsAgentic && !isEmptyBrief(agenticBrief))}
       >
+        {/* The done date: when a Done task was done, set back for work marked done late — an
+            Interval's next window and a cooldown count from it. Left empty on a task marked Done
+            in this save, it is the moment of saving. */}
+        {hasDoneDate && isDone(status) && (
+          <label className={styles.label} title={t("doneAtHint")}>
+            {t("fieldDoneAt")}
+            <input
+              type="datetime-local"
+              className={styles.input}
+              value={doneAt}
+              max={nowDoneDateInput()}
+              onChange={(e) => setDoneAt(e.target.value)}
+            />
+          </label>
+        )}
         <AgenticField
           value={agentic}
           inherited={node.inheritedAgentic === true}

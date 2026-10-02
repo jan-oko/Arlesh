@@ -185,6 +185,8 @@ export async function listFlowInstanceNodes(): Promise<TargetRef[]> {
 export type ClockKind = "window" | "interval";
 /** What a Window Habit does with an iteration left unfinished. */
 export type MissPolicy = "archive" | "overdue" | "owed";
+/** The unit a Window Habit's cooldown counts in — a kind finer than the habit's own window. */
+export type CooldownKind = "part" | "day" | "week" | "month";
 
 /** A Habit's Recurrence — Repetition (start/gap/end) plus its clock. */
 export interface FlowRecurrence {
@@ -196,6 +198,10 @@ export interface FlowRecurrence {
   clock: ClockKind;
   /** Set exactly when the clock is `window`. */
   miss_policy: MissPolicy | null;
+  /** A Window Habit's cooldown: after an iteration is completed, the next opens only once this
+   * many `cooldown_kind` units have passed. Both null for none. */
+  cooldown_n: number | null;
+  cooldown_kind: CooldownKind | null;
 }
 
 export interface SetRecurrenceRequest {
@@ -205,6 +211,9 @@ export interface SetRecurrenceRequest {
   end_scope_id?: ScopeKey | null;
   clock: ClockKind;
   miss_policy: MissPolicy | null;
+  /** Window clock only; both null (or absent) for no cooldown. */
+  cooldown_n?: number | null;
+  cooldown_kind?: CooldownKind | null;
 }
 
 /** Sets (creates or replaces) a flow's Recurrence, making it a Habit. */

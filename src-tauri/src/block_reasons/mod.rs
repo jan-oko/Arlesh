@@ -26,6 +26,7 @@ impl From<BlockReasonRow> for BlockReason {
             reason: row.reason,
             position: row.position,
             derived: None,
+            until: None,
         }
     }
 }

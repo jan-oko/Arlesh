@@ -69,6 +69,15 @@ describe("TaskEditorModal — virtual blockers from dependencies", () => {
     return render(<TaskEditorModal {...defaultProps} availableForDep={[GOAL_DEP]} />);
   }
 
+  it("names the dependency by its short id", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "list_task_dependencies") return Promise.resolve([{ type: "goal", id: 9 }]);
+      return Promise.resolve(null);
+    });
+    render(<TaskEditorModal {...defaultProps} availableForDep={[{ ...GOAL_DEP, shortId: "6f3" }]} />);
+    await waitFor(() => expect(screen.getByText("Blocked by goal 6f3 (Milestone)")).toBeInTheDocument());
+  });
+
   it("shows an unmet dependency as a virtual block reason", async () => {
     withDep();
     await waitFor(() => expect(screen.getByText("Blocked by goal 9 (Milestone)")).toBeInTheDocument());
@@ -881,5 +890,50 @@ describe("TaskEditorModal — the Due field", () => {
     fireEvent.click(screen.getByRole("button", { name: "save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ dueScope: null });
+  });
+});
+
+describe("TaskEditorModal — done date", () => {
+  function doneAt(at: string | null) {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "list_task_dependencies") return Promise.resolve([]);
+      if (cmd === "task_done_at") return Promise.resolve(at);
+      return Promise.resolve(null);
+    });
+  }
+
+  it("shows a Done task's done date in Advanced", async () => {
+    doneAt("2026-09-28T10:00:00");
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ status: "done" })} />);
+    fireEvent.click(screen.getByRole("button", { name: /advanced/ }));
+    await waitFor(() => expect(screen.getByLabelText("fieldDoneAt")).toHaveValue("2026-09-28T10:00"));
+  });
+
+  it("offers no done date while the task is not Done", () => {
+    doneAt(null);
+    render(<TaskEditorModal {...defaultProps} />);
+    fireEvent.click(screen.getByRole("button", { name: /advanced/ }));
+    expect(screen.queryByLabelText("fieldDoneAt")).not.toBeInTheDocument();
+  });
+
+  it("saves a done date set back, and says nothing of one left alone", async () => {
+    doneAt("2026-09-28T10:00:00");
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = render(<TaskEditorModal {...defaultProps} onSave={onSave} node={mkNode({ status: "done" })} />);
+    fireEvent.click(screen.getByRole("button", { name: /advanced/ }));
+    await waitFor(() => expect(screen.getByLabelText("fieldDoneAt")).toHaveValue("2026-09-28T10:00"));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty("doneAt");
+    unmount();
+
+    onSave.mockClear();
+    render(<TaskEditorModal {...defaultProps} onSave={onSave} node={mkNode({ status: "done" })} />);
+    fireEvent.click(screen.getByRole("button", { name: /advanced/ }));
+    await waitFor(() => expect(screen.getByLabelText("fieldDoneAt")).toHaveValue("2026-09-28T10:00"));
+    fireEvent.change(screen.getByLabelText("fieldDoneAt"), { target: { value: "2026-09-26T19:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ doneAt: "2026-09-26T19:00:00" });
   });
 });

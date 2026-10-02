@@ -237,7 +237,7 @@ fn refuse_moves(
 
 /// The epoch-millisecond instant a completion is recorded at: `now`'s wall-clock reading, the
 /// same local-naive clock the iteration windows are laid on.
-fn resolved_at_ms(now: NaiveDateTime) -> i64 {
+pub(super) fn resolved_at_ms(now: NaiveDateTime) -> i64 {
     now.and_utc().timestamp_millis()
 }
 
@@ -406,12 +406,21 @@ pub async fn update_task(
 
 /// A Task status in the overlay's vocabulary, in either model: To Do is the default and clears
 /// it.
+///
+/// Saving a done occurrence as done again — in either model — keeps the instant it was done, as a
+/// stored Task keeps its `done_at`, since that instant is what an Interval's next window and a
+/// cooldown count from, and the editor names the status on every save.
 fn apply_task_status(overlay: &mut TaskOverlay, status: &Status, now: NaiveDateTime) {
+    let was_done = Status::is_done_db(overlay.status.as_deref());
     overlay.status = match status {
         status if status.is_todo() => None,
         other => other.as_db().map(str::to_string),
     };
-    overlay.resolved_at = status.is_done().then(|| resolved_at_ms(now));
+    overlay.resolved_at = match (status.is_done(), was_done) {
+        (true, true) => overlay.resolved_at.or_else(|| Some(resolved_at_ms(now))),
+        (true, false) => Some(resolved_at_ms(now)),
+        (false, _) => None,
+    };
     // A status given to an archived occurrence brings it back into play.
     overlay.tombstone = None;
 }
@@ -489,8 +498,15 @@ pub async fn update_goal(
     }
     if let Some(status) = request.status {
         let status = status.as_str();
+        let was_achieved = overlay.status.as_deref() == Some("achieved");
         overlay.status = (status != "active").then(|| status.to_string());
-        overlay.resolved_at = (status == "achieved").then(|| resolved_at_ms(now));
+        // Saving an achieved occurrence again keeps the instant it was achieved: that instant is
+        // what an Interval's next window and a cooldown count from.
+        overlay.resolved_at = match (status == "achieved", was_achieved) {
+            (true, true) => overlay.resolved_at.or_else(|| Some(resolved_at_ms(now))),
+            (true, false) => Some(resolved_at_ms(now)),
+            (false, _) => None,
+        };
         overlay.tombstone = None;
     }
     if let Some(position) = request.position {
@@ -540,8 +556,15 @@ pub async fn update_commitment(
         overlay.title = (title != template.title).then_some(title);
     }
     if let Some(verdict) = request.verdict {
+        let unchanged = overlay.verdict.as_deref() == Some(verdict.as_str());
         overlay.verdict = verdict.is_resolved().then(|| verdict.as_str().to_string());
-        overlay.resolved_at = overlay.verdict.as_ref().map(|_| resolved_at_ms(now));
+        // The same verdict saved again keeps the instant it was recorded: a cooldown and an
+        // Interval's next window count from it.
+        overlay.resolved_at = match (verdict.is_resolved(), unchanged) {
+            (true, true) => overlay.resolved_at.or_else(|| Some(resolved_at_ms(now))),
+            (true, false) => Some(resolved_at_ms(now)),
+            (false, _) => None,
+        };
         overlay.tombstone = None;
     }
     if let Some(position) = request.position {

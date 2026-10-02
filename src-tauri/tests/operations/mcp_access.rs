@@ -606,6 +606,8 @@ async fn daily_habit(app: &App<MockRuntime>, project: i64, item: &str) {
             end_scope_id: None,
             clock: ClockKind::Window,
             miss_policy: Some(MissPolicy::Owed),
+            cooldown_n: None,
+            cooldown_kind: None,
         },
     )
     .await

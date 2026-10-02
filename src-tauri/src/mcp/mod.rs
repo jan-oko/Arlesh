@@ -46,7 +46,7 @@ mod beads;
 mod capacity;
 pub mod endpoint;
 mod flows;
-mod ids;
+pub(crate) mod ids;
 mod infos;
 mod kb;
 mod lookup;
