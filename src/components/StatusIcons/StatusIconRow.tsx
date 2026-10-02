@@ -12,8 +12,7 @@ import CalendarIcon from "./CalendarIcon";
 import IceIcon from "./IceIcon";
 import BacklogIcon from "./BacklogIcon";
 import AgenticIcon from "./AgenticIcon";
-import DelegatedAgentIcon from "./DelegatedAgentIcon";
-import DelegatedPersonIcon from "./DelegatedPersonIcon";
+import DelegatedIcon from "./DelegatedIcon";
 import AsyncIcon from "./AsyncIcon";
 import ArchiveIcon from "./ArchiveIcon";
 import EllipsisIcon from "./EllipsisIcon";
@@ -78,9 +77,7 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
       case "delegated":
         return {
           tooltip: node.delegate?.kind === "agent" ? t("delegatedAgent") : t("delegatedPerson", { name: node.delegateName ?? t("delegatedPersonUnnamed") }),
-          icon: node.delegate?.kind === "agent"
-            ? <DelegatedAgentIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} />
-            : <DelegatedPersonIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} />,
+          icon: <DelegatedIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} />,
         };
       case "agentWaiting": {
         // A question waits on the user and takes the accent; a wait on something else, like CI,

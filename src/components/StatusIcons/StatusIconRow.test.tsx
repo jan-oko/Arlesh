@@ -37,16 +37,16 @@ describe("StatusIconRow", () => {
     expect(renderRow(node("task", { status: "todo", agentic: true }))).toEqual(["agentic"]);
   });
 
-  it("draws the bot head for a task delegated to the Agent and a person for one held by a Person", () => {
+  it("draws one paper plane for every delegate, and names who holds the task in its tooltip", () => {
     const glyph = (n: MindmapNode) => {
       const { container } = render(<svg><StatusIconRow node={n} indicators={deriveStatusIndicators(n)} top={36} /></svg>);
       return container.querySelector("[data-glyph^='delegated']")?.getAttribute("data-glyph");
     };
     expect(renderRow(node("task", { status: "todo", delegate: { kind: "agent" } }))).toEqual(["delegatedAgent"]);
-    expect(glyph(node("task", { status: "todo", delegate: { kind: "agent" } }))).toBe("delegated-agent");
+    expect(glyph(node("task", { status: "todo", delegate: { kind: "agent" } }))).toBe("delegated");
     expect(renderRow(node("task", { status: "todo", delegate: { kind: "person", id: 4 }, delegateName: "Tuli" })))
       .toEqual(["delegatedPerson"]);
-    expect(glyph(node("task", { status: "todo", delegate: { kind: "person", id: 4 } }))).toBe("delegated-person");
+    expect(glyph(node("task", { status: "todo", delegate: { kind: "person", id: 4 } }))).toBe("delegated");
   });
 
   it("renders a tooltip per indicator (keys resolve to i18n text at runtime)", () => {

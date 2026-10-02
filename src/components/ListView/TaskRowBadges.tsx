@@ -12,8 +12,7 @@ import CalendarIcon from "@/components/StatusIcons/CalendarIcon";
 import IceIcon from "@/components/StatusIcons/IceIcon";
 import BacklogIcon from "@/components/StatusIcons/BacklogIcon";
 import AgenticIcon from "@/components/StatusIcons/AgenticIcon";
-import DelegatedAgentIcon from "@/components/StatusIcons/DelegatedAgentIcon";
-import DelegatedPersonIcon from "@/components/StatusIcons/DelegatedPersonIcon";
+import DelegatedIcon from "@/components/StatusIcons/DelegatedIcon";
 import AsyncIcon from "@/components/StatusIcons/AsyncIcon";
 import ArchiveIcon from "@/components/StatusIcons/ArchiveIcon";
 import EllipsisIcon from "@/components/StatusIcons/EllipsisIcon";
@@ -69,9 +68,7 @@ export default function TaskRowBadges({ node, indicators }: Props) {
       case "delegated":
         return {
           tooltip: node.delegate?.kind === "agent" ? t("delegatedAgent") : t("delegatedPerson", { name: node.delegateName ?? t("delegatedPersonUnnamed") }),
-          icon: node.delegate?.kind === "agent"
-            ? <DelegatedAgentIcon cx={R} cy={R} r={R} color={MUTED} />
-            : <DelegatedPersonIcon cx={R} cy={R} r={R} color={MUTED} />,
+          icon: <DelegatedIcon cx={R} cy={R} r={R} color={MUTED} />,
         };
       case "agentWaiting": {
         // A question waits on the user and takes the accent; a wait on something else, like CI,
