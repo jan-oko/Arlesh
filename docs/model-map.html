@@ -556,6 +556,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["pplan", "Plan preset", 5, 4.5, "rd", "Hides done Tasks, archived items and backlogged Tasks.", "filtering-logic.md"],
     ["start", "Start preset", 5, 8, "rd", "What can be begun now: drops blocked subtrees, Pending and Lapsed windows unless Overdue, delegated and backlogged work, Plans still ahead, and On Agent work unless the pill asks. Always keeps Review.", "filtering-logic.md"],
     ["pdo", "Do preset / Zen", 5, 11.5, "rd", "What is under way: In Progress and Doing, Review always, Started and On Agent only when their switches ask.", "zen-view.md"],
+    ["pbacklog", "Backlog preset", 5, 15, "rd", "Only what was deliberately set aside, together with everything beneath it. The inverse of the other presets.", "filtering-logic.md"],
   ];
 
   // [from, to, far]. far = the value is read off a different node (a sub-item, a dependency's target).
@@ -581,6 +582,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["timing", "start"], ["overdue", "start"], ["archived", "start"], ["blocked", "start"], ["planpos", "start"],
     ["status", "start"], ["review", "start"], ["agentic", "start"], ["pill", "start"], ["backlog", "start"],
     ["status", "pdo"], ["review", "pdo"], ["agentic", "pdo"], ["pill", "pdo"],
+    ["backlog", "pbacklog"],
   ];
 
   const svg = document.getElementById("dgraph");

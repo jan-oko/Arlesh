@@ -66,6 +66,7 @@ How the presets read them:
 | **Plan** | status, Archived, Backlog | Hides done Tasks, archived items and backlogged Tasks. | `rs:filters/rules.rs::passes_plan`, `is_hidden_backlog` |
 | **Start** | Timing, Overdue, Archived, Blocked, Plan position, status, Agentic, Review, On Agent pill, Backlog | Drops blocked subtrees (but not the child dependencies a block waits on), windows Pending or Lapsed unless Overdue, delegated and backlogged work, Plans still ahead, and On Agent work unless the pill is on. Always keeps Review. | `rs:filters/rules.rs::passes_start`, `passes_agentic_start`, `gate_below` |
 | **Do / Zen** | status, Agentic, Review, On Agent pill | In Progress and Doing, Review always, Started and On Agent only when their switches ask. | `rs:filters/rules.rs::passes_do_status` |
+| **Backlog** | Backlog flag (own or an ancestor's) | Only what was deliberately set aside, with everything beneath it. The inverse of the other presets. | `rs:filters/rules.rs::passes_status` (`Preset::Backlog`) |
 
 ---
 
