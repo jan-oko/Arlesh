@@ -131,7 +131,7 @@ pub fn blocked_tasks(rows: Rows<'_>) -> Vec<NodeId> {
     let links = links(rows);
     rows.tasks
         .iter()
-        .filter(|task| task.status != "done")
+        .filter(|task| !task.status.is_done())
         .filter(|task| reads_agentic(&links, &format!("task-{}", task.id)))
         .map(|task| task.id.clone())
         .collect()
@@ -154,6 +154,7 @@ pub fn derive(rows: Rows<'_>, existing: &[BlockReason]) -> Vec<BlockReason> {
                 reason: AGENT_CAPACITY_REASON.to_string(),
                 position: i64::try_from(own).unwrap_or(i64::MAX),
                 derived: Some(DerivedBlock::AgentCapacity),
+                until: None,
             }
         })
         .collect()

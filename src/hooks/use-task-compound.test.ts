@@ -57,9 +57,12 @@ describe("useTaskCompound", () => {
     await waitFor(() => expect(updateTask).toHaveBeenCalledWith(fields.rowId, { compound: true }));
   });
 
-  it("turns an iteration's root away out loud: it has no item to read the flag from", () => {
-    const root = node("task-3", { ...occurrenceRow({ habitId: 3, itemType: "flow_root", itemId: 3 }) });
-    const { result, showToast } = setup([root]);
+  it("turns a check task away out loud: its status is the check itself", () => {
+    const check = node("task-3", {
+      rowId: "00000000-0000-5000-8000-000000000003",
+      origin: { kind: "check", wait_kind: "stored", wait_id: 4, due_at: "2026-01-05T09:00:00" },
+    });
+    const { result, showToast } = setup([check]);
 
     act(() => { result.current.toggleCompound("task-3"); });
 

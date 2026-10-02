@@ -55,7 +55,7 @@ function mkGoal(overrides: Partial<Goal> = {}): Goal {
 function mkTask(overrides: Partial<Task> = {}): Task {
   return {
     id: 1, title: "Task", parent_type: "goal", parent_id: 1,
-    status: "todo", delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
+    status: { kind: "ordinary", status: "todo" }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false,
     ...overrides,
   };
 }
@@ -126,6 +126,23 @@ describe("buildTree", () => {
     expect(node?.compoundBlocked).toBe(true);
     expect(node?.blockReasons).toEqual([]);
     expect(node?.virtualBlockers).toEqual(["Sub-items all blocked"]);
+  });
+
+  it("draws a Habit cooldown's derived block as a virtual blocker that names when it lifts", () => {
+    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const task = mkTask({ id: 1, parent_type: "domain", parent_id: 1 });
+    const root = buildTree(
+      [aspect], [], [task], [], [], [], [], [], [], [],
+      [{
+        owner_type: "task", owner_id: 1, reason: "Cooling down until Mon 2026-10-05 02:00", position: 0,
+        derived: "cooldown", until: "2026-10-05T02:00:00",
+      }],
+      [], [], [], (title) => title, (title) => title, "compound", "capacity", (until) => `cool ${until}`,
+    );
+    const node = root.children[0]?.children.find((n) => n.id === "task-1");
+    expect(node?.coolingUntil).toBe("2026-10-05T02:00:00");
+    expect(node?.blockReasons).toEqual([]);
+    expect(node?.virtualBlockers).toEqual(["cool 2026-10-05T02:00:00"]);
   });
 
   it("carries a task's stored Backlog state onto its node", () => {
@@ -260,9 +277,24 @@ describe("buildTree", () => {
     expect(goalNode?.blockReasons).toEqual(["waiting on X", "needs sign-off"]);
   });
 
+  it("names an unmet dependency by its short id, and carries the short id on its node", () => {
+    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const blocker = mkTask({ id: 2, title: "Dep", status: { kind: "ordinary", status: "in_progress" }, parent_type: "project", parent_id: 1 });
+    const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
+    const root = buildTree(
+      [aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [],
+      [{ task_id: 3, dependency_type: "task", dependency_id: 2 }],
+      [], [], (title) => title, (title) => title, "compound", "capacity", (until) => until,
+      { "task-2": "6f3", "task-3": "a1c" },
+    );
+    const tasks = root.children[0]?.children ?? [];
+    expect(tasks.find((c) => c.id === "task-3")?.virtualBlockers).toEqual(["Blocked by task 6f3 (Dep)"]);
+    expect(tasks.find((c) => c.id === "task-2")?.shortId).toBe("6f3");
+  });
+
   it("derives virtual block reasons from unmet task dependencies", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const blocker = mkTask({ id: 2, title: "Dep", status: "in_progress", parent_type: "project", parent_id: 1 });
+    const blocker = mkTask({ id: 2, title: "Dep", status: { kind: "ordinary", status: "in_progress" }, parent_type: "project", parent_id: 1 });
     const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
     const root = buildTree([aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [], [
       { task_id: 3, dependency_type: "task", dependency_id: 2 },
@@ -289,7 +321,7 @@ describe("buildTree", () => {
 
   it("omits a virtual block reason once the dependency is done", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const blocker = mkTask({ id: 2, title: "Dep", status: "done", parent_type: "project", parent_id: 1 });
+    const blocker = mkTask({ id: 2, title: "Dep", status: { kind: "ordinary", status: "done" }, parent_type: "project", parent_id: 1 });
     const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
     const root = buildTree([aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [], [
       { task_id: 3, dependency_type: "task", dependency_id: 2 },

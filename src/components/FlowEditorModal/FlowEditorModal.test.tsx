@@ -53,6 +53,8 @@ const TARGETS = [mkGoal(7, "Backend Revamp"), mkGoal(8, "Frontend Polish")];
 const defaultProps = {
   node: mkFlow(),
   availableTargets: TARGETS,
+  allTags: [],
+  domainNames: new Map<number, string>(),
   onSave: vi.fn().mockResolvedValue(undefined),
   onClose: vi.fn(),
 };
@@ -93,9 +95,32 @@ describe("FlowEditorModal — save", () => {
         rootPlanStart: null,
         rootPlanEnd: null, verdictWindowN: null, verdictWindowKind: null,
         isPrivate: false,
+        template: { asynchronous: false, compound: false, async_template: null },
         recurrence: null,
       }),
     );
+  });
+
+  it("saves the root's Compound flag and wait template on a task-instance flow", async () => {
+    render(<FlowEditorModal {...defaultProps} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "compoundOff" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "asynchronousOff" }));
+    fireEvent.change(screen.getByLabelText("expectation:templateTitle"), { target: { value: "Reply" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
+        template: { asynchronous: true, compound: true, async_template: { title: "Reply", tag_ids: [] } },
+      })),
+    );
+  });
+
+  it("offers neither on a goal-instance flow, and saves none", async () => {
+    render(<FlowEditorModal {...defaultProps} />);
+    fireEvent.click(screen.getByRole("button", { name: "nodeKinds:goal" }));
+    expect(screen.queryByRole("checkbox", { name: "compoundOff" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalled());
+    expect(defaultProps.onSave.mock.calls[0]?.[0]).not.toHaveProperty("template");
   });
 
   it("saves with goal instance type after clicking the goal pill", async () => {
@@ -243,7 +268,7 @@ describe("FlowEditorModal — save", () => {
         expect.objectContaining({
           recurrence: {
             startDate: expect.any(String), gapN: null, gapKind: null, endDate: null,
-            clock: "window", missPolicy: "archive",
+            clock: "window", missPolicy: "archive", cooldownN: null, cooldownKind: null,
           },
         }),
       ),
@@ -260,7 +285,7 @@ describe("FlowEditorModal — save", () => {
   it("prompts to reconcile when a schedule change collides with completed iterations", async () => {
     vi.mocked(getFlowRecurrence).mockResolvedValueOnce({
       flow_id: 1, start_scope_id: testKey(1), gap_n: null, gap_kind: null, end_scope_id: null,
-      clock: "window", miss_policy: "archive",
+      clock: "window", miss_policy: "archive", cooldown_n: null, cooldown_kind: null,
     });
     vi.mocked(habitCompletionCount).mockResolvedValueOnce(2);
     render(<FlowEditorModal {...defaultProps} />);
@@ -394,6 +419,15 @@ describe("FlowEditorModal — a commitment Habit's Verdict Window", () => {
     unmount();
     render(<FlowEditorModal {...defaultProps} node={mkCommitmentFlow()} />);
     expect(screen.getByText("fieldVerdictWindow")).toBeInTheDocument();
+  });
+
+  it("offers no Verdict Window on an Interval Habit, whose instance stays open until answered", async () => {
+    vi.mocked(getFlowRecurrence).mockResolvedValueOnce({
+      flow_id: 1, start_scope_id: testKey(1), gap_n: null, gap_kind: null, end_scope_id: null,
+      clock: "interval", miss_policy: null, cooldown_n: null, cooldown_kind: null,
+    });
+    render(<FlowEditorModal {...defaultProps} node={mkCommitmentFlow()} />);
+    await waitFor(() => expect(screen.queryByText("fieldVerdictWindow")).not.toBeInTheDocument());
   });
 
   it("pre-fills the window the Habit already carries", () => {

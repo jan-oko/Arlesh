@@ -5,7 +5,7 @@ import type { InstanceType, FlowItemType, TemplateFields } from "@/api/flows";
 import type { Origin, RowId } from "@/api/node-id";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
-import type { Delegate } from "@/api/tasks";
+import type { Delegate, TaskStatus } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
 import type { AgenticBrief, AsyncTemplate } from "@/api/tasks";
 import type { CanonicalKind } from "@/utils/scope-ref";
@@ -34,7 +34,8 @@ export function isNodeKind(value: string): value is NodeKind {
 
 /** A task/goal is blocked when it has any block reason — explicit or virtual (from an unmet dependency). */
 export function isNodeBlocked(node: MindmapNode): boolean {
-  if (node.kind !== "task" && node.kind !== "goal") return false;
+  // A Commitment carries derived reasons only — its Habit's cooldown — and is blocked by them.
+  if (node.kind !== "task" && node.kind !== "goal" && node.kind !== "commitment") return false;
   return (node.blockReasons?.length ?? 0) + (node.virtualBlockers?.length ?? 0) > 0;
 }
 
@@ -94,6 +95,9 @@ export interface FlowData {
    * Duration a Commitment carries. Both null means its iterations never stop being answerable. */
   verdictWindowN: number | null;
   verdictWindowKind: string | null;
+  /** The root's own template fields, which every iteration's root reads — for a task-instance
+   * flow its Asynchronous and Compound flags and its wait template. */
+  template?: TemplateFields;
 }
 
 /** A relative (Cycle Scope, Cycle Plan) pair on a flow item. */
@@ -198,7 +202,13 @@ export interface MindmapNode {
   rowTitle?: string;
   kind: NodeKind;
   title: string;
+  /** The node's status as it is spelled — a Task's, Goal's, Project's or wait's. For a Task this
+   * spelling alone does not say which model it is in (both spell To Do and Done alike): read
+   * `taskStatus` for anything a Task does by its status. */
   status?: string;
+  /** A Task's status, typed by its model — ordinary or Agentic (Tasks only). What every behaviour
+   * that depends on a Task's status dispatches on. */
+  taskStatus?: TaskStatus;
   /** Explicit block reasons (ordered), editable in the task/goal editor. */
   blockReasons?: string[];
   /** Derived, read-only "Blocked by …" reasons from this task's unmet dependencies. */
@@ -212,6 +222,12 @@ export interface MindmapNode {
   /** Blocked because it is a **Compound** Task whose open sub-items are all blocked (Tasks only):
    * the backend derived it, and its reason is among `virtualBlockers`. */
   compoundBlocked?: boolean;
+  /** Its short id on the board — the one the MCP shows an agent — for a Task, Goal, Commitment or
+   * wait. What a "Blocked by …" reason names it by. */
+  shortId?: string;
+  /** Blocked by its **Habit's cooldown** until this local wall-clock instant (an iteration's root
+   * only): the backend derived it, its reason is among `virtualBlockers`, and it lifts by itself. */
+  coolingUntil?: string;
   knowledgeBaseDirectory?: string | null;
   /** Optional multi-line details on an `info` node (e.g. a traceback). */
   infoDetails?: string | null;
@@ -252,8 +268,8 @@ export interface MindmapNode {
    * persisted. Read together with `agentic` through `isAgentic`, never on its own: an explicit
    * `agentic: false` overrides an agentic ancestor. */
   inheritedAgentic?: boolean;
-  /** Who holds this Task, when it is delegated (Tasks only): a Person or the Agent. The task's
-   * **own** stored delegate — absent or `null` when it has none of its own. */
+  /** Who holds this Task, when it is delegated (Tasks only): a Person. The task's **own** stored
+   * delegate — absent or `null` when it has none of its own. */
   delegate?: Delegate | null;
   /** Whether doing this Task starts a **wait** rather than finishing something (Tasks only) —
    * send the email, order the part, kick off the build. Its own flag; `asyncTemplate` is optional.

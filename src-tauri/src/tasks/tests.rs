@@ -22,7 +22,7 @@ fn stored_task() -> Task {
         title: "Stored".to_string(),
         parent_type: "project".to_string(),
         parent_id: 7.into(),
-        status: TaskStatus::Todo.as_str().to_string(),
+        status: Status::Ordinary(TaskStatus::Todo),
         delegate_to: Some(Delegate::Person { id: 3 }),
         agentic: None,
         asynchronous: false,
@@ -217,16 +217,16 @@ fn agentic_and_the_delegate_are_merged_independently() {
 }
 
 #[test]
-fn delegating_to_the_agent_replaces_a_person_delegate() {
+fn delegating_to_another_person_replaces_the_delegate() {
     let write = TaskWrite::merge(
         stored_task(),
         UpdateTaskRequest {
-            delegate_to: Some(Some(Delegate::Agent)),
+            delegate_to: Some(Some(Delegate::Person { id: 9 })),
             ..Default::default()
         },
     )
     .unwrap();
-    assert_eq!(write.delegate_to, Some(Delegate::Agent));
+    assert_eq!(write.delegate_to, Some(Delegate::Person { id: 9 }));
 }
 
 /// The stored row, Asynchronous with a template of its own.

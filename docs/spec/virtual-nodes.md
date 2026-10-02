@@ -148,14 +148,17 @@ and Asynchronous flags, Backlog state and beads id; a goal template its beads id
 (`template_tags`) and block reasons (`template_block_reasons`). Every occurrence reads them unless its
 overlay says otherwise. They are edited in the flow item's editor, beside the item's cycle pairs and
 dependencies — all but the **delegate**, which a template and an occurrence carry but no editor
-offers to change yet (ruled by the user, 2026-09-24). An occurrence's own Task editor keeps the one
-delegate control every Task has, "Delegate to agent", which writes that occurrence alone.
+offers to change yet (ruled by the user, 2026-09-24). (An occurrence's Task editor had the "Delegate
+to agent" button every Task had until the Agent delegate was removed on 2026-10-01.)
 
-A **flow Task item** also carries the two Task fields that came later (migration 0090, Task 611):
-**Compound** (`flow_tasks.compound`) and the **Expectation template** an Asynchronous Task spawns its
-wait from (`flow_task_async_templates`), both set in the flow item's editor. A Flow root and a flow
-Goal item carry neither. An occurrence reads the flag from its overlay's `compound` (NULL inherits),
-and the template **whole**: an **occurrence** can carry one of its own, as a stored Task does
+A **Task template** — a flow Task item, or the root of a task-instance flow — also carries the two
+Task fields that came later (migration 0090, Task 611): **Compound** (`flow_tasks.compound`,
+`flows.compound`) and the **Expectation template** an Asynchronous Task spawns its wait from
+(`flow_task_async_templates`, `flow_async_templates`), set in the flow item's editor and the Flow
+editor. A flow Goal item, and a goal- or commitment-instance root, carry neither. An occurrence reads
+the flag from its overlay's `compound` (NULL inherits) — and a compound one reads its status from
+its Habit, which derives it before classifying the iteration (see [*Iteration
+resolution*](habits.md)) — and the template **whole**: an **occurrence** can carry one of its own, as a stored Task does
 (migration 0062, `occurrence_async_templates`); with no such row, its overlay's
 `async_template_set` overrides it to none at all, and unset, it reads its item's. While the occurrence is
 Asynchronous and done, the wait it spawned is an Expectation row beneath it (`origin`

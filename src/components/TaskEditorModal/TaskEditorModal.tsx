@@ -8,14 +8,14 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
 import { EXPECTATION_STATUS } from "@/api/expectation-status";
 import type { Domain } from "@/api/domains";
-import type { AgenticBrief, AsyncTemplate, Delegate, Dependency, TaskAgentic, TaskArchival } from "@/api/tasks";
+import type { AgenticBrief, AsyncTemplate, Delegate, Dependency, TaskAgentic, TaskArchival, TaskStatus } from "@/api/tasks";
 import { EMPTY_AGENTIC_BRIEF, isEmptyBrief } from "@/api/tasks";
 import { TASK_AGENTIC, TASK_ARCHIVAL } from "@/api/tasks";
 import { storedAgenticState } from "@/utils/agentic";
-import { isDelegatedToAgent, toggledAgentDelegate } from "@/utils/delegation";
 import type { TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
-import { listTaskDependencies } from "@/api/tasks";
+import { fetchTaskDoneAt, listTaskDependencies } from "@/api/tasks";
+import { fromDoneDateInput, nowDoneDateInput, toDoneDateInput } from "@/utils/done-date";
 import { getErrorMessage } from "@/api/errors";
 import { withAtomicGesture } from "@/api/gesture";
 import EditorModal from "@/components/EditorModal/EditorModal";
@@ -34,12 +34,19 @@ import AsyncTemplateFields from "@/components/AsyncTemplateEditor/AsyncTemplateF
 import { EMPTY_ASYNC_TEMPLATE, asyncTemplateToSave } from "@/utils/async-template";
 import { takesCompound } from "@/utils/compound";
 import styles from "@/components/EditorModal/EditorModal.module.css";
-import { TASK_STATUS } from "@/utils/status-mapping";
+import {
+  AGENTIC_STATUS, TASK_STATUS, agentic as agenticStatus, convertedStatus, isBegun, isDone, isReview, ordinary, taskStatusOf,
+} from "@/utils/status-mapping";
+import { openQuestion } from "@/utils/open-question";
+import AnswerField from "@/components/AnswerField/AnswerField";
 import { isOverdue } from "@/utils/overdue";
+import { blockedByText } from "@/utils/blocked-by";
 
 export interface TaskSaveData {
   title: string;
-  status: string;
+  /** In the model of the kind the form leaves the Task: the backend converts it when the same save
+   * changes the flag, and refuses when there is no counterpart. */
+  status: TaskStatus;
   blockReasons: string[];
   tagIds: number[];
   addedDeps: Dependency[];
@@ -73,9 +80,21 @@ export interface TaskSaveData {
    * says nothing about delegation at all, so a save that never touched it cannot overwrite it. */
   delegate?: Delegate | null;
   isPrivate: boolean;
+  /** The task's new done date (`YYYY-MM-DDTHH:MM:SS`, local), present only when the form changed
+   * it on a task saved Done. Absent leaves the recorded one alone. */
+  doneAt?: string;
 }
 
-const TASK_STATUSES = Object.values(TASK_STATUS);
+/** The pills each model offers, in order. Review is never picked: it shows, disabled, while the
+ * agent's question is open. */
+const ORDINARY_PILLS: readonly TaskStatus[] = Object.values(TASK_STATUS).map(ordinary);
+const AGENTIC_PILLS: readonly TaskStatus[] = [
+  AGENTIC_STATUS.TODO, AGENTIC_STATUS.ON_AGENT, AGENTIC_STATUS.DOING, AGENTIC_STATUS.DONE,
+].map(agenticStatus);
+
+function sameStatus(a: TaskStatus | null, b: TaskStatus): boolean {
+  return a !== null && a.kind === b.kind && a.status === b.status;
+}
 
 function depKey(dep: Dependency): string { return `${dep.type}-${dep.id}`; }
 /** The edge type a dependency on `candidate` is stored under. */
@@ -97,16 +116,19 @@ interface Props {
    * node a create path opens, which has no link to drop — the Issue row stays wholly read-only. */
   onClearBeadsId?: (() => Promise<void>) | undefined;
   onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
+  /** Answers the agent's open question, from the agentic section: stores the answer and releases
+   * the wait. Omitted, the question is not drawn there. */
+  onAnswer?: ((question: MindmapNode, answer: string) => Promise<boolean>) | undefined;
   /** `Shift+W`: open with Asynchronous switched on and the Expectation section's title focused. */
   openAtTemplate?: boolean;
   onClose: () => void;
 }
 
-export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onClearBeadsId, onCheckScopeClamp, openAtTemplate = false, onClose }: Props) {
+export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onClearBeadsId, onCheckScopeClamp, onAnswer, openAtTemplate = false, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "status", "nodeKinds", "undo", "expectation"]);
   const [title, setTitle] = useState(node.rowTitle ?? node.title);
-  const [status, setStatus] = useState(node.status ?? TASK_STATUS.TODO);
+  const [status, setStatus] = useState<TaskStatus>(taskStatusOf(node));
   const [blockReasons, setBlockReasons] = useState<string[]>(node.blockReasons ?? []);
   const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
   const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
@@ -120,11 +142,13 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate>(node.asyncTemplate ?? EMPTY_ASYNC_TEMPLATE);
   const [agenticBrief, setAgenticBrief] = useState<AgenticBrief>(node.agenticBrief ?? EMPTY_AGENTIC_BRIEF);
   const templateRef = useRef<HTMLDivElement>(null);
-  const [delegate, setDelegate] = useState<Delegate | null>(node.delegate ?? null);
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);
   const [currentDeps, setCurrentDeps] = useState<Dependency[]>([]);
   const [depSearch, setDepSearch] = useState("");
+  // The done date, as the Advanced field holds it, and as it was loaded — saved only when changed.
+  const [doneAt, setDoneAt] = useState("");
+  const [loadedDoneAt, setLoadedDoneAt] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const beadsClear = useBeadsIdClear(onClearBeadsId);
@@ -145,6 +169,21 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   useEffect(() => {
     void listTaskDependencies(dbId).then((deps) => { setInitialDeps(deps); setCurrentDeps(deps); });
   }, [dbId]);
+
+  // A wait's check task has no done date of its own: its completion is the check it records.
+  const hasDoneDate = checkOrigin(node.origin) === undefined;
+  // Done as the task was opened, in either model — what has a done date to show.
+  const savedDone = isDone(taskStatusOf(node));
+  useEffect(() => {
+    if (!hasDoneDate || !savedDone) return;
+    let cancelled = false;
+    void fetchTaskDoneAt(dbId).then((at) => {
+      if (cancelled) return;
+      setDoneAt(toDoneDateInput(at));
+      setLoadedDoneAt(toDoneDateInput(at));
+    });
+    return () => { cancelled = true; };
+  }, [dbId, hasDoneDate, savedDone]);
 
 
   function removeDep(dep: Dependency) {
@@ -182,7 +221,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         // rather than half-saved, and the refusal reaches the save error line below the fields.
         await beadsClear.commitClear();
         await onSave({
-          title: title.trim(), status, blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
+          title: title.trim(), status: shownStatus ?? status, blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
           tagIds, addedDeps, removedDeps, timeScope,
           onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
           plan,
@@ -196,8 +235,9 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
             asyncTemplate, isAsynchronous, t("expectation:templateDefaultTitle", { title: title.trim() }),
           ),
           agenticBrief: isEmptyBrief(agenticBrief) ? null : agenticBrief,
-          ...(delegate !== (node.delegate ?? null) ? { delegate } : {}),
           isPrivate,
+          ...(isDone(status) && doneAt !== "" && doneAt !== loadedDoneAt
+            ? { doneAt: fromDoneDateInput(doneAt) } : {}),
         });
       });
     } catch (err) {
@@ -223,9 +263,9 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   // you have put down — and the backend does exactly this to a bare status change. Here the switch
   // moves in front of the user instead, so the save is not the first they hear of it. Only this
   // direction: a task already in progress may still be set aside, and keeps its status when it is.
-  function setStatusAndClearBacklog(next: string) {
+  function setStatusAndClearBacklog(next: TaskStatus) {
     setStatus(next);
-    if (next === TASK_STATUS.IN_PROGRESS || next === TASK_STATUS.STARTED) setIsBacklogged(false);
+    if (isBegun(next)) setIsBacklogged(false);
   }
 
   function handleKeyDown(event: React.KeyboardEvent) {
@@ -233,9 +273,6 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
     if (event.key === "Escape") onClose();
   }
 
-  // The one-click delegate button is offered on a task that reads as agentic — its own flag, or an
-  // inherited one while it is on Inherit — and on any task already delegated to the Agent, so an
-  // Agent delegate can always be taken back even after the flag that earned it is gone.
   // The Due field. A check task's due is the day it fell due, so it has none. While the task has
   // its own window it shares the on-exit pills' row, held to that window; otherwise it is a row of
   // its own below the Plan — on an unscoped task, or on one that inherits its window, which derives
@@ -259,7 +296,12 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   );
 
   const readsAgentic = agentic === TASK_AGENTIC.YES || (agentic === TASK_AGENTIC.INHERIT && node.inheritedAgentic === true);
-  const delegatedToAgent = isDelegatedToAgent(delegate);
+  // The status pills are the model the form leaves the Task in: the Agentic one while it reads as
+  // Agentic. A flag flipped here shows the counterpart the save will convert to — none, when there
+  // is none, and the save is then refused by name.
+  const pills = readsAgentic ? AGENTIC_PILLS : ORDINARY_PILLS;
+  const shownStatus = convertedStatus(status, readsAgentic);
+  const question = readsAgentic && isReview(status) ? openQuestion(node) : undefined;
 
   const depSearchLower = depSearch.toLowerCase();
   const searchResults = depSearch.trim() === "" ? [] : availableForDep
@@ -280,12 +322,13 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   // non-Done task / non-Achieved goal) blocks. Recomputed live, so removing a dependency drops its row.
   const virtualBlockers = currentDeps.flatMap((dep) => {
     const target = availableForDep.find((n) => n.id === entityNodeId(dep.type, dep.id));
+    const label = blockedByText(dep.type, target?.shortId, dep.id, depTitle(dep));
     const unmet = target === undefined
       ? true
       : dep.type === "task" ? target.status !== "done"
         : dep.type === "expectation" ? target.status === EXPECTATION_STATUS.PENDING
           : target.status !== "achieved";
-    return unmet ? [`Blocked by ${dep.type} ${dep.id} (${depTitle(dep)})`] : [];
+    return unmet ? [label] : [];
   });
 
   return (
@@ -301,11 +344,16 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
             no clicks, and say why. Switching Compound off below frees them, starting from the
             status the task was showing. */}
         <div className={styles.statusPills}>
-          {TASK_STATUSES.map((s) => (
-            <button key={s} type="button" disabled={isCompound} className={`${styles.statusPill}${status === s ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatusAndClearBacklog(s)}>
-              {t(`status:task.${s}`)}
+          {pills.map((s) => (
+            <button key={s.status} type="button" disabled={isCompound} className={`${styles.statusPill}${sameStatus(shownStatus, s) ? ` ${styles.statusPillActive}` : ""}`} onClick={() => setStatusAndClearBacklog(s)}>
+              {s.kind === "agentic" ? t(`status:agentic.${s.status}`) : t(`status:task.${s.status}`)}
             </button>
           ))}
+          {shownStatus !== null && isReview(shownStatus) && (
+            <button type="button" disabled className={`${styles.statusPill} ${styles.statusPillActive}`} title={t("statusReviewDerived")}>
+              {t("status:agentic.review")}
+            </button>
+          )}
         </div>
         {isCompound && <span className={styles.fieldHint}>{t("statusFromSubItems")}</span>}
       </div>
@@ -332,7 +380,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         {/* An overdue task is past its due: its Plan may leave its window, as the backend allows. */}
         <PlanField
           value={plan}
-          timeScope={isOverdue(node) && status !== TASK_STATUS.DONE ? null : timeScope}
+          timeScope={isOverdue(node) && !isDone(status) ? null : timeScope}
           onChange={setPlanAndClearBacklog}
         />
       </div>
@@ -388,6 +436,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         virtualBlockers={virtualBlockers}
         capacityBlocked={node.capacityBlocked === true}
         compoundBlocked={node.compoundBlocked === true}
+        coolingUntil={node.coolingUntil}
       />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <div className={styles.depSection}>
@@ -417,22 +466,39 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         </div>
       </div>
       {/* In Advanced: the Agentic control, then — while the task reads as Agentic, its own flag or
-          an inherited one — the brief an agent reads about the work, collapsible on its own.
-          Advanced opens by itself while any of it is engaged: an own flag, a hand-off to the Agent,
-          or a brief already written. */}
+          an inherited one — the agent's open question with its answer field, and the brief an
+          agent reads about the work, collapsible on its own. Advanced opens by itself while any of
+          it is engaged: an own flag, a question waiting, or a brief already written. */}
       <EditorAdvanced
         isPrivate={isPrivate}
         onPrivateChange={setIsPrivate}
-        startOpen={agentic !== TASK_AGENTIC.INHERIT || delegatedToAgent || (readsAgentic && !isEmptyBrief(agenticBrief))}
+        startOpen={agentic !== TASK_AGENTIC.INHERIT || question !== undefined || (readsAgentic && !isEmptyBrief(agenticBrief))}
       >
+        {/* The done date: when a Done task was done, set back for work marked done late — an
+            Interval's next window and a cooldown count from it. Left empty on a task marked Done
+            in this save, it is the moment of saving. */}
+        {hasDoneDate && isDone(status) && (
+          <label className={styles.label} title={t("doneAtHint")}>
+            {t("fieldDoneAt")}
+            <input
+              type="datetime-local"
+              className={styles.input}
+              value={doneAt}
+              max={nowDoneDateInput()}
+              onChange={(e) => setDoneAt(e.target.value)}
+            />
+          </label>
+        )}
         <AgenticField
           value={agentic}
           inherited={node.inheritedAgentic === true}
           onChange={setAgentic}
-          delegatedToAgent={delegatedToAgent}
-          offersDelegate={readsAgentic || delegatedToAgent}
-          onToggleDelegate={() => setDelegate(toggledAgentDelegate(delegate))}
         />
+        {question !== undefined && onAnswer !== undefined && (
+          <div role="group" aria-label={t("agenticQuestionSection")}>
+            <AnswerField question={question} onSend={(answer) => onAnswer(question, answer)} />
+          </div>
+        )}
         {readsAgentic && (
           <div role="group" aria-label={t("agenticBriefSection")}>
             <AgenticBriefFields value={agenticBrief} onChange={setAgenticBrief} />

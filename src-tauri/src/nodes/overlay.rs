@@ -752,15 +752,24 @@ impl<'session> OverlayOperator<'session> {
         archival: ExpectationArchival,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO occurrence_spawned_waits (node_key, flow_id, status, archival)
-             VALUES (?, ?, ?, ?)
+            "INSERT INTO occurrence_spawned_waits (node_key, flow_id, status, archival, released_at)
+             VALUES (?, ?, ?, ?, CASE WHEN ? = 'released' THEN ? END)
              ON CONFLICT (node_key) DO UPDATE SET status = excluded.status,
-                                                  archival = excluded.archival",
+                archival = excluded.archival,
+                released_at = CASE WHEN excluded.status = 'released'
+                                   THEN CASE WHEN occurrence_spawned_waits.status = 'released'
+                                             THEN occurrence_spawned_waits.released_at
+                                             ELSE excluded.released_at END
+                                   ELSE NULL END",
         )
         .bind(node_key)
         .bind(flow_id)
         .bind(status.as_str())
         .bind(archival.as_str())
+        .bind(status.as_str())
+        .bind(crate::tasks::waits::instant_column(
+            crate::tasks::expectations::now(),
+        ))
         .execute(&mut *self.connection)
         .await?;
         Ok(())

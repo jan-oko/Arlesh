@@ -45,6 +45,8 @@ import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/Unfini
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import ZenStrip from "./ZenStrip";
 import ZenTaskCard from "./ZenTaskCard";
+import { isReview } from "@/utils/status-mapping";
+import { openQuestion } from "@/utils/open-question";
 import styles from "./ZenView.module.css";
 
 /** Where the toast saying the preset cannot change is anchored — no card, the view as a whole. */
@@ -285,6 +287,8 @@ export default function ZenView() {
                 onOpenEditor={openEditor}
                 onCommitTitle={commitTitle}
                 onCancelTitleEdit={cancelTitleEdit}
+                question={isReview(row.node.taskStatus) ? openQuestion(row.node) : undefined}
+                onAnswer={nodeEditor.onAnswer}
               />
             ))}
           </div>

@@ -31,8 +31,8 @@ use crate::{
     },
     scopes::resolve::interval_contains,
     tasks::model::{
-        Commitment, Delegate, Goal, Task, TaskArchival, TaskStatus, TimeScope,
-        UpdateCommitmentRequest, UpdateGoalRequest, UpdateTaskRequest,
+        Commitment, Delegate, Goal, Status, Task, TaskArchival, TimeScope, UpdateCommitmentRequest,
+        UpdateGoalRequest, UpdateTaskRequest,
     },
 };
 
@@ -237,7 +237,7 @@ fn refuse_moves(
 
 /// The epoch-millisecond instant a completion is recorded at: `now`'s wall-clock reading, the
 /// same local-naive clock the iteration windows are laid on.
-fn resolved_at_ms(now: NaiveDateTime) -> i64 {
+pub(super) fn resolved_at_ms(now: NaiveDateTime) -> i64 {
     now.and_utc().timestamp_millis()
 }
 
@@ -277,18 +277,20 @@ pub async fn update_task(
         overlay.compound = (compound != template.fields.compound).then_some(compound);
     }
 
+    // What the occurrence reads as after the write — by the one resolver the app's tree agrees
+    // with: its own value, its template tree, then the Habit's host — decides its status model,
+    // as a stored Task's kind does.
+    let agentic = match request.agentic.map(|agentic| agentic.as_column()) {
+        Some(Some(flag)) => flag,
+        Some(None) => crate::tasks::agentic::occurrence_inherits_agentic(db, key).await?,
+        None => crate::tasks::agentic::occurrence_reads_agentic(db, key).await?,
+    };
+    let before = current.status.stored();
+    let status =
+        crate::tasks::agentic::settle_status(&current.title, before, request.status, agentic)?;
     // Starting an occurrence that reads as Agentic needs a Spec, exactly as starting a stored Task
-    // does — Agentic resolved by the one resolver the app's tree agrees with: its own value, its
-    // template tree, then the Habit's host. Keeping a compound's derived status is not a start.
-    if !releases
-        && request.status.as_ref().is_some_and(TaskStatus::is_begun)
-        && !TaskStatus::is_begun_str(&current.status)
-    {
-        let agentic = match request.agentic.map(|agentic| agentic.as_column()) {
-            Some(Some(flag)) => flag,
-            Some(None) => crate::tasks::agentic::occurrence_inherits_agentic(db, key).await?,
-            None => crate::tasks::agentic::occurrence_reads_agentic(db, key).await?,
-        };
+    // does. Keeping a compound's derived status is not a start.
+    if !releases && request.status.as_ref().is_some_and(Status::is_begun) && !before.is_begun() {
         let brief = match &request.agentic_brief {
             Some(brief) => brief.clone(),
             None => current.agentic_brief.clone(),
@@ -304,8 +306,14 @@ pub async fn update_task(
     if let Some(title) = request.title {
         overlay.title = (title != template.title).then_some(title);
     }
-    if let Some(status) = &request.status {
-        apply_task_status(&mut overlay, status, now);
+    if request.status.is_none() && status != before {
+        // A change of kind converts the status it held, and nothing else about it.
+        overlay.status = (!status.is_todo())
+            .then(|| status.as_db().map(str::to_string))
+            .flatten();
+    }
+    if request.status.is_some() {
+        apply_task_status(&mut overlay, &status, now);
         // Begun work is not work set aside — the same rule a stored Task follows. Keeping a
         // compound's derived status begins nothing.
         if status.is_begun() && request.archival.is_none() && !releases {
@@ -407,16 +415,32 @@ pub async fn update_task(
             .await?;
     }
     db.overlays().put_task(flow_id.0, key, &overlay).await?;
+    // The occurrences beneath it in the template tree, and the rows hung on them, may change kind
+    // with it.
+    if request.agentic.is_some() {
+        crate::tasks::agentic::reconcile(db, vec![crate::tasks::agentic::Reach::Habit(flow_id.0)])
+            .await?;
+    }
     Ok(())
 }
 
-/// A Task status in the overlay's vocabulary: To Do is the default and clears it.
-fn apply_task_status(overlay: &mut TaskOverlay, status: &TaskStatus, now: NaiveDateTime) {
+/// A Task status in the overlay's vocabulary, in either model: To Do is the default and clears
+/// it.
+///
+/// Saving a done occurrence as done again — in either model — keeps the instant it was done, as a
+/// stored Task keeps its `done_at`, since that instant is what an Interval's next window and a
+/// cooldown count from, and the editor names the status on every save.
+fn apply_task_status(overlay: &mut TaskOverlay, status: &Status, now: NaiveDateTime) {
+    let was_done = Status::is_done_db(overlay.status.as_deref());
     overlay.status = match status {
-        TaskStatus::Todo => None,
-        other => Some(other.as_str().to_string()),
+        status if status.is_todo() => None,
+        other => other.as_db().map(str::to_string),
     };
-    overlay.resolved_at = (*status == TaskStatus::Done).then(|| resolved_at_ms(now));
+    overlay.resolved_at = match (status.is_done(), was_done) {
+        (true, true) => overlay.resolved_at.or_else(|| Some(resolved_at_ms(now))),
+        (true, false) => Some(resolved_at_ms(now)),
+        (false, _) => None,
+    };
     // A status given to an archived occurrence brings it back into play.
     overlay.tombstone = None;
 }
@@ -494,8 +518,15 @@ pub async fn update_goal(
     }
     if let Some(status) = request.status {
         let status = status.as_str();
+        let was_achieved = overlay.status.as_deref() == Some("achieved");
         overlay.status = (status != "active").then(|| status.to_string());
-        overlay.resolved_at = (status == "achieved").then(|| resolved_at_ms(now));
+        // Saving an achieved occurrence again keeps the instant it was achieved: that instant is
+        // what an Interval's next window and a cooldown count from.
+        overlay.resolved_at = match (status == "achieved", was_achieved) {
+            (true, true) => overlay.resolved_at.or_else(|| Some(resolved_at_ms(now))),
+            (true, false) => Some(resolved_at_ms(now)),
+            (false, _) => None,
+        };
         overlay.tombstone = None;
     }
     if let Some(position) = request.position {
@@ -545,8 +576,15 @@ pub async fn update_commitment(
         overlay.title = (title != template.title).then_some(title);
     }
     if let Some(verdict) = request.verdict {
+        let unchanged = overlay.verdict.as_deref() == Some(verdict.as_str());
         overlay.verdict = verdict.is_resolved().then(|| verdict.as_str().to_string());
-        overlay.resolved_at = overlay.verdict.as_ref().map(|_| resolved_at_ms(now));
+        // The same verdict saved again keeps the instant it was recorded: a cooldown and an
+        // Interval's next window count from it.
+        overlay.resolved_at = match (verdict.is_resolved(), unchanged) {
+            (true, true) => overlay.resolved_at.or_else(|| Some(resolved_at_ms(now))),
+            (true, false) => Some(resolved_at_ms(now)),
+            (false, _) => None,
+        };
         overlay.tombstone = None;
     }
     if let Some(position) = request.position {

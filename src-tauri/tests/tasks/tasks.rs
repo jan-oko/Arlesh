@@ -100,7 +100,7 @@ async fn create_task_and_goal() {
     .unwrap();
 
     assert_eq!(task.title, "Write tests");
-    assert_eq!(task.status, "todo");
+    assert_eq!(task.status.as_str(), "todo");
     assert!(task.tag_ids.is_empty());
 
     let goal = {
@@ -123,7 +123,7 @@ async fn create_task_and_goal() {
     }
     .unwrap();
 
-    assert_eq!(goal.status, "active");
+    assert_eq!(goal.status.as_str(), "active");
     assert!(goal.tag_ids.is_empty());
 }
 
@@ -196,6 +196,22 @@ async fn undone_dependency_blocks_task() {
     .unwrap();
     assert_eq!(with_blockers.block_reasons.len(), 1);
     assert!(with_blockers.block_reasons[0].contains("Dependency"));
+
+    // Named by its short id, when the caller has one for it.
+    let names =
+        std::collections::HashMap::from([(format!("task-{}", dependency.id), "6f3".to_string())]);
+    let named = {
+        let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+        arlesh_lib::tasks::get_task_with_blockers_as(
+            &mut db,
+            task.id.sid().into(),
+            &std::collections::HashMap::new(),
+            &names,
+        )
+        .await
+    }
+    .unwrap();
+    assert!(named.block_reasons[0].starts_with("Blocked by task 6f3 ("));
 }
 
 #[tokio::test]
@@ -266,7 +282,9 @@ async fn done_dependency_unblocks_task() {
             &mut db,
             dependency.id.sid().into(),
             UpdateTaskRequest {
-                status: Some(arlesh_lib::tasks::model::TaskStatus::Done),
+                status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                    arlesh_lib::tasks::model::TaskStatus::Done,
+                )),
                 ..Default::default()
             },
         )
@@ -1056,12 +1074,12 @@ async fn update_task_from_wire(
     task
 }
 
-/// The one-click delegate button's two halves, exactly as the frontend sends them: `{"kind":
-/// "agent"}` to delegate, and an explicit `null` to take it back. The toggle-off half is the one
-/// that used to be silently ignored on the wire (Arlesh-atb), so it is exercised from JSON rather
-/// than from a hand-built request.
+/// Delegating and taking it back, exactly as the frontend sends them: `{"kind": "person", ...}` to
+/// delegate, and an explicit `null` to take it back. The toggle-off half is the one that used to be
+/// silently ignored on the wire (Arlesh-atb), so it is exercised from JSON rather than from a
+/// hand-built request.
 #[tokio::test]
-async fn a_task_is_delegated_to_the_agent_and_back_over_the_wire() {
+async fn a_task_is_delegated_to_a_person_and_back_over_the_wire() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let task = {
@@ -1082,11 +1100,16 @@ async fn a_task_is_delegated_to_the_agent_and_back_over_the_wire() {
         task
     };
 
-    let delegated =
-        update_task_from_wire(&pool, task.id.sid(), r#"{"delegate_to":{"kind":"agent"}}"#).await;
+    let person = helpers::make_person(&pool, "Dana").await;
+    let delegated = update_task_from_wire(
+        &pool,
+        task.id.sid(),
+        &format!(r#"{{"delegate_to":{{"kind":"person","id":{person}}}}}"#),
+    )
+    .await;
     assert_eq!(
         delegated.delegate_to,
-        Some(arlesh_lib::tasks::model::Delegate::Agent)
+        Some(arlesh_lib::tasks::model::Delegate::Person { id: person })
     );
     let stored: (Option<String>, Option<i64>) =
         sqlx::query_as("SELECT delegate_kind, delegate_id FROM tasks WHERE id = ?")
@@ -1094,14 +1117,23 @@ async fn a_task_is_delegated_to_the_agent_and_back_over_the_wire() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(stored, (Some("agent".to_string()), None));
+    assert_eq!(stored, (Some("person".to_string()), Some(person)));
 
     let cleared = update_task_from_wire(&pool, task.id.sid(), r#"{"delegate_to":null}"#).await;
     assert_eq!(
         cleared.delegate_to, None,
-        "an explicit null clears the Agent"
+        "an explicit null clears the delegate"
     );
     assert_eq!(cleared.agentic, Some(true), "and leaves the flag alone");
+}
+
+/// The Agent delegate is gone (2026-10-01): an agent holds a Task as On Agent, never by
+/// delegation, so the wire no longer has a way to say it.
+#[test]
+fn the_agent_delegate_is_refused_on_the_wire() {
+    assert!(
+        serde_json::from_str::<UpdateTaskRequest>(r#"{"delegate_to":{"kind":"agent"}}"#).is_err()
+    );
 }
 
 /// Delegating to a Person who does not exist is refused, exactly as it was when the column was a
@@ -1571,7 +1603,7 @@ async fn update_task_status_to_in_progress() {
     }
     .unwrap();
 
-    assert_eq!(task.status, "todo");
+    assert_eq!(task.status.as_str(), "todo");
 
     let updated = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
@@ -1579,7 +1611,9 @@ async fn update_task_status_to_in_progress() {
             &mut db,
             task.id.sid().into(),
             UpdateTaskRequest {
-                status: Some(TaskStatus::InProgress),
+                status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                    arlesh_lib::tasks::model::TaskStatus::InProgress,
+                )),
                 ..Default::default()
             },
         )
@@ -1591,7 +1625,7 @@ async fn update_task_status_to_in_progress() {
     }
     .unwrap();
 
-    assert_eq!(updated.status, "in_progress");
+    assert_eq!(updated.status.as_str(), "in_progress");
 }
 
 #[tokio::test]
@@ -2654,7 +2688,7 @@ async fn goal_frozen_and_archived_statuses() {
         __r
     }
     .unwrap();
-    assert_eq!(frozen.status, "frozen");
+    assert_eq!(frozen.status.as_str(), "frozen");
 
     let archived = {
         let mut db = helpers::session_factory(&pool).begin().await.unwrap();
@@ -2673,7 +2707,7 @@ async fn goal_frozen_and_archived_statuses() {
         __r
     }
     .unwrap();
-    assert_eq!(archived.status, "archived");
+    assert_eq!(archived.status.as_str(), "archived");
 }
 
 #[tokio::test]
@@ -2940,7 +2974,9 @@ async fn derives_overdue_missed_and_archives_a_completed_item() {
                 title: "Done".into(),
                 parent_type: "project".into(),
                 parent_id: project_id.into(),
-                status: Some(TaskStatus::Done),
+                status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                    arlesh_lib::tasks::model::TaskStatus::Done,
+                )),
                 time_scope: scope(),
                 on_scope_exit: Some(OnScopeExit::Archive),
                 ..Default::default()
@@ -4137,7 +4173,9 @@ async fn the_update_task_command_cannot_touch_beads_id() {
         linked_id.into(),
         UpdateTaskRequest {
             title: Some("Renamed".into()),
-            status: Some(TaskStatus::InProgress),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::InProgress,
+            )),
             is_private: Some(true),
             ..Default::default()
         },
@@ -4319,7 +4357,9 @@ async fn an_unplanned_task_can_be_put_in_the_backlog_and_taken_back_out() {
             title: "Not now".into(),
             parent_type: "project".into(),
             parent_id: project_id.into(),
-            status: Some(TaskStatus::InProgress),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::InProgress,
+            )),
             ..Default::default()
         },
     )
@@ -4337,7 +4377,7 @@ async fn an_unplanned_task_can_be_put_in_the_backlog_and_taken_back_out() {
     .expect("backlogging an unplanned task is allowed");
     assert_eq!(aside.archival, TaskArchival::Backlog);
     // Backlog is the other axis: the work still says where it stands.
-    assert_eq!(aside.status, TaskStatus::InProgress.as_str());
+    assert_eq!(aside.status.as_str(), TaskStatus::InProgress.as_str());
 
     let back = try_update(
         &pool,
@@ -4350,7 +4390,7 @@ async fn an_unplanned_task_can_be_put_in_the_backlog_and_taken_back_out() {
     .await
     .expect("taking it back out is allowed");
     assert_eq!(back.archival, TaskArchival::Live);
-    assert_eq!(back.status, TaskStatus::InProgress.as_str());
+    assert_eq!(back.status.as_str(), TaskStatus::InProgress.as_str());
 }
 
 #[tokio::test]
@@ -4492,14 +4532,16 @@ async fn starting_a_backlogged_task_takes_it_out_of_the_backlog() {
         &pool,
         task.id.sid(),
         UpdateTaskRequest {
-            status: Some(TaskStatus::InProgress),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::InProgress,
+            )),
             ..Default::default()
         },
     )
     .await
     .expect("starting a backlogged task is never refused");
     assert_eq!(started.archival, TaskArchival::Live);
-    assert_eq!(started.status, TaskStatus::InProgress.as_str());
+    assert_eq!(started.status.as_str(), TaskStatus::InProgress.as_str());
 }
 
 #[tokio::test]
@@ -4523,14 +4565,16 @@ async fn setting_a_backlogged_task_started_takes_it_out_of_the_backlog() {
         &pool,
         task.id.sid(),
         UpdateTaskRequest {
-            status: Some(TaskStatus::Started),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Started,
+            )),
             ..Default::default()
         },
     )
     .await
     .expect("setting a backlogged task Started is never refused");
     assert_eq!(started.archival, TaskArchival::Live);
-    assert_eq!(started.status, TaskStatus::Started.as_str());
+    assert_eq!(started.status.as_str(), TaskStatus::Started.as_str());
 }
 
 #[tokio::test]
@@ -4555,7 +4599,9 @@ async fn finishing_a_backlogged_task_leaves_it_in_the_backlog() {
         &pool,
         task.id.sid(),
         UpdateTaskRequest {
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
     )
@@ -4574,7 +4620,9 @@ async fn a_request_naming_the_backlog_alongside_in_progress_is_taken_at_its_word
             title: "Under way".into(),
             parent_type: "project".into(),
             parent_id: project_id.into(),
-            status: Some(TaskStatus::InProgress),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::InProgress,
+            )),
             ..Default::default()
         },
     )
@@ -4586,7 +4634,9 @@ async fn a_request_naming_the_backlog_alongside_in_progress_is_taken_at_its_word
         &pool,
         task.id.sid(),
         UpdateTaskRequest {
-            status: Some(TaskStatus::InProgress),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::InProgress,
+            )),
             archival: Some(TaskArchival::Backlog),
             ..Default::default()
         },
@@ -4594,7 +4644,7 @@ async fn a_request_naming_the_backlog_alongside_in_progress_is_taken_at_its_word
     .await
     .unwrap();
     assert_eq!(set_aside.archival, TaskArchival::Backlog);
-    assert_eq!(set_aside.status, TaskStatus::InProgress.as_str());
+    assert_eq!(set_aside.status.as_str(), TaskStatus::InProgress.as_str());
 }
 
 #[tokio::test]
@@ -4755,12 +4805,6 @@ fn an_explicit_null_delegate_in_a_task_update_payload_clears_it() {
     assert_eq!(
         set.delegate_to,
         Some(Some(arlesh_lib::tasks::model::Delegate::Person { id: 7 }))
-    );
-    let agent: UpdateTaskRequest =
-        serde_json::from_str(r#"{"delegate_to":{"kind":"agent"}}"#).unwrap();
-    assert_eq!(
-        agent.delegate_to,
-        Some(Some(arlesh_lib::tasks::model::Delegate::Agent))
     );
 }
 

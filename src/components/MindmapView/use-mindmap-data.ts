@@ -28,7 +28,7 @@ import {
   duplicateFlow, duplicateFlowItem,
 } from "@/api/flows";
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
-import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
+import { TASK_STATUS, GOAL_STATUS, isDone } from "@/utils/status-mapping";
 import { propagateAgentic } from "@/utils/agentic";
 import { propagateInheritedScope } from "@/utils/inherited-scope";
 import { listMcpAccess } from "@/api/mcp-access";
@@ -37,6 +37,8 @@ import { applyMcpVisibility } from "@/utils/mcp-visibility";
 import { useMcpAccessStore } from "@/stores/use-mcp-access-store";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
+import { formatCooldownUntil } from "@/utils/cooldown-until";
+import { blockedByText } from "@/utils/blocked-by";
 import type { Goal } from "@/api/goals";
 import type { Info } from "@/api/infos";
 import type {
@@ -317,7 +319,7 @@ function contentParentKey(parentType: string, parentId: RowId): string {
 }
 
 /** A template item's own fields, as the item editor edits them. */
-function templateFieldsOf(item: FlowGoal | FlowTask): TemplateFields {
+function templateFieldsOf(item: TemplateFields): TemplateFields {
   return {
     ...(item.delegate_to !== undefined ? { delegate_to: item.delegate_to } : {}),
     ...(item.agentic !== undefined ? { agentic: item.agentic } : {}),
@@ -352,6 +354,19 @@ function toCyclePair(cycle: FlowItemCycle): FlowCyclePair {
 }
 
 
+/**
+ * What a Habit cooldown's derived block puts on a node: its reason among the virtual blockers,
+ * which is what makes the node read as blocked, and the instant it lifts. Nothing when the node
+ * is not cooling down.
+ */
+function cooldownFields(
+  until: string | undefined,
+  reason: (until: string) => string,
+): Pick<MindmapNode, "virtualBlockers" | "coolingUntil"> {
+  if (until === undefined) return {};
+  return { virtualBlockers: [reason(until)], coolingUntil: until };
+}
+
 export function buildTree(
   domains: Domain[],
   goals: Goal[],
@@ -375,6 +390,10 @@ export function buildTree(
   compoundReason = "All open sub-items are blocked",
   /** How the agent capacity lock's derived reason reads, in place of the backend's English. */
   capacityReason = "Agents at capacity",
+  /** How a Habit cooldown's derived reason reads, from the instant it lifts. */
+  cooldownReason: (until: string) => string = (until) => `Cooling down until ${until}`,
+  /** Each node's short id, keyed `task-12` / `expectation-3` (the load's `short_ids`). */
+  shortIds: Readonly<Record<string, string>> = {},
 ): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
@@ -385,8 +404,13 @@ export function buildTree(
   const manualBlockers = new Map<string, string[]>();
   const capacityBlocked = new Set<string>();
   const compoundBlocked = new Set<string>();
+  const coolingUntil = new Map<string, string>();
   for (const br of blockReasons) {
     const key = `${br.owner_type}-${br.owner_id}`;
+    if (br.derived === "cooldown") {
+      if (br.until !== undefined) coolingUntil.set(key, br.until);
+      continue;
+    }
     if (br.derived === "agent_capacity") {
       capacityBlocked.add(key);
       continue;
@@ -426,6 +450,7 @@ export function buildTree(
       title: goal.title,
       status: goal.status,
       blockReasons: manualBlockers.get(`goal-${goal.id}`) ?? [],
+      ...cooldownFields(coolingUntil.get(`goal-${goal.id}`), cooldownReason),
       timeScope: goal.time_scope,
       onScopeExit: goal.on_scope_exit,
       position: goal.position,
@@ -440,6 +465,7 @@ export function buildTree(
     // A wait's check task is drawn with the settings' prefix; the row's own title is what its
     // editor edits.
     const isCheck = checkOrigin(task.origin) !== undefined;
+    const taskCooldown = cooldownFields(coolingUntil.get(`task-${task.id}`), cooldownReason);
     nodeMap.set(`task-${task.id}`, {
       id: `task-${task.id}`,
       rowId: task.id,
@@ -447,12 +473,15 @@ export function buildTree(
       kind: "task",
       title: isCheck ? checkTitle(task.title) : task.title,
       ...(isCheck ? { rowTitle: task.title } : {}),
-      status: task.status,
+      status: task.status.status,
+      taskStatus: task.status,
       blockReasons: manualBlockers.get(`task-${task.id}`) ?? [],
       virtualBlockers: [
         ...(capacityBlocked.has(`task-${task.id}`) ? [capacityReason] : []),
         ...(compoundBlocked.has(`task-${task.id}`) ? [compoundReason] : []),
+        ...(taskCooldown.virtualBlockers ?? []),
       ],
+      ...(taskCooldown.coolingUntil !== undefined ? { coolingUntil: taskCooldown.coolingUntil } : {}),
       ...(capacityBlocked.has(`task-${task.id}`) ? { capacityBlocked: true } : {}),
       ...(compoundBlocked.has(`task-${task.id}`) ? { compoundBlocked: true } : {}),
       timeScope: task.time_scope,
@@ -483,6 +512,7 @@ export function buildTree(
       title: commitment.title,
       verdict: commitment.verdict,
       verdictWindow: commitment.verdict_window ?? null,
+      ...cooldownFields(coolingUntil.get(`commitment-${commitment.id}`), cooldownReason),
       timeScope: commitment.time_scope,
       position: commitment.position,
       isPrivate: commitment.is_private,
@@ -530,6 +560,17 @@ export function buildTree(
   // Virtual block reasons: a task is also blocked by any dependency on a non-done task, a
   // non-achieved goal or a pending expectation. Derived here from the bulk dependency edges so the
   // canvas shows it without per-task calls.
+  // Each node's short id, which a "Blocked by …" reason names it by — read off the load by the key
+  // the backend uses, which for a wait is not its node id.
+  for (const [key, node] of nodeMap) {
+    const shortId = shortIds[key];
+    if (shortId !== undefined) node.shortId = shortId;
+  }
+  for (const expectation of expectations) {
+    const node = nodeMap.get(expectationNodeId(expectation.id));
+    const shortId = shortIds[`expectation-${expectation.id}`];
+    if (node !== undefined && shortId !== undefined) node.shortId = shortId;
+  }
   const goalById = new Map(goals.map((g) => [g.id, g]));
   const expectationById = new Map(expectations.map((e) => [e.id, e]));
   for (const dep of taskDeps) {
@@ -540,19 +581,19 @@ export function buildTree(
       node.expectationDependencyIds = [...(node.expectationDependencyIds ?? []), waitId];
       const target = expectationById.get(waitId);
       if (target !== undefined && target.status === EXPECTATION_STATUS.PENDING) {
-        node.virtualBlockers?.push(`Blocked by expectation ${dep.dependency_id} (${target.title})`);
+        node.virtualBlockers?.push(blockedByText("expectation", shortIds[`expectation-${waitId}`], dep.dependency_id, target.title));
         node.blockingDependencyIds = [...(node.blockingDependencyIds ?? []), expectationNodeId(waitId)];
       }
     } else if (dep.dependency_type === "task") {
       const target = taskById.get(dep.dependency_id);
-      if (target !== undefined && target.status !== "done") {
-        node.virtualBlockers?.push(`Blocked by task ${dep.dependency_id} (${target.title})`);
+      if (target !== undefined && !isDone(target.status)) {
+        node.virtualBlockers?.push(blockedByText("task", shortIds[`task-${dep.dependency_id}`], dep.dependency_id, target.title));
         node.blockingDependencyIds = [...(node.blockingDependencyIds ?? []), `task-${dep.dependency_id}`];
       }
     } else {
       const target = goalById.get(dep.dependency_id);
       if (target !== undefined && target.status !== "achieved") {
-        node.virtualBlockers?.push(`Blocked by goal ${dep.dependency_id} (${target.title})`);
+        node.virtualBlockers?.push(blockedByText("goal", shortIds[`goal-${dep.dependency_id}`], dep.dependency_id, target.title));
         node.blockingDependencyIds = [...(node.blockingDependencyIds ?? []), `goal-${dep.dependency_id}`];
       }
     }
@@ -595,6 +636,7 @@ export function buildTree(
         rootPlanEnd: flow.root_plan_end,
         verdictWindowN: flow.verdict_window_n,
         verdictWindowKind: flow.verdict_window_kind,
+        template: templateFieldsOf(flow),
       },
       tagIds: [],
       children: [],
@@ -863,11 +905,13 @@ export function useMindmapData(): MindmapData {
   const capacityReason = useRef("Agents at capacity");
   const carriesMissedTitle = useRef<CarriesMissedTitle>(({ title, scope }) => `${title} ${scope}`);
   const compoundReason = useRef("All open sub-items are blocked");
+  const cooldownReason = useRef((until: string) => `Cooling down until ${until}`);
   useEffect(() => {
     delegationWaitTitle.current = (title: string) => t("expectation:delegationWaitTitle", { title });
     capacityReason.current = t("editor:agentsAtCapacity");
     carriesMissedTitle.current = (parts) => t("habits:carriesMissed", parts);
     compoundReason.current = t("editor:compoundBlocked");
+    cooldownReason.current = (until: string) => t("editor:cooldownBlocked", { when: formatCooldownUntil(until) });
   }, [t]);
   // A check task is titled `{prefix}{wait title}`, the prefix a display setting. Unlike the
   // translation above it is a dependency of `load`: changing it redraws the board with the new
@@ -904,6 +948,7 @@ export function useMindmapData(): MindmapData {
           data.block_reasons, data.task_dependencies, data.flow_instance_nodes,
           data.expectations, (title) => delegationWaitTitle.current(title),
           (title) => `${checkPrefix}${title}`, compoundReason.current, capacityReason.current,
+          (until) => cooldownReason.current(until), data.short_ids ?? {},
         );
         applyLifecycles(built, lifecycleMap(data.lifecycles));
         // A Habit's occurrences are ordinary rows, already built into the tree above. A flow whose
@@ -981,7 +1026,7 @@ export function useMindmapData(): MindmapData {
         });
         const newNode: MindmapNode = {
           id: `task-${task.id}`, rowId: task.id, kind: "task", title: task.title,
-          status: task.status, position: task.position, tagIds: [], children: [],
+          status: task.status.status, taskStatus: task.status, position: task.position, tagIds: [], children: [],
         };
         await load(false);
         return newNode;

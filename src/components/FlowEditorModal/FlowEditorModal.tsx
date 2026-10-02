@@ -4,7 +4,11 @@ import { useTranslation } from "react-i18next";
 import { rowIdOf } from "@/utils/node-identity";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
-import type { InstanceType, ClockKind, MissPolicy } from "@/api/flows";
+import type { InstanceType, ClockKind, CooldownKind, MissPolicy, TemplateUpdate } from "@/api/flows";
+import type { AsyncTemplate } from "@/api/tasks";
+import type { Domain } from "@/api/domains";
+import TaskTemplateFlags from "@/components/TaskTemplateFlags/TaskTemplateFlags";
+import { EMPTY_ASYNC_TEMPLATE, asyncTemplateToSave } from "@/utils/async-template";
 import { getFlowRecurrence, habitCompletionCount } from "@/api/flows";
 import type { DurationSpec } from "@/api/time-scope";
 import VerdictWindowField from "@/components/CommitmentEditorModal/VerdictWindowField";
@@ -16,7 +20,7 @@ import ReconcilePrompt from "@/components/ReconcilePrompt/ReconcilePrompt";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import Switch from "@/components/Switch/Switch";
 import RecurrenceField from "./RecurrenceField";
-import { defaultRecurrence, type RecurrenceUi } from "./recurrence-ui";
+import { defaultRecurrence, effectiveCooldown, type RecurrenceUi } from "./recurrence-ui";
 import { useValidFlowTargets } from "@/hooks/use-valid-flow-targets";
 import RootPlanField, { type RootPlanValue } from "./RootPlanField";
 import { useInputCapture } from "@/hooks/use-input-capture";
@@ -60,6 +64,9 @@ export interface RecurrenceSave {
   clock: ClockKind;
   /** Set exactly when the clock is Window. */
   missPolicy: MissPolicy | null;
+  /** A Window Habit's cooldown; both null for none, and always null off a Window clock. */
+  cooldownN: number | null;
+  cooldownKind: CooldownKind | null;
 }
 
 export interface FlowSaveData {
@@ -82,6 +89,9 @@ export interface FlowSaveData {
   verdictWindowN: number | null;
   verdictWindowKind: string | null;
   isPrivate: boolean;
+  /** The root's template fields — a task-instance flow's Asynchronous and Compound flags and its
+   * wait template. Absent for any other instance type, which has none. */
+  template?: TemplateUpdate;
   /** Absent = leave recurrence untouched; present (object or null) = set-or-clear it. */
   recurrence?: RecurrenceSave | null;
   /**
@@ -155,6 +165,9 @@ interface Props {
    * defaults the switch gives an existing flow, and saving writes the Recurrence with the flow.
    */
   startAsHabit?: boolean;
+  /** Tags a task-instance root's wait template can carry. */
+  allTags: Domain[];
+  domainNames: Map<number, string>;
   onSave: (data: FlowSaveData) => Promise<void>;
   onClose: () => void;
 }
@@ -163,9 +176,9 @@ interface Props {
  * Edits a Flow template: its title, Instance Type (goal|task), Duration-form flow scope,
  * and Target Node. Flow items and their cycle scopes are edited separately (Phase 7.3).
  */
-export default function FlowEditorModal({ node, availableTargets, inheritedTarget = null, heading, startAsHabit = false, onSave, onClose }: Props) {
+export default function FlowEditorModal({ node, availableTargets, inheritedTarget = null, heading, startAsHabit = false, allTags, domainNames, onSave, onClose }: Props) {
   useInputCapture();
-  const { t } = useTranslation(["editor", "nodeKinds", "scopes"]);
+  const { t } = useTranslation(["editor", "nodeKinds", "scopes", "expectation"]);
   const [title, setTitle] = useState(node.title);
   const [instanceType, setInstanceType] = useState<InstanceType>(node.flow?.instanceType ?? "task");
   // A null flow scope means the flow's instances are Unscoped.
@@ -187,6 +200,10 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   );
   const [target, setTarget] = useState<TargetSelection | null>(targetFromNode(node, availableTargets));
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
+  const rootTemplate = node.flow?.template ?? {};
+  const [isAsynchronous, setIsAsynchronous] = useState(rootTemplate.asynchronous === true);
+  const [isCompound, setIsCompound] = useState(rootTemplate.compound === true);
+  const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate>(rootTemplate.async_template ?? EMPTY_ASYNC_TEMPLATE);
   const [targetSearch, setTargetSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -202,6 +219,9 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   );
   // An Unscoped Habit can only keep an Interval clock, whatever the pills last said.
   const effectiveClock: ClockKind = scoped ? recurrence.clock : "interval";
+  // A commitment flow's Verdict Window — but not on an Interval Habit, whose instance never expires:
+  // it stays open until it is answered.
+  const takesVerdictWindow = instanceType === "commitment" && !(recurrence.isHabit && effectiveClock === "interval");
   // For edit-habit reconciliation: how many completed iterations exist, the schedule snapshot to
   // diff against, and whether the reconcile prompt is showing.
   const [completionCount, setCompletionCount] = useState(0);
@@ -238,6 +258,9 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
         endDate: endDate ?? startDate,
         clock: rec.clock,
         missPolicy: rec.miss_policy ?? "archive",
+        cooldownEnabled: rec.cooldown_n !== null,
+        cooldownN: rec.cooldown_n ?? 1,
+        cooldownKind: rec.cooldown_kind ?? "day",
       };
       loadedRecurrenceRef.current = loaded;
       setRecurrence(loaded);
@@ -290,6 +313,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
               endDate: recurrence.endEnabled ? recurrence.endDate : null,
               clock: effectiveClock,
               missPolicy: effectiveClock === "window" ? recurrence.missPolicy : null,
+              ...effectiveCooldown(recurrence, effectiveClock, scoped ? durationKind : null, durationN),
             }
           : null;
       await onSave({
@@ -306,8 +330,18 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
         // The root Plan applies only to a task-instance flow with a Span window.
         ...planFields(instanceType === "task" && scoped && !phase ? wholeWindowFollowsLength(rootPlan, durationKind, durationN) : null),
         // And the Verdict Window only to a commitment one: nothing else has a verdict to bound.
-        ...verdictWindowFields(instanceType === "commitment" ? verdictWindow : null),
+        ...verdictWindowFields(takesVerdictWindow ? verdictWindow : null),
         isPrivate,
+        // Only a task-instance flow's root is a Task, and only a Task template has these.
+        ...(instanceType === "task" ? {
+          template: {
+            asynchronous: isAsynchronous,
+            compound: isCompound,
+            async_template: asyncTemplateToSave(
+              asyncTemplate, isAsynchronous, t("expectation:templateDefaultTitle", { title: title.trim() }),
+            ),
+          },
+        } : {}),
         ...(offersRecurrence ? { recurrence: recurrenceSave } : {}),
         ...(reconcile !== undefined ? { reconcile } : {}),
       });
@@ -421,7 +455,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
           <span className={styles.depKind}>{t("scopes:unscoped")}</span>
         )}
       </div>
-      {instanceType === "commitment" && (
+      {takesVerdictWindow && (
         <div className={styles.label}>
           {t("fieldVerdictWindow")}
           <VerdictWindowField value={verdictWindow} onChange={setVerdictWindow} />
@@ -433,11 +467,27 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
           <RootPlanField flowScopeN={durationN} flowScopeKind={durationKind} value={rootPlan} onChange={setRootPlan} />
         </div>
       )}
+      {/* A task-instance flow's root is a Task: every iteration's root, and a started flow's, takes
+          these. */}
+      {instanceType === "task" && (
+        <TaskTemplateFlags
+          asynchronous={isAsynchronous}
+          onAsynchronousChange={setIsAsynchronous}
+          compound={isCompound}
+          onCompoundChange={setIsCompound}
+          asyncTemplate={asyncTemplate}
+          onAsyncTemplateChange={setAsyncTemplate}
+          titlePlaceholder={t("expectation:templateDefaultTitle", { title: title.trim() })}
+          allTags={allTags}
+          domainNames={domainNames}
+        />
+      )}
       {offersRecurrence && (
         <RecurrenceField
           value={recurrence}
           onChange={setRecurrence}
           durationKind={scoped ? durationKind : null}
+          durationN={durationN}
           scoped={scoped}
         />
       )}

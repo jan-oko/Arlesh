@@ -11,7 +11,8 @@ import type { AgenticBrief, AsyncTemplate, Delegate, TaskAgentic, TaskArchival }
 export type InstanceType = "goal" | "task" | "commitment";
 
 /** A flow (template), mirrored from the Rust `flows::model::Flow`. */
-export interface Flow {
+/** A Flow, with its root's template fields flattened onto it. */
+export interface Flow extends TemplateFields {
   id: number;
   title: string;
   instance_type: InstanceType;
@@ -75,7 +76,7 @@ export interface CreateFlowRequest {
   is_private?: boolean;
 }
 
-export interface UpdateFlowRequest {
+export interface UpdateFlowRequest extends TemplateUpdate {
   title?: string;
   instance_type?: InstanceType;
   // Absent = leave unchanged, null = clear, value = set.
@@ -185,6 +186,8 @@ export async function listFlowInstanceNodes(): Promise<TargetRef[]> {
 export type ClockKind = "window" | "interval";
 /** What a Window Habit does with an iteration left unfinished. */
 export type MissPolicy = "archive" | "overdue" | "owed";
+/** The unit a Window Habit's cooldown counts in — a kind finer than the habit's own window. */
+export type CooldownKind = "part" | "day" | "week" | "month";
 
 /** A Habit's Recurrence — Repetition (start/gap/end) plus its clock. */
 export interface FlowRecurrence {
@@ -196,6 +199,10 @@ export interface FlowRecurrence {
   clock: ClockKind;
   /** Set exactly when the clock is `window`. */
   miss_policy: MissPolicy | null;
+  /** A Window Habit's cooldown: after an iteration is completed, the next opens only once this
+   * many `cooldown_kind` units have passed. Both null for none. */
+  cooldown_n: number | null;
+  cooldown_kind: CooldownKind | null;
 }
 
 export interface SetRecurrenceRequest {
@@ -205,6 +212,9 @@ export interface SetRecurrenceRequest {
   end_scope_id?: ScopeKey | null;
   clock: ClockKind;
   miss_policy: MissPolicy | null;
+  /** Window clock only; both null (or absent) for no cooldown. */
+  cooldown_n?: number | null;
+  cooldown_kind?: CooldownKind | null;
 }
 
 /** Sets (creates or replaces) a flow's Recurrence, making it a Habit. */

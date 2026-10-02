@@ -1,6 +1,7 @@
 use chrono::NaiveDate;
 
 use super::*;
+use crate::tasks::model::{AgenticStatus, TaskStatus};
 
 fn day(date: u32) -> crate::scopes::key::ScopeKey {
     crate::scopes::key::ScopeKey::day(NaiveDate::from_ymd_opt(2026, 9, date).unwrap())
@@ -104,20 +105,37 @@ fn completing_records_when_and_lifts_a_tombstone() {
         tombstone: Some("archived".into()),
         ..TaskOverlay::default()
     };
-    apply_task_status(&mut overlay, &TaskStatus::Done, noon());
+    apply_task_status(&mut overlay, &Status::Ordinary(TaskStatus::Done), noon());
     assert_eq!(overlay.status.as_deref(), Some("done"));
     assert_eq!(overlay.resolved_at, Some(resolved_at_ms(noon())));
     assert_eq!(overlay.tombstone, None);
 
-    apply_task_status(&mut overlay, &TaskStatus::InProgress, noon());
+    apply_task_status(
+        &mut overlay,
+        &Status::Ordinary(TaskStatus::InProgress),
+        noon(),
+    );
     assert_eq!(overlay.status.as_deref(), Some("in_progress"));
     assert_eq!(overlay.resolved_at, None);
 
-    apply_task_status(&mut overlay, &TaskStatus::Started, noon());
+    apply_task_status(&mut overlay, &Status::Ordinary(TaskStatus::Started), noon());
     assert_eq!(overlay.status.as_deref(), Some("started"));
     assert_eq!(overlay.resolved_at, None);
 
-    apply_task_status(&mut overlay, &TaskStatus::Todo, noon());
+    // An Agentic occurrence's statuses are stored in their own model's spellings.
+    apply_task_status(&mut overlay, &Status::Agentic(AgenticStatus::Done), noon());
+    assert_eq!(overlay.status.as_deref(), Some("agentic_done"));
+    assert_eq!(overlay.resolved_at, Some(resolved_at_ms(noon())));
+    apply_task_status(
+        &mut overlay,
+        &Status::Agentic(AgenticStatus::OnAgent),
+        noon(),
+    );
+    assert_eq!(overlay.status.as_deref(), Some("on_agent"));
+    apply_task_status(&mut overlay, &Status::Agentic(AgenticStatus::Todo), noon());
+    assert_eq!(overlay.status, None);
+
+    apply_task_status(&mut overlay, &Status::Ordinary(TaskStatus::Todo), noon());
     assert!(
         overlay.is_empty(),
         "To Do is the default, and leaves nothing behind"
@@ -135,4 +153,26 @@ fn a_completion_instant_reads_back_as_the_same_wall_clock() {
 #[test]
 fn an_iteration_root_defaults_to_its_iteration_ordinal() {
     assert_eq!(iteration_index(&Origin::Manual), 0);
+}
+
+#[test]
+fn saving_a_done_occurrence_as_done_again_keeps_when_it_was_done() {
+    let done_at = noon() - chrono::Duration::days(2);
+    let mut overlay = TaskOverlay::default();
+    apply_task_status(&mut overlay, &Status::Ordinary(TaskStatus::Done), done_at);
+    apply_task_status(&mut overlay, &Status::Ordinary(TaskStatus::Done), noon());
+    assert_eq!(
+        overlay.resolved_at,
+        Some(resolved_at_ms(done_at)),
+        "the completion an Interval and a cooldown count from does not move on a re-save"
+    );
+}
+
+#[test]
+fn saving_an_agentic_done_occurrence_again_keeps_when_it_was_done() {
+    let done_at = noon() - chrono::Duration::days(2);
+    let mut overlay = TaskOverlay::default();
+    apply_task_status(&mut overlay, &Status::Agentic(AgenticStatus::Done), done_at);
+    apply_task_status(&mut overlay, &Status::Agentic(AgenticStatus::Done), noon());
+    assert_eq!(overlay.resolved_at, Some(resolved_at_ms(done_at)));
 }

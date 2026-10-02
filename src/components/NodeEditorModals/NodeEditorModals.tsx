@@ -44,7 +44,7 @@ export default function NodeEditorModals({ tree, editor }: Props) {
   const { t } = useTranslation(["editor"]);
   const {
     editorModal, setEditorModal, allTags, domainNames, availableForDep,
-    onTaskSave, onGoalSave, onCommitmentSave, onExpectationSave, onSimpleSave, onProjectSave, onInfoSave,
+    onTaskSave, onAnswer, onGoalSave, onCommitmentSave, onExpectationSave, onSimpleSave, onProjectSave, onInfoSave,
     onClearBeadsId, onFlowSave, onFlowItemSave, checkScopeClamp,
   } = editor;
 
@@ -71,7 +71,7 @@ export default function NodeEditorModals({ tree, editor }: Props) {
       return (
         <TaskEditorModal
           node={node} allTags={allTags} domainNames={domainNames} availableForDep={availableForDep}
-          onSave={onTaskSave} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.TASK)}
+          onSave={onTaskSave} onAnswer={onAnswer} onClearBeadsId={() => onClearBeadsId(BEADS_NODE_TYPE.TASK)}
           onCheckScopeClamp={checkScopeClamp} openAtTemplate={editorModal.focus === "asyncTemplate"}
           onClose={close}
         />
@@ -125,6 +125,7 @@ export default function NodeEditorModals({ tree, editor }: Props) {
       return (
         <FlowEditorModal
           node={node} availableTargets={flowTargets} inheritedTarget={editedFlowParent}
+          allTags={allTags} domainNames={domainNames}
           onSave={onFlowSave} onClose={close}
         />
       );

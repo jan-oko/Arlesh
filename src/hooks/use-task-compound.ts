@@ -23,9 +23,8 @@ interface Result {
  *
  * Switching it **off** sends the flag alone: the backend keeps the status the Task was showing —
  * the one its sub-items gave it — as its own, in the same write, so one `Ctrl+Z` takes both back.
- * A stored Task carries the flag, and so does a Habit occurrence of a flow Task item, over its
- * item's; an iteration's root or a check task is turned away out loud rather than left looking
- * like a key that did nothing.
+ * A stored Task carries the flag, and so does a Habit's Task occurrence, over its template's; a
+ * check task is turned away out loud rather than left looking like a key that did nothing.
  */
 export function useTaskCompound({ findNode, reload, showToast }: Options): Result {
   const { t } = useTranslation("warnings");

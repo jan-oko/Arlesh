@@ -41,6 +41,24 @@ impl TemplateTable {
         }
     }
 
+    /// Where a Task template's **wait template** is kept — its table, its tags' table, and the
+    /// column naming the template row — or `None` for a goal item, which has none.
+    fn wait_template(self) -> Option<(&'static str, &'static str, &'static str)> {
+        match self {
+            Self::Flow => Some((
+                "flow_async_templates",
+                "tags_on_flow_async_templates",
+                "flow_id",
+            )),
+            Self::FlowTask => Some((
+                "flow_task_async_templates",
+                "tags_on_flow_task_async_templates",
+                "flow_task_id",
+            )),
+            Self::FlowGoal => None,
+        }
+    }
+
     /// The table the row itself lives in.
     fn table(self) -> &'static str {
         match self {
@@ -129,12 +147,8 @@ impl TemplateUpdate {
             || self.asynchronous.is_some()
             || self.archival.is_some()
             || self.agentic_brief.is_some()
-            || self.touches_flow_task_columns()
-    }
-
-    /// Whether the update touches a column only a flow Task item has.
-    fn touches_flow_task_columns(&self) -> bool {
-        self.compound.is_some() || self.async_template.is_some()
+            || self.compound.is_some()
+            || self.async_template.is_some()
     }
 }
 
@@ -151,10 +165,10 @@ struct TemplateColumns {
     compound: bool,
 }
 
-/// One flow Task item's wait template, as stored.
+/// One Task template's wait template, as stored.
 #[derive(sqlx::FromRow)]
 struct AsyncTemplateRow {
-    flow_task_id: i64,
+    item_id: i64,
     title: String,
     time_scope_n: Option<i64>,
     time_scope_kind: Option<String>,
@@ -223,7 +237,7 @@ impl<'session> TemplateOperator<'session> {
             }
             TemplateTable::Flow => {
                 "SELECT id, delegate_kind, delegate_id, agentic, asynchronous, archival, beads_id,
-                        0 AS compound
+                        compound
                  FROM flows"
             }
             TemplateTable::FlowTask => {
@@ -294,8 +308,8 @@ impl<'session> TemplateOperator<'session> {
                 row.agentic_brief = Some(brief.into_brief());
             }
         }
-        if table == TemplateTable::FlowTask {
-            for (item_id, template) in self.async_templates().await? {
+        if table != TemplateTable::FlowGoal {
+            for (item_id, template) in self.async_templates(table).await? {
                 // Kept only while the item is Asynchronous, as a stored Task's is.
                 if let Some(row) = fields.get_mut(&item_id).filter(|row| row.asynchronous) {
                     row.async_template = Some(template);
@@ -305,26 +319,31 @@ impl<'session> TemplateOperator<'session> {
         Ok(fields)
     }
 
-    /// Every flow Task item's wait template, with its tags, by item.
-    async fn async_templates(&mut self) -> Result<HashMap<i64, AsyncTemplate>, FlowError> {
-        let rows: Vec<AsyncTemplateRow> = sqlx::query_as(
-            "SELECT flow_task_id, title, time_scope_n, time_scope_kind, check_every_n,
+    /// Every wait template one template table's rows carry, with its tags, by row.
+    async fn async_templates(
+        &mut self,
+        table: TemplateTable,
+    ) -> Result<HashMap<i64, AsyncTemplate>, FlowError> {
+        let Some((templates, tags, key)) = table.wait_template() else {
+            return Ok(HashMap::new());
+        };
+        let rows: Vec<AsyncTemplateRow> = sqlx::query_as(&format!(
+            "SELECT {key} AS item_id, title, time_scope_n, time_scope_kind, check_every_n,
                     check_every_kind
-             FROM flow_task_async_templates",
-        )
+             FROM {templates}"
+        ))
         .fetch_all(&mut *self.connection)
         .await?;
-        let tags: Vec<(i64, i64)> = sqlx::query_as(
-            "SELECT flow_task_id, tag_id FROM tags_on_flow_task_async_templates
-             ORDER BY flow_task_id, tag_id",
-        )
+        let tags: Vec<(i64, i64)> = sqlx::query_as(&format!(
+            "SELECT {key}, tag_id FROM {tags} ORDER BY {key}, tag_id"
+        ))
         .fetch_all(&mut *self.connection)
         .await?;
         let mut templates: HashMap<i64, AsyncTemplate> = rows
             .into_iter()
             .map(|row| {
                 (
-                    row.flow_task_id,
+                    row.item_id,
                     AsyncTemplate {
                         title: row.title,
                         tag_ids: Vec::new(),
@@ -342,13 +361,17 @@ impl<'session> TemplateOperator<'session> {
         Ok(templates)
     }
 
-    /// Replaces a flow Task item's wait template, or removes it for `None`.
+    /// Replaces a Task template's wait template, or removes it for `None`.
     async fn set_async_template(
         &mut self,
+        table: TemplateTable,
         id: i64,
         template: Option<&AsyncTemplate>,
     ) -> Result<(), FlowError> {
-        sqlx::query("DELETE FROM flow_task_async_templates WHERE flow_task_id = ?")
+        let Some((templates, tags, key)) = table.wait_template() else {
+            return Ok(());
+        };
+        sqlx::query(&format!("DELETE FROM {templates} WHERE {key} = ?"))
             .bind(id)
             .execute(&mut *self.connection)
             .await?;
@@ -357,12 +380,11 @@ impl<'session> TemplateOperator<'session> {
         };
         let (scope_n, scope_kind) = duration_columns(template.time_scope.as_ref());
         let (every_n, every_kind) = duration_columns(template.check_every.as_ref());
-        sqlx::query(
-            "INSERT INTO flow_task_async_templates
-                (flow_task_id, title, time_scope_n, time_scope_kind, check_every_n,
-                 check_every_kind)
-             VALUES (?, ?, ?, ?, ?, ?)",
-        )
+        sqlx::query(&format!(
+            "INSERT INTO {templates}
+                ({key}, title, time_scope_n, time_scope_kind, check_every_n, check_every_kind)
+             VALUES (?, ?, ?, ?, ?, ?)"
+        ))
         .bind(id)
         .bind(&template.title)
         .bind(scope_n)
@@ -372,10 +394,9 @@ impl<'session> TemplateOperator<'session> {
         .execute(&mut *self.connection)
         .await?;
         for tag_id in &template.tag_ids {
-            sqlx::query(
-                "INSERT OR IGNORE INTO tags_on_flow_task_async_templates (flow_task_id, tag_id)
-                 VALUES (?, ?)",
-            )
+            sqlx::query(&format!(
+                "INSERT OR IGNORE INTO {tags} ({key}, tag_id) VALUES (?, ?)"
+            ))
             .bind(id)
             .bind(tag_id)
             .execute(&mut *self.connection)
@@ -404,14 +425,9 @@ impl<'session> TemplateOperator<'session> {
     ) -> Result<(), FlowError> {
         if update.touches_task_columns() && !is_task_template {
             return Err(FlowError::Invalid(
-                "only a task template has a delegate, an Agentic or Asynchronous flag, or a \
-                 backlog"
+                "only a task template has a delegate, an Agentic, Asynchronous or Compound flag, \
+                 a wait template, or a backlog"
                     .to_string(),
-            ));
-        }
-        if update.touches_flow_task_columns() && table != TemplateTable::FlowTask {
-            return Err(FlowError::Invalid(
-                "only a flow task item can be compound or carry a wait template".to_string(),
             ));
         }
         let name = table.table();
@@ -456,36 +472,37 @@ impl<'session> TemplateOperator<'session> {
         if let Some(brief) = &update.agentic_brief {
             self.set_brief(table, id, brief.as_ref()).await?;
         }
-        if table == TemplateTable::FlowTask {
-            self.write_flow_task_columns(id, update).await?;
+        if is_task_template {
+            self.write_task_template_columns(table, id, update).await?;
         }
         Ok(())
     }
 
-    /// Applies what only a flow Task item has: its Compound flag, and its wait template — which,
-    /// as a stored Task's, exists only while the item is Asynchronous, so switching that off drops
-    /// it.
-    async fn write_flow_task_columns(
+    /// Applies a Task template's Compound flag and its wait template — which, as a stored Task's,
+    /// exists only while the template is Asynchronous, so switching that off drops it.
+    async fn write_task_template_columns(
         &mut self,
+        table: TemplateTable,
         id: i64,
         update: &TemplateUpdate,
     ) -> Result<(), FlowError> {
+        let name = table.table();
         if let Some(compound) = update.compound {
-            sqlx::query("UPDATE flow_tasks SET compound = ? WHERE id = ?")
+            sqlx::query(&format!("UPDATE {name} SET compound = ? WHERE id = ?"))
                 .bind(compound)
                 .bind(id)
                 .execute(&mut *self.connection)
                 .await?;
         }
         let asynchronous: bool =
-            sqlx::query_scalar("SELECT asynchronous FROM flow_tasks WHERE id = ?")
+            sqlx::query_scalar(&format!("SELECT asynchronous FROM {name} WHERE id = ?"))
                 .bind(id)
                 .fetch_optional(&mut *self.connection)
                 .await?
                 .unwrap_or(false);
         match (asynchronous, &update.async_template) {
-            (false, _) => self.set_async_template(id, None).await,
-            (true, Some(template)) => self.set_async_template(id, template.as_ref()).await,
+            (false, _) => self.set_async_template(table, id, None).await,
+            (true, Some(template)) => self.set_async_template(table, id, template.as_ref()).await,
             (true, None) => Ok(()),
         }
     }
@@ -627,10 +644,7 @@ impl<'session> TemplateOperator<'session> {
     ) -> Result<(), FlowError> {
         let columns = match table {
             TemplateTable::FlowGoal => "beads_id",
-            TemplateTable::Flow => {
-                "delegate_kind, delegate_id, agentic, asynchronous, archival, beads_id"
-            }
-            TemplateTable::FlowTask => {
+            TemplateTable::Flow | TemplateTable::FlowTask => {
                 "delegate_kind, delegate_id, agentic, asynchronous, archival, beads_id, compound"
             }
         };
@@ -647,10 +661,8 @@ impl<'session> TemplateOperator<'session> {
             let source = self.one(table, from).await?;
             self.set_brief(table, to, source.agentic_brief.as_ref())
                 .await?;
-            if table == TemplateTable::FlowTask {
-                self.set_async_template(to, source.async_template.as_ref())
-                    .await?;
-            }
+            self.set_async_template(table, to, source.async_template.as_ref())
+                .await?;
         }
         self.copy_relations(table, from, to).await
     }

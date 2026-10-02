@@ -82,18 +82,43 @@ pub enum TaskError {
          or turn compound off"
     )]
     CompoundStatus(i64),
+    /// A done date was given to a Task that is not Done: it has no completion to date.
+    #[error("only a done task has a done date")]
+    NotDone,
+    /// A done date in the future was given: nothing has been done later than now.
+    #[error("a done date cannot be in the future")]
+    DoneInFuture,
+    /// A status write named **Review**, which is never set: it is derived from an On Agent Task
+    /// with an open agentic question beneath it. An agent raises a question instead.
+    #[error(
+        "review is not set: an On Agent task reads Review while its agent has a question open; \
+         raise the question instead"
+    )]
+    ReviewIsDerived,
+    /// A status of the ordinary model was written to a Task that reads as **Agentic**, whose
+    /// status is a model of its own (To Do, On Agent, Review, Doing, Done).
+    #[error("{0} is not an Agentic status")]
+    NotAgenticStatus(String),
+    /// A status of the Agentic model was written to a Task that does not read as Agentic.
+    #[error("{0} is an Agentic status, and this task is not Agentic")]
+    NotOrdinaryStatus(String),
+    /// A flag change or a move would change whether these Tasks read as Agentic, and their status
+    /// has no counterpart in the model they would then hold — an ordinary Started, or an On Agent.
+    /// Refused out loud, naming them, so the user settles their statuses first.
+    #[error(
+        "this would change whether these tasks read as Agentic, and their status has no \
+         counterpart there: {0}. Set their status first"
+    )]
+    KindConversion(String),
     /// [`Self::CompoundStatus`], for a Habit occurrence that consists of its sub-items.
     #[error(
         "this occurrence consists of its sub-items, so its status follows them; change the \
          sub-items, or turn compound off"
     )]
     CompoundOccurrenceStatus,
-    /// Compound was asked of a derived row that cannot carry it — an iteration's root, whose Flow
-    /// has no Compound field, or a wait's check task. A stored Task and an occurrence of a flow
-    /// Task item carry the flag.
-    #[error(
-        "only a stored task or an occurrence of a flow task item can consist of its sub-items"
-    )]
+    /// Compound was asked of a wait's check task, whose status is the check itself. A stored Task
+    /// and a Habit's Task occurrence carry the flag.
+    #[error("a check task cannot consist of its sub-items: its status is the check itself")]
     CompoundOnDerived,
     /// A write would break a scope-containment invariant (e.g. a Plan wider than its Time Scope).
     #[error("scope containment violation: {0}")]

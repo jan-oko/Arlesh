@@ -185,8 +185,8 @@ impl<'session> CommitmentOperator<'session> {
             "INSERT INTO commitments
                 (title, parent_type, parent_id, verdict,
                  time_scope_start_id, time_scope_end_id, time_scope_duration_n,
-                 time_scope_duration_kind, verdict_window_n, verdict_window_kind)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 time_scope_duration_kind, verdict_window_n, verdict_window_kind, verdict_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
         .bind(&request.parent_type)
@@ -198,6 +198,12 @@ impl<'session> CommitmentOperator<'session> {
         .bind(&ts_kind)
         .bind(vw_n)
         .bind(&vw_kind)
+        // A commitment created with a verdict had it recorded now.
+        .bind(
+            verdict
+                .is_resolved()
+                .then(|| super::waits::instant_column(super::expectations::now())),
+        )
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
@@ -324,7 +330,11 @@ impl<'session> CommitmentOperator<'session> {
             "UPDATE commitments SET title=?, verdict=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
                 time_scope_duration_kind=?, verdict_window_n=?, verdict_window_kind=?,
-                position=?, is_private=? WHERE id=?",
+                position=?, is_private=?,
+                verdict_at = CASE WHEN ? = 'unresolved' THEN NULL
+                                  WHEN verdict = ? THEN verdict_at
+                                  ELSE ? END
+             WHERE id=?",
         )
         .bind(&write.title)
         .bind(write.verdict.as_str())
@@ -336,6 +346,10 @@ impl<'session> CommitmentOperator<'session> {
         .bind(&vw_kind)
         .bind(write.position)
         .bind(write.is_private)
+        // The same verdict saved again keeps the instant it was recorded; a new one is now.
+        .bind(write.verdict.as_str())
+        .bind(write.verdict.as_str())
+        .bind(super::waits::instant_column(super::expectations::now()))
         .bind(id.0)
         .execute(&mut *self.connection)
         .await?;
@@ -468,7 +482,18 @@ pub async fn update_commitment(
         &write.time_scope,
     )
     .await?;
-    db.commitments().update(id, write).await
+    let moves = write.reparent.is_some();
+    let commitment = db.commitments().update(id, write).await?;
+    // A Commitment passes the Agentic flag through: moved under another ancestor, the Tasks
+    // beneath it may change kind.
+    if moves {
+        super::agentic::reconcile(
+            db,
+            vec![super::agentic::Reach::Below("commitment".to_string(), id.0)],
+        )
+        .await?;
+    }
+    Ok(commitment)
 }
 
 /// Deletes a commitment and its entire subtree (descendant tasks, goals and commitments, and the

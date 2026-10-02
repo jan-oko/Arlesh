@@ -16,8 +16,8 @@ describe("takesCompound", () => {
     expect(takesCompound(node(occurrenceRow({ itemType: "flow_task" })))).toBe(true);
   });
 
-  it("refuses an iteration's root, which has no item to read the flag from", () => {
-    expect(takesCompound(node(occurrenceRow({ itemType: "flow_root" })))).toBe(false);
+  it("takes an iteration's root, which reads it from its flow", () => {
+    expect(takesCompound(node(occurrenceRow({ itemType: "flow_root" })))).toBe(true);
   });
 
   it("refuses a check task and a node that draws no row", () => {

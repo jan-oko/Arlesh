@@ -67,27 +67,39 @@ fn template_fields_default_to_what_a_template_said_before_it_had_them() {
 }
 
 #[test]
-fn compound_and_a_wait_template_are_a_flow_task_items_alone() {
-    let compound = TemplateUpdate {
-        compound: Some(true),
-        ..TemplateUpdate::default()
-    };
-    let template = TemplateUpdate {
-        async_template: Some(None),
-        ..TemplateUpdate::default()
-    };
-    for update in [compound, template] {
-        assert!(update.touches_flow_task_columns());
+fn compound_and_a_wait_template_are_a_task_templates_alone() {
+    for update in [
+        TemplateUpdate {
+            compound: Some(true),
+            ..TemplateUpdate::default()
+        },
+        TemplateUpdate {
+            async_template: Some(None),
+            ..TemplateUpdate::default()
+        },
+    ] {
         assert!(
             update.touches_task_columns(),
-            "a goal template is refused them too"
+            "a goal template is refused them"
         );
     }
-    assert!(!TemplateUpdate {
-        asynchronous: Some(true),
-        ..TemplateUpdate::default()
-    }
-    .touches_flow_task_columns());
+}
+
+#[test]
+fn a_task_template_keeps_its_wait_template_where_its_table_says() {
+    assert_eq!(
+        TemplateTable::Flow
+            .wait_template()
+            .map(|(table, _, key)| (table, key)),
+        Some(("flow_async_templates", "flow_id"))
+    );
+    assert_eq!(
+        TemplateTable::FlowTask
+            .wait_template()
+            .map(|(table, _, key)| (table, key)),
+        Some(("flow_task_async_templates", "flow_task_id"))
+    );
+    assert_eq!(TemplateTable::FlowGoal.wait_template(), None);
 }
 
 #[test]

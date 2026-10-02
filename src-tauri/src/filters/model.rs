@@ -38,7 +38,7 @@ pub enum Preset {
     /// in-progress tasks with nothing left under them to start, minus Habit flows, minus blocked
     /// subtrees, minus Tasks planned into a scope that has not begun yet.
     Start,
-    /// Only in-progress tasks.
+    /// Only in-progress tasks — and of Agentic ones, Doing and Review.
     Do,
     /// Only Tasks deliberately set aside, together with their subtrees.
     Backlog,
@@ -155,6 +155,12 @@ pub struct BoardFilter {
     /// asks what is being worked on now, and a paused task is not. App-wide, like the one above.
     /// The Zen View reads under Do with its own setting in place of this one.
     pub do_shows_started: bool,
+    /// Whether **Start**, **Do** — and the Zen View, which reads under Do — show an Agentic Task
+    /// that is **On Agent**: an agent holds it, so it is not the user's to begin or to work on, and
+    /// it is hidden unless this explicit show control is on. **Off by default**, and kept with the
+    /// tab's filter (the Filter menu's **On Agent** pill, key `o`). Review — On Agent with a
+    /// question open — shows whatever this says.
+    pub show_on_agent: bool,
 }
 
 impl Default for BoardFilter {
@@ -176,6 +182,7 @@ impl Default for BoardFilter {
             start_hides_checked_waits: false,
             start_shows_started: true,
             do_shows_started: false,
+            show_on_agent: false,
         }
     }
 }
@@ -254,10 +261,15 @@ pub struct NodeFacts {
     pub id: String,
     /// What kind of node this is.
     pub kind: NodeKind,
-    /// The node's own stored status, where its kind has one (Task, Goal, Project, and an
-    /// Expectation's `pending`/`released`).
+    /// The node's own status, where its kind has one (Task, Goal, Project, and an Expectation's
+    /// `pending`/`released`). A Task's is spelled as its model spells it on the wire — see
+    /// [`Self::agentic`] for which model.
     #[serde(default)]
     pub status: Option<String>,
+    /// Whether a Task's status is of the **Agentic** model (To Do, On Agent, Review, Doing, Done)
+    /// rather than the ordinary one. The presets dispatch on it before they read the status.
+    #[serde(default)]
+    pub agentic: bool,
     /// Derived window position, for the kinds that have a window.
     #[serde(default)]
     pub timing: Option<Timing>,
@@ -284,8 +296,8 @@ pub struct NodeFacts {
     /// Whether the node is marked private.
     #[serde(default)]
     pub is_private: bool,
-    /// Whether a Task is delegated — held by a Person or the Agent. A delegated Task has every
-    /// effect of archival: it is hidden wherever an archived node is hidden.
+    /// Whether a Task is delegated — held by a Person. A delegated Task has every effect of
+    /// archival: it is hidden wherever an archived node is hidden.
     #[serde(default)]
     pub delegated: bool,
     /// Whether an Expectation is checked on — carries a Check every. Start shows a pending one only
@@ -327,6 +339,7 @@ impl NodeFacts {
             id: id.into(),
             kind,
             status: None,
+            agentic: false,
             timing: None,
             plan_timing: None,
             overdue: false,

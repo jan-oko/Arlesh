@@ -241,6 +241,17 @@ impl AncestryChain {
         self.exhausted()
     }
 
+    /// Whether the nearest link carrying an explicit Time Scope is a **Habit occurrence** an added
+    /// child climbed into ([`occurrence_link`]) — whose window it then takes, and archives with.
+    ///
+    /// Pure. No database, no `async`.
+    pub(super) fn nearest_scoped_is_occurrence(&self) -> bool {
+        self.links
+            .iter()
+            .find(|link| link.time_scope.is_some())
+            .is_some_and(|link| link.parent.node_type == "flow")
+    }
+
     /// The nearest link carrying an explicit **Verdict Window**.
     ///
     /// **Traverses commitments only: anything else ends the search**, and ends it definitively.

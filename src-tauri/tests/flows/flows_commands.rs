@@ -348,6 +348,8 @@ async fn the_set_flow_recurrence_command_commits_the_recurrence() {
             end_scope_id: None,
             clock: ClockKind::Window,
             miss_policy: Some(MissPolicy::Archive),
+            cooldown_n: None,
+            cooldown_kind: None,
         },
     )
     .await
@@ -503,6 +505,8 @@ async fn the_duplicate_flow_command_commits_the_copy_and_its_recurrence() {
             end_scope_id: None,
             clock: ClockKind::Window,
             miss_policy: Some(MissPolicy::Archive),
+            cooldown_n: None,
+            cooldown_kind: None,
         },
     )
     .await

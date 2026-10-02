@@ -38,6 +38,7 @@
     "archiveAndNew": "archive a habit and start a new one",
     "nameWait": "create an expectation",
     "editTemplate": "edit what a task will wait on",
-    "newHabit": "create a habit"
+    "newHabit": "create a habit",
+    "newFlow": "create a flow"
   }
 }

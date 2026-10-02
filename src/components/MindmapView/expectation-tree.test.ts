@@ -19,7 +19,7 @@ const ASPECT: Domain = {
 
 function task(over: Partial<Task> = {}): Task {
   return {
-    id: 5, title: "Send the draft", parent_type: "project", parent_id: 1, status: "todo",
+    id: 5, title: "Send the draft", parent_type: "project", parent_id: 1, status: { kind: "ordinary", status: "todo" },
     delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null,
     plan: null, archival: "live", tag_ids: [], position: 1, is_private: false, ...over,
   };
@@ -88,7 +88,7 @@ describe("buildTree — expectations", () => {
   });
 
   it("draws a delegated task's wait row beneath it, titled as what it waits on", () => {
-    const root = build([task({ delegate_to: { kind: "agent" } })], [wait({
+    const root = build([task({ delegate_to: { kind: "person", id: 4 } })], [wait({
       id: DELEGATION_ID, title: "Send the draft", parent_type: "task", parent_id: 5,
       origin: { kind: "delegation_wait", task_id: 5 },
     })]);
@@ -102,7 +102,7 @@ describe("buildTree — expectations", () => {
   it("draws a done asynchronous task's spawned wait row beneath it, with its checks beneath the wait", () => {
     const root = build(
       [
-        task({ status: "done", asynchronous: true }),
+        task({ status: { kind: "ordinary", status: "done" }, asynchronous: true }),
         check({
           parent_id: SPAWNED_ID, title: "Waiting on Send the draft",
           origin: { kind: "check", wait_kind: "spawned", wait_id: 5, due_at: "2026-09-22T10:00:00" },
@@ -132,7 +132,7 @@ describe("buildTree — expectations", () => {
     // A check task's id is its (wait, due at) key, so the open check and the same check done are
     // one node: the selection holds on it, and the focus exemption keeps it on screen.
     const before = (): MindmapNode => build([check()], [wait({ check_every: EVERY })]);
-    const after = (): MindmapNode => build([check({ status: "done" })], [wait({ check_every: EVERY })]);
+    const after = (): MindmapNode => build([check({ status: { kind: "ordinary", status: "done" } })], [wait({ check_every: EVERY })]);
 
     it("under All the completed check is shown done", () => {
       const shown = findNode(filterTree(after(), DEFAULT_FILTER), `task-${CHECK_ID}`);
@@ -161,7 +161,7 @@ describe("buildTree — expectations", () => {
   });
 
   it("stamps a spawned wait with the lifecycle filed under its row", () => {
-    const tree = build([task({ status: "done" })], [wait({
+    const tree = build([task({ status: { kind: "ordinary", status: "done" } })], [wait({
       id: SPAWNED_ID, parent_type: "task", parent_id: 5, origin: { kind: "spawned_wait", task_id: 5 },
     })]);
     const lifecycle: ItemLifecycle = {

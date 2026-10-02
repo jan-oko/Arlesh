@@ -18,6 +18,10 @@ pub struct BlockReason {
     /// and left off the wire then, so a board with no derived reason reads exactly as before.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub derived: Option<DerivedBlock>,
+    /// When a derived block **lifts by itself**, for one that does — a Habit's cooldown. Absent
+    /// otherwise, and left off the wire then.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub until: Option<chrono::NaiveDateTime>,
 }
 
 /// What derived a [`BlockReason`] that no one wrote.
@@ -30,4 +34,8 @@ pub enum DerivedBlock {
     /// The owner is a **Compound** Task, and every one of its open counted items is blocked. It
     /// goes when one of them is unblocked or finished. See [`crate::tasks::compound`].
     Compound,
+    /// The owner is the root of a **Habit** iteration whose previous iteration was completed less
+    /// than the Habit's **cooldown** ago. It lifts by itself at [`BlockReason::until`]. See
+    /// [`crate::flows::cooldown`].
+    Cooldown,
 }

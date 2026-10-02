@@ -8,7 +8,7 @@ import type { YesNoDimension } from "@/utils/filter-modes";
  * not in one of its search boxes. `t` / `c` / `e` toggle a row kind (Shift: show only that one);
  * `a` / `w` / `b` / `p` add a flag in the key's mode (plain All, Shift Any, Alt Not), switch a set
  * flag to that mode, or remove it when it is already in that mode;
- * `Ctrl+P` toggles Private Mode itself — taking over the global "Plan View" chord only while focus
+ * `o` toggles the On Agent pill; `Ctrl+P` toggles Private Mode itself — taking over the global "Plan View" chord only while focus
  * is in the menu.
  */
 export const ROW_KIND_KEYS: Readonly<Record<ListRowKind, string>> = {
@@ -24,12 +24,15 @@ export const FLAG_KEYS: Readonly<Record<YesNoDimension, string>> = {
   private: "KeyP",
 };
 
+/** The key that toggles the **On Agent** pill, in every view that offers it. `d` is spoken for. */
+export const ON_AGENT_KEY = "KeyO";
+
 /** The chord that toggles Private Mode from the menu, as a `data-owns-keys` token. */
 export const PRIVATE_MODE_TOKEN = "Ctrl+KeyP";
 
 /** Every key the menu handles itself — what it lists in `data-owns-keys`. */
 export const FILTER_MENU_CODES: readonly string[] = [
-  ...Object.values(ROW_KIND_KEYS), ...Object.values(FLAG_KEYS), PRIVATE_MODE_TOKEN,
+  ...Object.values(ROW_KIND_KEYS), ...Object.values(FLAG_KEYS), ON_AGENT_KEY, PRIVATE_MODE_TOKEN,
 ];
 
 /** The letter keys the Filter menu takes in a view: its row kinds' and its flags'. */

@@ -521,6 +521,12 @@ pub struct FlowRecurrence {
     pub clock: String,
     /// `archive`, `overdue` or `owed` (set iff the clock is `window`).
     pub miss_policy: Option<String>,
+    /// A Window Habit's **cooldown** count: after an iteration is completed, the next opens only
+    /// once this many [`Self::cooldown_kind`] units have passed. `None` = no cooldown.
+    pub cooldown_n: Option<i64>,
+    /// Kind of the cooldown units (`part`/`day`/`week`/`month`), finer than the habit's own
+    /// scope; travels with `cooldown_n`.
+    pub cooldown_kind: Option<String>,
 }
 
 /// Request to set (create or replace) a flow's Recurrence, making it a Habit.
@@ -539,6 +545,13 @@ pub struct SetRecurrenceRequest {
     pub clock: ClockKind,
     /// The miss policy; required iff the clock is `window`.
     pub miss_policy: Option<MissPolicy>,
+    /// Cooldown count; `None` = no cooldown. Only a Window clock may carry one.
+    #[serde(default)]
+    pub cooldown_n: Option<i64>,
+    /// Cooldown unit kind (`part`/`day`/`week`/`month`), strictly finer than the habit's scope;
+    /// must accompany `cooldown_n`.
+    #[serde(default)]
+    pub cooldown_kind: Option<String>,
 }
 
 /// The derived state of a Habit iteration on a given day (nothing is persisted — see the pure

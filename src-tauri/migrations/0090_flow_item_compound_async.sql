@@ -1,14 +1,18 @@
--- A flow Task item's **Compound** flag and **Expectation template** (Task 611; the user,
--- 2026-10-01: "add compound and async expectations to the template editor").
+-- A Task template's **Compound** flag and **Expectation template** (Task 611; the user,
+-- 2026-10-01: "add compound and async expectations to the template editor", and "iteration roots
+-- must also support compound and asynchronous").
 --
--- A template carries its kind's full schema (0061), and a Task now has two things a flow Task item
+-- A template carries its kind's full schema (0061), and a Task now has two things a Task template
 -- could not say: Compound (0086) and the wait template an Asynchronous Task spawns its wait from
--- (0044). Both are stored the way a stored Task stores them, keyed by the item instead:
+-- (0044). Both are stored the way a stored Task stores them, keyed by the template row instead —
+-- a flow Task item, or the flow itself for the root of a task-instance flow (its Asynchronous
+-- flag is `flows.asynchronous`, from 0061). A flow Goal item has neither.
 --
---   * `flow_tasks.compound`: a plain boolean, NOT NULL DEFAULT 0, exactly `tasks.compound`. Flow
---     Task items only: a Flow root and a flow Goal item have no such column.
---   * `flow_task_async_templates` (+ `tags_on_flow_task_async_templates`): exactly the columns
---     `task_async_templates` has, one row per item that has a template, gone with the item
+--   * `flow_tasks.compound`, `flows.compound`: a plain boolean, NOT NULL DEFAULT 0, exactly
+--     `tasks.compound`.
+--   * `flow_task_async_templates` (+ `tags_on_flow_task_async_templates`) and
+--     `flow_async_templates` (+ `tags_on_flow_async_templates`): exactly the columns
+--     `task_async_templates` has, one row per template that has one, gone with its row
 --     (`ON DELETE CASCADE`).
 --
 -- A Habit occurrence reads both from its item until its overlay says otherwise:
@@ -24,6 +28,7 @@
 -- template, inheriting. Nothing about an existing Habit or Flow changes.
 
 ALTER TABLE flow_tasks ADD COLUMN compound INTEGER NOT NULL DEFAULT 0 CHECK (compound IN (0, 1));
+ALTER TABLE flows ADD COLUMN compound INTEGER NOT NULL DEFAULT 0 CHECK (compound IN (0, 1));
 
 CREATE TABLE flow_task_async_templates (
     flow_task_id     INTEGER PRIMARY KEY REFERENCES flow_tasks(id) ON DELETE CASCADE,
@@ -43,18 +48,56 @@ CREATE TABLE tags_on_flow_task_async_templates (
     PRIMARY KEY (flow_task_id, tag_id)
 );
 
+CREATE TABLE flow_async_templates (
+    flow_id          INTEGER PRIMARY KEY REFERENCES flows(id) ON DELETE CASCADE,
+    title            TEXT NOT NULL,
+    time_scope_n     INTEGER,
+    time_scope_kind  TEXT,
+    check_every_n    INTEGER,
+    check_every_kind TEXT,
+    CHECK ((time_scope_n IS NULL) = (time_scope_kind IS NULL)),
+    CHECK ((check_every_n IS NULL) = (check_every_kind IS NULL))
+);
+
+CREATE TABLE tags_on_flow_async_templates (
+    flow_id INTEGER NOT NULL REFERENCES flow_async_templates(flow_id) ON DELETE CASCADE,
+    tag_id  INTEGER NOT NULL REFERENCES domains(id),
+    PRIMARY KEY (flow_id, tag_id)
+);
+
 ALTER TABLE task_overlays ADD COLUMN compound INTEGER CHECK (compound IS NULL OR compound IN (0, 1));
 ALTER TABLE task_overlays ADD COLUMN async_template_set INTEGER NOT NULL DEFAULT 0
     CHECK (async_template_set IN (0, 1));
 
 -- Undo-journal triggers, straight from scripts/generate-undo-triggers.sh. The journal's images
--- name every column, so the two altered tables' triggers are rebuilt with the new ones.
+-- name every column, so the three altered tables' triggers are rebuilt with the new ones.
+DROP TRIGGER IF EXISTS undo_journal_flows_insert;
+DROP TRIGGER IF EXISTS undo_journal_flows_update;
+DROP TRIGGER IF EXISTS undo_journal_flows_delete;
 DROP TRIGGER IF EXISTS undo_journal_flow_tasks_insert;
 DROP TRIGGER IF EXISTS undo_journal_flow_tasks_update;
 DROP TRIGGER IF EXISTS undo_journal_flow_tasks_delete;
 DROP TRIGGER IF EXISTS undo_journal_task_overlays_insert;
 DROP TRIGGER IF EXISTS undo_journal_task_overlays_update;
 DROP TRIGGER IF EXISTS undo_journal_task_overlays_delete;
+
+CREATE TRIGGER undo_journal_flow_async_templates_insert AFTER INSERT ON flow_async_templates BEGIN
+    INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
+    SELECT gesture_id, source, 'flow_async_templates', new.rowid, 'insert', NULL, json_object('flow_id', new.flow_id, 'title', new.title, 'time_scope_n', new.time_scope_n, 'time_scope_kind', new.time_scope_kind, 'check_every_n', new.check_every_n, 'check_every_kind', new.check_every_kind), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM undo_context WHERE id = 1 AND suppressed = 0;
+END;
+
+CREATE TRIGGER undo_journal_flow_async_templates_update AFTER UPDATE ON flow_async_templates BEGIN
+    INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
+    SELECT gesture_id, source, 'flow_async_templates', new.rowid, 'update', json_object('flow_id', old.flow_id, 'title', old.title, 'time_scope_n', old.time_scope_n, 'time_scope_kind', old.time_scope_kind, 'check_every_n', old.check_every_n, 'check_every_kind', old.check_every_kind), json_object('flow_id', new.flow_id, 'title', new.title, 'time_scope_n', new.time_scope_n, 'time_scope_kind', new.time_scope_kind, 'check_every_n', new.check_every_n, 'check_every_kind', new.check_every_kind), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM undo_context WHERE id = 1 AND suppressed = 0;
+END;
+
+CREATE TRIGGER undo_journal_flow_async_templates_delete AFTER DELETE ON flow_async_templates BEGIN
+    INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
+    SELECT gesture_id, source, 'flow_async_templates', old.rowid, 'delete', json_object('flow_id', old.flow_id, 'title', old.title, 'time_scope_n', old.time_scope_n, 'time_scope_kind', old.time_scope_kind, 'check_every_n', old.check_every_n, 'check_every_kind', old.check_every_kind), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM undo_context WHERE id = 1 AND suppressed = 0;
+END;
 
 CREATE TRIGGER undo_journal_flow_task_async_templates_insert AFTER INSERT ON flow_task_async_templates BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
@@ -89,6 +132,42 @@ END;
 CREATE TRIGGER undo_journal_flow_tasks_delete AFTER DELETE ON flow_tasks BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
     SELECT gesture_id, source, 'flow_tasks', old.rowid, 'delete', json_object('id', old.id, 'flow_id', old.flow_id, 'title', old.title, 'parent_type', old.parent_type, 'parent_id', old.parent_id, 'position', old.position, 'is_private', old.is_private, 'delegate_kind', old.delegate_kind, 'delegate_id', old.delegate_id, 'agentic', old.agentic, 'asynchronous', old.asynchronous, 'archival', old.archival, 'beads_id', old.beads_id, 'compound', old.compound), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM undo_context WHERE id = 1 AND suppressed = 0;
+END;
+
+CREATE TRIGGER undo_journal_flows_insert AFTER INSERT ON flows BEGIN
+    INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
+    SELECT gesture_id, source, 'flows', new.rowid, 'insert', NULL, json_object('id', new.id, 'title', new.title, 'instance_type', new.instance_type, 'parent_type', new.parent_type, 'parent_id', new.parent_id, 'target_type', new.target_type, 'target_id', new.target_id, 'flow_duration_n', new.flow_duration_n, 'flow_duration_kind', new.flow_duration_kind, 'position', new.position, 'flow_window_part', new.flow_window_part, 'flow_window_time_start', new.flow_window_time_start, 'flow_window_time_end', new.flow_window_time_end, 'root_plan_kind', new.root_plan_kind, 'root_plan_start', new.root_plan_start, 'root_plan_end', new.root_plan_end, 'is_private', new.is_private, 'verdict_window_n', new.verdict_window_n, 'verdict_window_kind', new.verdict_window_kind, 'delegate_kind', new.delegate_kind, 'delegate_id', new.delegate_id, 'agentic', new.agentic, 'asynchronous', new.asynchronous, 'archival', new.archival, 'beads_id', new.beads_id, 'compound', new.compound), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM undo_context WHERE id = 1 AND suppressed = 0;
+END;
+
+CREATE TRIGGER undo_journal_flows_update AFTER UPDATE ON flows BEGIN
+    INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
+    SELECT gesture_id, source, 'flows', new.rowid, 'update', json_object('id', old.id, 'title', old.title, 'instance_type', old.instance_type, 'parent_type', old.parent_type, 'parent_id', old.parent_id, 'target_type', old.target_type, 'target_id', old.target_id, 'flow_duration_n', old.flow_duration_n, 'flow_duration_kind', old.flow_duration_kind, 'position', old.position, 'flow_window_part', old.flow_window_part, 'flow_window_time_start', old.flow_window_time_start, 'flow_window_time_end', old.flow_window_time_end, 'root_plan_kind', old.root_plan_kind, 'root_plan_start', old.root_plan_start, 'root_plan_end', old.root_plan_end, 'is_private', old.is_private, 'verdict_window_n', old.verdict_window_n, 'verdict_window_kind', old.verdict_window_kind, 'delegate_kind', old.delegate_kind, 'delegate_id', old.delegate_id, 'agentic', old.agentic, 'asynchronous', old.asynchronous, 'archival', old.archival, 'beads_id', old.beads_id, 'compound', old.compound), json_object('id', new.id, 'title', new.title, 'instance_type', new.instance_type, 'parent_type', new.parent_type, 'parent_id', new.parent_id, 'target_type', new.target_type, 'target_id', new.target_id, 'flow_duration_n', new.flow_duration_n, 'flow_duration_kind', new.flow_duration_kind, 'position', new.position, 'flow_window_part', new.flow_window_part, 'flow_window_time_start', new.flow_window_time_start, 'flow_window_time_end', new.flow_window_time_end, 'root_plan_kind', new.root_plan_kind, 'root_plan_start', new.root_plan_start, 'root_plan_end', new.root_plan_end, 'is_private', new.is_private, 'verdict_window_n', new.verdict_window_n, 'verdict_window_kind', new.verdict_window_kind, 'delegate_kind', new.delegate_kind, 'delegate_id', new.delegate_id, 'agentic', new.agentic, 'asynchronous', new.asynchronous, 'archival', new.archival, 'beads_id', new.beads_id, 'compound', new.compound), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM undo_context WHERE id = 1 AND suppressed = 0;
+END;
+
+CREATE TRIGGER undo_journal_flows_delete AFTER DELETE ON flows BEGIN
+    INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
+    SELECT gesture_id, source, 'flows', old.rowid, 'delete', json_object('id', old.id, 'title', old.title, 'instance_type', old.instance_type, 'parent_type', old.parent_type, 'parent_id', old.parent_id, 'target_type', old.target_type, 'target_id', old.target_id, 'flow_duration_n', old.flow_duration_n, 'flow_duration_kind', old.flow_duration_kind, 'position', old.position, 'flow_window_part', old.flow_window_part, 'flow_window_time_start', old.flow_window_time_start, 'flow_window_time_end', old.flow_window_time_end, 'root_plan_kind', old.root_plan_kind, 'root_plan_start', old.root_plan_start, 'root_plan_end', old.root_plan_end, 'is_private', old.is_private, 'verdict_window_n', old.verdict_window_n, 'verdict_window_kind', old.verdict_window_kind, 'delegate_kind', old.delegate_kind, 'delegate_id', old.delegate_id, 'agentic', old.agentic, 'asynchronous', old.asynchronous, 'archival', old.archival, 'beads_id', old.beads_id, 'compound', old.compound), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM undo_context WHERE id = 1 AND suppressed = 0;
+END;
+
+CREATE TRIGGER undo_journal_tags_on_flow_async_templates_insert AFTER INSERT ON tags_on_flow_async_templates BEGIN
+    INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
+    SELECT gesture_id, source, 'tags_on_flow_async_templates', new.rowid, 'insert', NULL, json_object('flow_id', new.flow_id, 'tag_id', new.tag_id), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM undo_context WHERE id = 1 AND suppressed = 0;
+END;
+
+CREATE TRIGGER undo_journal_tags_on_flow_async_templates_update AFTER UPDATE ON tags_on_flow_async_templates BEGIN
+    INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
+    SELECT gesture_id, source, 'tags_on_flow_async_templates', new.rowid, 'update', json_object('flow_id', old.flow_id, 'tag_id', old.tag_id), json_object('flow_id', new.flow_id, 'tag_id', new.tag_id), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM undo_context WHERE id = 1 AND suppressed = 0;
+END;
+
+CREATE TRIGGER undo_journal_tags_on_flow_async_templates_delete AFTER DELETE ON tags_on_flow_async_templates BEGIN
+    INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
+    SELECT gesture_id, source, 'tags_on_flow_async_templates', old.rowid, 'delete', json_object('flow_id', old.flow_id, 'tag_id', old.tag_id), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 

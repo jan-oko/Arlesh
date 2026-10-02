@@ -10,7 +10,7 @@ use chrono::NaiveDateTime;
 
 use super::{
     id::{DerivedId, NodeId},
-    key::{DerivedKey, OccurrenceKey, TemplateKind},
+    key::{DerivedKey, OccurrenceKey},
     relations::Endpoint,
     table::{resolve_key, resolve_occurrence},
     wait_edit,
@@ -82,9 +82,14 @@ pub async fn create_task(
     };
     let (key, host) = occurrence_parent(db, &parent, now).await?;
     occurrence_edit::check_within(&host, request.time_scope.as_ref(), request.plan.as_ref())?;
+    // Hung on the occurrence, it reads what the occurrence reads, not the host its columns name.
+    let agentic = match request.agentic.and_then(|agentic| agentic.as_column()) {
+        Some(flag) => flag,
+        None => crate::tasks::agentic::occurrence_reads_agentic(db, &key).await?,
+    };
     request.parent_type = host.host_type.clone();
     request.parent_id = NodeId::Stored(host.host_id);
-    let mut task = crate::tasks::create_task_at(db, request, now).await?;
+    let mut task = crate::tasks::create_task_as(db, request, now, agentic).await?;
     occurrence_edit::attach(db, &host, &key, "task", task.id.require_stored()?).await?;
     (task.parent_type, task.parent_id) = hung_on(&host, &key);
     Ok(task)
@@ -269,8 +274,17 @@ pub async fn update_task(
                     request.plan.as_ref().and_then(Option::as_ref),
                 )?;
             }
+            let moves = request.parent_id.is_some();
             let mut task = crate::tasks::update_task_at(db, TaskId(*id), request, now).await?;
-            if let Some((parent_type, parent_id)) = finish_move(db, moved, "task", *id).await? {
+            let hung = finish_move(db, moved, "task", *id).await?;
+            if moves {
+                // Hung on an occurrence or taken off one, it reads what its new place reads: its
+                // status is settled into that model, and so is everything beneath that inherits.
+                crate::tasks::agentic::reconcile(db, vec![crate::tasks::agentic::Reach::Task(*id)])
+                    .await?;
+                task.status = db.tasks().get(TaskId(*id)).await?.status;
+            }
+            if let Some((parent_type, parent_id)) = hung {
                 (task.parent_type, task.parent_id) = (parent_type, parent_id);
             }
             return Ok(task);
@@ -278,12 +292,9 @@ pub async fn update_task(
         NodeId::Derived(derived) => derived,
     };
     let key = match resolve_key(db, derived, now).await? {
-        // An occurrence of a flow Task item reads Compound from its item, and may say otherwise;
-        // an iteration's root has no item to read it from. Switching it off asks nothing.
+        // A Task occurrence reads Compound from its template — its flow Task item, or the root of
+        // its task-instance flow — and may say otherwise.
         DerivedKey::Occurrence(key) => {
-            if request.compound == Some(true) && key.item.item_type != TemplateKind::FlowTask {
-                return Err(crate::tasks::error::TaskError::CompoundOnDerived.into());
-            }
             crate::tasks::compound::keep_derived_status(db, id, &mut request, now).await?;
             key
         }
@@ -324,8 +335,16 @@ pub async fn update_goal(
             )
             .await?;
             let mut goal = crate::tasks::update_goal(db, GoalId(*id), request).await?;
+            let onto_occurrence = moved.is_some();
             if let Some((parent_type, parent_id)) = finish_move(db, moved, "goal", *id).await? {
                 (goal.parent_type, goal.parent_id) = (parent_type, parent_id);
+            }
+            if onto_occurrence {
+                crate::tasks::agentic::reconcile(
+                    db,
+                    vec![crate::tasks::agentic::Reach::Below("goal".to_string(), *id)],
+                )
+                .await?;
             }
             return Ok(goal);
         }
@@ -361,10 +380,21 @@ pub async fn update_commitment(
             .await?;
             let mut commitment =
                 crate::tasks::update_commitment(db, CommitmentId(*id), request).await?;
+            let onto_occurrence = moved.is_some();
             if let Some((parent_type, parent_id)) =
                 finish_move(db, moved, "commitment", *id).await?
             {
                 (commitment.parent_type, commitment.parent_id) = (parent_type, parent_id);
+            }
+            if onto_occurrence {
+                crate::tasks::agentic::reconcile(
+                    db,
+                    vec![crate::tasks::agentic::Reach::Below(
+                        "commitment".to_string(),
+                        *id,
+                    )],
+                )
+                .await?;
             }
             return Ok(commitment);
         }
@@ -854,4 +884,47 @@ pub async fn delete(
     };
     occurrence_edit::archive(db, &key).await?;
     Ok(())
+}
+
+/// The instant a Done Task was done — a stored Task or a Habit occurrence — or `None` while it is
+/// not Done. A wait's check task has none: its completion is the check it records.
+#[tracing::instrument(skip(db))]
+pub async fn done_at(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    now: NaiveDateTime,
+) -> Result<Option<NaiveDateTime>, AppError> {
+    let derived = match id {
+        NodeId::Stored(id) => return Ok(crate::tasks::done_date::stored_done_at(db, *id).await?),
+        NodeId::Derived(derived) => derived,
+    };
+    match resolve_key(db, derived, now).await? {
+        DerivedKey::Occurrence(key) => {
+            Ok(crate::flows::done_date::occurrence_done_at(db, &key).await?)
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Sets a Done Task's done date to `at` — a stored Task's `done_at`, or a Habit occurrence's
+/// completion in its overlay, which an Interval's next window and a cooldown count from.
+#[tracing::instrument(skip(db))]
+pub async fn set_done_at(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    at: NaiveDateTime,
+    now: NaiveDateTime,
+) -> Result<(), AppError> {
+    let derived = match id {
+        NodeId::Stored(id) => {
+            return Ok(crate::tasks::done_date::set_stored_done_at(db, *id, at, now).await?)
+        }
+        NodeId::Derived(derived) => derived,
+    };
+    match resolve_key(db, derived, now).await? {
+        DerivedKey::Occurrence(key) => {
+            Ok(crate::flows::done_date::set_occurrence_done_at(db, &key, at, now).await?)
+        }
+        _ => Err(wrong_kind(id, "task with a done date")),
+    }
 }

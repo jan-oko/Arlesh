@@ -125,22 +125,22 @@ function refusedHere(child: NodeKind, parent: NodeKind, count: number, parents: 
 describe("useNodeActions — onStatusClick", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(updateTask).mockResolvedValue({ id: 5, title: "task-5", parent_type: "project", parent_id: 3, status: "in_progress", delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false });
+    vi.mocked(updateTask).mockResolvedValue({ id: 5, title: "task-5", parent_type: "project", parent_id: 3, status: { kind: "ordinary", status: "in_progress" }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false });
   });
 
   it("cycles todo → in_progress for a task node", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-5"); });
-    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { status: "in_progress" }));
+    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { status: { kind: "ordinary", status: "in_progress" } }));
   });
 
   it("cycles done → todo for a task node", async () => {
-    vi.mocked(updateTask).mockResolvedValue({ id: 6, title: "task-6", parent_type: "project", parent_id: 3, status: "todo", delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false });
+    vi.mocked(updateTask).mockResolvedValue({ id: 6, title: "task-6", parent_type: "project", parent_id: 3, status: { kind: "ordinary", status: "todo" }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false });
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-6"); });
-    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(6, { status: "todo" }));
+    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(6, { status: { kind: "ordinary", status: "todo" } }));
   });
 
   it("names the backlog the write cleared when a set-aside task is started", async () => {
@@ -150,7 +150,7 @@ describe("useNodeActions — onStatusClick", () => {
     const opts = makeOpts({ tree: mkNode("root", "domain", [mkNode("domain-3", "project", [backlogged])]) });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-13"); });
-    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(13, { status: "in_progress" }));
+    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(13, { status: { kind: "ordinary", status: "in_progress" } }));
     await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
       nodeId: "task-13", message: "warnings:backlogClearedByStart",
     }));
@@ -160,7 +160,7 @@ describe("useNodeActions — onStatusClick", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-5"); });
-    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { status: "in_progress" }));
+    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { status: { kind: "ordinary", status: "in_progress" } }));
     expect(opts.showToast).not.toHaveBeenCalled();
   });
 
@@ -191,7 +191,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habit-3-0-virtual"); });
     await vi.waitFor(() =>
-      expect(updateTask).toHaveBeenCalledWith(HABIT_ITER.rowId, { status: "in_progress" }),
+      expect(updateTask).toHaveBeenCalledWith(HABIT_ITER.rowId, { status: { kind: "ordinary", status: "in_progress" } }),
     );
   });
 
@@ -199,14 +199,14 @@ describe("useNodeActions — onStatusClick", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habit-3-1-virtual"); });
-    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(HABIT_DONE.rowId, { status: "todo" }));
+    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(HABIT_DONE.rowId, { status: { kind: "ordinary", status: "todo" } }));
   });
 
   it("advances an in_progress occurrence to done", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_task-7-0-virtual"); });
-    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(HABIT_TASK_IP.rowId, { status: "done" }));
+    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(HABIT_TASK_IP.rowId, { status: { kind: "ordinary", status: "done" } }));
   });
 
   it("un-achieves an achieved goal occurrence like any goal", async () => {
@@ -220,7 +220,7 @@ describe("useNodeActions — onStatusClick", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_task-4-0-virtual"); });
-    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(HABIT_ITEM.rowId, { status: "in_progress" }));
+    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(HABIT_ITEM.rowId, { status: { kind: "ordinary", status: "in_progress" } }));
     expect(updateTask).toHaveBeenCalledTimes(1);
   });
 });

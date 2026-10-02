@@ -36,9 +36,11 @@
 //! ancestor's count. So a compound Task is resolved before any compound ancestor reads it
 //! ([`derive`] resolves on demand, innermost first), and its lifecycle is re-derived as it is.
 //!
-//! A **Habit occurrence** of a compound flow Task item is derived here the same way, over the same
-//! subtree. Its lifecycle follows its Habit's rules rather than a window of its own, so its Habit
-//! works out what it reads as Done and not ([`OccurrenceStates`]) and this picks one.
+//! A **compound Habit occurrence** is derived by this same rule, but by its Habit rather than by
+//! the board: whether its iteration has resolved depends on its status, so the Habit pass works it
+//! out first (`flows::compound_readings`), over its subtree as it stands before the iteration is
+//! classified, by calling [`settle`] itself. The board then serves that status as it is
+//! ([`Rows::settled`]) rather than deriving it a second time.
 //!
 //! A delegated compound Task's delegation wait is drawn from its status, so the waits are drawn
 //! again whenever a derived status changes which of those exist ([`settle`]). Each round settles
@@ -64,12 +66,14 @@ use super::{
     lifecycle::{derive_item_state, effective_due, Archival, DerivedState, ItemLifecycle},
     model::{
         Commitment, Expectation, ExpectationArchival, ExpectationStatus, Goal, GoalStatus,
-        OnScopeExit, Task, TaskArchival, TaskId, TaskStatus, TimeScope, UpdateTaskRequest, Verdict,
+        OnScopeExit, Status, Task, TaskArchival, TaskId, TaskStatus, TimeScope, UpdateTaskRequest,
+        Verdict,
     },
-    scope_rules::scope_governance,
+    scope_rules::{scope_governance_with, OccurrenceExit},
 };
 
 pub mod blocked;
+pub mod instants;
 
 #[cfg(test)]
 mod tests;
@@ -93,6 +97,8 @@ struct Tally {
     all_done: bool,
     in_progress: bool,
     begun: bool,
+    /// The latest finish among the Done items counted, where known.
+    latest: Option<NaiveDateTime>,
 }
 
 impl Default for Tally {
@@ -102,6 +108,7 @@ impl Default for Tally {
             all_done: true,
             in_progress: false,
             begun: false,
+            latest: None,
         }
     }
 }
@@ -131,10 +138,11 @@ impl Tally {
     }
 }
 
-/// How a Task counts: its status. An unrecognised spelling reads as To Do, which never finishes
-/// anything it should not.
-pub fn task_reading(status: &str) -> TaskStatus {
-    TaskStatus::from_db(status).unwrap_or(TaskStatus::Todo)
+/// How a Task counts: its status, read in the ordinary model's terms whichever model it holds —
+/// an Agentic Doing counts as In Progress, On Agent and Review as Started (see
+/// [`Status::reading`]).
+pub fn task_reading(status: Status) -> TaskStatus {
+    status.reading()
 }
 
 /// How a Goal counts: Achieved is Done, anything else To Do.
@@ -177,18 +185,6 @@ pub struct Governance {
     pub stored: Archival,
 }
 
-/// What a **compound Habit occurrence**'s lifecycle reads as, Done or not. Its Habit's rules —
-/// the iteration's window, Lapsed and Missed, an archive above it — are its Habit's own, worked out
-/// when the occurrence is derived (`flows::occurrences`); only its Done waits for the derivation
-/// here, which picks one of the two.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct OccurrenceStates {
-    /// Its lifecycle when it reads as Done.
-    pub done: DerivedState,
-    /// Its lifecycle when it does not.
-    pub open: DerivedState,
-}
-
 /// The rows a derivation reads — each kind's virtual table, split where the load holds it in two.
 pub struct Rows<'rows> {
     /// Tasks: stored rows and Habit occurrences.
@@ -207,6 +203,12 @@ pub struct Rows<'rows> {
     pub lifecycles: &'rows [ItemLifecycle],
     /// The waits' own lifecycles, when the load holds them apart.
     pub wait_lifecycles: &'rows [ItemLifecycle],
+    /// Compound Tasks whose status is already derived — a Habit's compound occurrences, which
+    /// their Habit derives — read as they are served rather than derived again.
+    pub settled: &'rows HashSet<NodeId>,
+    /// When each finished item was finished, where that is known: what a compound Task's own
+    /// done time is the latest of.
+    pub instants: &'rows HashMap<NodeId, NaiveDateTime>,
 }
 
 /// One compound Task's derived status, and its lifecycle re-derived from it.
@@ -219,6 +221,9 @@ pub struct Outcome {
     /// Its lifecycle as that status leaves it — `None` when no [`Governance`] was given for it,
     /// in which case its lifecycle is left as the load derived it.
     pub state: Option<DerivedState>,
+    /// When it became Done — the latest finish among what it counts that has one — while it reads
+    /// as Done. `None` while it does not, or when nothing it counts has a known finish.
+    pub done_at: Option<NaiveDateTime>,
 }
 
 /// Derives every compound Task's status in `rows` at `now`.
@@ -227,37 +232,24 @@ pub fn derive(
     governance: &HashMap<NodeId, Governance>,
     now: NaiveDateTime,
 ) -> Vec<Outcome> {
-    derive_with(rows, (governance, &HashMap::new()), now)
-}
-
-/// [`derive`], with each compound Habit occurrence's [`OccurrenceStates`] beside the stored
-/// Tasks' [`Governance`].
-pub fn derive_with(
-    rows: &Rows<'_>,
-    (governance, occurrences): (
-        &HashMap<NodeId, Governance>,
-        &HashMap<NodeId, OccurrenceStates>,
-    ),
-    now: NaiveDateTime,
-) -> Vec<Outcome> {
     let tree = Tree::of(rows);
     let mut evaluation = Evaluation {
         tree: &tree,
         governance,
-        occurrences,
         now,
         resolved: HashMap::new(),
         visiting: HashSet::new(),
     };
     rows.tasks
         .iter()
-        .filter(|task| task.compound)
+        .filter(|task| task.compound && !rows.settled.contains(&task.id))
         .map(|task| {
             let resolved = evaluation.resolve(&task.id);
             Outcome {
                 id: task.id.clone(),
                 status: resolved.status,
                 state: resolved.state,
+                done_at: resolved.done_at,
             }
         })
         .collect()
@@ -268,7 +260,8 @@ pub fn apply(outcomes: &[Outcome], tasks: &mut [Task], lifecycles: &mut [ItemLif
     let by_id: HashMap<&NodeId, &Outcome> = outcomes.iter().map(|out| (&out.id, out)).collect();
     for task in tasks.iter_mut().filter(|task| task.compound) {
         if let Some(outcome) = by_id.get(&task.id) {
-            task.status = outcome.status.as_str().to_string();
+            // Put back into the model the compound Task itself holds.
+            task.status = Status::from_reading(outcome.status, task.status.is_agentic());
         }
     }
     for entry in lifecycles
@@ -298,8 +291,21 @@ pub struct Board<'rows> {
     pub expectations: &'rows [Expectation],
     /// Every lifecycle derived so far. Compound Tasks' leave re-derived.
     pub lifecycles: &'rows mut [ItemLifecycle],
-    /// Each compound Habit occurrence's lifecycle, Done or not.
-    pub occurrences: &'rows HashMap<NodeId, OccurrenceStates>,
+    /// Compound Tasks whose status is already derived — see [`Rows::settled`].
+    pub settled: &'rows HashSet<NodeId>,
+    /// When each finished item was finished — see [`Rows::instants`].
+    pub instants: &'rows HashMap<NodeId, NaiveDateTime>,
+    /// Whether a Habit occurrence's window governs a compound Task hung on it — see
+    /// [`OccurrenceExit`].
+    pub exit: OccurrenceExit,
+}
+
+/// What [`settle`] leaves: the board's waits, and every compound Task it derived.
+pub struct Settled {
+    /// The waits' rows.
+    pub waits: WaitRows,
+    /// Each compound Task's outcome, in the last round.
+    pub outcomes: Vec<Outcome>,
 }
 
 /// The most rounds [`settle`] takes. Each round settles at least one more level of compound
@@ -314,23 +320,29 @@ pub async fn settle<M: SessionMode>(
     db: &mut Db<M>,
     now: NaiveDateTime,
     board: Board<'_>,
-) -> Result<WaitRows, AppError> {
+) -> Result<Settled, AppError> {
     let Board {
         tasks,
         goals,
         commitments,
         expectations,
         lifecycles,
-        occurrences,
+        settled,
+        instants,
+        exit,
     } = board;
     let mut waits = derive_waits(db, now, &*tasks).await?;
     if !tasks.iter().any(|task| task.compound) {
-        return Ok(waits);
+        return Ok(Settled {
+            waits,
+            outcomes: Vec::new(),
+        });
     }
-    let governance = governance_of(db, &*tasks).await?;
+    let governance = governance_of(db, &*tasks, exit).await?;
     let mut drawn_for = delegated_done(&*tasks);
+    let mut outcomes = Vec::new();
     for _ in 0..MAX_ROUNDS {
-        let outcomes = derive_with(
+        outcomes = derive(
             &Rows {
                 tasks: &*tasks,
                 checks: &waits.tasks,
@@ -340,23 +352,25 @@ pub async fn settle<M: SessionMode>(
                 waits: &waits.expectations,
                 lifecycles: &*lifecycles,
                 wait_lifecycles: &waits.lifecycles,
+                settled,
+                instants,
             },
-            (&governance, occurrences),
+            &governance,
             now,
         );
         apply(&outcomes, &mut *tasks, &mut *lifecycles);
-        let settled = delegated_done(&*tasks);
-        if settled == drawn_for {
-            return Ok(waits);
+        let delegated = delegated_done(&*tasks);
+        if delegated == drawn_for {
+            return Ok(Settled { waits, outcomes });
         }
-        drawn_for = settled;
+        drawn_for = delegated;
         waits = derive_waits(db, now, &*tasks).await?;
     }
     tracing::warn!(
         rounds = MAX_ROUNDS,
         "compound tasks did not settle; serving the last round"
     );
-    Ok(waits)
+    Ok(Settled { waits, outcomes })
 }
 
 /// Names the status a compound Task — stored, or a Habit occurrence — is showing, when `request`
@@ -384,7 +398,7 @@ pub async fn keep_derived_status(
         .tasks
         .iter()
         .find(|task| task.id == *id && task.compound)
-        .and_then(|task| TaskStatus::from_db(&task.status));
+        .map(|task| task.status.stored());
     Ok(())
 }
 
@@ -394,7 +408,7 @@ fn delegated_done(tasks: &[Task]) -> HashMap<NodeId, bool> {
     tasks
         .iter()
         .filter(|task| task.compound && task.delegate_to.is_some())
-        .map(|task| (task.id.clone(), task.status == TaskStatus::Done.as_str()))
+        .map(|task| (task.id.clone(), task.status.is_done()))
         .collect()
 }
 
@@ -402,13 +416,14 @@ fn delegated_done(tasks: &[Task]) -> HashMap<NodeId, bool> {
 async fn governance_of<M: SessionMode>(
     db: &mut Db<M>,
     tasks: &[Task],
+    exit: OccurrenceExit,
 ) -> Result<HashMap<NodeId, Governance>, AppError> {
     let mut out = HashMap::new();
     for task in tasks.iter().filter(|task| task.compound) {
         let Some(row) = task.id.stored() else {
             continue;
         };
-        let governed = scope_governance(db, "task", row).await?;
+        let governed = scope_governance_with(db, "task", row, exit).await?;
         let (window, on_exit) = governed.unzip();
         let due = effective_due(
             task.due_scope.as_ref().map(TimeScope::window),
@@ -471,6 +486,10 @@ struct Item {
     compound: bool,
     /// The Task whose own status draws this wait, for a spawned or delegation wait.
     drawn_by: Option<NodeId>,
+    /// A compound Task whose status is already derived ([`Rows::settled`]), read as served.
+    settled: bool,
+    /// When it was finished, where that is known.
+    done_at: Option<NaiveDateTime>,
 }
 
 /// The board's content nodes, linked parent to children.
@@ -489,6 +508,7 @@ impl Tree {
             .map(|entry| (entry.node_type.as_str(), &entry.node_id))
             .collect();
         let is_archived = |kind: Kind, id: &NodeId| archived.contains(&(kind.lifecycle_type(), id));
+        let done_at = |id: &NodeId| rows.instants.get(id).copied();
         let mut tree = Self {
             items: HashMap::new(),
             children: HashMap::new(),
@@ -498,10 +518,12 @@ impl Tree {
                 (Kind::Task, task.id.clone()),
                 (task.parent_type.as_str(), &task.parent_id),
                 Item {
-                    reading: task_reading(&task.status),
+                    reading: task_reading(task.status),
                     archived: is_archived(Kind::Task, &task.id),
                     compound: task.compound,
                     drawn_by: None,
+                    settled: rows.settled.contains(&task.id),
+                    done_at: done_at(&task.id),
                 },
             );
         }
@@ -514,6 +536,8 @@ impl Tree {
                     archived: is_archived(Kind::Goal, &goal.id),
                     compound: false,
                     drawn_by: None,
+                    settled: false,
+                    done_at: done_at(&goal.id),
                 },
             );
         }
@@ -526,6 +550,8 @@ impl Tree {
                     archived: is_archived(Kind::Commitment, &commitment.id),
                     compound: false,
                     drawn_by: None,
+                    settled: false,
+                    done_at: done_at(&commitment.id),
                 },
             );
         }
@@ -545,6 +571,8 @@ impl Tree {
                         || is_archived(Kind::Expectation, &wait.id),
                     compound: false,
                     drawn_by,
+                    settled: false,
+                    done_at: done_at(&wait.id),
                 },
             );
         }
@@ -568,13 +596,13 @@ struct Resolved {
     status: TaskStatus,
     state: Option<DerivedState>,
     archived: bool,
+    done_at: Option<NaiveDateTime>,
 }
 
 /// One derivation over a [`Tree`], remembering each compound Task once it is resolved.
 struct Evaluation<'tree> {
     tree: &'tree Tree,
     governance: &'tree HashMap<NodeId, Governance>,
-    occurrences: &'tree HashMap<NodeId, OccurrenceStates>,
     now: NaiveDateTime,
     resolved: HashMap<NodeId, Resolved>,
     /// The compound Tasks being resolved right now, so a corrupt parent loop is caught rather
@@ -599,6 +627,7 @@ impl Evaluation<'_> {
                 status: TaskStatus::Todo,
                 state: None,
                 archived: own_archived,
+                done_at: None,
             };
         }
         let mut tally = Tally::default();
@@ -607,28 +636,21 @@ impl Evaluation<'_> {
         self.count_beneath(&top, id, &mut tally, &mut walked);
         let status = tally.status();
         let done = status == TaskStatus::Done;
-        let state = self
-            .governance
-            .get(id)
-            .map(|governance| {
-                derive_item_state(
-                    governance.window,
-                    governance.on_exit,
-                    governance.due,
-                    done,
-                    Some(governance.stored),
-                    self.now,
-                )
-            })
-            .or_else(|| {
-                self.occurrences
-                    .get(id)
-                    .map(|states| if done { states.done } else { states.open })
-            });
+        let state = self.governance.get(id).map(|governance| {
+            derive_item_state(
+                governance.window,
+                governance.on_exit,
+                governance.due,
+                done,
+                Some(governance.stored),
+                self.now,
+            )
+        });
         let resolved = Resolved {
             status,
             state,
             archived: state.map_or(own_archived, |state| state.archival == Archival::Archived),
+            done_at: tally.latest.filter(|_| done),
         };
         self.visiting.remove(id);
         self.resolved.insert(id.clone(), resolved.clone());
@@ -667,6 +689,9 @@ impl Evaluation<'_> {
                 continue;
             }
             tally.count(reading);
+            if reading == TaskStatus::Done {
+                tally.latest = tally.latest.max(self.done_at(child, item));
+            }
             self.count_beneath(child, root, tally, walked);
         }
     }
@@ -674,10 +699,18 @@ impl Evaluation<'_> {
     /// What `item` reads as, and whether it is effectively Archived: a compound Task's derived
     /// status and re-derived lifecycle, anything else as the load served it.
     fn reading(&mut self, key: &Key, item: &Item) -> (TaskStatus, bool) {
-        if key.0 == Kind::Task && item.compound {
+        if key.0 == Kind::Task && item.compound && !item.settled {
             let resolved = self.resolve(&key.1);
             return (resolved.status, resolved.archived);
         }
-        (item.reading.clone(), item.archived)
+        (item.reading, item.archived)
+    }
+
+    /// When `item` was finished: a compound Task's own done time, anything else's as known.
+    fn done_at(&mut self, key: &Key, item: &Item) -> Option<NaiveDateTime> {
+        if key.0 == Kind::Task && item.compound && !item.settled {
+            return self.resolve(&key.1).done_at;
+        }
+        item.done_at
     }
 }

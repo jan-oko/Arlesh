@@ -5,7 +5,7 @@ use crate::{
     nodes::origin::WaitOrigin,
     tasks::{
         lifecycle::Timing,
-        model::{Delegate, TaskArchival},
+        model::{AgenticStatus, Delegate, TaskArchival},
     },
 };
 
@@ -23,7 +23,7 @@ pub(super) fn task(id: i64, parent: (&str, i64), status: TaskStatus) -> Task {
         title: format!("task {id}"),
         parent_type: parent.0.to_string(),
         parent_id: parent.1.into(),
-        status: status.as_str().to_string(),
+        status: Status::Ordinary(status),
         delegate_to: None,
         agentic: None,
         asynchronous: false,
@@ -145,6 +145,8 @@ impl Board {
                 waits: &self.waits,
                 lifecycles: &self.lifecycles,
                 wait_lifecycles: &[],
+                settled: &std::collections::HashSet::new(),
+                instants: &std::collections::HashMap::new(),
             },
             governance,
             at(12),
@@ -180,8 +182,38 @@ fn each_kind_reads_as_the_rule_counts_it() {
     assert_eq!(commitment_reading(Verdict::Unresolved), Started);
     assert_eq!(commitment_reading(Verdict::Kept), Done);
     assert_eq!(commitment_reading(Verdict::Broken), Done);
-    assert_eq!(task_reading("in_progress"), InProgress);
-    assert_eq!(task_reading("nonsense"), Todo);
+    assert_eq!(task_reading(Status::Ordinary(InProgress)), InProgress);
+    // The Agentic model counts in the ordinary one's terms: Doing is In Progress, On Agent and
+    // Review are Started.
+    assert_eq!(
+        task_reading(Status::Agentic(AgenticStatus::Doing)),
+        InProgress
+    );
+    assert_eq!(
+        task_reading(Status::Agentic(AgenticStatus::OnAgent)),
+        Started
+    );
+    assert_eq!(
+        task_reading(Status::Agentic(AgenticStatus::Review)),
+        Started
+    );
+    assert_eq!(task_reading(Status::Agentic(AgenticStatus::Done)), Done);
+}
+
+#[test]
+fn an_agentic_compound_task_shows_its_tally_in_its_own_model() {
+    let mut tasks = vec![Task {
+        status: Status::Agentic(AgenticStatus::Todo),
+        ..compound(1, ("project", 9))
+    }];
+    let outcome = Outcome {
+        id: 1.into(),
+        status: InProgress,
+        state: None,
+        done_at: None,
+    };
+    apply(&[outcome], &mut tasks, &mut []);
+    assert_eq!(tasks[0].status, Status::Agentic(AgenticStatus::Doing));
 }
 
 #[test]
@@ -275,7 +307,7 @@ fn backlogged_and_delegated_items_still_count() {
                 ..task(2, ("task", 1), Todo)
             },
             Task {
-                delegate_to: Some(Delegate::Agent),
+                delegate_to: Some(Delegate::Person { id: 2 }),
                 ..task(3, ("task", 1), Done)
             },
         ],
@@ -313,7 +345,7 @@ fn a_compound_task_inside_is_counted_by_its_derived_status() {
 #[test]
 fn a_compound_task_does_not_count_the_wait_its_own_delegation_draws() {
     let delegated = Task {
-        delegate_to: Some(Delegate::Agent),
+        delegate_to: Some(Delegate::Person { id: 2 }),
         ..compound(1, ("project", 100))
     };
     let own_wait = Expectation {
@@ -333,7 +365,7 @@ fn a_compound_task_does_not_count_the_wait_its_own_delegation_draws() {
 #[test]
 fn an_ancestor_does_count_the_wait_a_compound_task_inside_draws() {
     let inner = Task {
-        delegate_to: Some(Delegate::Agent),
+        delegate_to: Some(Delegate::Person { id: 2 }),
         ..compound(2, ("task", 1))
     };
     let inner_wait = Expectation {
@@ -416,12 +448,13 @@ fn apply_writes_the_status_and_the_lifecycle_onto_the_board() {
             id: NodeId::Stored(1),
             status: Done,
             state: Some(state),
+            done_at: None,
         }],
         &mut tasks,
         &mut lifecycles,
     );
-    assert_eq!(tasks[0].status, "done");
-    assert_eq!(tasks[1].status, "done");
+    assert_eq!(tasks[0].status.as_str(), "done");
+    assert_eq!(tasks[1].status.as_str(), "done");
     assert_eq!(lifecycles[0].archival, Archival::Archived);
 }
 
@@ -434,4 +467,42 @@ fn a_parent_loop_is_caught_rather_than_followed() {
     };
     let outcomes = board.derive_with(&HashMap::new());
     assert_eq!(outcomes.len(), 2);
+}
+
+#[test]
+fn a_compound_tasks_done_time_is_its_latest_finish_while_it_is_done() {
+    let board = Board {
+        tasks: vec![
+            compound(1, ("project", 9)),
+            task(2, ("task", 1), Done),
+            task(3, ("task", 1), Done),
+        ],
+        ..Board::default()
+    };
+    let instants = HashMap::from([(NodeId::Stored(2), at(8)), (NodeId::Stored(3), at(10))]);
+    let rows = |board: &Board, settled: &HashSet<NodeId>| {
+        derive(
+            &Rows {
+                tasks: &board.tasks,
+                checks: &board.checks,
+                goals: &board.goals,
+                commitments: &board.commitments,
+                expectations: &board.expectations,
+                waits: &board.waits,
+                lifecycles: &board.lifecycles,
+                wait_lifecycles: &[],
+                settled,
+                instants: &instants,
+            },
+            &HashMap::new(),
+            at(12),
+        )
+    };
+    let outcomes = rows(&board, &HashSet::new());
+    assert_eq!(outcomes[0].done_at, Some(at(10)));
+
+    assert!(
+        rows(&board, &HashSet::from([NodeId::Stored(1)])).is_empty(),
+        "a compound already derived is not derived again"
+    );
 }

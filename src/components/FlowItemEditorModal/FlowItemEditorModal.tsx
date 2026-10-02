@@ -21,7 +21,7 @@ import AgenticField from "@/components/TaskEditorModal/AgenticField";
 import AgenticBriefFields from "@/components/TaskEditorModal/AgenticBriefFields";
 import type { AgenticBrief, AsyncTemplate } from "@/api/tasks";
 import { EMPTY_AGENTIC_BRIEF, TASK_AGENTIC, isEmptyBrief } from "@/api/tasks";
-import AsyncTemplateFields from "@/components/AsyncTemplateEditor/AsyncTemplateFields";
+import TaskTemplateFlags from "@/components/TaskTemplateFlags/TaskTemplateFlags";
 import { EMPTY_ASYNC_TEMPLATE, asyncTemplateToSave } from "@/utils/async-template";
 import FlowCycleField from "./FlowCycleField";
 import { useInputCapture } from "@/hooks/use-input-capture";
@@ -229,37 +229,17 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
               label={isBacklogged ? t("backlogOn") : t("backlogOff")}
             />
           </div>
-          <div className={styles.label}>
-            {t("fieldAsynchronous")}
-            <Switch
-              checked={isAsynchronous}
-              onChange={setIsAsynchronous}
-              label={isAsynchronous ? t("asynchronousOn") : t("asynchronousOff")}
-            />
-          </div>
-          {/* Compound, beside Asynchronous as in the Task editor: every instance's status follows
-              its sub-items. */}
-          <div className={styles.label}>
-            {t("fieldCompound")}
-            <Switch
-              checked={isCompound}
-              onChange={setIsCompound}
-              label={isCompound ? t("compoundOn") : t("compoundOff")}
-            />
-          </div>
-          {/* The wait every instance's completion spawns, with the Task editor's fields. */}
-          {isAsynchronous && (
-            <div role="group" aria-label={t("expectation:templateSection")}>
-              <span className={styles.label}>{t("expectation:templateSection")}</span>
-              <AsyncTemplateFields
-                value={asyncTemplate}
-                onChange={setAsyncTemplate}
-                titlePlaceholder={t("expectation:templateDefaultTitle", { title: title.trim() })}
-                allTags={allTags}
-                domainNames={domainNames}
-              />
-            </div>
-          )}
+          <TaskTemplateFlags
+            asynchronous={isAsynchronous}
+            onAsynchronousChange={setIsAsynchronous}
+            compound={isCompound}
+            onCompoundChange={setIsCompound}
+            asyncTemplate={asyncTemplate}
+            onAsyncTemplateChange={setAsyncTemplate}
+            titlePlaceholder={t("expectation:templateDefaultTitle", { title: title.trim() })}
+            allTags={allTags}
+            domainNames={domainNames}
+          />
         </>
       )}
       <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />
@@ -277,9 +257,6 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
               value={agentic}
               inherited={false}
               onChange={setAgentic}
-              delegatedToAgent={false}
-              offersDelegate={false}
-              onToggleDelegate={() => undefined}
             />
             {agentic === TASK_AGENTIC.YES && (
               <div role="group" aria-label={t("agenticBriefSection")}>

@@ -521,7 +521,9 @@ async fn finishing_every_child_task_does_not_mark_a_commitment_kept() {
                 title: "Phone on charger".into(),
                 parent_type: "commitment".into(),
                 parent_id: commitment.id.clone(),
-                status: Some(arlesh_lib::tasks::model::TaskStatus::Done),
+                status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                    arlesh_lib::tasks::model::TaskStatus::Done,
+                )),
                 ..Default::default()
             },
         )

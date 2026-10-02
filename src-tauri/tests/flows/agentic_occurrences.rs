@@ -20,8 +20,7 @@ use arlesh_lib::nodes::{
 };
 use arlesh_lib::scopes::key::ScopeKey;
 use arlesh_lib::tasks::model::{
-    AgenticBrief, AgenticPriority, CreateExpectationRequest, TaskAgentic, TaskStatus,
-    UpdateTaskRequest,
+    AgenticBrief, AgenticPriority, CreateExpectationRequest, TaskAgentic, UpdateTaskRequest,
 };
 use tauri::Manager;
 
@@ -76,6 +75,8 @@ async fn habit(app: &App, template: TemplateUpdate) -> i64 {
             end_scope_id: None,
             clock: ClockKind::Window,
             miss_policy: Some(MissPolicy::Owed),
+            cooldown_n: None,
+            cooldown_kind: None,
         },
     )
     .await
@@ -224,7 +225,9 @@ async fn an_agentic_occurrence_without_a_spec_cannot_start() {
         &pool,
         &occurrence(item),
         UpdateTaskRequest {
-            status: Some(TaskStatus::InProgress),
+            status: Some(arlesh_lib::tasks::model::Status::Agentic(
+                arlesh_lib::tasks::model::AgenticStatus::OnAgent,
+            )),
             ..Default::default()
         },
     )
@@ -245,14 +248,16 @@ async fn an_agentic_occurrence_with_its_templates_spec_starts() {
         &pool,
         &occurrence(item),
         UpdateTaskRequest {
-            status: Some(TaskStatus::InProgress),
+            status: Some(arlesh_lib::tasks::model::Status::Agentic(
+                arlesh_lib::tasks::model::AgenticStatus::OnAgent,
+            )),
             ..Default::default()
         },
     )
     .await
     .unwrap();
 
-    assert_eq!(started.status, TaskStatus::InProgress.as_str());
+    assert_eq!(started.status.as_str(), "on_agent");
 }
 
 async fn ask(
@@ -348,7 +353,9 @@ async fn an_item_under_an_agentic_root_needs_a_spec_to_start() {
         &pool,
         &occurrence(item),
         UpdateTaskRequest {
-            status: Some(TaskStatus::InProgress),
+            status: Some(arlesh_lib::tasks::model::Status::Agentic(
+                arlesh_lib::tasks::model::AgenticStatus::OnAgent,
+            )),
             ..Default::default()
         },
     )
@@ -522,15 +529,15 @@ mod over_the_mcp {
         let start = |expected| params::TasksOperation::SetStatus {
             id: named(&tidy),
             expected,
-            status: params::TaskStatusParam::InProgress,
+            status: params::AgenticStatusParam::OnAgent,
         };
 
-        succeeded(&tasks(&mcp, start(params::TaskStatusParam::Todo)).await);
-        let stale = tasks(&mcp, start(params::TaskStatusParam::Todo)).await;
+        succeeded(&tasks(&mcp, start(params::AgenticStatusParam::Todo)).await);
+        let stale = tasks(&mcp, start(params::AgenticStatusParam::Todo)).await;
 
         assert_eq!(refused(&stale), "status_changed");
-        assert_eq!(body(&stale)["details"]["current"], "in_progress");
-        assert_eq!(row(&served(&pool).await, &tidy).status, "in_progress");
+        assert_eq!(body(&stale)["details"]["current"], "on_agent");
+        assert_eq!(row(&served(&pool).await, &tidy).status.as_str(), "on_agent");
     }
 
     #[tokio::test]

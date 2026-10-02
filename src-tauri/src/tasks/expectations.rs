@@ -367,7 +367,11 @@ impl<'session> ExpectationOperator<'session> {
                 check_every_n=?, check_every_kind=?, check_starting=?, position=?, is_private=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
                 time_scope_duration_kind=?, agentic=?, agentic_note=?, agentic_question=?,
-                agentic_answer=? WHERE id=?",
+                agentic_answer=?,
+                released_at = CASE WHEN ? = 'released'
+                                   THEN CASE WHEN status = 'released' THEN released_at ELSE ? END
+                                   ELSE NULL END
+             WHERE id=?",
         )
         .bind(&write.title)
         .bind(write.status.as_str())
@@ -385,6 +389,9 @@ impl<'session> ExpectationOperator<'session> {
         .bind(&write.agentic_note)
         .bind(write.question)
         .bind(&write.answer)
+        // Released keeps the instant it was first released; pending again clears it.
+        .bind(write.status.as_str())
+        .bind(instant_column(now()))
         .bind(id.0)
         .execute(&mut *self.connection)
         .await?;

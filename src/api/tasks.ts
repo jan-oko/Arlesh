@@ -31,14 +31,25 @@ export interface PersonDelegate {
   id: number;
 }
 
-/** A Task delegated to the Agent. There is one Agent target, so it carries no id. */
-export interface AgentDelegate {
-  kind: "agent";
-}
+/** Who holds a delegated Task: a Person. (The Agent delegate was removed on 2026-10-01 — an agent
+ * holds a Task as On Agent instead.) Independent of the Agentic flag. */
+export type Delegate = PersonDelegate;
 
-/** Who holds a delegated Task: a Person or the Agent. Independent of the Agentic flag, which says
- * only that the work suits an agent. */
-export type Delegate = PersonDelegate | AgentDelegate;
+/** An **ordinary** Task's status — the model a Task that does not read as Agentic holds. */
+export type OrdinaryStatus = "todo" | "in_progress" | "started" | "done";
+
+/** An **Agentic** Task's status — a model of its own, not a widening of the ordinary one. Review is
+ * derived by the backend (On Agent with the agent's question open) and never written. */
+export type AgenticStatus = "todo" | "on_agent" | "review" | "doing" | "done";
+
+/**
+ * A Task's status: a value of **one** of the two models, named by its kind — exactly the backend's
+ * `Status`. Behaviour dispatches on `kind` first; only what the two models really share (done, to
+ * do) is read across them.
+ */
+export type TaskStatus =
+  | { kind: "ordinary"; status: OrdinaryStatus }
+  | { kind: "agentic"; status: AgenticStatus };
 
 /**
  * A Task's **Expectation template**: what the wait its completion spawns starts out as. Thinner than
@@ -93,7 +104,7 @@ export interface Task {
   title: string;
   parent_type: string;
   parent_id: RowId;
-  status: string;
+  status: TaskStatus;
   delegate_to: Delegate | null;
   // This task's own flag: true/false when it says so itself, null when it inherits the nearest
   // flagged ancestor's. Independent of delegate_to — a task can be both.
@@ -131,7 +142,7 @@ export interface CreateTaskRequest {
   title: string;
   parent_type: string;
   parent_id: RowId;
-  status?: string;
+  status?: TaskStatus;
   time_scope?: TimeScope;
   // Applied only when time_scope is set (defaults to "keep").
   on_scope_exit?: OnScopeExit;
@@ -148,7 +159,9 @@ export interface CreateTaskRequest {
 
 export interface UpdateTaskRequest {
   title?: string;
-  status?: string;
+  // In the model the Task holds after the write; the other model's value is converted when the
+  // same write changes its kind, and refused otherwise. Review is never written.
+  status?: TaskStatus;
   // Absent = leave unchanged, null = clear, value = set.
   delegate_to?: Delegate | null;
   // Absent = leave unchanged; "inherit" puts the task back to reading its ancestors.
@@ -288,6 +301,23 @@ export async function getTask(id: number): Promise<TaskWithBlockers> {
 
 export async function listTaskDependencies(taskId: RowId): Promise<Dependency[]> {
   return invoke<Dependency[]>("list_task_dependencies", { taskId });
+}
+
+/**
+ * When a Done task was done — a stored one or a Habit occurrence — as a local wall-clock instant
+ * (`YYYY-MM-DDTHH:MM:SS`), or `null` while it is not Done.
+ */
+export async function fetchTaskDoneAt(id: RowId): Promise<string | null> {
+  return invoke<string | null>("task_done_at", { id });
+}
+
+/**
+ * Sets a Done task's done date — when it was really done, for work marked done late. An
+ * Interval's next window and a cooldown count from it. Refused for a task that is not Done and for
+ * an instant in the future.
+ */
+export async function setTaskDoneAt(id: RowId, at: string): Promise<void> {
+  return invoke<void>("set_task_done_at", { id, at });
 }
 
 /** A single dependency edge: `task_id` depends on `(dependency_type, dependency_id)`. */

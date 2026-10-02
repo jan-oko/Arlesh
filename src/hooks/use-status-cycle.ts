@@ -3,8 +3,9 @@ import { useTranslation } from "react-i18next";
 import { updateTask } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
 import { getErrorMessage } from "@/api/errors";
-import { GOAL_STATUS, TASK_STATUS } from "@/utils/status-mapping";
-import { backlogClearedMessage, cameOutOfBacklog, nextStartedStatus, nextTaskStatus } from "@/utils/task-status-cycle";
+import { GOAL_STATUS, taskStatusOf } from "@/utils/status-mapping";
+import { altEnterStep, backlogClearedMessage, cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
+import type { TaskStatus } from "@/api/tasks";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
 import { acknowledged, useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
@@ -12,6 +13,7 @@ import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
 import { useExpectationActions } from "@/hooks/use-expectation-actions";
 
 const LOG_PREFIX = "[arlesh]";
+
 
 interface Options {
   findNode: (id: string) => MindmapNode | undefined;
@@ -22,8 +24,9 @@ interface Options {
 interface StatusCycle {
   /** Advances the node's status by one — the same step a click on its glyph takes. */
   cycleStatus: (nodeId: string) => void;
-  /** `Alt+Enter`: sets a Task **Started**, or resumes a Started one to In Progress. Anything that
-   * is not a Task is left alone — Started is a Task status only. */
+  /** `Alt+Enter`: on an ordinary Task, sets it **Started** or resumes a Started one to In
+   * Progress; on an Agentic one, hands a Doing Task back to its agent (On Agent), and anywhere
+   * else says it cannot. Anything that is not a Task is left alone. */
   toggleStarted: (nodeId: string) => void;
   /** The occurrence completion the backend is holding for confirmation, or `null`. */
   occurrencePrompt: OccurrencePrompt | null;
@@ -65,7 +68,7 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
   // out loud, for every caller at once — the glyph, `Enter` and `Alt+Enter` in every view. The
   // backend refuses the same write, so this is the courtesy of saying why before asking.
   const writeTaskStatus = useCallback(
-    (node: MindmapNode, next: string, onError: (err: unknown) => void) => {
+    (node: MindmapNode, next: TaskStatus, onError: (err: unknown) => void) => {
       if (node.compound === true) {
         showToast({ nodeId: node.id, message: t("warnings:compoundStatusRefused") });
         return;
@@ -106,7 +109,7 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
         return;
       }
       if (node.kind !== "task") return;
-      writeTaskStatus(node, nextTaskStatus(node.status ?? TASK_STATUS.TODO), failed("status cycle failed"));
+      writeTaskStatus(node, nextTaskStatus(taskStatusOf(node)), failed("status cycle failed"));
     },
     [findNode, reload, guard, showToast, t, toggleRelease, writeTaskStatus],
   );
@@ -115,7 +118,12 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
     (nodeId: string) => {
       const node = findNode(nodeId);
       if (node?.kind !== "task") return;
-      writeTaskStatus(node, nextStartedStatus(node.status ?? TASK_STATUS.TODO), (err: unknown) => {
+      const step = altEnterStep(taskStatusOf(node));
+      if ("refused" in step) {
+        showToast({ nodeId, message: t(`warnings:${step.refused}`) });
+        return;
+      }
+      writeTaskStatus(node, step.next, (err: unknown) => {
         console.error(`${LOG_PREFIX} started toggle failed:`, err);
         showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
       });
