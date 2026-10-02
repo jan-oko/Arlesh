@@ -83,7 +83,7 @@ to name it. On the wire, `origin.iteration_scope.scope_id` is the key as its JSO
 What makes one derived row differ from its template lives in its kind's **overlay** — one table per
 kind (`task_overlays`, `goal_overlays`, `commitment_overlays`, migration 0060) mirroring that kind's
 columns. Every column is nullable and **NULL inherits the template's value**; where NULL is itself a
-value (no Plan, no delegate, no beads id) a `*_set` flag marks the column overridden **to** NULL. An
+value (no Plan, no delegate) a `*_set` flag marks the column overridden **to** NULL. An
 overlay row whose every column inherits says nothing and is deleted rather than kept, so an occurrence
 nobody touched has no row at all and storage stays proportional to divergences
 ([ADR 0002](../adr/0002-flow-habit-instance-materialization.md)).
@@ -144,7 +144,7 @@ status and when it was resolved, and its archive.
 
 A template item — a Flow's own row for the iteration root, a `flow_goals` or `flow_tasks` row for an
 item — carries the **full schema of its kind** (migration 0061): a task template its delegate, Agentic
-and Asynchronous flags, Backlog state and beads id; a goal template its beads id; both their tags
+and Asynchronous flags and Backlog state; both kinds their tags
 (`template_tags`) and block reasons (`template_block_reasons`). Every occurrence reads them unless its
 overlay says otherwise. They are edited in the flow item's editor, beside the item's cycle pairs and
 dependencies — all but the **delegate**, which a template and an occurrence carry but no editor

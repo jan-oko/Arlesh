@@ -44,7 +44,6 @@ struct CommitmentRow {
     verdict_window_kind: Option<String>,
     position: i64,
     is_private: bool,
-    beads_id: Option<String>,
 }
 
 /// Reassembles a Verdict Window from its two flat columns. A schema CHECK keeps the pair whole,
@@ -84,7 +83,6 @@ impl From<CommitmentRow> for Commitment {
             tag_ids: vec![],
             position: row.position,
             is_private: row.is_private,
-            beads_id: row.beads_id,
             origin: Origin::Manual,
         }
     }
@@ -382,30 +380,6 @@ impl<'session> CommitmentOperator<'session> {
             .bind(id.0)
             .execute(&mut *self.connection)
             .await?;
-        Ok(())
-    }
-
-    /// Links a commitment to the `bd` issue tracking it, or unlinks it when given `None`.
-    ///
-    /// **The only writer of `beads_id`, and the MCP server is its only *source*** — the same rule
-    /// Tasks and Goals live under: [`UpdateCommitmentRequest`] has no field for it, and the one
-    /// command that calls this ([`clear_beads_id`](crate::commands::beads::clear_beads_id))
-    /// only ever passes `None`. Errors when no commitment has that id, rather than reporting
-    /// success for a write that landed nowhere.
-    pub async fn set_beads_id(
-        &mut self,
-        id: CommitmentId,
-        beads_id: Option<String>,
-    ) -> Result<(), TaskError> {
-        let affected = sqlx::query("UPDATE commitments SET beads_id = ? WHERE id = ?")
-            .bind(&beads_id)
-            .bind(id.0)
-            .execute(&mut *self.connection)
-            .await?
-            .rows_affected();
-        if affected == 0 {
-            return Err(TaskError::CommitmentNotFound(id.0));
-        }
         Ok(())
     }
 

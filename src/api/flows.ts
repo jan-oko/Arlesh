@@ -50,7 +50,6 @@ export interface Flow extends TemplateFields {
   agentic?: boolean | null;
   asynchronous?: boolean;
   archival?: TaskArchival;
-  beads_id?: string;
   tag_ids?: number[];
   block_reasons?: string[];
 }
@@ -359,7 +358,6 @@ export interface TemplateFields {
   agentic?: boolean | null;
   asynchronous?: boolean;
   archival?: TaskArchival;
-  beads_id?: string;
   tag_ids?: number[];
   block_reasons?: string[];
   /** The agentic brief every occurrence reads, field by field, until it says otherwise. */

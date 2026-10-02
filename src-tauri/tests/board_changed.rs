@@ -172,12 +172,9 @@ async fn an_agents_write_reaches_the_windows_even_though_it_never_reaches_the_un
             .await
             .expect("set source");
         db.tasks()
-            .set_beads_id(
-                arlesh_lib::tasks::model::TaskId(task_id),
-                Some("Arlesh-fxo".into()),
-            )
+            .set_private(arlesh_lib::tasks::model::TaskId(task_id), true)
             .await
-            .expect("set beads id");
+            .expect("set private");
         db.undo()
             .set_source(previous)
             .await
@@ -212,18 +209,18 @@ async fn the_mcp_tool_that_writes_announces_after_it_commits() {
             counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }));
 
-    mcp.beads(Parameters(params::BeadsOperation::Set {
-        node_type: params::BeadsNode::Task,
-        node_id: task_id.into(),
-        beads_id: Some("Arlesh-fxo".into()),
+    mcp.infos(Parameters(params::InfosOperation::Create {
+        task_id: task_id.into(),
+        body: "a note from the agent".into(),
+        details: None,
     }))
     .await
-    .expect("the beads tool");
+    .expect("the infos tool");
 
     assert_eq!(
         announced.load(std::sync::atomic::Ordering::Relaxed),
         1,
-        "the one MCP write the server has must refresh an open window"
+        "an MCP write must refresh an open window"
     );
 }
 
@@ -241,12 +238,12 @@ async fn an_mcp_refusal_announces_nothing() {
             counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }));
 
-    // A Project id offered as a Task: the tool refuses, and nothing was written to tell anyone of.
+    // No such Task: the tool refuses, and nothing was written to tell anyone of.
     let _ = mcp
-        .beads(Parameters(params::BeadsOperation::Set {
-            node_type: params::BeadsNode::Task,
-            node_id: (project_id + 9_000).into(),
-            beads_id: Some("Arlesh-fxo".into()),
+        .infos(Parameters(params::InfosOperation::Create {
+            task_id: (project_id + 9_000).into(),
+            body: "a note under nothing".into(),
+            details: None,
         }))
         .await;
 
@@ -337,12 +334,9 @@ async fn an_abort_still_announces_an_agents_write_it_could_not_take_back() {
             .await
             .expect("set source");
         db.tasks()
-            .set_beads_id(
-                arlesh_lib::tasks::model::TaskId(task_id),
-                Some("Arlesh-fxo".into()),
-            )
+            .set_private(arlesh_lib::tasks::model::TaskId(task_id), true)
             .await
-            .expect("set beads id");
+            .expect("set private");
         db.undo()
             .set_source(previous)
             .await

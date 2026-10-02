@@ -1,8 +1,8 @@
 //! What a template row says about the rows it draws, beyond its title and its place.
 //!
 //! A template carries its kind's full schema (ADR 0008, decision 5; migration 0061): a flow task
-//! item — and the root of a task-instance flow, which is the flow row — the columns a Task has, a
-//! flow goal item and any other root a beads id; and every template its tags and block reasons.
+//! item — and the root of a task-instance flow, which is the flow row — the columns a Task has;
+//! and every template its tags and block reasons.
 //! A Habit's occurrence reads each of these from its template until its own overlay says
 //! otherwise, and a plain Flow's `start` copies them onto the rows it makes. Only what is
 //! inherently per occurrence is not here: status, the window, and a Task's Plan (the Cycle Plan).
@@ -84,9 +84,6 @@ pub struct TemplateFields {
     /// Whether every occurrence is set aside in the Backlog. Task templates only.
     #[serde(default)]
     pub archival: TaskArchival,
-    /// The `bd` issue every occurrence is tracked as.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub beads_id: Option<String>,
     /// Tags every occurrence carries.
     #[serde(default)]
     pub tag_ids: Vec<i64>,
@@ -161,7 +158,6 @@ struct TemplateColumns {
     agentic: Option<bool>,
     asynchronous: bool,
     archival: String,
-    beads_id: Option<String>,
     compound: bool,
 }
 
@@ -232,17 +228,15 @@ impl<'session> TemplateOperator<'session> {
         let select = match table {
             TemplateTable::FlowGoal => {
                 "SELECT id, NULL AS delegate_kind, NULL AS delegate_id, NULL AS agentic,
-                        0 AS asynchronous, 'live' AS archival, beads_id, 0 AS compound
+                        0 AS asynchronous, 'live' AS archival, 0 AS compound
                  FROM flow_goals"
             }
             TemplateTable::Flow => {
-                "SELECT id, delegate_kind, delegate_id, agentic, asynchronous, archival, beads_id,
-                        compound
+                "SELECT id, delegate_kind, delegate_id, agentic, asynchronous, archival, compound
                  FROM flows"
             }
             TemplateTable::FlowTask => {
-                "SELECT id, delegate_kind, delegate_id, agentic, asynchronous, archival, beads_id,
-                        compound
+                "SELECT id, delegate_kind, delegate_id, agentic, asynchronous, archival, compound
                  FROM flow_tasks"
             }
         };
@@ -276,7 +270,6 @@ impl<'session> TemplateOperator<'session> {
                         agentic: row.agentic,
                         asynchronous: row.asynchronous,
                         archival: TaskArchival::from_db(&row.archival).unwrap_or_default(),
-                        beads_id: row.beads_id,
                         tag_ids: Vec::new(),
                         block_reasons: Vec::new(),
                         agentic_brief: None,
@@ -642,22 +635,18 @@ impl<'session> TemplateOperator<'session> {
         from: i64,
         to: i64,
     ) -> Result<(), FlowError> {
-        let columns = match table {
-            TemplateTable::FlowGoal => "beads_id",
-            TemplateTable::Flow | TemplateTable::FlowTask => {
-                "delegate_kind, delegate_id, agentic, asynchronous, archival, beads_id, compound"
-            }
-        };
-        let name = table.table();
-        sqlx::query(&format!(
-            "UPDATE {name} SET ({columns}) = (SELECT {columns} FROM {name} WHERE id = ?)
-             WHERE id = ?"
-        ))
-        .bind(from)
-        .bind(to)
-        .execute(&mut *self.connection)
-        .await?;
+        // A flow goal item has no columns of its own to copy, only relations.
         if table != TemplateTable::FlowGoal {
+            let columns = "delegate_kind, delegate_id, agentic, asynchronous, archival, compound";
+            let name = table.table();
+            sqlx::query(&format!(
+                "UPDATE {name} SET ({columns}) = (SELECT {columns} FROM {name} WHERE id = ?)
+                 WHERE id = ?"
+            ))
+            .bind(from)
+            .bind(to)
+            .execute(&mut *self.connection)
+            .await?;
             let source = self.one(table, from).await?;
             self.set_brief(table, to, source.agentic_brief.as_ref())
                 .await?;

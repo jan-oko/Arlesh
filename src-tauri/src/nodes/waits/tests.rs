@@ -24,7 +24,6 @@ fn delegated(id: NodeId) -> Task {
         tag_ids: vec![],
         position: 0,
         is_private: true,
-        beads_id: None,
         origin: Origin::Manual,
     }
 }

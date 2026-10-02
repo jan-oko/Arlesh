@@ -32,7 +32,6 @@ fn check() -> Task {
         tag_ids: vec![],
         position: 0,
         is_private: false,
-        beads_id: None,
         origin: Origin::Manual,
     }
 }

@@ -92,18 +92,6 @@ describe("ProjectEditorModal — cancel", () => {
   });
 });
 
-describe("ProjectEditorModal — bd issue link", () => {
-  it("shows the issue a linked project is tracked as", () => {
-    render(<ProjectEditorModal {...defaultProps} node={mkNode({ beadsId: "Arlesh-5fs" })} />);
-    expect(screen.getByText("Arlesh-5fs")).toBeInTheDocument();
-  });
-
-  it("shows no issue row at all for an unlinked project", () => {
-    render(<ProjectEditorModal {...defaultProps} node={mkNode()} />);
-    expect(screen.queryByText("fieldBeadsId")).not.toBeInTheDocument();
-  });
-});
-
 /*
  * Escape is handled by a React `onKeyDown` on the dialog element, so it only fires while focus is
  * already inside the dialog. These press it with no Tab and no click first — the state the modal is
@@ -124,79 +112,3 @@ describe("ProjectEditorModal — focus on open", () => {
   });
 });
 
-describe("ProjectEditorModal — the Issue row", () => {
-  it("offers no row at all for a project with no issue link", () => {
-    render(<ProjectEditorModal {...defaultProps} onClearBeadsId={vi.fn()} />);
-    expect(screen.queryByText("fieldBeadsId")).not.toBeInTheDocument();
-  });
-
-  it("stages the clear on the ×: nothing is written until Save", () => {
-    const onClearBeadsId = vi.fn().mockResolvedValue(undefined);
-    render(
-      <ProjectEditorModal
-        {...defaultProps}
-        node={mkNode({ beadsId: "Arlesh-5fs" })}
-        onClearBeadsId={onClearBeadsId}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "clearBeadsId" }));
-
-    expect(onClearBeadsId).not.toHaveBeenCalled();
-    expect(defaultProps.onSave).not.toHaveBeenCalled();
-    expect(defaultProps.onClose).not.toHaveBeenCalled();
-    // The row reads as dropped and offers no second press, but the id is still there to come back.
-    expect(screen.queryByRole("button", { name: "clearBeadsId" })).not.toBeInTheDocument();
-    expect(screen.getByText("Arlesh-5fs")).toBeInTheDocument();
-  });
-
-  it("discards the staged clear when the editor is cancelled", async () => {
-    const onClearBeadsId = vi.fn().mockResolvedValue(undefined);
-    render(
-      <ProjectEditorModal
-        {...defaultProps}
-        node={mkNode({ beadsId: "Arlesh-5fs" })}
-        onClearBeadsId={onClearBeadsId}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "clearBeadsId" }));
-    fireEvent.click(screen.getByText("cancel"));
-
-    await waitFor(() => expect(defaultProps.onClose).toHaveBeenCalledTimes(1));
-    expect(onClearBeadsId).not.toHaveBeenCalled();
-  });
-
-  it("performs the staged clear on Save", async () => {
-    const onClearBeadsId = vi.fn().mockResolvedValue(undefined);
-    render(
-      <ProjectEditorModal
-        {...defaultProps}
-        node={mkNode({ beadsId: "Arlesh-5fs" })}
-        onClearBeadsId={onClearBeadsId}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "clearBeadsId" }));
-    fireEvent.click(screen.getByText("save"));
-
-    await waitFor(() => expect(onClearBeadsId).toHaveBeenCalledTimes(1));
-    expect(defaultProps.onSave).toHaveBeenCalledTimes(1);
-  });
-
-  it("saves without a clear when the × was never pressed", async () => {
-    const onClearBeadsId = vi.fn().mockResolvedValue(undefined);
-    render(
-      <ProjectEditorModal
-        {...defaultProps}
-        node={mkNode({ beadsId: "Arlesh-5fs" })}
-        onClearBeadsId={onClearBeadsId}
-      />,
-    );
-
-    fireEvent.click(screen.getByText("save"));
-
-    await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalledTimes(1));
-    expect(onClearBeadsId).not.toHaveBeenCalled();
-  });
-});

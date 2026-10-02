@@ -24,7 +24,6 @@ fn domain_row(id: i64, subtype: &str, parent: Option<i64>, status: Option<&str>)
         knowledge_base_directory: None,
         position: id,
         is_private: false,
-        beads_id: None,
     }
 }
 
@@ -40,7 +39,6 @@ fn goal_row(id: i64, parent_type: &str, parent_id: i64, status: &str) -> Goal {
         tag_ids: Vec::new(),
         position: id,
         is_private: false,
-        beads_id: None,
         origin: Default::default(),
     }
 }
@@ -66,7 +64,6 @@ fn task_row(id: i64, parent_type: &str, parent_id: i64, status: &str) -> Task {
         tag_ids: Vec::new(),
         position: id,
         is_private: false,
-        beads_id: None,
         origin: Default::default(),
     }
 }
@@ -83,7 +80,6 @@ fn commitment_row(id: i64, parent_type: &str, parent_id: i64, verdict: Verdict) 
         tag_ids: Vec::new(),
         position: id,
         is_private: false,
-        beads_id: None,
         origin: Default::default(),
     }
 }

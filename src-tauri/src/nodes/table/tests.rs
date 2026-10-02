@@ -40,7 +40,6 @@ fn task(id: NodeId, parent_type: &str, parent_id: NodeId) -> Task {
         tag_ids: vec![],
         position: 0,
         is_private: false,
-        beads_id: None,
         origin: Origin::Manual,
     }
 }
@@ -57,7 +56,6 @@ fn goal(id: i64) -> Goal {
         tag_ids: vec![],
         position: 0,
         is_private: false,
-        beads_id: None,
         origin: Origin::Manual,
     }
 }
@@ -74,7 +72,6 @@ fn commitment(id: i64) -> Commitment {
         tag_ids: vec![],
         position: 0,
         is_private: false,
-        beads_id: None,
         origin: Origin::Manual,
     }
 }

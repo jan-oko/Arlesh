@@ -205,44 +205,6 @@ impl<'session> DomainOperator<'session> {
         Ok(())
     }
 
-    /// Links a domain to the `bd` issue tracking it, or unlinks it when given `None`.
-    ///
-    /// **The only setter of `beads_id`, and the MCP server is its only *source*.**
-    /// [`UpdateDomainRequest`] has no field for it, so no gesture can author or edit a link from
-    /// the UI. Two commands reach this method, and neither can produce a value `bd` did not issue:
-    /// [`clear_beads_id`](crate::commands::beads::clear_beads_id) passes `None` — the × on the
-    /// Issue row, SPEC's one UI-writable case — and
-    /// [`duplicate_subtree`](crate::duplicate::duplicate_subtree) *propagates* an id a node already
-    /// carries onto its copy.
-    ///
-    /// `bd` owns the issue; the app only mirrors which one a node belongs to.
-    ///
-    /// Only a Project is meant to carry one, and only a Project shows it; the subtype is not
-    /// checked here, because a check-then-write on an operator would be exactly the shape ADR-0004
-    /// reserves for a free function over a transactional session, and nothing in the schema backs
-    /// the invariant. The MCP tool resolves the node it was given and is where the subtype is
-    /// established.
-    ///
-    /// One statement over one column, so it needs no transaction of its own. Errors with
-    /// [`DomainError::NotFound`] when no domain has that id, rather than reporting success for a
-    /// write that landed nowhere.
-    pub async fn set_beads_id(
-        &mut self,
-        id: DomainId,
-        beads_id: Option<String>,
-    ) -> Result<(), DomainError> {
-        let affected = sqlx::query("UPDATE domains SET beads_id = ? WHERE id = ?")
-            .bind(&beads_id)
-            .bind(id.0)
-            .execute(&mut *self.connection)
-            .await?
-            .rows_affected();
-        if affected == 0 {
-            return Err(DomainError::NotFound(id.0));
-        }
-        Ok(())
-    }
-
     /// Validates that `parent_id` is an acceptable parent for a domain of the given `subtype`.
     async fn validate_parent(
         &mut self,

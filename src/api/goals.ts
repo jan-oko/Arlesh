@@ -15,9 +15,6 @@ export interface Goal {
   tag_ids: number[];
   position: number;
   is_private: boolean;
-  // The bd issue this goal is tracked as; absent when it is tracked as none. Written only by the
-  // MCP server — no update request carries it.
-  beads_id?: string;
   // Where the row came from: made by hand, or a Habit's occurrence. Absent reads as manual.
   origin?: Origin;
 }

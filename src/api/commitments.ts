@@ -20,8 +20,6 @@ export interface Commitment {
   tag_ids: number[];
   position: number;
   is_private: boolean;
-  // The bd issue this commitment is tracked as. Written only by the MCP server.
-  beads_id?: string;
   // Where the row came from: made by hand, or a Habit's occurrence. Absent reads as manual.
   origin?: Origin;
 }

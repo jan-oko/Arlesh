@@ -619,7 +619,7 @@ async fn deleting_a_commitment_takes_its_whole_subtree_with_it() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn a_commitment_carries_tags_and_an_issue_link() {
+async fn a_commitment_carries_tags() {
     let pool = helpers::test_pool().await;
     let project_id = make_project(&pool).await;
     let tonight = window(&pool, ScopeKind::Day, july(1)).await;
@@ -661,30 +661,11 @@ async fn a_commitment_carries_tags_and_an_issue_link() {
     let id = CommitmentId(commitment.id.sid());
     let mut db = helpers::session_factory(&pool).connect().await.unwrap();
     db.commitments().add_tag(id, tag_id).await.unwrap();
-    db.commitments()
-        .set_beads_id(id, Some("Arlesh-cyo".into()))
-        .await
-        .unwrap();
     let reread = db.commitments().get(id).await.unwrap();
     assert_eq!(reread.tag_ids, vec![tag_id]);
-    assert_eq!(reread.beads_id, Some("Arlesh-cyo".to_string()));
 
     db.commitments().remove_tag(id, tag_id).await.unwrap();
     assert!(db.commitments().get(id).await.unwrap().tag_ids.is_empty());
-}
-
-#[tokio::test]
-async fn linking_an_issue_to_a_commitment_that_does_not_exist_is_an_error_not_a_no_op() {
-    let pool = helpers::test_pool().await;
-    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
-    let refused = db
-        .commitments()
-        .set_beads_id(CommitmentId(4242), Some("Arlesh-cyo".into()))
-        .await;
-    assert!(
-        matches!(refused, Err(TaskError::CommitmentNotFound(4242))),
-        "got {refused:?}"
-    );
 }
 
 #[tokio::test]

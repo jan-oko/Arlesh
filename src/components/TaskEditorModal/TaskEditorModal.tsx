@@ -20,7 +20,6 @@ import { getErrorMessage } from "@/api/errors";
 import { withAtomicGesture } from "@/api/gesture";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
-import BeadsIdField from "@/components/EditorModal/BeadsIdField";
 import AgenticField from "./AgenticField";
 import AgenticBriefFields from "./AgenticBriefFields";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
@@ -28,7 +27,6 @@ import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import PlanField from "@/components/ScopePicker/PlanField";
 import DueField from "@/components/ScopePicker/DueField";
 import { useInputCapture } from "@/hooks/use-input-capture";
-import { useBeadsIdClear } from "@/hooks/use-beads-id-clear";
 import Switch from "@/components/Switch/Switch";
 import AsyncTemplateFields from "@/components/AsyncTemplateEditor/AsyncTemplateFields";
 import { EMPTY_ASYNC_TEMPLATE, asyncTemplateToSave } from "@/utils/async-template";
@@ -111,10 +109,6 @@ interface Props {
   domainNames: Map<number, string>;
   availableForDep: MindmapNode[];
   onSave: (data: TaskSaveData) => Promise<void>;
-  /** Drops the node's `bd` issue link. Called by Save once the row's × has staged the drop, never
-   * by the × itself, so Cancel discards it like any other unsaved field. Omitted — as on the blank
-   * node a create path opens, which has no link to drop — the Issue row stays wholly read-only. */
-  onClearBeadsId?: (() => Promise<void>) | undefined;
   onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
   /** Answers the agent's open question, from the agentic section: stores the answer and releases
    * the wait. Omitted, the question is not drawn there. */
@@ -124,7 +118,7 @@ interface Props {
   onClose: () => void;
 }
 
-export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onClearBeadsId, onCheckScopeClamp, onAnswer, openAtTemplate = false, onClose }: Props) {
+export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onCheckScopeClamp, onAnswer, openAtTemplate = false, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation(["editor", "status", "nodeKinds", "undo", "expectation"]);
   const [title, setTitle] = useState(node.rowTitle ?? node.title);
@@ -151,7 +145,6 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [loadedDoneAt, setLoadedDoneAt] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const beadsClear = useBeadsIdClear(onClearBeadsId);
   const titleRef = useRef<HTMLInputElement>(null);
   const dbId = rowIdOf(node);
 
@@ -212,14 +205,11 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         setIsSaving(false);
         return;
       }
-      // One Gesture, all or nothing: the beads clear, the update, the block reasons, the tags and
-      // the dependencies are several commands but one thing the user filled in, so they are one
+      // One Gesture, all or nothing: the update, the block reasons, the tags and the dependencies
+      // are several commands but one thing the user filled in, so they are one
       // Ctrl+Z — and a refusal partway takes back the ones that landed rather than leaving a form
       // half-applied. The clamp prompt above is outside it, having written nothing yet.
       await withAtomicGesture(t("undo:gestures.editTask"), async () => {
-        // Before the update, not after: a refused clear then leaves the node exactly as it was,
-        // rather than half-saved, and the refusal reaches the save error line below the fields.
-        await beadsClear.commitClear();
         await onSave({
           title: title.trim(), status: shownStatus ?? status, blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
           tagIds, addedDeps, removedDeps, timeScope,
@@ -337,7 +327,6 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         {t("fieldTitle")}
         <input ref={titleRef} className={styles.input} value={title} onChange={(e) => setTitle(e.target.value)} type="text" />
       </label>
-      <BeadsIdField beadsId={node.beadsId} isCleared={beadsClear.isCleared} onClear={beadsClear.stageClear} />
       <div className={styles.label}>
         {t("fieldStatus")}
         {/* A compound task's status is derived from its sub-items: the pills show it and take

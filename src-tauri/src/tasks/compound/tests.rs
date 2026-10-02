@@ -38,7 +38,6 @@ pub(super) fn task(id: i64, parent: (&str, i64), status: TaskStatus) -> Task {
         tag_ids: Vec::new(),
         position: id,
         is_private: false,
-        beads_id: None,
         origin: Origin::Manual,
     }
 }
@@ -62,7 +61,6 @@ pub(super) fn goal(id: i64, parent: (&str, i64), status: &str) -> Goal {
         tag_ids: Vec::new(),
         position: id,
         is_private: false,
-        beads_id: None,
         origin: Origin::Manual,
     }
 }
@@ -79,7 +77,6 @@ pub(super) fn commitment(id: i64, parent: (&str, i64), verdict: Verdict) -> Comm
         tag_ids: Vec::new(),
         position: id,
         is_private: false,
-        beads_id: None,
         origin: Origin::Manual,
     }
 }

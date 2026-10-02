@@ -25,7 +25,6 @@ fn task(id: i64, status: Status) -> Task {
         tag_ids: vec![],
         position: 0,
         is_private: false,
-        beads_id: None,
         origin: Origin::Manual,
     }
 }

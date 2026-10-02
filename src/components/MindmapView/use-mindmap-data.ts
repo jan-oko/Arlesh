@@ -326,7 +326,6 @@ function templateFieldsOf(item: TemplateFields): TemplateFields {
     ...(item.agentic !== undefined ? { agentic: item.agentic } : {}),
     ...(item.asynchronous !== undefined ? { asynchronous: item.asynchronous } : {}),
     ...(item.archival !== undefined ? { archival: item.archival } : {}),
-    ...(item.beads_id !== undefined ? { beads_id: item.beads_id } : {}),
     ...(item.agentic_brief !== undefined ? { agentic_brief: item.agentic_brief } : {}),
     ...(item.compound !== undefined ? { compound: item.compound } : {}),
     ...(item.async_template !== undefined ? { async_template: item.async_template } : {}),
@@ -446,7 +445,6 @@ export function buildTree(
       ...(domain.color !== null ? { color: domain.color } : {}),
       ...(domain.status !== null ? { status: domain.status } : {}),
       ...(domain.knowledge_base_directory !== null ? { knowledgeBaseDirectory: domain.knowledge_base_directory } : {}),
-      ...(domain.beads_id !== undefined ? { beadsId: domain.beads_id } : {}),
       tagIds: [],
       children: [],
     });
@@ -466,7 +464,6 @@ export function buildTree(
       onScopeExit: goal.on_scope_exit,
       position: goal.position,
       isPrivate: goal.is_private,
-      ...(goal.beads_id !== undefined ? { beadsId: goal.beads_id } : {}),
       tagIds: goal.tag_ids,
       children: [],
     });
@@ -509,7 +506,6 @@ export function buildTree(
       agenticBrief: task.agentic_brief ?? null,
       position: task.position,
       isPrivate: task.is_private,
-      ...(task.beads_id !== undefined ? { beadsId: task.beads_id } : {}),
       tagIds: task.tag_ids,
       children: [],
     });
@@ -528,7 +524,6 @@ export function buildTree(
       timeScope: commitment.time_scope,
       position: commitment.position,
       isPrivate: commitment.is_private,
-      ...(commitment.beads_id !== undefined ? { beadsId: commitment.beads_id } : {}),
       tagIds: commitment.tag_ids,
       children: [],
     });

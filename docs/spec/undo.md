@@ -165,7 +165,7 @@ the redo binding: dispatchable, but not a second cheat-sheet row.
 ## Sources, and not undoing undo
 
 Every entry carries the **source** of its write. An MCP write is journaled but never enters the
-user's stack: an agent setting a `beads_id` is not something the user did, and Ctrl+Z reversing it
+user's stack: an agent's write is not something the user did, and Ctrl+Z reversing it
 would be indefensible. The journal stays a faithful history; the stack is a history of *the user*.
 The source is an enum rather than a boolean and the column carries no CHECK constraint, so a third
 source later is a code change and not a migration.

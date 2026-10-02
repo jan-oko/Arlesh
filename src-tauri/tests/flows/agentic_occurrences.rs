@@ -405,20 +405,20 @@ async fn a_task_hung_on_an_item_under_an_agentic_root_is_writable_over_the_mcp()
     };
     let mcp = helpers::mcp_over_whole_board(&pool).await;
 
-    let linked = mcp
-        .beads(Parameters(params::BeadsOperation::Set {
-            node_type: params::BeadsNode::Task,
-            node_id: step.into(),
-            beads_id: Some("Arlesh-cz2".into()),
+    let noted = mcp
+        .infos(Parameters(params::InfosOperation::Create {
+            task_id: step.into(),
+            body: "Found the unsubscribe link".into(),
+            details: None,
         }))
         .await
         .unwrap();
 
     assert_ne!(
-        linked.is_error,
+        noted.is_error,
         Some(true),
         "it reads as agentic through the occurrence and its root: {:?}",
-        linked.structured_content
+        noted.structured_content
     );
 }
 

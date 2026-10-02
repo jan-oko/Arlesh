@@ -23,7 +23,7 @@ is the front door — start here, then take one hop.
 
 | Area | What is in it |
 | --- | --- |
-| [Resources](docs/spec/resources.md) | Domains, Projects, Aspects, Tags; the Knowledge Base; Goals; Tasks; Commitments; beads ids |
+| [Resources](docs/spec/resources.md) | Domains, Projects, Aspects, Tags; the Knowledge Base; Goals; Tasks; Commitments; the retired beads id |
 | [Time Scopes & Planning](docs/spec/time-scopes.md) | Time Scope (relevance) against Plan (scheduling), on-exit behaviour, containment invariants, the Scope Picker |
 | [Flows](docs/spec/flows.md) | The Flow node kind, flow items, Cycle Scope/Plan, starting one, materialisation |
 | [Habits](docs/spec/habits.md) | Recurrence, virtual instances, iteration scopes, archiving |

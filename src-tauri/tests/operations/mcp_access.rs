@@ -144,14 +144,15 @@ async fn get_task(mcp: &ArleshMcp, id: i64) -> CallToolResult {
         .expect("the tasks tool returned no result")
 }
 
-async fn set_beads(mcp: &ArleshMcp, task_id: i64) -> CallToolResult {
-    mcp.beads(Parameters(params::BeadsOperation::Set {
-        node_type: params::BeadsNode::Task,
-        node_id: task_id.into(),
-        beads_id: Some("Arlesh-rz0".into()),
+/// A write that needs write access to the Task: hanging a note (an Info) under it.
+async fn write_note(mcp: &ArleshMcp, task_id: i64) -> CallToolResult {
+    mcp.infos(Parameters(params::InfosOperation::Create {
+        task_id: task_id.into(),
+        body: "a note from the agent".into(),
+        details: None,
     }))
     .await
-    .expect("the beads tool returned no result")
+    .expect("the infos tool returned no result")
 }
 
 #[tokio::test]
@@ -264,20 +265,20 @@ async fn only_an_agentic_task_inside_a_root_can_be_written() {
     let mcp = mcp(&pool);
 
     assert_eq!(
-        kind_of_error(&set_beads(&mcp, board.inside_task).await),
+        kind_of_error(&write_note(&mcp, board.inside_task).await),
         Some("not_permitted"),
         "readable but not Agentic"
     );
 
     helpers::make_agentic(&pool, board.outside_task).await;
     assert_eq!(
-        kind_of_error(&set_beads(&mcp, board.outside_task).await),
+        kind_of_error(&write_note(&mcp, board.outside_task).await),
         Some("not_permitted"),
         "Agentic but outside every root"
     );
 
     helpers::make_agentic(&pool, board.inside_task).await;
-    let written = set_beads(&mcp, board.inside_task).await;
+    let written = write_note(&mcp, board.inside_task).await;
     assert_ne!(
         written.is_error,
         Some(true),
@@ -307,7 +308,7 @@ async fn a_task_under_an_agentic_task_inherits_write() {
     helpers::make_agentic(&pool, board.inside_task).await;
     add_root(&app, NodeTable::Domain, board.inside).await;
 
-    let written = set_beads(&mcp(&pool), step).await;
+    let written = write_note(&mcp(&pool), step).await;
 
     assert_ne!(
         written.is_error,

@@ -3935,8 +3935,8 @@ pub async fn start(
 
 /// Copies what a template says about the rows it draws onto one row a start just made: a Task's
 /// delegate, Agentic, Asynchronous and Compound flags, wait template and Backlog, and every kind's
-/// tags, block reasons and beads id — so a started flow's copy is the template, not merely its
-/// title. The copy is the Task's own: a later edit to the template changes nothing started.
+/// tags and block reasons — so a started flow's copy is the template, not merely its title. The
+/// copy is the Task's own: a later edit to the template changes nothing started.
 async fn apply_template_fields(
     db: &mut Db<Transactional>,
     node_type: &str,
@@ -3969,31 +3969,16 @@ async fn apply_template_fields(
             for tag_id in &fields.tag_ids {
                 db.tasks().add_tag(TaskId(node_id), *tag_id).await?;
             }
-            if let Some(beads_id) = &fields.beads_id {
-                db.tasks()
-                    .set_beads_id(TaskId(node_id), Some(beads_id.clone()))
-                    .await?;
-            }
         }
         "goal" => {
             for tag_id in &fields.tag_ids {
                 db.goals().add_tag(GoalId(node_id), *tag_id).await?;
-            }
-            if let Some(beads_id) = &fields.beads_id {
-                db.goals()
-                    .set_beads_id(GoalId(node_id), Some(beads_id.clone()))
-                    .await?;
             }
         }
         _ => {
             for tag_id in &fields.tag_ids {
                 db.commitments()
                     .add_tag(CommitmentId(node_id), *tag_id)
-                    .await?;
-            }
-            if let Some(beads_id) = &fields.beads_id {
-                db.commitments()
-                    .set_beads_id(CommitmentId(node_id), Some(beads_id.clone()))
                     .await?;
             }
         }

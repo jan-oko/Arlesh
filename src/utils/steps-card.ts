@@ -36,7 +36,6 @@ export type StepFieldKind =
   | "details"
   | "knowledgeBase"
   | "instanceType"
-  | "beadsId"
   | "tags";
 
 /**
@@ -44,7 +43,7 @@ export type StepFieldKind =
  * the incidental ones: what a node is blocked by matters on a Task and on a Goal alike, but it is
  * not what tells a Task from a Goal.
  */
-const SHARED_FIELDS: readonly StepFieldKind[] = ["blockedBy", "tags", "beadsId"];
+const SHARED_FIELDS: readonly StepFieldKind[] = ["blockedBy", "tags"];
 
 /**
  * The fields each kind can carry, in reading order.
@@ -113,8 +112,6 @@ function hasValue(node: MindmapNode, field: StepFieldKind): boolean {
       return node.knowledgeBaseDirectory != null && node.knowledgeBaseDirectory !== "";
     case "instanceType":
       return node.flow !== undefined;
-    case "beadsId":
-      return node.beadsId !== undefined && node.beadsId !== "";
     case "tags":
       return node.tagIds.length > 0;
   }

@@ -135,7 +135,6 @@ pub fn run() {
             commands::undo::undo,
             commands::undo::redo,
             commands::undo::undo_status,
-            commands::beads::clear_beads_id,
             commands::access::mcp_access_catalogue,
             commands::access::list_mcp_access,
             commands::access::add_mcp_root,

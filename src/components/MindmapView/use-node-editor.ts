@@ -13,7 +13,6 @@ import { EXPECTATION_ARCHIVAL } from "@/api/expectation-status";
 import type { ProjectSaveData } from "@/components/ProjectEditorModal/ProjectEditorModal";
 import type { InfoSaveData } from "@/components/InfoEditorModal/InfoEditorModal";
 import { updateInfo } from "@/api/infos";
-import { clearBeadsId, type BeadsNodeType } from "@/api/beads";
 import { setBlockReasons } from "@/api/block-reasons";
 import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
 import { recurrenceRequest } from "@/components/FlowEditorModal/recurrence-ui";
@@ -114,8 +113,6 @@ export interface NodeEditorHandles {
   onSimpleSave: (title: string, isPrivate: boolean) => Promise<void>;
   onProjectSave: (data: ProjectSaveData) => Promise<void>;
   onInfoSave: (data: InfoSaveData) => Promise<void>;
-  /** Drops the open node's `bd` issue link, from the editor's Save. `nodeType` is its own kind. */
-  onClearBeadsId: (nodeType: BeadsNodeType) => Promise<void>;
   onFlowSave: (data: FlowSaveData) => Promise<void>;
   onFlowItemSave: (data: FlowItemSaveData) => Promise<void>;
   /** Prompts to clamp orphaned descendants; resolves true to proceed, false to abort. */
@@ -470,25 +467,9 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
     [editorModal, reload],
   );
 
-  // Unlinks the open node from its `bd` issue. Its own call rather than a field on the update
-  // request — no update request carries a beads field — but the editor's *Save* is what calls it,
-  // not the ×: the × only stages the drop, so Cancel discards it like any other unsaved field.
-  // The reload stands on its own rather than leaning on the save's, because the save can still be
-  // refused after the clear has landed, and the board would then keep showing a link that is gone.
-  const onClearBeadsId = useCallback(
-    async (nodeType: BeadsNodeType) => {
-      if (editorModal === null) return;
-      // A Habit occurrence's link is cleared on that occurrence alone.
-      await clearBeadsId(nodeType, rowIdOf(editorModal.node));
-      await reload();
-    },
-    [editorModal, reload],
-  );
-
   return {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
     onTaskSave, onAnswer, onGoalSave, onCommitmentSave, onExpectationSave, onSimpleSave, onProjectSave, onInfoSave,
-    onClearBeadsId,
     onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
   };

@@ -5,9 +5,9 @@
 Arlesh serves a [Model Context Protocol](https://modelcontextprotocol.io) endpoint while the app is
 running, so an agent — Claude Code, Claude Desktop — can read the board without being told its
 contents by hand. It sees only the parts of the board the user has opened to it as **MCP roots**,
-and nothing at all until they open one (see *Access* below). It is read-only with two deliberate
-exceptions: an agent can set an Agentic Task's `bd` issue link, and it can raise an **agentic
-wait** under one — "the agent is waiting on you" — and nothing else. It cannot create,
+and nothing at all until they open one (see *Access* below). It is read-only with one deliberate
+exception: an agent can raise an **agentic wait** under an Agentic Task — "the agent is waiting on
+you" — and nothing else. It cannot create,
 rename, complete or delete a Task, Goal, Flow, Domain or knowledge-base entry.
 
 The endpoint is hosted by the app itself, not a separate process, so there is only ever one writer
@@ -124,9 +124,6 @@ resolver in `src-tauri/src/access/`:
 - **`arlesh_infos.create` needs write** on the Task it hangs the note under.
 - **`arlesh_tasks` writes** follow the two rules above: `create` needs `may_create_task_under`
   at the parent, and every other write needs a Task that reads as Agentic. See *Writing tasks*.
-- **`arlesh_beads.set` needs write**: the item must be an Agentic Task inside a root. Anything else
-  — a Goal, Commitment or Project, a Task that is not Agentic, one outside the roots — is refused
-  with `not_permitted`.
 - **The knowledge base** hangs on no node, so no root contains it. A Person, Event or Thread is
   visible exactly when a node the MCP can see points at it: a Task delegated to the Person, or a
   Task or Goal linking the entity.
@@ -151,7 +148,6 @@ definition it loads.
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
 | `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`. See *Agentic waits* below |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
-| `arlesh_beads` | `set(node_type, node_id, beads_id)` — a write; `node_type` is `task`, `goal`, `commitment` or `project`, and the item must be writable (an Agentic Task inside a root). See below |
 | `arlesh_capacity` | `get`, `set(at_capacity)` — the agent capacity lock, app-wide and on no node. See *Agent capacity* below |
 
 **One flat input schema per tool** (2026-09-25). Each tool takes an `operation`-tagged union, and
@@ -391,7 +387,7 @@ so the conformance corpus is untouched.
   **One transaction**: every id is read before anything is written, the row is written, then its
   relations; a refusal anywhere writes none of it, and a success announces one board change. Not
   exposed: the Agentic flag (what an agent creates is always Agentic, and it cannot un-flag
-  anything), `is_private`, the issue link (`arlesh_beads`) and an Asynchronous Task's wait
+  anything), `is_private` and an Asynchronous Task's wait
   template. On a **Habit occurrence** each lands in its overlay; its Time Scope is its
   iteration's and a change is refused, and `on_scope_exit` — its Habit's to decide — is refused
   as `invalid_request` before anything is written.
@@ -443,7 +439,7 @@ the user's own edit would, and the template is untouched; an occurrence cannot `
 decides where it hangs). A write the rules refuse is `not_permitted`, and writes nothing.
 
 **Undo.** MCP writes are not undoable from the app, deliberately: each is journaled under the `mcp`
-source, as `arlesh_beads` and `arlesh_waits` are, so it never enters the user's Undo Stack, is not a
+source, as `arlesh_waits` is, so it never enters the user's Undo Stack, is not a
 Gesture of its own, and never lands inside a Gesture the user has open — Ctrl+Z after an agent's
 write undoes the user's last action, not the agent's. The journal still records the write, and
 every open window is told the board changed.
@@ -501,7 +497,7 @@ row ids or short ids.
   short and full id), so an agent can poll for the user's answer without loading the snapshot.
 
 `raise` and `release` need **write** access to the Task: an Agentic Task inside an MCP root, or the
-call is refused as `not_permitted`. Like `arlesh_beads` they are transactional and journaled as the
+call is refused as `not_permitted`. Like every MCP write they are transactional and journaled as the
 **agent's** write, so they never enter the user's Undo Stack, and every open window is told.
 
 **A question is how an agent hands a Task to the user.** A pending question under an `on_agent`
@@ -532,14 +528,10 @@ Creating is the whole surface: an agent neither edits, moves nor deletes an Info
 
 ## Issue links
 
-A Task, Goal, Commitment or Project can carry the id of the `bd` issue tracking it, and `arlesh_beads.set` is
-the **only** way that field is ever given a *value* — and, under *Access* above, only on an Agentic
-Task inside an MCP root, so a Goal, Commitment or Project keeps whatever link it already has: the one Tauri command that touches the column
-(`clear_beads_id`) writes null and nothing else, and the editor modals render the id as text with no
-control but an × that stages the drop for their Save. So an issue id shown in Arlesh always arrived over MCP.
-Passing `null` clears the link. Setting one on an item that does not exist is an error
-(`not_permitted`, like any node outside the roots) rather than a silent no-op, and only the
-`project` subtype of Domain accepts a link — an Aspect, Domain or Tag is refused.
+*Removed* (ruled by the user, 2026-10-01, Task 661). A Task, Goal, Commitment or Project could carry
+the id of the `bd` issue tracking it, set only through an `arlesh_beads` tool. bd is retired — work is
+tracked on the Arlesh board — so the tool, the field and its column are gone; the ids that were set
+are kept in the `retired_beads_ids` table (resources.md, *Beads id*).
 
 ## Agent capacity
 
@@ -630,7 +622,7 @@ so the row is live; the lock's own state arrives with `agent-capacity-changed` a
 
 ## What writes
 
-`arlesh_tasks`, `arlesh_beads`, `arlesh_waits` and `arlesh_infos` write to the board, and
+`arlesh_tasks`, `arlesh_waits` and `arlesh_infos` write to the board, and
 `arlesh_capacity` sets the agent capacity lock, which is stored apart from the board and not journaled; every other tool is annotated
 `read_only_hint = true` and writes nothing at all.
 `arlesh_snapshot` used to be the exception: deriving a Habit's iterations minted the scope rows

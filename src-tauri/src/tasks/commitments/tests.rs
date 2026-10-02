@@ -22,7 +22,6 @@ fn stored() -> Commitment {
         is_private: false,
         // Tracked in `bd`. `CommitmentWrite` has no counterpart field, so the merge cannot
         // carry it either way — which is the write-path constraint, stated in the type.
-        beads_id: Some("Arlesh-cyo".to_string()),
         origin: Default::default(),
     }
 }

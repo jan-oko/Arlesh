@@ -1735,11 +1735,6 @@ fn task_row(
         tag_ids: occurrence.fields.tag_ids.clone(),
         position: overlay.position.unwrap_or(occurrence.position),
         is_private: overlay.is_private.unwrap_or(occurrence.is_private),
-        beads_id: if overlay.beads_id_set {
-            overlay.beads_id
-        } else {
-            occurrence.fields.beads_id.clone()
-        },
         origin: occurrence.origin,
     };
     (task, lifecycle)
@@ -1778,11 +1773,6 @@ fn goal_row(
         tag_ids: occurrence.fields.tag_ids.clone(),
         position: overlay.position.unwrap_or(occurrence.position),
         is_private: overlay.is_private.unwrap_or(occurrence.is_private),
-        beads_id: if overlay.beads_id_set {
-            overlay.beads_id
-        } else {
-            occurrence.fields.beads_id.clone()
-        },
         origin: occurrence.origin,
     };
     (goal, lifecycle)
@@ -1834,11 +1824,6 @@ fn commitment_row(
         tag_ids: occurrence.fields.tag_ids.clone(),
         position: overlay.position.unwrap_or(occurrence.position),
         is_private: overlay.is_private.unwrap_or(occurrence.is_private),
-        beads_id: if overlay.beads_id_set {
-            overlay.beads_id
-        } else {
-            occurrence.fields.beads_id.clone()
-        },
         origin: occurrence.origin,
     };
     (commitment, lifecycle)

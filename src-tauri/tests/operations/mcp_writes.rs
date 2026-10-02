@@ -671,15 +671,15 @@ async fn a_short_id_a_longer_prefix_and_the_full_id_name_the_same_task() {
     }
     assert_eq!(title_of(&pool, board.inside_task).await, "Renamed 2");
 
-    let linked = mcp
-        .beads(Parameters(params::BeadsOperation::Set {
-            node_type: params::BeadsNode::Task,
-            node_id: NodeIdParam::Short(short),
-            beads_id: Some("Arlesh-rz0".into()),
+    let noted = mcp
+        .infos(Parameters(params::InfosOperation::Create {
+            task_id: NodeIdParam::Short(short),
+            body: "a note by short id".into(),
+            details: None,
         }))
         .await
-        .expect("the beads tool returned no result");
-    succeeded(&linked);
+        .expect("the infos tool returned no result");
+    succeeded(&noted);
 }
 
 #[tokio::test]
@@ -1426,15 +1426,15 @@ async fn an_id_given_as_a_number_or_its_digits_names_the_row() {
         "Renamed by string"
     );
 
-    let linked = mcp
-        .beads(Parameters(params::BeadsOperation::Set {
-            node_type: params::BeadsNode::Task,
-            node_id: NodeIdParam::Short(format!(" {} ", board.inside_task)),
-            beads_id: Some("Arlesh-rz0".into()),
+    let noted = mcp
+        .infos(Parameters(params::InfosOperation::Create {
+            task_id: NodeIdParam::Short(format!(" {} ", board.inside_task)),
+            body: "a note by padded row id".into(),
+            details: None,
         }))
         .await
-        .expect("the beads tool returned no result");
-    succeeded(&linked);
+        .expect("the infos tool returned no result");
+    succeeded(&noted);
 
     let raised = mcp
         .waits(Parameters(params::WaitsOperation::Raise {

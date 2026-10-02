@@ -62,8 +62,10 @@ impl ArleshMcp {
         &self,
         Parameters(operation): Parameters<WaitsOperation>,
     ) -> Result<CallToolResult, ErrorData> {
-        // Transactional and tagged, for the reasons `beads` gives: the access check and the write
-        // see one board, and only these statements are journaled as the agent's.
+        // Transactional and tagged: the access check and the write see one board, and only these
+        // statements are journaled as the agent's. The Undo Journal's ambient source is one row
+        // shared by every connection, so holding SQLite's writer lock from setting it to restoring
+        // it — a transaction — is what makes "the source is mcp" true for exactly these statements.
         let mut db = match self.factory.begin().await {
             Ok(db) => db,
             Err(error) => return result::failed(error),
