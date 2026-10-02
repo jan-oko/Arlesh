@@ -9,12 +9,12 @@ export function useFilterDot(): boolean {
   const view = useViewStore((s) => s.view);
   const archivedMode = useFilterStore((s) => s.filter.archivedMode);
   const backlogMode = useFilterStore((s) => s.filter.backlogMode);
-  const zenAgentWaits = useViewStore((s) => s.zenAgentWaits);
+  const showOnAgent = useFilterStore((s) => s.filter.showOnAgent === true);
   const entries = useFilterEntries();
   return hasUndrawnFilters(view, {
     archivedMode,
     backlogMode,
-    zenAgentWaitsHidden: !zenAgentWaits,
+    showOnAgent,
     valueCount: (dimension) => entries.entries(dimension).length,
   });
 }

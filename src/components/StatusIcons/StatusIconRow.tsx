@@ -76,7 +76,7 @@ export default function StatusIconRow({ node, indicators, top }: Props) {
         return { tooltip: t("agentic"), icon: <AgenticIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} /> };
       case "delegated":
         return {
-          tooltip: node.delegate?.kind === "agent" ? t("delegatedAgent") : t("delegatedPerson", { name: node.delegateName ?? t("delegatedPersonUnnamed") }),
+          tooltip: t("delegatedPerson", { name: node.delegateName ?? t("delegatedPersonUnnamed") }),
           icon: <DelegatedIcon cx={cx} cy={rowY} r={ICON_R} color={MUTED} />,
         };
       case "agentWaiting": {

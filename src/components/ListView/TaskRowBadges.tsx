@@ -67,7 +67,7 @@ export default function TaskRowBadges({ node, indicators }: Props) {
         return { tooltip: t("agentic"), icon: <AgenticIcon cx={R} cy={R} r={R} color={MUTED} /> };
       case "delegated":
         return {
-          tooltip: node.delegate?.kind === "agent" ? t("delegatedAgent") : t("delegatedPerson", { name: node.delegateName ?? t("delegatedPersonUnnamed") }),
+          tooltip: t("delegatedPerson", { name: node.delegateName ?? t("delegatedPersonUnnamed") }),
           icon: <DelegatedIcon cx={R} cy={R} r={R} color={MUTED} />,
         };
       case "agentWaiting": {

@@ -8,7 +8,7 @@ import type { FilterRowId } from "@/utils/filter-layout";
 import type { FilterOption } from "@/utils/filter-search";
 import type { PillMode } from "@/utils/list-filter";
 import {
-  TASK_STATUS_VALUES, GOAL_STATUS_VALUES, PROJECT_STATUS_VALUES, VERDICT_FILTER_VALUES, SCOPE_STATE_VALUES,
+  TASK_STATUS_FILTER_VALUES, GOAL_STATUS_VALUES, PROJECT_STATUS_VALUES, VERDICT_FILTER_VALUES, SCOPE_STATE_VALUES,
 } from "@/utils/list-filter";
 
 /** How every filter dimension reads: its names, its values, and a value's label and color. */
@@ -52,7 +52,7 @@ function fixedLabel(
 
 function fixedValues(dimension: FilterDimension): readonly string[] {
   switch (dimension) {
-    case "taskStatus": return TASK_STATUS_VALUES;
+    case "taskStatus": return TASK_STATUS_FILTER_VALUES;
     case "goalStatus": return GOAL_STATUS_VALUES;
     case "projectStatus": return PROJECT_STATUS_VALUES;
     case "verdict": return VERDICT_FILTER_VALUES;

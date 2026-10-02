@@ -3,11 +3,15 @@ import type { ListFilterState } from "@/utils/list-filter";
 import type { ListRowEntry, MixedListRow } from "@/utils/list-data";
 import { groupMixedRowsByPath } from "@/utils/list-data";
 import { isOverdue } from "@/utils/overdue";
+import { isReview } from "@/utils/status-mapping";
 
 /** Which of the List View's lifted sections to draw. Each is off unless its setting and its
  * conditions say so; the caller decides, this module only partitions. */
 export interface ListSections {
-  /** The **Overdue** section: every Overdue row, and everything beneath one. Drawn first. */
+  /** The **Review** section: every Agentic Task whose agent has a question open, and everything
+   * beneath one. Drawn first of all. */
+  review: boolean;
+  /** The **Overdue** section: every Overdue row, and everything beneath one. */
   overdue: boolean;
   /** The **Asynchronous** section: every asynchronous Task's row, and everything beneath one. */
   asynchronous: boolean;
@@ -19,6 +23,7 @@ interface SectionMarkers {
   end: ListRowEntry;
 }
 
+const REVIEW_MARKERS: SectionMarkers = { heading: { type: "review" }, end: { type: "reviewEnd" } };
 const OVERDUE_MARKERS: SectionMarkers = { heading: { type: "overdue" }, end: { type: "overdueEnd" } };
 const ASYNCHRONOUS_MARKERS: SectionMarkers = {
   heading: { type: "asynchronous" },
@@ -65,6 +70,11 @@ function claimsAsynchronous(mixed: MixedListRow): boolean {
   return mixed.type === "task" && mixed.row.isAsynchronous;
 }
 
+/** Only a Task reads Review — an Agentic one, On Agent with its agent's question open. */
+function claimsReview(mixed: MixedListRow): boolean {
+  return mixed.type === "task" && isReview(mixed.row.node.taskStatus);
+}
+
 /** A Task or a wait is claimed by its own Overdue flag; a Commitment is never Overdue, so it rides up
  * only under an Overdue row. */
 function claimsOverdue(mixed: MixedListRow): boolean {
@@ -83,8 +93,10 @@ interface DrawnSection {
  * header, and draws the ordinary list below them with those rows taken out — a row is **moved**,
  * never duplicated.
  *
- * Two sections, in this order:
+ * Three sections, in this order:
  *
+ * - **Review** — Agentic Tasks whose agent is waiting on the user's answer: each one idles an agent,
+ *   so it leads. The caller asks for it under Start and Do, whatever any setting says.
  * - **Overdue** — late work, drawn first because it is the most pressing thing on the list. The
  *   caller asks for it only under the Start preset and while its setting (on by default) is on.
  * - **Asynchronous** — work that starts a wait rather than finishing something (send the email, order
@@ -112,6 +124,11 @@ interface DrawnSection {
 export function withListSections(rows: readonly MixedListRow[], sections: ListSections): ListRowEntry[] {
   const drawn: DrawnSection[] = [];
   let remaining: readonly MixedListRow[] = rows;
+  if (sections.review) {
+    const split = splitSection(remaining, claimsReview);
+    drawn.push({ markers: REVIEW_MARKERS, rows: split.lifted });
+    remaining = split.remaining;
+  }
   if (sections.overdue) {
     const split = splitSection(remaining, claimsOverdue);
     drawn.push({ markers: OVERDUE_MARKERS, rows: split.lifted });
@@ -133,6 +150,16 @@ export function withListSections(rows: readonly MixedListRow[], sections: ListSe
     if (followed) entries.push(section.markers.end);
   });
   return [...entries, ...below];
+}
+
+/**
+ * Whether the List View draws its **Review** section: whenever the list reads the **Start** or **Do**
+ * preset — the two that show Review — and not under the Unblock and Expectations options, which
+ * replace the preset's question. No setting switches it: a Review Task idles an agent.
+ */
+export function showsReviewSection(shared: FilterState, listFilter: ListFilterState): boolean {
+  if (shared.statusMode !== "start" && shared.statusMode !== "do") return false;
+  return listFilter.preset !== "unblock" && listFilter.preset !== "expectations";
 }
 
 /**

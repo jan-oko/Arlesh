@@ -64,9 +64,15 @@ describe("undrawnPillDimensions", () => {
 });
 
 describe("hasUndrawnFilters", () => {
-  const clean: FilterDotState = {
-    archivedMode: "inactive", backlogMode: "inactive", zenAgentWaitsHidden: false, valueCount: () => 0,
-  };
+  const clean: FilterDotState = { archivedMode: "inactive", backlogMode: "inactive", showOnAgent: false, valueCount: () => 0 };
+
+  it("lights for the On Agent pill wherever it is offered, and not in the Plan View", () => {
+    const shown = { ...clean, showOnAgent: true };
+    expect(hasUndrawnFilters("mindmap", shown)).toBe(true);
+    expect(hasUndrawnFilters("list", shown)).toBe(true);
+    expect(hasUndrawnFilters("zen", shown)).toBe(true);
+    expect(hasUndrawnFilters("plan", shown)).toBe(false);
+  });
 
   it("is false with everything at its default", () => {
     expect(hasUndrawnFilters("mindmap", clean)).toBe(false);
@@ -76,15 +82,6 @@ describe("hasUndrawnFilters", () => {
     const backlog: FilterDotState = { ...clean, backlogMode: "exclude" };
     expect(hasUndrawnFilters("steps", backlog)).toBe(true);
     expect(hasUndrawnFilters("plan", backlog)).toBe(false);
-  });
-
-  it("is true in the Zen View while its Agent waits switch hides those waits, and false at its default", () => {
-    expect(hasUndrawnFilters("zen", { ...clean, zenAgentWaitsHidden: true })).toBe(true);
-    expect(hasUndrawnFilters("zen", clean)).toBe(false);
-  });
-
-  it("ignores the Agent waits switch outside the Zen View, which does not offer it", () => {
-    expect(hasUndrawnFilters("list", { ...clean, zenAgentWaitsHidden: true })).toBe(false);
   });
 
   it("ignores tags, which are always chips", () => {

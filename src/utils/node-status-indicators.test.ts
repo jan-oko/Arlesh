@@ -256,8 +256,8 @@ describe("deriveStatusIndicators — Private", () => {
 });
 
 describe("deriveStatusIndicators — Delegated", () => {
-  it("badges a task delegated to the Agent or to a Person, right after Agentic", () => {
-    expect(types(node("task", { status: "todo", agentic: true, asynchronous: true, delegate: { kind: "agent" } })))
+  it("badges a task delegated to a Person, right after Agentic", () => {
+    expect(types(node("task", { status: "todo", agentic: true, asynchronous: true, delegate: { kind: "person", id: 4 } })))
       .toEqual(["agentic", "delegated", "asynchronous"]);
     expect(types(node("task", { status: "todo", delegate: { kind: "person", id: 4 } }))).toEqual(["delegated"]);
   });

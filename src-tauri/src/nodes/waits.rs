@@ -33,8 +33,8 @@ use crate::{
         expectations::EXPECTATION,
         lifecycle::ItemLifecycle,
         model::{
-            Expectation, ExpectationArchival, ExpectationStatus, Task, TaskArchival, TaskId,
-            TimeScope,
+            Expectation, ExpectationArchival, ExpectationStatus, Status, Task, TaskArchival,
+            TaskId, TaskStatus, TimeScope,
         },
         wait_lifecycle,
         waits::{self, WaitProgress, WaitRef},
@@ -233,7 +233,7 @@ pub async fn derive_waits<M: SessionMode>(
     }
     for task in tasks
         .iter()
-        .filter(|task| task.delegate_to.is_some() && task.status != "done")
+        .filter(|task| task.delegate_to.is_some() && !task.status.is_done())
     {
         let drawn = delegation_wait(task);
         let row = wait_state.read(&DerivedKey::DelegationWait(task.id.clone()), &drawn);
@@ -301,7 +301,7 @@ impl WaitRows {
         let Some(habit) = task.origin.habit() else {
             return Ok(());
         };
-        if !task.asynchronous || task.status != "done" {
+        if !task.asynchronous || !task.status.is_done() {
             return Ok(());
         }
         let key = occurrence_key(habit);
@@ -432,10 +432,15 @@ impl WaitRows {
         });
         let id = NodeId::Derived(registry::remember(&DerivedKey::Check(draw.key)));
         let overlay = state.overlays.get(&node_key).cloned().unwrap_or_default();
+        // A check task keeps the ordinary model: its status is the check, done once it is made.
         let status = if draw.done {
-            "done".to_string()
+            Status::Ordinary(TaskStatus::Done)
         } else {
-            overlay.status.clone().unwrap_or_else(|| "todo".to_string())
+            overlay
+                .status
+                .as_deref()
+                .and_then(TaskStatus::from_db)
+                .map_or(Status::Ordinary(TaskStatus::Todo), Status::Ordinary)
         };
         let plan = overlay
             .plan_start_id

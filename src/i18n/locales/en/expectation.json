@@ -1,6 +1,5 @@
 {
   "delegationWaitTitle": "{{delegate}} finish: {{title}}",
-  "delegateAgent": "Agent",
   "delegatePersonUnnamed": "Their delegate",
   "editHeading": "Edit expectation",
   "newHeading": "New expectation",
@@ -28,5 +27,7 @@
   "agentNote": "The agent's question",
   "agentWaitNote": "What the agent is waiting on",
   "agentAnswer": "Your answer",
-  "agentAnswerHint": "Needed before the wait can be released"
+  "agentAnswerHint": "Needed before the wait can be released",
+  "answerHint": "Answer the agent — Ctrl+Enter sends",
+  "answerSend": "Send"
 }

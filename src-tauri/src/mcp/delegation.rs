@@ -14,9 +14,6 @@ use crate::{
     tasks::model::Delegate,
 };
 
-/// What the Agent is called in a delegation wait's label.
-const AGENT: &str = "Agent";
-
 /// A delegation wait's label: who finishes it, then the Task's title.
 pub(super) fn finish_title(delegate: &str, task_title: &str) -> String {
     format!("{delegate} finish: {task_title}")
@@ -32,10 +29,8 @@ pub(super) fn label_waits(load: &mut MindmapLoad, people: &[Person]) {
         .tasks
         .iter()
         .filter_map(|task| {
-            let holder = match task.delegate_to? {
-                Delegate::Agent => AGENT,
-                Delegate::Person { id } => names.get(&id).copied()?,
-            };
+            let Delegate::Person { id } = task.delegate_to?;
+            let holder = names.get(&id).copied()?;
             Some((&task.id, (holder, task.title.as_str())))
         })
         .collect();

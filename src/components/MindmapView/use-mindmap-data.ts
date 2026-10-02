@@ -28,13 +28,11 @@ import {
   duplicateFlow, duplicateFlowItem,
 } from "@/api/flows";
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
-import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
+import { TASK_STATUS, GOAL_STATUS, isDone } from "@/utils/status-mapping";
 import { propagateAgentic } from "@/utils/agentic";
 import { propagateInheritedScope } from "@/utils/inherited-scope";
 import { listMcpAccess } from "@/api/mcp-access";
 import { listPeople } from "@/api/people";
-import { delegateHolder, namesAPerson } from "@/utils/delegation";
-import type { DelegateHolder } from "@/utils/delegation";
 import type { McpVisibility } from "@/api/mcp-access";
 import { applyMcpVisibility } from "@/utils/mcp-visibility";
 import { useMcpAccessStore } from "@/stores/use-mcp-access-store";
@@ -377,7 +375,7 @@ export function buildTree(
   flowInstanceRefs: TargetRef[] = [],
   expectations: Expectation[] = [],
   /** The title a delegated Task's wait is drawn with, from the Task's own and who holds it. */
-  delegationWaitTitle: (taskTitle: string, holder: DelegateHolder) => string = (taskTitle) => taskTitle,
+  delegationWaitTitle: (taskTitle: string, delegateName: string | null) => string = (taskTitle) => taskTitle,
   /** The title a wait's check task is drawn with, from the wait's own: the settings' prefix. */
   checkTitle: (waitTitle: string) => string = (waitTitle) => waitTitle,
   /** How a Compound Task's derived block reads, in place of the backend's English. */
@@ -458,7 +456,8 @@ export function buildTree(
       kind: "task",
       title: isCheck ? checkTitle(task.title) : task.title,
       ...(isCheck ? { rowTitle: task.title } : {}),
-      status: task.status,
+      status: task.status.status,
+      taskStatus: task.status,
       blockReasons: manualBlockers.get(`task-${task.id}`) ?? [],
       virtualBlockers: [
         ...(capacityBlocked.has(`task-${task.id}`) ? [capacityReason] : []),
@@ -510,14 +509,15 @@ export function buildTree(
     // A delegated Task's wait is drawn as what it waits on while its title is the Task's; one given
     // a title of its own is drawn with it. The row's title is what its editor edits.
     const holderTask = expectation.origin?.kind === "delegation_wait" ? taskById.get(expectation.parent_id) : undefined;
-    const holder = holderTask?.delegate_to != null ? delegateHolder(holderTask.delegate_to, personNames) : undefined;
-    const labelled = holder !== undefined && holderTask?.title === expectation.title;
+    const delegate = holderTask?.delegate_to ?? null;
+    const labelled = delegate !== null && holderTask?.title === expectation.title;
+    const delegateName = delegate === null ? null : personNames.get(delegate.id) ?? null;
     nodeMap.set(id, {
       id,
       rowId: expectation.id,
       origin: expectation.origin ?? { kind: "manual" },
       kind: "expectation",
-      title: labelled ? delegationWaitTitle(expectation.title, holder) : expectation.title,
+      title: labelled ? delegationWaitTitle(expectation.title, delegateName) : expectation.title,
       ...(labelled ? { rowTitle: expectation.title } : {}),
       status: expectation.status,
       archived: expectation.archival === EXPECTATION_ARCHIVAL.ARCHIVED,
@@ -558,7 +558,7 @@ export function buildTree(
       }
     } else if (dep.dependency_type === "task") {
       const target = taskById.get(dep.dependency_id);
-      if (target !== undefined && target.status !== "done") {
+      if (target !== undefined && !isDone(target.status)) {
         node.virtualBlockers?.push(`Blocked by task ${dep.dependency_id} (${target.title})`);
         node.blockingDependencyIds = [...(node.blockingDependencyIds ?? []), `task-${dep.dependency_id}`];
       }
@@ -884,14 +884,14 @@ export function useMindmapData(): MindmapData {
   // Read through a ref, set in an effect, so `load` does not change identity with `t` — which
   // would re-run the mount effect and reload for nothing. Declared before that effect, so the
   // first load already has it.
-  const delegationWaitTitle = useRef((title: string, _holder: DelegateHolder) => title);
+  const delegationWaitTitle = useRef((title: string, _delegateName: string | null) => title);
   const capacityReason = useRef("Agents at capacity");
   const carriesMissedTitle = useRef<CarriesMissedTitle>(({ title, scope }) => `${title} ${scope}`);
   const compoundReason = useRef("All open sub-items are blocked");
   useEffect(() => {
-    delegationWaitTitle.current = (title: string, holder: DelegateHolder) => t("expectation:delegationWaitTitle", {
+    delegationWaitTitle.current = (title: string, delegateName: string | null) => t("expectation:delegationWaitTitle", {
       title,
-      delegate: holder.kind === "agent" ? t("expectation:delegateAgent") : holder.name ?? t("expectation:delegatePersonUnnamed"),
+      delegate: delegateName ?? t("expectation:delegatePersonUnnamed"),
     });
     capacityReason.current = t("editor:agentsAtCapacity");
     carriesMissedTitle.current = (parts) => t("habits:carriesMissed", parts);
@@ -928,14 +928,14 @@ export function useMindmapData(): MindmapData {
         const [data, mcpVisible] = await Promise.all([loadMindmap(now), loadMcpVisibility()]);
         // People are read only when a Task is delegated to one: their names are what a Person
         // delegate's badge and wait are labelled with, and nothing else on the board needs them.
-        const personNames = namesAPerson(data.tasks.map((task) => task.delegate_to))
+        const personNames = data.tasks.some((task) => task.delegate_to != null)
           ? await loadPersonNames()
           : new Map<number, string>();
         const built = buildTree(
           data.domains, data.goals, data.tasks, data.infos, data.commitments, data.flows,
           data.flow_goals, data.flow_tasks, data.flow_cycles, data.flow_dependencies,
           data.block_reasons, data.task_dependencies, data.flow_instance_nodes,
-          data.expectations, (title, holder) => delegationWaitTitle.current(title, holder),
+          data.expectations, (title, delegateName) => delegationWaitTitle.current(title, delegateName),
           (title) => `${checkPrefix}${title}`, compoundReason.current, capacityReason.current, personNames,
         );
         applyLifecycles(built, lifecycleMap(data.lifecycles));
@@ -1014,7 +1014,7 @@ export function useMindmapData(): MindmapData {
         });
         const newNode: MindmapNode = {
           id: `task-${task.id}`, rowId: task.id, kind: "task", title: task.title,
-          status: task.status, position: task.position, tagIds: [], children: [],
+          status: task.status.status, taskStatus: task.status, position: task.position, tagIds: [], children: [],
         };
         await load(false);
         return newNode;

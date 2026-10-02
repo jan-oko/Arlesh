@@ -47,9 +47,9 @@ describe("AgentStatus", () => {
 
   it.each([
     ["the capacity lock", true, {}, "capacity"],
-    ["a question waiting", false, { questions: 1 }, "question"],
+    ["a task waiting for review", false, { review: 1 }, "question"],
     ["another agent wait", false, { waits: 1 }, "wait"],
-    ["Agentic work In Progress", false, { inProgress: 1 }, "in-progress"],
+    ["Agentic work On Agent", false, { onAgent: 1 }, "on-agent"],
   ] as const)("with only %s, draws the head and that one icon", (_name, capacity, activity, glyph) => {
     given(capacity, activity);
     render(<AgentStatus />);
@@ -57,15 +57,15 @@ describe("AgentStatus", () => {
     expect(glyphs()).toEqual(["head", glyph]);
   });
 
-  it("orders the row capacity, questions, waits, in progress, and spells out the counts", () => {
-    given(true, { questions: 1, waits: 2, inProgress: 3 });
+  it("orders the row capacity, review, waits, on agent, and spells out the counts", () => {
+    given(true, { review: 1, waits: 2, onAgent: 3 });
     render(<AgentStatus />);
 
-    expect(glyphs()).toEqual(["head", "capacity", "question", "wait", "in-progress"]);
+    expect(glyphs()).toEqual(["head", "capacity", "question", "wait", "on-agent"]);
     expect(screen.getByRole("button").getAttribute("title")).toBe(
-      "agentStatus.capacity agentStatus.questions:1 agentStatus.waits:2 agentStatus.inProgress:3 agentStatus.details",
+      "agentStatus.capacity agentStatus.review:1 agentStatus.waits:2 agentStatus.onAgent:3 agentStatus.details",
     );
-    expect(screen.getByRole("button", { name: /agentStatus\.questions:1/ })).toBeDefined();
+    expect(screen.getByRole("button", { name: /agentStatus\.review:1/ })).toBeDefined();
   });
 
   it("opens a menu whose Clear clears the lock", () => {
@@ -81,26 +81,38 @@ describe("AgentStatus", () => {
   });
 
   it("shows the waits in the List View's Expectations option", () => {
-    given(false, { questions: 2 });
+    given(false, { waits: 2 });
     render(<AgentStatus />);
 
     fireEvent.click(screen.getByRole("button"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "agentStatus.show: agentStatus.questions:2" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "agentStatus.show: agentStatus.waits:2" }));
 
     expect(useViewStore.getState().view).toBe("list");
     expect(useListFilterStore.getState().filter.preset).toBe("expectations");
   });
 
-  it("shows Agentic work In Progress in the List View under Do with the Agentic pill", () => {
-    given(false, { inProgress: 1 });
+  it("shows the tasks waiting for review in the List View under Do with the Agentic pill", () => {
+    given(false, { review: 1 });
     render(<AgentStatus />);
 
     fireEvent.click(screen.getByRole("button"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "agentStatus.show: agentStatus.inProgress:1" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "agentStatus.show: agentStatus.review:1" }));
 
     expect(useViewStore.getState().view).toBe("list");
     expect(useFilterStore.getState().filter.statusMode).toBe("do");
     expect(useListFilterStore.getState().filter.pills.agentic).toEqual([{ value: "agentic", mode: "all" }]);
+  });
+
+  it("shows Agentic work On Agent under Do with the On Agent pill on", () => {
+    useFilterStore.setState((s) => ({ filter: { ...s.filter, showOnAgent: false } }));
+    given(false, { onAgent: 1 });
+    render(<AgentStatus />);
+
+    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "agentStatus.show: agentStatus.onAgent:1" }));
+
+    expect(useFilterStore.getState().filter.statusMode).toBe("do");
+    expect(useFilterStore.getState().filter.showOnAgent).toBe(true);
   });
 
   it("closes the menu on Escape", () => {
@@ -114,7 +126,7 @@ describe("AgentStatus", () => {
   });
 
   it("draws no head with its setting off, even with the lock on and waits pending", () => {
-    given(true, { questions: 1, waits: 1, inProgress: 1 });
+    given(true, { review: 1, waits: 1, onAgent: 1 });
     useDisplayStore.setState({ showAgentStatus: false });
     render(<AgentStatus />);
 

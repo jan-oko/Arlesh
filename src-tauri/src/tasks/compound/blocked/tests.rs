@@ -3,7 +3,7 @@
 use super::*;
 use crate::tasks::{
     compound::tests::{commitment, compound, goal, task, wait, Board},
-    model::{ExpectationStatus, Task, Verdict},
+    model::{ExpectationStatus, Status, Task, Verdict},
 };
 
 use crate::tasks::model::TaskStatus::{Done, InProgress, Started, Todo};
@@ -29,7 +29,7 @@ fn edge(task_id: i64, dependency_type: &str, dependency_id: i64) -> TaskDependen
 /// A Compound Task as the board serves it: its status already derived.
 fn served(id: i64, parent: (&str, i64), status: TaskStatus) -> Task {
     Task {
-        status: status.as_str().to_string(),
+        status: Status::Ordinary(status),
         ..compound(id, parent)
     }
 }

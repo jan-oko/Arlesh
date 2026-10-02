@@ -148,8 +148,8 @@ and Asynchronous flags, Backlog state and beads id; a goal template its beads id
 (`template_tags`) and block reasons (`template_block_reasons`). Every occurrence reads them unless its
 overlay says otherwise. They are edited in the flow item's editor, beside the item's cycle pairs and
 dependencies — all but the **delegate**, which a template and an occurrence carry but no editor
-offers to change yet (ruled by the user, 2026-09-24). An occurrence's own Task editor keeps the one
-delegate control every Task has, "Delegate to agent", which writes that occurrence alone.
+offers to change yet (ruled by the user, 2026-09-24). (An occurrence's Task editor had the "Delegate
+to agent" button every Task had until the Agent delegate was removed on 2026-10-01.)
 
 An Expectation template (the wait an Asynchronous Task spawns) is not part of a Habit template. An
 **occurrence** can carry one of its own, as a stored Task does (migration 0062,
@@ -198,7 +198,7 @@ parent — a full editor save — is not a move) and none is deleted or copied; 
 day and is not delegated; a delegation wait's status is its Task's (only the Task being done
 releases it), and nothing schedules checks on it, so it takes no Check every. None of them takes a
 Plan from where it hangs: a spawned wait does not take its Task's, and a wait cuts the Plan chain
-for what is beneath it. A delegation wait is drawn with a label naming who is to finish it ("Agent finish: …", "Tuli
+for what is beneath it. A delegation wait is drawn with a label naming who is to finish it ("Tuli
 finish: …"; see *Delegation* in [Resources](resources.md)) while that title is its Task's; one given
 a title of its own is drawn with it.
 

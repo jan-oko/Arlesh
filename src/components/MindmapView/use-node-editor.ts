@@ -44,7 +44,8 @@ import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
 import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
-import { TASK_STATUS } from "@/utils/status-mapping";
+import { isBegun, storedStatus } from "@/utils/status-mapping";
+import { useAnswerQuestion } from "@/hooks/use-answer-question";
 import { backlogClearedMessage } from "@/utils/task-status-cycle";
 
 /** A flow item's id on the fork an "Archive & new" save landed on — or its own, with no fork. */
@@ -104,6 +105,8 @@ export interface NodeEditorHandles {
   availableForDep: MindmapNode[];
   onDoubleClick: (nodeId: string) => void;
   onTaskSave: (data: TaskSaveData) => Promise<void>;
+  /** Answers an agent's open question from the Task editor: stores the answer, releases the wait. */
+  onAnswer: (question: MindmapNode, answer: string) => Promise<boolean>;
   onGoalSave: (data: GoalSaveData) => Promise<void>;
   onCommitmentSave: (data: CommitmentSaveData) => Promise<void>;
   onExpectationSave: (data: ExpectationSaveData) => Promise<void>;
@@ -203,7 +206,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       const keepsDerived = node.compound === true && data.compound;
       await updateTask(dbId, {
         title: data.title,
-        ...(keepsDerived ? {} : { status: data.status }),
+        // Review is derived: the row holds On Agent, and that is what an unchanged save sends.
+        ...(keepsDerived ? {} : { status: storedStatus(data.status) }),
         ...(data.compound !== (node.compound === true) ? { compound: data.compound } : {}),
         time_scope: data.timeScope,
         on_scope_exit: data.onScopeExit,
@@ -222,7 +226,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       // rather than left to be noticed.
       if (node.backlogged === true && data.archival === TASK_ARCHIVAL.LIVE) {
         if (data.plan !== null) showToast({ nodeId, message: t("backlogClearedByPlan") });
-        else if (data.status === TASK_STATUS.IN_PROGRESS || data.status === TASK_STATUS.STARTED) {
+        else if (isBegun(data.status)) {
           showToast({ nodeId, message: t(backlogClearedMessage(data.status)) });
         }
       }
@@ -237,6 +241,12 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       setEditorModal(null);
     },
     [editorModal, reload, showToast, t],
+  );
+
+  const answerQuestion = useAnswerQuestion({ reload, showToast });
+  const onAnswer = useCallback(
+    (question: MindmapNode, answer: string) => answerQuestion(question.id, rowIdOf(question), answer),
+    [answerQuestion],
   );
 
   const onGoalSave = useCallback(
@@ -473,7 +483,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
 
   return {
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
-    onTaskSave, onGoalSave, onCommitmentSave, onExpectationSave, onSimpleSave, onProjectSave, onInfoSave,
+    onTaskSave, onAnswer, onGoalSave, onCommitmentSave, onExpectationSave, onSimpleSave, onProjectSave, onInfoSave,
     onClearBeadsId,
     onFlowSave, onFlowItemSave,
     checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,

@@ -2338,7 +2338,7 @@ async fn an_in_progress_instance_is_listed_but_does_not_resolve_the_iteration() 
         .await
         .unwrap();
     assert_eq!(statuses.len(), 1);
-    assert_eq!(statuses[0].status, "in_progress");
+    assert_eq!(statuses[0].status.as_str(), "in_progress");
     assert_ne!(
         format!(
             "{:?}",

@@ -89,7 +89,7 @@ function editor() {
 }
 
 const taskSave: TaskSaveData = {
-  title: "Task", status: "todo", blockReasons: [], tagIds: [], addedDeps: [], removedDeps: [],
+  title: "Task", status: { kind: "ordinary", status: "todo" }, blockReasons: [], tagIds: [], addedDeps: [], removedDeps: [],
   timeScope: null, onScopeExit: null, plan: null, archival: "live", isPrivate: false,
   // Master added this field while this branch was open. "Inherit" is where every Task starts, and
   // these tests are about the nullable scope fields, not about the Agentic flag.

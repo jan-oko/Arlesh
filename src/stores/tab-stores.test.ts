@@ -80,7 +80,7 @@ describe("seeding a tab", () => {
       subtreeRootId: "project-7",
       view: {
         view: "list", mindmapOrientation: "vertical", planScopeKind: "day", stepsZoom: 4,
-        zenCommitments: true, zenExpectations: false, zenAgentWaits: false,
+        zenCommitments: true, zenExpectations: false,
       },
       filter: { ...DEFAULT_FILTER, statusMode: "start" },
       listFilter: { ...DEFAULT_LIST_FILTER, preset: "unblock" },

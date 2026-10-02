@@ -52,8 +52,8 @@ View's setting says (ruled by the user). The **focus exemption** holds as elsewh
 Logic](filtering-logic.md)): a card your own edit stops matching — cycling it to Done with `Enter` —
 stays where it is, dimmed, until the selection leaves it.
 
-**Only what you hold** (ruled by the user, 2026-10-01). A **delegated** Task — to the Agent or to a
-Person — gets **no card**, In Progress or not, so the grid shows only work you are doing yourself.
+**Only what you hold** (ruled by the user, 2026-10-01). A **delegated** Task — one a Person holds —
+gets **no card**, In Progress or not, so the grid shows only work you are doing yourself.
 Do itself is unchanged: an in-progress delegated Task still shows in the List View under Do (see
 *Delegation* in [*Tasks*](resources.md)). The rule is the Zen View's own, applied in `zenContents`
 after the List View's Do filter, not part of the Do preset, so neither the backend, the MCP nor
@@ -115,6 +115,16 @@ none. The icon is part of the badge row, so it **hides when the row hides**: wit
 cards* off, or on a card shorter than 72px. (Chosen as the least surprising reading of "the status
 row": one switch and one height rule for everything under the title.)
 
+**Agentic cards** (Task 68f, 2026-10-01; see [*Agentic statuses*](resources.md#agentic-statuses)).
+The grid reads under Do, so of the Agentic Tasks it holds **Doing** (drawn as In Progress, with no
+icon), **Review** always, and **On Agent** only while the Filter menu's **On Agent** pill is on. A
+**Review** card — an agent idle until its question is answered — comes **first** in the grid, says
+its status with **Started's glyph** (the ring with a hollow centre; ruled by the user, 2026-10-02)
+whether or not badges are shown, and draws the agent's open question — its title, its note on hover — with
+an **answer field**: **Send**, or `Ctrl+Enter` in the field, stores the answer and releases the
+question, and the Task reads On Agent again (leaving the grid unless the On Agent pill is on). An On
+Agent card says its status with the **On Agent glyph** (a small bot head inside the ring).
+
 ## The strips
 
 Above the grid, **Commitments first, then Expectations**, each a **single horizontal row of small
@@ -132,26 +142,17 @@ of padding, aspect-washed — that **scrolls sideways** when it is longer than t
   strip is the one place the Zen View reads a preset other than Do; it overrides the preset for this
   strip only. It is a frontend reading: the List View's Expectation filter is asked under Start, and
   nothing reaches the board filter the backend or the MCP sees, so the conformance corpus is
-  unchanged.
-- **Agent finish waits** (ruled by the user, 2026-10-01). A Task delegated to the **Agent** carries a
-  wait, *Agent finish: …*, which the Expectations strip shows like any other. A per-tab switch,
-  **Agent finish waits**, **on by default**, takes those waits out of the strip when turned off;
-  a Person's delegation wait (*Tuli finish: …*) and every ordinary wait stay. A wait counts when it
-  is a delegation wait and the Task it hangs under is delegated to the Agent. It is drawn in the
-  Filter menu's switch block beside the strips' toggles, as a toggle like theirs, and `d` toggles
-  it while the menu is open (Shift and Alt alike; listed in the cheat-sheet's **Filters** section).
-  Unlike the strips' toggles it **lights the Filter button's [dot](mindmap-view.md#filter-dot)**
-  while off, since the waits it hides leave nothing on screen to say so. **Reset** turns it back on.
-  It is not offered in `Ctrl+F`. It is kept with the tab (`zenAgentWaits` in its view state); a tab
-  stored without the field reads as on. Like the grid's delegated rule it is applied in
-  `zenContents`, under the focus exemption.
+  unchanged. **It carries waits on people only**: every **agentic** wait — question or not — is left
+  out (ruled by the user, 2026-10-01). A question is drawn on its Review card; a wait on something
+  else, CI say, is the agent's own business. Both stay in the tree views under their Task, and in the
+  top bar's agent status row.
 - Each strip is shown or hidden by the Zen View's **own per-tab toggle**, **both on by default**,
   independent of the List View's row-kind selector. The toggles are switched **from the Filter
   menu, the way the List View's row kinds are** (ruled by the user, 2026-09-29): a **Commitments**
   and an **Expectations** switch at the top of the switch block, drawn while the Zen View is active,
   with the same keys while the menu is open — `c` / `e` toggle one (Alt too), Shift shows that strip
   alone — and the same `Ctrl+F` results. There is no Tasks switch: the grid is always shown, so
-  both strips may be off. **Reset** turns both back on (and Agent finish waits, and clears the Agentic pill). There is no
+  both strips may be off. **Reset** turns both back on (and clears the Agentic pill). There is no
   view binding for them, as the List View has none for its kinds. The toggles are kept with the tab
   (`zenCommitments`, `zenExpectations` in its view state); a tab stored before the Zen View existed
   has neither field and reads as both on, so it loads unchanged.
@@ -162,16 +163,17 @@ The Zen View has **its own selection**, as each view does, and takes **the List 
 bindings, except every create key** — no `Tab`, `Shift+Enter`, `Shift+E` or any other chord that
 makes a node. The bindings are not copied: the Zen table is built from the List View's own binding
 modules, re-sectioned for the cheat-sheet, with the create modules left out. So a key's meaning can
-never drift between the two views. The strips, the Agent finish waits switch and the Agentic pill are
-switched from the Filter menu (`Alt+F`, then `c` / `e` / `d` / `a`), as the List View's row kinds
-and flags are.
+never drift between the two views. The strips and the Agentic pill are switched from the Filter menu
+(`Alt+F`, then `c` / `e` / `a`), as the List View's row kinds and flags are.
 
 - `↑` `↓` `←` `→` — move in **two dimensions** (below)
 - `Enter` — on a Task, cycle its status (disabled while it is blocked; on a check task, complete the
   check); on a Commitment, cycle its verdict; on an Expectation, release it or take the release back
 - `Alt+Enter` — on a Task, set it **Started** from To Do or Done, or flip In Progress ↔ Started
   (disabled while it is blocked). A Task set Started leaves the grid unless *Show Started tasks on
-  the grid* is on, under the focus exemption like any card an edit stops matching
+  the grid* is on, under the focus exemption like any card an edit stops matching. On an **Agentic**
+  Task it hands one you are Doing back to its agent (On Agent), and is refused out loud on any other
+  Agentic status; `Enter` cycles an Agentic Task Review → Doing → Done → To Do
 - `X` — mark the selected Commitment Broken
 - `E` — open the selected card's editor; a **double click** does the same, a click selects
 - `R` — rename the selected Task in place, in its card

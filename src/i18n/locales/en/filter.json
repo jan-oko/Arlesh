@@ -20,6 +20,11 @@
     "include": "Backlog: included. Click to cycle off → include → exclude.",
     "exclude": "Backlog: excluded. Click to cycle off → include → exclude."
   },
+  "onAgentPill": "On Agent",
+  "onAgentTooltip": {
+    "off": "Agentic tasks an agent holds are hidden from Start, Do and Zen. Click (or o) to show them",
+    "on": "Showing agentic tasks an agent holds. Click (or o) to hide them again"
+  },
   "planScopeLabel": "Plan scope",
   "planScopeAny": "Any scope",
   "planScopeClear": "Clear",
@@ -28,9 +33,6 @@
   "planScopeHint": "Shows only Tasks whose Time Scope is within this scope.",
   "planScopeHintOverlapping": "Shows only Tasks whose Time Scope overlaps this scope.",
   "switchesLabel": "Switches",
-  "zenAgentWaitsGroup": "Waits on the agent",
-  "zenAgentWaits": "Agent finish waits",
-  "zenAgentWaitsTooltip": "Show or hide the waits on Tasks delegated to the agent",
   "nodeTypesLabel": "Node types",
   "rows": {
     "antecedent": "Under",

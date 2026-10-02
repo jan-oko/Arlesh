@@ -2,8 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useSetPrivateMode } from "@/hooks/use-private-mode";
 import type { View } from "@/stores/use-view-store";
-import { filterSwitchesFor, hasZenAgentWaitsSwitch, rowKindsFor } from "@/utils/filter-layout";
-import { useViewStore } from "@/stores/use-view-store";
+import { filterSwitchesFor, offersOnAgent, rowKindsFor } from "@/utils/filter-layout";
 import type { StatusMode } from "@/utils/filter-tree";
 import Switch from "@/components/Switch/Switch";
 import OverridePill from "./OverridePill";
@@ -20,7 +19,8 @@ interface Props {
  * The switch block at the top of the Filter menu. The List View's row kinds (the Zen View's strips)
  * or the Mindmap's
  * Info / Flow pills (with **Include flows** while the preset is Plan or Start), then, in every view,
- * the Private switch and the Archived and Backlog tri-state pills.
+ * the Private switch and the Archived and Backlog tri-state pills, and — wherever Start or Do can be
+ * read — the **On Agent** pill, which shows the Agentic Tasks an agent holds.
  */
 export default function FilterSwitches({ view, statusMode }: Props) {
   const { t } = useTranslation(["filter", "nodeKinds"]);
@@ -31,27 +31,14 @@ export default function FilterSwitches({ view, statusMode }: Props) {
   const setPrivateMode = useSetPrivateMode();
   const cycleArchivedMode = useFilterStore((s) => s.cycleArchivedMode);
   const cycleBacklogMode = useFilterStore((s) => s.cycleBacklogMode);
+  const toggleShowOnAgent = useFilterStore((s) => s.toggleShowOnAgent);
+  const showOnAgent = filter.showOnAgent === true;
   const switches = filterSwitchesFor(view);
-  const zenAgentWaits = useViewStore((s) => s.zenAgentWaits);
-  const toggleZenAgentWaits = useViewStore((s) => s.toggleZenAgentWaits);
   const showFlowsSub = statusMode === "plan" || statusMode === "start";
 
   return (
     <div className={styles.switches}>
       {rowKindsFor(view).length > 0 && <RowKindSelector />}
-      {hasZenAgentWaitsSwitch(view) && (
-        <div className={styles.pills} role="group" aria-label={t("zenAgentWaitsGroup")}>
-          <button
-            type="button"
-            className={`${styles.typePill}${zenAgentWaits ? ` ${styles.typePillActive}` : ""}`}
-            aria-pressed={zenAgentWaits}
-            title={t("zenAgentWaitsTooltip")}
-            onClick={toggleZenAgentWaits}
-          >
-            {t("zenAgentWaits")}
-          </button>
-        </div>
-      )}
       {view === "mindmap" && (
         <div className={styles.pills} role="group" aria-label={t("nodeTypesLabel")}>
           <button type="button" aria-pressed={filter.showInfo} className={`${styles.typePill}${filter.showInfo ? ` ${styles.typePillActive}` : ""}`} onClick={toggleShowInfo}>
@@ -85,6 +72,17 @@ export default function FilterSwitches({ view, statusMode }: Props) {
             title={t(`backlogTooltip.${filter.backlogMode}`)}
             onCycle={cycleBacklogMode}
           />
+        )}
+        {offersOnAgent(view) && (
+          <button
+            type="button"
+            aria-pressed={showOnAgent}
+            className={`${styles.typePill}${showOnAgent ? ` ${styles.typePillActive}` : ""}`}
+            title={t(showOnAgent ? "onAgentTooltip.on" : "onAgentTooltip.off")}
+            onClick={toggleShowOnAgent}
+          >
+            {t("onAgentPill")}
+          </button>
         )}
       </div>
     </div>

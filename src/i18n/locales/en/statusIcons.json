@@ -15,7 +15,6 @@
   "broken": "Broken",
   "unresolved": "No verdict recorded yet",
   "agentic": "Agentic — work an agent could take",
-  "delegatedAgent": "Delegated to the agent",
   "delegatedPerson": "Delegated to {{name}}",
   "delegatedPersonUnnamed": "someone",
   "asynchronous": "Asynchronous — doing this starts a wait",

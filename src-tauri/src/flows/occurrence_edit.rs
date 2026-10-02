@@ -31,8 +31,8 @@ use crate::{
     },
     scopes::resolve::interval_contains,
     tasks::model::{
-        Commitment, Delegate, Goal, Task, TaskArchival, TaskStatus, TimeScope,
-        UpdateCommitmentRequest, UpdateGoalRequest, UpdateTaskRequest,
+        Commitment, Delegate, Goal, Status, Task, TaskArchival, TimeScope, UpdateCommitmentRequest,
+        UpdateGoalRequest, UpdateTaskRequest,
     },
 };
 
@@ -266,17 +266,20 @@ pub async fn update_task(
     let template = template_values(db, &flow, key, iteration_index(&current.origin)).await?;
     let mut overlay = db.overlays().task(key).await?;
 
+    // What the occurrence reads as after the write — by the one resolver the app's tree agrees
+    // with: its own value, its template tree, then the Habit's host — decides its status model,
+    // as a stored Task's kind does.
+    let agentic = match request.agentic.map(|agentic| agentic.as_column()) {
+        Some(Some(flag)) => flag,
+        Some(None) => crate::tasks::agentic::occurrence_inherits_agentic(db, key).await?,
+        None => crate::tasks::agentic::occurrence_reads_agentic(db, key).await?,
+    };
+    let before = current.status.stored();
+    let status =
+        crate::tasks::agentic::settle_status(&current.title, before, request.status, agentic)?;
     // Starting an occurrence that reads as Agentic needs a Spec, exactly as starting a stored Task
-    // does — Agentic resolved by the one resolver the app's tree agrees with: its own value, its
-    // template tree, then the Habit's host.
-    if request.status.as_ref().is_some_and(TaskStatus::is_begun)
-        && !TaskStatus::is_begun_str(&current.status)
-    {
-        let agentic = match request.agentic.map(|agentic| agentic.as_column()) {
-            Some(Some(flag)) => flag,
-            Some(None) => crate::tasks::agentic::occurrence_inherits_agentic(db, key).await?,
-            None => crate::tasks::agentic::occurrence_reads_agentic(db, key).await?,
-        };
+    // does.
+    if request.status.as_ref().is_some_and(Status::is_begun) && !before.is_begun() {
         let brief = match &request.agentic_brief {
             Some(brief) => brief.clone(),
             None => current.agentic_brief.clone(),
@@ -292,8 +295,14 @@ pub async fn update_task(
     if let Some(title) = request.title {
         overlay.title = (title != template.title).then_some(title);
     }
-    if let Some(status) = &request.status {
-        apply_task_status(&mut overlay, status, now);
+    if request.status.is_none() && status != before {
+        // A change of kind converts the status it held, and nothing else about it.
+        overlay.status = (!status.is_todo())
+            .then(|| status.as_db().map(str::to_string))
+            .flatten();
+    }
+    if request.status.is_some() {
+        apply_task_status(&mut overlay, &status, now);
         // Begun work is not work set aside — the same rule a stored Task follows.
         if status.is_begun() && request.archival.is_none() {
             overlay.archival = (template.fields.archival != TaskArchival::Live)
@@ -386,16 +395,23 @@ pub async fn update_task(
         (true, None) => {}
     }
     db.overlays().put_task(flow_id.0, key, &overlay).await?;
+    // The occurrences beneath it in the template tree, and the rows hung on them, may change kind
+    // with it.
+    if request.agentic.is_some() {
+        crate::tasks::agentic::reconcile(db, vec![crate::tasks::agentic::Reach::Habit(flow_id.0)])
+            .await?;
+    }
     Ok(())
 }
 
-/// A Task status in the overlay's vocabulary: To Do is the default and clears it.
-fn apply_task_status(overlay: &mut TaskOverlay, status: &TaskStatus, now: NaiveDateTime) {
+/// A Task status in the overlay's vocabulary, in either model: To Do is the default and clears
+/// it.
+fn apply_task_status(overlay: &mut TaskOverlay, status: &Status, now: NaiveDateTime) {
     overlay.status = match status {
-        TaskStatus::Todo => None,
-        other => Some(other.as_str().to_string()),
+        status if status.is_todo() => None,
+        other => other.as_db().map(str::to_string),
     };
-    overlay.resolved_at = (*status == TaskStatus::Done).then(|| resolved_at_ms(now));
+    overlay.resolved_at = status.is_done().then(|| resolved_at_ms(now));
     // A status given to an archived occurrence brings it back into play.
     overlay.tombstone = None;
 }

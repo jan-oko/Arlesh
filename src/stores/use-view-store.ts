@@ -49,12 +49,6 @@ export interface ViewState {
    */
   zenCommitments: boolean;
   zenExpectations: boolean;
-  /**
-   * Whether the Zen View's Expectations strip draws the waits that exist because a Task is
-   * delegated to the **Agent**. Per tab, on by default; off, those waits leave the strip and every
-   * other wait — a Person's delegation wait included — stays.
-   */
-  zenAgentWaits: boolean;
 }
 
 /** One of the Zen View's two strips. */
@@ -76,11 +70,8 @@ export interface ViewStore extends ViewState {
   toggleZenStrip: (strip: ZenStrip) => void;
   /** Shows that strip alone — the Filter menu's Shift+letter, as the List View's row kinds have. */
   showOnlyZenStrip: (strip: ZenStrip) => void;
-  /** Shows both strips again — the Filter menu's Reset — and the Agent's delegation waits with them. */
+  /** Shows both strips again — the Filter menu's Reset. */
   showAllZenStrips: () => void;
-  /** Shows the Agent's delegation waits in the Expectations strip if they are hidden, hides them if
-   * they are shown. */
-  toggleZenAgentWaits: () => void;
 }
 
 export const DEFAULT_VIEW_STATE: ViewState = {
@@ -90,7 +81,6 @@ export const DEFAULT_VIEW_STATE: ViewState = {
   stepsZoom: DEFAULT_STEPS_ZOOM,
   zenCommitments: true,
   zenExpectations: true,
-  zenAgentWaits: true,
 };
 
 /**
@@ -117,8 +107,7 @@ export function createViewStore(seed: ViewState = DEFAULT_VIEW_STATE): StoreApi<
       set((s) => (strip === "commitments" ? { zenCommitments: !s.zenCommitments } : { zenExpectations: !s.zenExpectations })),
     showOnlyZenStrip: (strip) =>
       set({ zenCommitments: strip === "commitments", zenExpectations: strip === "expectations" }),
-    showAllZenStrips: () => set({ zenCommitments: true, zenExpectations: true, zenAgentWaits: true }),
-    toggleZenAgentWaits: () => set((s) => ({ zenAgentWaits: !s.zenAgentWaits })),
+    showAllZenStrips: () => set({ zenCommitments: true, zenExpectations: true }),
   }));
 }
 

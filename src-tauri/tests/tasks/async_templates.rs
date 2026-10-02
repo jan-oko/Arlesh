@@ -9,7 +9,7 @@ use arlesh_lib::{
         add_task_dependency, create_task, get_task_with_blockers,
         model::{
             AsyncTemplate, CreateTaskRequest, Dependency, DurationSpec, ExpectationStatus, TaskId,
-            TaskStatus, UpdateSpawnedWaitRequest, UpdateTaskRequest,
+            UpdateSpawnedWaitRequest, UpdateTaskRequest,
         },
         update_task,
         waits::{complete_spawned_check, derive_wait_windows, update_spawned_wait},
@@ -61,14 +61,18 @@ async fn task(pool: &sqlx::SqlitePool, project: i64, title: &str) -> i64 {
 
 fn done() -> UpdateTaskRequest {
     UpdateTaskRequest {
-        status: Some(TaskStatus::Done),
+        status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+            arlesh_lib::tasks::model::TaskStatus::Done,
+        )),
         ..Default::default()
     }
 }
 
 fn reopened() -> UpdateTaskRequest {
     UpdateTaskRequest {
-        status: Some(TaskStatus::Todo),
+        status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+            arlesh_lib::tasks::model::TaskStatus::Todo,
+        )),
         ..Default::default()
     }
 }
@@ -184,7 +188,9 @@ async fn an_asynchronous_task_without_a_template_spawns_nothing() {
         id,
         UpdateTaskRequest {
             asynchronous: Some(true),
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
     )

@@ -245,9 +245,6 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
               value={agentic}
               inherited={false}
               onChange={setAgentic}
-              delegatedToAgent={false}
-              offersDelegate={false}
-              onToggleDelegate={() => undefined}
             />
             {agentic === TASK_AGENTIC.YES && (
               <div role="group" aria-label={t("agenticBriefSection")}>

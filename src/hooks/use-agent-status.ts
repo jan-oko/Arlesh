@@ -14,10 +14,14 @@ export interface AgentStatus extends AgentActivity {
   isActive: boolean;
   /** Clears the agent capacity lock. */
   clearCapacity: () => void;
+  /** Shows the Agentic Tasks waiting on the user's Review: the List View under Do, where Review
+   * shows first, with the Agentic pill. */
+  showReview: () => void;
   /** Shows the pending waits: the List View under its Expectations option. */
   showWaits: () => void;
-  /** Shows the Agentic Tasks In Progress: the List View under Do, with the Agentic pill. */
-  showInProgress: () => void;
+  /** Shows the Agentic Tasks On Agent: the List View under Do with the On Agent pill on, and the
+   * Agentic pill. */
+  showOnAgent: () => void;
 }
 
 /**
@@ -30,6 +34,7 @@ export function useAgentStatus(): AgentStatus {
   const activity = useAgentActivityStore((s) => s.activity);
   const setView = useViewStore((s) => s.setView);
   const setStatusMode = useFilterStore((s) => s.setStatusMode);
+  const toggleShowOnAgent = useFilterStore((s) => s.toggleShowOnAgent);
   const setListPreset = useListFilterStore((s) => s.setPreset);
   const addPill = useListFilterStore((s) => s.addPill);
 
@@ -38,13 +43,17 @@ export function useAgentStatus(): AgentStatus {
     setView("list");
     setListPreset("expectations");
   }, [setView, setListPreset]);
-  const showInProgress = useCallback(() => {
+  const showReview = useCallback(() => {
     setView("list");
     setStatusMode("do");
     setListPreset("do");
     addPill("agentic", "agentic", "all");
   }, [setView, setStatusMode, setListPreset, addPill]);
+  const showOnAgent = useCallback(() => {
+    showReview();
+    if (useFilterStore.getState().filter.showOnAgent !== true) toggleShowOnAgent();
+  }, [showReview, toggleShowOnAgent]);
 
-  const isActive = atCapacity || activity.questions + activity.waits + activity.inProgress > 0;
-  return { ...activity, atCapacity, isActive, clearCapacity, showWaits, showInProgress };
+  const isActive = atCapacity || activity.review + activity.waits + activity.onAgent > 0;
+  return { ...activity, atCapacity, isActive, clearCapacity, showReview, showWaits, showOnAgent };
 }
