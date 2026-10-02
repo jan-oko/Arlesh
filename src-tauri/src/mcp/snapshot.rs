@@ -73,7 +73,10 @@ impl ArleshMcp {
         };
         let now = now.unwrap_or_else(|| self.now());
 
-        let mut load = match crate::mindmap::load(&mut db, now).await {
+        // The agent capacity lock blocks Agentic work here exactly as it does on the user's board:
+        // its reasons ride in `block_reasons`, and Start and Unblock read them as they read any.
+        let at_capacity = self.capacity.get().await.at_capacity;
+        let mut load = match crate::mindmap::load_blocked(&mut db, now, at_capacity).await {
             Ok(load) => load,
             Err(error) => return result::failed(error),
         };

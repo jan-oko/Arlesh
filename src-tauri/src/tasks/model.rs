@@ -287,7 +287,7 @@ impl GoalStatus {
 }
 
 /// What happens to a scoped item once its Time Scope has fully passed while still unfinished.
-/// The single-occurrence form of a Habit's Consumption root.
+/// The single-occurrence form of a Window Habit's miss policy (Archive, or Owed as Keep Overdue).
 ///
 /// It also decides the item's **default due** (see [`crate::tasks::lifecycle::effective_due`]):
 /// Keep Overdue makes the Time Scope the due, Archive leaves the item with none.

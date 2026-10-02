@@ -13,8 +13,8 @@
 //!
 //! # The horizon
 //!
-//! Every iteration since the Habit began is derived: resolution, Lapsed/Missed and catch-up all
-//! read the past. Of the future, only the iteration that is open now, any later iteration that
+//! Every iteration since the Habit began is derived: resolution, Lapsed/Missed, the run of missed
+//! windows an open iteration carries, and an Interval Habit's chain all read the past. Of the future, only the iteration that is open now, any later iteration that
 //! carries an overlay or an attached child — so an edit made to a future occurrence is never lost
 //! — and any window a caller names ([`Horizon::through`]).
 
@@ -23,15 +23,16 @@ use std::collections::{HashMap, HashSet};
 use chrono::{NaiveDate, NaiveDateTime};
 
 use super::{
+    clock_slots,
     error::FlowError,
-    habit_slots,
-    habits::{classify_iterations, expire_unanswered, instance_timing, Consumption, SlotWindow},
+    habits::{classify_iterations, expire_unanswered, instance_timing, Clock, SlotWindow},
+    iteration_window,
     model::{
         Flow, FlowDependency, FlowGoal, FlowId, FlowItemCycle, FlowRecurrence, FlowTask,
-        HabitIteration, InstanceTiming, IterationStatus,
+        HabitIteration, InstanceTiming, IterationStatus, MissPolicy,
     },
-    parse_consumption, resolve_cycle, resolve_flow_window, resolve_root_plan, target_parent_type,
-    verdict_deadlines, whole_scope_plan, window_spec,
+    parse_clock, resolve_cycle, resolve_root_plan, target_parent_type, verdict_deadlines,
+    whole_scope_plan,
 };
 use crate::{
     block_reasons::model::BlockReason,
@@ -45,10 +46,11 @@ use crate::{
         registry,
         relations::TagDifferences,
     },
-    scopes::key::ScopeKey,
+    scopes::{key::ScopeKey, resolve::Bounds},
     tasks::{
         lifecycle::{
-            derive_commitment_state, derive_timing, Archival, ItemLifecycle, Resolution, Timing,
+            derive_commitment_state, derive_overdue, derive_timing, Archival, ItemLifecycle,
+            Resolution, Timing,
         },
         model::{
             Commitment, Delegate, DurationSpec, Goal, OnScopeExit, Task, TaskArchival,
@@ -280,8 +282,18 @@ pub fn set_aside(
 struct Iteration<'a> {
     iteration: &'a HabitIteration,
     slot: &'a SlotWindow,
-    /// The iteration's window as a Time Scope — the root's own.
-    window: TimeScope,
+    /// The root's relevance: the iteration's window as a Time Scope — reaching back to the first
+    /// missed window when it carries a run of Missed ones (Window + Overdue) — or `None` for an
+    /// Unscoped Interval Habit's, which has no window.
+    relevance: Option<TimeScope>,
+    /// When the root, and every occurrence that shares its window, is due by its Habit's clock —
+    /// before any explicit due in an overlay (see [`default_due`]).
+    due: Option<Bounds>,
+    /// The first day of the iteration's own window, which Cycle Scopes are offsets into; `None`
+    /// when the Habit is Unscoped.
+    window_start: Option<NaiveDate>,
+    /// The first day of the first missed window this iteration carries, under Window + Overdue.
+    missed_from: Option<NaiveDate>,
     /// The root's Cycle Plan resolved in this iteration, when the flow carries one.
     root_plan: Option<TimeScope>,
 }
@@ -324,7 +336,7 @@ pub async fn derive_habit<M: SessionMode>(
     };
     let touched = touched_iterations(db, flow.id).await?;
 
-    let (iterations, slots, consumption) =
+    let (iterations, slots, clock) =
         schedule(db, flow, &recurrence, &overlays, &touched, now, horizon).await?;
     let by_index: HashMap<i64, &SlotWindow> = slots.iter().map(|slot| (slot.index, slot)).collect();
 
@@ -333,25 +345,63 @@ pub async fn derive_habit<M: SessionMode>(
         let Some(slot) = by_index.get(&iteration.index) else {
             continue;
         };
-        let (window, window_start) = resolve_flow_window(flow, slot.start.date())?;
-        let root_plan = resolve_root_plan(flow, Some(window_start))?;
+        let window = iteration_window(flow, slot.scope_id)?;
+        let window_start = window.as_ref().map(|(_, start)| *start);
+        let window = window.map(|(window, _)| window);
+        // What a Window + Overdue iteration carries: the first missed window's, which its
+        // relevance reaches back to and its due is.
+        let missed = iteration.missed_from.and_then(|index| by_index.get(&index));
+        let carried = match missed {
+            Some(missed) => iteration_window(flow, missed.scope_id)?.map(|(window, _)| window),
+            None => None,
+        };
+        let relevance = match (&window, &carried) {
+            (Some(own), Some(first)) => Some(TimeScope {
+                start_id: first.start_id,
+                end_id: own.end_id,
+                duration: None,
+            }),
+            _ => window.clone(),
+        };
+        let due = default_due(
+            clock,
+            carried.as_ref().or(window.as_ref()).map(TimeScope::window),
+        );
         let context = Iteration {
             iteration,
             slot,
-            window,
-            root_plan,
+            relevance,
+            due,
+            window_start,
+            missed_from: missed.map(|missed| missed.start.date()),
+            root_plan: resolve_root_plan(flow, window_start)?,
         };
         let built = build_iteration(
             flow,
             &template,
             (&overlays, &relations),
             &context,
-            consumption,
+            clock,
             now,
         )?;
         rows.extend(built);
     }
     Ok(rows)
+}
+
+/// When an occurrence whose window is `window` is due by its Habit's clock, before any explicit
+/// due in its overlay (ruled by the user, 2026-09-30):
+///
+/// - **Window + Archive**: never — a missed occurrence lapses and archives instead.
+/// - **Window + Owed**: its own window.
+/// - **Window + Overdue**: its own window, or — for the iteration carrying a run of Missed ones,
+///   and every occurrence sharing its window — the first missed window, which the caller passes.
+/// - **Interval**: its window; none when the Habit is Unscoped, since there is none.
+pub(crate) fn default_due(clock: Clock, window: Option<Bounds>) -> Option<Bounds> {
+    match clock {
+        Clock::Window(MissPolicy::Archive) => None,
+        Clock::Window(MissPolicy::Owed | MissPolicy::Overdue) | Clock::Interval => window,
+    }
 }
 
 /// The iterations of this Habit that carry an overlay, a relation or an attached child.
@@ -382,16 +432,8 @@ async fn schedule<M: SessionMode>(
     touched: &HashSet<ScopeKey>,
     now: NaiveDateTime,
     horizon: Horizon,
-) -> Result<(Vec<HabitIteration>, Vec<SlotWindow>, Consumption), FlowError> {
-    let flow_kind = flow
-        .flow_duration_kind
-        .clone()
-        .ok_or_else(|| FlowError::Invalid("a habit requires a scoped flow".to_string()))?;
-    let spec = window_spec(flow, &flow_kind, flow.flow_duration_n.unwrap_or(1))?;
-    let consumption = parse_consumption(recurrence)?;
-    let start_date = recurrence.start_scope_id.start_date();
-    let end_date = recurrence.end_scope_id.map(|end| end.start_date());
-    let gap = recurrence.gap_n.zip(recurrence.gap_kind.clone());
+) -> Result<(Vec<HabitIteration>, Vec<SlotWindow>, Clock), FlowError> {
+    let clock = parse_clock(recurrence)?;
 
     // The furthest day anything asks for: now, the named window, and the latest touched date.
     let furthest = touched
@@ -402,14 +444,21 @@ async fn schedule<M: SessionMode>(
         .map_or(now, |date| {
             date.and_hms_opt(23, 59, 59).map_or(now, |end| end.max(now))
         });
-    let slots = habit_slots(start_date, spec, gap.as_ref(), end_date, furthest)?;
+    let template_keys = instance_keys(db, flow).await?;
+    let parents = occurrence_parents(db, FlowId(flow.id), &template_keys).await?;
+    let completions = Completions {
+        keys: &template_keys,
+        overlays,
+        parents: &parents,
+    };
+    let slots = clock_slots(flow, recurrence, clock, furthest, |slot| {
+        completions.completed_at(slot)
+    })?;
     let (started, future): (Vec<SlotWindow>, Vec<SlotWindow>) =
         slots.iter().cloned().partition(|slot| slot.start <= now);
 
-    let template_keys = instance_keys(db, flow).await?;
-    let parents = occurrence_parents(db, FlowId(flow.id), &template_keys).await?;
-    let resolved = resolutions(&started, &template_keys, overlays, &parents);
-    let classified = classify_iterations(&started, consumption, &resolved, now);
+    let resolved = completions.resolutions(&started);
+    let classified = classify_iterations(&started, clock, &resolved, now);
     let mut iterations = expire_unanswered(classified, &verdict_deadlines(flow, &started), now);
     for slot in &future {
         let date = slot.start.date();
@@ -421,11 +470,69 @@ async fn schedule<M: SessionMode>(
                 anchor_date: date.format("%Y-%m-%d").to_string(),
                 window_end: slot.end.format("%Y-%m-%dT%H:%M:%S").to_string(),
                 status: IterationStatus::Upcoming,
+                missed_from: None,
                 instances: Vec::new(),
             });
         }
     }
-    Ok((iterations, slots, consumption))
+    Ok((iterations, slots, clock))
+}
+
+/// What decides whether one of a Habit's iterations is complete, read once and asked of each
+/// iteration: every instance an iteration holds, where each nests, and what their overlays record.
+pub(super) struct Completions<'a> {
+    /// Every instance one iteration holds.
+    pub(super) keys: &'a [InstanceKey],
+    /// The Habit's overlays.
+    pub(super) overlays: &'a HabitOverlays,
+    /// Each instance's parent instance.
+    pub(super) parents: &'a HashMap<InstanceKey, InstanceKey>,
+}
+
+impl Completions<'_> {
+    /// Each of `slots` that is complete, with the instant it was — see [`resolutions`].
+    pub(super) fn resolutions(&self, slots: &[SlotWindow]) -> HashMap<i64, NaiveDateTime> {
+        resolutions(slots, self.keys, self.overlays, self.parents)
+    }
+
+    /// The instant the iteration in `slot` was completed, or `None` while it is not.
+    pub(super) fn completed_at(&self, slot: &SlotWindow) -> Option<NaiveDateTime> {
+        self.resolutions(std::slice::from_ref(slot))
+            .get(&slot.index)
+            .copied()
+    }
+}
+
+/// [`Completions`]' inputs, owned — what [`super::FlowOperator`] reads for a Habit that has not
+/// been read whole.
+pub(super) struct CompletionInputs {
+    /// Every instance one iteration holds.
+    pub(super) keys: Vec<InstanceKey>,
+    /// The Habit's overlays.
+    pub(super) overlays: HabitOverlays,
+    /// Each instance's parent instance.
+    pub(super) parents: HashMap<InstanceKey, InstanceKey>,
+}
+
+impl CompletionInputs {
+    /// Borrows these as [`Completions`].
+    fn completions(&self) -> Completions<'_> {
+        Completions {
+            keys: &self.keys,
+            overlays: &self.overlays,
+            parents: &self.parents,
+        }
+    }
+
+    /// Each of `slots` that is complete, with the instant it was.
+    pub(super) fn resolutions(&self, slots: &[SlotWindow]) -> HashMap<i64, NaiveDateTime> {
+        self.completions().resolutions(slots)
+    }
+
+    /// The instant the iteration in `slot` was completed, or `None` while it is not.
+    pub(super) fn completed_at(&self, slot: &SlotWindow) -> Option<NaiveDateTime> {
+        self.completions().completed_at(slot)
+    }
 }
 
 /// Every instance one iteration holds, as `(template item, cycle pair)`: the root, then each item
@@ -575,6 +682,8 @@ struct Occurrence {
     is_private: bool,
     time_scope: Option<TimeScope>,
     plan: Option<TimeScope>,
+    /// When it is due by its Habit's clock, before any explicit due in its overlay.
+    due: Option<Bounds>,
     timing: InstanceTiming,
     /// Whether being done finishes it for good: its own window has passed, and no verdict is still
     /// owed over it. See [`settled_timing`].
@@ -590,7 +699,7 @@ fn build_iteration(
     template: &Template,
     (overlays, relations): (&HabitOverlays, &HabitRelations),
     context: &Iteration<'_>,
-    consumption: Consumption,
+    clock: Clock,
     now: NaiveDateTime,
 ) -> Result<DerivedRows, FlowError> {
     let date = context.slot.start.date();
@@ -606,6 +715,8 @@ fn build_iteration(
             .map(|_| "part".to_string())
             .or_else(|| flow.flow_duration_kind.clone()),
         status: context.iteration.status,
+        missed_from: context.missed_from,
+        owed: owed(flow, clock, context, now),
     };
     let origin_of = |item: TemplateItem, cycle: i64| {
         Origin::Habit(HabitOrigin {
@@ -638,7 +749,12 @@ fn build_iteration(
     // A commitment Habit's work is answered for by the verdict, which its Verdict Window bounds;
     // nothing it generates is finished by its window passing.
     let verdict_owed = flow.instance_type == "commitment";
-    let window_passed = |end: NaiveDateTime| !verdict_owed && end <= now;
+    // An Unscoped Interval Habit's instances have no window to pass: a done one is finished once
+    // its iteration is — by then the next instance has taken its place.
+    let iteration_done = context.iteration.status == IterationStatus::Done;
+    let unscoped = context.window_start.is_none();
+    let window_passed =
+        |end: NaiveDateTime| !verdict_owed && if unscoped { iteration_done } else { end <= now };
     let mut occurrences = vec![Occurrence {
         key: root_key,
         kind: occurrence_kind(flow, TemplateKind::FlowRoot),
@@ -647,13 +763,13 @@ fn build_iteration(
         title: flow.title.clone(),
         position: context.iteration.index,
         is_private: flow.is_private,
-        time_scope: Some(context.window.clone()),
+        time_scope: context.relevance.clone(),
         plan: context.root_plan.clone(),
+        due: context.due,
         timing: root_timing,
         // The root closes with its iteration: only a Done iteration's root is finished, so a root
         // ticked off above work still open keeps that work company.
-        closes_when_done: context.iteration.status == IterationStatus::Done
-            && window_passed(context.slot.end),
+        closes_when_done: iteration_done && window_passed(context.slot.end),
         origin: origin_of(root_item, NO_CYCLE),
         fields: flow.template.clone(),
     }];
@@ -705,16 +821,20 @@ fn build_iteration(
             draws.push(None);
         }
         for pair in draws {
-            let resolved = resolve_cycle(pair, Some(date))?;
-            let (time_scope, plan, window) = match resolved {
+            let resolved = resolve_cycle(pair, context.window_start)?;
+            // A pair with a Cycle Scope of its own is due by that window; one with none shares
+            // the root's window, and its due with it.
+            let (time_scope, plan, window, due) = match resolved {
                 Some(resolved) => {
                     let bounds = resolved.scope.bounds();
-                    (Some(resolved.time_scope), resolved.plan, bounds)
+                    let due = default_due(clock, Some(bounds));
+                    (Some(resolved.time_scope), resolved.plan, bounds, due)
                 }
                 None => (
                     None,
-                    whole_scope_plan(pair, Some(date))?,
+                    whole_scope_plan(pair, context.window_start)?,
                     (context.slot.start, context.slot.end),
+                    context.due,
                 ),
             };
             let cycle = pair.map_or(NO_CYCLE, |pair| pair.id);
@@ -732,7 +852,8 @@ fn build_iteration(
                 is_private,
                 time_scope,
                 plan,
-                timing: instance_timing(consumption, context.iteration.status, window, now),
+                due,
+                timing: instance_timing(clock, context.iteration.status, window, now),
                 closes_when_done: window_passed(window.1),
                 origin: origin_of(item, cycle),
                 fields: fields.clone(),
@@ -767,8 +888,11 @@ fn build_iteration(
             "goal" => {
                 let overlay = overlays.goals.get(&node_key).cloned().unwrap_or_default();
                 let reasons = reasons_of(overlay.block_reasons_set);
-                let (mut goal, mut lifecycle) = goal_row(occurrence, overlay, consumption, expired);
+                let due = occurrence.due;
+                let (mut goal, mut lifecycle) = goal_row(occurrence, overlay, clock, expired);
                 archive_if_held(&mut lifecycle, &aside, &node_key);
+                let achieved = goal.status == "achieved" || goal.status == "archived";
+                lifecycle.overdue = derive_overdue(due, achieved, lifecycle.archival, now);
                 goal.tag_ids = tag_ids;
                 push_reasons(&mut rows.block_reasons, "goal", &goal.id, reasons);
                 rows.goals.push(goal);
@@ -791,8 +915,12 @@ fn build_iteration(
             _ => {
                 let overlay = overlays.tasks.get(&node_key).cloned().unwrap_or_default();
                 let reasons = reasons_of(overlay.block_reasons_set);
-                let (mut task, mut lifecycle) = task_row(occurrence, overlay, consumption, expired);
+                let default = occurrence.due;
+                let (mut task, mut lifecycle) = task_row(occurrence, overlay, clock, expired);
                 archive_if_held(&mut lifecycle, &aside, &node_key);
+                let due = occurrence_due(&task, default);
+                lifecycle.overdue =
+                    derive_overdue(due, task.status == "done", lifecycle.archival, now);
                 // Its own Expectation template, kept only while it is Asynchronous.
                 if task.asynchronous {
                     task.async_template = overlays.async_templates.get(&node_key).cloned();
@@ -808,6 +936,17 @@ fn build_iteration(
         }
     }
     Ok(rows)
+}
+
+/// Whether an iteration is **owed** work: under Window + Owed, its window has passed and it is
+/// still open (unfinished, so Active). The board draws it outside the Habit's folded history
+/// (ruled by the user, 2026-10-01). Not a commitment Habit's: an unanswered night is a verdict
+/// still owed, which its Verdict Window already bounds, not open work.
+fn owed(flow: &Flow, clock: Clock, context: &Iteration<'_>, now: NaiveDateTime) -> bool {
+    clock == Clock::Window(MissPolicy::Owed)
+        && flow.instance_type != "commitment"
+        && context.iteration.status == IterationStatus::Active
+        && context.slot.end <= now
 }
 
 /// The node keys of one iteration's occurrences an archive holds: each one archived by hand, and
@@ -905,20 +1044,24 @@ fn template_edges(
     edges
 }
 
-/// The On-exit behaviour an occurrence with a window of its own reads: its Habit's Consumption.
-fn on_exit(consumption: Consumption, time_scope: &Option<TimeScope>) -> Option<OnScopeExit> {
-    time_scope.as_ref().map(|_| match consumption {
-        Consumption::Destructive => OnScopeExit::Archive,
-        _ => OnScopeExit::Keep,
+/// The On-exit behaviour an occurrence with a window of its own reads: Archive under Window +
+/// Archive, Keep Overdue under every other clock.
+fn on_exit(clock: Clock, time_scope: &Option<TimeScope>) -> Option<OnScopeExit> {
+    time_scope.as_ref().map(|_| {
+        if clock.lapses_on_exit() {
+            OnScopeExit::Archive
+        } else {
+            OnScopeExit::Keep
+        }
     })
 }
 
 /// An occurrence's timing once whether it is done is known.
 ///
-/// [`instance_timing`] places an occurrence by its window and its Habit's Consumption alone, and
-/// under Accumulating a passed window leaves it Active — which is right for *unfinished* work, the
-/// pile-up Accumulating means. Done work does not pile up: a done occurrence whose window has
-/// passed is Lapsed whatever the Consumption, so it resolves Completed and archives, exactly as a
+/// [`instance_timing`] places an occurrence by its window and its Habit's clock alone, and under
+/// every clock but Window + Archive a passed window leaves it Active — which is right for
+/// *unfinished* work, which stays open and comes due. Done work does not pile up: a done
+/// occurrence whose window has passed is Lapsed whatever the clock, so it resolves Completed and archives, exactly as a
 /// stored Task or Goal does (`docs/spec/time-scopes.md`, On-exit behavior).
 fn settled_timing(timing: InstanceTiming, done: bool, closes_when_done: bool) -> InstanceTiming {
     if done && closes_when_done {
@@ -927,23 +1070,24 @@ fn settled_timing(timing: InstanceTiming, done: bool, closes_when_done: bool) ->
     timing
 }
 
-/// Whether a Habit occurrence is flagged **Overdue**: never, for now.
-///
-/// An occurrence's due is its Habit's **miss policy** to decide (Window + Archive: none; Window +
-/// Owed: its own window; Window + Overdue: the missed window; Interval: its window), and an
-/// explicit due in its overlay would win — Task #245 builds those. Until then it has no due, which
-/// keeps every occurrence exactly where it stood when Overdue was a Resolution its lifecycle never
-/// read. This is the one place that answer changes.
-fn occurrence_overdue() -> bool {
-    false
+/// The due a Task occurrence is judged **Overdue** against: an explicit due in its overlay wins;
+/// otherwise the default its Habit's clock gives it ([`default_due`]) — unless it is backlogged,
+/// since work deliberately set aside is not late, exactly as for a stored Task.
+fn occurrence_due(task: &Task, default: Option<Bounds>) -> Option<Bounds> {
+    crate::tasks::lifecycle::effective_due(
+        task.due_scope.as_ref().map(TimeScope::window),
+        default.map(|window| (window, OnScopeExit::Keep)),
+        task.archival == TaskArchival::Backlog,
+    )
 }
 
 /// A Task or Goal occurrence's lifecycle, by the Habit's rules: pending until its window opens,
-/// active while it is open, and once past — Lapsed under Destructive, with its iteration Lapsed or
+/// active while it is open, and once past — Lapsed under Window + Archive, with its iteration Lapsed or
 /// Missed, or done (see [`settled_timing`]) — archived as a unit, Completed if it was done and
 /// Missed if not. An iteration whose Verdict Window ran out (a commitment Habit's supporting
 /// steps) is archived with no Resolution at all. A tombstone archives it by hand; a Backlog shows
-/// while it is live.
+/// while it is live. The Overdue flag is the caller's, once everything that can archive the
+/// occurrence has had its say.
 fn work_lifecycle(
     kind: &str,
     id: NodeId,
@@ -982,7 +1126,7 @@ fn work_lifecycle(
         node_id: id,
         timing,
         resolution,
-        overdue: occurrence_overdue(),
+        overdue: false,
         verdict: None,
         archival,
         archival_conflict: archived && backlogged,
@@ -994,7 +1138,7 @@ fn work_lifecycle(
 fn task_row(
     occurrence: Occurrence,
     overlay: TaskOverlay,
-    consumption: Consumption,
+    clock: Clock,
     expired: bool,
 ) -> (Task, ItemLifecycle) {
     let id = NodeId::Derived(occurrence.key.id());
@@ -1051,10 +1195,17 @@ fn task_row(
         async_template: None,
         // The template's brief, field by field, under the occurrence's own.
         agentic_brief: overlay.brief_over(occurrence.fields.agentic_brief.as_ref()),
-        on_scope_exit: on_exit(consumption, &occurrence.time_scope),
+        on_scope_exit: on_exit(clock, &occurrence.time_scope),
         time_scope: occurrence.time_scope,
         plan,
-        due_scope: None,
+        due_scope: overlay
+            .due_scope_start_id
+            .zip(overlay.due_scope_end_id)
+            .map(|(start_id, end_id)| TimeScope {
+                start_id,
+                end_id,
+                duration: None,
+            }),
         archival,
         tag_ids: occurrence.fields.tag_ids.clone(),
         position: overlay.position.unwrap_or(occurrence.position),
@@ -1073,7 +1224,7 @@ fn task_row(
 fn goal_row(
     occurrence: Occurrence,
     overlay: GoalOverlay,
-    consumption: Consumption,
+    clock: Clock,
     expired: bool,
 ) -> (Goal, ItemLifecycle) {
     let id = NodeId::Derived(occurrence.key.id());
@@ -1097,7 +1248,7 @@ fn goal_row(
         parent_type: occurrence.parent_type,
         parent_id: occurrence.parent_id,
         status,
-        on_scope_exit: on_exit(consumption, &occurrence.time_scope),
+        on_scope_exit: on_exit(clock, &occurrence.time_scope),
         time_scope: occurrence.time_scope,
         tag_ids: occurrence.fields.tag_ids.clone(),
         position: overlay.position.unwrap_or(occurrence.position),

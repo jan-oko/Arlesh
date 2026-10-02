@@ -266,10 +266,10 @@ fn an_expired_iteration_archives_its_steps_without_a_resolution() {
 }
 
 /// A day-long occurrence's lifecycle on the day after its window, as `task_row` derives it: the
-/// Consumption's timing, settled by whether it is done.
-fn day_after(consumption: Consumption, done: bool, closes_when_done: bool) -> ItemLifecycle {
+/// clock's timing, settled by whether it is done.
+fn day_after(clock: Clock, done: bool, closes_when_done: bool) -> ItemLifecycle {
     let timing = instance_timing(
-        consumption,
+        clock,
         IterationStatus::Active,
         (at(20, 2), at(21, 2)),
         at(22, 9),
@@ -286,12 +286,13 @@ fn day_after(consumption: Consumption, done: bool, closes_when_done: bool) -> It
 }
 
 #[test]
-fn a_done_accumulating_occurrence_past_its_window_is_completed_and_archived() {
-    for consumption in [
-        Consumption::Overlapping,
-        Consumption::Blocking(crate::flows::habits::Catchup::AllPending),
+fn a_done_owed_overdue_or_interval_occurrence_past_its_window_is_completed_and_archived() {
+    for clock in [
+        Clock::Window(MissPolicy::Owed),
+        Clock::Window(MissPolicy::Overdue),
+        Clock::Interval,
     ] {
-        let done = day_after(consumption, true, true);
+        let done = day_after(clock, true, true);
         assert_eq!(done.timing, Timing::Lapsed);
         assert_eq!(done.resolution, Some(Resolution::Completed));
         assert_eq!(done.archival, Archival::Archived);
@@ -299,18 +300,18 @@ fn a_done_accumulating_occurrence_past_its_window_is_completed_and_archived() {
 }
 
 #[test]
-fn an_unfinished_accumulating_occurrence_past_its_window_keeps_accumulating() {
-    let open = day_after(Consumption::Overlapping, false, true);
+fn an_unfinished_owed_occurrence_past_its_window_stays_open() {
+    let open = day_after(Clock::Window(MissPolicy::Owed), false, true);
     assert_eq!((open.timing, open.resolution), (Timing::Active, None));
     assert_eq!(open.archival, Archival::Live);
 }
 
 #[test]
-fn a_destructive_occurrence_past_its_window_lapses_done_or_not() {
-    let done = day_after(Consumption::Destructive, true, true);
+fn an_archive_occurrence_past_its_window_lapses_done_or_not() {
+    let done = day_after(Clock::Window(MissPolicy::Archive), true, true);
     assert_eq!(done.resolution, Some(Resolution::Completed));
     assert_eq!(done.archival, Archival::Archived);
-    let missed = day_after(Consumption::Destructive, false, true);
+    let missed = day_after(Clock::Window(MissPolicy::Archive), false, true);
     assert_eq!(missed.resolution, Some(Resolution::Missed));
     assert_eq!(missed.archival, Archival::Archived);
 }
@@ -326,7 +327,7 @@ fn being_done_settles_nothing_until_the_occurrence_closes() {
         settled_timing(InstanceTiming::Pending, false, false),
         InstanceTiming::Pending
     );
-    let open = day_after(Consumption::Overlapping, true, false);
+    let open = day_after(Clock::Window(MissPolicy::Owed), true, false);
     assert_eq!(
         (open.timing, open.archival),
         (Timing::Active, Archival::Live)
@@ -339,14 +340,52 @@ fn only_an_occurrence_with_a_window_of_its_own_reads_an_on_exit() {
         NaiveDate::from_ymd_opt(2026, 9, 20).unwrap(),
     )));
     assert_eq!(
-        on_exit(Consumption::Destructive, &window),
+        on_exit(Clock::Window(MissPolicy::Archive), &window),
         Some(OnScopeExit::Archive)
     );
+    for clock in [
+        Clock::Window(MissPolicy::Owed),
+        Clock::Window(MissPolicy::Overdue),
+        Clock::Interval,
+    ] {
+        assert_eq!(on_exit(clock, &window), Some(OnScopeExit::Keep));
+    }
+    assert_eq!(on_exit(Clock::Window(MissPolicy::Archive), &None), None);
+}
+
+#[test]
+fn an_occurrence_is_due_by_its_habits_clock() {
+    let window = Some((at(20, 2), at(21, 2)));
     assert_eq!(
-        on_exit(Consumption::Overlapping, &window),
-        Some(OnScopeExit::Keep)
+        default_due(Clock::Window(MissPolicy::Archive), window),
+        None
     );
-    assert_eq!(on_exit(Consumption::Destructive, &None), None);
+    assert_eq!(default_due(Clock::Window(MissPolicy::Owed), window), window);
+    assert_eq!(
+        default_due(Clock::Window(MissPolicy::Overdue), window),
+        window
+    );
+    assert_eq!(default_due(Clock::Interval, window), window);
+    // An Unscoped Interval Habit's instance has no window, and so no due.
+    assert_eq!(default_due(Clock::Interval, None), None);
+}
+
+#[test]
+fn an_unfinished_occurrence_past_its_due_is_overdue_until_it_is_done_or_archived() {
+    let due = default_due(
+        Clock::Window(MissPolicy::Owed),
+        Some((at(20, 2), at(21, 2))),
+    );
+    let now = at(22, 9);
+    assert!(derive_overdue(due, false, Archival::Live, now));
+    assert!(!derive_overdue(due, true, Archival::Live, now));
+    assert!(!derive_overdue(due, false, Archival::Archived, now));
+    // Under Archive there is no due, so a passed occurrence is Missed rather than Overdue.
+    let none = default_due(
+        Clock::Window(MissPolicy::Archive),
+        Some((at(20, 2), at(21, 2))),
+    );
+    assert!(!derive_overdue(none, false, Archival::Live, now));
 }
 
 fn flow(instance_type: &str) -> Flow {

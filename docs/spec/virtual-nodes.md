@@ -48,8 +48,8 @@ The few rules that genuinely differ for a derived row key off `origin` and nothi
   giving it a status again brings it back. Archiving takes what it holds with it, as archiving any
   node does: an archived iteration root sets the whole iteration aside, and an archived occurrence
   the occurrences nested under it. Everything set aside reads as archived and no longer has to be
-  done for the iteration to resolve — so under Blocking Consumption an iteration whose root was
-  archived stops withholding the Habit, without anything in it being recorded as done. Nothing is
+  done for the iteration to resolve — so an Interval Habit's open instance whose root was archived
+  lets the next one come, without anything in it being recorded as done. Nothing is
   written to what it holds, and nothing is taken from the template. The Mindmap asks for the delete with the same
   confirmation as any other.
 - **It is not copied, and nothing is copied onto it.** A copy is a stored row made under a stored
@@ -205,7 +205,8 @@ a title of its own is drawn with it.
 ## Horizon
 
 A kind's virtual table holds **every past iteration** since the Habit began — resolution,
-Lapsed/Missed and catch-up read the past. Of the future it holds only the iteration open now, any
+Lapsed/Missed, the missed run a Window + Overdue iteration carries and an Interval Habit's chain
+read the past. Of the future it holds only the iteration open now, any
 later iteration that carries an overlay, a relation or an attached child (so an edit made to a future
 occurrence is never lost), and any window a caller explicitly names (the Plan View filling next
 month). Such a not-yet-begun iteration's occurrences are **Pending**.

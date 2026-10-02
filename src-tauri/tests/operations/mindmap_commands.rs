@@ -22,8 +22,8 @@ use arlesh_lib::commands::{
     infos as info_commands, mindmap as mindmap_commands, tasks as task_commands,
 };
 use arlesh_lib::flows::model::{
-    ConsumptionKind, CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType,
-    InstanceType, SetRecurrenceRequest, UpdateFlowRequest,
+    ClockKind, CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType,
+    InstanceType, MissPolicy, SetRecurrenceRequest, UpdateFlowRequest,
 };
 use arlesh_lib::infos::model::CreateInfoRequest;
 use arlesh_lib::mindmap::model::FlowHabitResult;
@@ -59,9 +59,8 @@ fn weekly_from(start_scope_id: ScopeKey) -> SetRecurrenceRequest {
         gap_n: None,
         gap_kind: None,
         end_scope_id: None,
-        consumption_kind: ConsumptionKind::Destructive,
-        blocking_mode: None,
-        catchup_policy: None,
+        clock: ClockKind::Window,
+        miss_policy: Some(MissPolicy::Archive),
     }
 }
 
@@ -226,7 +225,7 @@ async fn the_envelope_carries_what_the_individual_commands_return() {
     let app = helpers::command_host(&pool);
     seed(&app, &pool).await;
 
-    let load = mindmap_commands::load_mindmap(app.state(), now())
+    let load = mindmap_commands::load_mindmap(app.state(), app.state(), now())
         .await
         .unwrap();
 
@@ -326,7 +325,7 @@ async fn loading_a_habit_that_needs_new_windows_writes_nothing() {
     // The test pool is one connection, so its change counter sees every row the load could write.
     let before = helpers::total_changes(&pool).await;
 
-    let load = mindmap_commands::load_mindmap(app.state(), now())
+    let load = mindmap_commands::load_mindmap(app.state(), app.state(), now())
         .await
         .unwrap();
 
@@ -398,7 +397,7 @@ async fn one_flow_failing_is_recorded_on_its_entry_and_the_rest_still_loads() {
     .await
     .unwrap();
 
-    let load = mindmap_commands::load_mindmap(app.state(), now())
+    let load = mindmap_commands::load_mindmap(app.state(), app.state(), now())
         .await
         .unwrap();
 
@@ -445,7 +444,7 @@ async fn a_flow_with_no_recurrence_loads_as_an_empty_habit_not_a_failure() {
         .await
         .unwrap();
 
-    let load = mindmap_commands::load_mindmap(app.state(), now())
+    let load = mindmap_commands::load_mindmap(app.state(), app.state(), now())
         .await
         .unwrap();
 
@@ -470,7 +469,7 @@ async fn an_empty_database_loads_an_empty_envelope() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
 
-    let load = mindmap_commands::load_mindmap(app.state(), now())
+    let load = mindmap_commands::load_mindmap(app.state(), app.state(), now())
         .await
         .unwrap();
 

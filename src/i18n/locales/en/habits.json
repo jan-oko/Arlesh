@@ -1,4 +1,5 @@
 {
+  "carriesMissed": "{{title}} {{scope}} from {{first}}",
   "collapse": {
     "run": "{{habit}}: {{passed}} passed · {{done}} done, {{missed}} missed",
     "level": "{{unit}} · {{done}} done, {{missed}} missed",

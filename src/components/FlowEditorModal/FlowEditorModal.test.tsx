@@ -211,7 +211,22 @@ describe("FlowEditorModal — save", () => {
     await waitFor(() =>
       expect(defaultProps.onSave).toHaveBeenCalledWith(
         expect.objectContaining({
-          recurrence: expect.objectContaining({ consumptionKind: "destructive", startDate: expect.any(String) }),
+          recurrence: expect.objectContaining({ clock: "window", missPolicy: "archive", startDate: expect.any(String) }),
+        }),
+      ),
+    );
+  });
+
+  it("saves an Unscoped Habit with an Interval clock and no miss policy", async () => {
+    render(<FlowEditorModal {...defaultProps} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "makeHabit" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "flowScoped" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          durationKind: null,
+          recurrence: expect.objectContaining({ clock: "interval", missPolicy: null }),
         }),
       ),
     );
@@ -228,7 +243,7 @@ describe("FlowEditorModal — save", () => {
         expect.objectContaining({
           recurrence: {
             startDate: expect.any(String), gapN: null, gapKind: null, endDate: null,
-            consumptionKind: "destructive", blockingMode: null, catchupPolicy: null,
+            clock: "window", missPolicy: "archive",
           },
         }),
       ),
@@ -245,7 +260,7 @@ describe("FlowEditorModal — save", () => {
   it("prompts to reconcile when a schedule change collides with completed iterations", async () => {
     vi.mocked(getFlowRecurrence).mockResolvedValueOnce({
       flow_id: 1, start_scope_id: testKey(1), gap_n: null, gap_kind: null, end_scope_id: null,
-      consumption_kind: "destructive", blocking_mode: null, catchup_policy: null,
+      clock: "window", miss_policy: "archive",
     });
     vi.mocked(habitCompletionCount).mockResolvedValueOnce(2);
     render(<FlowEditorModal {...defaultProps} />);

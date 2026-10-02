@@ -45,5 +45,18 @@
   "windowUnnamed": "Another window",
   "tearOffLastTab": "This is the window's only tab — tearing it off would leave the window empty. Open another tab first, or move this one into a window that is already open.",
   "checkTaskPrefix": "Check task prefix",
-  "checkTaskPrefixReset": "Default"
+  "checkTaskPrefixReset": "Default",
+  "agentStatus": {
+    "capacity": "Agents at capacity: Agentic tasks are blocked.",
+    "questions_one": "{{count}} question waiting for you.",
+    "questions_other": "{{count}} questions waiting for you.",
+    "waits_one": "{{count}} agent wait.",
+    "waits_other": "{{count}} agent waits.",
+    "inProgress_one": "{{count}} agentic task in progress.",
+    "inProgress_other": "{{count}} agentic tasks in progress.",
+    "details": "Click for details.",
+    "menu": "Agents",
+    "clear": "Clear",
+    "show": "Show"
+  }
 }

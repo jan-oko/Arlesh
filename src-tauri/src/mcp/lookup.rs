@@ -52,9 +52,15 @@ pub(super) struct Board {
 }
 
 impl Board {
-    /// Reads the board at `now`, inside the caller's transaction.
-    pub async fn read(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<Self, AppError> {
-        let mut load = crate::mindmap::load(db, now).await?;
+    /// Reads the board at `now`, inside the caller's transaction, blocked by the agent capacity
+    /// lock when `at_capacity` — before the roots cut it, since whether a Task reads as Agentic
+    /// can come from above them.
+    pub async fn read(
+        db: &mut Db<Transactional>,
+        now: NaiveDateTime,
+        at_capacity: bool,
+    ) -> Result<Self, AppError> {
+        let mut load = crate::mindmap::load_blocked(db, now, at_capacity).await?;
         let map = crate::access::access_map(db).await?;
         let domains = load.domains.clone();
         access::restrict_snapshot(&mut load, &map);
@@ -201,7 +207,8 @@ pub(super) async fn stored_row(
     now: NaiveDateTime,
 ) -> Result<i64, Answer> {
     let text = id.text();
-    let board = match Board::read(db, now).await {
+    // Only names are resolved here, and a block changes no name.
+    let board = match Board::read(db, now, false).await {
         Ok(board) => board,
         Err(error) => return Err(result::failed(error)),
     };

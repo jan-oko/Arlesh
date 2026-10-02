@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useTranslation } from "react-i18next";
+import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
+import { agentActivityOf } from "@/utils/agent-activity";
 import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
 import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
 import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment } from "@/api/commitments";
@@ -111,14 +113,20 @@ export function holdsUnrenderableGoalItems(flow: Flow, flowGoals: readonly FlowG
   return flow.instance_type === "commitment" && flowGoals.some((goal) => goal.flow_id === flow.id);
 }
 
+/** Draws an iteration root that carries missed windows: `{title} {scope} from {first}`. */
+export type CarriesMissedTitle = (parts: { title: string; scope: string; first: string }) => string;
+
 /**
  * What the board draws on a Habit's **iteration roots**, beyond the rows themselves.
  *
  * A Habit's occurrences arrive as ordinary Task, Goal and Commitment rows (ADR 0008) and are
  * built into the tree like any other; only an iteration root is drawn differently, and only here:
  *
- *  - its title reads `{title} {start scope}` ("Exercise W22"). The row's own title is kept as
- *    `rowTitle`, which is what an editor edits — the label is how it is drawn, not what it is;
+ *  - its title reads `{title} {start scope}` ("Exercise W22"), and — under Window + Overdue, for
+ *    the iteration carrying a run of missed ones — `{title} {start scope} from {first missed}`
+ *    ("Water the plants W3 from W1"), through `carriesMissed`, which localises it. The row's own
+ *    title is kept as `rowTitle`, which is what an editor edits — the label is how it is drawn,
+ *    not what it is;
  *  - it carries the `habitIteration` the collapse of passed iterations folds by, read off its
  *    `origin`: where its window sits, whether that window has passed at `now`, and how it ended.
  */
@@ -127,6 +135,7 @@ export function decorateIterationRoots(
   flows: readonly Flow[],
   labels: ScopeLabelFns,
   now: string,
+  carriesMissed: CarriesMissedTitle,
 ): void {
   const byId = new Map(flows.map((flow) => [flow.id, flow]));
   const visit = (current: MindmapNode): void => {
@@ -135,7 +144,14 @@ export function decorateIterationRoots(
     if (habit !== undefined && habit.item_type === "flow_root" && flow !== undefined) {
       const iteration = habit.iteration_scope;
       current.rowTitle = current.title;
-      current.title = `${current.title} ${iterationAnchorLabel(flow, iteration.start_date, labels)}`;
+      const scope = iterationAnchorLabel(flow, iteration.start_date, labels);
+      current.title = iteration.missed_from === undefined
+        ? `${current.title} ${scope}`
+        : carriesMissed({
+            title: current.title,
+            scope,
+            first: iterationAnchorLabel(flow, iteration.missed_from, labels),
+          });
       current.habitIteration = {
         flowId: flow.id,
         flowTitle: flow.title,
@@ -150,6 +166,8 @@ export function decorateIterationRoots(
         done: current.kind === "commitment"
           ? current.verdict === VERDICT.KEPT
           : current.status === TASK_STATUS.DONE || current.status === GOAL_STATUS.ACHIEVED,
+        // Owed work stays in view rather than folding into the Habit's history.
+        ...(iteration.owed === true ? { owed: true } : {}),
       };
     }
     for (const child of current.children) visit(child);
@@ -364,19 +382,27 @@ export function buildTree(
   checkTitle: (waitTitle: string) => string = (waitTitle) => waitTitle,
   /** How a Compound Task's derived block reads, in place of the backend's English. */
   compoundReason = "All open sub-items are blocked",
+  /** How the agent capacity lock's derived reason reads, in place of the backend's English. */
+  capacityReason = "Agents at capacity",
   /** Every known Person's name, by id — what a Person delegate is called. */
   personNames: ReadonlyMap<number, string> = new Map(),
 ): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
   // Explicit block reasons, grouped per owner in stored (position) order. A reason the backend
-  // derived — a Compound Task's — is not the owner's to edit, so it is kept apart and drawn among
-  // the virtual blockers; an editor save then never writes it back as a stored reason.
+  // derived — the agent capacity lock's, or a Compound Task's — is not the owner's to edit, so it is
+  // kept apart, by its kind, and drawn among the virtual blockers in the app's own words; an editor
+  // save then never writes it back as a stored reason.
   const manualBlockers = new Map<string, string[]>();
+  const capacityBlocked = new Set<string>();
   const compoundBlocked = new Set<string>();
   for (const br of blockReasons) {
     const key = `${br.owner_type}-${br.owner_id}`;
-    if (br.derived !== undefined) {
+    if (br.derived === "agent_capacity") {
+      capacityBlocked.add(key);
+      continue;
+    }
+    if (br.derived === "compound") {
       compoundBlocked.add(key);
       continue;
     }
@@ -434,7 +460,11 @@ export function buildTree(
       ...(isCheck ? { rowTitle: task.title } : {}),
       status: task.status,
       blockReasons: manualBlockers.get(`task-${task.id}`) ?? [],
-      virtualBlockers: compoundBlocked.has(`task-${task.id}`) ? [compoundReason] : [],
+      virtualBlockers: [
+        ...(capacityBlocked.has(`task-${task.id}`) ? [capacityReason] : []),
+        ...(compoundBlocked.has(`task-${task.id}`) ? [compoundReason] : []),
+      ],
+      ...(capacityBlocked.has(`task-${task.id}`) ? { capacityBlocked: true } : {}),
       ...(compoundBlocked.has(`task-${task.id}`) ? { compoundBlocked: true } : {}),
       timeScope: task.time_scope,
       onScopeExit: task.on_scope_exit,
@@ -849,18 +879,22 @@ async function loadPersonNames(): Promise<Map<number, string>> {
 }
 
 export function useMindmapData(): MindmapData {
-  const { t } = useTranslation(["undo", "expectation", "editor"]);
+  const { t } = useTranslation(["undo", "expectation", "editor", "habits"]);
   const [tree, setTree] = useState<MindmapNode>(VIRTUAL_ROOT);
   // Read through a ref, set in an effect, so `load` does not change identity with `t` — which
   // would re-run the mount effect and reload for nothing. Declared before that effect, so the
   // first load already has it.
   const delegationWaitTitle = useRef((title: string, _holder: DelegateHolder) => title);
+  const capacityReason = useRef("Agents at capacity");
+  const carriesMissedTitle = useRef<CarriesMissedTitle>(({ title, scope }) => `${title} ${scope}`);
   const compoundReason = useRef("All open sub-items are blocked");
   useEffect(() => {
     delegationWaitTitle.current = (title: string, holder: DelegateHolder) => t("expectation:delegationWaitTitle", {
       title,
       delegate: holder.kind === "agent" ? t("expectation:delegateAgent") : holder.name ?? t("expectation:delegatePersonUnnamed"),
     });
+    capacityReason.current = t("editor:agentsAtCapacity");
+    carriesMissedTitle.current = (parts) => t("habits:carriesMissed", parts);
     compoundReason.current = t("editor:compoundBlocked");
   }, [t]);
   // A check task is titled `{prefix}{wait title}`, the prefix a display setting. Unlike the
@@ -902,17 +936,19 @@ export function useMindmapData(): MindmapData {
           data.flow_goals, data.flow_tasks, data.flow_cycles, data.flow_dependencies,
           data.block_reasons, data.task_dependencies, data.flow_instance_nodes,
           data.expectations, (title, holder) => delegationWaitTitle.current(title, holder),
-          (title) => `${checkPrefix}${title}`, compoundReason.current, personNames,
+          (title) => `${checkPrefix}${title}`, compoundReason.current, capacityReason.current, personNames,
         );
         applyLifecycles(built, lifecycleMap(data.lifecycles));
         // A Habit's occurrences are ordinary rows, already built into the tree above. A flow whose
         // derivation failed has none, and says so as a load condition below — it is not silently
         // indistinguishable from a flow that simply has no iterations.
-        decorateIterationRoots(built, data.flows, scopeLabels, now);
+        decorateIterationRoots(built, data.flows, scopeLabels, now, (parts) => carriesMissedTitle.current(parts));
         // Last, so every row — derived ones included — has its place and can take its answer.
         applyMcpVisibility(built, mcpVisible);
         latestTree.current = built;
         setTree(built);
+        // The whole board, before any view narrows it to a subtree: the top bar's agent status.
+        useAgentActivityStore.getState().receive(agentActivityOf(built));
         setLoadCondition(collectLoadConditions(data));
       } catch (err) {
         setError(getErrorMessage(err));

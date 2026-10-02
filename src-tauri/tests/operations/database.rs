@@ -510,3 +510,120 @@ async fn migrations_0060_to_0062_keep_every_cycle_plan() {
         "the pair keeps its id — occurrences are keyed on it — and its Cycle Plan"
     );
 }
+
+/// Migration `0087` replaces a Habit's Consumption with a clock (Task #245): Destructive becomes
+/// Window + Archive, Accumulating + Overlapping Window + Owed, and Accumulating + Blocking — under
+/// every catch-up policy — Window + Overdue. Nothing else about a Habit is rewritten: every overlay
+/// stays where it was, keyed as it was, and none reads an explicit due it never had.
+#[tokio::test]
+async fn migration_0087_gives_every_habit_a_clock_and_keeps_every_overlay() {
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+
+    let everything = sqlx::migrate!("./migrations");
+    let mut before = sqlx::migrate!("./migrations");
+    before.migrations = std::borrow::Cow::Owned(
+        everything
+            .migrations
+            .iter()
+            .filter(|migration| migration.version < 87)
+            .cloned()
+            .collect(),
+    );
+    before.run(&pool).await.unwrap();
+
+    sqlx::query(
+        r#"INSERT INTO flows (id, title, instance_type, parent_type, parent_id,
+                              flow_duration_n, flow_duration_kind)
+             VALUES (1, 'destructive', 'task', 'aspect', 1, 1, 'week'),
+                    (2, 'overlapping', 'task', 'aspect', 1, 1, 'week'),
+                    (3, 'latest', 'task', 'aspect', 1, 1, 'week'),
+                    (4, 'next', 'task', 'aspect', 1, 1, 'day'),
+                    (5, 'all pending', 'task', 'aspect', 1, 1, 'day');
+         INSERT INTO flow_recurrences (flow_id, start_scope_id, gap_n, gap_kind, end_scope_id,
+                                       consumption_kind, blocking_mode, catchup_policy)
+             VALUES (1, '{"kind":"week","date":"2026-09-20"}', NULL, NULL, NULL,
+                     'destructive', NULL, NULL),
+                    (2, '{"kind":"week","date":"2026-09-20"}', NULL, NULL, NULL,
+                     'accumulating', 'overlapping', NULL),
+                    (3, '{"kind":"week","date":"2026-09-20"}', 3, 'week',
+                     '{"kind":"week","date":"2026-12-27"}', 'accumulating', 'blocking', 'latest'),
+                    (4, '{"kind":"day","date":"2026-09-20"}', NULL, NULL, NULL,
+                     'accumulating', 'blocking', 'next'),
+                    (5, '{"kind":"day","date":"2026-09-20"}', NULL, NULL, NULL,
+                     'accumulating', 'blocking', 'all_pending');
+         INSERT INTO task_overlays (origin, flow_id, item_type, item_id, iteration_scope,
+                                    cycle_id, status, resolved_at, plan_start_id, plan_end_id,
+                                    plan_set)
+             VALUES ('habit', 3, 'flow_root', 3, '{"kind":"week","date":"2026-09-20"}', 0,
+                     'done', 1790243033701, NULL, NULL, 0),
+                    ('habit', 3, 'flow_root', 3, '{"kind":"week","date":"2026-09-27"}', 0,
+                     NULL, NULL, '{"kind":"day","date":"2026-09-30"}',
+                     '{"kind":"day","date":"2026-09-30"}', 1);"#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    everything.run(&pool).await.unwrap();
+
+    type Clock = (i64, String, Option<String>, Option<i64>, Option<String>);
+    let clocks: Vec<Clock> = sqlx::query_as(
+        "SELECT flow_id, clock, miss_policy, gap_n, end_scope_id
+         FROM flow_recurrences ORDER BY flow_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let end = Some(r#"{"kind":"week","date":"2026-12-27"}"#.to_string());
+    assert_eq!(
+        clocks,
+        vec![
+            (1, "window".into(), Some("archive".into()), None, None),
+            (2, "window".into(), Some("owed".into()), None, None),
+            (3, "window".into(), Some("overdue".into()), Some(3), end),
+            (4, "window".into(), Some("overdue".into()), None, None),
+            (5, "window".into(), Some("overdue".into()), None, None),
+        ]
+    );
+
+    type Overlay = (String, Option<String>, Option<String>, Option<String>);
+    let overlays: Vec<Overlay> = sqlx::query_as(
+        "SELECT iteration_scope, status, due_scope_start_id, due_scope_end_id
+         FROM task_overlays ORDER BY id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        overlays,
+        vec![
+            (
+                r#"{"kind":"week","date":"2026-09-20"}"#.into(),
+                Some("done".into()),
+                None,
+                None
+            ),
+            (
+                r#"{"kind":"week","date":"2026-09-27"}"#.into(),
+                None,
+                None,
+                None
+            ),
+        ],
+        "every overlay is kept where it was, with no due it never had"
+    );
+
+    let plan: Option<String> =
+        sqlx::query_scalar("SELECT plan_start_id FROM task_overlays WHERE status IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        plan.as_deref(),
+        Some(r#"{"kind":"day","date":"2026-09-30"}"#)
+    );
+}

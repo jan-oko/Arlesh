@@ -244,6 +244,20 @@ pub enum ScopesOperation {
     },
 }
 
+/// The agent capacity lock: read it, or set it on or off.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(tag = "operation", rename_all = "snake_case")]
+#[schemars(extend("type" = "object"))]
+pub enum CapacityOperation {
+    /// Whether agents are at capacity just now.
+    Get,
+    /// Sets the lock: `true` when you cannot take on more Agentic work, `false` when there is room.
+    Set {
+        /// `true` — agents are at capacity; `false` — there is room for more work.
+        at_capacity: bool,
+    },
+}
+
 /// People, events and threads — the resources the snapshot does not carry.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case")]
@@ -467,7 +481,7 @@ pub enum TasksOperation {
         #[serde(default, deserialize_with = "crate::wire::null_clears")]
         plan: Option<Option<TimeScope>>,
         /// New explicit due, within its effective Time Scope; `null` clears it back to the
-        /// default. Not for a Habit occurrence, whose Habit decides it.
+        /// default. On a Habit occurrence it wins over the due its Habit's clock derives.
         #[serde(default, deserialize_with = "crate::wire::null_clears")]
         due_scope: Option<Option<TimeScope>>,
         /// `true` makes it Asynchronous, `false` not (dropping its wait template).

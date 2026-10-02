@@ -1,4 +1,4 @@
-import type { ConsumptionKind, BlockingMode, CatchupPolicy, SetRecurrenceRequest } from "@/api/flows";
+import type { ClockKind, MissPolicy, SetRecurrenceRequest } from "@/api/flows";
 import type { CanonicalKind } from "@/utils/scope-ref";
 import { keyContaining } from "@/utils/scope-key";
 import type { RecurrenceSave } from "./FlowEditorModal";
@@ -13,11 +13,9 @@ export interface RecurrenceUi {
   gapKind: string;
   endEnabled: boolean;
   endDate: string;
-  consumptionKind: ConsumptionKind;
-  /** Used iff Accumulating. */
-  blockingMode: BlockingMode;
-  /** Used iff Blocking. */
-  catchupPolicy: CatchupPolicy;
+  clock: ClockKind;
+  /** Used iff the clock is Window; kept while Interval is picked, so switching back restores it. */
+  missPolicy: MissPolicy;
 }
 
 /**
@@ -42,13 +40,12 @@ export function recurrenceRequest(recurrence: RecurrenceSave, flowDurationKind: 
     gap_n: recurrence.gapN,
     gap_kind: recurrence.gapKind,
     end_scope_id: recurrence.endDate !== null ? keyContaining(startKind, recurrence.endDate) : null,
-    consumption_kind: recurrence.consumptionKind,
-    blocking_mode: recurrence.blockingMode,
-    catchup_policy: recurrence.catchupPolicy,
+    clock: recurrence.clock,
+    miss_policy: recurrence.missPolicy,
   };
 }
 
-/** A blank Recurrence: continuous, open-ended, Destructive. */
+/** A blank Recurrence: continuous, open-ended, Window + Archive. */
 export function defaultRecurrence(startDate: string): RecurrenceUi {
   return {
     isHabit: false,
@@ -58,8 +55,7 @@ export function defaultRecurrence(startDate: string): RecurrenceUi {
     gapKind: "day",
     endEnabled: false,
     endDate: startDate,
-    consumptionKind: "destructive",
-    blockingMode: "overlapping",
-    catchupPolicy: "next",
+    clock: "window",
+    missPolicy: "archive",
   };
 }

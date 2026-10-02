@@ -26,6 +26,13 @@ export interface IterationScope {
   kind: string | null;
   /** The iteration's derived state. */
   status: "active" | "done" | "lapsed" | "missed" | "upcoming" | "expired";
+  /**
+   * Under Window + Overdue, the date the first missed window this iteration carries starts on,
+   * ISO `YYYY-MM-DD`: its root is drawn "W3 from W1". Absent when it carries nothing.
+   */
+  missed_from?: string;
+  /** Under Window + Owed: its window has passed with its work still open. Absent when not. */
+  owed?: boolean;
 }
 
 /** A Habit occurrence's provenance. */

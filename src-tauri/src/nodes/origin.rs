@@ -103,6 +103,16 @@ pub struct IterationScope {
     pub kind: Option<String>,
     /// The iteration's derived state at the reference instant.
     pub status: IterationStatus,
+    /// Under Window + Overdue, the date the **first missed** window this iteration carries starts
+    /// on: its relevance reaches back to it and its root is drawn "W3 from W1". Absent when it
+    /// carries nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub missed_from: Option<NaiveDate>,
+    /// Under Window + Owed, whether this iteration's window has passed with its work still open:
+    /// owed work, which the board keeps in view rather than folding into the Habit's history.
+    /// Sent only when true.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub owed: bool,
 }
 
 #[cfg(test)]

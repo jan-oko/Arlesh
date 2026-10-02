@@ -244,17 +244,21 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   // The one-click delegate button is offered on a task that reads as agentic — its own flag, or an
   // inherited one while it is on Inherit — and on any task already delegated to the Agent, so an
   // Agent delegate can always be taken back even after the flag that earned it is gone.
-  // The Due field. An occurrence's due is its Habit's and a check task's is the day it fell due, so
-  // neither has one. While the task has its own window it shares the on-exit pills' row, held to
-  // that window; otherwise it is a row of its own below the Plan — on an unscoped task, or on one
-  // that inherits its window, which derives its due from it and so shows the row only to take back
-  // an explicit due already set.
-  const isFixedWindow = isOccurrence(node) || checkOrigin(node.origin) !== undefined;
+  // The Due field. A check task's due is the day it fell due, so it has none. While the task has
+  // its own window it shares the on-exit pills' row, held to that window; otherwise it is a row of
+  // its own below the Plan — on an unscoped task, or on one that inherits its window, which derives
+  // its due from it and so shows the row only to take back an explicit due already set. A Habit
+  // occurrence always shows it: its default comes from its Habit's clock, and an explicit one set
+  // here wins over it.
+  const occurrence = isOccurrence(node);
   const inheritedScope = node.inheritedTimeScope ?? null;
-  const hasDueField = !isFixedWindow && (timeScope !== null || inheritedScope === null || dueScope !== null);
-  const dueDefaultLabel = timeScope !== null && (onScopeExit ?? "keep") === "keep" && !isBacklogged
-    ? t("dueDefaultTimeScope")
-    : t("dueDefaultNone");
+  const hasDueField = checkOrigin(node.origin) === undefined
+    && (occurrence || timeScope !== null || inheritedScope === null || dueScope !== null);
+  const dueDefaultLabel = occurrence
+    ? t("dueDefaultHabit")
+    : timeScope !== null && (onScopeExit ?? "keep") === "keep" && !isBacklogged
+      ? t("dueDefaultTimeScope")
+      : t("dueDefaultNone");
   const dueField = (
     <div className={styles.label}>
       {t("fieldDue")}
@@ -386,7 +390,13 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           />
         </div>
       )}
-      <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} virtualBlockers={virtualBlockers} compoundBlocked={node.compoundBlocked === true} />
+      <BlockReasonsField
+        reasons={blockReasons}
+        onChange={setBlockReasons}
+        virtualBlockers={virtualBlockers}
+        capacityBlocked={node.capacityBlocked === true}
+        compoundBlocked={node.compoundBlocked === true}
+      />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <div className={styles.depSection}>
         <span className={styles.label}>{t("fieldDependencies")}</span>

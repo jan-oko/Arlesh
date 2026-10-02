@@ -269,12 +269,13 @@ async fn every_tool_is_registered() {
     let pool = helpers::test_pool().await;
     let mcp = helpers::mcp_over_whole_board(&pool).await;
 
-    // `ArleshMcp::new` sums eight routers. Drop one and nothing fails to compile — the tool simply
+    // `ArleshMcp::new` sums nine routers. Drop one and nothing fails to compile — the tool simply
     // stops being served, which an agent would discover and this test does not let pass silently.
     assert_eq!(
         mcp.tool_names(),
         vec![
             "arlesh_beads",
+            "arlesh_capacity",
             "arlesh_flows",
             "arlesh_infos",
             "arlesh_kb",
@@ -331,7 +332,7 @@ async fn snapshot_returns_what_the_mindmap_command_returns() {
     }
     assert!(named > 0, "the snapshot names its nodes by short id");
 
-    let expected = arlesh_lib::commands::mindmap::load_mindmap(app.state(), now())
+    let expected = arlesh_lib::commands::mindmap::load_mindmap(app.state(), app.state(), now())
         .await
         .unwrap();
     assert_eq!(
@@ -1130,7 +1131,7 @@ async fn a_board_too_big_for_one_page_is_handed_over_across_several() {
 
     assert!(pages > 1, "200 padded tasks should not fit in one page");
 
-    let expected = arlesh_lib::commands::mindmap::load_mindmap(app.state(), now())
+    let expected = arlesh_lib::commands::mindmap::load_mindmap(app.state(), app.state(), now())
         .await
         .unwrap();
     let expected_ids: Vec<i64> = expected.tasks.iter().map(|task| task.id.sid()).collect();
@@ -1402,6 +1403,7 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
             &["task_id", "title", "note", "question", "id", "answer"],
         ),
         ("arlesh_infos", &["create"], &["task_id", "body", "details"]),
+        ("arlesh_capacity", &["get", "set"], &["at_capacity"]),
     ];
     let tools = mcp.tools();
     assert_eq!(tools.len(), expected.len());

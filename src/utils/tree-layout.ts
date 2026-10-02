@@ -151,6 +151,9 @@ export interface HabitIterationMeta {
   /** Whether the iteration was finished, as opposed to Lapsed, Missed or Expired. Drives the
    * `9 done, 5 missed` half of a group's tally. */
   done: boolean;
+  /** Owed work: under Window + Owed, its window has passed with its work still open. It is never
+   * folded into a run, but drawn beside it. Absent when not owed. */
+  owed?: boolean;
 }
 
 /** Which unit of time a `habit_group` node stands for. `run` is the whole folded run; the rest are
@@ -203,6 +206,9 @@ export interface MindmapNode {
   /** The node ids of those unmet dependencies — what Start still lets through beneath this task
    * when one of them is its own descendant (see `gateBelow` in `filter-tree.ts`). */
   blockingDependencyIds?: string[];
+  /** Blocked by the **agent capacity lock** (Tasks only): the backend derived it, and its reason is
+   * among `virtualBlockers`. Only clearing the lock removes it. */
+  capacityBlocked?: boolean;
   /** Blocked because it is a **Compound** Task whose open sub-items are all blocked (Tasks only):
    * the backend derived it, and its reason is among `virtualBlockers`. */
   compoundBlocked?: boolean;

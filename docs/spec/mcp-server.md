@@ -87,7 +87,7 @@ is what they describe, and every window and the MCP endpoint read the same list.
 root belongs to its row: deleting the node drops the root in the same Gesture, and undoing the
 delete brings both back — otherwise SQLite reusing the freed row id would open an unrelated node.
 
-**Where the user sets them.** On the *MCP access* page of the settings modal (see
+**Where the user sets them.** On the *Agents* page of the settings modal (called *MCP access* until 2026-10-01) (see
 [*Mindmap*](mindmap-view.md), *Top bar*): the roots are listed with their path and kind, added with
 the node search `Ctrl+O` uses, and removed with each row's ×. A root the MCP cannot see because it
 is private is flagged as such rather than hidden from the list.
@@ -139,7 +139,7 @@ resolver in `src-tauri/src/access/`:
 
 ## Tools
 
-Eight tools rather than one per backend command, because an MCP client pays context for every tool
+Nine tools rather than one per backend command, because an MCP client pays context for every tool
 definition it loads.
 
 | Tool | Operations |
@@ -152,6 +152,7 @@ definition it loads.
 | `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`. See *Agentic waits* below |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
 | `arlesh_beads` | `set(node_type, node_id, beads_id)` — a write; `node_type` is `task`, `goal`, `commitment` or `project`, and the item must be writable (an Agentic Task inside a root). See below |
+| `arlesh_capacity` | `get`, `set(at_capacity)` — the agent capacity lock, app-wide and on no node. See *Agent capacity* below |
 
 **One flat input schema per tool** (2026-09-25). Each tool takes an `operation`-tagged union, and
 Claude Code reads a top-level `oneOf` by merging its branches' parameters while keeping
@@ -181,7 +182,9 @@ name and is resolved as that kind.
 
 `arlesh_snapshot.load` is the entry point and covers the common case. The other reads
 exist for what it does not carry: the knowledge base, scope resolution, a task's dependency-derived
-block reasons, and a Habit's stored recurrence configuration as opposed to its derived iterations.
+block reasons, and a Habit's stored recurrence configuration as opposed to its derived iterations —
+its repetition and its **clock** (`clock` `window` or `interval`, and a Window's `miss_policy`
+`archive`, `overdue` or `owed`; see [*Clocks*](habits.md#clocks)).
 
 A Commitment arrives with its `verdict` (`unresolved` / `kept` / `broken`) and its derived
 lifecycle. The verdict is recorded, never inferred, and `unresolved` means the user has not said
@@ -351,8 +354,9 @@ so the conformance corpus is untouched.
   `create` takes `dependencies` and `tags` as lists; `update` takes `add_dependencies` /
   `remove_dependencies` and `add_tags` / `remove_tags`, removals applied first. On `update` a
   field left out is unchanged and `null` clears it (`time_scope`, `plan`, `due_scope`,
-  `block_reasons`). A Habit occurrence's `due_scope`, like its `on_scope_exit`, is its Habit's
-  and is refused. Each lifecycle entry in the snapshot carries `overdue: true` when the item is
+  `block_reasons`). A Habit occurrence's `on_scope_exit` is its Habit's and is refused; its
+  `due_scope` may be set, landing in its overlay and winning over the due its Habit's clock
+  derives (see [*Clocks*](habits.md#clocks)). Each lifecycle entry in the snapshot carries `overdue: true` when the item is
   flagged Overdue; `resolution` is only ever `completed` or `missed`.
   Each goes through the same backend write the app's own command uses (`nodes::write` —
   `update_task`, `add_dependency`, `remove_dependency`, `set_tag`, `set_block_reasons`), so its
@@ -507,9 +511,90 @@ Passing `null` clears the link. Setting one on an item that does not exist is an
 (`not_permitted`, like any node outside the roots) rather than a silent no-op, and only the
 `project` subtype of Domain accepts a link — an Aspect, Domain or Tag is refused.
 
+## Agent capacity
+
+Ruled with the user on 2026-09-30 and revised on 2026-10-01 (`cdd`): "it essentially acts like a
+dependency of agentic tasks. When it's on, these tasks are derived blocked. The rest of the logic
+should follow." The **agent capacity lock** is one app-wide on/off state meaning "agents are at
+capacity". An agent — or whoever runs a fleet of them — sets it with
+`arlesh_capacity.set(at_capacity: true)` when it cannot take on more Agentic work and clears it with
+`at_capacity: false` as soon as there is room; `get` reads it. The user sets and clears it too.
+Both answer `{"at_capacity": bool}`.
+
+**What it does.** While it is on, every **Agentic Task not yet Done** — To Do, Started or In
+Progress; its own flag or inherited, by the rule the board is drawn by — is **blocked**, with the
+derived reason **Agents at capacity**. Everything blocked already does follows, here and in the
+app alike: the snapshot's `block_reasons` section carries the reason (marked
+`"derived": "agent_capacity"`), `arlesh_tasks.get` lists it among the task's block reasons, Start
+drops the task with its subtree, Unblock lists it, and the app shows the stop-sign and refuses to
+start it. **Agentic waits** are not Tasks and are never blocked by it. See
+[*Tasks*](resources.md), *Blockers*.
+
+**One derivation.** `capacity::blocks` runs **inside the board load** (`mindmap::load_blocked`)
+and appends the reasons to its `block_reasons` (`derived: "agent_capacity"`), once every status is
+final and **before** a Compound Task's own derived block (`derived: "compound"`) reads "blocked" —
+so a Compound whose open items the lock blocks is blocked too. Every reader of "blocked" loads it
+so: the app's `load_mindmap`, the snapshot, and the board every `arlesh_tasks` / `arlesh_waits` /
+`arlesh_infos` call reads (before the roots cut it, since whether a Task reads as Agentic can come
+from above them). The filters, the snapshot and the app never learn the lock exists; they see a
+block. Neither the lifecycles nor `BoardFilter` change.
+
+**Agents may carry on.** `arlesh_tasks.set_status` has never checked blocks and still does not:
+an agent that already holds work may move it along — into In Progress included — while the lock is
+on. Only the app refuses to start a blocked Task, as it does for any block.
+
+**Where it lives.** A file in the app's data directory, `agent-capacity.json`, beside the port's
+`mcp.json` and for the same reason: it is operational state about the agents working this board,
+not board data. A row would be journaled, and Ctrl+Z would flip the lock; so there is no
+migration, and setting it is never an undoable step. One `AgentCapacity` in the backend holds it
+for the Tauri commands (`agent_capacity`, `set_agent_capacity`) and every MCP session. It survives
+a restart and starts **off** on a fresh install, or when its file cannot be read — a lock nobody can
+read must not block work.
+
+**Live in every window.** Each change, from the app or the MCP, is announced to **every** window
+twice over, through the per-window `emit_to` / `listenHere` door `board-changed` uses (so nothing in
+`crate::mcp` knows what a window is): as `agent-capacity-changed`, carrying the new state, which the
+Settings switch and the top-bar indicator read; and as an ordinary `board-changed`, so every window
+— the one that flipped it included — takes the same reload any board change gets and re-derives the
+block with it. A window reads the lock once on start and then takes each announcement.
+
+**In the app.** Settings → Agents → *Agent capacity* has the lock's switch, **Agents are at
+capacity**, and **Show agent status in the top bar** (on by default, app-wide; ruled by the user,
+2026-10-01). The lock's explanation sits behind a **?** beside its switch, shown on
+hover and on keyboard focus (the user, reviewing #116), rather than as a paragraph on the page. There is no setting for whether the lock blocks: the lock is the only control.
+
+**The agents' status in the top bar** (ruled by the user, 2026-10-01, from mock 3, "Row under the
+head", with the padlock and no counts). A small **bot head**, in the top bar's icon colour like the
+gear, sits just before the Filter button, with a tiny row of icons under it. With **Show agent status in the top bar** off the head never shows, whatever holds — the lock
+included; it is then set and cleared from Settings alone. With it on, the head shows **only
+while at least one of these holds** — whether or not the MCP endpoint is listening, since the lock
+can be on with the endpoint off and must stay clearable, and the waits and work are facts of the
+board either way:
+
+- the capacity lock is on — an amber **padlock** (`--agent-capacity`);
+- a pending agentic wait asks the user something (`question: true`) — a red **!** (`--ask`);
+- a pending agentic wait is on something else, CI say — a blue **hourglass** (`--wait`);
+- an Agentic Task is In Progress — the app's **In Progress** glyph, in the bar's icon colour.
+
+The row shows only what applies, in that order, and **no counts**. The tooltip and the accessible
+name spell out each line with its count — *Agents at capacity: Agentic tasks are blocked. 1 question
+waiting for you. 2 agent waits. 3 agentic tasks in progress. Click for details.* A click opens a
+small menu with one line per thing that applies: **Clear** on the capacity line, which clears the
+lock, and **Show** on the others — the waits open the List View under its Expectations option, and
+the work In Progress opens the List View under Do with the Agentic pill. `Escape` or a click outside
+closes it. Each glyph is its own component, so the questions and the other waits can be merged into
+one icon by swapping two files for one.
+
+The counts cover the **whole board**, not the tab's subtree. They come from the load every view
+already makes: after each load, `use-mindmap-data` counts them over the whole tree it built
+(`agent-activity`) and hands them to an app-wide store the top bar reads — no request of its own.
+Every edit, every other window's change, every MCP write and every lock flip ends in that reload,
+so the row is live; the lock's own state arrives with `agent-capacity-changed` as well.
+
 ## What writes
 
-`arlesh_tasks`, `arlesh_beads`, `arlesh_waits` and `arlesh_infos` write; every other tool is annotated
+`arlesh_tasks`, `arlesh_beads`, `arlesh_waits` and `arlesh_infos` write to the board, and
+`arlesh_capacity` sets the agent capacity lock, which is stored apart from the board and not journaled; every other tool is annotated
 `read_only_hint = true` and writes nothing at all.
 `arlesh_snapshot` used to be the exception: deriving a Habit's iterations minted the scope rows
 their windows landed on, and it had to commit them or the payload would name ids that no longer
@@ -540,7 +625,7 @@ expose.)
 
 `not_permitted` is the MCP's own: the request names a node the MCP may not touch — outside every
 root, private, or (for a write) not an Agentic Task — or one that does not exist, which it
-deliberately cannot tell apart. The fix is the user's, on the *MCP access* page; an agent that
+deliberately cannot tell apart. The fix is the user's, on the *Agents* page; an agent that
 gets one should say what it needs rather than retry. The app's own commands never raise it.
 
 `ambiguous_id` and `status_changed` are the MCP's too (see *Short ids* and *Writing tasks*): the
