@@ -1,6 +1,7 @@
 use chrono::NaiveDate;
 
 use super::*;
+use crate::flows::compound_readings::Reading;
 
 fn at(day: u32, hour: u32) -> NaiveDateTime {
     NaiveDate::from_ymd_opt(2026, 9, day)
@@ -61,7 +62,7 @@ fn an_iteration_resolves_only_when_every_instance_is_done() {
     let resolved = resolutions(
         &[slot(0, 20), slot(1, 21)],
         &keys,
-        &overlays,
+        (&overlays, (&HashSet::new(), &Readings::new())),
         &HashMap::new(),
     );
     assert_eq!(resolved.len(), 1, "the second iteration has undone items");
@@ -92,7 +93,7 @@ fn a_missed_or_in_progress_instance_does_not_count_as_done() {
     assert!(resolutions(
         &[slot(0, 20), slot(1, 21)],
         &keys,
-        &overlays,
+        (&overlays, (&HashSet::new(), &Readings::new())),
         &HashMap::new()
     )
     .is_empty());
@@ -134,7 +135,12 @@ fn an_archived_root_sets_its_whole_iteration_aside_and_the_iteration_resolves() 
     assert_eq!(aside.len(), 4);
     let mut overlays = HabitOverlays::default();
     overlays.tasks.insert(key_on(root(1), 20, 0), archived());
-    let resolved = resolutions(&[slot(0, 20)], &keys, &overlays, &parents);
+    let resolved = resolutions(
+        &[slot(0, 20)],
+        &keys,
+        (&overlays, (&HashSet::new(), &Readings::new())),
+        &parents,
+    );
     assert_eq!(
         resolved.get(&0).copied(),
         Some(at(21, 2)),
@@ -151,10 +157,22 @@ fn an_archived_occurrence_takes_what_is_nested_under_it_and_nothing_else() {
     let mut overlays = HabitOverlays::default();
     overlays.tasks.insert(key_on(item(5), 20, 7), archived());
     overlays.tasks.insert(key_on(root(1), 20, 0), done_task(5));
-    assert!(resolutions(&[slot(0, 20)], &keys, &overlays, &parents).is_empty());
+    assert!(resolutions(
+        &[slot(0, 20)],
+        &keys,
+        (&overlays, (&HashSet::new(), &Readings::new())),
+        &parents
+    )
+    .is_empty());
     overlays.tasks.insert(key_on(item(5), 20, 8), done_task(9));
     assert_eq!(
-        resolutions(&[slot(0, 20)], &keys, &overlays, &parents).len(),
+        resolutions(
+            &[slot(0, 20)],
+            &keys,
+            (&overlays, (&HashSet::new(), &Readings::new())),
+            &parents
+        )
+        .len(),
         1
     );
 }
@@ -170,7 +188,12 @@ fn an_achieved_goal_counts_and_a_missing_instant_falls_back_to_the_window_end() 
             ..GoalOverlay::default()
         },
     );
-    let resolved = resolutions(&[slot(0, 20)], &keys, &overlays, &HashMap::new());
+    let resolved = resolutions(
+        &[slot(0, 20)],
+        &keys,
+        (&overlays, (&HashSet::new(), &Readings::new())),
+        &HashMap::new(),
+    );
     assert_eq!(resolved.get(&0).copied(), Some(at(21, 2)));
 }
 
@@ -517,4 +540,110 @@ fn block_reasons_travel_in_order_under_their_owner() {
     assert_eq!(out[1].position, 1);
     assert_eq!(out[1].owner_type, "task");
     assert_eq!(out[1].owner_id, id);
+}
+
+#[test]
+fn a_compound_occurrence_counts_by_its_derived_status() {
+    let keys = vec![(root(1), NO_CYCLE), (item(5), NO_CYCLE)];
+    let mut overlays = HabitOverlays::default();
+    overlays.tasks.insert(key_on(root(1), 20, 0), done_task(10));
+    let compound = HashSet::from([item(5)]);
+    let open = Readings::from([(
+        key_on(item(5), 20, 0),
+        Reading {
+            status: Status::Ordinary(crate::tasks::model::TaskStatus::Started),
+            done_at: None,
+        },
+    )]);
+    assert!(
+        resolutions(
+            &[slot(0, 20)],
+            &keys,
+            (&overlays, (&compound, &open)),
+            &HashMap::new()
+        )
+        .is_empty(),
+        "its steps are not all done, so neither is its iteration"
+    );
+    assert!(
+        resolutions(
+            &[slot(0, 20)],
+            &keys,
+            (&overlays, (&compound, &Readings::new())),
+            &HashMap::new()
+        )
+        .is_empty(),
+        "nothing derived for it, it is not done"
+    );
+
+    let done = Readings::from([(
+        key_on(item(5), 20, 0),
+        Reading {
+            status: Status::Ordinary(crate::tasks::model::TaskStatus::Done),
+            done_at: Some(at(20, 11)),
+        },
+    )]);
+    let resolved = resolutions(
+        &[slot(0, 20)],
+        &keys,
+        (&overlays, (&compound, &done)),
+        &HashMap::new(),
+    );
+    assert_eq!(
+        resolved.get(&0).copied(),
+        Some(at(20, 11)),
+        "done at its subtree's latest finish, after the root's"
+    );
+    let finished = done_instants(&[slot(0, 20)], &keys, (&overlays, (&compound, &done)));
+    assert_eq!(finished.get(&0).copied(), Some(at(20, 11)));
+}
+
+#[test]
+fn an_occurrences_own_compound_flag_overrides_its_items() {
+    let mut overlays = HabitOverlays::default();
+    let key = key_on(item(5), 20, 0);
+    let compound = HashSet::from([item(5)]);
+    assert!(is_compound(&overlays, &compound, item(5), &key));
+    overlays.tasks.insert(
+        key.clone(),
+        TaskOverlay {
+            compound: Some(false),
+            ..TaskOverlay::default()
+        },
+    );
+    assert!(!is_compound(&overlays, &compound, item(5), &key));
+    overlays.tasks.insert(
+        key.clone(),
+        TaskOverlay {
+            compound: Some(true),
+            ..TaskOverlay::default()
+        },
+    );
+    assert!(is_compound(&overlays, &HashSet::new(), item(5), &key));
+}
+
+#[test]
+fn a_tombstoned_compound_occurrence_is_not_done_whatever_it_derives() {
+    let mut overlays = HabitOverlays::default();
+    let key = key_on(item(5), 20, 0);
+    overlays.tasks.insert(
+        key.clone(),
+        TaskOverlay {
+            tombstone: Some("missed".into()),
+            ..TaskOverlay::default()
+        },
+    );
+    let done = Readings::from([(
+        key.clone(),
+        Reading {
+            status: Status::Ordinary(crate::tasks::model::TaskStatus::Done),
+            done_at: None,
+        },
+    )]);
+    assert_eq!(compound_done_at(&overlays, &done, &key), None);
+    assert_eq!(
+        compound_done_at(&HabitOverlays::default(), &done, &key),
+        Some(None),
+        "done with no known instant"
+    );
 }

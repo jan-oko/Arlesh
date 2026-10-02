@@ -32,7 +32,7 @@ const task = node("task-5", "task", {
 const stored = node("wait-3", "expectation", { rowId: 3, title: "Stored wait", status: "pending", timeScope: null, checkEvery: null });
 // A delegated Task's wait, drawn with a label round its Task's title.
 const delegation = node("dw-6", "expectation", {
-  rowId: "6c2e8d4f-0000-5000-8000-000000000006", title: "“Review the PR” done by its delegate", rowTitle: "Review the PR",
+  rowId: "6c2e8d4f-0000-5000-8000-000000000006", title: "Tuli finish: Review the PR", rowTitle: "Review the PR",
   status: "pending", origin: { kind: "delegation_wait", task_id: 6 }, timeScope: null, checkEvery: null,
 });
 const delegated = node("task-6", "task", { rowId: 6, title: "Review the PR", status: "todo", children: [delegation] });

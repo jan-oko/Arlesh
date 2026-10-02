@@ -10,9 +10,9 @@ use arlesh_lib::{
         create_expectation, create_task,
         error::TaskError,
         model::{
-            AgenticBrief, CreateExpectationRequest, CreateTaskRequest, ExpectationId,
-            ExpectationStatus, Task, TaskAgentic, TaskId, TaskStatus, UpdateExpectationRequest,
-            UpdateTaskRequest,
+            AgenticBrief, AgenticStatus, CreateExpectationRequest, CreateTaskRequest,
+            ExpectationId, ExpectationStatus, Status, Task, TaskAgentic, TaskId, TaskStatus,
+            UpdateExpectationRequest, UpdateTaskRequest,
         },
         update_expectation, update_task,
     },
@@ -92,7 +92,7 @@ async fn start(pool: &sqlx::SqlitePool, id: i64) -> Result<Task, TaskError> {
         pool,
         id,
         UpdateTaskRequest {
-            status: Some(TaskStatus::InProgress),
+            status: Some(Status::Ordinary(TaskStatus::InProgress)),
             ..Default::default()
         },
     )
@@ -199,7 +199,7 @@ async fn an_edit_elsewhere_leaves_the_brief_alone() {
 }
 
 #[tokio::test]
-async fn an_agentic_task_without_a_spec_cannot_start() {
+async fn an_agentic_task_without_a_spec_cannot_be_claimed_or_taken() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
     let bare = task(&pool, ("project", project), TaskAgentic::Yes, None).await;
@@ -211,17 +211,27 @@ async fn an_agentic_task_without_a_spec_cannot_start() {
     )
     .await;
 
-    assert!(matches!(
-        start(&pool, bare).await,
-        Err(TaskError::AgenticSpecMissing)
-    ));
-    assert!(matches!(
-        start(&pool, blank).await,
-        Err(TaskError::AgenticSpecMissing)
-    ));
+    for id in [bare, blank] {
+        assert!(matches!(
+            set(&pool, id, agentic(AgenticStatus::OnAgent)).await,
+            Err(TaskError::AgenticSpecMissing)
+        ));
+        assert!(matches!(
+            set(&pool, id, agentic(AgenticStatus::Doing)).await,
+            Err(TaskError::AgenticSpecMissing)
+        ));
+    }
 }
 
-async fn set(pool: &sqlx::SqlitePool, id: i64, status: TaskStatus) -> Result<Task, TaskError> {
+fn agentic(status: AgenticStatus) -> Status {
+    Status::Agentic(status)
+}
+
+fn ordinary(status: TaskStatus) -> Status {
+    Status::Ordinary(status)
+}
+
+async fn set(pool: &sqlx::SqlitePool, id: i64, status: Status) -> Result<Task, TaskError> {
     update(
         pool,
         id,
@@ -234,19 +244,34 @@ async fn set(pool: &sqlx::SqlitePool, id: i64, status: TaskStatus) -> Result<Tas
 }
 
 #[tokio::test]
-async fn setting_an_agentic_task_without_a_spec_started_is_a_start_and_is_refused() {
+async fn a_new_task_holds_the_to_do_of_its_kinds_model() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
-    let bare = task(&pool, ("project", project), TaskAgentic::Yes, None).await;
+    let parent = task(&pool, ("project", project), TaskAgentic::Yes, None).await;
+    let plain = task(&pool, ("project", project), TaskAgentic::Inherit, None).await;
+    let step = task(&pool, ("task", parent), TaskAgentic::Inherit, None).await;
 
-    assert!(matches!(
-        set(&pool, bare, TaskStatus::Started).await,
-        Err(TaskError::AgenticSpecMissing)
-    ));
+    let read = |id| {
+        let pool = pool.clone();
+        async move {
+            helpers::session_factory(&pool)
+                .connect()
+                .await
+                .unwrap()
+                .tasks()
+                .get(TaskId(id))
+                .await
+                .unwrap()
+                .status
+        }
+    };
+    assert_eq!(read(parent).await, agentic(AgenticStatus::Todo));
+    assert_eq!(read(step).await, agentic(AgenticStatus::Todo));
+    assert_eq!(read(plain).await, ordinary(TaskStatus::Todo));
 }
 
 #[tokio::test]
-async fn pausing_and_resuming_begun_work_is_not_a_start() {
+async fn started_is_not_an_agentic_status() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
     let id = task(
@@ -256,7 +281,57 @@ async fn pausing_and_resuming_begun_work_is_not_a_start() {
         with_spec("Build it"),
     )
     .await;
-    start(&pool, id).await.unwrap();
+
+    assert!(matches!(
+        set(&pool, id, ordinary(TaskStatus::Started)).await,
+        Err(TaskError::NotAgenticStatus(status)) if status == "started"
+    ));
+}
+
+#[tokio::test]
+async fn on_agent_is_not_an_ordinary_status() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let id = task(&pool, ("project", project), TaskAgentic::Inherit, None).await;
+
+    assert!(matches!(
+        set(&pool, id, agentic(AgenticStatus::OnAgent)).await,
+        Err(TaskError::NotOrdinaryStatus(_))
+    ));
+}
+
+#[tokio::test]
+async fn review_is_never_set() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let id = task(
+        &pool,
+        ("project", project),
+        TaskAgentic::Yes,
+        with_spec("Build it"),
+    )
+    .await;
+
+    assert!(matches!(
+        set(&pool, id, agentic(AgenticStatus::Review)).await,
+        Err(TaskError::ReviewIsDerived)
+    ));
+}
+
+#[tokio::test]
+async fn handing_begun_work_between_the_agent_and_the_user_is_not_a_start() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let id = task(
+        &pool,
+        ("project", project),
+        TaskAgentic::Yes,
+        with_spec("Build it"),
+    )
+    .await;
+    set(&pool, id, agentic(AgenticStatus::OnAgent))
+        .await
+        .unwrap();
     update(
         &pool,
         id,
@@ -268,15 +343,17 @@ async fn pausing_and_resuming_begun_work_is_not_a_start() {
     .await
     .unwrap();
 
-    // The work was begun while it had a Spec; pausing and resuming it asks nothing again.
-    let paused = set(&pool, id, TaskStatus::Started).await.unwrap();
-    assert_eq!(paused.status, TaskStatus::Started.as_str());
-    let resumed = set(&pool, id, TaskStatus::InProgress).await.unwrap();
-    assert_eq!(resumed.status, TaskStatus::InProgress.as_str());
+    // The work was claimed while it had a Spec; taking it over and handing it back asks nothing.
+    let taken = set(&pool, id, agentic(AgenticStatus::Doing)).await.unwrap();
+    assert_eq!(taken.status, agentic(AgenticStatus::Doing));
+    let handed = set(&pool, id, agentic(AgenticStatus::OnAgent))
+        .await
+        .unwrap();
+    assert_eq!(handed.status, agentic(AgenticStatus::OnAgent));
 }
 
 #[tokio::test]
-async fn an_agentic_task_with_a_spec_starts() {
+async fn an_agentic_task_with_a_spec_is_claimed() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
     let id = task(
@@ -287,9 +364,11 @@ async fn an_agentic_task_with_a_spec_starts() {
     )
     .await;
 
-    let started = start(&pool, id).await.unwrap();
+    let claimed = set(&pool, id, agentic(AgenticStatus::OnAgent))
+        .await
+        .unwrap();
 
-    assert_eq!(started.status, TaskStatus::InProgress.as_str());
+    assert_eq!(claimed.status, agentic(AgenticStatus::OnAgent));
 }
 
 #[tokio::test]
@@ -302,7 +381,7 @@ async fn a_spec_given_in_the_same_write_lets_it_start() {
         &pool,
         id,
         UpdateTaskRequest {
-            status: Some(TaskStatus::InProgress),
+            status: Some(agentic(AgenticStatus::Doing)),
             agentic_brief: Some(with_spec("Build it")),
             ..Default::default()
         },
@@ -326,7 +405,7 @@ async fn a_task_that_inherits_agentic_needs_a_spec_too() {
     let step = task(&pool, ("task", parent), TaskAgentic::Inherit, None).await;
 
     assert!(matches!(
-        start(&pool, step).await,
+        set(&pool, step, agentic(AgenticStatus::OnAgent)).await,
         Err(TaskError::AgenticSpecMissing)
     ));
 }
@@ -357,12 +436,13 @@ async fn a_task_that_is_not_agentic_starts_without_a_spec() {
 }
 
 #[tokio::test]
-async fn editing_an_agentic_task_already_in_progress_is_not_a_start() {
+async fn marking_work_in_progress_agentic_converts_it_to_doing() {
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
     let id = task(&pool, ("project", project), TaskAgentic::Inherit, None).await;
     start(&pool, id).await.unwrap();
-    update(
+
+    let marked = update(
         &pool,
         id,
         UpdateTaskRequest {
@@ -372,24 +452,163 @@ async fn editing_an_agentic_task_already_in_progress_is_not_a_start() {
     )
     .await
     .unwrap();
+    assert_eq!(marked.status, agentic(AgenticStatus::Doing));
 
+    // An edit naming the status it holds is no start, and so asks for no Spec.
     let renamed = update(
         &pool,
         id,
         UpdateTaskRequest {
             title: Some("Still going".into()),
-            status: Some(TaskStatus::InProgress),
+            status: Some(agentic(AgenticStatus::Doing)),
             ..Default::default()
         },
     )
     .await;
-
     assert!(renamed.is_ok(), "{renamed:?}");
+
+    // A form that still names the old model's value, with the flag changed in the same write,
+    // is converted, not refused: the flag change is the explicit conversion.
+    let back = update(
+        &pool,
+        id,
+        UpdateTaskRequest {
+            agentic: Some(TaskAgentic::No),
+            status: Some(agentic(AgenticStatus::Doing)),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(back.status, ordinary(TaskStatus::InProgress));
 }
 
 #[tokio::test]
-async fn creating_a_task_already_in_progress_is_not_a_start() {
-    // The path that does this is a duplicate: a copy of work underway is not the work starting.
+async fn a_flag_change_that_would_strand_a_status_is_refused_naming_the_tasks() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let parent = task(&pool, ("project", project), TaskAgentic::Inherit, None).await;
+    let paused = create(
+        &pool,
+        CreateTaskRequest {
+            title: "Paused step".into(),
+            parent_type: "task".into(),
+            parent_id: parent.into(),
+            status: Some(ordinary(TaskStatus::Started)),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .id
+    .sid();
+    let going = create(
+        &pool,
+        CreateTaskRequest {
+            title: "Going step".into(),
+            parent_type: "task".into(),
+            parent_id: parent.into(),
+            status: Some(ordinary(TaskStatus::InProgress)),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .id
+    .sid();
+
+    let refused = update(
+        &pool,
+        parent,
+        UpdateTaskRequest {
+            agentic: Some(TaskAgentic::Yes),
+            ..Default::default()
+        },
+    )
+    .await;
+    match refused {
+        Err(TaskError::KindConversion(named)) => {
+            assert!(named.contains("Paused step"), "{named}");
+            assert!(!named.contains("Going step"), "{named}");
+        }
+        other => panic!("expected a refusal naming the stranded task, got {other:?}"),
+    }
+    // Nothing landed: the parent is still not agentic, and its steps keep their model.
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    assert_eq!(db.tasks().get(TaskId(parent)).await.unwrap().agentic, None);
+    assert_eq!(
+        db.tasks().get(TaskId(going)).await.unwrap().status,
+        ordinary(TaskStatus::InProgress)
+    );
+    drop(db);
+
+    // Settled first, the same change converts every step that inherits it.
+    set(&pool, paused, ordinary(TaskStatus::InProgress))
+        .await
+        .unwrap();
+    update(
+        &pool,
+        parent,
+        UpdateTaskRequest {
+            agentic: Some(TaskAgentic::Yes),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    for step in [paused, going] {
+        assert_eq!(
+            db.tasks().get(TaskId(step)).await.unwrap().status,
+            agentic(AgenticStatus::Doing)
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_move_under_an_agentic_task_converts_or_is_refused() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let agentic_parent = task(&pool, ("project", project), TaskAgentic::Yes, None).await;
+    let moving = task(&pool, ("project", project), TaskAgentic::Inherit, None).await;
+    start(&pool, moving).await.unwrap();
+
+    let moved = update(
+        &pool,
+        moving,
+        UpdateTaskRequest {
+            parent_type: Some("task".into()),
+            parent_id: Some(agentic_parent.into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(moved.status, agentic(AgenticStatus::Doing));
+
+    let paused = task(&pool, ("project", project), TaskAgentic::Inherit, None).await;
+    set(&pool, paused, ordinary(TaskStatus::Started))
+        .await
+        .unwrap();
+    assert!(matches!(
+        update(
+            &pool,
+            paused,
+            UpdateTaskRequest {
+                parent_type: Some("task".into()),
+                parent_id: Some(agentic_parent.into()),
+                ..Default::default()
+            },
+        )
+        .await,
+        Err(TaskError::KindConversion(_))
+    ));
+}
+
+#[tokio::test]
+async fn a_task_created_under_an_agentic_one_holds_the_agentic_model() {
+    // The path that names a status is a duplicate: a copy of work underway is not the work
+    // starting, and a copy made under an agentic Task holds its counterpart there.
     let pool = helpers::test_pool().await;
     let project = make_project(&pool).await;
     let parent = task(
@@ -406,13 +625,80 @@ async fn creating_a_task_already_in_progress_is_not_a_start() {
             title: "Underway".into(),
             parent_type: "task".into(),
             parent_id: parent.into(),
-            status: Some(TaskStatus::InProgress),
+            status: Some(ordinary(TaskStatus::InProgress)),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(created.status, agentic(AgenticStatus::Doing));
+
+    let paused = create(
+        &pool,
+        CreateTaskRequest {
+            title: "Paused".into(),
+            parent_type: "task".into(),
+            parent_id: parent.into(),
+            status: Some(ordinary(TaskStatus::Started)),
             ..Default::default()
         },
     )
     .await;
+    assert!(matches!(paused, Err(TaskError::KindConversion(_))));
+}
 
-    assert!(created.is_ok(), "{created:?}");
+#[tokio::test]
+async fn a_question_makes_an_on_agent_task_read_review_until_it_is_answered() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let id = task(
+        &pool,
+        ("project", project),
+        TaskAgentic::Yes,
+        with_spec("Build it"),
+    )
+    .await;
+    set(&pool, id, agentic(AgenticStatus::OnAgent))
+        .await
+        .unwrap();
+    let served = |pool: sqlx::SqlitePool| async move {
+        let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+        let now = chrono::Local::now().naive_local();
+        arlesh_lib::mindmap::load(&mut db, now)
+            .await
+            .unwrap()
+            .tasks
+            .into_iter()
+            .find(|task| task.id.sid() == id)
+            .unwrap()
+            .status
+    };
+    assert_eq!(served(pool.clone()).await, agentic(AgenticStatus::OnAgent));
+
+    let question = wait_under(&pool, ("task", id)).await.unwrap();
+    assert_eq!(served(pool.clone()).await, agentic(AgenticStatus::Review));
+    // The row still holds On Agent: Review is derived, never stored.
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    assert_eq!(
+        db.tasks().get(TaskId(id)).await.unwrap().status,
+        agentic(AgenticStatus::OnAgent)
+    );
+    drop(db);
+
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    update_expectation(
+        &mut db,
+        ExpectationId(question.id.sid()),
+        UpdateExpectationRequest {
+            status: Some(ExpectationStatus::Released),
+            answer: Some(Some("Blue.".into())),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+    assert_eq!(served(pool.clone()).await, agentic(AgenticStatus::OnAgent));
 }
 
 #[tokio::test]

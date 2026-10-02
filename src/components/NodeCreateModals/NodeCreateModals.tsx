@@ -56,6 +56,8 @@ export default function NodeCreateModals({ tree, editors, allTags, domainNames }
           inheritedTarget={inheritedTarget}
           heading={flowParent.asHabit ? t("editor:newHabitTitle") : t("editor:newFlowTitle")}
           startAsHabit={flowParent.asHabit}
+          allTags={allTags}
+          domainNames={domainNames}
           onSave={onCreateFlow}
           onClose={closeFlow}
         />

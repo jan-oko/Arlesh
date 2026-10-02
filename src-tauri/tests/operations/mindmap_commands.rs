@@ -61,6 +61,8 @@ fn weekly_from(start_scope_id: ScopeKey) -> SetRecurrenceRequest {
         end_scope_id: None,
         clock: ClockKind::Window,
         miss_policy: Some(MissPolicy::Archive),
+        cooldown_n: None,
+        cooldown_kind: None,
     }
 }
 
@@ -488,4 +490,27 @@ async fn an_empty_database_loads_an_empty_envelope() {
         .unwrap(),
         "the seeded aspects are still there"
     );
+}
+
+/// The app's load names every Task, Goal, Commitment and wait by its short id — a prefix of its
+/// full id, three characters at least — keyed as the board keys the node.
+#[tokio::test]
+async fn the_load_carries_each_nodes_short_id() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    seed(&app, &pool).await;
+
+    let load = mindmap_commands::load_mindmap(app.state(), app.state(), now())
+        .await
+        .unwrap();
+
+    assert!(!load.tasks.is_empty());
+    for task in &load.tasks {
+        let short = load
+            .short_ids
+            .get(&format!("task-{}", task.id))
+            .unwrap_or_else(|| panic!("task {} has a short id", task.id));
+        assert!(short.len() >= 3);
+        assert!(short.chars().all(|character| character.is_ascii_hexdigit()));
+    }
 }

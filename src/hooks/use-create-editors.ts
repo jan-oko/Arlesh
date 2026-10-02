@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { storedId } from "@/api/node-id";
-import { setFlowRecurrence } from "@/api/flows";
+import { setFlowRecurrence, updateFlow } from "@/api/flows";
 import type { CreateFlowRequest, Flow } from "@/api/flows";
 import { withAtomicGesture } from "@/api/gesture";
 import { recurrenceRequest } from "@/components/FlowEditorModal/recurrence-ui";
@@ -110,15 +110,23 @@ export function useCreateEditors({ tree, createFlow, createCommitment, reload }:
         is_private: data.isPrivate,
       };
       const recurrence = data.recurrence ?? null;
-      if (recurrence === null) {
+      // The root's template fields land in a second write: a new flow is created with its
+      // defaults. Only what departs from them is written.
+      const template = data.template?.asynchronous === true || data.template?.compound === true
+        ? data.template
+        : undefined;
+      if (recurrence === null && template === undefined) {
         await createFlow(request);
         setFlowParent(null);
         return;
       }
       try {
-        await withAtomicGesture(t("gestures.newHabit"), async () => {
+        await withAtomicGesture(t(recurrence !== null ? "gestures.newHabit" : "gestures.newFlow"), async () => {
           const flow = await createFlow(request);
-          await setFlowRecurrence(flow.id, recurrenceRequest(recurrence, data.durationKind));
+          if (template !== undefined) await updateFlow(flow.id, template);
+          if (recurrence !== null) {
+            await setFlowRecurrence(flow.id, recurrenceRequest(recurrence, data.durationKind));
+          }
         });
       } finally {
         await reload();

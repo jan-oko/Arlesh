@@ -26,8 +26,7 @@ use arlesh_lib::{
         add_task_dependency, create_goal, create_task,
         model::{
             CreateGoalRequest, CreateTaskRequest, Dependency, GoalId, GoalStatus, OnScopeExit,
-            TaskAgentic, TaskArchival, TaskId, TaskStatus, TimeScope, UpdateGoalRequest,
-            UpdateTaskRequest,
+            TaskAgentic, TaskArchival, TaskId, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
         },
         update_goal, update_task,
     },
@@ -260,7 +259,9 @@ async fn an_independent_copy_does_not_change_when_the_original_is_edited() {
         TaskId(task.id.sid()),
         UpdateTaskRequest {
             title: Some("Cast the bell, again".into()),
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
     )
@@ -277,7 +278,7 @@ async fn an_independent_copy_does_not_change_when_the_original_is_edited() {
         .await
         .unwrap();
     assert_eq!(stored.title, "Cast the bell");
-    assert_eq!(stored.status, "todo");
+    assert_eq!(stored.status.as_str(), "todo");
 }
 
 // ===========================================================================
@@ -310,7 +311,9 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
             title: "Cast the bell".into(),
             parent_type: "project".into(),
             parent_id: project.into(),
-            status: Some(TaskStatus::InProgress),
+            status: Some(arlesh_lib::tasks::model::Status::Agentic(
+                arlesh_lib::tasks::model::AgenticStatus::Doing,
+            )),
             time_scope: Some(at(week)),
             on_scope_exit: Some(OnScopeExit::Archive),
             plan: Some(at(week)),
@@ -363,7 +366,10 @@ async fn a_duplicated_task_carries_every_field_the_original_held() {
 
     assert_ne!(copy.id, task.id);
     assert_eq!(copy.title, "Cast the bell");
-    assert_eq!(copy.status, "in_progress");
+    assert_eq!(
+        copy.status,
+        arlesh_lib::tasks::model::Status::Agentic(arlesh_lib::tasks::model::AgenticStatus::Doing)
+    );
     assert_eq!(
         copy.agentic_brief
             .as_ref()
@@ -429,7 +435,9 @@ async fn a_duplicated_task_is_set_aside_if_the_original_was() {
             title: "Re-cast the bell".into(),
             parent_type: "project".into(),
             parent_id: project.into(),
-            status: Some(TaskStatus::InProgress),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::InProgress,
+            )),
             time_scope: None,
             on_scope_exit: None,
             plan: None,
@@ -526,7 +534,7 @@ async fn a_duplicated_goal_carries_status_scope_tags_and_reasons() {
         .unwrap();
 
     assert_eq!(copy.title, "Reach orbit");
-    assert_eq!(copy.status, "frozen");
+    assert_eq!(copy.status.as_str(), "frozen");
     assert_eq!(copy.time_scope, Some(at(week)));
     assert_eq!(copy.on_scope_exit, Some(OnScopeExit::Archive));
     assert_eq!(copy.position, 9);

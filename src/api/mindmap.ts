@@ -54,6 +54,9 @@ export interface MindmapLoad {
   lifecycles: ItemLifecycle[];
   /** One entry per flow, in `flows` order: whether its Habit occurrences were derived. */
   habits: FlowHabitEntry[];
+  /** Each Task's, Goal's, Commitment's and wait's short id on the whole board, keyed `task-12` /
+   * `expectation-3` — what a "Blocked by …" reason names its target by. */
+  short_ids?: Record<string, string>;
 }
 
 /**

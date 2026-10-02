@@ -20,6 +20,11 @@
     "include": "Backlog: included. Click to cycle off → include → exclude.",
     "exclude": "Backlog: excluded. Click to cycle off → include → exclude."
   },
+  "onAgentPill": "On Agent",
+  "onAgentTooltip": {
+    "off": "Agentic tasks an agent holds are hidden from Start, Do and Zen. Click (or o) to show them",
+    "on": "Showing agentic tasks an agent holds. Click (or o) to hide them again"
+  },
   "planScopeLabel": "Plan scope",
   "planScopeAny": "Any scope",
   "planScopeClear": "Clear",

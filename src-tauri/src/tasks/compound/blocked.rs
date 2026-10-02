@@ -61,6 +61,7 @@ pub fn derive(
             reason: REASON.to_string(),
             position: i64::MAX,
             derived: Some(DerivedBlock::Compound),
+            until: None,
         })
         .collect()
 }
@@ -84,11 +85,11 @@ fn directly_blocked(
             Some((kind, reason.owner_id.clone()))
         })
         .collect();
-    let task_status: HashMap<&NodeId, &str> = rows
+    let task_done: HashMap<&NodeId, bool> = rows
         .tasks
         .iter()
         .chain(rows.checks)
-        .map(|task| (&task.id, task.status.as_str()))
+        .map(|task| (&task.id, task.status.is_done()))
         .collect();
     let goal_status: HashMap<&NodeId, &str> = rows
         .goals
@@ -103,9 +104,9 @@ fn directly_blocked(
         .collect();
     for edge in edges {
         let unmet = match edge.dependency_type.as_str() {
-            "task" => task_status
+            "task" => task_done
                 .get(&edge.dependency_id)
-                .is_some_and(|status| *status != TaskStatus::Done.as_str()),
+                .is_some_and(|done| !*done),
             "expectation" => wait_status
                 .get(&edge.dependency_id)
                 .is_some_and(|status| *status == ExpectationStatus::Pending),

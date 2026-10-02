@@ -39,7 +39,7 @@ use crate::domains::model::{
 use crate::error::AppError;
 use crate::infos::model::{CreateInfoRequest, InfoId, UpdateInfoRequest};
 use crate::tasks::model::{
-    CreateGoalRequest, CreateTaskRequest, GoalId, GoalStatus, TaskAgentic, TaskId, TaskStatus,
+    CreateGoalRequest, CreateTaskRequest, GoalId, GoalStatus, TaskAgentic, TaskId,
     UpdateGoalRequest, UpdateTaskRequest,
 };
 
@@ -319,7 +319,7 @@ async fn clone_task(
             title: original.title.clone(),
             parent_type: collapse_parent_kind(&item.new_parent_kind).to_string(),
             parent_id: item.new_parent_id.into(),
-            status: TaskStatus::from_db(&original.status),
+            status: Some(original.status),
             time_scope: original.time_scope.clone(),
             on_scope_exit: original.on_scope_exit,
             plan: original.plan.clone(),

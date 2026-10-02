@@ -39,7 +39,9 @@ const source: ZenSourceRows = {
   expectations: flattenExpectationRows(root),
 };
 
-const BOTH: ZenOptions = { commitments: true, expectations: true, agentic: [], showsStarted: false, showsCompound: true };
+const BOTH: ZenOptions = {
+  commitments: true, expectations: true, agentic: [], showsStarted: false, showsCompound: true,
+};
 
 function ids(rows: ReadonlyArray<{ node: { id: string } }>): string[] {
   return rows.map((row) => row.node.id);
@@ -69,7 +71,7 @@ describe("zenContents", () => {
   });
 
   it("draws nothing in a strip the tab has hidden", () => {
-    const contents = read({}, { commitments: false, expectations: false, agentic: [], showsStarted: false, showsCompound: true });
+    const contents = read({}, { ...BOTH, commitments: false, expectations: false });
     expect(contents.commitments.rows).toEqual([]);
     expect(contents.expectations.rows).toEqual([]);
     expect(ids(contents.tasks.rows)).toHaveLength(3);
@@ -108,5 +110,83 @@ describe("zenContents", () => {
     const contents = read({}, { ...BOTH, showsCompound: false }, "task-second");
     expect(ids(contents.tasks.rows)).toEqual(["task-doing", "task-doing-child", "task-second"]);
     expect(contents.tasks.exemptedIds).toEqual(new Set(["task-second"]));
+  });
+});
+
+describe("zenContents — Agentic Tasks", () => {
+  const agenticTask = (id: string, status: "todo" | "on_agent" | "review" | "doing" | "done", over: Partial<MindmapNode> = {}) =>
+    n(id, "task", { status, taskStatus: { kind: "agentic", status }, agentic: true, ...over });
+  const agentRoot = n("root", "domain", {
+    children: [
+      n("task-mine", "task", { status: "in_progress", taskStatus: { kind: "ordinary", status: "in_progress" } }),
+      agenticTask("task-held", "on_agent", {
+        children: [n("expectation-ci", "expectation", { status: "pending", agentWaiting: { note: "CI", question: false, answer: null } })],
+      }),
+      agenticTask("task-taken", "doing"),
+      agenticTask("task-asking", "review", {
+        children: [n("expectation-question", "expectation", { status: "pending", agentWaiting: { note: null, question: true, answer: null } })],
+      }),
+      n("expectation-person", "expectation", { status: "pending" }),
+    ],
+  });
+  const agentSource: ZenSourceRows = {
+    tasks: flattenTaskRows(agentRoot, []),
+    commitments: flattenCommitmentRows(agentRoot),
+    expectations: flattenExpectationRows(agentRoot),
+  };
+  const readAgents = (shared: Partial<FilterState> = {}) => zenContents(agentSource, { ...DEFAULT_FILTER, ...shared }, BOTH, null);
+
+  it("leads with Review, keeps Doing, and hides On Agent", () => {
+    expect(ids(readAgents().tasks.rows)).toEqual(["task-asking", "task-mine", "task-taken"]);
+  });
+
+  it("shows On Agent while the On Agent pill is on", () => {
+    expect(ids(readAgents({ showOnAgent: true }).tasks.rows)).toEqual(["task-asking", "task-mine", "task-held", "task-taken"]);
+  });
+
+  it("keeps every agentic wait out of the Expectations strip, question or not", () => {
+    expect(ids(readAgents().expectations.rows)).toEqual(["expectation-person"]);
+  });
+
+  it("shows Review whatever the Started setting says", () => {
+    const contents = zenContents(agentSource, DEFAULT_FILTER, { ...BOTH, showsStarted: false }, null);
+    expect(ids(contents.tasks.rows)).toContain("task-asking");
+  });
+});
+
+describe("zenContents — delegation", () => {
+  const delegationWait = (id: string) => n(id, "expectation", { status: "pending", origin: { kind: "delegation_wait", task_id: 1 } });
+  const board = n("root", "domain", {
+    children: [
+      n("goal-1", "goal", {
+        status: "active",
+        children: [
+          n("task-mine", "task", { status: "in_progress" }),
+          n("task-tulis", "task", {
+            status: "in_progress", delegate: { kind: "person", id: 4 }, children: [delegationWait("wait-person")],
+          }),
+        ],
+      }),
+    ],
+  });
+  const delegated: ZenSourceRows = {
+    tasks: flattenTaskRows(board, []),
+    commitments: flattenCommitmentRows(board),
+    expectations: flattenExpectationRows(board),
+  };
+  const zen = (focusedId: string | null = null) => zenContents(delegated, DEFAULT_FILTER, BOTH, focusedId);
+
+  it("leaves a delegated Task off the grid, In Progress or not", () => {
+    expect(ids(zen().tasks.rows)).toEqual(["task-mine"]);
+  });
+
+  it("keeps a delegated card the selection is on, as exempted", () => {
+    const contents = zen("task-tulis");
+    expect(ids(contents.tasks.rows)).toEqual(["task-mine", "task-tulis"]);
+    expect(contents.tasks.exemptedIds.has("task-tulis")).toBe(true);
+  });
+
+  it("keeps what a delegated Task waits on in the Expectations strip", () => {
+    expect(ids(zen().expectations.rows)).toEqual(["wait-person"]);
   });
 });

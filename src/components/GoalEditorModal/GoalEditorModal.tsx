@@ -119,7 +119,7 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
           <OnScopeExitField value={onScopeExit} onChange={setOnScopeExit} />
         </div>
       )}
-      <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />
+      <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} coolingUntil={node.coolingUntil} />
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} />
     </EditorModal>

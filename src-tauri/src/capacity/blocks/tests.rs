@@ -55,7 +55,7 @@ fn task_row(
         title: format!("task {id}"),
         parent_type: parent_type.to_string(),
         parent_id: parent_id.into(),
-        status: status.to_string(),
+        status: crate::tasks::model::Status::from_db(status).expect("a stored status"),
         delegate_to: None,
         agentic,
         asynchronous: false,
@@ -76,10 +76,10 @@ fn task_row(
 
 /// An Aspect and a Project holding:
 ///
-/// - task 20, Agentic, In Progress
+/// - task 20, Agentic, Doing
 ///   - goal 30
 ///     - task 31, To Do, inherits Agentic through the Goal
-///   - task 21, Started, inherits
+///   - task 21, On Agent, inherits
 ///   - task 22, Done, inherits
 ///   - task 23, To Do, explicitly Not agentic
 ///     - task 24, To Do, inherits Not agentic
@@ -89,10 +89,10 @@ fn board() -> MindmapLoad {
         domains: vec![domain_row(1, None), domain_row(2, Some(1))],
         goals: vec![goal_row(30, "task", 20)],
         tasks: vec![
-            task_row(20, "project", 2, "in_progress", Some(true)),
-            task_row(31, "goal", 30, "todo", None),
-            task_row(21, "task", 20, "started", None),
-            task_row(22, "task", 20, "done", None),
+            task_row(20, "project", 2, "doing", Some(true)),
+            task_row(31, "goal", 30, "agentic_todo", None),
+            task_row(21, "task", 20, "on_agent", None),
+            task_row(22, "task", 20, "agentic_done", None),
             task_row(23, "task", 20, "todo", Some(false)),
             task_row(24, "task", 23, "todo", None),
             task_row(40, "project", 2, "todo", None),
@@ -130,6 +130,7 @@ fn on_it_adds_one_derived_reason_per_blocked_task_after_its_own() {
         reason: "waiting on review".to_string(),
         position: 0,
         derived: None,
+        until: None,
     });
 
     apply(&mut load, true);
@@ -218,6 +219,7 @@ fn a_derived_reason_is_marked_on_the_wire_and_a_stored_one_is_not() {
         reason: "x".to_string(),
         position: 0,
         derived: None,
+        until: None,
     };
     assert!(serde_json::to_value(&stored)
         .unwrap()

@@ -40,8 +40,8 @@ export const LIST_FLAGS_BINDINGS: readonly Binding<ListFlagsContext>[] = [
     run: (c) => { if (c.selectedTaskId !== null) c.onToggleAsynchronous(c.selectedTaskId); },
   },
   {
-    // V for **compound**, bare beside A, B and W; nothing else binds bare V here. A Habit
-    // occurrence is turned away in the hook, out loud: only a stored Task carries the flag.
+    // V for **compound**, bare beside A, B and W; nothing else binds bare V here. An
+    // iteration's root or a check task is turned away in the hook, out loud (see `takesCompound`).
     id: "listView.toggleCompound", section: "listView", chord: { code: "KeyV" },
     labelKey: "toggleCompound",
     when: (c) => c.selectedTaskId !== null,

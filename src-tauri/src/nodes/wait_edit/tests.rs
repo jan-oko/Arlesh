@@ -17,7 +17,7 @@ fn check() -> Task {
         title: "Reply from Dana".into(),
         parent_type: "expectation".into(),
         parent_id: NodeId::Stored(5),
-        status: "todo".into(),
+        status: crate::tasks::model::Status::Ordinary(crate::tasks::model::TaskStatus::Todo),
         delegate_to: None,
         agentic: None,
         asynchronous: false,
@@ -62,7 +62,7 @@ fn moving_redating_delegating_or_spawning_is_refused() {
         ..Default::default()
     }));
     assert!(refused(UpdateTaskRequest {
-        delegate_to: Some(Some(crate::tasks::model::Delegate::Agent)),
+        delegate_to: Some(Some(crate::tasks::model::Delegate::Person { id: 2 })),
         ..Default::default()
     }));
     assert!(refused(UpdateTaskRequest {

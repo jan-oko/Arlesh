@@ -950,3 +950,81 @@ fn an_explicit_reason_alone_admits_nothing() {
         &gate
     ));
 }
+
+fn agentic(status: &str) -> NodeFacts {
+    let mut node = task(status);
+    node.agentic = true;
+    node
+}
+
+#[test]
+fn start_shows_an_agentic_task_to_claim_and_one_awaiting_review() {
+    assert!(matches(&agentic("todo"), Preset::Start));
+    assert!(matches(&agentic("review"), Preset::Start));
+    assert!(!matches(&agentic("done"), Preset::Start));
+}
+
+#[test]
+fn start_and_do_hide_on_agent_unless_it_is_shown() {
+    assert!(!matches(&agentic("on_agent"), Preset::Start));
+    assert!(!matches(&agentic("on_agent"), Preset::Do));
+    let shown = BoardFilter {
+        show_on_agent: true,
+        ..BoardFilter::default()
+    };
+    assert!(passes_status(
+        &agentic("on_agent"),
+        &BoardFilter {
+            preset: Preset::Start,
+            ..shown.clone()
+        },
+        UNSET_STATUS,
+        false
+    ));
+    assert!(passes_status(
+        &agentic("on_agent"),
+        &BoardFilter {
+            preset: Preset::Do,
+            ..shown
+        },
+        UNSET_STATUS,
+        false
+    ));
+}
+
+#[test]
+fn review_ignores_the_started_settings() {
+    let strict = BoardFilter {
+        preset: Preset::Start,
+        start_shows_started: false,
+        ..BoardFilter::default()
+    };
+    assert!(passes_status(
+        &agentic("review"),
+        &strict,
+        UNSET_STATUS,
+        false
+    ));
+    assert!(matches(&agentic("review"), Preset::Do));
+}
+
+#[test]
+fn do_shows_doing_and_review_but_not_an_agentic_to_do() {
+    assert!(matches(&agentic("doing"), Preset::Do));
+    assert!(matches(&agentic("review"), Preset::Do));
+    assert!(!matches(&agentic("todo"), Preset::Do));
+}
+
+#[test]
+fn doing_drops_from_start_with_nothing_left_to_start() {
+    assert!(!matches(&agentic("doing"), Preset::Start));
+    let mut parent = agentic("doing");
+    parent.has_todo_child = true;
+    assert!(matches(&parent, Preset::Start));
+}
+
+#[test]
+fn an_ordinary_status_spelled_like_an_agentic_one_is_not_read_as_it() {
+    // The model is read off the fact, not guessed from the spelling.
+    assert!(!matches(&task("review"), Preset::Do));
+}

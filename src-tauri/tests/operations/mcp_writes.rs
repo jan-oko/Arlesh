@@ -15,13 +15,13 @@ use arlesh_lib::commands::{
 use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype};
 use arlesh_lib::mcp::{params, ArleshMcp};
 use arlesh_lib::nodes::id::{uuid_v5, NODE_NAMESPACE};
-use arlesh_lib::tasks::model::{AgenticPriority, CreateGoalRequest, CreateTaskRequest};
+use arlesh_lib::tasks::model::{AgenticPriority, CreateGoalRequest, CreateTaskRequest, Status};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use tauri::test::MockRuntime;
 use tauri::{App, Manager};
 
-use params::{NodeIdParam, TaskStatusParam, TasksOperation};
+use params::{AgenticStatusParam, NodeIdParam, TasksOperation};
 
 /// A project opened to the MCP and one that is not, each holding a Task that inherits nothing.
 struct Board {
@@ -91,7 +91,15 @@ async fn set_column(pool: &sqlx::SqlitePool, sql: &str, id: i64) {
 }
 
 async fn not_agentic(pool: &sqlx::SqlitePool, id: i64) {
-    set_column(pool, "UPDATE tasks SET agentic = 0 WHERE id = ?", id).await;
+    set_column(
+        pool,
+        "UPDATE tasks SET agentic = 0, status = CASE status
+             WHEN 'agentic_todo' THEN 'todo' WHEN 'agentic_done' THEN 'done'
+             WHEN 'doing' THEN 'in_progress' ELSE status END
+          WHERE id = ?",
+        id,
+    )
+    .await;
 }
 
 async fn run(mcp: &ArleshMcp, operation: TasksOperation) -> CallToolResult {
@@ -172,6 +180,7 @@ fn edit(
         add_tags: Vec::new(),
         remove_tags: Vec::new(),
         block_reasons: None,
+        delegate: None,
     }
 }
 
@@ -179,12 +188,17 @@ fn retitle(id: impl Into<NodeIdParam>, title: &str) -> TasksOperation {
     edit(id, Some(title), None, None)
 }
 
+/// A Task's status as the wire spells it — `todo`, `on_agent`, … — whichever model it is in.
 async fn status_of(pool: &sqlx::SqlitePool, id: i64) -> String {
-    sqlx::query_scalar("SELECT status FROM tasks WHERE id = ?")
+    let stored: String = sqlx::query_scalar("SELECT status FROM tasks WHERE id = ?")
         .bind(id)
         .fetch_one(pool)
         .await
-        .expect("read the status")
+        .expect("read the status");
+    Status::from_db(&stored)
+        .expect("a stored status")
+        .as_str()
+        .to_string()
 }
 
 async fn title_of(pool: &sqlx::SqlitePool, id: i64) -> String {
@@ -353,13 +367,13 @@ async fn of_two_status_writes_expecting_the_same_status_exactly_one_wins() {
     );
     let set = |status| TasksOperation::SetStatus {
         id: board.inside_task.into(),
-        expected: TaskStatusParam::Todo,
+        expected: AgenticStatusParam::Todo,
         status,
     };
 
     let (started, finished) = tokio::join!(
-        run(&mcp, set(TaskStatusParam::InProgress)),
-        run(&mcp, set(TaskStatusParam::Done)),
+        run(&mcp, set(AgenticStatusParam::OnAgent)),
+        run(&mcp, set(AgenticStatusParam::Done)),
     );
 
     let outcomes = [&started, &finished];
@@ -379,13 +393,13 @@ async fn of_two_status_writes_expecting_the_same_status_exactly_one_wins() {
         winners[0]
             .structured_content
             .as_ref()
-            .map(|task| &task["status"]),
+            .map(|task| &task["status"]["status"]),
         Some(&serde_json::json!(now))
     );
 }
 
 #[tokio::test]
-async fn starting_an_agentic_task_needs_a_spec() {
+async fn claiming_an_agentic_task_needs_a_spec() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let board = board(&app).await;
@@ -395,14 +409,130 @@ async fn starting_an_agentic_task_needs_a_spec() {
         &mcp(&pool),
         TasksOperation::SetStatus {
             id: board.inside_task.into(),
-            expected: TaskStatusParam::Todo,
-            status: TaskStatusParam::InProgress,
+            expected: AgenticStatusParam::Todo,
+            status: AgenticStatusParam::OnAgent,
         },
     )
     .await;
 
     assert_eq!(started.is_error, Some(true));
     assert_eq!(status_of(&pool, board.inside_task).await, "todo");
+}
+
+/// An agentic Task inside a root with a Spec, claimed by the agent: On Agent.
+async fn claimed(pool: &sqlx::SqlitePool) -> (ArleshMcp, i64) {
+    let app = helpers::command_host(pool);
+    let board = board(&app).await;
+    helpers::make_agentic(pool, board.inside_task).await;
+    let mcp = mcp(pool);
+    succeeded(
+        &run(
+            &mcp,
+            edit(board.inside_task, None, Some(with_spec("Claim")), None),
+        )
+        .await,
+    );
+    succeeded(
+        &run(
+            &mcp,
+            TasksOperation::SetStatus {
+                id: board.inside_task.into(),
+                expected: AgenticStatusParam::Todo,
+                status: AgenticStatusParam::OnAgent,
+            },
+        )
+        .await,
+    );
+    (mcp, board.inside_task)
+}
+
+#[tokio::test]
+async fn an_agent_never_sets_doing_or_review() {
+    let pool = helpers::test_pool().await;
+    let (mcp, id) = claimed(&pool).await;
+
+    for status in [AgenticStatusParam::Doing, AgenticStatusParam::Review] {
+        let refused_write = run(
+            &mcp,
+            TasksOperation::SetStatus {
+                id: id.into(),
+                expected: AgenticStatusParam::OnAgent,
+                status,
+            },
+        )
+        .await;
+        assert_eq!(refused(&refused_write), "invalid_request", "{status:?}");
+    }
+    assert_eq!(status_of(&pool, id).await, "on_agent");
+}
+
+#[tokio::test]
+async fn an_agent_claims_only_from_to_do() {
+    let pool = helpers::test_pool().await;
+    let (mcp, id) = claimed(&pool).await;
+    succeeded(
+        &run(
+            &mcp,
+            TasksOperation::SetStatus {
+                id: id.into(),
+                expected: AgenticStatusParam::OnAgent,
+                status: AgenticStatusParam::Done,
+            },
+        )
+        .await,
+    );
+
+    let reclaimed = run(
+        &mcp,
+        TasksOperation::SetStatus {
+            id: id.into(),
+            expected: AgenticStatusParam::Done,
+            status: AgenticStatusParam::OnAgent,
+        },
+    )
+    .await;
+    assert_eq!(refused(&reclaimed), "invalid_request");
+    assert_eq!(status_of(&pool, id).await, "done");
+}
+
+#[tokio::test]
+async fn a_question_makes_it_review_and_expected_may_name_review() {
+    let pool = helpers::test_pool().await;
+    let (mcp, id) = claimed(&pool).await;
+    succeeded(
+        &mcp.waits(Parameters(params::WaitsOperation::Ask {
+            task_id: id.into(),
+            title: "Review PR #1?".into(),
+            note: None,
+        }))
+        .await
+        .expect("the waits tool returned no result"),
+    );
+
+    // The compare reads the board's status: Review, not the On Agent the row holds.
+    let stale = run(
+        &mcp,
+        TasksOperation::SetStatus {
+            id: id.into(),
+            expected: AgenticStatusParam::OnAgent,
+            status: AgenticStatusParam::Done,
+        },
+    )
+    .await;
+    assert_eq!(refused(&stale), "status_changed");
+    assert_eq!(body(&stale)["details"]["current"], "review");
+
+    let done = run(
+        &mcp,
+        TasksOperation::SetStatus {
+            id: id.into(),
+            expected: AgenticStatusParam::Review,
+            status: AgenticStatusParam::Done,
+        },
+    )
+    .await;
+    succeeded(&done);
+    assert_eq!(status_of(&pool, id).await, "done");
 }
 
 #[tokio::test]
@@ -1019,7 +1149,9 @@ mod agent_waits {
                     time_scope: None,
                     check_every: None,
                 })),
-                status: Some(arlesh_lib::tasks::model::TaskStatus::Done),
+                status: Some(arlesh_lib::tasks::model::Status::Agentic(
+                    arlesh_lib::tasks::model::AgenticStatus::Done,
+                )),
                 ..Default::default()
             },
             None,
@@ -1769,5 +1901,141 @@ mod task_fields {
         )
         .await;
         assert_eq!(refused(&created), "containment_violated");
+    }
+}
+
+mod delegation {
+    //! `delegate` on `create` and `update`, and what a delegated Task's wait is called on the MCP.
+
+    use super::*;
+    use serde_json::json;
+
+    async fn person(pool: &sqlx::SqlitePool, name: &str) -> i64 {
+        sqlx::query_scalar("INSERT INTO people (name) VALUES (?) RETURNING id")
+            .bind(name)
+            .fetch_one(pool)
+            .await
+            .expect("insert a person")
+    }
+
+    /// The titles of the delegation waits the snapshot carries under `task`.
+    async fn delegation_wait_titles(mcp: &ArleshMcp, task: i64) -> Vec<String> {
+        snapshot(mcp, "expectations")
+            .await
+            .into_iter()
+            .filter(|wait| wait["origin"]["kind"] == "delegation_wait" && wait["parent_id"] == task)
+            .filter_map(|wait| wait["title"].as_str().map(str::to_string))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn an_agentic_task_is_delegated_to_a_person_and_taken_back() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        helpers::make_agentic(&pool, board.inside_task).await;
+        let ada = person(&pool, "Ada").await;
+        let mcp = mcp(&pool);
+        let id = board.inside_task;
+
+        let set = run(
+            &mcp,
+            operation(json!({
+                "operation": "update",
+                "id": id.to_string(),
+                "delegate": { "kind": "person", "id": ada },
+            })),
+        )
+        .await;
+        assert_eq!(
+            succeeded(&set)["delegate_to"],
+            json!({ "kind": "person", "id": ada })
+        );
+        assert_eq!(
+            delegation_wait_titles(&mcp, id).await,
+            vec!["Ada finish: Visible work".to_string()]
+        );
+
+        let cleared = run(
+            &mcp,
+            operation(json!({ "operation": "update", "id": id.to_string(), "delegate": null })),
+        )
+        .await;
+        assert!(succeeded(&cleared)["delegate_to"].is_null());
+        assert!(delegation_wait_titles(&mcp, id).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_task_is_created_delegated_to_a_person_and_its_wait_names_them() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        let tuli = person(&pool, "Tuli").await;
+        let mcp = mcp(&pool);
+
+        let created = run(
+            &mcp,
+            operation(json!({
+                "operation": "create",
+                "parent_type": "project",
+                "parent_id": board.inside.to_string(),
+                "title": "Book the venue",
+                "delegate": { "kind": "person", "id": tuli },
+            })),
+        )
+        .await;
+        let created = succeeded(&created).clone();
+        assert_eq!(
+            created["delegate_to"],
+            json!({ "kind": "person", "id": tuli })
+        );
+        let id = created["id"].as_i64().expect("a stored row");
+        assert_eq!(
+            delegation_wait_titles(&mcp, id).await,
+            vec!["Tuli finish: Book the venue".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_person_who_does_not_exist_is_refused_and_nothing_is_written() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        helpers::make_agentic(&pool, board.inside_task).await;
+        let mcp = mcp(&pool);
+
+        let refusal = run(
+            &mcp,
+            operation(json!({
+                "operation": "update",
+                "id": board.inside_task.to_string(),
+                "title": "Renamed",
+                "delegate": { "kind": "person", "id": 9999 },
+            })),
+        )
+        .await;
+        assert_eq!(refused(&refusal), "not_found");
+        assert_eq!(title_of(&pool, board.inside_task).await, "Visible work");
+    }
+
+    #[tokio::test]
+    async fn a_task_that_is_not_agentic_cannot_be_delegated() {
+        let pool = helpers::test_pool().await;
+        let app = helpers::command_host(&pool);
+        let board = board(&app).await;
+        not_agentic(&pool, board.inside_task).await;
+        let ada = person(&pool, "Ada").await;
+        let mcp = mcp(&pool);
+
+        let refusal = run(
+            &mcp,
+            operation(json!({
+                "operation": "update",
+                "id": board.inside_task.to_string(),
+                "delegate": { "kind": "person", "id": ada },
+            })),
+        )
+        .await;
+        assert_eq!(refused(&refusal), "not_permitted");
     }
 }

@@ -148,14 +148,23 @@ and Asynchronous flags and Backlog state; both kinds their tags
 (`template_tags`) and block reasons (`template_block_reasons`). Every occurrence reads them unless its
 overlay says otherwise. They are edited in the flow item's editor, beside the item's cycle pairs and
 dependencies — all but the **delegate**, which a template and an occurrence carry but no editor
-offers to change yet (ruled by the user, 2026-09-24). An occurrence's own Task editor keeps the one
-delegate control every Task has, "Delegate to agent", which writes that occurrence alone.
+offers to change yet (ruled by the user, 2026-09-24). (An occurrence's Task editor had the "Delegate
+to agent" button every Task had until the Agent delegate was removed on 2026-10-01.)
 
-An Expectation template (the wait an Asynchronous Task spawns) is not part of a Habit template. An
-**occurrence** can carry one of its own, as a stored Task does (migration 0062,
-`occurrence_async_templates`): while the occurrence is Asynchronous and done, the wait it spawned is
-an Expectation row beneath it (`origin` `spawned_wait`), its state in `occurrence_spawned_waits` and
-its checks in `wait_checks` under the occurrence's node key.
+A **Task template** — a flow Task item, or the root of a task-instance flow — also carries the two
+Task fields that came later (migration 0090, Task 611): **Compound** (`flow_tasks.compound`,
+`flows.compound`) and the **Expectation template** an Asynchronous Task spawns its wait from
+(`flow_task_async_templates`, `flow_async_templates`), set in the flow item's editor and the Flow
+editor. A flow Goal item, and a goal- or commitment-instance root, carry neither. An occurrence reads
+the flag from its overlay's `compound` (NULL inherits) — and a compound one reads its status from
+its Habit, which derives it before classifying the iteration (see [*Iteration
+resolution*](habits.md)) — and the template **whole**: an **occurrence** can carry one of its own, as a stored Task does
+(migration 0062, `occurrence_async_templates`); with no such row, its overlay's
+`async_template_set` overrides it to none at all, and unset, it reads its item's. While the occurrence is
+Asynchronous and done, the wait it spawned is an Expectation row beneath it (`origin`
+`spawned_wait`), its state in `occurrence_spawned_waits` and its checks in `wait_checks` under the
+occurrence's node key — drawn from whichever template it reads. A compound occurrence spawns none,
+as a compound Task does not (see *Compound* in [Resources](resources.md#compound)).
 
 **Changing an item's cycle pairs keeps every pair that survives.** A pair whose Cycle Scope is still
 there keeps its id, so its occurrences keep what they recorded. A change that would drop a pair some
@@ -198,8 +207,9 @@ parent — a full editor save — is not a move) and none is deleted or copied; 
 day and is not delegated; a delegation wait's status is its Task's (only the Task being done
 releases it), and nothing schedules checks on it, so it takes no Check every. None of them takes a
 Plan from where it hangs: a spawned wait does not take its Task's, and a wait cuts the Plan chain
-for what is beneath it. A delegation wait is drawn with a label round its title ("“…” done by its
-delegate") while that title is its Task's; one given a title of its own is drawn with it.
+for what is beneath it. A delegation wait is drawn with a label naming who is to finish it ("Tuli
+finish: …"; see *Delegation* in [Resources](resources.md)) while that title is its Task's; one given
+a title of its own is drawn with it.
 
 ## Horizon
 

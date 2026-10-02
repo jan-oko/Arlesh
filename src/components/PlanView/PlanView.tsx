@@ -95,7 +95,7 @@ export default function PlanView() {
   const [selection, setSelection] = useState(EMPTY_PLAN_SELECTION);
 
   const {
-    editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick, onTaskSave,
+    editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick, onTaskSave, onAnswer,
     checkScopeClamp,
   } = useNodeEditor({ tree, allTasksAndGoals, reload });
 
@@ -565,6 +565,7 @@ export default function PlanView() {
           domainNames={domainNames}
           availableForDep={availableForDep}
           onSave={onTaskSave}
+          onAnswer={onAnswer}
           onCheckScopeClamp={checkScopeClamp}
           onClose={() => setEditorModal(null)}
         />

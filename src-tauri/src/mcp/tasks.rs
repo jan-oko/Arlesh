@@ -21,7 +21,7 @@ use serde_json::Value;
 use super::{
     access,
     lookup::{found, Answer, Board},
-    params::{BriefParam, NodeIdParam, TaskStatusParam, TasksOperation},
+    params::{BriefParam, DelegateParam, NodeIdParam, TasksOperation},
     relations::{Asked, Relations},
     result,
     result::attempt,
@@ -30,18 +30,19 @@ use super::{
 use crate::{
     access::model::{AccessLevel, NodeTable},
     database::session::{Db, Transactional},
+    knowledge_base::model::PersonId,
     nodes::id::NodeId,
     tasks::model::{
-        AgenticBrief, CreateTaskRequest, Task, TaskAgentic, TaskArchival, TaskId, TaskStatus,
-        TimeScope, UpdateTaskRequest,
+        AgenticBrief, AgenticStatus, CreateTaskRequest, Delegate, Status, Task, TaskAgentic,
+        TaskArchival, TaskId, TimeScope, UpdateTaskRequest,
     },
     undo::model::WriteSource,
 };
 
 /// One write, checked and ready to run as the agent.
 enum Write {
-    /// A new Task, and its prerequisites, tags and block reasons.
-    Create(CreateTaskRequest, Relations),
+    /// A new Task, its delegate, and its prerequisites, tags and block reasons.
+    Create(CreateTaskRequest, Option<Delegate>, Relations),
     /// A change to an existing Task, stored or an occurrence, and to its relations.
     Update(NodeId, UpdateTaskRequest, Relations),
     /// A Habit occurrence archived.
@@ -62,15 +63,22 @@ impl ArleshMcp {
     /// `archive` need a Task that reads as Agentic. `create` and `update` also set its Time Scope,
     /// Plan and due (scope ids, as `containment_conflicts` takes them; the Plan and the due within
     /// the Time Scope), `on_scope_exit` (`keep` is Keep Overdue), `asynchronous`, its explicit
-    /// `block_reasons`, its tags (Tag ids) and its prerequisites — what it comes after, a task,
-    /// goal or wait: `dependencies` on create,
+    /// `block_reasons`, its tags (Tag ids), its `delegate` (`{"kind": "person",
+    /// "id": N}` — an existing Person — or `null` on update to take it back; a delegated Task is
+    /// hidden wherever an archived one is, except Do) and its prerequisites —
+    /// what it comes after, a task, goal or wait: `dependencies` on create,
     /// `add_dependencies`/`remove_dependencies` (and `add_tags`/`remove_tags`) on update. A
     /// prerequisite or tag need only be visible; one that is not is `not_permitted`, and a
     /// dependency cycle is `invalid_request`. An update is one transaction: all of it lands or none
     /// does. `set_status` is a
     /// compare-and-set: it names the status you last saw, and if the Task has moved on since it
-    /// is refused as `status_changed` with the current status, writing nothing. Starting an
-    /// Agentic Task needs a Spec in its brief. A Task that **consists of its sub-items**
+    /// is refused as `status_changed` with the current status, writing nothing. An Agentic Task's
+    /// status is `todo`, `on_agent` (an agent holds it), `review` (on_agent with your question
+    /// open — derived, never set), `doing` (the user is on it) or `done`. You claim one with
+    /// `todo` → `on_agent`, which needs a Spec in its brief, hand it back with `todo` and finish
+    /// it with `done`; `doing` and `review` are refused. To leave it with the user, raise a
+    /// question (`arlesh_waits.ask`): it reads `review` until answered, and `expected` may name
+    /// `review`. A Task that **consists of its sub-items**
     /// (`compound`, set with `update`) has its status derived from its whole subtree, so
     /// `set_status` on it is refused; `update` with `compound: false` switches that off and
     /// keeps the status it showed. `move` needs create permission at both the old and
@@ -145,6 +153,7 @@ impl ArleshMcp {
                 dependencies,
                 tags,
                 block_reasons,
+                delegate,
             } => {
                 let parent = found!(board.resolve(&parent_id, &parent_type));
                 if !board.may_create_under(&parent_type, &parent) {
@@ -176,6 +185,7 @@ impl ArleshMcp {
                         asynchronous,
                         ..Default::default()
                     },
+                    found!(delegate_named(&mut db, delegate).await),
                     relations,
                 )
             }
@@ -195,8 +205,13 @@ impl ArleshMcp {
                 add_tags,
                 remove_tags,
                 block_reasons,
+                delegate,
             } => {
                 let (id, task) = found!(writable(&mut db, &board, &id, now).await);
+                let delegate_to = match delegate {
+                    Some(delegate) => Some(found!(delegate_named(&mut db, delegate).await)),
+                    None => None,
+                };
                 if on_scope_exit.is_some() && matches!(id, NodeId::Derived(_)) {
                     return result::refused(format!(
                         "task {id} is a Habit occurrence; what it does when its window passes is \
@@ -227,6 +242,7 @@ impl ArleshMcp {
                         plan: attempt!(window_change(plan)),
                         due_scope: attempt!(window_change(due_scope)),
                         asynchronous,
+                        delegate_to,
                         compound,
                         ..Default::default()
                     },
@@ -239,16 +255,21 @@ impl ArleshMcp {
                 status,
             } => {
                 let (id, task) = found!(writable(&mut db, &board, &id, now).await);
-                // The compare half of the compare-and-set. The session holds SQLite's one writer
-                // lock from its first statement, so nothing can change the status between this
-                // read and the write below.
-                if task.status != spelling(expected) {
-                    return result::status_changed(&task.status);
+                // The compare half of the compare-and-set, against the status the board shows —
+                // Review included. The session holds SQLite's one writer lock from its first
+                // statement, so nothing can change the status between this read and the write.
+                let expected = Status::Agentic(expected.into());
+                if task.status != expected {
+                    return result::status_changed(task.status.as_str());
+                }
+                let status = AgenticStatus::from(status);
+                if let Some(refusal) = refused_status_write(task.status, status) {
+                    return result::refused(refusal);
                 }
                 Write::Update(
                     id,
                     UpdateTaskRequest {
-                        status: Some(status.into()),
+                        status: Some(Status::Agentic(status)),
                         ..Default::default()
                     },
                     Relations::default(),
@@ -326,17 +347,18 @@ async fn get(db: &mut Db<Transactional>, board: &Board, id: &NodeIdParam) -> Ans
     if !access::reads(&board.map, "task", row) {
         return access::refuse("task", row, AccessLevel::Read);
     }
-    // A compound Task's status is the board's, derived from its sub-items; the rows hold
-    // whatever they last did.
-    let served: std::collections::HashMap<i64, String> = board
+    // A compound Task's status is derived from its sub-items, and an Agentic one's Review from its
+    // questions: the board serves both, so every Task's status is read from it.
+    let served: std::collections::HashMap<i64, Status> = board
         .load
         .tasks
         .iter()
-        .filter(|task| task.compound)
-        .filter_map(|task| Some((task.id.stored()?, task.status.clone())))
+        .filter_map(|task| Some((task.id.stored()?, task.status)))
         .collect();
+    // Each dependency it is blocked by is named by its short id, as the MCP shows every node.
+    let names = board.names.short_ids_by_key();
     let mut found =
-        attempt!(crate::tasks::get_task_with_blockers_as(db, TaskId(row), &served).await);
+        attempt!(crate::tasks::get_task_with_blockers_as(db, TaskId(row), &served, &names).await);
     // A block the board derived — the agent capacity lock's, or a Compound Task's — is on the
     // board, not in a row.
     found.block_reasons.extend(
@@ -350,7 +372,7 @@ async fn get(db: &mut Db<Transactional>, board: &Board, id: &NodeIdParam) -> Ans
     );
     let dependencies = attempt!(db.tasks().list_dependencies(TaskId(row)).await);
     access::restrict_task(&mut found.task, &board.map);
-    access::restrict_block_reasons(&mut found.block_reasons, &dependencies, &board.map);
+    access::restrict_block_reasons(&mut found.block_reasons, &dependencies, &board.map, &names);
     let mut found = serde_json::to_value(found).unwrap_or(Value::Null);
     if let Some(task) = found.get_mut("task") {
         board.names.stamp(task, NodeTable::Task);
@@ -386,8 +408,20 @@ async fn run(
 ) -> Result<Option<Task>, crate::error::AppError> {
     use crate::nodes::write;
     let (task, relations) = match checked {
-        Write::Create(request, relations) => {
-            (write::create_task(db, request, now).await?, relations)
+        Write::Create(request, delegate, relations) => {
+            let task = write::create_task(db, request, now).await?;
+            let task = match delegate {
+                // The create request has no delegate; the same transaction sets it on the new row.
+                Some(delegate) => {
+                    let request = UpdateTaskRequest {
+                        delegate_to: Some(Some(delegate)),
+                        ..Default::default()
+                    };
+                    write::update_task(db, &task.id, request, now).await?
+                }
+                None => task,
+            };
+            (task, relations)
         }
         Write::Update(id, request, relations) => {
             (write::update_task(db, &id, request, now).await?, relations)
@@ -412,6 +446,20 @@ async fn run(
     Ok(Some(reread.unwrap_or(task)))
 }
 
+/// The delegate a write names, once a Person it names is known to exist — refused as `not_found`
+/// otherwise, before anything is written.
+async fn delegate_named(
+    db: &mut Db<Transactional>,
+    delegate: Option<DelegateParam>,
+) -> Result<Option<Delegate>, Answer> {
+    if let Some(DelegateParam::Person { id }) = delegate {
+        if let Err(error) = db.people().get(PersonId(id)).await {
+            return Err(result::failed(error));
+        }
+    }
+    Ok(delegate.map(Delegate::from))
+}
+
 /// A window parameter as the update request takes it: left out, cleared, or a scope to convert.
 fn window_change(
     given: Option<Option<super::params::TimeScope>>,
@@ -426,7 +474,27 @@ fn merged(brief: BriefParam, task: &Task) -> AgenticBrief {
     brief.over(task.agentic_brief.clone().unwrap_or_default())
 }
 
-/// A status as a Task row spells it.
-fn spelling(status: TaskStatusParam) -> &'static str {
-    TaskStatus::from(status).as_str()
+/// Why an agent may not move an Agentic Task from `current` to `status`, if it may not.
+///
+/// An agent claims a Task (`on_agent`, from `todo`), hands it back (`todo`) or finishes it
+/// (`done`). `doing` says the user is working, which only the user says; `review` is derived from a
+/// question the agent raises, never set.
+fn refused_status_write(current: Status, status: AgenticStatus) -> Option<String> {
+    match status {
+        AgenticStatus::Doing => Some(
+            "`doing` says the user is working on it, which only the user sets; an agent holds a \
+             task as `on_agent`"
+                .to_string(),
+        ),
+        AgenticStatus::Review => Some(
+            "`review` is not set: raise a question under the task with `arlesh_waits.ask`, and \
+             it reads `review` until the question is answered"
+                .to_string(),
+        ),
+        AgenticStatus::OnAgent if current != Status::Agentic(AgenticStatus::Todo) => Some(format!(
+            "an agent claims a task from `todo`; this one is `{}`",
+            current.as_str()
+        )),
+        _ => None,
+    }
 }

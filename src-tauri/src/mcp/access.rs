@@ -86,13 +86,15 @@ pub(super) fn restrict_task(task: &mut Task, map: &AccessMap) {
 
 /// Removes the "Blocked by …" reasons that name a dependency the MCP cannot read.
 ///
-/// The reasons arrive as text from `tasks::get_task_with_blockers`, which writes each derived one
-/// as `Blocked by {kind} {id} ({title})`; this matches that prefix. A reason the user typed is
-/// never dropped, since it names nothing.
+/// The reasons arrive as text from `tasks::get_task_with_blockers_as`, which writes each derived
+/// one as `Blocked by {kind} {name} ({title})`, the name from `names`
+/// ([`crate::tasks::dependency_name`]); this matches that prefix. A reason the user typed is never
+/// dropped, since it names nothing.
 pub(super) fn restrict_block_reasons(
     reasons: &mut Vec<String>,
     dependencies: &[Dependency],
     map: &AccessMap,
+    names: &std::collections::HashMap<String, String>,
 ) {
     let hidden: Vec<String> = dependencies
         .iter()
@@ -105,7 +107,10 @@ pub(super) fn restrict_block_reasons(
             // A derived dependency (an occurrence) is kept only when its stored end is visible;
             // without the snapshot to climb, a reason naming one is dropped as unseen.
             let seen = id.stored().is_some_and(|stored| reads(map, kind, stored));
-            (!seen).then(|| format!("Blocked by {kind} {id} ("))
+            (!seen).then(|| {
+                let name = crate::tasks::dependency_name(names, kind, &id);
+                format!("Blocked by {kind} {name} (")
+            })
         })
         .collect();
     reasons.retain(|reason| !hidden.iter().any(|prefix| reason.starts_with(prefix)));

@@ -21,7 +21,7 @@ use arlesh_lib::flows::model::{
 use arlesh_lib::nodes::id::NodeId;
 use arlesh_lib::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind};
 use arlesh_lib::scopes::{key::ScopeKey, model::ScopeKind};
-use arlesh_lib::tasks::model::{Task, TaskId, TaskStatus, TimeScope, UpdateTaskRequest};
+use arlesh_lib::tasks::model::{Task, TaskId, TimeScope, UpdateTaskRequest};
 use helpers::StoredId;
 use tauri::Manager;
 
@@ -86,7 +86,9 @@ async fn complete_root(
         app.state(),
         NodeId::Derived(root_of(flow_id).id()),
         UpdateTaskRequest {
-            status: Some(TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
         confirmed,
@@ -109,6 +111,8 @@ async fn root_status(app: &tauri::App<tauri::test::MockRuntime>, flow_id: i64) -
         .find(|task| task.id == root)
         .expect("the iteration root is on the board")
         .status
+        .as_str()
+        .to_string()
 }
 
 /// Every node hung on this Habit's occurrences.
@@ -146,6 +150,8 @@ async fn habit_with_one_day(
             end_scope_id: None,
             clock: ClockKind::Interval,
             miss_policy: None,
+            cooldown_n: None,
+            cooldown_kind: None,
         },
     )
     .await
@@ -293,7 +299,9 @@ async fn a_finished_child_raises_no_prompt_at_all() {
         &mut db,
         TaskId(child.node_id),
         UpdateTaskRequest {
-            status: Some(arlesh_lib::tasks::model::TaskStatus::Done),
+            status: Some(arlesh_lib::tasks::model::Status::Ordinary(
+                arlesh_lib::tasks::model::TaskStatus::Done,
+            )),
             ..Default::default()
         },
     )

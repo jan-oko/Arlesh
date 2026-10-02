@@ -9,8 +9,8 @@ fn delegated(id: NodeId) -> Task {
         title: "Ask Dana".into(),
         parent_type: "project".into(),
         parent_id: 1.into(),
-        status: "todo".into(),
-        delegate_to: Some(Delegate::Agent),
+        status: Status::Ordinary(TaskStatus::Todo),
+        delegate_to: Some(Delegate::Person { id: 2 }),
         agentic: None,
         asynchronous: false,
         compound: false,
@@ -100,7 +100,7 @@ fn an_open_check_task_is_a_task_under_its_wait_reading_its_overlay() {
         (task.parent_type.as_str(), &task.parent_id),
         ("expectation", &NodeId::Stored(5))
     );
-    assert_eq!(task.status, "in_progress");
+    assert_eq!(task.status, Status::Ordinary(TaskStatus::InProgress));
     assert_eq!(task.tag_ids, vec![3]);
     assert!(task.time_scope.is_some());
     assert_eq!(rows.block_reasons.len(), 1);
@@ -118,7 +118,7 @@ fn a_made_check_is_a_done_task_whatever_its_overlay_said_while_open() {
         }),
         draw(true),
     );
-    assert_eq!(rows.tasks[0].status, "done");
+    assert_eq!(rows.tasks[0].status, Status::Ordinary(TaskStatus::Done));
     assert_eq!(rows.tasks[0].title, "Call Dana");
     assert!(
         rows.block_reasons.is_empty(),

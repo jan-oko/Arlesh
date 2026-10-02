@@ -65,6 +65,7 @@ function editorOn(node: MindmapNode): NodeEditorHandles {
     availableForDep: [],
     onDoubleClick: vi.fn(),
     onTaskSave: vi.fn(() => resolved),
+    onAnswer: vi.fn().mockResolvedValue(true),
     onGoalSave: vi.fn(() => resolved),
     onCommitmentSave: vi.fn(() => resolved),
     onExpectationSave: vi.fn(() => resolved),

@@ -3,7 +3,7 @@
 use super::*;
 use crate::tasks::{
     compound::tests::{commitment, compound, goal, task, wait, Board},
-    model::{ExpectationStatus, Task, Verdict},
+    model::{ExpectationStatus, Status, Task, Verdict},
 };
 
 use crate::tasks::model::TaskStatus::{Done, InProgress, Started, Todo};
@@ -15,6 +15,7 @@ fn reason(owner_type: &str, id: i64) -> BlockReason {
         reason: "waiting".to_string(),
         position: 0,
         derived: None,
+        until: None,
     }
 }
 
@@ -29,7 +30,7 @@ fn edge(task_id: i64, dependency_type: &str, dependency_id: i64) -> TaskDependen
 /// A Compound Task as the board serves it: its status already derived.
 fn served(id: i64, parent: (&str, i64), status: TaskStatus) -> Task {
     Task {
-        status: status.as_str().to_string(),
+        status: Status::Ordinary(status),
         ..compound(id, parent)
     }
 }
@@ -45,6 +46,8 @@ fn blocked(board: &Board, reasons: &[BlockReason], edges: &[TaskDependencyEdge])
             waits: &board.waits,
             lifecycles: &board.lifecycles,
             wait_lifecycles: &[],
+            settled: &std::collections::HashSet::new(),
+            instants: &std::collections::HashMap::new(),
         },
         reasons,
         edges,

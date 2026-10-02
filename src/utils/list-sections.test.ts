@@ -11,17 +11,18 @@ function node(id: string): MindmapNode {
   return {
     id, kind: "task", title: id, position: 0, tagIds: [], children: [],
     ...(id.startsWith("o") ? { overdue: true } : {}),
+    ...(id.startsWith("r") ? { status: "review", taskStatus: { kind: "agentic" as const, status: "review" as const } } : {}),
   };
 }
 
 /** The Asynchronous section alone — the setting on, the list not under Start. */
 function withAsynchronousSection(rows: readonly TaskListRow[]): ListRowEntry[] {
-  return withListSections(rows.map((row) => ({ type: "task" as const, row })), { overdue: false, asynchronous: true });
+  return withListSections(rows.map((row) => ({ type: "task" as const, row })), { review: false, overdue: false, asynchronous: true });
 }
 
 /** Both sections asked for, as under Start with Asynchronous first on. */
 function withBothSections(rows: readonly TaskListRow[]): ListRowEntry[] {
-  return withListSections(rows.map((row) => ({ type: "task" as const, row })), { overdue: true, asynchronous: true });
+  return withListSections(rows.map((row) => ({ type: "task" as const, row })), { review: false, overdue: true, asynchronous: true });
 }
 
 /** `a*` and `oa*` are asynchronous, anything else is not; the ancestors are given as ids, outermost
@@ -52,6 +53,8 @@ function shapeOf(entries: readonly ListRowEntry[]): string[] {
     if (entry.type === "asynchronousEnd") return "—";
     if (entry.type === "overdue") return "!";
     if (entry.type === "overdueEnd") return "=";
+    if (entry.type === "review") return "?";
+    if (entry.type === "reviewEnd") return "_";
     if (entry.type === "path") return `#${entry.segments.map((segment) => segment.id).join("›")}`;
     return `${entry.row.node.id}:${entry.visibleDepth}`;
   });
@@ -220,5 +223,21 @@ describe("showsOverdueSection", () => {
     for (const preset of ["unblock", "expectations"] as const) {
       expect(showsOverdueSection(true, start, { ...DEFAULT_LIST_FILTER, preset })).toBe(false);
     }
+  });
+});
+
+describe("the Review section", () => {
+  function withReview(rows: readonly TaskListRow[]): ListRowEntry[] {
+    return withListSections(rows.map((row) => ({ type: "task" as const, row })), { review: true, overdue: true, asynchronous: false });
+  }
+
+  it("leads, above Overdue, carrying each Review task with its subtree", () => {
+    expect(shapeOf(withReview([row("x"), row("o1"), row("r1"), row("y", ["r1"])]))).toEqual([
+      "?", "r1:0", "y:1", "_", "!", "o1:0", "=", "x:0",
+    ]);
+  });
+
+  it("draws nothing when no task reads Review", () => {
+    expect(shapeOf(withReview([row("x")]))).toEqual(["x:0"]);
   });
 });

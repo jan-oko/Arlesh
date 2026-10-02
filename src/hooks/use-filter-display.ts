@@ -6,7 +6,7 @@ import { flattenNodesById } from "@/utils/mindmap-tree";
 import { useSearchableNodes } from "@/hooks/use-searchable-nodes";
 import { rowIdOf } from "@/utils/node-identity";
 import {
-  isTaskStatusValue, isGoalStatusValue, isProjectStatusValue, isScopeStateValue, isBlockedValue,
+  isTaskStatusValue, isAgenticOnlyStatusValue, isGoalStatusValue, isProjectStatusValue, isScopeStateValue, isBlockedValue,
   isVerdictValue, isAgenticValue, isAsynchronousValue,
 } from "@/utils/list-filter";
 
@@ -97,7 +97,10 @@ export function useFilterDisplay(): FilterDisplay {
     nodeColor: (ref) => nodeById.get(ref)?.color ?? null,
     antecedentPool,
     dependencyPool,
-    displayTaskStatus: (value) => (isTaskStatusValue(value) ? t(`status:task.${value}`) : value),
+    displayTaskStatus: (value) => {
+      if (isTaskStatusValue(value)) return t(`status:task.${value}`);
+      return isAgenticOnlyStatusValue(value) ? t(`status:agentic.${value}`) : value;
+    },
     displayGoalStatus: (value) => (isGoalStatusValue(value) ? t(`status:goal.${value}`) : value),
     displayProjectStatus: (value) => (isProjectStatusValue(value) ? t(`status:project.${value}`) : value),
     displayVerdict: (value) => (isVerdictValue(value) ? t(`status:commitment.${value}`) : value),

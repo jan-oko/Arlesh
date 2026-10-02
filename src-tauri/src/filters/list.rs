@@ -159,8 +159,9 @@ fn passes_row_preset(row: Row<'_>, filter: &BoardFilter) -> bool {
 /// *failed* by a Commitment, it simply does not apply to one, so asking to see in-progress tasks
 /// does not empty the band.
 ///
-/// Two presets empty it outright: **Unblock**, because a Commitment is never blocked, and
-/// **Backlog**, because a Commitment has no Backlog state to be in.
+/// Two presets empty it outright: **Unblock**, which lists work to unblock, and a Commitment's only
+/// block — its Habit's cooldown — is not one anybody can act on; and **Backlog**, because a
+/// Commitment has no Backlog state to be in. Under **Start**, a blocked Commitment drops out.
 ///
 /// The ancestor walk is literally the task rows' — `Row::has_gating_ancestor`, shared so the two
 /// cannot drift apart. A Commitment hangs off the same tree, so a branch hidden as a whole subtree
@@ -182,6 +183,10 @@ pub fn passes_commitment_row(row: Row<'_>, filter: &BoardFilter) -> bool {
         return false;
     }
     if row.has_gating_ancestor(filter) {
+        return false;
+    }
+    // A Commitment blocked by its Habit's cooldown drops out of Start, as on the canvas.
+    if filter.preset == Preset::Start && rules::is_blocked(row.node) {
         return false;
     }
     if !rules::with_archived_override(
