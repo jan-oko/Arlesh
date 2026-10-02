@@ -34,6 +34,39 @@ then `rs:nodes/table.rs::derive_habits`, which applies `rs:flows/occurrences.rs`
 which also draws the waits, then `rs:tasks/review.rs::derive`, and the capacity lock last
 (`rs:capacity/blocks.rs`). The MCP snapshot reads the same load (`rs:mcp/`).
 
+## The derivation graph
+
+The HTML page draws this as an interactive graph. Every edge is a value the code reads to compute
+the state. Edges marked *(of another node)* read that value on a different node: a compound's
+sub-items, or a dependency's target. All of these states are worked out on every board load and
+never stored.
+
+| Derived state | Reads | Rule | Code |
+| --- | --- | --- | --- |
+| **Timing** | Time Scope (own or inherited), now | Pending before the window, Active in it, Lapsed after it. Unscoped is Active. | `rs:tasks/lifecycle.rs::derive_timing` |
+| **Effective due** | explicit due, Time Scope, on scope exit, Backlog, Habit iteration (the clock's default) | Explicit due wins. Otherwise a backlogged Task has none. Otherwise the window under Keep Overdue and none under Archive. An occurrence's default comes from its clock: none under Window + Archive, its window otherwise. | `rs:tasks/lifecycle.rs::effective_due`, `rs:flows/occurrences.rs::default_due` |
+| **Plan position** | Plan, now | Where the Task's own Plan stands: ahead, current or past. Inherited from the nearest planned ancestor Task under Start. | `rs:filters/rules.rs::is_planned_ahead`, lifecycle `plan_timing` |
+| **Agentic (inherited)** | own Agentic flag (and ancestors') | Own flag, else the nearest flagged ancestor's. | `rs:tasks/agentic.rs`, `rs:capacity/blocks.rs::reads_agentic` |
+| **Expired** | verdict, Verdict Window, Time Scope, now | Unresolved, and now is past window end plus the Verdict Window. | `rs:tasks/lifecycle.rs::verdict_deadline`, `derive_commitment_state` |
+| **Resolution** | Timing, status, on scope exit | Only once Lapsed: Completed if done, Missed if unfinished under Archive, none under Keep Overdue. | `rs:tasks/lifecycle.rs::derive_resolution` |
+| **Compound status** | compound flag and sub-items' statuses, verdicts and waits; Archived *(of another node)* | Done when every counted item is Done; else In Progress if any is; else Started if any is Started or Done; else To Do. Effectively archived items are not counted, except those archived by finishing. | `rs:tasks/compound.rs`, `rs:flows/compound_readings.rs` |
+| **Review** | Agentic, status, agent question waits | On Agent with a pending, live agentic question wait beneath it. | `rs:tasks/review.rs::derive` |
+| **Capacity block** | capacity lock, Agentic, status | Lock on, the Task reads as Agentic, and it is not Done. | `rs:capacity/blocks.rs::blocked_tasks` |
+| **Archived** (as the presets read it) | Backlog, Goal/Project status, Delegate, Resolution, Expired, verdict and Timing (a Commitment settled), Habit iteration (Missed or Lapsed) | Effective Archival is Archived: a Completed or Missed Resolution forces it, or a Commitment is settled or Expired, or it was set by hand. Or the Task is delegated. Delegation is not the Archival axis, so it does not stop Overdue. | `rs:tasks/lifecycle.rs::derive_archival`, `rs:filters/rules.rs::is_archived` |
+| **Compound block** | compound status, Blocked *(of another node: its open sub-items)* | Every open counted item is blocked. A pending wait or Unresolved Commitment keeps it unblocked. | `rs:tasks/compound/blocked.rs` |
+| **Habit iteration** | status of its occurrences, compound status, clock and miss policy, now | Resolved when every template occurrence is done (a compound one by its derived status). Otherwise the clock decides: Lapsed (Archive), Missed and carried (Overdue), open and owed (Owed), or the one open Interval instance. | `rs:flows/occurrences.rs::resolutions`, `rs:flows/habits.rs` |
+| **Cooldown block** | Habit iteration (done instants), cooldown, clock, now | After an iteration is done, block the next iteration (under Owed, every open one) until the latest done instant plus the cooldown. | `rs:flows/cooldown.rs::holds`, `rs:flows/occurrences.rs::done_instants` |
+| **Overdue** | effective due, status, Archived (effective Archival), now | Unfinished, not effectively Archived, and now is at or past the due's end. | `rs:tasks/lifecycle.rs::derive_overdue` |
+| **Blocked** | block reasons, dependencies, status *(of another node: each dependency's target)*, capacity block, cooldown block, compound block | Any reason: one written by hand; a dependency on a Task not Done, a Goal not Achieved or a wait still Pending; or a derived block. | `rs:filters/facts.rs::index_blocked`, `rs:filters/rules.rs::is_blocked`, `ts:utils/blocked-by.ts` |
+
+How the presets read them:
+
+| Preset | Reads | Rule | Code |
+| --- | --- | --- | --- |
+| **Plan** | status, Archived, Backlog | Hides done Tasks, archived items and backlogged Tasks. | `rs:filters/rules.rs::passes_plan`, `is_hidden_backlog` |
+| **Start** | Timing, Overdue, Archived, Blocked, Plan position, status, Agentic, Review, On Agent pill, Backlog | Drops blocked subtrees (but not the child dependencies a block waits on), windows Pending or Lapsed unless Overdue, delegated and backlogged work, Plans still ahead, and On Agent work unless the pill is on. Always keeps Review. | `rs:filters/rules.rs::passes_start`, `passes_agentic_start`, `gate_below` |
+| **Do / Zen** | status, Agentic, Review, On Agent pill | In Progress and Doing, Review always, Started and On Agent only when their switches ask. | `rs:filters/rules.rs::passes_do_status` |
+
 ---
 
 ## 1. What's stored
