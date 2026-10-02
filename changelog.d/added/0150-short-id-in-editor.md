@@ -1,0 +1,1 @@
+- **A Task's short id in its editor.** The Task editor's Advanced section now shows the Task's short id — the one an agent names it by and a "Blocked by" reason shows — with a Copy button beside it, so you can name a Task to an agent by the id you see. Habit occurrences and a wait's check tasks show theirs too.

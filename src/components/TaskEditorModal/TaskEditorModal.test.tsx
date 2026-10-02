@@ -853,3 +853,55 @@ describe("TaskEditorModal — done date", () => {
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ doneAt: "2026-09-26T19:00:00" });
   });
 });
+
+describe("TaskEditorModal — short id", () => {
+  function openAdvanced() {
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
+  }
+
+  function stubClipboard(writeText: (text: string) => Promise<void>) {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  }
+
+  it("shows the Task's short id under Advanced, and only once Advanced is open", async () => {
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ shortId: "2fb" })} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+    expect(screen.queryByText("2fb")).not.toBeInTheDocument();
+
+    openAdvanced();
+    const group = screen.getByRole("group", { name: "fieldShortId" });
+    expect(within(group).getByText("2fb")).toBeInTheDocument();
+  });
+
+  it("copies the short id to the clipboard from its button", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubClipboard(writeText);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ shortId: "2fb" })} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    openAdvanced();
+    fireEvent.click(screen.getByRole("button", { name: "copyShortId" }));
+    expect(writeText).toHaveBeenCalledWith("2fb");
+    await waitFor(() => expect(screen.getByText("shortIdCopied")).toBeInTheDocument());
+  });
+
+  it("selects the short id instead when the clipboard refuses", async () => {
+    stubClipboard(vi.fn().mockRejectedValue(new Error("denied")));
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ shortId: "2fb" })} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    openAdvanced();
+    fireEvent.click(screen.getByRole("button", { name: "copyShortId" }));
+    await waitFor(() => expect(window.getSelection()?.toString()).toBe("2fb"));
+    expect(screen.queryByText("shortIdCopied")).not.toBeInTheDocument();
+  });
+
+  it("shows nothing for a node with no short id — no label, no placeholder", async () => {
+    render(<TaskEditorModal {...defaultProps} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    openAdvanced();
+    expect(screen.queryByRole("group", { name: "fieldShortId" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "copyShortId" })).not.toBeInTheDocument();
+  });
+});
