@@ -1854,23 +1854,231 @@
         "domain-agentic",
         "expectation-agentic",
         "task-agentic-child",
+        "task-agentic-doing",
         "task-agentic-done",
-        "task-agentic-inprogress",
+        "task-agentic-onagent",
         "task-agentic-parent",
-        "task-agentic-started",
         "task-agentic-todo",
         "task-opted-out",
         "task-plain"
       ],
       "list": [
         "task-agentic-child",
-        "task-agentic-inprogress",
+        "task-agentic-doing",
+        "task-agentic-onagent",
         "task-agentic-parent",
-        "task-agentic-started",
         "task-agentic-todo"
       ],
       "commitments": [],
       "expectations": []
+    },
+    {
+      "name": "all shows every agentic status",
+      "spec": "resources.md, Agentic statuses — All shows everything, the Agentic model's statuses as the ordinary model's.",
+      "filter": {
+        "preset": "all"
+      },
+      "board": "agentic",
+      "mindmap": [
+        "domain-agentic",
+        "task-a-aside",
+        "task-a-doing",
+        "task-a-doing-bare",
+        "task-a-doing-child",
+        "task-a-done",
+        "task-a-onagent",
+        "task-a-review",
+        "task-a-todo"
+      ],
+      "list": [
+        "task-a-aside",
+        "task-a-doing",
+        "task-a-doing-bare",
+        "task-a-doing-child",
+        "task-a-done",
+        "task-a-onagent",
+        "task-a-review",
+        "task-a-todo"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "plan shows on agent and review",
+      "spec": "resources.md, Agentic statuses — Plan shows every unfinished Task: On Agent and Review are begun work, Done is not.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "agentic",
+      "mindmap": [
+        "domain-agentic",
+        "task-a-doing",
+        "task-a-doing-bare",
+        "task-a-doing-child",
+        "task-a-onagent",
+        "task-a-review",
+        "task-a-todo"
+      ],
+      "list": [
+        "task-a-doing",
+        "task-a-doing-bare",
+        "task-a-doing-child",
+        "task-a-onagent",
+        "task-a-review",
+        "task-a-todo"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "start hides an on agent task by default",
+      "spec": "resources.md, Agentic statuses — On Agent is hidden from Start unless explicitly shown; To Do is there to be claimed, Doing keeps a To Do child, Review always shows.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "agentic",
+      "mindmap": [
+        "domain-agentic",
+        "task-a-doing",
+        "task-a-doing-child",
+        "task-a-review",
+        "task-a-todo"
+      ],
+      "list": [
+        "task-a-doing",
+        "task-a-doing-child",
+        "task-a-review",
+        "task-a-todo"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "start shows an on agent task when asked",
+      "spec": "resources.md, Agentic statuses — The On Agent show control reveals On Agent under Start.",
+      "filter": {
+        "preset": "start",
+        "showOnAgent": true
+      },
+      "board": "agentic",
+      "mindmap": [
+        "domain-agentic",
+        "task-a-doing",
+        "task-a-doing-child",
+        "task-a-onagent",
+        "task-a-review",
+        "task-a-todo"
+      ],
+      "list": [
+        "task-a-doing",
+        "task-a-doing-child",
+        "task-a-onagent",
+        "task-a-review",
+        "task-a-todo"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "review shows under start whatever the started setting says",
+      "spec": "resources.md, Agentic statuses — Review shows wherever Started showed, but unconditionally: not subject to the Started settings.",
+      "filter": {
+        "preset": "start",
+        "startShowsStarted": false
+      },
+      "board": "agentic",
+      "mindmap": [
+        "domain-agentic",
+        "task-a-doing",
+        "task-a-doing-child",
+        "task-a-review",
+        "task-a-todo"
+      ],
+      "list": [
+        "task-a-doing",
+        "task-a-doing-child",
+        "task-a-review",
+        "task-a-todo"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "do shows doing and review, not on agent",
+      "spec": "resources.md, Agentic statuses — Do shows Doing and Review; On Agent is hidden unless shown, and To Do and Done are not under way.",
+      "filter": {
+        "preset": "do"
+      },
+      "board": "agentic",
+      "mindmap": [
+        "domain-agentic",
+        "task-a-doing",
+        "task-a-doing-bare",
+        "task-a-review"
+      ],
+      "list": [
+        "task-a-doing",
+        "task-a-doing-bare",
+        "task-a-review"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "do shows on agent when asked, backlogged too",
+      "spec": "resources.md, Agentic statuses — The On Agent show control reveals On Agent under Do; Do shows backlogged work, as for an ordinary Task.",
+      "filter": {
+        "preset": "do",
+        "showOnAgent": true
+      },
+      "board": "agentic",
+      "mindmap": [
+        "domain-agentic",
+        "task-a-aside",
+        "task-a-doing",
+        "task-a-doing-bare",
+        "task-a-onagent",
+        "task-a-review"
+      ],
+      "list": [
+        "task-a-aside",
+        "task-a-doing",
+        "task-a-doing-bare",
+        "task-a-onagent",
+        "task-a-review"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "review shows under do whatever the started setting says",
+      "spec": "resources.md, Agentic statuses — Review is not subject to the Do shows Started tasks setting, and that setting does not reveal On Agent.",
+      "filter": {
+        "preset": "do",
+        "doShowsStarted": true
+      },
+      "board": "agentic",
+      "mindmap": [
+        "domain-agentic",
+        "task-a-doing",
+        "task-a-doing-bare",
+        "task-a-review"
+      ],
+      "list": [
+        "task-a-doing",
+        "task-a-doing-bare",
+        "task-a-review"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "backlog shows a set-aside agentic task",
+      "spec": "resources.md, Agentic statuses — The Backlog preset shows what was set aside, whatever its status model.",
+      "filter": {
+        "preset": "backlog"
+      },
+      "board": "agentic",
+      "mindmap": [
+        "domain-agentic",
+        "task-a-aside"
+      ],
+      "list": [
+        "task-a-aside"
+      ],
+      "commitments": []
     }
   ],
   "boards": {
@@ -3211,6 +3419,7 @@
               "id": "task-agentic-todo",
               "kind": "task",
               "status": "todo",
+              "agentic": true,
               "children": [
                 {
                   "id": "expectation-agentic",
@@ -3221,20 +3430,23 @@
               "isBlocked": true
             },
             {
-              "id": "task-agentic-started",
+              "id": "task-agentic-onagent",
               "kind": "task",
-              "status": "started",
+              "status": "on_agent",
+              "agentic": true,
               "isBlocked": true
             },
             {
-              "id": "task-agentic-inprogress",
+              "id": "task-agentic-doing",
               "kind": "task",
-              "status": "in_progress",
+              "status": "doing",
+              "agentic": true,
               "children": [
                 {
                   "id": "task-agentic-child",
                   "kind": "task",
                   "status": "todo",
+                  "agentic": true,
                   "isBlocked": true
                 }
               ],
@@ -3243,7 +3455,8 @@
             {
               "id": "task-agentic-parent",
               "kind": "task",
-              "status": "in_progress",
+              "status": "doing",
+              "agentic": true,
               "children": [
                 {
                   "id": "task-opted-out",
@@ -3256,12 +3469,77 @@
             {
               "id": "task-agentic-done",
               "kind": "task",
-              "status": "done"
+              "status": "done",
+              "agentic": true
             },
             {
               "id": "task-plain",
               "kind": "task",
               "status": "todo"
+            }
+          ]
+        }
+      ]
+    },
+    "agentic": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-agentic",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-a-todo",
+              "kind": "task",
+              "status": "todo",
+              "agentic": true
+            },
+            {
+              "id": "task-a-onagent",
+              "kind": "task",
+              "status": "on_agent",
+              "agentic": true
+            },
+            {
+              "id": "task-a-review",
+              "kind": "task",
+              "status": "review",
+              "agentic": true
+            },
+            {
+              "id": "task-a-doing",
+              "kind": "task",
+              "status": "doing",
+              "agentic": true,
+              "children": [
+                {
+                  "id": "task-a-doing-child",
+                  "kind": "task",
+                  "status": "todo",
+                  "agentic": true
+                }
+              ]
+            },
+            {
+              "id": "task-a-doing-bare",
+              "kind": "task",
+              "status": "doing",
+              "agentic": true
+            },
+            {
+              "id": "task-a-done",
+              "kind": "task",
+              "status": "done",
+              "agentic": true
+            },
+            {
+              "id": "task-a-aside",
+              "kind": "task",
+              "status": "on_agent",
+              "agentic": true,
+              "backlogged": true
             }
           ]
         }

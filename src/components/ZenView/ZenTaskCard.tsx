@@ -7,8 +7,9 @@ import type { ZenTextSize } from "@/utils/zen-grid";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import TaskRowBadges from "@/components/ListView/TaskRowBadges";
 import TaskIcon from "@/components/NodeIcon/TaskIcon";
-import { TASK_STATUS } from "@/utils/status-mapping";
-import { isTaskStatusValue } from "@/utils/list-filter";
+import { AGENTIC_STATUS, TASK_STATUS, isReview, taskStatusOf } from "@/utils/status-mapping";
+import type { MindmapNode } from "@/utils/tree-layout";
+import AnswerField from "@/components/AnswerField/AnswerField";
 import { useTranslation } from "react-i18next";
 import OverdueNote from "@/components/OverdueNote/OverdueNote";
 import { isOverdue } from "@/utils/overdue";
@@ -36,6 +37,9 @@ interface Props {
   onOpenEditor: (nodeId: string) => void;
   onCommitTitle: (nodeId: string, title: string) => void;
   onCancelTitleEdit: () => void;
+  /** On a **Review** card: the agent's open question, answered from the card. */
+  question?: MindmapNode | undefined;
+  onAnswer?: ((question: MindmapNode, answer: string) => Promise<boolean>) | undefined;
 }
 
 /**
@@ -50,11 +54,13 @@ interface Props {
  * sit under the title whatever its direction.
  *
  * A click selects, a double click opens the editor; there is no status control (Enter is the
- * gesture). `R` swaps the title for an inline input, as a List row does.
+ * gesture). `R` swaps the title for an inline input, as a List row does. A **Review** card — an
+ * Agentic Task whose agent has a question open — draws the question with a field to answer it in,
+ * and its Review glyph whether or not badges are shown.
  */
 export default function ZenTaskCard({
   row, width, height, text, showBadges, showOverdueBorder, isSelected, isFocusExempt, isEditingTitle,
-  onSelect, onOpenEditor, onCommitTitle, onCancelTitleEdit,
+  onSelect, onOpenEditor, onCommitTitle, onCancelTitleEdit, question, onAnswer,
 }: Props) {
   useInputCapture(isEditingTitle);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -62,10 +68,15 @@ export default function ZenTaskCard({
   const overdueNoteId = useId();
   const { node } = row;
   const overdue = isOverdue(node);
-  // The grid is In Progress work, so only a card that is something else — Started, or a card the
-  // focus exemption holds after your own edit made it To Do or Done — says its status.
-  const status = node.status ?? TASK_STATUS.TODO;
-  const showsStatusIcon = status !== TASK_STATUS.IN_PROGRESS && isTaskStatusValue(status);
+  // The grid is work under way — In Progress, or an Agentic Task's Doing — so only a card that is
+  // something else says its status: Started, Review (always, with a glyph of its own), On Agent
+  // while it is shown, or a card the focus exemption holds after your own edit made it To Do or
+  // Done.
+  const taskStatus = taskStatusOf(node);
+  const status = taskStatus.status;
+  const showsStatusIcon = status !== TASK_STATUS.IN_PROGRESS && status !== AGENTIC_STATUS.DOING;
+  const review = isReview(taskStatus);
+  const statusLabel = taskStatus.kind === "agentic" ? t(`agentic.${taskStatus.status}`) : t(`task.${taskStatus.status}`);
 
   useEffect(() => {
     if (!isEditingTitle) return;
@@ -124,7 +135,10 @@ export default function ZenTaskCard({
           ))}
         </span>
       )}
-      {showBadges && (
+      {review && question !== undefined && onAnswer !== undefined && (
+        <AnswerField question={question} onSend={(answer) => onAnswer(question, answer)} compact />
+      )}
+      {(showBadges || review) && (
         <span className={styles.badges}>
           {showsStatusIcon && (
             <svg
@@ -132,7 +146,7 @@ export default function ZenTaskCard({
               data-zen-status-icon={status}
               viewBox={`0 0 ${ICON_BOX} ${ICON_BOX}`}
               role="img"
-              aria-label={t(`task.${status}`)}
+              aria-label={statusLabel}
             >
               <TaskIcon
                 cx={ICON_BOX / 2} cy={ICON_BOX / 2} r={ICON_BOX * 0.45}
@@ -141,7 +155,7 @@ export default function ZenTaskCard({
               />
             </svg>
           )}
-          <TaskRowBadges node={node} indicators={deriveStatusIndicators(node)} />
+          {showBadges && <TaskRowBadges node={node} indicators={deriveStatusIndicators(node)} />}
         </span>
       )}
     </div>

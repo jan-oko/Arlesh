@@ -12,7 +12,7 @@ use crate::helpers;
 
 use arlesh_lib::{
     domains::model::ProjectStatus,
-    tasks::model::{GoalStatus, TaskStatus, Verdict},
+    tasks::model::{AgenticStatus, GoalStatus, TaskStatus, Verdict},
 };
 
 const CONTEXT: &str = include_str!("../../../CONTEXT.md");
@@ -44,6 +44,25 @@ fn task_statuses() -> Vec<&'static str> {
         TaskStatus::Todo | TaskStatus::InProgress | TaskStatus::Started | TaskStatus::Done => {
             status.as_str()
         }
+    })
+    .collect()
+}
+
+fn agentic_statuses() -> Vec<&'static str> {
+    [
+        AgenticStatus::Todo,
+        AgenticStatus::OnAgent,
+        AgenticStatus::Review,
+        AgenticStatus::Doing,
+        AgenticStatus::Done,
+    ]
+    .iter()
+    .map(|status| match status {
+        AgenticStatus::Todo
+        | AgenticStatus::OnAgent
+        | AgenticStatus::Review
+        | AgenticStatus::Doing
+        | AgenticStatus::Done => status.as_str(),
     })
     .collect()
 }
@@ -93,6 +112,11 @@ fn verdicts() -> Vec<&'static str> {
 #[test]
 fn context_lists_the_task_statuses_the_enum_has() {
     assert_eq!(documented_values("Task status"), task_statuses());
+}
+
+#[test]
+fn context_lists_the_agentic_statuses_the_enum_has() {
+    assert_eq!(documented_values("Agentic status"), agentic_statuses());
 }
 
 #[test]

@@ -81,5 +81,6 @@
   "quickDependencyNotTask": "“{{title}}” can't depend on anything — only a Task has dependencies.",
   "quickDependencyOneAtATime": "D adds a dependency to one Task at a time — select just one.",
   "quickDependencyLoadFailed": "Couldn't read the dependencies to search: {{message}}",
-  "quickDependencyFailed": "Couldn't make “{{title}}” depend on “{{prerequisite}}”: {{message}}"
+  "quickDependencyFailed": "Couldn't make “{{title}}” depend on “{{prerequisite}}”: {{message}}",
+  "altEnterAgenticNotDoing": "Started is not an Agentic status — Alt+Enter hands a task you are Doing back to its agent."
 }

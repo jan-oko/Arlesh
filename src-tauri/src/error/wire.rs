@@ -272,6 +272,12 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
         TaskError::CompoundStatus(_) | TaskError::CompoundOnDerived => {
             WireErrorKind::InvalidRequest
         }
+        // A status outside the Task's model, the derived Review, or a change of kind that would
+        // strand a status: set the status first.
+        TaskError::ReviewIsDerived
+        | TaskError::NotAgenticStatus(_)
+        | TaskError::NotOrdinaryStatus(_)
+        | TaskError::KindConversion(_) => WireErrorKind::InvalidRequest,
         // Not `InvalidRequest`: the request is well-formed and could be carried out. The backend
         // is asking whether to throw the Plan away, and the caller answers by asking again with
         // the Plan cleared.

@@ -53,6 +53,7 @@
     "not_agentic": "Not agentic"
   },
   "asynchronousHeading": "Asynchronous",
+  "reviewHeading": "Review",
   "overdueHeading": "Overdue",
   "asynchronousState": {
     "asynchronous": "Asynchronous",

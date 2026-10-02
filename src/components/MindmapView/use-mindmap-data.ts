@@ -28,7 +28,7 @@ import {
   duplicateFlow, duplicateFlowItem,
 } from "@/api/flows";
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
-import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
+import { TASK_STATUS, GOAL_STATUS, isDone } from "@/utils/status-mapping";
 import { propagateAgentic } from "@/utils/agentic";
 import { propagateInheritedScope } from "@/utils/inherited-scope";
 import { listMcpAccess } from "@/api/mcp-access";
@@ -445,7 +445,8 @@ export function buildTree(
       kind: "task",
       title: isCheck ? checkTitle(task.title) : task.title,
       ...(isCheck ? { rowTitle: task.title } : {}),
-      status: task.status,
+      status: task.status.status,
+      taskStatus: task.status,
       blockReasons: manualBlockers.get(`task-${task.id}`) ?? [],
       virtualBlockers: [
         ...(capacityBlocked.has(`task-${task.id}`) ? [capacityReason] : []),
@@ -543,7 +544,7 @@ export function buildTree(
       }
     } else if (dep.dependency_type === "task") {
       const target = taskById.get(dep.dependency_id);
-      if (target !== undefined && target.status !== "done") {
+      if (target !== undefined && !isDone(target.status)) {
         node.virtualBlockers?.push(`Blocked by task ${dep.dependency_id} (${target.title})`);
         node.blockingDependencyIds = [...(node.blockingDependencyIds ?? []), `task-${dep.dependency_id}`];
       }
@@ -979,7 +980,7 @@ export function useMindmapData(): MindmapData {
         });
         const newNode: MindmapNode = {
           id: `task-${task.id}`, rowId: task.id, kind: "task", title: task.title,
-          status: task.status, position: task.position, tagIds: [], children: [],
+          status: task.status.status, taskStatus: task.status, position: task.position, tagIds: [], children: [],
         };
         await load(false);
         return newNode;

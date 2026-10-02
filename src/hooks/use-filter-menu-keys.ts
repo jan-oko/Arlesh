@@ -8,10 +8,10 @@ import { useRowKindToggle } from "@/hooks/use-row-kind-toggle";
 import { useSetPrivateMode } from "@/hooks/use-private-mode";
 import { YES_VALUE, modeFromModifiers } from "@/utils/filter-modes";
 import type { YesNoDimension } from "@/utils/filter-modes";
-import { flagForCode, rowKindForCode } from "@/utils/filter-menu-keys";
+import { ON_AGENT_KEY, flagForCode, rowKindForCode } from "@/utils/filter-menu-keys";
 import type { ListRowKind } from "@/utils/list-filter";
 import type { View } from "@/stores/use-view-store";
-import { flagsFor, rowKindsFor } from "@/utils/filter-layout";
+import { flagsFor, offersOnAgent, rowKindsFor } from "@/utils/filter-layout";
 
 /** Whether the key was pressed in a text box, where letters must type. */
 function inTextBox(event: KeyboardEvent): boolean {
@@ -39,6 +39,7 @@ export function useFilterMenuKeys(view: View): (event: KeyboardEvent) => void {
   const entries = useFilterEntries();
   const setPillMode = useListFilterStore((s) => s.setPillMode);
   const setFilterPopover = useFilterStore((s) => s.setFilterPopover);
+  const toggleShowOnAgent = useFilterStore((s) => s.toggleShowOnAgent);
 
   function onRowKind(kind: ListRowKind, event: KeyboardEvent) {
     if (event.shiftKey) rowKinds.showOnly(kind);
@@ -71,6 +72,12 @@ export function useFilterMenuKeys(view: View): (event: KeyboardEvent) => void {
       if (event.code !== "KeyP" || event.altKey || event.shiftKey) return;
       event.preventDefault();
       setPrivateMode(!privateMode);
+      return;
+    }
+    // `o`: the On Agent pill, in a view that offers it. Bare only — Alt+O and Shift+O are not it.
+    if (event.code === ON_AGENT_KEY && offersOnAgent(view) && !event.altKey && !event.shiftKey) {
+      event.preventDefault();
+      toggleShowOnAgent();
       return;
     }
     const kindCandidate = rowKindForCode(event.code);

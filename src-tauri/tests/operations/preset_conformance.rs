@@ -85,6 +85,8 @@ struct CorpusFilter {
     start_shows_started: bool,
     #[serde(default)]
     do_shows_started: bool,
+    #[serde(default)]
+    show_on_agent: bool,
 }
 
 fn yes() -> bool {
@@ -123,6 +125,7 @@ impl From<&CorpusFilter> for BoardFilter {
             start_hides_checked_waits: filter.start_hides_checked_waits,
             start_shows_started: filter.start_shows_started,
             do_shows_started: filter.do_shows_started,
+            show_on_agent: filter.show_on_agent,
         }
     }
 }

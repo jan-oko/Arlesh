@@ -36,7 +36,7 @@ use super::lifecycle::{
 };
 use super::model::{
     CommitmentId, Expectation, ExpectationArchival, ExpectationStatus, GoalId, GoalStatus,
-    OnScopeExit, TaskArchival, TaskId, TaskStatus, TimeScope,
+    OnScopeExit, TaskArchival, TaskId, TimeScope,
 };
 
 /// Maps a Goal's stored status to its baseline Archival value, for [`derive_item_state`]'s `stored`
@@ -104,7 +104,7 @@ pub async fn derive_all_scope_lifecycles<M: SessionMode>(
     for task in db.tasks().list().await? {
         let governance = scope_governance(db, "task", task.id.require_stored()?).await?;
         let (window, on_exit) = governance.unzip();
-        let resolved = TaskStatus::from_db(&task.status) == Some(TaskStatus::Done);
+        let resolved = task.status.is_done();
         let stored = Some(Archival::from(task.archival));
         let due = effective_due(
             task.due_scope.as_ref().map(TimeScope::window),

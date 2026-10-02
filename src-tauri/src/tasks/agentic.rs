@@ -7,14 +7,22 @@
 //!
 //! Two rules ride on it, both refused out loud (see `docs/spec/resources.md`, "Tasks"):
 //!
-//! - A Task that reads as Agentic cannot be **started** — moved into In Progress — without a Spec.
+//! - A Task that reads as Agentic cannot be **started** — claimed into On Agent, or taken into
+//!   Doing — without a Spec.
+//!
+//! And it decides which **status model** a Task holds — the Agentic one or the ordinary one (see
+//! [`Status`]) — so a change of kind converts statuses here ([`reconcile`]).
 //! - An **agentic wait** (an Expectation an agent raised: "the agent is waiting on you") can only
 //!   hang directly under a Task that reads as Agentic.
 
 use std::collections::{HashMap, HashSet};
 
+use std::collections::VecDeque;
+
 use super::error::TaskError;
-use super::model::{AgenticBrief, AgenticPriority, CommitmentId, GoalId, TaskId};
+use super::model::{
+    AgenticBrief, AgenticPriority, AgenticStatus, CommitmentId, GoalId, Status, TaskId,
+};
 use super::TaskOperator;
 use crate::database::session::{Db, SessionMode};
 use crate::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind, NO_CYCLE};
@@ -209,6 +217,52 @@ impl TaskOperator<'_> {
         }))
     }
 
+    /// Writes a Task's status alone — a conversion between the two models, which keeps whether it
+    /// is done and so its `done_at`. Module-private to the reconciliation that is its one caller.
+    async fn write_status(&mut self, id: TaskId, status: Status) -> Result<(), TaskError> {
+        let spelling = status.as_db().ok_or(TaskError::ReviewIsDerived)?;
+        sqlx::query("UPDATE tasks SET status = ? WHERE id = ?")
+            .bind(spelling)
+            .bind(id.0)
+            .execute(&mut *self.connection)
+            .await?;
+        Ok(())
+    }
+
+    /// The Habits whose occurrences render under the node `(kind, id)`: its Target Node, or —
+    /// with none — its parent.
+    async fn habits_hosted_on(&mut self, kind: &str, id: i64) -> Result<Vec<i64>, TaskError> {
+        Ok(sqlx::query_scalar(
+            "SELECT id FROM flows
+              WHERE COALESCE(target_type, parent_type) = ? AND COALESCE(target_id, parent_id) = ?",
+        )
+        .bind(kind)
+        .bind(id)
+        .fetch_all(&mut *self.connection)
+        .await?)
+    }
+
+    /// The stored rows hung on one Habit's occurrences, as `(kind, id)`.
+    async fn hung_on_habit(&mut self, flow: i64) -> Result<Vec<(String, i64)>, TaskError> {
+        Ok(
+            sqlx::query_as("SELECT child_type, child_id FROM derived_children WHERE flow_id = ?")
+                .bind(flow)
+                .fetch_all(&mut *self.connection)
+                .await?,
+        )
+    }
+
+    /// A Habit's title, to name one of its occurrences in a refusal.
+    async fn habit_title(&mut self, flow: i64) -> Result<String, TaskError> {
+        Ok(
+            sqlx::query_scalar::<_, String>("SELECT title FROM flows WHERE id = ?")
+                .bind(flow)
+                .fetch_optional(&mut *self.connection)
+                .await?
+                .unwrap_or_default(),
+        )
+    }
+
     /// A task's own Agentic column and its parent reference, or `None` when there is no such task.
     async fn agentic_step(&mut self, id: TaskId) -> Result<Option<AgenticStepRow>, TaskError> {
         Ok(sqlx::query_as::<_, AgenticStepRow>(
@@ -371,39 +425,185 @@ enum TemplateParent {
     Host(String, i64),
 }
 
-/// Refuses to start a Task that reads as Agentic while its brief has no Spec.
+/// What a Task reads as for Agentic as it will be written: `own` is its own Agentic column as
+/// written — `None` inherits from above: from the Habit occurrence `task` hangs on, when it hangs
+/// on one, else from `parent`, the Task's parent reference as written. A Task being created has no
+/// id yet (`task: None`).
 ///
-/// `own` is the Task's own Agentic column as it will be written — `None` inherits from above:
-/// from the Habit occurrence `task` hangs on, when it hangs on one, else from `parent`, the Task's
-/// parent reference as it will be written. A Task being created has no id yet (`task: None`).
-pub(crate) async fn require_spec_to_start<M: SessionMode>(
+/// This is what decides which status model the Task holds (see [`Status`]).
+pub(crate) async fn resolves_agentic<M: SessionMode>(
     db: &mut Db<M>,
     task: Option<TaskId>,
     own: Option<bool>,
     parent: (&str, i64),
-    brief: &Option<AgenticBrief>,
-) -> Result<(), TaskError> {
-    if brief.as_ref().is_some_and(AgenticBrief::has_spec) {
-        return Ok(());
+) -> Result<bool, TaskError> {
+    if let Some(flag) = own {
+        return Ok(flag);
     }
-    let agentic = match own {
-        Some(flag) => flag,
-        None => {
-            let hung_on = match task {
-                Some(id) => db
-                    .tasks()
-                    .occurrence_holding("task", id.0)
-                    .await?
-                    .and_then(|parent_key| OccurrenceKey::parse(&parent_key)),
-                None => None,
-            };
-            match hung_on {
-                Some(key) => occurrence_reads_agentic(db, &key).await?,
-                None => reads_agentic(db, parent.0, parent.1).await?,
+    let hung_on = match task {
+        Some(id) => db
+            .tasks()
+            .occurrence_holding("task", id.0)
+            .await?
+            .and_then(|parent_key| OccurrenceKey::parse(&parent_key)),
+        None => None,
+    };
+    match hung_on {
+        Some(key) => occurrence_reads_agentic(db, &key).await,
+        None => reads_agentic(db, parent.0, parent.1).await,
+    }
+}
+
+/// The status a Task holds after a write, in the model its kind holds then.
+///
+/// `before` is what the row held, `requested` what the write names, `agentic` the kind after the
+/// write. A value already in that model stands — except Review, which is derived and never set. A
+/// requested value of the other model is refused when the kind does not change: an ordinary
+/// Started on an Agentic Task, say, or On Agent on an ordinary one. When the kind **does** change —
+/// a flag change, or a move under another ancestor — the value is **converted** explicitly
+/// ([`Status::converted`]), and refused, naming the Task, when it has no counterpart there.
+pub(crate) fn settle_status(
+    title: &str,
+    before: Status,
+    requested: Option<Status>,
+    agentic: bool,
+) -> Result<Status, TaskError> {
+    if requested == Some(Status::Agentic(AgenticStatus::Review)) {
+        return Err(TaskError::ReviewIsDerived);
+    }
+    let value = requested.unwrap_or(before);
+    if value.is_agentic() == agentic {
+        return Ok(value);
+    }
+    let kind_changes = before.is_agentic() != agentic;
+    if requested.is_some() && !kind_changes {
+        return Err(match agentic {
+            true => TaskError::NotAgenticStatus(value.as_str().to_string()),
+            false => TaskError::NotOrdinaryStatus(value.as_str().to_string()),
+        });
+    }
+    value
+        .converted(agentic)
+        .ok_or_else(|| TaskError::KindConversion(stranded(title, value)))
+}
+
+/// How a Task left without a counterpart is named in a refusal.
+pub(crate) fn stranded(title: &str, status: Status) -> String {
+    format!("“{title}” ({})", status.as_str().replace('_', " "))
+}
+
+/// Where a [`reconcile`] walk starts, or what it reaches next.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum Reach {
+    /// Everything stored beneath a Task, Goal or Commitment, and every Habit hosted on it.
+    Below(String, i64),
+    /// One stored Task that inherits its kind: itself, then everything beneath it.
+    Task(i64),
+    /// One Habit's occurrences, and the stored rows hung on them.
+    Habit(i64),
+}
+
+/// Re-reads the kind of every Task a change of kind can reach from `start` — a flag changed, a
+/// node moved under another ancestor, a template's or an occurrence's flag changed — and converts
+/// each status that is now in the wrong model into its counterpart (see [`settle_status`]).
+///
+/// A Task with an Agentic flag of its own keeps its kind whatever its ancestors say, so the walk
+/// stops at one. Run **after** the write, inside the same transaction: when any Task reached has no
+/// counterpart for its status, it is refused as [`TaskError::KindConversion`], naming every one,
+/// and the caller's transaction takes the whole write back.
+pub(crate) async fn reconcile<M: SessionMode>(
+    db: &mut Db<M>,
+    start: Vec<Reach>,
+) -> Result<(), TaskError> {
+    let mut queue: VecDeque<Reach> = start.into();
+    let mut seen: HashSet<Reach> = HashSet::new();
+    let mut refused: Vec<String> = Vec::new();
+    while let Some(reach) = queue.pop_front() {
+        if !seen.insert(reach.clone()) {
+            continue;
+        }
+        match reach {
+            Reach::Below(kind, id) => {
+                for task in db.tasks().child_ids(&kind, id).await? {
+                    queue.push_back(Reach::Task(task));
+                }
+                for goal in db.goals().child_ids(&kind, id).await? {
+                    queue.push_back(Reach::Below("goal".to_string(), goal));
+                }
+                for commitment in db.commitments().child_ids(&kind, id).await? {
+                    queue.push_back(Reach::Below("commitment".to_string(), commitment));
+                }
+                for flow in db.tasks().habits_hosted_on(&kind, id).await? {
+                    queue.push_back(Reach::Habit(flow));
+                }
+            }
+            Reach::Task(id) => {
+                let task = db.tasks().get(TaskId(id)).await?;
+                if task.agentic.is_some() {
+                    continue;
+                }
+                let agentic = reads_agentic(db, "task", id).await?;
+                if task.status.is_agentic() != agentic {
+                    match task.status.converted(agentic) {
+                        Some(next) => db.tasks().write_status(TaskId(id), next).await?,
+                        None => refused.push(stranded(&task.title, task.status)),
+                    }
+                }
+                queue.push_back(Reach::Below("task".to_string(), id));
+            }
+            Reach::Habit(flow) => {
+                reconcile_occurrences(db, flow, &mut refused).await?;
+                for (kind, id) in db.tasks().hung_on_habit(flow).await? {
+                    match kind.as_str() {
+                        "task" => queue.push_back(Reach::Task(id)),
+                        "goal" | "commitment" => queue.push_back(Reach::Below(kind, id)),
+                        _ => {}
+                    }
+                }
             }
         }
-    };
-    require_spec(agentic, brief)
+    }
+    if refused.is_empty() {
+        return Ok(());
+    }
+    Err(TaskError::KindConversion(refused.join(", ")))
+}
+
+/// Converts the status each of one Habit's Task occurrences holds in its overlay into the model it
+/// reads as now, collecting the ones with no counterpart into `refused`. An overlay with no status
+/// is To Do in either model and needs nothing.
+async fn reconcile_occurrences<M: SessionMode>(
+    db: &mut Db<M>,
+    flow: i64,
+    refused: &mut Vec<String>,
+) -> Result<(), TaskError> {
+    let overlays = db.overlays().for_habit(flow).await?.tasks;
+    for (node_key, mut overlay) in overlays {
+        let Some(stored) = overlay.status.as_deref().and_then(Status::from_db) else {
+            continue;
+        };
+        let Some(key) = OccurrenceKey::parse(&node_key) else {
+            continue;
+        };
+        let agentic = occurrence_reads_agentic(db, &key).await?;
+        if stored.is_agentic() == agentic {
+            continue;
+        }
+        match stored.converted(agentic) {
+            Some(next) => {
+                overlay.status = next.as_db().map(str::to_string);
+                db.overlays().put_task(flow, &key, &overlay).await?;
+            }
+            None => {
+                let title = match overlay.title.clone() {
+                    Some(title) => title,
+                    None => db.tasks().habit_title(flow).await?,
+                };
+                refused.push(stranded(&title, stored));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Refuses to start something that reads as Agentic, `agentic` already resolved, while `brief` has

@@ -45,6 +45,9 @@ export default function StepCardFields({ node, fields }: Props) {
    */
   function statusLabel(): string {
     const status = node.status ?? "";
+    if (node.kind === "task" && node.taskStatus?.kind === "agentic") {
+      return t(`status:agentic.${node.taskStatus.status}`);
+    }
     if (node.kind === "task") {
       if (status === TASK_STATUS.TODO) return t("status:task.todo");
       if (status === TASK_STATUS.IN_PROGRESS) return t("status:task.in_progress");
