@@ -281,13 +281,25 @@ pub fn flatten(root: &super::tree::FactNode, kind: NodeKind) -> Vec<OwnedRow> {
     flatten_forest(&root.children, kind)
 }
 
+/// Flattens a fact tree to one row per node of any of `kinds`, mixed, in the order the board
+/// draws them — what the List View draws when Commitments and waits sit among the Task rows.
+/// `root` frames the list, as in [`flatten`].
+pub fn flatten_kinds(root: &super::tree::FactNode, kinds: &[NodeKind]) -> Vec<OwnedRow> {
+    let mut rows = Vec::new();
+    let mut chain = Vec::new();
+    for child in &root.children {
+        visit(child, kinds, &mut chain, &mut rows);
+    }
+    rows
+}
+
 /// Flattens a forest to one row per node of `kind`. Unlike [`flatten`], each tree's root is
 /// content: a row, or an ancestor of the rows beneath it.
 pub fn flatten_forest(forest: &[super::tree::FactNode], kind: NodeKind) -> Vec<OwnedRow> {
     let mut rows = Vec::new();
     let mut chain = Vec::new();
     for tree in forest {
-        visit(tree, kind, &mut chain, &mut rows);
+        visit(tree, &[kind], &mut chain, &mut rows);
     }
     rows
 }
@@ -319,11 +331,11 @@ pub fn kept_ids_in_forest(
 
 fn visit(
     node: &super::tree::FactNode,
-    kind: NodeKind,
+    kinds: &[NodeKind],
     chain: &mut Vec<NodeFacts>,
     rows: &mut Vec<OwnedRow>,
 ) {
-    if node.facts.kind == kind {
+    if kinds.contains(&node.facts.kind) {
         rows.push(OwnedRow {
             node: node.facts.clone(),
             ancestors: chain.clone(),
@@ -331,7 +343,7 @@ fn visit(
     }
     chain.push(node.facts.clone());
     for child in &node.children {
-        visit(child, kind, chain, rows);
+        visit(child, kinds, chain, rows);
     }
     chain.pop();
 }

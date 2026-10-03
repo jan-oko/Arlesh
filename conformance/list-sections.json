@@ -1,0 +1,359 @@
+{
+  "about": [
+    "The List View's lifted sections, written as data: which rows each section takes, and when each",
+    "section is drawn.",
+    "",
+    "Both evaluators replay it. `src-tauri/tests/operations/list_sections_conformance.rs` runs every",
+    "case through `crate::filters::sections`; `src/utils/list-sections-conformance.test.ts` runs the",
+    "same cases through `list-sections.ts`. Neither side generates this file.",
+    "",
+    "A board's nodes are written as in `preset-filters.json`. Its rows are its Tasks, Commitments and",
+    "Expectations in tree order, the root framing them; a case's `rows`, when given, keeps only those",
+    "— the rows a filter left. `sections` names the sections asked for. `expect` lists each drawn",
+    "section's rows, in order, and `rest` the ordinary list below them; a section left out draws",
+    "nothing. Path headers and the markers that bracket a section are drawing, and are not here.",
+    "",
+    "`drawn` says when the List View asks for the Review and Overdue sections: under `filter`, with",
+    "the Overdue setting at `overdueSetting`."
+  ],
+  "cases": [
+    {
+      "name": "no section asked for leaves the list in tree order",
+      "spec": "list-view.md — The sections are drawn only when asked for.",
+      "board": "lifting",
+      "sections": {},
+      "expect": {
+        "rest": [
+          "task-plain",
+          "task-async",
+          "task-under-async",
+          "task-async-inner",
+          "task-overdue",
+          "commitment-under-overdue",
+          "task-both",
+          "task-review",
+          "task-under-review",
+          "expectation-late",
+          "commitment-loose",
+          "task-last"
+        ]
+      }
+    },
+    {
+      "name": "the asynchronous section lifts each asynchronous task with its whole subtree, once",
+      "spec": "list-view.md — A lifted row brings its subtree with it; a row inside another lifted row's subtree rides up with the outer one.",
+      "board": "lifting",
+      "sections": {
+        "asynchronous": true
+      },
+      "expect": {
+        "asynchronous": [
+          "task-async",
+          "task-under-async",
+          "task-async-inner",
+          "task-both"
+        ],
+        "rest": [
+          "task-plain",
+          "task-overdue",
+          "commitment-under-overdue",
+          "task-review",
+          "task-under-review",
+          "expectation-late",
+          "commitment-loose",
+          "task-last"
+        ]
+      }
+    },
+    {
+      "name": "review leads, then overdue, then asynchronous, and a row goes to the first section that claims it",
+      "spec": "list-view.md — Review, Overdue and Asynchronous claim in that order; a row both Overdue and asynchronous goes to Overdue.",
+      "board": "lifting",
+      "sections": {
+        "review": true,
+        "overdue": true,
+        "asynchronous": true
+      },
+      "expect": {
+        "review": [
+          "task-review",
+          "task-under-review"
+        ],
+        "overdue": [
+          "task-overdue",
+          "commitment-under-overdue",
+          "task-both",
+          "expectation-late"
+        ],
+        "asynchronous": [
+          "task-async",
+          "task-under-async",
+          "task-async-inner"
+        ],
+        "rest": [
+          "task-plain",
+          "commitment-loose",
+          "task-last"
+        ]
+      }
+    },
+    {
+      "name": "a wait is claimed by its own overdue flag and a commitment only rides up under a lifted row",
+      "spec": "list-view.md — A Task or a wait is claimed by its own Overdue flag; a Commitment is never Overdue.",
+      "board": "lifting",
+      "sections": {
+        "overdue": true
+      },
+      "expect": {
+        "overdue": [
+          "task-overdue",
+          "commitment-under-overdue",
+          "task-both",
+          "expectation-late"
+        ],
+        "rest": [
+          "task-plain",
+          "task-async",
+          "task-under-async",
+          "task-async-inner",
+          "task-review",
+          "task-under-review",
+          "commitment-loose",
+          "task-last"
+        ]
+      }
+    },
+    {
+      "name": "a descendant follows its lifted ancestor when the row between them was filtered out",
+      "spec": "list-view.md — The ancestor chain is consulted rather than the parent.",
+      "board": "gap",
+      "sections": {
+        "asynchronous": true
+      },
+      "rows": [
+        "task-async",
+        "task-deep",
+        "task-after"
+      ],
+      "expect": {
+        "asynchronous": [
+          "task-async",
+          "task-deep"
+        ],
+        "rest": [
+          "task-after"
+        ]
+      }
+    },
+    {
+      "name": "a section with nothing in it is not drawn",
+      "spec": "list-view.md — A section with nothing in it draws no heading.",
+      "board": "gap",
+      "sections": {
+        "review": true,
+        "overdue": true
+      },
+      "expect": {
+        "rest": [
+          "task-async",
+          "task-filtered",
+          "task-deep",
+          "task-after"
+        ]
+      }
+    }
+  ],
+  "drawn": [
+    {
+      "name": "start draws review, and overdue while its setting is on",
+      "spec": "list-view.md — Overdue is drawn under Start while its setting is on; Review under Start and Do.",
+      "filter": {
+        "preset": "start"
+      },
+      "overdueSetting": true,
+      "review": true,
+      "overdue": true
+    },
+    {
+      "name": "start with the overdue setting off draws review only",
+      "spec": "list-view.md — Overdue is drawn only while its setting is on.",
+      "filter": {
+        "preset": "start"
+      },
+      "overdueSetting": false,
+      "review": true,
+      "overdue": false
+    },
+    {
+      "name": "do draws review and not overdue",
+      "spec": "list-view.md — Review is drawn under Start and Do; Overdue under Start only.",
+      "filter": {
+        "preset": "do"
+      },
+      "overdueSetting": true,
+      "review": true,
+      "overdue": false
+    },
+    {
+      "name": "plan draws neither",
+      "spec": "list-view.md — Review shows only under Start and Do.",
+      "filter": {
+        "preset": "plan"
+      },
+      "overdueSetting": true,
+      "review": false,
+      "overdue": false
+    },
+    {
+      "name": "all draws neither",
+      "spec": "list-view.md — Review shows only under Start and Do.",
+      "filter": {
+        "preset": "all"
+      },
+      "overdueSetting": true,
+      "review": false,
+      "overdue": false
+    },
+    {
+      "name": "unblock replaces the preset's question and draws neither",
+      "spec": "list-view.md — The Unblock option replaces the preset's question.",
+      "filter": {
+        "preset": "start",
+        "unblock": true
+      },
+      "overdueSetting": true,
+      "review": false,
+      "overdue": false
+    },
+    {
+      "name": "the expectations option draws neither",
+      "spec": "list-view.md — The Expectations option replaces the preset's question.",
+      "filter": {
+        "preset": "do",
+        "expectations": true
+      },
+      "overdueSetting": true,
+      "review": false,
+      "overdue": false
+    }
+  ],
+  "boards": {
+    "lifting": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-work",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-plain",
+              "kind": "task",
+              "status": "todo"
+            },
+            {
+              "id": "task-async",
+              "kind": "task",
+              "status": "todo",
+              "asynchronous": true,
+              "children": [
+                {
+                  "id": "task-under-async",
+                  "kind": "task",
+                  "status": "todo"
+                },
+                {
+                  "id": "task-async-inner",
+                  "kind": "task",
+                  "status": "todo",
+                  "asynchronous": true
+                }
+              ]
+            },
+            {
+              "id": "task-overdue",
+              "kind": "task",
+              "status": "todo",
+              "overdue": true,
+              "children": [
+                {
+                  "id": "commitment-under-overdue",
+                  "kind": "commitment",
+                  "verdict": "unresolved"
+                }
+              ]
+            },
+            {
+              "id": "task-both",
+              "kind": "task",
+              "status": "todo",
+              "overdue": true,
+              "asynchronous": true
+            },
+            {
+              "id": "task-review",
+              "kind": "task",
+              "status": "review",
+              "agentic": true,
+              "children": [
+                {
+                  "id": "task-under-review",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "expectation-late",
+              "kind": "expectation",
+              "status": "pending",
+              "overdue": true
+            },
+            {
+              "id": "commitment-loose",
+              "kind": "commitment",
+              "verdict": "unresolved"
+            },
+            {
+              "id": "task-last",
+              "kind": "task",
+              "status": "todo"
+            }
+          ]
+        }
+      ]
+    },
+    "gap": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "task-async",
+          "kind": "task",
+          "status": "todo",
+          "asynchronous": true,
+          "children": [
+            {
+              "id": "task-filtered",
+              "kind": "task",
+              "status": "todo",
+              "children": [
+                {
+                  "id": "task-deep",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "task-after",
+          "kind": "task",
+          "status": "todo"
+        }
+      ]
+    }
+  }
+}
