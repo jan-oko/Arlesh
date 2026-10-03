@@ -1,8 +1,9 @@
 # The business rules layer: inventory and plan
 
 The plan behind [ADR 0010](../../adr/0010-business-rules-layer.md), for Task `122` (which absorbed
-`197`). It is phase 0: an inventory and an order, with no code moved. The user approves it before
-any phase starts.
+`197`). It is phase 0: an inventory and an order, with no code moved. The user approved it on
+2026-10-02 (wait `921`: "Yes to all. All folding is in 122 for now"), and added phase 2b, which
+separates the domain and database models.
 
 Paths: `ts:` is `src/`, `rs:` is `src-tauri/src/`. Measured on `origin/master` at `47356b0c`
 (2026-10-02).
@@ -132,7 +133,8 @@ These are the rules layer's own extraction work, which `122`'s spec describes.
 | `rs:mindmap/mod.rs` (`load_within`) | Interleaves reads with derivation | Becomes gather-then-`derive_board` |
 | `rs:tasks/mod.rs` (1,793 lines), `rs:flows/mod.rs` (4,014 lines) | Rules inline with SQL | Extract |
 | `rs:mcp/ids.rs` | Pure (short ids) | Moves under `nodes::rules` |
-| `rs:scopes/key.rs` | Pure rules, but `ScopeKey` implements `sqlx`'s `Encode`, `Decode` and `Type` beside its definition | Allowed by the import check (ADR 0010, decision 1). Moves behind a feature only if open question 8 says so |
+| `rs:scopes/key.rs` | Pure rules, but `ScopeKey` implements `sqlx`'s `Encode`, `Decode` and `Type` beside its definition | Phase 2b. The impls move to a `DbScopeKey(ScopeKey)` newtype in persistence |
+| Domain models with `sqlx` derives (`FromRow`, `sqlx::Type`, and hand-written `Encode`/`Decode`) | Found in `access/mod.rs`, `block_reasons/mod.rs`, `domains/model.rs`, `flows/model.rs`, `flows/mod.rs`, `flows/template.rs`, `infos/mod.rs`, `knowledge_base/model.rs`, `nodes/overlay.rs`, `nodes/relations.rs`, `nodes/wait_overlay.rs`, `scopes/key.rs`, `tasks/agentic.rs`, `tasks/commitments.rs`, `tasks/compound/instants.rs`, `tasks/expectations.rs`, `tasks/mod.rs`, `tasks/waits.rs` and `undo/mod.rs` (49 derives) | Phase 2b. Persistence row structs and conversions. `undo/` rows are persistence already and keep their derives |
 
 ## 2. `122`'s spec against today's code
 
@@ -187,20 +189,22 @@ Each phase is one or more PRs. Each PR is mergeable on its own and changes no be
 | 0 | This inventory and plan | – | – | – | `docs/` only |
 | 1 | **The convention and the check** | `rules` modules for the already-pure code: `filters/`, `lifecycle.rs`, `review.rs`, `habits.rs`, `cooldown.rs`, `capacity/blocks.rs`, `scopes/derive.rs`, `mcp/ids.rs`. A CI purity check. The convention goes in `.claude/rules/rust.md` | None | The existing suite passes unmodified. The existing corpora (`preset-filters.json`, `scope-keys.json`) stay green | Each moved file, one module per PR. Low, since these files change rarely |
 | 2 | **Extract the rules from persistence** | Split `scope_rules.rs`, `compound.rs`, `occurrences.rs`, `compound_readings.rs`, `nodes/table.rs` and `agentic.rs` into gather and rules. Extract the inline rules from `tasks/mod.rs` and `flows/mod.rs` | None | The existing suite passes unmodified. A test that had to change means the move was not a move | **High.** `tasks/mod.rs` and `flows/mod.rs` are in most Rust PRs. Run module by module, on a quiet board |
+| 2b | **Separate domain and database models** (ADR 0010, decision 8) | Domain types lose every `sqlx` derive and impl. Persistence gains row structs (`FromRow`), conversions to and from the domain types (a malformed row fails there, as a typed error), and zero-cost newtypes for directly stored value types (`DbScopeKey(ScopeKey)`, the status and kind enums). The purity check extends to "the domain types and rules do not depend on `sqlx`". One domain per PR | None | The existing suite passes unmodified. A conversion test per row struct, covering a round trip and a malformed value | **High.** Every file that reads or writes a row. Runs after phase 2 and before `a77`'s crate split. No meaningful runtime cost: newtypes share their inner layout, and a conversion moves fields that were already decoded |
 | 3 | **A pure board derivation, and the facts it sends** | `mindmap::load_within` becomes gather + `rules::derive_board(rows, now, capacity)`. The load gains `blocked`, structured `block_reasons`, `agentic_effective`, `inherited_time_scope`, `open_question_id`, `mcp_visible_via`, `expired`, the iteration readings and `agent_activity`. `filters/facts.rs` reads these facts instead of re-deriving `index_blocked` | **Move**: `blocked-by.ts`, the virtual-blocker loop, `holdsUnrenderableGoalItems`, `propagateAgentic`, `propagateInheritedScope`, `openQuestion`, `applyMcpVisibility`, `agent-activity.ts`, the Expired half of `commitment-glyph.ts`, and the `passed` and `done` half of `decorateIterationRoots` | Rust tests of `derive_board` from plain rows. The TS tests of the deleted readers become fixture checks that the node carries the fact | `use-mindmap-data.ts`, `api/mindmap.ts`, `tree-layout.ts` (`MindmapNode`), `rs:mindmap/`, `rs:wire.rs`. Any PR adding a node field collides |
 | 4 | **The List and Zen rules in Rust, pinned** | `filters::rules` gains the pills, scope-state tokens, row flattening, list sections and Zen contents. The MCP `filter` gains the pills | **Keep + pin**: `list-filter.ts` (pills), `list-data.ts` (flattening), `list-sections.ts`, `zen-contents.ts`, `view-preset.ts` | `preset-filters.json` gains `list_filter` cases, plus new `list-sections.json` and `zen-contents.json`. Port the TS tests to Rust as their spec. `mcp-server.md` drops the pills from *deliberately absent*, and `filtering-logic.md` names the new corpora | `rs:filters/`, `rs:mcp/`, the two specs. The TS files change only to add the vitest replay |
 | 5 | **Gestures and capabilities** | Intents for `advance_status`, `alt_step`, `toggle_agentic`, `cycle_verdict` and `paste`. `nodes::rules::may_parent`, called by every writer. `capabilities` on each node. Queries for `dependency_candidates` and root candidates | **Move**: `task-status-cycle.ts`, `storedStatus`, `toggledAgenticState`, the verdict cycle, `takesCompound`, `derived-wait.ts`, `canDescendInto`, the node half of `paste-refusal.ts`, `canConvertNodeToFlow`, `dependency-candidates.ts`, `rootCandidates`. **Keep + pin**: `isValidDropTarget` and `validParentKinds`, `convertedStatus` | New `parenting.json` and `task-status.json`. Port each moved TS test to Rust first, then switch the hook. Hook tests mock the command | `use-status-cycle.ts`, `use-node-actions.ts`, `use-node-editor.ts`, the hotkey modules, `node-meta.ts`. Any status or paste feature collides |
 | 6 | **Habits and Flows** | `flows::rules::fold`, cooldown options, cycle subdivisions, `valid_targets` for unscoped Flows | **Keep + pin**: `habit-collapse.ts`, `recurrence-ui.ts` (the cooldown rules), `flow-cycle.ts`. **Move**: `flow-target.ts` | New `habit-fold.json`, `cooldown.json` and `flow-cycles.json` | `MindmapView/`, `StepsView/`, `FlowEditorModal/` |
 | 7 | **Time and planning** | `tasks::rules::plan_triage`, plan refusal (one rule shared with the writer), plan sections and take-out | **Keep + pin**: `plan-triage.ts`, `plan-sections.ts`, `plan-take-out.ts`, `scope-interval.ts`, and the calendar rules in `scope-calendar.ts` and `plan-scope.ts` | New `plan-triage.json`. `scope-keys.json` gains labels, intervals and "which scope holds this instant" | `PlanView/`, `ScopePicker/` |
 
-**After `122`:** `a77` splits the workspace (with the core crate holding the rules layer and the
+**After `122`:** once phase 2b has landed, `a77` splits the workspace (with the core crate holding the rules layer and the
 persistence around it) and binds it to Python. Then `2bd` serves the bindings. `a77` must not start
-its crate split while phase 2 is in flight, or the tree is moved twice under the same PRs.
+its crate split while phase 2 or 2b is in flight, or the tree is moved twice under the same PRs.
 
 **Ordering.** Phase 1 sets the convention and its check on code that is already pure, so it is the
 safest place to start. Phase 2 is the risky Rust move and comes before any port, so that ports land
 in their final modules, as `122` decides ("reorganise first, then port into the structure that
-exists"). Phase 3 needs phase 2's pure derivation. Phases 4 to 7 are independent of each other once
+exists"). Phase 2b follows phase 2, because the extracted rules are what it frees from `sqlx`. Phase 3 needs
+phase 2's pure derivation, and can run beside 2b if the two touch different domains. Phases 4 to 7 are independent of each other once
 phase 3 has landed, and are ordered by value: phase 4 makes the List View's rules reachable by the
 MCP, and phase 5 removes the most unpinned duplication.
 
@@ -221,12 +225,33 @@ MCP, and phase 5 removes the most unpinned duplication.
 Each corpus is written from the spec and generated by neither side, as `preset-filters.json` is,
 and each is replayed by one Rust test and one vitest.
 
-## 5. Proposed follow-up Tasks (not created)
+## 5. Follow-up Tasks
 
-`122` covers phases 1 to 7. If the user prefers smaller Tasks, these are natural cuts. No priority
-is suggested for any of them, since that is the user's call:
+None. The user decided that phases 1 to 7 and 2b all stay inside `122` ("All folding is in 122 for
+now").
 
-1. **A pure board derivation and the facts it sends** (phase 3).
-2. **List pills, sections and Zen contents in the rules layer, pinned** (phase 4).
-3. **Gestures as intents, and node capabilities** (phase 5).
-4. **Habit, Flow and planning rules in Rust, pinned** (phases 6 and 7).
+## 6. `122`'s brief, amended
+
+This text replaces the Problem, Solution and Out of Scope sections of `122`'s brief. It absorbs
+`197`'s inventory. The amendment is proposed here: the brief on the board changes only when the
+user or the orchestrator writes it.
+
+> **Problem.** Business rules are spread across Rust persistence code and TypeScript. Some Rust
+> rules are pure (`filters/`, `tasks/lifecycle.rs`, `tasks/review.rs`, `flows/habits.rs`,
+> `flows/cooldown.rs`). Others take a `Db` session (`tasks/scope_rules.rs`, `tasks/compound.rs`,
+> `flows/occurrences.rs`, `nodes/table.rs`), and many are inline in `tasks/mod.rs` (1,793 lines) and
+> `flows/mod.rs` (4,014 lines). Domain models carry `sqlx` derives. Some rules exist only in
+> TypeScript: the List View's pills, flattening and sections, Zen contents, agent activity, the
+> status cycle, the Habit fold, Plan triage and the parenting table. Others exist in both languages
+> without a pin: dependency blocks and their text, Agentic and Time Scope inheritance, the Review
+> question and MCP visibility.
+>
+> **Solution.** ADR 0010. Every business rule lives in a pure `rules` module per domain, which
+> imports no session, `sqlx`, `tauri`, `tokio` or I/O, checked in CI. The board is derived by a pure
+> `derive_board(rows, now, capacity)`. Domain and database models are separate: row structs and
+> conversions live in persistence. The frontend keeps a copy of a rule only for UX or speed, pinned
+> by a shared corpus. Otherwise it reads the backend's answer, or sends an intent. The phases,
+> inventory and corpora are in `docs/superpowers/plans/2026-10-02-business-rules-layer.md`.
+>
+> **Out of scope.** The crate split and Python bindings (`a77`), FastAPI (`2bd`), and any behaviour
+> change. Retype no longer exists (#102), so its planning half and type-cycling validity are gone.
