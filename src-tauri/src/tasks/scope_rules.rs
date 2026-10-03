@@ -26,7 +26,7 @@ use crate::scopes::resolve::{self, Bounds};
 use super::ancestry;
 use super::commitments;
 use super::error::TaskError;
-use super::expectations::{self, EXPECTATION};
+use super::expectations;
 use super::lifecycle::{
     derive_commitment_state, derive_item_state, derive_timing, effective_due, Archival,
     ItemLifecycle,
