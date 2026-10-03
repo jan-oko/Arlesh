@@ -39,7 +39,8 @@ use crate::{
 
 /// Refuses a `child` (spelled `child_name`) under a parent spelled `parent_type` that the parenting
 /// table does not allow ([`parenting::may_parent`]). A spelling no kind has is left to the table's
-/// own constraint.
+/// own constraint. Asked of a stored parent only: what a Habit occurrence may be given is the
+/// occurrence writer's to decide (`docs/spec/habits.md`, *Added children*).
 fn require_parent(
     child: NodeKind,
     child_name: &'static str,
@@ -97,7 +98,9 @@ pub async fn create_task(
     mut request: CreateTaskRequest,
     now: NaiveDateTime,
 ) -> Result<Task, AppError> {
-    require_parent(NodeKind::Task, "task", &request.parent_type)?;
+    if !request.parent_id.is_derived() {
+        require_parent(NodeKind::Task, "task", &request.parent_type)?;
+    }
     let NodeId::Derived(parent) = request.parent_id.clone() else {
         return Ok(crate::tasks::create_task_at(db, request, now).await?);
     };
@@ -123,7 +126,9 @@ pub async fn create_goal(
     mut request: CreateGoalRequest,
     now: NaiveDateTime,
 ) -> Result<Goal, AppError> {
-    require_parent(NodeKind::Goal, "goal", &request.parent_type)?;
+    if !request.parent_id.is_derived() {
+        require_parent(NodeKind::Goal, "goal", &request.parent_type)?;
+    }
     let NodeId::Derived(parent) = request.parent_id.clone() else {
         return Ok(crate::tasks::create_goal(db, request).await?);
     };
@@ -146,7 +151,9 @@ pub async fn create_commitment(
     mut request: CreateCommitmentRequest,
     now: NaiveDateTime,
 ) -> Result<Commitment, AppError> {
-    require_parent(NodeKind::Commitment, "commitment", &request.parent_type)?;
+    if !request.parent_id.is_derived() {
+        require_parent(NodeKind::Commitment, "commitment", &request.parent_type)?;
+    }
     let NodeId::Derived(parent) = request.parent_id.clone() else {
         return Ok(crate::tasks::create_commitment(db, request).await?);
     };
@@ -177,7 +184,9 @@ pub async fn create_expectation(
     mut request: CreateExpectationRequest,
     now: NaiveDateTime,
 ) -> Result<Expectation, AppError> {
-    require_parent(NodeKind::Expectation, "expectation", &request.parent_type)?;
+    if !request.parent_id.is_derived() {
+        require_parent(NodeKind::Expectation, "expectation", &request.parent_type)?;
+    }
     let NodeId::Derived(parent) = request.parent_id.clone() else {
         return Ok(crate::tasks::create_expectation(db, request).await?);
     };
@@ -211,7 +220,9 @@ pub async fn create_info(
     mut request: CreateInfoRequest,
     now: NaiveDateTime,
 ) -> Result<Info, AppError> {
-    require_parent(NodeKind::Info, "info", &request.parent_type)?;
+    if !request.parent_id.is_derived() {
+        require_parent(NodeKind::Info, "info", &request.parent_type)?;
+    }
     let NodeId::Derived(parent) = request.parent_id.clone() else {
         return Ok(db.infos().create(request).await?);
     };
@@ -313,7 +324,10 @@ pub async fn update_task(
     mut request: UpdateTaskRequest,
     now: NaiveDateTime,
 ) -> Result<Task, AppError> {
-    if let Some(parent_type) = &request.parent_type {
+    if let (Some(parent_type), Some(true)) = (
+        &request.parent_type,
+        request.parent_id.as_ref().map(|id| !id.is_derived()),
+    ) {
         require_parent(NodeKind::Task, "task", parent_type)?;
     }
     let derived = match id {
@@ -390,7 +404,10 @@ pub async fn update_goal(
     mut request: UpdateGoalRequest,
     now: NaiveDateTime,
 ) -> Result<Goal, AppError> {
-    if let Some(parent_type) = &request.parent_type {
+    if let (Some(parent_type), Some(true)) = (
+        &request.parent_type,
+        request.parent_id.as_ref().map(|id| !id.is_derived()),
+    ) {
         require_parent(NodeKind::Goal, "goal", parent_type)?;
     }
     let derived = match id {
@@ -437,7 +454,10 @@ pub async fn update_commitment(
     mut request: UpdateCommitmentRequest,
     now: NaiveDateTime,
 ) -> Result<Commitment, AppError> {
-    if let Some(parent_type) = &request.parent_type {
+    if let (Some(parent_type), Some(true)) = (
+        &request.parent_type,
+        request.parent_id.as_ref().map(|id| !id.is_derived()),
+    ) {
         require_parent(NodeKind::Commitment, "commitment", parent_type)?;
     }
     let derived = match id {
@@ -508,7 +528,10 @@ pub async fn update_expectation(
     mut request: UpdateExpectationRequest,
     now: NaiveDateTime,
 ) -> Result<Expectation, AppError> {
-    if let Some(parent_type) = &request.parent_type {
+    if let (Some(parent_type), Some(true)) = (
+        &request.parent_type,
+        request.parent_id.as_ref().map(|id| !id.is_derived()),
+    ) {
         require_parent(NodeKind::Expectation, "expectation", parent_type)?;
     }
     let id = match id {
@@ -564,7 +587,10 @@ pub async fn update_info(
     mut request: UpdateInfoRequest,
     now: NaiveDateTime,
 ) -> Result<Info, AppError> {
-    if let Some(parent_type) = &request.parent_type {
+    if let (Some(parent_type), Some(true)) = (
+        &request.parent_type,
+        request.parent_id.as_ref().map(|id| !id.is_derived()),
+    ) {
         require_parent(NodeKind::Info, "info", parent_type)?;
     }
     let moved = move_stored(
