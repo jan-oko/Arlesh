@@ -10,6 +10,7 @@
 
 pub mod compound_readings;
 pub mod cooldown;
+pub mod cycle_grid;
 pub mod fold;
 pub mod habits;
 pub mod occurrences;

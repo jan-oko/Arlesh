@@ -18,6 +18,7 @@ mod helpers;
 mod cooldown_conformance;
 mod database;
 mod duplicate;
+mod flow_cycles_conformance;
 mod gestures;
 mod habit_fold_conformance;
 mod list_sections_conformance;
