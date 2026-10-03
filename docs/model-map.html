@@ -469,6 +469,11 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dl><dt>Why</dt><dd>A clean, bounded context for an agent, on the same derived board you see.</dd>
       <dt>Without</dt><dd>Agents read everything, or a separate copy that disagrees.</dd>
       <dt>Lives</dt><dd class="where">mcp/ · access/ · capacity/</dd></dl></article>
+    <article class="card"><h3>The server</h3>
+      <p class="is"><code>arlesh-server</code> serves the board over HTTP, as the first step toward multi-device. It runs the core through the Python bindings and adds no rules of its own. Every request carries a bearer token, which names the client the journal records. It serves the MCP at <code>/mcp</code> too, and refuses to start while the app holds the database, unless forced.</p>
+      <dl><dt>Why</dt><dd>One copy of the board, reachable from more than one device, with one writer.</dd>
+      <dt>Without</dt><dd>The board lives only inside the running app on one machine.</dd>
+      <dt>Lives</dt><dd class="where">crates/arlesh-py/python/arlesh/server · arlesh[server]</dd></dl></article>
   </div>
 </section>
 

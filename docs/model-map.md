@@ -388,6 +388,17 @@ How the presets read them:
   - The roots are stored in `mcp_roots`.
 - **Spec:** [MCP Server](spec/mcp-server.md).
 
+### The server
+- **Is:** `arlesh-server`, the board over HTTP. It is the first step toward multi-device, where the app becomes a client of it.
+  - It runs the core through the Python bindings, and adds no rules of its own.
+  - Every request carries a bearer token, and the token names the client the journal records.
+  - It serves the MCP too, at `/mcp`, behind the same token.
+  - It refuses to start while the app holds the database, unless forced.
+- **Why:** one copy of the board, reachable from more than one device, with one writer.
+- **Without:** the board lives only inside the running app on one machine.
+- **Lives:** `crates/arlesh-py/python/arlesh/server/` (the `arlesh[server]` extra and the `arlesh-server` command).
+- **Spec:** [HTTP Server](spec/http-api.md).
+
 ## 8. Keeping it honest
 
 ### The undo journal
