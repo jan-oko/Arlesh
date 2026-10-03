@@ -26,7 +26,7 @@ pub(super) use super::rules::occurrences::{
     compound_items, occurrence_parents_of, CompletionInputs, LoadedHabit,
 };
 pub(crate) use super::rules::occurrences::{default_due, effective_tags};
-pub use super::rules::occurrences::{DerivedRows, Horizon};
+pub use super::rules::occurrences::{derive_habit_from, DerivedRows, HabitSource, Horizon};
 
 /// A Habit's template: its items, by id, and each item's cycle pairs. `goals` is passed in when the
 /// caller already has them.
@@ -94,6 +94,15 @@ pub(super) async fn load_habit<M: SessionMode>(
         host_agentic,
         instance_items,
     }))
+}
+
+impl HabitSource {
+    /// Reads what the Habit `flow` draws its rows from.
+    pub async fn read<M: SessionMode>(db: &mut Db<M>, flow: &Flow) -> Result<Self, FlowError> {
+        Ok(Self {
+            habit: load_habit(db, flow).await?,
+        })
+    }
 }
 
 /// Every occurrence of one Habit within `horizon`, as rows, at `now`.

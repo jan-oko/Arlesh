@@ -4,13 +4,14 @@
 //! Pure: it takes the rows a load has read and the occurrences it derived. The reads live in
 //! [`crate::nodes::table`], which re-exports these names (ADR 0010).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     flows::{model::HabitInstanceChild, occurrences::DerivedRows},
     infos::model::Info,
     nodes::id::{DerivedId, NodeId},
-    tasks::model::{Commitment, Expectation, Goal, Task},
+    nodes::relations::DerivedEdge,
+    tasks::model::{Commitment, Expectation, Goal, Task, TaskDependencyEdge},
 };
 
 /// The stored rows a load reads, which [`attach_children`] re-parents in place.
@@ -110,6 +111,31 @@ pub fn attach_children(
             &mut info.parent_id,
         );
     }
+}
+
+/// The dependency edges recorded against derived nodes — an edge added to an occurrence or a check
+/// task, or one between a stored Task and a derived one — whose derived ends are in `present`.
+///
+/// An edge whose derived end is not derived (its template item or cycle pair went, or it lies
+/// beyond the horizon) is left out rather than pointing at nothing.
+pub fn added_edges_in(
+    edges: &[DerivedEdge],
+    present: &HashSet<&NodeId>,
+) -> Vec<TaskDependencyEdge> {
+    let on_board = |id: &NodeId| id.stored().is_some() || present.contains(id);
+    edges
+        .iter()
+        .filter(|edge| edge.added)
+        .filter_map(|edge| {
+            let (dependent, target) = (edge.dependent()?, edge.target()?);
+            let drawn = on_board(&dependent) && on_board(&target);
+            drawn.then_some(TaskDependencyEdge {
+                task_id: dependent,
+                dependency_type: edge.target_type.clone(),
+                dependency_id: target,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

@@ -1750,5 +1750,39 @@ fn instance_keys(
     keys
 }
 
+/// What one Habit's rows are drawn from, as a board's gather reads it: its loaded template and
+/// what its occurrences record, or nothing when it draws nothing (no Recurrence, or a commitment
+/// flow holding goal items).
+pub struct HabitSource {
+    pub(in crate::flows) habit: Option<LoadedHabit>,
+}
+
+/// Every occurrence of the Habit `source` was read for, within `horizon`, at `now` — its compound
+/// occurrences worked out over `board` first. What
+/// [`derive_habit`](crate::flows::occurrences::derive_habit) does with the reads in hand.
+pub fn derive_habit_from(
+    flow: &Flow,
+    source: &HabitSource,
+    board: &crate::nodes::board::StoredBoard,
+    now: NaiveDateTime,
+    horizon: Horizon,
+) -> Result<DerivedRows, FlowError> {
+    let Some(habit) = &source.habit else {
+        return Ok(DerivedRows::default());
+    };
+    let readings =
+        match crate::flows::rules::compound_readings::provisional_compounds(flow, habit, now)? {
+            None => Readings::new(),
+            Some((provisional, compound)) => crate::flows::rules::compound_readings::readings_in(
+                provisional,
+                &compound,
+                habit,
+                board,
+                now,
+            )?,
+        };
+    derive_habit_in(flow, habit, &readings, now, horizon)
+}
+
 #[cfg(test)]
 mod tests;
