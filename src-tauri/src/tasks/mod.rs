@@ -31,7 +31,7 @@ use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::InfoId;
 use crate::nodes::id::NodeId;
 use crate::nodes::origin::Origin;
-use crate::scopes::key::ScopeKey;
+use crate::scopes::db::DbScopeKey;
 use ancestry::{AncestryLink, NodeKind, NodeRef};
 use chrono::NaiveDateTime;
 pub use commitments::{
@@ -63,8 +63,8 @@ pub use scope_rules::{
 fn time_scope_columns(
     time_scope: &Option<TimeScope>,
 ) -> (
-    Option<ScopeKey>,
-    Option<ScopeKey>,
+    Option<DbScopeKey>,
+    Option<DbScopeKey>,
     Option<i64>,
     Option<String>,
 ) {
@@ -74,7 +74,12 @@ fn time_scope_columns(
                 Some(d) => (Some(d.n), Some(d.kind.clone())),
                 None => (None, None),
             };
-            (Some(ts.start_id), Some(ts.end_id), n, kind)
+            (
+                Some(DbScopeKey(ts.start_id)),
+                Some(DbScopeKey(ts.end_id)),
+                n,
+                kind,
+            )
         }
         None => (None, None, None, None),
     }
@@ -200,8 +205,8 @@ async fn delete_node_subtree(
 /// Reassembles a Time Scope value object from its flat row columns. A scope exists only when
 /// both boundary ids are present; the duration parameters are optional metadata on top.
 fn time_scope_from_row(
-    start_id: Option<ScopeKey>,
-    end_id: Option<ScopeKey>,
+    start_id: Option<DbScopeKey>,
+    end_id: Option<DbScopeKey>,
     duration_n: Option<i64>,
     duration_kind: Option<String>,
 ) -> Option<TimeScope> {
@@ -211,8 +216,8 @@ fn time_scope_from_row(
         _ => None,
     };
     Some(TimeScope {
-        start_id,
-        end_id,
+        start_id: start_id.0,
+        end_id: end_id.0,
         duration,
     })
 }
@@ -229,15 +234,15 @@ struct TaskRow {
     agentic: Option<bool>,
     asynchronous: bool,
     compound: bool,
-    time_scope_start_id: Option<ScopeKey>,
-    time_scope_end_id: Option<ScopeKey>,
+    time_scope_start_id: Option<DbScopeKey>,
+    time_scope_end_id: Option<DbScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     on_scope_exit: Option<String>,
-    plan_start_id: Option<ScopeKey>,
-    plan_end_id: Option<ScopeKey>,
-    due_scope_start_id: Option<ScopeKey>,
-    due_scope_end_id: Option<ScopeKey>,
+    plan_start_id: Option<DbScopeKey>,
+    plan_end_id: Option<DbScopeKey>,
+    due_scope_start_id: Option<DbScopeKey>,
+    due_scope_end_id: Option<DbScopeKey>,
     archival: String,
     position: i64,
     is_private: bool,
@@ -309,8 +314,8 @@ struct GoalRow {
     parent_type: String,
     parent_id: i64,
     status: String,
-    time_scope_start_id: Option<ScopeKey>,
-    time_scope_end_id: Option<ScopeKey>,
+    time_scope_start_id: Option<DbScopeKey>,
+    time_scope_end_id: Option<DbScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     on_scope_exit: Option<String>,
@@ -349,13 +354,13 @@ impl From<GoalRow> for Goal {
 struct TaskAncestryRow {
     parent_type: String,
     parent_id: i64,
-    time_scope_start_id: Option<ScopeKey>,
-    time_scope_end_id: Option<ScopeKey>,
+    time_scope_start_id: Option<DbScopeKey>,
+    time_scope_end_id: Option<DbScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     on_scope_exit: Option<String>,
-    plan_start_id: Option<ScopeKey>,
-    plan_end_id: Option<ScopeKey>,
+    plan_start_id: Option<DbScopeKey>,
+    plan_end_id: Option<DbScopeKey>,
 }
 
 /// The narrow goal row one step of an ancestry climb reads. Goals have no Plan column, so the
@@ -364,8 +369,8 @@ struct TaskAncestryRow {
 struct GoalAncestryRow {
     parent_type: String,
     parent_id: i64,
-    time_scope_start_id: Option<ScopeKey>,
-    time_scope_end_id: Option<ScopeKey>,
+    time_scope_start_id: Option<DbScopeKey>,
+    time_scope_end_id: Option<DbScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     on_scope_exit: Option<String>,

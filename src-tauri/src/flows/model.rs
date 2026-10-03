@@ -502,7 +502,7 @@ impl MissPolicy {
 /// A Habit's Recurrence: Repetition (Start, optional Gap, optional end) plus its **clock**. Its
 /// presence marks the owning flow as a Habit. `miss_policy` is set exactly when the clock is
 /// `window`.
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FlowRecurrence {
     /// Owning flow (also the primary key — one recurrence per flow).
     pub flow_id: i64,
@@ -695,7 +695,7 @@ pub struct HabitInstanceRef {
 /// One instance's divergent **status** for a Habit iteration — a non-tombstoned Modification (e.g.
 /// `in_progress` or `done`). Lets the mindmap render each iteration instance's state; instances with
 /// no Modification sit at their base status (task `todo` / goal `active`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HabitItemStatus {
     /// Which instance the status is for (`flow_goal`, `flow_task`, or `flow_root`).
     pub item_type: String,

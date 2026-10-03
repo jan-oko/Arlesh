@@ -18,7 +18,7 @@
 
 use crate::database::session::{Db, Transactional};
 use crate::nodes::origin::Origin;
-use crate::scopes::key::ScopeKey;
+use crate::scopes::db::DbScopeKey;
 
 use super::ancestry::{AncestryLink, NodeKind, NodeRef};
 use super::error::TaskError;
@@ -36,8 +36,8 @@ struct CommitmentRow {
     parent_type: String,
     parent_id: i64,
     verdict: String,
-    time_scope_start_id: Option<ScopeKey>,
-    time_scope_end_id: Option<ScopeKey>,
+    time_scope_start_id: Option<DbScopeKey>,
+    time_scope_end_id: Option<DbScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     verdict_window_n: Option<i64>,

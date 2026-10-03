@@ -15,11 +15,11 @@ use std::collections::HashMap;
 use sqlx::SqliteConnection;
 
 use super::key::{CheckKey, OccurrenceKey};
-use crate::scopes::key::ScopeKey;
+use crate::scopes::{db::DbScopeKey, key::ScopeKey};
 use crate::tasks::model::{AgenticBrief, AsyncTemplate, ExpectationArchival, ExpectationStatus};
 
 /// One occurrence's Task overlay. Every field inherits when empty.
-#[derive(Debug, Clone, Default, PartialEq, Eq, sqlx::FromRow)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TaskOverlay {
     /// The occurrence's status; `None` reads as To Do.
     pub status: Option<String>,
@@ -77,6 +77,72 @@ pub struct TaskOverlay {
     /// Whether its wait template is its own — its `occurrence_async_templates` row, or with none,
     /// no template at all — rather than its flow Task item's.
     pub async_template_set: bool,
+}
+
+/// A [`TaskOverlay`] as its table holds it.
+#[derive(sqlx::FromRow)]
+pub(crate) struct TaskOverlayRow {
+    status: Option<String>,
+    resolved_at: Option<i64>,
+    tombstone: Option<String>,
+    title: Option<String>,
+    plan_start_id: Option<DbScopeKey>,
+    plan_end_id: Option<DbScopeKey>,
+    plan_set: bool,
+    delegate_kind: Option<String>,
+    delegate_id: Option<i64>,
+    delegate_set: bool,
+    agentic: Option<bool>,
+    agentic_set: bool,
+    asynchronous: Option<bool>,
+    archival: Option<String>,
+    is_private: Option<bool>,
+    position: Option<i64>,
+    block_reasons_set: bool,
+    brief_priority: Option<i64>,
+    brief_priority_set: bool,
+    brief_spec: Option<String>,
+    brief_design: Option<String>,
+    brief_acceptance: Option<String>,
+    brief_notes: Option<String>,
+    due_scope_start_id: Option<DbScopeKey>,
+    due_scope_end_id: Option<DbScopeKey>,
+    compound: Option<bool>,
+    async_template_set: bool,
+}
+
+impl From<TaskOverlayRow> for TaskOverlay {
+    fn from(row: TaskOverlayRow) -> Self {
+        Self {
+            status: row.status,
+            resolved_at: row.resolved_at,
+            tombstone: row.tombstone,
+            title: row.title,
+            plan_start_id: row.plan_start_id.map(|key| key.0),
+            plan_end_id: row.plan_end_id.map(|key| key.0),
+            plan_set: row.plan_set,
+            delegate_kind: row.delegate_kind,
+            delegate_id: row.delegate_id,
+            delegate_set: row.delegate_set,
+            agentic: row.agentic,
+            agentic_set: row.agentic_set,
+            asynchronous: row.asynchronous,
+            archival: row.archival,
+            is_private: row.is_private,
+            position: row.position,
+            block_reasons_set: row.block_reasons_set,
+            brief_priority: row.brief_priority,
+            brief_priority_set: row.brief_priority_set,
+            brief_spec: row.brief_spec,
+            brief_design: row.brief_design,
+            brief_acceptance: row.brief_acceptance,
+            brief_notes: row.brief_notes,
+            due_scope_start_id: row.due_scope_start_id.map(|key| key.0),
+            due_scope_end_id: row.due_scope_end_id.map(|key| key.0),
+            compound: row.compound,
+            async_template_set: row.async_template_set,
+        }
+    }
 }
 
 impl TaskOverlay {
@@ -209,7 +275,7 @@ pub struct HabitOverlays {
 struct KeyedTask {
     node_key: String,
     #[sqlx(flatten)]
-    overlay: TaskOverlay,
+    overlay: TaskOverlayRow,
 }
 
 /// A Goal overlay as read back, beside its canonical key.
@@ -296,7 +362,7 @@ impl<'session> OverlayOperator<'session> {
         Ok(HabitOverlays {
             tasks: tasks
                 .into_iter()
-                .map(|row| (row.node_key, row.overlay))
+                .map(|row| (row.node_key, row.overlay.into()))
                 .collect(),
             goals: goals
                 .into_iter()
@@ -313,24 +379,26 @@ impl<'session> OverlayOperator<'session> {
     /// The iterations of one Habit that carry an overlay — among the future iterations the virtual
     /// tables must still derive, so that an edit is never lost.
     pub async fn touched_iterations(&mut self, flow_id: i64) -> Result<Vec<ScopeKey>, sqlx::Error> {
-        sqlx::query_scalar(
+        let keys: Vec<DbScopeKey> = sqlx::query_scalar(
             "SELECT iteration_scope FROM task_overlays WHERE flow_id = ?1 AND origin = 'habit'
              UNION SELECT iteration_scope FROM goal_overlays WHERE flow_id = ?1
              UNION SELECT iteration_scope FROM commitment_overlays WHERE flow_id = ?1",
         )
         .bind(flow_id)
         .fetch_all(&mut *self.connection)
-        .await
+        .await?;
+        Ok(keys.into_iter().map(ScopeKey::from).collect())
     }
 
     /// One occurrence's Task overlay, empty when it has none.
     pub async fn task(&mut self, key: &OccurrenceKey) -> Result<TaskOverlay, sqlx::Error> {
-        Ok(sqlx::query_as(&format!(
+        Ok(sqlx::query_as::<_, TaskOverlayRow>(&format!(
             "SELECT {TASK_COLUMNS} FROM task_overlays WHERE node_key = ?"
         ))
         .bind(key.node_key())
         .fetch_optional(&mut *self.connection)
         .await?
+        .map(TaskOverlay::from)
         .unwrap_or_default())
     }
 
@@ -405,14 +473,14 @@ impl<'session> OverlayOperator<'session> {
         .bind(flow_id)
         .bind(key.item.item_type.as_str())
         .bind(key.item.item_id)
-        .bind(key.iteration)
+        .bind(DbScopeKey(key.iteration))
         .bind(key.cycle)
         .bind(&overlay.status)
         .bind(overlay.resolved_at)
         .bind(&overlay.tombstone)
         .bind(&overlay.title)
-        .bind(overlay.plan_start_id)
-        .bind(overlay.plan_end_id)
+        .bind(overlay.plan_start_id.map(DbScopeKey))
+        .bind(overlay.plan_end_id.map(DbScopeKey))
         .bind(overlay.plan_set)
         .bind(&overlay.delegate_kind)
         .bind(overlay.delegate_id)
@@ -430,8 +498,8 @@ impl<'session> OverlayOperator<'session> {
         .bind(&overlay.brief_design)
         .bind(&overlay.brief_acceptance)
         .bind(&overlay.brief_notes)
-        .bind(overlay.due_scope_start_id)
-        .bind(overlay.due_scope_end_id)
+        .bind(overlay.due_scope_start_id.map(DbScopeKey))
+        .bind(overlay.due_scope_end_id.map(DbScopeKey))
         .bind(overlay.compound)
         .bind(overlay.async_template_set)
         .execute(&mut *self.connection)
@@ -449,7 +517,7 @@ impl<'session> OverlayOperator<'session> {
         .await?;
         Ok(rows
             .into_iter()
-            .map(|row| (row.node_key, row.overlay))
+            .map(|row| (row.node_key, row.overlay.into()))
             .collect())
     }
 
@@ -462,18 +530,19 @@ impl<'session> OverlayOperator<'session> {
         .await?;
         Ok(rows
             .into_iter()
-            .map(|row| (row.node_key, row.overlay))
+            .map(|row| (row.node_key, row.overlay.into()))
             .collect())
     }
 
     /// One check task's overlay, empty when it has none.
     pub async fn check_task(&mut self, key: &CheckKey) -> Result<TaskOverlay, sqlx::Error> {
-        Ok(sqlx::query_as(&format!(
+        Ok(sqlx::query_as::<_, TaskOverlayRow>(&format!(
             "SELECT {TASK_COLUMNS} FROM task_overlays WHERE node_key = ?"
         ))
         .bind(key.node_key())
         .fetch_optional(&mut *self.connection)
         .await?
+        .map(TaskOverlay::from)
         .unwrap_or_default())
     }
 
@@ -508,8 +577,8 @@ impl<'session> OverlayOperator<'session> {
         .bind(overlay.resolved_at)
         .bind(&overlay.tombstone)
         .bind(&overlay.title)
-        .bind(overlay.plan_start_id)
-        .bind(overlay.plan_end_id)
+        .bind(overlay.plan_start_id.map(DbScopeKey))
+        .bind(overlay.plan_end_id.map(DbScopeKey))
         .bind(overlay.plan_set)
         .bind(&overlay.delegate_kind)
         .bind(overlay.delegate_id)
@@ -560,7 +629,7 @@ impl<'session> OverlayOperator<'session> {
         .bind(flow_id)
         .bind(key.item.item_type.as_str())
         .bind(key.item.item_id)
-        .bind(key.iteration)
+        .bind(DbScopeKey(key.iteration))
         .bind(key.cycle)
         .bind(&overlay.status)
         .bind(overlay.resolved_at)
@@ -601,7 +670,7 @@ impl<'session> OverlayOperator<'session> {
         .bind(flow_id)
         .bind(key.item.item_type.as_str())
         .bind(key.item.item_id)
-        .bind(key.iteration)
+        .bind(DbScopeKey(key.iteration))
         .bind(key.cycle)
         .bind(&overlay.verdict)
         .bind(overlay.resolved_at)

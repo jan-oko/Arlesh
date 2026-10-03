@@ -27,10 +27,6 @@ use std::str::FromStr;
 
 use chrono::{NaiveDate, NaiveDateTime, Timelike};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use sqlx::encode::IsNull;
-use sqlx::error::BoxDynError;
-use sqlx::sqlite::{Sqlite, SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef};
-use sqlx::{Decode, Encode, Type};
 
 use super::derive::{scope_dates, scope_label, CanonicalKind};
 use super::error::ScopeError;
@@ -378,32 +374,6 @@ impl<'de> Deserialize<'de> for ScopeKey {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let wire = Wire::deserialize(deserializer)?;
         Self::try_from(wire).map_err(serde::de::Error::custom)
-    }
-}
-
-impl Type<Sqlite> for ScopeKey {
-    fn type_info() -> SqliteTypeInfo {
-        <String as Type<Sqlite>>::type_info()
-    }
-
-    fn compatible(ty: &SqliteTypeInfo) -> bool {
-        <String as Type<Sqlite>>::compatible(ty)
-    }
-}
-
-/// Writes the canonical text — after checking the key names its own start, since a variant built
-/// by hand has not been checked yet.
-impl<'q> Encode<'q, Sqlite> for ScopeKey {
-    fn encode_by_ref(&self, buf: &mut Vec<SqliteArgumentValue<'q>>) -> Result<IsNull, BoxDynError> {
-        let key = self.validated()?;
-        <String as Encode<'q, Sqlite>>::encode(key.canonical(), buf)
-    }
-}
-
-impl<'r> Decode<'r, Sqlite> for ScopeKey {
-    fn decode(value: SqliteValueRef<'r>) -> Result<Self, BoxDynError> {
-        let raw = <&str as Decode<'r, Sqlite>>::decode(value)?;
-        Ok(raw.parse::<ScopeKey>()?)
     }
 }
 

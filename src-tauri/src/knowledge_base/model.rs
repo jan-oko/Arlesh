@@ -20,7 +20,7 @@ impl From<PersonId> for i64 {
 }
 
 /// A person row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Person {
     /// Primary key.
     pub id: i64,
@@ -55,7 +55,7 @@ pub struct UpdatePersonRequest {
 }
 
 /// An event row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
     /// Primary key.
     pub id: i64,
@@ -83,7 +83,7 @@ pub struct CreateEventRequest {
 }
 
 /// A thread row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Thread {
     /// Primary key.
     pub id: i64,

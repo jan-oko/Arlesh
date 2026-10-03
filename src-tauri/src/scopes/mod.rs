@@ -7,6 +7,7 @@
 
 pub mod rules;
 use rules::derive;
+pub mod db;
 pub mod error;
 pub mod key;
 pub mod model;

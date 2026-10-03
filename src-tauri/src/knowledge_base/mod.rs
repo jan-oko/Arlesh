@@ -2,12 +2,15 @@
 
 pub mod error;
 pub mod model;
+mod rows;
 
+use crate::scopes::db::DbScopeKey;
 use error::KnowledgeBaseError;
 use model::{
     CreateEventRequest, CreatePersonRequest, CreateThreadRequest, Event, Person, PersonId, Thread,
     UpdatePersonRequest,
 };
+use rows::{EventRow, PersonRow, ThreadRow};
 
 /// Reads and writes knowledge-base people on a session's connection.
 ///
@@ -46,18 +49,20 @@ impl<'session> PersonOperator<'session> {
 
     /// Fetches a person by id.
     pub async fn get(&mut self, id: PersonId) -> Result<Person, KnowledgeBaseError> {
-        sqlx::query_as::<_, Person>("SELECT * FROM people WHERE id = ?")
+        sqlx::query_as::<_, PersonRow>("SELECT * FROM people WHERE id = ?")
             .bind(id.0)
             .fetch_optional(&mut *self.connection)
             .await?
+            .map(Person::from)
             .ok_or(KnowledgeBaseError::PersonNotFound(id.0))
     }
 
     /// Lists all people.
     pub async fn list(&mut self) -> Result<Vec<Person>, KnowledgeBaseError> {
-        sqlx::query_as::<_, Person>("SELECT * FROM people ORDER BY name")
+        sqlx::query_as::<_, PersonRow>("SELECT * FROM people ORDER BY name")
             .fetch_all(&mut *self.connection)
             .await
+            .map(|rows| rows.into_iter().map(Person::from).collect())
             .map_err(Into::into)
     }
 
@@ -126,24 +131,26 @@ impl<'session> EventOperator<'session> {
             "INSERT INTO events (title, scope_id, event_time, linked_note) VALUES (?, ?, ?, ?)",
         )
         .bind(&request.title)
-        .bind(request.scope_id)
+        .bind(request.scope_id.map(DbScopeKey))
         .bind(&request.event_time)
         .bind(&request.linked_note)
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
-        sqlx::query_as::<_, Event>("SELECT * FROM events WHERE id = ?")
+        sqlx::query_as::<_, EventRow>("SELECT * FROM events WHERE id = ?")
             .bind(id)
             .fetch_one(&mut *self.connection)
             .await
+            .map(Event::from)
             .map_err(Into::into)
     }
 
     /// Lists all events.
     pub async fn list(&mut self) -> Result<Vec<Event>, KnowledgeBaseError> {
-        sqlx::query_as::<_, Event>("SELECT * FROM events ORDER BY id")
+        sqlx::query_as::<_, EventRow>("SELECT * FROM events ORDER BY id")
             .fetch_all(&mut *self.connection)
             .await
+            .map(|rows| rows.into_iter().map(Event::from).collect())
             .map_err(Into::into)
     }
 
@@ -191,18 +198,20 @@ impl<'session> ThreadOperator<'session> {
             .execute(&mut *self.connection)
             .await?
             .last_insert_rowid();
-        sqlx::query_as::<_, Thread>("SELECT * FROM threads WHERE id = ?")
+        sqlx::query_as::<_, ThreadRow>("SELECT * FROM threads WHERE id = ?")
             .bind(id)
             .fetch_one(&mut *self.connection)
             .await
+            .map(Thread::from)
             .map_err(Into::into)
     }
 
     /// Lists all threads.
     pub async fn list(&mut self) -> Result<Vec<Thread>, KnowledgeBaseError> {
-        sqlx::query_as::<_, Thread>("SELECT * FROM threads ORDER BY title")
+        sqlx::query_as::<_, ThreadRow>("SELECT * FROM threads ORDER BY title")
             .fetch_all(&mut *self.connection)
             .await
+            .map(|rows| rows.into_iter().map(Thread::from).collect())
             .map_err(Into::into)
     }
 

@@ -23,6 +23,7 @@ pub mod model;
 pub mod occurrence_edit;
 pub mod occurrences;
 mod render;
+mod rows;
 pub mod rules;
 pub mod template;
 
@@ -39,6 +40,7 @@ use crate::nodes::{
     key::{OccurrenceKey, TemplateKind},
     overlay::OverlayOperator,
 };
+use crate::scopes::db::DbScopeKey;
 use crate::scopes::key::ScopeKey;
 use crate::scopes::resolve::{day_boundary, interval_contains};
 use crate::tasks::model::{
@@ -59,6 +61,7 @@ use model::{
     UnfinishedChild, UpdateFlowItemRequest, UpdateFlowRequest, NO_CYCLE,
 };
 use render::{render, FlowTemplate, NodeRef, PlannedSource, RenderedPlan, TemplateItem};
+use rows::{FlowRecurrenceRow, HabitItemStatusRow};
 use template::{TemplateFields, TemplateOperator, TemplateTable};
 
 use rules::schedule::*;
@@ -78,8 +81,8 @@ struct AttachmentRow {
     flow_id: Option<i64>,
     parent_kind: String,
     parent_key: String,
-    window_start_scope_id: Option<ScopeKey>,
-    window_end_scope_id: Option<ScopeKey>,
+    window_start_scope_id: Option<DbScopeKey>,
+    window_end_scope_id: Option<DbScopeKey>,
 }
 
 impl AttachmentRow {
@@ -759,7 +762,7 @@ impl<'session> FlowOperator<'session> {
         .fetch_all(&mut *self.connection)
         .await?;
         for cycle in cycle_ids {
-            let overlaid: Vec<ScopeKey> = sqlx::query_scalar(
+            let overlaid: Vec<DbScopeKey> = sqlx::query_scalar(
                 "SELECT iteration_scope FROM task_overlays
                  WHERE item_type = ?1 AND item_id = ?2 AND cycle_id = ?3
                  UNION SELECT iteration_scope FROM goal_overlays
@@ -770,7 +773,7 @@ impl<'session> FlowOperator<'session> {
             .bind(cycle)
             .fetch_all(&mut *self.connection)
             .await?;
-            iterations.extend(overlaid);
+            iterations.extend(overlaid.into_iter().map(ScopeKey::from));
             for key in related.iter().filter_map(|key| OccurrenceKey::parse(key)) {
                 if key.item.item_type.as_str() == item_type.as_str()
                     && key.item.item_id == item_id
@@ -953,10 +956,10 @@ impl<'session> FlowOperator<'session> {
                 cooldown_n = excluded.cooldown_n, cooldown_kind = excluded.cooldown_kind",
         )
         .bind(flow_id.0)
-        .bind(request.start_scope_id)
+        .bind(DbScopeKey(request.start_scope_id))
         .bind(request.gap_n)
         .bind(&request.gap_kind)
-        .bind(request.end_scope_id)
+        .bind(request.end_scope_id.map(DbScopeKey))
         .bind(request.clock.as_str())
         .bind(request.miss_policy.map(|policy| policy.as_str()))
         .bind(request.cooldown_n)
@@ -974,7 +977,7 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         flow_id: FlowId,
     ) -> Result<Option<FlowRecurrence>, FlowError> {
-        let recurrence = sqlx::query_as::<_, FlowRecurrence>(
+        let recurrence = sqlx::query_as::<_, FlowRecurrenceRow>(
             "SELECT flow_id, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy,
                     cooldown_n, cooldown_kind
              FROM flow_recurrences WHERE flow_id = ?",
@@ -982,7 +985,7 @@ impl<'session> FlowOperator<'session> {
         .bind(flow_id.0)
         .fetch_optional(&mut *self.connection)
         .await?;
-        Ok(recurrence)
+        Ok(recurrence.map(FlowRecurrence::from))
     }
 
     /// Moves a Habit's Recurrence end to `end_scope_id`, leaving the rest of the Recurrence as it
@@ -993,7 +996,7 @@ impl<'session> FlowOperator<'session> {
         end_scope_id: ScopeKey,
     ) -> Result<(), FlowError> {
         sqlx::query("UPDATE flow_recurrences SET end_scope_id = ? WHERE flow_id = ?")
-            .bind(end_scope_id)
+            .bind(DbScopeKey(end_scope_id))
             .bind(flow_id.0)
             .execute(&mut *self.connection)
             .await?;
@@ -1198,7 +1201,7 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         flow_id: FlowId,
     ) -> Result<Vec<HabitItemStatus>, FlowError> {
-        Ok(sqlx::query_as::<_, HabitItemStatus>(
+        Ok(sqlx::query_as::<_, HabitItemStatusRow>(
             "SELECT item_type, item_id, iteration_scope AS iteration_scope_id, cycle_id, status
              FROM task_overlays
              WHERE flow_id = ?1 AND status IS NOT NULL AND tombstone IS NULL
@@ -1212,7 +1215,10 @@ impl<'session> FlowOperator<'session> {
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?
+        .into_iter()
+        .map(HabitItemStatus::from)
+        .collect())
     }
 
     /// Sets a **single** instance's status at one iteration scope. `status` `None` clears it (back
@@ -1412,8 +1418,8 @@ impl<'session> FlowOperator<'session> {
         .bind(flow_id.0)
         .bind(parent_kind)
         .bind(parent.node_key())
-        .bind(window.map(|window| window.start_id))
-        .bind(window.map(|window| window.end_id))
+        .bind(window.map(|window| DbScopeKey(window.start_id)))
+        .bind(window.map(|window| DbScopeKey(window.end_id)))
         .bind(child_type)
         .bind(child_id)
         .execute(&mut *self.connection)

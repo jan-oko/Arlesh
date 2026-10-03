@@ -13,6 +13,7 @@ use arlesh_lib::{
     commands::scopes::{exact_scope, part_scope, scope_containing},
     domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
     scopes::{
+        db::DbScopeKey,
         key::ScopeKey,
         model::{PartOfDay, ScopeKind},
     },
@@ -181,8 +182,8 @@ async fn a_hand_built_key_that_misses_its_start_is_refused_on_write() {
          VALUES ('Raw', 'project', ?, ?, ?, 'keep')",
     )
     .bind(project_id)
-    .bind(wednesday)
-    .bind(wednesday)
+    .bind(DbScopeKey(wednesday))
+    .bind(DbScopeKey(wednesday))
     .execute(&pool)
     .await;
 
