@@ -21,7 +21,7 @@ use crate::scopes::key::ScopeKey;
 
 /// A precomputed iteration window: its ordinal, anchoring scope, and half-open `[start, end)`
 /// datetime span. Supplied index-ordered from the Repetition Start.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct SlotWindow {
     /// Zero-based ordinal from the Repetition Start.
     pub index: i64,
@@ -51,7 +51,8 @@ pub const UNBOUNDED: NaiveDateTime = match NaiveDate::from_ymd_opt(9999, 12, 31)
 ///
 /// An enum rather than a pair of flags because a miss policy only means anything under a Window
 /// clock: an Interval Habit has one open instance and nothing it could miss.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum Clock {
     /// Iterations tile from the Start anchor; the policy says what a passed unfinished one does.
     Window(MissPolicy),

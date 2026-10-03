@@ -8,7 +8,7 @@
 # The target directory is pinned in .cargo/config.toml, so the split did not move it.
 [workspace]
 resolver = "2"
-members = ["src-tauri", "crates/arlesh-core"]
+members = ["src-tauri", "crates/arlesh-core", "crates/arlesh-py"]
 
 # Debug builds statically link the whole dependency tree into every binary (the app plus one
 # binary per integration-test file), and full DWARF debug info dominates the on-disk size. Keep

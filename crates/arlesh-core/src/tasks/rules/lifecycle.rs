@@ -68,7 +68,7 @@ pub fn derive_timing(window: Option<Bounds>, now: NaiveDateTime) -> Timing {
 /// **Overdue is not here.** It used to be the third variant, the unresolved Keep-on-exit outcome;
 /// it is now a flag of its own ([`derive_overdue`]), because it is judged against the item's due
 /// rather than its window, and can hold while the window is still open.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Resolution {
     /// Resolved (Task Done / Goal Achieved or Archived) by the time its window lapsed.
@@ -250,7 +250,7 @@ pub fn derive_archival(stored: Option<Archival>, resolution: Option<Resolution>)
 
 /// One item's fully-derived lifecycle state (Timing/Resolution/Archival and the Overdue flag),
 /// without node identity — see [`ItemLifecycle`] for the keyed wire form sent to the frontend.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct DerivedState {
     /// Window position.
     pub timing: Timing,
@@ -347,7 +347,7 @@ mod tests;
 /// `verdict` is passed straight back out rather than computed. It is a field of the value only so
 /// that callers have one place to read the whole state from; see [`Verdict`] for why deriving it
 /// is the one thing this module must not do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct CommitmentState {
     /// Window position.
     pub timing: Timing,
