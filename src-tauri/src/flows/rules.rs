@@ -10,3 +10,4 @@
 
 pub mod cooldown;
 pub mod habits;
+pub mod occurrences;
