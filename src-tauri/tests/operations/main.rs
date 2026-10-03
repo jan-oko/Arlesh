@@ -27,4 +27,5 @@ mod mcp_writes;
 mod mindmap_commands;
 mod parenting_conformance;
 mod preset_conformance;
+mod task_status_conformance;
 mod zen_contents_conformance;
