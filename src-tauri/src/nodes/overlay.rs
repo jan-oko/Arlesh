@@ -439,6 +439,20 @@ impl<'session> OverlayOperator<'session> {
         Ok(())
     }
 
+    /// Every Task overlay, by node key — what [`Self::task`] reads one occurrence at a time, for
+    /// a whole board.
+    pub async fn task_overlays(&mut self) -> Result<HashMap<String, TaskOverlay>, sqlx::Error> {
+        let rows: Vec<KeyedTask> = sqlx::query_as(&format!(
+            "SELECT node_key, {TASK_COLUMNS} FROM task_overlays"
+        ))
+        .fetch_all(&mut *self.connection)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| (row.node_key, row.overlay))
+            .collect())
+    }
+
     /// Every wait check task's overlay, by node key.
     pub async fn check_tasks(&mut self) -> Result<HashMap<String, TaskOverlay>, sqlx::Error> {
         let rows: Vec<KeyedTask> = sqlx::query_as(&format!(
@@ -697,6 +711,29 @@ impl<'session> OverlayOperator<'session> {
             .await?;
         }
         Ok(())
+    }
+
+    /// The status and archive of every wait a Habit occurrence spawned, by the occurrence's node
+    /// key — what [`Self::spawned_wait_state`] reads one occurrence at a time, for a whole board.
+    pub async fn spawned_wait_states(
+        &mut self,
+    ) -> Result<HashMap<String, (ExpectationStatus, ExpectationArchival)>, sqlx::Error> {
+        let rows: Vec<(String, String, String)> =
+            sqlx::query_as("SELECT node_key, status, archival FROM occurrence_spawned_waits")
+                .fetch_all(&mut *self.connection)
+                .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(node_key, status, archival)| {
+                (
+                    node_key,
+                    (
+                        ExpectationStatus::from_db(&status).unwrap_or_default(),
+                        ExpectationArchival::from_db(&archival).unwrap_or_default(),
+                    ),
+                )
+            })
+            .collect())
     }
 
     /// The status and archive of the wait one occurrence spawned; pending and live until changed.
