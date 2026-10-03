@@ -10,8 +10,8 @@ use crate::{
     nodes::board::StoredBoard,
 };
 
+pub use super::rules::compound_readings::Readings;
 use super::rules::compound_readings::{provisional_compounds, readings_in};
-pub use super::rules::compound_readings::{Reading, Readings};
 
 /// Each compound occurrence's [`Reading`] in the iterations of `habit` something was done in.
 #[tracing::instrument(skip(db, flow, habit), fields(flow_id = flow.id))]

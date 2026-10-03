@@ -21,11 +21,11 @@ use crate::{
     scopes::key::ScopeKey,
 };
 
+pub(crate) use super::rules::occurrences::effective_tags;
 use super::rules::occurrences::*;
 pub(super) use super::rules::occurrences::{
     compound_items, occurrence_parents_of, CompletionInputs, LoadedHabit,
 };
-pub(crate) use super::rules::occurrences::{default_due, effective_tags};
 pub use super::rules::occurrences::{derive_habit_from, DerivedRows, HabitSource, Horizon};
 
 /// A Habit's template: its items, by id, and each item's cycle pairs. `goals` is passed in when the

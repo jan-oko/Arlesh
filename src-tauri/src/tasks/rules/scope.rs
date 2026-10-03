@@ -303,7 +303,7 @@ pub fn derive_item_lifecycles(
             .map(|plan| derive_timing(Some(plan.window()), now));
         out.push(ItemLifecycle {
             node_type: "task".to_string(),
-            node_id: task.id,
+            node_id: task.id.clone(),
             timing: state.timing,
             resolution: state.resolution,
             overdue: state.overdue,
@@ -329,7 +329,7 @@ pub fn derive_item_lifecycles(
         let state = derive_item_state(window, on_exit, due, resolved, stored, now);
         out.push(ItemLifecycle {
             node_type: "goal".to_string(),
-            node_id: goal.id,
+            node_id: goal.id.clone(),
             timing: state.timing,
             resolution: state.resolution,
             overdue: state.overdue,
@@ -350,7 +350,7 @@ pub fn derive_item_lifecycles(
             derive_commitment_state(window, commitment.verdict, verdict_window.as_ref(), now);
         out.push(ItemLifecycle {
             node_type: "commitment".to_string(),
-            node_id: commitment.id,
+            node_id: commitment.id.clone(),
             timing: state.timing,
             // Resolution is the Task/Goal axis; a Commitment answers with its Verdict instead,
             // and sending both would invite a consumer to read one as a fallback for the other.
