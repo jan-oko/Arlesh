@@ -1107,6 +1107,31 @@ async fn valid_targets_unscoped_flow_accepts_every_candidate() {
 }
 
 #[tokio::test]
+async fn valid_targets_keeps_only_the_kinds_that_hold_instances_scoped_or_not() {
+    let pool = helpers::test_pool().await;
+    let aspect = TargetRef {
+        node_type: "aspect".into(),
+        node_id: 1,
+    };
+    let cands = vec![
+        aspect.clone(),
+        TargetRef {
+            node_type: "commitment".into(),
+            node_id: 5,
+        },
+        TargetRef {
+            node_type: "tag".into(),
+            node_id: 6,
+        },
+    ];
+
+    // A Commitment or a Tag holds no Flow instances, so even an Unscoped flow cannot target one.
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    let valid = valid_targets(&mut db, None, None, cands).await.unwrap();
+    assert_eq!(valid, vec![aspect]);
+}
+
+#[tokio::test]
 async fn valid_targets_concrete_anchor_filters_by_interval_containment() {
     let pool = helpers::test_pool().await;
     let july1 = chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap();

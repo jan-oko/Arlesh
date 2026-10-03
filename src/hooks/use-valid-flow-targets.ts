@@ -6,14 +6,16 @@ import { rowIdOf } from "@/utils/node-identity";
 import { scopeValidFlowTargets } from "@/api/flows";
 
 /**
- * Resolves which of `candidates` a scoped flow may target, given its duration and — when starting —
- * a concrete `anchorDate`. Returns a Set of valid tree node ids (via `entityNodeId`, so it matches
- * `MindmapNode.id` — including `domain-<id>` for domain-table targets), or `null` while unrestricted: an Unscoped flow (`scoped` false) or before the first result
- * arrives. Callers treat `null` as "no filter". Re-queries when the duration or anchor changes.
+ * Resolves which of `candidates` a flow may target, given its duration — `null` for an Unscoped
+ * flow — and, when starting, a concrete `anchorDate`: the backend's answer
+ * (`scope_valid_flow_targets`), which keeps the kinds that can hold the flow's instances and, for a
+ * scoped flow, those whose window fits. Returns a Set of valid tree node ids (via `entityNodeId`, so
+ * it matches `MindmapNode.id` — including `domain-<id>` for domain-table targets), or `null` before
+ * the first answer arrives, which callers treat as "no filter". Re-queries when the duration or
+ * anchor changes.
  */
 export function useValidFlowTargets(
   candidates: MindmapNode[],
-  scoped: boolean,
   durationN: number | null,
   durationKind: string | null,
   anchorDate: string | null,
@@ -21,7 +23,6 @@ export function useValidFlowTargets(
   const [fetched, setFetched] = useState<Set<string> | null>(null);
 
   useEffect(() => {
-    if (!scoped) return; // Unscoped flow imposes no filter — handled by the derived return below.
     let cancelled = false;
     // A Habit occurrence is never a flow target, so only stored rows are asked about.
     const refs = candidates.flatMap((candidate) => {
@@ -34,7 +35,7 @@ export function useValidFlowTargets(
     return () => {
       cancelled = true;
     };
-  }, [candidates, scoped, durationN, durationKind, anchorDate]);
+  }, [candidates, durationN, durationKind, anchorDate]);
 
-  return scoped ? fetched : null;
+  return fetched;
 }

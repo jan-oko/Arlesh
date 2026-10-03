@@ -70,7 +70,9 @@ export default function StartFlowModal({ flowTitle, flowScoped, durationN, durat
   const titleRef = useRef<HTMLInputElement>(null);
 
   // Only targets whose scope contains the concrete flow window (anchor + duration) are offered.
-  const validIds = useValidFlowTargets(availableTargets, flowScoped, durationN, durationKind, anchorDate);
+  const validIds = useValidFlowTargets(
+    availableTargets, flowScoped ? durationN : null, flowScoped ? durationKind : null, anchorDate,
+  );
   const targetInvalid = target !== null && validIds !== null && !validIds.has(entityNodeId(target.kind, target.id));
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);

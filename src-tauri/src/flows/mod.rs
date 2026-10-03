@@ -2623,9 +2623,10 @@ pub async fn generate_habit_iterations<M: SessionMode>(
 
 /// Filters `candidates` to the targets a flow of the given `duration` may materialise under.
 ///
-/// A target is valid when its effective Time Scope window (its own, or the nearest scoped
-/// ancestor's) wholly contains the flow window; a target with no scoped ancestor — and any
-/// Unscoped flow (`duration` = `None`) — is always valid. With a concrete `anchor`, the window
+/// A target must be able to hold the Flow's instances ([`rules::targets::holds_instances`]),
+/// whatever its window. One that can is valid when its effective Time Scope window (its own, or
+/// the nearest scoped ancestor's) wholly contains the flow window; a target with no scoped
+/// ancestor — and any Unscoped flow (`duration` = `None`) — is always valid. With a concrete `anchor`, the window
 /// is resolved and containment is exact; without one (template edit, before the anchor is
 /// known), a coarse necessary check keeps only targets at least as long as the flow's shortest
 /// possible window. The backend [`start`] still hard-rejects anything that slips through.
@@ -2639,8 +2640,13 @@ pub async fn valid_targets<M: SessionMode>(
     anchor: Option<NaiveDate>,
     candidates: Vec<TargetRef>,
 ) -> Result<Vec<TargetRef>, FlowError> {
+    // Only a node that can hold the Flow's instances is a target at all, scoped Flow or not.
+    let candidates: Vec<TargetRef> = candidates
+        .into_iter()
+        .filter(|candidate| rules::targets::holds_instances(&candidate.node_type))
+        .collect();
     let Some((n, kind)) = duration else {
-        return Ok(candidates); // Unscoped flow: no window, no constraint.
+        return Ok(candidates); // Unscoped flow: no window, no further constraint.
     };
     // A Phase window can't be resolved from `(n, kind)` alone (its band/time isn't carried here),
     // so it always uses the coarse filter — where `min_period_days` is 0, i.e. every target
