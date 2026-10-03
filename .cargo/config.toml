@@ -1,0 +1,6 @@
+# The workspace root moved from src-tauri/ to the repository root, which would have moved the
+# default target directory with it. Every tool here — scripts/branch-instance.sh, the CI cache, the
+# bundles workflow — expects src-tauri/target, so it stays there. A relative path in this file is
+# relative to the directory holding .cargo/.
+[build]
+target-dir = "src-tauri/target"

@@ -23,7 +23,7 @@ import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const ROOTS = ["src", "src-tauri/src", "scripts"];
+const ROOTS = ["src", "src-tauri/src", "crates/arlesh-core/src", "scripts"];
 
 /** Every file under `dir`, recursively, as absolute paths. */
 function filesUnder(dir) {

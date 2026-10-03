@@ -1,0 +1,52 @@
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "arlesh"
+version = "0.3.0"
+description = "Arlesh's core — the board, its rules and its writes — from Python"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.7"]
+
+[dependency-groups]
+dev = [
+  "maturin>=1.9,<2",
+  "pytest>=8",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=5",
+  "mypy>=1.11",
+  "ruff>=0.6",
+  "datamodel-code-generator>=0.26",
+]
+
+[tool.maturin]
+python-source = "python"
+module-name = "arlesh._native"
+features = ["pyo3/extension-module"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["arlesh"]
+# Generated from the Rust types' JSON Schema; its lines are declarations, not logic.
+omit = ["*/arlesh/models.py"]
+
+[tool.mypy]
+strict = true
+packages = ["arlesh", "tests"]
+plugins = ["pydantic.mypy"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["python/arlesh/models.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ANN", "RUF"]
+# The JSON boundary is typed `Any` on purpose: what crosses it is validated by pydantic on the
+# way back.
+ignore = ["ANN401"]

@@ -192,6 +192,45 @@ one statement earlier.
 The journal is truncated at startup and capped at a fixed number of gestures, so a long session
 cannot grow it without bound. An ungrouped entry counts as one gesture for that cap.
 
+## Clients, and a second writer
+
+The desktop app is not the only program that writes the database: the Python bindings
+(`crates/arlesh-py`) open the same file, and a service built on them will. So every entry also
+carries the **client** that wrote it — the program the write came through (migration 0092). The app
+writes as `desktop`; every other writer must name itself when it opens the database for writing
+(letters, digits, `.`, `_` and `-`, at most 64). There is no user part yet: that comes with
+multi-device.
+
+**Client and source are two axes, not one.** The source says *who acted* — a person or an agent.
+The client says *which program carried it*. The MCP endpoint is served by the desktop app, so an
+agent's write is source `mcp` from client `desktop`; a script's write is source `user` from its own
+client. The app's Ctrl+Z takes only entries that are **both** source `user` and client `desktop`. A
+script writing while one of the app's Gestures happens to be open is journaled under that Gesture's
+id, exactly as an agent's write is, and the client column is what keeps it off the app's stack.
+There is no undo for any other client yet: it arrives with multi-device.
+
+The ambient context's client reads `desktop` whenever no transaction is open. A writer under any
+other name stamps its name over it as the **first** statement of its own write transaction and puts
+`desktop` back as the **last**, under the writer lock that transaction holds from its `BEGIN` — the
+same argument the source and the suppression flag rest on, and it holds across processes because
+SQLite's writer lock is the file's, not a connection's. A rollback restores it with everything else.
+Every write from a non-desktop client therefore runs in a transaction, even a single statement. One
+trigger on the journal stamps each new entry from the context, so the generated per-table triggers
+are unchanged and a table added later is stamped without anyone regenerating anything.
+
+**The app holds the database while it runs**: an operating-system lock on `arlesh.db.lock` beside
+it. It is a lock rather than the file's existence, so a crash leaves nothing stale behind. Another
+writer that finds it held is refused unless it insists (`force`), because the app's windows would
+show a board the script had changed behind them and its stack would hold Gestures whose rows had
+moved. Reading is never refused. The check is made once, when the database is opened.
+
+**Opening from outside the app** follows the app's own rules for the schema:
+
+- A **write-open** runs any pending migrations, as the app does at startup.
+- A **read-only open** never migrates. A schema that is behind this build is refused, because a
+  reader may not change the file and the build cannot read an older shape.
+- A schema **newer** than the build — a migration it does not know — is refused either way.
+
 ## The two stacks
 
 The Undo Stack and the Redo Stack live in **backend memory**, one pair for the whole application,
@@ -200,7 +239,7 @@ give each of them a private history, and not in the database, which would outliv
 are scoped to. Launching Arlesh is an empty history; nothing has to clear them.
 
 A Gesture reaches the Undo Stack when `close_gesture` ends it, carrying **only its `user` journal
-entries**. The filter is per entry rather than per Gesture, because the ambient context is one row
+entries from the `desktop` client** (see *Clients, and a second writer*). The filter is per entry rather than per Gesture, because the ambient context is one row
 for the whole application: an agent writing while the user's Gesture happens to be open is
 journaled under that Gesture's id, and the `source` column is what tells the two apart. A Gesture
 that wrote nothing the user can undo never reaches a stack at all, so a press is never spent on a

@@ -10,7 +10,6 @@ use tauri::State;
 use crate::{
     database::session::SessionFactory,
     error::WireError,
-    flows::error::FlowError,
     nodes::id::NodeId,
     tasks::model::{
         CreateExpectationRequest, Expectation, ExpectationId, SpawnedWait, TaskId,
@@ -172,15 +171,8 @@ pub async fn delete_expectation(
     id: NodeId,
 ) -> Result<(), WireError> {
     // A derived wait goes with its Task: completing it again, or taking its template away.
-    let NodeId::Stored(id) = id else {
-        return Err(WireError::from_error(FlowError::Refused(
-            "a derived wait is not deleted; it goes with its Task".to_string(),
-        )));
-    };
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    crate::tasks::delete_expectation(&mut db, ExpectationId(id))
-        .await
-        .map_err(WireError::from_error)?;
+    crate::nodes::composite::delete_wait(&mut db, &id).await?;
     db.commit().await.map_err(WireError::from_error)
 }
 

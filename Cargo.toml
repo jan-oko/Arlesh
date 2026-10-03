@@ -1,0 +1,23 @@
+# The Cargo workspace: one core and the hosts over it.
+#
+#   crates/arlesh-core   every domain module, the rules layer, the session layer, undo/ and mcp/.
+#                        It does not depend on Tauri, and CI checks that it never does.
+#   src-tauri            the desktop app: lib.rs, commands/, the tray, the windows and the icon.
+#   crates/arlesh-py     the Python bindings (PyO3), a second host beside Tauri.
+#
+# The target directory is pinned in .cargo/config.toml, so the split did not move it.
+[workspace]
+resolver = "2"
+members = ["src-tauri", "crates/arlesh-core", "crates/arlesh-py"]
+
+# Debug builds statically link the whole dependency tree into every binary (the app plus one
+# binary per integration-test file), and full DWARF debug info dominates the on-disk size. Keep
+# just line tables — enough for readable panic/test backtraces — and strip the rest. This shrinks
+# `target/debug` several-fold with no effect on behavior; step-debugging locals is the only cost.
+[profile.dev]
+debug = "line-tables-only"
+strip = "debuginfo"
+
+[profile.test]
+debug = "line-tables-only"
+strip = "debuginfo"

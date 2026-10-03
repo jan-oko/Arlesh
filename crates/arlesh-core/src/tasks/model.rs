@@ -1,0 +1,1393 @@
+//! Task and Goal resource models.
+
+use chrono::NaiveDateTime;
+use serde::{Deserialize, Serialize};
+
+use crate::nodes::{id::NodeId, origin::Origin};
+use crate::scopes::{key::ScopeKey, resolve::Bounds};
+
+/// Identifies a task row by its primary key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct TaskId(pub i64);
+
+impl From<i64> for TaskId {
+    fn from(value: i64) -> Self {
+        Self(value)
+    }
+}
+impl From<TaskId> for i64 {
+    fn from(id: TaskId) -> Self {
+        id.0
+    }
+}
+
+/// Identifies a goal row by its primary key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct GoalId(pub i64);
+
+impl From<i64> for GoalId {
+    fn from(value: i64) -> Self {
+        Self(value)
+    }
+}
+impl From<GoalId> for i64 {
+    fn from(id: GoalId) -> Self {
+        id.0
+    }
+}
+
+/// An **ordinary** Task's status — the model a Task that does not read as Agentic holds.
+///
+/// One of the two status models (see [`Status`]): an Agentic Task holds an [`AgenticStatus`]
+/// instead, and neither model can hold the other's values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatus {
+    /// Not yet started.
+    Todo,
+    /// Currently being worked on.
+    InProgress,
+    /// Begun and left in a middle state, but not being worked on right now — paused.
+    Started,
+    /// Completed.
+    Done,
+}
+
+impl TaskStatus {
+    /// Returns the database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Todo => "todo",
+            Self::InProgress => "in_progress",
+            Self::Started => "started",
+            Self::Done => "done",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "todo" => Some(Self::Todo),
+            "in_progress" => Some(Self::InProgress),
+            "started" => Some(Self::Started),
+            "done" => Some(Self::Done),
+            _ => None,
+        }
+    }
+
+    /// Whether work on the Task has begun and not finished: **In Progress** or **Started**.
+    ///
+    /// Moving into one of these from To Do or Done is what *starting* a Task means — the move the
+    /// Spec rule guards and the one that takes a Task out of the Backlog. Moving between the two
+    /// (pausing, resuming) is not a start: the work was already begun.
+    pub fn is_begun(&self) -> bool {
+        matches!(self, Self::InProgress | Self::Started)
+    }
+}
+
+/// An **Agentic** Task's status — the model a Task that reads as Agentic holds.
+///
+/// Its own type, not a widening of [`TaskStatus`] (ruled by the user, 2026-10-01: "they really are
+/// different things"). **Doing** means the user is actively on it, as In Progress does on an
+/// ordinary Task, but it is a variant of this model and not a reuse of that one. There is no
+/// Started here, and no On Agent or Review there.
+///
+/// **Review is derived, never stored**: an On Agent Task with an open agentic *question* wait
+/// beneath it reads Review (see [`crate::tasks::review`]). It has no database spelling, so a write
+/// naming it is refused, and [`Self::stored`] is what the row holds while it reads Review.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AgenticStatus {
+    /// Ready for an agent to claim, or for the user.
+    Todo,
+    /// An agent holds it.
+    OnAgent,
+    /// Derived: On Agent, and the agent has a question open for the user.
+    Review,
+    /// The user is actively on it.
+    Doing,
+    /// Completed.
+    Done,
+}
+
+impl AgenticStatus {
+    /// The wire spelling — what the MCP and the frontend see.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Todo => "todo",
+            Self::OnAgent => "on_agent",
+            Self::Review => "review",
+            Self::Doing => "doing",
+            Self::Done => "done",
+        }
+    }
+
+    /// The database spelling, or `None` for Review, which is never stored.
+    ///
+    /// Disjoint from [`TaskStatus`]'s spellings on purpose (`agentic_todo`, `agentic_done`), so a
+    /// stored value decodes to exactly one model without knowing the row's kind — which is an
+    /// inherited flag, a tree climb away.
+    pub fn as_db(&self) -> Option<&'static str> {
+        match self {
+            Self::Todo => Some("agentic_todo"),
+            Self::OnAgent => Some("on_agent"),
+            Self::Review => None,
+            Self::Doing => Some("doing"),
+            Self::Done => Some("agentic_done"),
+        }
+    }
+
+    /// Parses the database spelling, if recognized. `review` is never stored and never parses.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "agentic_todo" => Some(Self::Todo),
+            "on_agent" => Some(Self::OnAgent),
+            "doing" => Some(Self::Doing),
+            "agentic_done" => Some(Self::Done),
+            _ => None,
+        }
+    }
+
+    /// Whether work has begun and not finished: On Agent, Review or Doing. Claiming a Task from
+    /// To Do is a start, guarded by the Spec rule; handing it between the agent and the user is
+    /// not.
+    pub fn is_begun(&self) -> bool {
+        matches!(self, Self::OnAgent | Self::Review | Self::Doing)
+    }
+
+    /// The status the row holds: Review is On Agent with a question open, everything else itself.
+    pub fn stored(&self) -> Self {
+        match self {
+            Self::Review => Self::OnAgent,
+            other => *other,
+        }
+    }
+}
+
+/// A Task's status: a value of **one** of the two models, named by its kind.
+///
+/// On the wire it is `{"kind": "ordinary", "status": "in_progress"}` or
+/// `{"kind": "agentic", "status": "doing"}`, so a reader always knows which model it holds. In
+/// the `tasks.status` and `task_overlays.status` columns the two models' spellings are disjoint
+/// ([`AgenticStatus::as_db`]), so [`Self::from_db`] is total over the CHECK's vocabulary and an
+/// Agentic row can never decode as an ordinary status or the other way round.
+///
+/// Behaviour dispatches on the kind first; the helpers here are only what the two models really
+/// share — done, to do, begun.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "kind", content = "status", rename_all = "snake_case")]
+pub enum Status {
+    /// An ordinary Task's status.
+    Ordinary(TaskStatus),
+    /// An Agentic Task's status.
+    Agentic(AgenticStatus),
+}
+
+impl Status {
+    /// Parses a stored spelling into the one model it belongs to.
+    pub fn from_db(value: &str) -> Option<Self> {
+        if let Some(status) = TaskStatus::from_db(value) {
+            return Some(Self::Ordinary(status));
+        }
+        AgenticStatus::from_db(value).map(Self::Agentic)
+    }
+
+    /// The stored spelling, or `None` for the derived Review.
+    pub fn as_db(&self) -> Option<&'static str> {
+        match self {
+            Self::Ordinary(status) => Some(status.as_str()),
+            Self::Agentic(status) => status.as_db(),
+        }
+    }
+
+    /// The wire spelling of the value alone, for a message that names it.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Ordinary(status) => status.as_str(),
+            Self::Agentic(status) => status.as_str(),
+        }
+    }
+
+    /// The model's To Do.
+    pub fn todo(agentic: bool) -> Self {
+        if agentic {
+            Self::Agentic(AgenticStatus::Todo)
+        } else {
+            Self::Ordinary(TaskStatus::Todo)
+        }
+    }
+
+    /// Whether this is a value of the Agentic model.
+    pub fn is_agentic(&self) -> bool {
+        matches!(self, Self::Agentic(_))
+    }
+
+    /// Whether a stored spelling — a row's or an overlay's `status`, `None` for To Do — is
+    /// finished, in either model: `done` or `agentic_done`.
+    pub fn is_done_db(value: Option<&str>) -> bool {
+        value
+            .and_then(Self::from_db)
+            .is_some_and(|status| status.is_done())
+    }
+
+    /// Finished, in either model.
+    pub fn is_done(&self) -> bool {
+        matches!(
+            self,
+            Self::Ordinary(TaskStatus::Done) | Self::Agentic(AgenticStatus::Done)
+        )
+    }
+
+    /// Not begun, in either model.
+    pub fn is_todo(&self) -> bool {
+        matches!(
+            self,
+            Self::Ordinary(TaskStatus::Todo) | Self::Agentic(AgenticStatus::Todo)
+        )
+    }
+
+    /// Begun and not finished, in either model — the move into which is a *start*.
+    pub fn is_begun(&self) -> bool {
+        match self {
+            Self::Ordinary(status) => status.is_begun(),
+            Self::Agentic(status) => status.is_begun(),
+        }
+    }
+
+    /// The value as its row stores it: Review reads On Agent.
+    pub fn stored(&self) -> Self {
+        match self {
+            Self::Agentic(status) => Self::Agentic(status.stored()),
+            other => *other,
+        }
+    }
+
+    /// The counterpart of this value in the model a Task of kind `agentic` holds — itself when
+    /// the model is already that one — or `None` when it has no counterpart: an ordinary Started
+    /// has none in the Agentic model, and On Agent (Review included) none in the ordinary one.
+    ///
+    /// This is the one **conversion** between the models, which a change of a Task's kind — its
+    /// flag, or a move under another ancestor — performs explicitly; the write is refused when it
+    /// answers `None` (see [`crate::tasks::agentic::convert_subtree`]).
+    pub fn converted(&self, agentic: bool) -> Option<Self> {
+        match (self, agentic) {
+            (Self::Ordinary(_), false) | (Self::Agentic(_), true) => Some(*self),
+            (Self::Ordinary(TaskStatus::Todo), true) => Some(Self::Agentic(AgenticStatus::Todo)),
+            (Self::Ordinary(TaskStatus::InProgress), true) => {
+                Some(Self::Agentic(AgenticStatus::Doing))
+            }
+            (Self::Ordinary(TaskStatus::Done), true) => Some(Self::Agentic(AgenticStatus::Done)),
+            (Self::Ordinary(TaskStatus::Started), true) => None,
+            (Self::Agentic(AgenticStatus::Todo), false) => Some(Self::Ordinary(TaskStatus::Todo)),
+            (Self::Agentic(AgenticStatus::Doing), false) => {
+                Some(Self::Ordinary(TaskStatus::InProgress))
+            }
+            (Self::Agentic(AgenticStatus::Done), false) => Some(Self::Ordinary(TaskStatus::Done)),
+            (Self::Agentic(AgenticStatus::OnAgent | AgenticStatus::Review), false) => None,
+        }
+    }
+
+    /// The kind-neutral **reading** of a value, for a tally that counts both models alike (the
+    /// compound rule): Doing counts as In Progress, On Agent and Review as Started.
+    pub fn reading(&self) -> TaskStatus {
+        match self {
+            Self::Ordinary(status) => *status,
+            Self::Agentic(AgenticStatus::Todo) => TaskStatus::Todo,
+            Self::Agentic(AgenticStatus::Doing) => TaskStatus::InProgress,
+            Self::Agentic(AgenticStatus::OnAgent | AgenticStatus::Review) => TaskStatus::Started,
+            Self::Agentic(AgenticStatus::Done) => TaskStatus::Done,
+        }
+    }
+
+    /// A reading put back into a model — what a compound Task of kind `agentic` shows for the
+    /// tally it got. The inverse of [`Self::reading`] as far as there is one: Started reads as
+    /// On Agent in the Agentic model, work begun that the user is not on.
+    pub fn from_reading(reading: TaskStatus, agentic: bool) -> Self {
+        if !agentic {
+            return Self::Ordinary(reading);
+        }
+        Self::Agentic(match reading {
+            TaskStatus::Todo => AgenticStatus::Todo,
+            TaskStatus::InProgress => AgenticStatus::Doing,
+            TaskStatus::Started => AgenticStatus::OnAgent,
+            TaskStatus::Done => AgenticStatus::Done,
+        })
+    }
+}
+
+/// A Task's own manually-set archival state — the stored half of the
+/// [`Archival`](super::lifecycle::Archival) axis, independent of [`TaskStatus`].
+///
+/// Two variants, not four. A Task is never manually **Archived** (a Task's effective Archival is
+/// forced by its scope Resolution alone), and **Frozen** is Goal/Project vocabulary. Giving the
+/// Task side its own type is what makes "Backlog is valid on Tasks only" a thing the compiler
+/// knows rather than a comment: nothing can hand a Goal a `Backlog`, or a Task a `Frozen`.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskArchival {
+    /// In play, and filtered on its status alone. The default.
+    #[default]
+    Live,
+    /// Deliberately set aside: hidden from Plan and Start along with everything beneath it, still
+    /// listed under All, and browsable on its own through the Backlog preset.
+    Backlog,
+}
+
+impl TaskArchival {
+    /// Returns the database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Live => "live",
+            Self::Backlog => "backlog",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "live" => Some(Self::Live),
+            "backlog" => Some(Self::Backlog),
+            _ => None,
+        }
+    }
+
+    /// Whether a Task in this state may also carry a Plan.
+    ///
+    /// The stored invariant is `archival = Backlog ⇒ plan IS NULL`: a Task is never both set aside
+    /// and scheduled, because the two say opposite things about the same week. Enforced at write
+    /// time, in both directions — backlogging a planned Task is refused until the caller agrees to
+    /// clear the Plan, and setting a Plan on a backlogged Task takes it out of the backlog.
+    pub fn allows_plan(&self) -> bool {
+        matches!(self, Self::Live)
+    }
+}
+
+/// A Task's **Agentic** flag: whether the work suits being handed to an agent.
+///
+/// Three named states rather than a `bool`, because the flag inherits downward and is overridable
+/// — the rule Delegation already uses. A Task with no value of its own reads its nearest flagged
+/// ancestor, so marking a branch agentic is one edit; an explicit value replaces what it would
+/// have inherited, in either direction.
+///
+/// Deliberately **not** spelled `Option<Option<bool>>` on an update request. That shape would nest
+/// "leave unchanged" around "set to NULL", and serde reads an explicit JSON `null` as an absent
+/// field — so clearing the flag over IPC would silently do nothing. Naming the three states makes
+/// the wire honest and the intent readable: `Some(Inherit)` writes the NULL, `None` (the outer
+/// `Option` on the request field) leaves the column alone.
+///
+/// Independent of the delegate: a Task may be agentic and delegated, either, or neither.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskAgentic {
+    /// No value of its own — reads the nearest flagged ancestor. Stored as NULL, and the state
+    /// every Task starts in.
+    #[default]
+    Inherit,
+    /// Explicitly agentic, whatever the ancestors say.
+    Yes,
+    /// Explicitly not agentic, overriding an agentic ancestor.
+    No,
+}
+
+impl TaskAgentic {
+    /// The column value this state stores: `None` is the NULL that means *inherit*.
+    pub fn as_column(self) -> Option<bool> {
+        match self {
+            Self::Inherit => None,
+            Self::Yes => Some(true),
+            Self::No => Some(false),
+        }
+    }
+
+    /// The state a stored column value carries; a NULL column reads as [`Self::Inherit`].
+    pub fn from_column(column: Option<bool>) -> Self {
+        match column {
+            None => Self::Inherit,
+            Some(true) => Self::Yes,
+            Some(false) => Self::No,
+        }
+    }
+
+    /// A short rendering, for a prompt that has to name the value at stake.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Inherit => "inherit",
+            Self::Yes => "yes",
+            Self::No => "no",
+        }
+    }
+}
+
+/// Who holds a delegated Task: a **Person**.
+///
+/// A `(kind, id)` pair rather than a bare person id — `delegate_kind` / `delegate_id` (migration
+/// 0037) — so that a kind of delegate that is not a Person can be added without inventing a Person
+/// row for it. The one such kind there was, the **Agent**, was removed on 2026-10-01 (migration
+/// 0088): an agent holds a Task through its Agentic status (`On Agent`, see [`AgenticStatus`]),
+/// never by delegation, which hands over responsibility an agent cannot hold.
+///
+/// On the wire it is `{"kind": "person", "id": 3}`. Independent of the Agentic flag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Delegate {
+    /// Delegated to the Person with this id.
+    Person {
+        /// The `people` row the task is delegated to.
+        id: i64,
+    },
+}
+
+impl Delegate {
+    /// `delegate_kind` for a Person delegate.
+    const PERSON: &'static str = "person";
+
+    /// The `(delegate_kind, delegate_id)` columns a delegate — or its absence — stores.
+    pub fn columns(delegate: Option<Self>) -> (Option<&'static str>, Option<i64>) {
+        match delegate {
+            None => (None, None),
+            Some(Self::Person { id }) => (Some(Self::PERSON), Some(id)),
+        }
+    }
+
+    /// The delegate a stored column pair holds. A pair the schema's CHECK would have refused — an
+    /// unknown kind, or a Person without an id — reads as no delegate, the same fallback the other
+    /// enum columns use.
+    pub fn from_columns(kind: Option<&str>, id: Option<i64>) -> Option<Self> {
+        match (kind?, id) {
+            (Self::PERSON, Some(id)) => Some(Self::Person { id }),
+            _ => None,
+        }
+    }
+
+    /// A short rendering, for a prompt that has to name the value at stake.
+    pub fn describe(self) -> String {
+        match self {
+            Self::Person { id } => format!("person {id}"),
+        }
+    }
+}
+
+/// Goal lifecycle status.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GoalStatus {
+    /// Actively being pursued.
+    Active,
+    /// Successfully achieved.
+    Achieved,
+    /// Temporarily paused.
+    Frozen,
+    /// No longer relevant.
+    Archived,
+}
+
+impl GoalStatus {
+    /// Returns the database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Achieved => "achieved",
+            Self::Frozen => "frozen",
+            Self::Archived => "archived",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "active" => Some(Self::Active),
+            "achieved" => Some(Self::Achieved),
+            "frozen" => Some(Self::Frozen),
+            "archived" => Some(Self::Archived),
+            _ => None,
+        }
+    }
+}
+
+/// What happens to a scoped item once its Time Scope has fully passed while still unfinished.
+/// The single-occurrence form of a Window Habit's miss policy (Archive, or Owed as Keep Overdue).
+///
+/// It also decides the item's **default due** (see [`crate::tasks::lifecycle::effective_due`]):
+/// Keep Overdue makes the Time Scope the due, Archive leaves the item with none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum OnScopeExit {
+    /// The item **Lapses** — its Resolution reads Missed and it is archived. Its default due is
+    /// none, so it is never Overdue unless a due was set on it explicitly.
+    Archive,
+    /// **Keep Overdue**: the item stays live, and its default due is its Time Scope, so once the
+    /// window passes unfinished it is flagged **Overdue**. Stored and sent as `keep` — only the
+    /// label changed when Overdue became a flag, so no row was rewritten.
+    Keep,
+}
+
+impl OnScopeExit {
+    /// The database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Archive => "archive",
+            Self::Keep => "keep",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "archive" => Some(Self::Archive),
+            "keep" => Some(Self::Keep),
+            _ => None,
+        }
+    }
+}
+
+/// The Duration parameters of a Time Scope, retained after snapshotting so the UI can keep
+/// presenting and editing the scope in duration form.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+pub struct DurationSpec {
+    /// Number of scope-kind units (e.g. 3 in "3 weeks").
+    pub n: i64,
+    /// The scope kind the duration is expressed in (e.g. "week").
+    pub kind: String,
+}
+
+/// An item's relevance window: a resolved boundaries `[start, end]` scope range (equal ids
+/// denote a single scope), optionally tagged with the Duration parameters it came from.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+pub struct TimeScope {
+    /// Start boundary scope id.
+    pub start_id: ScopeKey,
+    /// End boundary scope id.
+    pub end_id: ScopeKey,
+    /// Duration parameters, when the scope was set in duration form.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration: Option<DurationSpec>,
+}
+
+impl TimeScope {
+    /// A window of one scope, used as both boundaries.
+    pub fn single(scope: ScopeKey) -> Self {
+        Self {
+            start_id: scope,
+            end_id: scope,
+            duration: None,
+        }
+    }
+
+    /// The combined half-open window: the start of the start boundary through the end of the end
+    /// boundary. Pure — a scope is derived from its key.
+    pub fn window(&self) -> Bounds {
+        (self.start_id.bounds().0, self.end_id.bounds().1)
+    }
+}
+
+/// A task row as returned from the database.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct Task {
+    /// Primary key for a stored row, or the UUID of a derived one.
+    pub id: NodeId,
+    /// Display title.
+    pub title: String,
+    /// Type of the parent entity.
+    pub parent_type: String,
+    /// Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
+    pub parent_id: NodeId,
+    /// Current status, in the model the Task's kind holds. As a board load serves it, Review is
+    /// derived here; as read straight from the row it is what the row holds.
+    pub status: Status,
+    /// Who this task is delegated to — a Person — if anyone.
+    pub delegate_to: Option<Delegate>,
+    /// Whether this task is explicitly Agentic. A null value inherits the nearest flagged
+    /// ancestor; `Some` is an explicit value that replaces what would have been inherited.
+    /// Independent of `delegate_to` — a task may be both.
+    pub agentic: Option<bool>,
+    /// Whether doing this task starts a **wait**. A plain flag that does not inherit: "starts a
+    /// wait" is a property of one concrete action.
+    #[serde(default)]
+    pub asynchronous: bool,
+    /// Whether this task **consists of its sub-items**: its status is derived from its whole
+    /// subtree on every board load (see [`crate::tasks::compound`]) and never set by hand. A
+    /// plain flag that does not inherit. A stored Task's own, or a Habit occurrence's, drawn from
+    /// its flow Task item under its overlay. While it is on, [`Self::status`] as a
+    /// board load serves it is the derived status; as read straight from the row it is whatever
+    /// the column last held.
+    #[serde(default)]
+    pub compound: bool,
+    /// The task's optional **Expectation template**, kept only while it is Asynchronous.
+    /// Completing the task spawns a virtual Expectation from it; without one, nothing is spawned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub async_template: Option<AsyncTemplate>,
+    /// The Task's agentic brief, if it has one. See [`AgenticBrief`].
+    #[serde(default)]
+    pub agentic_brief: Option<AgenticBrief>,
+    /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
+    pub time_scope: Option<TimeScope>,
+    /// On-exit behavior; present iff `time_scope` is (inherited with the window otherwise).
+    pub on_scope_exit: Option<OnScopeExit>,
+    /// Scheduling window this task is planned into (if any). Must be contained in `time_scope`.
+    pub plan: Option<TimeScope>,
+    /// The task's own **due scope**, when one was set explicitly: the window whose end makes it
+    /// Overdue. Must lie within its effective Time Scope. `None` means the due is derived — see
+    /// [`crate::tasks::lifecycle::effective_due`].
+    #[serde(default)]
+    pub due_scope: Option<TimeScope>,
+    /// Manually-set archival state: `Live`, or `Backlog` when deliberately set aside. Never both
+    /// `Backlog` and planned — see [`TaskArchival::allows_plan`].
+    #[serde(default)]
+    pub archival: TaskArchival,
+    /// Tag domain ids attached to this task.
+    pub tag_ids: Vec<i64>,
+    /// Sort position among siblings; defaults to id (insertion order).
+    pub position: i64,
+    /// Whether this node is private (hidden unless Private Mode is on).
+    pub is_private: bool,
+    /// Where the row came from: made by hand, or derived (a Habit occurrence).
+    #[serde(default)]
+    pub origin: Origin,
+}
+
+/// A task row enriched with virtual block information.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct TaskWithBlockers {
+    /// The base task.
+    pub task: Task,
+    /// All block reasons (explicit + virtual from dependencies).
+    pub block_reasons: Vec<String>,
+}
+
+/// A single dependency edge: `task_id` depends on `(dependency_type, dependency_id)`. Returned by the
+/// bulk-load endpoint so the mindmap can derive virtual "blocked by" reasons without a per-task call.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct TaskDependencyEdge {
+    /// The dependent task.
+    pub task_id: NodeId,
+    /// Kind of the dependency target: `task` or `goal`.
+    pub dependency_type: String,
+    /// Database id of the dependency target.
+    pub dependency_id: NodeId,
+}
+
+/// A goal row as returned from the database.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct Goal {
+    /// Primary key for a stored row, or the UUID of a derived one.
+    pub id: NodeId,
+    /// Display title.
+    pub title: String,
+    /// Type of the parent entity.
+    pub parent_type: String,
+    /// Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
+    pub parent_id: NodeId,
+    /// Current status.
+    pub status: String,
+    /// Relevance window (if set). A null value inherits the nearest scoped ancestor.
+    pub time_scope: Option<TimeScope>,
+    /// On-exit behavior; present iff `time_scope` is (inherited with the window otherwise).
+    pub on_scope_exit: Option<OnScopeExit>,
+    /// Tag domain ids attached to this goal.
+    pub tag_ids: Vec<i64>,
+    /// Sort position among siblings; defaults to id (insertion order).
+    pub position: i64,
+    /// Whether this node is private (hidden unless Private Mode is on).
+    pub is_private: bool,
+    /// Where the row came from: made by hand, or derived (a Habit occurrence).
+    #[serde(default)]
+    pub origin: Origin,
+}
+
+/// Dependency reference: a task, a goal, or an expectation.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum Dependency {
+    /// Depends on another task.
+    Task {
+        /// The task being depended on — a stored one, or a Habit occurrence.
+        id: NodeId,
+    },
+    /// Depends on a goal being achieved.
+    Goal {
+        /// The goal being depended on — a stored one, or a Habit occurrence.
+        id: NodeId,
+    },
+    /// Depends on an expectation being released.
+    Expectation {
+        /// The expectation being waited on.
+        id: i64,
+    },
+}
+
+/// Request body for creating a task.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct CreateTaskRequest {
+    /// Display title.
+    pub title: String,
+    /// Parent entity type.
+    pub parent_type: String,
+    /// Parent entity id.
+    pub parent_id: NodeId,
+    /// Initial status (defaults to the To Do of the model the new Task's kind holds). One in the
+    /// other model is refused.
+    pub status: Option<Status>,
+    /// Initial relevance window.
+    #[serde(default)]
+    pub time_scope: Option<TimeScope>,
+    /// On-exit behavior; applied only when `time_scope` is set (defaults to Keep Overdue).
+    #[serde(default)]
+    pub on_scope_exit: Option<OnScopeExit>,
+    /// Initial Plan (scheduling window).
+    #[serde(default)]
+    pub plan: Option<TimeScope>,
+    /// Initial explicit due scope; must lie within the task's effective Time Scope.
+    #[serde(default)]
+    pub due_scope: Option<TimeScope>,
+    /// Initial archival state (defaults to Live). Rejected together with a `plan`.
+    #[serde(default)]
+    pub archival: Option<TaskArchival>,
+    /// Initial Agentic state (defaults to Inherit, the stored NULL).
+    #[serde(default)]
+    pub agentic: Option<TaskAgentic>,
+    /// `Some(true)` makes the new task Asynchronous. Nothing arrives asynchronous otherwise.
+    #[serde(default)]
+    pub asynchronous: Option<bool>,
+    /// `Some(true)` makes the new task compound — a duplicate carrying its source's flag.
+    #[serde(default)]
+    pub compound: Option<bool>,
+    /// The new task's Expectation template, when it is created Asynchronous with one in hand — a
+    /// duplicate carrying its source's. Dropped unless [`Self::asynchronous`] is `Some(true)`.
+    #[serde(default)]
+    pub async_template: Option<AsyncTemplate>,
+    /// The new task's agentic brief, if it is created with one — a duplicate carrying its source's.
+    #[serde(default)]
+    pub agentic_brief: Option<AgenticBrief>,
+}
+
+/// Request body for updating a task.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct UpdateTaskRequest {
+    /// New title (if provided).
+    pub title: Option<String>,
+    /// New status (if provided), in the model the Task holds after this write: one in the other
+    /// model is refused, as is the derived Review.
+    pub status: Option<Status>,
+    /// Delegate to set — a Person (None leaves unchanged, Some(None) clears it).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub delegate_to: Option<Option<Delegate>>,
+    /// Agentic state to set. `None` leaves the column unchanged; `Some(TaskAgentic::Inherit)`
+    /// writes the NULL that puts the task back to inheriting. The three states are named rather
+    /// than nested in a second `Option` — see [`TaskAgentic`] for why that shape is wrong here.
+    pub agentic: Option<TaskAgentic>,
+    /// New Asynchronous flag (if provided). Turning it off removes the task's template too: a
+    /// template only exists while the flag is on.
+    pub asynchronous: Option<bool>,
+    /// New Compound flag (if provided). While a task is compound its status is derived and a
+    /// request naming a status is refused — unless the same request switches the flag off, when
+    /// the status it names is what is kept. Switched off with no status named, the stored column
+    /// is left as it is; `nodes::write::update_task` names the derived status for the caller.
+    pub compound: Option<bool>,
+    /// The Expectation template to set (None leaves it unchanged, Some(None) removes it). Dropped
+    /// when the task ends up not Asynchronous.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub async_template: Option<Option<AsyncTemplate>>,
+    /// The agentic brief to set (None leaves it unchanged, Some(None) removes it). Kept whether or
+    /// not the task reads as Agentic, since the flag can come and go with an ancestor's.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub agentic_brief: Option<Option<AgenticBrief>>,
+    /// Relevance window to set (None leaves unchanged, Some(None) clears it).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub time_scope: Option<Option<TimeScope>>,
+    /// On-exit behavior to set (None leaves unchanged); forced NULL when the scope is cleared,
+    /// defaulted to Keep Overdue when a scope is set without one.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub on_scope_exit: Option<Option<OnScopeExit>>,
+    /// Plan window to set (None leaves unchanged, Some(None) clears it).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub plan: Option<Option<TimeScope>>,
+    /// Explicit due scope to set (None leaves unchanged, Some(None) clears it back to the derived
+    /// default). Must lie within the task's effective Time Scope as written.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub due_scope: Option<Option<TimeScope>>,
+    /// Archival state to set (None leaves unchanged).
+    ///
+    /// Left unset, a request that *sets* a Plan on a backlogged task silently resolves the
+    /// conflict in the Plan's favour — see [`UpdateTaskRequest`]'s merge — and so does one that
+    /// sets the task's status to `InProgress` or `Started`, since begun work is not work set aside. Set to
+    /// `Backlog` on a task that keeps its Plan, the write is refused until the caller also clears
+    /// the Plan; set to `Backlog` alongside `InProgress`, it is taken at its word, because a task
+    /// already under way may still be put down and keeps its status when it is.
+    pub archival: Option<TaskArchival>,
+    /// New parent entity type for re-parenting (must be set together with parent_id).
+    pub parent_type: Option<String>,
+    /// New parent entity id for re-parenting (must be set together with parent_type).
+    pub parent_id: Option<NodeId>,
+    /// New sort position among siblings (for sibling reordering).
+    pub position: Option<i64>,
+    /// New private flag, if changing.
+    pub is_private: Option<bool>,
+}
+
+/// Request body for creating a goal.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct CreateGoalRequest {
+    /// Display title.
+    pub title: String,
+    /// Parent entity type.
+    pub parent_type: String,
+    /// Parent entity id.
+    pub parent_id: NodeId,
+    /// Initial status (defaults to Active).
+    pub status: Option<GoalStatus>,
+    /// Initial relevance window.
+    #[serde(default)]
+    pub time_scope: Option<TimeScope>,
+    /// On-exit behavior; applied only when `time_scope` is set (defaults to Keep Overdue).
+    #[serde(default)]
+    pub on_scope_exit: Option<OnScopeExit>,
+}
+
+#[cfg(test)]
+mod tests;
+
+/// Request body for updating a goal.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct UpdateGoalRequest {
+    /// New title (if provided).
+    pub title: Option<String>,
+    /// New status (if provided).
+    pub status: Option<GoalStatus>,
+    /// Relevance window to set (None leaves unchanged, Some(None) clears it).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub time_scope: Option<Option<TimeScope>>,
+    /// On-exit behavior to set (None leaves unchanged); forced NULL when the scope is cleared,
+    /// defaulted to Keep Overdue when a scope is set without one.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub on_scope_exit: Option<Option<OnScopeExit>>,
+    /// New parent entity type for re-parenting (must be set together with parent_id).
+    pub parent_type: Option<String>,
+    /// New parent entity id for re-parenting (must be set together with parent_type).
+    pub parent_id: Option<NodeId>,
+    /// New sort position among siblings (for sibling reordering).
+    pub position: Option<i64>,
+    /// New private flag, if changing.
+    pub is_private: Option<bool>,
+}
+
+/// Identifies a commitment row by its primary key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct CommitmentId(pub i64);
+
+impl From<i64> for CommitmentId {
+    fn from(value: i64) -> Self {
+        Self(value)
+    }
+}
+impl From<CommitmentId> for i64 {
+    fn from(id: CommitmentId) -> Self {
+        id.0
+    }
+}
+
+/// Whether a Commitment was held to. The Commitment kind's answer to a Task's status, and
+/// deliberately **not** derived from anything.
+///
+/// Not from the window passing, and not from children completing. A Task untouched when its
+/// window closes is Missed, but a Commitment untouched may well have been Kept, so there is no
+/// honest default — and `Unresolved` carries real information, *you have not said*, that any
+/// default would destroy. A polarity field (abstentions default Kept, obligations default Broken)
+/// was considered and rejected on exactly this ground; see
+/// `docs/adr/0005-commitment-node-kind.md`.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Verdict {
+    /// No judgement recorded. The default, and never reached by inference.
+    #[default]
+    Unresolved,
+    /// Held to.
+    Kept,
+    /// Not held to. Recorded, never inferred — the point of the kind is being able to say this.
+    Broken,
+}
+
+impl Verdict {
+    /// Returns the database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Unresolved => "unresolved",
+            Self::Kept => "kept",
+            Self::Broken => "broken",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "unresolved" => Some(Self::Unresolved),
+            "kept" => Some(Self::Kept),
+            "broken" => Some(Self::Broken),
+            _ => None,
+        }
+    }
+
+    /// Whether a judgement has been recorded at all.
+    ///
+    /// The one thing every caller asks — the Verdict Window only runs against an *unresolved*
+    /// commitment, and the Archival derivation only settles a *resolved* one — so it is stated
+    /// once here rather than re-spelled as a `!= Unresolved` at each site.
+    pub fn is_resolved(&self) -> bool {
+        !matches!(self, Self::Unresolved)
+    }
+}
+
+/// A commitment row as returned from the database.
+///
+/// Note what is **absent**, since the absences are the design: no `plan` (the window *is* the
+/// commitment, so there is nothing to schedule it into), no `on_scope_exit` (a Commitment always
+/// Keeps, and the Verdict Window is what eventually ends that), no `status`, no `archival`, no
+/// `delegate_to`, and no dependency edges in either direction.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct Commitment {
+    /// Primary key for a stored row, or the UUID of a derived one.
+    pub id: NodeId,
+    /// Display title.
+    pub title: String,
+    /// Type of the parent entity.
+    pub parent_type: String,
+    /// Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
+    pub parent_id: NodeId,
+    /// Whether it was held to. Never derived — see [`Verdict`].
+    pub verdict: Verdict,
+    /// Relevance window (if set). A null value inherits the nearest scoped ancestor; unlike every
+    /// other kind, the *effective* window may not be absent — a Commitment that can never come
+    /// due is refused at write time.
+    pub time_scope: Option<TimeScope>,
+    /// How long past the end of its window this Commitment stays answerable, as a count of any
+    /// scope kind. Null inherits the nearest ancestor Commitment that sets one; nothing above
+    /// setting one means it never expires.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verdict_window: Option<DurationSpec>,
+    /// Tag domain ids attached to this commitment.
+    pub tag_ids: Vec<i64>,
+    /// Sort position among siblings; defaults to id (insertion order).
+    pub position: i64,
+    /// Whether this node is private (hidden unless Private Mode is on).
+    pub is_private: bool,
+    /// Where the row came from: made by hand, or derived (a Habit occurrence).
+    #[serde(default)]
+    pub origin: Origin,
+}
+
+/// Request body for creating a commitment.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct CreateCommitmentRequest {
+    /// Display title.
+    pub title: String,
+    /// Parent entity type.
+    pub parent_type: String,
+    /// Parent entity id.
+    pub parent_id: NodeId,
+    /// Initial verdict (defaults to Unresolved). The editor never sends it, because a commitment
+    /// nobody has judged yet is unresolved.
+    #[serde(default)]
+    pub verdict: Option<Verdict>,
+    /// Initial relevance window. Omitted, the commitment inherits a scoped ancestor's — and is
+    /// refused outright if there is none.
+    #[serde(default)]
+    pub time_scope: Option<TimeScope>,
+    /// Initial Verdict Window. Omitted, it inherits the nearest ancestor Commitment's.
+    #[serde(default)]
+    pub verdict_window: Option<DurationSpec>,
+}
+
+/// Request body for updating a commitment.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct UpdateCommitmentRequest {
+    /// New title (if provided).
+    pub title: Option<String>,
+    /// New verdict (if provided). `Unresolved` is how a misclick is taken back.
+    pub verdict: Option<Verdict>,
+    /// Relevance window to set (None leaves unchanged, Some(None) clears it — which is refused
+    /// unless a scoped ancestor still supplies one).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub time_scope: Option<Option<TimeScope>>,
+    /// Verdict Window to set (None leaves unchanged, Some(None) clears it back to inheriting).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub verdict_window: Option<Option<DurationSpec>>,
+    /// New parent entity type for re-parenting (must be set together with parent_id).
+    pub parent_type: Option<String>,
+    /// New parent entity id for re-parenting (must be set together with parent_type).
+    pub parent_id: Option<NodeId>,
+    /// New sort position among siblings (for sibling reordering).
+    pub position: Option<i64>,
+    /// New private flag, if changing.
+    pub is_private: Option<bool>,
+}
+
+/// An agentic brief's **priority**: four levels, most urgent first — `MW`, then `A`, `B`, `C`.
+///
+/// Ordered by urgency, so sorting ascending puts the most urgent first. Stored as its
+/// [`rank`](Self::rank), 0 for `MW` through 3 for `C`, and spelled by its label everywhere else.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+)]
+pub enum AgenticPriority {
+    /// Most urgent.
+    #[serde(rename = "MW")]
+    Mw,
+    /// Second.
+    A,
+    /// Third.
+    B,
+    /// Least urgent.
+    C,
+}
+
+impl AgenticPriority {
+    /// The stored value: 0 for `MW` through 3 for `C`.
+    pub fn rank(self) -> i64 {
+        match self {
+            Self::Mw => 0,
+            Self::A => 1,
+            Self::B => 2,
+            Self::C => 3,
+        }
+    }
+
+    /// The priority a stored value names. The CHECK constraint keeps the column in 0–3, so
+    /// anything else is a row this app did not write, read as no priority rather than a wrong one.
+    pub fn from_rank(rank: i64) -> Option<Self> {
+        match rank {
+            0 => Some(Self::Mw),
+            1 => Some(Self::A),
+            2 => Some(Self::B),
+            3 => Some(Self::C),
+            _ => None,
+        }
+    }
+}
+
+/// A Task's **agentic brief**: what an agent reads about the work in place of an issue tracker's
+/// entry. The Task's own and **never inherited** — unlike the Agentic flag, which a Task reads off
+/// its nearest flagged ancestor. Stored whether or not the Task currently reads as Agentic, and
+/// shown while it does.
+///
+/// Every text field is plain text, empty when unset. **Spec** is the one that matters to the rules:
+/// a Task that reads as Agentic cannot be started without one.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct AgenticBrief {
+    /// `MW`, `A`, `B` or `C`, most urgent first; `None` for no priority set.
+    #[serde(default)]
+    pub priority: Option<AgenticPriority>,
+    /// What to build: the requirement the agent works to. Mandatory before an agentic Task starts.
+    #[serde(default)]
+    pub spec: String,
+    /// How to build it: the approach settled so far.
+    #[serde(default)]
+    pub design: String,
+    /// How to tell it is done.
+    #[serde(default)]
+    pub acceptance: String,
+    /// Anything else the agent should know.
+    #[serde(default)]
+    pub notes: String,
+}
+
+impl AgenticBrief {
+    /// Whether the brief carries a Spec — anything but whitespace.
+    pub fn has_spec(&self) -> bool {
+        !self.spec.trim().is_empty()
+    }
+}
+
+/// A Task's **Expectation template**: what the wait its completion spawns starts out as. Optional,
+/// and only kept while the Task is Asynchronous — an asynchronous Task without one spawns nothing.
+///
+/// Thinner than an Expectation on purpose — only what a wait needs up front. No status: a status
+/// exists only once the wait does. No parent: the spawned wait hangs under its Task.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct AsyncTemplate {
+    /// The spawned wait's title.
+    pub title: String,
+    /// Tags the spawned wait carries.
+    #[serde(default)]
+    pub tag_ids: Vec<i64>,
+    /// The spawned wait's Time Scope **rule**: N of a kind, counted from the day the wait begins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_scope: Option<DurationSpec>,
+    /// How often to check on the spawned wait; the first check falls one interval after it begins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_every: Option<DurationSpec>,
+}
+
+/// A Task's **spawned** Expectation — the virtual wait that exists while an Asynchronous Task with a
+/// template is done. Its state is an **overlay** keyed by the Task, written only when the wait
+/// itself is changed; with none written it is pending and live. Everything else the wait shows is
+/// read from the Task's template.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SpawnedWait {
+    /// The Task that spawned it.
+    pub task_id: i64,
+    /// When the Task was completed — when the wait began. `None` for a Task whose completion time
+    /// was never recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spawned_at: Option<NaiveDateTime>,
+    /// Pending or Released.
+    pub status: ExpectationStatus,
+    /// Live or Archived.
+    pub archival: ExpectationArchival,
+    /// When its last check was made, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_check_at: Option<NaiveDateTime>,
+}
+
+/// Request body for changing a spawned wait: release it, take the release back, or archive it.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct UpdateSpawnedWaitRequest {
+    /// New status (if provided).
+    pub status: Option<ExpectationStatus>,
+    /// New archival (if provided).
+    pub archival: Option<ExpectationArchival>,
+}
+
+/// Identifies an expectation row by its primary key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ExpectationId(pub i64);
+
+impl From<i64> for ExpectationId {
+    fn from(value: i64) -> Self {
+        Self(value)
+    }
+}
+impl From<ExpectationId> for i64 {
+    fn from(id: ExpectationId) -> Self {
+        id.0
+    }
+}
+
+/// Where a wait stands: still being waited on, or over.
+///
+/// Two states and no third. An Expectation is not an action item, so it has no "in progress":
+/// the thing it waits on happens somewhere else, and the only event on this side is noticing that
+/// it has. **Released** is what unblocks the Tasks depending on it.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ExpectationStatus {
+    /// Still waited on. The default, and what blocks dependents.
+    #[default]
+    Pending,
+    /// The wait is over; dependents are free to go.
+    Released,
+}
+
+impl ExpectationStatus {
+    /// Returns the database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Released => "released",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "pending" => Some(Self::Pending),
+            "released" => Some(Self::Released),
+            _ => None,
+        }
+    }
+}
+
+/// Whether an Expectation is still in play: the usual archive, **orthogonal** to its status.
+///
+/// A wait can be put away without pretending it was released — the reply that will never come —
+/// so this is its own column rather than a third status.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ExpectationArchival {
+    /// In play. The default.
+    #[default]
+    Live,
+    /// Put away. Shown under All only.
+    Archived,
+}
+
+impl ExpectationArchival {
+    /// Returns the database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Live => "live",
+            Self::Archived => "archived",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "live" => Some(Self::Live),
+            "archived" => Some(Self::Archived),
+            _ => None,
+        }
+    }
+}
+
+/// An expectation row as returned from the database: a **wait** that Tasks can depend on.
+///
+/// It carries a Time Scope and tags, like a Task. Note what is absent, since the absences are the
+/// design: no Plan and no On-exit behaviour (a wait is not something you schedule, and it is never
+/// Missed), no block reasons and no dependencies of its own — it depends on nothing,
+/// only Tasks depend on it. Beside its Time Scope it carries the optional **Check every**.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct Expectation {
+    /// Primary key for a stored wait, or the UUID of a derived one (a Task's spawned wait, or a
+    /// delegated Task's wait on its delegate).
+    pub id: NodeId,
+    /// Display title.
+    pub title: String,
+    /// Type of the parent entity.
+    pub parent_type: String,
+    /// Id of the parent entity: a stored row, or a derived one (a Habit occurrence).
+    pub parent_id: NodeId,
+    /// Pending or Released.
+    pub status: ExpectationStatus,
+    /// Live or Archived, independently of the status.
+    pub archival: ExpectationArchival,
+    /// Relevance window, if set. Its own only: a wait's window is validated against its nearest
+    /// scoped ancestor's, but not inherited from it.
+    pub time_scope: Option<TimeScope>,
+    /// Tag domain ids attached to this expectation.
+    pub tag_ids: Vec<i64>,
+    /// How often to look in on it, if ever — a counted Duration. While it is set and the wait is
+    /// pending, a virtual "check on it" task is due at [`Self::check_starting`], and after each
+    /// check one interval after that check was made. Nothing is stored for a check but its time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_every: Option<DurationSpec>,
+    /// When the first check falls due; set to the moment Check every is first given, unless the
+    /// request names another.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_starting: Option<NaiveDateTime>,
+    /// When the last check was made, if any. The next falls due one interval after it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_check_at: Option<NaiveDateTime>,
+    /// Sort position among siblings.
+    pub position: i64,
+    /// Whether this node is private (hidden unless Private Mode is on).
+    pub is_private: bool,
+    /// Whether an **agent** raised this wait on the agentic Task it hangs under: "the agent is
+    /// waiting on you" — or, when it is not a [`question`](Self::question), waiting on something
+    /// else, like CI. Released like any wait; a question wait only with an answer.
+    #[serde(default)]
+    pub agentic: bool,
+    /// An agentic wait's note: the agent's question, or what it is waiting for. `None` for none.
+    #[serde(default)]
+    pub agentic_note: Option<String>,
+    /// Whether an agentic wait is a **question** — the agent asking the user — rather than a wait
+    /// on something non-human, like CI. A question wait is released only with an [`answer`]
+    /// (`Self::answer`). Meaningless on a wait that is not agentic.
+    #[serde(default = "question_by_default")]
+    pub question: bool,
+    /// The answer a question wait was released with, or is being given. `None` for none.
+    #[serde(default)]
+    pub answer: Option<String>,
+    /// Where the row came from: made by hand, or derived from a Task (ADR 0008).
+    #[serde(default)]
+    pub origin: Origin,
+}
+
+/// An agentic wait is a question unless it says otherwise.
+fn question_by_default() -> bool {
+    true
+}
+
+/// Request body for creating an expectation.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct CreateExpectationRequest {
+    /// Display title.
+    pub title: String,
+    /// Parent entity type.
+    pub parent_type: String,
+    /// Parent entity id.
+    pub parent_id: NodeId,
+    /// How often to check on it. Omitted, it is never checked.
+    #[serde(default)]
+    pub check_every: Option<DurationSpec>,
+    /// When the first check falls due. Omitted with a Check every, it is the moment of creation.
+    #[serde(default)]
+    pub check_starting: Option<NaiveDateTime>,
+    /// Initial relevance window. Omitted, the expectation has none.
+    #[serde(default)]
+    pub time_scope: Option<TimeScope>,
+    /// Whether the wait is agentic — refused unless the parent is a Task that reads as Agentic.
+    #[serde(default)]
+    pub agentic: bool,
+    /// An agentic wait's note.
+    #[serde(default)]
+    pub agentic_note: Option<String>,
+    /// Whether an agentic wait is a question for the user. Omitted, it is.
+    #[serde(default)]
+    pub question: Option<bool>,
+}
+
+/// Request body for updating an expectation.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct UpdateExpectationRequest {
+    /// New title (if provided).
+    pub title: Option<String>,
+    /// New status (if provided). Releasing is a write of `Released`; `Pending` takes it back.
+    pub status: Option<ExpectationStatus>,
+    /// New archival (if provided).
+    pub archival: Option<ExpectationArchival>,
+    /// Check every to set (None leaves unchanged, Some(None) stops checking).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub check_every: Option<Option<DurationSpec>>,
+    /// When the first check falls due (None leaves unchanged). Setting a Check every with no
+    /// Starting of its own starts it now.
+    #[serde(default)]
+    pub check_starting: Option<NaiveDateTime>,
+    /// Relevance window to set (None leaves unchanged, Some(None) clears it).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub time_scope: Option<Option<TimeScope>>,
+    /// New parent entity type for re-parenting (must be set together with parent_id).
+    pub parent_type: Option<String>,
+    /// New parent entity id for re-parenting (must be set together with parent_type).
+    pub parent_id: Option<NodeId>,
+    /// New sort position among siblings (for sibling reordering).
+    pub position: Option<i64>,
+    /// New private flag, if changing.
+    pub is_private: Option<bool>,
+    /// Whether the wait is agentic (None leaves it unchanged). Refused as `true` unless the wait
+    /// ends up directly under a Task that reads as Agentic.
+    pub agentic: Option<bool>,
+    /// The agentic note to set (None leaves it unchanged, Some(None) clears it).
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub agentic_note: Option<Option<String>>,
+    /// Whether the agentic wait is a question (None leaves it unchanged).
+    #[serde(default)]
+    pub question: Option<bool>,
+    /// The answer to set (None leaves it unchanged, Some(None) clears it). Releasing a question
+    /// wait needs one, given here or already stored.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub answer: Option<Option<String>>,
+}
+
+#[cfg(test)]
+mod commitment_tests;
+#[cfg(test)]
+mod expectation_tests;
