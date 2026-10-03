@@ -80,8 +80,9 @@ Two cases need saying:
 The left-hand pane holds the **relevant** work that is **unplanned, or planned to the parent
 scope**:
 
-- **Unplanned and relevant.** A Task with **no Plan** whose **effective** Time Scope overlaps the
-  scope — a task's own window, or the nearest scoped ancestor's when it has none. An **Unscoped**
+- **Unplanned and relevant.** A Task that reads **no Plan** — none of its own, and nothing above it
+  planned either — whose **effective** Time Scope overlaps the scope: a task's own window, or the
+  nearest scoped ancestor's when it has none. An **Unscoped**
   Task is always here, because the model defines Unscoped as always relevant and a planning pass is
   exactly where always-relevant work should be offered.
 - **Planned to the parent scope.** A Task whose Plan **is** the parent — committed a rung up, not
@@ -116,6 +117,14 @@ equality, so a Task pinned to Tuesday is part of what this week holds. A week be
 not show its own days' work would under-report the load it exists to report. Once the pane is split,
 work the split cannot place in a bucket leaves this pane for the candidates, where the gestures that
 place it are.
+
+**A Task is placed by its effective Plan** (ruled by the user, 2026-10-03; see [*Plan
+inheritance*](time-scopes.md#plan-inheritance)). One with no Plan of its own that inherits one sits
+where the inherited Plan says, in its slot with its parent: in the scope's pane, a bucket of the
+split, or among the work planned to the parent scope. It is not offered among the unplanned
+candidates. One whose inherited Plan came to nothing inside its window is in neither pane: it is not
+unplanned, and the board flags it. Planning it writes a Plan of its own, which must sit inside the
+one it inherits.
 
 A Task planned **somewhere else** — neither in this scope nor to its parent — is in neither pane.
 It is not unscheduled, so it is not a candidate, and it is not in this scope, so it is not what the
@@ -210,7 +219,10 @@ counted in the toast — the refusals, a Backlog a plan took a task out of, and 
 that carried its rows outside the scope being filled and so off the pane.
 
 **A containment failure refuses the move**, with a toast naming the bound. `Plan ⊆ TimeScope` and
-`child.Plan ⊆ parent.Plan` both hold as written (see [Time Scopes & Planning](time-scopes.md)), and
+`child.Plan ⊆ parent.Plan` both hold as written (see [Time Scopes & Planning](time-scopes.md)): the
+second reads the Plan the row inherits as the board serves it, so the view climbs nothing itself.
+Planning a row whose subtasks hold their own Plans outside the new one first gets the clamp-or-cancel
+prompt (see *Plan inheritance* there), and its answer rides the same Gesture. And
 the task's own window is **not** widened on the user's behalf: a window is a statement about when
 work *matters*, and changing one is an editing decision, made in the editor.
 
@@ -218,14 +230,14 @@ work *matters*, and changing one is an editing decision, made in the editor.
 **Overdue** — unfinished, not archived, and past the end of its due; by default, a Keep Overdue task
 whose own window has passed (see [Time Scopes & Planning](time-scopes.md), *Due scope and the
 Overdue flag*). That is exactly when it needs rescheduling, and a passed due can only ever refuse
-now and later, so it may be planned into any scope; its window stays as it was. The second bound still holds — it answers to its nearest planned ancestor's Plan like any
+now and later, so it may be planned into any scope; its window stays as it was. The second bound still holds — it answers to the Plan it inherits like any
 task. A task that lapsed **Done** or **Missed** is not exempt, and nor is a Habit occurrence, which has
 no due yet and so is never Overdue: it stays within its iteration's window. The exemption is about what a
 move may do, not about where the task is offered: which scopes show it as a candidate is still
 *The candidates*' rule, unchanged.
 
 The two bounds are checked in the order the backend checks them — the task's own Time Scope first,
-then the nearest planned ancestor's Plan — so the view's refusal and the backend's cannot disagree
+then the Plan it inherits, as the board serves it — so the view's refusal and the backend's cannot disagree
 about which bound stopped a move; both lift the first for an Overdue task. The check is made **before** the write purely so the message can
 be specific; the backend enforces the same two rules on the way in, and a refusal that somehow
 reaches it is still refused, just less precisely. A bound whose window has not resolved yet refuses

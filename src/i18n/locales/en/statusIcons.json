@@ -1,6 +1,9 @@
 {
   "scope": "Scope: {{value}}",
   "plan": "Plan: {{value}}",
+  "planInherited": "Plan, inherited from {{source}}: {{value}}",
+  "planOutsideInherited": "Plan: {{value}} — outside the plan it inherits",
+  "planEmpty": "The plan above it ({{source}}) doesn't meet its time scope",
   "overdue": "Overdue",
   "archived": "Archived",
   "archivedConflict": "Archived (overrode a manually-set Frozen status)",

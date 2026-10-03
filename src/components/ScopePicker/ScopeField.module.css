@@ -123,3 +123,15 @@
 .numberInput {
   width: 4rem;
 }
+
+/* A Plan the Task inherits rather than holds: read-only, and quieter than an own one. */
+.inherited {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* A plan rule the Task breaks — one that arose outside the writer, as an undo can leave. */
+.conflict {
+  color: var(--danger);
+  font-size: var(--text-sm);
+}

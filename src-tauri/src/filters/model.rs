@@ -372,9 +372,9 @@ pub struct NodeFacts {
     /// Derived window position, for the kinds that have a window.
     #[serde(default)]
     pub timing: Option<Timing>,
-    /// Where the Task's **own** Plan stands at the same instant, for a Task that has one. `None`
-    /// for an unplanned Task and for every other kind. What an ancestor's Plan says is not a fact
-    /// of this node: the filter walk carries it down (see [`super::rules::is_planned_ahead`]).
+    /// Where the Task's **effective** Plan stands at the same instant — its own, or the one it
+    /// inherits (see [`super::rules::is_planned_ahead`]). `None` for a Task that reads no Plan and
+    /// for every other kind.
     #[serde(default)]
     pub plan_timing: Option<Timing>,
     /// Effective Archival is Archived — which a forced Resolution can set regardless of the stored
@@ -435,7 +435,7 @@ pub struct NodeFacts {
     /// The node ids a Task depends on, met or not — what a **Depends on** pill matches.
     #[serde(default)]
     pub dependencies: Vec<String>,
-    /// Whether the node has a Plan of its own.
+    /// Whether the node reads a Plan — its own, or one it inherits.
     #[serde(default)]
     pub planned: bool,
     /// Whether its lapse settled it as **Missed** — the Resolution that reads `lapsed` on the

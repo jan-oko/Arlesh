@@ -1275,8 +1275,8 @@
       ]
     },
     {
-      "name": "start reads an unplanned task by its nearest planned ancestor task",
-      "spec": "mindmap-view.md / filtering-logic.md — under Start an unplanned Task is read by its nearest planned ancestor Task's Plan (interim, pending Plan inheritance), while a Task with a Plan of its own answers to it alone; the rule fails a Task's own match rather than gating its subtree.",
+      "name": "start reads a task by its effective plan, inherited or its own",
+      "spec": "time-scopes.md, Plan inheritance / filtering-logic.md — Start reads where a Task's effective Plan stands, which the backend derives: a Task with no Plan of its own reads the one it inherits (its planTiming here is that Plan's), and one with its own answers to that alone. The rule fails a Task's own match rather than gating its subtree.",
       "filter": {
         "preset": "start"
       },
@@ -1296,8 +1296,8 @@
       "commitments": []
     },
     {
-      "name": "start keeps a due check task under a wait whose task is planned ahead",
-      "spec": "resources.md, Expectations / mindmap-view.md — a wait cuts Plan inheritance: its check task has no Plan and answers to its own due time, so a Task planned for next week does not hide the check due today beneath its wait. The wait itself shows as well: by default Start shows a pending wait whether or not it is checked on, and no Plan hides it.",
+      "name": "start hides a due check task under a wait whose task is planned ahead",
+      "spec": "time-scopes.md, Plan inheritance — the chain climbs through a wait and its check tasks inherit fully (ruled by the user, 2026-10-03: \"Inherit fully\"), so a check due today under a Task planned for next week reads that Plan and Start hides it. The wait itself shows: by default Start shows a pending wait whether or not it is checked on, and a wait carries no Plan to hide it by.",
       "filter": {
         "preset": "start"
       },
@@ -1305,12 +1305,9 @@
       "mindmap": [
         "domain-plan-waits",
         "expectation-wait-ahead",
-        "task-check-under-wait",
         "task-future-waiter"
       ],
-      "list": [
-        "task-check-under-wait"
-      ],
+      "list": [],
       "commitments": [],
       "expectations": [
         "expectation-wait-ahead"
@@ -3293,7 +3290,8 @@
                 {
                   "id": "task-inherits-future",
                   "kind": "task",
-                  "status": "todo"
+                  "status": "todo",
+                  "planTiming": "pending"
                 },
                 {
                   "id": "task-own-plan-now",
@@ -3313,11 +3311,13 @@
                   "id": "task-unplanned-middle",
                   "kind": "task",
                   "status": "todo",
+                  "planTiming": "pending",
                   "children": [
                     {
                       "id": "task-grandchild",
                       "kind": "task",
-                      "status": "todo"
+                      "status": "todo",
+                      "planTiming": "pending"
                     }
                   ]
                 }
@@ -3332,7 +3332,8 @@
                 {
                   "id": "task-inherits-now",
                   "kind": "task",
-                  "status": "todo"
+                  "status": "todo",
+                  "planTiming": "active"
                 }
               ]
             }
@@ -3364,7 +3365,8 @@
                     {
                       "id": "task-check-under-wait",
                       "kind": "task",
-                      "status": "todo"
+                      "status": "todo",
+                      "planTiming": "pending"
                     }
                   ]
                 }

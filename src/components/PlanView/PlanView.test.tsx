@@ -127,6 +127,8 @@ const updateTask = vi.fn((_id: number | string, _request: unknown) => Promise.re
 vi.mock("@/api/tasks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/tasks")>()),
   updateTask: (id: number | string, request: unknown) => updateTask(id, request),
+  // Nothing below the rows holds a Plan of its own, so the clamp prompt has nothing to ask.
+  planContainmentConflicts: () => Promise.resolve([]),
 }));
 
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
@@ -280,13 +282,15 @@ describe("moving a task across", () => {
     expect(screen.getByText("planView:refusedTimeScope")).toBeInTheDocument();
   });
 
-  it("refuses a move that escapes the parent task's Plan", async () => {
-    const parent = n("task-9", "task", { plan: { start_id: DAY_ID, end_id: DAY_ID } });
-    mockRows([row(n("task-1", "task"), [parent])]);
+  it("refuses a move that escapes the Plan it inherits", async () => {
+    // Planned into the week the parent is planned into, which is the bound the board serves it:
+    // taking it back out to the month would leave the parent's Plan.
+    const week = { start_id: WEEK_ID, end_id: WEEK_ID };
+    mockRows([row(n("task-1", "task", { plan: week, inheritedPlan: week }))]);
     await renderPlanView();
 
     await act(async () => {
-      fireEvent.click(screen.getByLabelText("planInto"));
+      fireEvent.click(screen.getByLabelText("unplan"));
     });
     await settle();
     expect(updateTask).not.toHaveBeenCalled();

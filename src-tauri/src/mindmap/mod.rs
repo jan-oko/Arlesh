@@ -13,6 +13,7 @@
 //! the frontend still builds the tree from the rows' parent links.
 
 pub mod model;
+pub mod plan_guard;
 pub mod rules;
 pub mod sources;
 

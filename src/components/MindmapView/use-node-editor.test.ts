@@ -1,3 +1,4 @@
+import { useScopeClampStore } from "@/stores/use-scope-clamp-store";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import { renderHook, act, waitFor } from "@testing-library/react";
@@ -138,11 +139,11 @@ describe("useNodeEditor — checkScopeClamp confirm", () => {
     act(() => {
       decision = result.current.checkScopeClamp("task", 5, { start_id: testKey(1), end_id: testKey(1) });
     });
-    await waitFor(() => expect(result.current.scopeClampRequest).not.toBeNull());
+    await waitFor(() => expect(useScopeClampStore.getState().request).not.toBeNull());
 
-    act(() => result.current.resolveScopeClamp(true));
+    act(() => useScopeClampStore.getState().answer(true));
     await expect(decision!).resolves.toBe(true);
-    expect(result.current.scopeClampRequest).toBeNull();
+    expect(useScopeClampStore.getState().request).toBeNull();
   });
 
   it("annotates conflicting descendants that were materialized from a flow", async () => {
@@ -154,9 +155,9 @@ describe("useNodeEditor — checkScopeClamp confirm", () => {
     const result = setup();
 
     act(() => { void result.current.checkScopeClamp("task", 5, { start_id: testKey(1), end_id: testKey(1) }); });
-    await waitFor(() => expect(result.current.scopeClampRequest).not.toBeNull());
+    await waitFor(() => expect(useScopeClampStore.getState().request).not.toBeNull());
 
-    expect(result.current.scopeClampRequest?.flowOrigins).toEqual({ "task-9": "Add Feature" });
+    expect(useScopeClampStore.getState().request?.flowOrigins).toEqual({ "task-9": "Add Feature" });
   });
 });
 

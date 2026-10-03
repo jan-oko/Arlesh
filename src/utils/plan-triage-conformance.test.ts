@@ -3,6 +3,7 @@ import corpusJson from "@conformance/plan-triage.json";
 import { fail, record, str } from "@/test/conformance-board";
 import type { ScopeKey } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
+import type { PlanConflict } from "@/api/mindmap";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { isNodeKind } from "@/utils/tree-layout";
@@ -41,14 +42,21 @@ function ids(value: unknown, what: string): string[] {
   return array(value, what).map((entry, index) => str(entry, `${what}[${index}]`));
 }
 
+/** The flag the board serves on a Task whose inherited Plan came to nothing inside its window. */
+const INHERITS_NOTHING: PlanConflict = "empty";
+
 /** One corpus node, drawn as the board draws it. */
 function node(raw: Record<string, unknown>, id: string, kind: NodeKind, what: string): MindmapNode {
   const timeScope = scope(raw.timeScope, `${what}.timeScope`);
   const plan = scope(raw.plan, `${what}.plan`);
+  const inheritedPlan = scope(raw.inheritedPlan, `${what}.inheritedPlan`);
   return {
     id, kind, title: id, position: 0, tagIds: [], children: [],
     ...(timeScope !== undefined ? { timeScope } : {}),
     ...(plan !== undefined ? { plan } : {}),
+    // The board's facts, as it serves them: the Plan it inherits, or that it came to nothing.
+    ...(inheritedPlan !== undefined ? { inheritedPlan } : {}),
+    ...(raw.emptyPlan === true ? { planConflict: INHERITS_NOTHING } : {}),
     ...(raw.overdue === true ? { overdue: true } : {}),
     ...(raw.virtual === true ? { virtual: true } : {}),
   };

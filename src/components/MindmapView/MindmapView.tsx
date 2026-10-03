@@ -49,7 +49,6 @@ import { flowTargetNodes, targetSelectionFor } from "@/utils/flow-target";
 import StartFlowModal, { type StartFlowData } from "@/components/StartFlowModal/StartFlowModal";
 import { startFlow, convertToFlow } from "@/api/flows";
 import ConvertToFlowModal from "@/components/ConvertToFlowModal/ConvertToFlowModal";
-import WarningConfirmModal from "@/components/WarningConfirmModal/WarningConfirmModal";
 import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/UnfinishedChildrenModal";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
@@ -177,7 +176,7 @@ export default function MindmapView() {
   const nodeEditor = useNodeEditor({ tree, allTasksAndGoals, reload });
   const {
     setEditorModal, allTags, domainNames, onDoubleClick,
-    confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
+    confirmScopeClamp,
   } = nodeEditor;
 
   // The targets the *create* and *start* paths offer. The open editor's own targets are derived
@@ -636,22 +635,6 @@ export default function MindmapView() {
 
       {planPrompt !== null && (
         <BacklogConfirmModal prompt={planPrompt} onConfirm={confirmClearPlan} onCancel={cancelPlanPrompt} />
-      )}
-
-      {scopeClampRequest !== null && (
-        <WarningConfirmModal
-          heading={t("warnings:scopeClampHeading", { count: scopeClampRequest.conflicts.length })}
-          consequences={scopeClampRequest.conflicts.map((c) => {
-            const item = t("warnings:scopeClampItem", {
-              type: c.node_type === "goal" ? t("nodeKinds:goal") : t("nodeKinds:task"),
-              id: c.node_id,
-            });
-            const flow = scopeClampRequest.flowOrigins[`${c.node_type}-${c.node_id}`];
-            return flow !== undefined ? t("warnings:scopeClampFromFlow", { item, flow }) : item;
-          })}
-          actions={[{ label: t("warnings:scopeClampAction"), variant: "primary", onClick: () => resolveScopeClamp(true) }]}
-          onCancel={() => resolveScopeClamp(false)}
-        />
       )}
 
       {deleteTargets !== null && (() => {
