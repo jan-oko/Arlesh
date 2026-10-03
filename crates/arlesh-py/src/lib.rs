@@ -16,6 +16,7 @@
 //! and `details` — which the Python half raises as the exception class for that kind.
 
 mod errors;
+mod mcp;
 mod opening;
 mod request;
 mod rules;
@@ -36,6 +37,8 @@ struct NativeDatabase {
     factory: SessionFactory,
     /// The database file, for what lives beside it (the agent capacity lock).
     path: Arc<PathBuf>,
+    /// The MCP endpoint this database serves, while it serves one.
+    serving: Arc<tokio::sync::Mutex<Option<mcp::Serving>>>,
 }
 
 #[pymethods]
@@ -58,13 +61,65 @@ impl NativeDatabase {
         Some(self.factory.client().to_string())
     }
 
-    /// Closes every connection, once calls still running have finished.
+    /// Serves the MCP endpoint over this database on loopback `host:port` (0 picks a free port),
+    /// and answers the port it bound. Refused on a read-only database, on a non-loopback host,
+    /// and while this database already serves one.
+    #[pyo3(signature = (host, port))]
+    fn serve_mcp<'py>(
+        &self,
+        py: Python<'py>,
+        host: String,
+        port: u16,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let factory = self.factory.clone();
+        let path = Arc::clone(&self.path);
+        let serving = Arc::clone(&self.serving);
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let mut slot = serving.lock().await;
+            if slot.is_some() {
+                return Err(raise(
+                    errors::Failure::new(
+                        arlesh_core::error::WireErrorKind::InvalidRequest,
+                        "this database already serves the MCP endpoint",
+                    )
+                    .with_details(serde_json::json!({ "reason": "already_serving" })),
+                ));
+            }
+            let (bound, running) = mcp::serve(factory, &path, &host, port)
+                .await
+                .map_err(raise)?;
+            *slot = Some(running);
+            Ok(bound)
+        })
+    }
+
+    /// Stops serving the MCP endpoint, if this database serves one.
+    fn stop_mcp<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let serving = Arc::clone(&self.serving);
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            stop(&serving).await;
+            Ok(())
+        })
+    }
+
+    /// Stops the MCP endpoint, if one is served, then closes every connection once calls still
+    /// running have finished.
     fn close<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let factory = self.factory.clone();
+        let serving = Arc::clone(&self.serving);
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            stop(&serving).await;
             factory.close().await;
             Ok(())
         })
+    }
+}
+
+/// Stops the endpoint in `serving`, if there is one.
+async fn stop(serving: &tokio::sync::Mutex<Option<mcp::Serving>>) {
+    let running = serving.lock().await.take();
+    if let Some(running) = running {
+        running.stop().await;
     }
 }
 
@@ -85,6 +140,7 @@ fn open(
         Ok(NativeDatabase {
             factory,
             path: Arc::new(path),
+            serving: Arc::new(tokio::sync::Mutex::new(None)),
         })
     })
 }

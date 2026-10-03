@@ -257,7 +257,14 @@ pub fn port() -> u16 {
 }
 
 /// Builds the axum router serving the MCP endpoint at `/mcp`.
-fn router(factory: SessionFactory, announce: Announce, capacity: AgentCapacity) -> axum::Router {
+///
+/// Public so that a host other than the desktop app — the Python bindings, under the FastAPI
+/// server — can serve the same endpoint over its own listener.
+pub fn router(
+    factory: SessionFactory,
+    announce: Announce,
+    capacity: AgentCapacity,
+) -> axum::Router {
     // `allowed_hosts` already defaults to loopback only. `allowed_origins` defaults to empty,
     // which *disables* Origin validation rather than enforcing it — so a page in the user's
     // browser could POST here. `enforce_origin_validation` rejects any request that carries an

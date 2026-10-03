@@ -126,8 +126,27 @@ class Database:
         return self._native.client
 
     async def close(self) -> None:
-        """Closes every connection, once calls still running have finished."""
+        """Stops the MCP endpoint if this database serves one, then closes every connection once
+        calls still running have finished."""
         await self._native.close()
+
+    async def serve_mcp(self, *, host: str = "127.0.0.1", port: int = 0) -> int:
+        """Serves Arlesh's MCP endpoint (at ``/mcp``) over this database, and answers the port it
+        bound — ``port=0`` picks a free one.
+
+        For a server that puts its own authentication in front: it binds a **loopback** address
+        only (anything else raises :class:`InvalidRequest`), and only a database opened for
+        writing serves it, since an agent's writes are journaled under this database's client.
+        It runs until :meth:`stop_mcp` or :meth:`close`.
+        """
+        try:
+            return await self._native.serve_mcp(host, port)
+        except _native.NativeError as error:
+            raise from_native(error) from None
+
+    async def stop_mcp(self) -> None:
+        """Stops serving the MCP endpoint. Does nothing when none is served."""
+        await self._native.stop_mcp()
 
     async def __aenter__(self) -> Self:
         return self

@@ -12,7 +12,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use arlesh_core::{
-    capacity::{AgentCapacity, CAPACITY_FILE},
+    capacity::AgentCapacity,
     database::session::{Db, SessionFactory, Transactional},
     domains::model::{CreateDomainRequest, DomainId, DomainSubtype, UpdateDomainRequest},
     duplicate::{duplicate_subtree, DuplicableKind},
@@ -604,10 +604,7 @@ fn now() -> NaiveDateTime {
 
 /// Whether the agent capacity lock beside the database at `path` is on.
 async fn at_capacity(path: &Path) -> bool {
-    let Some(directory) = path.parent() else {
-        return false;
-    };
-    AgentCapacity::open(directory.join(CAPACITY_FILE), Arc::new(|_| {}))
+    AgentCapacity::open(crate::mcp::capacity_file(path), Arc::new(|_| {}))
         .get()
         .await
         .at_capacity
