@@ -11,6 +11,8 @@
 
 pub mod agentic;
 pub mod compound;
+pub mod dependencies;
 pub mod lifecycle;
 pub mod review;
 pub mod scope;
+pub mod write;

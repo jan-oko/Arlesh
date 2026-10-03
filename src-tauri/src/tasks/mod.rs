@@ -48,6 +48,8 @@ use model::{
     GoalStatus, OnScopeExit, Status, Task, TaskArchival, TaskDependencyEdge, TaskId, TaskStatus,
     TaskWithBlockers, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
 };
+pub use rules::dependencies::dependency_name;
+use rules::write::{reject_backlog_with_plan, releases_compound};
 pub use scope_rules::{
     conflicts_for_new_time_scope, derive_all_scope_lifecycles, derive_scope_lifecycles,
     mark_waits_under_pending, nearest_scoped_ancestor_window, reparent_conflicts, wait_lifecycle,
@@ -89,22 +91,6 @@ fn on_scope_exit_column(
         return None;
     }
     Some(requested.unwrap_or(OnScopeExit::Keep).as_str())
-}
-
-/// Refuses a write that would leave a Task both backlogged and planned.
-///
-/// The invariant is `archival = Backlog ⇒ plan IS NULL`, and this is the single place it is
-/// enforced, for creates and updates alike. It is deliberately not a schema CHECK: the frontend
-/// answers this refusal by asking again with the Plan cleared, which reads as a prompt rather than
-/// as corrupt input.
-fn reject_backlog_with_plan(
-    archival: TaskArchival,
-    plan: &Option<TimeScope>,
-) -> Result<(), TaskError> {
-    if plan.is_some() && !archival.allows_plan() {
-        return Err(TaskError::BacklogWithPlan);
-    }
-    Ok(())
 }
 
 /// The millisecond timestamp a freshly inserted row takes as its sort position.
@@ -518,12 +504,6 @@ struct TaskWrite {
     position: i64,
     /// Final privacy flag.
     is_private: bool,
-}
-
-/// Whether `request` switches a compound `stored` Task's compound off — the one write that may
-/// name its status, since what it names is the derived status being kept.
-fn releases_compound(stored: &Task, request: &UpdateTaskRequest) -> bool {
-    stored.compound && request.compound == Some(false)
 }
 
 impl TaskWrite {
@@ -1699,15 +1679,6 @@ pub async fn get_task_with_blockers<M: SessionMode>(
     id: TaskId,
 ) -> Result<TaskWithBlockers, TaskError> {
     get_task_with_blockers_as(db, id, &HashMap::new(), &HashMap::new()).await
-}
-
-/// How a "Blocked by …" reason names the node it is blocked by: its **short id** from `names` —
-/// keyed as the board keys a node, `task-12` — or, for a node `names` does not hold, its id.
-pub fn dependency_name(names: &HashMap<String, String>, kind: &str, id: &NodeId) -> String {
-    names
-        .get(&format!("{kind}-{id}"))
-        .cloned()
-        .unwrap_or_else(|| id.to_string())
 }
 
 /// [`get_task_with_blockers`], reading each stored Task's status from `served` where it has one
