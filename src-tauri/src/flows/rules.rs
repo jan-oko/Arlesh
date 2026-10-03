@@ -13,6 +13,7 @@ pub mod cooldown;
 pub mod cycle_grid;
 pub mod fold;
 pub mod habits;
+pub mod items;
 pub mod occurrences;
 pub mod schedule;
 pub mod targets;

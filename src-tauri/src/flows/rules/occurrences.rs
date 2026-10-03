@@ -31,8 +31,8 @@ use crate::flows::{
     habits::{classify_iterations, expire_unanswered, instance_timing, Clock, SlotWindow},
     iteration_window,
     model::{
-        Flow, FlowDependency, FlowGoal, FlowId, FlowItemCycle, FlowRecurrence, FlowTask,
-        HabitIteration, InstanceTiming, IterationStatus, MissPolicy,
+        Flow, FlowCommitment, FlowDependency, FlowExpectation, FlowGoal, FlowId, FlowItemCycle,
+        FlowRecurrence, FlowTask, HabitIteration, InstanceTiming, IterationStatus, MissPolicy,
     },
     parse_clock, resolve_cycle, resolve_root_plan, target_parent_type, verdict_deadlines,
     whole_scope_plan,
@@ -47,6 +47,7 @@ use crate::{
         overlay::{CommitmentOverlay, GoalOverlay, HabitOverlays, TaskOverlay},
         registry,
         relations::TagDifferences,
+        wait_overlay::ExpectationOverlay,
     },
     scopes::{key::ScopeKey, resolve::Bounds},
     tasks::{
@@ -55,8 +56,9 @@ use crate::{
             Resolution, Timing,
         },
         model::{
-            Commitment, Delegate, Goal, OnScopeExit, Status, Task, TaskArchival,
-            TaskDependencyEdge, TimeScope, Verdict,
+            Commitment, Delegate, DurationSpec, Expectation, ExpectationArchival,
+            ExpectationStatus, Goal, OnScopeExit, Status, Task, TaskArchival, TaskDependencyEdge,
+            TimeScope, Verdict,
         },
         rules::agentic::AgenticIndex,
     },
@@ -78,6 +80,8 @@ pub struct DerivedRows {
     pub goals: Vec<Goal>,
     /// Derived Commitments.
     pub commitments: Vec<Commitment>,
+    /// Derived waits: each occurrence of a wait item.
+    pub expectations: Vec<Expectation>,
     /// One lifecycle per derived row.
     pub lifecycles: Vec<ItemLifecycle>,
     /// Each derived Task's and Goal's effective block reasons, in order.
@@ -96,6 +100,7 @@ impl DerivedRows {
         self.tasks.extend(other.tasks);
         self.goals.extend(other.goals);
         self.commitments.extend(other.commitments);
+        self.expectations.extend(other.expectations);
         self.lifecycles.extend(other.lifecycles);
         self.block_reasons.extend(other.block_reasons);
         self.dependencies.extend(other.dependencies);
@@ -132,6 +137,8 @@ pub(crate) fn effective_tags(template: &[i64], differences: Option<&Vec<(i64, bo
 pub(in crate::flows) struct Template {
     pub(in crate::flows) goals: HashMap<i64, FlowGoal>,
     pub(in crate::flows) tasks: HashMap<i64, FlowTask>,
+    pub(in crate::flows) commitments: HashMap<i64, FlowCommitment>,
+    pub(in crate::flows) expectations: HashMap<i64, FlowExpectation>,
     /// Each item's pairs, in position order; an item with none is absent.
     pub(in crate::flows) cycles: HashMap<(String, i64), Vec<FlowItemCycle>>,
 }
@@ -157,6 +164,14 @@ impl Template {
                 .tasks
                 .get(&item.item_id)
                 .map(|task| (&task.parent_type, task.parent_id))?,
+            TemplateKind::FlowCommitment => self
+                .commitments
+                .get(&item.item_id)
+                .map(|commitment| (&commitment.parent_type, commitment.parent_id))?,
+            TemplateKind::FlowExpectation => self
+                .expectations
+                .get(&item.item_id)
+                .map(|wait| (&wait.parent_type, wait.parent_id))?,
             TemplateKind::FlowRoot => return None,
         };
         let parent = TemplateKind::from_db(parent_type)?;
@@ -165,6 +180,8 @@ impl Template {
         let known = match parent {
             TemplateKind::FlowGoal => self.goals.contains_key(&parent_id),
             TemplateKind::FlowTask => self.tasks.contains_key(&parent_id),
+            TemplateKind::FlowCommitment => self.commitments.contains_key(&parent_id),
+            TemplateKind::FlowExpectation => self.expectations.contains_key(&parent_id),
             TemplateKind::FlowRoot => false,
         };
         known.then_some(TemplateItem {
@@ -174,29 +191,16 @@ impl Template {
     }
 }
 
-/// A template as read: its goal and task items, and each item's cycle pairs in position order.
-pub(in crate::flows) type TemplateParts = (
-    Vec<FlowGoal>,
-    Vec<FlowTask>,
-    HashMap<(String, i64), Vec<FlowItemCycle>>,
-);
-
 /// One occurrence within an iteration, as its template item and cycle pair.
 pub(in crate::flows) type InstanceKey = (TemplateItem, i64);
 
-/// [`occurrence_parents`] from a template already read: its goal and task items, and each item's
-/// cycle pairs in position order.
+/// [`Template::occurrence_parents`] from a template already read.
 pub(in crate::flows) fn occurrence_parents_of(
     flow_id: FlowId,
-    (goals, tasks, cycles): TemplateParts,
+    template: &Template,
     keys: &[InstanceKey],
 ) -> HashMap<InstanceKey, InstanceKey> {
-    Template {
-        goals: goals.into_iter().map(|goal| (goal.id, goal)).collect(),
-        tasks: tasks.into_iter().map(|task| (task.id, task)).collect(),
-        cycles,
-    }
-    .occurrence_parents(flow_id, keys)
+    template.occurrence_parents(flow_id, keys)
 }
 
 impl Template {
@@ -279,6 +283,11 @@ pub(in crate::flows) struct Iteration<'a> {
     pub(in crate::flows) cooling_until: Option<NaiveDateTime>,
     /// What each compound occurrence reads as, derived by [`super::compound_readings`].
     pub(in crate::flows) readings: &'a Readings,
+    /// The iteration's own window, as a Time Scope — what a Commitment or wait item with no Cycle
+    /// Scope of its own is over — or `None` for an Unscoped Habit's.
+    pub(in crate::flows) window: Option<TimeScope>,
+    /// When each wait item occurrence was last checked on, by its node key.
+    pub(in crate::flows) last_checks: &'a HashMap<String, NaiveDateTime>,
     /// Whether these rows are **provisional**: drawn before the iteration is classified, to work
     /// out its compound occurrences' statuses on. Nothing in them has lapsed or expired — what
     /// would follow only from the iteration's window passing must not feed back into whether it
@@ -315,6 +324,8 @@ pub(in crate::flows) struct LoadedHabit {
     /// Every template item an iteration draws, as `(item type, item id)`: its goal items, then
     /// its task items, each in list order.
     pub(in crate::flows) instance_items: Vec<(String, i64)>,
+    /// When each wait item occurrence was last checked on, by its node key.
+    pub(in crate::flows) last_checks: HashMap<String, NaiveDateTime>,
 }
 
 impl LoadedHabit {
@@ -387,6 +398,8 @@ impl LoadedHabit {
             host_agentic: self.host_agentic,
             cooling_until: None,
             readings: &readings,
+            window: window.as_ref().map(|(window, _)| window.clone()),
+            last_checks: &self.last_checks,
             provisional: true,
         };
         build_iteration(
@@ -650,6 +663,45 @@ pub(in crate::flows) fn done_of(overlays: &HabitOverlays, node_key: &str) -> Opt
                 })
                 .map(|overlay| overlay.resolved_at)
         })
+        .or_else(|| settled_item_at(overlays, node_key))
+}
+
+/// When a **Commitment** or **wait** item's occurrence was settled — a verdict recorded, kept or
+/// broken, or the wait released — which is when it counts as done for its iteration (ruled by the
+/// user, 2026-10-03). `Some`, with its instant if known, while it is settled and not archived by
+/// hand. A commitment Habit's root is never settled here: its verdict finishes the iteration by
+/// another road ([`verdict_instants`]).
+pub(in crate::flows) fn settled_item_at(
+    overlays: &HabitOverlays,
+    node_key: &str,
+) -> Option<Option<i64>> {
+    let item = OccurrenceKey::parse(node_key)?.item.item_type;
+    match item {
+        TemplateKind::FlowCommitment => overlays
+            .commitments
+            .get(node_key)
+            .filter(|overlay| {
+                overlay.tombstone.is_none()
+                    && overlay
+                        .verdict
+                        .as_deref()
+                        .and_then(Verdict::from_db)
+                        .is_some_and(verdict_finishes)
+            })
+            .map(|overlay| overlay.resolved_at),
+        TemplateKind::FlowExpectation => overlays
+            .expectations
+            .get(node_key)
+            .filter(|overlay| {
+                overlay.archival.as_deref() != Some("archived")
+                    && overlay.status.as_deref() == Some("released")
+            })
+            .map(|overlay| {
+                crate::tasks::waits::instant_from_column(overlay.released_at.clone())
+                    .map(|at| at.and_utc().timestamp_millis())
+            }),
+        _ => None,
+    }
 }
 
 /// Maps each slot whose iteration is **done** to the instant it was: every one of its instances
@@ -746,6 +798,10 @@ pub(in crate::flows) fn archived_by_hand(overlays: &HabitOverlays, node_key: &st
             .commitments
             .get(node_key)
             .is_some_and(|overlay| archived(&overlay.tombstone))
+        || overlays
+            .expectations
+            .get(node_key)
+            .is_some_and(|overlay| archived(&overlay.archival))
 }
 
 /// The kind a template item's occurrences are, for the flow's Instance Type.
@@ -753,6 +809,8 @@ pub(in crate::flows) fn occurrence_kind(flow: &Flow, item: TemplateKind) -> &'st
     match item {
         TemplateKind::FlowGoal => "goal",
         TemplateKind::FlowTask => "task",
+        TemplateKind::FlowCommitment => "commitment",
+        TemplateKind::FlowExpectation => "expectation",
         TemplateKind::FlowRoot => match flow.instance_type.as_str() {
             "goal" => "goal",
             "commitment" => "commitment",
@@ -894,6 +952,26 @@ pub(in crate::flows) fn build_iteration(
                 task.is_private,
                 &task.template,
             )
+        }))
+        .chain(template.commitments.values().map(|commitment| {
+            (
+                TemplateKind::FlowCommitment,
+                commitment.id,
+                &commitment.title,
+                commitment.position,
+                commitment.is_private,
+                &commitment.template,
+            )
+        }))
+        .chain(template.expectations.values().map(|wait| {
+            (
+                TemplateKind::FlowExpectation,
+                wait.id,
+                &wait.title,
+                wait.position,
+                wait.is_private,
+                &wait.template,
+            )
         }));
     let mut items: Vec<_> = items.collect();
     items.sort_by_key(|(kind, id, _, position, _, _)| (*position, *kind, *id));
@@ -927,7 +1005,13 @@ pub(in crate::flows) fn build_iteration(
                     (Some(resolved.time_scope), resolved.plan, bounds, due)
                 }
                 None => (
-                    None,
+                    // A Commitment or a wait is over a window of its own: the iteration's, when
+                    // no Cycle Scope gives it one (ruled by the user, 2026-10-03).
+                    if over_a_window(item_type) {
+                        context.window.clone()
+                    } else {
+                        None
+                    },
                     whole_scope_plan(pair, context.window_start)?,
                     (context.slot.start, context.slot.end),
                     context.due,
@@ -970,6 +1054,7 @@ pub(in crate::flows) fn build_iteration(
     let aside = held_by_an_archive(&occurrences, overlays);
     let kinds = occurrence_kinds(&occurrences, overlays, context.host_agentic);
     let compound = compound_items(flow, template.tasks.values());
+    let verdict_windows = verdict_windows(flow, clock, template, &occurrences);
     for occurrence in occurrences {
         registry::remember(&DerivedKey::Occurrence(occurrence.key));
         let node_key = occurrence.key.node_key();
@@ -1001,6 +1086,24 @@ pub(in crate::flows) fn build_iteration(
                 rows.goals.push(goal);
                 rows.lifecycles.push(lifecycle);
             }
+            "commitment" if occurrence.key.item.item_type == TemplateKind::FlowCommitment => {
+                let overlay = overlays
+                    .commitments
+                    .get(&node_key)
+                    .cloned()
+                    .unwrap_or_default();
+                let own = template
+                    .commitments
+                    .get(&occurrence.key.item.item_id)
+                    .and_then(|item| item.verdict_window.clone());
+                let effective = verdict_windows.get(&node_key).cloned().flatten();
+                let (mut commitment, mut lifecycle) =
+                    commitment_item_row(occurrence, overlay, (own, effective), now);
+                archive_if_held(&mut lifecycle, &aside, &node_key);
+                commitment.tag_ids = tag_ids;
+                rows.commitments.push(commitment);
+                rows.lifecycles.push(lifecycle);
+            }
             "commitment" => {
                 let overlay = overlays
                     .commitments
@@ -1013,6 +1116,28 @@ pub(in crate::flows) fn build_iteration(
                 archive_if_held(&mut lifecycle, &aside, &node_key);
                 commitment.tag_ids = tag_ids;
                 rows.commitments.push(commitment);
+                rows.lifecycles.push(lifecycle);
+            }
+            "expectation" => {
+                let Some(item) = template.expectations.get(&occurrence.key.item.item_id) else {
+                    continue;
+                };
+                let overlay = overlays
+                    .expectations
+                    .get(&node_key)
+                    .cloned()
+                    .unwrap_or_default();
+                let last_check = context.last_checks.get(&node_key).copied();
+                let (mut wait, mut lifecycle) = wait_row(
+                    occurrence,
+                    item,
+                    &overlay,
+                    (expired, last_check),
+                    now,
+                )?;
+                archive_if_held(&mut lifecycle, &aside, &node_key);
+                wait.tag_ids = tag_ids;
+                rows.expectations.push(wait);
                 rows.lifecycles.push(lifecycle);
             }
             _ => {
@@ -1070,6 +1195,179 @@ pub(in crate::flows) fn build_iteration(
         );
     }
     Ok(rows)
+}
+
+/// Whether an item of `kind` is over a window of its own even with no Cycle Scope — a Commitment
+/// or a wait, each of which needs one to be judged or checked on — rather than sharing its root's.
+pub(in crate::flows) fn over_a_window(kind: TemplateKind) -> bool {
+    matches!(
+        kind,
+        TemplateKind::FlowCommitment | TemplateKind::FlowExpectation
+    )
+}
+
+/// Each occurrence's **effective** Verdict Window, by node key: a Commitment item's own, else the
+/// nearest Commitment's above it within the iteration — a commitment Habit's root answering to
+/// its Habit's — exactly as a stored Commitment reads one from the Commitments above it.
+pub(in crate::flows) fn verdict_windows(
+    flow: &Flow,
+    clock: Clock,
+    template: &Template,
+    occurrences: &[Occurrence],
+) -> HashMap<String, Option<DurationSpec>> {
+    let by_key: HashMap<String, &Occurrence> = occurrences
+        .iter()
+        .map(|occurrence| (occurrence.key.node_key(), occurrence))
+        .collect();
+    let own = |occurrence: &Occurrence| -> Option<DurationSpec> {
+        match occurrence.key.item.item_type {
+            TemplateKind::FlowCommitment => template
+                .commitments
+                .get(&occurrence.key.item.item_id)
+                .and_then(|item| item.verdict_window.clone()),
+            TemplateKind::FlowRoot if flow.instance_type == "commitment" => {
+                habit_verdict_window(flow, clock)
+            }
+            _ => None,
+        }
+    };
+    occurrences
+        .iter()
+        .map(|occurrence| {
+            let mut cursor = Some(occurrence);
+            let mut found = None;
+            // Bounded by the occurrence count: a malformed hierarchy cannot loop.
+            for _ in 0..=occurrences.len() {
+                let Some(at) = cursor else {
+                    break;
+                };
+                if let Some(window) = own(at) {
+                    found = Some(window);
+                    break;
+                }
+                cursor = at
+                    .parent_key
+                    .and_then(|parent| by_key.get(&parent.node_key()).copied());
+            }
+            (occurrence.key.node_key(), found)
+        })
+        .collect()
+}
+
+/// A **Commitment item**'s occurrence: its own Commitment, with its own Verdict, over its Cycle
+/// Scope or else its iteration's window. Its lifecycle is a stored Commitment's, whatever its
+/// Habit's clock (ruled by the user, 2026-10-03): live until judged, archived once judged and past
+/// its window, Expired once its Verdict Window runs out. `windows` is its own Verdict Window —
+/// what the row carries, copied from its item — and the effective one it answers to.
+pub(in crate::flows) fn commitment_item_row(
+    occurrence: Occurrence,
+    overlay: CommitmentOverlay,
+    (own, effective): (Option<DurationSpec>, Option<DurationSpec>),
+    now: NaiveDateTime,
+) -> (Commitment, ItemLifecycle) {
+    let id = NodeId::Derived(occurrence.key.id());
+    let verdict = overlay
+        .verdict
+        .as_deref()
+        .and_then(Verdict::from_db)
+        .unwrap_or(Verdict::Unresolved);
+    let window = occurrence.time_scope.as_ref().map(TimeScope::window);
+    let state = derive_commitment_state(window, verdict, effective.as_ref(), now);
+    let lifecycle = ItemLifecycle {
+        node_type: "commitment".to_string(),
+        node_id: id.clone(),
+        timing: state.timing,
+        resolution: None,
+        overdue: false,
+        verdict: Some(state.verdict),
+        archival: if overlay.tombstone.is_some() {
+            Archival::Archived
+        } else {
+            state.archival
+        },
+        archival_conflict: false,
+        plan_timing: None,
+    };
+    let commitment = Commitment {
+        id,
+        title: overlay.title.clone().unwrap_or(occurrence.title),
+        parent_type: occurrence.parent_type,
+        parent_id: occurrence.parent_id,
+        verdict,
+        time_scope: occurrence.time_scope,
+        verdict_window: own,
+        tag_ids: occurrence.fields.tag_ids.clone(),
+        position: overlay.position.unwrap_or(occurrence.position),
+        is_private: overlay.is_private.unwrap_or(occurrence.is_private),
+        origin: occurrence.origin,
+    };
+    (commitment, lifecycle)
+}
+
+/// A **wait item**'s occurrence: its own wait over its Cycle Scope or else its iteration's
+/// window, released on its own, and checked on every Check every from its item's first check in
+/// that window. Its lifecycle is a Task occurrence's (ruled by the user, 2026-10-03): released and
+/// past its window it archives; unreleased, it lapses with its window under Window + Archive and
+/// otherwise stays live, Overdue. `(expired, last_check)`: whether its iteration's Verdict Window
+/// ran out, and when it was last checked on.
+pub(in crate::flows) fn wait_row(
+    occurrence: Occurrence,
+    item: &FlowExpectation,
+    overlay: &ExpectationOverlay,
+    (expired, last_check): (bool, Option<NaiveDateTime>),
+    now: NaiveDateTime,
+) -> Result<(Expectation, ItemLifecycle), FlowError> {
+    let id = NodeId::Derived(occurrence.key.id());
+    let window = occurrence.time_scope.as_ref().map(TimeScope::window);
+    let opens = window.map_or_else(
+        || occurrence.key.iteration.start_date().and_time(chrono::NaiveTime::MIN),
+        |(start, _)| start,
+    );
+    let status = overlay
+        .status
+        .as_deref()
+        .and_then(ExpectationStatus::from_db)
+        .unwrap_or(ExpectationStatus::Pending);
+    let mut row = Expectation {
+        id: id.clone(),
+        title: occurrence.title.clone(),
+        parent_type: occurrence.parent_type.clone(),
+        parent_id: occurrence.parent_id.clone(),
+        status,
+        archival: ExpectationArchival::Live,
+        time_scope: occurrence.time_scope.clone(),
+        tag_ids: occurrence.fields.tag_ids.clone(),
+        check_every: item.check_every.clone(),
+        check_starting: item
+            .check_every
+            .as_ref()
+            .map(|_| super::items::first_check_at(opens, item.first_check.as_ref()))
+            .transpose()?,
+        last_check_at: last_check,
+        position: occurrence.position,
+        is_private: occurrence.is_private,
+        agentic: false,
+        agentic_note: None,
+        question: false,
+        answer: None,
+        origin: occurrence.origin.clone(),
+    };
+    overlay.apply(&mut row);
+    // Its window is its occurrence's, never its own.
+    row.time_scope.clone_from(&occurrence.time_scope);
+    let released = row.status == ExpectationStatus::Released;
+    let archived = row.archival == ExpectationArchival::Archived;
+    let mut lifecycle = work_lifecycle(
+        crate::tasks::expectations::EXPECTATION,
+        id,
+        settled_timing(occurrence.timing, released, occurrence.closes_when_done),
+        released,
+        expired,
+        archived,
+        false,
+    );
+    lifecycle.overdue = derive_overdue(occurrence.due, released, lifecycle.archival, now);
+    Ok((row, lifecycle))
 }
 
 /// Whether an iteration is **owed** work: under Window + Owed, its window has passed and it is
@@ -1631,6 +1929,8 @@ pub(in crate::flows) fn derive_habit_in(
             cooling_until: holds.get(&slot.index).copied(),
             host_agentic,
             readings,
+            window: window.clone(),
+            last_checks: &habit.last_checks,
             provisional: false,
         };
         let built = build_iteration(flow, template, (overlays, relations), &context, clock, now)?;

@@ -327,6 +327,10 @@ pub enum NodeKind {
     FlowGoal,
     /// A Flow's task item.
     FlowTask,
+    /// A Flow's Commitment item.
+    FlowCommitment,
+    /// A Flow's wait (Expectation) item.
+    FlowExpectation,
     /// The display-only stand-in for a run of passed Habit iterations.
     HabitGroup,
 }
@@ -343,7 +347,14 @@ impl NodeKind {
 
     /// Whether this is part of a Flow's subtree, which hides as a unit.
     pub fn is_flow(self) -> bool {
-        matches!(self, Self::Flow | Self::FlowGoal | Self::FlowTask)
+        matches!(
+            self,
+            Self::Flow
+                | Self::FlowGoal
+                | Self::FlowTask
+                | Self::FlowCommitment
+                | Self::FlowExpectation
+        )
     }
 }
 

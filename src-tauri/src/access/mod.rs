@@ -96,7 +96,11 @@ const CATALOGUE: &str = "\
     UNION ALL SELECT 'flow_goal', id, NULL, title, parent_type, parent_id, is_private, NULL \
               FROM flow_goals \
     UNION ALL SELECT 'flow_task', id, NULL, title, parent_type, parent_id, is_private, NULL \
-              FROM flow_tasks";
+              FROM flow_tasks \
+    UNION ALL SELECT 'flow_commitment', id, NULL, title, parent_type, parent_id, is_private, NULL \
+              FROM flow_commitments \
+    UNION ALL SELECT 'flow_expectation', id, NULL, title, parent_type, parent_id, is_private, NULL \
+              FROM flow_expectations";
 
 /// Every knowledge-base entity a node points at: a Task's Person delegate, and the People,
 /// Events and Threads a Task or Goal links. Scope links are the calendar, not the knowledge
@@ -122,6 +126,8 @@ fn table_name(kind: NodeTable) -> &'static str {
         NodeTable::Flow => "flows",
         NodeTable::FlowGoal => "flow_goals",
         NodeTable::FlowTask => "flow_tasks",
+        NodeTable::FlowCommitment => "flow_commitments",
+        NodeTable::FlowExpectation => "flow_expectations",
     }
 }
 

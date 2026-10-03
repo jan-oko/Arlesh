@@ -5,7 +5,10 @@ use serde::Serialize;
 use crate::{
     block_reasons::model::BlockReason,
     domains::model::Domain,
-    flows::model::{Flow, FlowDependency, FlowGoal, FlowItemCycle, FlowTask, TargetRef},
+    flows::model::{
+        Flow, FlowCommitment, FlowDependency, FlowExpectation, FlowGoal, FlowItemCycle, FlowTask,
+        TargetRef,
+    },
     infos::model::Info,
     nodes::id::NodeId,
     tasks::{
@@ -75,6 +78,10 @@ pub struct MindmapLoad {
     pub flow_goals: Vec<FlowGoal>,
     /// Every flow's task items — as `list_all_flow_tasks`.
     pub flow_tasks: Vec<FlowTask>,
+    /// Every flow's Commitment items.
+    pub flow_commitments: Vec<FlowCommitment>,
+    /// Every flow's wait items.
+    pub flow_expectations: Vec<FlowExpectation>,
     /// Every flow's cycle pairs — as `list_all_flow_cycles`.
     pub flow_cycles: Vec<FlowItemCycle>,
     /// Every flow's intra-flow dependencies — as `list_all_flow_dependencies`.

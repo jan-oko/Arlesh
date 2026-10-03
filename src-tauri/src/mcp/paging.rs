@@ -81,6 +81,10 @@ pub enum Section {
     FlowGoals,
     /// Tasks belonging to a flow.
     FlowTasks,
+    /// Commitments belonging to a flow.
+    FlowCommitments,
+    /// Waits (Expectations) belonging to a flow.
+    FlowExpectations,
     /// Cycles among flow items.
     FlowCycles,
     /// Dependencies among flow items.
@@ -98,7 +102,7 @@ pub enum Section {
 }
 
 /// Every section, in the order pages walk them.
-pub const SECTIONS: [Section; 16] = [
+pub const SECTIONS: [Section; 18] = [
     Section::Domains,
     Section::Goals,
     Section::Tasks,
@@ -108,6 +112,8 @@ pub const SECTIONS: [Section; 16] = [
     Section::Flows,
     Section::FlowGoals,
     Section::FlowTasks,
+    Section::FlowCommitments,
+    Section::FlowExpectations,
     Section::FlowCycles,
     Section::FlowDependencies,
     Section::BlockReasons,
@@ -130,6 +136,8 @@ impl Section {
             Self::Flows => "flows",
             Self::FlowGoals => "flow_goals",
             Self::FlowTasks => "flow_tasks",
+            Self::FlowCommitments => "flow_commitments",
+            Self::FlowExpectations => "flow_expectations",
             Self::FlowCycles => "flow_cycles",
             Self::FlowDependencies => "flow_dependencies",
             Self::BlockReasons => "block_reasons",

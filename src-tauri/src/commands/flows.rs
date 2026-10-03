@@ -13,8 +13,8 @@ use crate::{
     flows::{
         self,
         model::{
-            CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput, FlowDependency,
-            FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence, FlowTask,
+            CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCommitment, FlowCycleInput,
+            FlowDependency, FlowExpectation, FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence, FlowTask,
             MaterializedFlow, SetRecurrenceRequest, StartFlowRequest, TargetRef, UnfinishedChild,
             UpdateFlowItemRequest, UpdateFlowRequest,
         },
@@ -100,6 +100,62 @@ pub async fn create_flow_task(
         .create_task(request)
         .await
         .map_err(WireError::from_error)
+}
+
+/// Creates a flow **Commitment** item.
+#[tauri::command]
+pub async fn create_flow_commitment(
+    factory: State<'_, SessionFactory>,
+    request: CreateFlowItemRequest,
+) -> Result<FlowCommitment, WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    db.flows()
+        .create_commitment_item(request)
+        .await
+        .map_err(WireError::from_error)
+}
+
+/// Creates a flow **wait** item.
+#[tauri::command]
+pub async fn create_flow_expectation(
+    factory: State<'_, SessionFactory>,
+    request: CreateFlowItemRequest,
+) -> Result<FlowExpectation, WireError> {
+    let mut db = factory.connect().await.map_err(WireError::from_error)?;
+    db.flows()
+        .create_expectation_item(request)
+        .await
+        .map_err(WireError::from_error)
+}
+
+/// Updates a flow **Commitment** item.
+#[tauri::command]
+pub async fn update_flow_commitment(
+    factory: State<'_, SessionFactory>,
+    id: i64,
+    request: UpdateFlowItemRequest,
+) -> Result<FlowCommitment, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let item = flows::update_flow_commitment(&mut db, id, request)
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(item)
+}
+
+/// Updates a flow **wait** item.
+#[tauri::command]
+pub async fn update_flow_expectation(
+    factory: State<'_, SessionFactory>,
+    id: i64,
+    request: UpdateFlowItemRequest,
+) -> Result<FlowExpectation, WireError> {
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let item = flows::update_flow_expectation(&mut db, id, request)
+        .await
+        .map_err(WireError::from_error)?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(item)
 }
 
 /// Lists a flow's goal items.

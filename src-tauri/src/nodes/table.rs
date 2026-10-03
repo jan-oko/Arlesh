@@ -99,7 +99,7 @@ pub async fn resolve_key(
     // Not an occurrence: a wait's derived row, which hangs on the Tasks, occurrences included.
     let mut tasks = db.tasks().list().await?;
     tasks.extend(derived.tasks);
-    if let Err(error) = super::waits::derive_waits(db, now, &tasks).await {
+    if let Err(error) = super::waits::derive_waits(db, now, &tasks, &derived.expectations).await {
         tracing::warn!(error = %error, "wait derivation failed while resolving an id");
     }
     registry::recall(id).ok_or_else(|| FlowError::NodeNotFound(id.to_string()))

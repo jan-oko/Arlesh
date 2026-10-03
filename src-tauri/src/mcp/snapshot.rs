@@ -232,6 +232,8 @@ fn node_table(section: Section) -> Option<NodeTable> {
         Section::Flows => NodeTable::Flow,
         Section::FlowGoals => NodeTable::FlowGoal,
         Section::FlowTasks => NodeTable::FlowTask,
+        Section::FlowCommitments => NodeTable::FlowCommitment,
+        Section::FlowExpectations => NodeTable::FlowExpectation,
         _ => return None,
     })
 }

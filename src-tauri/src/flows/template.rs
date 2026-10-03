@@ -29,15 +29,43 @@ pub enum TemplateTable {
     FlowGoal,
     /// A flow task item.
     FlowTask,
+    /// A flow Commitment item: its tags only, its own columns being on its row.
+    FlowCommitment,
+    /// A flow wait item: its tags only, its own columns being on its row.
+    FlowExpectation,
 }
 
 impl TemplateTable {
+    /// The table an item kind's template fields are kept for.
+    pub fn of_item(item: super::model::FlowItemType) -> Self {
+        use super::model::FlowItemType;
+        match item {
+            FlowItemType::FlowGoal => Self::FlowGoal,
+            FlowItemType::FlowTask => Self::FlowTask,
+            FlowItemType::FlowCommitment => Self::FlowCommitment,
+            FlowItemType::FlowExpectation => Self::FlowExpectation,
+        }
+    }
+
+    /// Whether its rows take block reasons: a Commitment and a wait take none, stored or
+    /// templated.
+    fn takes_block_reasons(self) -> bool {
+        !matches!(self, Self::FlowCommitment | Self::FlowExpectation)
+    }
+
+    /// Whether its rows carry a Task's columns (delegate, flags, Backlog) of their own.
+    fn has_task_columns(self) -> bool {
+        matches!(self, Self::Flow | Self::FlowTask)
+    }
+
     /// The spelling `template_tags` and `template_block_reasons` store in `item_type`.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Flow => "flow",
             Self::FlowGoal => "flow_goal",
             Self::FlowTask => "flow_task",
+            Self::FlowCommitment => "flow_commitment",
+            Self::FlowExpectation => "flow_expectation",
         }
     }
 
@@ -55,7 +83,7 @@ impl TemplateTable {
                 "tags_on_flow_task_async_templates",
                 "flow_task_id",
             )),
-            Self::FlowGoal => None,
+            Self::FlowGoal | Self::FlowCommitment | Self::FlowExpectation => None,
         }
     }
 
@@ -65,6 +93,8 @@ impl TemplateTable {
             Self::Flow => "flows",
             Self::FlowGoal => "flow_goals",
             Self::FlowTask => "flow_tasks",
+            Self::FlowCommitment => "flow_commitments",
+            Self::FlowExpectation => "flow_expectations",
         }
     }
 }
@@ -178,7 +208,7 @@ fn duration(n: Option<i64>, kind: Option<String>) -> Option<DurationSpec> {
 }
 
 /// A Duration's two columns.
-fn duration_columns(spec: Option<&DurationSpec>) -> (Option<i64>, Option<&str>) {
+pub(in crate::flows) fn duration_columns(spec: Option<&DurationSpec>) -> (Option<i64>, Option<&str>) {
     spec.map_or((None, None), |spec| {
         (Some(spec.n), Some(spec.kind.as_str()))
     })
@@ -225,12 +255,16 @@ impl<'session> TemplateOperator<'session> {
         &mut self,
         table: TemplateTable,
     ) -> Result<HashMap<i64, TemplateFields>, FlowError> {
+        let bare = format!(
+            "SELECT id, NULL AS delegate_kind, NULL AS delegate_id, NULL AS agentic,
+                    0 AS asynchronous, 'live' AS archival, 0 AS compound
+             FROM {}",
+            table.table()
+        );
         let select = match table {
-            TemplateTable::FlowGoal => {
-                "SELECT id, NULL AS delegate_kind, NULL AS delegate_id, NULL AS agentic,
-                        0 AS asynchronous, 'live' AS archival, 0 AS compound
-                 FROM flow_goals"
-            }
+            TemplateTable::FlowGoal
+            | TemplateTable::FlowCommitment
+            | TemplateTable::FlowExpectation => bare.as_str(),
             TemplateTable::Flow => {
                 "SELECT id, delegate_kind, delegate_id, agentic, asynchronous, archival, compound
                  FROM flows"
@@ -301,7 +335,7 @@ impl<'session> TemplateOperator<'session> {
                 row.agentic_brief = Some(brief.into_brief());
             }
         }
-        if table != TemplateTable::FlowGoal {
+        if table.has_task_columns() {
             for (item_id, template) in self.async_templates(table).await? {
                 // Kept only while the item is Asynchronous, as a stored Task's is.
                 if let Some(row) = fields.get_mut(&item_id).filter(|row| row.asynchronous) {
@@ -460,7 +494,14 @@ impl<'session> TemplateOperator<'session> {
             self.set_tags(table, id, tags).await?;
         }
         if let Some(reasons) = &update.block_reasons {
-            self.set_block_reasons(table, id, reasons).await?;
+            if !table.takes_block_reasons() && !reasons.is_empty() {
+                return Err(FlowError::Invalid(
+                    "a Commitment or a wait takes no block reasons".to_string(),
+                ));
+            }
+            if table.takes_block_reasons() {
+                self.set_block_reasons(table, id, reasons).await?;
+            }
         }
         if let Some(brief) = &update.agentic_brief {
             self.set_brief(table, id, brief.as_ref()).await?;
@@ -635,8 +676,9 @@ impl<'session> TemplateOperator<'session> {
         from: i64,
         to: i64,
     ) -> Result<(), FlowError> {
-        // A flow goal item has no columns of its own to copy, only relations.
-        if table != TemplateTable::FlowGoal {
+        // A goal, Commitment or wait item has no Task columns to copy, only relations (a
+        // Commitment's and a wait's own columns travel with its row).
+        if table.has_task_columns() {
             let columns = "delegate_kind, delegate_id, agentic, asynchronous, archival, compound";
             let name = table.table();
             sqlx::query(&format!(

@@ -225,6 +225,10 @@ pub(super) fn restrict_snapshot(load: &mut MindmapLoad, map: &AccessMap) {
         .retain(|item| reads_row(map, NodeTable::FlowGoal, item.id));
     load.flow_tasks
         .retain(|item| reads_row(map, NodeTable::FlowTask, item.id));
+    load.flow_commitments
+        .retain(|item| reads_row(map, NodeTable::FlowCommitment, item.id));
+    load.flow_expectations
+        .retain(|item| reads_row(map, NodeTable::FlowExpectation, item.id));
 
     for task in &mut load.tasks {
         restrict_task(task, map);

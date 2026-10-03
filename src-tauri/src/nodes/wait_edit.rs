@@ -57,7 +57,7 @@ async fn wait_rows(
     )
     .await;
     tasks.extend(derived.tasks);
-    super::waits::derive_waits(db, now, &tasks).await
+    super::waits::derive_waits(db, now, &tasks, &derived.expectations).await
 }
 
 /// The check task `key` names as it reads now.
@@ -112,7 +112,18 @@ async fn wait_title(
     let spawned_by = match &key.wait {
         WaitRef::Stored(id) => return Ok(db.expectations().get(ExpectationId(*id)).await?.title),
         WaitRef::Spawned(task) => NodeId::Stored(*task),
-        WaitRef::Occurrence(node_key) => NodeId::Derived(super::id::DerivedId::of_key(node_key)),
+        WaitRef::Occurrence(node_key) => {
+            // A Habit's wait item occurrence is checked on as itself, not as a Task's wait.
+            let item = super::key::OccurrenceKey::parse(node_key).filter(|key| {
+                key.item.item_type == super::key::TemplateKind::FlowExpectation
+            });
+            if let Some(key) = item {
+                return Ok(crate::flows::occurrence_edit::wait_occurrence_row(db, &key, now)
+                    .await?
+                    .title);
+            }
+            NodeId::Derived(super::id::DerivedId::of_key(node_key))
+        }
     };
     Ok(wait_row(db, &DerivedKey::SpawnedWait(spawned_by), now)
         .await?
