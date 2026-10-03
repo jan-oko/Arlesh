@@ -144,9 +144,15 @@ that is the model to reach for if this proves wrong.)
 
 Projects, Domains, Tags, Goals, Tasks, Infos, **Flows and flow items** are duplicable, and a Flow
 hanging under a copied node is copied with it (see [*Copying a Flow with its subtree*](flows.md)).
-Aspects, Commitments and Habit occurrences are not, and neither are the rows hung on a Habit
-occurrence inside the copy — but those are **named**, not dropped in silence (see *Left behind on
-an occurrence*, below).
+**Commitments and waits under a copied node** are copied too, each with its own subtree and as
+stored (ruled by the user, 2026-10-03): a Commitment keeps its verdict, as a copied Task keeps its
+status, and a wait keeps its status, archive, checks and agent fields. Neither holds dependencies of
+its own, and a Task that waits on a copied wait keeps waiting on the original, like every copied
+dependency. A copied node that a started Flow materialised still reads "from flow X", naming the
+original Flow. A Commitment or a wait **on the clipboard** is still refused, though: there is no
+command that copies one on its own, only as part of what holds it. Aspects and Habit occurrences are
+not duplicable, and neither are the rows hung on a Habit occurrence inside the copy — but those are
+**named**, not dropped in silence (see *Left behind on an occurrence*, below).
 A paste whose selection includes any of these pastes the rest and says in a toast what
 it skipped — **grouped by reason, one sentence per reason**, because only one of the reasons is about
 the destination. An Aspect is fixed wherever you point it, a Habit repetition has no row behind it to
