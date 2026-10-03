@@ -20,7 +20,8 @@ export type StatusIndicatorType =
   | "mcp"
   | "private";
 
-/** One badge to render below a node. `conflict` applies only to `archived`.
+/** One badge to render below a node. `conflict` applies to `archived` and `planned`; `inherited`
+ * only to `planned`.
  *
  * The `scope` clock is drawn the same whatever the window's position. It used to be crossed out
  * with a red X once the window had passed; the user had it removed (2026-10-01, "remove the red x
@@ -31,6 +32,9 @@ export interface StatusIndicator {
   /** For `archived`: this effective archival came from a scope Resolution overriding a
    * manually-set Frozen status. */
   conflict?: boolean;
+  /** For `planned`: the Plan is inherited from a planned node above, not the node's own — drawn
+   * fainter. */
+  inherited?: boolean;
 }
 
 function hasInfoDetails(node: MindmapNode): boolean {
@@ -56,8 +60,12 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
   if (node.status === "archived" || node.archived === true) {
     indicators.push({ type: "archived", conflict: node.archivalConflict === true });
   }
+  // Its effective Plan: its own, or — badged fainter — one it inherits. A Task breaking a plan rule
+  // is flagged on the same badge until it is next edited.
   if (node.plan != null) {
-    indicators.push({ type: "planned" });
+    indicators.push({ type: "planned", conflict: node.planConflict !== undefined });
+  } else if (node.inheritedPlan !== undefined || node.planConflict !== undefined) {
+    indicators.push({ type: "planned", inherited: true, conflict: node.planConflict !== undefined });
   }
   if (node.status === "frozen") {
     indicators.push({ type: "frozen" });

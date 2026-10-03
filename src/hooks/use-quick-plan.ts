@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 
 import { getErrorMessage } from "@/api/errors";
 import { withGesture } from "@/api/gesture";
-import { updateTask } from "@/api/tasks";
+import { updateTaskSettlingPlans } from "@/api/tasks";
+import { usePlanClamp } from "@/hooks/use-plan-clamp";
 import type { TimeScope } from "@/api/time-scope";
 import type { PendingToast } from "@/stores/use-mindmap-store";
 import { rowIdOf } from "@/utils/node-identity";
@@ -51,8 +52,11 @@ function holdsPlan(node: MindmapNode): boolean {
   return node.kind === "task" && node.virtual !== true && node.rowId !== undefined;
 }
 
-/** An Overdue Task's Plan may leave its passed window, exactly as the editor's Plan field allows. */
+/** What a Task's own Plan must sit inside: the Plan it inherits, which already sits inside its
+ * window, else its window. An Overdue Task's Plan may leave its passed window, exactly as the
+ * editor's Plan field allows. */
 function planBound(node: MindmapNode): TimeScope | null {
+  if (node.inheritedPlan !== undefined) return node.inheritedPlan;
   if (isOverdue(node) && node.status !== TASK_STATUS.DONE) return null;
   return node.timeScope ?? null;
 }
@@ -80,6 +84,7 @@ interface Outcome {
 export function useQuickPlan({ findNode, reload, showToast }: Options): QuickPlan {
   const { t } = useTranslation(["warnings", "undo"]);
   const [target, setTarget] = useState<QuickPlanTarget | null>(null);
+  const askPlanClamp = usePlanClamp();
 
   const open = useCallback(
     (ids: readonly string[]) => {
@@ -131,12 +136,15 @@ export function useQuickPlan({ findNode, reload, showToast }: Options): QuickPla
       const planning = target;
       setTarget(null);
       if (planning === null) return;
+      // Tasks below that hold their own Plans inside the old one are asked about first.
+      const clamp = await askPlanClamp(planning.tasks.map((node) => ({ id: rowIdOf(node), plan })));
+      if (!clamp.proceed) return;
       const outcome: Outcome = { planned: [], failed: [], unbacklogged: [] };
       const gesture = plan === null ? "undo:gestures.clearPlan" : "undo:gestures.plan";
       await withGesture(t(gesture, { count: planning.tasks.length }), async () => {
         for (const node of planning.tasks) {
           try {
-            await updateTask(rowIdOf(node), { plan });
+            await updateTaskSettlingPlans(rowIdOf(node), { plan }, clamp.descendants);
           } catch (error: unknown) {
             outcome.failed.push({ node, message: getErrorMessage(error) });
             continue;
@@ -149,7 +157,7 @@ export function useQuickPlan({ findNode, reload, showToast }: Options): QuickPla
       const message = headline(outcome, planning);
       if (message !== null) showToast({ nodeId: planning.anchorId, message });
     },
-    [target, reload, headline, showToast, t],
+    [target, askPlanClamp, reload, headline, showToast, t],
   );
 
   return { target, open, apply, close };

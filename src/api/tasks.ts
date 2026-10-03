@@ -210,6 +210,41 @@ export async function updateTask(
   return invoke<Task>("update_task", { id, request, confirmed });
 }
 
+/** What becomes of the Tasks below whose own Plan a new Plan would leave outside: clamped into the
+ * Plan they would inherit, or cleared to inherit it. */
+export type DescendantPlans = "clamp" | "clear";
+
+/** A Task a new Plan above it would leave outside, and what clamping would give it. */
+export interface PlanClampTarget {
+  id: RowId;
+  title: string;
+  /** The Plan clamping gives it; `null` when nothing above would admit it any more. */
+  clamp_to: TimeScope | null;
+}
+
+/**
+ * The Tasks below `id` whose own Plan `plan` would leave outside the Plan they inherit, nearest
+ * first — what the clamp-or-cancel prompt names before a Plan is narrowed or moved.
+ */
+export async function planContainmentConflicts(id: RowId, plan: TimeScope | null): Promise<PlanClampTarget[]> {
+  return invoke<PlanClampTarget[]>("plan_containment_conflicts", { id, plan });
+}
+
+/**
+ * {@link updateTask}, settling the Tasks below whose own Plan the new Plan would leave outside as
+ * `descendantPlans` says — in the same write, so the whole is one undo step. With `null`, a plain
+ * {@link updateTask}.
+ */
+export async function updateTaskSettlingPlans(
+  id: RowId,
+  request: UpdateTaskRequest,
+  descendantPlans: DescendantPlans | null,
+  confirmed?: boolean,
+): Promise<Task> {
+  if (descendantPlans === null) return updateTask(id, request, confirmed);
+  return invoke<Task>("update_task_settling_plans", { id, request, confirmed, descendantPlans });
+}
+
 /** Deletes a task — or archives a Habit occurrence, which is never deleted. */
 export async function deleteTask(id: RowId): Promise<void> {
   return invoke<void>("delete_task", { id });

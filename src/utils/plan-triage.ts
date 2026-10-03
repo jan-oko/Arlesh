@@ -35,19 +35,17 @@ export function effectiveTimeScope(row: TaskListRow): TimeScope | null {
 }
 
 /**
- * The nearest ancestor that is itself planned, or `null` — the bound `child.Plan ⊆ parent.Plan` reads.
- *
- * A wait cuts the chain, as it does for the Start preset: an Expectation has no Plan and takes none
- * from the Task it hangs under (a spawned wait's included), so nothing beneath it — a check task —
- * is bound by that Task's Plan.
+ * The Plan a row reads: its own, else the one it inherits — the backend's rule, served on the node
+ * (`docs/spec/time-scopes.md`, *Plan inheritance*). `null` when it reads none.
  */
-export function nearestPlannedAncestor(row: TaskListRow): MindmapNode | null {
-  for (let i = row.ancestors.length - 1; i >= 0; i--) {
-    const ancestor = row.ancestors[i];
-    if (ancestor?.kind === "expectation") return null;
-    if (ancestor !== undefined && ancestor.plan != null) return ancestor;
-  }
-  return null;
+export function effectivePlan(row: TaskListRow): TimeScope | null {
+  return row.node.plan ?? row.node.inheritedPlan ?? null;
+}
+
+/** Whether something above the row is planned but that Plan does not meet its window, so it reads
+ * no Plan and no Plan of its own could sit inside one. */
+function inheritsNothing(row: TaskListRow): boolean {
+  return row.node.planConflict === "empty" && row.node.plan == null;
 }
 
 /**
@@ -65,7 +63,7 @@ export function timeScopeWindow(scope: TimeScope, windows: ScopeWindows): ScopeI
 }
 
 /** Every scope id the triage has to resolve before it can answer: each row's own and inherited
- * Time Scope, its Plan, and its ancestors' Plans. */
+ * Time Scope, its Plan, and the Plan it inherits. */
 export function referencedScopeIds(rows: readonly TaskListRow[]): ScopeKey[] {
   const ids = new Map<ScopeKeyText, ScopeKey>();
   function add(scope: TimeScope | null | undefined): void {
@@ -76,10 +74,8 @@ export function referencedScopeIds(rows: readonly TaskListRow[]): ScopeKey[] {
   for (const row of rows) {
     add(row.node.timeScope);
     add(row.node.plan);
-    for (const ancestor of row.ancestors) {
-      add(ancestor.timeScope);
-      add(ancestor.plan);
-    }
+    add(row.node.inheritedPlan);
+    for (const ancestor of row.ancestors) add(ancestor.timeScope);
   }
   return [...ids.values()];
 }
@@ -125,8 +121,9 @@ export interface PlanPanes {
  * Splits the rows into the heaps for `target`, whose parent scopes are `parentIds` — none for a
  * Season, one everywhere else — for a week at a month's edge, the month holding its first day.
  *
- * **Unplanned** is the work that is relevant *now*: a Task with no Plan at all whose effective Time
- * Scope overlaps the scope. An **Unscoped** task is always relevant and so is always here — the
+ * **Unplanned** is the work that is relevant *now*: a Task that reads no Plan — none of its own and
+ * nothing above it planned either — whose effective Time Scope overlaps the scope. A Task that
+ * inherits a Plan is placed by it, in its slot with its parent. An **Unscoped** task is always relevant and so is always here — the
  * model says an unscoped item is always active, and a planning pass is exactly where unscoped work
  * should be offered.
  *
@@ -153,8 +150,9 @@ export function partitionForScope(
   const parentPlanned: TaskListRow[] = [];
   for (const row of rows) {
     if (!isTriageable(row.node)) continue;
-    const plan = row.node.plan;
-    if (plan != null) {
+    // Placed by the Plan it reads: its own, or the one it inherits, in its slot with its parent.
+    const plan = effectivePlan(row);
+    if (plan !== null) {
       if (sameScopeKey(plan.start_id, plan.end_id) && parentIds.has(scopeKeyText(plan.start_id))) {
         parentPlanned.push(row);
         continue;
@@ -163,6 +161,8 @@ export function partitionForScope(
       if (planWindow !== null && intervalContains(target, planWindow)) planned.push(row);
       continue;
     }
+    // Something above it is planned: it is not unplanned work, and the board flags it.
+    if (inheritsNothing(row)) continue;
     const relevance = effectiveTimeScope(row);
     if (relevance === null) {
       unplanned.push(row);
@@ -185,7 +185,8 @@ export function partitionForScope(
  *   task's own window on the user's behalf is an editor decision, not a triage one. Lifted for an
  *   **Overdue** task (see `isOverdue`), whose window has already passed: rescheduling it is the
  *   point, and its window stays as it is.
- * - `child.Plan ⊆ parent.Plan`, against the nearest planned ancestor — overdue or not.
+ * - `child.Plan ⊆ parent.Plan`, against the Plan it inherits as the board serves it — overdue or
+ *   not. A row whose inherited Plan came to nothing inside its window can hold none.
  *
  * A bound whose window has not resolved refuses nothing here: the backend still checks, and a
  * refusal the view cannot explain is better raised by the writer than guessed at.
@@ -200,11 +201,11 @@ export function planRefusal(
     const ownWindow = timeScopeWindow(own, windows);
     if (ownWindow !== null && !intervalContains(ownWindow, target)) return "ownTimeScope";
   }
-  const ancestor = nearestPlannedAncestor(row);
-  const ancestorPlan = ancestor?.plan;
-  if (ancestorPlan != null) {
-    const ancestorWindow = timeScopeWindow(ancestorPlan, windows);
-    if (ancestorWindow !== null && !intervalContains(ancestorWindow, target)) return "parentPlan";
+  if (inheritsNothing(row)) return "parentPlan";
+  const inherited = row.node.inheritedPlan;
+  if (inherited !== undefined) {
+    const inheritedWindow = timeScopeWindow(inherited, windows);
+    if (inheritedWindow !== null && !intervalContains(inheritedWindow, target)) return "parentPlan";
   }
   return null;
 }

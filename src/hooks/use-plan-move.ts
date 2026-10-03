@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { updateTask } from "@/api/tasks";
+import { updateTaskSettlingPlans } from "@/api/tasks";
+import { usePlanClamp } from "@/hooks/use-plan-clamp";
 import { resolveScope } from "@/api/scopes";
 import type { ScopeKey } from "@/api/scopes";
 import { keyForRef } from "@/utils/scope-key";
@@ -101,6 +102,7 @@ export function usePlanMove({
   targetScopeId, targetWindow, targetLabel, windows, reload, showToast,
 }: PlanMoveOptions): PlanMoveHandles {
   const { t } = useTranslation(["planView", "undo"]);
+  const askPlanClamp = usePlanClamp();
 
   /**
    * The one thing a batch most needs to say, or `null` when it went exactly as asked.
@@ -160,12 +162,16 @@ export function usePlanMove({
     async (rows: readonly TaskListRow[], plan: { start_id: ScopeKey; end_id: ScopeKey } | null, gesture: PlanGestureKey): Promise<BatchOutcome> => {
       const outcome = emptyOutcome();
       if (rows.length === 0) return outcome;
+      // Tasks below that hold their own Plans inside the old one are asked about first.
+      const ids = rows.flatMap((row) => (row.node.rowId === undefined ? [] : [row.node.rowId]));
+      const clamp = await askPlanClamp(ids.map((id) => ({ id, plan })));
+      if (!clamp.proceed) return outcome;
       await withGesture(t(gesture, { count: rows.length }), async () => {
         for (const row of rows) {
           const id = row.node.rowId;
           if (id === undefined) continue;
           try {
-            await updateTask(id, { plan });
+            await updateTaskSettlingPlans(id, { plan }, clamp.descendants);
           } catch (error: unknown) {
             outcome.failed.push({ row, message: getErrorMessage(error) });
             continue;
@@ -177,7 +183,7 @@ export function usePlanMove({
       if (outcome.moved.length > 0) await reload();
       return outcome;
     },
-    [reload, t],
+    [askPlanClamp, reload, t],
   );
 
   /** Splits a batch on the two containment rules, then writes the half that passed. */

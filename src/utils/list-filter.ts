@@ -9,7 +9,6 @@ import {
 import type { TimeScope } from "@/api/time-scope";
 import { TASK_STATUS, GOAL_STATUS, PROJECT_STATUS } from "@/utils/status-mapping";
 import type { Verdict } from "@/api/verdict";
-import type { Timing } from "@/api/scope-lifecycle";
 import { VERDICT, VERDICT_VALUES } from "@/api/verdict";
 import { canonicalYesNoPills, isYesNoDimension } from "@/utils/filter-modes";
 
@@ -368,7 +367,8 @@ export function deriveScopeStateTokens(node: MindmapNode): string[] {
     if (node.resolution === "missed") tokens.push("lapsed");
     else tokens.push("active");
   }
-  tokens.push(node.plan != null ? "planned" : "unplanned");
+  // Planned by its effective Plan: its own, or one it inherits.
+  tokens.push(node.plan != null || node.inheritedPlan !== undefined ? "planned" : "unplanned");
   return tokens;
 }
 
@@ -389,18 +389,6 @@ function hasGatingAncestor(ancestors: readonly MindmapNode[], f: FilterState): b
   return ancestors.some(
     (a) => isShelvedProject(a, f) || isHiddenBacklog(a, f) || isUnopenedOccurrence(a, f) || isUnopenedWait(a, f),
   );
-}
-
-/** The nearest ancestor's own Plan position — what an unplanned row inherits under Start. */
-function inheritedPlan(ancestors: readonly MindmapNode[]): Timing | undefined {
-  for (let index = ancestors.length - 1; index >= 0; index -= 1) {
-    const ancestor = ancestors[index];
-    // A wait cuts the chain, as on the canvas: a check task answers to its own due time.
-    if (ancestor?.kind === "expectation") return undefined;
-    const plan = ancestor?.planTiming;
-    if (plan !== undefined) return plan;
-  }
-  return undefined;
 }
 
 /** The nearest scoped ancestor's Time Scope — what an unscoped row inherits for the Plan preset's
@@ -428,8 +416,8 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
       return withArchivedOverride(row.node, f, row.node.status !== "done" && !isArchived(row.node));
     case "start": {
       if (row.isBlocked || row.heldByBlockedAncestor) return false;
-      // A flat list has no walk to carry a Plan down, so the row asks its own chain.
-      if (isPlannedAhead(row.node, f, inheritedPlan(row.ancestors))) return false;
+      // The row's Plan position is its effective Plan's, inherited or its own.
+      if (isPlannedAhead(row.node, f)) return false;
       // A window that has passed or has not begun drops out, as on the canvas — unless the row is
       // Overdue.
       if (!isStartableWindow(row.node) || isDelegated(row.node)) {

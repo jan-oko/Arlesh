@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import "@/styles/tokens.css";
 import TabStrip from "@/components/TabStrip/TabStrip";
 import ActiveTab from "@/components/ActiveTab/ActiveTab";
+import PlanClampPrompt from "@/components/PlanClampPrompt/PlanClampPrompt";
 import HotkeysModal from "@/components/HotkeysModal/HotkeysModal";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
@@ -75,6 +76,8 @@ export default function App() {
       {/* Read once, as the sheet opens: the view chords are off while it holds the keyboard, so the
           view it opened over is the view it closes over. */}
       {hotkeysOpen && <HotkeysModal onClose={closeHotkeys} view={active?.stores.view.getState().view} />}
+      {/* Any view's Plan writer may ask it, so it hangs above them all. */}
+      <PlanClampPrompt />
     </div>
   );
 }

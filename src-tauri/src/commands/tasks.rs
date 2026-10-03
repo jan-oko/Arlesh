@@ -70,12 +70,29 @@ pub async fn update_task(
     id: NodeId,
     request: UpdateTaskRequest,
     confirmed: Option<bool>,
-    descendant_plans: Option<DescendantPlans>,
 ) -> Result<Task, WireError> {
     let now = chrono::Local::now().naive_local();
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let task =
-        write_task_guarded(&mut db, &id, request, (confirmed, descendant_plans), now).await?;
+    let task = write_task_guarded(&mut db, &id, request, (confirmed, None), now).await?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(task)
+}
+
+/// [`update_task`], settling the Tasks below whose own Plan the new Plan would leave outside as
+/// `descendant_plans` says — clamped into it, or cleared to inherit it — in the same write: the
+/// answer to the clamp-or-cancel prompt ([`plan_containment_conflicts`]).
+#[tauri::command]
+pub async fn update_task_settling_plans(
+    factory: State<'_, SessionFactory>,
+    id: NodeId,
+    request: UpdateTaskRequest,
+    confirmed: Option<bool>,
+    descendant_plans: DescendantPlans,
+) -> Result<Task, WireError> {
+    let now = chrono::Local::now().naive_local();
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let answer = (confirmed, Some(descendant_plans));
+    let task = write_task_guarded(&mut db, &id, request, answer, now).await?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(task)
 }

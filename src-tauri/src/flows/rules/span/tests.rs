@@ -1,5 +1,5 @@
 use super::*;
-use crate::flows::model::TemplateFields;
+use crate::flows::TemplateFields;
 use crate::scopes::key::ScopeKey;
 use chrono::{NaiveDate, NaiveDateTime};
 

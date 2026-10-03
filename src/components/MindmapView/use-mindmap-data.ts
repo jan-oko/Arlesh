@@ -389,6 +389,11 @@ function dependencyNodeId(block: DependencyBlock): string {
 function applyFacts(node: MindmapNode, fact: NodeFacts): void {
   if (fact.inherited_agentic === true) node.inheritedAgentic = true;
   if (fact.inherited_time_scope !== undefined) node.inheritedTimeScope = fact.inherited_time_scope;
+  if (fact.inherited_plan !== undefined) node.inheritedPlan = fact.inherited_plan;
+  if (fact.plan_source !== undefined) {
+    node.planSource = { nodeId: fact.plan_source, shortId: fact.plan_source_short_id ?? null };
+  }
+  if (fact.plan_conflict !== undefined) node.planConflict = fact.plan_conflict;
   if (fact.open_question !== undefined) node.openQuestionId = fact.open_question;
   if (fact.expired === true) node.expired = true;
   if (fact.met === true) node.met = true;
