@@ -6,6 +6,9 @@ import type { FilterState, StatusMode, TagFilterMode } from "@/utils/filter-tree
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import type { PillFilter } from "@/utils/list-filter";
 import { flattenCommitmentRows, flattenExpectationRows, flattenTaskRows } from "@/utils/list-data";
+import type { View } from "@/stores/use-view-store";
+import { ALL_VIEWS } from "@/stores/use-view-store";
+import { lockedStatusMode } from "@/utils/view-preset";
 import type { ZenOptions } from "@/utils/zen-contents";
 import { zenContents } from "@/utils/zen-contents";
 
@@ -97,13 +100,39 @@ function parseCase(value: unknown, index: number): ZenCase {
   };
 }
 
+interface ViewCase {
+  view: View;
+  locked: StatusMode | null;
+}
+
+function parseView(value: unknown, index: number): ViewCase {
+  const raw = record(value, `views[${index}]`);
+  const view = str(raw.view, `views[${index}].view`);
+  const locked = raw.locked === null ? null : str(raw.locked, `views[${index}].locked`);
+  return {
+    view: ALL_VIEWS.find((candidate) => candidate === view) ?? fail(`views[${index}].view is not a view`),
+    locked: locked === null ? null : STATUS_MODES.find((mode) => mode === locked) ?? fail(`views[${index}].locked`),
+  };
+}
+
 const top = record(corpusJson, "the corpus");
 const cases = array(top.cases, "`cases`").map(parseCase);
+const views = array(top.views, "`views`").map(parseView);
 const boards: Record<string, CorpusNode> = Object.fromEntries(
   Object.entries(record(top.boards, "`boards`")).map(([name, board]) => [name, parseNode(board, `boards.${name}`)]),
 );
 
 describe("zen contents conformance corpus", () => {
+  it("names every view once", () => {
+    expect(views.map((testCase) => testCase.view).sort()).toEqual([...ALL_VIEWS].sort());
+  });
+
+  for (const testCase of views) {
+    it(`the ${testCase.view} view locks ${testCase.locked ?? "no preset"}`, () => {
+      expect(lockedStatusMode(testCase.view)).toBe(testCase.locked);
+    });
+  }
+
   for (const testCase of cases) {
     it(testCase.name, () => {
       const board = boards[testCase.board] ?? fail(`no board named ${testCase.board}`);

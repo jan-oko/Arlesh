@@ -11,6 +11,7 @@ use arlesh_lib::filters::{
     list,
     model::{BoardFilter, NodeKind, Pill, Preset},
     tree::FactNode,
+    views::{self, View},
     zen::{self, ZenOptions, ZenSource},
 };
 use serde::Deserialize;
@@ -23,6 +24,7 @@ const CORPUS: &str = include_str!(concat!(
 #[derive(Debug, Deserialize)]
 struct Corpus {
     cases: Vec<Case>,
+    views: Vec<ViewCase>,
     boards: HashMap<String, FactNode>,
 }
 
@@ -62,6 +64,26 @@ struct Case {
     filter: CorpusFilter,
     options: CorpusOptions,
     expect: Expect,
+}
+
+#[derive(Debug, Deserialize)]
+struct ViewCase {
+    view: View,
+    locked: Option<Preset>,
+}
+
+#[test]
+fn every_view_locks_the_preset_the_corpus_says() {
+    let corpus: Corpus = serde_json::from_str(CORPUS).expect("the corpus parses");
+    assert_eq!(corpus.views.len(), 5, "every view has a case");
+    for case in &corpus.views {
+        assert_eq!(
+            views::locked_preset(case.view),
+            case.locked,
+            "{:?}",
+            case.view
+        );
+    }
 }
 
 fn ids(rows: &[&list::OwnedRow]) -> Vec<String> {

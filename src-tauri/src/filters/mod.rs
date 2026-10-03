@@ -38,4 +38,5 @@ pub mod pills;
 pub mod rules;
 pub mod sections;
 pub mod tree;
+pub mod views;
 pub mod zen;

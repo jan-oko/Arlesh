@@ -10,7 +10,10 @@
     "`preset`, `showOnAgent`, `startHidesCheckedWaits` and `privateMode`, each defaulting as the app's",
     "does — which the Zen View reads under its own presets. `options` is what the tab asks of the",
     "view: the two strips, the Agentic pill, and the two app-wide grid settings. The focus exemption",
-    "is a render-time overlay on the view's selection and is not here."
+    "is a render-time overlay on the view's selection and is not here.",
+    "",
+    "`views` says which views read the board under a preset of their own: `locked` is that",
+    "preset, or null for a view that reads the tab's own."
   ],
   "cases": [
     {
@@ -244,6 +247,28 @@
           "expectation-checked"
         ]
       }
+    }
+  ],
+  "views": [
+    {
+      "view": "mindmap",
+      "locked": null
+    },
+    {
+      "view": "list",
+      "locked": null
+    },
+    {
+      "view": "plan",
+      "locked": "plan"
+    },
+    {
+      "view": "steps",
+      "locked": null
+    },
+    {
+      "view": "zen",
+      "locked": "do"
     }
   ],
   "boards": {
