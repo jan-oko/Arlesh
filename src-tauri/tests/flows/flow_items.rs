@@ -188,9 +188,16 @@ async fn each_iteration_gives_a_commitment_item_its_own_commitment() {
     .unwrap();
     recur(&app, flow, ScopeKind::Day, ymd(2026, 1, 5)).await;
 
-    let monday = occurrence(TemplateKind::FlowCommitment, promise, ScopeKey::day(ymd(2026, 1, 5)));
-    let tuesday =
-        occurrence(TemplateKind::FlowCommitment, promise, ScopeKey::day(ymd(2026, 1, 6)));
+    let monday = occurrence(
+        TemplateKind::FlowCommitment,
+        promise,
+        ScopeKey::day(ymd(2026, 1, 5)),
+    );
+    let tuesday = occurrence(
+        TemplateKind::FlowCommitment,
+        promise,
+        ScopeKey::day(ymd(2026, 1, 6)),
+    );
     let board = load(&app, "2026-01-06T09:00:00").await;
     for id in [&monday, &tuesday] {
         let commitment = board
@@ -199,8 +206,15 @@ async fn each_iteration_gives_a_commitment_item_its_own_commitment() {
             .find(|commitment| commitment.id == *id)
             .expect("every iteration draws its own Commitment");
         assert_eq!(commitment.verdict, Verdict::Unresolved);
-        assert_eq!(commitment.verdict_window, Some(days(2)), "copied from its item");
-        assert!(commitment.time_scope.is_some(), "over its iteration's window");
+        assert_eq!(
+            commitment.verdict_window,
+            Some(days(2)),
+            "copied from its item"
+        );
+        assert!(
+            commitment.time_scope.is_some(),
+            "over its iteration's window"
+        );
     }
 
     let factory = helpers::session_factory(&pool);
@@ -226,7 +240,10 @@ async fn each_iteration_gives_a_commitment_item_its_own_commitment() {
         at("2026-01-06T09:00:00"),
     )
     .await;
-    assert!(refused.is_err(), "an occurrence's Verdict Window is its item's");
+    assert!(
+        refused.is_err(),
+        "an occurrence's Verdict Window is its item's"
+    );
     db.commit().await.unwrap();
 
     let board = load(&app, "2026-01-06T09:00:00").await;
@@ -238,7 +255,11 @@ async fn each_iteration_gives_a_commitment_item_its_own_commitment() {
             .map(|commitment| commitment.verdict)
     };
     assert_eq!(verdict(&monday), Some(Verdict::Kept));
-    assert_eq!(verdict(&tuesday), Some(Verdict::Unresolved), "its own verdict");
+    assert_eq!(
+        verdict(&tuesday),
+        Some(Verdict::Unresolved),
+        "its own verdict"
+    );
 }
 
 #[tokio::test]
@@ -279,8 +300,14 @@ async fn an_unsettled_item_holds_its_iteration_open_until_it_is_settled() {
             .map(|iteration| iteration.status)
     };
     let mut db = factory.begin().await.unwrap();
-    let open = generate_habit_iterations(&mut db, FlowId(flow), now).await.unwrap();
-    assert_eq!(status(open), Some(IterationStatus::Active), "the wait and the verdict are owed");
+    let open = generate_habit_iterations(&mut db, FlowId(flow), now)
+        .await
+        .unwrap();
+    assert_eq!(
+        status(open),
+        Some(IterationStatus::Active),
+        "the wait and the verdict are owed"
+    );
 
     write::update_expectation(
         &mut db,
@@ -293,8 +320,14 @@ async fn an_unsettled_item_holds_its_iteration_open_until_it_is_settled() {
     )
     .await
     .unwrap();
-    let still = generate_habit_iterations(&mut db, FlowId(flow), now).await.unwrap();
-    assert_eq!(status(still), Some(IterationStatus::Active), "the verdict is still owed");
+    let still = generate_habit_iterations(&mut db, FlowId(flow), now)
+        .await
+        .unwrap();
+    assert_eq!(
+        status(still),
+        Some(IterationStatus::Active),
+        "the verdict is still owed"
+    );
 
     write::update_commitment(
         &mut db,
@@ -307,7 +340,9 @@ async fn an_unsettled_item_holds_its_iteration_open_until_it_is_settled() {
     )
     .await
     .unwrap();
-    let settled = generate_habit_iterations(&mut db, FlowId(flow), now).await.unwrap();
+    let settled = generate_habit_iterations(&mut db, FlowId(flow), now)
+        .await
+        .unwrap();
     assert_eq!(
         status(settled),
         Some(IterationStatus::Done),
@@ -360,8 +395,15 @@ async fn a_wait_occurrence_is_checked_from_its_items_first_check_and_released_on
         .iter()
         .find(|expectation| expectation.id == wait_id)
         .expect("the iteration draws its wait");
-    assert_eq!(drawn.check_starting, Some(at("2026-01-06T02:00:00")), "its third day");
-    assert_eq!(drawn.parent_id, occurrence(TemplateKind::FlowTask, step, week));
+    assert_eq!(
+        drawn.check_starting,
+        Some(at("2026-01-06T02:00:00")),
+        "its third day"
+    );
+    assert_eq!(
+        drawn.parent_id,
+        occurrence(TemplateKind::FlowTask, step, week)
+    );
     let checks = |board: &MindmapLoad| {
         board
             .tasks
@@ -407,7 +449,11 @@ async fn a_wait_occurrence_is_checked_from_its_items_first_check_and_released_on
             expectation.id == occurrence(TemplateKind::FlowExpectation, wait, next_week)
         })
         .expect("next week draws its own wait");
-    assert_eq!(next.status, ExpectationStatus::Pending, "released on its own");
+    assert_eq!(
+        next.status,
+        ExpectationStatus::Pending,
+        "released on its own"
+    );
 }
 
 #[tokio::test]
@@ -562,7 +608,10 @@ async fn copying_a_flow_copies_its_commitment_and_wait_items() {
     assert_eq!(wait_copy.check_every, Some(days(1)));
     assert!(wait_copy.is_private, "privacy travels with a copy");
     assert_eq!(wait_copy.parent_type, "flow_commitment");
-    assert_eq!(wait_copy.parent_id, promise_copy.id, "remapped onto the copy");
+    assert_eq!(
+        wait_copy.parent_id, promise_copy.id,
+        "remapped onto the copy"
+    );
 }
 
 #[tokio::test]

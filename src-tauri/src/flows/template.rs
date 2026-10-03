@@ -208,7 +208,9 @@ fn duration(n: Option<i64>, kind: Option<String>) -> Option<DurationSpec> {
 }
 
 /// A Duration's two columns.
-pub(in crate::flows) fn duration_columns(spec: Option<&DurationSpec>) -> (Option<i64>, Option<&str>) {
+pub(in crate::flows) fn duration_columns(
+    spec: Option<&DurationSpec>,
+) -> (Option<i64>, Option<&str>) {
     spec.map_or((None, None), |spec| {
         (Some(spec.n), Some(spec.kind.as_str()))
     })

@@ -137,7 +137,9 @@ fn part_from(start: NaiveDateTime, index: i64) -> Result<ScopeKey, FlowError> {
     let step = from + index - 1;
     let date = day_of(start)
         .checked_add_signed(chrono::Duration::days(step / 6))
-        .ok_or_else(|| FlowError::Invalid("a first check falls outside the calendar".to_string()))?;
+        .ok_or_else(|| {
+            FlowError::Invalid("a first check falls outside the calendar".to_string())
+        })?;
     let part = DAY_ORDER[usize::try_from(step % 6).unwrap_or(0)];
     Ok(ScopeKey::part(date, part))
 }

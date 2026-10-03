@@ -320,9 +320,9 @@ pub(crate) fn render(
             // A Commitment and a wait are over a window of their own: the flow window, when no
             // Cycle Scope gives them one.
             let time_scope = match kind {
-                PlannedKind::Commitment | PlannedKind::Expectation => resolved
-                    .time_scope
-                    .or_else(|| scopes.window.clone()),
+                PlannedKind::Commitment | PlannedKind::Expectation => {
+                    resolved.time_scope.or_else(|| scopes.window.clone())
+                }
                 PlannedKind::Goal | PlannedKind::Task => resolved.time_scope,
             };
             nodes.push(PlannedNode {

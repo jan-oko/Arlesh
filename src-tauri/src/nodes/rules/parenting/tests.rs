@@ -57,7 +57,11 @@ fn every_stored_parent_spelling_names_its_kind() {
 
 #[test]
 fn template_items_follow_the_stored_table() {
-    for child in [NodeKind::FlowTask, NodeKind::FlowCommitment, NodeKind::FlowExpectation] {
+    for child in [
+        NodeKind::FlowTask,
+        NodeKind::FlowCommitment,
+        NodeKind::FlowExpectation,
+    ] {
         for parent in [
             NodeKind::Flow,
             NodeKind::FlowGoal,

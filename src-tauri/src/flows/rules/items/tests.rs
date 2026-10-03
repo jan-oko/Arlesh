@@ -32,7 +32,10 @@ fn the_third_day_of_a_weekly_window_is_two_days_after_it_opens() {
 #[test]
 fn parts_are_counted_from_the_part_the_window_opens_in() {
     let opens = at("2026-10-04", 2);
-    assert_eq!(first_check_at(opens, Some(&first("part_of_day", 1))).unwrap(), opens);
+    assert_eq!(
+        first_check_at(opens, Some(&first("part_of_day", 1))).unwrap(),
+        opens
+    );
     assert_eq!(
         first_check_at(opens, Some(&first("part_of_day", 3))).unwrap(),
         at("2026-10-04", 12),
@@ -49,7 +52,10 @@ fn parts_are_counted_from_the_part_the_window_opens_in() {
 fn a_unit_the_window_opens_part_way_through_counts_from_the_window() {
     // A week opening on Sunday 4 October is part-way through October.
     let opens = at("2026-10-04", 2);
-    assert_eq!(first_check_at(opens, Some(&first("month", 1))).unwrap(), opens);
+    assert_eq!(
+        first_check_at(opens, Some(&first("month", 1))).unwrap(),
+        opens
+    );
 }
 
 #[test]

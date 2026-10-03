@@ -1128,13 +1128,8 @@ pub(in crate::flows) fn build_iteration(
                     .cloned()
                     .unwrap_or_default();
                 let last_check = context.last_checks.get(&node_key).copied();
-                let (mut wait, mut lifecycle) = wait_row(
-                    occurrence,
-                    item,
-                    &overlay,
-                    (expired, last_check),
-                    now,
-                )?;
+                let (mut wait, mut lifecycle) =
+                    wait_row(occurrence, item, &overlay, (expired, last_check), now)?;
                 archive_if_held(&mut lifecycle, &aside, &node_key);
                 wait.tag_ids = tag_ids;
                 rows.expectations.push(wait);
@@ -1320,7 +1315,13 @@ pub(in crate::flows) fn wait_row(
     let id = NodeId::Derived(occurrence.key.id());
     let window = occurrence.time_scope.as_ref().map(TimeScope::window);
     let opens = window.map_or_else(
-        || occurrence.key.iteration.start_date().and_time(chrono::NaiveTime::MIN),
+        || {
+            occurrence
+                .key
+                .iteration
+                .start_date()
+                .and_time(chrono::NaiveTime::MIN)
+        },
         |(start, _)| start,
     );
     let status = overlay

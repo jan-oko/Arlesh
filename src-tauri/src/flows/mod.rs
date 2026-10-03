@@ -55,10 +55,11 @@ use error::FlowError;
 use habits::{classify_iterations, expire_unanswered, SlotWindow};
 use model::{
     ChildAttachment, ClockKind, CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCommitment,
-    FlowCycleInput, FlowDependency, FlowExpectation, FlowGoal, FlowId, FlowItemCycle,
-    FlowItemType, FlowOrigin, FlowRecurrence, FlowTask, HabitInstanceChild, HabitInstanceRef, HabitItemStatus, HabitIteration, InstanceType,
-    MaterializedFlow, MissPolicy, SetRecurrenceRequest, StartFlowRequest, TargetRef,
-    UnfinishedChild, UpdateFlowItemRequest, UpdateFlowRequest, NO_CYCLE,
+    FlowCycleInput, FlowDependency, FlowExpectation, FlowGoal, FlowId, FlowItemCycle, FlowItemType,
+    FlowOrigin, FlowRecurrence, FlowTask, HabitInstanceChild, HabitInstanceRef, HabitItemStatus,
+    HabitIteration, InstanceType, MaterializedFlow, MissPolicy, SetRecurrenceRequest,
+    StartFlowRequest, TargetRef, UnfinishedChild, UpdateFlowItemRequest, UpdateFlowRequest,
+    NO_CYCLE,
 };
 use render::{render, FlowTemplate, NodeRef, PlannedSource, RenderedPlan, TemplateItem};
 use rows::{
@@ -605,7 +606,11 @@ impl<'session> FlowOperator<'session> {
     }
 
     /// The ids of one flow's items of `kind`, in position order.
-    async fn item_ids(&mut self, kind: FlowItemType, flow_id: FlowId) -> Result<Vec<i64>, FlowError> {
+    async fn item_ids(
+        &mut self,
+        kind: FlowItemType,
+        flow_id: FlowId,
+    ) -> Result<Vec<i64>, FlowError> {
         let table = kind.table();
         Ok(sqlx::query_scalar(&format!(
             "SELECT id FROM {table} WHERE flow_id = ? ORDER BY position ASC"
@@ -2403,7 +2408,11 @@ async fn template_children<M: SessionMode>(
     let goals = db.goals().child_ids(parent_type, parent_id).await?;
     children.extend(goals.into_iter().map(|id| ("goal".to_string(), id)));
     let commitments = db.commitments().child_ids(parent_type, parent_id).await?;
-    children.extend(commitments.into_iter().map(|id| ("commitment".to_string(), id)));
+    children.extend(
+        commitments
+            .into_iter()
+            .map(|id| ("commitment".to_string(), id)),
+    );
     let waits = db.expectations().child_ids(parent_type, parent_id).await?;
     children.extend(waits.into_iter().map(|id| ("expectation".to_string(), id)));
     Ok(children)
@@ -2432,7 +2441,12 @@ async fn converted_node(
     Ok(match kind {
         "goal" => {
             let goal = db.goals().get(GoalId(id)).await?;
-            (FlowItemType::FlowGoal, goal.title, goal.time_scope, ConvertedFields::Plain)
+            (
+                FlowItemType::FlowGoal,
+                goal.title,
+                goal.time_scope,
+                ConvertedFields::Plain,
+            )
         }
         "commitment" => {
             let commitment = db.commitments().get(CommitmentId(id)).await?;
@@ -2457,7 +2471,12 @@ async fn converted_node(
         }
         _ => {
             let task = db.tasks().get(TaskId(id)).await?;
-            (FlowItemType::FlowTask, task.title, task.time_scope, ConvertedFields::Plain)
+            (
+                FlowItemType::FlowTask,
+                task.title,
+                task.time_scope,
+                ConvertedFields::Plain,
+            )
         }
     })
 }
@@ -3327,16 +3346,10 @@ pub async fn convert_to_flow(
             FlowItemType::FlowGoal => db.flows().create_goal(item_request).await?.id,
             FlowItemType::FlowTask => db.flows().create_task(item_request).await?.id,
             FlowItemType::FlowCommitment => {
-                db.flows()
-                    .create_commitment_item(item_request)
-                    .await?
-                    .id
+                db.flows().create_commitment_item(item_request).await?.id
             }
             FlowItemType::FlowExpectation => {
-                db.flows()
-                    .create_expectation_item(item_request)
-                    .await?
-                    .id
+                db.flows().create_expectation_item(item_request).await?.id
             }
         };
         item_map.insert((kind.clone(), *id), (item_type, new_id));

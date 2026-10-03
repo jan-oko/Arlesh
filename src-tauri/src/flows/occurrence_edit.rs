@@ -164,10 +164,7 @@ pub async fn template_fields<M: SessionMode>(
             .map(|task| task.template)
             .unwrap_or_default(),
         TemplateKind::FlowCommitment => {
-            db.flows()
-                .commitment_item(key.item.item_id)
-                .await?
-                .template
+            db.flows().commitment_item(key.item.item_id).await?.template
         }
         TemplateKind::FlowExpectation => {
             db.flows()

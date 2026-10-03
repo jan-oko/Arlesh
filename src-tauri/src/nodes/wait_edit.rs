@@ -114,13 +114,14 @@ async fn wait_title(
         WaitRef::Spawned(task) => NodeId::Stored(*task),
         WaitRef::Occurrence(node_key) => {
             // A Habit's wait item occurrence is checked on as itself, not as a Task's wait.
-            let item = super::key::OccurrenceKey::parse(node_key).filter(|key| {
-                key.item.item_type == super::key::TemplateKind::FlowExpectation
-            });
+            let item = super::key::OccurrenceKey::parse(node_key)
+                .filter(|key| key.item.item_type == super::key::TemplateKind::FlowExpectation);
             if let Some(key) = item {
-                return Ok(crate::flows::occurrence_edit::wait_occurrence_row(db, &key, now)
-                    .await?
-                    .title);
+                return Ok(
+                    crate::flows::occurrence_edit::wait_occurrence_row(db, &key, now)
+                        .await?
+                        .title,
+                );
             }
             NodeId::Derived(super::id::DerivedId::of_key(node_key))
         }
