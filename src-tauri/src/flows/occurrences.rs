@@ -55,6 +55,20 @@ pub(super) async fn load_habit<M: SessionMode>(
     db: &mut Db<M>,
     flow: &Flow,
 ) -> Result<Option<LoadedHabit>, FlowError> {
+    let Some(mut habit) = read_habit(db, flow).await? else {
+        return Ok(None);
+    };
+    habit.host_agentic =
+        crate::tasks::agentic::reads_agentic(db, &habit.host.0, habit.host.1).await?;
+    Ok(Some(habit))
+}
+
+/// What [`load_habit`] reads, before whether its host reads as Agentic is answered: a board's
+/// gather answers that over every row at once rather than climbing per Habit.
+async fn read_habit<M: SessionMode>(
+    db: &mut Db<M>,
+    flow: &Flow,
+) -> Result<Option<LoadedHabit>, FlowError> {
     let flow_id = FlowId(flow.id);
     let Some(recurrence) = db.flows().get_recurrence(flow_id).await? else {
         return Ok(None);
@@ -83,7 +97,6 @@ pub(super) async fn load_habit<M: SessionMode>(
         (Some(kind), Some(id)) => (target_parent_type(kind), id),
         _ => (target_parent_type(&flow.parent_type), flow.parent_id),
     };
-    let host_agentic = crate::tasks::agentic::reads_agentic(db, &host_type, host_id).await?;
     Ok(Some(LoadedHabit {
         clock: parse_clock(&recurrence)?,
         recurrence,
@@ -91,7 +104,8 @@ pub(super) async fn load_habit<M: SessionMode>(
         overlays,
         relations,
         touched,
-        host_agentic,
+        host: (host_type, host_id),
+        host_agentic: false,
         instance_items,
     }))
 }
@@ -100,7 +114,7 @@ impl HabitSource {
     /// Reads what the Habit `flow` draws its rows from.
     pub async fn read<M: SessionMode>(db: &mut Db<M>, flow: &Flow) -> Result<Self, FlowError> {
         Ok(Self {
-            habit: load_habit(db, flow).await?,
+            habit: read_habit(db, flow).await?,
         })
     }
 }

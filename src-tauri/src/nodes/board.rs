@@ -12,7 +12,7 @@ use chrono::NaiveDateTime;
 use crate::{
     database::session::{Db, SessionMode},
     error::AppError,
-    flows::model::HabitInstanceChild,
+    flows::model::{ChildAttachment, HabitInstanceChild},
     infos::model::Info,
     nodes::{id::NodeId, waits::WaitData},
     tasks::{
@@ -35,6 +35,8 @@ pub struct StoredBoard {
     pub infos: Vec<Info>,
     /// Every stored node hung on a Habit occurrence.
     pub children: Vec<HabitInstanceChild>,
+    /// Every added child's attachment, as `(child_type, child_id, attachment)`.
+    pub attachments: Vec<(String, i64, ChildAttachment)>,
     /// Every stored scoped row's ancestry link, and every added child's occurrence.
     pub ancestry: AncestryIndex,
     /// What every wait is drawn from.
@@ -50,7 +52,7 @@ impl StoredBoard {
         let goals = db.goals().list().await?;
         let commitments = db.commitments().list().await?;
         let attachments = db.flows().child_attachments().await?;
-        let ancestry = AncestryIndex::of(&tasks, &goals, &commitments, attachments);
+        let ancestry = AncestryIndex::of(&tasks, &goals, &commitments, attachments.clone());
         Ok(Self {
             expectations: db.expectations().list().await?,
             infos: db.infos().list().await?,
@@ -60,6 +62,7 @@ impl StoredBoard {
             tasks,
             goals,
             commitments,
+            attachments,
             ancestry,
         })
     }

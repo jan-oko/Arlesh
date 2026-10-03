@@ -62,6 +62,11 @@ impl WaitData {
         })
     }
 
+    /// Every Task overlay, by node key.
+    pub fn task_overlays(&self) -> &HashMap<String, TaskOverlay> {
+        &self.task_overlays
+    }
+
     /// The sources, borrowed for one derivation.
     pub fn sources(&self) -> WaitBoardSources<'_> {
         WaitBoardSources {

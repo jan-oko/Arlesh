@@ -58,6 +58,7 @@ use crate::{
             Commitment, Delegate, Goal, OnScopeExit, Status, Task, TaskArchival,
             TaskDependencyEdge, TimeScope, Verdict,
         },
+        rules::agentic::AgenticIndex,
     },
 };
 
@@ -307,6 +308,8 @@ pub(in crate::flows) struct LoadedHabit {
     pub(in crate::flows) relations: HabitRelations,
     /// The iterations that carry an overlay, a relation or an attached child.
     pub(in crate::flows) touched: HashSet<ScopeKey>,
+    /// The node its iteration roots render under, as a child row's parent reference.
+    pub(in crate::flows) host: (String, i64),
     /// Whether the Habit's host reads as Agentic.
     pub(in crate::flows) host_agentic: bool,
     /// Every template item an iteration draws, as `(item type, item id)`: its goal items, then
@@ -1757,19 +1760,23 @@ pub struct HabitSource {
     pub(in crate::flows) habit: Option<LoadedHabit>,
 }
 
-/// Every occurrence of the Habit `source` was read for, within `horizon`, at `now` — its compound
-/// occurrences worked out over `board` first. What
+/// Every occurrence of the Habit `source` was read for, within `horizon`, at `now` — whether its
+/// host reads as Agentic answered over `agentic`, and its compound occurrences worked out over
+/// `board` first. What
 /// [`derive_habit`](crate::flows::occurrences::derive_habit) does with the reads in hand.
 pub fn derive_habit_from(
     flow: &Flow,
-    source: &HabitSource,
+    source: HabitSource,
     board: &crate::nodes::board::StoredBoard,
+    agentic: &AgenticIndex,
     now: NaiveDateTime,
     horizon: Horizon,
 ) -> Result<DerivedRows, FlowError> {
-    let Some(habit) = &source.habit else {
+    let Some(mut habit) = source.habit else {
         return Ok(DerivedRows::default());
     };
+    habit.host_agentic = agentic.reads_agentic(&habit.host.0, habit.host.1);
+    let habit = &habit;
     let readings =
         match crate::flows::rules::compound_readings::provisional_compounds(flow, habit, now)? {
             None => Readings::new(),

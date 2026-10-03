@@ -24,6 +24,7 @@ use crate::{
     tasks::{
         compound::{Board, Rows},
         rules::{
+            agentic::{AgenticIndex, AgenticRows},
             compound::settle_in,
             scope::{derive_item_lifecycles, LifecycleRows, OccurrenceExit},
             waits::wait_windows,
@@ -43,7 +44,7 @@ use super::{
 fn derive_habits(
     flows: &[Flow],
     mut habits: HashMap<i64, Result<HabitSource, FlowError>>,
-    stored: &StoredBoard,
+    (stored, agentic): (&StoredBoard, &AgenticIndex),
     now: NaiveDateTime,
     horizon: Horizon,
 ) -> (DerivedRows, Vec<HabitFailure>) {
@@ -51,7 +52,7 @@ fn derive_habits(
     let mut failures = Vec::new();
     for flow in flows.iter().filter(|flow| flow.is_habit) {
         let derived = match habits.remove(&flow.id) {
-            Some(Ok(source)) => derive_habit_from(flow, &source, stored, now, horizon),
+            Some(Ok(source)) => derive_habit_from(flow, source, stored, agentic, now, horizon),
             Some(Err(error)) => Err(error),
             None => Ok(DerivedRows::default()),
         };
@@ -109,7 +110,17 @@ pub fn derive_board(
         OccurrenceExit::Honoured,
     );
 
-    let (derived, failures) = derive_habits(&flows, habits, &stored, now, horizon);
+    let agentic = AgenticIndex::of(AgenticRows {
+        tasks: &stored.tasks,
+        goals: &stored.goals,
+        commitments: &stored.commitments,
+        attachments: &stored.attachments,
+        overlays: stored.waits.task_overlays(),
+        flows: &flows,
+        flow_tasks: &flow_tasks,
+        flow_goals: &flow_goals,
+    });
+    let (derived, failures) = derive_habits(&flows, habits, (&stored, &agentic), now, horizon);
     let mut goals = stored.goals.clone();
     let mut tasks = stored.tasks.clone();
     let mut commitments = stored.commitments.clone();
