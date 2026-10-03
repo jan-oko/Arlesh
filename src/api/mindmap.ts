@@ -45,6 +45,20 @@ export interface NodeFacts {
   met?: boolean;
   /** The title of the MCP root the node is seen through, when the MCP can see it. */
   mcp_visible_via?: string;
+  /** What the row may be done to, when its origin turns anything off (a Habit occurrence, a
+   * derived wait). Absent, everything is allowed. */
+  capabilities?: NodeCapabilities;
+}
+
+/** What a row may be done to, as the backend decides it (`nodes::rules::capabilities`). */
+export interface NodeCapabilities {
+  delete: boolean;
+  copy: boolean;
+  drag: boolean;
+  /** Whether a Task may be switched to Compound. */
+  compound: boolean;
+  /** Whether a Task may be given a prerequisite. */
+  dependencies: boolean;
 }
 
 /** What the agents are doing on the whole board, counted, as the load sends it. */

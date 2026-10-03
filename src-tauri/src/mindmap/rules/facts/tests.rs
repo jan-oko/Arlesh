@@ -266,3 +266,24 @@ fn a_node_is_seen_through_its_root_and_a_derived_one_through_its_nearest_stored_
     );
     assert_eq!(via("task-11"), None, "a stored node the roots do not reach");
 }
+
+#[test]
+fn a_derived_wait_says_what_it_may_not_be_done_to_and_a_row_made_by_hand_says_nothing() {
+    use crate::nodes::origin::{CheckOrigin, Origin};
+    let mut load = board();
+    let mut check = task_row(30, "expectation", 3, "todo", None);
+    check.origin = Origin::Check(CheckOrigin {
+        wait_kind: crate::tasks::waits::WaitKind::Stored,
+        wait_id: 3.into(),
+        due_at: chrono::NaiveDateTime::default(),
+    });
+    load.tasks.push(check);
+    let (facts, _) = derive(&load, None);
+    let capabilities = facts.get("task-30").and_then(|node| node.capabilities);
+    assert!(capabilities.is_some_and(|can| !can.delete && !can.drag && !can.compound));
+    assert_eq!(
+        facts.get("task-12").and_then(|node| node.capabilities),
+        None,
+        "a row made by hand carries no limits"
+    );
+}

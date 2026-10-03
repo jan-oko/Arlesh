@@ -4,6 +4,7 @@ import { collectSearchableNodes, flattenNodesById } from "@/utils/mindmap-tree";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
 import { canHoldDependencies, dependencyCandidates, matchCandidates } from "./dependency-candidates";
+import { DERIVED_WAIT_CAPABILITIES } from "@/test/capabilities";
 
 function node(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children: [], ...extra };
@@ -11,6 +12,7 @@ function node(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): Min
 
 const checkTask = node("task-90", "task", {
   origin: { kind: "check", wait_kind: "stored", wait_id: 7, due_at: "2026-09-01T00:00:00" },
+  capabilities: DERIVED_WAIT_CAPABILITIES,
 });
 
 function board(): MindmapNode {

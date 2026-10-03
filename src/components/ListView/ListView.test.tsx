@@ -15,6 +15,7 @@ import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { Verdict } from "@/api/verdict";
 import { useListData } from "@/hooks/use-list-data";
 import { LIST_SCROLL_STEP_PX } from "@/hooks/use-list-scroll";
+import { DERIVED_WAIT_CAPABILITIES } from "@/test/capabilities";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -1782,7 +1783,7 @@ describe("ListView — expectations", () => {
 
   it("completes a check task's check on Enter, and leaves D free", () => {
     const onCycleStatus = vi.fn();
-    const check = row({ node: n("check-1", "task", { status: "todo", rowId: "c-1", origin: { kind: "check", wait_kind: "stored", wait_id: 1, due_at: "2026-07-10T02:00:00" } }) });
+    const check = row({ node: n("check-1", "task", { status: "todo", rowId: "c-1", origin: { kind: "check", wait_kind: "stored", wait_id: 1, due_at: "2026-07-10T02:00:00" }, capabilities: DERIVED_WAIT_CAPABILITIES }) });
     mockUseListData.mockReturnValue(listData({ rows: [check], onCycleStatus }));
     render(<ListViewInApp />);
     fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });

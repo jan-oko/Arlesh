@@ -1,6 +1,6 @@
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import { isDerivedWait } from "@/utils/derived-wait";
-import { isOccurrence } from "@/utils/node-identity";
+import { can } from "@/utils/capabilities";
 import { ALL_NODE_KINDS } from "./tree-layout";
 import { findNode, owningFlowId } from "./mindmap-tree";
 import { canAdoptExistingChild, isFlowKind, validParentKinds } from "./node-meta";
@@ -145,10 +145,12 @@ export function pasteRefusal(
 ): PasteRefusal | null {
   const node = findNode(tree, nodeId);
   if (node === undefined) return { reason: PASTE_REFUSAL.GONE };
-  if (isDerivedWait(node)) {
-    return { reason: PASTE_REFUSAL.DERIVED_WAIT };
+  // What may be copied is the backend's (`nodes::rules::capabilities`): neither a derived wait nor a
+  // Habit occurrence. Which of the two it is only picks the words.
+  if (!can(node, "copy")) {
+    return { reason: isDerivedWait(node) ? PASTE_REFUSAL.DERIVED_WAIT : PASTE_REFUSAL.REPETITION };
   }
-  if (node.virtual === true || isOccurrence(node)) return { reason: PASTE_REFUSAL.REPETITION };
+  if (node.virtual === true) return { reason: PASTE_REFUSAL.REPETITION };
   if (node.kind === "aspect") return { reason: PASTE_REFUSAL.ASPECT };
   // Asked of the target **node**, not of its kind: a folded run of Habit history wears a kind
   // that would say yes, and an occurrence takes no template kind. A target that can adopt nothing at all is

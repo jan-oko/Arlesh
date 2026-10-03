@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { isOccurrence } from "@/utils/node-identity";
-import { isDerivedWait } from "@/utils/derived-wait";
+import { can } from "@/utils/capabilities";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
@@ -220,16 +220,16 @@ export function useNodeActions({
       // and there is no gesture anywhere that removes one. `Delete` on an Aspect alone used to be
       // an inert key — indistinguishable from a dead one — and in a mixed selection it took
       // everything else and said nothing about what it had dropped.
-      const refused = nodes.filter((node) => node.virtual === true || isDerivedWait(node) || node.kind === "aspect");
+      const refused = nodes.filter((node) => node.virtual === true || !can(node, "delete") || node.kind === "aspect");
       const first = refused[0];
       if (first !== undefined) {
         // One toast, both sentences: the store holds a single pending notice, so a selection that
         // trips both rules has to say both at once or say one of them into nothing.
         const messages: string[] = [];
-        if (refused.some((node) => node.virtual === true && !isDerivedWait(node))) {
+        if (refused.some((node) => node.virtual === true && can(node, "delete"))) {
           messages.push(t("warnings:deleteRepetitionRefused"));
         }
-        if (refused.some(isDerivedWait)) messages.push(t("warnings:deleteDerivedWaitRefused"));
+        if (refused.some((node) => !can(node, "delete"))) messages.push(t("warnings:deleteDerivedWaitRefused"));
         if (refused.some((node) => node.kind === "aspect")) messages.push(t("warnings:deleteAspectRefused"));
         showToast({ nodeId: first.id, message: messages.join(" ") });
         return;

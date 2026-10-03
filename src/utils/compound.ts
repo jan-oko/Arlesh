@@ -1,13 +1,11 @@
-import { habitOrigin, isDerivedId } from "@/api/node-id";
 import type { MindmapNode } from "@/utils/tree-layout";
+import { can } from "@/utils/capabilities";
 
 /**
- * Whether a Task node can be switched to Compound: a stored Task, or a Habit's Task occurrence —
- * an item's or an iteration's root — which reads the flag from its template and may say
- * otherwise. A check task's status is the check itself.
+ * Whether a Task node can be switched to Compound: one with a row behind it that the backend lets
+ * take the flag (`nodes::rules::capabilities`) — a stored Task, or a Habit's Task occurrence, which
+ * reads the flag from its template and may say otherwise. A check task's status is the check itself.
  */
 export function takesCompound(node: MindmapNode): boolean {
-  if (node.rowId === undefined) return false;
-  if (!isDerivedId(node.rowId)) return true;
-  return habitOrigin(node.origin) !== undefined;
+  return node.rowId !== undefined && can(node, "compound");
 }

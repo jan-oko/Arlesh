@@ -1,6 +1,6 @@
 import type { Dependency } from "@/api/tasks";
 import type { RowId } from "@/api/node-id";
-import { isDerivedWait } from "@/utils/derived-wait";
+import { can } from "@/utils/capabilities";
 import type { SearchableNode } from "@/utils/mindmap-tree";
 import type { MindmapNode } from "@/utils/tree-layout";
 
@@ -10,12 +10,13 @@ export interface DependencyCandidate extends SearchableNode {
 }
 
 /**
- * Whether `node` can be given a prerequisite: a Task with a row behind it — a stored Task or a
- * Habit occurrence. A wait's check task and a folded run of Habit history draw no row to hang an
- * edge on, and a flow item's dependencies are the template's, edited in the Flow editor.
+ * Whether `node` can be given a prerequisite: a Task with a row behind it that the backend lets hold
+ * one (`nodes::rules::capabilities`) — a stored Task or a Habit occurrence. A wait's check task may
+ * not; a folded run of Habit history draws no row to hang an edge on, and a flow item's
+ * dependencies are the template's, edited in the Flow editor.
  */
 export function canHoldDependencies(node: MindmapNode): boolean {
-  return node.kind === "task" && node.virtual !== true && node.rowId !== undefined && !isDerivedWait(node);
+  return node.kind === "task" && node.virtual !== true && node.rowId !== undefined && can(node, "dependencies");
 }
 
 /** A dependency edge's target, as a key both sides spell alike. */

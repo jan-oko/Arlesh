@@ -1,7 +1,7 @@
 //! What the board says about each node beyond its own row — the facts the app draws by and
 //! would otherwise work out for itself: which dependencies block a Task, what a node inherits
-//! (Agentic, Time Scope), the open question beneath a Task, whether a Commitment has expired, and
-//! what the agents are doing on the whole board.
+//! (Agentic, Time Scope), the open question beneath a Task, whether a Commitment has expired, what
+//! a row may be done to, and what the agents are doing on the whole board.
 //!
 //! Pure: a function of a finished board load. Keyed as the load's `short_ids` are (`task-12`,
 //! `expectation-3`).
@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     access::model::{EffectiveAccess, NodeKey, NodeTable},
     mindmap::model::{AgentActivity, DependencyBlock, MindmapLoad, NodeFacts},
-    nodes::id::NodeId,
+    nodes::{id::NodeId, origin::Origin, rules::capabilities},
     tasks::{
         lifecycle::{Archival, ItemLifecycle},
         model::{
@@ -379,6 +379,27 @@ fn mcp_visible_via(links: &HashMap<Key, Link>, access: &[EffectiveAccess]) -> Ha
     seen
 }
 
+/// Every content row on the board, keyed as the app keys it, with where it came from.
+fn origins(load: &MindmapLoad) -> impl Iterator<Item = (Key, &Origin)> {
+    let tasks = load
+        .tasks
+        .iter()
+        .map(|row| (format!("task-{}", row.id), &row.origin));
+    let goals = load
+        .goals
+        .iter()
+        .map(|row| (format!("goal-{}", row.id), &row.origin));
+    let commitments = load
+        .commitments
+        .iter()
+        .map(|row| (format!("commitment-{}", row.id), &row.origin));
+    let waits = load
+        .expectations
+        .iter()
+        .map(|row| (format!("expectation-{}", row.id), &row.origin));
+    tasks.chain(goals).chain(commitments).chain(waits)
+}
+
 /// Every node's facts on `load`, and what the agents are doing — what the app's load serves
 /// beside the rows. `access` is what the MCP roots make visible, when it could be read.
 pub fn derive(
@@ -405,6 +426,12 @@ pub fn derive(
         };
         if node != NodeFacts::default() {
             facts.insert(key.clone(), node);
+        }
+    }
+    for (key, origin) in origins(load) {
+        let capabilities = capabilities::of(origin);
+        if !capabilities.is_full() {
+            facts.entry(key).or_default().capabilities = Some(capabilities);
         }
     }
     let targets = dependency_targets(load);

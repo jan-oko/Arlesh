@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { isDerivedWait } from "@/utils/derived-wait";
+import { can } from "@/utils/capabilities";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { collectSubtreePostOrder } from "@/utils/mindmap-tree";
@@ -60,9 +60,10 @@ export function useListDelete({
     (id: string) => {
       const node = findNode(id);
       if (node === undefined) return;
-      if (node.virtual === true || isDerivedWait(node)) {
-        const derivedWait = isDerivedWait(node);
-        showToast({ nodeId: id, message: t(derivedWait ? "deleteDerivedWaitRefused" : "deleteRepetitionRefused") });
+      // A derived wait may not be deleted (the backend's `capabilities`); a node the app drew with
+      // no row behind it has nothing to delete.
+      if (node.virtual === true || !can(node, "delete")) {
+        showToast({ nodeId: id, message: t(can(node, "delete") ? "deleteRepetitionRefused" : "deleteDerivedWaitRefused") });
         return;
       }
       setError(null);

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
+import { DERIVED_WAIT_CAPABILITIES } from "@/test/capabilities";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { canParentNewChild, isValidDropTarget } from "@/utils/node-meta";
 import { pasteRefusal, PASTE_REFUSAL } from "@/utils/paste-refusal";
@@ -40,7 +41,7 @@ describe("where a wait may hang", () => {
 describe("pasting a wait", () => {
   it("refuses a copied wait and any derived one by name", () => {
     const stored = n("e", "expectation");
-    const check = drawn("c", "task", { rowId: "c-1", origin: { kind: "check", wait_kind: "stored", wait_id: 1, due_at: "2026-07-10T02:00:00" } });
+    const check = drawn("c", "task", { rowId: "c-1", origin: { kind: "check", wait_kind: "stored", wait_id: 1, due_at: "2026-07-10T02:00:00" }, capabilities: DERIVED_WAIT_CAPABILITIES });
     const target = n("project-1", "project");
     const tree = n("root", "domain", { children: [stored, check, target] });
     expect(pasteRefusal(tree, "e", target, true)).toEqual({ reason: PASTE_REFUSAL.EXPECTATION });

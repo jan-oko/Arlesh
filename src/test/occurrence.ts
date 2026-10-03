@@ -1,4 +1,5 @@
 import type { HabitOrigin } from "@/api/node-id";
+import type { NodeCapabilities } from "@/api/mindmap";
 
 /** What a test says about the occurrence it draws; everything else takes a plain default. */
 interface OccurrenceFixture {
@@ -29,10 +30,16 @@ export function occurrenceOrigin({
   };
 }
 
-/** The fields a node fixture takes to draw a Habit occurrence: a UUID row id and its origin. */
-export function occurrenceRow(fixture: OccurrenceFixture = {}): { rowId: string; origin: HabitOrigin } {
+/**
+ * The fields a node fixture takes to draw a Habit occurrence: a UUID row id, its origin, and what
+ * the load's facts say it may be done to (`nodes::rules::capabilities`) — anything but be copied.
+ */
+export function occurrenceRow(fixture: OccurrenceFixture = {}): {
+  rowId: string; origin: HabitOrigin; capabilities: NodeCapabilities;
+} {
   const origin = occurrenceOrigin(fixture);
   return {
+    capabilities: { delete: true, copy: false, drag: true, compound: true, dependencies: true },
     rowId: `00000000-0000-5000-8${String(origin.iteration_scope.index).padStart(3, "0")}-${String(origin.habit_id).padStart(4, "0")}${String(origin.item_id).padStart(4, "0")}${String(origin.cycle_id).padStart(4, "0")}`,
     origin,
   };

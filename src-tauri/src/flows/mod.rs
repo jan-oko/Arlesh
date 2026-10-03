@@ -2716,13 +2716,18 @@ pub async fn convert_to_flow(
             ))
         }
     };
-    if !matches!(
-        parent_type.as_str(),
-        "aspect" | "project" | "domain" | "goal"
-    ) {
-        return Err(FlowError::Invalid(
-            "a flow cannot be parented under a task".to_string(),
-        ));
+    // Where a Flow may hang is the one parenting table's answer.
+    let parent_holds_a_flow =
+        crate::nodes::rules::parenting::kind_of(&parent_type).is_some_and(|parent| {
+            crate::nodes::rules::parenting::may_parent(
+                crate::filters::model::NodeKind::Flow,
+                parent,
+            )
+        });
+    if !parent_holds_a_flow {
+        return Err(FlowError::Invalid(format!(
+            "a flow cannot be parented under a {parent_type}"
+        )));
     }
 
     // Map the root's Time Scope to the flow Window (Span / Phase) and note the window start date.

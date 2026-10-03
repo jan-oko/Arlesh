@@ -393,6 +393,7 @@ function applyFacts(node: MindmapNode, fact: NodeFacts): void {
   if (fact.expired === true) node.expired = true;
   if (fact.met === true) node.met = true;
   if (fact.mcp_visible_via !== undefined) node.mcpVisibleVia = fact.mcp_visible_via;
+  if (fact.capabilities !== undefined) node.capabilities = fact.capabilities;
   for (const block of fact.dependency_blocks ?? []) {
     node.virtualBlockers = [...(node.virtualBlockers ?? []), blockedByText(block.kind, block.short_id, block.id, block.title)];
     node.blockingDependencyIds = [...(node.blockingDependencyIds ?? []), dependencyNodeId(block)];

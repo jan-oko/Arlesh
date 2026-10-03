@@ -5,6 +5,7 @@ import type { InstanceType, FlowItemType, TemplateFields } from "@/api/flows";
 import type { Origin, RowId } from "@/api/node-id";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
+import type { NodeCapabilities } from "@/api/mindmap";
 import type { Delegate, TaskStatus } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
 import type { AgenticBrief, AsyncTemplate } from "@/api/tasks";
@@ -340,6 +341,9 @@ export interface MindmapNode {
    * load from the backend's own resolution (`list_mcp_access`), never persisted; a derived node
    * takes its nearest stored ancestor's. See docs/spec/mcp-server.md, "Access". */
   mcpVisibleVia?: string;
+  /** What the row may be done to, when its origin turns anything off — from the load's facts
+   * (`nodes::rules::capabilities`). Absent, everything is allowed: read it through `can`. */
+  capabilities?: NodeCapabilities;
   /** Whether this real Goal/Task was materialized by a started flow (drives the flow-instance badge). */
   fromFlow?: boolean;
   position: number;
