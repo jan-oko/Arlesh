@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 
 use super::*;
-use crate::flows::compound_readings::Reading;
+use crate::flows::rules::compound_readings::Reading;
 
 fn at(day: u32, hour: u32) -> NaiveDateTime {
     NaiveDate::from_ymd_opt(2026, 9, day)

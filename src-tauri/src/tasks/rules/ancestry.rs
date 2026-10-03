@@ -347,18 +347,9 @@ pub(in crate::tasks) enum ClimbStep {
     Done(AncestryChain),
 }
 
-/// What reading one link found.
-pub(in crate::tasks) enum LinkRead {
-    /// The row, and the occurrence it hangs on when it is an added child of one.
-    Found {
-        /// The row's link.
-        link: AncestryLink,
-        /// The occurrence it hangs on.
-        occurrence: Option<AncestryLink>,
-    },
-    /// The referenced row does not exist.
-    Missing,
-}
+/// What reading one link found: the row's link and the occurrence it hangs on when it is an added
+/// child of one, or `None` when the referenced row does not exist.
+pub(in crate::tasks) type LinkRead = Option<(AncestryLink, Option<AncestryLink>)>;
 
 impl Climb {
     /// A climb starting at `(start_type, start_id)`, which is itself the first link.
@@ -403,23 +394,17 @@ impl Climb {
         read: LinkRead,
     ) -> Option<AncestryChain> {
         match read {
-            LinkRead::Missing => Some(self.finish(ChainEnd::Broken {
+            None => Some(self.finish(ChainEnd::Broken {
                 kind,
                 id,
                 cause: BreakCause::Missing,
             })),
-            LinkRead::Found {
-                link,
-                occurrence: Some(occurrence),
-            } => {
+            Some((link, Some(occurrence))) => {
                 self.links.push(link);
                 self.links.push(occurrence);
                 Some(self.finish(ChainEnd::Root))
             }
-            LinkRead::Found {
-                link,
-                occurrence: None,
-            } => {
+            Some((link, None)) => {
                 self.next = link.parent.clone();
                 self.links.push(link);
                 None
@@ -474,13 +459,10 @@ pub(in crate::tasks) fn climb_in(
             ClimbStep::Done(chain) => return chain,
             ClimbStep::Read(kind, id) => (kind, id),
         };
-        let read = match index.links.get(&(kind, id)) {
-            Some(link) => LinkRead::Found {
-                link: link.clone(),
-                occurrence: index.occurrences.get(&(kind, id)).cloned(),
-            },
-            None => LinkRead::Missing,
-        };
+        let read = index
+            .links
+            .get(&(kind, id))
+            .map(|link| (link.clone(), index.occurrences.get(&(kind, id)).cloned()));
         if let Some(chain) = climb.read(kind, id, read) {
             return chain;
         }

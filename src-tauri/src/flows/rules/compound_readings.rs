@@ -69,6 +69,9 @@ pub struct Reading {
 /// Each compound occurrence's [`Reading`], by its canonical node key.
 pub type Readings = HashMap<String, Reading>;
 
+/// A Habit's provisional rows, and the node key of each compound occurrence among them.
+pub(in crate::flows) type Provisional = (DerivedRows, HashMap<NodeId, String>);
+
 /// The compound occurrences `habit` draws in the iterations something was done in, drawn
 /// provisionally, as if each iteration were open — or `None` when it draws none, and there is
 /// nothing to work out.
@@ -76,7 +79,7 @@ pub(in crate::flows) fn provisional_compounds(
     flow: &Flow,
     habit: &LoadedHabit,
     now: NaiveDateTime,
-) -> Result<Option<(DerivedRows, HashMap<NodeId, String>)>, FlowError> {
+) -> Result<Option<Provisional>, FlowError> {
     if !habit.has_compound(flow) || habit.touched().is_empty() {
         return Ok(None);
     }

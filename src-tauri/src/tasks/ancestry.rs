@@ -65,18 +65,15 @@ pub(super) async fn climb<M: SessionMode>(
             NodeKind::Goal => db.goals().ancestry_link(GoalId(id)).await,
             NodeKind::Commitment => db.commitments().ancestry_link(CommitmentId(id)).await,
         };
-        let read = match read {
-            Ok(link) => LinkRead::Found {
-                link,
-                occurrence: occurrence_of(db, kind, id).await?,
-            },
+        let read: LinkRead = match read {
+            Ok(link) => Some((link, occurrence_of(db, kind, id).await?)),
             // A dangling reference — the referenced row was deleted — breaks the chain. Every
             // other database failure is a real failure and propagates.
             Err(
                 TaskError::TaskNotFound(_)
                 | TaskError::GoalNotFound(_)
                 | TaskError::CommitmentNotFound(_),
-            ) => LinkRead::Missing,
+            ) => None,
             Err(error) => return Err(error),
         };
         if let Some(chain) = climb.read(kind, id, read) {
