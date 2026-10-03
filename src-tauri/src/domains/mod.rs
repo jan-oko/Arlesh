@@ -2,11 +2,13 @@
 
 pub mod error;
 pub mod model;
+mod rows;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use error::DomainError;
 use model::{CreateDomainRequest, Domain, DomainId, DomainSubtype, UpdateDomainRequest};
+use rows::DomainRow;
 
 /// Reads and writes aspects, projects, domains and tags on a session's connection.
 ///
@@ -96,10 +98,11 @@ impl<'session> DomainOperator<'session> {
 
     /// Fetches a domain by id.
     pub async fn get(&mut self, id: DomainId) -> Result<Domain, DomainError> {
-        sqlx::query_as::<_, Domain>("SELECT * FROM domains WHERE id = ?")
+        sqlx::query_as::<_, DomainRow>("SELECT * FROM domains WHERE id = ?")
             .bind(id.0)
             .fetch_optional(&mut *self.connection)
             .await?
+            .map(Domain::from)
             .ok_or(DomainError::NotFound(id.0))
     }
 
@@ -109,16 +112,18 @@ impl<'session> DomainOperator<'session> {
         subtype: Option<DomainSubtype>,
     ) -> Result<Vec<Domain>, DomainError> {
         match subtype {
-            Some(subtype_value) => sqlx::query_as::<_, Domain>(
+            Some(subtype_value) => sqlx::query_as::<_, DomainRow>(
                 "SELECT * FROM domains WHERE subtype = ? ORDER BY position ASC",
             )
             .bind(subtype_to_str(&subtype_value))
             .fetch_all(&mut *self.connection)
             .await
+            .map(|rows| rows.into_iter().map(Domain::from).collect())
             .map_err(Into::into),
-            None => sqlx::query_as::<_, Domain>("SELECT * FROM domains ORDER BY position ASC")
+            None => sqlx::query_as::<_, DomainRow>("SELECT * FROM domains ORDER BY position ASC")
                 .fetch_all(&mut *self.connection)
                 .await
+                .map(|rows| rows.into_iter().map(Domain::from).collect())
                 .map_err(Into::into),
         }
     }

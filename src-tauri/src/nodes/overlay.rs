@@ -208,7 +208,7 @@ impl TaskOverlay {
 }
 
 /// One occurrence's Goal overlay.
-#[derive(Debug, Clone, Default, PartialEq, Eq, sqlx::FromRow)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GoalOverlay {
     /// The occurrence's status; `None` reads as Active.
     pub status: Option<String>,
@@ -226,6 +226,32 @@ pub struct GoalOverlay {
     pub block_reasons_set: bool,
 }
 
+/// A [`GoalOverlay`] as its table holds it.
+#[derive(sqlx::FromRow)]
+pub(crate) struct GoalOverlayRow {
+    status: Option<String>,
+    resolved_at: Option<i64>,
+    tombstone: Option<String>,
+    title: Option<String>,
+    is_private: Option<bool>,
+    position: Option<i64>,
+    block_reasons_set: bool,
+}
+
+impl From<GoalOverlayRow> for GoalOverlay {
+    fn from(row: GoalOverlayRow) -> Self {
+        Self {
+            status: row.status,
+            resolved_at: row.resolved_at,
+            tombstone: row.tombstone,
+            title: row.title,
+            is_private: row.is_private,
+            position: row.position,
+            block_reasons_set: row.block_reasons_set,
+        }
+    }
+}
+
 impl GoalOverlay {
     /// Whether the row says nothing.
     pub fn is_empty(&self) -> bool {
@@ -234,7 +260,7 @@ impl GoalOverlay {
 }
 
 /// One occurrence's Commitment overlay.
-#[derive(Debug, Clone, Default, PartialEq, Eq, sqlx::FromRow)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CommitmentOverlay {
     /// The recorded verdict (`kept`/`broken`); `None` is Unresolved.
     pub verdict: Option<String>,
@@ -248,6 +274,30 @@ pub struct CommitmentOverlay {
     pub is_private: Option<bool>,
     /// Its own sort position.
     pub position: Option<i64>,
+}
+
+/// A [`CommitmentOverlay`] as its table holds it.
+#[derive(sqlx::FromRow)]
+pub(crate) struct CommitmentOverlayRow {
+    verdict: Option<String>,
+    resolved_at: Option<i64>,
+    tombstone: Option<String>,
+    title: Option<String>,
+    is_private: Option<bool>,
+    position: Option<i64>,
+}
+
+impl From<CommitmentOverlayRow> for CommitmentOverlay {
+    fn from(row: CommitmentOverlayRow) -> Self {
+        Self {
+            verdict: row.verdict,
+            resolved_at: row.resolved_at,
+            tombstone: row.tombstone,
+            title: row.title,
+            is_private: row.is_private,
+            position: row.position,
+        }
+    }
 }
 
 impl CommitmentOverlay {
@@ -283,7 +333,7 @@ struct KeyedTask {
 struct KeyedGoal {
     node_key: String,
     #[sqlx(flatten)]
-    overlay: GoalOverlay,
+    overlay: GoalOverlayRow,
 }
 
 /// A Commitment overlay as read back, beside its canonical key.
@@ -291,7 +341,7 @@ struct KeyedGoal {
 struct KeyedCommitment {
     node_key: String,
     #[sqlx(flatten)]
-    overlay: CommitmentOverlay,
+    overlay: CommitmentOverlayRow,
 }
 
 const TASK_COLUMNS: &str = "status, resolved_at, tombstone, title, plan_start_id, plan_end_id, \
@@ -366,11 +416,11 @@ impl<'session> OverlayOperator<'session> {
                 .collect(),
             goals: goals
                 .into_iter()
-                .map(|row| (row.node_key, row.overlay))
+                .map(|row| (row.node_key, row.overlay.into()))
                 .collect(),
             commitments: commitments
                 .into_iter()
-                .map(|row| (row.node_key, row.overlay))
+                .map(|row| (row.node_key, row.overlay.into()))
                 .collect(),
             async_templates: self.async_templates_for_habit(flow_id).await?,
         })
@@ -404,12 +454,13 @@ impl<'session> OverlayOperator<'session> {
 
     /// One occurrence's Goal overlay, empty when it has none.
     pub async fn goal(&mut self, key: &OccurrenceKey) -> Result<GoalOverlay, sqlx::Error> {
-        Ok(sqlx::query_as(&format!(
+        Ok(sqlx::query_as::<_, GoalOverlayRow>(&format!(
             "SELECT {GOAL_COLUMNS} FROM goal_overlays WHERE node_key = ?"
         ))
         .bind(key.node_key())
         .fetch_optional(&mut *self.connection)
         .await?
+        .map(GoalOverlay::from)
         .unwrap_or_default())
     }
 
@@ -418,12 +469,13 @@ impl<'session> OverlayOperator<'session> {
         &mut self,
         key: &OccurrenceKey,
     ) -> Result<CommitmentOverlay, sqlx::Error> {
-        Ok(sqlx::query_as(&format!(
+        Ok(sqlx::query_as::<_, CommitmentOverlayRow>(&format!(
             "SELECT {COMMITMENT_COLUMNS} FROM commitment_overlays WHERE node_key = ?"
         ))
         .bind(key.node_key())
         .fetch_optional(&mut *self.connection)
         .await?
+        .map(CommitmentOverlay::from)
         .unwrap_or_default())
     }
 

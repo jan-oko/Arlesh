@@ -61,7 +61,10 @@ use model::{
     UnfinishedChild, UpdateFlowItemRequest, UpdateFlowRequest, NO_CYCLE,
 };
 use render::{render, FlowTemplate, NodeRef, PlannedSource, RenderedPlan, TemplateItem};
-use rows::{FlowRecurrenceRow, HabitItemStatusRow};
+use rows::{
+    FlowDependencyRow, FlowGoalRow, FlowItemCycleRow, FlowRecurrenceRow, FlowRow, FlowTaskRow,
+    HabitInstanceChildRow, HabitItemStatusRow, TargetRefRow,
+};
 use template::{TemplateFields, TemplateOperator, TemplateTable};
 
 use rules::schedule::*;
@@ -200,13 +203,14 @@ impl<'session> FlowOperator<'session> {
 
     /// Fetches a flow by id, with its root template's fields.
     pub async fn get(&mut self, id: FlowId) -> Result<Flow, FlowError> {
-        let mut flow = sqlx::query_as::<_, Flow>(
+        let mut flow = sqlx::query_as::<_, FlowRow>(
             "SELECT flows.*, EXISTS(SELECT 1 FROM flow_recurrences WHERE flow_recurrences.flow_id = flows.id) AS is_habit
              FROM flows WHERE id = ?",
         )
         .bind(id.0)
         .fetch_optional(&mut *self.connection)
         .await?
+        .map(Flow::from)
         .ok_or(FlowError::NotFound(id.0))?;
         flow.template = self.templates().one(TemplateTable::Flow, id.0).await?;
         Ok(flow)
@@ -214,12 +218,15 @@ impl<'session> FlowOperator<'session> {
 
     /// Lists all flows in sort order, each with its root template's fields.
     pub async fn list(&mut self) -> Result<Vec<Flow>, FlowError> {
-        let mut flows = sqlx::query_as::<_, Flow>(
+        let mut flows = sqlx::query_as::<_, FlowRow>(
             "SELECT flows.*, EXISTS(SELECT 1 FROM flow_recurrences WHERE flow_recurrences.flow_id = flows.id) AS is_habit
              FROM flows ORDER BY position ASC",
         )
         .fetch_all(&mut *self.connection)
-        .await?;
+        .await?
+        .into_iter()
+        .map(Flow::from)
+        .collect::<Vec<_>>();
         let mut fields = self.templates().all(TemplateTable::Flow).await?;
         for flow in &mut flows {
             flow.template = fields.remove(&flow.id).unwrap_or_default();
@@ -396,10 +403,11 @@ impl<'session> FlowOperator<'session> {
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
-        sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals WHERE id = ?")
+        sqlx::query_as::<_, FlowGoalRow>("SELECT * FROM flow_goals WHERE id = ?")
             .bind(id)
             .fetch_one(&mut *self.connection)
             .await
+            .map(FlowGoal::from)
             .map_err(FlowError::from)
     }
 
@@ -420,32 +428,39 @@ impl<'session> FlowOperator<'session> {
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
-        sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks WHERE id = ?")
+        sqlx::query_as::<_, FlowTaskRow>("SELECT * FROM flow_tasks WHERE id = ?")
             .bind(id)
             .fetch_one(&mut *self.connection)
             .await
+            .map(FlowTask::from)
             .map_err(FlowError::from)
     }
 
     /// Lists a flow's goal items.
     pub async fn list_goals(&mut self, flow_id: FlowId) -> Result<Vec<FlowGoal>, FlowError> {
-        let goals = sqlx::query_as::<_, FlowGoal>(
+        let goals = sqlx::query_as::<_, FlowGoalRow>(
             "SELECT * FROM flow_goals WHERE flow_id = ? ORDER BY position ASC",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
-        .await?;
+        .await?
+        .into_iter()
+        .map(FlowGoal::from)
+        .collect();
         self.with_goal_templates(goals).await
     }
 
     /// Lists a flow's task items.
     pub async fn list_tasks(&mut self, flow_id: FlowId) -> Result<Vec<FlowTask>, FlowError> {
-        let tasks = sqlx::query_as::<_, FlowTask>(
+        let tasks = sqlx::query_as::<_, FlowTaskRow>(
             "SELECT * FROM flow_tasks WHERE flow_id = ? ORDER BY position ASC",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
-        .await?;
+        .await?
+        .into_iter()
+        .map(FlowTask::from)
+        .collect();
         self.with_task_templates(tasks).await
     }
 
@@ -470,12 +485,14 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         flow_id: FlowId,
     ) -> Result<HashMap<(String, i64), Vec<FlowItemCycle>>, FlowError> {
-        let rows = sqlx::query_as::<_, FlowItemCycle>(
+        let rows = sqlx::query_as::<_, FlowItemCycleRow>(
             "SELECT * FROM flow_item_cycles WHERE flow_id = ? ORDER BY item_type, item_id, position ASC",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
-        .await?;
+        .await?
+        .into_iter()
+        .map(FlowItemCycle::from);
         let mut grouped: HashMap<(String, i64), Vec<FlowItemCycle>> = HashMap::new();
         for cycle in rows {
             grouped
@@ -488,17 +505,25 @@ impl<'session> FlowOperator<'session> {
 
     /// Lists every flow's goal items (for the mindmap load).
     pub async fn list_all_goals(&mut self) -> Result<Vec<FlowGoal>, FlowError> {
-        let goals = sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals ORDER BY position ASC")
-            .fetch_all(&mut *self.connection)
-            .await?;
+        let goals =
+            sqlx::query_as::<_, FlowGoalRow>("SELECT * FROM flow_goals ORDER BY position ASC")
+                .fetch_all(&mut *self.connection)
+                .await?
+                .into_iter()
+                .map(FlowGoal::from)
+                .collect();
         self.with_goal_templates(goals).await
     }
 
     /// Lists every flow's task items (for the mindmap load).
     pub async fn list_all_tasks(&mut self) -> Result<Vec<FlowTask>, FlowError> {
-        let tasks = sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks ORDER BY position ASC")
-            .fetch_all(&mut *self.connection)
-            .await?;
+        let tasks =
+            sqlx::query_as::<_, FlowTaskRow>("SELECT * FROM flow_tasks ORDER BY position ASC")
+                .fetch_all(&mut *self.connection)
+                .await?
+                .into_iter()
+                .map(FlowTask::from)
+                .collect();
         self.with_task_templates(tasks).await
     }
 
@@ -513,10 +538,11 @@ impl<'session> FlowOperator<'session> {
         id: i64,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowGoal, FlowError> {
-        let goal = sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals WHERE id = ?")
+        let goal = sqlx::query_as::<_, FlowGoalRow>("SELECT * FROM flow_goals WHERE id = ?")
             .bind(id)
             .fetch_optional(&mut *self.connection)
             .await?
+            .map(FlowGoal::from)
             .ok_or(FlowError::NotFound(id))?;
         let title = request.title.unwrap_or(goal.title);
         let parent_type = request.parent_type.unwrap_or(goal.parent_type);
@@ -535,10 +561,11 @@ impl<'session> FlowOperator<'session> {
         .bind(id)
         .execute(&mut *self.connection)
         .await?;
-        sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals WHERE id = ?")
+        sqlx::query_as::<_, FlowGoalRow>("SELECT * FROM flow_goals WHERE id = ?")
             .bind(id)
             .fetch_one(&mut *self.connection)
             .await
+            .map(FlowGoal::from)
             .map_err(FlowError::from)
     }
 
@@ -553,10 +580,11 @@ impl<'session> FlowOperator<'session> {
         id: i64,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowTask, FlowError> {
-        let task = sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks WHERE id = ?")
+        let task = sqlx::query_as::<_, FlowTaskRow>("SELECT * FROM flow_tasks WHERE id = ?")
             .bind(id)
             .fetch_optional(&mut *self.connection)
             .await?
+            .map(FlowTask::from)
             .ok_or(FlowError::NotFound(id))?;
         let title = request.title.unwrap_or(task.title);
         let parent_type = request.parent_type.unwrap_or(task.parent_type);
@@ -575,10 +603,11 @@ impl<'session> FlowOperator<'session> {
         .bind(id)
         .execute(&mut *self.connection)
         .await?;
-        sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks WHERE id = ?")
+        sqlx::query_as::<_, FlowTaskRow>("SELECT * FROM flow_tasks WHERE id = ?")
             .bind(id)
             .fetch_one(&mut *self.connection)
             .await
+            .map(FlowTask::from)
             .map_err(FlowError::from)
     }
 
@@ -729,14 +758,17 @@ impl<'session> FlowOperator<'session> {
         item_type: FlowItemType,
         item_id: i64,
     ) -> Result<Vec<FlowItemCycle>, FlowError> {
-        Ok(sqlx::query_as::<_, FlowItemCycle>(
+        Ok(sqlx::query_as::<_, FlowItemCycleRow>(
             "SELECT * FROM flow_item_cycles WHERE item_type = ? AND item_id = ?
              ORDER BY position, id",
         )
         .bind(item_type.as_str())
         .bind(item_id)
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?
+        .into_iter()
+        .map(FlowItemCycle::from)
+        .collect())
     }
 
     /// How many iterations hold something recorded against an occurrence of this item drawn by
@@ -788,11 +820,14 @@ impl<'session> FlowOperator<'session> {
 
     /// Lists every flow's cycle pairs (for the mindmap load).
     pub async fn list_all_cycles(&mut self) -> Result<Vec<FlowItemCycle>, FlowError> {
-        Ok(sqlx::query_as::<_, FlowItemCycle>(
+        Ok(sqlx::query_as::<_, FlowItemCycleRow>(
             "SELECT * FROM flow_item_cycles ORDER BY item_type, item_id, position ASC",
         )
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?
+        .into_iter()
+        .map(FlowItemCycle::from)
+        .collect())
     }
 
     /// Adds an intra-flow dependency (`dependent` waits on `depends_on`); a no-op if it exists.
@@ -844,9 +879,12 @@ impl<'session> FlowOperator<'session> {
     /// Lists every flow's dependencies (for the mindmap load).
     pub async fn list_all_dependencies(&mut self) -> Result<Vec<FlowDependency>, FlowError> {
         Ok(
-            sqlx::query_as::<_, FlowDependency>("SELECT * FROM flow_dependencies")
+            sqlx::query_as::<_, FlowDependencyRow>("SELECT * FROM flow_dependencies")
                 .fetch_all(&mut *self.connection)
-                .await?,
+                .await?
+                .into_iter()
+                .map(FlowDependency::from)
+                .collect(),
         )
     }
 
@@ -1285,10 +1323,11 @@ impl<'session> FlowOperator<'session> {
     /// sentinel an occurrence with no pair of its own carries.
     pub async fn cycle(&mut self, cycle_id: i64) -> Result<Option<FlowItemCycle>, FlowError> {
         Ok(
-            sqlx::query_as::<_, FlowItemCycle>("SELECT * FROM flow_item_cycles WHERE id = ?")
+            sqlx::query_as::<_, FlowItemCycleRow>("SELECT * FROM flow_item_cycles WHERE id = ?")
                 .bind(cycle_id)
                 .fetch_optional(&mut *self.connection)
-                .await?,
+                .await?
+                .map(FlowItemCycle::from),
         )
     }
 
@@ -1330,25 +1369,31 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         flow_id: FlowId,
     ) -> Result<Vec<HabitInstanceChild>, FlowError> {
-        Ok(sqlx::query_as::<_, HabitInstanceChild>(
+        Ok(sqlx::query_as::<_, HabitInstanceChildRow>(
             "SELECT flow_id, parent_kind, parent_key, child_type, child_id
              FROM derived_children WHERE flow_id = ? ORDER BY id",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?
+        .into_iter()
+        .map(HabitInstanceChild::from)
+        .collect())
     }
 
     /// Every stored node hung on a derived one, across the board.
     pub async fn list_all_instance_children(
         &mut self,
     ) -> Result<Vec<HabitInstanceChild>, FlowError> {
-        Ok(sqlx::query_as::<_, HabitInstanceChild>(
+        Ok(sqlx::query_as::<_, HabitInstanceChildRow>(
             "SELECT flow_id, parent_kind, parent_key, child_type, child_id
              FROM derived_children ORDER BY id",
         )
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?
+        .into_iter()
+        .map(HabitInstanceChild::from)
+        .collect())
     }
 
     /// The occurrence one node is attached to, if it is an added child of one.
@@ -1981,9 +2026,10 @@ impl<'session> FlowOperator<'session> {
     /// mindmap flag flow-originated Goals/Tasks (e.g. with a flow-instance badge) without a
     /// per-node origin lookup.
     pub async fn list_instance_node_refs(&mut self) -> Result<Vec<TargetRef>, FlowError> {
-        sqlx::query_as::<_, TargetRef>("SELECT node_type, node_id FROM flow_instance_nodes")
+        sqlx::query_as::<_, TargetRefRow>("SELECT node_type, node_id FROM flow_instance_nodes")
             .fetch_all(&mut *self.connection)
             .await
+            .map(|rows| rows.into_iter().map(TargetRef::from).collect())
             .map_err(Into::into)
     }
 }

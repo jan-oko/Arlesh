@@ -160,7 +160,7 @@ jobs:
       # A rules module is pure: no session, no sqlx, no tauri, no tokio, no file system (ADR
       # 0010). The convention is only worth having if it cannot erode silently, and like the guard
       # above this needs nothing but a shell, so it runs before anything is installed or built.
-      - name: Rules modules are pure
+      - name: Rules modules and domain models are pure
         run: scripts/check-rules-purity.sh
 
       # Second, for the same reason the guard above is first: this needs no apt

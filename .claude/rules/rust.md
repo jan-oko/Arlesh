@@ -40,6 +40,11 @@
   rather than reading a clock. `scripts/check-rules-purity.sh` enforces this in CI. To use a
   rule, gather what it needs in the domain's `mod.rs` (persistence and composite operations) and
   pass it in.
+- **Domain models and database rows are separate** (ADR 0010, decision 8). A domain type
+  (`model.rs`, `ScopeKey`, the node ids and keys) carries no `sqlx` derive or impl. A query decodes
+  into a row struct in persistence (`rows.rs`, or beside the operator) and converts with `From`; a
+  value stored directly goes through a zero-cost newtype such as `DbScopeKey`. The same check
+  holds the model files to it.
 - A new rule goes in its domain's `rules`, not inline in `mod.rs` beside the SQL. A frontend copy
   of a rule is allowed only for UX or speed, and only pinned to the Rust rule by a corpus under
   `conformance/`.
