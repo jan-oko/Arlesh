@@ -1,4 +1,5 @@
-"""A service over a fresh temporary database for each test, and the few nodes most tests need."""
+"""Fixtures for the server's tests: a server over a fresh temporary database, a token to reach
+it with, and the few nodes most tests hang things on."""
 
 from __future__ import annotations
 
@@ -6,30 +7,28 @@ import asyncio
 import fcntl
 import shutil
 import warnings
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any
+
+import pytest
 
 import arlesh
-import pytest
+from arlesh.server.entrypoints.fastapi.app import ArleshServer
+from arlesh.server.ports.board.arlesh_databases import ArleshDatabases
+from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", DeprecationWarning)
     from fastapi.testclient import TestClient
 
-from arlesh_api import Settings, create_app
-
-WRITER = {"X-Arlesh-Client": "tests"}
-"""The header every write in the tests names its client with."""
-
 ROOT_ASPECT = 1
 """The fixed Aspect a fresh database is seeded with first."""
 
-
-def day(date: str) -> dict[str, Any]:
-    """A one-Day Time Scope."""
-    key = {"kind": "day", "date": date}
-    return {"start_id": key, "end_id": key}
+Create = Callable[[str, dict[str, Any]], dict[str, Any]]
+NewTask = Callable[..., int]
+Start = Callable[..., ArleshServer]
 
 
 @pytest.fixture(scope="session")
@@ -38,7 +37,7 @@ def migrated(tmp_path_factory: pytest.TempPathFactory) -> Path:
     path = tmp_path_factory.mktemp("template") / "arlesh.db"
 
     async def create() -> None:
-        database = await arlesh.open(path, client="tests")
+        database = await arlesh.open(path, client="pytest")
         await database.close()
 
     asyncio.run(create())
@@ -46,8 +45,8 @@ def migrated(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture
-def db_path(tmp_path: Path, migrated: Path) -> Path:
-    """The test's own copy of a fresh database."""
+def server_db(tmp_path: Path, migrated: Path) -> Path:
+    """The test's own copy of a fresh, migrated database."""
     path = tmp_path / "arlesh.db"
     for suffix in ("", "-wal", "-shm"):
         source = migrated.with_name(migrated.name + suffix)
@@ -57,54 +56,92 @@ def db_path(tmp_path: Path, migrated: Path) -> Path:
 
 
 @pytest.fixture
-def client(db_path: Path) -> Iterator[TestClient]:
-    """The service, started over the test's database."""
-    with TestClient(create_app(Settings(db_path=db_path))) as running:
-        yield running
+def tokens(server_db: Path) -> FileTokenStore:
+    """The token store beside the test's database."""
+    return FileTokenStore.beside(server_db)
 
 
 @pytest.fixture
-def domain(client: TestClient) -> int:
+def start(server_db: Path, tokens: FileTokenStore) -> Start:
+    """Builds the server over the test's database, as ``arlesh-server`` does."""
+
+    def build(*, force: bool = False, path: Path | None = None) -> ArleshServer:
+        database = path if path is not None else server_db
+        return ArleshServer(
+            databases=ArleshDatabases(database, force=force),
+            tokens=FileTokenStore.beside(database) if path is not None else tokens,
+            version="test",
+        )
+
+    return build
+
+
+@pytest.fixture
+def server(start: Start, tokens: FileTokenStore) -> Iterator[TestClient]:
+    """The server, started, and reached with the token of client ``tests``."""
+    headers = {"Authorization": f"Bearer {tokens.add('tests')}"}
+    with TestClient(start(), headers=headers) as client:
+        yield client
+
+
+@pytest.fixture
+def create(server: TestClient) -> Create:
+    """Creates a node through a route and answers it, failing the test if it was refused."""
+
+    def post(path: str, body: dict[str, Any]) -> dict[str, Any]:
+        response = server.post(path, json=body)
+        assert response.status_code == 201, response.text
+        created: dict[str, Any] = response.json()
+        return created
+
+    return post
+
+
+@pytest.fixture
+def domain(create: Create) -> int:
     """A Domain under the root Aspect, to hang nodes on."""
-    response = client.post(
-        "/domains",
-        json={"title": "Home", "subtype": "domain", "parent_id": ROOT_ASPECT},
-        headers=WRITER,
-    )
-    assert response.status_code == 201, response.text
-    identifier: int = response.json()["id"]
+    identifier: int = create(
+        "/domains", {"title": "Home", "subtype": "domain", "parent_id": ROOT_ASPECT}
+    )["id"]
     return identifier
 
 
-def create(client: TestClient, path: str, body: dict[str, Any]) -> dict[str, Any]:
-    """Creates a node through ``path`` and answers it, failing the test if it was refused."""
-    response = client.post(path, json=body, headers=WRITER)
-    assert response.status_code == 201, response.text
-    created: dict[str, Any] = response.json()
-    return created
+@pytest.fixture
+def new_task(create: Create) -> NewTask:
+    """Creates a Task under a Domain and answers its id."""
+
+    def make(parent: int, title: str = "Write it", **fields: Any) -> int:
+        body = {"title": title, "parent_type": "domain", "parent_id": parent, **fields}
+        identifier: int = create("/tasks", body)["id"]
+        return identifier
+
+    return make
 
 
-def task(client: TestClient, parent: int, title: str = "Write it", **fields: Any) -> int:
-    """A Task under the Domain ``parent``; answers its id."""
-    body = {"title": title, "parent_type": "domain", "parent_id": parent, **fields}
-    identifier: int = create(client, "/tasks", body)["id"]
-    return identifier
+@pytest.fixture
+def app_hold(server_db: Path) -> Callable[[], AbstractContextManager[None]]:
+    """The desktop app's hold on the test's database, taken as the app takes it: an exclusive
+    lock on ``<db>.lock``."""
+
+    @contextmanager
+    def hold() -> Iterator[None]:
+        with server_db.with_name(server_db.name + ".lock").open("wb") as file:
+            fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                yield
+            finally:
+                fcntl.flock(file, fcntl.LOCK_UN)
+
+    return hold
 
 
-class AppHold:
-    """The desktop app's hold on a database, as the app takes it: an exclusive lock on
-    ``<db>.lock``."""
+def day(date: str) -> dict[str, Any]:
+    """A one-Day Time Scope."""
+    key = {"kind": "day", "date": date}
+    return {"start_id": key, "end_id": key}
 
-    def __init__(self, db_path: Path) -> None:
-        self._path = db_path.with_name(db_path.name + ".lock")
-        self._file: BinaryIO | None = None
 
-    def __enter__(self) -> AppHold:
-        self._file = self._path.open("wb")
-        fcntl.flock(self._file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        if self._file is not None:
-            fcntl.flock(self._file, fcntl.LOCK_UN)
-            self._file.close()
+@pytest.fixture
+def one_day() -> Callable[[str], dict[str, Any]]:
+    """A one-Day Time Scope, by its date."""
+    return day

@@ -1,14 +1,10 @@
-"""Arlesh over HTTP: a FastAPI service over the ``arlesh`` bindings.
+"""Arlesh over HTTP: the ``arlesh-server`` service, installed with ``arlesh[server]``.
 
-Every endpoint is a thin translation between HTTP and one binding call. The rules, the writes'
-atomicity and their refusals are the Rust core's own; nothing here decides anything about the
-board.
+Every route is a thin translation between HTTP and one call on the ``arlesh`` bindings; the
+rules, the writes' atomicity and their refusals are the Rust core's own.
 
-- :func:`create_app` builds the application for a :class:`Settings`.
-- ``arlesh-api`` (:mod:`arlesh_api.cli`) serves it on localhost.
+- :mod:`arlesh.server.cli` is the composition root and the ``arlesh-server`` command.
+- :mod:`arlesh.server.entrypoints.fastapi` holds the application, its routers, its security
+  scheme and its error answers.
+- :mod:`arlesh.server.ports` holds what it stands on: the databases, and the token store.
 """
-
-from arlesh_api.app import create_app
-from arlesh_api.settings import Settings
-
-__all__ = ["Settings", "create_app"]
