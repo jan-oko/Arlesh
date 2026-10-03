@@ -57,7 +57,7 @@ never stored.
 | **Habit iteration** | status of its occurrences, compound status, clock and miss policy, now | Resolved when every template occurrence is done (a compound one by its derived status). Otherwise the clock decides: Lapsed (Archive), Missed and carried (Overdue), open and owed (Owed), or the one open Interval instance. | `rs:flows/occurrences.rs::resolutions`, `rs:flows/rules/habits.rs` |
 | **Cooldown block** | Habit iteration (done instants), cooldown, clock, now | After an iteration is done, block the next iteration (under Owed, every open one) until the latest done instant plus the cooldown. | `rs:flows/rules/cooldown.rs::holds`, `rs:flows/occurrences.rs::done_instants` |
 | **Overdue** | effective due, status, Archived (effective Archival), now | Unfinished, not effectively Archived, and now is at or past the due's end. | `rs:tasks/rules/lifecycle.rs::derive_overdue` |
-| **Blocked** | block reasons, dependencies, status *(of another node: each dependency's target)*, capacity block, cooldown block, compound block | Any reason: one written by hand; a dependency on a Task not Done, a Goal not Achieved or a wait still Pending; or a derived block. | `rs:filters/facts.rs::index_blocked`, `rs:filters/rules.rs::is_blocked`, `ts:utils/blocked-by.ts` |
+| **Blocked** | block reasons, dependencies, status *(of another node: each dependency's target)*, capacity block, cooldown block, compound block | Any reason: one written by hand; a dependency on a Task not Done, a Goal not Achieved or a wait still Pending; or a derived block. | `rs:filters/facts.rs::index_blocked`, `rs:filters/rules.rs::is_blocked`, `rs:mindmap/rules/facts.rs` (the board's `dependency_blocks`) |
 
 How the presets read them:
 
@@ -162,7 +162,7 @@ How the presets read them:
 - **Without:** agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.
 - **Lives:**
   - `rs:tasks/rules/review.rs` (`derive`, `is_open_question`).
-  - Frontend: `ts:utils/open-question.ts`.
+  - The board names each Task's open question (`rs:mindmap/rules/facts.rs`); `ts:utils/open-question.ts` finds that wait to draw and answer.
   - The MCP side is `arlesh_waits.ask`, in `rs:mcp/`.
 - **Spec:** [Resources § Agentic statuses](spec/resources.md#agentic-statuses), [MCP § Agentic waits](spec/mcp-server.md#agentic-waits).
 
@@ -201,7 +201,7 @@ How the presets read them:
 - **Without:** either everything is scheduled rigidly, or nothing knows when it stops mattering.
 - **Lives:**
   - `rs:tasks/scope_rules.rs` and `rs:tasks/rules/lifecycle.rs`.
-  - Frontend: `ts:utils/inherited-scope.ts` and `ts:utils/plan-scope.ts`.
+  - The board sends what each node inherits (`rs:mindmap/rules/facts.rs`); the frontend reads it, and `ts:utils/plan-scope.ts` walks the Plan View's scopes.
   - [ADR 0001](adr/0001-time-scope-model.md) covers the time-scope model.
 - **Spec:** [Time Scopes](spec/time-scopes.md).
 
@@ -266,7 +266,7 @@ How the presets read them:
 - **Is:** a Commitment is judged, not done: Kept, Broken or Unresolved. Its Verdict Window bounds how long the answer stays owed; past it, the Commitment Expires.
 - **Why:** a rule is kept or broken, and an unanswered night may well have been kept.
 - **Without:** a missed check-in would count as a broken commitment.
-- **Lives:** `rs:tasks/commitments.rs`, and `ts:utils/commitment-glyph.ts` on the frontend. [ADR 0005](adr/0005-commitment-node-kind.md) covers the Commitment kind.
+- **Lives:** `rs:tasks/commitments.rs`; whether one has expired is a board fact (`rs:mindmap/rules/facts.rs`), which `ts:utils/commitment-glyph.ts` draws. [ADR 0005](adr/0005-commitment-node-kind.md) covers the Commitment kind.
 - **Spec:** [Resources § Commitments](spec/resources.md#commitments).
 
 ## 5. Inheritance
@@ -275,7 +275,7 @@ How the presets read them:
 - **Is:** a three-state flag (NULL, true, false) that inherits downward and can be overridden. It decides a Task's status model and what the MCP may write. Each Agentic Task has its own brief, and needs a Spec before it can start.
 - **Why:** mark a project for agents in one edit, and pull one Task back out of it.
 - **Without:** flagging every Task by hand, and agents writing into your own work.
-- **Lives:** `rs:tasks/agentic.rs`, and `ts:utils/agentic.ts` on the frontend. The brief is in `task_agentic_briefs`; MCP write access is in `rs:access/`.
+- **Lives:** `rs:tasks/agentic.rs` and `rs:tasks/rules/agentic.rs`; the board sends what each node inherits (`rs:mindmap/rules/facts.rs`), and `ts:utils/agentic.ts` reads it with the node's own flag. The brief is in `task_agentic_briefs`; MCP write access is in `rs:access/`.
 - **Spec:** [Resources § Tasks (Agentic)](spec/resources.md), [Link Inheritance](spec/link-inheritance.md).
 
 ### Scope containment
@@ -296,7 +296,7 @@ How the presets read them:
 - **Is:** a node's own Private flag. It hides the node and everything beneath it outside Private Mode, and hides it from the MCP even inside a root.
 - **Why:** one switch keeps an area out of sight and out of agents' context.
 - **Without:** hiding a subtree node by node, and leaking what was missed.
-- **Lives:** `rs:access/`; on the frontend, `ts:utils/mcp-visibility.ts` and the filter pass.
+- **Lives:** `rs:access/`; the board sends which root each node is seen through (`rs:mindmap/rules/facts.rs`); the frontend's filter pass hides private nodes.
 - **Spec:** [Filtering Logic](spec/filtering-logic.md), [MCP § Access](spec/mcp-server.md#access).
 
 ## 6. Blocks
@@ -312,7 +312,7 @@ How the presets read them:
 - **Is:** a Task can depend on a Task, a Goal or a stored Expectation. Until the dependency is met, the Task carries the reason "Blocked by {kind} {short id} ({title})". Cycles are refused.
 - **Why:** order between pieces of work is a fact worth recording once.
 - **Without:** you remember the order yourself, and Start offers work out of turn.
-- **Lives:** `rs:tasks/mod.rs` (`add_task_dependency`, `dependency_name`), `ts:utils/blocked-by.ts` and `ts:utils/dependency-candidates.ts`.
+- **Lives:** `rs:tasks/mod.rs` (`add_task_dependency`), `rs:tasks/rules/dependencies.rs` (`dependency_name`), and the board's `dependency_blocks` and `met` facts (`rs:mindmap/rules/facts.rs`); `ts:utils/blocked-by.ts` words them and `ts:utils/dependency-candidates.ts` offers targets.
 - **Spec:** [Resources § Tasks (Dependencies)](spec/resources.md).
 
 ### Derived blocks

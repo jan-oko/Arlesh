@@ -303,7 +303,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <p class="is">Never set: an On Agent Task with an open agent question beneath it. Answering the question puts it back On Agent.</p>
       <dl><dt>Why</dt><dd>It is the only way an agent hands work back, and the question says what you need to do.</dd>
       <dt>Without</dt><dd>Agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.</dd>
-      <dt>Lives</dt><dd class="where">tasks/rules/review.rs · src/utils/open-question.ts</dd></dl></article>
+      <dt>Lives</dt><dd class="where">tasks/rules/review.rs · mindmap/rules/facts.rs · src/utils/open-question.ts</dd></dl></article>
     <article class="card"><h3>Compound</h3>
       <p class="is">A Task whose status is read off its sub-items: Done when they all are, In Progress or Started as they progress. Never stored, and you cannot set it by hand.</p>
       <dl><dt>Why</dt><dd>A Task that is just the sum of its steps should never disagree with them.</dd>
@@ -406,7 +406,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <p class="is">A node's own Private flag hides it and everything beneath it, outside Private Mode and from the MCP even inside its roots.</p>
       <dl><dt>Why</dt><dd>One switch keeps a whole area out of sight and out of agents' context.</dd>
       <dt>Without</dt><dd>Hiding a subtree node by node, and leaking whatever was missed.</dd>
-      <dt>Lives</dt><dd class="where">access/ · src/utils/mcp-visibility.ts</dd></dl></article>
+      <dt>Lives</dt><dd class="where">access/ · mindmap/rules/facts.rs</dd></dl></article>
   </div>
 </section>
 
@@ -427,7 +427,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <p class="is">A Task can depend on a Task, a Goal or a stored wait. Until it is met, the Task reads "Blocked by task 6f3 (title)". Cycles are refused.</p>
       <dl><dt>Why</dt><dd>Order between pieces of work is a fact worth recording once.</dd>
       <dt>Without</dt><dd>You remember the order yourself, and Start offers things out of turn.</dd>
-      <dt>Lives</dt><dd class="where">tasks/mod.rs · src/utils/blocked-by.ts</dd></dl></article>
+      <dt>Lives</dt><dd class="where">tasks/mod.rs · mindmap/rules/facts.rs · src/utils/blocked-by.ts</dd></dl></article>
     <article class="card"><h3>Derived blocks</h3>
       <p class="is">Blocks no one writes: the agent capacity lock on every unfinished Agentic Task, a Habit's cooldown, and a compound Task whose open sub-items are all blocked.</p>
       <dl><dt>Why</dt><dd>One mechanism, so filters, badges and the MCP need nothing new for each.</dd>
