@@ -16,7 +16,7 @@ function overridePillClass(mode: OverrideMode): string {
   return styles.overridePill ?? "";
 }
 
-/** A tri-state pill — Archived, Backlog — cycling off (as the preset says) → include → exclude. */
+/** A tri-state pill — Archived, Backlog, Delegated — cycling off (as the preset says) → include → exclude. */
 export default function OverridePill({ label, mode, title, onCycle }: Props) {
   return (
     <button type="button" className={overridePillClass(mode)} title={title} onClick={onCycle}>

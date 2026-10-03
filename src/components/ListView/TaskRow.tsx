@@ -31,6 +31,8 @@ interface Props {
   onCommitTitle: (nodeId: string, title: string) => void;
   onCancelTitleEdit: () => void;
   onAddTagFilter: (tagId: number) => void;
+  /** Opens the row's context menu at the pointer. */
+  onContextMenu?: (nodeId: string, x: number, y: number) => void;
 }
 
 /** A compact card row for one Task: a status control (mirrors the Mindmap node's own glyph and click
@@ -47,7 +49,7 @@ interface Props {
  * a row never indents under something that is not on screen. */
 export default function TaskRow({
   row, visibleDepth, isSelected, isFocusExempt, isEditingTitle, showOverdueBorder, onSelect, onCycleStatus, onOpenEditor, onCommitTitle, onCancelTitleEdit,
-  onAddTagFilter,
+  onAddTagFilter, onContextMenu,
 }: Props) {
   useInputCapture(isEditingTitle);
   const { t } = useTranslation(["listView", "nodeKinds"]);
@@ -86,6 +88,7 @@ export default function TaskRow({
       style={cardStyle}
       onClick={() => onSelect(node.id)}
       onDoubleClick={() => onOpenEditor(node.id)}
+      onContextMenu={onContextMenu === undefined ? undefined : (e) => { e.preventDefault(); onContextMenu(node.id, e.clientX, e.clientY); }}
     >
       {overdue && <OverdueNote id={overdueNoteId} />}
       <button

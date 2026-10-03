@@ -5,7 +5,7 @@ import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
 import { agentActivityFrom } from "@/utils/agent-activity";
 import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
 import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
-import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment } from "@/api/commitments";
+import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment, COMMITMENT_ARCHIVAL } from "@/api/commitments";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { Commitment } from "@/api/commitments";
 import { createExpectation, updateExpectation, deleteExpectation } from "@/api/expectations";
@@ -526,6 +526,7 @@ export function buildTree(
       plan: task.plan,
       dueScope: task.due_scope ?? null,
       backlogged: task.archival === TASK_ARCHIVAL.BACKLOG,
+      ...(task.archival === TASK_ARCHIVAL.ARCHIVED ? { archivedByHand: true } : {}),
       agentic: task.agentic,
       delegate: task.delegate_to,
       ...personNameOf(task.delegate_to, personNames),
@@ -549,6 +550,7 @@ export function buildTree(
       title: commitment.title,
       verdict: commitment.verdict,
       verdictWindow: commitment.verdict_window ?? null,
+      ...(commitment.archival === COMMITMENT_ARCHIVAL.ARCHIVED ? { archivedByHand: true } : {}),
       ...cooldownFields(coolingUntil.get(`commitment-${commitment.id}`), cooldownReason),
       timeScope: commitment.time_scope,
       position: commitment.position,

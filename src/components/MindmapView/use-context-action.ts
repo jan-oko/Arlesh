@@ -21,6 +21,8 @@ interface Options {
   onNewFlow: (parentId: string) => void;
   onConvertToFlow: (nodeId: string) => void;
   onStartFlow: (flowId: string) => void;
+  /** Archives the node by hand, or unarchives it. */
+  onToggleArchive: (nodeId: string) => void;
 }
 
 interface Result {
@@ -29,7 +31,7 @@ interface Result {
 
 export function useContextAction({
   findNodeById, enterSubtree, setEditingNodeId,
-  setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow,
+  setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow, onToggleArchive,
 }: Options): Result {
   const onContextAction = useCallback(
     (nodeId: string, action: ContextMenuAction) => {
@@ -44,10 +46,11 @@ export function useContextAction({
         case CONTEXT_ACTION.NEW_FLOW: onNewFlow(nodeId); break;
         case CONTEXT_ACTION.CONVERT_TO_FLOW: onConvertToFlow(nodeId); break;
         case CONTEXT_ACTION.START_FLOW: onStartFlow(nodeId); break;
+        case CONTEXT_ACTION.ARCHIVE: onToggleArchive(nodeId); break;
         case CONTEXT_ACTION.DELETE: onDelete([nodeId]); break;
       }
     },
-    [findNodeById, enterSubtree, setEditingNodeId, setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow],
+    [findNodeById, enterSubtree, setEditingNodeId, setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow, onToggleArchive],
   );
 
   return { onContextAction };

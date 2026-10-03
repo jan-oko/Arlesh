@@ -232,13 +232,15 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         );
         node.status = Some(expectation.status.as_str().to_string());
         node.is_private = expectation.is_private;
-        node.archived = expectation.archival == ExpectationArchival::Archived;
         node.has_check = expectation.check_every.is_some();
         node.agent_waiting = expectation.agentic;
         node.tag_ids.clone_from(&expectation.tag_ids);
         node.time_scope.clone_from(&expectation.time_scope);
-        // Its own Time Scope's Timing — the stored archive, not the lifecycle, says archived.
+        // Its own Time Scope's Timing, and its Archival: the stored archive, or the lifecycle's —
+        // released with its window passed, or beneath a hand archive (Task 269).
         let lifecycle = lifecycles.get(&(expectations::EXPECTATION, expectation.id.clone()));
+        node.archived = expectation.archival == ExpectationArchival::Archived
+            || lifecycle.is_some_and(|lifecycle| lifecycle.archival == Archival::Archived);
         node.timing = lifecycle.map(|lifecycle| lifecycle.timing);
         node.overdue = lifecycle.is_some_and(|lifecycle| lifecycle.overdue);
         facts.push(node);

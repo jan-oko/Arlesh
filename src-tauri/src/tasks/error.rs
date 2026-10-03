@@ -129,6 +129,13 @@ pub enum TaskError {
     /// and a Habit's Task occurrence carry the flag.
     #[error("a check task cannot consist of its sub-items: its status is the check itself")]
     CompoundOnDerived,
+    /// A hand archive was asked of a row that has none: a Habit occurrence is archived through its
+    /// tombstone (Delete), and a Flow template carries no archive (Task 269).
+    #[error(
+        "only a stored task or commitment can be archived by hand; a Habit occurrence is \
+         archived with Delete"
+    )]
+    ArchiveOnDerived,
     /// A write would break a scope-containment invariant (e.g. a Plan wider than its Time Scope).
     #[error("scope containment violation: {0}")]
     ScopeContainment(String),
