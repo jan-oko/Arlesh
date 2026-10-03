@@ -298,7 +298,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <p class="is">An ordinary Task is To Do, In Progress, Started or Done. A Task that reads as Agentic is To Do, On Agent, Review, Doing or Done. The two are separate types.</p>
       <dl><dt>Why</dt><dd>The board has to say who holds the work. On Agent is the agent's; Doing is yours.</dd>
       <dt>Without</dt><dd>An agent's work reads as yours, and fills Do and Zen with things you are not doing.</dd>
-      <dt>Lives</dt><dd class="where">tasks/model.rs · src/utils/status-mapping.ts, task-status-cycle.ts</dd></dl></article>
+      <dt>Lives</dt><dd class="where">tasks/model.rs · tasks/rules/gestures.rs · src/utils/status-mapping.ts</dd></dl></article>
     <article class="card"><h3>Review</h3>
       <p class="is">Never set: an On Agent Task with an open agent question beneath it. Answering the question puts it back On Agent.</p>
       <dl><dt>Why</dt><dd>It is the only way an agent hands work back, and the question says what you need to do.</dd>
@@ -450,10 +450,10 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dt>Without</dt><dd>Each view invents its own idea of "now".</dd>
       <dt>Lives</dt><dd class="where">filters/ (Rust) · src/utils/filter-tree.ts, list-filter.ts</dd></dl></article>
     <article class="card"><h3>The conformance pair</h3>
-      <p class="is">The presets are written twice, in Rust for the MCP and in TypeScript for the views, and one shared case file runs against both.</p>
+      <p class="is">Every rule the views answer per keystroke is written twice, in a Rust rules module and as a TypeScript copy, and one shared case file per rule family runs against both.</p>
       <dl><dt>Why</dt><dd>The views filter instantly on every keystroke, without a round trip; the corpus keeps the two copies honest.</dd>
       <dt>Without</dt><dd>The agent's board and yours drift apart silently.</dd>
-      <dt>Lives</dt><dd class="where">conformance/preset-filters.json · preset-conformance.test.ts</dd></dl></article>
+      <dt>Lives</dt><dd class="where">conformance/ · *-conformance.test.ts · ADR 0010</dd></dl></article>
     <article class="card"><h3>Pills and the focus exemption</h3>
       <p class="is">Filters combine as Any, All and Not. The selected node stays on screen, dimmed, even after your own edit stops it matching.</p>
       <dl><dt>Why</dt><dd>Completing a Task under Plan should not make it vanish from under the cursor.</dd>

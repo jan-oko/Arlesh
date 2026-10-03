@@ -129,7 +129,8 @@ How the presets read them:
 - **Without:** each surface special-cases each source, and they drift.
 - **Lives:**
   - `rs:nodes/origin.rs`, `rs:nodes/table.rs`, `rs:nodes/waits.rs`, `rs:flows/occurrences.rs` and `rs:tasks/waits.rs`.
-  - Frontend: `ts:utils/derived-wait.ts`.
+  - What a row may be done to, by its origin: `rs:nodes/rules/capabilities.rs`, sent on the board's facts.
+  - Frontend: `ts:utils/derived-wait.ts` and `ts:utils/capabilities.ts`.
   - [ADR 0008](adr/0008-virtual-node-tables.md) covers virtual node tables.
 - **Spec:** [Derived nodes](spec/virtual-nodes.md).
 
@@ -152,7 +153,8 @@ How the presets read them:
 - **Without:** agent work reads as yours and fills Do and Zen.
 - **Lives:**
   - `rs:tasks/model.rs` (`TaskStatus`, `AgenticStatus`, `Status`, `Status::is_done_db`).
-  - Frontend: `ts:utils/status-mapping.ts` and `ts:utils/task-status-cycle.ts`.
+  - What a click, `Enter` and `Alt+Enter` write: `rs:tasks/rules/gestures.rs`, through the `step_task_status` command.
+  - Frontend: `ts:utils/status-mapping.ts`; its `convertedStatus` is pinned by `conformance/task-status.json`.
   - The kind is read from `rs:tasks/agentic.rs`.
 - **Spec:** [Resources § Agentic statuses](spec/resources.md#agentic-statuses).
 
@@ -312,7 +314,7 @@ How the presets read them:
 - **Is:** a Task can depend on a Task, a Goal or a stored Expectation. Until the dependency is met, the Task carries the reason "Blocked by {kind} {short id} ({title})". Cycles are refused.
 - **Why:** order between pieces of work is a fact worth recording once.
 - **Without:** you remember the order yourself, and Start offers work out of turn.
-- **Lives:** `rs:tasks/mod.rs` (`add_task_dependency`), `rs:tasks/rules/dependencies.rs` (`dependency_name`), and the board's `dependency_blocks` and `met` facts (`rs:mindmap/rules/facts.rs`); `ts:utils/blocked-by.ts` words them and `ts:utils/dependency-candidates.ts` offers targets.
+- **Lives:** `rs:tasks/mod.rs` (`add_task_dependency`), `rs:tasks/rules/dependencies.rs` (`dependency_name`), what a Task may depend on (`candidates`, asked by the `dependency_candidates` command), and the board's `dependency_blocks` and `met` facts (`rs:mindmap/rules/facts.rs`); `ts:utils/blocked-by.ts` words them and `ts:utils/dependency-candidates.ts` finds the offered targets in the search.
 - **Spec:** [Resources § Tasks (Dependencies)](spec/resources.md).
 
 ### Derived blocks
@@ -341,17 +343,17 @@ How the presets read them:
 - **Spec:** [Filtering Logic](spec/filtering-logic.md), [Mindmap § status preset](spec/mindmap-view.md).
 
 ### The conformance pair
-- **Is:** the presets are written twice, in Rust for the MCP and in TypeScript for the views. One shared case file runs against both.
-- **Why:** the views filter on every keystroke without a round trip, and the corpus keeps the two copies honest.
+- **Is:** every rule the frontend must answer per render or per pointer move is written twice — in a Rust `rules` module, which is the definition, and as a TypeScript copy — and one shared case file under `conformance/` runs against both ([ADR 0010](adr/0010-business-rules-layer.md)). The pinned copies are the presets and the List View's pills (`preset-filters.json`), the list sections (`list-sections.json`), the Zen View's contents and locked presets (`zen-contents.json`), the parenting table (`parenting.json`), the status models' conversion (`task-status.json`), the Habit fold (`habit-fold.json`), the cooldown options (`cooldown.json`), the cycle grid (`flow-cycles.json`), the Plan View's triage, refusal and sections (`plan-triage.json`), and scope keys, windows, labels and the day boundary (`scope-keys.json`).
+- **Why:** the views filter and draw on every keystroke without a round trip, and the corpora keep the copies honest; everything else the frontend reads from the backend instead.
 - **Without:** the agent's board and yours drift apart silently.
-- **Lives:** `conformance/preset-filters.json`, run by `ts:utils/preset-conformance.test.ts` and by the Rust tests under `rs:filters/`.
+- **Lives:** `conformance/`, run by the `*-conformance.test.ts` files beside each TypeScript copy and by the Rust tests under `src-tauri/tests/`.
 - **Spec:** [Filtering Logic § Where the definition lives](spec/filtering-logic.md).
 
 ### Pills and the focus exemption
 - **Is:** filters combine as Any, All and Not. The selected node stays on screen, dimmed, after your own edit stops it matching.
 - **Why:** completing a Task under Plan shouldn't make it vanish from under the cursor.
 - **Without:** every edit risks losing your place.
-- **Lives:** `ts:utils/filter-modes.ts`, `ts:utils/focus-exemption.ts` and `ts:utils/filter-layout.ts`.
+- **Lives:** `rs:filters/pills.rs` (the pills, also on an MCP read), `ts:utils/list-filter.ts`, `ts:utils/filter-modes.ts`, `ts:utils/focus-exemption.ts` and `ts:utils/filter-layout.ts`.
 - **Spec:** [Filtering Logic](spec/filtering-logic.md).
 
 ### Views
