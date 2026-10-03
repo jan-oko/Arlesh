@@ -3,7 +3,7 @@ use chrono::NaiveDate;
 use super::*;
 use crate::{
     nodes::{
-        key::{TemplateItem, TemplateKind},
+        key::{OccurrenceKey, TemplateItem, TemplateKind},
         origin::Origin,
     },
     tasks::model::{
