@@ -35,19 +35,27 @@ vi.mock("@/components/MindmapView/use-node-editor", () => ({
 }));
 
 const updateTask = vi.fn((_id: number, _request: unknown) => Promise.resolve());
+const stepTaskStatus = vi.fn((_id: number, _step: string) => Promise.resolve({ outcome: "written", backlog_cleared: null }));
 const addTaskDependency = vi.fn((_id: number, _dependency: unknown) => Promise.resolve());
 const listAllTaskDependencies = vi.fn(() => Promise.resolve([]));
+// What the backend offers as prerequisites (`tasks::rules::dependencies::candidates`).
+const fetchDependencyCandidates = vi.fn((_id: number) => Promise.resolve([{ type: "expectation", id: 7 }]));
 
 const undo = vi.fn(() => Promise.resolve(null));
 vi.mock("@/api/gesture", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/gesture")>()),
   undo: () => undo(),
 }));
+vi.mock("@/api/node-gestures", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/node-gestures")>()),
+  stepTaskStatus: (id: number, step: string) => stepTaskStatus(id, step),
+}));
 vi.mock("@/api/tasks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/tasks")>()),
   updateTask: (id: number, request: unknown) => updateTask(id, request),
   addTaskDependency: (id: number, dependency: unknown) => addTaskDependency(id, dependency),
   listAllTaskDependencies: () => listAllTaskDependencies(),
+  fetchDependencyCandidates: (id: number) => fetchDependencyCandidates(id),
 }));
 
 /** A fixture node; it draws the row its id names (`task-12` is row 12), unless it is virtual. */
@@ -368,7 +376,7 @@ describe("acting on the selected card", () => {
     press("ArrowDown");
     press("Space");
 
-    expect(updateTask).toHaveBeenCalledWith(1, { status: { kind: "ordinary", status: "in_progress" } });
+    expect(stepTaskStatus).toHaveBeenCalledWith(1, "advance");
   });
 
   it("refuses Space on a blocked Task out loud, and writes nothing", () => {
@@ -378,7 +386,7 @@ describe("acting on the selected card", () => {
     press("ArrowDown");
     press("Space");
 
-    expect(updateTask).not.toHaveBeenCalled();
+    expect(stepTaskStatus).not.toHaveBeenCalled();
     expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedBlocked");
   });
 
@@ -389,21 +397,21 @@ describe("acting on the selected card", () => {
     press("ArrowDown");
     press("Space");
 
-    expect(updateTask).not.toHaveBeenCalled();
+    expect(stepTaskStatus).not.toHaveBeenCalled();
     expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedBlocked");
   });
 
-  it("sets a Task Started on Alt+Enter, and resumes a Started one", () => {
+  it("sends Alt+Enter on a Task, Started or not", () => {
     mockTree([n("task-1", "task", { status: "in_progress" }), n("task-2", "task", { status: "started" })]);
     render(<StepsView />);
 
     press("ArrowDown");
     act(() => { fireEvent.keyDown(window, { code: "Enter", altKey: true }); });
-    expect(updateTask).toHaveBeenCalledWith(1, { status: { kind: "ordinary", status: "started" } });
+    expect(stepTaskStatus).toHaveBeenCalledWith(1, "alt");
 
     press("ArrowRight");
     act(() => { fireEvent.keyDown(window, { code: "Enter", altKey: true }); });
-    expect(updateTask).toHaveBeenCalledWith(2, { status: { kind: "ordinary", status: "in_progress" } });
+    expect(stepTaskStatus).toHaveBeenCalledWith(2, "alt");
   });
 
   it("refuses Alt+Enter on a blocked Task", () => {
@@ -412,7 +420,7 @@ describe("acting on the selected card", () => {
 
     press("ArrowDown");
     act(() => { fireEvent.keyDown(window, { code: "Enter", altKey: true }); });
-    expect(updateTask).not.toHaveBeenCalled();
+    expect(stepTaskStatus).not.toHaveBeenCalled();
   });
 
   it("opens the editor on E", () => {
@@ -802,6 +810,7 @@ describe("P, the quick Plan picker", () => {
     press("KeyP");
     press("Space");
     expect(updateTask).not.toHaveBeenCalled();
+    expect(stepTaskStatus).not.toHaveBeenCalled();
     act(() => { fireEvent.keyDown(document, { key: "Escape" }); });
     expect(screen.queryByRole("dialog", { name: "quickPlanPicker" })).toBeNull();
     expect(updateTask).not.toHaveBeenCalled();
@@ -836,7 +845,7 @@ describe("D, the quick dependency picker", () => {
     press("KeyD");
     const dialog = screen.getByRole("dialog", { name: "editor:quickDependencyPicker" });
     const search = screen.getByRole("combobox");
-    await waitFor(() => expect(listAllTaskDependencies).toHaveBeenCalled());
+    await waitFor(() => expect(fetchDependencyCandidates).toHaveBeenCalledWith(1));
     fireEvent.change(search, { target: { value: "parts" } });
     await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1));
     fireEvent.keyDown(search, { key: "Enter" });
@@ -858,6 +867,7 @@ describe("D, the quick dependency picker", () => {
     press("KeyD");
     press("Space");
     expect(updateTask).not.toHaveBeenCalled();
+    expect(stepTaskStatus).not.toHaveBeenCalled();
     act(() => { fireEvent.keyDown(document, { key: "Escape" }); });
     expect(screen.queryByRole("dialog", { name: "editor:quickDependencyPicker" })).toBeNull();
     expect(addTaskDependency).not.toHaveBeenCalled();

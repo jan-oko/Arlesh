@@ -2,11 +2,14 @@
 
 pub mod error;
 pub mod model;
+mod rows;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::nodes::rules::parenting;
 use error::DomainError;
 use model::{CreateDomainRequest, Domain, DomainId, DomainSubtype, UpdateDomainRequest};
+use rows::DomainRow;
 
 /// Reads and writes aspects, projects, domains and tags on a session's connection.
 ///
@@ -96,10 +99,11 @@ impl<'session> DomainOperator<'session> {
 
     /// Fetches a domain by id.
     pub async fn get(&mut self, id: DomainId) -> Result<Domain, DomainError> {
-        sqlx::query_as::<_, Domain>("SELECT * FROM domains WHERE id = ?")
+        sqlx::query_as::<_, DomainRow>("SELECT * FROM domains WHERE id = ?")
             .bind(id.0)
             .fetch_optional(&mut *self.connection)
             .await?
+            .map(Domain::from)
             .ok_or(DomainError::NotFound(id.0))
     }
 
@@ -109,16 +113,18 @@ impl<'session> DomainOperator<'session> {
         subtype: Option<DomainSubtype>,
     ) -> Result<Vec<Domain>, DomainError> {
         match subtype {
-            Some(subtype_value) => sqlx::query_as::<_, Domain>(
+            Some(subtype_value) => sqlx::query_as::<_, DomainRow>(
                 "SELECT * FROM domains WHERE subtype = ? ORDER BY position ASC",
             )
             .bind(subtype_to_str(&subtype_value))
             .fetch_all(&mut *self.connection)
             .await
+            .map(|rows| rows.into_iter().map(Domain::from).collect())
             .map_err(Into::into),
-            None => sqlx::query_as::<_, Domain>("SELECT * FROM domains ORDER BY position ASC")
+            None => sqlx::query_as::<_, DomainRow>("SELECT * FROM domains ORDER BY position ASC")
                 .fetch_all(&mut *self.connection)
                 .await
+                .map(|rows| rows.into_iter().map(Domain::from).collect())
                 .map_err(Into::into),
         }
     }
@@ -205,33 +211,39 @@ impl<'session> DomainOperator<'session> {
         Ok(())
     }
 
-    /// Validates that `parent_id` is an acceptable parent for a domain of the given `subtype`.
+    /// Validates that `parent_id` is an acceptable parent for a domain of the given `subtype`, by
+    /// the one parenting table every writer asks ([`crate::nodes::rules::parenting::may_parent`]).
+    /// A Project needs a parent; a Tag holds no domain.
     async fn validate_parent(
         &mut self,
         subtype: &DomainSubtype,
         parent_id: Option<i64>,
     ) -> Result<(), DomainError> {
-        match subtype {
-            DomainSubtype::Project => {
-                let parent_id = parent_id.ok_or_else(|| {
-                    DomainError::InvalidParent("Projects require a parent".into())
-                })?;
-                let parent = self.get(DomainId(parent_id)).await?;
-                if parent.subtype != "aspect" && parent.subtype != "project" {
-                    return Err(DomainError::InvalidParent(
-                        "Project parent must be an Aspect or Project".into(),
-                    ));
-                }
-            }
-            DomainSubtype::Tag => {
-                if let Some(parent_id) = parent_id {
-                    let parent = self.get(DomainId(parent_id)).await?;
-                    if parent.subtype == "tag" {
-                        return Err(DomainError::TagCannotHaveChildren);
-                    }
-                }
-            }
-            DomainSubtype::Domain | DomainSubtype::Aspect => {}
+        let Some(parent_id) = parent_id else {
+            return match subtype {
+                DomainSubtype::Project => Err(DomainError::InvalidParent(
+                    "Projects require a parent".into(),
+                )),
+                _ => Ok(()),
+            };
+        };
+        let parent = self.get(DomainId(parent_id)).await?;
+        if parent.subtype == "tag" {
+            return Err(DomainError::TagCannotHaveChildren);
+        }
+        let child = subtype_to_str(subtype);
+        let allowed = match (
+            parenting::kind_of(child),
+            parenting::kind_of(&parent.subtype),
+        ) {
+            (Some(child), Some(parent)) => parenting::may_parent(child, parent),
+            _ => false,
+        };
+        if !allowed {
+            return Err(DomainError::InvalidParent(format!(
+                "a {child} cannot hang under a {}",
+                parent.subtype
+            )));
         }
         Ok(())
     }

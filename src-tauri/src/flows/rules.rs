@@ -8,5 +8,11 @@
 //! The submodules are re-exported at their old paths in the parent module, so callers did not
 //! change when they moved here.
 
+pub mod compound_readings;
 pub mod cooldown;
+pub mod cycle_grid;
+pub mod fold;
 pub mod habits;
+pub mod occurrences;
+pub mod schedule;
+pub mod targets;

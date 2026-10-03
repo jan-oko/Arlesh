@@ -15,7 +15,10 @@ use std::collections::{BTreeSet, HashMap};
 use arlesh_lib::{
     filters::{
         list,
-        model::{BoardFilter, NodeKind, OverrideMode, Preset, ScopeMatch, TagFilter, TagMode},
+        model::{
+            BoardFilter, ListPills, NodeKind, OverrideMode, Pill, Preset, RowKind, ScopeMatch,
+            TagFilter, TagMode,
+        },
         tree::{self, FactNode},
     },
     scopes::key::ScopeKey,
@@ -87,6 +90,46 @@ struct CorpusFilter {
     do_shows_started: bool,
     #[serde(default)]
     show_on_agent: bool,
+    /// The List View's kind selector; every kind when omitted.
+    #[serde(default)]
+    kinds: Option<Vec<RowKind>>,
+    #[serde(default)]
+    pills: CorpusPills,
+}
+
+/// The List View's pills, one list per dimension, spelled as the frontend stores them.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct CorpusPills {
+    antecedent: Vec<Pill>,
+    dependency: Vec<Pill>,
+    task_status: Vec<Pill>,
+    goal_status: Vec<Pill>,
+    project_status: Vec<Pill>,
+    verdict: Vec<Pill>,
+    scope_state: Vec<Pill>,
+    blocked: Vec<Pill>,
+    agentic: Vec<Pill>,
+    asynchronous: Vec<Pill>,
+    private: Vec<Pill>,
+}
+
+impl From<&CorpusPills> for ListPills {
+    fn from(pills: &CorpusPills) -> Self {
+        Self {
+            antecedent: pills.antecedent.clone(),
+            dependency: pills.dependency.clone(),
+            task_status: pills.task_status.clone(),
+            goal_status: pills.goal_status.clone(),
+            project_status: pills.project_status.clone(),
+            verdict: pills.verdict.clone(),
+            scope_state: pills.scope_state.clone(),
+            blocked: pills.blocked.clone(),
+            agentic: pills.agentic.clone(),
+            asynchronous: pills.asynchronous.clone(),
+            private: pills.private.clone(),
+        }
+    }
 }
 
 fn yes() -> bool {
@@ -126,6 +169,11 @@ impl From<&CorpusFilter> for BoardFilter {
             start_shows_started: filter.start_shows_started,
             do_shows_started: filter.do_shows_started,
             show_on_agent: filter.show_on_agent,
+            kinds: filter
+                .kinds
+                .clone()
+                .unwrap_or_else(|| RowKind::ALL.to_vec()),
+            pills: ListPills::from(&filter.pills),
         }
     }
 }

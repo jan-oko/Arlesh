@@ -20,16 +20,21 @@ beforeEach(() => {
 });
 
 describe("useValidFlowTargets", () => {
-  it("returns null without querying for an unscoped flow", () => {
-    const { result } = renderHook(() => useValidFlowTargets(CANDIDATES, false, null, null, null));
-    expect(result.current).toBeNull();
-    expect(scopeValidFlowTargets).not.toHaveBeenCalled();
+  it("asks the backend for an unscoped flow too, which still keeps only the kinds that hold instances", async () => {
+    vi.mocked(scopeValidFlowTargets).mockResolvedValue([{ node_type: "goal", node_id: 7 }]);
+    const { result } = renderHook(() => useValidFlowTargets(CANDIDATES, null, null, null));
+    await waitFor(() => expect(result.current).not.toBeNull());
+    expect(scopeValidFlowTargets).toHaveBeenCalledWith(null, null, null, [
+      { node_type: "goal", node_id: 7 },
+      { node_type: "aspect", node_id: 1 },
+    ]);
+    expect(result.current?.has("goal-7")).toBe(true);
   });
 
   it("queries with mapped refs and returns the valid id set for a scoped flow", async () => {
     vi.mocked(scopeValidFlowTargets).mockResolvedValue([{ node_type: "aspect", node_id: 1 }]);
     const { result } = renderHook(() =>
-      useValidFlowTargets(CANDIDATES, true, 2, "week", "2026-07-01"),
+      useValidFlowTargets(CANDIDATES, 2, "week", "2026-07-01"),
     );
     await waitFor(() => expect(result.current).not.toBeNull());
     expect(scopeValidFlowTargets).toHaveBeenCalledWith(2, "week", "2026-07-01", [

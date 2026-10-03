@@ -22,7 +22,7 @@
 use chrono::NaiveDateTime;
 
 use crate::database::session::{Db, Transactional};
-use crate::scopes::key::ScopeKey;
+use crate::scopes::db::DbScopeKey;
 
 use super::error::TaskError;
 use super::model::{
@@ -46,8 +46,8 @@ struct ExpectationRow {
     archival: String,
     position: i64,
     is_private: bool,
-    time_scope_start_id: Option<ScopeKey>,
-    time_scope_end_id: Option<ScopeKey>,
+    time_scope_start_id: Option<DbScopeKey>,
+    time_scope_end_id: Option<DbScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     check_every_n: Option<i64>,

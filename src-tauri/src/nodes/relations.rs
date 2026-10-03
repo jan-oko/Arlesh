@@ -17,7 +17,7 @@ use super::id::NodeId;
 pub type TagDifferences = HashMap<String, Vec<(i64, bool)>>;
 
 /// One `derived_dependencies` row: an edge with at least one derived end.
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DerivedEdge {
     /// A stored dependent, when the dependent is stored.
     pub dependent_id: Option<i64>,
@@ -31,6 +31,30 @@ pub struct DerivedEdge {
     pub target_key: Option<String>,
     /// Whether the edge is added, or one of the template's own removed.
     pub added: bool,
+}
+
+/// A [`DerivedEdge`] as its table holds it.
+#[derive(sqlx::FromRow)]
+pub(crate) struct DerivedEdgeRow {
+    dependent_id: Option<i64>,
+    dependent_key: Option<String>,
+    target_type: String,
+    target_id: Option<i64>,
+    target_key: Option<String>,
+    added: bool,
+}
+
+impl From<DerivedEdgeRow> for DerivedEdge {
+    fn from(row: DerivedEdgeRow) -> Self {
+        Self {
+            dependent_id: row.dependent_id,
+            dependent_key: row.dependent_key,
+            target_type: row.target_type,
+            target_id: row.target_id,
+            target_key: row.target_key,
+            added: row.added,
+        }
+    }
 }
 
 impl DerivedEdge {
@@ -228,12 +252,13 @@ impl<'session> RelationOperator<'session> {
 
     /// Every edge with a derived end.
     pub async fn dependencies(&mut self) -> Result<Vec<DerivedEdge>, sqlx::Error> {
-        sqlx::query_as(
+        let rows: Vec<DerivedEdgeRow> = sqlx::query_as(
             "SELECT dependent_id, dependent_key, target_type, target_id, target_key, added
              FROM derived_dependencies ORDER BY id",
         )
         .fetch_all(&mut *self.connection)
-        .await
+        .await?;
+        Ok(rows.into_iter().map(DerivedEdge::from).collect())
     }
 
     /// The template edges removed from derived dependents, as `(dependent key, target key)`.

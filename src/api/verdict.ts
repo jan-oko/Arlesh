@@ -17,12 +17,6 @@
  * really does export `invoke` and always will, so lint is the only enforcement available there,
  * whereas here the module simply stops exporting the names and a lint rule listing today's four
  * would be a second, weaker copy of a check the compiler already makes completely.
- *
- * `NEXT_VERDICT` and `verdictAfterPressing` still live in `commitments.ts` although they are pure
- * functions of a Verdict. Nothing is forced through the transport for them today — their only
- * caller outside that module's own tests is `use-commitment-verdict.ts`, which calls
- * `updateCommitment` anyway — but a module that wants only the transitions would be, so they are
- * the next candidates to move here.
  */
 
 /**

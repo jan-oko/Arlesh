@@ -73,19 +73,55 @@ pub async fn update_task(
 ) -> Result<Task, WireError> {
     let now = chrono::Local::now().naive_local();
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let task = write_task_guarded(&mut db, &id, request, confirmed, now).await?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(task)
+}
+
+/// Writes `request` to the Task `id` — through the guard that asks, unless `confirmed`, before a
+/// Habit occurrence is marked done while it still holds unfinished children it would close over.
+pub(crate) async fn write_task_guarded(
+    db: &mut crate::database::session::Db<crate::database::session::Transactional>,
+    id: &NodeId,
+    request: UpdateTaskRequest,
+    confirmed: Option<bool>,
+    now: chrono::NaiveDateTime,
+) -> Result<Task, WireError> {
     if request.status.is_some_and(|status| status.is_done()) && confirmed != Some(true) {
-        let open = write::unfinished_children(&mut db, &id, now)
+        let open = write::unfinished_children(db, id, now)
             .await
             .map_err(WireError::from_error)?;
         if !open.is_empty() {
             return Err(crate::commands::flows::unfinished_refusal(&open));
         }
     }
-    let task = write::update_task(&mut db, &id, request, now)
+    write::update_task(db, id, request, now)
+        .await
+        .map_err(WireError::from_error)
+}
+
+/// What the Task `id` may be made to depend on — what the quick dependency picker offers: every
+/// Task that can hold a prerequisite, every Goal and every stored Expectation on the board, less
+/// what it already depends on and every Task whose edge would close a cycle
+/// ([`crate::tasks::rules::dependencies::candidates`]).
+#[tauri::command]
+pub async fn dependency_candidates(
+    factory: State<'_, SessionFactory>,
+    id: NodeId,
+) -> Result<Vec<Dependency>, WireError> {
+    let now = chrono::Local::now().naive_local();
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let load = crate::mindmap::load(&mut db, now)
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
-    Ok(task)
+    Ok(crate::tasks::rules::dependencies::candidates(
+        &id,
+        &load.tasks,
+        &load.goals,
+        &load.expectations,
+        &load.task_dependencies,
+    ))
 }
 
 /// Returns the task/goal descendants of a node that a candidate Time Scope would orphan, for the

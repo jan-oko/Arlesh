@@ -31,7 +31,7 @@ use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::InfoId;
 use crate::nodes::id::NodeId;
 use crate::nodes::origin::Origin;
-use crate::scopes::key::ScopeKey;
+use crate::scopes::db::DbScopeKey;
 use ancestry::{AncestryLink, NodeKind, NodeRef};
 use chrono::NaiveDateTime;
 pub use commitments::{
@@ -48,6 +48,8 @@ use model::{
     GoalStatus, OnScopeExit, Status, Task, TaskArchival, TaskDependencyEdge, TaskId, TaskStatus,
     TaskWithBlockers, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
 };
+pub use rules::dependencies::dependency_name;
+use rules::write::{reject_backlog_with_plan, releases_compound};
 pub use scope_rules::{
     conflicts_for_new_time_scope, derive_all_scope_lifecycles, derive_scope_lifecycles,
     mark_waits_under_pending, nearest_scoped_ancestor_window, reparent_conflicts, wait_lifecycle,
@@ -61,8 +63,8 @@ pub use scope_rules::{
 fn time_scope_columns(
     time_scope: &Option<TimeScope>,
 ) -> (
-    Option<ScopeKey>,
-    Option<ScopeKey>,
+    Option<DbScopeKey>,
+    Option<DbScopeKey>,
     Option<i64>,
     Option<String>,
 ) {
@@ -72,7 +74,12 @@ fn time_scope_columns(
                 Some(d) => (Some(d.n), Some(d.kind.clone())),
                 None => (None, None),
             };
-            (Some(ts.start_id), Some(ts.end_id), n, kind)
+            (
+                Some(DbScopeKey(ts.start_id)),
+                Some(DbScopeKey(ts.end_id)),
+                n,
+                kind,
+            )
         }
         None => (None, None, None, None),
     }
@@ -89,22 +96,6 @@ fn on_scope_exit_column(
         return None;
     }
     Some(requested.unwrap_or(OnScopeExit::Keep).as_str())
-}
-
-/// Refuses a write that would leave a Task both backlogged and planned.
-///
-/// The invariant is `archival = Backlog ⇒ plan IS NULL`, and this is the single place it is
-/// enforced, for creates and updates alike. It is deliberately not a schema CHECK: the frontend
-/// answers this refusal by asking again with the Plan cleared, which reads as a prompt rather than
-/// as corrupt input.
-fn reject_backlog_with_plan(
-    archival: TaskArchival,
-    plan: &Option<TimeScope>,
-) -> Result<(), TaskError> {
-    if plan.is_some() && !archival.allows_plan() {
-        return Err(TaskError::BacklogWithPlan);
-    }
-    Ok(())
 }
 
 /// The millisecond timestamp a freshly inserted row takes as its sort position.
@@ -214,8 +205,8 @@ async fn delete_node_subtree(
 /// Reassembles a Time Scope value object from its flat row columns. A scope exists only when
 /// both boundary ids are present; the duration parameters are optional metadata on top.
 fn time_scope_from_row(
-    start_id: Option<ScopeKey>,
-    end_id: Option<ScopeKey>,
+    start_id: Option<DbScopeKey>,
+    end_id: Option<DbScopeKey>,
     duration_n: Option<i64>,
     duration_kind: Option<String>,
 ) -> Option<TimeScope> {
@@ -225,8 +216,8 @@ fn time_scope_from_row(
         _ => None,
     };
     Some(TimeScope {
-        start_id,
-        end_id,
+        start_id: start_id.0,
+        end_id: end_id.0,
         duration,
     })
 }
@@ -243,15 +234,15 @@ struct TaskRow {
     agentic: Option<bool>,
     asynchronous: bool,
     compound: bool,
-    time_scope_start_id: Option<ScopeKey>,
-    time_scope_end_id: Option<ScopeKey>,
+    time_scope_start_id: Option<DbScopeKey>,
+    time_scope_end_id: Option<DbScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     on_scope_exit: Option<String>,
-    plan_start_id: Option<ScopeKey>,
-    plan_end_id: Option<ScopeKey>,
-    due_scope_start_id: Option<ScopeKey>,
-    due_scope_end_id: Option<ScopeKey>,
+    plan_start_id: Option<DbScopeKey>,
+    plan_end_id: Option<DbScopeKey>,
+    due_scope_start_id: Option<DbScopeKey>,
+    due_scope_end_id: Option<DbScopeKey>,
     archival: String,
     position: i64,
     is_private: bool,
@@ -323,8 +314,8 @@ struct GoalRow {
     parent_type: String,
     parent_id: i64,
     status: String,
-    time_scope_start_id: Option<ScopeKey>,
-    time_scope_end_id: Option<ScopeKey>,
+    time_scope_start_id: Option<DbScopeKey>,
+    time_scope_end_id: Option<DbScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     on_scope_exit: Option<String>,
@@ -363,13 +354,13 @@ impl From<GoalRow> for Goal {
 struct TaskAncestryRow {
     parent_type: String,
     parent_id: i64,
-    time_scope_start_id: Option<ScopeKey>,
-    time_scope_end_id: Option<ScopeKey>,
+    time_scope_start_id: Option<DbScopeKey>,
+    time_scope_end_id: Option<DbScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     on_scope_exit: Option<String>,
-    plan_start_id: Option<ScopeKey>,
-    plan_end_id: Option<ScopeKey>,
+    plan_start_id: Option<DbScopeKey>,
+    plan_end_id: Option<DbScopeKey>,
 }
 
 /// The narrow goal row one step of an ancestry climb reads. Goals have no Plan column, so the
@@ -378,8 +369,8 @@ struct TaskAncestryRow {
 struct GoalAncestryRow {
     parent_type: String,
     parent_id: i64,
-    time_scope_start_id: Option<ScopeKey>,
-    time_scope_end_id: Option<ScopeKey>,
+    time_scope_start_id: Option<DbScopeKey>,
+    time_scope_end_id: Option<DbScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     on_scope_exit: Option<String>,
@@ -518,12 +509,6 @@ struct TaskWrite {
     position: i64,
     /// Final privacy flag.
     is_private: bool,
-}
-
-/// Whether `request` switches a compound `stored` Task's compound off — the one write that may
-/// name its status, since what it names is the derived status being kept.
-fn releases_compound(stored: &Task, request: &UpdateTaskRequest) -> bool {
-    stored.compound && request.compound == Some(false)
 }
 
 impl TaskWrite {
@@ -1699,15 +1684,6 @@ pub async fn get_task_with_blockers<M: SessionMode>(
     id: TaskId,
 ) -> Result<TaskWithBlockers, TaskError> {
     get_task_with_blockers_as(db, id, &HashMap::new(), &HashMap::new()).await
-}
-
-/// How a "Blocked by …" reason names the node it is blocked by: its **short id** from `names` —
-/// keyed as the board keys a node, `task-12` — or, for a node `names` does not hold, its id.
-pub fn dependency_name(names: &HashMap<String, String>, kind: &str, id: &NodeId) -> String {
-    names
-        .get(&format!("{kind}-{id}"))
-        .cloned()
-        .unwrap_or_else(|| id.to_string())
 }
 
 /// [`get_task_with_blockers`], reading each stored Task's status from `served` where it has one

@@ -6,7 +6,6 @@ import BlockReasonsField from "@/components/BlockReasonsField/BlockReasonsField"
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { entityNodeId } from "@/utils/tree-layout";
-import { EXPECTATION_STATUS } from "@/api/expectation-status";
 import type { Domain } from "@/api/domains";
 import type { AgenticBrief, AsyncTemplate, Delegate, Dependency, TaskAgentic, TaskArchival, TaskStatus } from "@/api/tasks";
 import { EMPTY_AGENTIC_BRIEF, isEmptyBrief } from "@/api/tasks";
@@ -309,17 +308,13 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
     return availableForDep.find((n) => n.id === entityNodeId(dep.type, dep.id))?.title ?? `${dep.type} #${dep.id}`;
   }
 
-  // Virtual blockers derived from the *current* (editable) dependencies — an unmet dependency (a
-  // non-Done task / non-Achieved goal) blocks. Recomputed live, so removing a dependency drops its row.
+  // The blocks the *current* (editable) dependencies make, recomputed live so removing a dependency
+  // drops its row. Whether a target is met is the backend's rule (the load's `met` fact); a target
+  // not on the board is not known to be met.
   const virtualBlockers = currentDeps.flatMap((dep) => {
     const target = availableForDep.find((n) => n.id === entityNodeId(dep.type, dep.id));
     const label = blockedByText(dep.type, target?.shortId, dep.id, depTitle(dep));
-    const unmet = target === undefined
-      ? true
-      : dep.type === "task" ? target.status !== "done"
-        : dep.type === "expectation" ? target.status === EXPECTATION_STATUS.PENDING
-          : target.status !== "achieved";
-    return unmet ? [label] : [];
+    return target?.met === true ? [] : [label];
   });
 
   return (

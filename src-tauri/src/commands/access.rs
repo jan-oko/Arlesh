@@ -21,9 +21,12 @@ use crate::{
 pub struct McpAccessCatalogue {
     /// Every MCP root, in node order.
     pub roots: Vec<NodeKey>,
-    /// Every stored node, with its title and where it hangs — what the page's node search
-    /// searches, and what names a root and spells its path.
+    /// Every stored node, with its title and where it hangs — what names a root and spells its
+    /// path, and the candidates' titles.
     pub nodes: Vec<CatalogueNode>,
+    /// The nodes that may be made roots — what the page's node search searches
+    /// ([`crate::access::resolve::root_candidates`]).
+    pub candidates: Vec<NodeKey>,
 }
 
 /// The MCP roots and every node that could be one.
@@ -41,7 +44,12 @@ pub async fn mcp_access_catalogue(
         .catalogue()
         .await
         .map_err(WireError::from_error)?;
-    Ok(McpAccessCatalogue { roots, nodes })
+    let candidates = crate::access::resolve::root_candidates(&roots, &nodes);
+    Ok(McpAccessCatalogue {
+        roots,
+        nodes,
+        candidates,
+    })
 }
 
 /// Every stored node the MCP can see, with the root it is seen through.

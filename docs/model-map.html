@@ -298,12 +298,12 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <p class="is">An ordinary Task is To Do, In Progress, Started or Done. A Task that reads as Agentic is To Do, On Agent, Review, Doing or Done. The two are separate types.</p>
       <dl><dt>Why</dt><dd>The board has to say who holds the work. On Agent is the agent's; Doing is yours.</dd>
       <dt>Without</dt><dd>An agent's work reads as yours, and fills Do and Zen with things you are not doing.</dd>
-      <dt>Lives</dt><dd class="where">tasks/model.rs · src/utils/status-mapping.ts, task-status-cycle.ts</dd></dl></article>
+      <dt>Lives</dt><dd class="where">tasks/model.rs · tasks/rules/gestures.rs · src/utils/status-mapping.ts</dd></dl></article>
     <article class="card"><h3>Review</h3>
       <p class="is">Never set: an On Agent Task with an open agent question beneath it. Answering the question puts it back On Agent.</p>
       <dl><dt>Why</dt><dd>It is the only way an agent hands work back, and the question says what you need to do.</dd>
       <dt>Without</dt><dd>Agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.</dd>
-      <dt>Lives</dt><dd class="where">tasks/rules/review.rs · src/utils/open-question.ts</dd></dl></article>
+      <dt>Lives</dt><dd class="where">tasks/rules/review.rs · mindmap/rules/facts.rs · src/utils/open-question.ts</dd></dl></article>
     <article class="card"><h3>Compound</h3>
       <p class="is">A Task whose status is read off its sub-items: Done when they all are, In Progress or Started as they progress. Never stored, and you cannot set it by hand.</p>
       <dl><dt>Why</dt><dd>A Task that is just the sum of its steps should never disagree with them.</dd>
@@ -406,7 +406,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <p class="is">A node's own Private flag hides it and everything beneath it, outside Private Mode and from the MCP even inside its roots.</p>
       <dl><dt>Why</dt><dd>One switch keeps a whole area out of sight and out of agents' context.</dd>
       <dt>Without</dt><dd>Hiding a subtree node by node, and leaking whatever was missed.</dd>
-      <dt>Lives</dt><dd class="where">access/ · src/utils/mcp-visibility.ts</dd></dl></article>
+      <dt>Lives</dt><dd class="where">access/ · mindmap/rules/facts.rs</dd></dl></article>
   </div>
 </section>
 
@@ -427,7 +427,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <p class="is">A Task can depend on a Task, a Goal or a stored wait. Until it is met, the Task reads "Blocked by task 6f3 (title)". Cycles are refused.</p>
       <dl><dt>Why</dt><dd>Order between pieces of work is a fact worth recording once.</dd>
       <dt>Without</dt><dd>You remember the order yourself, and Start offers things out of turn.</dd>
-      <dt>Lives</dt><dd class="where">tasks/mod.rs · src/utils/blocked-by.ts</dd></dl></article>
+      <dt>Lives</dt><dd class="where">tasks/mod.rs · mindmap/rules/facts.rs · src/utils/blocked-by.ts</dd></dl></article>
     <article class="card"><h3>Derived blocks</h3>
       <p class="is">Blocks no one writes: the agent capacity lock on every unfinished Agentic Task, a Habit's cooldown, and a compound Task whose open sub-items are all blocked.</p>
       <dl><dt>Why</dt><dd>One mechanism, so filters, badges and the MCP need nothing new for each.</dd>
@@ -450,10 +450,10 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dt>Without</dt><dd>Each view invents its own idea of "now".</dd>
       <dt>Lives</dt><dd class="where">filters/ (Rust) · src/utils/filter-tree.ts, list-filter.ts</dd></dl></article>
     <article class="card"><h3>The conformance pair</h3>
-      <p class="is">The presets are written twice, in Rust for the MCP and in TypeScript for the views, and one shared case file runs against both.</p>
+      <p class="is">Every rule the views answer per keystroke is written twice, in a Rust rules module and as a TypeScript copy, and one shared case file per rule family runs against both.</p>
       <dl><dt>Why</dt><dd>The views filter instantly on every keystroke, without a round trip; the corpus keeps the two copies honest.</dd>
       <dt>Without</dt><dd>The agent's board and yours drift apart silently.</dd>
-      <dt>Lives</dt><dd class="where">conformance/preset-filters.json · preset-conformance.test.ts</dd></dl></article>
+      <dt>Lives</dt><dd class="where">conformance/ · *-conformance.test.ts · ADR 0010</dd></dl></article>
     <article class="card"><h3>Pills and the focus exemption</h3>
       <p class="is">Filters combine as Any, All and Not. The selected node stays on screen, dimmed, even after your own edit stops it matching.</p>
       <dl><dt>Why</dt><dd>Completing a Task under Plan should not make it vanish from under the cursor.</dd>

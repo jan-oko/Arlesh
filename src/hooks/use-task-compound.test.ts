@@ -5,6 +5,7 @@ import { useTaskCompound } from "./use-task-compound";
 import { updateTask } from "@/api/tasks";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
+import { DERIVED_WAIT_CAPABILITIES } from "@/test/capabilities";
 
 vi.mock("@/api/tasks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/tasks")>()),
@@ -61,6 +62,7 @@ describe("useTaskCompound", () => {
     const check = node("task-3", {
       rowId: "00000000-0000-5000-8000-000000000003",
       origin: { kind: "check", wait_kind: "stored", wait_id: 4, due_at: "2026-01-05T09:00:00" },
+      capabilities: DERIVED_WAIT_CAPABILITIES,
     });
     const { result, showToast } = setup([check]);
 

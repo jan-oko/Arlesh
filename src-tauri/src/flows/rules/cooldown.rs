@@ -163,6 +163,28 @@ impl Cooldown {
         Ok(())
     }
 
+    /// The longest cooldown in `unit` that [`Self::fits`] a Habit whose window is `habit_n` ×
+    /// `habit_kind` — what the editor bounds the field by — or `0` when none does.
+    pub fn longest(unit: CooldownUnit, habit_kind: &str, habit_n: i64) -> i64 {
+        if !CooldownUnit::allowed_for(habit_kind).contains(&unit) {
+            return 0;
+        }
+        let habit_n = habit_n.max(1);
+        let room = match unit {
+            CooldownUnit::Part => 6 * habit_n,
+            CooldownUnit::Day | CooldownUnit::Week => shortest_days(habit_kind) * habit_n,
+            CooldownUnit::Month => 3 * habit_n,
+        };
+        match unit {
+            // The largest n with 7n + 6 < room — the week holding the completion runs six days
+            // on first — is ceil((room - 6) / 7) - 1, which is room / 7 - 1.
+            CooldownUnit::Week if room > 6 => room / 7 - 1,
+            CooldownUnit::Week => 0,
+            _ => room - 1,
+        }
+        .max(0)
+    }
+
     /// The instant a cooldown begun by a completion at `done` is over: the start of the unit after
     /// the one `done` falls in, moved on by `n` more units. Days, weeks and months are read by the
     /// 02:00 day boundary, as every window is; `None` only past the end of the calendar.

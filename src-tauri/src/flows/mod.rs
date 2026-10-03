@@ -23,13 +23,14 @@ pub mod model;
 pub mod occurrence_edit;
 pub mod occurrences;
 mod render;
+mod rows;
 pub mod rules;
 pub mod template;
 
 use std::collections::{HashMap, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chrono::{Datelike, Duration, Months, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use chrono::{Duration, NaiveDate, NaiveDateTime};
 
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::CreateInfoRequest;
@@ -39,250 +40,35 @@ use crate::nodes::{
     key::{OccurrenceKey, TemplateKind},
     overlay::OverlayOperator,
 };
+use crate::scopes::db::DbScopeKey;
 use crate::scopes::key::ScopeKey;
-use crate::scopes::model::{PartOfDay, ScopeKind};
 use crate::scopes::resolve::{day_boundary, interval_contains};
-use crate::tasks::lifecycle::verdict_deadline;
 use crate::tasks::model::{
     CommitmentId, CreateCommitmentRequest, CreateGoalRequest, CreateTaskRequest, Dependency,
-    DurationSpec, GoalId, Status, TaskId, TimeScope, Verdict,
+    GoalId, Status, TaskId, TimeScope, Verdict,
 };
 use crate::tasks::{
     add_task_dependency, create_commitment, create_goal, create_task, delete_goal, delete_task,
     nearest_scoped_ancestor_window,
 };
 use error::FlowError;
-use habits::{classify_iterations, expire_unanswered, instance_timing, Clock, SlotWindow};
+use habits::{classify_iterations, expire_unanswered, SlotWindow};
 use model::{
     ChildAttachment, ClockKind, CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput,
     FlowDependency, FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence,
-    FlowTask, HabitInstance, HabitInstanceChild, HabitInstanceRef, HabitItemStatus, HabitIteration,
-    InstanceType, IterationStatus, MaterializedFlow, MissPolicy, SetRecurrenceRequest,
-    StartFlowRequest, TargetRef, UnfinishedChild, UpdateFlowItemRequest, UpdateFlowRequest,
-    NO_CYCLE,
+    FlowTask, HabitInstanceChild, HabitInstanceRef, HabitItemStatus, HabitIteration, InstanceType,
+    MaterializedFlow, MissPolicy, SetRecurrenceRequest, StartFlowRequest, TargetRef,
+    UnfinishedChild, UpdateFlowItemRequest, UpdateFlowRequest, NO_CYCLE,
 };
-use render::{
-    render, FlowTemplate, NodeRef, PlannedSource, RenderedPlan, ResolvedPair, ScopeTable,
-    TemplateItem,
+use render::{render, FlowTemplate, NodeRef, PlannedSource, RenderedPlan, TemplateItem};
+use rows::{
+    FlowDependencyRow, FlowGoalRow, FlowItemCycleRow, FlowRecurrenceRow, FlowRow, FlowTaskRow,
+    HabitInstanceChildRow, HabitItemStatusRow, TargetRefRow,
 };
 use template::{TemplateFields, TemplateOperator, TemplateTable};
 
-/// Sentinel `item_type` for the flow **root** occurrence in the overlays. The root is an instance in
-/// its own right (not just an aggregate of items); its rows key `item_id` to the flow id so they
-/// stay unique per flow on a shared iteration date.
-const ROOT_INSTANCE_TYPE: &str = "flow_root";
-
-/// Advances `date` by `k` (possibly zero) periods of `kind`; `None` on calendar overflow.
-fn advance(date: NaiveDate, k: i64, kind: &str) -> Option<NaiveDate> {
-    match kind {
-        "day" => date.checked_add_signed(Duration::days(k)),
-        "week" => date.checked_add_signed(Duration::days(k * 7)),
-        "month" => date.checked_add_months(Months::new(u32::try_from(k).ok()?)),
-        "season" => date.checked_add_months(Months::new(u32::try_from(k * 3).ok()?)),
-        _ => None,
-    }
-}
-
-/// Maps a target node kind to the parent_type a real goal/task uses (domain-table kinds → project).
-fn target_parent_type(kind: &str) -> String {
-    match kind {
-        "goal" => "goal",
-        "task" => "task",
-        _ => "project",
-    }
-    .to_string()
-}
-
-/// A safe lower bound, in days, on the shortest possible window a single period of `kind` can span
-/// (Feb is the 28-day floor for months; the shortest 3-month run bounds seasons). Used by the
-/// anchor-free coarse target filter to reject targets that could never hold the flow window.
-fn min_period_days(kind: &str) -> Result<i64, FlowError> {
-    Ok(match kind {
-        // Phase windows are sub-day, so they impose no day-floor on a candidate target — the exact
-        // containment check at start does the real work.
-        "part" | "exact" => 0,
-        "day" => 1,
-        "week" => 7,
-        "month" => 28,
-        "season" => 89,
-        other => return Err(FlowError::Invalid(format!("unsupported flow kind {other}"))),
-    })
-}
-
-/// A resolved Flow Window shape, ready to materialize per anchor: a coarse **Span** of canonical
-/// scopes, or a sub-day **Phase** (a part-of-day band, or an exact time-of-day range).
-enum WindowSpec {
-    /// Coarse: `n` periods of a canonical `kind`; windows tile contiguously (before the Gap).
-    Span {
-        /// Number of periods per window.
-        n: i64,
-        /// Canonical scope kind.
-        kind: ScopeKind,
-        /// The kind string (for `advance`).
-        kind_str: String,
-    },
-    /// Sub-day part-of-day band, at the same band each occurrence.
-    Part(PartOfDay),
-    /// Sub-day exact time-of-day range `[start, end)`, at the same clock times each occurrence.
-    Exact {
-        /// Window start time-of-day.
-        start: NaiveTime,
-        /// Window end time-of-day.
-        end: NaiveTime,
-    },
-}
-
-/// Parses an `HH:MM` time-of-day for an exact Phase window.
-fn parse_hhmm(value: Option<&str>) -> Result<NaiveTime, FlowError> {
-    let value = value
-        .ok_or_else(|| FlowError::Invalid("exact flow window needs a time range".to_string()))?;
-    NaiveTime::parse_from_str(value, "%H:%M").map_err(|e| FlowError::Invalid(e.to_string()))
-}
-
-/// Reads a flow's Flow Window into a [`WindowSpec`]. Phase kinds draw their band/time from the
-/// date-free descriptor columns; Span kinds use the `n`/canonical-kind Duration.
-fn window_spec(flow: &Flow, kind: &str, n: i64) -> Result<WindowSpec, FlowError> {
-    match kind {
-        "part" => {
-            let band = flow
-                .flow_window_part
-                .as_deref()
-                .and_then(PartOfDay::parse_db)
-                .ok_or_else(|| {
-                    FlowError::Invalid("part flow window needs a valid band".to_string())
-                })?;
-            Ok(WindowSpec::Part(band))
-        }
-        "exact" => Ok(WindowSpec::Exact {
-            start: parse_hhmm(flow.flow_window_time_start.as_deref())?,
-            end: parse_hhmm(flow.flow_window_time_end.as_deref())?,
-        }),
-        _ => Ok(WindowSpec::Span {
-            n,
-            kind: flow_scope_kind(kind)?,
-            kind_str: kind.to_string(),
-        }),
-    }
-}
-
-/// Whole `kind` periods from `from` to `to` (period starts), or `None` for an unsupported kind.
-/// Non-negative whenever `to >= from` (guaranteed here by scope containment). Used to turn a
-/// descendant's absolute Time Scope into a relative Cycle Scope offset within the flow window.
-fn periods_between(from: NaiveDate, to: NaiveDate, kind: &str) -> Option<i64> {
-    let month_delta = (i64::from(to.year()) - i64::from(from.year())) * 12 + i64::from(to.month())
-        - i64::from(from.month());
-    match kind {
-        "day" => Some((to - from).num_days()),
-        "week" => Some((to - from).num_days() / 7),
-        "month" => Some(month_delta),
-        "season" => Some(month_delta / 3),
-        _ => None,
-    }
-}
-
-/// Reduces a stored Recurrence to the pure [`Clock`] it names.
-fn parse_clock(recurrence: &FlowRecurrence) -> Result<Clock, FlowError> {
-    match ClockKind::from_db(&recurrence.clock) {
-        Some(ClockKind::Interval) => Ok(Clock::Interval),
-        Some(ClockKind::Window) => recurrence
-            .miss_policy
-            .as_deref()
-            .and_then(MissPolicy::from_db)
-            .map(Clock::Window)
-            .ok_or_else(|| {
-                FlowError::Invalid(format!("bad miss policy {:?}", recurrence.miss_policy))
-            }),
-        None => Err(FlowError::Invalid(format!(
-            "bad clock {}",
-            recurrence.clock
-        ))),
-    }
-}
-
-/// Refuses a cooldown the Habit cannot carry (`docs/spec/habits.md`, *Cooldown*): one on anything
-/// but a Window clock (see [`takes_cooldown`]) or on a commitment Habit; one counted in a unit that is not
-/// finer than the Habit's window; and one that could reach the end of the window after the one it
-/// follows.
-fn check_cooldown(flow: &Flow, request: &SetRecurrenceRequest) -> Result<(), FlowError> {
-    let parsed = cooldown::Cooldown::parse(request.cooldown_n, request.cooldown_kind.as_deref())
-        .map_err(|refusal| FlowError::Invalid(refusal.to_string()))?;
-    let Some(parsed) = parsed else {
-        return Ok(());
-    };
-    if request.clock != ClockKind::Window || !takes_cooldown(request.miss_policy) {
-        return Err(FlowError::Invalid(
-            "only a window habit has a cooldown — an interval's gap already counts from completion"
-                .to_string(),
-        ));
-    }
-    let kind = flow.flow_duration_kind.as_deref().unwrap_or_default();
-    parsed
-        .fits(kind, flow.flow_duration_n.unwrap_or(1))
-        .map_err(|refusal| FlowError::Invalid(refusal.to_string()))
-}
-
-/// Whether a Habit with this miss policy may carry a cooldown: any **Window** Habit — Archive,
-/// Overdue and Owed alike (ruled by the user, 2026-10-01) — and not an Interval, whose Gap already
-/// counts from completion and which has no miss policy.
-fn takes_cooldown(policy: Option<MissPolicy>) -> bool {
-    policy.is_some()
-}
-
-/// The cooldown a Habit's iterations are blocked by, or `None` when it has none.
-///
-/// A stored cooldown that no longer fits the Habit's window — its window was changed since, to
-/// one the cooldown's unit is not finer than, or one too short for it — holds nothing back: the
-/// editor refuses to save it again until it is fixed, and until then the Habit runs without it.
-fn habit_cooldown(flow: &Flow, recurrence: &FlowRecurrence) -> Option<cooldown::Cooldown> {
-    if !takes_cooldown(
-        recurrence
-            .miss_policy
-            .as_deref()
-            .and_then(MissPolicy::from_db),
-    ) {
-        return None;
-    }
-    let kind = flow.flow_duration_kind.as_deref()?;
-    let parsed =
-        cooldown::Cooldown::parse(recurrence.cooldown_n, recurrence.cooldown_kind.as_deref())
-            .ok()
-            .flatten()?;
-    parsed
-        .fits(kind, flow.flow_duration_n.unwrap_or(1))
-        .is_ok()
-        .then_some(parsed)
-}
-
-/// Fine-to-coarse ordinal for a scope kind (`exact` < `part` < `day` < `week` < `month` <
-/// `season`), used to check a Habit's Gap kind is no finer than its habit scope.
-fn scope_kind_rank(kind: &str) -> Result<i64, FlowError> {
-    Ok(match kind {
-        "exact" => 0,
-        "part" => 1,
-        "day" => 2,
-        "week" => 3,
-        "month" => 4,
-        "season" => 5,
-        other => {
-            return Err(FlowError::Invalid(format!(
-                "unsupported scope kind {other}"
-            )))
-        }
-    })
-}
-
-/// The `ScopeKind` for a flow-scope kind string (Span or Phase).
-fn flow_scope_kind(kind: &str) -> Result<ScopeKind, FlowError> {
-    match kind {
-        "day" => Ok(ScopeKind::Day),
-        "week" => Ok(ScopeKind::Week),
-        "month" => Ok(ScopeKind::Month),
-        "season" => Ok(ScopeKind::Season),
-        "part" => Ok(ScopeKind::PartOfDay),
-        "exact" => Ok(ScopeKind::Exact),
-        other => Err(FlowError::Invalid(format!("unsupported flow kind {other}"))),
-    }
-}
+use rules::schedule::*;
+pub(crate) use rules::schedule::{habit_verdict_window, iteration_window, whole_scope_plan};
 
 /// Millisecond timestamp used to seed sort position (matches the tasks/goals convention).
 fn now_position() -> i64 {
@@ -292,384 +78,42 @@ fn now_position() -> i64 {
         .as_millis() as i64
 }
 
-/// The `index`-th (1-based) `kind` subscope beginning at `base`, by offset.
-fn offset_scope(base: NaiveDate, index: i64, kind: &str) -> Result<ScopeKey, FlowError> {
-    let off = index - 1;
-    let bad_date = || FlowError::Invalid("cycle resolves outside the calendar".to_string());
-    match kind {
-        "season" | "month" | "week" | "day" => {
-            let date = advance(base, off, kind).ok_or_else(bad_date)?;
-            Ok(ScopeKey::containing(flow_scope_kind(kind)?, date)?)
-        }
-        "part_of_day" => {
-            let date = advance(base, off / 6, "day").ok_or_else(bad_date)?;
-            let part = PartOfDay::CYCLE[usize::try_from(off % 6).unwrap_or(0)];
-            Ok(ScopeKey::part(date, part))
-        }
-        other => Err(FlowError::Invalid(format!(
-            "unsupported cycle kind {other}"
-        ))),
-    }
-}
-
-/// A cycle pair resolved against a window start.
-struct ResolvedCycle {
-    /// The scope the Cycle Scope landed on — kept for its `[start, end)` datetime bounds, which
-    /// are what a virtual occurrence's Timing is read from.
-    scope: ScopeKey,
-    /// That same scope as a single-scope Time Scope, ready to stamp on a node.
-    time_scope: TimeScope,
-    /// The Cycle Plan within it, when the pair carries one.
-    plan: Option<TimeScope>,
-}
-
-/// Resolves a cycle pair against the window start, into the concrete scope it lands on plus its
-/// Cycle Scope and Cycle Plan. `None` for a null-scope pair, an item with no pair, or an unscoped
-/// flow — all three mean "inherit the root", which has no window of its own to report.
-///
-/// The single implementation of the Cycle Scope offset. [`start`] takes it through
-/// [`resolve_pair`] and [`generate_habit_iterations`] takes it directly, so the window a Habit
-/// *renders* and the window a started flow *writes* cannot drift apart.
-fn resolve_cycle(
-    pair: Option<&FlowItemCycle>,
-    window_start: Option<NaiveDate>,
-) -> Result<Option<ResolvedCycle>, FlowError> {
-    let (Some(pair), Some(base)) = (pair, window_start) else {
-        return Ok(None);
-    };
-    let (Some(kind), Some(index)) = (pair.scope_kind.as_deref(), pair.scope_index) else {
-        return Ok(None);
-    };
-    let scope = offset_scope(base, index, kind)?;
-    let cycle_start = scope.start_date();
-
-    let plan = match (pair.plan_kind.as_deref(), pair.plan_start, pair.plan_end) {
-        // A Cycle Plan of the scope's own kind is the scope itself — its one cell, which is what a
-        // pair's "Planned" toggle stores. Offsetting from the scope's start date would not do: a
-        // Noon cycle's first part of the day is Morning.
-        (Some(pk), Some(1), Some(1)) if pk == kind => Some(TimeScope::single(scope)),
-        (Some(pk), Some(_), Some(_)) if pk == kind => {
-            return Err(FlowError::Invalid(
-                "a Cycle Plan of its scope's own kind has one cell".to_string(),
-            ))
-        }
-        (Some(pk), Some(ps), Some(pe)) => Some(TimeScope {
-            start_id: offset_scope(cycle_start, ps, pk)?,
-            end_id: offset_scope(cycle_start, pe, pk)?,
-            duration: None,
-        }),
-        _ => None,
-    };
-    Ok(Some(ResolvedCycle {
-        scope,
-        time_scope: TimeScope::single(scope),
-        plan,
-    }))
-}
-
-/// Resolves a cycle pair into a concrete (Time Scope, Plan) against the window start.
-/// A null-scope pair (or an unscoped flow) yields `(None, None)` — the item inherits the root.
-fn resolve_pair(
-    pair: Option<&FlowItemCycle>,
-    window_start: Option<NaiveDate>,
-) -> Result<(Option<TimeScope>, Option<TimeScope>), FlowError> {
-    Ok(match resolve_cycle(pair, window_start)? {
-        Some(resolved) => (Some(resolved.time_scope), resolved.plan),
-        None => (None, whole_scope_plan(pair, window_start)?),
-    })
-}
-
-/// Resolves the concrete flow window `[anchor, anchor + (n-1) periods]` of `kind`, returning
-/// the Time Scope and its start date. The anchor is snapped to the start of its canonical scope.
-fn resolve_window(
-    n: i64,
-    kind: &str,
-    anchor: NaiveDate,
-) -> Result<(TimeScope, NaiveDate), FlowError> {
-    let start_scope = ScopeKey::containing(flow_scope_kind(kind)?, anchor)?;
-    let start_date = start_scope.start_date();
-    let end_date = advance(start_date, n - 1, kind)
-        .ok_or_else(|| FlowError::Invalid("window exceeds the calendar".to_string()))?;
-    let end_scope = ScopeKey::containing(flow_scope_kind(kind)?, end_date)?;
-    Ok((
-        TimeScope {
-            start_id: start_scope,
-            end_id: end_scope,
-            duration: Some(DurationSpec {
-                n,
-                kind: kind.to_string(),
-            }),
-        },
-        start_date,
-    ))
-}
-
-/// Resolves a flow's Flow Window against a concrete `anchor` date into a Time Scope: a coarse
-/// **Span** yields a `[start, end]` boundary of canonical scopes; a sub-day **Phase** yields a
-/// single part/exact scope built on the anchor day. Returns the window and its first day.
-fn resolve_flow_window(
-    flow: &Flow,
-    anchor: NaiveDate,
-) -> Result<(TimeScope, NaiveDate), FlowError> {
-    let kind = flow
-        .flow_duration_kind
-        .as_deref()
-        .ok_or_else(|| FlowError::Invalid("flow has no window".to_string()))?;
-    let n = flow.flow_duration_n.unwrap_or(1);
-    match window_spec(flow, kind, n)? {
-        WindowSpec::Span { .. } => resolve_window(n, kind, anchor),
-        WindowSpec::Part(band) => Ok((TimeScope::single(ScopeKey::part(anchor, band)), anchor)),
-        WindowSpec::Exact { start, end } => Ok((
-            TimeScope::single(ScopeKey::exact(
-                anchor.and_time(start),
-                anchor.and_time(end),
-            )?),
-            anchor,
-        )),
-    }
-}
-
-/// One window of a Habit's Flow Window anchored on `anchor`: its anchoring scope, its half-open
-/// `[start, end)` instants, and — for a coarse Span — the day the next window would start on if
-/// windows tiled contiguously.
-fn window_at(
-    spec: &WindowSpec,
-    anchor: NaiveDate,
-) -> Result<(ScopeKey, NaiveDateTime, NaiveDateTime, Option<NaiveDate>), FlowError> {
-    match spec {
-        WindowSpec::Span { n, kind, kind_str } => {
-            let scope = ScopeKey::containing(*kind, anchor)?;
-            let window_start = scope.start_date();
-            let next_contiguous = advance(window_start, *n, kind_str)
-                .ok_or_else(|| FlowError::Invalid("iteration exceeds the calendar".to_string()))?;
-            Ok((
-                scope,
-                day_boundary(window_start),
-                day_boundary(next_contiguous),
-                Some(next_contiguous),
-            ))
-        }
-        WindowSpec::Part(band) => {
-            let scope = ScopeKey::part(anchor, *band);
-            let (start, end) = scope.bounds();
-            Ok((scope, start, end, None))
-        }
-        WindowSpec::Exact { start: ts, end: te } => {
-            let scope = ScopeKey::exact(anchor.and_time(*ts), anchor.and_time(*te))?;
-            let (start, end) = scope.bounds();
-            Ok((scope, start, end, None))
-        }
-    }
-}
-
-/// Builds a **Window** Habit's iteration windows from the Repetition Start up to (and including
-/// the one covering) `limit` — the reference instant, or a later day when the virtual tables derive
-/// part of the future — bounded by any end. A **Span** window spans `n` canonical periods and tiles
-/// contiguously; a **Phase** window is the fixed band / clock-range on its anchor day. Each next
-/// anchor advances by the Gap — for a Phase window that Gap is the whole-day stride between
-/// occurrence days (defaulting to daily), keeping the time-of-day fixed.
-fn habit_slots(
-    start_date: NaiveDate,
-    spec: WindowSpec,
-    gap: Option<&(i64, String)>,
-    end_date: Option<NaiveDate>,
-    now: NaiveDateTime,
-) -> Result<Vec<SlotWindow>, FlowError> {
-    let overflow = || FlowError::Invalid("iteration exceeds the calendar".to_string());
-    let mut slots = Vec::new();
-    let mut anchor = start_date;
-    let mut index = 0i64;
-    loop {
-        let (scope_id, start, end, span_next) = window_at(&spec, anchor)?;
-
-        // A window counts as started once its first instant is at or before `now`.
-        if start > now || end_date.is_some_and(|last| start.date() > last) {
-            break;
-        }
-        slots.push(SlotWindow {
-            index,
-            scope_id,
-            start,
-            end,
-        });
-
-        // Advance the anchor. A Span defaults to its contiguous next start; a Phase defaults to
-        // the next day. Either is then stepped by the Gap when one is set.
-        anchor = match (span_next, gap) {
-            (_, Some((n, gap_kind))) => {
-                let base = span_next.unwrap_or(anchor);
-                advance(base, *n, gap_kind)
-            }
-            (Some(next), None) => Some(next),
-            (None, None) => advance(anchor, 1, "day"),
-        }
-        .ok_or_else(overflow)?;
-        index += 1;
-    }
-    Ok(slots)
-}
-
-/// An **Interval** Habit's instances, each placed by the completion of the one before it, up to
-/// `limit` and bounded by any end.
-///
-/// The first instance is anchored on the Repetition Start. Each later one is placed by
-/// [`next_interval_slot`] from the instant the one before it was completed, which
-/// `completed_at` answers for a slot (`None` while it is open). The chain therefore stops at the
-/// first instance not completed — the **one open instance** — or at the first whose window has
-/// not begun by `limit`.
-///
-/// `spec` is `None` for an **Unscoped** Interval Habit: its instances have no window. Each is
-/// keyed by an Exact scope one second long at the instant it appears, since the key names the
-/// instance and needs no window to do it — two instances can never appear in the same second,
-/// because the next is never placed before the last one's start.
-fn interval_slots(
-    start_date: NaiveDate,
-    spec: Option<&WindowSpec>,
-    gap: Option<&(i64, String)>,
-    end_date: Option<NaiveDate>,
-    limit: NaiveDateTime,
-    mut completed_at: impl FnMut(&SlotWindow) -> Option<NaiveDateTime>,
-) -> Result<Vec<SlotWindow>, FlowError> {
-    let mut slots = Vec::new();
-    let mut slot = match spec {
-        Some(spec) => {
-            let (scope_id, start, end, _) = window_at(spec, start_date)?;
-            SlotWindow {
-                index: 0,
-                scope_id,
-                start,
-                end,
-            }
-        }
-        None => unscoped_slot(0, day_boundary(start_date))?,
-    };
-    loop {
-        let past_end = end_date.is_some_and(|last| crate::tasks::waits::day_of(slot.start) > last);
-        if slot.start > limit || past_end {
-            break;
-        }
-        slots.push(slot.clone());
-        let Some(done) = completed_at(&slot) else {
-            break;
-        };
-        slot = next_interval_slot(spec, gap, &slot, done)?;
-    }
-    Ok(slots)
-}
-
-/// The instance an Unscoped Interval Habit keys on the instant `appears`: an Exact scope one
-/// second long there, with no window of its own ([`habits::UNBOUNDED`]).
-fn unscoped_slot(index: i64, appears: NaiveDateTime) -> Result<SlotWindow, FlowError> {
-    let appears = appears.with_nanosecond(0).unwrap_or(appears);
-    let scope_id = ScopeKey::exact(appears, appears + Duration::seconds(1))?;
-    Ok(SlotWindow {
-        index,
-        scope_id,
-        start: appears,
-        end: habits::UNBOUNDED,
-    })
-}
-
-/// Where an Interval Habit's next instance falls, given the one before it was completed at `done`.
-///
-/// **Scoped:** its window starts the unit after the one `done` falls in, plus the Gap — a two-week
-/// window W1–2 completed in W3 gives W4–5, completed in W1 gives W2–3 (ruled by the user,
-/// 2026-09-30). The unit is the window's own scope kind; a sub-day (Phase) window's is the Day, so
-/// the band falls on the day after the completion. It never starts at or before the window it
-/// follows, so an instance completed before its window opened still moves the Habit on.
-///
-/// **Unscoped:** it appears the Gap after the unit `done` falls in — with no Gap, at `done` itself,
-/// immediately. "Every three days", completed on a Monday, appears on the Thursday.
-fn next_interval_slot(
-    spec: Option<&WindowSpec>,
-    gap: Option<&(i64, String)>,
-    previous: &SlotWindow,
-    done: NaiveDateTime,
-) -> Result<SlotWindow, FlowError> {
-    let overflow = || FlowError::Invalid("iteration exceeds the calendar".to_string());
-    let index = previous.index + 1;
-    let done_day = crate::tasks::waits::day_of(done);
-    let previous_day = crate::tasks::waits::day_of(previous.start);
-    let with_gap = |from: NaiveDate| match gap {
-        Some((n, kind)) => advance(from, *n, kind).ok_or_else(overflow),
-        None => Ok(from),
-    };
-    let Some(spec) = spec else {
-        let appears = match gap {
-            None => done,
-            Some((_, kind)) => {
-                let unit = ScopeKey::containing(flow_scope_kind(kind)?, with_gap(done_day)?)?;
-                day_boundary(unit.start_date())
-            }
-        };
-        return unscoped_slot(index, appears.max(previous.start + Duration::seconds(1)));
-    };
-    let (unit_kind, previous_unit) = match spec {
-        WindowSpec::Span { kind, kind_str, .. } => (
-            kind_str.as_str(),
-            ScopeKey::containing(*kind, done_day)?.start_date(),
-        ),
-        WindowSpec::Part(_) | WindowSpec::Exact { .. } => ("day", done_day),
-    };
-    let after_completion = with_gap(advance(previous_unit, 1, unit_kind).ok_or_else(overflow)?)?;
-    let after_previous = advance(previous_day, 1, unit_kind).ok_or_else(overflow)?;
-    let (scope_id, start, end, _) = window_at(spec, after_completion.max(after_previous))?;
-    Ok(SlotWindow {
-        index,
-        scope_id,
-        start,
-        end,
-    })
-}
-
-/// Where a cloned template lands: the clone's parent and its sort position among its new siblings.
-///
-/// Absent — which is what a fork passes — the clone keeps the original's parent and takes the head
-/// of the list, because a fork stands in for the flow it was forked from.
-struct ClonePlacement {
-    /// The clone's `parent_type` (`aspect`/`project`/`domain`/`goal`).
-    parent_type: String,
-    /// The clone's parent id.
-    parent_id: i64,
-    /// The clone's sort position.
-    position: i64,
-}
-
-/// A cloned template: the new flow row, and the old→new id maps for its items.
-///
-/// The maps are how a caller carries something across that the clone itself does not — privacy,
-/// for [`duplicate_flow`] — without [`FlowOperator::clone_template`] needing to know about it.
-struct TemplateClone {
-    /// The new flow row.
-    flow: Flow,
-    /// Old→new `flow_goals` ids.
-    goals: HashMap<i64, i64>,
-    /// Old→new `flow_tasks` ids.
-    tasks: HashMap<i64, i64>,
-}
-
-/// Splits a list of copied items into per-table old→new id maps, for remapping references that
-/// name an item by `(item_type, item_id)`.
-fn item_id_maps(copied: &[(FlowItemType, i64, i64)]) -> (HashMap<i64, i64>, HashMap<i64, i64>) {
-    let mut goals = HashMap::new();
-    let mut tasks = HashMap::new();
-    for (kind, old_id, new_id) in copied {
-        match kind {
-            FlowItemType::FlowGoal => goals.insert(*old_id, *new_id),
-            FlowItemType::FlowTask => tasks.insert(*old_id, *new_id),
-        };
-    }
-    (goals, tasks)
-}
-
 /// One `derived_children` row, as the ancestry climb reads it.
 #[derive(sqlx::FromRow)]
 struct AttachmentRow {
     flow_id: Option<i64>,
     parent_kind: String,
     parent_key: String,
-    window_start_scope_id: Option<ScopeKey>,
-    window_end_scope_id: Option<ScopeKey>,
+    window_start_scope_id: Option<DbScopeKey>,
+    window_end_scope_id: Option<DbScopeKey>,
+}
+
+impl AttachmentRow {
+    /// The attachment the row records.
+    fn attachment(self) -> ChildAttachment {
+        ChildAttachment {
+            flow_id: self.flow_id.unwrap_or_default(),
+            instance_type: self.parent_kind,
+            parent_key: self.parent_key,
+            window: self
+                .window_start_scope_id
+                .zip(self.window_end_scope_id)
+                .map(|(start_id, end_id)| TimeScope {
+                    start_id: start_id.0,
+                    end_id: end_id.0,
+                    duration: None,
+                }),
+        }
+    }
+}
+
+/// One `derived_children` row with the child it attaches, as a whole board's index reads it.
+#[derive(sqlx::FromRow)]
+struct ChildAttachmentRow {
+    child_type: String,
+    child_id: i64,
+    #[sqlx(flatten)]
+    attachment: AttachmentRow,
 }
 
 /// Reads and writes flow templates — and their items, cycles, recurrences and instances —
@@ -759,13 +203,14 @@ impl<'session> FlowOperator<'session> {
 
     /// Fetches a flow by id, with its root template's fields.
     pub async fn get(&mut self, id: FlowId) -> Result<Flow, FlowError> {
-        let mut flow = sqlx::query_as::<_, Flow>(
+        let mut flow = sqlx::query_as::<_, FlowRow>(
             "SELECT flows.*, EXISTS(SELECT 1 FROM flow_recurrences WHERE flow_recurrences.flow_id = flows.id) AS is_habit
              FROM flows WHERE id = ?",
         )
         .bind(id.0)
         .fetch_optional(&mut *self.connection)
         .await?
+        .map(Flow::from)
         .ok_or(FlowError::NotFound(id.0))?;
         flow.template = self.templates().one(TemplateTable::Flow, id.0).await?;
         Ok(flow)
@@ -773,12 +218,15 @@ impl<'session> FlowOperator<'session> {
 
     /// Lists all flows in sort order, each with its root template's fields.
     pub async fn list(&mut self) -> Result<Vec<Flow>, FlowError> {
-        let mut flows = sqlx::query_as::<_, Flow>(
+        let mut flows = sqlx::query_as::<_, FlowRow>(
             "SELECT flows.*, EXISTS(SELECT 1 FROM flow_recurrences WHERE flow_recurrences.flow_id = flows.id) AS is_habit
              FROM flows ORDER BY position ASC",
         )
         .fetch_all(&mut *self.connection)
-        .await?;
+        .await?
+        .into_iter()
+        .map(Flow::from)
+        .collect::<Vec<_>>();
         let mut fields = self.templates().all(TemplateTable::Flow).await?;
         for flow in &mut flows {
             flow.template = fields.remove(&flow.id).unwrap_or_default();
@@ -955,10 +403,11 @@ impl<'session> FlowOperator<'session> {
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
-        sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals WHERE id = ?")
+        sqlx::query_as::<_, FlowGoalRow>("SELECT * FROM flow_goals WHERE id = ?")
             .bind(id)
             .fetch_one(&mut *self.connection)
             .await
+            .map(FlowGoal::from)
             .map_err(FlowError::from)
     }
 
@@ -979,32 +428,39 @@ impl<'session> FlowOperator<'session> {
         .execute(&mut *self.connection)
         .await?
         .last_insert_rowid();
-        sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks WHERE id = ?")
+        sqlx::query_as::<_, FlowTaskRow>("SELECT * FROM flow_tasks WHERE id = ?")
             .bind(id)
             .fetch_one(&mut *self.connection)
             .await
+            .map(FlowTask::from)
             .map_err(FlowError::from)
     }
 
     /// Lists a flow's goal items.
     pub async fn list_goals(&mut self, flow_id: FlowId) -> Result<Vec<FlowGoal>, FlowError> {
-        let goals = sqlx::query_as::<_, FlowGoal>(
+        let goals = sqlx::query_as::<_, FlowGoalRow>(
             "SELECT * FROM flow_goals WHERE flow_id = ? ORDER BY position ASC",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
-        .await?;
+        .await?
+        .into_iter()
+        .map(FlowGoal::from)
+        .collect();
         self.with_goal_templates(goals).await
     }
 
     /// Lists a flow's task items.
     pub async fn list_tasks(&mut self, flow_id: FlowId) -> Result<Vec<FlowTask>, FlowError> {
-        let tasks = sqlx::query_as::<_, FlowTask>(
+        let tasks = sqlx::query_as::<_, FlowTaskRow>(
             "SELECT * FROM flow_tasks WHERE flow_id = ? ORDER BY position ASC",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
-        .await?;
+        .await?
+        .into_iter()
+        .map(FlowTask::from)
+        .collect();
         self.with_task_templates(tasks).await
     }
 
@@ -1029,12 +485,14 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         flow_id: FlowId,
     ) -> Result<HashMap<(String, i64), Vec<FlowItemCycle>>, FlowError> {
-        let rows = sqlx::query_as::<_, FlowItemCycle>(
+        let rows = sqlx::query_as::<_, FlowItemCycleRow>(
             "SELECT * FROM flow_item_cycles WHERE flow_id = ? ORDER BY item_type, item_id, position ASC",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
-        .await?;
+        .await?
+        .into_iter()
+        .map(FlowItemCycle::from);
         let mut grouped: HashMap<(String, i64), Vec<FlowItemCycle>> = HashMap::new();
         for cycle in rows {
             grouped
@@ -1047,17 +505,25 @@ impl<'session> FlowOperator<'session> {
 
     /// Lists every flow's goal items (for the mindmap load).
     pub async fn list_all_goals(&mut self) -> Result<Vec<FlowGoal>, FlowError> {
-        let goals = sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals ORDER BY position ASC")
-            .fetch_all(&mut *self.connection)
-            .await?;
+        let goals =
+            sqlx::query_as::<_, FlowGoalRow>("SELECT * FROM flow_goals ORDER BY position ASC")
+                .fetch_all(&mut *self.connection)
+                .await?
+                .into_iter()
+                .map(FlowGoal::from)
+                .collect();
         self.with_goal_templates(goals).await
     }
 
     /// Lists every flow's task items (for the mindmap load).
     pub async fn list_all_tasks(&mut self) -> Result<Vec<FlowTask>, FlowError> {
-        let tasks = sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks ORDER BY position ASC")
-            .fetch_all(&mut *self.connection)
-            .await?;
+        let tasks =
+            sqlx::query_as::<_, FlowTaskRow>("SELECT * FROM flow_tasks ORDER BY position ASC")
+                .fetch_all(&mut *self.connection)
+                .await?
+                .into_iter()
+                .map(FlowTask::from)
+                .collect();
         self.with_task_templates(tasks).await
     }
 
@@ -1072,10 +538,11 @@ impl<'session> FlowOperator<'session> {
         id: i64,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowGoal, FlowError> {
-        let goal = sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals WHERE id = ?")
+        let goal = sqlx::query_as::<_, FlowGoalRow>("SELECT * FROM flow_goals WHERE id = ?")
             .bind(id)
             .fetch_optional(&mut *self.connection)
             .await?
+            .map(FlowGoal::from)
             .ok_or(FlowError::NotFound(id))?;
         let title = request.title.unwrap_or(goal.title);
         let parent_type = request.parent_type.unwrap_or(goal.parent_type);
@@ -1094,10 +561,11 @@ impl<'session> FlowOperator<'session> {
         .bind(id)
         .execute(&mut *self.connection)
         .await?;
-        sqlx::query_as::<_, FlowGoal>("SELECT * FROM flow_goals WHERE id = ?")
+        sqlx::query_as::<_, FlowGoalRow>("SELECT * FROM flow_goals WHERE id = ?")
             .bind(id)
             .fetch_one(&mut *self.connection)
             .await
+            .map(FlowGoal::from)
             .map_err(FlowError::from)
     }
 
@@ -1112,10 +580,11 @@ impl<'session> FlowOperator<'session> {
         id: i64,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowTask, FlowError> {
-        let task = sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks WHERE id = ?")
+        let task = sqlx::query_as::<_, FlowTaskRow>("SELECT * FROM flow_tasks WHERE id = ?")
             .bind(id)
             .fetch_optional(&mut *self.connection)
             .await?
+            .map(FlowTask::from)
             .ok_or(FlowError::NotFound(id))?;
         let title = request.title.unwrap_or(task.title);
         let parent_type = request.parent_type.unwrap_or(task.parent_type);
@@ -1134,10 +603,11 @@ impl<'session> FlowOperator<'session> {
         .bind(id)
         .execute(&mut *self.connection)
         .await?;
-        sqlx::query_as::<_, FlowTask>("SELECT * FROM flow_tasks WHERE id = ?")
+        sqlx::query_as::<_, FlowTaskRow>("SELECT * FROM flow_tasks WHERE id = ?")
             .bind(id)
             .fetch_one(&mut *self.connection)
             .await
+            .map(FlowTask::from)
             .map_err(FlowError::from)
     }
 
@@ -1288,14 +758,17 @@ impl<'session> FlowOperator<'session> {
         item_type: FlowItemType,
         item_id: i64,
     ) -> Result<Vec<FlowItemCycle>, FlowError> {
-        Ok(sqlx::query_as::<_, FlowItemCycle>(
+        Ok(sqlx::query_as::<_, FlowItemCycleRow>(
             "SELECT * FROM flow_item_cycles WHERE item_type = ? AND item_id = ?
              ORDER BY position, id",
         )
         .bind(item_type.as_str())
         .bind(item_id)
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?
+        .into_iter()
+        .map(FlowItemCycle::from)
+        .collect())
     }
 
     /// How many iterations hold something recorded against an occurrence of this item drawn by
@@ -1321,7 +794,7 @@ impl<'session> FlowOperator<'session> {
         .fetch_all(&mut *self.connection)
         .await?;
         for cycle in cycle_ids {
-            let overlaid: Vec<ScopeKey> = sqlx::query_scalar(
+            let overlaid: Vec<DbScopeKey> = sqlx::query_scalar(
                 "SELECT iteration_scope FROM task_overlays
                  WHERE item_type = ?1 AND item_id = ?2 AND cycle_id = ?3
                  UNION SELECT iteration_scope FROM goal_overlays
@@ -1332,7 +805,7 @@ impl<'session> FlowOperator<'session> {
             .bind(cycle)
             .fetch_all(&mut *self.connection)
             .await?;
-            iterations.extend(overlaid);
+            iterations.extend(overlaid.into_iter().map(ScopeKey::from));
             for key in related.iter().filter_map(|key| OccurrenceKey::parse(key)) {
                 if key.item.item_type.as_str() == item_type.as_str()
                     && key.item.item_id == item_id
@@ -1347,11 +820,14 @@ impl<'session> FlowOperator<'session> {
 
     /// Lists every flow's cycle pairs (for the mindmap load).
     pub async fn list_all_cycles(&mut self) -> Result<Vec<FlowItemCycle>, FlowError> {
-        Ok(sqlx::query_as::<_, FlowItemCycle>(
+        Ok(sqlx::query_as::<_, FlowItemCycleRow>(
             "SELECT * FROM flow_item_cycles ORDER BY item_type, item_id, position ASC",
         )
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?
+        .into_iter()
+        .map(FlowItemCycle::from)
+        .collect())
     }
 
     /// Adds an intra-flow dependency (`dependent` waits on `depends_on`); a no-op if it exists.
@@ -1403,9 +879,12 @@ impl<'session> FlowOperator<'session> {
     /// Lists every flow's dependencies (for the mindmap load).
     pub async fn list_all_dependencies(&mut self) -> Result<Vec<FlowDependency>, FlowError> {
         Ok(
-            sqlx::query_as::<_, FlowDependency>("SELECT * FROM flow_dependencies")
+            sqlx::query_as::<_, FlowDependencyRow>("SELECT * FROM flow_dependencies")
                 .fetch_all(&mut *self.connection)
-                .await?,
+                .await?
+                .into_iter()
+                .map(FlowDependency::from)
+                .collect(),
         )
     }
 
@@ -1515,10 +994,10 @@ impl<'session> FlowOperator<'session> {
                 cooldown_n = excluded.cooldown_n, cooldown_kind = excluded.cooldown_kind",
         )
         .bind(flow_id.0)
-        .bind(request.start_scope_id)
+        .bind(DbScopeKey(request.start_scope_id))
         .bind(request.gap_n)
         .bind(&request.gap_kind)
-        .bind(request.end_scope_id)
+        .bind(request.end_scope_id.map(DbScopeKey))
         .bind(request.clock.as_str())
         .bind(request.miss_policy.map(|policy| policy.as_str()))
         .bind(request.cooldown_n)
@@ -1536,7 +1015,7 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         flow_id: FlowId,
     ) -> Result<Option<FlowRecurrence>, FlowError> {
-        let recurrence = sqlx::query_as::<_, FlowRecurrence>(
+        let recurrence = sqlx::query_as::<_, FlowRecurrenceRow>(
             "SELECT flow_id, start_scope_id, gap_n, gap_kind, end_scope_id, clock, miss_policy,
                     cooldown_n, cooldown_kind
              FROM flow_recurrences WHERE flow_id = ?",
@@ -1544,7 +1023,7 @@ impl<'session> FlowOperator<'session> {
         .bind(flow_id.0)
         .fetch_optional(&mut *self.connection)
         .await?;
-        Ok(recurrence)
+        Ok(recurrence.map(FlowRecurrence::from))
     }
 
     /// Moves a Habit's Recurrence end to `end_scope_id`, leaving the rest of the Recurrence as it
@@ -1555,7 +1034,7 @@ impl<'session> FlowOperator<'session> {
         end_scope_id: ScopeKey,
     ) -> Result<(), FlowError> {
         sqlx::query("UPDATE flow_recurrences SET end_scope_id = ? WHERE flow_id = ?")
-            .bind(end_scope_id)
+            .bind(DbScopeKey(end_scope_id))
             .bind(flow_id.0)
             .execute(&mut *self.connection)
             .await?;
@@ -1760,7 +1239,7 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         flow_id: FlowId,
     ) -> Result<Vec<HabitItemStatus>, FlowError> {
-        Ok(sqlx::query_as::<_, HabitItemStatus>(
+        Ok(sqlx::query_as::<_, HabitItemStatusRow>(
             "SELECT item_type, item_id, iteration_scope AS iteration_scope_id, cycle_id, status
              FROM task_overlays
              WHERE flow_id = ?1 AND status IS NOT NULL AND tombstone IS NULL
@@ -1774,7 +1253,10 @@ impl<'session> FlowOperator<'session> {
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?
+        .into_iter()
+        .map(HabitItemStatus::from)
+        .collect())
     }
 
     /// Sets a **single** instance's status at one iteration scope. `status` `None` clears it (back
@@ -1841,10 +1323,11 @@ impl<'session> FlowOperator<'session> {
     /// sentinel an occurrence with no pair of its own carries.
     pub async fn cycle(&mut self, cycle_id: i64) -> Result<Option<FlowItemCycle>, FlowError> {
         Ok(
-            sqlx::query_as::<_, FlowItemCycle>("SELECT * FROM flow_item_cycles WHERE id = ?")
+            sqlx::query_as::<_, FlowItemCycleRow>("SELECT * FROM flow_item_cycles WHERE id = ?")
                 .bind(cycle_id)
                 .fetch_optional(&mut *self.connection)
-                .await?,
+                .await?
+                .map(FlowItemCycle::from),
         )
     }
 
@@ -1886,25 +1369,31 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         flow_id: FlowId,
     ) -> Result<Vec<HabitInstanceChild>, FlowError> {
-        Ok(sqlx::query_as::<_, HabitInstanceChild>(
+        Ok(sqlx::query_as::<_, HabitInstanceChildRow>(
             "SELECT flow_id, parent_kind, parent_key, child_type, child_id
              FROM derived_children WHERE flow_id = ? ORDER BY id",
         )
         .bind(flow_id.0)
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?
+        .into_iter()
+        .map(HabitInstanceChild::from)
+        .collect())
     }
 
     /// Every stored node hung on a derived one, across the board.
     pub async fn list_all_instance_children(
         &mut self,
     ) -> Result<Vec<HabitInstanceChild>, FlowError> {
-        Ok(sqlx::query_as::<_, HabitInstanceChild>(
+        Ok(sqlx::query_as::<_, HabitInstanceChildRow>(
             "SELECT flow_id, parent_kind, parent_key, child_type, child_id
              FROM derived_children ORDER BY id",
         )
         .fetch_all(&mut *self.connection)
-        .await?)
+        .await?
+        .into_iter()
+        .map(HabitInstanceChild::from)
+        .collect())
     }
 
     /// The occurrence one node is attached to, if it is an added child of one.
@@ -1930,18 +1419,25 @@ impl<'session> FlowOperator<'session> {
         .bind(child_id)
         .fetch_optional(&mut *self.connection)
         .await?;
-        Ok(row.map(|row| ChildAttachment {
-            flow_id: row.flow_id.unwrap_or_default(),
-            instance_type: row.parent_kind,
-            parent_key: row.parent_key,
-            window: row.window_start_scope_id.zip(row.window_end_scope_id).map(
-                |(start_id, end_id)| TimeScope {
-                    start_id,
-                    end_id,
-                    duration: None,
-                },
-            ),
-        }))
+        Ok(row.map(AttachmentRow::attachment))
+    }
+
+    /// Every added child's attachment, with the child it attaches — what
+    /// [`Self::child_attachment`] reads one child at a time, for a whole board.
+    pub async fn child_attachments(
+        &mut self,
+    ) -> Result<Vec<(String, i64, ChildAttachment)>, sqlx::Error> {
+        let rows: Vec<ChildAttachmentRow> = sqlx::query_as(
+            "SELECT child_type, child_id, flow_id, parent_kind, parent_key, window_start_scope_id,
+                    window_end_scope_id
+             FROM derived_children",
+        )
+        .fetch_all(&mut *self.connection)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| (row.child_type, row.child_id, row.attachment.attachment()))
+            .collect())
     }
 
     /// Attaches an already-created row to one occurrence. `window` is the occurrence's, resolved
@@ -1967,8 +1463,8 @@ impl<'session> FlowOperator<'session> {
         .bind(flow_id.0)
         .bind(parent_kind)
         .bind(parent.node_key())
-        .bind(window.map(|window| window.start_id))
-        .bind(window.map(|window| window.end_id))
+        .bind(window.map(|window| DbScopeKey(window.start_id)))
+        .bind(window.map(|window| DbScopeKey(window.end_id)))
         .bind(child_type)
         .bind(child_id)
         .execute(&mut *self.connection)
@@ -2530,9 +2026,10 @@ impl<'session> FlowOperator<'session> {
     /// mindmap flag flow-originated Goals/Tasks (e.g. with a flow-instance badge) without a
     /// per-node origin lookup.
     pub async fn list_instance_node_refs(&mut self) -> Result<Vec<TargetRef>, FlowError> {
-        sqlx::query_as::<_, TargetRef>("SELECT node_type, node_id FROM flow_instance_nodes")
+        sqlx::query_as::<_, TargetRefRow>("SELECT node_type, node_id FROM flow_instance_nodes")
             .fetch_all(&mut *self.connection)
             .await
+            .map(|rows| rows.into_iter().map(TargetRef::from).collect())
             .map_err(Into::into)
     }
 }
@@ -2702,18 +2199,6 @@ pub(crate) async fn occurrence_window<M: SessionMode>(
     Ok(Some(
         resolved.map_or(iteration, |resolved| resolved.time_scope),
     ))
-}
-
-/// The window of the iteration anchored on `iteration` and its first day, or `None` when the flow
-/// is Unscoped — an Interval Habit's, whose instances have no window.
-pub(crate) fn iteration_window(
-    flow: &Flow,
-    iteration: ScopeKey,
-) -> Result<Option<(TimeScope, NaiveDate)>, FlowError> {
-    if flow.flow_duration_kind.is_none() {
-        return Ok(None);
-    }
-    resolve_flow_window(flow, iteration.start_date()).map(Some)
 }
 
 /// Creates one real node and attaches it to one virtual Habit occurrence, as a single gesture.
@@ -3083,48 +2568,6 @@ async fn destination_flow_id(
     }
 }
 
-/// The Flow Window a Habit's iterations are drawn with, or `None` for an Unscoped flow — which
-/// only an Interval Habit may be.
-fn flow_window_spec(flow: &Flow) -> Result<Option<WindowSpec>, FlowError> {
-    // `n` is only meaningful for a coarse Span; a Phase window carries its own band/time.
-    flow.flow_duration_kind
-        .as_deref()
-        .map(|kind| window_spec(flow, kind, flow.flow_duration_n.unwrap_or(1)))
-        .transpose()
-}
-
-/// A Habit's iteration windows up to `limit`, by its clock: a **Window** clock tiles them from
-/// the Repetition Start ([`habit_slots`]); an **Interval** clock chains each off the completion of
-/// the one before it ([`interval_slots`]), which `completed_at` answers.
-fn clock_slots(
-    flow: &Flow,
-    recurrence: &FlowRecurrence,
-    clock: Clock,
-    limit: NaiveDateTime,
-    completed_at: impl FnMut(&SlotWindow) -> Option<NaiveDateTime>,
-) -> Result<Vec<SlotWindow>, FlowError> {
-    let spec = flow_window_spec(flow)?;
-    let start_date = recurrence.start_scope_id.start_date();
-    let end_date = recurrence.end_scope_id.map(|end| end.start_date());
-    let gap = recurrence.gap_n.zip(recurrence.gap_kind.clone());
-    match clock {
-        Clock::Interval => interval_slots(
-            start_date,
-            spec.as_ref(),
-            gap.as_ref(),
-            end_date,
-            limit,
-            completed_at,
-        ),
-        Clock::Window(_) => {
-            let spec = spec.ok_or_else(|| {
-                FlowError::Invalid("a window habit requires a scoped flow".to_string())
-            })?;
-            habit_slots(start_date, spec, gap.as_ref(), end_date, limit)
-        }
-    }
-}
-
 /// Derives a Habit's iterations at `now` (local wall-clock): the ordered schedule of started
 /// iterations, each classified by its clock (`flows::habits`). Future iterations are omitted (an
 /// ellipsis stands in for them). Errors if the flow is not a Habit.
@@ -3178,135 +2621,12 @@ pub async fn generate_habit_iterations<M: SessionMode>(
     Ok(resolved_iterations)
 }
 
-/// What resolving one iteration's occurrences needs about the Habit as a whole, as opposed to
-/// about the single iteration being resolved.
-struct HabitShape<'template> {
-    /// Every flow item, in render order: goals then tasks, each in position order.
-    items: &'template [(String, i64)],
-    /// Each item's cycle pairs in position order, keyed `(item_type, item_id)`. An item missing
-    /// from the map declares none.
-    cycles: &'template HashMap<(String, i64), Vec<FlowItemCycle>>,
-    /// The Habit's clock, which decides when an occurrence's passed window makes it past.
-    clock: Clock,
-    /// Whether the flow has a window — an Unscoped Interval Habit's cycle pairs resolve to none.
-    scoped: bool,
-}
-
-/// Resolves the occurrences one Habit iteration renders: every flow item, **once per cycle pair it
-/// declares** — SPEC's "a flow item with N pairs produces N items", which `start` has always obeyed
-/// and the virtual render path did not — and once, unscoped, when it declares none.
-///
-/// Each pair is resolved against *this* iteration's window start, so the same template item lands
-/// on a different concrete morning every day it recurs.
-///
-/// An occurrence whose window has not opened at `now` is produced like any other, carrying
-/// [`InstanceTiming::Pending`](model::InstanceTiming::Pending). Generation says where the clock
-/// stands; the **preset** says what is on screen — All shows everything, Plan/Start/Do hide the
-/// not-yet-open, so this evening's item does not sit among the morning's work while still being
-/// reachable when you ask to see it all.
-/// Dropping it here instead put it beyond every preset at once, All included.
-fn resolve_iteration_instances(
-    shape: &HabitShape<'_>,
-    slot: &SlotWindow,
-    status: IterationStatus,
-    now: NaiveDateTime,
-) -> Result<Vec<HabitInstance>, FlowError> {
-    let no_pairs: Vec<FlowItemCycle> = Vec::new();
-    // An Unscoped Interval Habit has no window for a Cycle Scope to be an offset into.
-    let window_start = shape.scoped.then(|| slot.start.date());
-    let mut instances = Vec::new();
-    for (item_type, item_id) in shape.items {
-        let pairs = shape
-            .cycles
-            .get(&(item_type.clone(), *item_id))
-            .unwrap_or(&no_pairs);
-        // An item with no pairs is one occurrence with no window of its own: it is relevant for
-        // exactly as long as the iteration around it is, which is what it has always been.
-        if pairs.is_empty() {
-            instances.push(HabitInstance {
-                item_type: item_type.clone(),
-                item_id: *item_id,
-                cycle_id: NO_CYCLE,
-                time_scope: None,
-                plan: None,
-                timing: instance_timing(shape.clock, status, (slot.start, slot.end), now),
-            });
-            continue;
-        }
-        for pair in pairs {
-            // A pair whose Cycle Scope is null is a pair that names no window; it falls back to
-            // the iteration's, like an item with no pair at all.
-            let (time_scope, plan, start, end) = match resolve_cycle(Some(pair), window_start)? {
-                Some(resolved) => {
-                    let (start, end) = resolved.scope.bounds();
-                    (Some(resolved.time_scope), resolved.plan, start, end)
-                }
-                None => (
-                    None,
-                    whole_scope_plan(Some(pair), window_start)?,
-                    slot.start,
-                    slot.end,
-                ),
-            };
-            instances.push(HabitInstance {
-                item_type: item_type.clone(),
-                item_id: *item_id,
-                cycle_id: pair.id,
-                time_scope,
-                plan,
-                timing: instance_timing(shape.clock, status, (start, end), now),
-            });
-        }
-    }
-    Ok(instances)
-}
-
-/// The instant each iteration of a **commitment** Habit stops being answerable: the end of its own
-/// window plus the flow's Verdict Window.
-///
-/// Empty for anything else — a goal or task Habit has no verdict to record, and a commitment Habit
-/// with no Verdict Window set is answerable indefinitely, which is what the kind does whenever
-/// nothing sets one. The arithmetic is the same [`verdict_deadline`] a real Commitment's Archival
-/// is decided by, so a Habit's iterations and a hand-made Commitment expire by one rule.
-///
-/// Empty, too, on an **Interval** clock: an Interval instance never expires — it stays open until
-/// it is resolved (ruled by the user, 2026-10-02) — so no Verdict Window applies to one.
-fn verdict_deadlines(
-    flow: &Flow,
-    clock: Clock,
-    slots: &[SlotWindow],
-) -> HashMap<i64, NaiveDateTime> {
-    if flow.instance_type != "commitment" {
-        return HashMap::new();
-    }
-    let Some(duration) = habit_verdict_window(flow, clock) else {
-        return HashMap::new();
-    };
-    slots
-        .iter()
-        .filter_map(|slot| {
-            verdict_deadline(Some((slot.start, slot.end)), Some(&duration))
-                .map(|deadline| (slot.index, deadline))
-        })
-        .collect()
-}
-
-/// The Verdict Window a commitment Habit's iterations answer to under `clock`: the flow's own on a
-/// Window clock, and none on an **Interval**, whose instance stays open until it is answered.
-pub(crate) fn habit_verdict_window(flow: &Flow, clock: Clock) -> Option<DurationSpec> {
-    if clock == Clock::Interval {
-        return None;
-    }
-    flow.verdict_window_n
-        .zip(flow.verdict_window_kind.clone())
-        .map(|(n, kind)| DurationSpec { n, kind })
-}
-
 /// Filters `candidates` to the targets a flow of the given `duration` may materialise under.
 ///
-/// A target is valid when its effective Time Scope window (its own, or the nearest scoped
-/// ancestor's) wholly contains the flow window; a target with no scoped ancestor — and any
-/// Unscoped flow (`duration` = `None`) — is always valid. With a concrete `anchor`, the window
+/// A target must be able to hold the Flow's instances ([`rules::targets::holds_instances`]),
+/// whatever its window. One that can is valid when its effective Time Scope window (its own, or
+/// the nearest scoped ancestor's) wholly contains the flow window; a target with no scoped
+/// ancestor — and any Unscoped flow (`duration` = `None`) — is always valid. With a concrete `anchor`, the window
 /// is resolved and containment is exact; without one (template edit, before the anchor is
 /// known), a coarse necessary check keeps only targets at least as long as the flow's shortest
 /// possible window. The backend [`start`] still hard-rejects anything that slips through.
@@ -3320,8 +2640,13 @@ pub async fn valid_targets<M: SessionMode>(
     anchor: Option<NaiveDate>,
     candidates: Vec<TargetRef>,
 ) -> Result<Vec<TargetRef>, FlowError> {
+    // Only a node that can hold the Flow's instances is a target at all, scoped Flow or not.
+    let candidates: Vec<TargetRef> = candidates
+        .into_iter()
+        .filter(|candidate| rules::targets::holds_instances(&candidate.node_type))
+        .collect();
     let Some((n, kind)) = duration else {
-        return Ok(candidates); // Unscoped flow: no window, no constraint.
+        return Ok(candidates); // Unscoped flow: no window, no further constraint.
     };
     // A Phase window can't be resolved from `(n, kind)` alone (its band/time isn't carried here),
     // so it always uses the coarse filter — where `min_period_days` is 0, i.e. every target
@@ -3397,13 +2722,18 @@ pub async fn convert_to_flow(
             ))
         }
     };
-    if !matches!(
-        parent_type.as_str(),
-        "aspect" | "project" | "domain" | "goal"
-    ) {
-        return Err(FlowError::Invalid(
-            "a flow cannot be parented under a task".to_string(),
-        ));
+    // Where a Flow may hang is the one parenting table's answer.
+    let parent_holds_a_flow =
+        crate::nodes::rules::parenting::kind_of(&parent_type).is_some_and(|parent| {
+            crate::nodes::rules::parenting::may_parent(
+                crate::filters::model::NodeKind::Flow,
+                parent,
+            )
+        });
+    if !parent_holds_a_flow {
+        return Err(FlowError::Invalid(format!(
+            "a flow cannot be parented under a {parent_type}"
+        )));
     }
 
     // Map the root's Time Scope to the flow Window (Span / Phase) and note the window start date.
@@ -3653,96 +2983,6 @@ async fn load_template<M: SessionMode>(
             .into_iter()
             .filter(|d| d.flow_id == flow_id.0)
             .collect(),
-    })
-}
-
-/// Resolves a flow's root **Cycle Plan** — a relative plan window inside the flow window — against
-/// one concrete window start. `None` when the flow carries none (a goal or commitment flow never
-/// does) or has no window to resolve it in.
-///
-/// Shared by [`start`], which writes it onto the root Task, and by a Habit's occurrences, which
-/// read it per iteration: one resolution, so a started flow and a derived iteration root cannot
-/// disagree about when "the 2nd day" of the window falls.
-fn resolve_root_plan(
-    flow: &Flow,
-    window_start: Option<NaiveDate>,
-) -> Result<Option<TimeScope>, FlowError> {
-    let (Some(kind), Some(plan_start), Some(plan_end), Some(base)) = (
-        flow.root_plan_kind.as_deref(),
-        flow.root_plan_start,
-        flow.root_plan_end,
-        window_start,
-    ) else {
-        return Ok(None);
-    };
-    Ok(Some(window_plan(base, kind, plan_start, plan_end)?))
-}
-
-/// A relative plan counted from the flow window's start: `[start, end]` of `kind`. With `kind`
-/// the window's own and `1..n`, it is the whole window — what the "Planned" toggle stores.
-fn window_plan(base: NaiveDate, kind: &str, start: i64, end: i64) -> Result<TimeScope, FlowError> {
-    Ok(TimeScope {
-        start_id: offset_scope(base, start, kind)?,
-        end_id: offset_scope(base, end, kind)?,
-        duration: None,
-    })
-}
-
-/// A **whole-scope** pair's Cycle Plan: it names no Cycle Scope, so its plan is counted from the
-/// flow window's start, like the root's. `None` for a scoped pair (see [`resolve_cycle`]), a pair
-/// with no plan, or an unscoped flow.
-pub(crate) fn whole_scope_plan(
-    pair: Option<&FlowItemCycle>,
-    window_start: Option<NaiveDate>,
-) -> Result<Option<TimeScope>, FlowError> {
-    let (Some(pair), Some(base)) = (pair, window_start) else {
-        return Ok(None);
-    };
-    if pair.scope_kind.is_some() {
-        return Ok(None);
-    }
-    let (Some(kind), Some(start), Some(end)) =
-        (pair.plan_kind.as_deref(), pair.plan_start, pair.plan_end)
-    else {
-        return Ok(None);
-    };
-    Ok(Some(window_plan(base, kind, start, end)?))
-}
-
-/// Resolves every scope a flow materialisation needs into a lookup table, in two rounds per pair:
-/// the Cycle Scope from the window start, then the Cycle Plan from *that scope's* own start date.
-/// Both rounds already live inside [`resolve_pair`]; this walks the pairs. Pure: every scope is
-/// derived from its key.
-///
-/// `cycles` is the *reachable* pair list, not every pair the flow owns: an orphaned item is never
-/// walked, so its pairs are never resolved.
-fn resolve_scopes(
-    flow: &Flow,
-    anchor: NaiveDate,
-    cycles: &[FlowItemCycle],
-) -> Result<ScopeTable, FlowError> {
-    // The flow window, only when the flow is scoped (Span or Phase).
-    let (window, window_start): (Option<TimeScope>, Option<NaiveDate>) =
-        if flow.flow_duration_kind.is_some() {
-            let (time_scope, start) = resolve_flow_window(flow, anchor)?;
-            (Some(time_scope), Some(start))
-        } else {
-            (None, None)
-        };
-
-    // The root's relative Cycle Plan (task instance type only), against the window start.
-    let root_plan = resolve_root_plan(flow, window_start)?;
-
-    let mut pairs: HashMap<i64, ResolvedPair> = HashMap::with_capacity(cycles.len());
-    for cycle in cycles {
-        let (time_scope, plan) = resolve_pair(Some(cycle), window_start)?;
-        pairs.insert(cycle.id, ResolvedPair { time_scope, plan });
-    }
-
-    Ok(ScopeTable {
-        window,
-        root_plan,
-        pairs,
     })
 }
 
@@ -4010,6 +3250,3 @@ async fn set_node_private(
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests;

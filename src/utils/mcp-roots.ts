@@ -72,23 +72,22 @@ export function describeRoots(
 }
 
 /**
- * Every stored node that is not already a root, in the shape the node search (`Ctrl+O`'s combobox)
- * takes. The id is the node's key string, never parsed: {@link catalogueKeyOf} looks it up.
+ * The nodes that may be made roots — the backend's answer (`candidates`) — in the shape the node
+ * search (`Ctrl+O`'s combobox) takes, named and placed from the catalogue. The id is the node's key
+ * string, never parsed: {@link catalogueKeyOf} looks it up.
  */
 export function rootCandidates(
-  roots: readonly McpNodeKey[],
+  candidates: readonly McpNodeKey[],
   nodes: readonly McpCatalogueNode[],
 ): SearchableNode[] {
   const byKey = indexCatalogue(nodes);
-  const taken = new Set(roots.map((key) => mcpNodeKeyString(key)));
-  const candidates: SearchableNode[] = [];
-  for (const node of nodes) {
-    const id = mcpNodeKeyString(node);
-    const kind = displayKind(node);
-    if (taken.has(id) || kind === null) continue;
-    candidates.push({ id, title: node.title, kind, path: ancestorTitles(node, byKey) });
-  }
-  return candidates;
+  return candidates.flatMap((key) => {
+    const id = mcpNodeKeyString(key);
+    const node = byKey.get(id);
+    const kind = node === undefined ? null : displayKind(node);
+    if (node === undefined || kind === null) return [];
+    return [{ id, title: node.title, kind, path: ancestorTitles(node, byKey) }];
+  });
 }
 
 /** The node a search result's id names, or `undefined` when it names none. */

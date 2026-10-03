@@ -1,0 +1,264 @@
+{
+  "about": [
+    "The relative cycle grid a Flow item's Cycle Scope is picked on, written as data.",
+    "",
+    "Both evaluators replay it. `src-tauri/tests/operations/flow_cycles_conformance.rs` runs every case",
+    "through `flows::rules::cycle_grid`; `src/utils/flow-cycles-conformance.test.ts` runs the same",
+    "cases through `flow-cycle.ts`, the Flow editor's navigator. Neither side generates this file.",
+    "",
+    "The grid counts nominal subdivisions \u2014 three months to a season, four weeks to a month, seven",
+    "days to a week, six parts to a day \u2014 since the window is unanchored while the template is",
+    "edited. `subdivisions` names how many `child` units one `parent` holds (one for the same kind,",
+    "none for a coarser child or a kind off the grid); `levels` the navigator's levels from the",
+    "Flow's own period down to a target kind; `paths` the flat 1-based index a 1-based path names."
+  ],
+  "subdivisions": [
+    {
+      "parent": "season",
+      "child": "season",
+      "count": 1
+    },
+    {
+      "parent": "season",
+      "child": "month",
+      "count": 3
+    },
+    {
+      "parent": "season",
+      "child": "week",
+      "count": 12
+    },
+    {
+      "parent": "season",
+      "child": "day",
+      "count": 84
+    },
+    {
+      "parent": "season",
+      "child": "part_of_day",
+      "count": 504
+    },
+    {
+      "parent": "month",
+      "child": "season",
+      "count": 0
+    },
+    {
+      "parent": "month",
+      "child": "month",
+      "count": 1
+    },
+    {
+      "parent": "month",
+      "child": "week",
+      "count": 4
+    },
+    {
+      "parent": "month",
+      "child": "day",
+      "count": 28
+    },
+    {
+      "parent": "month",
+      "child": "part_of_day",
+      "count": 168
+    },
+    {
+      "parent": "week",
+      "child": "season",
+      "count": 0
+    },
+    {
+      "parent": "week",
+      "child": "month",
+      "count": 0
+    },
+    {
+      "parent": "week",
+      "child": "week",
+      "count": 1
+    },
+    {
+      "parent": "week",
+      "child": "day",
+      "count": 7
+    },
+    {
+      "parent": "week",
+      "child": "part_of_day",
+      "count": 42
+    },
+    {
+      "parent": "day",
+      "child": "season",
+      "count": 0
+    },
+    {
+      "parent": "day",
+      "child": "month",
+      "count": 0
+    },
+    {
+      "parent": "day",
+      "child": "week",
+      "count": 0
+    },
+    {
+      "parent": "day",
+      "child": "day",
+      "count": 1
+    },
+    {
+      "parent": "day",
+      "child": "part_of_day",
+      "count": 6
+    },
+    {
+      "parent": "part_of_day",
+      "child": "season",
+      "count": 0
+    },
+    {
+      "parent": "part_of_day",
+      "child": "month",
+      "count": 0
+    },
+    {
+      "parent": "part_of_day",
+      "child": "week",
+      "count": 0
+    },
+    {
+      "parent": "part_of_day",
+      "child": "day",
+      "count": 0
+    },
+    {
+      "parent": "part_of_day",
+      "child": "part_of_day",
+      "count": 1
+    },
+    {
+      "parent": "exact",
+      "child": "day",
+      "count": 0
+    }
+  ],
+  "levels": [
+    {
+      "flowN": 2,
+      "flowKind": "week",
+      "target": "part_of_day",
+      "levels": [
+        {
+          "kind": "week",
+          "count": 2
+        },
+        {
+          "kind": "day",
+          "count": 7
+        },
+        {
+          "kind": "part_of_day",
+          "count": 6
+        }
+      ]
+    },
+    {
+      "flowN": 1,
+      "flowKind": "season",
+      "target": "week",
+      "levels": [
+        {
+          "kind": "season",
+          "count": 1
+        },
+        {
+          "kind": "month",
+          "count": 3
+        },
+        {
+          "kind": "week",
+          "count": 4
+        }
+      ]
+    },
+    {
+      "flowN": 3,
+      "flowKind": "month",
+      "target": "day",
+      "levels": [
+        {
+          "kind": "month",
+          "count": 3
+        },
+        {
+          "kind": "week",
+          "count": 4
+        },
+        {
+          "kind": "day",
+          "count": 7
+        }
+      ]
+    },
+    {
+      "flowN": 1,
+      "flowKind": "day",
+      "target": "week",
+      "levels": []
+    },
+    {
+      "flowN": 2,
+      "flowKind": "week",
+      "target": "week",
+      "levels": []
+    }
+  ],
+  "paths": [
+    {
+      "flowN": 2,
+      "flowKind": "week",
+      "target": "part_of_day",
+      "path": [
+        2,
+        3,
+        4
+      ],
+      "index": 58
+    },
+    {
+      "flowN": 2,
+      "flowKind": "week",
+      "target": "part_of_day",
+      "path": [
+        1,
+        1,
+        1
+      ],
+      "index": 1
+    },
+    {
+      "flowN": 1,
+      "flowKind": "season",
+      "target": "week",
+      "path": [
+        1,
+        3,
+        4
+      ],
+      "index": 12
+    },
+    {
+      "flowN": 3,
+      "flowKind": "month",
+      "target": "day",
+      "path": [
+        3,
+        4,
+        7
+      ],
+      "index": 84
+    }
+  ]
+}

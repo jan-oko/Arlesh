@@ -2,9 +2,8 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
-import { updateTask } from "@/api/tasks";
+import { toggleTaskAgentic } from "@/api/node-gestures";
 import { getErrorMessage } from "@/api/errors";
-import { toggledAgenticState } from "@/utils/agentic";
 
 interface Options {
   findNode: (id: string) => MindmapNode | undefined;
@@ -19,11 +18,9 @@ interface Result {
 }
 
 /**
- * The Agentic toggle shared by both views: read what the task **resolves to**, write the opposite.
- *
- * A plain update with no invariant to negotiate — unlike Backlog, which a Plan can refuse — so the
- * only interesting parts are which state the press writes ({@link toggledAgenticState}) and which
- * nodes the key declines to act on.
+ * The Agentic toggle shared by both views: the backend reads what the task **resolves to** and
+ * writes the opposite (`tasks::rules::gestures::toggled_agentic`). What is left here is which nodes
+ * the key declines to act on.
  *
  * Driven by the resolved value, so every press changes what the badge shows. A task that was only
  * inheriting "yes" is pinned to an explicit "no" by one press, which is the toggle doing its job:
@@ -38,7 +35,7 @@ export function useTaskAgentic({ findNode, reload, showToast }: Options): Result
       const node = findNode(nodeId);
       // Any Task row, a Habit occurrence included: its flag lands on that occurrence alone.
       if (node === undefined || node.kind !== "task" || node.rowId === undefined) return;
-      void updateTask(rowIdOf(node), { agentic: toggledAgenticState(node) }).then(
+      void toggleTaskAgentic(rowIdOf(node)).then(
         () => reload(),
         (error: unknown) => {
           showToast({ nodeId, message: t("agenticFailed", { message: getErrorMessage(error) }) });

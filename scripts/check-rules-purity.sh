@@ -10,6 +10,9 @@
 # What counts as a rules module:
 #   - every `rules.rs` under src-tauri/src, and everything under a `rules/` directory beside one;
 #   - all of `filters/`, which was written pure and is the presets' rules layer as a whole.
+# And the domain models the rules read, which hold to the same line (ADR 0010, decision 8: domain
+# and database models are separate, so a row type and its codec live in persistence):
+#   - every `model.rs`, `scopes/key.rs`, and `nodes/{id,key,origin}.rs`.
 # Unit-test files (`tests.rs`, `*_tests.rs`) are exempt: a test may build a database to check a
 # rule against it.
 #
@@ -29,6 +32,10 @@ files=$(
     find "$root" -name 'rules.rs'
     find "$root" -path '*/rules/*' -name '*.rs'
     find "$root/filters" -name '*.rs'
+    find "$root" -name 'model.rs'
+    for model in scopes/key.rs nodes/id.rs nodes/key.rs nodes/origin.rs; do
+      [ -f "$root/$model" ] && echo "$root/$model"
+    done
   } | grep -v -E '/tests\.rs$|_tests\.rs$' | sort -u
 )
 
@@ -45,7 +52,7 @@ found=$(
 )
 
 if [ -n "$found" ]; then
-  echo "Impure code in a rules module:"
+  echo "Impure code in a rules module or a domain model:"
   echo "$found"
   echo
   echo "A rules module holds pure functions over values: no Db or SessionMode, no sqlx, no tauri,"
@@ -54,4 +61,4 @@ if [ -n "$found" ]; then
   exit 1
 fi
 
-echo "Rules modules are pure ($(echo "$files" | wc -l) files checked)."
+echo "Rules modules and domain models are pure ($(echo "$files" | wc -l) files checked)."

@@ -57,7 +57,7 @@ never stored.
 | **Habit iteration** | status of its occurrences, compound status, clock and miss policy, now | Resolved when every template occurrence is done (a compound one by its derived status). Otherwise the clock decides: Lapsed (Archive), Missed and carried (Overdue), open and owed (Owed), or the one open Interval instance. | `rs:flows/occurrences.rs::resolutions`, `rs:flows/rules/habits.rs` |
 | **Cooldown block** | Habit iteration (done instants), cooldown, clock, now | After an iteration is done, block the next iteration (under Owed, every open one) until the latest done instant plus the cooldown. | `rs:flows/rules/cooldown.rs::holds`, `rs:flows/occurrences.rs::done_instants` |
 | **Overdue** | effective due, status, Archived (effective Archival), now | Unfinished, not effectively Archived, and now is at or past the due's end. | `rs:tasks/rules/lifecycle.rs::derive_overdue` |
-| **Blocked** | block reasons, dependencies, status *(of another node: each dependency's target)*, capacity block, cooldown block, compound block | Any reason: one written by hand; a dependency on a Task not Done, a Goal not Achieved or a wait still Pending; or a derived block. | `rs:filters/facts.rs::index_blocked`, `rs:filters/rules.rs::is_blocked`, `ts:utils/blocked-by.ts` |
+| **Blocked** | block reasons, dependencies, status *(of another node: each dependency's target)*, capacity block, cooldown block, compound block | Any reason: one written by hand; a dependency on a Task not Done, a Goal not Achieved or a wait still Pending; or a derived block. | `rs:filters/facts.rs::index_blocked`, `rs:filters/rules.rs::is_blocked`, `rs:mindmap/rules/facts.rs` (the board's `dependency_blocks`) |
 
 How the presets read them:
 
@@ -129,7 +129,8 @@ How the presets read them:
 - **Without:** each surface special-cases each source, and they drift.
 - **Lives:**
   - `rs:nodes/origin.rs`, `rs:nodes/table.rs`, `rs:nodes/waits.rs`, `rs:flows/occurrences.rs` and `rs:tasks/waits.rs`.
-  - Frontend: `ts:utils/derived-wait.ts`.
+  - What a row may be done to, by its origin: `rs:nodes/rules/capabilities.rs`, sent on the board's facts.
+  - Frontend: `ts:utils/derived-wait.ts` and `ts:utils/capabilities.ts`.
   - [ADR 0008](adr/0008-virtual-node-tables.md) covers virtual node tables.
 - **Spec:** [Derived nodes](spec/virtual-nodes.md).
 
@@ -152,7 +153,8 @@ How the presets read them:
 - **Without:** agent work reads as yours and fills Do and Zen.
 - **Lives:**
   - `rs:tasks/model.rs` (`TaskStatus`, `AgenticStatus`, `Status`, `Status::is_done_db`).
-  - Frontend: `ts:utils/status-mapping.ts` and `ts:utils/task-status-cycle.ts`.
+  - What a click, `Enter` and `Alt+Enter` write: `rs:tasks/rules/gestures.rs`, through the `step_task_status` command.
+  - Frontend: `ts:utils/status-mapping.ts`; its `convertedStatus` is pinned by `conformance/task-status.json`.
   - The kind is read from `rs:tasks/agentic.rs`.
 - **Spec:** [Resources § Agentic statuses](spec/resources.md#agentic-statuses).
 
@@ -162,7 +164,7 @@ How the presets read them:
 - **Without:** agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.
 - **Lives:**
   - `rs:tasks/rules/review.rs` (`derive`, `is_open_question`).
-  - Frontend: `ts:utils/open-question.ts`.
+  - The board names each Task's open question (`rs:mindmap/rules/facts.rs`); `ts:utils/open-question.ts` finds that wait to draw and answer.
   - The MCP side is `arlesh_waits.ask`, in `rs:mcp/`.
 - **Spec:** [Resources § Agentic statuses](spec/resources.md#agentic-statuses), [MCP § Agentic waits](spec/mcp-server.md#agentic-waits).
 
@@ -201,7 +203,7 @@ How the presets read them:
 - **Without:** either everything is scheduled rigidly, or nothing knows when it stops mattering.
 - **Lives:**
   - `rs:tasks/scope_rules.rs` and `rs:tasks/rules/lifecycle.rs`.
-  - Frontend: `ts:utils/inherited-scope.ts` and `ts:utils/plan-scope.ts`.
+  - The board sends what each node inherits (`rs:mindmap/rules/facts.rs`); the frontend reads it, and `ts:utils/plan-scope.ts` walks the Plan View's scopes.
   - [ADR 0001](adr/0001-time-scope-model.md) covers the time-scope model.
 - **Spec:** [Time Scopes](spec/time-scopes.md).
 
@@ -266,7 +268,7 @@ How the presets read them:
 - **Is:** a Commitment is judged, not done: Kept, Broken or Unresolved. Its Verdict Window bounds how long the answer stays owed; past it, the Commitment Expires.
 - **Why:** a rule is kept or broken, and an unanswered night may well have been kept.
 - **Without:** a missed check-in would count as a broken commitment.
-- **Lives:** `rs:tasks/commitments.rs`, and `ts:utils/commitment-glyph.ts` on the frontend. [ADR 0005](adr/0005-commitment-node-kind.md) covers the Commitment kind.
+- **Lives:** `rs:tasks/commitments.rs`; whether one has expired is a board fact (`rs:mindmap/rules/facts.rs`), which `ts:utils/commitment-glyph.ts` draws. [ADR 0005](adr/0005-commitment-node-kind.md) covers the Commitment kind.
 - **Spec:** [Resources § Commitments](spec/resources.md#commitments).
 
 ## 5. Inheritance
@@ -275,7 +277,7 @@ How the presets read them:
 - **Is:** a three-state flag (NULL, true, false) that inherits downward and can be overridden. It decides a Task's status model and what the MCP may write. Each Agentic Task has its own brief, and needs a Spec before it can start.
 - **Why:** mark a project for agents in one edit, and pull one Task back out of it.
 - **Without:** flagging every Task by hand, and agents writing into your own work.
-- **Lives:** `rs:tasks/agentic.rs`, and `ts:utils/agentic.ts` on the frontend. The brief is in `task_agentic_briefs`; MCP write access is in `rs:access/`.
+- **Lives:** `rs:tasks/agentic.rs` and `rs:tasks/rules/agentic.rs`; the board sends what each node inherits (`rs:mindmap/rules/facts.rs`), and `ts:utils/agentic.ts` reads it with the node's own flag. The brief is in `task_agentic_briefs`; MCP write access is in `rs:access/`.
 - **Spec:** [Resources § Tasks (Agentic)](spec/resources.md), [Link Inheritance](spec/link-inheritance.md).
 
 ### Scope containment
@@ -296,7 +298,7 @@ How the presets read them:
 - **Is:** a node's own Private flag. It hides the node and everything beneath it outside Private Mode, and hides it from the MCP even inside a root.
 - **Why:** one switch keeps an area out of sight and out of agents' context.
 - **Without:** hiding a subtree node by node, and leaking what was missed.
-- **Lives:** `rs:access/`; on the frontend, `ts:utils/mcp-visibility.ts` and the filter pass.
+- **Lives:** `rs:access/`; the board sends which root each node is seen through (`rs:mindmap/rules/facts.rs`); the frontend's filter pass hides private nodes.
 - **Spec:** [Filtering Logic](spec/filtering-logic.md), [MCP § Access](spec/mcp-server.md#access).
 
 ## 6. Blocks
@@ -312,7 +314,7 @@ How the presets read them:
 - **Is:** a Task can depend on a Task, a Goal or a stored Expectation. Until the dependency is met, the Task carries the reason "Blocked by {kind} {short id} ({title})". Cycles are refused.
 - **Why:** order between pieces of work is a fact worth recording once.
 - **Without:** you remember the order yourself, and Start offers work out of turn.
-- **Lives:** `rs:tasks/mod.rs` (`add_task_dependency`, `dependency_name`), `ts:utils/blocked-by.ts` and `ts:utils/dependency-candidates.ts`.
+- **Lives:** `rs:tasks/mod.rs` (`add_task_dependency`), `rs:tasks/rules/dependencies.rs` (`dependency_name`), what a Task may depend on (`candidates`, asked by the `dependency_candidates` command), and the board's `dependency_blocks` and `met` facts (`rs:mindmap/rules/facts.rs`); `ts:utils/blocked-by.ts` words them and `ts:utils/dependency-candidates.ts` finds the offered targets in the search.
 - **Spec:** [Resources § Tasks (Dependencies)](spec/resources.md).
 
 ### Derived blocks
@@ -341,17 +343,17 @@ How the presets read them:
 - **Spec:** [Filtering Logic](spec/filtering-logic.md), [Mindmap § status preset](spec/mindmap-view.md).
 
 ### The conformance pair
-- **Is:** the presets are written twice, in Rust for the MCP and in TypeScript for the views. One shared case file runs against both.
-- **Why:** the views filter on every keystroke without a round trip, and the corpus keeps the two copies honest.
+- **Is:** every rule the frontend must answer per render or per pointer move is written twice — in a Rust `rules` module, which is the definition, and as a TypeScript copy — and one shared case file under `conformance/` runs against both ([ADR 0010](adr/0010-business-rules-layer.md)). The pinned copies are the presets and the List View's pills (`preset-filters.json`), the list sections (`list-sections.json`), the Zen View's contents and locked presets (`zen-contents.json`), the parenting table (`parenting.json`), the status models' conversion (`task-status.json`), the Habit fold (`habit-fold.json`), the cooldown options (`cooldown.json`), the cycle grid (`flow-cycles.json`), the Plan View's triage, refusal and sections (`plan-triage.json`), and scope keys, windows, labels and the day boundary (`scope-keys.json`).
+- **Why:** the views filter and draw on every keystroke without a round trip, and the corpora keep the copies honest; everything else the frontend reads from the backend instead.
 - **Without:** the agent's board and yours drift apart silently.
-- **Lives:** `conformance/preset-filters.json`, run by `ts:utils/preset-conformance.test.ts` and by the Rust tests under `rs:filters/`.
+- **Lives:** `conformance/`, run by the `*-conformance.test.ts` files beside each TypeScript copy and by the Rust tests under `src-tauri/tests/`.
 - **Spec:** [Filtering Logic § Where the definition lives](spec/filtering-logic.md).
 
 ### Pills and the focus exemption
 - **Is:** filters combine as Any, All and Not. The selected node stays on screen, dimmed, after your own edit stops it matching.
 - **Why:** completing a Task under Plan shouldn't make it vanish from under the cursor.
 - **Without:** every edit risks losing your place.
-- **Lives:** `ts:utils/filter-modes.ts`, `ts:utils/focus-exemption.ts` and `ts:utils/filter-layout.ts`.
+- **Lives:** `rs:filters/pills.rs` (the pills, also on an MCP read), `ts:utils/list-filter.ts`, `ts:utils/filter-modes.ts`, `ts:utils/focus-exemption.ts` and `ts:utils/filter-layout.ts`.
 - **Spec:** [Filtering Logic](spec/filtering-logic.md).
 
 ### Views

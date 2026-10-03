@@ -5,6 +5,7 @@ import type { InstanceType, FlowItemType, TemplateFields } from "@/api/flows";
 import type { Origin, RowId } from "@/api/node-id";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
+import type { NodeCapabilities } from "@/api/mindmap";
 import type { Delegate, TaskStatus } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
 import type { AgenticBrief, AsyncTemplate } from "@/api/tasks";
@@ -246,9 +247,17 @@ export interface MindmapNode {
   /** A Task's own explicit **due** (Tasks only); absent or `null` takes the default. */
   dueScope?: TimeScope | null;
   /** The nearest scoped ancestor's Time Scope — the window a node with none of its own inherits.
-   * Resolved on load by `propagateInheritedScope`, never persisted; `null` when nothing above is
-   * scoped. */
+   * The backend's rule, read off the load's facts; absent when nothing above is scoped. */
   inheritedTimeScope?: TimeScope | null;
+  /** The open agentic question beneath a Task — the wait that makes it read Review — by its row id.
+   * The backend's rule, read off the load's facts. */
+  openQuestionId?: RowId;
+  /** A Commitment whose Verdict Window ran out before anything was recorded. The backend's rule,
+   * read off the load's facts. */
+  expired?: boolean;
+  /** A Task Done, a Goal Achieved, a wait no longer pending: depended on, it no longer holds its
+   * dependents back. The backend's rule, read off the load's facts. */
+  met?: boolean;
   /** Effective archived-ness (Task/Goal only) — true forces the archived badge/filter regardless of
    * `status`; may diverge from a manually-set Frozen `status` (see `archivalConflict`). */
   archived?: boolean;
@@ -264,9 +273,9 @@ export interface MindmapNode {
    * `null`/absent means it has none of its own and reads its nearest flagged ancestor's instead
    * (see `inheritedAgentic`). Independent of the delegate: a Task can be both. */
   agentic?: boolean | null;
-  /** What this node's ancestors say about Agentic — resolved on load by `propagateAgentic`, never
-   * persisted. Read together with `agentic` through `isAgentic`, never on its own: an explicit
-   * `agentic: false` overrides an agentic ancestor. */
+  /** What this node's ancestors say about Agentic — the backend's rule, read off the load's facts,
+   * never persisted. Read together with `agentic` through `isAgentic`, never on its own: an
+   * explicit `agentic: false` overrides an agentic ancestor. */
   inheritedAgentic?: boolean;
   /** Who holds this Task, when it is delegated (Tasks only): a Person. The task's **own** stored
    * delegate — absent or `null` when it has none of its own. */
@@ -332,6 +341,9 @@ export interface MindmapNode {
    * load from the backend's own resolution (`list_mcp_access`), never persisted; a derived node
    * takes its nearest stored ancestor's. See docs/spec/mcp-server.md, "Access". */
   mcpVisibleVia?: string;
+  /** What the row may be done to, when its origin turns anything off — from the load's facts
+   * (`nodes::rules::capabilities`). Absent, everything is allowed: read it through `can`. */
+  capabilities?: NodeCapabilities;
   /** Whether this real Goal/Task was materialized by a started flow (drives the flow-instance badge). */
   fromFlow?: boolean;
   position: number;

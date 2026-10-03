@@ -20,13 +20,15 @@ use std::collections::{HashMap, HashSet};
 use std::collections::VecDeque;
 
 use super::error::TaskError;
-use super::model::{
-    AgenticBrief, AgenticPriority, AgenticStatus, CommitmentId, GoalId, Status, TaskId,
+use super::model::{AgenticBrief, AgenticPriority, CommitmentId, GoalId, Status, TaskId};
+
+use super::rules::agentic::{
+    occurrence_cursor, AgenticClimb, AgenticStep, Cursor, StoredRead, TemplateParent,
 };
+pub(crate) use super::rules::agentic::{require_spec, settle_status, stranded};
 use super::TaskOperator;
 use crate::database::session::{Db, SessionMode};
-use crate::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind, NO_CYCLE};
-use crate::scopes::key::ScopeKey;
+use crate::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind};
 
 #[derive(sqlx::FromRow)]
 struct BriefRow {
@@ -274,20 +276,6 @@ impl TaskOperator<'_> {
     }
 }
 
-/// Where the Agentic climb is: at a stored row, or at a Habit occurrence's template row within one
-/// iteration.
-enum Cursor {
-    Stored(String, i64),
-    Template {
-        item: TemplateItem,
-        iteration: ScopeKey,
-        cycle: i64,
-        /// Whether to skip this row's own value and start at its parent — for an occurrence being
-        /// set back to Inherit in the very write being checked.
-        skip_own: bool,
-    },
-}
-
 /// What a node reads as for Agentic, starting from the node `(node_type, node_id)` itself: the
 /// first explicit flag on the way up, or `false` when there is none.
 ///
@@ -327,102 +315,67 @@ pub(crate) async fn occurrence_inherits_agentic<M: SessionMode>(
     climb(db, occurrence_cursor(key, true)).await
 }
 
-fn occurrence_cursor(key: &OccurrenceKey, skip_own: bool) -> Cursor {
-    Cursor::Template {
-        item: key.item,
-        iteration: key.iteration,
-        cycle: key.cycle,
-        skip_own,
-    }
-}
-
 async fn climb<M: SessionMode>(db: &mut Db<M>, start: Cursor) -> Result<bool, TaskError> {
-    let mut cursor = start;
-    let mut seen_stored: HashSet<(String, i64)> = HashSet::new();
-    let mut seen_template: HashSet<TemplateItem> = HashSet::new();
+    let mut climb = AgenticClimb::new(start);
     loop {
-        cursor = match cursor {
-            Cursor::Stored(kind, id) => {
-                if !seen_stored.insert((kind.clone(), id)) {
-                    return Ok(false);
-                }
-                let parent = match kind.as_str() {
-                    "task" => match db.tasks().agentic_step(TaskId(id)).await? {
-                        None => return Ok(false),
-                        Some(step) => {
-                            if let Some(flag) = step.agentic {
-                                return Ok(flag);
-                            }
-                            (step.parent_type, step.parent_id)
-                        }
-                    },
+        let answer = match climb.step() {
+            AgenticStep::Done(answer) => return Ok(answer),
+            AgenticStep::Stored(kind, id) => {
+                let found = match kind.as_str() {
+                    "task" => db
+                        .tasks()
+                        .agentic_step(TaskId(id))
+                        .await?
+                        .map(|step| (step.agentic, (step.parent_type, step.parent_id))),
                     "goal" => match db.goals().ancestry_link(GoalId(id)).await {
-                        Ok(link) => (link.parent.node_type, link.parent.node_id),
-                        Err(TaskError::GoalNotFound(_)) => return Ok(false),
+                        Ok(link) => Some((None, (link.parent.node_type, link.parent.node_id))),
+                        Err(TaskError::GoalNotFound(_)) => None,
                         Err(error) => return Err(error),
                     },
-                    "commitment" => match db.commitments().ancestry_link(CommitmentId(id)).await {
-                        Ok(link) => (link.parent.node_type, link.parent.node_id),
-                        Err(TaskError::CommitmentNotFound(_)) => return Ok(false),
+                    _ => match db.commitments().ancestry_link(CommitmentId(id)).await {
+                        Ok(link) => Some((None, (link.parent.node_type, link.parent.node_id))),
+                        Err(TaskError::CommitmentNotFound(_)) => None,
                         Err(error) => return Err(error),
                     },
-                    _ => return Ok(false),
                 };
-                // A row hung on an occurrence climbs into the occurrence, as the app draws it.
-                match db
-                    .tasks()
-                    .occurrence_holding(&kind, id)
-                    .await?
-                    .and_then(|parent_key| OccurrenceKey::parse(&parent_key))
-                {
-                    Some(key) => occurrence_cursor(&key, false),
-                    None => Cursor::Stored(parent.0, parent.1),
-                }
-            }
-            Cursor::Template {
-                item,
-                iteration,
-                cycle,
-                skip_own,
-            } => {
-                if !seen_template.insert(item) {
-                    return Ok(false);
-                }
-                if !skip_own {
-                    let here = OccurrenceKey {
-                        item,
-                        iteration,
-                        cycle,
-                    };
-                    if let Some(flag) = db.tasks().occurrence_own_agentic(&here).await? {
-                        return Ok(flag);
-                    }
-                }
-                match db.tasks().template_parent(item).await? {
-                    None => return Ok(false),
-                    Some(TemplateParent::Item(parent)) => Cursor::Template {
-                        item: parent,
-                        iteration,
-                        // An iteration's root is drawn by no cycle pair.
-                        cycle: if parent.item_type == TemplateKind::FlowRoot {
-                            NO_CYCLE
-                        } else {
-                            cycle
-                        },
-                        skip_own: false,
+                let read = match found {
+                    None => StoredRead::Missing,
+                    // Its own flag answers without reading what it hangs on.
+                    Some((Some(flag), parent)) => StoredRead::Found {
+                        flag: Some(flag),
+                        parent,
+                        holding: None,
                     },
-                    Some(TemplateParent::Host(kind, id)) => Cursor::Stored(kind, id),
-                }
+                    Some((None, parent)) => StoredRead::Found {
+                        flag: None,
+                        parent,
+                        holding: db
+                            .tasks()
+                            .occurrence_holding(&kind, id)
+                            .await?
+                            .and_then(|parent_key| OccurrenceKey::parse(&parent_key)),
+                    },
+                };
+                climb.stored(read)
+            }
+            AgenticStep::Template { key, skip_own } => {
+                let own = if skip_own {
+                    None
+                } else {
+                    db.tasks().occurrence_own_agentic(&key).await?
+                };
+                let parent = if own.is_some() {
+                    None
+                } else {
+                    db.tasks().template_parent(key.item).await?
+                };
+                climb.template(&key, own, parent)
             }
         };
+        if let Some(answer) = answer {
+            return Ok(answer);
+        }
     }
-}
-
-/// What a template row hangs under: another template row, or — for an iteration's root — the
-/// Habit's host.
-enum TemplateParent {
-    Item(TemplateItem),
-    Host(String, i64),
 }
 
 /// What a Task reads as for Agentic as it will be written: `own` is its own Agentic column as
@@ -452,44 +405,6 @@ pub(crate) async fn resolves_agentic<M: SessionMode>(
         Some(key) => occurrence_reads_agentic(db, &key).await,
         None => reads_agentic(db, parent.0, parent.1).await,
     }
-}
-
-/// The status a Task holds after a write, in the model its kind holds then.
-///
-/// `before` is what the row held, `requested` what the write names, `agentic` the kind after the
-/// write. A value already in that model stands — except Review, which is derived and never set. A
-/// requested value of the other model is refused when the kind does not change: an ordinary
-/// Started on an Agentic Task, say, or On Agent on an ordinary one. When the kind **does** change —
-/// a flag change, or a move under another ancestor — the value is **converted** explicitly
-/// ([`Status::converted`]), and refused, naming the Task, when it has no counterpart there.
-pub(crate) fn settle_status(
-    title: &str,
-    before: Status,
-    requested: Option<Status>,
-    agentic: bool,
-) -> Result<Status, TaskError> {
-    if requested == Some(Status::Agentic(AgenticStatus::Review)) {
-        return Err(TaskError::ReviewIsDerived);
-    }
-    let value = requested.unwrap_or(before);
-    if value.is_agentic() == agentic {
-        return Ok(value);
-    }
-    let kind_changes = before.is_agentic() != agentic;
-    if requested.is_some() && !kind_changes {
-        return Err(match agentic {
-            true => TaskError::NotAgenticStatus(value.as_str().to_string()),
-            false => TaskError::NotOrdinaryStatus(value.as_str().to_string()),
-        });
-    }
-    value
-        .converted(agentic)
-        .ok_or_else(|| TaskError::KindConversion(stranded(title, value)))
-}
-
-/// How a Task left without a counterpart is named in a refusal.
-pub(crate) fn stranded(title: &str, status: Status) -> String {
-    format!("“{title}” ({})", status.as_str().replace('_', " "))
 }
 
 /// Where a [`reconcile`] walk starts, or what it reaches next.
@@ -602,15 +517,6 @@ async fn reconcile_occurrences<M: SessionMode>(
                 refused.push(stranded(&title, stored));
             }
         }
-    }
-    Ok(())
-}
-
-/// Refuses to start something that reads as Agentic, `agentic` already resolved, while `brief` has
-/// no Spec.
-pub(crate) fn require_spec(agentic: bool, brief: &Option<AgenticBrief>) -> Result<(), TaskError> {
-    if agentic && !brief.as_ref().is_some_and(AgenticBrief::has_spec) {
-        return Err(TaskError::AgenticSpecMissing);
     }
     Ok(())
 }

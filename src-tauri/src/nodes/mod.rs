@@ -16,12 +16,14 @@
 //! [`Goal`]: crate::tasks::model::Goal
 //! [`Commitment`]: crate::tasks::model::Commitment
 
+pub mod board;
 pub mod id;
 pub mod key;
 pub mod origin;
 pub mod overlay;
 pub mod registry;
 pub mod relations;
+pub mod rules;
 pub mod table;
 pub mod wait_edit;
 pub mod wait_overlay;

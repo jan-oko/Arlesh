@@ -262,7 +262,9 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
         | TaskError::NoSpawnedWait(_) => WireErrorKind::NotFound,
         // The request named a check that is no longer there to complete.
         TaskError::NoCheckDue | TaskError::CheckNotReopenable => WireErrorKind::InvalidRequest,
-        TaskError::CircularDependency | TaskError::NotStored(_) => WireErrorKind::InvalidRequest,
+        TaskError::CircularDependency
+        | TaskError::NotStored(_)
+        | TaskError::MayNotParent { .. } => WireErrorKind::InvalidRequest,
         // Refusals the user answers by editing something first: write the Spec, raise the wait
         // under an agentic Task, or answer the question before releasing it.
         TaskError::AgenticSpecMissing

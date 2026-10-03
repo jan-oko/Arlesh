@@ -2,14 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useTranslation } from "react-i18next";
 import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
-import { agentActivityOf } from "@/utils/agent-activity";
+import { agentActivityFrom } from "@/utils/agent-activity";
 import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
 import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
 import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment } from "@/api/commitments";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { Commitment } from "@/api/commitments";
 import { createExpectation, updateExpectation, deleteExpectation } from "@/api/expectations";
-import { EXPECTATION_STATUS, EXPECTATION_ARCHIVAL } from "@/api/expectation-status";
+import { EXPECTATION_ARCHIVAL } from "@/api/expectation-status";
 import type { Expectation } from "@/api/expectations";
 import { expectationNodeId } from "@/utils/node-uuid";
 import { VERDICT } from "@/api/verdict";
@@ -28,13 +28,8 @@ import {
   duplicateFlow, duplicateFlowItem,
 } from "@/api/flows";
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
-import { TASK_STATUS, GOAL_STATUS, isDone } from "@/utils/status-mapping";
-import { propagateAgentic } from "@/utils/agentic";
-import { propagateInheritedScope } from "@/utils/inherited-scope";
-import { listMcpAccess } from "@/api/mcp-access";
+import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { listPeople } from "@/api/people";
-import type { McpVisibility } from "@/api/mcp-access";
-import { applyMcpVisibility } from "@/utils/mcp-visibility";
 import { useMcpAccessStore } from "@/stores/use-mcp-access-store";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
@@ -47,6 +42,7 @@ import type {
   FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, TargetRef, TemplateFields,
 } from "@/api/flows";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
+import type { DependencyBlock, NodeFacts } from "@/api/mindmap";
 import type { MindmapNode, NodeKind, FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
 import { formatScopeCore } from "@/utils/scope-format";
 import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
@@ -375,6 +371,35 @@ function cooldownFields(
   return { virtualBlockers: [reason(until)], coolingUntil: until };
 }
 
+/** The tree node a fact's key names: a wait's is its minted id, every other node's is the key. */
+function factNodeKey(key: string): string {
+  const wait = /^expectation-(.+)$/.exec(key);
+  if (wait?.[1] === undefined) return key;
+  const id = Number(wait[1]);
+  return expectationNodeId(Number.isNaN(id) ? wait[1] : id);
+}
+
+/** The node id a dependency's target is drawn under. */
+function dependencyNodeId(block: DependencyBlock): string {
+  if (block.kind === "expectation") return expectationNodeId(block.id);
+  return `${block.kind}-${block.id}`;
+}
+
+/** Stamps what the board's rules say about `node` onto it. */
+function applyFacts(node: MindmapNode, fact: NodeFacts): void {
+  if (fact.inherited_agentic === true) node.inheritedAgentic = true;
+  if (fact.inherited_time_scope !== undefined) node.inheritedTimeScope = fact.inherited_time_scope;
+  if (fact.open_question !== undefined) node.openQuestionId = fact.open_question;
+  if (fact.expired === true) node.expired = true;
+  if (fact.met === true) node.met = true;
+  if (fact.mcp_visible_via !== undefined) node.mcpVisibleVia = fact.mcp_visible_via;
+  if (fact.capabilities !== undefined) node.capabilities = fact.capabilities;
+  for (const block of fact.dependency_blocks ?? []) {
+    node.virtualBlockers = [...(node.virtualBlockers ?? []), blockedByText(block.kind, block.short_id, block.id, block.title)];
+    node.blockingDependencyIds = [...(node.blockingDependencyIds ?? []), dependencyNodeId(block)];
+  }
+}
+
 export function buildTree(
   domains: Domain[],
   goals: Goal[],
@@ -404,6 +429,10 @@ export function buildTree(
   shortIds: Readonly<Record<string, string>> = {},
   /** Every known Person's name, by id — what a Person delegate is called. */
   personNames: ReadonlyMap<number, string> = new Map(),
+  /** What the board's rules say about each node beyond its row, keyed `task-12` (the load's
+   * `facts`): which dependencies block it, what it inherits, its open question, whether it has
+   * expired. */
+  facts: Readonly<Record<string, NodeFacts>> = {},
 ): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
@@ -566,9 +595,6 @@ export function buildTree(
     });
   }
 
-  // Virtual block reasons: a task is also blocked by any dependency on a non-done task, a
-  // non-achieved goal or a pending expectation. Derived here from the bulk dependency edges so the
-  // canvas shows it without per-task calls.
   // Each node's short id, which a "Blocked by …" reason names it by — read off the load by the key
   // the backend uses, which for a wait is not its node id.
   for (const [key, node] of nodeMap) {
@@ -580,32 +606,20 @@ export function buildTree(
     const shortId = shortIds[`expectation-${expectation.id}`];
     if (node !== undefined && shortId !== undefined) node.shortId = shortId;
   }
-  const goalById = new Map(goals.map((g) => [g.id, g]));
-  const expectationById = new Map(expectations.map((e) => [e.id, e]));
+  // Which waits each Task depends on, met or not: the editor's Dependencies field reads them.
   for (const dep of taskDeps) {
+    if (dep.dependency_type !== "expectation") continue;
     const node = nodeMap.get(`task-${dep.task_id}`);
     if (node === undefined) continue;
-    if (dep.dependency_type === "expectation") {
-      const waitId = storedId(dep.dependency_id);
-      node.expectationDependencyIds = [...(node.expectationDependencyIds ?? []), waitId];
-      const target = expectationById.get(waitId);
-      if (target !== undefined && target.status === EXPECTATION_STATUS.PENDING) {
-        node.virtualBlockers?.push(blockedByText("expectation", shortIds[`expectation-${waitId}`], dep.dependency_id, target.title));
-        node.blockingDependencyIds = [...(node.blockingDependencyIds ?? []), expectationNodeId(waitId)];
-      }
-    } else if (dep.dependency_type === "task") {
-      const target = taskById.get(dep.dependency_id);
-      if (target !== undefined && !isDone(target.status)) {
-        node.virtualBlockers?.push(blockedByText("task", shortIds[`task-${dep.dependency_id}`], dep.dependency_id, target.title));
-        node.blockingDependencyIds = [...(node.blockingDependencyIds ?? []), `task-${dep.dependency_id}`];
-      }
-    } else {
-      const target = goalById.get(dep.dependency_id);
-      if (target !== undefined && target.status !== "achieved") {
-        node.virtualBlockers?.push(blockedByText("goal", shortIds[`goal-${dep.dependency_id}`], dep.dependency_id, target.title));
-        node.blockingDependencyIds = [...(node.blockingDependencyIds ?? []), `goal-${dep.dependency_id}`];
-      }
-    }
+    node.expectationDependencyIds = [...(node.expectationDependencyIds ?? []), storedId(dep.dependency_id)];
+  }
+  // What the backend's rules say about each node (ADR 0010): the dependencies that block it, what
+  // it inherits, its open question, whether it has expired. Drawn here, worded in the app's own
+  // words, never worked out again.
+  for (const [key, fact] of Object.entries(facts)) {
+    const node = nodeMap.get(factNodeKey(key));
+    if (node === undefined) continue;
+    applyFacts(node, fact);
   }
 
   for (const info of infos) {
@@ -801,11 +815,6 @@ export function buildTree(
 
   const root = { ...VIRTUAL_ROOT, children: aspectNodes };
   propagateAspectColor(root, undefined);
-  // Agentic inherits downward and is overridable, exactly as a delegate does, so the value a node
-  // reads is resolved here once rather than by an ancestor walk at every badge and filter.
-  propagateAgentic(root, false);
-  // The window a node inherits, for the editor's Due field: held to it, and hidden under it.
-  propagateInheritedScope(root, null);
   return root;
 }
 
@@ -891,19 +900,6 @@ async function createCommitmentUnderNode(
   return commitment.id;
 }
 
-/**
- * Which stored nodes the MCP can see. A failure here costs the badges, not the board: it is logged
- * and the board loads without them, since nothing else on screen depends on the answer.
- */
-async function loadMcpVisibility(): Promise<McpVisibility[]> {
-  try {
-    return await listMcpAccess();
-  } catch (error: unknown) {
-    console.warn("[arlesh] could not read which nodes the MCP can see:", error);
-    return [];
-  }
-}
-
 /** Every Person's name, by id. A failed read draws a Person delegate unnamed rather than failing
  * the board, as a failed MCP read draws no antenna. */
 async function loadPersonNames(): Promise<Map<number, string>> {
@@ -965,7 +961,7 @@ export function useMindmapData(): MindmapData {
       setError(null);
       try {
         const now = localNowIso();
-        const [data, mcpVisible] = await Promise.all([loadMindmap(now), loadMcpVisibility()]);
+        const data = await loadMindmap(now);
         // People are read only when a Task is delegated to one: their names are what a Person
         // delegate's badge and wait are labelled with, and nothing else on the board needs them.
         const personNames = data.tasks.some((task) => task.delegate_to != null)
@@ -977,19 +973,17 @@ export function useMindmapData(): MindmapData {
           data.block_reasons, data.task_dependencies, data.flow_instance_nodes,
           data.expectations, (title, delegateName) => delegationWaitTitle.current(title, delegateName),
           (title) => `${checkPrefix}${title}`, compoundReason.current, capacityReason.current,
-          (until) => cooldownReason.current(until), data.short_ids ?? {}, personNames,
+          (until) => cooldownReason.current(until), data.short_ids ?? {}, personNames, data.facts ?? {},
         );
         applyLifecycles(built, lifecycleMap(data.lifecycles));
         // A Habit's occurrences are ordinary rows, already built into the tree above. A flow whose
         // derivation failed has none, and says so as a load condition below — it is not silently
         // indistinguishable from a flow that simply has no iterations.
         decorateIterationRoots(built, data.flows, scopeLabels, now, (parts) => carriesMissedTitle.current(parts));
-        // Last, so every row — derived ones included — has its place and can take its answer.
-        applyMcpVisibility(built, mcpVisible);
         latestTree.current = built;
         setTree(built);
         // The whole board, before any view narrows it to a subtree: the top bar's agent status.
-        useAgentActivityStore.getState().receive(agentActivityOf(built));
+        useAgentActivityStore.getState().receive(agentActivityFrom(data.agent_activity));
         setLoadCondition(collectLoadConditions(data));
       } catch (err) {
         setError(getErrorMessage(err));

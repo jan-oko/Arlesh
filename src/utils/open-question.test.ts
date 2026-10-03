@@ -10,22 +10,22 @@ function wait(id: string, over: Partial<MindmapNode> = {}): MindmapNode {
   };
 }
 
-function task(children: MindmapNode[]): MindmapNode {
-  return { id: "task-1", kind: "task", title: "t", position: 0, tagIds: [], children };
+/** A task with `children`, and the open question the backend named beneath it, if any. */
+function task(children: MindmapNode[], openQuestionId?: number): MindmapNode {
+  return {
+    id: "task-1", kind: "task", title: "t", position: 0, tagIds: [], children,
+    ...(openQuestionId !== undefined ? { openQuestionId } : {}),
+  };
 }
 
 describe("openQuestion", () => {
-  it("finds a pending agentic question under the task", () => {
-    expect(openQuestion(task([wait("a")]))?.id).toBe("a");
+  it("finds the wait the backend named as the task's open question", () => {
+    const named = wait("b", { rowId: 2 });
+    expect(openQuestion(task([wait("a", { rowId: 1 }), named], 2))?.id).toBe("b");
   });
 
-  it("passes over a wait on something else, a released one and an archived one", () => {
-    const ci = wait("ci", { agentWaiting: { note: null, question: false, answer: null } });
-    const released = wait("released", { status: "released" });
-    const archived = wait("archived", { archived: true });
-    const plain = wait("plain");
-    delete plain.agentWaiting;
-    expect(openQuestion(task([ci, released, archived, plain]))).toBeUndefined();
+  it("finds nothing when the backend named no open question", () => {
+    expect(openQuestion(task([wait("a", { rowId: 1 })]))).toBeUndefined();
   });
 });
 

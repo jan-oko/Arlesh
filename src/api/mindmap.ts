@@ -10,6 +10,66 @@ import type {
   Flow, FlowGoal, FlowTask, FlowItemCycle, FlowDependency, TargetRef,
 } from "@/api/flows";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
+import type { RowId } from "@/api/node-id";
+import type { TimeScope } from "@/api/time-scope";
+
+/** A dependency a Task is blocked by: its target, not Done, Achieved or released yet. */
+export interface DependencyBlock {
+  /** What is depended on. */
+  kind: "task" | "goal" | "expectation";
+  /** The target's row id. */
+  id: RowId;
+  /** The target's short id, when the board has one for it. */
+  short_id?: string;
+  /** The target's title. */
+  title: string;
+}
+
+/**
+ * What the board says about one node beyond its own row — worked out by the backend's rules, so
+ * the app reads it rather than working it out (ADR 0010). Each field is absent at its default.
+ */
+export interface NodeFacts {
+  /** Whether the node's ancestors read as Agentic: the nearest flag above it, else not. */
+  inherited_agentic?: boolean;
+  /** The Time Scope the node inherits: the nearest scoped ancestor's. */
+  inherited_time_scope?: TimeScope;
+  /** The dependencies a Task is blocked by, in edge order. */
+  dependency_blocks?: DependencyBlock[];
+  /** The open agentic question beneath a Task — the wait that makes it read Review. */
+  open_question?: RowId;
+  /** Whether a Commitment's Verdict Window ran out before anything was recorded. */
+  expired?: boolean;
+  /** Whether this node, depended on, no longer holds its dependents back: a Task Done, a Goal
+   * Achieved, a wait no longer pending. */
+  met?: boolean;
+  /** The title of the MCP root the node is seen through, when the MCP can see it. */
+  mcp_visible_via?: string;
+  /** What the row may be done to, when its origin turns anything off (a Habit occurrence, a
+   * derived wait). Absent, everything is allowed. */
+  capabilities?: NodeCapabilities;
+}
+
+/** What a row may be done to, as the backend decides it (`nodes::rules::capabilities`). */
+export interface NodeCapabilities {
+  delete: boolean;
+  copy: boolean;
+  drag: boolean;
+  /** Whether a Task may be switched to Compound. */
+  compound: boolean;
+  /** Whether a Task may be given a prerequisite. */
+  dependencies: boolean;
+}
+
+/** What the agents are doing on the whole board, counted, as the load sends it. */
+export interface AgentActivityCounts {
+  /** Agentic Tasks that read Review: On Agent, with the agent's question open for the user. */
+  review: number;
+  /** Pending agentic waits on something other than the user — CI, say. */
+  waits: number;
+  /** Agentic Tasks an agent holds, with nothing asked of the user: On Agent. */
+  on_agent: number;
+}
 
 /**
  * Whether one flow's Habit occurrences were derived, or the failure that stood in for them.
@@ -31,8 +91,9 @@ export interface FlowHabitEntry {
 }
 
 /**
- * Everything one mindmap render reads. Each field is what the equivalent single-resource command
- * returns — the backend assembles nothing; the tree is still built in the frontend.
+ * Everything one mindmap render reads. Each row list is what the equivalent single-resource
+ * command returns; the tree is still built in the frontend. `facts` and `agent_activity` are what
+ * the backend's rules say about the board beside the rows.
  */
 export interface MindmapLoad {
   domains: Domain[];
@@ -57,6 +118,10 @@ export interface MindmapLoad {
   /** Each Task's, Goal's, Commitment's and wait's short id on the whole board, keyed `task-12` /
    * `expectation-3` — what a "Blocked by …" reason names its target by. */
   short_ids?: Record<string, string>;
+  /** What the board says about each node beyond its row, keyed as `short_ids` is. */
+  facts?: Record<string, NodeFacts>;
+  /** What the agents are doing on the whole board. */
+  agent_activity?: AgentActivityCounts;
 }
 
 /**

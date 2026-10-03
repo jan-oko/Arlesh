@@ -19,7 +19,13 @@
     "omitted, it is empty. A delegated Task's virtual Expectation and an Expectation's virtual",
     "check task are written into a board as the ordinary nodes they are drawn as. So is a Task that",
     "consists of its sub-items: it carries the status the board load derived for it, since the",
-    "derivation runs before either evaluator reads the board, and is judged exactly as that status."
+    "derivation runs before either evaluator reads the board, and is judged exactly as that status.",
+    "",
+    "`filter.kinds` and `filter.pills` are the List View's own: the kind selector (every kind when",
+    "omitted) and the pills, one list per dimension, spelled as the frontend stores them. The",
+    "Mindmap does not read them. A node's `asynchronous`, `planned`, `missed` and `dependencies`",
+    "are what the pills read: its own flag, whether it has a Plan, whether its lapse was settled as",
+    "Missed, and every node it depends on, met or not."
   ],
   "cases": [
     {
@@ -2111,6 +2117,538 @@
         "commitment-cooling",
         "commitment-free"
       ]
+    },
+    {
+      "name": "a task status pill keeps the task rows in that status, and leaves the other kinds alone",
+      "spec": "list-view.md — Task status is a Task dimension; a Commitment or a wait does not fail it, it does not apply.",
+      "filter": {
+        "preset": "all",
+        "pills": {
+          "taskStatus": [
+            {
+              "value": "doing",
+              "mode": "any"
+            }
+          ]
+        }
+      },
+      "board": "pills",
+      "mindmap": [
+        "commitment-kept",
+        "commitment-open",
+        "domain-alpha",
+        "domain-beta",
+        "expectation-scoped",
+        "expectation-unscoped",
+        "goal-alpha",
+        "goal-beta",
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-missed",
+        "task-plain"
+      ],
+      "list": [
+        "task-agentic"
+      ],
+      "commitments": [
+        "commitment-kept",
+        "commitment-open"
+      ],
+      "expectations": [
+        "expectation-scoped",
+        "expectation-unscoped"
+      ]
+    },
+    {
+      "name": "a goal status pill reads the task's nearest goal",
+      "spec": "list-view.md — Goal status matches the status of the Task's nearest Goal ancestor.",
+      "filter": {
+        "preset": "all",
+        "pills": {
+          "goalStatus": [
+            {
+              "value": "achieved",
+              "mode": "any"
+            }
+          ]
+        }
+      },
+      "board": "pills",
+      "mindmap": [
+        "commitment-kept",
+        "commitment-open",
+        "domain-alpha",
+        "domain-beta",
+        "expectation-scoped",
+        "expectation-unscoped",
+        "goal-alpha",
+        "goal-beta",
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-missed",
+        "task-plain"
+      ],
+      "list": [
+        "task-plain"
+      ],
+      "commitments": [
+        "commitment-kept",
+        "commitment-open"
+      ],
+      "expectations": [
+        "expectation-scoped",
+        "expectation-unscoped"
+      ]
+    },
+    {
+      "name": "an under pill keeps the rows beneath a node, of every kind",
+      "spec": "list-view.md — Under matches every node on a row's ancestor chain, at any depth.",
+      "filter": {
+        "preset": "all",
+        "pills": {
+          "antecedent": [
+            {
+              "value": "domain-beta",
+              "mode": "any"
+            }
+          ]
+        }
+      },
+      "board": "pills",
+      "mindmap": [
+        "commitment-kept",
+        "commitment-open",
+        "domain-alpha",
+        "domain-beta",
+        "expectation-scoped",
+        "expectation-unscoped",
+        "goal-alpha",
+        "goal-beta",
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-missed",
+        "task-plain"
+      ],
+      "list": [
+        "task-plain"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-unscoped"
+      ]
+    },
+    {
+      "name": "an excluded under pill drops that branch and nothing else",
+      "spec": "list-view.md — Under's Exclude keeps the board and drops one branch.",
+      "filter": {
+        "preset": "all",
+        "pills": {
+          "antecedent": [
+            {
+              "value": "goal-alpha",
+              "mode": "exclude"
+            }
+          ]
+        }
+      },
+      "board": "pills",
+      "mindmap": [
+        "commitment-kept",
+        "commitment-open",
+        "domain-alpha",
+        "domain-beta",
+        "expectation-scoped",
+        "expectation-unscoped",
+        "goal-alpha",
+        "goal-beta",
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-missed",
+        "task-plain"
+      ],
+      "list": [
+        "task-plain"
+      ],
+      "commitments": [
+        "commitment-kept",
+        "commitment-open"
+      ],
+      "expectations": [
+        "expectation-scoped",
+        "expectation-unscoped"
+      ]
+    },
+    {
+      "name": "a depends-on pill keeps the tasks with that dependency",
+      "spec": "list-view.md — Depends on matches a Task's own dependency targets.",
+      "filter": {
+        "preset": "all",
+        "pills": {
+          "dependency": [
+            {
+              "value": "task-async",
+              "mode": "any"
+            }
+          ]
+        }
+      },
+      "board": "pills",
+      "mindmap": [
+        "commitment-kept",
+        "commitment-open",
+        "domain-alpha",
+        "domain-beta",
+        "expectation-scoped",
+        "expectation-unscoped",
+        "goal-alpha",
+        "goal-beta",
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-missed",
+        "task-plain"
+      ],
+      "list": [
+        "task-depends"
+      ],
+      "commitments": [
+        "commitment-kept",
+        "commitment-open"
+      ],
+      "expectations": [
+        "expectation-scoped",
+        "expectation-unscoped"
+      ]
+    },
+    {
+      "name": "a scope pill reads each row's own window",
+      "spec": "list-view.md — Scope reads unscoped, active, overdue, lapsed — a Missed lapse only — planned and unplanned.",
+      "filter": {
+        "preset": "all",
+        "pills": {
+          "scopeState": [
+            {
+              "value": "unscoped",
+              "mode": "any"
+            }
+          ]
+        }
+      },
+      "board": "pills",
+      "mindmap": [
+        "commitment-kept",
+        "commitment-open",
+        "domain-alpha",
+        "domain-beta",
+        "expectation-scoped",
+        "expectation-unscoped",
+        "goal-alpha",
+        "goal-beta",
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-missed",
+        "task-plain"
+      ],
+      "list": [
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-plain"
+      ],
+      "commitments": [
+        "commitment-kept",
+        "commitment-open"
+      ],
+      "expectations": [
+        "expectation-unscoped"
+      ]
+    },
+    {
+      "name": "a lapsed scope pill keeps only what its lapse settled as missed",
+      "spec": "list-view.md — Only a Missed resolution reads lapsed on the Scope pill.",
+      "filter": {
+        "preset": "all",
+        "pills": {
+          "scopeState": [
+            {
+              "value": "lapsed",
+              "mode": "any"
+            }
+          ]
+        }
+      },
+      "board": "pills",
+      "mindmap": [
+        "commitment-kept",
+        "commitment-open",
+        "domain-alpha",
+        "domain-beta",
+        "expectation-scoped",
+        "expectation-unscoped",
+        "goal-alpha",
+        "goal-beta",
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-missed",
+        "task-plain"
+      ],
+      "list": [
+        "task-missed"
+      ],
+      "commitments": [],
+      "expectations": []
+    },
+    {
+      "name": "a planned scope pill keeps the planned tasks",
+      "spec": "list-view.md — planned and unplanned are an axis independent of the window.",
+      "filter": {
+        "preset": "all",
+        "pills": {
+          "scopeState": [
+            {
+              "value": "planned",
+              "mode": "any"
+            }
+          ]
+        }
+      },
+      "board": "pills",
+      "mindmap": [
+        "commitment-kept",
+        "commitment-open",
+        "domain-alpha",
+        "domain-beta",
+        "expectation-scoped",
+        "expectation-unscoped",
+        "goal-alpha",
+        "goal-beta",
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-missed",
+        "task-plain"
+      ],
+      "list": [
+        "task-async"
+      ],
+      "commitments": [],
+      "expectations": []
+    },
+    {
+      "name": "the yes-no flags are one group, so an any among them is an any across them",
+      "spec": "list-view.md — Agentic (Any) with Asynchronous (Any) keeps what is either.",
+      "filter": {
+        "preset": "all",
+        "pills": {
+          "agentic": [
+            {
+              "value": "agentic",
+              "mode": "any"
+            }
+          ],
+          "asynchronous": [
+            {
+              "value": "asynchronous",
+              "mode": "any"
+            }
+          ]
+        }
+      },
+      "board": "pills",
+      "mindmap": [
+        "commitment-kept",
+        "commitment-open",
+        "domain-alpha",
+        "domain-beta",
+        "expectation-scoped",
+        "expectation-unscoped",
+        "goal-alpha",
+        "goal-beta",
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-missed",
+        "task-plain"
+      ],
+      "list": [
+        "task-agentic",
+        "task-async"
+      ],
+      "commitments": [
+        "commitment-kept",
+        "commitment-open"
+      ],
+      "expectations": [
+        "expectation-scoped",
+        "expectation-unscoped"
+      ]
+    },
+    {
+      "name": "an excluded blocked pill drops the blocked tasks",
+      "spec": "list-view.md — Blocked reads a Task's block, explicit or implied by an unmet dependency.",
+      "filter": {
+        "preset": "all",
+        "pills": {
+          "blocked": [
+            {
+              "value": "blocked",
+              "mode": "exclude"
+            }
+          ]
+        }
+      },
+      "board": "pills",
+      "mindmap": [
+        "commitment-kept",
+        "commitment-open",
+        "domain-alpha",
+        "domain-beta",
+        "expectation-scoped",
+        "expectation-unscoped",
+        "goal-alpha",
+        "goal-beta",
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-missed",
+        "task-plain"
+      ],
+      "list": [
+        "task-agentic",
+        "task-async",
+        "task-missed",
+        "task-plain"
+      ],
+      "commitments": [
+        "commitment-kept",
+        "commitment-open"
+      ],
+      "expectations": [
+        "expectation-scoped",
+        "expectation-unscoped"
+      ]
+    },
+    {
+      "name": "a verdict pill keeps the commitments with that verdict, and an unrecorded one reads unresolved",
+      "spec": "list-view.md — Verdict is a Commitment dimension.",
+      "filter": {
+        "preset": "all",
+        "pills": {
+          "verdict": [
+            {
+              "value": "unresolved",
+              "mode": "any"
+            }
+          ]
+        }
+      },
+      "board": "pills",
+      "mindmap": [
+        "commitment-kept",
+        "commitment-open",
+        "domain-alpha",
+        "domain-beta",
+        "expectation-scoped",
+        "expectation-unscoped",
+        "goal-alpha",
+        "goal-beta",
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-missed",
+        "task-plain"
+      ],
+      "list": [
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-missed",
+        "task-plain"
+      ],
+      "commitments": [
+        "commitment-open"
+      ],
+      "expectations": [
+        "expectation-scoped",
+        "expectation-unscoped"
+      ]
+    },
+    {
+      "name": "the kind selector draws only the kinds it names",
+      "spec": "list-view.md — The kind selector chooses which actionable kinds draw as rows.",
+      "filter": {
+        "preset": "all",
+        "kinds": [
+          "task"
+        ]
+      },
+      "board": "pills",
+      "mindmap": [
+        "commitment-kept",
+        "commitment-open",
+        "domain-alpha",
+        "domain-beta",
+        "expectation-scoped",
+        "expectation-unscoped",
+        "goal-alpha",
+        "goal-beta",
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-missed",
+        "task-plain"
+      ],
+      "list": [
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-missed",
+        "task-plain"
+      ],
+      "commitments": [],
+      "expectations": []
+    },
+    {
+      "name": "the kind selector can leave the tasks out",
+      "spec": "list-view.md — The kind selector chooses which actionable kinds draw as rows.",
+      "filter": {
+        "preset": "all",
+        "kinds": [
+          "commitment",
+          "expectation"
+        ]
+      },
+      "board": "pills",
+      "mindmap": [
+        "commitment-kept",
+        "commitment-open",
+        "domain-alpha",
+        "domain-beta",
+        "expectation-scoped",
+        "expectation-unscoped",
+        "goal-alpha",
+        "goal-beta",
+        "task-agentic",
+        "task-async",
+        "task-depends",
+        "task-missed",
+        "task-plain"
+      ],
+      "list": [],
+      "commitments": [
+        "commitment-kept",
+        "commitment-open"
+      ],
+      "expectations": [
+        "expectation-scoped",
+        "expectation-unscoped"
+      ]
     }
   ],
   "boards": {
@@ -3593,6 +4131,121 @@
           "kind": "commitment",
           "verdict": "unresolved",
           "timing": "active"
+        }
+      ]
+    },
+    "pills": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-alpha",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "goal-alpha",
+              "kind": "goal",
+              "status": "active",
+              "children": [
+                {
+                  "id": "task-agentic",
+                  "kind": "task",
+                  "status": "doing",
+                  "agentic": true
+                },
+                {
+                  "id": "task-async",
+                  "kind": "task",
+                  "status": "todo",
+                  "asynchronous": true,
+                  "planned": true
+                },
+                {
+                  "id": "task-depends",
+                  "kind": "task",
+                  "status": "todo",
+                  "dependencies": [
+                    "task-async"
+                  ],
+                  "isBlocked": true,
+                  "blockingDependencies": [
+                    "task-async"
+                  ]
+                },
+                {
+                  "id": "task-missed",
+                  "kind": "task",
+                  "status": "todo",
+                  "timeScope": {
+                    "start_id": {
+                      "kind": "day",
+                      "date": "2026-09-22"
+                    },
+                    "end_id": {
+                      "kind": "day",
+                      "date": "2026-09-22"
+                    }
+                  },
+                  "timing": "lapsed",
+                  "missed": true,
+                  "archived": true
+                }
+              ]
+            },
+            {
+              "id": "commitment-kept",
+              "kind": "commitment",
+              "verdict": "kept",
+              "timing": "active"
+            },
+            {
+              "id": "commitment-open",
+              "kind": "commitment",
+              "verdict": "unresolved",
+              "timing": "active"
+            },
+            {
+              "id": "expectation-scoped",
+              "kind": "expectation",
+              "status": "pending",
+              "timeScope": {
+                "start_id": {
+                  "kind": "day",
+                  "date": "2026-09-22"
+                },
+                "end_id": {
+                  "kind": "day",
+                  "date": "2026-09-22"
+                }
+              },
+              "timing": "active"
+            }
+          ]
+        },
+        {
+          "id": "domain-beta",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "goal-beta",
+              "kind": "goal",
+              "status": "achieved",
+              "children": [
+                {
+                  "id": "task-plain",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "expectation-unscoped",
+              "kind": "expectation",
+              "status": "pending"
+            }
+          ]
         }
       ]
     }

@@ -1,0 +1,736 @@
+{
+  "about": [
+    "The Habit fold, written as data: which passed iterations fold into a run, and the scope levels",
+    "a run opens into.",
+    "",
+    "Both evaluators replay it. `src-tauri/tests/operations/habit_fold_conformance.rs` runs every case",
+    "through `flows::rules::fold`; `src/utils/habit-fold-conformance.test.ts` runs the same cases",
+    "through `foldHabitRuns`. Neither side generates this file.",
+    "",
+    "A case's `children` are one node's children, in order: an iteration names its Habit (`flow`), the",
+    "scope `kind` its window is one unit of (null for a sub-day window), its first day (`anchor`), its",
+    "window's end, whether it has `passed`, whether it was `done`, and whether it is `owed`; anything",
+    "else is just an `id`. `folded` is what is drawn in their place: a node's id, or a group with its",
+    "id, its `level` (`run`, or the scope level), its tally and its children. Labels and spans are",
+    "drawing, and are not here."
+  ],
+  "cases": [
+    {
+      "name": "a run folds at the threshold and reads its tally",
+      "spec": "habits.md \u2014 Every run of consecutive passed iterations past the threshold folds into one node.",
+      "threshold": 3,
+      "children": [
+        {
+          "id": "i1",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-14",
+          "windowEnd": "2026-09-15T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "i2",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-15",
+          "windowEnd": "2026-09-16T02:00:00",
+          "passed": true,
+          "done": false
+        },
+        {
+          "id": "i3",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-16",
+          "windowEnd": "2026-09-17T02:00:00",
+          "passed": true,
+          "done": true
+        }
+      ],
+      "folded": [
+        {
+          "id": "habitrun-1-virtual",
+          "level": "run",
+          "tally": {
+            "passed": 3,
+            "done": 2,
+            "missed": 1
+          },
+          "children": [
+            "i1",
+            "i2",
+            "i3"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a run shorter than the threshold stands as its own iterations",
+      "spec": "habits.md \u2014 A short run is not a pile-up.",
+      "threshold": 3,
+      "children": [
+        {
+          "id": "i1",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-14",
+          "windowEnd": "2026-09-15T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "i2",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-15",
+          "windowEnd": "2026-09-16T02:00:00",
+          "passed": true,
+          "done": true
+        }
+      ],
+      "folded": [
+        "i1",
+        "i2"
+      ]
+    },
+    {
+      "name": "the iteration still open is drawn on its own",
+      "spec": "habits.md \u2014 Only iterations whose window has passed fold.",
+      "threshold": 3,
+      "children": [
+        {
+          "id": "i1",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-14",
+          "windowEnd": "2026-09-15T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "i2",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-15",
+          "windowEnd": "2026-09-16T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "i3",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-16",
+          "windowEnd": "2026-09-17T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "open",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-17",
+          "windowEnd": "2026-09-18T02:00:00",
+          "passed": false,
+          "done": false
+        }
+      ],
+      "folded": [
+        {
+          "id": "habitrun-1-virtual",
+          "level": "run",
+          "tally": {
+            "passed": 3,
+            "done": 3,
+            "missed": 0
+          },
+          "children": [
+            "i1",
+            "i2",
+            "i3"
+          ]
+        },
+        "open"
+      ]
+    },
+    {
+      "name": "owed work rides with its run but is drawn right after it",
+      "spec": "habits.md \u2014 Owed work is never folded; it is drawn beside the run it sits in.",
+      "threshold": 3,
+      "children": [
+        {
+          "id": "i1",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-14",
+          "windowEnd": "2026-09-15T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "owed",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-15",
+          "windowEnd": "2026-09-16T02:00:00",
+          "passed": true,
+          "done": false,
+          "owed": true
+        },
+        {
+          "id": "i2",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-16",
+          "windowEnd": "2026-09-17T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "i3",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-17",
+          "windowEnd": "2026-09-18T02:00:00",
+          "passed": true,
+          "done": true
+        }
+      ],
+      "folded": [
+        {
+          "id": "habitrun-1-virtual",
+          "level": "run",
+          "tally": {
+            "passed": 3,
+            "done": 3,
+            "missed": 0
+          },
+          "children": [
+            "i1",
+            "i2",
+            "i3"
+          ]
+        },
+        "owed"
+      ]
+    },
+    {
+      "name": "a run made short by the owed work taken out of it does not fold",
+      "spec": "habits.md \u2014 The threshold counts what folds.",
+      "threshold": 3,
+      "children": [
+        {
+          "id": "i1",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-14",
+          "windowEnd": "2026-09-15T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "owed",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-15",
+          "windowEnd": "2026-09-16T02:00:00",
+          "passed": true,
+          "done": false,
+          "owed": true
+        },
+        {
+          "id": "i2",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-16",
+          "windowEnd": "2026-09-17T02:00:00",
+          "passed": true,
+          "done": true
+        }
+      ],
+      "folded": [
+        "i1",
+        "owed",
+        "i2"
+      ]
+    },
+    {
+      "name": "each Habit's iterations fold only with its own",
+      "spec": "habits.md \u2014 Iterations fold only with their own Habit's.",
+      "threshold": 2,
+      "children": [
+        {
+          "id": "a1",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-14",
+          "windowEnd": "2026-09-15T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "a2",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-15",
+          "windowEnd": "2026-09-16T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "b1",
+          "flow": 2,
+          "kind": "day",
+          "anchor": "2026-09-14",
+          "windowEnd": "2026-09-15T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "b2",
+          "flow": 2,
+          "kind": "day",
+          "anchor": "2026-09-15",
+          "windowEnd": "2026-09-16T02:00:00",
+          "passed": true,
+          "done": false
+        }
+      ],
+      "folded": [
+        {
+          "id": "habitrun-1-virtual",
+          "level": "run",
+          "tally": {
+            "passed": 2,
+            "done": 2,
+            "missed": 0
+          },
+          "children": [
+            "a1",
+            "a2"
+          ]
+        },
+        {
+          "id": "habitrun-2-virtual",
+          "level": "run",
+          "tally": {
+            "passed": 2,
+            "done": 1,
+            "missed": 1
+          },
+          "children": [
+            "b1",
+            "b2"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "any other node ends a run where it stands",
+      "spec": "habits.md \u2014 Only consecutive iterations fold.",
+      "threshold": 2,
+      "children": [
+        {
+          "id": "i1",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-14",
+          "windowEnd": "2026-09-15T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "note"
+        },
+        {
+          "id": "i2",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-15",
+          "windowEnd": "2026-09-16T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "i3",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-16",
+          "windowEnd": "2026-09-17T02:00:00",
+          "passed": true,
+          "done": true
+        }
+      ],
+      "folded": [
+        "i1",
+        "note",
+        {
+          "id": "habitrun-1-virtual",
+          "level": "run",
+          "tally": {
+            "passed": 2,
+            "done": 2,
+            "missed": 0
+          },
+          "children": [
+            "i2",
+            "i3"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a run spanning weeks opens into week levels",
+      "spec": "habits.md \u2014 A level is inserted for a unit only where the run spans more than one of it.",
+      "threshold": 3,
+      "children": [
+        {
+          "id": "i1",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-07",
+          "windowEnd": "2026-09-08T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "i2",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-14",
+          "windowEnd": "2026-09-15T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "i3",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-21",
+          "windowEnd": "2026-09-22T02:00:00",
+          "passed": true,
+          "done": true
+        }
+      ],
+      "folded": [
+        {
+          "id": "habitrun-1-virtual",
+          "level": "run",
+          "tally": {
+            "passed": 3,
+            "done": 3,
+            "missed": 0
+          },
+          "children": [
+            {
+              "id": "habitrun-1-week-2026-09-07-virtual",
+              "level": "week",
+              "tally": {
+                "passed": 1,
+                "done": 1,
+                "missed": 0
+              },
+              "children": [
+                "i1"
+              ]
+            },
+            {
+              "id": "habitrun-1-week-2026-09-14-virtual",
+              "level": "week",
+              "tally": {
+                "passed": 1,
+                "done": 1,
+                "missed": 0
+              },
+              "children": [
+                "i2"
+              ]
+            },
+            {
+              "id": "habitrun-1-week-2026-09-21-virtual",
+              "level": "week",
+              "tally": {
+                "passed": 1,
+                "done": 1,
+                "missed": 0
+              },
+              "children": [
+                "i3"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "months nest over weeks, and a week straddling two months is drawn under each",
+      "spec": "habits.md \u2014 A level's id is keyed by its first iteration, since one week can sit under two months.",
+      "threshold": 3,
+      "children": [
+        {
+          "id": "i1",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-09-28",
+          "windowEnd": "2026-09-29T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "i2",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-10-01",
+          "windowEnd": "2026-10-02T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "i3",
+          "flow": 1,
+          "kind": "day",
+          "anchor": "2026-10-06",
+          "windowEnd": "2026-10-07T02:00:00",
+          "passed": true,
+          "done": true
+        }
+      ],
+      "folded": [
+        {
+          "id": "habitrun-1-virtual",
+          "level": "run",
+          "tally": {
+            "passed": 3,
+            "done": 3,
+            "missed": 0
+          },
+          "children": [
+            {
+              "id": "habitrun-1-month-2026-09-28-virtual",
+              "level": "month",
+              "tally": {
+                "passed": 1,
+                "done": 1,
+                "missed": 0
+              },
+              "children": [
+                {
+                  "id": "habitrun-1-week-2026-09-28-virtual",
+                  "level": "week",
+                  "tally": {
+                    "passed": 1,
+                    "done": 1,
+                    "missed": 0
+                  },
+                  "children": [
+                    "i1"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "habitrun-1-month-2026-10-01-virtual",
+              "level": "month",
+              "tally": {
+                "passed": 2,
+                "done": 2,
+                "missed": 0
+              },
+              "children": [
+                {
+                  "id": "habitrun-1-week-2026-10-01-virtual",
+                  "level": "week",
+                  "tally": {
+                    "passed": 1,
+                    "done": 1,
+                    "missed": 0
+                  },
+                  "children": [
+                    "i2"
+                  ]
+                },
+                {
+                  "id": "habitrun-1-week-2026-10-06-virtual",
+                  "level": "week",
+                  "tally": {
+                    "passed": 1,
+                    "done": 1,
+                    "missed": 0
+                  },
+                  "children": [
+                    "i3"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a Winter straddling New Year is one season under one year",
+      "spec": "habits.md \u2014 A year keys off its Season, not the calendar.",
+      "threshold": 2,
+      "children": [
+        {
+          "id": "w1",
+          "flow": 1,
+          "kind": "week",
+          "anchor": "2026-12-28",
+          "windowEnd": "2026-12-29T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "w2",
+          "flow": 1,
+          "kind": "week",
+          "anchor": "2027-01-04",
+          "windowEnd": "2027-01-05T02:00:00",
+          "passed": true,
+          "done": true
+        }
+      ],
+      "folded": [
+        {
+          "id": "habitrun-1-virtual",
+          "level": "run",
+          "tally": {
+            "passed": 2,
+            "done": 2,
+            "missed": 0
+          },
+          "children": [
+            {
+              "id": "habitrun-1-month-2026-12-28-virtual",
+              "level": "month",
+              "tally": {
+                "passed": 1,
+                "done": 1,
+                "missed": 0
+              },
+              "children": [
+                "w1"
+              ]
+            },
+            {
+              "id": "habitrun-1-month-2027-01-04-virtual",
+              "level": "month",
+              "tally": {
+                "passed": 1,
+                "done": 1,
+                "missed": 0
+              },
+              "children": [
+                "w2"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "seasons group under a year only once the run spans two",
+      "spec": "habits.md \u2014 A year level never appears without more than one year spanned.",
+      "threshold": 2,
+      "children": [
+        {
+          "id": "s1",
+          "flow": 1,
+          "kind": "season",
+          "anchor": "2026-09-01",
+          "windowEnd": "2026-09-02T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "s2",
+          "flow": 1,
+          "kind": "season",
+          "anchor": "2027-03-01",
+          "windowEnd": "2027-03-02T02:00:00",
+          "passed": true,
+          "done": true
+        }
+      ],
+      "folded": [
+        {
+          "id": "habitrun-1-virtual",
+          "level": "run",
+          "tally": {
+            "passed": 2,
+            "done": 2,
+            "missed": 0
+          },
+          "children": [
+            {
+              "id": "habitrun-1-year-2026-09-01-virtual",
+              "level": "year",
+              "tally": {
+                "passed": 1,
+                "done": 1,
+                "missed": 0
+              },
+              "children": [
+                "s1"
+              ]
+            },
+            {
+              "id": "habitrun-1-year-2027-03-01-virtual",
+              "level": "year",
+              "tally": {
+                "passed": 1,
+                "done": 1,
+                "missed": 0
+              },
+              "children": [
+                "s2"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a sub-day window counts as a day",
+      "spec": "habits.md \u2014 A Phase Habit steps whole days, so its iterations are the day nodes.",
+      "threshold": 2,
+      "children": [
+        {
+          "id": "p1",
+          "flow": 1,
+          "kind": null,
+          "anchor": "2026-09-14",
+          "windowEnd": "2026-09-15T02:00:00",
+          "passed": true,
+          "done": true
+        },
+        {
+          "id": "p2",
+          "flow": 1,
+          "kind": null,
+          "anchor": "2026-09-15",
+          "windowEnd": "2026-09-16T02:00:00",
+          "passed": true,
+          "done": true
+        }
+      ],
+      "folded": [
+        {
+          "id": "habitrun-1-virtual",
+          "level": "run",
+          "tally": {
+            "passed": 2,
+            "done": 2,
+            "missed": 0
+          },
+          "children": [
+            "p1",
+            "p2"
+          ]
+        }
+      ]
+    }
+  ]
+}

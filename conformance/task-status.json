@@ -1,0 +1,221 @@
+{
+  "about": [
+    "The two Task status models, and the one conversion between them, written as data.",
+    "",
+    "Both evaluators replay it. `src-tauri/tests/operations/task_status_conformance.rs` runs every case",
+    "through `Status::converted`; `src/utils/task-status-conformance.test.ts` runs the same cases",
+    "through `convertedStatus`, which the Task editor uses to show the status a flag change would",
+    "leave. Neither side generates this file.",
+    "",
+    "`models` lists each model's statuses. A case names a status, the model a Task of kind `agentic`",
+    "holds, and its counterpart there \u2014 itself when it is already in that model \u2014 or null when it has",
+    "none: an ordinary Started has none in the Agentic model, and On Agent (Review included) none in",
+    "the ordinary one. See `docs/spec/resources.md`, *Agentic statuses*."
+  ],
+  "models": {
+    "ordinary": [
+      "todo",
+      "in_progress",
+      "started",
+      "done"
+    ],
+    "agentic": [
+      "todo",
+      "on_agent",
+      "review",
+      "doing",
+      "done"
+    ]
+  },
+  "cases": [
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "todo"
+      },
+      "agentic": false,
+      "converted": {
+        "kind": "ordinary",
+        "status": "todo"
+      }
+    },
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "todo"
+      },
+      "agentic": true,
+      "converted": {
+        "kind": "agentic",
+        "status": "todo"
+      }
+    },
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "in_progress"
+      },
+      "agentic": false,
+      "converted": {
+        "kind": "ordinary",
+        "status": "in_progress"
+      }
+    },
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "in_progress"
+      },
+      "agentic": true,
+      "converted": {
+        "kind": "agentic",
+        "status": "doing"
+      }
+    },
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "started"
+      },
+      "agentic": false,
+      "converted": {
+        "kind": "ordinary",
+        "status": "started"
+      }
+    },
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "started"
+      },
+      "agentic": true,
+      "converted": null
+    },
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "done"
+      },
+      "agentic": false,
+      "converted": {
+        "kind": "ordinary",
+        "status": "done"
+      }
+    },
+    {
+      "status": {
+        "kind": "ordinary",
+        "status": "done"
+      },
+      "agentic": true,
+      "converted": {
+        "kind": "agentic",
+        "status": "done"
+      }
+    },
+    {
+      "status": {
+        "kind": "agentic",
+        "status": "todo"
+      },
+      "agentic": false,
+      "converted": {
+        "kind": "ordinary",
+        "status": "todo"
+      }
+    },
+    {
+      "status": {
+        "kind": "agentic",
+        "status": "todo"
+      },
+      "agentic": true,
+      "converted": {
+        "kind": "agentic",
+        "status": "todo"
+      }
+    },
+    {
+      "status": {
+        "kind": "agentic",
+        "status": "on_agent"
+      },
+      "agentic": false,
+      "converted": null
+    },
+    {
+      "status": {
+        "kind": "agentic",
+        "status": "on_agent"
+      },
+      "agentic": true,
+      "converted": {
+        "kind": "agentic",
+        "status": "on_agent"
+      }
+    },
+    {
+      "status": {
+        "kind": "agentic",
+        "status": "review"
+      },
+      "agentic": false,
+      "converted": null
+    },
+    {
+      "status": {
+        "kind": "agentic",
+        "status": "review"
+      },
+      "agentic": true,
+      "converted": {
+        "kind": "agentic",
+        "status": "review"
+      }
+    },
+    {
+      "status": {
+        "kind": "agentic",
+        "status": "doing"
+      },
+      "agentic": false,
+      "converted": {
+        "kind": "ordinary",
+        "status": "in_progress"
+      }
+    },
+    {
+      "status": {
+        "kind": "agentic",
+        "status": "doing"
+      },
+      "agentic": true,
+      "converted": {
+        "kind": "agentic",
+        "status": "doing"
+      }
+    },
+    {
+      "status": {
+        "kind": "agentic",
+        "status": "done"
+      },
+      "agentic": false,
+      "converted": {
+        "kind": "ordinary",
+        "status": "done"
+      }
+    },
+    {
+      "status": {
+        "kind": "agentic",
+        "status": "done"
+      },
+      "agentic": true,
+      "converted": {
+        "kind": "agentic",
+        "status": "done"
+      }
+    }
+  ]
+}

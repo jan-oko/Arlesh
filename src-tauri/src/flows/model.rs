@@ -62,7 +62,7 @@ impl InstanceType {
 }
 
 /// A flow (template) row.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Flow {
     /// Primary key.
     pub id: i64,
@@ -106,7 +106,6 @@ pub struct Flow {
     /// kind — a monthly commitment habit may stay answerable for two days.
     pub verdict_window_kind: Option<String>,
     /// Whether this flow is a Habit (has a Recurrence) — derived, not stored on the flows row.
-    #[sqlx(default)]
     pub is_habit: bool,
     /// Sort position among siblings.
     pub position: i64,
@@ -114,13 +113,12 @@ pub struct Flow {
     pub is_private: bool,
     /// What the template says about the rows it draws beyond its title and place: its kind's
     /// columns and relations (migration 0061), flattened onto the row on the wire.
-    #[sqlx(skip)]
     #[serde(flatten)]
     pub template: super::template::TemplateFields,
 }
 
 /// A flow-goal (template item) row.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowGoal {
     /// Primary key.
     pub id: i64,
@@ -138,13 +136,12 @@ pub struct FlowGoal {
     pub is_private: bool,
     /// What the template says about the rows it draws beyond its title and place: its kind's
     /// columns and relations (migration 0061), flattened onto the row on the wire.
-    #[sqlx(skip)]
     #[serde(flatten)]
     pub template: super::template::TemplateFields,
 }
 
 /// A flow-task (template item) row.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowTask {
     /// Primary key.
     pub id: i64,
@@ -162,7 +159,6 @@ pub struct FlowTask {
     pub is_private: bool,
     /// What the template says about the rows it draws beyond its title and place: its kind's
     /// columns and relations (migration 0061), flattened onto the row on the wire.
-    #[sqlx(skip)]
     #[serde(flatten)]
     pub template: super::template::TemplateFields,
 }
@@ -328,7 +324,7 @@ pub struct UpdateFlowItemRequest {
 }
 
 /// A relative (Cycle Scope, Cycle Plan) pair carried by a flow item.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowItemCycle {
     /// Primary key.
     pub id: i64,
@@ -396,7 +392,7 @@ pub struct MaterializedFlow {
 
 /// A candidate target node for a flow, referenced by kind and id. Used by the target-picker
 /// scope-validity check and the flow-origin lookup.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TargetRef {
     /// Node kind (`aspect`/`domain`/`project`/`goal`/`task`).
     pub node_type: String,
@@ -416,7 +412,7 @@ pub struct FlowOrigin {
 }
 
 /// An intra-flow dependency: `dependent` waits on `depends_on`.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowDependency {
     /// Primary key.
     pub id: i64,
@@ -502,7 +498,7 @@ impl MissPolicy {
 /// A Habit's Recurrence: Repetition (Start, optional Gap, optional end) plus its **clock**. Its
 /// presence marks the owning flow as a Habit. `miss_policy` is set exactly when the clock is
 /// `window`.
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FlowRecurrence {
     /// Owning flow (also the primary key — one recurrence per flow).
     pub flow_id: i64,
@@ -695,7 +691,7 @@ pub struct HabitInstanceRef {
 /// One instance's divergent **status** for a Habit iteration — a non-tombstoned Modification (e.g.
 /// `in_progress` or `done`). Lets the mindmap render each iteration instance's state; instances with
 /// no Modification sit at their base status (task `todo` / goal `active`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HabitItemStatus {
     /// Which instance the status is for (`flow_goal`, `flow_task`, or `flow_root`).
     pub item_type: String,
@@ -724,7 +720,7 @@ pub const CHILD_KINDS: [&str; 5] = ["task", "goal", "commitment", "info", "expec
 /// overlay row generates. `child_type`/`child_id` name the stored row, which is an ordinary Task,
 /// Goal, Commitment, Expectation or Info in every other respect; the virtual tables read its
 /// parent as the occurrence through this attachment.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HabitInstanceChild {
     /// The Habit the occurrence belongs to.
     pub flow_id: i64,

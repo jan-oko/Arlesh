@@ -521,3 +521,59 @@ fn a_spawned_wait_takes_no_plan_from_its_planned_task() {
     assert!(kept.contains(&wait_fact), "{kept:?}");
     assert!(kept.contains(&check_fact), "{kept:?}");
 }
+
+#[test]
+fn a_pill_narrows_to_the_rows_the_list_keeps_with_the_chains_they_hang_from() {
+    let mut load = board();
+    let filter = BoardFilter {
+        pills: crate::filters::model::ListPills {
+            task_status: vec![crate::filters::model::Pill {
+                value: "todo".to_string(),
+                mode: crate::filters::model::TagMode::Any,
+            }],
+            ..Default::default()
+        },
+        kinds: vec![crate::filters::model::RowKind::Task],
+        ..BoardFilter::default()
+    };
+    narrow(&mut load, &filter);
+    // Task 21 is the row; task 20, goal 10 and both domains are the chain it hangs from. The
+    // done task, the commitment the kind selector leaves out, and the info are not rows.
+    let tasks: Vec<_> = load.tasks.iter().map(|task| task.id.clone()).collect();
+    assert_eq!(tasks, [20, 21]);
+    assert_eq!(load.goals.len(), 1);
+    assert_eq!(load.domains.len(), 2);
+    assert!(load.commitments.is_empty());
+    assert!(load.infos.is_empty());
+}
+
+#[test]
+fn a_task_carries_its_dependencies_met_or_not_and_its_own_flags() {
+    let mut load = board();
+    load.task_dependencies = vec![
+        TaskDependencyEdge {
+            task_id: 21.into(),
+            dependency_type: "task".to_string(),
+            dependency_id: 22.into(),
+        },
+        TaskDependencyEdge {
+            task_id: 21.into(),
+            dependency_type: "goal".to_string(),
+            dependency_id: 10.into(),
+        },
+    ];
+    if let Some(task) = load.tasks.iter_mut().find(|task| task.id == 21) {
+        task.asynchronous = true;
+    }
+    let forest = forest(&load);
+    let task = find(&forest, "task-21").map(|node| node.facts.clone());
+    let task = task.unwrap_or_else(|| NodeFacts::new("missing", NodeKind::Task));
+    assert_eq!(task.dependencies, ["task-22", "goal-10"]);
+    assert_eq!(
+        task.blocking_dependencies,
+        ["goal-10"],
+        "the done task is met"
+    );
+    assert!(task.asynchronous);
+    assert!(!task.planned);
+}

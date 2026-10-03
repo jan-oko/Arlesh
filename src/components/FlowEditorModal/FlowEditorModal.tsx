@@ -229,7 +229,7 @@ export default function FlowEditorModal({ node, availableTargets, inheritedTarge
   const [reconcilePrompt, setReconcilePrompt] = useState(false);
 
   // No anchor at template time → a coarse filter that hides targets too small to ever hold the flow.
-  const validIds = useValidFlowTargets(availableTargets, scoped, durationN, durationKind, null);
+  const validIds = useValidFlowTargets(availableTargets, scoped ? durationN : null, scoped ? durationKind : null, null);
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
 

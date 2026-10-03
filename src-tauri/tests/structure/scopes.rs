@@ -13,6 +13,7 @@ use arlesh_lib::{
     commands::scopes::{exact_scope, part_scope, scope_containing},
     domains::model::{CreateDomainRequest, DomainSubtype, ProjectStatus},
     scopes::{
+        db::DbScopeKey,
         key::ScopeKey,
         model::{PartOfDay, ScopeKind},
     },
@@ -181,8 +182,8 @@ async fn a_hand_built_key_that_misses_its_start_is_refused_on_write() {
          VALUES ('Raw', 'project', ?, ?, ?, 'keep')",
     )
     .bind(project_id)
-    .bind(wednesday)
-    .bind(wednesday)
+    .bind(DbScopeKey(wednesday))
+    .bind(DbScopeKey(wednesday))
     .execute(&pool)
     .await;
 
@@ -248,6 +249,53 @@ struct Window {
 #[derive(serde::Deserialize)]
 struct KeyCorpus {
     cases: Vec<KeyCase>,
+    labels: Vec<LabelCase>,
+    instants: Vec<InstantCase>,
+}
+
+/// The label a canonical key reads as.
+#[derive(serde::Deserialize)]
+struct LabelCase {
+    key: ScopeKey,
+    label: String,
+}
+
+/// Which Day, and which part of it, hold a wall-clock instant.
+#[derive(serde::Deserialize)]
+struct InstantCase {
+    at: NaiveDateTime,
+    day: NaiveDate,
+    part: PartOfDay,
+}
+
+#[test]
+fn every_key_reads_as_the_label_the_shared_corpus_gives_it() {
+    let corpus: KeyCorpus = serde_json::from_str(KEY_CORPUS).unwrap();
+    assert!(!corpus.labels.is_empty());
+    for case in corpus.labels {
+        assert_eq!(case.key.label(), case.label, "{:?}", case.key);
+    }
+}
+
+#[test]
+fn every_instant_falls_in_the_day_and_part_the_shared_corpus_says() {
+    use chrono::Timelike;
+    let corpus: KeyCorpus = serde_json::from_str(KEY_CORPUS).unwrap();
+    assert!(!corpus.instants.is_empty());
+    for case in corpus.instants {
+        assert_eq!(
+            arlesh_lib::tasks::rules::waits::day_of(case.at),
+            case.day,
+            "the day of {}",
+            case.at
+        );
+        assert_eq!(
+            PartOfDay::containing(case.at.hour()),
+            case.part,
+            "the part of {}",
+            case.at
+        );
+    }
 }
 
 const KEY_CORPUS: &str = include_str!(concat!(

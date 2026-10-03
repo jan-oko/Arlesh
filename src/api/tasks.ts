@@ -325,6 +325,15 @@ export interface TaskDependencyEdge {
 }
 
 /** Every task-dependency edge (for the mindmap bulk load / virtual block-reason derivation). */
+/**
+ * What the Task `id` may be made to depend on: every Task that can hold a prerequisite, every Goal
+ * and every stored Expectation, less what it already depends on and every Task whose edge would
+ * close a cycle. Decided by the backend (`tasks::rules::dependencies::candidates`).
+ */
+export async function fetchDependencyCandidates(id: RowId): Promise<Dependency[]> {
+  return invoke<Dependency[]>("dependency_candidates", { id });
+}
+
 export async function listAllTaskDependencies(): Promise<TaskDependencyEdge[]> {
   return invoke<TaskDependencyEdge[]>("list_all_task_dependencies");
 }

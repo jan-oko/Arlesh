@@ -78,13 +78,20 @@ describe("buildTree — expectations", () => {
     expect(findNode(root, expectationNodeId(3))?.children.map((child) => child.id)).toEqual([`task-${CHECK_ID}`]);
   });
 
-  it("blocks a task depending on a pending wait, and lets it go once the wait is released", () => {
+  it("keeps a task's wait dependencies, and draws the block the backend says the wait makes", () => {
     const edge: TaskDependencyEdge = { task_id: 5, dependency_type: "expectation", dependency_id: 3 };
-    const pending = findNode(build([task()], [wait()], [edge]), "task-5");
+    const pending = findNode(buildTree(
+      [ASPECT], [], [task()], [], [], [], [], [], [], [], [], [edge], [], [wait()],
+      (title) => `waiting on ${title}`, (title) => `Check: ${title}`, "compound", "capacity", (until) => until,
+      {}, new Map(),
+      { "task-5": { dependency_blocks: [{ kind: "expectation", id: 3, title: "Reviewer replies" }] } },
+    ), "task-5");
     expect(pending?.virtualBlockers).toEqual(["Blocked by expectation 3 (Reviewer replies)"]);
+    expect(pending?.blockingDependencyIds).toEqual([expectationNodeId(3)]);
     expect(pending?.expectationDependencyIds).toEqual([3]);
     const released = findNode(build([task()], [wait({ status: "released" })], [edge]), "task-5");
     expect(released?.virtualBlockers).toEqual([]);
+    expect(released?.expectationDependencyIds).toEqual([3]);
   });
 
   it("draws a delegated task's wait row beneath it, titled as what it waits on", () => {

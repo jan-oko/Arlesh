@@ -17,12 +17,12 @@ use std::collections::HashMap;
 use chrono::NaiveDateTime;
 
 use super::overlay::OverlayOperator;
-use crate::scopes::key::ScopeKey;
+use crate::scopes::{db::DbScopeKey, key::ScopeKey};
 use crate::tasks::model::{DurationSpec, Expectation, ExpectationArchival, TimeScope};
 use crate::tasks::waits::{instant_column, instant_from_column};
 
 /// One derived wait's Expectation overlay. Every field inherits when empty.
-#[derive(Debug, Clone, Default, PartialEq, Eq, sqlx::FromRow)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ExpectationOverlay {
     /// Its own title.
     pub title: Option<String>,
@@ -62,12 +62,60 @@ pub struct ExpectationOverlay {
     pub agentic_answer_set: bool,
 }
 
+/// A [`ExpectationOverlay`] as its table holds it.
+#[derive(sqlx::FromRow)]
+pub(crate) struct ExpectationOverlayRow {
+    title: Option<String>,
+    time_scope_start_id: Option<DbScopeKey>,
+    time_scope_end_id: Option<DbScopeKey>,
+    time_scope_duration_n: Option<i64>,
+    time_scope_duration_kind: Option<String>,
+    time_scope_set: bool,
+    check_every_n: Option<i64>,
+    check_every_kind: Option<String>,
+    check_every_set: bool,
+    check_starting: Option<String>,
+    is_private: Option<bool>,
+    archival: Option<String>,
+    agentic: Option<bool>,
+    agentic_note: Option<String>,
+    agentic_note_set: bool,
+    agentic_question: Option<bool>,
+    agentic_answer: Option<String>,
+    agentic_answer_set: bool,
+}
+
+impl From<ExpectationOverlayRow> for ExpectationOverlay {
+    fn from(row: ExpectationOverlayRow) -> Self {
+        Self {
+            title: row.title,
+            time_scope_start_id: row.time_scope_start_id.map(|key| key.0),
+            time_scope_end_id: row.time_scope_end_id.map(|key| key.0),
+            time_scope_duration_n: row.time_scope_duration_n,
+            time_scope_duration_kind: row.time_scope_duration_kind,
+            time_scope_set: row.time_scope_set,
+            check_every_n: row.check_every_n,
+            check_every_kind: row.check_every_kind,
+            check_every_set: row.check_every_set,
+            check_starting: row.check_starting,
+            is_private: row.is_private,
+            archival: row.archival,
+            agentic: row.agentic,
+            agentic_note: row.agentic_note,
+            agentic_note_set: row.agentic_note_set,
+            agentic_question: row.agentic_question,
+            agentic_answer: row.agentic_answer,
+            agentic_answer_set: row.agentic_answer_set,
+        }
+    }
+}
+
 /// An Expectation overlay as read back, beside its canonical key.
 #[derive(sqlx::FromRow)]
 struct KeyedExpectation {
     node_key: String,
     #[sqlx(flatten)]
-    overlay: ExpectationOverlay,
+    overlay: ExpectationOverlayRow,
 }
 
 const EXPECTATION_COLUMNS: &str = "title, time_scope_start_id, time_scope_end_id, \
@@ -262,18 +310,19 @@ impl OverlayOperator<'_> {
         .await?;
         Ok(rows
             .into_iter()
-            .map(|row| (row.node_key, row.overlay))
+            .map(|row| (row.node_key, row.overlay.into()))
             .collect())
     }
 
     /// One derived wait's Expectation overlay, empty when it has none.
     pub async fn expectation(&mut self, node_key: &str) -> Result<ExpectationOverlay, sqlx::Error> {
-        Ok(sqlx::query_as(&format!(
+        Ok(sqlx::query_as::<_, ExpectationOverlayRow>(&format!(
             "SELECT {EXPECTATION_COLUMNS} FROM expectation_overlays WHERE node_key = ?"
         ))
         .bind(node_key)
         .fetch_optional(&mut *self.connection)
         .await?
+        .map(ExpectationOverlay::from)
         .unwrap_or_default())
     }
 
@@ -299,8 +348,8 @@ impl OverlayOperator<'_> {
         .bind(home.flow_id)
         .bind(&home.occurrence_key)
         .bind(&overlay.title)
-        .bind(overlay.time_scope_start_id)
-        .bind(overlay.time_scope_end_id)
+        .bind(overlay.time_scope_start_id.map(DbScopeKey))
+        .bind(overlay.time_scope_end_id.map(DbScopeKey))
         .bind(overlay.time_scope_duration_n)
         .bind(&overlay.time_scope_duration_kind)
         .bind(overlay.time_scope_set)

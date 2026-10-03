@@ -18,9 +18,8 @@ interface Props {
   status: string | undefined;
   /** A Commitment's recorded verdict, which the shield is drawn from. */
   verdict?: Verdict | undefined;
-  /** The node's effective Archival. On a Commitment with no verdict this is what tells an
-   * unanswered one from one whose Verdict Window has run out. */
-  isArchived?: boolean | undefined;
+  /** A Commitment whose Verdict Window ran out before anything was recorded (the load's fact). */
+  expired?: boolean | undefined;
   isBlocked: boolean;
   isHabit: boolean;
   /** A Task that consists of its sub-items: its glyph's outer ring is dashed. */
@@ -32,7 +31,7 @@ interface Props {
   opacity: number;
 }
 
-export default function NodeIcon({ kind, status, verdict, isArchived = false, isBlocked, isHabit, compound = false, cx, cy, r, color, opacity }: Props) {
+export default function NodeIcon({ kind, status, verdict, expired = false, isBlocked, isHabit, compound = false, cx, cy, r, color, opacity }: Props) {
   if (kind === "aspect") return null;
   if (kind === "domain") return <DomainIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   if (kind === "project") return <ProjectIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
@@ -41,7 +40,7 @@ export default function NodeIcon({ kind, status, verdict, isArchived = false, is
   if (kind === "info") return <InfoIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} />;
   if (kind === "task") return <TaskIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} isBlocked={isBlocked} compound={compound} />;
   if (kind === "commitment") {
-    return <CommitmentIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} state={commitmentGlyphState(verdict, isArchived)} />;
+    return <CommitmentIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} state={commitmentGlyphState(verdict, expired)} />;
   }
   if (kind === "expectation") {
     return <ExpectationIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} />;

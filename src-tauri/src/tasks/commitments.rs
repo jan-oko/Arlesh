@@ -16,9 +16,9 @@
 //! inherits its window from a Commitment ancestor, and the containment rules are the ones in
 //! `scope_rules`. Splitting it out would mean either duplicating that chain or making it public.
 
-use crate::database::session::{Db, SessionMode, Transactional};
+use crate::database::session::{Db, Transactional};
 use crate::nodes::origin::Origin;
-use crate::scopes::key::ScopeKey;
+use crate::scopes::db::DbScopeKey;
 
 use super::ancestry::{AncestryLink, NodeKind, NodeRef};
 use super::error::TaskError;
@@ -36,8 +36,8 @@ struct CommitmentRow {
     parent_type: String,
     parent_id: i64,
     verdict: String,
-    time_scope_start_id: Option<ScopeKey>,
-    time_scope_end_id: Option<ScopeKey>,
+    time_scope_start_id: Option<DbScopeKey>,
+    time_scope_end_id: Option<DbScopeKey>,
     time_scope_duration_n: Option<i64>,
     time_scope_duration_kind: Option<String>,
     verdict_window_n: Option<i64>,
@@ -479,19 +479,6 @@ pub async fn delete_commitment(
 ) -> Result<(), TaskError> {
     db.commitments().get(id).await?;
     super::delete_node_subtree(db, "commitment", id.0).await
-}
-
-/// The **effective** Verdict Window governing a commitment: its own when it sets one, else the
-/// nearest ancestor Commitment's, or `None` when nothing above it sets one either.
-///
-/// On the **read** path, so a broken chain leaves the commitment unbounded rather than failing —
-/// one corrupt row must not blank the board, and leaving it answerable is the safe direction.
-pub(super) async fn effective_verdict_window<M: SessionMode>(
-    db: &mut Db<M>,
-    id: CommitmentId,
-) -> Result<Option<DurationSpec>, TaskError> {
-    let chain = super::ancestry::climb(db, "commitment", id.0).await?;
-    Ok(chain.nearest_verdict_window().or_unconstrained().cloned())
 }
 
 #[cfg(test)]

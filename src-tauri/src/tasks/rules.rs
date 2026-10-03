@@ -1,5 +1,6 @@
-//! The task rules: Timing, Resolution, Archival and the Overdue flag ([`lifecycle`]), and Review
-//! ([`review`]).
+//! The task rules: what a compound Task reads as ([`compound`]); Timing, Resolution, Archival and
+//! the Overdue flag ([`lifecycle`]); Review
+//! ([`review`]), and the containment invariants and wait lifecycles ([`scope`]).
 //!
 //! Pure functions over values: no session (`Db`, `SessionMode`), no `sqlx`, no `tauri`, no `tokio`
 //! and no file system, and `now` is passed in rather than read. `scripts/check-rules-purity.sh`
@@ -8,5 +9,14 @@
 //! The submodules are re-exported at their old paths in the parent module, so callers did not
 //! change when they moved here.
 
+pub mod agentic;
+pub mod ancestry;
+pub mod compound;
+pub mod dependencies;
+pub mod gestures;
 pub mod lifecycle;
+pub mod plan;
 pub mod review;
+pub mod scope;
+pub mod waits;
+pub mod write;

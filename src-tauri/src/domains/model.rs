@@ -19,8 +19,7 @@ impl From<DomainId> for i64 {
 }
 
 /// The four subtypes stored in the `domains` table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(rename_all = "lowercase")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DomainSubtype {
     /// Fixed, color-coded top-level container. Not user-managed.
@@ -51,8 +50,7 @@ impl DomainSubtype {
 }
 
 /// Project lifecycle status.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(rename_all = "lowercase")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectStatus {
     /// Actively being worked on.
@@ -89,7 +87,7 @@ impl ProjectStatus {
 }
 
 /// A domain row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Domain {
     /// Primary key.
     pub id: i64,

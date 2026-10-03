@@ -1,6 +1,8 @@
 import type { MindmapNode, NodeKind, Position } from "@/utils/tree-layout";
 import { isDerivedWait } from "@/utils/derived-wait";
+import { can } from "@/utils/capabilities";
 import { isArchived } from "@/utils/filter-tree";
+import { isValidDropTarget } from "@/utils/node-meta";
 
 export function findNode(root: MindmapNode, id: string): MindmapNode | undefined {
   if (root.id === id) return root;
@@ -147,9 +149,9 @@ export function collectSubtreePostOrder(node: MindmapNode): Array<{ id: string; 
   const result: Array<{ id: string; kind: NodeKind }> = [];
   function visit(n: MindmapNode): void {
     // A derived wait is drawn from its owner's row, not stored: there is nothing to delete, and it
-    // goes when the owner does.
+    // goes when the owner does (the backend's `capabilities` say so).
     for (const child of n.children) {
-      if (!isDerivedWait(child)) visit(child);
+      if (can(child, "delete")) visit(child);
     }
     result.push({ id: n.id, kind: n.kind });
   }
@@ -166,12 +168,12 @@ export function conversionNeedsConfirm(node: MindmapNode): boolean {
   return node.children.length > 0;
 }
 
-/** Kinds a Flow may be parented under — mirrors the kinds a Flow may target for conversion. */
-const FLOW_PARENT_KINDS = new Set<NodeKind>(["aspect", "domain", "project", "goal"]);
-
-/** A Goal/Task can convert into a Flow only where a Flow may be parented (never under a Task). */
+/**
+ * A Goal/Task can convert into a Flow only where a Flow may be parented (never under a Task) — the
+ * parenting table's answer, pinned to the backend's by `conformance/parenting.json`.
+ */
 export function canConvertNodeToFlow(nodeKind: NodeKind, parentKind: NodeKind | null): boolean {
-  return (nodeKind === "goal" || nodeKind === "task") && parentKind !== null && FLOW_PARENT_KINDS.has(parentKind);
+  return (nodeKind === "goal" || nodeKind === "task") && parentKind !== null && isValidDropTarget("flow", parentKind);
 }
 
 /** A flattened node for search: its id, title, kind, and ancestor titles nearest-first (root excluded). */

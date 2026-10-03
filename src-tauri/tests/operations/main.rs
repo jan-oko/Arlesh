@@ -15,12 +15,21 @@
 #[path = "../helpers/mod.rs"]
 mod helpers;
 
+mod cooldown_conformance;
 mod database;
 mod duplicate;
+mod flow_cycles_conformance;
+mod gestures;
+mod habit_fold_conformance;
+mod list_sections_conformance;
 mod mcp;
 mod mcp_access;
 mod mcp_capacity;
 mod mcp_endpoint;
 mod mcp_writes;
 mod mindmap_commands;
+mod parenting_conformance;
+mod plan_triage_conformance;
 mod preset_conformance;
+mod task_status_conformance;
+mod zen_contents_conformance;
