@@ -18,6 +18,7 @@ mod helpers;
 mod database;
 mod duplicate;
 mod gestures;
+mod habit_fold_conformance;
 mod list_sections_conformance;
 mod mcp;
 mod mcp_access;
