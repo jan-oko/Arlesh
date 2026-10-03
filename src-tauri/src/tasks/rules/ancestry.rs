@@ -438,7 +438,7 @@ impl Climb {
 /// Every scoped row's link, and every added child's occurrence, read once for a whole board, so
 /// that each node's chain is climbed in memory rather than by a query per step.
 #[derive(Debug, Clone, Default)]
-pub(in crate::tasks) struct AncestryIndex {
+pub struct AncestryIndex {
     links: HashMap<(NodeKind, i64), AncestryLink>,
     occurrences: HashMap<(NodeKind, i64), AncestryLink>,
 }
@@ -494,7 +494,7 @@ impl AncestryIndex {
     ///
     /// Each link carries exactly what one step of the database climb reads off its row, so a
     /// chain climbed over the index is the chain the database would have given.
-    pub(in crate::tasks) fn of(
+    pub fn of(
         tasks: &[Task],
         goals: &[Goal],
         commitments: &[Commitment],

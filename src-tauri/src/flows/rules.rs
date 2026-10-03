@@ -8,6 +8,7 @@
 //! The submodules are re-exported at their old paths in the parent module, so callers did not
 //! change when they moved here.
 
+pub mod compound_readings;
 pub mod cooldown;
 pub mod habits;
 pub mod occurrences;

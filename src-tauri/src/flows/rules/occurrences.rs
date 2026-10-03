@@ -23,16 +23,19 @@ use std::collections::{HashMap, HashSet};
 use chrono::{NaiveDate, NaiveDateTime};
 
 use crate::flows::{
+    clock_slots,
     compound_readings::Readings,
+    cooldown,
     error::FlowError,
-    habit_verdict_window,
-    habits::{instance_timing, Clock, SlotWindow},
+    habit_cooldown, habit_verdict_window,
+    habits::{classify_iterations, expire_unanswered, instance_timing, Clock, SlotWindow},
     iteration_window,
     model::{
         Flow, FlowDependency, FlowGoal, FlowId, FlowItemCycle, FlowRecurrence, FlowTask,
         HabitIteration, InstanceTiming, IterationStatus, MissPolicy,
     },
-    resolve_cycle, resolve_root_plan, target_parent_type, whole_scope_plan,
+    parse_clock, resolve_cycle, resolve_root_plan, target_parent_type, verdict_deadlines,
+    whole_scope_plan,
 };
 use crate::{
     block_reasons::model::{BlockReason, DerivedBlock},
@@ -306,6 +309,9 @@ pub(in crate::flows) struct LoadedHabit {
     pub(in crate::flows) touched: HashSet<ScopeKey>,
     /// Whether the Habit's host reads as Agentic.
     pub(in crate::flows) host_agentic: bool,
+    /// Every template item an iteration draws, as `(item type, item id)`: its goal items, then
+    /// its task items, each in list order.
+    pub(in crate::flows) instance_items: Vec<(String, i64)>,
 }
 
 impl LoadedHabit {
@@ -1542,6 +1548,206 @@ pub(in crate::flows) fn commitment_row(
         origin: occurrence.origin,
     };
     (commitment, lifecycle)
+}
+
+/// Every occurrence of one Habit within `horizon`, as rows, at `now`.
+///
+/// A flow with no Recurrence derives nothing. So does a commitment flow holding goal items: a
+/// Commitment cannot parent a Goal, so such a template has no valid materialisation, and the load
+/// names the flow rather than drawing a subtree the model forbids.
+///
+pub(in crate::flows) fn derive_habit_in(
+    flow: &Flow,
+    habit: &LoadedHabit,
+    readings: &Readings,
+    now: NaiveDateTime,
+    horizon: Horizon,
+) -> Result<DerivedRows, FlowError> {
+    let LoadedHabit {
+        recurrence,
+        template,
+        overlays,
+        relations,
+        touched,
+        host_agentic,
+        ..
+    } = habit;
+    let host_agentic = *host_agentic;
+
+    let Schedule {
+        iterations,
+        slots,
+        clock,
+        holds,
+    } = schedule(
+        flow,
+        habit,
+        recurrence,
+        (overlays, readings),
+        touched,
+        now,
+        horizon,
+    )?;
+    let by_index: HashMap<i64, &SlotWindow> = slots.iter().map(|slot| (slot.index, slot)).collect();
+
+    let mut rows = DerivedRows::default();
+    for iteration in &iterations {
+        let Some(slot) = by_index.get(&iteration.index) else {
+            continue;
+        };
+        let window = iteration_window(flow, slot.scope_id)?;
+        let window_start = window.as_ref().map(|(_, start)| *start);
+        let window = window.map(|(window, _)| window);
+        // What a Window + Overdue iteration carries: the first missed window's, which its
+        // relevance reaches back to and its due is.
+        let missed = iteration.missed_from.and_then(|index| by_index.get(&index));
+        let carried = match missed {
+            Some(missed) => iteration_window(flow, missed.scope_id)?.map(|(window, _)| window),
+            None => None,
+        };
+        let relevance = match (&window, &carried) {
+            (Some(own), Some(first)) => Some(TimeScope {
+                start_id: first.start_id,
+                end_id: own.end_id,
+                duration: None,
+            }),
+            _ => window.clone(),
+        };
+        let due = default_due(
+            clock,
+            carried.as_ref().or(window.as_ref()).map(TimeScope::window),
+        );
+        let context = Iteration {
+            iteration,
+            slot,
+            relevance,
+            due,
+            window_start,
+            missed_from: missed.map(|missed| missed.start.date()),
+            root_plan: resolve_root_plan(flow, window_start)?,
+            cooling_until: holds.get(&slot.index).copied(),
+            host_agentic,
+            readings,
+            provisional: false,
+        };
+        let built = build_iteration(flow, template, (overlays, relations), &context, clock, now)?;
+        rows.extend(built);
+    }
+    Ok(rows)
+}
+
+/// The Habit's iterations within the horizon, each with the slot it came from, classified.
+fn schedule(
+    flow: &Flow,
+    habit: &LoadedHabit,
+    recurrence: &FlowRecurrence,
+    (overlays, readings): (&HabitOverlays, &Readings),
+    touched: &HashSet<ScopeKey>,
+    now: NaiveDateTime,
+    horizon: Horizon,
+) -> Result<Schedule, FlowError> {
+    let clock = parse_clock(recurrence)?;
+
+    // The furthest day anything asks for: now, the named window, and the latest touched date.
+    let furthest = touched
+        .iter()
+        .map(ScopeKey::start_date)
+        .chain(horizon.through)
+        .max()
+        .map_or(now, |date| {
+            date.and_hms_opt(23, 59, 59).map_or(now, |end| end.max(now))
+        });
+    let template_keys = instance_keys(flow, &habit.instance_items, &habit.template.cycles);
+    let parents = habit
+        .template
+        .occurrence_parents(FlowId(flow.id), &template_keys);
+    let compound = compound_items(flow, habit.template.tasks.values());
+    let completions = Completions {
+        keys: &template_keys,
+        overlays,
+        parents: &parents,
+        compound: (&compound, readings),
+        by_verdict: flow.instance_type == "commitment",
+    };
+    let slots = clock_slots(flow, recurrence, clock, furthest, |slot| {
+        completions.completed_at(slot)
+    })?;
+    let (started, future): (Vec<SlotWindow>, Vec<SlotWindow>) =
+        slots.iter().cloned().partition(|slot| slot.start <= now);
+
+    let resolved = completions.resolutions(&started);
+    let done = completions.finished(&started);
+    // Settled: resolved, or — a commitment iteration — answered; neither is open to block.
+    let mut settled = resolved.clone();
+    settled.extend(done.iter().map(|(index, at)| (*index, *at)));
+    let holds = cooldown::holds(
+        &slots,
+        (&settled, &done),
+        habit_cooldown(flow, recurrence).zip(
+            recurrence
+                .miss_policy
+                .as_deref()
+                .and_then(MissPolicy::from_db),
+        ),
+        now,
+    );
+    let classified = classify_iterations(&started, clock, &resolved, now);
+    let mut iterations =
+        expire_unanswered(classified, &verdict_deadlines(flow, clock, &started), now);
+    for slot in &future {
+        let date = slot.start.date();
+        let named = horizon.through.is_some_and(|through| date <= through);
+        if named || touched.contains(&slot.scope_id) {
+            iterations.push(HabitIteration {
+                index: slot.index,
+                anchor_scope_id: slot.scope_id,
+                anchor_date: date.format("%Y-%m-%d").to_string(),
+                window_end: slot.end.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                status: IterationStatus::Upcoming,
+                missed_from: None,
+                instances: Vec::new(),
+            });
+        }
+    }
+    Ok(Schedule {
+        iterations,
+        slots,
+        clock,
+        holds,
+    })
+}
+
+/// Every instance one iteration holds, as `(template item, cycle pair)`: the root, then each item
+/// once per pair it declares (once, with [`NO_CYCLE`], when it declares none).
+fn instance_keys(
+    flow: &Flow,
+    items: &[(String, i64)],
+    cycles: &HashMap<(String, i64), Vec<FlowItemCycle>>,
+) -> Vec<(TemplateItem, i64)> {
+    let mut keys = vec![(
+        TemplateItem {
+            item_type: TemplateKind::FlowRoot,
+            item_id: flow.id,
+        },
+        NO_CYCLE,
+    )];
+    for (item_type, item_id) in items {
+        let (item_type, item_id) = (item_type.clone(), *item_id);
+        let Some(kind) = TemplateKind::from_db(&item_type) else {
+            continue;
+        };
+        let item = TemplateItem {
+            item_type: kind,
+            item_id,
+        };
+        match cycles.get(&(item_type, item_id)) {
+            Some(pairs) if !pairs.is_empty() => {
+                keys.extend(pairs.iter().map(|pair| (item, pair.id)));
+            }
+            _ => keys.push((item, NO_CYCLE)),
+        }
+    }
+    keys
 }
 
 #[cfg(test)]

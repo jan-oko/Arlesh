@@ -263,7 +263,7 @@ pub struct LifecycleRows<'rows> {
     /// The stored Expectations.
     pub expectations: &'rows [Expectation],
     /// Every stored scoped row's ancestry link, and every added child's occurrence.
-    pub(in crate::tasks) ancestry: &'rows AncestryIndex,
+    pub ancestry: &'rows AncestryIndex,
     /// The waits' check and spawned windows.
     pub wait_windows: WaitWindows,
 }

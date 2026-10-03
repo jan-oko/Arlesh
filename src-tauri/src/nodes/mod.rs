@@ -16,6 +16,7 @@
 //! [`Goal`]: crate::tasks::model::Goal
 //! [`Commitment`]: crate::tasks::model::Commitment
 
+pub mod board;
 pub mod id;
 pub mod key;
 pub mod origin;
