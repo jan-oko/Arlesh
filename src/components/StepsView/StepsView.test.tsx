@@ -38,6 +38,8 @@ const updateTask = vi.fn((_id: number, _request: unknown) => Promise.resolve());
 const stepTaskStatus = vi.fn((_id: number, _step: string) => Promise.resolve({ outcome: "written", backlog_cleared: null }));
 const addTaskDependency = vi.fn((_id: number, _dependency: unknown) => Promise.resolve());
 const listAllTaskDependencies = vi.fn(() => Promise.resolve([]));
+// What the backend offers as prerequisites (`tasks::rules::dependencies::candidates`).
+const fetchDependencyCandidates = vi.fn((_id: number) => Promise.resolve([{ type: "expectation", id: 7 }]));
 
 const undo = vi.fn(() => Promise.resolve(null));
 vi.mock("@/api/gesture", async (importOriginal) => ({
@@ -53,6 +55,7 @@ vi.mock("@/api/tasks", async (importOriginal) => ({
   updateTask: (id: number, request: unknown) => updateTask(id, request),
   addTaskDependency: (id: number, dependency: unknown) => addTaskDependency(id, dependency),
   listAllTaskDependencies: () => listAllTaskDependencies(),
+  fetchDependencyCandidates: (id: number) => fetchDependencyCandidates(id),
 }));
 
 /** A fixture node; it draws the row its id names (`task-12` is row 12), unless it is virtual. */
@@ -842,7 +845,7 @@ describe("D, the quick dependency picker", () => {
     press("KeyD");
     const dialog = screen.getByRole("dialog", { name: "editor:quickDependencyPicker" });
     const search = screen.getByRole("combobox");
-    await waitFor(() => expect(listAllTaskDependencies).toHaveBeenCalled());
+    await waitFor(() => expect(fetchDependencyCandidates).toHaveBeenCalledWith(1));
     fireEvent.change(search, { target: { value: "parts" } });
     await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1));
     fireEvent.keyDown(search, { key: "Enter" });
