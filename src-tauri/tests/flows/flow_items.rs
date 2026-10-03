@@ -564,3 +564,125 @@ async fn copying_a_flow_copies_its_commitment_and_wait_items() {
     assert_eq!(wait_copy.parent_type, "flow_commitment");
     assert_eq!(wait_copy.parent_id, promise_copy.id, "remapped onto the copy");
 }
+
+#[tokio::test]
+async fn converting_a_subtree_turns_its_commitments_and_waits_into_items() {
+    use arlesh_lib::nodes::id::NodeId as Id;
+    use arlesh_lib::tasks::model::{
+        CreateCommitmentRequest, CreateExpectationRequest, CreateTaskRequest, Dependency,
+    };
+    let pool = helpers::test_pool().await;
+    let factory = helpers::session_factory(&pool);
+    let mut db = factory.begin().await.unwrap();
+    let root = arlesh_lib::tasks::create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Launch".into(),
+            parent_type: "project".into(),
+            parent_id: Id::Stored(1),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let root_id = root.id.stored().unwrap();
+    let week = arlesh_lib::tasks::model::TimeScope::single(
+        ScopeKey::containing(ScopeKind::Week, ymd(2026, 1, 4)).unwrap(),
+    );
+    let promise = arlesh_lib::tasks::create_commitment(
+        &mut db,
+        CreateCommitmentRequest {
+            title: "No scope creep".into(),
+            parent_type: "task".into(),
+            parent_id: root.id.clone(),
+            time_scope: Some(week.clone()),
+            verdict_window: Some(days(2)),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let wait = arlesh_lib::tasks::create_expectation(
+        &mut db,
+        CreateExpectationRequest {
+            title: "Legal signs off".into(),
+            parent_type: "commitment".into(),
+            parent_id: promise.id.clone(),
+            time_scope: Some(week),
+            check_every: Some(days(1)),
+            check_starting: Some(at("2026-01-06T09:00:00")),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let step = arlesh_lib::tasks::create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Announce".into(),
+            parent_type: "commitment".into(),
+            parent_id: promise.id.clone(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    arlesh_lib::tasks::add_task_dependency(
+        &mut db,
+        arlesh_lib::tasks::model::TaskId(step.id.stored().unwrap()),
+        Dependency::Expectation {
+            id: wait.id.stored().unwrap(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let flow = arlesh_lib::flows::convert_to_flow(&mut db, "task", root_id, true, true)
+        .await
+        .unwrap();
+    db.commit().await.unwrap();
+
+    let app = helpers::command_host(&pool);
+    let board = load(&app, "2026-01-05T09:00:00").await;
+    let promise_item = board
+        .flow_commitments
+        .iter()
+        .find(|item| item.flow_id == flow.id)
+        .expect("the Commitment became a Commitment item");
+    assert_eq!(promise_item.title, "No scope creep");
+    assert_eq!(promise_item.verdict_window, Some(days(2)));
+    let wait_item = board
+        .flow_expectations
+        .iter()
+        .find(|item| item.flow_id == flow.id)
+        .expect("the wait became a wait item");
+    assert_eq!(wait_item.parent_type, "flow_commitment");
+    assert_eq!(wait_item.parent_id, promise_item.id);
+    assert_eq!(wait_item.check_every, Some(days(1)));
+    assert_eq!(
+        wait_item.first_check,
+        Some(FirstCheck {
+            kind: "day".into(),
+            index: 3
+        }),
+        "its Starting, as days into its window"
+    );
+    let step_item = board
+        .flow_tasks
+        .iter()
+        .find(|item| item.flow_id == flow.id && item.title == "Announce")
+        .unwrap();
+    assert_eq!(step_item.parent_type, "flow_commitment");
+    assert!(board.flow_dependencies.iter().any(|edge| {
+        edge.dependent_id == step_item.id
+            && edge.depends_on_type == "flow_expectation"
+            && edge.depends_on_id == wait_item.id
+    }));
+    assert!(
+        !board
+            .commitments
+            .iter()
+            .any(|commitment| commitment.title == "No scope creep"),
+        "the stored subtree is gone"
+    );
+}

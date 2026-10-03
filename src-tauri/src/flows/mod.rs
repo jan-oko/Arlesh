@@ -2387,11 +2387,12 @@ impl<'session> FlowOperator<'session> {
     }
 }
 
-/// The task/goal children of a **real** node, as `(kind, id)` pairs — tasks first, then goals.
+/// The children of a **real** node that a Flow template can hold, as `(kind, id)` pairs — tasks,
+/// goals, Commitments, then waits.
 ///
-/// Reads two resources (tasks and goals), so it takes the session rather than one operator. It
-/// writes nothing, so it serves a pooled and a transactional session alike.
-async fn task_goal_children<M: SessionMode>(
+/// Reads several resources, so it takes the session rather than one operator. It writes nothing,
+/// so it serves a pooled and a transactional session alike.
+async fn template_children<M: SessionMode>(
     db: &mut Db<M>,
     parent_type: &str,
     parent_id: i64,
@@ -2401,7 +2402,105 @@ async fn task_goal_children<M: SessionMode>(
     children.extend(tasks.into_iter().map(|id| ("task".to_string(), id)));
     let goals = db.goals().child_ids(parent_type, parent_id).await?;
     children.extend(goals.into_iter().map(|id| ("goal".to_string(), id)));
+    let commitments = db.commitments().child_ids(parent_type, parent_id).await?;
+    children.extend(commitments.into_iter().map(|id| ("commitment".to_string(), id)));
+    let waits = db.expectations().child_ids(parent_type, parent_id).await?;
+    children.extend(waits.into_iter().map(|id| ("expectation".to_string(), id)));
     Ok(children)
+}
+
+/// What one real node of a converted subtree carries into its flow item beyond its title and
+/// window: a Commitment's Verdict Window, a wait's Check every and when it is first checked.
+enum ConvertedFields {
+    /// A Task or a Goal: nothing beyond title and window.
+    Plain,
+    /// A Commitment's Verdict Window.
+    Commitment(Option<crate::tasks::model::DurationSpec>),
+    /// A wait's Check every, and its Starting.
+    Wait(
+        Option<crate::tasks::model::DurationSpec>,
+        Option<NaiveDateTime>,
+    ),
+}
+
+/// The item kind a converted node becomes, and its title, window and own fields.
+async fn converted_node(
+    db: &mut Db<Transactional>,
+    kind: &str,
+    id: i64,
+) -> Result<(FlowItemType, String, Option<TimeScope>, ConvertedFields), FlowError> {
+    Ok(match kind {
+        "goal" => {
+            let goal = db.goals().get(GoalId(id)).await?;
+            (FlowItemType::FlowGoal, goal.title, goal.time_scope, ConvertedFields::Plain)
+        }
+        "commitment" => {
+            let commitment = db.commitments().get(CommitmentId(id)).await?;
+            (
+                FlowItemType::FlowCommitment,
+                commitment.title,
+                commitment.time_scope,
+                ConvertedFields::Commitment(commitment.verdict_window),
+            )
+        }
+        "expectation" => {
+            let wait = db
+                .expectations()
+                .get(crate::tasks::model::ExpectationId(id))
+                .await?;
+            (
+                FlowItemType::FlowExpectation,
+                wait.title,
+                wait.time_scope,
+                ConvertedFields::Wait(wait.check_every, wait.check_starting),
+            )
+        }
+        _ => {
+            let task = db.tasks().get(TaskId(id)).await?;
+            (FlowItemType::FlowTask, task.title, task.time_scope, ConvertedFields::Plain)
+        }
+    })
+}
+
+/// Writes a converted Commitment's or wait's own fields onto its new item. A wait's Starting
+/// becomes its first check, counted in days from its window's start, when its window maps to the
+/// template's (`window_start`); otherwise its first check is its window's start.
+async fn write_converted_fields(
+    db: &mut Db<Transactional>,
+    item: (FlowItemType, i64),
+    fields: ConvertedFields,
+    window_start: Option<NaiveDate>,
+) -> Result<(), FlowError> {
+    let request = match fields {
+        ConvertedFields::Plain => return Ok(()),
+        ConvertedFields::Commitment(window) => UpdateFlowItemRequest {
+            verdict_window: Some(window),
+            ..Default::default()
+        },
+        ConvertedFields::Wait(every, starting) => {
+            let first_check = starting.zip(window_start).and_then(|(starting, start)| {
+                let offset = (crate::tasks::rules::waits::day_of(starting) - start).num_days();
+                (offset >= 0).then(|| model::FirstCheck {
+                    kind: "day".to_string(),
+                    index: offset + 1,
+                })
+            });
+            UpdateFlowItemRequest {
+                first_check: Some(first_check.filter(|_| every.is_some())),
+                check_every: Some(every),
+                ..Default::default()
+            }
+        }
+    };
+    match item.0 {
+        FlowItemType::FlowCommitment => {
+            db.flows().update_commitment_item(item.1, request).await?;
+        }
+        _ => {
+            db.flows().update_expectation_item(item.1, request).await?;
+        }
+    }
+    Ok(())
 }
 
 /// Updates a flow.
@@ -3048,9 +3147,11 @@ pub async fn valid_targets<M: SessionMode>(
 }
 
 /// Converts a real Task/Goal subtree into a **Flow** template of the same Instance Type: the root
-/// becomes the flow, every descendant goal/task becomes a flow item mirroring the hierarchy, and
-/// the original subtree is deleted. When `keep_dependencies`, intra-subtree task dependencies are
-/// remapped to flow dependencies. When `map_scopes`, the root's Time Scope becomes the flow Window
+/// becomes the flow, every descendant Goal, Task, Commitment and wait becomes a flow item of its
+/// kind mirroring the hierarchy — a Commitment keeping its Verdict Window, a wait its Check every
+/// and, as a first check, its Starting (ruled by the user, 2026-10-03) — and the original subtree
+/// is deleted. When `keep_dependencies`, intra-subtree task dependencies — on a task, goal or
+/// wait — are remapped to flow dependencies. When `map_scopes`, the root's Time Scope becomes the flow Window
 /// and each descendant's Time Scope becomes a relative Cycle Scope (offset within the window;
 /// canonical kinds only — part/exact and Plans are dropped). Errors if the root's parent can't
 /// hold a flow (i.e. it is a task).
@@ -3182,7 +3283,7 @@ pub async fn convert_to_flow(
 
     // BFS the subtree (parents before children), tracking each node's real parent.
     let root_key = (root_type.to_string(), root_id);
-    let mut order: Vec<(String, i64)> = task_goal_children(db, root_type, root_id).await?;
+    let mut order: Vec<(String, i64)> = template_children(db, root_type, root_id).await?;
     let mut parent_of: HashMap<(String, i64), (String, i64)> = HashMap::new();
     for child in &order {
         parent_of.insert(child.clone(), root_key.clone());
@@ -3190,7 +3291,12 @@ pub async fn convert_to_flow(
     let mut i = 0;
     while i < order.len() {
         let (kind, id) = order[i].clone();
-        let children = task_goal_children(db, &kind, id).await?;
+        // A wait holds only notes, which a template does not carry.
+        let children = if kind == "expectation" {
+            Vec::new()
+        } else {
+            template_children(db, &kind, id).await?
+        };
         for child in children {
             parent_of.insert(child.clone(), (kind.clone(), id));
             order.push(child);
@@ -3201,21 +3307,7 @@ pub async fn convert_to_flow(
     // Create a flow item per subtree node, mirroring the hierarchy.
     let mut item_map: HashMap<(String, i64), (FlowItemType, i64)> = HashMap::new();
     for (kind, id) in &order {
-        let (item_title, node_ts) = match kind.as_str() {
-            "goal" => {
-                let g = db.goals().get(GoalId(*id)).await?;
-                (g.title, g.time_scope)
-            }
-            _ => {
-                let t = db.tasks().get(TaskId(*id)).await?;
-                (t.title, t.time_scope)
-            }
-        };
-        let item_type = if kind == "goal" {
-            FlowItemType::FlowGoal
-        } else {
-            FlowItemType::FlowTask
-        };
+        let (item_type, item_title, node_ts, own_fields) = converted_node(db, kind, *id).await?;
         let (parent_item_type, parent_item_id) = {
             let parent = &parent_of[&(kind.clone(), *id)];
             if parent == &root_key {
@@ -3231,12 +3323,34 @@ pub async fn convert_to_flow(
             parent_type: parent_item_type,
             parent_id: parent_item_id,
         };
-        let new_id = if kind == "goal" {
-            db.flows().create_goal(item_request).await?.id
-        } else {
-            db.flows().create_task(item_request).await?.id
+        let new_id = match item_type {
+            FlowItemType::FlowGoal => db.flows().create_goal(item_request).await?.id,
+            FlowItemType::FlowTask => db.flows().create_task(item_request).await?.id,
+            FlowItemType::FlowCommitment => {
+                db.flows()
+                    .create_commitment_item(item_request)
+                    .await?
+                    .id
+            }
+            FlowItemType::FlowExpectation => {
+                db.flows()
+                    .create_expectation_item(item_request)
+                    .await?
+                    .id
+            }
         };
         item_map.insert((kind.clone(), *id), (item_type, new_id));
+        // A wait's first check is counted from the start of the window it maps to: its own, or
+        // the template's.
+        let wait_window = if map_scopes {
+            node_ts
+                .as_ref()
+                .map(|scope| scope.start_id.start_date())
+                .or(window_start)
+        } else {
+            None
+        };
+        write_converted_fields(db, (item_type, new_id), own_fields, wait_window).await?;
 
         // Map the descendant's Time Scope to a relative Cycle Scope (canonical kinds only).
         if map_scopes {
@@ -3279,9 +3393,8 @@ pub async fn convert_to_flow(
                 let dep_key = match dep {
                     Dependency::Task { id } => ("task".to_string(), id.require_stored()?),
                     Dependency::Goal { id } => ("goal".to_string(), id.require_stored()?),
-                    // A wait is never a flow item, so an edge onto one has nothing inside the
-                    // template to become — the same as an edge onto anything outside the subtree.
-                    Dependency::Expectation { .. } => continue,
+                    // A wait in the subtree became a wait item, which a Task item may wait on.
+                    Dependency::Expectation { id } => ("expectation".to_string(), id),
                 };
                 if let Some((on_type, on_id)) = item_map.get(&dep_key).copied() {
                     db.flows()
