@@ -171,21 +171,26 @@ fn task_status_from_db_rejects_unrecognized_values() {
 fn task_archival_as_str_covers_all_variants() {
     assert_eq!(TaskArchival::Live.as_str(), "live");
     assert_eq!(TaskArchival::Backlog.as_str(), "backlog");
+    assert_eq!(TaskArchival::Archived.as_str(), "archived");
 }
 
 #[test]
 fn task_archival_from_db_roundtrips_every_variant() {
-    for archival in [TaskArchival::Live, TaskArchival::Backlog] {
+    for archival in [
+        TaskArchival::Live,
+        TaskArchival::Backlog,
+        TaskArchival::Archived,
+    ] {
         assert_eq!(TaskArchival::from_db(archival.as_str()), Some(archival));
     }
 }
 
 #[test]
 fn task_archival_from_db_rejects_the_goal_side_vocabulary() {
-    // Frozen and Archived belong to Goals and Projects. A Task row spelling either is corrupt,
-    // and reading it as anything at all would quietly bless a state that cannot exist.
+    // Frozen belongs to Goals and Projects. A Task row spelling it is corrupt, and reading it as
+    // anything at all would quietly bless a state that cannot exist. (Archived is a Task's too
+    // since Task 269: the hand archive.)
     assert_eq!(TaskArchival::from_db("frozen"), None);
-    assert_eq!(TaskArchival::from_db("archived"), None);
     assert_eq!(TaskArchival::from_db("bogus"), None);
 }
 
@@ -195,8 +200,9 @@ fn a_task_defaults_to_live() {
 }
 
 #[test]
-fn only_a_live_task_may_carry_a_plan() {
+fn only_a_backlogged_task_may_not_carry_a_plan() {
     assert!(TaskArchival::Live.allows_plan());
+    assert!(TaskArchival::Archived.allows_plan());
     assert!(!TaskArchival::Backlog.allows_plan());
 }
 
