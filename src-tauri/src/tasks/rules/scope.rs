@@ -160,8 +160,13 @@ pub(in crate::tasks) struct ContainmentWindows {
 /// one message, and collecting all three is an explicit non-goal. The rule order is the order
 /// the old function checked in, so the message a given bad write produces has not changed.
 pub(in crate::tasks) fn check_containment(windows: ContainmentWindows) -> Result<(), TaskError> {
-    if let (Some(own), Some(plan), false) = (windows.own_scope, windows.plan, windows.overdue) {
-        reject_unless_contained(own, plan, "plan is not within the task's time scope")?;
+    // Rules one and three are the Plan View's own refusal (`rules::plan`), so the two read alike.
+    if let Some(plan) = windows.plan {
+        if super::plan::breaks_own_scope(windows.own_scope, windows.overdue, plan) {
+            return Err(TaskError::ScopeContainment(
+                "plan is not within the task's time scope".to_string(),
+            ));
+        }
     }
     if let (Some(ancestor), Some(own)) = (windows.ancestor_scope, windows.own_scope) {
         reject_unless_contained(
@@ -170,8 +175,12 @@ pub(in crate::tasks) fn check_containment(windows: ContainmentWindows) -> Result
             "time scope is not within the parent's time scope",
         )?;
     }
-    if let (Some(ancestor), Some(plan)) = (windows.ancestor_plan, windows.plan) {
-        reject_unless_contained(ancestor, plan, "plan is not within the parent task's plan")?;
+    if let Some(plan) = windows.plan {
+        if super::plan::breaks_parent_plan(windows.ancestor_plan, plan) {
+            return Err(TaskError::ScopeContainment(
+                "plan is not within the parent task's plan".to_string(),
+            ));
+        }
     }
     if let (Some(scope), Some(due)) = (windows.own_scope.or(windows.ancestor_scope), windows.due) {
         reject_unless_contained(scope, due, "due is not within the task's time scope")?;

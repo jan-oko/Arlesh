@@ -15,6 +15,7 @@ pub mod compound;
 pub mod dependencies;
 pub mod gestures;
 pub mod lifecycle;
+pub mod plan;
 pub mod review;
 pub mod scope;
 pub mod waits;

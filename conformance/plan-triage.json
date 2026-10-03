@@ -1,0 +1,596 @@
+{
+  "about": [
+    "The Plan View's rules, written as data: the three heaps a planning pass splits the Tasks into,",
+    "which bound a move would break, the scope one rung up, and where work taken out lands.",
+    "",
+    "Both evaluators replay it. `src-tauri/tests/operations/plan_triage_conformance.rs` runs every case",
+    "through `tasks::rules::plan` — whose bounds are the writer's own containment check; and",
+    "`src/utils/plan-triage-conformance.test.ts` runs them through `plan-triage.ts`,",
+    "`plan-take-out.ts` and `parentRefs`. Neither side generates this file.",
+    "",
+    "A row names its own `timeScope` and `plan` (scope keys, as `scope-keys.json` spells them),",
+    "whether it is `overdue`, whether it is a drawing with no row (`virtual`), and its `ancestors`,",
+    "outermost first, each with its kind and own Time Scope and Plan. `triage` lists each heap's rows",
+    "in row order for a `target` scope whose `parent` is given (null for a Season); a row in none of",
+    "them is planned elsewhere, irrelevant, or a drawing. `refusals` names the bound a move into",
+    "`target` breaks, or null. `parents` gives the scope one rung up; `takeOut` says where work taken",
+    "out of a scope lands — the scope `filled`, its `parent`, or `clear`."
+  ],
+  "triage": [
+    {
+      "name": "a week's pass: what is relevant, what is placed, and what waits at the month",
+      "spec": "plan-view.md — Unplanned is relevant work; Planned is containment; Parent-planned is a Plan that is the parent scope.",
+      "target": {
+        "kind": "week",
+        "date": "2026-09-13"
+      },
+      "parent": {
+        "kind": "month",
+        "date": "2026-09-01"
+      },
+      "rows": [
+        {
+          "id": "unscoped"
+        },
+        {
+          "id": "relevant-month",
+          "timeScope": {
+            "start_id": {
+              "kind": "month",
+              "date": "2026-09-01"
+            },
+            "end_id": {
+              "kind": "month",
+              "date": "2026-09-01"
+            }
+          }
+        },
+        {
+          "id": "not-relevant",
+          "timeScope": {
+            "start_id": {
+              "kind": "week",
+              "date": "2026-10-04"
+            },
+            "end_id": {
+              "kind": "week",
+              "date": "2026-10-04"
+            }
+          }
+        },
+        {
+          "id": "inherits-relevance",
+          "ancestors": [
+            {
+              "kind": "goal",
+              "timeScope": {
+                "start_id": {
+                  "kind": "week",
+                  "date": "2026-09-13"
+                },
+                "end_id": {
+                  "kind": "week",
+                  "date": "2026-09-13"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "planned-day",
+          "plan": {
+            "start_id": {
+              "kind": "day",
+              "date": "2026-09-15"
+            },
+            "end_id": {
+              "kind": "day",
+              "date": "2026-09-15"
+            }
+          }
+        },
+        {
+          "id": "planned-week",
+          "plan": {
+            "start_id": {
+              "kind": "week",
+              "date": "2026-09-13"
+            },
+            "end_id": {
+              "kind": "week",
+              "date": "2026-09-13"
+            }
+          }
+        },
+        {
+          "id": "planned-to-month",
+          "plan": {
+            "start_id": {
+              "kind": "month",
+              "date": "2026-09-01"
+            },
+            "end_id": {
+              "kind": "month",
+              "date": "2026-09-01"
+            }
+          }
+        },
+        {
+          "id": "planned-to-season",
+          "plan": {
+            "start_id": {
+              "kind": "season",
+              "date": "2026-09-01"
+            },
+            "end_id": {
+              "kind": "season",
+              "date": "2026-09-01"
+            }
+          }
+        },
+        {
+          "id": "planned-next-week",
+          "plan": {
+            "start_id": {
+              "kind": "week",
+              "date": "2026-09-20"
+            },
+            "end_id": {
+              "kind": "week",
+              "date": "2026-09-20"
+            }
+          }
+        },
+        {
+          "id": "drawing",
+          "virtual": true
+        }
+      ],
+      "unplanned": [
+        "unscoped",
+        "relevant-month",
+        "inherits-relevance"
+      ],
+      "planned": [
+        "planned-day",
+        "planned-week"
+      ],
+      "parentPlanned": [
+        "planned-to-month"
+      ]
+    },
+    {
+      "name": "a season has no rung above it",
+      "spec": "plan-view.md — Parent-planned is empty for a Season.",
+      "target": {
+        "kind": "season",
+        "date": "2026-09-01"
+      },
+      "parent": null,
+      "rows": [
+        {
+          "id": "planned-to-season",
+          "plan": {
+            "start_id": {
+              "kind": "season",
+              "date": "2026-09-01"
+            },
+            "end_id": {
+              "kind": "season",
+              "date": "2026-09-01"
+            }
+          }
+        },
+        {
+          "id": "planned-month",
+          "plan": {
+            "start_id": {
+              "kind": "month",
+              "date": "2026-10-01"
+            },
+            "end_id": {
+              "kind": "month",
+              "date": "2026-10-01"
+            }
+          }
+        },
+        {
+          "id": "planned-winter",
+          "plan": {
+            "start_id": {
+              "kind": "season",
+              "date": "2026-12-01"
+            },
+            "end_id": {
+              "kind": "season",
+              "date": "2026-12-01"
+            }
+          }
+        }
+      ],
+      "unplanned": [],
+      "planned": [
+        "planned-to-season",
+        "planned-month"
+      ],
+      "parentPlanned": []
+    },
+    {
+      "name": "a week at a month's edge waits on the month it starts in",
+      "spec": "plan-view.md — A week's parent is the month holding its first day.",
+      "target": {
+        "kind": "week",
+        "date": "2026-09-27"
+      },
+      "parent": {
+        "kind": "month",
+        "date": "2026-09-01"
+      },
+      "rows": [
+        {
+          "id": "to-september",
+          "plan": {
+            "start_id": {
+              "kind": "month",
+              "date": "2026-09-01"
+            },
+            "end_id": {
+              "kind": "month",
+              "date": "2026-09-01"
+            }
+          }
+        },
+        {
+          "id": "to-october",
+          "plan": {
+            "start_id": {
+              "kind": "month",
+              "date": "2026-10-01"
+            },
+            "end_id": {
+              "kind": "month",
+              "date": "2026-10-01"
+            }
+          }
+        },
+        {
+          "id": "relevant-october",
+          "timeScope": {
+            "start_id": {
+              "kind": "month",
+              "date": "2026-10-01"
+            },
+            "end_id": {
+              "kind": "month",
+              "date": "2026-10-01"
+            }
+          }
+        }
+      ],
+      "unplanned": [
+        "relevant-october"
+      ],
+      "planned": [],
+      "parentPlanned": [
+        "to-september"
+      ]
+    }
+  ],
+  "refusals": [
+    {
+      "name": "a plan out of the task's own window",
+      "spec": "plan-view.md — Plan ⊆ TimeScope, against the task's own window.",
+      "row": {
+        "id": "t",
+        "timeScope": {
+          "start_id": {
+            "kind": "week",
+            "date": "2026-09-13"
+          },
+          "end_id": {
+            "kind": "week",
+            "date": "2026-09-13"
+          }
+        }
+      },
+      "target": {
+        "kind": "week",
+        "date": "2026-09-20"
+      },
+      "refusal": "ownTimeScope"
+    },
+    {
+      "name": "an overdue task may be planned past its window",
+      "spec": "plan-view.md — The bound is lifted for an Overdue task.",
+      "row": {
+        "id": "t",
+        "timeScope": {
+          "start_id": {
+            "kind": "week",
+            "date": "2026-09-13"
+          },
+          "end_id": {
+            "kind": "week",
+            "date": "2026-09-13"
+          }
+        },
+        "overdue": true
+      },
+      "target": {
+        "kind": "week",
+        "date": "2026-09-20"
+      },
+      "refusal": null
+    },
+    {
+      "name": "an inherited window bounds no plan",
+      "spec": "plan-view.md — An inherited window constrains the window a task may take, not its Plan.",
+      "row": {
+        "id": "t",
+        "ancestors": [
+          {
+            "kind": "goal",
+            "timeScope": {
+              "start_id": {
+                "kind": "week",
+                "date": "2026-09-13"
+              },
+              "end_id": {
+                "kind": "week",
+                "date": "2026-09-13"
+              }
+            }
+          }
+        ]
+      },
+      "target": {
+        "kind": "week",
+        "date": "2026-09-20"
+      },
+      "refusal": null
+    },
+    {
+      "name": "a plan out of the nearest planned ancestor's",
+      "spec": "plan-view.md — child.Plan ⊆ parent.Plan, against the nearest planned ancestor.",
+      "row": {
+        "id": "t",
+        "ancestors": [
+          {
+            "kind": "task",
+            "plan": {
+              "start_id": {
+                "kind": "week",
+                "date": "2026-09-13"
+              },
+              "end_id": {
+                "kind": "week",
+                "date": "2026-09-13"
+              }
+            }
+          }
+        ]
+      },
+      "target": {
+        "kind": "week",
+        "date": "2026-09-20"
+      },
+      "refusal": "parentPlan"
+    },
+    {
+      "name": "the nearest planned ancestor is the nearest, not the first",
+      "spec": "plan-view.md — child.Plan ⊆ parent.Plan, against the nearest planned ancestor.",
+      "row": {
+        "id": "t",
+        "ancestors": [
+          {
+            "kind": "task",
+            "plan": {
+              "start_id": {
+                "kind": "month",
+                "date": "2026-09-01"
+              },
+              "end_id": {
+                "kind": "month",
+                "date": "2026-09-01"
+              }
+            }
+          },
+          {
+            "kind": "task",
+            "plan": {
+              "start_id": {
+                "kind": "week",
+                "date": "2026-09-13"
+              },
+              "end_id": {
+                "kind": "week",
+                "date": "2026-09-13"
+              }
+            }
+          }
+        ]
+      },
+      "target": {
+        "kind": "week",
+        "date": "2026-09-20"
+      },
+      "refusal": "parentPlan"
+    },
+    {
+      "name": "a wait cuts the plan chain",
+      "spec": "plan-view.md — An Expectation has no Plan and takes none from the Task it hangs under.",
+      "row": {
+        "id": "t",
+        "ancestors": [
+          {
+            "kind": "task",
+            "plan": {
+              "start_id": {
+                "kind": "week",
+                "date": "2026-09-13"
+              },
+              "end_id": {
+                "kind": "week",
+                "date": "2026-09-13"
+              }
+            }
+          },
+          {
+            "kind": "expectation"
+          }
+        ]
+      },
+      "target": {
+        "kind": "week",
+        "date": "2026-09-20"
+      },
+      "refusal": null
+    },
+    {
+      "name": "the task's own window is read first",
+      "spec": "plan-view.md — The two rules are read in the order the writer reads them.",
+      "row": {
+        "id": "t",
+        "timeScope": {
+          "start_id": {
+            "kind": "week",
+            "date": "2026-09-13"
+          },
+          "end_id": {
+            "kind": "week",
+            "date": "2026-09-13"
+          }
+        },
+        "ancestors": [
+          {
+            "kind": "task",
+            "plan": {
+              "start_id": {
+                "kind": "week",
+                "date": "2026-09-13"
+              },
+              "end_id": {
+                "kind": "week",
+                "date": "2026-09-13"
+              }
+            }
+          }
+        ]
+      },
+      "target": {
+        "kind": "week",
+        "date": "2026-09-20"
+      },
+      "refusal": "ownTimeScope"
+    },
+    {
+      "name": "a move inside both bounds is allowed",
+      "spec": "plan-view.md — No bound broken, no refusal.",
+      "row": {
+        "id": "t",
+        "timeScope": {
+          "start_id": {
+            "kind": "month",
+            "date": "2026-09-01"
+          },
+          "end_id": {
+            "kind": "month",
+            "date": "2026-09-01"
+          }
+        },
+        "ancestors": [
+          {
+            "kind": "task",
+            "plan": {
+              "start_id": {
+                "kind": "month",
+                "date": "2026-09-01"
+              },
+              "end_id": {
+                "kind": "month",
+                "date": "2026-09-01"
+              }
+            }
+          }
+        ]
+      },
+      "target": {
+        "kind": "week",
+        "date": "2026-09-13"
+      },
+      "refusal": null
+    }
+  ],
+  "parents": [
+    {
+      "scope": {
+        "kind": "part_of_day",
+        "date": "2026-09-15",
+        "part": "morning"
+      },
+      "parent": {
+        "kind": "day",
+        "date": "2026-09-15"
+      }
+    },
+    {
+      "scope": {
+        "kind": "day",
+        "date": "2026-10-01"
+      },
+      "parent": {
+        "kind": "week",
+        "date": "2026-09-27"
+      }
+    },
+    {
+      "scope": {
+        "kind": "week",
+        "date": "2026-09-27"
+      },
+      "parent": {
+        "kind": "month",
+        "date": "2026-09-01"
+      }
+    },
+    {
+      "scope": {
+        "kind": "month",
+        "date": "2026-01-01"
+      },
+      "parent": {
+        "kind": "season",
+        "date": "2025-12-01"
+      }
+    },
+    {
+      "scope": {
+        "kind": "season",
+        "date": "2026-09-01"
+      },
+      "parent": null
+    }
+  ],
+  "takeOut": [
+    {
+      "split": true,
+      "hasParent": true,
+      "lands": "filled"
+    },
+    {
+      "split": false,
+      "hasParent": true,
+      "lands": "parent"
+    },
+    {
+      "split": false,
+      "hasParent": false,
+      "lands": "clear"
+    },
+    {
+      "split": true,
+      "hasParent": false,
+      "lands": "filled"
+    }
+  ]
+}
