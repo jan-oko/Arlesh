@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::tasks::{
-    compound::tests::{commitment, compound, goal, task, wait, Board},
     model::{ExpectationStatus, Status, Task, Verdict},
+    rules::compound::tests::{commitment, compound, goal, task, wait, Board},
 };
 
 use crate::tasks::model::TaskStatus::{Done, InProgress, Started, Todo};
