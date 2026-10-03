@@ -4,12 +4,21 @@
 //! backend answered only the first of them. A reparent is one `UPDATE`; a copy has no existing
 //! row to move, so it needs a traversal of its own, and this is it.
 //!
-//! A node's children can live in any of the `domains`/`goals`/`tasks`/`infos` tables, keyed by a
-//! polymorphic `(parent_type, parent_id)` pair with no foreign key to walk. So the clone is a
-//! breadth-first pass: each node is cloned under its already-cloned new parent, and its children
-//! are discovered only once that parent's new id exists. Everything the node holds — status,
-//! tags, block reasons, Time Scope, on-exit behaviour, Plan, delegate, privacy, position and
-//! dependencies — is copied with it.
+//! A node's children can live in any of the `domains`/`goals`/`tasks`/`commitments`/
+//! `expectations`/`infos` tables, keyed by a polymorphic `(parent_type, parent_id)` pair with no
+//! foreign key to walk. So the clone is a breadth-first pass: each node is cloned under its
+//! already-cloned new parent, and its children are discovered only once that parent's new id
+//! exists. Everything the node holds — status, tags, block reasons, Time Scope, on-exit behaviour,
+//! Plan, delegate, privacy, position and dependencies — is copied with it.
+//!
+//! **Commitments and waits come along** with their own subtrees, copied as stored: a
+//! Commitment's verdict, as a copied Task keeps its status, and a wait's status, archive, checks
+//! and agent fields. Neither holds dependencies of its own. A Commitment or a wait is never the
+//! root of a copy: no command copies one on its own, and the Mindmap refuses it on the clipboard.
+//!
+//! **Started instances keep their origin.** A copied Goal, Task or Commitment that a started Flow
+//! materialised is recorded against that **original** Flow, in a new run of its own
+//! (`flows::copy_instance_links`), so the copy still reads "from flow X".
 //!
 //! **Flows come along.** A Flow hanging under a copied node — under a copied Project, Domain or
 //! Goal, the only kinds that hold one — is copied with it by `flows::duplicate_flow_with_subtree`,
@@ -74,6 +83,11 @@ pub enum DuplicableKind {
     Task,
     /// A note, in `infos`.
     Info,
+    /// A Commitment, in `commitments`. Copied only as part of a subtree: no command copies one on
+    /// its own.
+    Commitment,
+    /// A wait, in `expectations`. Copied only as part of a subtree, like a Commitment.
+    Expectation,
 }
 
 impl DuplicableKind {
@@ -84,6 +98,8 @@ impl DuplicableKind {
             Self::Goal => NodeTable::Goal,
             Self::Task => NodeTable::Task,
             Self::Info => NodeTable::Info,
+            Self::Commitment => NodeTable::Commitment,
+            Self::Expectation => NodeTable::Expectation,
         }
     }
 }
@@ -216,6 +232,7 @@ pub async fn duplicate_subtree(
         .await?;
         copied_flows.insert(flow.old_id);
     }
+    crate::flows::copy_instance_links(db, &copies).await?;
     let left_behind = left_behind(db, &copies, &copied_flows).await?;
     Ok(SubtreeCopy {
         root_id,
@@ -345,6 +362,8 @@ async fn clone_node(
         DuplicableKind::Goal => clone_goal(db, item).await,
         DuplicableKind::Task => clone_task(db, item).await,
         DuplicableKind::Info => clone_info(db, item).await,
+        DuplicableKind::Commitment => clone_commitment(db, item).await,
+        DuplicableKind::Expectation => clone_expectation(db, item).await,
     }
 }
 
@@ -365,13 +384,14 @@ async fn children_of(
     let mut children: Vec<(DuplicableKind, i64)> = Vec::new();
     match item.kind {
         DuplicableKind::Domain => {
-            // A goal or task under any domains-table row records `parent_type = 'project'`,
-            // whatever the parent's real subtype is; an info records the exact subtype.
             extend(
                 &mut children,
                 DuplicableKind::Domain,
                 db.domains().child_ids(DomainId(old_id)).await?,
             );
+            // A goal or task under any domains-table row records `parent_type = 'project'`,
+            // whatever the parent's real subtype is; an info records the exact subtype. A
+            // Commitment or a wait may record either `project` or `domain`, so both are read.
             extend(
                 &mut children,
                 DuplicableKind::Goal,
@@ -382,6 +402,9 @@ async fn children_of(
                 DuplicableKind::Task,
                 db.tasks().child_ids("project", old_id).await?,
             );
+            for spelling in ["project", "domain"] {
+                extend_waits_and_commitments(db, &mut children, spelling, old_id).await?;
+            }
             extend(
                 &mut children,
                 DuplicableKind::Info,
@@ -399,22 +422,33 @@ async fn children_of(
                 DuplicableKind::Task,
                 db.tasks().child_ids("goal", old_id).await?,
             );
+            extend_waits_and_commitments(db, &mut children, "goal", old_id).await?;
             extend(
                 &mut children,
                 DuplicableKind::Info,
                 db.infos().child_ids("goal", old_id).await?,
             );
         }
-        DuplicableKind::Task => {
+        DuplicableKind::Task | DuplicableKind::Commitment => {
+            // A Task and a Commitment hold the same kinds: Tasks, Commitments, waits and notes.
+            let spelling = cloned.kind.as_str();
             extend(
                 &mut children,
                 DuplicableKind::Task,
-                db.tasks().child_ids("task", old_id).await?,
+                db.tasks().child_ids(spelling, old_id).await?,
             );
+            extend_waits_and_commitments(db, &mut children, spelling, old_id).await?;
             extend(
                 &mut children,
                 DuplicableKind::Info,
-                db.infos().child_ids("task", old_id).await?,
+                db.infos().child_ids(spelling, old_id).await?,
+            );
+        }
+        DuplicableKind::Expectation => {
+            extend(
+                &mut children,
+                DuplicableKind::Info,
+                db.infos().child_ids("expectation", old_id).await?,
             );
         }
         DuplicableKind::Info => {
@@ -455,16 +489,37 @@ async fn children_of(
     Ok(Children { nodes, flows })
 }
 
+/// Appends the Commitments and waits stored under `(parent_type, parent_id)` to `children`.
+async fn extend_waits_and_commitments(
+    db: &mut Db<Transactional>,
+    children: &mut Vec<(DuplicableKind, i64)>,
+    parent_type: &str,
+    parent_id: i64,
+) -> Result<(), AppError> {
+    extend(
+        children,
+        DuplicableKind::Commitment,
+        db.commitments().child_ids(parent_type, parent_id).await?,
+    );
+    extend(
+        children,
+        DuplicableKind::Expectation,
+        db.expectations().child_ids(parent_type, parent_id).await?,
+    );
+    Ok(())
+}
+
 /// Tags each id in `ids` with its kind and appends them to `children`.
 fn extend(children: &mut Vec<(DuplicableKind, i64)>, kind: DuplicableKind, ids: Vec<i64>) {
     children.extend(ids.into_iter().map(|id| (kind, id)));
 }
 
-/// A goal's or task's stored `parent_type`: `"goal"` and `"task"` pass through, and every
-/// domains-table kind (aspect, project, domain, tag) collapses to the literal `"project"`, which
-/// is the only spelling those two tables' CHECK constraints accept for a domains-table parent.
+/// A goal's, task's, Commitment's or wait's stored `parent_type`: `"goal"`, `"task"` and
+/// `"commitment"` pass through, and every domains-table kind (aspect, project, domain, tag)
+/// collapses to the literal `"project"`, which every one of those tables accepts for a
+/// domains-table parent. (No Goal is ever queued under a Commitment, which cannot hold one.)
 fn collapse_parent_kind(kind: &str) -> &str {
-    if kind == "goal" || kind == "task" {
+    if matches!(kind, "goal" | "task" | "commitment") {
         kind
     } else {
         "project"
@@ -609,6 +664,47 @@ async fn clone_task(
     Ok(ClonedNode {
         new_id: created_id,
         kind: "task".to_string(),
+    })
+}
+
+/// Clones a Commitment row as stored — verdict included, as a copied Task keeps its status — with
+/// its tags. A Commitment has no dependencies of its own to carry.
+async fn clone_commitment(
+    db: &mut Db<Transactional>,
+    item: &PendingClone,
+) -> Result<ClonedNode, AppError> {
+    let created_id = db
+        .commitments()
+        .copy_row(
+            CommitmentId(item.old_id),
+            collapse_parent_kind(&item.new_parent_kind),
+            item.new_parent_id,
+        )
+        .await?;
+    Ok(ClonedNode {
+        new_id: created_id,
+        kind: "commitment".to_string(),
+    })
+}
+
+/// Clones a wait row as stored — status, archive, its checks and its agent fields — with its
+/// tags. A wait has no dependencies of its own; a Task that waits on it keeps waiting on the
+/// original, as every copied dependency does.
+async fn clone_expectation(
+    db: &mut Db<Transactional>,
+    item: &PendingClone,
+) -> Result<ClonedNode, AppError> {
+    let created_id = db
+        .expectations()
+        .copy_row(
+            ExpectationId(item.old_id),
+            collapse_parent_kind(&item.new_parent_kind),
+            item.new_parent_id,
+        )
+        .await?;
+    Ok(ClonedNode {
+        new_id: created_id,
+        kind: "expectation".to_string(),
     })
 }
 

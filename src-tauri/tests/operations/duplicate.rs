@@ -22,17 +22,21 @@ use arlesh_lib::{
     duplicate::{duplicate_subtree, DuplicableKind},
     flows::{
         self,
-        model::{ClockKind, CreateFlowRequest, Flow, InstanceType, SetRecurrenceRequest},
+        model::{
+            ClockKind, CreateFlowItemRequest, CreateFlowRequest, Flow, InstanceType,
+            SetRecurrenceRequest, StartFlowRequest, TargetRef,
+        },
     },
     infos::model::{CreateInfoRequest, InfoId, UpdateInfoRequest},
     knowledge_base::model::CreatePersonRequest,
     nodes::key::{OccurrenceKey, TemplateItem, TemplateKind},
     scopes::{key::ScopeKey, model::ScopeKind},
     tasks::{
-        add_task_dependency, create_goal, create_task,
+        add_task_dependency, create_commitment, create_expectation, create_goal, create_task,
         model::{
-            CreateGoalRequest, CreateTaskRequest, Dependency, GoalId, GoalStatus, OnScopeExit,
-            TaskAgentic, TaskArchival, TaskId, TimeScope, UpdateGoalRequest, UpdateTaskRequest,
+            CreateCommitmentRequest, CreateExpectationRequest, CreateGoalRequest,
+            CreateTaskRequest, Dependency, GoalId, GoalStatus, OnScopeExit, TaskAgentic,
+            TaskArchival, TaskId, TimeScope, UpdateGoalRequest, UpdateTaskRequest, Verdict,
         },
         update_goal, update_task,
     },
@@ -1121,4 +1125,252 @@ async fn a_row_hung_on_an_occurrence_is_left_behind_and_named_not_copied_loose()
         count_titled(&pool, "infos", "body", "oat, not soy").await,
         1
     );
+}
+
+// ===========================================================================
+// Commitments, waits and started instances under a copied node (e2c)
+// ===========================================================================
+
+#[tokio::test]
+async fn commitments_and_waits_under_a_copied_project_come_with_their_subtrees() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let aspect = growth_aspect_id(&pool).await;
+    let project = make_domain(&pool, "Health", DomainSubtype::Project, aspect).await;
+    let week = week_scope(&pool, NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()).await;
+
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    let prep = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Prep meals".into(),
+            parent_type: "project".into(),
+            parent_id: project.into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let pledge = create_commitment(
+        &mut db,
+        CreateCommitmentRequest {
+            title: "No sugar".into(),
+            parent_type: "task".into(),
+            parent_id: prep.id.clone(),
+            verdict: Some(Verdict::Kept),
+            time_scope: Some(at(week)),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Clear the cupboard".into(),
+            parent_type: "commitment".into(),
+            parent_id: pledge.id.clone(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let wait = create_expectation(
+        &mut db,
+        CreateExpectationRequest {
+            title: "Hear from the dietician".into(),
+            parent_type: "project".into(),
+            parent_id: project.into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    db.infos()
+        .create(CreateInfoRequest {
+            body: "Called Tuesday".into(),
+            details: None,
+            parent_type: "expectation".into(),
+            parent_id: wait.id.clone(),
+            position: 0,
+        })
+        .await
+        .unwrap();
+    let waiting = create_task(
+        &mut db,
+        CreateTaskRequest {
+            title: "Book the follow-up".into(),
+            parent_type: "project".into(),
+            parent_id: project.into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    add_task_dependency(
+        &mut db,
+        TaskId(waiting.id.sid()),
+        Dependency::Expectation { id: wait.id.sid() },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+    sqlx::query(
+        "INSERT INTO wait_checks (wait_kind, wait_id, due_at, resolved_at)
+         VALUES ('stored', ?, '2026-01-06T09:00:00', '2026-01-06T10:00:00')",
+    )
+    .bind(wait.id.sid())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    duplicate_domain(app.state(), project, aspect, 9)
+        .await
+        .unwrap();
+
+    // The Commitment comes as stored — its verdict too, as a Task keeps its status — under the
+    // copied Task, with its own child.
+    let pledges: Vec<(String, i64, String)> = sqlx::query_as(
+        "SELECT parent_type, parent_id, verdict FROM commitments WHERE title = 'No sugar' ORDER BY id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let [_, (parent_type, parent_id, verdict)] = pledges.try_into().unwrap();
+    assert_eq!((parent_type.as_str(), verdict.as_str()), ("task", "kept"));
+    assert_ne!(parent_id, prep.id.sid(), "it hangs under the copied Task");
+    assert_eq!(
+        count_titled(&pool, "tasks", "title", "Clear the cupboard").await,
+        2
+    );
+
+    // The wait comes with its note and its checks.
+    let waits: Vec<i64> = sqlx::query_scalar(
+        "SELECT id FROM expectations WHERE title = 'Hear from the dietician' ORDER BY id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let [_, wait_copy] = waits.try_into().unwrap();
+    assert_eq!(
+        count_titled(&pool, "infos", "body", "Called Tuesday").await,
+        2
+    );
+    let checks: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM wait_checks WHERE wait_kind = 'stored' AND wait_id = ?",
+    )
+    .bind(wait_copy)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(checks, 1);
+
+    // A copied Task's dependency on the wait stays as stored: on the original.
+    let copied_waiting: i64 =
+        sqlx::query_scalar("SELECT id FROM tasks WHERE title = 'Book the follow-up' AND id <> ?")
+            .bind(waiting.id.sid())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let dependencies = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .tasks()
+        .list_dependencies(TaskId(copied_waiting))
+        .await
+        .unwrap();
+    assert!(
+        matches!(dependencies.as_slice(), [Dependency::Expectation { id }] if *id == wait.id.sid()),
+        "{dependencies:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_copied_started_instance_still_reads_from_the_original_flow() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let aspect = growth_aspect_id(&pool).await;
+    let project = make_domain(&pool, "Product", DomainSubtype::Project, aspect).await;
+    let flow = flow_commands::create_flow(
+        app.state(),
+        CreateFlowRequest {
+            title: "Release".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "project".into(),
+            parent_id: project,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    flow_commands::create_flow_task(
+        app.state(),
+        CreateFlowItemRequest {
+            flow_id: flow.id,
+            title: "Tag the build".into(),
+            parent_type: "flow".into(),
+            parent_id: flow.id,
+        },
+    )
+    .await
+    .unwrap();
+    let started = flow_commands::start_flow(
+        app.state(),
+        flow.id,
+        StartFlowRequest {
+            title: "Release 1.0".into(),
+            target_type: "project".into(),
+            target_id: project,
+            anchor_date: NaiveDate::from_ymd_opt(2026, 1, 5).unwrap(),
+        },
+    )
+    .await
+    .unwrap();
+
+    duplicate_domain(app.state(), project, aspect, 9)
+        .await
+        .unwrap();
+
+    let copied: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT 'task', id FROM tasks WHERE title IN ('Release 1.0', 'Tag the build') AND id NOT IN
+           (SELECT node_id FROM flow_instance_nodes WHERE flow_instance_id =
+              (SELECT id FROM flow_instances ORDER BY id LIMIT 1))
+         ORDER BY id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(copied.len(), 2, "the root and its step were copied");
+    let refs = copied
+        .iter()
+        .map(|(node_type, node_id)| TargetRef {
+            node_type: node_type.clone(),
+            node_id: *node_id,
+        })
+        .collect();
+    let origins = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .flows()
+        .origins(refs)
+        .await
+        .unwrap();
+    assert_eq!(origins.len(), 2, "each copy still reads 'from flow'");
+
+    // The Flow itself was copied too, but the copies are recorded against the original.
+    let runs: Vec<(Option<i64>, String, i64)> =
+        sqlx::query_as("SELECT flow_id, root_type, root_id FROM flow_instances ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    let [(first, _, root), (second, _, copied_root)] = runs.try_into().unwrap();
+    assert_eq!(root, started.root_id);
+    assert_eq!((first, second), (Some(flow.id), Some(flow.id)));
+    assert_eq!(
+        copied_root, copied[0].1,
+        "the copied run is rooted at the copied root"
+    );
+    assert_eq!(flows_titled(&pool, "Release").await.len(), 2);
 }
