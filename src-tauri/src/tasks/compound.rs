@@ -6,21 +6,18 @@
 //! [`crate::tasks::rules::compound`]. Its public names are re-exported here, so callers did not
 //! change when it moved (ADR 0010).
 
-use std::collections::HashMap;
-
 use chrono::NaiveDateTime;
 
 use crate::{
     database::session::{Db, SessionMode, Transactional},
     error::AppError,
-    nodes::{id::NodeId, waits::derive_waits},
+    nodes::{id::NodeId, waits::WaitData},
 };
 
 use super::{
-    lifecycle::{effective_due, Archival},
-    model::{Task, TaskArchival, TaskId, TimeScope, UpdateTaskRequest},
-    rules::compound::delegated_done,
-    scope_rules::{scope_governance_with, OccurrenceExit},
+    model::{TaskId, UpdateTaskRequest},
+    rules::{ancestry::AncestryIndex, compound::settle_in},
+    scope_rules,
 };
 
 pub use super::rules::compound::{
@@ -30,69 +27,23 @@ pub use super::rules::compound::{
 
 pub mod instants;
 
-/// The most rounds [`settle`] takes. Each round settles at least one more level of compound
-/// Tasks nested inside each other, so only a board nested deeper than this could reach it.
-const MAX_ROUNDS: usize = 16;
-
 /// Draws the board's waits and derives every compound Task's status, until the two agree.
 ///
-/// A board with no compound Task costs exactly the one [`derive_waits`] it always did.
+/// A board with no compound Task costs exactly the one wait derivation it always did; one with
+/// some also reads the ancestry index each compound Task's governance is climbed over.
 #[tracing::instrument(skip(db, board))]
 pub async fn settle<M: SessionMode>(
     db: &mut Db<M>,
     now: NaiveDateTime,
     board: Board<'_>,
 ) -> Result<Settled, AppError> {
-    let Board {
-        tasks,
-        goals,
-        commitments,
-        expectations,
-        lifecycles,
-        settled,
-        instants,
-        exit,
-    } = board;
-    let mut waits = derive_waits(db, now, &*tasks).await?;
-    if !tasks.iter().any(|task| task.compound) {
-        return Ok(Settled {
-            waits,
-            outcomes: Vec::new(),
-        });
-    }
-    let governance = governance_of(db, &*tasks, exit).await?;
-    let mut drawn_for = delegated_done(&*tasks);
-    let mut outcomes = Vec::new();
-    for _ in 0..MAX_ROUNDS {
-        outcomes = derive(
-            &Rows {
-                tasks: &*tasks,
-                checks: &waits.tasks,
-                goals,
-                commitments,
-                expectations,
-                waits: &waits.expectations,
-                lifecycles: &*lifecycles,
-                wait_lifecycles: &waits.lifecycles,
-                settled,
-                instants,
-            },
-            &governance,
-            now,
-        );
-        apply(&outcomes, &mut *tasks, &mut *lifecycles);
-        let delegated = delegated_done(&*tasks);
-        if delegated == drawn_for {
-            return Ok(Settled { waits, outcomes });
-        }
-        drawn_for = delegated;
-        waits = derive_waits(db, now, &*tasks).await?;
-    }
-    tracing::warn!(
-        rounds = MAX_ROUNDS,
-        "compound tasks did not settle; serving the last round"
-    );
-    Ok(Settled { waits, outcomes })
+    let waits = WaitData::read(db).await?;
+    let ancestry = if board.tasks.iter().any(|task| task.compound) {
+        scope_rules::ancestry_index(db).await?
+    } else {
+        AncestryIndex::default()
+    };
+    settle_in(&waits.sources(), &ancestry, now, board)
 }
 
 /// Names the status a compound Task — stored, or a Habit occurrence — is showing, when `request`
@@ -122,35 +73,4 @@ pub async fn keep_derived_status(
         .find(|task| task.id == *id && task.compound)
         .map(|task| task.status.stored());
     Ok(())
-}
-
-/// Each compound stored Task's [`Governance`].
-async fn governance_of<M: SessionMode>(
-    db: &mut Db<M>,
-    tasks: &[Task],
-    exit: OccurrenceExit,
-) -> Result<HashMap<NodeId, Governance>, AppError> {
-    let mut out = HashMap::new();
-    for task in tasks.iter().filter(|task| task.compound) {
-        let Some(row) = task.id.stored() else {
-            continue;
-        };
-        let governed = scope_governance_with(db, "task", row, exit).await?;
-        let (window, on_exit) = governed.unzip();
-        let due = effective_due(
-            task.due_scope.as_ref().map(TimeScope::window),
-            governed,
-            task.archival == TaskArchival::Backlog,
-        );
-        out.insert(
-            task.id.clone(),
-            Governance {
-                window,
-                on_exit,
-                due,
-                stored: Archival::from(task.archival),
-            },
-        );
-    }
-    Ok(out)
 }

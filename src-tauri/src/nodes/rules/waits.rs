@@ -51,9 +51,9 @@ pub struct WaitBoardSources<'rows> {
     /// What the waits' windows are derived from.
     pub windows: WaitSources<'rows>,
     /// Every check task's overlay, tags and block reasons.
-    pub(in crate::nodes) checks: CheckState,
+    pub(in crate::nodes) checks: &'rows CheckState,
     /// Every derived wait's overlay and tags.
-    pub(in crate::nodes) waits: WaitState,
+    pub(in crate::nodes) waits: &'rows WaitState,
     /// Every Task overlay, by node key.
     pub task_overlays: &'rows HashMap<String, TaskOverlay>,
     /// The status and archive of every wait a Habit occurrence spawned, by the occurrence's key.
@@ -132,14 +132,14 @@ pub fn derive_waits_in(
     tasks: &[Task],
 ) -> Result<WaitRows, AppError> {
     let windows = waits::wait_windows(&sources.windows, now)?;
-    let state = &sources.checks;
+    let state = sources.checks;
     let stored: HashMap<i64, &Expectation> = sources
         .windows
         .expectations
         .iter()
         .filter_map(|expectation| Some((expectation.id.stored()?, expectation)))
         .collect();
-    let wait_state = &sources.waits;
+    let wait_state = sources.waits;
     let mut rows = WaitRows::default();
     for check in &windows.expectation_checks {
         let Some(wait) = stored.get(&check.expectation_id) else {
@@ -303,8 +303,8 @@ impl WaitRows {
         task: &Task,
         now: NaiveDateTime,
     ) -> Result<(), AppError> {
-        let state = &sources.checks;
-        let waits_state = &sources.waits;
+        let state = sources.checks;
+        let waits_state = sources.waits;
         let Some(template) = task.async_template.as_ref() else {
             return Ok(());
         };

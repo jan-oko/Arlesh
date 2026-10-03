@@ -24,10 +24,10 @@ use crate::scopes::resolve::{self, Bounds};
 use super::ancestry;
 use super::error::TaskError;
 use super::lifecycle::ItemLifecycle;
-use super::model::{CommitmentId, GoalId, OnScopeExit, TaskId, TimeScope};
+use super::model::{CommitmentId, GoalId, TaskId, TimeScope};
 use super::rules::ancestry::AncestryIndex;
 use super::rules::scope::{
-    check_containment, derive_item_lifecycles, governance, ContainmentWindows, LifecycleRows,
+    check_containment, derive_item_lifecycles, ContainmentWindows, LifecycleRows,
 };
 pub(super) use super::rules::scope::{is_overdue, WrittenTask};
 pub use super::rules::scope::{mark_waits_under_pending, wait_lifecycle, OccurrenceExit};
@@ -40,26 +40,6 @@ pub struct ViolatingDescendant {
     pub node_type: String,
     /// The descendant's id.
     pub node_id: i64,
-}
-
-/// The effective `(window, on-exit behavior)` governing an item: its own when explicitly scoped,
-/// else the nearest scoped ancestor's, or `None` when nothing above it is scoped (Unscoped). Unlike
-/// [`nearest_scoped_ancestor_window`], the chain includes the node itself — this one climbs from
-/// the node, the ancestor searches climb from its parent.
-///
-/// On the **read** path: a broken chain leaves the item unconstrained rather than failing, so one
-/// corrupt row cannot blank the whole mindmap. The break is logged rather than swallowed.
-///
-/// `exit` says whether a Habit occurrence's window governs what hangs on it — see
-/// [`OccurrenceExit`].
-pub(super) async fn scope_governance_with<M: SessionMode>(
-    db: &mut Db<M>,
-    node_type: &str,
-    node_id: i64,
-    exit: OccurrenceExit,
-) -> Result<Option<(Bounds, OnScopeExit)>, TaskError> {
-    let chain = ancestry::climb(db, node_type, node_id).await?;
-    Ok(governance(&chain, exit))
 }
 
 /// Derives the full lifecycle state (Timing / Resolution / Archival and the Overdue flag — see
@@ -110,6 +90,18 @@ pub async fn derive_scope_lifecycles<M: SessionMode>(
         now,
         exit,
     ))
+}
+
+/// Every stored scoped row's ancestry link, and every added child's occurrence, read once — what
+/// a whole board's chains are climbed over in memory ([`climb_in`](super::rules::ancestry::climb_in)).
+pub(super) async fn ancestry_index<M: SessionMode>(
+    db: &mut Db<M>,
+) -> Result<AncestryIndex, TaskError> {
+    let tasks = db.tasks().list().await?;
+    let goals = db.goals().list().await?;
+    let commitments = db.commitments().list().await?;
+    let attachments = db.flows().child_attachments().await?;
+    Ok(AncestryIndex::of(&tasks, &goals, &commitments, attachments))
 }
 
 /// The window of the nearest ancestor of `(parent_type, parent_id)` — itself included — that has

@@ -51,21 +51,127 @@ use std::collections::{HashMap, HashSet};
 use chrono::NaiveDateTime;
 
 use crate::{
-    nodes::{id::NodeId, origin::Origin, waits::WaitRows},
+    error::AppError,
+    nodes::{
+        id::NodeId,
+        origin::Origin,
+        rules::waits::{derive_waits_in, WaitBoardSources},
+        waits::WaitRows,
+    },
     scopes::resolve::Bounds,
 };
 
 use crate::tasks::{
     expectations::EXPECTATION,
-    lifecycle::{derive_item_state, Archival, DerivedState, ItemLifecycle},
+    lifecycle::{derive_item_state, effective_due, Archival, DerivedState, ItemLifecycle},
     model::{
         Commitment, Expectation, ExpectationArchival, ExpectationStatus, Goal, GoalStatus,
-        OnScopeExit, Status, Task, TaskStatus, Verdict,
+        OnScopeExit, Status, Task, TaskArchival, TaskStatus, TimeScope, Verdict,
     },
-    scope_rules::OccurrenceExit,
+    rules::{
+        ancestry::{climb_in, AncestryIndex},
+        scope::{governance, OccurrenceExit},
+    },
 };
 
 pub mod blocked;
+
+/// The most rounds [`settle`] takes. Each round settles at least one more level of compound
+/// Tasks nested inside each other, so only a board nested deeper than this could reach it.
+const MAX_ROUNDS: usize = 16;
+
+/// Draws the board's waits and derives every compound Task's status, until the two agree — what
+/// [`settle`](crate::tasks::compound::settle) reads the sources for.
+///
+/// A board with no compound Task draws its waits once and derives nothing more.
+pub fn settle_in(
+    waits_sources: &WaitBoardSources<'_>,
+    ancestry: &AncestryIndex,
+    now: NaiveDateTime,
+    board: Board<'_>,
+) -> Result<Settled, AppError> {
+    let Board {
+        tasks,
+        goals,
+        commitments,
+        expectations,
+        lifecycles,
+        settled,
+        instants,
+        exit,
+    } = board;
+    let mut waits = derive_waits_in(waits_sources, now, &*tasks)?;
+    if !tasks.iter().any(|task| task.compound) {
+        return Ok(Settled {
+            waits,
+            outcomes: Vec::new(),
+        });
+    }
+    let governance = governance_of(ancestry, &*tasks, exit);
+    let mut drawn_for = delegated_done(&*tasks);
+    let mut outcomes = Vec::new();
+    for _ in 0..MAX_ROUNDS {
+        outcomes = derive(
+            &Rows {
+                tasks: &*tasks,
+                checks: &waits.tasks,
+                goals,
+                commitments,
+                expectations,
+                waits: &waits.expectations,
+                lifecycles: &*lifecycles,
+                wait_lifecycles: &waits.lifecycles,
+                settled,
+                instants,
+            },
+            &governance,
+            now,
+        );
+        apply(&outcomes, &mut *tasks, &mut *lifecycles);
+        let delegated = delegated_done(&*tasks);
+        if delegated == drawn_for {
+            return Ok(Settled { waits, outcomes });
+        }
+        drawn_for = delegated;
+        waits = derive_waits_in(waits_sources, now, &*tasks)?;
+    }
+    tracing::warn!(
+        rounds = MAX_ROUNDS,
+        "compound tasks did not settle; serving the last round"
+    );
+    Ok(Settled { waits, outcomes })
+}
+
+/// Each compound stored Task's [`Governance`].
+fn governance_of(
+    ancestry: &AncestryIndex,
+    tasks: &[Task],
+    exit: OccurrenceExit,
+) -> HashMap<NodeId, Governance> {
+    let mut out = HashMap::new();
+    for task in tasks.iter().filter(|task| task.compound) {
+        let Some(row) = task.id.stored() else {
+            continue;
+        };
+        let governed = governance(&climb_in(ancestry, "task", row), exit);
+        let (window, on_exit) = governed.unzip();
+        let due = effective_due(
+            task.due_scope.as_ref().map(TimeScope::window),
+            governed,
+            task.archival == TaskArchival::Backlog,
+        );
+        out.insert(
+            task.id.clone(),
+            Governance {
+                window,
+                on_exit,
+                due,
+                stored: Archival::from(task.archival),
+            },
+        );
+    }
+    out
+}
 
 #[cfg(test)]
 mod tests;
@@ -302,7 +408,7 @@ pub struct Settled {
 
 /// Whether each delegated compound Task reads as done — what decides whether its delegation
 /// wait is drawn.
-pub(in crate::tasks) fn delegated_done(tasks: &[Task]) -> HashMap<NodeId, bool> {
+fn delegated_done(tasks: &[Task]) -> HashMap<NodeId, bool> {
     tasks
         .iter()
         .filter(|task| task.compound && task.delegate_to.is_some())
