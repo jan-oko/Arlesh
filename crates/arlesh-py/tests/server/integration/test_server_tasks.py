@@ -101,9 +101,7 @@ def test_when_a_task_was_done_reads_and_corrects(
     assert server.get(f"/tasks/{identifier}/done-at").json() == "2026-06-10T09:30:00"
 
 
-def test_an_undone_task_has_no_done_at(
-    server: TestClient, domain: int, new_task: NewTask
-) -> None:
+def test_an_undone_task_has_no_done_at(server: TestClient, domain: int, new_task: NewTask) -> None:
     assert server.get(f"/tasks/{new_task(domain)}/done-at").json() is None
 
 

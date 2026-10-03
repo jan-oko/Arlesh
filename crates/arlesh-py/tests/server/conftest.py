@@ -12,11 +12,11 @@ from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 import arlesh
+import pytest
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.ports.board.arlesh_databases import ArleshDatabases
+from arlesh.server.ports.mcp.arlesh_mcp_backend import ArleshMcpBackend
 from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 
 with warnings.catch_warnings():
@@ -67,9 +67,11 @@ def start(server_db: Path, tokens: FileTokenStore) -> Start:
 
     def build(*, force: bool = False, path: Path | None = None) -> ArleshServer:
         database = path if path is not None else server_db
+        databases = ArleshDatabases(database, force=force)
         return ArleshServer(
-            databases=ArleshDatabases(database, force=force),
+            databases=databases,
             tokens=FileTokenStore.beside(database) if path is not None else tokens,
+            mcp=ArleshMcpBackend(databases),
             version="test",
         )
 

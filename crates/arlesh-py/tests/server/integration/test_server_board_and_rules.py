@@ -8,9 +8,8 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
-from fastapi.testclient import TestClient
-
 import arlesh
+from fastapi.testclient import TestClient
 
 
 def test_the_board_is_every_node_in_one_request_with_its_lifecycle(

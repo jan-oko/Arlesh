@@ -8,12 +8,11 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
 
+import arlesh
 import pytest
+from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from fastapi.testclient import TestClient
 from loguru import logger
-
-import arlesh
-from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 
 Start = Callable[..., Any]
 Hold = Callable[[], AbstractContextManager[None]]
@@ -114,9 +113,7 @@ def test_a_client_first_writing_after_the_app_took_the_database_is_refused_403(
 ) -> None:
     late = tokens.add("late-comer")
     with app_hold():
-        response = server.post(
-            "/domains", json=DOMAIN, headers={"Authorization": f"Bearer {late}"}
-        )
+        response = server.post("/domains", json=DOMAIN, headers={"Authorization": f"Bearer {late}"})
 
     assert response.status_code == 403
     assert response.json()["kind"] == "not_permitted"

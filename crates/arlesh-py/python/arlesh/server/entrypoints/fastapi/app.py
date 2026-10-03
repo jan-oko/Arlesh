@@ -26,12 +26,14 @@ from arlesh.server.entrypoints.fastapi.routers.flow_items import FlowItemsRouter
 from arlesh.server.entrypoints.fastapi.routers.flows import FlowsRouter
 from arlesh.server.entrypoints.fastapi.routers.goals import GoalsRouter
 from arlesh.server.entrypoints.fastapi.routers.infos import InfosRouter
+from arlesh.server.entrypoints.fastapi.routers.mcp import McpRouter
 from arlesh.server.entrypoints.fastapi.routers.nodes import NodesRouter
 from arlesh.server.entrypoints.fastapi.routers.scopes import RulesRouter, ScopesRouter
 from arlesh.server.entrypoints.fastapi.routers.tasks import TasksRouter
 from arlesh.server.entrypoints.fastapi.routers.waits import WaitsRouter
 from arlesh.server.entrypoints.fastapi.security_scheme import BearerTokenSecurityScheme
 from arlesh.server.ports.board.databases import Databases
+from arlesh.server.ports.mcp.mcp_backend import McpBackend
 from arlesh.server.ports.tokens.token_store import TokenStore
 
 DESCRIPTION = """\
@@ -44,6 +46,8 @@ Arlesh's board over HTTP, run by Arlesh's own Rust core through the `arlesh` bin
 * **422** means *send it again with more*: `needs_confirmation` (add `?confirmed=true`, or for
   cycles a `reconcile`) or `needs_time_scope` (add a `time_scope`).
 * An update's field left out is unchanged; `null` clears it.
+* **`/mcp`** is Arlesh's MCP endpoint, behind the same token: an agent's writes there are
+  journaled under the token's client.
 """
 
 
@@ -56,6 +60,7 @@ class AppRouter(APIRouter):
         databases: Databases,
         client_context: ContextVar[str],
         security_scheme: BearerTokenSecurityScheme,
+        mcp_router: McpRouter,
     ) -> None:
         super().__init__(dependencies=[Depends(security_scheme.validate_auth)])
         board = (databases, client_context)
@@ -71,6 +76,7 @@ class AppRouter(APIRouter):
         self.include_router(NodesRouter(*board, tag="nodes"), prefix="/nodes")
         self.include_router(ScopesRouter(), prefix="/scopes")
         self.include_router(RulesRouter(), prefix="/rules")
+        self.include_router(mcp_router, prefix="/mcp")
 
 
 class ArleshServer(FastAPI):
@@ -80,16 +86,23 @@ class ArleshServer(FastAPI):
     databases were made with ``force`` — so a server that is up is one that may write.
     """
 
-    def __init__(self, *, databases: Databases, tokens: TokenStore, version: str) -> None:
-        super().__init__(
-            title="Arlesh", description=DESCRIPTION, version=version, lifespan=lifespan(databases)
-        )
+    def __init__(
+        self, *, databases: Databases, tokens: TokenStore, mcp: McpBackend, version: str
+    ) -> None:
         client_context: ContextVar[str] = ContextVar("arlesh_client")
+        mcp_router = McpRouter(mcp, client_context)
+        super().__init__(
+            title="Arlesh",
+            description=DESCRIPTION,
+            version=version,
+            lifespan=lifespan(databases, closers=[mcp_router.aclose]),
+        )
         self.include_router(
             AppRouter(
                 databases=databases,
                 client_context=client_context,
                 security_scheme=BearerTokenSecurityScheme(tokens, client_context),
+                mcp_router=mcp_router,
             )
         )
         self.add_middleware(RequestLoggingMiddleware)
