@@ -4,8 +4,11 @@
 //! Pure. The checks and spawned waits they read are loaded in [`crate::tasks::waits`], which
 //! re-exports these names (ADR 0010).
 
+use std::collections::HashMap;
+
 use chrono::{NaiveDate, NaiveDateTime, Timelike};
 
+use crate::nodes::wait_overlay::ExpectationOverlay;
 use crate::scopes::key::ScopeKey;
 use crate::scopes::model::ScopeKind;
 use crate::scopes::resolve::DAY_BOUNDARY_HOUR;
@@ -14,6 +17,9 @@ use crate::tasks::lifecycle::advance_by;
 use crate::tasks::model::{
     AsyncTemplate, DurationSpec, Expectation, ExpectationArchival, ExpectationStatus, SpawnedWait,
     TimeScope,
+};
+use crate::tasks::waits::{
+    CheckRecord, DoneCheck, ExpectationCheck, SpawnedWaitView, WaitRef, WaitWindows,
 };
 
 /// `at` moved on by one Check every. Beside the four scope kinds a Duration counts in, a check can
@@ -108,7 +114,7 @@ pub struct SpawnedSchedule {
 pub fn spawned_schedule(
     template: &AsyncTemplate,
     spawned_at: Option<NaiveDateTime>,
-    overlay: &crate::nodes::wait_overlay::ExpectationOverlay,
+    overlay: &ExpectationOverlay,
 ) -> Result<SpawnedSchedule, TaskError> {
     let time_scope = match overlay.time_scope() {
         Some(own) => own,
@@ -210,4 +216,105 @@ impl WaitProgress {
             check_starting: None,
         }
     }
+}
+
+/// What a board's wait windows are derived from: the stored waits and every completed check, the
+/// waits stored Tasks spawned with their templates, and the spawned waits' overlays.
+pub struct WaitSources<'rows> {
+    /// The stored Expectations.
+    pub expectations: &'rows [Expectation],
+    /// Every completed check, by the wait it is on, oldest first.
+    pub checks: &'rows HashMap<WaitRef, Vec<CheckRecord>>,
+    /// The waits stored Tasks spawned.
+    pub spawned: &'rows [SpawnedWait],
+    /// Each Asynchronous Task's Expectation template, by Task id.
+    pub templates: &'rows HashMap<i64, AsyncTemplate>,
+    /// Every derived wait's Expectation overlay, by node key.
+    pub overlays: &'rows HashMap<String, ExpectationOverlay>,
+}
+
+impl WaitSources<'_> {
+    /// The completed checks on `wait`, oldest first.
+    fn checks_on(&self, wait: &WaitRef) -> &[CheckRecord] {
+        self.checks.get(wait).map_or(&[], Vec::as_slice)
+    }
+}
+
+/// Derives [`WaitWindows`] at `now`. A check is listed only once it is due — its check task exists
+/// from then until it is completed — and a wait that is released or archived has none: once it is
+/// over, nothing more is generated.
+pub fn wait_windows(
+    sources: &WaitSources<'_>,
+    now: NaiveDateTime,
+) -> Result<WaitWindows, TaskError> {
+    let mut windows = WaitWindows::default();
+    for expectation in sources.expectations {
+        let Some(expectation_id) = expectation.id.stored() else {
+            continue;
+        };
+        // Every completed check stays on the board as a done check task.
+        for done in sources.checks_on(&WaitRef::Stored(expectation_id)) {
+            windows.expectation_checks.push(ExpectationCheck {
+                expectation_id,
+                due: check_window(done.due_at),
+                due_at: done.due_at,
+                resolved_at: Some(done.resolved_at),
+            });
+        }
+        if let Some(due) = stored_check_due(expectation).filter(|due| is_due(*due, now)) {
+            windows.expectation_checks.push(ExpectationCheck {
+                expectation_id,
+                due: check_window(due),
+                due_at: due,
+                resolved_at: None,
+            });
+        }
+    }
+    for wait in sources.spawned {
+        let Some(template) = sources.templates.get(&wait.task_id) else {
+            continue;
+        };
+        let key = spawned_key(wait.task_id);
+        let overlay = sources.overlays.get(&key).cloned().unwrap_or_default();
+        let schedule = spawned_schedule(template, wait.spawned_at, &overlay)?;
+        let progress = WaitProgress {
+            check_starting: schedule.check_starting,
+            ..WaitProgress::of(wait)
+        };
+        let due = schedule
+            .check_every
+            .as_ref()
+            .and_then(|every| next_spawned_check(&progress, every, now))
+            .filter(|due| is_due(*due, now));
+        let check_starting = schedule
+            .check_every
+            .as_ref()
+            .and_then(|every| first_spawned_check(&progress, every));
+        let next_check = due.map(check_window);
+        // Checks from an earlier completion of the Task belong to that one, not this.
+        let mut done_checks = Vec::new();
+        for done in sources.checks_on(&WaitRef::Spawned(wait.task_id)) {
+            if wait
+                .spawned_at
+                .is_some_and(|began| done.resolved_at < began)
+            {
+                continue;
+            }
+            done_checks.push(DoneCheck {
+                due: check_window(done.due_at),
+                due_at: done.due_at,
+                resolved_at: done.resolved_at,
+            });
+        }
+        windows.spawned_waits.push(SpawnedWaitView {
+            wait: wait.clone(),
+            time_scope: schedule.time_scope,
+            check_every: schedule.check_every,
+            check_starting,
+            next_check,
+            next_check_at: due,
+            done_checks,
+        });
+    }
+    Ok(windows)
 }

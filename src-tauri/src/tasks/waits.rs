@@ -16,6 +16,8 @@
 //! anchored to when the check was made, not to the schedule, so a late check does not leave a run
 //! of overdue ones behind it.
 
+use std::collections::HashMap;
+
 use chrono::NaiveDateTime;
 use serde::Serialize;
 
@@ -31,7 +33,7 @@ use super::TaskOperator;
 pub use super::rules::waits::{
     advance_check, check_window, day_of, first_spawned_check, is_due, next_check_due,
     next_spawned_check, spawned_check_due, spawned_key, spawned_schedule, stored_check_due,
-    window_from_rule, SpawnedSchedule, WaitProgress,
+    wait_windows, window_from_rule, SpawnedSchedule, WaitProgress, WaitSources,
 };
 
 /// How an instant is spelled in a TEXT column: ISO-8601 to the second, no zone.
@@ -56,6 +58,14 @@ struct TemplateRow {
     time_scope_kind: Option<String>,
     check_every_n: Option<i64>,
     check_every_kind: Option<String>,
+}
+
+/// A task's template row, with the task it belongs to, as a whole board reads it.
+#[derive(sqlx::FromRow)]
+struct KeyedTemplateRow {
+    task_id: i64,
+    #[sqlx(flatten)]
+    template: TemplateRow,
 }
 
 /// A derived wait's Task, joined to its overlay if it has one.
@@ -241,6 +251,69 @@ impl TaskOperator<'_> {
         Ok(rows.into_iter().filter_map(CheckRow::into_record).collect())
     }
 
+    /// Every completed check, by the wait it is on, oldest first — what [`Self::wait_checks`] reads
+    /// one wait at a time, for a whole board.
+    pub async fn all_wait_checks(
+        &mut self,
+    ) -> Result<HashMap<WaitRef, Vec<CheckRecord>>, TaskError> {
+        let rows = sqlx::query_as::<_, KeyedCheckRow>(
+            "SELECT wait_kind, wait_id, wait_key, due_at, resolved_at FROM wait_checks
+             ORDER BY resolved_at, due_at",
+        )
+        .fetch_all(&mut *self.connection)
+        .await?;
+        let mut checks: HashMap<WaitRef, Vec<CheckRecord>> = HashMap::new();
+        for row in rows {
+            let wait = match (row.wait_kind.as_str(), row.wait_id, row.wait_key) {
+                ("stored", Some(id), None) => WaitRef::Stored(id),
+                ("spawned", Some(id), None) => WaitRef::Spawned(id),
+                ("occurrence", None, Some(key)) => WaitRef::Occurrence(key),
+                _ => continue,
+            };
+            if let Some(record) = row.check.into_record() {
+                checks.entry(wait).or_default().push(record);
+            }
+        }
+        Ok(checks)
+    }
+
+    /// Every Asynchronous Task's Expectation template, with its tags, by Task id — what
+    /// [`Self::async_template`] reads one Task at a time, for a whole board.
+    pub async fn async_templates(&mut self) -> Result<HashMap<i64, AsyncTemplate>, TaskError> {
+        let rows = sqlx::query_as::<_, KeyedTemplateRow>(
+            "SELECT task_id, title, time_scope_n, time_scope_kind, check_every_n, check_every_kind
+             FROM task_async_templates",
+        )
+        .fetch_all(&mut *self.connection)
+        .await?;
+        let tags: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT task_id, tag_id FROM tags_on_async_templates ORDER BY task_id, tag_id",
+        )
+        .fetch_all(&mut *self.connection)
+        .await?;
+        let mut templates: HashMap<i64, AsyncTemplate> = rows
+            .into_iter()
+            .map(|row| {
+                let template = AsyncTemplate {
+                    title: row.template.title,
+                    tag_ids: Vec::new(),
+                    time_scope: duration(row.template.time_scope_n, row.template.time_scope_kind),
+                    check_every: duration(
+                        row.template.check_every_n,
+                        row.template.check_every_kind,
+                    ),
+                };
+                (row.task_id, template)
+            })
+            .collect();
+        for (task_id, tag_id) in tags {
+            if let Some(template) = templates.get_mut(&task_id) {
+                template.tag_ids.push(tag_id);
+            }
+        }
+        Ok(templates)
+    }
+
     /// Records the check due at `due_at` as completed at `resolved_at`.
     pub(crate) async fn record_check(
         &mut self,
@@ -373,6 +446,16 @@ impl CheckRow {
     }
 }
 
+/// A completed check, with the wait it is on, as a whole board reads it.
+#[derive(sqlx::FromRow)]
+struct KeyedCheckRow {
+    wait_kind: String,
+    wait_id: Option<i64>,
+    wait_key: Option<String>,
+    #[sqlx(flatten)]
+    check: CheckRow,
+}
+
 /// One completed check on a wait.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct CheckRecord {
@@ -468,85 +551,21 @@ pub async fn derive_wait_windows<M: SessionMode>(
     db: &mut Db<M>,
     now: NaiveDateTime,
 ) -> Result<WaitWindows, TaskError> {
-    let mut windows = WaitWindows::default();
-    for expectation in db.expectations().list().await? {
-        let Some(expectation_id) = expectation.id.stored() else {
-            continue;
-        };
-        // Every completed check stays on the board as a done check task.
-        for done in db
-            .tasks()
-            .wait_checks(&WaitRef::Stored(expectation_id))
-            .await?
-        {
-            windows.expectation_checks.push(ExpectationCheck {
-                expectation_id,
-                due: check_window(done.due_at),
-                due_at: done.due_at,
-                resolved_at: Some(done.resolved_at),
-            });
-        }
-        if let Some(due) = stored_check_due(&expectation).filter(|due| is_due(*due, now)) {
-            windows.expectation_checks.push(ExpectationCheck {
-                expectation_id,
-                due: check_window(due),
-                due_at: due,
-                resolved_at: None,
-            });
-        }
-    }
+    let expectations = db.expectations().list().await?;
+    let checks = db.tasks().all_wait_checks().await?;
+    let spawned = db.tasks().spawned_waits().await?;
+    let templates = db.tasks().async_templates().await?;
     let overlays = db.overlays().expectations().await?;
-    for wait in db.tasks().spawned_waits().await? {
-        let Some(template) = db.tasks().async_template(TaskId(wait.task_id)).await? else {
-            continue;
-        };
-        let key = spawned_key(wait.task_id);
-        let overlay = overlays.get(&key).cloned().unwrap_or_default();
-        let schedule = spawned_schedule(&template, wait.spawned_at, &overlay)?;
-        let progress = WaitProgress {
-            check_starting: schedule.check_starting,
-            ..WaitProgress::of(&wait)
-        };
-        let due = schedule
-            .check_every
-            .as_ref()
-            .and_then(|every| next_spawned_check(&progress, every, now))
-            .filter(|due| is_due(*due, now));
-        let check_starting = schedule
-            .check_every
-            .as_ref()
-            .and_then(|every| first_spawned_check(&progress, every));
-        let next_check = due.map(check_window);
-        // Checks from an earlier completion of the Task belong to that one, not this.
-        let mut done_checks = Vec::new();
-        for done in db
-            .tasks()
-            .wait_checks(&WaitRef::Spawned(wait.task_id))
-            .await?
-        {
-            if wait
-                .spawned_at
-                .is_some_and(|began| done.resolved_at < began)
-            {
-                continue;
-            }
-            done_checks.push(DoneCheck {
-                due: check_window(done.due_at),
-                due_at: done.due_at,
-                resolved_at: done.resolved_at,
-            });
-        }
-        windows.spawned_waits.push(SpawnedWaitView {
-            wait,
-            time_scope: schedule.time_scope,
-            check_every: schedule.check_every,
-            check_starting,
-            next_check,
-            next_check_at: due,
-            done_checks,
-        });
-    }
-    Ok(windows)
+    wait_windows(
+        &WaitSources {
+            expectations: &expectations,
+            checks: &checks,
+            spawned: &spawned,
+            templates: &templates,
+            overlays: &overlays,
+        },
+        now,
+    )
 }
 
 /// Releases, un-releases or archives a task's spawned wait. Refused when there is none — the task
