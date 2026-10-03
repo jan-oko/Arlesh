@@ -385,13 +385,27 @@ How the presets read them:
 ## 8. Keeping it honest
 
 ### The undo journal
-- **Is:** SQL triggers on every journaled table record each row's before and after image. One gesture is one step, and Ctrl+Z replays it in reverse, across windows. MCP writes are journaled as the agent's and are not undoable from the app.
+- **Is:** SQL triggers on every journaled table record each row's before and after image. One gesture is one step, and Ctrl+Z replays it in reverse, across windows. MCP writes are journaled as the agent's, and another client's writes as that client's; neither is undoable from the app.
 - **Why:** a trigger can't be forgotten by a command that doesn't know it exists.
 - **Without:** an inverse to write for every one of eighty-odd commands, with the next one missing it.
 - **Lives:**
   - `rs:undo/`, and `scripts/generate-undo-triggers.sh`, which a test compares against the schema.
   - [ADR 0006](adr/0006-undo-via-a-trigger-written-row-journal.md) covers the trigger-written journal.
 - **Spec:** [Undo](spec/undo.md).
+
+### Clients and a second writer
+- **Is:** every write is journaled with the client it came through: the desktop app is `desktop`, and anything else that opens the database to write (a Python session through the bindings) names itself.
+  - The client is a second axis beside the source: source is who acted (you or an agent), client is which program carried it. An MCP write is source `mcp` from client `desktop`.
+  - The app's Ctrl+Z takes only `user` entries from `desktop`.
+  - The app holds the database while it runs (a lock file beside it). Another writer is refused unless it forces; reading is never refused.
+  - A write-open migrates; a read-only open never does, and refuses a schema that is behind. A schema newer than the build is refused either way.
+- **Why:** more than one program writes the board now, and each must be able to tell its own changes from another's.
+- **Without:** Ctrl+Z in the app would reverse what a script did, and a script could rewrite rows under the app's open windows without anyone being warned.
+- **Lives:**
+  - `rs:database/client.rs`, `rs:database/hold.rs`, `rs:database/open.rs` and `rs:database/rules.rs`; `SessionFactory::begin` stamps the client.
+  - Migration 0092 adds the column and the stamping trigger; `rs:undo/` filters the stack by client.
+  - `crates/arlesh-py/` is the Python host.
+- **Spec:** [Undo](spec/undo.md), *Clients, and a second writer*.
 
 ### Migrations
 - **Is:** numbered schema steps, applied in order and never edited once applied. Data is moved aside, never dropped; for example, `retired_beads_ids` from 0091.
