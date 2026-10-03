@@ -246,9 +246,17 @@ export interface MindmapNode {
   /** A Task's own explicit **due** (Tasks only); absent or `null` takes the default. */
   dueScope?: TimeScope | null;
   /** The nearest scoped ancestor's Time Scope — the window a node with none of its own inherits.
-   * Resolved on load by `propagateInheritedScope`, never persisted; `null` when nothing above is
-   * scoped. */
+   * The backend's rule, read off the load's facts; absent when nothing above is scoped. */
   inheritedTimeScope?: TimeScope | null;
+  /** The open agentic question beneath a Task — the wait that makes it read Review — by its row id.
+   * The backend's rule, read off the load's facts. */
+  openQuestionId?: RowId;
+  /** A Commitment whose Verdict Window ran out before anything was recorded. The backend's rule,
+   * read off the load's facts. */
+  expired?: boolean;
+  /** A Task Done, a Goal Achieved, a wait no longer pending: depended on, it no longer holds its
+   * dependents back. The backend's rule, read off the load's facts. */
+  met?: boolean;
   /** Effective archived-ness (Task/Goal only) — true forces the archived badge/filter regardless of
    * `status`; may diverge from a manually-set Frozen `status` (see `archivalConflict`). */
   archived?: boolean;
@@ -264,9 +272,9 @@ export interface MindmapNode {
    * `null`/absent means it has none of its own and reads its nearest flagged ancestor's instead
    * (see `inheritedAgentic`). Independent of the delegate: a Task can be both. */
   agentic?: boolean | null;
-  /** What this node's ancestors say about Agentic — resolved on load by `propagateAgentic`, never
-   * persisted. Read together with `agentic` through `isAgentic`, never on its own: an explicit
-   * `agentic: false` overrides an agentic ancestor. */
+  /** What this node's ancestors say about Agentic — the backend's rule, read off the load's facts,
+   * never persisted. Read together with `agentic` through `isAgentic`, never on its own: an
+   * explicit `agentic: false` overrides an agentic ancestor. */
   inheritedAgentic?: boolean;
   /** Who holds this Task, when it is delegated (Tasks only): a Person. The task's **own** stored
    * delegate — absent or `null` when it has none of its own. */

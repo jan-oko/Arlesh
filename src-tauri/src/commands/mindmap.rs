@@ -13,6 +13,10 @@ use crate::{
 /// resource-wide lists plus a per-flow iterations/statuses pair — which were paid again after
 /// every edit.
 ///
+/// What the board says about each node beyond its row — which dependencies block it, what it
+/// inherits, its open question — and what the agents are doing come with it
+/// ([`crate::mindmap::rules::facts`]), so the app reads them rather than working them out.
+///
 /// The agent capacity lock's block is derived onto it here (see [`crate::capacity::blocks`]), so
 /// the board a window draws is blocked exactly as the MCP's is.
 ///
@@ -31,5 +35,8 @@ pub async fn load_mindmap(
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
     load.short_ids = crate::mcp::ids::board_short_ids(&load);
+    let (facts, activity) = mindmap::rules::facts::derive(&load);
+    load.facts = facts;
+    load.agent_activity = Some(activity);
     Ok(load)
 }

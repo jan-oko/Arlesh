@@ -242,7 +242,7 @@ export default function ZenView() {
           renderGlyph={(node, r) => (
             <CommitmentIcon
               cx={r} cy={r} r={r * 0.9} color="var(--text-primary)" opacity={1}
-              state={commitmentGlyphState(node.verdict, node.archived === true)}
+              state={commitmentGlyphState(node.verdict, node.expired === true)}
             />
           )}
           selectedId={activeId}

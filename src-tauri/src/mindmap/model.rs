@@ -7,9 +7,10 @@ use crate::{
     domains::model::Domain,
     flows::model::{Flow, FlowDependency, FlowGoal, FlowItemCycle, FlowTask, TargetRef},
     infos::model::Info,
+    nodes::id::NodeId,
     tasks::{
         lifecycle::ItemLifecycle,
-        model::{Commitment, Expectation, Goal, Task, TaskDependencyEdge},
+        model::{Commitment, Expectation, Goal, Task, TaskDependencyEdge, TimeScope},
     },
 };
 
@@ -94,4 +95,64 @@ pub struct MindmapLoad {
     /// off the wire, everywhere else — the MCP names nodes among those it can see.
     #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub short_ids: std::collections::HashMap<String, String>,
+    /// What the board says about each node beyond its own row, keyed as [`Self::short_ids`] is:
+    /// which of its dependencies block it, what it inherits, its open question, whether it has
+    /// expired. Filled by the app's load only, as [`Self::short_ids`] is.
+    #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub facts: std::collections::HashMap<String, NodeFacts>,
+    /// What the agents are doing on the whole board. Filled by the app's load only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_activity: Option<AgentActivity>,
+}
+
+/// A dependency a Task is blocked by: its target, which is not Done, Achieved or released yet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DependencyBlock {
+    /// What is depended on: `task`, `goal` or `expectation`.
+    pub kind: String,
+    /// The target's row id.
+    pub id: NodeId,
+    /// The target's short id, when the board has one for it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub short_id: Option<String>,
+    /// The target's title.
+    pub title: String,
+}
+
+/// What the board says about one node beyond its own row. Every field is left off the wire at
+/// its default.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct NodeFacts {
+    /// Whether the node's ancestors read as Agentic — what it reads as when it has no flag of its
+    /// own: the nearest flag above it, else not.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub inherited_agentic: bool,
+    /// The Time Scope the node inherits: the nearest scoped ancestor's, when it has none of its
+    /// own to replace it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inherited_time_scope: Option<TimeScope>,
+    /// The dependencies a Task is blocked by, in edge order.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub dependency_blocks: Vec<DependencyBlock>,
+    /// The open agentic question beneath a Task — the wait that makes it read Review.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub open_question: Option<NodeId>,
+    /// Whether a Commitment's Verdict Window ran out before anything was recorded.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub expired: bool,
+    /// Whether this node, depended on, no longer holds its dependents back: a Task Done, a Goal
+    /// Achieved, a wait no longer pending.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub met: bool,
+}
+
+/// What the agents are doing on the whole board, counted.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct AgentActivity {
+    /// Agentic Tasks that read Review: On Agent, with the agent's question open for the user.
+    pub review: usize,
+    /// Pending, live agentic waits on something other than the user — CI, say.
+    pub waits: usize,
+    /// Agentic Tasks an agent holds, with nothing asked of the user: On Agent.
+    pub on_agent: usize,
 }

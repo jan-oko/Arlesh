@@ -90,11 +90,11 @@ describe("TaskEditorModal — virtual blockers from dependencies", () => {
     expect(screen.queryByText("Blocked by goal 9 (Milestone)")).not.toBeInTheDocument();
   });
 
-  it("does not show a virtual blocker for a met (achieved) dependency", async () => {
+  it("does not show a virtual blocker for a dependency the board says is met", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) =>
       Promise.resolve(cmd === "list_task_dependencies" ? [{ type: "goal", id: 9 }] : null),
     );
-    render(<TaskEditorModal {...defaultProps} availableForDep={[{ ...GOAL_DEP, status: "achieved" }]} />);
+    render(<TaskEditorModal {...defaultProps} availableForDep={[{ ...GOAL_DEP, status: "achieved", met: true }]} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
     expect(screen.queryByText(/Blocked by goal 9/)).not.toBeInTheDocument();
   });

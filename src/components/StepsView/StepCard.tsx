@@ -131,7 +131,8 @@ export default function StepCard({
             <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`}>
               <NodeIcon
                 kind={node.kind} status={node.status} verdict={node.verdict}
-                isArchived={node.archived === true} isBlocked={isNodeBlocked(node)}
+                expired={node.expired === true}
+                isBlocked={isNodeBlocked(node)}
                 isHabit={node.flow?.isHabit === true} compound={node.compound === true}
                 // The card's muted colour, not the full text colour: a solid glyph at full strength
                 // was half of what made the top line read as a band over the card.

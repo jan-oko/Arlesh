@@ -68,7 +68,7 @@ export default function CommitmentRow({
         <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`} aria-hidden="true">
           <CommitmentIcon
             cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--text-primary)" opacity={1}
-            state={commitmentGlyphState(node.verdict, node.archived === true)}
+            state={commitmentGlyphState(node.verdict, node.expired === true)}
           />
         </svg>
       </button>

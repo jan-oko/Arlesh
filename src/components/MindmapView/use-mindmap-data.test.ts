@@ -278,7 +278,7 @@ describe("buildTree", () => {
     expect(goalNode?.blockReasons).toEqual(["waiting on X", "needs sign-off"]);
   });
 
-  it("names an unmet dependency by its short id, and carries the short id on its node", () => {
+  it("names a dependency the backend says blocks a task by its short id, and carries the short id on its node", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
     const blocker = mkTask({ id: 2, title: "Dep", status: { kind: "ordinary", status: "in_progress" }, parent_type: "project", parent_id: 1 });
     const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
@@ -286,24 +286,32 @@ describe("buildTree", () => {
       [aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [],
       [{ task_id: 3, dependency_type: "task", dependency_id: 2 }],
       [], [], (title) => title, (title) => title, "compound", "capacity", (until) => until,
-      { "task-2": "6f3", "task-3": "a1c" },
+      { "task-2": "6f3", "task-3": "a1c" }, new Map(),
+      { "task-3": { dependency_blocks: [{ kind: "task", id: 2, short_id: "6f3", title: "Dep" }] } },
     );
     const tasks = root.children[0]?.children ?? [];
     expect(tasks.find((c) => c.id === "task-3")?.virtualBlockers).toEqual(["Blocked by task 6f3 (Dep)"]);
     expect(tasks.find((c) => c.id === "task-2")?.shortId).toBe("6f3");
   });
 
-  it("derives virtual block reasons from unmet task dependencies", () => {
+  it("draws each dependency block the backend sends, with the target's node id Start's gate reads", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const blocker = mkTask({ id: 2, title: "Dep", status: { kind: "ordinary", status: "in_progress" }, parent_type: "project", parent_id: 1 });
     const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
-    const root = buildTree([aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [], [
-      { task_id: 3, dependency_type: "task", dependency_id: 2 },
-    ]);
+    const root = buildTree(
+      [aspect], [], [blocked], [], [], [], [], [], [], [], [], [], [], [],
+      (title) => title, (title) => title, "compound", "capacity", (until) => until, {}, new Map(),
+      {
+        "task-3": {
+          dependency_blocks: [
+            { kind: "task", id: 2, title: "Dep" },
+            { kind: "goal", id: 7, title: "Aim" },
+          ],
+        },
+      },
+    );
     const node = root.children[0]?.children.find((c) => c.id === "task-3");
-    expect(node?.virtualBlockers).toEqual(["Blocked by task 2 (Dep)"]);
-    // The unmet dependency's own node id, which Start's child-dependency rule reads.
-    expect(node?.blockingDependencyIds).toEqual(["task-2"]);
+    expect(node?.virtualBlockers).toEqual(["Blocked by task 2 (Dep)", "Blocked by goal 7 (Aim)"]);
+    expect(node?.blockingDependencyIds).toEqual(["task-2", "goal-7"]);
   });
 
   it("draws the agent capacity lock's derived reason as a virtual blocker, in its own words", () => {
@@ -320,9 +328,9 @@ describe("buildTree", () => {
     expect(node !== undefined && isNodeBlocked(node)).toBe(true);
   });
 
-  it("omits a virtual block reason once the dependency is done", () => {
+  it("draws no dependency block the backend does not send, whatever the edges say", () => {
     const aspect = mkDomain({ id: 1, subtype: "aspect" });
-    const blocker = mkTask({ id: 2, title: "Dep", status: { kind: "ordinary", status: "done" }, parent_type: "project", parent_id: 1 });
+    const blocker = mkTask({ id: 2, title: "Dep", status: { kind: "ordinary", status: "in_progress" }, parent_type: "project", parent_id: 1 });
     const blocked = mkTask({ id: 3, title: "Waiter", parent_type: "project", parent_id: 1 });
     const root = buildTree([aspect], [], [blocker, blocked], [], [], [], [], [], [], [], [], [
       { task_id: 3, dependency_type: "task", dependency_id: 2 },
@@ -330,6 +338,21 @@ describe("buildTree", () => {
     const node = root.children[0]?.children.find((c) => c.id === "task-3");
     expect(node?.virtualBlockers).toEqual([]);
     expect(node?.blockingDependencyIds).toBeUndefined();
+  });
+
+  it("stamps what a node inherits, its open question and whether it expired off the backend's facts", () => {
+    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const task = mkTask({ id: 3, title: "Agent work", parent_type: "project", parent_id: 1 });
+    const scope = { start_id: { kind: "day", date: "2026-10-03" }, end_id: { kind: "day", date: "2026-10-03" } } as const;
+    const root = buildTree(
+      [aspect], [], [task], [], [], [], [], [], [], [], [], [], [], [],
+      (title) => title, (title) => title, "compound", "capacity", (until) => until, {}, new Map(),
+      { "task-3": { inherited_agentic: true, inherited_time_scope: scope, open_question: 9 } },
+    );
+    const node = root.children[0]?.children.find((c) => c.id === "task-3");
+    expect(node?.inheritedAgentic).toBe(true);
+    expect(node?.inheritedTimeScope).toEqual(scope);
+    expect(node?.openQuestionId).toBe(9);
   });
 
   it("stores task tag_ids on the node", () => {
