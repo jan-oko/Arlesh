@@ -150,7 +150,10 @@ status, and a wait keeps its status, archive, checks and agent fields. Neither h
 its own, and a Task that waits on a copied wait keeps waiting on the original, like every copied
 dependency. A copied node that a started Flow materialised still reads "from flow X", naming the
 original Flow. A Commitment or a wait **on the clipboard** is still refused, though: there is no
-command that copies one on its own, only as part of what holds it. Aspects and Habit occurrences are
+command that copies one on its own, only as part of what holds it. The copy finds a node's children
+under **every** spelling that names it as a parent: a row under a Domain is stored as `project` by
+some writers and `domain` by others, and a copy that read only one spelling silently left the rest
+behind (fixed 2026-10-03, ruled by the user). Aspects and Habit occurrences are
 not duplicable, and neither are the rows hung on a Habit occurrence inside the copy — but those are
 **named**, not dropped in silence (see *Left behind on an occurrence*, below).
 A paste whose selection includes any of these pastes the rest and says in a toast what

@@ -370,10 +370,12 @@ async fn clone_node(
 /// The direct children of a just-cloned node, each already pointed at its new parent, and the
 /// Flows hanging under it.
 ///
-/// `cloned.kind` doubles as the source node's own kind spelling — a clone keeps its subtype — so
-/// one string serves both the `SELECT` against the original and the `parent_type` the copies get.
-/// A row in `attached` hangs on a Habit occurrence rather than on this node, so it is skipped
-/// here and named by [`left_behind`] instead.
+/// Children are found under **every** spelling that names the original as a parent
+/// ([`NodeTable::reference_spellings`]): a row under a Domain may be stored as `project` or as
+/// `domain`, depending on which writer made it, and a copy that read only one spelling would drop
+/// the others in silence. The copies get `cloned.kind` — the clone keeps its subtype — collapsed
+/// per table by each clone function. A row in `attached` hangs on a Habit occurrence rather than
+/// on this node, so it is skipped here and named by [`left_behind`] instead.
 async fn children_of(
     db: &mut Db<Transactional>,
     item: &PendingClone,
@@ -382,81 +384,15 @@ async fn children_of(
 ) -> Result<Children, AppError> {
     let old_id = item.old_id;
     let mut children: Vec<(DuplicableKind, i64)> = Vec::new();
-    match item.kind {
-        DuplicableKind::Domain => {
-            extend(
-                &mut children,
-                DuplicableKind::Domain,
-                db.domains().child_ids(DomainId(old_id)).await?,
-            );
-            // A goal or task under any domains-table row records `parent_type = 'project'`,
-            // whatever the parent's real subtype is; an info records the exact subtype. A
-            // Commitment or a wait may record either `project` or `domain`, so both are read.
-            extend(
-                &mut children,
-                DuplicableKind::Goal,
-                db.goals().child_ids("project", old_id).await?,
-            );
-            extend(
-                &mut children,
-                DuplicableKind::Task,
-                db.tasks().child_ids("project", old_id).await?,
-            );
-            for spelling in ["project", "domain"] {
-                extend_waits_and_commitments(db, &mut children, spelling, old_id).await?;
-            }
-            extend(
-                &mut children,
-                DuplicableKind::Info,
-                db.infos().child_ids(&cloned.kind, old_id).await?,
-            );
-        }
-        DuplicableKind::Goal => {
-            extend(
-                &mut children,
-                DuplicableKind::Goal,
-                db.goals().child_ids("goal", old_id).await?,
-            );
-            extend(
-                &mut children,
-                DuplicableKind::Task,
-                db.tasks().child_ids("goal", old_id).await?,
-            );
-            extend_waits_and_commitments(db, &mut children, "goal", old_id).await?;
-            extend(
-                &mut children,
-                DuplicableKind::Info,
-                db.infos().child_ids("goal", old_id).await?,
-            );
-        }
-        DuplicableKind::Task | DuplicableKind::Commitment => {
-            // A Task and a Commitment hold the same kinds: Tasks, Commitments, waits and notes.
-            let spelling = cloned.kind.as_str();
-            extend(
-                &mut children,
-                DuplicableKind::Task,
-                db.tasks().child_ids(spelling, old_id).await?,
-            );
-            extend_waits_and_commitments(db, &mut children, spelling, old_id).await?;
-            extend(
-                &mut children,
-                DuplicableKind::Info,
-                db.infos().child_ids(spelling, old_id).await?,
-            );
-        }
-        DuplicableKind::Expectation => {
-            extend(
-                &mut children,
-                DuplicableKind::Info,
-                db.infos().child_ids("expectation", old_id).await?,
-            );
-        }
-        DuplicableKind::Info => {
-            extend(
-                &mut children,
-                DuplicableKind::Info,
-                db.infos().child_ids("info", old_id).await?,
-            );
+    if item.kind == DuplicableKind::Domain {
+        // The `domains` table names its parent by `parent_id` alone, so no spelling applies.
+        let ids = child_ids(db, DuplicableKind::Domain, "", old_id).await?;
+        extend(&mut children, DuplicableKind::Domain, ids);
+    }
+    for child_kind in held_kinds(item.kind) {
+        for spelling in item.kind.table().reference_spellings() {
+            let ids = child_ids(db, *child_kind, spelling, old_id).await?;
+            extend(&mut children, *child_kind, ids);
         }
     }
     let nodes = children
@@ -489,24 +425,34 @@ async fn children_of(
     Ok(Children { nodes, flows })
 }
 
-/// Appends the Commitments and waits stored under `(parent_type, parent_id)` to `children`.
-async fn extend_waits_and_commitments(
+/// The kinds a node of `kind` can hold, besides the domains-table children only a domains-table
+/// row holds, in the order the walk clones them.
+fn held_kinds(kind: DuplicableKind) -> &'static [DuplicableKind] {
+    use DuplicableKind::{Commitment, Expectation, Goal, Info, Task};
+    match kind {
+        DuplicableKind::Domain | Goal => &[Goal, Task, Commitment, Expectation, Info],
+        // A Task and a Commitment hold the same kinds: Tasks, Commitments, waits and notes.
+        Task | Commitment => &[Task, Commitment, Expectation, Info],
+        Expectation | Info => &[Info],
+    }
+}
+
+/// The ids of the rows of `kind`'s table stored under `(parent_type, parent_id)`. A domains-table
+/// row's children are found by `parent_id` alone, and `parent_type` is unused for them.
+async fn child_ids(
     db: &mut Db<Transactional>,
-    children: &mut Vec<(DuplicableKind, i64)>,
+    kind: DuplicableKind,
     parent_type: &str,
     parent_id: i64,
-) -> Result<(), AppError> {
-    extend(
-        children,
-        DuplicableKind::Commitment,
-        db.commitments().child_ids(parent_type, parent_id).await?,
-    );
-    extend(
-        children,
-        DuplicableKind::Expectation,
-        db.expectations().child_ids(parent_type, parent_id).await?,
-    );
-    Ok(())
+) -> Result<Vec<i64>, AppError> {
+    Ok(match kind {
+        DuplicableKind::Domain => db.domains().child_ids(DomainId(parent_id)).await?,
+        DuplicableKind::Goal => db.goals().child_ids(parent_type, parent_id).await?,
+        DuplicableKind::Task => db.tasks().child_ids(parent_type, parent_id).await?,
+        DuplicableKind::Commitment => db.commitments().child_ids(parent_type, parent_id).await?,
+        DuplicableKind::Expectation => db.expectations().child_ids(parent_type, parent_id).await?,
+        DuplicableKind::Info => db.infos().child_ids(parent_type, parent_id).await?,
+    })
 }
 
 /// Tags each id in `ids` with its kind and appends them to `children`.

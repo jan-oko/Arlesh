@@ -237,27 +237,29 @@ impl<'session> FlowOperator<'session> {
 
     /// The ids of the Flows hanging directly under one stored node, in sort order.
     ///
-    /// A domains-table parent is matched under every subtype spelling, because a Flow's
-    /// `parent_type` names that row by whichever of `aspect`, `project` or `domain` its writer used
-    /// (migration 0025). Only domains-table rows and Goals can hold a Flow, so any other table has
-    /// none.
+    /// The parent is matched under every spelling that names it
+    /// ([`NodeTable::reference_spellings`]), because a Flow's `parent_type` names a domains-table
+    /// row by whichever subtype its writer used (migration 0025). Only domains-table rows and
+    /// Goals can hold a Flow, so any other table finds none.
     pub async fn ids_under(
         &mut self,
         parent: NodeTable,
         parent_id: i64,
     ) -> Result<Vec<i64>, FlowError> {
-        let spellings = match parent {
-            NodeTable::Domain => "'aspect', 'project', 'domain'",
-            NodeTable::Goal => "'goal'",
-            _ => return Ok(Vec::new()),
-        };
-        Ok(sqlx::query_scalar(&format!(
-            "SELECT id FROM flows WHERE parent_type IN ({spellings}) AND parent_id = ?
+        let spellings = parent.reference_spellings();
+        let placeholders = vec!["?"; spellings.len()].join(", ");
+        let sql = format!(
+            "SELECT id FROM flows WHERE parent_type IN ({placeholders}) AND parent_id = ?
              ORDER BY position ASC, id ASC"
-        ))
-        .bind(parent_id)
-        .fetch_all(&mut *self.connection)
-        .await?)
+        );
+        let mut query = sqlx::query_scalar(&sql);
+        for spelling in spellings {
+            query = query.bind(*spelling);
+        }
+        Ok(query
+            .bind(parent_id)
+            .fetch_all(&mut *self.connection)
+            .await?)
     }
 
     /// The template fields of this session's connection.

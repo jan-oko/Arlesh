@@ -1374,3 +1374,67 @@ async fn a_copied_started_instance_still_reads_from_the_original_flow() {
     );
     assert_eq!(flows_titled(&pool, "Release").await.len(), 2);
 }
+
+#[tokio::test]
+async fn a_copied_domain_carries_children_whatever_spelling_names_it_as_their_parent() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let aspect = growth_aspect_id(&pool).await;
+    let garden = make_domain(&pool, "Garden", DomainSubtype::Domain, aspect).await;
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    for title in ["Water the plants", "Prune the roses"] {
+        create_task(
+            &mut db,
+            CreateTaskRequest {
+                title: title.into(),
+                parent_type: "project".into(),
+                parent_id: garden.into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+    create_goal(
+        &mut db,
+        CreateGoalRequest {
+            title: "Grow tomatoes".into(),
+            parent_type: "project".into(),
+            parent_id: garden.into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+    // Some writers name a Domain parent `domain` rather than `project`; the real board holds rows
+    // of both. Rewrite two of them to that spelling, as those writers would have stored them.
+    sqlx::query("UPDATE tasks SET parent_type = 'domain' WHERE title = 'Water the plants'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE goals SET parent_type = 'domain' WHERE title = 'Grow tomatoes'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let pasted = duplicate_domain(app.state(), garden, aspect, 9)
+        .await
+        .unwrap();
+
+    for (table, title) in [
+        ("tasks", "Water the plants"),
+        ("tasks", "Prune the roses"),
+        ("goals", "Grow tomatoes"),
+    ] {
+        let under_copy: i64 = sqlx::query_scalar(&format!(
+            "SELECT COUNT(*) FROM {table} WHERE title = ? AND parent_id = ?"
+        ))
+        .bind(title)
+        .bind(pasted.copy.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(under_copy, 1, "{title} came with the copied Domain");
+    }
+}
