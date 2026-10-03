@@ -32,54 +32,138 @@ use arlesh_core::{
 use schemars::{generate::SchemaSettings, JsonSchema, SchemaGenerator};
 use serde_json::{json, Map, Value};
 
-use crate::{request::Request, rules::Rule, rules::StatusAfter};
+use arlesh_core::{
+    domains::model::{CreateDomainRequest, DomainSubtype, UpdateDomainRequest},
+    filters::model::NodeKind,
+    flows::{
+        cycles::Reconcile,
+        model::{
+            CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowItemType,
+            IterationStatus, SetRecurrenceRequest, StartFlowRequest, UpdateFlowItemRequest,
+            UpdateFlowRequest,
+        },
+        rules::habits::{Clock, SlotWindow},
+    },
+    infos::model::{CreateInfoRequest, UpdateInfoRequest},
+    nodes::id::NodeId,
+    scopes::{
+        key::ScopeKey,
+        model::{PartOfDay, ScopeKind},
+    },
+    tasks::{
+        model::{
+            CreateCommitmentRequest, CreateExpectationRequest, CreateGoalRequest,
+            CreateTaskRequest, DurationSpec, ExpectationStatus, OnScopeExit, Status,
+            UpdateCommitmentRequest, UpdateExpectationRequest, UpdateGoalRequest,
+            UpdateSpawnedWaitRequest, UpdateTaskRequest, Verdict,
+        },
+        rules::gestures::{StatusStep, VerdictPress},
+        rules::lifecycle::Archival,
+    },
+};
+
+use crate::rules::StatusAfter;
 
 /// Adds `T` and everything it refers to to `generator`.
 fn add<T: JsonSchema>(generator: &mut SchemaGenerator) {
     generator.subschema_for::<T>();
 }
 
-/// The document: `$defs` holding every request, rule call and answer type.
+/// The request bodies and the values the calls take — read by the core, so described as it
+/// **deserialises** them. The requests' own envelopes (`op`, `rule`) are built by the Python half
+/// and have no model.
+fn inputs(generator: &mut SchemaGenerator) {
+    add::<CreateTaskRequest>(generator);
+    add::<UpdateTaskRequest>(generator);
+    add::<CreateGoalRequest>(generator);
+    add::<UpdateGoalRequest>(generator);
+    add::<CreateCommitmentRequest>(generator);
+    add::<UpdateCommitmentRequest>(generator);
+    add::<CreateExpectationRequest>(generator);
+    add::<UpdateExpectationRequest>(generator);
+    add::<UpdateSpawnedWaitRequest>(generator);
+    add::<CreateInfoRequest>(generator);
+    add::<UpdateInfoRequest>(generator);
+    add::<CreateDomainRequest>(generator);
+    add::<UpdateDomainRequest>(generator);
+    add::<DomainSubtype>(generator);
+    add::<CreateFlowRequest>(generator);
+    add::<UpdateFlowRequest>(generator);
+    add::<CreateFlowItemRequest>(generator);
+    add::<UpdateFlowItemRequest>(generator);
+    add::<FlowItemType>(generator);
+    add::<FlowCycleInput>(generator);
+    add::<Reconcile>(generator);
+    add::<StartFlowRequest>(generator);
+    add::<SetRecurrenceRequest>(generator);
+    add::<StatusStep>(generator);
+    add::<VerdictPress>(generator);
+    add::<NodeId>(generator);
+    add::<ScopeKey>(generator);
+    add::<ScopeKind>(generator);
+    add::<PartOfDay>(generator);
+    add::<Clock>(generator);
+    add::<SlotWindow>(generator);
+    add::<NodeKind>(generator);
+    add::<Status>(generator);
+    add::<Verdict>(generator);
+    add::<ExpectationStatus>(generator);
+    add::<IterationStatus>(generator);
+    add::<Archival>(generator);
+    add::<OnScopeExit>(generator);
+    add::<DurationSpec>(generator);
+}
+
+/// What the calls answer — written by the core, so described as it **serialises** them: a field
+/// it leaves out when empty is not required.
+fn outputs(generator: &mut SchemaGenerator) {
+    add::<MindmapLoad>(generator);
+    add::<TaskWithBlockers>(generator);
+    add::<Task>(generator);
+    add::<Goal>(generator);
+    add::<Commitment>(generator);
+    add::<Expectation>(generator);
+    add::<SpawnedWait>(generator);
+    add::<Info>(generator);
+    add::<Domain>(generator);
+    add::<Flow>(generator);
+    add::<FlowGoal>(generator);
+    add::<FlowTask>(generator);
+    add::<FlowRecurrence>(generator);
+    add::<MaterializedFlow>(generator);
+    add::<ForkedTemplate>(generator);
+    add::<Dependency>(generator);
+    add::<StatusStepOutcome>(generator);
+    add::<StatusAfter>(generator);
+    add::<Scope>(generator);
+    add::<ResolvedScope>(generator);
+    add::<Timing>(generator);
+    add::<Resolution>(generator);
+    add::<ArchivalResult>(generator);
+    add::<DerivedState>(generator);
+    add::<CommitmentState>(generator);
+    add::<InstanceTiming>(generator);
+    add::<HabitIteration>(generator);
+    add::<TaskStatus>(generator);
+    add::<CycleLevel>(generator);
+    add::<WireErrorKind>(generator);
+}
+
+/// The document: `$defs` holding every request body, rule argument and answer type.
+///
+/// Two generators, because one type can read differently each way: a field the core skips when
+/// empty is optional in what it writes but may be required in what it reads. Where a type is both
+/// taken and answered, the answer's (looser) schema wins, so a model validates everything the core
+/// sends; the core still refuses a request missing a field it needs.
 pub(crate) fn document() -> Value {
-    let mut generator = SchemaGenerator::new(SchemaSettings::draft2020_12());
-    // What Python sends.
-    add::<Request>(&mut generator);
-    add::<Rule>(&mut generator);
-    // What it gets back.
-    add::<MindmapLoad>(&mut generator);
-    add::<TaskWithBlockers>(&mut generator);
-    add::<Task>(&mut generator);
-    add::<Goal>(&mut generator);
-    add::<Commitment>(&mut generator);
-    add::<Expectation>(&mut generator);
-    add::<SpawnedWait>(&mut generator);
-    add::<Info>(&mut generator);
-    add::<Domain>(&mut generator);
-    add::<Flow>(&mut generator);
-    add::<FlowGoal>(&mut generator);
-    add::<FlowTask>(&mut generator);
-    add::<FlowRecurrence>(&mut generator);
-    add::<MaterializedFlow>(&mut generator);
-    add::<ForkedTemplate>(&mut generator);
-    add::<Dependency>(&mut generator);
-    add::<StatusStepOutcome>(&mut generator);
-    add::<StatusAfter>(&mut generator);
-    add::<Scope>(&mut generator);
-    add::<ResolvedScope>(&mut generator);
-    add::<Timing>(&mut generator);
-    add::<Resolution>(&mut generator);
-    add::<ArchivalResult>(&mut generator);
-    add::<DerivedState>(&mut generator);
-    add::<CommitmentState>(&mut generator);
-    add::<InstanceTiming>(&mut generator);
-    add::<HabitIteration>(&mut generator);
-    add::<TaskStatus>(&mut generator);
-    add::<CycleLevel>(&mut generator);
-    add::<WireErrorKind>(&mut generator);
-    let definitions: Map<String, Value> = generator.take_definitions(true);
+    let mut reads = SchemaGenerator::new(SchemaSettings::draft2020_12().for_deserialize());
+    inputs(&mut reads);
+    let mut writes = SchemaGenerator::new(SchemaSettings::draft2020_12().for_serialize());
+    outputs(&mut writes);
+    let mut definitions: Map<String, Value> = reads.take_definitions(true);
+    definitions.extend(writes.take_definitions(true));
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "title": "Arlesh",
         "description": "Every type the arlesh Python API takes or returns.",
         "$defs": definitions,
     })

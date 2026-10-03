@@ -45,9 +45,7 @@ impl NativeDatabase {
         let factory = self.factory.clone();
         let path = Arc::clone(&self.path);
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            request::run(&factory, &path, &request)
-                .await
-                .map_err(raise)
+            request::run(&factory, &path, &request).await.map_err(raise)
         })
     }
 
@@ -74,7 +72,12 @@ impl NativeDatabase {
 /// `client` — refused while the desktop app holds it, unless `force`.
 #[pyfunction]
 #[pyo3(signature = (path, client, force))]
-fn open(py: Python<'_>, path: PathBuf, client: Option<String>, force: bool) -> PyResult<Bound<'_, PyAny>> {
+fn open(
+    py: Python<'_>,
+    path: PathBuf,
+    client: Option<String>,
+    force: bool,
+) -> PyResult<Bound<'_, PyAny>> {
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
         let factory = opening::open(&path, client.as_deref(), force)
             .await

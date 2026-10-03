@@ -552,7 +552,10 @@ pub(crate) async fn run(
     request: &str,
 ) -> Result<String, Raised> {
     let request: Request = serde_json::from_str(request).map_err(|error| {
-        Failure::new(WireErrorKind::InvalidRequest, format!("unreadable request: {error}"))
+        Failure::new(
+            WireErrorKind::InvalidRequest,
+            format!("unreadable request: {error}"),
+        )
     })?;
     if request.writes() && factory.is_read_only() {
         return Err(Failure::new(
@@ -617,7 +620,10 @@ async fn dispatch(
     request: Request,
 ) -> Result<Value, WireError> {
     match request {
-        Request::Board { now: at, at_capacity: capacity } => {
+        Request::Board {
+            now: at,
+            at_capacity: capacity,
+        } => {
             let capacity = match capacity {
                 Some(capacity) => capacity,
                 None => at_capacity(path).await,
@@ -628,19 +634,26 @@ async fn dispatch(
             })
             .await
         }
-        Request::GetTask { id } => transaction(factory, async |db| {
-            tasks::get_task_with_blockers(db, TaskId(id)).await.wired()
-        })
-        .await,
+        Request::GetTask { id } => {
+            transaction(factory, async |db| {
+                tasks::get_task_with_blockers(db, TaskId(id)).await.wired()
+            })
+            .await
+        }
         Request::GetGoal { id } => {
             transaction(factory, async |db| db.goals().get(GoalId(id)).await.wired()).await
         }
-        Request::GetCommitment { id } => transaction(factory, async |db| {
-            db.commitments().get(CommitmentId(id)).await.wired()
-        })
-        .await,
+        Request::GetCommitment { id } => {
+            transaction(factory, async |db| {
+                db.commitments().get(CommitmentId(id)).await.wired()
+            })
+            .await
+        }
         Request::GetDomain { id } => {
-            transaction(factory, async |db| db.domains().get(DomainId(id)).await.wired()).await
+            transaction(factory, async |db| {
+                db.domains().get(DomainId(id)).await.wired()
+            })
+            .await
         }
         Request::GetInfo { id } => {
             transaction(factory, async |db| db.infos().get(InfoId(id)).await.wired()).await
@@ -648,170 +661,234 @@ async fn dispatch(
         Request::GetFlow { id } => {
             transaction(factory, async |db| db.flows().get(FlowId(id)).await.wired()).await
         }
-        Request::TaskDependencies { id } => transaction(factory, async |db| {
-            write::dependencies_of(db, &id, now()).await.wired()
-        })
-        .await,
+        Request::TaskDependencies { id } => {
+            transaction(factory, async |db| {
+                write::dependencies_of(db, &id, now()).await.wired()
+            })
+            .await
+        }
         Request::TaskDoneAt { id } => {
-            transaction(factory, async |db| write::done_at(db, &id, now()).await.wired()).await
+            transaction(factory, async |db| {
+                write::done_at(db, &id, now()).await.wired()
+            })
+            .await
         }
         Request::ListDomains { subtype } => {
             transaction(factory, async |db| db.domains().list(subtype).await.wired()).await
         }
 
-        Request::CreateTask { request } => transaction(factory, async |db| {
-            write::create_task(db, request, now()).await.wired()
-        })
-        .await,
+        Request::CreateTask { request } => {
+            transaction(factory, async |db| {
+                write::create_task(db, request, now()).await.wired()
+            })
+            .await
+        }
         Request::UpdateTask {
             id,
             request,
             confirmed,
-        } => transaction(factory, async |db| {
-            composite::update_task_confirmed(db, &id, request, confirmed, now()).await
-        })
-        .await,
+        } => {
+            transaction(factory, async |db| {
+                composite::update_task_confirmed(db, &id, request, confirmed, now()).await
+            })
+            .await
+        }
         Request::DeleteTask { id } => {
-            transaction(factory, async |db| write::delete(db, "task", &id, now()).await.wired())
-                .await
+            transaction(factory, async |db| {
+                write::delete(db, "task", &id, now()).await.wired()
+            })
+            .await
         }
         Request::StepTaskStatus {
             id,
             step,
             confirmed,
-        } => transaction(factory, async |db| {
-            gestures::step_status(db, &id, step, confirmed, now()).await
-        })
-        .await,
+        } => {
+            transaction(factory, async |db| {
+                gestures::step_status(db, &id, step, confirmed, now()).await
+            })
+            .await
+        }
         Request::ToggleTaskAgentic { id } => {
-            transaction(factory, async |db| gestures::toggle_agentic(db, &id, now()).await).await
+            transaction(factory, async |db| {
+                gestures::toggle_agentic(db, &id, now()).await
+            })
+            .await
         }
         Request::AddTaskDependency {
             task_id,
             dependency,
-        } => transaction(factory, async |db| {
-            write::add_dependency(db, &task_id, dependency, now()).await.wired()
-        })
-        .await,
+        } => {
+            transaction(factory, async |db| {
+                write::add_dependency(db, &task_id, dependency, now())
+                    .await
+                    .wired()
+            })
+            .await
+        }
         Request::RemoveTaskDependency {
             task_id,
             dependency,
-        } => transaction(factory, async |db| {
-            write::remove_dependency(db, &task_id, dependency, now()).await.wired()
-        })
-        .await,
-        Request::SetTaskDoneAt { id, at } => transaction(factory, async |db| {
-            write::set_done_at(db, &id, at, now()).await.wired()
-        })
-        .await,
+        } => {
+            transaction(factory, async |db| {
+                write::remove_dependency(db, &task_id, dependency, now())
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::SetTaskDoneAt { id, at } => {
+            transaction(factory, async |db| {
+                write::set_done_at(db, &id, at, now()).await.wired()
+            })
+            .await
+        }
         Request::DuplicateTask {
             id,
             target_type,
             target_id,
             position,
-        } => transaction(factory, async |db| {
-            let copy = duplicate_subtree(
-                db,
-                DuplicableKind::Task,
-                id,
-                &target_type,
-                target_id,
-                position,
-            )
+        } => {
+            transaction(factory, async |db| {
+                let copy = duplicate_subtree(
+                    db,
+                    DuplicableKind::Task,
+                    id,
+                    &target_type,
+                    target_id,
+                    position,
+                )
+                .await
+                .wired()?;
+                db.tasks().get(TaskId(copy)).await.wired()
+            })
             .await
-            .wired()?;
-            db.tasks().get(TaskId(copy)).await.wired()
-        })
-        .await,
+        }
 
-        Request::CreateGoal { request } => transaction(factory, async |db| {
-            write::create_goal(db, request, now()).await.wired()
-        })
-        .await,
+        Request::CreateGoal { request } => {
+            transaction(factory, async |db| {
+                write::create_goal(db, request, now()).await.wired()
+            })
+            .await
+        }
         Request::UpdateGoal {
             id,
             request,
             confirmed,
-        } => transaction(factory, async |db| {
-            composite::update_goal_confirmed(db, &id, request, confirmed, now()).await
-        })
-        .await,
+        } => {
+            transaction(factory, async |db| {
+                composite::update_goal_confirmed(db, &id, request, confirmed, now()).await
+            })
+            .await
+        }
         Request::DeleteGoal { id } => {
-            transaction(factory, async |db| write::delete(db, "goal", &id, now()).await.wired())
-                .await
+            transaction(factory, async |db| {
+                write::delete(db, "goal", &id, now()).await.wired()
+            })
+            .await
         }
         Request::DuplicateGoal {
             id,
             target_type,
             target_id,
             position,
-        } => transaction(factory, async |db| {
-            let copy = duplicate_subtree(
-                db,
-                DuplicableKind::Goal,
-                id,
-                &target_type,
-                target_id,
-                position,
-            )
+        } => {
+            transaction(factory, async |db| {
+                let copy = duplicate_subtree(
+                    db,
+                    DuplicableKind::Goal,
+                    id,
+                    &target_type,
+                    target_id,
+                    position,
+                )
+                .await
+                .wired()?;
+                db.goals().get(GoalId(copy)).await.wired()
+            })
             .await
-            .wired()?;
-            db.goals().get(GoalId(copy)).await.wired()
-        })
-        .await,
+        }
 
-        Request::CreateCommitment { request } => transaction(factory, async |db| {
-            write::create_commitment(db, request, now()).await.wired()
-        })
-        .await,
-        Request::UpdateCommitment { id, request } => transaction(factory, async |db| {
-            write::update_commitment(db, &id, request, now()).await.wired()
-        })
-        .await,
-        Request::DeleteCommitment { id } => transaction(factory, async |db| {
-            write::delete(db, "commitment", &id, now()).await.wired()
-        })
-        .await,
-        Request::PressCommitmentVerdict { id, press } => transaction(factory, async |db| {
-            gestures::press_verdict(db, &id, press, now()).await
-        })
-        .await,
+        Request::CreateCommitment { request } => {
+            transaction(factory, async |db| {
+                write::create_commitment(db, request, now()).await.wired()
+            })
+            .await
+        }
+        Request::UpdateCommitment { id, request } => {
+            transaction(factory, async |db| {
+                write::update_commitment(db, &id, request, now())
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::DeleteCommitment { id } => {
+            transaction(factory, async |db| {
+                write::delete(db, "commitment", &id, now()).await.wired()
+            })
+            .await
+        }
+        Request::PressCommitmentVerdict { id, press } => {
+            transaction(factory, async |db| {
+                gestures::press_verdict(db, &id, press, now()).await
+            })
+            .await
+        }
 
-        Request::CreateWait { request } => transaction(factory, async |db| {
-            write::create_expectation(db, request, now()).await.wired()
-        })
-        .await,
-        Request::UpdateWait { id, request } => transaction(factory, async |db| {
-            write::update_expectation(db, &id, request, now()).await.wired()
-        })
-        .await,
+        Request::CreateWait { request } => {
+            transaction(factory, async |db| {
+                write::create_expectation(db, request, now()).await.wired()
+            })
+            .await
+        }
+        Request::UpdateWait { id, request } => {
+            transaction(factory, async |db| {
+                write::update_expectation(db, &id, request, now())
+                    .await
+                    .wired()
+            })
+            .await
+        }
         Request::DeleteWait { id } => {
             transaction(factory, async |db| composite::delete_wait(db, &id).await).await
         }
-        Request::CompleteWaitCheck { id } => transaction(factory, async |db| {
-            tasks::complete_expectation_check(db, ExpectationId(id), tasks::expectations::now())
+        Request::CompleteWaitCheck { id } => {
+            transaction(factory, async |db| {
+                tasks::complete_expectation_check(db, ExpectationId(id), tasks::expectations::now())
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::ReopenWaitCheck { id, due_at } => {
+            transaction(factory, async |db| {
+                tasks::reopen_expectation_check(db, ExpectationId(id), due_at)
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::UpdateSpawnedWait { task_id, request } => {
+            transaction(factory, async |db| {
+                tasks::waits::update_spawned_wait(db, TaskId(task_id), request)
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::CompleteSpawnedWaitCheck { task_id } => {
+            transaction(factory, async |db| {
+                tasks::waits::complete_spawned_check(
+                    db,
+                    TaskId(task_id),
+                    tasks::expectations::now(),
+                )
                 .await
                 .wired()
-        })
-        .await,
-        Request::ReopenWaitCheck { id, due_at } => transaction(factory, async |db| {
-            tasks::reopen_expectation_check(db, ExpectationId(id), due_at)
-                .await
-                .wired()
-        })
-        .await,
-        Request::UpdateSpawnedWait { task_id, request } => transaction(factory, async |db| {
-            tasks::waits::update_spawned_wait(db, TaskId(task_id), request)
-                .await
-                .wired()
-        })
-        .await,
-        Request::CompleteSpawnedWaitCheck { task_id } => transaction(factory, async |db| {
-            tasks::waits::complete_spawned_check(db, TaskId(task_id), tasks::expectations::now())
-                .await
-                .wired()
-        })
-        .await,
+            })
+            .await
+        }
         Request::ReopenSpawnedWaitCheck { task_id, due_at } => {
             transaction(factory, async |db| {
                 tasks::waits::reopen_spawned_check(db, TaskId(task_id), due_at)
@@ -826,29 +903,39 @@ async fn dispatch(
             id,
             tag_id,
             present,
-        } => transaction(factory, async |db| {
-            write::set_tag(db, &kind, &id, tag_id, present, now()).await.wired()
-        })
-        .await,
+        } => {
+            transaction(factory, async |db| {
+                write::set_tag(db, &kind, &id, tag_id, present, now())
+                    .await
+                    .wired()
+            })
+            .await
+        }
         Request::SetBlockReasons {
             owner_type,
             owner_id,
             reasons,
-        } => transaction(factory, async |db| {
-            write::set_block_reasons(db, &owner_type, &owner_id, &reasons, now())
-                .await
-                .wired()
-        })
-        .await,
+        } => {
+            transaction(factory, async |db| {
+                write::set_block_reasons(db, &owner_type, &owner_id, &reasons, now())
+                    .await
+                    .wired()
+            })
+            .await
+        }
 
-        Request::CreateInfo { request } => transaction(factory, async |db| {
-            write::create_info(db, request, now()).await.wired()
-        })
-        .await,
-        Request::UpdateInfo { id, request } => transaction(factory, async |db| {
-            write::update_info(db, id, request, now()).await.wired()
-        })
-        .await,
+        Request::CreateInfo { request } => {
+            transaction(factory, async |db| {
+                write::create_info(db, request, now()).await.wired()
+            })
+            .await
+        }
+        Request::UpdateInfo { id, request } => {
+            transaction(factory, async |db| {
+                write::update_info(db, id, request, now()).await.wired()
+            })
+            .await
+        }
         Request::DeleteInfo { id } => {
             transaction(factory, async |db| composite::delete_info(db, id).await).await
         }
@@ -857,72 +944,101 @@ async fn dispatch(
             target_type,
             target_id,
             position,
-        } => transaction(factory, async |db| {
-            let copy = duplicate_subtree(
-                db,
-                DuplicableKind::Info,
-                id,
-                &target_type,
-                target_id,
-                position,
-            )
+        } => {
+            transaction(factory, async |db| {
+                let copy = duplicate_subtree(
+                    db,
+                    DuplicableKind::Info,
+                    id,
+                    &target_type,
+                    target_id,
+                    position,
+                )
+                .await
+                .wired()?;
+                db.infos().get(InfoId(copy)).await.wired()
+            })
             .await
-            .wired()?;
-            db.infos().get(InfoId(copy)).await.wired()
-        })
-        .await,
+        }
 
         Request::CreateDomain { request } => {
-            transaction(factory, async |db| db.domains().create(request).await.wired()).await
+            transaction(factory, async |db| {
+                db.domains().create(request).await.wired()
+            })
+            .await
         }
-        Request::UpdateDomain { id, request } => transaction(factory, async |db| {
-            db.domains().update(DomainId(id), request).await.wired()
-        })
-        .await,
+        Request::UpdateDomain { id, request } => {
+            transaction(factory, async |db| {
+                db.domains().update(DomainId(id), request).await.wired()
+            })
+            .await
+        }
         Request::DeleteDomain { id } => {
-            transaction(factory, async |db| db.domains().delete(DomainId(id)).await.wired()).await
+            transaction(factory, async |db| {
+                db.domains().delete(DomainId(id)).await.wired()
+            })
+            .await
         }
         Request::DuplicateDomain {
             id,
             target_id,
             position,
-        } => transaction(factory, async |db| {
-            let copy =
-                duplicate_subtree(db, DuplicableKind::Domain, id, "", target_id, position)
-                    .await
-                    .wired()?;
-            db.domains().get(DomainId(copy)).await.wired()
-        })
-        .await,
+        } => {
+            transaction(factory, async |db| {
+                let copy =
+                    duplicate_subtree(db, DuplicableKind::Domain, id, "", target_id, position)
+                        .await
+                        .wired()?;
+                db.domains().get(DomainId(copy)).await.wired()
+            })
+            .await
+        }
 
         Request::CreateFlow { request } => {
             transaction(factory, async |db| db.flows().create(request).await.wired()).await
         }
-        Request::UpdateFlow { id, request } => transaction(factory, async |db| {
-            flows::update_flow(db, FlowId(id), request).await.wired()
-        })
-        .await,
+        Request::UpdateFlow { id, request } => {
+            transaction(factory, async |db| {
+                flows::update_flow(db, FlowId(id), request).await.wired()
+            })
+            .await
+        }
         Request::DeleteFlow { id } => {
-            transaction(factory, async |db| flows::delete_flow(db, FlowId(id)).await.wired()).await
+            transaction(factory, async |db| {
+                flows::delete_flow(db, FlowId(id)).await.wired()
+            })
+            .await
         }
         Request::CreateFlowGoal { request } => {
-            transaction(factory, async |db| db.flows().create_goal(request).await.wired()).await
+            transaction(factory, async |db| {
+                db.flows().create_goal(request).await.wired()
+            })
+            .await
         }
         Request::CreateFlowTask { request } => {
-            transaction(factory, async |db| db.flows().create_task(request).await.wired()).await
+            transaction(factory, async |db| {
+                db.flows().create_task(request).await.wired()
+            })
+            .await
         }
-        Request::UpdateFlowGoal { id, request } => transaction(factory, async |db| {
-            flows::update_flow_goal(db, id, request).await.wired()
-        })
-        .await,
-        Request::UpdateFlowTask { id, request } => transaction(factory, async |db| {
-            flows::update_flow_task(db, id, request).await.wired()
-        })
-        .await,
-        Request::DeleteFlowItem { item_type, id } => transaction(factory, async |db| {
-            db.flows().delete_item(item_type, id).await.wired()
-        })
-        .await,
+        Request::UpdateFlowGoal { id, request } => {
+            transaction(factory, async |db| {
+                flows::update_flow_goal(db, id, request).await.wired()
+            })
+            .await
+        }
+        Request::UpdateFlowTask { id, request } => {
+            transaction(factory, async |db| {
+                flows::update_flow_task(db, id, request).await.wired()
+            })
+            .await
+        }
+        Request::DeleteFlowItem { item_type, id } => {
+            transaction(factory, async |db| {
+                db.flows().delete_item(item_type, id).await.wired()
+            })
+            .await
+        }
         Request::SetFlowItemCycles {
             flow_id,
             item_type,
@@ -930,75 +1046,91 @@ async fn dispatch(
             cycles,
             reconcile,
             now: at,
-        } => transaction(factory, async |db| {
-            composite::set_item_cycles_confirmed(
-                db,
-                FlowId(flow_id),
-                item_type,
-                item_id,
-                &cycles,
-                reconcile,
-                at,
-            )
+        } => {
+            transaction(factory, async |db| {
+                composite::set_item_cycles_confirmed(
+                    db,
+                    FlowId(flow_id),
+                    item_type,
+                    item_id,
+                    &cycles,
+                    reconcile,
+                    at,
+                )
+                .await
+            })
             .await
-        })
-        .await,
+        }
         Request::AddFlowDependency {
             flow_id,
             dependent_type,
             dependent_id,
             depends_on_type,
             depends_on_id,
-        } => transaction(factory, async |db| {
-            db.flows()
-                .add_dependency(
-                    flow_id,
-                    dependent_type,
-                    dependent_id,
-                    depends_on_type,
-                    depends_on_id,
-                )
-                .await
-                .wired()
-        })
-        .await,
+        } => {
+            transaction(factory, async |db| {
+                db.flows()
+                    .add_dependency(
+                        flow_id,
+                        dependent_type,
+                        dependent_id,
+                        depends_on_type,
+                        depends_on_id,
+                    )
+                    .await
+                    .wired()
+            })
+            .await
+        }
         Request::RemoveFlowDependency {
             dependent_type,
             dependent_id,
             depends_on_type,
             depends_on_id,
-        } => transaction(factory, async |db| {
-            db.flows()
-                .remove_dependency(dependent_type, dependent_id, depends_on_type, depends_on_id)
-                .await
-                .wired()
-        })
-        .await,
-        Request::StartFlow { flow_id, request } => transaction(factory, async |db| {
-            flows::start(db, FlowId(flow_id), request).await.wired()
-        })
-        .await,
-        Request::SetFlowRecurrence { flow_id, request } => transaction(factory, async |db| {
-            flows::set_flow_recurrence(db, FlowId(flow_id), request)
-                .await
-                .wired()
-        })
-        .await,
-        Request::DeleteFlowRecurrence { flow_id } => transaction(factory, async |db| {
-            db.flows().delete_recurrence(FlowId(flow_id)).await.wired()
-        })
-        .await,
-        Request::ClearHabitModifications { flow_id } => transaction(factory, async |db| {
-            db.flows()
-                .clear_habit_modifications(FlowId(flow_id))
-                .await
-                .wired()
-        })
-        .await,
+        } => {
+            transaction(factory, async |db| {
+                db.flows()
+                    .remove_dependency(dependent_type, dependent_id, depends_on_type, depends_on_id)
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::StartFlow { flow_id, request } => {
+            transaction(factory, async |db| {
+                flows::start(db, FlowId(flow_id), request).await.wired()
+            })
+            .await
+        }
+        Request::SetFlowRecurrence { flow_id, request } => {
+            transaction(factory, async |db| {
+                flows::set_flow_recurrence(db, FlowId(flow_id), request)
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::DeleteFlowRecurrence { flow_id } => {
+            transaction(factory, async |db| {
+                db.flows().delete_recurrence(FlowId(flow_id)).await.wired()
+            })
+            .await
+        }
+        Request::ClearHabitModifications { flow_id } => {
+            transaction(factory, async |db| {
+                db.flows()
+                    .clear_habit_modifications(FlowId(flow_id))
+                    .await
+                    .wired()
+            })
+            .await
+        }
         Request::ForkFlow { flow_id, now: at } => {
             let at = at.unwrap_or_else(now);
             transaction(factory, async |db| {
-                flows::archive_and_fork(db, FlowId(flow_id), at).await.wired()
+                flows::archive_and_fork(db, FlowId(flow_id), at)
+                    .await
+                    .wired()
             })
             .await
         }
@@ -1007,34 +1139,47 @@ async fn dispatch(
             parent_type,
             parent_id,
             position,
-        } => transaction(factory, async |db| {
-            flows::duplicate_flow(db, FlowId(flow_id), &parent_type, parent_id, position)
-                .await
-                .wired()
-        })
-        .await,
+        } => {
+            transaction(factory, async |db| {
+                flows::duplicate_flow(db, FlowId(flow_id), &parent_type, parent_id, position)
+                    .await
+                    .wired()
+            })
+            .await
+        }
         Request::DuplicateFlowItem {
             item_type,
             item_id,
             parent_type,
             parent_id,
             position,
-        } => transaction(factory, async |db| {
-            flows::duplicate_flow_item(db, item_type, item_id, &parent_type, parent_id, position)
+        } => {
+            transaction(factory, async |db| {
+                flows::duplicate_flow_item(
+                    db,
+                    item_type,
+                    item_id,
+                    &parent_type,
+                    parent_id,
+                    position,
+                )
                 .await
                 .wired()
-        })
-        .await,
+            })
+            .await
+        }
         Request::ConvertToFlow {
             node_type,
             node_id,
             keep_dependencies,
             map_scopes,
-        } => transaction(factory, async |db| {
-            flows::convert_to_flow(db, &node_type, node_id, keep_dependencies, map_scopes)
-                .await
-                .wired()
-        })
-        .await,
+        } => {
+            transaction(factory, async |db| {
+                flows::convert_to_flow(db, &node_type, node_id, keep_dependencies, map_scopes)
+                    .await
+                    .wired()
+            })
+            .await
+        }
     }
 }

@@ -247,7 +247,10 @@ pub(crate) enum StatusAfter {
 /// Reads `request` as a [`Rule`], runs it, and answers its result as JSON.
 pub(crate) fn run(request: &str) -> Result<String, Raised> {
     let rule: Rule = serde_json::from_str(request).map_err(|error| {
-        Failure::new(WireErrorKind::InvalidRequest, format!("unreadable rule call: {error}"))
+        Failure::new(
+            WireErrorKind::InvalidRequest,
+            format!("unreadable rule call: {error}"),
+        )
     })?;
     Ok(apply(rule)?.to_string())
 }
@@ -315,7 +318,12 @@ fn apply(rule: Rule) -> Result<Value, WireError> {
             iteration_status,
             window,
             now,
-        } => json(habits::instance_timing(clock, iteration_status, window, now)),
+        } => json(habits::instance_timing(
+            clock,
+            iteration_status,
+            window,
+            now,
+        )),
         Rule::ClassifyHabitIterations {
             slots,
             clock,

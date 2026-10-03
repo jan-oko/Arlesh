@@ -47,3 +47,6 @@ extend-exclude = ["python/arlesh/models.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "ANN", "RUF"]
+# The JSON boundary is typed `Any` on purpose: what crosses it is validated by pydantic on the
+# way back.
+ignore = ["ANN401"]
