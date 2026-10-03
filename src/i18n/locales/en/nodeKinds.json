@@ -39,6 +39,12 @@
   "flow_task": "Task",
   "flow_task_one": "Task",
   "flow_task_other": "Tasks",
+  "flow_commitment": "Commitment",
+  "flow_commitment_one": "Commitment",
+  "flow_commitment_other": "Commitments",
+  "flow_expectation": "Expectation",
+  "flow_expectation_one": "Expectation",
+  "flow_expectation_other": "Expectations",
   "habit_group": "Habit history",
   "habit_group_one": "Habit history",
   "habit_group_other": "Habit histories"

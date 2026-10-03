@@ -24,7 +24,7 @@ import { useBoardChanged } from "@/hooks/use-board-changed";
 import type { MindmapLoad } from "@/api/mindmap";
 import {
   createFlow, updateFlow, deleteFlow,
-  createFlowGoal, createFlowTask, updateFlowGoal, updateFlowTask, deleteFlowItem,
+  createFlowItem, updateFlowItem, deleteFlowItem, isFlowItemType, flowItemNodeId,
   duplicateFlow, duplicateFlowItem,
 } from "@/api/flows";
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
@@ -39,7 +39,8 @@ import type { Goal } from "@/api/goals";
 import type { Info } from "@/api/infos";
 import type {
   Flow, CreateFlowRequest, UpdateFlowRequest,
-  FlowGoal, FlowTask, FlowItemCycle, FlowDependency, FlowItemType, TargetRef, TemplateFields,
+  FlowGoal, FlowTask, FlowCommitment, FlowExpectation, FlowItemCycle, FlowDependency, FlowItemType,
+  TargetRef, TemplateFields,
 } from "@/api/flows";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
 import type { DependencyBlock, NodeFacts } from "@/api/mindmap";
@@ -223,7 +224,8 @@ function kindToInfoParentType(kind: NodeKind): string {
     case "commitment": return "commitment";
     case "expectation": return "expectation";
     case "flow": throw new Error("Flow nodes cannot parent info nodes");
-    case "flow_goal": case "flow_task": throw new Error("Flow items cannot parent info nodes");
+    case "flow_goal": case "flow_task": case "flow_commitment": case "flow_expectation":
+      throw new Error("Flow items cannot parent info nodes");
     case "habit_group": throw new Error("A folded Habit history cannot parent info nodes");
   }
 }
@@ -237,7 +239,8 @@ function kindToFlowParentType(kind: NodeKind): string {
   switch (kind) {
     case "aspect": case "domain": case "project": case "goal": return kind;
     case "task": case "commitment": case "expectation": case "tag": case "info":
-    case "flow": case "flow_goal": case "flow_task": case "habit_group":
+    case "flow": case "flow_goal": case "flow_task": case "flow_commitment": case "flow_expectation":
+    case "habit_group":
       throw new Error(`Flows cannot hang from a node of kind "${kind}"`);
   }
 }
@@ -249,11 +252,12 @@ function kindToFlowParentType(kind: NodeKind): string {
  */
 function kindToFlowItemParentType(kind: NodeKind): string {
   switch (kind) {
-    case "flow": case "flow_goal": case "flow_task": return kind;
+    case "flow": case "flow_goal": case "flow_task": case "flow_commitment": return kind;
     // `habit_group` is among them because a folded run of passed iterations is drawn, not stored
     // — it is nobody's parent.
     case "aspect": case "domain": case "project": case "goal":
     case "task": case "commitment": case "expectation": case "tag": case "info": case "habit_group":
+    case "flow_expectation":
       throw new Error(`Flow items cannot hang from a node of kind "${kind}"`);
   }
 }
@@ -330,16 +334,9 @@ function templateFieldsOf(item: TemplateFields): TemplateFields {
   };
 }
 
-/** Node id for a flow item — `flowgoal-<id>` / `flowtask-<id>` (distinct from real goals/tasks). */
-function flowItemNodeId(itemType: FlowItemType, id: number): string {
-  return itemType === "flow_goal" ? `flowgoal-${id}` : `flowtask-${id}`;
-}
-
 /** Node id of a flow item's in-flow parent (the flow itself, or another item). */
 function flowItemParentKey(flowId: number, parentType: string, parentId: number): string {
-  if (parentType === "flow_goal") return `flowgoal-${parentId}`;
-  if (parentType === "flow_task") return `flowtask-${parentId}`;
-  return `flow-${flowId}`;
+  return isFlowItemType(parentType) ? flowItemNodeId(parentType, parentId) : `flow-${flowId}`;
 }
 
 function toCyclePair(cycle: FlowItemCycle): FlowCyclePair {
@@ -433,6 +430,9 @@ export function buildTree(
    * `facts`): which dependencies block it, what it inherits, its open question, whether it has
    * expired. */
   facts: Readonly<Record<string, NodeFacts>> = {},
+  /** Every Flow's Commitment items and wait items (Task b66). */
+  flowCommitments: FlowCommitment[] = [],
+  flowExpectations: FlowExpectation[] = [],
 ): MindmapNode {
   const nodeMap = new Map<string, MindmapNode>();
 
@@ -682,7 +682,7 @@ export function buildTree(
 
   const buildFlowItem = (
     itemType: FlowItemType,
-    item: FlowGoal | FlowTask,
+    item: FlowGoal | FlowTask | FlowCommitment | FlowExpectation,
   ): void => {
     const id = flowItemNodeId(itemType, item.id);
     const owningFlow = flowById.get(item.flow_id);
@@ -701,6 +701,8 @@ export function buildTree(
         cycles: cyclesByItem.get(id) ?? [],
         dependsOn: depsByItem.get(id) ?? [],
         template: templateFieldsOf(item),
+        ...("verdict_window" in item ? { verdictWindow: item.verdict_window } : {}),
+        ...("check_every" in item ? { checkEvery: item.check_every, firstCheck: item.first_check } : {}),
       },
       tagIds: item.tag_ids ?? [],
       children: [],
@@ -708,6 +710,8 @@ export function buildTree(
   };
   for (const goal of flowGoals) buildFlowItem("flow_goal", goal);
   for (const task of flowTasks) buildFlowItem("flow_task", task);
+  for (const commitment of flowCommitments) buildFlowItem("flow_commitment", commitment);
+  for (const wait of flowExpectations) buildFlowItem("flow_expectation", wait);
 
   // Wire flows to their parents.
   for (const flow of flows) {
@@ -731,6 +735,15 @@ export function buildTree(
     const node = nodeMap.get(flowItemNodeId("flow_task", task.id));
     const parent = nodeMap.get(flowItemParentKey(task.flow_id, task.parent_type, task.parent_id));
     if (node !== undefined && parent !== undefined) parent.children.push(node);
+  }
+  for (const [kind, items] of [
+    ["flow_commitment", flowCommitments], ["flow_expectation", flowExpectations],
+  ] as const) {
+    for (const item of items) {
+      const node = nodeMap.get(flowItemNodeId(kind, item.id));
+      const parent = nodeMap.get(flowItemParentKey(item.flow_id, item.parent_type, item.parent_id));
+      if (node !== undefined && parent !== undefined) parent.children.push(node);
+    }
   }
 
   // Wire domain tree (all subtypes including tags)
@@ -974,6 +987,7 @@ export function useMindmapData(): MindmapData {
           data.expectations, (title, delegateName) => delegationWaitTitle.current(title, delegateName),
           (title) => `${checkPrefix}${title}`, compoundReason.current, capacityReason.current,
           (until) => cooldownReason.current(until), data.short_ids ?? {}, personNames, data.facts ?? {},
+          data.flow_commitments ?? [], data.flow_expectations ?? [],
         );
         applyLifecycles(built, lifecycleMap(data.lifecycles));
         // A Habit's occurrences are ordinary rows, already built into the tree above. A flow whose
@@ -1098,16 +1112,16 @@ export function useMindmapData(): MindmapData {
         return newNode;
       }
 
-      if (childKind === "flow_goal" || childKind === "flow_task") {
+      if (isFlowItemType(childKind)) {
         // A flow item's owning flow is the parent flow node, or the parent item's flow.
         const parent = findNodeInTree(tree, parentId);
         const flowId = parent?.kind === "flow" ? dbParentId : parent?.flowItem?.flowId;
         if (flowId === undefined) throw new Error(`Cannot create a flow item under "${parentId}"`);
         const parentType = parentKind === "flow" ? "flow" : parentKind;
         const request = { flow_id: storedId(flowId), title, parent_type: parentType, parent_id: storedId(dbParentId) };
-        const item = childKind === "flow_goal" ? await createFlowGoal(request) : await createFlowTask(request);
+        const item = await createFlowItem(childKind, request);
         const newNode: MindmapNode = {
-          id: childKind === "flow_goal" ? `flowgoal-${item.id}` : `flowtask-${item.id}`,
+          id: flowItemNodeId(childKind, item.id),
           rowId: item.id,
           kind: childKind, title: item.title,
           position: item.position, tagIds: [], children: [],
@@ -1137,6 +1151,8 @@ export function useMindmapData(): MindmapData {
         : parentKind === "flow" ? flowRootChildKind()
         : parentKind === "flow_goal" ? "flow_goal"
         : parentKind === "flow_task" ? "flow_task"
+        // A Commitment item's default child is another, as a Commitment's is.
+        : parentKind === "flow_commitment" ? "flow_commitment"
         // A Tag holds notes about itself and nothing else (Arlesh-71m taught `isValidDropTarget`
         // that and left this table behind), so its default child is the only child it can take.
         : parentKind === "tag" ? "info"
@@ -1159,10 +1175,8 @@ export function useMindmapData(): MindmapData {
         await updateExpectation(dbId, { title });
       } else if (kind === "info") {
         await updateInfo(storedId(dbId), { body: title });
-      } else if (kind === "flow_goal") {
-        await updateFlowGoal(storedId(dbId), { title });
-      } else if (kind === "flow_task") {
-        await updateFlowTask(storedId(dbId), { title });
+      } else if (isFlowItemType(kind)) {
+        await updateFlowItem(kind, storedId(dbId), { title });
       } else if (kind === "flow") {
         await updateFlow(storedId(dbId), { title });
       } else {
@@ -1199,8 +1213,7 @@ export function useMindmapData(): MindmapData {
         else if (kind === "commitment") await updateCommitment(nId, { position: pos });
         else if (kind === "expectation") await updateExpectation(nId, { position: pos });
         else if (kind === "info") await updateInfo(storedId(nId), { position: pos });
-        else if (kind === "flow_goal") await updateFlowGoal(storedId(nId), { position: pos });
-        else if (kind === "flow_task") await updateFlowTask(storedId(nId), { position: pos });
+        else if (isFlowItemType(kind)) await updateFlowItem(kind, storedId(nId), { position: pos });
         else if (kind === "flow") await updateFlow(storedId(nId), { position: pos });
         else await updateDomain(storedId(nId), { position: pos });
       };
@@ -1250,11 +1263,12 @@ export function useMindmapData(): MindmapData {
           break;
         }
         case "flow_goal":
-        case "flow_task": {
+        case "flow_task":
+        case "flow_commitment":
+        case "flow_expectation": {
           // Flow items move only within their flow subtree; parent is the flow or another item.
           const parentType = newParentKind === "flow" ? "flow" : newParentKind;
-          const update = kind === "flow_goal" ? updateFlowGoal : updateFlowTask;
-          await update(storedId(dbId), { parent_type: parentType, parent_id: storedId(dbParentId), position });
+          await updateFlowItem(kind, storedId(dbId), { parent_type: parentType, parent_id: storedId(dbParentId), position });
           break;
         }
         case "domain":
@@ -1331,6 +1345,8 @@ export function useMindmapData(): MindmapData {
           break;
         case "flow_goal":
         case "flow_task":
+        case "flow_commitment":
+        case "flow_expectation":
           // Within the flow only — `onPaste` refuses the cross-flow case before getting here, and
           // the backend refuses it again: the Cycle Scope is an offset into *this* flow's window.
           await duplicateFlowItem(kind, dbId, kindToFlowItemParentType(targetKind), dbTargetId, position);
@@ -1360,8 +1376,7 @@ export function useMindmapData(): MindmapData {
           else if (kind === "expectation") await deleteExpectation(dbId);
           else if (kind === "info") await deleteInfo(storedId(dbId));
           else if (kind === "flow") await deleteFlow(storedId(dbId));
-          else if (kind === "flow_goal") await deleteFlowItem("flow_goal", storedId(dbId));
-          else if (kind === "flow_task") await deleteFlowItem("flow_task", storedId(dbId));
+          else if (isFlowItemType(kind)) await deleteFlowItem(kind, storedId(dbId));
           else if (kind !== "aspect") await deleteDomain(storedId(dbId));
         }
       });

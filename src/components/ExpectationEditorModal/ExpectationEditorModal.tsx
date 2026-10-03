@@ -11,6 +11,7 @@ import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import CountedDurationField from "@/components/EditorModal/CountedDurationField";
 import StartingDayField from "@/components/ScopePicker/StartingDayField";
 import Switch from "@/components/Switch/Switch";
+import { isOccurrence } from "@/utils/node-identity";
 import TagPicker from "@/components/TagPicker/TagPicker";
 import type { Domain } from "@/api/domains";
 import { useInputCapture } from "@/hooks/use-input-capture";
@@ -168,7 +169,11 @@ export default function ExpectationEditorModal({ node, heading, lead, onSave, on
       )}
       <div className={styles.label}>
         {t("editor:fieldTimeScope")}
-        <TimeScopeField value={timeScope} onChange={setTimeScope} />
+        <TimeScopeField
+          value={timeScope}
+          onChange={setTimeScope}
+          {...(isOccurrence(node) ? { lockedReason: t("editor:scopeLockedOccurrence") } : {})}
+        />
       </div>
       <div className={styles.label}>
         {t("expectation:fieldCheckEvery")}

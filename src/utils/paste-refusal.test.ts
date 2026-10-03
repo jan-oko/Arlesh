@@ -157,7 +157,7 @@ describe("pasteRefusal — the destination refusal", () => {
     expect(pasteRefusal(TREE, "flowtask-4", TASK, true)).toEqual({
       reason: PASTE_REFUSAL.HERE,
       child: "flow_task",
-      validParents: ["flow", "flow_goal", "flow_task"],
+      validParents: ["flow", "flow_goal", "flow_task", "flow_commitment"],
     });
   });
 

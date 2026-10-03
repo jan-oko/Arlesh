@@ -93,6 +93,8 @@ export const NODE_ICON: Record<NodeKind, string> = {
   flow: "▶",
   flow_goal: "◇",
   flow_task: "✓",
+  flow_commitment: "🤝",
+  flow_expectation: "◌",
   // A stack of folded history, not a thing in its own right.
   habit_group: "▤",
 };
@@ -110,6 +112,8 @@ export const NODE_LABEL: Record<NodeKind, string> = {
   flow: "Flow",
   flow_goal: "Goal",
   flow_task: "Task",
+  flow_commitment: "Commitment",
+  flow_expectation: "Expectation",
   habit_group: "Habit history",
 };
 
@@ -120,7 +124,8 @@ export const NODE_LABEL: Record<NodeKind, string> = {
  * disagree about where the boundary between the flow world and the real one runs.
  */
 export function isFlowKind(kind: NodeKind): boolean {
-  return kind === "flow" || kind === "flow_goal" || kind === "flow_task";
+  return kind === "flow" || kind === "flow_goal" || kind === "flow_task" ||
+    kind === "flow_commitment" || kind === "flow_expectation";
 }
 
 /**
@@ -149,7 +154,12 @@ export function isValidDropTarget(sourceKind: NodeKind, targetKind: NodeKind): b
   if (isFlowKind(sourceKind) || isFlowKind(targetKind)) {
     if (sourceKind === "flow") return targetKind === "aspect" || targetKind === "domain" || targetKind === "project" || targetKind === "goal";
     if (sourceKind === "flow_goal") return targetKind === "flow" || targetKind === "flow_goal";
-    if (sourceKind === "flow_task") return targetKind === "flow" || targetKind === "flow_goal" || targetKind === "flow_task";
+    // A Task, Commitment or wait item sits where the stored kind it draws does, the Flow standing
+    // for its root: under the Flow or a Goal, Task or Commitment item. A wait item holds nothing.
+    if (sourceKind === "flow_task" || sourceKind === "flow_commitment" || sourceKind === "flow_expectation") {
+      return targetKind === "flow" || targetKind === "flow_goal" || targetKind === "flow_task" ||
+        targetKind === "flow_commitment";
+    }
     return false; // a real node can never drop onto a flow or flow item
   }
 
@@ -211,28 +221,26 @@ export function typedChildNodeKind(kind: TypedChildKind): NodeKind {
 
 /**
  * The chords that, aimed inside a Flow template, ask for a **flow item** of their kind rather than
- * a stored node — Tab among them, which is Shift+T there as everywhere. Only a Task and a Goal have
- * a flow-item form (`flow_tasks`, `flow_goals`); a Commitment or an Expectation item does not exist.
+ * a stored node — Tab among them, which is Shift+T there as everywhere. A Task, a Goal, a
+ * Commitment and an Expectation each have a flow-item form (Task b66).
  */
-const FLOW_ITEM_FORM: ReadonlyMap<TypedChildKind, NodeKind | null> = new Map<TypedChildKind, NodeKind | null>([
+const FLOW_ITEM_FORM: ReadonlyMap<TypedChildKind, NodeKind> = new Map<TypedChildKind, NodeKind>([
   ["task", "flow_task"],
   ["goal", "flow_goal"],
-  ["commitment", null],
-  ["expectation", null],
+  ["commitment", "flow_commitment"],
+  ["expectation", "flow_expectation"],
 ]);
 
 /**
- * The node kind a typed chord creates under a parent of `parentKind`, or `null` when the chord asks
- * for a flow item of a kind no flow item can be.
+ * The node kind a typed chord creates under a parent of `parentKind`.
  *
  * Outside a Flow template this is {@link typedChildNodeKind}. Inside one (the Flow, or one of its
- * items) `Shift+T` and `Shift+G` create that kind's flow item, and `Shift+C` and `Shift+E` have no
- * flow item to create. The other chords keep their own kind, which the parenting rule then refuses.
+ * items) `Shift+T`, `Shift+G`, `Shift+C` and `Shift+E` create that kind's flow item. The other
+ * chords keep their own kind, which the parenting rule then refuses.
  */
-export function typedChildStoredKind(parentKind: NodeKind, kind: TypedChildKind): NodeKind | null {
+export function typedChildStoredKind(parentKind: NodeKind, kind: TypedChildKind): NodeKind {
   if (!isFlowKind(parentKind)) return typedChildNodeKind(kind);
-  const flowItemForm = FLOW_ITEM_FORM.get(kind);
-  return flowItemForm === undefined ? typedChildNodeKind(kind) : flowItemForm;
+  return FLOW_ITEM_FORM.get(kind) ?? typedChildNodeKind(kind);
 }
 
 /**
@@ -250,7 +258,7 @@ export function isCommitmentFlow(node: MindmapNode): boolean {
  */
 const PARENT_CANDIDATES: readonly NodeKind[] = [
   "aspect", "domain", "project", "goal", "task", "commitment", "expectation", "info", "tag",
-  "flow", "flow_goal", "flow_task",
+  "flow", "flow_goal", "flow_task", "flow_commitment", "flow_expectation",
 ];
 
 /**

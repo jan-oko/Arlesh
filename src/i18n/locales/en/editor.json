@@ -166,5 +166,10 @@
   "cooldownBlocked": "Cooling down until {{when}}",
   "cooldownBlockLabel": "From its Habit's cooldown",
   "statusReviewDerived": "The agent has a question open: answer it below, or take the task over",
-  "agenticQuestionSection": "The agent's question"
+  "agenticQuestionSection": "The agent's question",
+  "fieldFirstCheck": "First check",
+  "firstCheckAtStart": "When its window opens",
+  "firstCheckHint": "Counted into each occurrence's window: 3 · Day is its third day. Check every repeats from there.",
+  "verdictWindowLockedOccurrence": "Set on its template, for every occurrence",
+  "verdictWindowSummary": "{{n}} × {{kind}}"
 }

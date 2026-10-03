@@ -81,6 +81,8 @@ function fieldsForKind(node: MindmapNode): readonly StepFieldKind[] {
       return ["instanceType"];
     case "flow_goal":
     case "flow_task":
+    case "flow_commitment":
+    case "flow_expectation":
       return ["timeScope"];
     // A folded run of Habit history is a tally and a span, not a node with fields: its title is the
     // tally, and the span is the card's tooltip.
@@ -274,6 +276,6 @@ export function cardWritesKind(kind: NodeKind): boolean {
 export function creatableKinds(node: MindmapNode): readonly TypedChildKind[] {
   return TYPED_CHILD_KINDS.filter((kind) => {
     const storedKind = typedChildStoredKind(node.kind, kind);
-    return storedKind !== null && canParentNewChild(node, storedKind);
+    return canParentNewChild(node, storedKind);
   });
 }
