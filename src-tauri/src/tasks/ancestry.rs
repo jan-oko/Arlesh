@@ -16,8 +16,6 @@
 //! the two are [`Search::Unconstrained`] and [`Search::Undetermined`], and each caller applies
 //! its own policy to the second — see [`Search::or_unconstrained`] and [`Search::or_reject`].
 
-use std::collections::HashSet;
-
 use crate::database::session::{Db, SessionMode};
 
 use super::error::TaskError;
@@ -56,67 +54,34 @@ pub(super) async fn climb<M: SessionMode>(
     start_type: &str,
     start_id: i64,
 ) -> Result<AncestryChain, TaskError> {
-    let mut links = Vec::new();
-    let mut visited: HashSet<(NodeKind, i64)> = HashSet::new();
-    let mut next = NodeRef::new(start_type, start_id);
+    let mut climb = Climb::new(start_type, start_id);
     loop {
-        let Some(kind) = NodeKind::from_db(&next.node_type) else {
-            return Ok(AncestryChain {
-                links,
-                end: ChainEnd::Root,
-            });
+        let (kind, id) = match climb.step() {
+            ClimbStep::Done(chain) => return Ok(chain),
+            ClimbStep::Read(kind, id) => (kind, id),
         };
-        if !visited.insert((kind, next.node_id)) {
-            let end = ChainEnd::Broken {
-                kind,
-                id: next.node_id,
-                cause: BreakCause::Cycle,
-            };
-            return Ok(AncestryChain { links, end });
-        }
         let read = match kind {
-            NodeKind::Task => db.tasks().ancestry_link(TaskId(next.node_id)).await,
-            NodeKind::Goal => db.goals().ancestry_link(GoalId(next.node_id)).await,
-            NodeKind::Commitment => {
-                db.commitments()
-                    .ancestry_link(CommitmentId(next.node_id))
-                    .await
-            }
+            NodeKind::Task => db.tasks().ancestry_link(TaskId(id)).await,
+            NodeKind::Goal => db.goals().ancestry_link(GoalId(id)).await,
+            NodeKind::Commitment => db.commitments().ancestry_link(CommitmentId(id)).await,
         };
-        let link = match read {
-            Ok(link) => link,
+        let read = match read {
+            Ok(link) => LinkRead::Found {
+                link,
+                occurrence: occurrence_of(db, kind, id).await?,
+            },
             // A dangling reference — the referenced row was deleted — breaks the chain. Every
             // other database failure is a real failure and propagates.
             Err(
                 TaskError::TaskNotFound(_)
                 | TaskError::GoalNotFound(_)
                 | TaskError::CommitmentNotFound(_),
-            ) => {
-                let end = ChainEnd::Broken {
-                    kind,
-                    id: next.node_id,
-                    cause: BreakCause::Missing,
-                };
-                return Ok(AncestryChain { links, end });
-            }
+            ) => LinkRead::Missing,
             Err(error) => return Err(error),
         };
-        // An added child of a Habit occurrence climbs into that occurrence, not into the row its
-        // parent columns name. Those columns hold the occurrence's host — the node the occurrence
-        // itself renders under — because a virtual instance has no id for them to point at, and
-        // following them would check the child against the wrong window and archive it on the
-        // wrong day. Asked per link rather than once at the start, because a child of an added
-        // child reaches the occurrence two steps up.
-        if let Some(occurrence) = occurrence_of(db, kind, next.node_id).await? {
-            links.push(link);
-            links.push(occurrence);
-            return Ok(AncestryChain {
-                links,
-                end: ChainEnd::Root,
-            });
+        if let Some(chain) = climb.read(kind, id, read) {
+            return Ok(chain);
         }
-        next = link.parent.clone();
-        links.push(link);
     }
 }
 

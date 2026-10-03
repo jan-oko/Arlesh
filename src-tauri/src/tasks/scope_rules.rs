@@ -19,25 +19,18 @@ use chrono::NaiveDateTime;
 use serde::Serialize;
 
 use crate::database::session::{Db, SessionMode};
-use crate::nodes::id::NodeId;
-use crate::nodes::key::{CheckKey, DerivedKey};
 use crate::scopes::resolve::{self, Bounds};
 
 use super::ancestry;
-use super::commitments;
 use super::error::TaskError;
-use super::expectations;
-use super::lifecycle::{
-    derive_commitment_state, derive_item_state, derive_timing, effective_due, Archival,
-    ItemLifecycle,
+use super::lifecycle::ItemLifecycle;
+use super::model::{CommitmentId, GoalId, OnScopeExit, TaskId, TimeScope};
+use super::rules::ancestry::AncestryIndex;
+use super::rules::scope::{
+    check_containment, derive_item_lifecycles, governance, ContainmentWindows, LifecycleRows,
 };
-use super::model::{
-    CommitmentId, ExpectationArchival, ExpectationStatus, GoalId, GoalStatus, OnScopeExit,
-    TaskArchival, TaskId, TimeScope,
-};
-use super::rules::scope::{check_containment, goal_stored_archival, ContainmentWindows};
 pub(super) use super::rules::scope::{is_overdue, WrittenTask};
-pub use super::rules::scope::{mark_waits_under_pending, wait_lifecycle};
+pub use super::rules::scope::{mark_waits_under_pending, wait_lifecycle, OccurrenceExit};
 
 /// A descendant whose explicit Time Scope would fall outside a candidate window — i.e. one that
 /// narrowing an ancestor's scope (or reparenting) would orphan.
@@ -66,28 +59,7 @@ pub(super) async fn scope_governance_with<M: SessionMode>(
     exit: OccurrenceExit,
 ) -> Result<Option<(Bounds, OnScopeExit)>, TaskError> {
     let chain = ancestry::climb(db, node_type, node_id).await?;
-    if exit == OccurrenceExit::Ignored && chain.nearest_scoped_is_occurrence() {
-        return Ok(None);
-    }
-    let Some((time_scope, on_exit)) = chain.nearest_scoped().or_unconstrained() else {
-        return Ok(None);
-    };
-    Ok(Some((time_scope.window(), on_exit)))
-}
-
-/// Whether an added child of a Habit occurrence that has no window of its own is governed by its
-/// occurrence's window — which archives it with the occurrence when that window passes.
-///
-/// A compound occurrence's status is worked out **before** its iteration is classified
-/// (`docs/spec/habits.md`, *Iteration resolution*), so archival that comes only from the
-/// iteration's window passing must not feed back into whether the iteration resolved: that
-/// reading takes [`Self::Ignored`]; everywhere else it is [`Self::Honoured`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OccurrenceExit {
-    /// The occurrence's window governs what hangs on it, as the board shows it.
-    Honoured,
-    /// What is governed by nothing but its occurrence's window reads as unscoped.
-    Ignored,
+    Ok(governance(&chain, exit))
 }
 
 /// Derives the full lifecycle state (Timing / Resolution / Archival and the Overdue flag — see
@@ -119,173 +91,25 @@ pub async fn derive_scope_lifecycles<M: SessionMode>(
     now: NaiveDateTime,
     exit: OccurrenceExit,
 ) -> Result<Vec<ItemLifecycle>, TaskError> {
-    let mut out = Vec::new();
-    for task in db.tasks().list().await? {
-        let governance = scope_governance_with(db, "task", task.id.require_stored()?, exit).await?;
-        let (window, on_exit) = governance.unzip();
-        let resolved = task.status.is_done();
-        let stored = Some(Archival::from(task.archival));
-        let due = effective_due(
-            task.due_scope.as_ref().map(TimeScope::window),
-            governance,
-            task.archival == TaskArchival::Backlog,
-        );
-        let state = derive_item_state(window, on_exit, due, resolved, stored, now);
-        let plan_timing = task
-            .plan
-            .as_ref()
-            .map(|plan| derive_timing(Some(plan.window()), now));
-        out.push(ItemLifecycle {
-            node_type: "task".to_string(),
-            node_id: task.id,
-            timing: state.timing,
-            resolution: state.resolution,
-            overdue: state.overdue,
-            verdict: None,
-            archival: state.archival,
-            archival_conflict: state.archival_conflict,
-            plan_timing,
-        });
-    }
-    for goal in db.goals().list().await? {
-        let governance = scope_governance_with(db, "goal", goal.id.require_stored()?, exit).await?;
-        let (window, on_exit) = governance.unzip();
-        let parsed_status = GoalStatus::from_db(&goal.status);
-        let resolved = matches!(
-            parsed_status,
-            Some(GoalStatus::Achieved) | Some(GoalStatus::Archived)
-        );
-        let stored = Some(goal_stored_archival(&goal.status));
-        let due = effective_due(None, governance, false);
-        let state = derive_item_state(window, on_exit, due, resolved, stored, now);
-        out.push(ItemLifecycle {
-            node_type: "goal".to_string(),
-            node_id: goal.id,
-            timing: state.timing,
-            resolution: state.resolution,
-            overdue: state.overdue,
-            verdict: None,
-            archival: state.archival,
-            archival_conflict: state.archival_conflict,
-            plan_timing: None,
-        });
-    }
-    for commitment in db.commitments().list().await? {
-        let window = scope_governance_with(db, "commitment", commitment.id.require_stored()?, exit)
-            .await?
-            .map(|(window, _)| window);
-        let verdict_window = commitments::effective_verdict_window(
-            db,
-            CommitmentId(commitment.id.require_stored()?),
-        )
-        .await?;
-        let state =
-            derive_commitment_state(window, commitment.verdict, verdict_window.as_ref(), now);
-        out.push(ItemLifecycle {
-            node_type: "commitment".to_string(),
-            node_id: commitment.id,
-            timing: state.timing,
-            // Resolution is the Task/Goal axis; a Commitment answers with its Verdict instead,
-            // and sending both would invite a consumer to read one as a fallback for the other.
-            resolution: None,
-            // Nothing on a Commitment comes due: it is judged by its Verdict, not by lateness.
-            overdue: false,
-            verdict: Some(state.verdict),
-            archival: state.archival,
-            // Nothing on a Commitment is manually archived, so nothing can be overridden.
-            archival_conflict: false,
-            // Never scheduled: the window *is* the commitment.
-            plan_timing: None,
-        });
-    }
-    // A wait's entries: `expectation` times a wait's own Time Scope — a stored one, or the wait an
-    // Asynchronous task's completion spawned, under its derived row id — and `task` the day its
-    // open check task is due, under the check task's row id. A wait is never Missed, so a passed
-    // window with the wait pending is flagged Overdue.
-    let windows = super::waits::derive_wait_windows(db, now).await?;
-    let checks: std::collections::HashMap<i64, (TimeScope, chrono::NaiveDateTime)> = windows
-        .expectation_checks
-        .into_iter()
-        .filter(|check| check.resolved_at.is_none())
-        .map(|check| (check.expectation_id, (check.due, check.due_at)))
-        .collect();
-    let mut entries: Vec<WaitEntry> = Vec::new();
-    for expectation in db.expectations().list().await? {
-        let Some(stored_id) = expectation.id.stored() else {
-            continue;
-        };
-        entries.push(WaitEntry {
-            node_type: expectations::EXPECTATION,
-            node_id: expectation.id.clone(),
-            window: expectation.time_scope.clone(),
-            status: expectation.status,
-            archival: expectation.archival,
-        });
-        if let Some((due, due_at)) = checks.get(&stored_id) {
-            entries.push(WaitEntry {
-                node_type: "task",
-                node_id: check_row_id(super::waits::WaitRef::Stored(stored_id), *due_at),
-                window: Some(due.clone()),
-                status: expectation.status,
-                archival: expectation.archival,
-            });
-        }
-    }
-    for spawned in windows.spawned_waits {
-        let (task_id, status, archival) = (
-            spawned.wait.task_id,
-            spawned.wait.status,
-            spawned.wait.archival,
-        );
-        entries.push(WaitEntry {
-            node_type: expectations::EXPECTATION,
-            node_id: DerivedKey::SpawnedWait(NodeId::Stored(task_id)).node_id(),
-            window: spawned.time_scope,
-            status,
-            archival,
-        });
-        if let (Some(due), Some(due_at)) = (spawned.next_check, spawned.next_check_at) {
-            entries.push(WaitEntry {
-                node_type: "task",
-                node_id: check_row_id(super::waits::WaitRef::Spawned(task_id), due_at),
-                window: Some(due),
-                status,
-                archival,
-            });
-        }
-    }
-    for WaitEntry {
-        node_type,
-        node_id,
-        window,
-        status,
-        archival,
-    } in entries
-    {
-        out.push(wait_lifecycle(
-            node_type,
-            node_id,
-            window.as_ref(),
-            status,
-            archival,
-            now,
-        ));
-    }
-    Ok(out)
-}
-
-/// One lifecycle entry a wait sends: which window it times, for which node, and the wait's state.
-struct WaitEntry {
-    node_type: &'static str,
-    node_id: NodeId,
-    window: Option<TimeScope>,
-    status: ExpectationStatus,
-    archival: ExpectationArchival,
-}
-
-/// The row id of the check task on a wait due at `due_at`.
-fn check_row_id(wait: super::waits::WaitRef, due_at: chrono::NaiveDateTime) -> NodeId {
-    DerivedKey::Check(CheckKey { wait, due_at }).node_id()
+    let tasks = db.tasks().list().await?;
+    let goals = db.goals().list().await?;
+    let commitments = db.commitments().list().await?;
+    let attachments = db.flows().child_attachments().await?;
+    let ancestry = AncestryIndex::of(&tasks, &goals, &commitments, attachments);
+    let wait_windows = super::waits::derive_wait_windows(db, now).await?;
+    let expectations = db.expectations().list().await?;
+    Ok(derive_item_lifecycles(
+        LifecycleRows {
+            tasks: &tasks,
+            goals: &goals,
+            commitments: &commitments,
+            expectations: &expectations,
+            ancestry: &ancestry,
+            wait_windows,
+        },
+        now,
+        exit,
+    ))
 }
 
 /// The window of the nearest ancestor of `(parent_type, parent_id)` — itself included — that has

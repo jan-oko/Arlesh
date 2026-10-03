@@ -82,6 +82,34 @@ struct AttachmentRow {
     window_end_scope_id: Option<ScopeKey>,
 }
 
+impl AttachmentRow {
+    /// The attachment the row records.
+    fn attachment(self) -> ChildAttachment {
+        ChildAttachment {
+            flow_id: self.flow_id.unwrap_or_default(),
+            instance_type: self.parent_kind,
+            parent_key: self.parent_key,
+            window: self
+                .window_start_scope_id
+                .zip(self.window_end_scope_id)
+                .map(|(start_id, end_id)| TimeScope {
+                    start_id,
+                    end_id,
+                    duration: None,
+                }),
+        }
+    }
+}
+
+/// One `derived_children` row with the child it attaches, as a whole board's index reads it.
+#[derive(sqlx::FromRow)]
+struct ChildAttachmentRow {
+    child_type: String,
+    child_id: i64,
+    #[sqlx(flatten)]
+    attachment: AttachmentRow,
+}
+
 /// Reads and writes flow templates — and their items, cycles, recurrences and instances —
 /// on a session's connection.
 ///
@@ -1340,18 +1368,25 @@ impl<'session> FlowOperator<'session> {
         .bind(child_id)
         .fetch_optional(&mut *self.connection)
         .await?;
-        Ok(row.map(|row| ChildAttachment {
-            flow_id: row.flow_id.unwrap_or_default(),
-            instance_type: row.parent_kind,
-            parent_key: row.parent_key,
-            window: row.window_start_scope_id.zip(row.window_end_scope_id).map(
-                |(start_id, end_id)| TimeScope {
-                    start_id,
-                    end_id,
-                    duration: None,
-                },
-            ),
-        }))
+        Ok(row.map(AttachmentRow::attachment))
+    }
+
+    /// Every added child's attachment, with the child it attaches — what
+    /// [`Self::child_attachment`] reads one child at a time, for a whole board.
+    pub async fn child_attachments(
+        &mut self,
+    ) -> Result<Vec<(String, i64, ChildAttachment)>, sqlx::Error> {
+        let rows: Vec<ChildAttachmentRow> = sqlx::query_as(
+            "SELECT child_type, child_id, flow_id, parent_kind, parent_key, window_start_scope_id,
+                    window_end_scope_id
+             FROM derived_children",
+        )
+        .fetch_all(&mut *self.connection)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| (row.child_type, row.child_id, row.attachment.attachment()))
+            .collect())
     }
 
     /// Attaches an already-created row to one occurrence. `window` is the occurrence's, resolved

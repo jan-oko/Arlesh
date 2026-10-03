@@ -9,18 +9,22 @@ use std::collections::HashSet;
 use chrono::NaiveDateTime;
 
 use crate::nodes::id::NodeId;
+use crate::nodes::key::{CheckKey, DerivedKey};
 use crate::scopes::resolve::{self, Bounds};
 
 use crate::tasks::error::TaskError;
 use crate::tasks::expectations::EXPECTATION;
 use crate::tasks::lifecycle::{
-    derive_archival, derive_expectation_state, derive_overdue, derive_resolution, derive_timing,
-    effective_due, Archival, ItemLifecycle, Timing,
+    derive_archival, derive_commitment_state, derive_expectation_state, derive_item_state,
+    derive_overdue, derive_resolution, derive_timing, effective_due, Archival, ItemLifecycle,
+    Timing,
 };
 use crate::tasks::model::{
-    Expectation, ExpectationArchival, ExpectationStatus, GoalStatus, OnScopeExit, TaskArchival,
-    TimeScope,
+    Commitment, Expectation, ExpectationArchival, ExpectationStatus, Goal, GoalStatus, OnScopeExit,
+    Task, TaskArchival, TimeScope,
 };
+use crate::tasks::rules::ancestry::{climb_in, AncestryChain, AncestryIndex};
+use crate::tasks::waits::{WaitRef, WaitWindows};
 
 /// Maps a Goal's stored status to its baseline Archival value, for [`derive_item_state`](crate::tasks::lifecycle::derive_item_state)'s `stored`
 /// parameter. `Achieved` intentionally maps to `Live`, not `Archived` — achievement is a separate,
@@ -214,6 +218,241 @@ pub(in crate::tasks) fn is_overdue(task: &WrittenTask<'_>, now: NaiveDateTime) -
         task.archival == TaskArchival::Backlog,
     );
     derive_overdue(due, task.done, archival, now)
+}
+
+/// Whether an added child of a Habit occurrence that has no window of its own is governed by its
+/// occurrence's window — which archives it with the occurrence when that window passes.
+///
+/// A compound occurrence's status is worked out **before** its iteration is classified
+/// (`docs/spec/habits.md`, *Iteration resolution*), so archival that comes only from the
+/// iteration's window passing must not feed back into whether the iteration resolved: that
+/// reading takes [`Self::Ignored`]; everywhere else it is [`Self::Honoured`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OccurrenceExit {
+    /// The occurrence's window governs what hangs on it, as the board shows it.
+    Honoured,
+    /// What is governed by nothing but its occurrence's window reads as unscoped.
+    Ignored,
+}
+
+/// The `(window, on-exit behavior)` governing the node `chain` starts at: its own when explicitly
+/// scoped, else the nearest scoped ancestor's, or `None` when nothing above it is scoped
+/// (Unscoped).
+///
+/// On the **read** path: a broken chain leaves the item unconstrained rather than failing, so one
+/// corrupt row cannot blank the whole board. The break is logged rather than swallowed.
+pub(in crate::tasks) fn governance(
+    chain: &AncestryChain,
+    exit: OccurrenceExit,
+) -> Option<(Bounds, OnScopeExit)> {
+    if exit == OccurrenceExit::Ignored && chain.nearest_scoped_is_occurrence() {
+        return None;
+    }
+    let (time_scope, on_exit) = chain.nearest_scoped().or_unconstrained()?;
+    Some((time_scope.window(), on_exit))
+}
+
+/// The rows a board's lifecycles are derived over.
+pub struct LifecycleRows<'rows> {
+    /// The stored Tasks.
+    pub tasks: &'rows [Task],
+    /// The stored Goals.
+    pub goals: &'rows [Goal],
+    /// The stored Commitments.
+    pub commitments: &'rows [Commitment],
+    /// The stored Expectations.
+    pub expectations: &'rows [Expectation],
+    /// Every stored scoped row's ancestry link, and every added child's occurrence.
+    pub(in crate::tasks) ancestry: &'rows AncestryIndex,
+    /// The waits' check and spawned windows.
+    pub wait_windows: WaitWindows,
+}
+
+/// Derives the full lifecycle state (Timing / Resolution / Archival and the Overdue flag — see
+/// `lifecycle`'s module docs) of every Task, Goal and Commitment at `now`, using each item's
+/// effective governance, and every wait's — what
+/// [`derive_scope_lifecycles`](crate::tasks::derive_scope_lifecycles) reads the rows for.
+///
+/// A Task is resolved once Done; a Goal once Achieved or Archived. Both carry a stored Archival: a
+/// Task its Backlog column, a Goal its status via [`goal_stored_archival`]. Each is judged Overdue
+/// against its [`effective_due`]. A Commitment's Resolution axis is replaced by its recorded
+/// Verdict, and its Archival comes from the Verdict Window (see [`derive_commitment_state`]).
+pub fn derive_item_lifecycles(
+    rows: LifecycleRows<'_>,
+    now: NaiveDateTime,
+    exit: OccurrenceExit,
+) -> Vec<ItemLifecycle> {
+    let mut out = Vec::new();
+    for task in rows.tasks {
+        let Some(id) = task.id.stored() else {
+            continue;
+        };
+        let governance = governance(&climb_in(rows.ancestry, "task", id), exit);
+        let (window, on_exit) = governance.unzip();
+        let resolved = task.status.is_done();
+        let stored = Some(Archival::from(task.archival));
+        let due = effective_due(
+            task.due_scope.as_ref().map(TimeScope::window),
+            governance,
+            task.archival == TaskArchival::Backlog,
+        );
+        let state = derive_item_state(window, on_exit, due, resolved, stored, now);
+        let plan_timing = task
+            .plan
+            .as_ref()
+            .map(|plan| derive_timing(Some(plan.window()), now));
+        out.push(ItemLifecycle {
+            node_type: "task".to_string(),
+            node_id: task.id,
+            timing: state.timing,
+            resolution: state.resolution,
+            overdue: state.overdue,
+            verdict: None,
+            archival: state.archival,
+            archival_conflict: state.archival_conflict,
+            plan_timing,
+        });
+    }
+    for goal in rows.goals {
+        let Some(id) = goal.id.stored() else {
+            continue;
+        };
+        let governance = governance(&climb_in(rows.ancestry, "goal", id), exit);
+        let (window, on_exit) = governance.unzip();
+        let parsed_status = GoalStatus::from_db(&goal.status);
+        let resolved = matches!(
+            parsed_status,
+            Some(GoalStatus::Achieved) | Some(GoalStatus::Archived)
+        );
+        let stored = Some(goal_stored_archival(&goal.status));
+        let due = effective_due(None, governance, false);
+        let state = derive_item_state(window, on_exit, due, resolved, stored, now);
+        out.push(ItemLifecycle {
+            node_type: "goal".to_string(),
+            node_id: goal.id,
+            timing: state.timing,
+            resolution: state.resolution,
+            overdue: state.overdue,
+            verdict: None,
+            archival: state.archival,
+            archival_conflict: state.archival_conflict,
+            plan_timing: None,
+        });
+    }
+    for commitment in rows.commitments {
+        let Some(id) = commitment.id.stored() else {
+            continue;
+        };
+        let chain = climb_in(rows.ancestry, "commitment", id);
+        let window = governance(&chain, exit).map(|(window, _)| window);
+        let verdict_window = chain.nearest_verdict_window().or_unconstrained().cloned();
+        let state =
+            derive_commitment_state(window, commitment.verdict, verdict_window.as_ref(), now);
+        out.push(ItemLifecycle {
+            node_type: "commitment".to_string(),
+            node_id: commitment.id,
+            timing: state.timing,
+            // Resolution is the Task/Goal axis; a Commitment answers with its Verdict instead,
+            // and sending both would invite a consumer to read one as a fallback for the other.
+            resolution: None,
+            // Nothing on a Commitment comes due: it is judged by its Verdict, not by lateness.
+            overdue: false,
+            verdict: Some(state.verdict),
+            archival: state.archival,
+            // Nothing on a Commitment is manually archived, so nothing can be overridden.
+            archival_conflict: false,
+            // Never scheduled: the window *is* the commitment.
+            plan_timing: None,
+        });
+    }
+    // A wait's entries: `expectation` times a wait's own Time Scope — a stored one, or the wait an
+    // Asynchronous task's completion spawned, under its derived row id — and `task` the day its
+    // open check task is due, under the check task's row id. A wait is never Missed, so a passed
+    // window with the wait pending is flagged Overdue.
+    let windows = rows.wait_windows;
+    let checks: std::collections::HashMap<i64, (TimeScope, chrono::NaiveDateTime)> = windows
+        .expectation_checks
+        .into_iter()
+        .filter(|check| check.resolved_at.is_none())
+        .map(|check| (check.expectation_id, (check.due, check.due_at)))
+        .collect();
+    let mut entries: Vec<WaitEntry> = Vec::new();
+    for expectation in rows.expectations {
+        let Some(stored_id) = expectation.id.stored() else {
+            continue;
+        };
+        entries.push(WaitEntry {
+            node_type: EXPECTATION,
+            node_id: expectation.id.clone(),
+            window: expectation.time_scope.clone(),
+            status: expectation.status,
+            archival: expectation.archival,
+        });
+        if let Some((due, due_at)) = checks.get(&stored_id) {
+            entries.push(WaitEntry {
+                node_type: "task",
+                node_id: check_row_id(WaitRef::Stored(stored_id), *due_at),
+                window: Some(due.clone()),
+                status: expectation.status,
+                archival: expectation.archival,
+            });
+        }
+    }
+    for spawned in windows.spawned_waits {
+        let (task_id, status, archival) = (
+            spawned.wait.task_id,
+            spawned.wait.status,
+            spawned.wait.archival,
+        );
+        entries.push(WaitEntry {
+            node_type: EXPECTATION,
+            node_id: DerivedKey::SpawnedWait(NodeId::Stored(task_id)).node_id(),
+            window: spawned.time_scope,
+            status,
+            archival,
+        });
+        if let (Some(due), Some(due_at)) = (spawned.next_check, spawned.next_check_at) {
+            entries.push(WaitEntry {
+                node_type: "task",
+                node_id: check_row_id(WaitRef::Spawned(task_id), due_at),
+                window: Some(due),
+                status,
+                archival,
+            });
+        }
+    }
+    for WaitEntry {
+        node_type,
+        node_id,
+        window,
+        status,
+        archival,
+    } in entries
+    {
+        out.push(wait_lifecycle(
+            node_type,
+            node_id,
+            window.as_ref(),
+            status,
+            archival,
+            now,
+        ));
+    }
+    out
+}
+
+/// One lifecycle entry a wait sends: which window it times, for which node, and the wait's state.
+struct WaitEntry {
+    node_type: &'static str,
+    node_id: NodeId,
+    window: Option<TimeScope>,
+    status: ExpectationStatus,
+    archival: ExpectationArchival,
+}
+
+/// The row id of the check task on a wait due at `due_at`.
+fn check_row_id(wait: WaitRef, due_at: chrono::NaiveDateTime) -> NodeId {
+    DerivedKey::Check(CheckKey { wait, due_at }).node_id()
 }
 
 #[cfg(test)]

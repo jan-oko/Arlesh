@@ -4,9 +4,11 @@
 //! The climb that reads the chain from the database lives in [`crate::tasks::ancestry`], which
 //! re-exports these names (ADR 0010).
 
+use std::collections::{HashMap, HashSet};
+
 use crate::flows::model::ChildAttachment;
 use crate::tasks::error::TaskError;
-use crate::tasks::model::{DurationSpec, OnScopeExit, TimeScope};
+use crate::tasks::model::{Commitment, DurationSpec, Goal, OnScopeExit, Task, TimeScope};
 
 /// Which of the three scoped tables a chain link came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -322,5 +324,235 @@ impl AncestryChain {
             } => self.exhausted(),
             ChainEnd::Broken { .. } | ChainEnd::Root => Search::Unconstrained,
         }
+    }
+}
+
+/// One climb up the chain, as the sequence of reads it needs.
+///
+/// The walk's rules live here once — where the chain ends, that a repeat is a cycle, that a
+/// missing row breaks it, that an added child of a Habit occurrence climbs into the occurrence —
+/// and the two ways of reading a link drive it: [`crate::tasks::ancestry::climb`] reads each link
+/// from the database, and [`climb_in`] from an [`AncestryIndex`] of rows already loaded.
+pub(in crate::tasks) struct Climb {
+    links: Vec<AncestryLink>,
+    visited: HashSet<(NodeKind, i64)>,
+    next: NodeRef,
+}
+
+/// What a climb needs next.
+pub(in crate::tasks) enum ClimbStep {
+    /// The link of this node, and the occurrence it hangs on, if any.
+    Read(NodeKind, i64),
+    /// The climb is over.
+    Done(AncestryChain),
+}
+
+/// What reading one link found.
+pub(in crate::tasks) enum LinkRead {
+    /// The row, and the occurrence it hangs on when it is an added child of one.
+    Found {
+        /// The row's link.
+        link: AncestryLink,
+        /// The occurrence it hangs on.
+        occurrence: Option<AncestryLink>,
+    },
+    /// The referenced row does not exist.
+    Missing,
+}
+
+impl Climb {
+    /// A climb starting at `(start_type, start_id)`, which is itself the first link.
+    pub(in crate::tasks) fn new(start_type: &str, start_id: i64) -> Self {
+        Self {
+            links: Vec::new(),
+            visited: HashSet::new(),
+            next: NodeRef::new(start_type, start_id),
+        }
+    }
+
+    /// The next read, or the chain when the climb is over: it ran off the scoped chain, or it came
+    /// back to a node it has already read.
+    pub(in crate::tasks) fn step(&mut self) -> ClimbStep {
+        let Some(kind) = NodeKind::from_db(&self.next.node_type) else {
+            return ClimbStep::Done(self.finish(ChainEnd::Root));
+        };
+        if !self.visited.insert((kind, self.next.node_id)) {
+            let end = ChainEnd::Broken {
+                kind,
+                id: self.next.node_id,
+                cause: BreakCause::Cycle,
+            };
+            return ClimbStep::Done(self.finish(end));
+        }
+        ClimbStep::Read(kind, self.next.node_id)
+    }
+
+    /// Takes in what reading `(kind, id)` — the node [`Self::step`] asked for — found, and returns
+    /// the chain when that ends the climb.
+    ///
+    /// An added child of a Habit occurrence climbs into that occurrence, not into the row its
+    /// parent columns name. Those columns hold the occurrence's host — the node the occurrence
+    /// itself renders under — because a virtual instance has no id for them to point at, and
+    /// following them would check the child against the wrong window and archive it on the wrong
+    /// day. Asked per link rather than once at the start, because a child of an added child
+    /// reaches the occurrence two steps up.
+    pub(in crate::tasks) fn read(
+        &mut self,
+        kind: NodeKind,
+        id: i64,
+        read: LinkRead,
+    ) -> Option<AncestryChain> {
+        match read {
+            LinkRead::Missing => Some(self.finish(ChainEnd::Broken {
+                kind,
+                id,
+                cause: BreakCause::Missing,
+            })),
+            LinkRead::Found {
+                link,
+                occurrence: Some(occurrence),
+            } => {
+                self.links.push(link);
+                self.links.push(occurrence);
+                Some(self.finish(ChainEnd::Root))
+            }
+            LinkRead::Found {
+                link,
+                occurrence: None,
+            } => {
+                self.next = link.parent.clone();
+                self.links.push(link);
+                None
+            }
+        }
+    }
+
+    fn finish(&mut self, end: ChainEnd) -> AncestryChain {
+        AncestryChain {
+            links: std::mem::take(&mut self.links),
+            end,
+        }
+    }
+}
+
+/// Every scoped row's link, and every added child's occurrence, read once for a whole board, so
+/// that each node's chain is climbed in memory rather than by a query per step.
+#[derive(Debug, Clone, Default)]
+pub(in crate::tasks) struct AncestryIndex {
+    links: HashMap<(NodeKind, i64), AncestryLink>,
+    occurrences: HashMap<(NodeKind, i64), AncestryLink>,
+}
+
+impl AncestryIndex {
+    /// Adds a row's link.
+    pub(in crate::tasks) fn insert(&mut self, link: AncestryLink) {
+        self.links.insert((link.kind, link.id), link);
+    }
+
+    /// Records that `(kind, id)` is an added child of the occurrence `attachment` names.
+    pub(in crate::tasks) fn attach(
+        &mut self,
+        kind: NodeKind,
+        id: i64,
+        attachment: ChildAttachment,
+    ) {
+        self.occurrences
+            .insert((kind, id), occurrence_link(attachment));
+    }
+}
+
+/// The chain of `(start_type, start_id)`, climbed over `index` — the same climb as
+/// [`crate::tasks::ancestry::climb`], reading each link from rows already loaded.
+pub(in crate::tasks) fn climb_in(
+    index: &AncestryIndex,
+    start_type: &str,
+    start_id: i64,
+) -> AncestryChain {
+    let mut climb = Climb::new(start_type, start_id);
+    loop {
+        let (kind, id) = match climb.step() {
+            ClimbStep::Done(chain) => return chain,
+            ClimbStep::Read(kind, id) => (kind, id),
+        };
+        let read = match index.links.get(&(kind, id)) {
+            Some(link) => LinkRead::Found {
+                link: link.clone(),
+                occurrence: index.occurrences.get(&(kind, id)).cloned(),
+            },
+            None => LinkRead::Missing,
+        };
+        if let Some(chain) = climb.read(kind, id, read) {
+            return chain;
+        }
+    }
+}
+
+impl AncestryIndex {
+    /// The index of a board's stored scoped rows — every Task, Goal and Commitment, with the
+    /// occurrence each added child hangs on (`attachments`, as `(child_type, child_id,
+    /// attachment)`).
+    ///
+    /// Each link carries exactly what one step of the database climb reads off its row, so a
+    /// chain climbed over the index is the chain the database would have given.
+    pub(in crate::tasks) fn of(
+        tasks: &[Task],
+        goals: &[Goal],
+        commitments: &[Commitment],
+        attachments: Vec<(String, i64, ChildAttachment)>,
+    ) -> Self {
+        let mut index = Self::default();
+        for task in tasks {
+            let (Some(id), Some(parent_id)) = (task.id.stored(), task.parent_id.stored()) else {
+                continue;
+            };
+            index.insert(AncestryLink {
+                kind: NodeKind::Task,
+                id,
+                parent: NodeRef::new(task.parent_type.clone(), parent_id),
+                time_scope: task.time_scope.clone(),
+                plan: task.plan.clone(),
+                on_scope_exit: task.on_scope_exit,
+                verdict_window: None,
+            });
+        }
+        for goal in goals {
+            let (Some(id), Some(parent_id)) = (goal.id.stored(), goal.parent_id.stored()) else {
+                continue;
+            };
+            index.insert(AncestryLink {
+                kind: NodeKind::Goal,
+                id,
+                parent: NodeRef::new(goal.parent_type.clone(), parent_id),
+                time_scope: goal.time_scope.clone(),
+                plan: None,
+                on_scope_exit: goal.on_scope_exit,
+                verdict_window: None,
+            });
+        }
+        for commitment in commitments {
+            let (Some(id), Some(parent_id)) =
+                (commitment.id.stored(), commitment.parent_id.stored())
+            else {
+                continue;
+            };
+            index.insert(AncestryLink {
+                kind: NodeKind::Commitment,
+                id,
+                parent: NodeRef::new(commitment.parent_type.clone(), parent_id),
+                time_scope: commitment.time_scope.clone(),
+                // A Commitment is never scheduled: the window *is* the commitment.
+                plan: None,
+                // A Commitment has no on-exit column and never Archives on the way out, so a
+                // scoped one reads as Keep — what its descendants inherit with its window.
+                on_scope_exit: commitment.time_scope.as_ref().map(|_| OnScopeExit::Keep),
+                verdict_window: commitment.verdict_window.clone(),
+            });
+        }
+        for (child_type, child_id, attachment) in attachments {
+            if let Some(kind) = NodeKind::from_db(&child_type) {
+                index.attach(kind, child_id, attachment);
+            }
+        }
+        index
     }
 }
