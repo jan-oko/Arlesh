@@ -22,6 +22,7 @@ import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import AgenticField from "./AgenticField";
 import AgenticBriefFields from "./AgenticBriefFields";
+import ShortIdField from "./ShortIdField";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import PlanField from "@/components/ScopePicker/PlanField";
@@ -463,6 +464,9 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         onPrivateChange={setIsPrivate}
         startOpen={agentic !== TASK_AGENTIC.INHERIT || question !== undefined || (readsAgentic && !isEmptyBrief(agenticBrief))}
       >
+        {/* Its short id — the one the MCP and a "Blocked by …" reason name it by — so the user can
+            name the Task to an agent. A node the load gave no short id shows nothing. */}
+        {node.shortId !== undefined && <ShortIdField shortId={node.shortId} />}
         {/* The done date: when a Done task was done, set back for work marked done late — an
             Interval's next window and a cooldown count from it. Left empty on a task marked Done
             in this save, it is the moment of saving. */}
