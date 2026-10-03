@@ -25,5 +25,6 @@ mod mcp_capacity;
 mod mcp_endpoint;
 mod mcp_writes;
 mod mindmap_commands;
+mod parenting_conformance;
 mod preset_conformance;
 mod zen_contents_conformance;

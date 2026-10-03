@@ -41,6 +41,15 @@ pub enum TaskError {
     /// Adding this dependency would create a circular dependency chain.
     #[error("adding this dependency would create a cycle")]
     CircularDependency,
+    /// The parenting table (`nodes::rules::parenting::may_parent`) does not let a node of this
+    /// kind hang under that one.
+    #[error("a {child} cannot hang under a {parent}")]
+    MayNotParent {
+        /// The kind being placed.
+        child: &'static str,
+        /// The parent kind, as the request spelled it.
+        parent: String,
+    },
     /// The parent chain above an item loops back on itself, so no containment rule above it can
     /// be evaluated. Corrupt persisted data rather than a bad request: nothing in the schema or
     /// the write path currently prevents reparenting a node under its own descendant, and the

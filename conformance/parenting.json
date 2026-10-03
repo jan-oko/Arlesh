@@ -1,0 +1,104 @@
+{
+  "about": [
+    "Which kinds may hold which, written as data: the whole kind \u00d7 kind matrix.",
+    "",
+    "Both evaluators replay it. `src-tauri/tests/operations/parenting_conformance.rs` asks",
+    "`nodes::rules::parenting::may_parent` of every pair; `src/utils/parenting-conformance.test.ts`",
+    "asks the frontend's `isValidDropTarget`, which the Mindmap asks per pointer move. Neither side",
+    "generates this file.",
+    "",
+    "`parents` names, for each child kind, every parent kind it may hang under; every pair not",
+    "named is refused. A Flow item's parent is in the Flow's own world, and a folded run of Habit",
+    "history (`habit_group`) is a drawing that neither moves nor holds anything. The rules are",
+    "written out in `docs/spec/resources.md` and `docs/spec/flows.md`."
+  ],
+  "kinds": [
+    "aspect",
+    "project",
+    "domain",
+    "tag",
+    "goal",
+    "task",
+    "commitment",
+    "expectation",
+    "info",
+    "flow",
+    "flow_goal",
+    "flow_task",
+    "habit_group"
+  ],
+  "parents": {
+    "aspect": [],
+    "project": [
+      "aspect",
+      "project"
+    ],
+    "domain": [
+      "aspect",
+      "project",
+      "domain"
+    ],
+    "tag": [
+      "aspect",
+      "project",
+      "domain"
+    ],
+    "goal": [
+      "aspect",
+      "project",
+      "domain",
+      "goal"
+    ],
+    "task": [
+      "aspect",
+      "project",
+      "domain",
+      "goal",
+      "task",
+      "commitment"
+    ],
+    "commitment": [
+      "aspect",
+      "project",
+      "domain",
+      "goal",
+      "task",
+      "commitment"
+    ],
+    "expectation": [
+      "aspect",
+      "project",
+      "domain",
+      "goal",
+      "task",
+      "commitment"
+    ],
+    "info": [
+      "aspect",
+      "project",
+      "domain",
+      "tag",
+      "goal",
+      "task",
+      "commitment",
+      "expectation",
+      "info"
+    ],
+    "flow": [
+      "aspect",
+      "project",
+      "domain",
+      "goal"
+    ],
+    "flow_goal": [
+      "flow",
+      "flow_goal"
+    ],
+    "flow_task": [
+      "flow",
+      "flow_goal",
+      "flow_task"
+    ],
+    "habit_group": []
+  }
+}

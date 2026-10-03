@@ -6,6 +6,7 @@ mod rows;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::nodes::rules::parenting;
 use error::DomainError;
 use model::{CreateDomainRequest, Domain, DomainId, DomainSubtype, UpdateDomainRequest};
 use rows::DomainRow;
@@ -210,33 +211,39 @@ impl<'session> DomainOperator<'session> {
         Ok(())
     }
 
-    /// Validates that `parent_id` is an acceptable parent for a domain of the given `subtype`.
+    /// Validates that `parent_id` is an acceptable parent for a domain of the given `subtype`, by
+    /// the one parenting table every writer asks ([`crate::nodes::rules::parenting::may_parent`]).
+    /// A Project needs a parent; a Tag holds no domain.
     async fn validate_parent(
         &mut self,
         subtype: &DomainSubtype,
         parent_id: Option<i64>,
     ) -> Result<(), DomainError> {
-        match subtype {
-            DomainSubtype::Project => {
-                let parent_id = parent_id.ok_or_else(|| {
-                    DomainError::InvalidParent("Projects require a parent".into())
-                })?;
-                let parent = self.get(DomainId(parent_id)).await?;
-                if parent.subtype != "aspect" && parent.subtype != "project" {
-                    return Err(DomainError::InvalidParent(
-                        "Project parent must be an Aspect or Project".into(),
-                    ));
-                }
-            }
-            DomainSubtype::Tag => {
-                if let Some(parent_id) = parent_id {
-                    let parent = self.get(DomainId(parent_id)).await?;
-                    if parent.subtype == "tag" {
-                        return Err(DomainError::TagCannotHaveChildren);
-                    }
-                }
-            }
-            DomainSubtype::Domain | DomainSubtype::Aspect => {}
+        let Some(parent_id) = parent_id else {
+            return match subtype {
+                DomainSubtype::Project => Err(DomainError::InvalidParent(
+                    "Projects require a parent".into(),
+                )),
+                _ => Ok(()),
+            };
+        };
+        let parent = self.get(DomainId(parent_id)).await?;
+        if parent.subtype == "tag" {
+            return Err(DomainError::TagCannotHaveChildren);
+        }
+        let child = subtype_to_str(subtype);
+        let allowed = match (
+            parenting::kind_of(child),
+            parenting::kind_of(&parent.subtype),
+        ) {
+            (Some(child), Some(parent)) => parenting::may_parent(child, parent),
+            _ => false,
+        };
+        if !allowed {
+            return Err(DomainError::InvalidParent(format!(
+                "a {child} cannot hang under a {}",
+                parent.subtype
+            )));
         }
         Ok(())
     }
