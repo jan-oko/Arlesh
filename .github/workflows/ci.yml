@@ -349,7 +349,8 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # The Python bindings (crates/arlesh-py): build the wheel with maturin, install it, then
+  # The Python bindings (crates/arlesh-py) and their HTTP server (arlesh.server, the
+  # arlesh[server] extra): build the wheel with maturin, install it, then
   # pytest under pytest-cov (the gate for the package, since the Rust lane excludes it),
   # mypy --strict, ruff, and a check that the generated pydantic models match the Rust types'
   # JSON Schema. One job, because every step after the build needs the wheel the build made.
@@ -376,8 +377,10 @@ jobs:
           workspaces: ". -> src-tauri/target"
           shared-key: python-bindings
 
+      # --all-extras brings in arlesh[server] (FastAPI, uvicorn, …), so the server is linted,
+      # type-checked and tested in the same lane as the bindings it stands on.
       - name: uv sync
-        run: uv sync --locked --python 3.12
+        run: uv sync --locked --all-extras --python 3.12
 
       # `maturin develop` builds the extension and installs it into the uv venv; the wheel it
       # builds on the way is the installable artifact. No publishing.

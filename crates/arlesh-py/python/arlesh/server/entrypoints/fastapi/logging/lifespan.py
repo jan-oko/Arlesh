@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 from fastapi import FastAPI
@@ -12,9 +12,12 @@ from arlesh import ArleshError
 from arlesh.server.ports.board.databases import Databases
 
 
-def lifespan(databases: Databases) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
+def lifespan(
+    databases: Databases, closers: Sequence[Callable[[], Awaitable[None]]] = ()
+) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     """Opens ``databases`` for writing as the server starts — refused while the desktop app holds
-    the database, unless forced — and closes them as it stops."""
+    the database, unless forced — and, as it stops, runs ``closers`` and closes them (which stops
+    every MCP endpoint they serve)."""
 
     @asynccontextmanager
     async def run(app: FastAPI) -> AsyncIterator[None]:
@@ -27,6 +30,8 @@ def lifespan(databases: Databases) -> Callable[[FastAPI], AbstractAsyncContextMa
         try:
             yield
         finally:
+            for close in closers:
+                await close()
             await databases.close()
             logger.info("Shut down")
 

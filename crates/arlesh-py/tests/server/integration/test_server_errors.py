@@ -6,9 +6,8 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
-from fastapi.testclient import TestClient
-
 from arlesh import errors
+from fastapi.testclient import TestClient
 
 EXPECTED_STATUS = {
     "not_found": 404,

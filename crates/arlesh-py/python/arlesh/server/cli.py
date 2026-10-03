@@ -27,6 +27,7 @@ from arlesh.server.entrypoints.fastapi import run
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.logger import setup_logger
 from arlesh.server.ports.board.arlesh_databases import ArleshDatabases
+from arlesh.server.ports.mcp.arlesh_mcp_backend import ArleshMcpBackend
 from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from arlesh.server.ports.tokens.token_store import (
     ClientAlreadyHasToken,
@@ -68,7 +69,12 @@ def _serve(argv: list[str]) -> int:
             f"{PROGRAM}: no tokens yet: add one with `{PROGRAM} token add <client>`",
             file=sys.stderr,
         )
-    app = ArleshServer(databases=databases, tokens=tokens, version=version("arlesh"))
+    app = ArleshServer(
+        databases=databases,
+        tokens=tokens,
+        mcp=ArleshMcpBackend(databases),
+        version=version("arlesh"),
+    )
     run.run(app, config.server)
     return 0
 
