@@ -84,10 +84,7 @@ fn links(load: &MindmapLoad) -> HashMap<Key, Link> {
     }
     for goal in &load.goals {
         let link = Link {
-            parent: Some(match goal.parent_type.as_str() {
-                "goal" => format!("goal-{}", goal.parent_id),
-                _ => format!("domain-{}", goal.parent_id),
-            }),
+            parent: Some(content_parent(&goal.parent_type, &goal.parent_id)),
             time_scope: goal.time_scope.clone(),
             stored: stored(NodeTable::Goal, &goal.id),
             title: goal.title.clone(),
