@@ -113,7 +113,7 @@ async fn served(pool: &sqlx::SqlitePool) -> MindmapLoad {
 }
 
 #[tokio::test]
-async fn children_of_every_kind_hang_on_an_occurrence() {
+async fn children_of_every_kind_its_kind_takes_hang_on_an_occurrence() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let (flow, _) = habit(&app).await;
@@ -133,7 +133,9 @@ async fn children_of_every_kind_hang_on_an_occurrence() {
     )
     .await
     .unwrap();
-    let goal = write::create_goal(
+    // An occurrence takes what its kind takes, and a Task takes no Goal (ruled by the user,
+    // 2026-10-03): the parenting table answers for an occurrence as for a stored Task.
+    let refused = write::create_goal(
         &mut db,
         CreateGoalRequest {
             title: "Stay fit".into(),
@@ -144,7 +146,13 @@ async fn children_of_every_kind_hang_on_an_occurrence() {
         at(NOW),
     )
     .await
-    .unwrap();
+    .unwrap_err();
+    assert!(
+        refused
+            .to_string()
+            .contains("a goal cannot hang under a task"),
+        "{refused}"
+    );
     let commitment = write::create_commitment(
         &mut db,
         CreateCommitmentRequest {
@@ -196,13 +204,7 @@ async fn children_of_every_kind_hang_on_an_occurrence() {
         .unwrap()
         .parent_id;
     assert_eq!(parent_of_task, &root);
-    let parent_of_goal = &load
-        .goals
-        .iter()
-        .find(|row| row.id == goal.id)
-        .unwrap()
-        .parent_id;
-    assert_eq!(parent_of_goal, &root);
+    assert!(load.goals.iter().all(|row| row.parent_id != root));
     assert!(load
         .commitments
         .iter()
