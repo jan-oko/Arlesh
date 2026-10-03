@@ -32,6 +32,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{Duration, NaiveDate, NaiveDateTime};
 
+use crate::access::model::NodeTable;
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::CreateInfoRequest;
 use crate::nodes::{
@@ -63,7 +64,7 @@ use model::{
 use render::{render, FlowTemplate, NodeRef, PlannedSource, RenderedPlan, TemplateItem};
 use rows::{
     FlowDependencyRow, FlowGoalRow, FlowItemCycleRow, FlowRecurrenceRow, FlowRow, FlowTaskRow,
-    HabitInstanceChildRow, HabitItemStatusRow, TargetRefRow,
+    HabitInstanceChildRow, HabitItemStatusRow, InstanceNodeRow, TargetRefRow,
 };
 use template::{TemplateFields, TemplateOperator, TemplateTable};
 
@@ -232,6 +233,33 @@ impl<'session> FlowOperator<'session> {
             flow.template = fields.remove(&flow.id).unwrap_or_default();
         }
         Ok(flows)
+    }
+
+    /// The ids of the Flows hanging directly under one stored node, in sort order.
+    ///
+    /// The parent is matched under every spelling that names it
+    /// ([`NodeTable::reference_spellings`]), because a Flow's `parent_type` names a domains-table
+    /// row by whichever subtype its writer used (migration 0025). Only domains-table rows and
+    /// Goals can hold a Flow, so any other table finds none.
+    pub async fn ids_under(
+        &mut self,
+        parent: NodeTable,
+        parent_id: i64,
+    ) -> Result<Vec<i64>, FlowError> {
+        let spellings = parent.reference_spellings();
+        let placeholders = vec!["?"; spellings.len()].join(", ");
+        let sql = format!(
+            "SELECT id FROM flows WHERE parent_type IN ({placeholders}) AND parent_id = ?
+             ORDER BY position ASC, id ASC"
+        );
+        let mut query = sqlx::query_scalar(&sql);
+        for spelling in spellings {
+            query = query.bind(*spelling);
+        }
+        Ok(query
+            .bind(parent_id)
+            .fetch_all(&mut *self.connection)
+            .await?)
     }
 
     /// The template fields of this session's connection.
@@ -886,6 +914,41 @@ impl<'session> FlowOperator<'session> {
                 .map(FlowDependency::from)
                 .collect(),
         )
+    }
+
+    /// Every node a started Flow materialised, with its run, in recording order — what
+    /// [`copy_instance_links`] plans from.
+    async fn instance_nodes(
+        &mut self,
+    ) -> Result<Vec<rules::instance_copies::InstanceNode>, FlowError> {
+        let rows: Vec<InstanceNodeRow> = sqlx::query_as(
+            "SELECT n.flow_instance_id, i.flow_id, i.root_type, i.root_id, i.started_at,
+                    n.node_type, n.node_id, n.source_item_type, n.source_item_id,
+                    n.original_parent_type, n.original_parent_id
+             FROM flow_instance_nodes n JOIN flow_instances i ON i.id = n.flow_instance_id
+             ORDER BY n.id",
+        )
+        .fetch_all(&mut *self.connection)
+        .await?;
+        Ok(rows.into_iter().map(InstanceNodeRow::node).collect())
+    }
+
+    /// Opens the `flow_instances` row a copied run is recorded against: the original's Flow and
+    /// start, rooted at the copy. Private, for the reason [`Self::open_instance`] is.
+    async fn open_copied_instance(
+        &mut self,
+        run: &rules::instance_copies::InstanceCopy,
+    ) -> Result<i64, FlowError> {
+        Ok(sqlx::query(
+            "INSERT INTO flow_instances (flow_id, root_type, root_id, started_at) VALUES (?, ?, ?, ?)",
+        )
+        .bind(run.flow_id)
+        .bind(&run.root.node_type)
+        .bind(run.root.node_id)
+        .bind(run.started_at)
+        .execute(&mut *self.connection)
+        .await?
+        .last_insert_rowid())
     }
 
     /// Records a materialised node against a flow instance. Each `(type, id)` pair identifies the
@@ -2499,6 +2562,76 @@ pub async fn duplicate_flow(
             .await?;
     }
     db.flows().get(new_id).await
+}
+
+/// Copies a Flow that hangs under a node a subtree copy carried, as part of that same copy: what
+/// `duplicate::duplicate_subtree` calls for every Flow it meets.
+///
+/// It is [`duplicate_flow`] — template, Recurrence and privacy, no history and no started
+/// instances — put under the copied parent at the original's own position, so the copy has the
+/// original's shape. The one thing it adds is the **Target Node**, settled by
+/// [`rules::targets::copied_target_id`]: a target the same copy carried is remapped to the copy of
+/// it, one outside keeps pointing at the original, and NULL stays NULL. `copies` must therefore
+/// hold every node of the subtree before any Flow is copied.
+///
+/// Transactional, and only as part of the caller's: it never commits.
+#[tracing::instrument(skip(db, copies))]
+pub async fn duplicate_flow_with_subtree(
+    db: &mut Db<Transactional>,
+    flow_id: FlowId,
+    parent_type: &str,
+    parent_id: i64,
+    copies: &rules::targets::CopiedNodes,
+) -> Result<Flow, FlowError> {
+    let source = db.flows().get(flow_id).await?;
+    let copy = duplicate_flow(db, flow_id, parent_type, parent_id, source.position).await?;
+    let Some(target_id) =
+        rules::targets::copied_target_id(source.target_type.as_deref(), source.target_id, copies)
+    else {
+        return Ok(copy);
+    };
+    db.flows()
+        .update(
+            FlowId(copy.id),
+            UpdateFlowRequest {
+                target_id: Some(Some(target_id)),
+                ..Default::default()
+            },
+        )
+        .await
+}
+
+/// Gives the nodes a subtree copy made of Flow-materialised nodes the same origin link the
+/// originals have — to the **original** Flow — so a copy still reads "from flow X".
+///
+/// What to write is planned by [`rules::instance_copies::copied_instances`]: one new
+/// `flow_instances` row per run the copy reached, keeping its Flow and start, and one
+/// `flow_instance_nodes` row per copied node. `copies` must hold every node of the subtree.
+///
+/// Transactional, and only as part of the caller's: it never commits.
+#[tracing::instrument(skip(db, copies))]
+pub async fn copy_instance_links(
+    db: &mut Db<Transactional>,
+    copies: &rules::targets::CopiedNodes,
+) -> Result<(), FlowError> {
+    let rows = db.flows().instance_nodes().await?;
+    for run in rules::instance_copies::copied_instances(&rows, copies) {
+        let instance_id = db.flows().open_copied_instance(&run).await?;
+        for link in &run.nodes {
+            db.flows()
+                .record_node(
+                    instance_id,
+                    (&link.node.node_type, link.node.node_id),
+                    (&link.source.node_type, link.source.node_id),
+                    (
+                        &link.original_parent.node_type,
+                        link.original_parent.node_id,
+                    ),
+                )
+                .await?;
+        }
+    }
+    Ok(())
 }
 
 /// Copies a template item — and everything nested under it — onto `(parent_type, parent_id)` at

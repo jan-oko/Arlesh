@@ -284,6 +284,48 @@ impl<'session> CommitmentOperator<'session> {
         Ok(commitments)
     }
 
+    /// Copies one commitment row **as stored** — verdict, Verdict Window, window, privacy,
+    /// position and tags — under `(parent_type, parent_id)`, and returns the copy's id.
+    ///
+    /// Crate-private and unvalidated: it is correct only where the new parent is the copy of the
+    /// original's parent, so every window the row satisfied it still satisfies. That is the subtree
+    /// copy (`duplicate::duplicate_subtree`), its one caller, inside the caller's transaction.
+    pub(crate) async fn copy_row(
+        &mut self,
+        id: CommitmentId,
+        parent_type: &str,
+        parent_id: i64,
+    ) -> Result<i64, TaskError> {
+        let copy = sqlx::query(
+            "INSERT INTO commitments
+                (title, parent_type, parent_id, verdict, time_scope_start_id, time_scope_end_id,
+                 time_scope_duration_n, time_scope_duration_kind, verdict_window_n,
+                 verdict_window_kind, position, is_private, verdict_at)
+             SELECT title, ?, ?, verdict, time_scope_start_id, time_scope_end_id,
+                    time_scope_duration_n, time_scope_duration_kind, verdict_window_n,
+                    verdict_window_kind, position, is_private, verdict_at
+             FROM commitments WHERE id = ?",
+        )
+        .bind(parent_type)
+        .bind(parent_id)
+        .bind(id.0)
+        .execute(&mut *self.connection)
+        .await?;
+        if copy.rows_affected() == 0 {
+            return Err(TaskError::CommitmentNotFound(id.0));
+        }
+        let copy_id = copy.last_insert_rowid();
+        sqlx::query(
+            "INSERT INTO tags_on_commitments (commitment_id, tag_id)
+             SELECT ?, tag_id FROM tags_on_commitments WHERE commitment_id = ?",
+        )
+        .bind(copy_id)
+        .bind(id.0)
+        .execute(&mut *self.connection)
+        .await?;
+        Ok(copy_id)
+    }
+
     /// Returns the ids of the commitments parented directly by `(parent_type, parent_id)`.
     ///
     /// The parent link is polymorphic and has no foreign key, so subtree walks collect their

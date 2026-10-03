@@ -50,6 +50,24 @@ impl NodeTable {
         }
     }
 
+    /// Every spelling a reference column may use to name a row of this table — what
+    /// [`Self::from_reference`] reads back as this table. A domains-table row is named by any of
+    /// its subtypes, whichever its writer used (a Task under a Domain is stored as `project` by
+    /// some writers and `domain` by others), so all four are listed; every other table has one.
+    pub fn reference_spellings(self) -> &'static [&'static str] {
+        match self {
+            Self::Domain => &["aspect", "project", "domain", "tag"],
+            Self::Goal => &["goal"],
+            Self::Task => &["task"],
+            Self::Commitment => &["commitment"],
+            Self::Expectation => &["expectation"],
+            Self::Info => &["info"],
+            Self::Flow => &["flow"],
+            Self::FlowGoal => &["flow_goal"],
+            Self::FlowTask => &["flow_task"],
+        }
+    }
+
     /// Parses a node reference as the board spells it anywhere a row names another row: a
     /// `parent_type`, a dependency's type, a lifecycle's `node_type`, an MCP `node_type`.
     ///
@@ -225,3 +243,6 @@ pub struct KnowledgeBaseReference {
     /// The entity's row id.
     pub entity_id: i64,
 }
+
+#[cfg(test)]
+mod tests;
