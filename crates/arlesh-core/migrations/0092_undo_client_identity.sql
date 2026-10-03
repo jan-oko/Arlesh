@@ -24,7 +24,9 @@ ALTER TABLE undo_journal ADD COLUMN client TEXT NOT NULL DEFAULT 'desktop';
 -- `client`; one trigger here stamps every new entry from the context instead. That keeps the ~45
 -- generated triggers as they are, and a table added later is stamped without anyone regenerating
 -- anything — the same "cannot be forgotten" property the journal itself rests on (ADR 0006).
-CREATE TRIGGER undo_journal_stamp_client AFTER INSERT ON undo_journal BEGIN
+-- Named outside the `undo_journal_<table>_<operation>` pattern on purpose: that pattern is the
+-- per-table journal triggers, which `tests/undo_journal.rs` counts against the journaled tables.
+CREATE TRIGGER stamp_undo_journal_client AFTER INSERT ON undo_journal BEGIN
     UPDATE undo_journal
        SET client = (SELECT client FROM undo_context WHERE id = 1)
      WHERE seq = new.seq;
