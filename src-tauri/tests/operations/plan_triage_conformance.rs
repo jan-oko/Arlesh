@@ -25,11 +25,8 @@ const CORPUS: &str = include_str!(concat!(
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CorpusAncestor {
-    kind: String,
     #[serde(default)]
     time_scope: Option<TimeScope>,
-    #[serde(default)]
-    plan: Option<TimeScope>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -40,6 +37,10 @@ struct CorpusRow {
     time_scope: Option<TimeScope>,
     #[serde(default)]
     plan: Option<TimeScope>,
+    #[serde(default)]
+    inherited_plan: Option<TimeScope>,
+    #[serde(default)]
+    empty_plan: bool,
     #[serde(default)]
     overdue: bool,
     #[serde(default, rename = "virtual")]
@@ -55,14 +56,14 @@ impl CorpusRow {
             stored: !self.drawing,
             time_scope: self.time_scope.clone(),
             plan: self.plan.clone(),
+            inherited_plan: self.inherited_plan.clone(),
+            empty_plan: self.empty_plan,
             overdue: self.overdue,
             ancestors: self
                 .ancestors
                 .iter()
                 .map(|ancestor| PlanAncestor {
-                    is_wait: ancestor.kind == "expectation",
                     time_scope: ancestor.time_scope.clone(),
-                    plan: ancestor.plan.clone(),
                 })
                 .collect(),
         }

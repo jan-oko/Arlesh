@@ -376,6 +376,7 @@ async fn get(db: &mut Db<Transactional>, board: &Board, id: &NodeIdParam) -> Ans
     let mut found = serde_json::to_value(found).unwrap_or(Value::Null);
     if let Some(task) = found.get_mut("task") {
         board.names.stamp(task, NodeTable::Task);
+        super::snapshot::stamp_effective_plan(task, &board.load.plans, &names);
     }
     result::ok(found)
 }

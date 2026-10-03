@@ -26,12 +26,13 @@ use crate::{
         occurrence_edit::{self, OccurrenceHost},
     },
     infos::model::{CreateInfoRequest, Info, InfoId, UpdateInfoRequest},
+    mindmap::{plan_guard::PlanGuard, rules::plans::clamp_targets},
     tasks::{
         error::TaskError,
         model::{
             Commitment, CommitmentId, CreateCommitmentRequest, CreateExpectationRequest,
-            CreateGoalRequest, CreateTaskRequest, Dependency, Expectation, ExpectationId, Goal,
-            GoalId, Task, TaskDependencyEdge, TaskId, UpdateCommitmentRequest,
+            CreateGoalRequest, CreateTaskRequest, Dependency, DescendantPlans, Expectation,
+            ExpectationId, Goal, GoalId, Task, TaskDependencyEdge, TaskId, UpdateCommitmentRequest,
             UpdateExpectationRequest, UpdateGoalRequest, UpdateTaskRequest,
         },
     },
@@ -95,10 +96,25 @@ fn hung_on(host: &OccurrenceHost, key: &OccurrenceKey) -> (String, NodeId) {
 #[tracing::instrument(skip(db, request))]
 pub async fn create_task(
     db: &mut Db<Transactional>,
-    mut request: CreateTaskRequest,
+    request: CreateTaskRequest,
     now: NaiveDateTime,
 ) -> Result<Task, AppError> {
     require_parent(NodeKind::Task, "task", &request.parent_type)?;
+    if request.plan.is_none() && request.time_scope.is_none() {
+        return insert_task(db, request, now).await;
+    }
+    let guard = PlanGuard::before(db, now).await?;
+    let task = insert_task(db, request, now).await?;
+    guard.check(db, now, &[board_key("task", &task.id)]).await?;
+    Ok(task)
+}
+
+/// Creates a Task with no plan guard.
+async fn insert_task(
+    db: &mut Db<Transactional>,
+    mut request: CreateTaskRequest,
+    now: NaiveDateTime,
+) -> Result<Task, AppError> {
     let NodeId::Derived(parent) = request.parent_id.clone() else {
         return Ok(crate::tasks::create_task_at(db, request, now).await?);
     };
@@ -306,9 +322,74 @@ pub async fn commitment(
     }
 }
 
+/// Whether a Task write can change the Plan any node reads: its own Plan, its window, or its place.
+fn moves_plans(request: &UpdateTaskRequest) -> bool {
+    request.plan.is_some() || request.time_scope.is_some() || request.parent_id.is_some()
+}
+
+/// The key the board keys a node of `kind` by.
+fn board_key(kind: &str, id: &NodeId) -> String {
+    format!("{kind}-{id}")
+}
+
 /// Updates a Task, stored or derived. A stored Task moved onto a Habit occurrence is hung on it.
+///
+/// A write that touches a Plan, a window or a place is held to the plan rules across the whole
+/// board ([`crate::mindmap::plan_guard`]): one that leaves a Plan outside the one it inherits, or
+/// a Task with no Plan inside its window, is refused, naming them.
 #[tracing::instrument(skip(db, request))]
 pub async fn update_task(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    request: UpdateTaskRequest,
+    now: NaiveDateTime,
+) -> Result<Task, AppError> {
+    plan_task(db, id, request, now, None).await
+}
+
+/// [`update_task`], first settling the Tasks below whose own Plan a new Plan here would leave
+/// outside — clamped into it, or cleared to inherit it, as `descendants` says — in the same
+/// transaction, so the whole is one write and one undo step. With no `descendants`, such a write
+/// is refused, as any write breaking a plan rule is.
+#[tracing::instrument(skip(db, request))]
+pub async fn plan_task(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    request: UpdateTaskRequest,
+    now: NaiveDateTime,
+    descendants: Option<DescendantPlans>,
+) -> Result<Task, AppError> {
+    if !moves_plans(&request) {
+        return write_task(db, id, request, now).await;
+    }
+    let guard = PlanGuard::before(db, now).await?;
+    let settle = match (descendants, &request.plan) {
+        (Some(mode), Some(plan)) => clamp_targets(guard.board(), id, plan.as_ref())
+            .into_iter()
+            .map(|target| match mode {
+                DescendantPlans::Clamp => (target.id, target.clamp_to),
+                DescendantPlans::Clear => (target.id, None),
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    let task = write_task(db, id, request, now).await?;
+    let mut written = vec![board_key("task", id)];
+    // Nearest first, after the Task itself, so each lands inside the Plan above it as it now is.
+    for (child, plan) in settle {
+        let request = UpdateTaskRequest {
+            plan: Some(plan),
+            ..UpdateTaskRequest::default()
+        };
+        write_task(db, &child, request, now).await?;
+        written.push(board_key("task", &child));
+    }
+    guard.check(db, now, &written).await?;
+    Ok(task)
+}
+
+/// Writes a Task, stored or derived, with no plan guard.
+async fn write_task(
     db: &mut Db<Transactional>,
     id: &NodeId,
     mut request: UpdateTaskRequest,
@@ -388,6 +469,23 @@ pub async fn update_task(
 pub async fn update_goal(
     db: &mut Db<Transactional>,
     id: &NodeId,
+    request: UpdateGoalRequest,
+    now: NaiveDateTime,
+) -> Result<Goal, AppError> {
+    // Its window clips the Plan the Tasks below it inherit, and bounds a Habit it is the target of.
+    if request.time_scope.is_none() && request.parent_id.is_none() {
+        return write_goal(db, id, request, now).await;
+    }
+    let guard = PlanGuard::before(db, now).await?;
+    let written = write_goal(db, id, request, now).await?;
+    guard.check(db, now, &[board_key("goal", id)]).await?;
+    Ok(written)
+}
+
+/// Writes a Goal, stored or derived, with no plan guard.
+async fn write_goal(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
     mut request: UpdateGoalRequest,
     now: NaiveDateTime,
 ) -> Result<Goal, AppError> {
@@ -433,6 +531,23 @@ pub async fn update_goal(
 /// onto a Habit occurrence is hung on it.
 #[tracing::instrument(skip(db, request))]
 pub async fn update_commitment(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    request: UpdateCommitmentRequest,
+    now: NaiveDateTime,
+) -> Result<Commitment, AppError> {
+    // Its window clips the Plan the Tasks below it inherit, and bounds a Habit it is the target of.
+    if request.time_scope.is_none() && request.parent_id.is_none() {
+        return write_commitment(db, id, request, now).await;
+    }
+    let guard = PlanGuard::before(db, now).await?;
+    let written = write_commitment(db, id, request, now).await?;
+    guard.check(db, now, &[board_key("commitment", id)]).await?;
+    Ok(written)
+}
+
+/// Writes a Commitment, stored or derived, with no plan guard.
+async fn write_commitment(
     db: &mut Db<Transactional>,
     id: &NodeId,
     mut request: UpdateCommitmentRequest,

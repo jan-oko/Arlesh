@@ -15,4 +15,5 @@ pub mod fold;
 pub mod habits;
 pub mod occurrences;
 pub mod schedule;
+pub mod span;
 pub mod targets;

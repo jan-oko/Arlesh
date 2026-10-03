@@ -91,12 +91,8 @@ pub fn take_out<S>(split: bool, filled: S, parent: Option<S>) -> TakeOut<S> {
 /// What a planning pass reads off one ancestor of a row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlanAncestor {
-    /// Whether it is a wait, which cuts the Plan chain.
-    pub is_wait: bool,
     /// Its own Time Scope.
     pub time_scope: Option<TimeScope>,
-    /// Its own Plan.
-    pub plan: Option<TimeScope>,
 }
 
 /// What a planning pass reads off one Task row.
@@ -110,6 +106,13 @@ pub struct PlanRow {
     pub time_scope: Option<TimeScope>,
     /// Its own Plan.
     pub plan: Option<TimeScope>,
+    /// The Plan it takes from above, as the board serves it (see
+    /// [`crate::tasks::rules::plan_inheritance`]): what it reads with no Plan of its own, and what
+    /// an own Plan must sit inside.
+    pub inherited_plan: Option<TimeScope>,
+    /// Whether something above it is planned but that Plan does not meet its window, so it inherits
+    /// nothing and no Plan of its own could sit inside one.
+    pub empty_plan: bool,
     /// Whether it is flagged Overdue.
     pub overdue: bool,
     /// Every ancestor, outermost first.
@@ -128,36 +131,36 @@ impl PlanRow {
         })
     }
 
-    /// The nearest planned ancestor's Plan — a wait cuts the chain.
-    pub fn ancestor_plan(&self) -> Option<&TimeScope> {
-        for ancestor in self.ancestors.iter().rev() {
-            if ancestor.is_wait {
-                return None;
-            }
-            if ancestor.plan.is_some() {
-                return ancestor.plan.as_ref();
-            }
-        }
-        None
+    /// The Plan it reads: its own, else the one it inherits.
+    pub fn effective_plan(&self) -> Option<&TimeScope> {
+        self.plan.as_ref().or(self.inherited_plan.as_ref())
     }
 
     /// Which bound planning this row into `target` would break, or `None`.
     pub fn refusal(&self, target: Bounds) -> Option<PlanRefusal> {
+        if self.empty_plan && !breaks_own_scope(self.own_window(), self.overdue, target) {
+            return Some(PlanRefusal::ParentPlan);
+        }
         refusal(
-            self.time_scope.as_ref().map(TimeScope::window),
+            self.own_window(),
             self.overdue,
-            self.ancestor_plan().map(TimeScope::window),
+            self.inherited_plan.as_ref().map(TimeScope::window),
             target,
         )
+    }
+
+    fn own_window(&self) -> Option<Bounds> {
+        self.time_scope.as_ref().map(TimeScope::window)
     }
 }
 
 /// One planning pass's three heaps, in row order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Panes<'a> {
-    /// Unplanned rows whose effective Time Scope reaches into the scope — every Unscoped one too.
+    /// Rows that read no Plan — nothing above them is planned either — whose effective Time Scope
+    /// reaches into the scope; every Unscoped one too.
     pub unplanned: Vec<&'a PlanRow>,
-    /// Rows planned into the scope: their Plan lies inside it.
+    /// Rows planned into the scope: the Plan they read, own or inherited, lies inside it.
     pub planned: Vec<&'a PlanRow>,
     /// Rows planned to the scope's parent itself — one rung up, waiting to be placed here.
     pub parent_planned: Vec<&'a PlanRow>,
@@ -168,12 +171,17 @@ pub struct Panes<'a> {
 pub fn triage<'a>(rows: &'a [PlanRow], window: Bounds, parent: Option<&ScopeKey>) -> Panes<'a> {
     let mut panes = Panes::default();
     for row in rows.iter().filter(|row| row.stored) {
-        if let Some(plan) = &row.plan {
+        if let Some(plan) = row.effective_plan() {
             if plan.start_id == plan.end_id && parent == Some(&plan.start_id) {
                 panes.parent_planned.push(row);
             } else if interval_contains(window, plan.window()) {
                 panes.planned.push(row);
             }
+            continue;
+        }
+        // Something above it is planned, so it is not unplanned work; its Plan comes to nothing
+        // inside its window, which the board flags.
+        if row.empty_plan {
             continue;
         }
         let relevant = row
@@ -303,7 +311,7 @@ pub fn split<'a>(
         .collect();
     let mut unplaced = Vec::new();
     for &row in planned {
-        let section = row.plan.as_ref().and_then(|plan| {
+        let section = row.effective_plan().and_then(|plan| {
             sections
                 .iter_mut()
                 .find(|section| holds(&section.cell, &plan.start_id, &plan.end_id))
