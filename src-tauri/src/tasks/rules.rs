@@ -16,4 +16,5 @@ pub mod dependencies;
 pub mod lifecycle;
 pub mod review;
 pub mod scope;
+pub mod waits;
 pub mod write;
