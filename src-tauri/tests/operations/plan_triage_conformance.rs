@@ -10,7 +10,9 @@ use arlesh_lib::{
     scopes::key::ScopeKey,
     tasks::{
         model::TimeScope,
-        rules::plan::{parent_of, take_out, triage, PlanAncestor, PlanRefusal, PlanRow, TakeOut},
+        rules::plan::{
+            parent_of, split, take_out, triage, PlanAncestor, PlanRefusal, PlanRow, TakeOut,
+        },
     },
 };
 use serde::Deserialize;
@@ -103,11 +105,40 @@ struct TakeOutCase {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct Section {
+    cell: ScopeKey,
+    partial: bool,
+    rows: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Sections {
+    name: String,
+    target: ScopeKey,
+    include_premorning: bool,
+    rows: Vec<CorpusRow>,
+    sections: Vec<Section>,
+    unplaced: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ScopeDates {
+    key: ScopeKey,
+    start_date: chrono::NaiveDate,
+    end_date: chrono::NaiveDate,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Corpus {
     triage: Vec<Triage>,
     refusals: Vec<Refusal>,
     parents: Vec<Parent>,
     take_out: Vec<TakeOutCase>,
+    sections: Vec<Sections>,
+    scopes: Vec<ScopeDates>,
 }
 
 fn ids(rows: &[&PlanRow]) -> Vec<String> {
@@ -179,6 +210,46 @@ fn work_taken_out_lands_where_the_corpus_says() {
             lands, case.lands,
             "split={} parent={}",
             case.split, case.has_parent
+        );
+    }
+}
+
+#[test]
+fn every_planned_pane_splits_as_the_corpus_says() {
+    for case in corpus().sections {
+        let rows: Vec<PlanRow> = case.rows.iter().map(CorpusRow::row).collect();
+        let planned: Vec<&PlanRow> = rows.iter().collect();
+        let Some(split) = split(&planned, &case.target, case.include_premorning) else {
+            panic!("{}: the scope has parts", case.name);
+        };
+        let sections: Vec<(ScopeKey, bool, Vec<String>)> = split
+            .sections
+            .iter()
+            .map(|section| (section.cell, section.partial, ids(&section.rows)))
+            .collect();
+        let expected: Vec<(ScopeKey, bool, Vec<String>)> = case
+            .sections
+            .iter()
+            .map(|section| (section.cell, section.partial, section.rows.clone()))
+            .collect();
+        assert_eq!(sections, expected, "{}: sections", case.name);
+        assert_eq!(
+            ids(&split.unplaced),
+            case.unplaced,
+            "{}: unplaced",
+            case.name
+        );
+    }
+}
+
+#[test]
+fn every_scope_spans_the_days_the_corpus_says() {
+    for case in corpus().scopes {
+        assert_eq!(
+            (case.key.start_date(), case.key.end_date()),
+            (case.start_date, case.end_date),
+            "{:?}",
+            case.key
         );
     }
 }

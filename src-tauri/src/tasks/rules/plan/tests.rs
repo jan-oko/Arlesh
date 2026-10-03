@@ -113,3 +113,27 @@ fn a_move_out_of_the_parents_plan_is_refused_and_a_wait_cuts_the_chain() {
     });
     assert_eq!(task.refusal(next_week), None, "a check task under a wait");
 }
+
+#[test]
+fn a_month_splits_into_every_week_touching_it_and_the_edge_weeks_are_partial() {
+    let month = ScopeKey::containing(ScopeKind::Month, date("2026-09-01")).unwrap();
+    let mut early = row("early");
+    early.plan = Some(on(ScopeKey::day(date("2026-09-02"))));
+    let mut whole = row("whole");
+    whole.plan = Some(on(month));
+    let rows = [early, whole];
+    let planned: Vec<&PlanRow> = rows.iter().collect();
+    let split = split(&planned, &month, false).unwrap();
+    let partial: Vec<bool> = split
+        .sections
+        .iter()
+        .map(|section| section.partial)
+        .collect();
+    assert_eq!(partial, [true, false, false, false, true]);
+    assert_eq!(ids(&split.sections[0].rows), ["early"]);
+    assert_eq!(
+        ids(&split.unplaced),
+        ["whole"],
+        "planned to the month itself"
+    );
+}

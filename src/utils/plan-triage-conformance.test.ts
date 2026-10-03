@@ -12,6 +12,9 @@ import type { ScopeWindows } from "@/utils/plan-triage";
 import { partitionForScope, planRefusal, referencedScopeIds } from "@/utils/plan-triage";
 import { takeOutTarget } from "@/utils/plan-take-out";
 import { parentRefs } from "@/utils/plan-scope";
+import { buildPlanSections } from "@/utils/plan-sections";
+import type { Scope, ScopeKind as ApiScopeKind } from "@/api/scopes";
+import type { ScopeKeyText } from "@/utils/scope-key";
 
 /**
  * The Plan View's rules have two evaluators: `plan-triage.ts`, `plan-take-out.ts` and `parentRefs`,
@@ -76,6 +79,26 @@ function windowsFor(rows: readonly TaskListRow[], extra: readonly ScopeKey[]): S
 
 const top = record(corpusJson, "the corpus");
 
+/** Every scope the sections cases name, with the dates the backend gives it. */
+const SCOPES: ReadonlyMap<ScopeKeyText, Scope> = new Map(array(top.scopes, "`scopes`").map((value, index) => {
+  const entry = record(value, `scopes[${index}]`);
+  const id = key(entry.key, `scopes[${index}].key`);
+  const scopeKind: ApiScopeKind = id.kind;
+  const scope: Scope = {
+    id, kind: scopeKind, label: "",
+    start_date: str(entry.startDate, `scopes[${index}].startDate`),
+    end_date: str(entry.endDate, `scopes[${index}].endDate`),
+    part: id.kind === "part_of_day" ? id.part : null,
+    start_datetime: null, end_datetime: null,
+  };
+  return [scopeKeyText(id), scope];
+}));
+
+/** A calendar cell's ref as the key it names. */
+function cellKey(ref: Parameters<typeof keyForRef>[0]): string {
+  return scopeKeyText(keyForRef(ref));
+}
+
 describe("plan triage conformance corpus", () => {
   for (const [index, value] of array(top.triage, "`triage`").entries()) {
     const entry = record(value, `triage[${index}]`);
@@ -119,6 +142,25 @@ describe("plan triage conformance corpus", () => {
     it(`work taken out with split=${String(entry.split)} and parent=${String(entry.hasParent)}`, () => {
       const landed = takeOutTarget(entry.split === true, "filled", entry.hasParent === true ? "parent" : null);
       expect(landed.kind === "clear" ? "clear" : landed.scope).toBe(entry.lands);
+    });
+  }
+
+  for (const [index, value] of array(top.sections, "`sections`").entries()) {
+    const entry = record(value, `sections[${index}]`);
+    const name = str(entry.name, `sections[${index}].name`);
+    it(name, () => {
+      const rows = array(entry.rows, `${name}.rows`).map((r, i) => row(r, `${name}.rows[${i}]`));
+      const target = SCOPES.get(scopeKeyText(key(entry.target, `${name}.target`))) ?? fail(`${name}: no scope for the target`);
+      const split = buildPlanSections(rows, target, SCOPES, { includePremorning: entry.includePremorning === true });
+      if (split === null) fail(`${name}: the scope has parts`);
+      const expected = array(entry.sections, `${name}.sections`).map((section, i) => {
+        const raw = record(section, `${name}.sections[${i}]`);
+        return { cell: scopeKeyText(key(raw.cell, "cell")), partial: raw.partial, rows: ids(raw.rows, "rows") };
+      });
+      expect(split.sections.map((section) => ({
+        cell: cellKey(section.ref), partial: section.partial, rows: section.rows.map((r) => r.node.id),
+      }))).toEqual(expected);
+      expect(split.unplaced.map((r) => r.node.id)).toEqual(ids(entry.unplaced, `${name}.unplaced`));
     });
   }
 });

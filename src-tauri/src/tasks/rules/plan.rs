@@ -1,5 +1,6 @@
 //! The Plan View's rules: which Tasks a planning pass offers, which it already holds, which bound a
-//! move would break, the scope one rung up, and where work taken out lands.
+//! move would break, the scope one rung up, where work taken out lands, and how the planned pane
+//! splits into the scope's parts.
 //!
 //! The bounds are the writer's own: [`breaks_own_scope`] and [`breaks_parent_plan`] are what
 //! `check_containment` refuses a Plan by, so the view's refusal and the writer's cannot disagree
@@ -7,12 +8,13 @@
 //! `src/utils/plan-take-out.ts` and `parentRefs` in `src/utils/plan-scope.ts`;
 //! `conformance/plan-triage.json` holds the two together.
 
+use chrono::{Duration, Months, NaiveDate};
 use serde::Serialize;
 
 use crate::{
     scopes::{
         key::ScopeKey,
-        model::ScopeKind,
+        model::{PartOfDay, ScopeKind},
         resolve::{interval_contains, Bounds},
     },
     tasks::model::TimeScope,
@@ -187,6 +189,136 @@ pub fn triage<'a>(rows: &'a [PlanRow], window: Bounds, parent: Option<&ScopeKey>
 /// Whether two half-open windows share an instant: adjacent scopes do not.
 fn overlaps(a: Bounds, b: Bounds) -> bool {
     a.0 < b.1 && b.0 < a.1
+}
+
+/// The parts of a Day, in the order they run from its 02:00 start.
+const DAY_PARTS: [PartOfDay; 6] = [
+    PartOfDay::Premorning,
+    PartOfDay::Morning,
+    PartOfDay::Noon,
+    PartOfDay::Afternoon,
+    PartOfDay::Evening,
+    PartOfDay::Night,
+];
+
+/// The scope's parts one rung down, as calendar cells: a Season's months, a Month's weeks — every
+/// Sunday week that touches it — a Week's days, a Day's six parts. An Exact range or a part has none.
+pub fn subscope_cells(target: &ScopeKey) -> Vec<ScopeKey> {
+    match *target {
+        ScopeKey::Season { date } => (0..3)
+            .filter_map(|months| date.checked_add_months(Months::new(months)))
+            .map(|date| ScopeKey::Month { date })
+            .collect(),
+        ScopeKey::Month { date } => {
+            let last = target.end_date();
+            let first =
+                ScopeKey::containing(ScopeKind::Week, date).map_or(date, |week| week.start_date());
+            std::iter::successors(Some(first), |sunday| {
+                sunday.checked_add_signed(Duration::days(7))
+            })
+            .take_while(|sunday| *sunday <= last)
+            .map(|date| ScopeKey::Week { date })
+            .collect()
+        }
+        ScopeKey::Week { date } => (0..7)
+            .filter_map(|days| date.checked_add_signed(Duration::days(days)))
+            .map(ScopeKey::day)
+            .collect(),
+        ScopeKey::Day { date } => DAY_PARTS
+            .iter()
+            .map(|part| ScopeKey::part(date, *part))
+            .collect(),
+        ScopeKey::PartOfDay { .. } | ScopeKey::Exact { .. } => Vec::new(),
+    }
+}
+
+/// The days a cell is drawn over: a part, its own day alone.
+fn cell_days(cell: &ScopeKey) -> (NaiveDate, NaiveDate) {
+    match cell {
+        ScopeKey::PartOfDay { date, .. } => (*date, *date),
+        _ => (cell.start_date(), cell.end_date()),
+    }
+}
+
+/// Whether the cell holds a Plan from `start` to `end`: a part only a Plan on that very part, any
+/// other cell a Plan whose days lie inside its own.
+fn holds(cell: &ScopeKey, start: &ScopeKey, end: &ScopeKey) -> bool {
+    match cell {
+        ScopeKey::PartOfDay { date, part } => [start, end]
+            .iter()
+            .all(|key| key.part_of_day() == Some(*part) && key.start_date() == *date),
+        _ => cell.start_date() <= start.start_date() && end.end_date() <= cell.end_date(),
+    }
+}
+
+/// One bucket of a split planned pane.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Section<'a> {
+    /// The calendar cell it is — what a drop plans into.
+    pub cell: ScopeKey,
+    /// Whether it reaches outside the scope being filled.
+    pub partial: bool,
+    /// The planned rows it holds, in row order.
+    pub rows: Vec<&'a PlanRow>,
+}
+
+/// The planned pane split by subscope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Split<'a> {
+    /// The buckets, in calendar order.
+    pub sections: Vec<Section<'a>>,
+    /// Planned rows no bucket holds — planned to the scope itself, or across several parts — which
+    /// still need placing, so the candidates side offers them.
+    pub unplaced: Vec<&'a PlanRow>,
+}
+
+/// Splits the rows planned into `target` into one bucket per part one rung down, or `None` for a
+/// scope with no parts. A Day's Premorning is drawn only when asked for, or when it holds a row.
+pub fn split<'a>(
+    planned: &[&'a PlanRow],
+    target: &ScopeKey,
+    include_premorning: bool,
+) -> Option<Split<'a>> {
+    let (first, last) = (target.start_date(), target.end_date());
+    let cells: Vec<ScopeKey> = subscope_cells(target)
+        .into_iter()
+        .filter(|cell| {
+            let (start, end) = cell_days(cell);
+            start <= last && first <= end
+        })
+        .collect();
+    if cells.is_empty() {
+        return None;
+    }
+    let mut sections: Vec<Section<'a>> = cells
+        .iter()
+        .map(|cell| {
+            let (start, end) = cell_days(cell);
+            Section {
+                cell: *cell,
+                partial: start < first || end > last,
+                rows: Vec::new(),
+            }
+        })
+        .collect();
+    let mut unplaced = Vec::new();
+    for &row in planned {
+        let section = row.plan.as_ref().and_then(|plan| {
+            sections
+                .iter_mut()
+                .find(|section| holds(&section.cell, &plan.start_id, &plan.end_id))
+        });
+        match section {
+            Some(section) => section.rows.push(row),
+            None => unplaced.push(row),
+        }
+    }
+    sections.retain(|section| {
+        include_premorning
+            || section.cell.part_of_day() != Some(PartOfDay::Premorning)
+            || !section.rows.is_empty()
+    });
+    Some(Split { sections, unplaced })
 }
 
 #[cfg(test)]
