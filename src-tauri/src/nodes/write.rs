@@ -26,7 +26,7 @@ use crate::{
         occurrence_edit::{self, OccurrenceHost},
     },
     infos::model::{CreateInfoRequest, Info, InfoId, UpdateInfoRequest},
-    mindmap::{plan_guard::PlanGuard, rules::plans::clamp_targets},
+    mindmap::{plan_guard, rules::plans::clamp_targets},
     tasks::{
         error::TaskError,
         model::{
@@ -103,9 +103,8 @@ pub async fn create_task(
     if request.plan.is_none() && request.time_scope.is_none() {
         return insert_task(db, request, now).await;
     }
-    let guard = PlanGuard::before(db, now).await?;
     let task = insert_task(db, request, now).await?;
-    guard.check(db, now, &[board_key("task", &task.id)]).await?;
+    plan_guard::check(db, now, &[board_key("task", &task.id)]).await?;
     Ok(task)
 }
 
@@ -334,9 +333,9 @@ fn board_key(kind: &str, id: &NodeId) -> String {
 
 /// Updates a Task, stored or derived. A stored Task moved onto a Habit occurrence is hung on it.
 ///
-/// A write that touches a Plan, a window or a place is held to the plan rules across the whole
-/// board ([`crate::mindmap::plan_guard`]): one that leaves a Plan outside the one it inherits, or
-/// a Task with no Plan inside its window, is refused, naming them.
+/// A write that touches a Plan, a window or a place is held to the plan rules over its reach — the
+/// Task and everything beneath it ([`crate::mindmap::plan_guard`]): one that leaves a Plan outside
+/// the one it inherits, or a Task with no Plan inside its window, is refused, naming them.
 #[tracing::instrument(skip(db, request))]
 pub async fn update_task(
     db: &mut Db<Transactional>,
@@ -362,15 +361,18 @@ pub async fn plan_task(
     if !moves_plans(&request) {
         return write_task(db, id, request, now).await;
     }
-    let guard = PlanGuard::before(db, now).await?;
+    // Only an answered clamp prompt needs the board as it stands before the write: to know which
+    // Tasks below the new Plan leaves outside, and what each is clamped to.
     let settle = match (descendants, &request.plan) {
-        (Some(mode), Some(plan)) => clamp_targets(guard.board(), id, plan.as_ref())
-            .into_iter()
-            .map(|target| match mode {
-                DescendantPlans::Clamp => (target.id, target.clamp_to),
-                DescendantPlans::Clear => (target.id, None),
-            })
-            .collect(),
+        (Some(mode), Some(plan)) => {
+            clamp_targets(&plan_guard::audit(db, now).await?, id, plan.as_ref())
+                .into_iter()
+                .map(|target| match mode {
+                    DescendantPlans::Clamp => (target.id, target.clamp_to),
+                    DescendantPlans::Clear => (target.id, None),
+                })
+                .collect()
+        }
         _ => Vec::new(),
     };
     let task = write_task(db, id, request, now).await?;
@@ -384,7 +386,7 @@ pub async fn plan_task(
         write_task(db, &child, request, now).await?;
         written.push(board_key("task", &child));
     }
-    guard.check(db, now, &written).await?;
+    plan_guard::check(db, now, &written).await?;
     Ok(task)
 }
 
@@ -476,9 +478,8 @@ pub async fn update_goal(
     if request.time_scope.is_none() && request.parent_id.is_none() {
         return write_goal(db, id, request, now).await;
     }
-    let guard = PlanGuard::before(db, now).await?;
     let written = write_goal(db, id, request, now).await?;
-    guard.check(db, now, &[board_key("goal", id)]).await?;
+    plan_guard::check(db, now, &[board_key("goal", id)]).await?;
     Ok(written)
 }
 
@@ -540,9 +541,8 @@ pub async fn update_commitment(
     if request.time_scope.is_none() && request.parent_id.is_none() {
         return write_commitment(db, id, request, now).await;
     }
-    let guard = PlanGuard::before(db, now).await?;
     let written = write_commitment(db, id, request, now).await?;
-    guard.check(db, now, &[board_key("commitment", id)]).await?;
+    plan_guard::check(db, now, &[board_key("commitment", id)]).await?;
     Ok(written)
 }
 

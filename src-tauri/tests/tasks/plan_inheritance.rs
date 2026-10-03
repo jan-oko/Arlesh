@@ -263,7 +263,7 @@ async fn moving_a_parents_plan_clamps_or_clears_the_child_in_the_same_write() {
 }
 
 #[tokio::test]
-async fn an_existing_violation_stays_flagged_and_does_not_block_other_writes() {
+async fn a_violation_from_outside_the_writer_is_flagged_and_refused_within_reach() {
     let pool = helpers::test_pool().await;
     let factory = helpers::session_factory(&pool);
     let parent = planned_parent(&factory, &pool).await;
@@ -276,7 +276,7 @@ async fn an_existing_violation_stays_flagged_and_does_not_block_other_writes() {
     )
     .await
     .unwrap();
-    // Written behind the writer's back, as data from before the rule would be.
+    // Written behind the writer's back, as an undo replay or older data could leave it.
     sqlx::query("UPDATE tasks SET plan_start_id = ?, plan_end_id = ? WHERE id = ?")
         .bind(r#"{"kind":"day","date":"2026-10-12"}"#)
         .bind(r#"{"kind":"day","date":"2026-10-12"}"#)
@@ -290,11 +290,18 @@ async fn an_existing_violation_stays_flagged_and_does_not_block_other_writes() {
         audit.readings[&key(&child)].conflict,
         Some(PlanConflict::ParentPlan)
     );
-    // A sibling written meanwhile is not held to the child's standing violation.
-    create(&factory, child_of(&parent, "Sibling"))
-        .await
-        .unwrap();
-    // The child's own next Plan edit must resolve it.
+    // A write elsewhere does not reach it.
+    create(
+        &factory,
+        CreateTaskRequest {
+            plan: Some(day(10, 6)),
+            ..child_of(&parent, "Sibling")
+        },
+    )
+    .await
+    .unwrap();
+    // A write that reaches it — its parent's, or its own — must leave it resolved.
+    refusal(update(&factory, &parent, plan(week(10, 4)), None).await);
     refusal(update(&factory, &child, plan(day(10, 13)), None).await);
     update(&factory, &child, plan(day(10, 6)), None)
         .await

@@ -24,7 +24,7 @@ interface Props {
   /** The Plan it inherits, shown read-only while it has none of its own, and what an own Plan must
    * sit inside. */
   inherited?: InheritedPlan | null;
-  /** The plan rule it breaks, flagged until it is next edited. */
+  /** The plan rule it breaks — one that arose outside the writer, which the guard never lets a write leave. */
   conflict?: PlanConflict | null;
   onChange: (plan: TimeScope | null) => void;
 }

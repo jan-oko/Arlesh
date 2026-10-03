@@ -42,7 +42,7 @@ export interface NodeFacts {
   plan_source?: string;
   /** That node's short id. */
   plan_source_short_id?: string;
-  /** The plan rule a Task breaks, flagged until it is next edited: its own Plan leaves the one it
+  /** The plan rule a Task breaks, as an undo or older data can leave one: its own Plan leaves the one it
    * inherits, or the Plan above it does not meet its window. */
   plan_conflict?: PlanConflict;
   /** The dependencies a Task is blocked by, in edge order. */

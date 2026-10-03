@@ -1,11 +1,13 @@
 //! The write guard for Plan inheritance: a write that breaks a plan rule is refused, naming the
 //! nodes (`docs/spec/time-scopes.md`, *Plan inheritance*).
 //!
-//! A write can break a rule far from the row it touches — moving a Task's Plan away from a child's
+//! A write can break a rule below the row it touches — moving a Task's Plan away from a child's
 //! window leaves the child with nothing, and narrowing a Habit's target leaves the Habit outside —
-//! so the guard reads the whole board before the write and again after it, inside the write's
-//! transaction, and refuses what the write added. An existing violation is not the write's doing
-//! and stays flagged until its own node is next edited; that edit must resolve it.
+//! so after the write, inside its transaction, the guard reads the board's plan rules once and
+//! refuses any rule broken within the write's **reach**: the nodes it wrote and everything beneath
+//! them, and the Habits hung there. Nothing else's effective Plan can have changed. The board holds
+//! no violation before a write, so any it finds there is the write's own; the refusal rolls the
+//! whole write back.
 
 use chrono::NaiveDateTime;
 
@@ -25,57 +27,25 @@ pub async fn audit(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<Pla
         .plans)
 }
 
-/// What the board broke before a write.
-pub struct PlanGuard {
-    before: PlanAudit,
+/// Refuses the write just made when it left a plan rule broken within its reach — the nodes in
+/// `written` (keyed as the board keys a node) and everything beneath them.
+pub async fn check(
+    db: &mut Db<Transactional>,
+    now: NaiveDateTime,
+    written: &[String],
+) -> Result<(), AppError> {
+    let after = audit(db, now).await?;
+    refuse(&after, written)
 }
 
-impl PlanGuard {
-    /// Reads the board before the write.
-    pub async fn before(db: &mut Db<Transactional>, now: NaiveDateTime) -> Result<Self, AppError> {
-        Ok(Self {
-            before: audit(db, now).await?,
-        })
-    }
-
-    /// The board as it stood before the write.
-    pub fn board(&self) -> &PlanAudit {
-        &self.before
-    }
-
-    /// Refuses the write when the board now breaks a rule it did not, or one on a node the write
-    /// touched (`written`, keyed as the board keys a node).
-    pub async fn check(
-        self,
-        db: &mut Db<Transactional>,
-        now: NaiveDateTime,
-        written: &[String],
-    ) -> Result<(), AppError> {
-        let after = audit(db, now).await?;
-        refuse(&self.before, &after, written)
-    }
-}
-
-/// Refuses a write that left `after` breaking what `before` did not, or breaking anything on a
-/// node in `written`.
-pub fn refuse(before: &PlanAudit, after: &PlanAudit, written: &[String]) -> Result<(), AppError> {
-    let broken = before.broken();
-    let written = written.iter().cloned().collect();
-    let pairs: Vec<(String, _)> = after
+/// Refuses when `after` breaks a plan rule within the reach of `written`.
+pub fn refuse(after: &PlanAudit, written: &[String]) -> Result<(), AppError> {
+    let reach = after.reach(written);
+    let refused: Vec<_> = after
         .conflicts
         .iter()
-        .map(|entry| (entry.key.clone(), entry.conflict))
+        .filter(|entry| reach.contains(&entry.key))
         .collect();
-    let refused: Vec<_> =
-        crate::tasks::rules::plan_inheritance::refusable(&broken, &pairs, &written)
-            .into_iter()
-            .filter_map(|(key, conflict)| {
-                after
-                    .conflicts
-                    .iter()
-                    .find(|entry| &entry.key == key && entry.conflict == *conflict)
-            })
-            .collect();
     if refused.is_empty() {
         return Ok(());
     }

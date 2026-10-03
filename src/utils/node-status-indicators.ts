@@ -61,7 +61,7 @@ export function deriveStatusIndicators(node: MindmapNode): StatusIndicator[] {
     indicators.push({ type: "archived", conflict: node.archivalConflict === true });
   }
   // Its effective Plan: its own, or — badged fainter — one it inherits. A Task breaking a plan rule
-  // is flagged on the same badge until it is next edited.
+  // is flagged on the same badge: one the writer never leaves, but an undo or older data can.
   if (node.plan != null) {
     indicators.push({ type: "planned", conflict: node.planConflict !== undefined });
   } else if (node.inheritedPlan !== undefined || node.planConflict !== undefined) {

@@ -284,7 +284,7 @@ How the presets read them:
 - **Spec:** [Resources § Tasks (Agentic)](spec/resources.md), [Link Inheritance](spec/link-inheritance.md).
 
 ### Scope containment
-- **Is:** four containment rules: `child.TimeScope ⊆ parent.TimeScope`, `Plan ⊆ TimeScope`, `child.Plan ⊆ parent.Plan` and `Due ⊆ TimeScope`. They are checked on every write. Narrowing a parent offers to clamp its descendants. For Plans, a child's own Plan sits inside the Plan it inherits and no Task may be left with an empty one. The board is read before and after a write, and what the write added is refused, naming the Tasks. A Habit's span sits inside its target's Time Scope and Plan.
+- **Is:** four containment rules: `child.TimeScope ⊆ parent.TimeScope`, `Plan ⊆ TimeScope`, `child.Plan ⊆ parent.Plan` and `Due ⊆ TimeScope`. They are checked on every write. Narrowing a parent offers to clamp its descendants. For Plans, a child's own Plan sits inside the Plan it inherits and no Task may be left with an empty one. After a write the board is read once, and a rule broken within the write's reach (what it wrote and everything beneath) is refused, naming the Tasks. A Habit's span sits inside its target's Time Scope and Plan.
 - **Why:** a step can't matter outside the window of the thing it is a step of.
 - **Without:** children outlive their parents, and plans are scheduled after the work stopped mattering.
 - **Lives:** `rs:tasks/scope_rules.rs`, and for Plans `rs:mindmap/plan_guard.rs` over `rs:tasks/rules/plan_inheritance.rs`.

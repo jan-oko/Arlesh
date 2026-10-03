@@ -320,22 +320,3 @@ fn a_bounded_habit_fits_a_target_that_holds_it() {
         vec![HabitConflict::TimeScope]
     );
 }
-
-#[test]
-fn a_write_is_refused_for_what_it_adds_and_for_what_it_touched() {
-    let before: HashSet<(&str, PlanConflict)> = HashSet::from([
-        ("old", PlanConflict::Empty),
-        ("edited", PlanConflict::ParentPlan),
-    ]);
-    let after = vec![
-        ("old", PlanConflict::Empty),
-        ("edited", PlanConflict::ParentPlan),
-        ("new", PlanConflict::Empty),
-    ];
-    let written = HashSet::from(["edited"]);
-    let refused: Vec<&str> = refusable(&before, &after, &written)
-        .into_iter()
-        .map(|(key, _)| *key)
-        .collect();
-    assert_eq!(refused, vec!["edited", "new"]);
-}

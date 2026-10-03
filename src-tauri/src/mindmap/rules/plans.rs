@@ -68,15 +68,49 @@ pub struct PlanAudit {
     pub conflicts: Vec<ConflictEntry>,
     /// Each Task's id and title, by key.
     pub tasks: HashMap<String, (NodeId, String)>,
+    /// Each Habit, keyed `flow-{id}`, with the node its iteration roots hang under.
+    pub habit_hosts: HashMap<String, String>,
 }
 
 impl PlanAudit {
-    /// The rules broken, as `(key, conflict)` pairs.
-    pub fn broken(&self) -> HashSet<(String, BoardConflict)> {
-        self.conflicts
+    /// The nodes a write to `written` can change the effective Plan of: each written node and
+    /// everything beneath it, and every Habit hung there. A written Habit (`flow-{id}`) reaches its
+    /// own edge and everything beneath the node its roots hang under — its occurrences.
+    pub fn reach(&self, written: &[String]) -> HashSet<String> {
+        let mut children: HashMap<&str, Vec<&str>> = HashMap::new();
+        for (key, link) in &self.links {
+            if let Some(parent) = &link.parent {
+                children
+                    .entry(parent.as_str())
+                    .or_default()
+                    .push(key.as_str());
+            }
+        }
+        let mut reach: HashSet<String> = HashSet::new();
+        let mut stack: Vec<&str> = Vec::new();
+        for key in written {
+            reach.insert(key.clone());
+            match self.habit_hosts.get(key) {
+                Some(host) => stack.push(host.as_str()),
+                None => stack.push(key.as_str()),
+            }
+        }
+        while let Some(key) = stack.pop() {
+            reach.insert(key.to_string());
+            for child in children.get(key).into_iter().flatten() {
+                if !reach.contains(*child) {
+                    stack.push(child);
+                }
+            }
+        }
+        let hung: Vec<String> = self
+            .habit_hosts
             .iter()
-            .map(|entry| (entry.key.clone(), entry.conflict))
-            .collect()
+            .filter(|(_, host)| reach.contains(*host))
+            .map(|(habit, _)| habit.clone())
+            .collect();
+        reach.extend(hung);
+        reach
     }
 }
 
@@ -205,11 +239,17 @@ pub fn audit(rows: &PlanRows<'_>) -> PlanAudit {
             )
         })
         .collect();
+    let habit_hosts = rows
+        .habits
+        .iter()
+        .map(|habit| (format!("flow-{}", habit.flow_id), habit.host.clone()))
+        .collect();
     PlanAudit {
         links,
         readings,
         conflicts,
         tasks,
+        habit_hosts,
     }
 }
 

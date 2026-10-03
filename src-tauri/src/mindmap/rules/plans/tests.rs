@@ -147,3 +147,30 @@ fn moving_a_parents_plan_names_the_child_to_clamp() {
         }]
     );
 }
+
+#[test]
+fn a_write_reaches_its_subtree_and_the_habits_hung_there_and_nothing_above() {
+    let tasks = [
+        task_row(1, "domain", 1),
+        task_row(2, "task", 1),
+        task_row(3, "task", 2),
+        task_row(4, "domain", 1),
+    ];
+    let habit = HabitEdge {
+        flow_id: 7,
+        title: "Habit".to_string(),
+        host: "task-3".to_string(),
+        span: HabitSpan::default(),
+    };
+    let audit = audit_of(&tasks, &[], &[habit]);
+    let reach = audit.reach(&["task-2".to_string()]);
+    for key in ["task-2", "task-3", "flow-7"] {
+        assert!(reach.contains(key), "{key}");
+    }
+    for key in ["task-1", "task-4"] {
+        assert!(!reach.contains(key), "{key}");
+    }
+    // A written Habit reaches what hangs under its host.
+    let habit_reach = audit.reach(&["flow-7".to_string()]);
+    assert!(habit_reach.contains("task-3") && !habit_reach.contains("task-2"));
+}

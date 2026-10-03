@@ -7,7 +7,7 @@
 
 use tauri::State;
 
-use crate::mindmap::plan_guard::PlanGuard;
+use crate::mindmap::plan_guard;
 use crate::{
     database::session::SessionFactory,
     error::WireError,
@@ -61,14 +61,10 @@ pub async fn update_flow(
 ) -> Result<Flow, WireError> {
     let now = chrono::Local::now().naive_local();
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let guard = PlanGuard::before(&mut db, now)
-        .await
-        .map_err(WireError::from_error)?;
     let flow = flows::update_flow(&mut db, FlowId(id), request)
         .await
         .map_err(WireError::from_error)?;
-    guard
-        .check(&mut db, now, &[format!("flow-{id}")])
+    plan_guard::check(&mut db, now, &[format!("flow-{id}")])
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
@@ -237,14 +233,10 @@ pub async fn set_flow_recurrence(
 ) -> Result<FlowRecurrence, WireError> {
     let now = chrono::Local::now().naive_local();
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let guard = PlanGuard::before(&mut db, now)
-        .await
-        .map_err(WireError::from_error)?;
     let recurrence = flows::set_flow_recurrence(&mut db, FlowId(flow_id), request)
         .await
         .map_err(WireError::from_error)?;
-    guard
-        .check(&mut db, now, &[format!("flow-{flow_id}")])
+    plan_guard::check(&mut db, now, &[format!("flow-{flow_id}")])
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
@@ -348,9 +340,6 @@ pub async fn set_flow_item_cycles(
             ));
         }
     }
-    let guard = PlanGuard::before(&mut db, chrono::Local::now().naive_local())
-        .await
-        .map_err(WireError::from_error)?;
     let fork = flows::cycles::set_item_cycles(
         &mut db,
         FlowId(flow_id),
@@ -362,14 +351,13 @@ pub async fn set_flow_item_cycles(
     )
     .await
     .map_err(WireError::from_error)?;
-    guard
-        .check(
-            &mut db,
-            chrono::Local::now().naive_local(),
-            &[format!("flow-{flow_id}")],
-        )
-        .await
-        .map_err(WireError::from_error)?;
+    plan_guard::check(
+        &mut db,
+        chrono::Local::now().naive_local(),
+        &[format!("flow-{flow_id}")],
+    )
+    .await
+    .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(fork)
 }

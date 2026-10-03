@@ -130,7 +130,7 @@
   font-size: var(--text-sm);
 }
 
-/* A plan rule the Task breaks, flagged until it is next edited. */
+/* A plan rule the Task breaks — one that arose outside the writer, as an undo can leave. */
 .conflict {
   color: var(--danger);
   font-size: var(--text-sm);

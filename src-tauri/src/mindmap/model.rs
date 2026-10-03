@@ -147,7 +147,8 @@ pub struct NodeFacts {
     /// [`Self::plan_source`]'s short id, when the board has one for it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan_source_short_id: Option<String>,
-    /// The plan rule a Task breaks, flagged until it is next edited.
+    /// The plan rule a Task breaks — one that arose outside the writer, as an undo or older data
+    /// can leave; the guard never lets a write leave one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan_conflict: Option<crate::tasks::rules::plan_inheritance::PlanConflict>,
     /// The dependencies a Task is blocked by, in edge order.

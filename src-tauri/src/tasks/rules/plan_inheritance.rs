@@ -398,19 +398,5 @@ pub fn habit_conflicts(
     conflicts
 }
 
-/// The conflicts a write would leave that it must be refused for: every one that was not there
-/// before, and every one on a node it wrote — an existing violation stays flagged until that node
-/// is next edited, and that edit must resolve it.
-pub fn refusable<'a, K: Eq + Hash, C: Eq + Hash + Copy>(
-    before: &HashSet<(K, C)>,
-    after: &'a [(K, C)],
-    written: &HashSet<K>,
-) -> Vec<&'a (K, C)> {
-    after
-        .iter()
-        .filter(|entry| written.contains(&entry.0) || !before.contains(entry))
-        .collect()
-}
-
 #[cfg(test)]
 mod tests;

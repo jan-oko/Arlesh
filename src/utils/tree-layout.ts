@@ -345,7 +345,7 @@ export interface MindmapNode {
   inheritedPlan?: TimeScope;
   /** Where an inherited Plan comes from: the planned node above, by node id and short id. */
   planSource?: PlanSource;
-  /** The plan rule this Task breaks, flagged until it is next edited. */
+  /** The plan rule this Task breaks: one that arose outside the writer, as an undo or older data can leave. */
   planConflict?: PlanConflict;
   /** Where this Task's **effective** Plan — its own, or the one it inherits — stands at "now"; set
    * by the view from the derived lifecycle, never persisted. */
