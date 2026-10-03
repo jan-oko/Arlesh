@@ -141,7 +141,7 @@ definition it loads.
 
 | Tool | Operations |
 | --- | --- |
-| `arlesh_snapshot` | `load(now?, sections?, cursor?, filter?, agentic?)` — `now` is a local date-time string (`"2026-09-25T09:00:00"`) and defaults to the server's current time; the whole planning graph: domains, goals, tasks, **commitments**, notes, flows, flow items, cycles, dependencies, block reasons, materialised instance nodes, every item's derived lifecycle, each flow's habit iterations and statuses, and which occurrence each **added child** hangs on. Paged; see below |
+| `arlesh_snapshot` | `load(now?, sections?, cursor?, filter?, agentic?)` — `now` is a local date-time string (`"2026-09-25T09:00:00"`) and defaults to the server's current time; the whole planning graph: domains, goals, tasks, **commitments**, notes, flows, flow items (`flow_goals`, `flow_tasks`, `flow_commitments`, `flow_expectations`), cycles, dependencies, block reasons, materialised instance nodes, every item's derived lifecycle, each flow's habit iterations and statuses, and which occurrence each **added child** hangs on. Paged; see below |
 | `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` — `id` is a scope's value key, a JSON object such as `{"kind":"week","date":"2026-09-20"}` |
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
 | `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?, delegate?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, compound?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?, delegate?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`. See *Writing tasks* below |
@@ -195,7 +195,14 @@ kind), `check_starting` and `last_check_at`. The section holds **every** wait, s
 alike (ADR 0008, [Derived nodes](virtual-nodes.md)): the wait an `asynchronous` task's completion
 spawned (`origin` `{"kind": "spawned_wait", "task_id": …}`) and a delegated task's wait
 (`{"kind": "delegation_wait", …}`) are ordinary rows of it, with a UUID `id`, `parent_type` `task`
-and their Task as `parent_id`. A derived wait is read **as it is edited**: its title, window, Check
+and their Task as `parent_id`. So is each occurrence of a Flow's **wait item** (`origin`
+`{"kind": "habit", …, "item_type": "flow_expectation"}`), released on its own; a **Commitment
+item**'s occurrence is a row of `commitments` the same way (`"item_type": "flow_commitment"`), with its
+own verdict. The template items themselves arrive in the `flow_commitments` and `flow_expectations`
+sections (Task b66): a Commitment item with its `verdict_window`, a wait item with its `check_every`
+and `first_check` (`{"kind": "day", "index": 3}` — the start of the third day of each occurrence's
+window; `null` is the window's start), each with `id`, `short_id` and `full_id` like every node, and
+`tag_ids`. They are read-only here; no MCP write makes or changes one. A derived wait is read **as it is edited**: its title, window, Check
 every and Starting, privacy, tags and agent fields are what its template (or its Task) draws them
 as, under whatever was written to that one wait in the app — its overlay (`expectation_overlays`)
 and its tag differences — exactly as a Habit occurrence reads. Its checks are Task rows in `tasks`
