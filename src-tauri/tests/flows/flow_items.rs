@@ -735,3 +735,79 @@ async fn converting_a_subtree_turns_its_commitments_and_waits_into_items() {
         "the stored subtree is gone"
     );
 }
+
+#[tokio::test]
+async fn a_note_hangs_on_a_wait_occurrence_and_a_release_is_listed() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let flow = flow(&app, "day", InstanceType::Task).await;
+    let step = task_item(&app, flow, ("flow", flow)).await;
+    let wait = wait_item(&app, flow, ("flow_task", step)).await;
+    recur(&app, flow, ScopeKind::Day, ymd(2026, 1, 5)).await;
+    let day = ScopeKey::day(ymd(2026, 1, 5));
+    let wait_id = occurrence(TemplateKind::FlowExpectation, wait, day);
+    let now = at("2026-01-05T09:00:00");
+
+    let factory = helpers::session_factory(&pool);
+    let mut db = factory.begin().await.unwrap();
+    let note = write::create_info(
+        &mut db,
+        arlesh_lib::infos::model::CreateInfoRequest {
+            body: "Sent Monday".into(),
+            details: None,
+            parent_type: "expectation".into(),
+            parent_id: wait_id.clone(),
+            position: 0,
+        },
+        now,
+    )
+    .await
+    .unwrap();
+    assert_eq!(note.parent_id, wait_id, "hung on the occurrence itself");
+    let task_under_wait = write::create_task(
+        &mut db,
+        arlesh_lib::tasks::model::CreateTaskRequest {
+            title: "Chase".into(),
+            parent_type: "expectation".into(),
+            parent_id: wait_id.clone(),
+            ..Default::default()
+        },
+        now,
+    )
+    .await;
+    assert!(
+        task_under_wait.is_err(),
+        "a wait holds notes and nothing else"
+    );
+    write::update_expectation(
+        &mut db,
+        &wait_id,
+        UpdateExpectationRequest {
+            status: Some(ExpectationStatus::Released),
+            ..Default::default()
+        },
+        now,
+    )
+    .await
+    .unwrap();
+    let statuses = db.flows().list_item_statuses(FlowId(flow)).await.unwrap();
+    db.commit().await.unwrap();
+    assert!(statuses.iter().any(|status| {
+        status.item_type == "flow_expectation"
+            && status.item_id == wait
+            && status.iteration_scope_id == day
+            && status.status == "released"
+    }));
+
+    let board = load(&app, "2026-01-05T09:00:00").await;
+    let info = board
+        .infos
+        .iter()
+        .find(|info| info.body == "Sent Monday")
+        .unwrap();
+    assert_eq!(info.parent_type, "expectation");
+    assert_eq!(
+        info.parent_id, wait_id,
+        "the board reads it under the occurrence"
+    );
+}

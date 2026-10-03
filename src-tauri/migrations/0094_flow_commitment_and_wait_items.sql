@@ -232,6 +232,34 @@ CREATE INDEX idx_commitment_overlays_flow ON commitment_overlays (flow_id, itera
 ALTER TABLE expectation_overlays ADD COLUMN status TEXT CHECK (status IS NULL OR status IN ('pending', 'released'));
 ALTER TABLE expectation_overlays ADD COLUMN released_at TEXT;
 
+-- A wait item's occurrence holds notes, as a wait does, and a note hung on one is attached to it
+-- like any added child: `derived_children.parent_kind` gains `expectation`.
+CREATE TABLE derived_children_new (
+    id                  INTEGER PRIMARY KEY,
+    flow_id             INTEGER REFERENCES flows(id) ON DELETE CASCADE,
+    parent_kind         TEXT NOT NULL CHECK (parent_kind IN ('task', 'goal', 'commitment', 'expectation')),
+    parent_key          TEXT NOT NULL,
+    -- The occurrence's window, its two boundary scopes resolved at attach time: reading the
+    -- child's ancestry must not have to resolve a Flow Window, which mints scope rows.
+    window_start_scope_id TEXT,
+    window_end_scope_id TEXT,
+    child_type          TEXT NOT NULL CHECK (child_type IN ('task', 'goal', 'commitment', 'info', 'expectation')),
+    child_id            INTEGER NOT NULL,
+    UNIQUE (child_type, child_id),
+    CHECK (window_start_scope_id IS NULL OR json_valid(window_start_scope_id)),
+    CHECK (window_end_scope_id IS NULL OR json_valid(window_end_scope_id))
+);
+INSERT INTO derived_children_new
+    (id, flow_id, parent_kind, parent_key, window_start_scope_id, window_end_scope_id, child_type,
+     child_id)
+SELECT id, flow_id, parent_kind, parent_key, window_start_scope_id, window_end_scope_id, child_type,
+       child_id
+FROM derived_children;
+DROP TABLE derived_children;
+ALTER TABLE derived_children_new RENAME TO derived_children;
+CREATE INDEX idx_derived_children_parent ON derived_children (parent_key);
+CREATE INDEX idx_derived_children_flow ON derived_children (flow_id);
+
 -- Undo-journal triggers, straight from scripts/generate-undo-triggers.sh: the rebuilt tables lost
 -- theirs with the old table, the new tables need theirs, and `expectation_overlays`' images name
 -- its two new columns.
@@ -397,6 +425,24 @@ END;
 CREATE TRIGGER undo_journal_expectation_overlays_delete AFTER DELETE ON expectation_overlays BEGIN
     INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
     SELECT gesture_id, source, 'expectation_overlays', old.rowid, 'delete', json_object('node_key', old.node_key, 'flow_id', old.flow_id, 'occurrence_key', old.occurrence_key, 'title', old.title, 'time_scope_start_id', old.time_scope_start_id, 'time_scope_end_id', old.time_scope_end_id, 'time_scope_duration_n', old.time_scope_duration_n, 'time_scope_duration_kind', old.time_scope_duration_kind, 'time_scope_set', old.time_scope_set, 'check_every_n', old.check_every_n, 'check_every_kind', old.check_every_kind, 'check_every_set', old.check_every_set, 'check_starting', old.check_starting, 'is_private', old.is_private, 'archival', old.archival, 'agentic', old.agentic, 'agentic_note', old.agentic_note, 'agentic_note_set', old.agentic_note_set, 'agentic_question', old.agentic_question, 'agentic_answer', old.agentic_answer, 'agentic_answer_set', old.agentic_answer_set, 'status', old.status, 'released_at', old.released_at), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM undo_context WHERE id = 1 AND suppressed = 0;
+END;
+
+CREATE TRIGGER undo_journal_derived_children_insert AFTER INSERT ON derived_children BEGIN
+    INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
+    SELECT gesture_id, source, 'derived_children', new.rowid, 'insert', NULL, json_object('id', new.id, 'flow_id', new.flow_id, 'parent_kind', new.parent_kind, 'parent_key', new.parent_key, 'window_start_scope_id', new.window_start_scope_id, 'window_end_scope_id', new.window_end_scope_id, 'child_type', new.child_type, 'child_id', new.child_id), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM undo_context WHERE id = 1 AND suppressed = 0;
+END;
+
+CREATE TRIGGER undo_journal_derived_children_update AFTER UPDATE ON derived_children BEGIN
+    INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
+    SELECT gesture_id, source, 'derived_children', new.rowid, 'update', json_object('id', old.id, 'flow_id', old.flow_id, 'parent_kind', old.parent_kind, 'parent_key', old.parent_key, 'window_start_scope_id', old.window_start_scope_id, 'window_end_scope_id', old.window_end_scope_id, 'child_type', old.child_type, 'child_id', old.child_id), json_object('id', new.id, 'flow_id', new.flow_id, 'parent_kind', new.parent_kind, 'parent_key', new.parent_key, 'window_start_scope_id', new.window_start_scope_id, 'window_end_scope_id', new.window_end_scope_id, 'child_type', new.child_type, 'child_id', new.child_id), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM undo_context WHERE id = 1 AND suppressed = 0;
+END;
+
+CREATE TRIGGER undo_journal_derived_children_delete AFTER DELETE ON derived_children BEGIN
+    INSERT INTO undo_journal (gesture_id, source, table_name, row_id, operation, before_image, after_image, written_at)
+    SELECT gesture_id, source, 'derived_children', old.rowid, 'delete', json_object('id', old.id, 'flow_id', old.flow_id, 'parent_kind', old.parent_kind, 'parent_key', old.parent_key, 'window_start_scope_id', old.window_start_scope_id, 'window_end_scope_id', old.window_end_scope_id, 'child_type', old.child_type, 'child_id', old.child_id), NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       FROM undo_context WHERE id = 1 AND suppressed = 0;
 END;
 

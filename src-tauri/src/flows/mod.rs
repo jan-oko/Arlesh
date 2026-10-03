@@ -1582,7 +1582,8 @@ impl<'session> FlowOperator<'session> {
     /// scope it applies to — occurrences with none sit at their kind's default.
     ///
     /// Statuses read in the vocabulary Modifications always spoke: a Goal occurrence's
-    /// `achieved` reads `done`, and a Commitment's verdict reads as itself.
+    /// `achieved` reads `done`, a Commitment's verdict reads as itself, and a wait item's
+    /// occurrence reads `released` once it is.
     pub async fn list_item_statuses(
         &mut self,
         flow_id: FlowId,
@@ -1604,7 +1605,41 @@ impl<'session> FlowOperator<'session> {
         .await?
         .into_iter()
         .map(HabitItemStatus::from)
+        .chain(self.released_waits(flow_id).await?)
         .collect())
+    }
+
+    /// Every released, live wait item occurrence of one Habit, as a `released` status. A wait's
+    /// overlay is keyed by its node key alone, so the key is read back into its parts.
+    async fn released_waits(&mut self, flow_id: FlowId) -> Result<Vec<HabitItemStatus>, FlowError> {
+        let overlays = OverlayOperator::new(&mut *self.connection)
+            .wait_items_for_habit(flow_id.0)
+            .await?;
+        let mut released: Vec<HabitItemStatus> = overlays
+            .into_iter()
+            .filter(|(_, overlay)| {
+                overlay.status.as_deref() == Some("released")
+                    && overlay.archival.as_deref() != Some("archived")
+            })
+            .filter_map(|(node_key, _)| {
+                let key = OccurrenceKey::parse(&node_key)?;
+                Some(HabitItemStatus {
+                    item_type: key.item.item_type.as_str().to_string(),
+                    item_id: key.item.item_id,
+                    iteration_scope_id: key.iteration,
+                    cycle_id: key.cycle,
+                    status: "released".to_string(),
+                })
+            })
+            .collect();
+        released.sort_by_key(|status| {
+            (
+                status.item_id,
+                status.iteration_scope_id.start_date(),
+                status.cycle_id,
+            )
+        });
+        Ok(released)
     }
 
     /// Sets a **single** instance's status at one iteration scope. `status` `None` clears it (back
