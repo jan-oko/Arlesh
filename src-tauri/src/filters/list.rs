@@ -304,6 +304,10 @@ pub fn flatten_forest(forest: &[super::tree::FactNode], kind: NodeKind) -> Vec<O
     rows
 }
 
+/// One row kind's predicate: [`passes_row`], [`passes_commitment_row`] or
+/// [`passes_expectation_row`].
+type RowPredicate = fn(Row<'_>, &BoardFilter) -> bool;
+
 /// The node ids the List View keeps from `forest` under `filter`: every Task, Commitment and
 /// Expectation row that passes, and every ancestor of one, so each row arrives with the path it
 /// hangs from — which is what the List View's path header names.
@@ -311,7 +315,7 @@ pub fn kept_ids_in_forest(
     forest: &[super::tree::FactNode],
     filter: &BoardFilter,
 ) -> BTreeSet<String> {
-    let predicates: [(NodeKind, fn(Row<'_>, &BoardFilter) -> bool); 3] = [
+    let predicates: [(NodeKind, RowPredicate); 3] = [
         (NodeKind::Task, passes_row),
         (NodeKind::Commitment, passes_commitment_row),
         (NodeKind::Expectation, passes_expectation_row),
