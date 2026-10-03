@@ -99,8 +99,8 @@ impl AttachmentRow {
                 .window_start_scope_id
                 .zip(self.window_end_scope_id)
                 .map(|(start_id, end_id)| TimeScope {
-                    start_id,
-                    end_id,
+                    start_id: start_id.0,
+                    end_id: end_id.0,
                     duration: None,
                 }),
         }

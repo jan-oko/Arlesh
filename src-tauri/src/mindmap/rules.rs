@@ -248,6 +248,8 @@ pub fn derive_board(
         lifecycles,
         habits,
         short_ids: std::collections::HashMap::new(),
+        facts: std::collections::HashMap::new(),
+        agent_activity: None,
     })
 }
 
