@@ -17,6 +17,7 @@ mod helpers;
 
 mod database;
 mod duplicate;
+mod gestures;
 mod list_sections_conformance;
 mod mcp;
 mod mcp_access;

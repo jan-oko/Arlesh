@@ -1,11 +1,10 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { updateTask } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
 import { getErrorMessage } from "@/api/errors";
-import { GOAL_STATUS, taskStatusOf } from "@/utils/status-mapping";
-import { altEnterStep, backlogClearedMessage, cameOutOfBacklog, nextTaskStatus } from "@/utils/task-status-cycle";
-import type { TaskStatus } from "@/api/tasks";
+import type { BacklogCleared, StatusRefusal, StatusStep } from "@/api/node-gestures";
+import { stepTaskStatus } from "@/api/node-gestures";
+import { GOAL_STATUS } from "@/utils/status-mapping";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
 import { acknowledged, useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
@@ -13,6 +12,18 @@ import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
 import { useExpectationActions } from "@/hooks/use-expectation-actions";
 
 const LOG_PREFIX = "[arlesh]";
+
+/** The `warnings` key that says why a status gesture wrote nothing. */
+const REFUSAL_MESSAGE: Record<StatusRefusal, "compoundStatusRefused" | "altEnterAgenticNotDoing"> = {
+  compound: "compoundStatusRefused",
+  alt_enter_agentic_not_doing: "altEnterAgenticNotDoing",
+};
+
+/** The `warnings` key that names a Task coming out of the Backlog, by the status that did it. */
+const BACKLOG_CLEARED_MESSAGE: Record<BacklogCleared, "backlogClearedByStart" | "backlogClearedByStarted"> = {
+  by_start: "backlogClearedByStart",
+  by_started: "backlogClearedByStarted",
+};
 
 
 interface Options {
@@ -60,23 +71,21 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
     cancel: cancelOccurrence } = useOccurrenceCompletion();
   const { toggleRelease } = useExpectationActions({ findNode, reload, showToast });
 
-  // One Task status write, through the completion guard. Beginning a set-aside task — In Progress
-  // or Started — takes it out of the backlog, in the same write and so in the same undo step. The
-  // row that comes back says whether it did; it is never assumed.
-  //
-  // A Task that consists of its sub-items has no status of its own to write: it is refused here,
-  // out loud, for every caller at once — the glyph, `Enter` and `Alt+Enter` in every view. The
-  // backend refuses the same write, so this is the courtesy of saying why before asking.
-  const writeTaskStatus = useCallback(
-    (node: MindmapNode, next: TaskStatus, onError: (err: unknown) => void) => {
-      if (node.compound === true) {
-        showToast({ nodeId: node.id, message: t("warnings:compoundStatusRefused") });
-        return;
-      }
+  // One status gesture, sent to the backend through the completion guard: the backend decides
+  // what the press writes (`tasks::rules::gestures`), and says when it refused — a Task that
+  // consists of its sub-items, or `Alt+Enter` on Agentic work that is not Doing — and when the
+  // write took a set-aside Task out of the Backlog. Both are said out loud here; neither is
+  // predicted.
+  const stepStatus = useCallback(
+    (node: MindmapNode, step: StatusStep, onError: (err: unknown) => void) => {
       guard(node, async (confirmed) => {
-        const updated = await updateTask(rowIdOf(node), { status: next }, ...acknowledged(confirmed));
-        if (cameOutOfBacklog(node, updated)) {
-          showToast({ nodeId: node.id, message: t(`warnings:${backlogClearedMessage(next)}`) });
+        const outcome = await stepTaskStatus(rowIdOf(node), step, ...acknowledged(confirmed));
+        if (outcome.outcome === "refused") {
+          showToast({ nodeId: node.id, message: t(`warnings:${REFUSAL_MESSAGE[outcome.reason]}`) });
+          return;
+        }
+        if (outcome.backlog_cleared !== null) {
+          showToast({ nodeId: node.id, message: t(`warnings:${BACKLOG_CLEARED_MESSAGE[outcome.backlog_cleared]}`) });
         }
         await reload();
       }, onError);
@@ -109,26 +118,21 @@ export function useStatusCycle({ findNode, reload, showToast }: Options): Status
         return;
       }
       if (node.kind !== "task") return;
-      writeTaskStatus(node, nextTaskStatus(taskStatusOf(node)), failed("status cycle failed"));
+      stepStatus(node, "advance", failed("status cycle failed"));
     },
-    [findNode, reload, guard, showToast, t, toggleRelease, writeTaskStatus],
+    [findNode, reload, guard, showToast, t, toggleRelease, stepStatus],
   );
 
   const toggleStarted = useCallback(
     (nodeId: string) => {
       const node = findNode(nodeId);
       if (node?.kind !== "task") return;
-      const step = altEnterStep(taskStatusOf(node));
-      if ("refused" in step) {
-        showToast({ nodeId, message: t(`warnings:${step.refused}`) });
-        return;
-      }
-      writeTaskStatus(node, step.next, (err: unknown) => {
+      stepStatus(node, "alt", (err: unknown) => {
         console.error(`${LOG_PREFIX} started toggle failed:`, err);
         showToast({ nodeId, message: t("warnings:statusChangeFailed", { message: getErrorMessage(err) }) });
       });
     },
-    [findNode, showToast, t, writeTaskStatus],
+    [findNode, showToast, t, stepStatus],
   );
 
   return { cycleStatus, toggleStarted, occurrencePrompt, confirmOccurrence, cancelOccurrence };

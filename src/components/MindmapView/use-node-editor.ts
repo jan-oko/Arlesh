@@ -46,7 +46,6 @@ import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { isBegun, storedStatus } from "@/utils/status-mapping";
 import { useAnswerQuestion } from "@/hooks/use-answer-question";
-import { backlogClearedMessage } from "@/utils/task-status-cycle";
 
 /** A flow item's id on the fork an "Archive & new" save landed on — or its own, with no fork. */
 function forkedItemId(forked: ForkedTemplate | null, type: FlowItemType, id: number): number {
@@ -227,7 +226,9 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       if (node.backlogged === true && data.archival === TASK_ARCHIVAL.LIVE) {
         if (data.plan !== null) showToast({ nodeId, message: t("backlogClearedByPlan") });
         else if (isBegun(data.status)) {
-          showToast({ nodeId, message: t(backlogClearedMessage(data.status)) });
+          // Wording only: the write itself cleared the flag, and the row it saved says so.
+          const started = data.status.kind === "ordinary" && data.status.status === "started";
+          showToast({ nodeId, message: t(started ? "backlogClearedByStarted" : "backlogClearedByStart") });
         }
       }
       await setBlockReasons("task", dbId, data.blockReasons);

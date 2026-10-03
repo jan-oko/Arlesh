@@ -2,13 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useCommitmentVerdict } from "./use-commitment-verdict";
-import { updateCommitment } from "@/api/commitments";
+import { pressCommitmentVerdict } from "@/api/node-gestures";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
 
-vi.mock("@/api/commitments", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/api/commitments")>()),
-  updateCommitment: vi.fn(),
+// Which verdict a press leaves is the backend's (`tasks::rules::gestures::verdict_after`); these
+// pin which press each control sends, for which row, and what a failure says.
+vi.mock("@/api/node-gestures", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/node-gestures")>()),
+  pressCommitmentVerdict: vi.fn(),
 }));
 
 function commitment(id: string, extra: Partial<MindmapNode> = {}): MindmapNode {
@@ -34,47 +36,38 @@ beforeEach(() => vi.clearAllMocks());
 
 describe("useCommitmentVerdict", () => {
   it("records a real commitment's verdict against its own row", async () => {
-    vi.mocked(updateCommitment).mockResolvedValue({} as never);
+    vi.mocked(pressCommitmentVerdict).mockResolvedValue(Object.create(null));
     const { result } = setup([commitment("commitment-5")]);
 
     act(() => { result.current.markKept("commitment-5"); });
 
-    await waitFor(() => expect(updateCommitment).toHaveBeenCalledWith(5, { verdict: "kept" }));
+    await waitFor(() => expect(pressCommitmentVerdict).toHaveBeenCalledWith(5, "kept"));
   });
 
   describe("on a Habit iteration, which is a Commitment row of its own", () => {
     const rowId = ITERATION.rowId;
 
     it("records the verdict on the iteration's row", async () => {
-      vi.mocked(updateCommitment).mockResolvedValue({} as never);
+      vi.mocked(pressCommitmentVerdict).mockResolvedValue(Object.create(null));
       const { result, reload } = setup([ITERATION]);
 
       act(() => { result.current.markBroken(ITERATION.id); });
 
-      await waitFor(() => expect(updateCommitment).toHaveBeenCalledWith(rowId, { verdict: "broken" }));
+      await waitFor(() => expect(pressCommitmentVerdict).toHaveBeenCalledWith(rowId, "broken"));
       await waitFor(() => expect(reload).toHaveBeenCalled());
     });
 
-    it("clears the iteration's verdict back to Unresolved like any commitment's", async () => {
-      vi.mocked(updateCommitment).mockResolvedValue({} as never);
-      const { result } = setup([commitment(ITERATION.id, { ...ITERATION, verdict: "kept" })]);
-
-      act(() => { result.current.markKept(ITERATION.id); });
-
-      await waitFor(() => expect(updateCommitment).toHaveBeenCalledWith(rowId, { verdict: "unresolved" }));
-    });
-
     it("takes the same Enter cycle as any other commitment", async () => {
-      vi.mocked(updateCommitment).mockResolvedValue({} as never);
+      vi.mocked(pressCommitmentVerdict).mockResolvedValue(Object.create(null));
       const { result } = setup([commitment(ITERATION.id, { ...ITERATION, verdict: "kept" })]);
 
       act(() => { result.current.cycleVerdict(ITERATION.id); });
 
-      await waitFor(() => expect(updateCommitment).toHaveBeenCalledWith(rowId, { verdict: "broken" }));
+      await waitFor(() => expect(pressCommitmentVerdict).toHaveBeenCalledWith(rowId, "cycle"));
     });
 
     it("says so when the write fails instead of leaving the control looking pressed", async () => {
-      vi.mocked(updateCommitment).mockRejectedValue(new Error("db is locked"));
+      vi.mocked(pressCommitmentVerdict).mockRejectedValue(new Error("db is locked"));
       const { result, showToast, reload } = setup([ITERATION]);
 
       act(() => { result.current.markKept(ITERATION.id); });

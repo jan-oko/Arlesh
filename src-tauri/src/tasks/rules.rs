@@ -13,6 +13,7 @@ pub mod agentic;
 pub mod ancestry;
 pub mod compound;
 pub mod dependencies;
+pub mod gestures;
 pub mod lifecycle;
 pub mod review;
 pub mod scope;

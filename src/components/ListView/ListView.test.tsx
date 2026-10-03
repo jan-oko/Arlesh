@@ -37,6 +37,13 @@ vi.mock("@/components/MindmapView/use-node-editor", () => ({
 vi.mock("@/components/TaskEditorModal/TaskEditorModal", () => ({ default: () => <div data-testid="editor-modal" /> }));
 vi.mock("@/components/CommitmentEditorModal/CommitmentEditorModal", () => ({ default: () => <div data-testid="commitment-editor-modal" /> }));
 const updateCommitment = vi.fn((_id: number | string, _request: unknown) => Promise.resolve());
+// Which verdict a press leaves is the backend's (`tasks::rules::gestures::verdict_after`): the
+// list sends the press.
+const pressCommitmentVerdict = vi.fn((_id: number | string, _press: string) => Promise.resolve());
+vi.mock("@/api/node-gestures", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/node-gestures")>()),
+  pressCommitmentVerdict: (id: number | string, press: string) => pressCommitmentVerdict(id, press),
+}));
 vi.mock("@/api/commitments", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/commitments")>()),
   updateCommitment: (id: number | string, request: unknown) => updateCommitment(id, request),
@@ -1347,6 +1354,7 @@ describe("ListView — the commitments section", () => {
 
   beforeEach(() => {
     updateCommitment.mockClear();
+    pressCommitmentVerdict.mockClear();
   });
 
   it("renders commitments as their own section above the task rows", () => {
@@ -1364,11 +1372,7 @@ describe("ListView — the commitments section", () => {
     expect(screen.queryByRole("region", { name: "listView:commitmentsHeading" })).not.toBeInTheDocument();
   });
 
-  it.each([
-    ["unresolved", "kept"],
-    ["kept", "broken"],
-    ["broken", "unresolved"],
-  ] as const)("cycles the verdict from %s to %s when the row's status control is clicked", (current, next) => {
+  it.each(["unresolved", "kept", "broken"] as const)("sends a cycle press from %s when the row's status control is clicked", (current) => {
     // One control, the task row's own, rather than a tick and a cross: the user asked for a
     // Commitment row to work like every other row.
     const node = n("commitment-1", "commitment", { verdict: current });
@@ -1376,7 +1380,7 @@ describe("ListView — the commitments section", () => {
     render(<ListViewInApp />);
 
     fireEvent.click(screen.getByRole("button", { name: "cycleVerdict" }));
-    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: next });
+    expect(pressCommitmentVerdict).toHaveBeenCalledWith(1, "cycle");
   });
 
   it("draws a Commitment as a row among the tasks, with the same control, when bands are off", () => {
@@ -1390,7 +1394,7 @@ describe("ListView — the commitments section", () => {
 
     expect(screen.queryByRole("region", { name: "listView:commitmentsHeading" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "cycleVerdict" }));
-    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "kept" });
+    expect(pressCommitmentVerdict).toHaveBeenCalledWith(1, "cycle");
     useDisplayStore.setState({ listBands: true });
   });
 
@@ -1403,20 +1407,15 @@ describe("ListView — the commitments section", () => {
     fireEvent.keyDown(window, key);
   }
 
-  it.each([
-    ["unresolved", "kept"],
-    ["kept", "broken"],
-    ["broken", "unresolved"],
-  ] as const)("cycles the selected commitment's verdict on Enter: %s to %s", (current, next) => {
+  it.each(["unresolved", "kept", "broken"] as const)("sends a cycle press for the selected commitment on Enter, from %s", (current) => {
     pressOnCommitment(current, { key: "Enter", code: "Enter" });
-    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: next });
+    expect(pressCommitmentVerdict).toHaveBeenCalledWith(1, "cycle");
   });
 
-  it.each(["unresolved", "kept"] as const)("records Broken on X from %s, without passing through Kept", (current) => {
-    // Enter now walks past Broken, so X is what keeps Broken reachable in one press from
-    // anywhere — including from Kept, which Enter would take two presses to leave.
+  it.each(["unresolved", "kept"] as const)("sends the Broken press on X from %s", (current) => {
+    // Enter walks past Broken, so X is what keeps Broken reachable in one press from anywhere.
     pressOnCommitment(current, { key: "x", code: "KeyX" });
-    expect(updateCommitment).toHaveBeenCalledWith(1, { verdict: "broken" });
+    expect(pressCommitmentVerdict).toHaveBeenCalledWith(1, "broken");
   });
 
   it("gives a commitment Habit's iteration the same verdict control as any other commitment", () => {
@@ -1435,7 +1434,7 @@ describe("ListView — the commitments section", () => {
     render(<ListViewInApp />);
 
     fireEvent.click(screen.getByRole("button", { name: "cycleVerdict" }));
-    expect(updateCommitment).toHaveBeenCalledWith(iteration.rowId, { verdict: "kept" });
+    expect(pressCommitmentVerdict).toHaveBeenCalledWith(iteration.rowId, "cycle");
   });
 
   it("leaves Enter meaning 'cycle the status' when the selected row is a task", () => {
@@ -1446,7 +1445,7 @@ describe("ListView — the commitments section", () => {
     fireEvent.keyDown(window, { key: "ArrowDown", code: "ArrowDown" });
     fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
     expect(data.onCycleStatus).toHaveBeenCalledWith("task-1");
-    expect(updateCommitment).not.toHaveBeenCalled();
+    expect(pressCommitmentVerdict).not.toHaveBeenCalled();
   });
 });
 

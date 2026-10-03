@@ -241,6 +241,45 @@ async fn finish_move(
     Ok(Some(hung_on(&host, &key)))
 }
 
+/// A Task as it stands, stored or derived — what a gesture reads before deciding what to write.
+pub async fn task(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    now: NaiveDateTime,
+) -> Result<Task, AppError> {
+    let derived = match id {
+        NodeId::Stored(id) => return Ok(db.tasks().get(TaskId(*id)).await?),
+        NodeId::Derived(derived) => derived,
+    };
+    match resolve_key(db, derived, now).await? {
+        DerivedKey::Occurrence(key) => {
+            match occurrence_edit::occurrence_row(db, &key, now).await? {
+                (Some(task), _, _) => Ok(task),
+                _ => Err(wrong_kind(id, "task")),
+            }
+        }
+        DerivedKey::Check(check) => wait_edit::check_row(db, &check, now).await,
+        _ => Err(wrong_kind(id, "task")),
+    }
+}
+
+/// A Commitment as it stands, stored or derived.
+pub async fn commitment(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    now: NaiveDateTime,
+) -> Result<Commitment, AppError> {
+    let derived = match id {
+        NodeId::Stored(id) => return Ok(db.commitments().get(CommitmentId(*id)).await?),
+        NodeId::Derived(derived) => derived,
+    };
+    let key = resolve_occurrence(db, derived, now).await?;
+    match occurrence_edit::occurrence_row(db, &key, now).await? {
+        (_, _, Some(commitment)) => Ok(commitment),
+        _ => Err(wrong_kind(id, "commitment")),
+    }
+}
+
 /// Updates a Task, stored or derived. A stored Task moved onto a Habit occurrence is hung on it.
 #[tracing::instrument(skip(db, request))]
 pub async fn update_task(

@@ -25,22 +25,3 @@ export function storedAgenticState(flag: boolean | null | undefined): TaskAgenti
   if (flag === null || flag === undefined) return TASK_AGENTIC.INHERIT;
   return flag ? TASK_AGENTIC.YES : TASK_AGENTIC.NO;
 }
-
-/**
- * The state one press of the Agentic key writes: the opposite of what the task currently **reads
- * as**, resolved through {@link isAgentic}. Agentic → explicit *Not agentic*, anything else →
- * explicit *Agentic*.
- *
- * A two-state toggle over the resolved value rather than a cycle through the stored one, because
- * the flag stores three states but a Task only ever shows two. *Inherit* under a non-agentic parent
- * and an explicit *Not agentic* are the same picture, so a cycle that stepped between them spent a
- * press changing nothing the eye could catch — marking a fresh Task agentic appeared to take two.
- * Reading what the Task resolves to collapses the pair: every press flips the badge.
- *
- * *Inherit* is therefore a starting point the key resolves through, never a destination it writes.
- * Returning a Task to inheriting is the editor's job — the price of no press being invisible, and
- * the reason the editor still offers all three.
- */
-export function toggledAgenticState(node: MindmapNode): TaskAgentic {
-  return isAgentic(node) ? TASK_AGENTIC.NO : TASK_AGENTIC.YES;
-}

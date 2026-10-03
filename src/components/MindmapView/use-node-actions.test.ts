@@ -8,11 +8,15 @@ import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 vi.mock("@/api/tasks", () => ({
   updateTask: vi.fn().mockResolvedValue({ id: 1, status: "in_progress" }),
   TASK_STATUS: { TODO: "todo", IN_PROGRESS: "in_progress", DONE: "done" },
-  // Read through `cameOutOfBacklog`: starting a set-aside task clears its Backlog, and the row
-  // the backend sends back is what says whether it did.
   TASK_ARCHIVAL: { LIVE: "live", BACKLOG: "backlog" },
   // Read through `storedAgenticState`, which onCreateSibling uses to seed the new sibling.
   TASK_AGENTIC: { INHERIT: "inherit", YES: "yes", NO: "no" },
+}));
+
+// What a status press writes is the backend's (`tasks::rules::gestures`); these pin which node it
+// is sent for, and what the hook says about the outcome.
+vi.mock("@/api/node-gestures", () => ({
+  stepTaskStatus: vi.fn().mockResolvedValue({ outcome: "written", backlog_cleared: null }),
 }));
 
 vi.mock("@/api/goals", () => ({
@@ -35,8 +39,8 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-import { updateTask } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
+import { stepTaskStatus } from "@/api/node-gestures";
 import { fixtureRowId } from "@/test/node-fixture";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
@@ -122,35 +126,38 @@ function refusedHere(child: NodeKind, parent: NodeKind, count: number, parents: 
   ].join(":");
 }
 
+/** A Task as a status write left it; the hook reads only the outcome around it. */
+const WRITTEN = { id: 5, title: "task-5", parent_type: "project", parent_id: 3, status: { kind: "ordinary" as const, status: "in_progress" as const }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live" as const, tag_ids: [], position: 0, is_private: false };
+
 describe("useNodeActions — onStatusClick", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(updateTask).mockResolvedValue({ id: 5, title: "task-5", parent_type: "project", parent_id: 3, status: { kind: "ordinary", status: "in_progress" }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false });
+    vi.mocked(stepTaskStatus).mockResolvedValue({ outcome: "written", task: WRITTEN, backlog_cleared: null });
   });
 
-  it("cycles todo → in_progress for a task node", async () => {
+  it("sends one step of the cycle for a task node", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-5"); });
-    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { status: { kind: "ordinary", status: "in_progress" } }));
+    await vi.waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(5, "advance"));
   });
 
-  it("cycles done → todo for a task node", async () => {
-    vi.mocked(updateTask).mockResolvedValue({ id: 6, title: "task-6", parent_type: "project", parent_id: 3, status: { kind: "ordinary", status: "todo" }, delegate_to: null, agentic: null, asynchronous: false, time_scope: null, on_scope_exit: null, plan: null, archival: "live", tag_ids: [], position: 0, is_private: false });
+  it("sends a done task's step for its own row", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-6"); });
-    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(6, { status: { kind: "ordinary", status: "todo" } }));
+    await vi.waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(6, "advance"));
   });
 
   it("names the backlog the write cleared when a set-aside task is started", async () => {
     // Starting something you had put down takes it out of the backlog — one write, one undo step.
-    // The toast comes from the row the backend sent back, never from predicting the rule here.
+    // The toast comes from what the backend says the write did, never from predicting the rule here.
+    vi.mocked(stepTaskStatus).mockResolvedValue({ outcome: "written", task: WRITTEN, backlog_cleared: "by_start" });
     const backlogged = mkNode("task-13", "task", [], { status: "todo", backlogged: true });
     const opts = makeOpts({ tree: mkNode("root", "domain", [mkNode("domain-3", "project", [backlogged])]) });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-13"); });
-    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(13, { status: { kind: "ordinary", status: "in_progress" } }));
+    await vi.waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(13, "advance"));
     await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
       nodeId: "task-13", message: "warnings:backlogClearedByStart",
     }));
@@ -160,15 +167,15 @@ describe("useNodeActions — onStatusClick", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-5"); });
-    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(5, { status: { kind: "ordinary", status: "in_progress" } }));
+    await vi.waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(5, "advance"));
     expect(opts.showToast).not.toHaveBeenCalled();
   });
 
-  it("does not call updateTask for a non-task node", () => {
+  it("sends no task step for a non-task node", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("goal-2"); });
-    expect(updateTask).not.toHaveBeenCalled();
+    expect(stepTaskStatus).not.toHaveBeenCalled();
   });
 
   it("toggles a real active goal to achieved on status click", async () => {
@@ -176,7 +183,7 @@ describe("useNodeActions — onStatusClick", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("goal-2"); });
     await vi.waitFor(() => expect(updateGoal).toHaveBeenCalledWith(2, { status: "achieved" }));
-    expect(updateTask).not.toHaveBeenCalled();
+    expect(stepTaskStatus).not.toHaveBeenCalled();
   });
 
   it("toggles a real achieved goal back to active on status click", async () => {
@@ -186,27 +193,27 @@ describe("useNodeActions — onStatusClick", () => {
     await vi.waitFor(() => expect(updateGoal).toHaveBeenCalledWith(8, { status: "active" }));
   });
 
-  it("advances a todo iteration root to in_progress on its own row (not straight to done)", async () => {
+  it("sends an iteration root's step for its own row", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habit-3-0-virtual"); });
     await vi.waitFor(() =>
-      expect(updateTask).toHaveBeenCalledWith(HABIT_ITER.rowId, { status: { kind: "ordinary", status: "in_progress" } }),
+      expect(stepTaskStatus).toHaveBeenCalledWith(HABIT_ITER.rowId, "advance"),
     );
   });
 
-  it("cycles a done iteration root back to todo", async () => {
+  it("sends a done iteration root's step for its own row", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habit-3-1-virtual"); });
-    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(HABIT_DONE.rowId, { status: { kind: "ordinary", status: "todo" } }));
+    await vi.waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(HABIT_DONE.rowId, "advance"));
   });
 
-  it("advances an in_progress occurrence to done", async () => {
+  it("sends an occurrence's step for its own row", async () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_task-7-0-virtual"); });
-    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(HABIT_TASK_IP.rowId, { status: { kind: "ordinary", status: "done" } }));
+    await vi.waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(HABIT_TASK_IP.rowId, "advance"));
   });
 
   it("un-achieves an achieved goal occurrence like any goal", async () => {
@@ -220,15 +227,15 @@ describe("useNodeActions — onStatusClick", () => {
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("habititem-flow_task-4-0-virtual"); });
-    await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(HABIT_ITEM.rowId, { status: { kind: "ordinary", status: "in_progress" } }));
-    expect(updateTask).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(HABIT_ITEM.rowId, "advance"));
+    expect(stepTaskStatus).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("useNodeActions — onStatusClick failures", () => {
   it("says so when the backend refuses a task's status cycle", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    vi.mocked(updateTask).mockRejectedValueOnce(new Error("database is locked"));
+    vi.mocked(stepTaskStatus).mockRejectedValueOnce(new Error("database is locked"));
     const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onStatusClick("task-5"); });
