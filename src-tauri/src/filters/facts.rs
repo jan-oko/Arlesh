@@ -21,12 +21,13 @@ use crate::{
     nodes::id::NodeId,
     tasks::{
         expectations,
-        lifecycle::{Archival, ItemLifecycle},
+        lifecycle::{Archival, ItemLifecycle, Resolution},
         model::{ExpectationArchival, ExpectationStatus, TaskArchival},
     },
 };
 
 use super::{
+    list,
     model::{BoardFilter, NodeFacts, NodeKind},
     tree::{self, FactNode},
 };
@@ -139,6 +140,18 @@ fn index_blocked(load: &MindmapLoad) -> BlockIndex {
     }
 }
 
+/// Each Task's dependency targets, met or not, as node ids, in the order the edges arrived.
+fn index_dependencies(load: &MindmapLoad) -> HashMap<&NodeId, Vec<String>> {
+    let mut dependencies: HashMap<&NodeId, Vec<String>> = HashMap::new();
+    for edge in &load.task_dependencies {
+        dependencies
+            .entry(&edge.task_id)
+            .or_default()
+            .push(format!("{}-{}", edge.dependency_type, edge.dependency_id));
+    }
+    dependencies
+}
+
 /// The node ids with at least one direct child Task whose status is `todo` — what decides whether
 /// an in-progress Task still has something under it to start.
 fn index_todo_parents(load: &MindmapLoad) -> HashSet<String> {
@@ -160,6 +173,7 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         unmet_dependencies,
     } = index_blocked(load);
     let todo_parents = index_todo_parents(load);
+    let dependencies = index_dependencies(load);
 
     let mut facts: Vec<NodeFacts> = Vec::new();
     let mut parents: Vec<Option<String>> = Vec::new();
@@ -200,6 +214,9 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
             .cloned()
             .unwrap_or_default();
         node.has_todo_child = todo_parents.contains(&node.id);
+        node.asynchronous = task.asynchronous;
+        node.planned = task.plan.is_some();
+        node.dependencies = dependencies.get(&task.id).cloned().unwrap_or_default();
         apply_lifecycle(
             &mut node,
             lifecycles.get(&("task", task.id.clone())).copied(),
@@ -268,7 +285,14 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
 /// longer carries. The flow sections pass through whole; see this module's own documentation for
 /// why a Flow is not something this can judge.
 pub fn narrow(load: &mut MindmapLoad, filter: &BoardFilter) {
-    let kept = tree::kept_ids_in_forest(&tree::prune_forest(&forest(load), filter));
+    let forest = forest(load);
+    // A List View question — a pill, or a narrower choice of row kinds — is answered as the List
+    // View answers it: the rows that pass, with the chains they hang from.
+    let kept = if filter.reads_rows() {
+        list::kept_ids_in_forest(&forest, filter)
+    } else {
+        tree::kept_ids_in_forest(&tree::prune_forest(&forest, filter))
+    };
     let keeps = |id: &str| kept.contains(id);
 
     load.domains.retain(|domain| keeps(&domain_id(domain.id)));
@@ -301,6 +325,7 @@ fn apply_lifecycle(node: &mut NodeFacts, lifecycle: Option<&ItemLifecycle>) {
     node.plan_timing = lifecycle.plan_timing;
     node.overdue = lifecycle.overdue;
     node.archived = lifecycle.archival == Archival::Archived;
+    node.missed = lifecycle.resolution == Some(Resolution::Missed);
 }
 
 /// Links the flat facts into trees by their parent ids, keeping each parent's children in the

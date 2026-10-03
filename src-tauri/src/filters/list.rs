@@ -5,12 +5,13 @@
 //! ancestors explicitly here. Everything else is the same predicate the Mindmap uses, from
 //! [`rules`](super::rules).
 
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashSet};
 
 use crate::tasks::{lifecycle::Timing, model::TimeScope};
 
 use super::{
-    model::{BoardFilter, NodeFacts, NodeKind, Preset},
+    model::{BoardFilter, NodeFacts, NodeKind, Preset, RowKind},
+    pills::{self, RowChain},
     rules,
 };
 
@@ -27,6 +28,14 @@ impl<'a> Row<'a> {
     /// A row with its chain.
     pub fn new(node: &'a NodeFacts, ancestors: &'a [NodeFacts]) -> Self {
         Self { node, ancestors }
+    }
+
+    /// The row as the pills read it.
+    fn chain(&self) -> RowChain<'a> {
+        RowChain {
+            node: self.node,
+            ancestors: self.ancestors,
+        }
     }
 
     /// Whether any ancestor is marked private — outside Private Mode the subtree hides as a unit
@@ -89,6 +98,9 @@ pub fn passes_row(row: Row<'_>, filter: &BoardFilter) -> bool {
     if filter.expectations && !filter.unblock {
         return false;
     }
+    if !filter.kinds.contains(&RowKind::Task) {
+        return false;
+    }
     let effective: Cow<'_, BoardFilter> = if filter.unblock {
         Cow::Owned(unblock_filter(filter))
     } else {
@@ -107,7 +119,7 @@ pub fn passes_row(row: Row<'_>, filter: &BoardFilter) -> bool {
     } else if !passes_row_preset(row, filter) {
         return false;
     }
-    rules::passes_tags(row.node, filter)
+    rules::passes_tags(row.node, filter) && pills::task_passes(row.chain(), &filter.pills)
 }
 
 /// The filter as Unblock reads it: the same tags, Info/Flow/Private toggles and Archived/Backlog
@@ -176,6 +188,9 @@ pub fn passes_commitment_row(row: Row<'_>, filter: &BoardFilter) -> bool {
     if filter.unblock || filter.expectations || filter.preset == Preset::Backlog {
         return false;
     }
+    if !filter.kinds.contains(&RowKind::Commitment) {
+        return false;
+    }
     if rules::type_hard_hidden(row.node, filter) {
         return false;
     }
@@ -196,7 +211,7 @@ pub fn passes_commitment_row(row: Row<'_>, filter: &BoardFilter) -> bool {
     ) {
         return false;
     }
-    rules::passes_tags(row.node, filter)
+    rules::passes_tags(row.node, filter) && pills::commitment_passes(row.chain(), &filter.pills)
 }
 
 /// Whether one Expectation row survives the filter, in the band or among the rows.
@@ -207,8 +222,7 @@ pub fn passes_commitment_row(row: Row<'_>, filter: &BoardFilter) -> bool {
 /// Otherwise it answers [`rules::passes_expectation_preset`], with the same subtree gates the
 /// task rows and the commitments answer, so a branch the list has dropped takes its waits with it.
 ///
-/// Only Antecedent-style narrowing and tags are left to the caller's pills; a wait has no tags,
-/// so the tag predicate passes it.
+/// Of the pills, a wait answers Under, Scope and Private (see [`pills::expectation_passes`]).
 pub fn passes_expectation_row(row: Row<'_>, filter: &BoardFilter) -> bool {
     if filter.unblock {
         return false;
@@ -218,7 +232,12 @@ pub fn passes_expectation_row(row: Row<'_>, filter: &BoardFilter) -> bool {
         return !rules::type_hard_hidden(row.node, &neutral)
             && (filter.private_mode || !row.has_private_ancestor())
             && rules::is_live_expectation(row.node)
-            && rules::passes_tags(row.node, filter);
+            && rules::passes_tags(row.node, filter)
+            && pills::expectation_passes(row.chain(), &filter.pills);
+    }
+    // The Expectations option is itself the kind choice, so the selector answers only outside it.
+    if !filter.kinds.contains(&RowKind::Expectation) {
+        return false;
     }
     if rules::type_hard_hidden(row.node, filter) {
         return false;
@@ -234,6 +253,7 @@ pub fn passes_expectation_row(row: Row<'_>, filter: &BoardFilter) -> bool {
         filter,
         rules::passes_expectation_preset(row.node, filter),
     ) && rules::passes_tags(row.node, filter)
+        && pills::expectation_passes(row.chain(), &filter.pills)
 }
 
 /// One row of a flattened board, owning its chain — what [`flatten`] produces.
@@ -258,12 +278,43 @@ impl OwnedRow {
 /// is how the true root — and, once one has been entered, a subtree root — stays out of every
 /// row's chain.
 pub fn flatten(root: &super::tree::FactNode, kind: NodeKind) -> Vec<OwnedRow> {
+    flatten_forest(&root.children, kind)
+}
+
+/// Flattens a forest to one row per node of `kind`. Unlike [`flatten`], each tree's root is
+/// content: a row, or an ancestor of the rows beneath it.
+pub fn flatten_forest(forest: &[super::tree::FactNode], kind: NodeKind) -> Vec<OwnedRow> {
     let mut rows = Vec::new();
     let mut chain = Vec::new();
-    for child in &root.children {
-        visit(child, kind, &mut chain, &mut rows);
+    for tree in forest {
+        visit(tree, kind, &mut chain, &mut rows);
     }
     rows
+}
+
+/// The node ids the List View keeps from `forest` under `filter`: every Task, Commitment and
+/// Expectation row that passes, and every ancestor of one, so each row arrives with the path it
+/// hangs from — which is what the List View's path header names.
+pub fn kept_ids_in_forest(
+    forest: &[super::tree::FactNode],
+    filter: &BoardFilter,
+) -> HashSet<String> {
+    let predicates: [(NodeKind, fn(Row<'_>, &BoardFilter) -> bool); 3] = [
+        (NodeKind::Task, passes_row),
+        (NodeKind::Commitment, passes_commitment_row),
+        (NodeKind::Expectation, passes_expectation_row),
+    ];
+    let mut kept = HashSet::new();
+    for (kind, passes) in predicates {
+        for row in flatten_forest(forest, kind) {
+            if !passes(row.as_row(), filter) {
+                continue;
+            }
+            kept.extend(row.ancestors.into_iter().map(|ancestor| ancestor.id));
+            kept.insert(row.node.id);
+        }
+    }
+    kept
 }
 
 fn visit(

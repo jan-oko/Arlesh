@@ -34,5 +34,6 @@
 pub mod facts;
 pub mod list;
 pub mod model;
+pub mod pills;
 pub mod rules;
 pub mod tree;

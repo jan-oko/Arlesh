@@ -8,14 +8,15 @@ import type { ScopeKey } from "@/api/scopes";
 import type { TimeScope } from "@/api/time-scope";
 import { scopeKeyFrom } from "@/utils/scope-key";
 import { DEFAULT_FILTER, filterTree } from "@/utils/filter-tree";
-import type { ListFilterState, ListPreset } from "@/utils/list-filter";
+import type { ListFilterState, ListPreset, ListRowKind, PillDimension, PillFilter } from "@/utils/list-filter";
 import {
-  DEFAULT_LIST_FILTER, filterCommitmentList, filterExpectationList, filterTaskList, isListPreset,
+  DEFAULT_LIST_FILTER, LIST_ROW_KINDS, PILL_DIMENSIONS, filterCommitmentList, filterExpectationList, filterTaskList,
+  isListPreset, isListRowKind,
 } from "@/utils/list-filter";
 import { flattenCommitmentRows, flattenExpectationRows, flattenTaskRows } from "@/utils/list-data";
 import type { Timing } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
-import type { AgenticStatus, OrdinaryStatus, TaskStatus } from "@/api/tasks";
+import type { AgenticStatus, OrdinaryStatus, TaskDependencyEdge, TaskStatus } from "@/api/tasks";
 import { VERDICT_VALUES } from "@/api/verdict";
 
 /**
@@ -54,6 +55,14 @@ interface CorpusNode {
   hasCheck?: boolean;
   tagIds?: number[];
   timeScope?: TimeScope;
+  /** A Task is Asynchronous. */
+  asynchronous?: boolean;
+  /** It has a Plan of its own. */
+  planned?: boolean;
+  /** Its lapse was settled as Missed. */
+  missed?: boolean;
+  /** Every node it depends on, met or not. */
+  dependencies?: string[];
   children?: CorpusNode[];
 }
 
@@ -75,6 +84,10 @@ interface CorpusFilter {
   startShowsStarted?: boolean;
   doShowsStarted?: boolean;
   showOnAgent?: boolean;
+  /** The List View's kind selector; every kind when omitted. */
+  kinds?: ListRowKind[];
+  /** The List View's pills, by dimension; a dimension left out holds none. */
+  pills?: Partial<Record<PillDimension, PillFilter[]>>;
 }
 
 /** One case: a board, a filter, and what each of the three surfaces keeps. */
@@ -148,6 +161,10 @@ function parseNode(value: unknown, what: string): CorpusNode {
     ...flag(raw.delegated, "delegated", what),
     ...flag(raw.agentic, "agentic", what),
     ...flag(raw.hasCheck, "hasCheck", what),
+    ...flag(raw.asynchronous, "asynchronous", what),
+    ...flag(raw.planned, "planned", what),
+    ...flag(raw.missed, "missed", what),
+    ...(raw.dependencies !== undefined ? { dependencies: ids(raw.dependencies, `${what}.dependencies`) } : {}),
     ...(raw.timeScope !== undefined ? { timeScope: parseTimeScope(raw.timeScope, `${what}.timeScope`) } : {}),
     ...(raw.blockingDependencies !== undefined
       ? { blockingDependencies: ids(raw.blockingDependencies, `${what}.blockingDependencies`) }
@@ -216,6 +233,34 @@ function parseOverride(value: unknown, what: string): ArchivedMode {
   return OVERRIDE_MODES.find((candidate): candidate is ArchivedMode => candidate === mode) ?? fail(what);
 }
 
+function parseKinds(value: unknown, what: string): ListRowKind[] {
+  if (!Array.isArray(value)) fail(`${what} is not an array`);
+  return value.map((kind, index) => (isListRowKind(kind) ? kind : fail(`${what}[${index}] is not a row kind`)));
+}
+
+function parsePill(value: unknown, what: string): PillFilter {
+  const raw = record(value, what);
+  const mode = str(raw.mode, `${what}.mode`);
+  const narrowed = TAG_MODES.find((candidate): candidate is TagFilterMode => candidate === mode)
+    ?? fail(`${what}.mode is not a pill mode: ${mode}`);
+  return { value: str(raw.value, `${what}.value`), mode: narrowed };
+}
+
+function parsePills(value: unknown, what: string): Partial<Record<PillDimension, PillFilter[]>> {
+  const raw = record(value, what);
+  for (const key of Object.keys(raw)) {
+    if (!PILL_DIMENSIONS.some((dimension) => dimension === key)) fail(`${what}.${key} is not a pill dimension`);
+  }
+  const pills: Partial<Record<PillDimension, PillFilter[]>> = {};
+  for (const dimension of PILL_DIMENSIONS) {
+    const listed = raw[dimension];
+    if (listed === undefined) continue;
+    if (!Array.isArray(listed)) fail(`${what}.${dimension} is not an array`);
+    pills[dimension] = listed.map((entry, index) => parsePill(entry, `${what}.${dimension}[${index}]`));
+  }
+  return pills;
+}
+
 function parseFilter(value: unknown, what: string): CorpusFilter {
   const raw = record(value, what);
   const preset = str(raw.preset, `${what}.preset`);
@@ -241,6 +286,8 @@ function parseFilter(value: unknown, what: string): CorpusFilter {
     ...flag(raw.startShowsStarted, "startShowsStarted", what),
     ...flag(raw.doShowsStarted, "doShowsStarted", what),
     ...flag(raw.showOnAgent, "showOnAgent", what),
+    ...(raw.kinds !== undefined ? { kinds: parseKinds(raw.kinds, `${what}.kinds`) } : {}),
+    ...(raw.pills !== undefined ? { pills: parsePills(raw.pills, `${what}.pills`) } : {}),
   };
 }
 
@@ -296,6 +343,28 @@ function corpusTaskStatus(node: CorpusNode): TaskStatus {
   return { kind: "ordinary", status };
 }
 
+/** A Plan, for a node the corpus says has one. Only its presence is read. */
+const SOME_PLAN: TimeScope = {
+  start_id: parseScopeKey({ kind: "day", date: "2026-01-05" }, "SOME_PLAN"),
+  end_id: parseScopeKey({ kind: "day", date: "2026-01-05" }, "SOME_PLAN"),
+};
+
+/** The kind and row id a corpus node id spells: `task-async` is the Task with row id `async`. */
+function rowRef(id: string): { type: string; rowId: string } {
+  const dash = id.indexOf("-");
+  if (dash < 0) fail(`${id} has no kind prefix`);
+  return { type: id.slice(0, dash), rowId: id.slice(dash + 1) };
+}
+
+/** The dependency edges a board's `dependencies` facts name, as the app loads them. */
+function dependencyEdges(node: CorpusNode): TaskDependencyEdge[] {
+  const own = (node.dependencies ?? []).map((target): TaskDependencyEdge => {
+    const ref = rowRef(target);
+    return { task_id: rowRef(node.id).rowId, dependency_type: ref.type, dependency_id: ref.rowId };
+  });
+  return [...own, ...(node.children ?? []).flatMap(dependencyEdges)];
+}
+
 function toMindmapNode(node: CorpusNode): MindmapNode {
   return {
     id: node.id,
@@ -320,6 +389,12 @@ function toMindmapNode(node: CorpusNode): MindmapNode {
     ...(node.kind === "task" && node.status !== undefined ? { taskStatus: corpusTaskStatus(node) } : {}),
     ...(node.hasCheck === true ? { checkEvery: { n: 1, kind: "day" } } : {}),
     ...(node.timeScope !== undefined ? { timeScope: node.timeScope } : {}),
+    // A Task whose status is of the Agentic model reads as Agentic: the model follows the flag.
+    ...(node.kind === "task" && node.agentic === true ? { agentic: true } : {}),
+    ...(node.kind === "task" ? { rowId: rowRef(node.id).rowId } : {}),
+    ...(node.asynchronous === true ? { asynchronous: true } : {}),
+    ...(node.planned === true ? { plan: SOME_PLAN } : {}),
+    ...(node.missed === true ? { resolution: "missed" as const } : {}),
   };
 }
 
@@ -357,7 +432,11 @@ function toListFilter(filter: CorpusFilter): ListFilterState {
   const preset: ListPreset = filter.unblock === true ? "unblock"
     : filter.expectations === true ? "expectations"
       : filter.preset;
-  return { ...DEFAULT_LIST_FILTER, preset };
+  return {
+    preset,
+    kinds: filter.kinds ?? [...LIST_ROW_KINDS],
+    pills: { ...DEFAULT_LIST_FILTER.pills, ...filter.pills },
+  };
 }
 
 function keptIds(node: MindmapNode): string[] {
@@ -381,6 +460,7 @@ describe("preset conformance corpus", () => {
       const root = toMindmapNode(board ?? fail(`no board named ${testCase.board}`));
       const shared = toSharedFilter(testCase.filter);
       const listFilter = toListFilter(testCase.filter);
+      const edges = dependencyEdges(board ?? fail(`no board named ${testCase.board}`));
 
       it("keeps the stated nodes on the Mindmap", () => {
         const kept = keptIds(filterTree(root, shared)).filter((id) => id !== root.id);
@@ -388,7 +468,7 @@ describe("preset conformance corpus", () => {
       });
 
       it("keeps the stated task rows in the List View", () => {
-        const rows = filterTaskList(flattenTaskRows(root, []), shared, listFilter);
+        const rows = filterTaskList(flattenTaskRows(root, edges), shared, listFilter);
         expect(rows.map((row) => row.node.id).sort()).toEqual([...testCase.list].sort());
       });
 

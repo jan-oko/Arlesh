@@ -291,6 +291,27 @@ narrowed: a Flow's subtree and a Habit's occurrences are assembled from several 
 being rows, so there is nothing there for a preset to judge, and inventing a thinner Flow node to
 judge would be the second definition this exists to avoid.
 
+
+**The List View's own questions** ride in the same filter (Task 122, phase 4, 2026-10-03). `kinds`
+is the kind selector — `task`, `commitment`, `expectation`, every kind when omitted — and `pills`
+holds the List View's pill dimensions, each a list of `{value, mode}` with `mode` `any`, `all` or
+`exclude`, combined as the tag filters are: `antecedent` (Under: node ids, matched against every
+ancestor), `dependency` (Depends on: node ids, a Task's own dependency targets, met or not),
+`task_status`, `goal_status` and `project_status` (the Task's own, its nearest Goal's and its
+nearest Project's), `verdict` (a Commitment's; an unrecorded one reads `unresolved`),
+`scope_state` (`unscoped`, `active`, `overdue`, `lapsed`, `planned`, `unplanned`), and the yes/no
+flags `blocked`, `agentic`, `asynchronous` and `private`, which combine as one group (an Any among
+them is an Any across them). A node id here is spelled as the board keys it — `task-12`, `goal-3`,
+`domain-1`, `expectation-4`. A Commitment answers only Under, Scope, Private and Verdict, and a wait
+only Under, Scope and Private: a dimension that does not apply to a kind passes it rather than
+failing it. A filter that sets either asks a question only a list of rows can answer, so the read is
+narrowed as the List View narrows it: to the Task, Commitment and Expectation rows that pass —
+preset, Unblock or the Expectations option, tags, toggles and pills, each by the List View's rule
+(see [*List View*](list-view.md)) — together with every ancestor of one, the chain the row hangs
+from. Notes and Flows are not rows, and drop. Without a pill and with every kind, the read is
+narrowed as the Mindmap narrows it, as above. The rules are `crate::filters::pills`, held to the
+frontend's by the same conformance corpus.
+
 ## Paging the snapshot
 
 A real board does not fit in one MCP tool result. A board of 141 tasks, 162 domains and 15 habits
@@ -347,8 +368,9 @@ notes directly under a match; everything else goes, the Flow sections whole. The
 comes most urgent first (no priority last), context rows after, and every task row carries
 `reads_agentic` — `true` for a match, `false` for a context row. It is the MCP's own narrowing,
 applied after the roots and after `filter`, and deliberately **not** a field of the shared
-`BoardFilter`: the List View's Agentic pill reads a flattened row's value, which the presets do not,
-so the conformance corpus is untouched.
+`BoardFilter`: it ranks by priority and keeps the waits and notes under a match, which no List View
+pill does, so the conformance corpus is untouched. (The List View's own Agentic pill is in the
+filter, as `pills.agentic`; see *Filtering a read*.)
 
 ## Writing tasks
 
@@ -636,11 +658,6 @@ everything else.
 - **`valid_targets`** — it only reads, but it
   answers "where could this Flow be started?", a question nothing on this surface can act on while
   starting a Flow is a write. It returns alongside `start_flow`.
-- **The List view's own pill dimensions** — Under (formerly Antecedent), Depends on (formerly Dependency), Task/Goal/Project status, Verdict,
-  Scope, Blocked, Agentic and Asynchronous (the snapshot's own `agentic` query, under *Agentic
-  tasks*, answers the Agentic question for an agent). They read values a flattened row carries rather than facts a node
-  has, so they belong with the flattening, which is frontend-side. The status presets are no longer
-  absent; see *Filtering a read* above.
 
 ## Errors
 

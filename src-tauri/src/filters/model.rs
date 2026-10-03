@@ -104,6 +104,89 @@ pub enum ScopeMatch {
     Overlapping,
 }
 
+/// The kinds of row the List View draws.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RowKind {
+    /// A Task row.
+    Task,
+    /// A Commitment row.
+    Commitment,
+    /// An Expectation row: a wait.
+    Expectation,
+}
+
+impl RowKind {
+    /// Every kind, in the order the List View's selector lists them.
+    pub const ALL: [Self; 3] = [Self::Task, Self::Commitment, Self::Expectation];
+}
+
+/// One List View pill: a value in one of the three modes a tag filter takes.
+///
+/// The value is a node id (Antecedent, Depends on), a status or verdict spelling, or one of the
+/// fixed tokens a dimension reads (see [`super::pills`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct Pill {
+    /// What the pill matches.
+    pub value: String,
+    /// How it combines with the other pills of its group.
+    pub mode: TagMode,
+}
+
+/// The List View's own filter dimensions, each a list of [`Pill`]s combined as
+/// `(∪Any) ∧ (∩All) ∧ ¬(∪Exclude)`. An empty dimension narrows nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(default, rename_all = "snake_case")]
+pub struct ListPills {
+    /// **Under**: node ids, matched against every ancestor of the row.
+    pub antecedent: Vec<Pill>,
+    /// **Depends on**: node ids, matched against a Task's own dependency targets.
+    pub dependency: Vec<Pill>,
+    /// A Task's own status, in either status model's spelling.
+    pub task_status: Vec<Pill>,
+    /// The status of the Task's nearest Goal ancestor.
+    pub goal_status: Vec<Pill>,
+    /// The status of the Task's nearest Project ancestor.
+    pub project_status: Vec<Pill>,
+    /// A Commitment's verdict; an unrecorded one reads `unresolved`.
+    pub verdict: Vec<Pill>,
+    /// **Scope**: `unscoped`, `active`, `overdue`, `lapsed`, `planned`, `unplanned`.
+    pub scope_state: Vec<Pill>,
+    /// `blocked`. One group with the three below: an Any among them is an Any across them.
+    pub blocked: Vec<Pill>,
+    /// `agentic`.
+    pub agentic: Vec<Pill>,
+    /// `asynchronous`.
+    pub asynchronous: Vec<Pill>,
+    /// `private`. The one flag a Commitment or a wait answers.
+    pub private: Vec<Pill>,
+}
+
+impl ListPills {
+    /// Whether no dimension holds a pill.
+    pub fn is_empty(&self) -> bool {
+        [
+            &self.antecedent,
+            &self.dependency,
+            &self.task_status,
+            &self.goal_status,
+            &self.project_status,
+            &self.verdict,
+            &self.scope_state,
+            &self.blocked,
+            &self.agentic,
+            &self.asynchronous,
+            &self.private,
+        ]
+        .iter()
+        .all(|pills| pills.is_empty())
+    }
+}
+
+fn every_row_kind() -> Vec<RowKind> {
+    RowKind::ALL.to_vec()
+}
+
 /// The whole filter state one board read is taken under.
 ///
 /// Mirrors the frontend's persisted `FilterState` plus the List View's `unblock` option, so that a
@@ -161,6 +244,20 @@ pub struct BoardFilter {
     /// tab's filter (the Filter menu's **On Agent** pill, key `o`). Review — On Agent with a
     /// question open — shows whatever this says.
     pub show_on_agent: bool,
+    /// Which kinds the List View draws as rows. Every kind by default; ignored under
+    /// [`Self::expectations`], which is itself a kind choice.
+    #[serde(default = "every_row_kind")]
+    pub kinds: Vec<RowKind>,
+    /// The List View's own pills. None by default.
+    pub pills: ListPills,
+}
+
+impl BoardFilter {
+    /// Whether this filter asks the List View's own questions — a pill, or fewer than every row
+    /// kind — which only a list of rows can answer.
+    pub fn reads_rows(&self) -> bool {
+        !self.pills.is_empty() || RowKind::ALL.iter().any(|kind| !self.kinds.contains(kind))
+    }
 }
 
 impl Default for BoardFilter {
@@ -183,6 +280,8 @@ impl Default for BoardFilter {
             start_shows_started: true,
             do_shows_started: false,
             show_on_agent: false,
+            kinds: every_row_kind(),
+            pills: ListPills::default(),
         }
     }
 }
@@ -330,6 +429,19 @@ pub struct NodeFacts {
     /// (see [`super::rules::is_outside_plan_scope`]).
     #[serde(default)]
     pub time_scope: Option<TimeScope>,
+    /// Whether a Task is Asynchronous: doing it starts a wait. Its own flag; it does not inherit.
+    #[serde(default)]
+    pub asynchronous: bool,
+    /// The node ids a Task depends on, met or not — what a **Depends on** pill matches.
+    #[serde(default)]
+    pub dependencies: Vec<String>,
+    /// Whether the node has a Plan of its own.
+    #[serde(default)]
+    pub planned: bool,
+    /// Whether its lapse settled it as **Missed** — the Resolution that reads `lapsed` on the
+    /// Scope pill.
+    #[serde(default)]
+    pub missed: bool,
 }
 
 impl NodeFacts {
@@ -356,6 +468,10 @@ impl NodeFacts {
             is_habit_occurrence: false,
             tag_ids: Vec::new(),
             time_scope: None,
+            asynchronous: false,
+            dependencies: Vec::new(),
+            planned: false,
+            missed: false,
         }
     }
 
