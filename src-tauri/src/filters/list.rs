@@ -310,7 +310,7 @@ pub fn flatten_forest(forest: &[super::tree::FactNode], kind: NodeKind) -> Vec<O
 pub fn kept_ids_in_forest(
     forest: &[super::tree::FactNode],
     filter: &BoardFilter,
-) -> HashSet<String> {
+) -> BTreeSet<String> {
     let predicates: [(NodeKind, fn(Row<'_>, &BoardFilter) -> bool); 3] = [
         (NodeKind::Task, passes_row),
         (NodeKind::Commitment, passes_commitment_row),
