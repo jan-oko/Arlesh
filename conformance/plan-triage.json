@@ -1073,6 +1073,89 @@
       "unplaced": [
         "into-december"
       ]
+    },
+    {
+      "name": "a Winter splits into December, January and February, across the new year",
+      "spec": "plan-view.md — A season's parts are its three months; a Winter runs into the next year (ruled by the user, 2026-10-03).",
+      "target": {
+        "kind": "season",
+        "date": "2026-12-01"
+      },
+      "includePremorning": false,
+      "rows": [
+        {
+          "id": "january",
+          "plan": {
+            "start_id": {
+              "kind": "month",
+              "date": "2027-01-01"
+            },
+            "end_id": {
+              "kind": "month",
+              "date": "2027-01-01"
+            }
+          }
+        },
+        {
+          "id": "valentine",
+          "plan": {
+            "start_id": {
+              "kind": "day",
+              "date": "2027-02-14"
+            },
+            "end_id": {
+              "kind": "day",
+              "date": "2027-02-14"
+            }
+          }
+        },
+        {
+          "id": "new-year-week",
+          "plan": {
+            "start_id": {
+              "kind": "week",
+              "date": "2026-12-27"
+            },
+            "end_id": {
+              "kind": "week",
+              "date": "2026-12-27"
+            }
+          }
+        }
+      ],
+      "sections": [
+        {
+          "cell": {
+            "kind": "month",
+            "date": "2026-12-01"
+          },
+          "partial": false,
+          "rows": []
+        },
+        {
+          "cell": {
+            "kind": "month",
+            "date": "2027-01-01"
+          },
+          "partial": false,
+          "rows": [
+            "january"
+          ]
+        },
+        {
+          "cell": {
+            "kind": "month",
+            "date": "2027-02-01"
+          },
+          "partial": false,
+          "rows": [
+            "valentine"
+          ]
+        }
+      ],
+      "unplaced": [
+        "new-year-week"
+      ]
     }
   ],
   "scopes": [
@@ -1167,6 +1250,38 @@
       },
       "startDate": "2026-11-29",
       "endDate": "2026-12-05"
+    },
+    {
+      "key": {
+        "kind": "season",
+        "date": "2026-12-01"
+      },
+      "startDate": "2026-12-01",
+      "endDate": "2027-02-28"
+    },
+    {
+      "key": {
+        "kind": "month",
+        "date": "2027-01-01"
+      },
+      "startDate": "2027-01-01",
+      "endDate": "2027-01-31"
+    },
+    {
+      "key": {
+        "kind": "day",
+        "date": "2027-02-14"
+      },
+      "startDate": "2027-02-14",
+      "endDate": "2027-02-14"
+    },
+    {
+      "key": {
+        "kind": "week",
+        "date": "2026-12-27"
+      },
+      "startDate": "2026-12-27",
+      "endDate": "2027-01-02"
     }
   ]
 }

@@ -107,7 +107,8 @@ function cellHoldsPlan(cell: ScopeCell, start: Scope, end: Scope): boolean {
  * 2026" into "the three months of this season". It is also what keeps a **straddling** cell: a
  * month's first and last weeks usually poke outside it, and they are kept and marked rather than
  * dropped, because a week dropped here would hide whatever is planned into it from the month's view
- * entirely.
+ * entirely. A scope that runs into the next period — a Winter, into the next year — is read from
+ * both, so its Dec, Jan and Feb are all there (ruled by the user, 2026-10-03).
  */
 export function subscopeCells(target: Scope): ScopeCell[] {
   const view = viewKindOfScope(target.kind);
@@ -115,7 +116,16 @@ export function subscopeCells(target: Scope): ScopeCell[] {
   const child = descendKind(view);
   if (child === null) return [];
   const span = { startDate: target.start_date, endDate: target.end_date };
-  return cellsForView(child, target.start_date).filter((cell) => rangesOverlap(cellDays(cell), span));
+  // Asked of the period holding the scope's last day too: a Winter runs from one calendar year
+  // into the next, and the year of months holding its December has no January or February.
+  const periods = [...cellsForView(child, target.start_date), ...cellsForView(child, target.end_date)];
+  const seen = new Set<string>();
+  return periods.filter((cell) => {
+    const key = sectionKey(cell);
+    if (seen.has(key) || !rangesOverlap(cellDays(cell), span)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** A bucket's key: its cell, named so that two passes over the same scope agree. */

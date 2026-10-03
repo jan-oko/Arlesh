@@ -295,8 +295,9 @@ header replaces, and drawing both put the same chain twice on one line narrow en
 run that hangs straight off the frame has no chain to spell and gets no header, as in the List
 View.
 
-**Split by subscope** divides the **planned** pane into one section per subscope — the weeks of a
-month, the days of a week, the bands of a day — so a whole month's buckets and their contents read
+**Split by subscope** divides the **planned** pane into one section per subscope — the months of a
+season (a Winter's December, January and February, across the new year; ruled by the user,
+2026-10-03), the weeks of a month, the days of a week, the bands of a day — so a whole month's buckets and their contents read
 in one pass. The subscope is the next kind down the ladder `season → month → week → day → part of
 day`; a Part of Day has nothing below it and does not split, and neither does an Exact window, which
 is not a calendar cell.
