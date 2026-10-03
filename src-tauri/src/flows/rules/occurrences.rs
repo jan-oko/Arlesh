@@ -1760,21 +1760,17 @@ pub struct HabitSource {
     pub(in crate::flows) habit: Option<LoadedHabit>,
 }
 
+/// How far a Habit reaches as a node, and the node its iteration roots hang under as a
+/// `(parent_type, parent_id)` reference.
+pub type HabitReach = (
+    crate::tasks::rules::plan_inheritance::HabitSpan,
+    (String, i64),
+);
+
 impl HabitSource {
-    /// How far the Habit `flow` reaches as a node, and the node its iteration roots hang under as a
-    /// `(parent_type, parent_id)` reference — `None` when it draws nothing.
-    pub fn span(
-        &self,
-        flow: &Flow,
-    ) -> Option<
-        Result<
-            (
-                crate::tasks::rules::plan_inheritance::HabitSpan,
-                (String, i64),
-            ),
-            FlowError,
-        >,
-    > {
+    /// How far the Habit `flow` reaches as a node, and the node its iteration roots hang under —
+    /// `None` when it draws nothing.
+    pub fn span(&self, flow: &Flow) -> Option<Result<HabitReach, FlowError>> {
         let habit = self.habit.as_ref()?;
         Some(
             crate::flows::rules::span::habit_span(flow, &habit.recurrence)
