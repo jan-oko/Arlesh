@@ -31,8 +31,9 @@ The load is `rs:mindmap/mod.rs` (`load_within`, then `load_blocked` adds the cap
 blocks). The steps run in this order: `rs:tasks/scope_rules.rs::derive_all_scope_lifecycles`,
 then `rs:nodes/table.rs::derive_habits`, which applies `rs:flows/occurrences.rs`,
 `rs:flows/rules/cooldown.rs` and `rs:flows/compound_readings.rs`, then `rs:tasks/compound.rs::settle`,
-which also draws the waits, then `rs:tasks/rules/review.rs::derive`, and the capacity lock last
-(`rs:capacity/rules/blocks.rs`). The MCP snapshot reads the same load (`rs:mcp/`).
+which also draws the waits, then `rs:tasks/rules/review.rs::derive`, then the capacity lock
+(`rs:capacity/rules/blocks.rs`) and the compound block, and every Task's effective Plan last
+(`rs:mindmap/rules/plans.rs`), once every row and Overdue flag is in. The MCP snapshot reads the same load (`rs:mcp/`).
 
 ## The derivation graph
 
@@ -45,7 +46,8 @@ never stored.
 | --- | --- | --- | --- |
 | **Timing** | Time Scope (own or inherited), now | Pending before the window, Active in it, Lapsed after it. Unscoped is Active. | `rs:tasks/rules/lifecycle.rs::derive_timing` |
 | **Effective due** | explicit due, Time Scope, on scope exit, Backlog, Habit iteration (the clock's default) | Explicit due wins. Otherwise a backlogged Task has none. Otherwise the window under Keep Overdue and none under Archive. An occurrence's default comes from its clock: none under Window + Archive, its window otherwise. | `rs:tasks/rules/lifecycle.rs::effective_due`, `rs:flows/occurrences.rs::default_due` |
-| **Plan position** | Plan, now | Where the Task's own Plan stands: ahead, current or past. Inherited from the nearest planned ancestor Task under Start. | `rs:filters/rules.rs::is_planned_ahead`, lifecycle `plan_timing` |
+| **Effective Plan** | own Plan, Time Scope, Overdue, effective Plan *(of another node: the parent)*; a Habit's span against its target | Own Plan, else the parent's effective Plan clipped to the node's own window (a wait, a check task and an Overdue Task do not clip). Climbs through every kind. Empty when the two do not meet. Flags an own Plan outside the inherited one, and an empty one. | `rs:tasks/rules/plan_inheritance.rs`, `rs:mindmap/rules/plans.rs::audit`, `rs:flows/rules/span.rs` |
+| **Plan position** | Effective Plan, now | Where the Task's effective Plan stands: ahead, current or past. | `rs:mindmap/rules/plans.rs::stamp_plan_timing` (lifecycle `plan_timing`), `rs:filters/rules.rs::is_planned_ahead` |
 | **Agentic (inherited)** | own Agentic flag (and ancestors') | Own flag, else the nearest flagged ancestor's. | `rs:tasks/agentic.rs`, `rs:capacity/rules/blocks.rs::reads_agentic` |
 | **Expired** | verdict, Verdict Window, Time Scope, now | Unresolved, and now is past window end plus the Verdict Window. | `rs:tasks/rules/lifecycle.rs::verdict_deadline`, `derive_commitment_state` |
 | **Resolution** | Timing, status, on scope exit | Only once Lapsed: Completed if done, Missed if unfinished under Archive, none under Keep Overdue. | `rs:tasks/rules/lifecycle.rs::derive_resolution` |
@@ -198,14 +200,15 @@ How the presets read them:
 - **Spec:** [Time Scopes § The day boundary](spec/time-scopes.md#the-day-boundary), [§ Scopes are derived](spec/time-scopes.md#scopes-are-derived).
 
 ### Time Scope and Plan
-- **Is:** a Time Scope is when something matters. A Plan is the slot you mean to do it in, inside that window. A null Time Scope inherits the nearest window above it.
+- **Is:** a Time Scope is when something matters. A Plan is the slot you mean to do it in, inside that window. A null Time Scope inherits the nearest window above it. A Task with no Plan of its own inherits one too: its **effective Plan** is the nearest planned node's above it, clipped to its own window. Every reader uses it: Start, the Plan View, badges, the editor and the MCP.
 - **Why:** "relevant this month" and "doing it Tuesday morning" are different facts that change at different rates.
 - **Without:** either everything is scheduled rigidly, or nothing knows when it stops mattering.
 - **Lives:**
   - `rs:tasks/scope_rules.rs` and `rs:tasks/rules/lifecycle.rs`.
+  - Plan inheritance is `rs:tasks/rules/plan_inheritance.rs`, read over the whole board by `rs:mindmap/rules/plans.rs` and held on writes by `rs:mindmap/plan_guard.rs`.
   - The board sends what each node inherits (`rs:mindmap/rules/facts.rs`); the frontend reads it, and `ts:utils/plan-scope.ts` walks the Plan View's scopes.
   - [ADR 0001](adr/0001-time-scope-model.md) covers the time-scope model.
-- **Spec:** [Time Scopes](spec/time-scopes.md).
+- **Spec:** [Time Scopes](spec/time-scopes.md), [§ Plan inheritance](spec/time-scopes.md#plan-inheritance).
 
 ### Timing
 - **Is:** Pending before the window, Active in it, Lapsed after it. It reads the effective window, own or inherited.
@@ -281,14 +284,14 @@ How the presets read them:
 - **Spec:** [Resources § Tasks (Agentic)](spec/resources.md), [Link Inheritance](spec/link-inheritance.md).
 
 ### Scope containment
-- **Is:** four containment rules: `child.TimeScope ⊆ parent.TimeScope`, `Plan ⊆ TimeScope`, `child.Plan ⊆ parent.Plan` and `Due ⊆ TimeScope`. They are checked on every write. Narrowing a parent offers to clamp its descendants.
+- **Is:** four containment rules: `child.TimeScope ⊆ parent.TimeScope`, `Plan ⊆ TimeScope`, `child.Plan ⊆ parent.Plan` and `Due ⊆ TimeScope`. They are checked on every write. Narrowing a parent offers to clamp its descendants. For Plans, a child's own Plan sits inside the Plan it inherits and no Task may be left with an empty one. The board is read before and after a write, and what the write added is refused, naming the Tasks. A Habit's span sits inside its target's Time Scope and Plan.
 - **Why:** a step can't matter outside the window of the thing it is a step of.
 - **Without:** children outlive their parents, and plans are scheduled after the work stopped mattering.
-- **Lives:** `rs:tasks/scope_rules.rs`.
+- **Lives:** `rs:tasks/scope_rules.rs`, and for Plans `rs:mindmap/plan_guard.rs` over `rs:tasks/rules/plan_inheritance.rs`.
 - **Spec:** [Time Scopes § Containment invariants](spec/time-scopes.md#containment-invariants).
 
 ### Link inheritance
-- **Is:** Time Scope and Agentic inherit today. Asynchronous deliberately does not. Tags, knowledge-base links and delegation are specified to inherit but not built.
+- **Is:** Time Scope, Plan and Agentic inherit today. Asynchronous deliberately does not. Tags, knowledge-base links and delegation are specified to inherit but not built.
 - **Why:** context belongs on the branch.
 - **Without:** re-tagging every child, or filters that miss half a project.
 - **Lives:** computed on read by ancestor traversal (`rs:tasks/ancestry.rs`).

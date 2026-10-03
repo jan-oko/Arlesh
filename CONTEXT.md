@@ -130,6 +130,8 @@ Canonical terms used throughout Arlesh. Code, translation keys, and documentatio
 
 **Plan** — The specific Scope a Task is *scheduled into*. Tasks only (Goals have no Plan). Must fall within the task's Time Scope (the same scope or a subscope of it). Replaces the former single `scope_id` semantics of "planning".
 
+**Effective Plan** — The Plan a Task reads: its own, else the one it **inherits** — its parent's effective Plan clipped to its own Time Scope, so the nearest planned node's above it, narrowed by every window between. Derived on load, never stored; climbs through Goals, Commitments, waits and containers; no opt-out. An own Plan must sit inside the inherited one, and a Task whose inherited Plan does not meet its window has an **empty** effective Plan — both are refused at write time and flagged where they already exist. Every reader uses it: Start, the Plan View, badges (fainter when inherited), the editor and the MCP (`effective_plan`).
+
 **Active** — A Scope is active when it contains the current datetime. A Task/Goal is active when its Time Scope is active; Unscoped items are always active.
 
 **On-exit behavior** — Set when a Task/Goal is given an *explicit* Time Scope (and inherited with the window otherwise): what happens once the item's window passes unfinished, and so what its default **Due** is — **Archive** (its Resolution reads **Missed** and it is effectively Archived, dropping from the active view; no default due) or **Keep Overdue** (the item stays live with no Resolution; its default due is its Time Scope, so it is flagged **Overdue**). Stored as `keep`/`archive`. The single-occurrence form of a Window Habit's miss policy (Archive = Archive, Keep Overdue = Owed). *Avoid*: Keep (the label before 2026-09-30).

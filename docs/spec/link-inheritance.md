@@ -9,7 +9,7 @@ Inheritance behavior per link type:
 | Link type              | Behavior when child has explicit value |
 |------------------------|----------------------------------------|
 | Time Scope (relevance) | A null child Time Scope inherits the nearest scoped ancestor's window. An explicit child Time Scope must be wholly contained within the parent's (interval containment); it narrows relevance but the parent window still contains it. |
-| Plan (scheduling)      | Task-only. Must be wholly contained within the task's Time Scope and within the parent's Plan. |
+| Plan (scheduling)      | Task-only. A Task with no Plan inherits its parent's effective Plan, clipped to its own Time Scope, climbing through every kind (see [*Plan inheritance*](time-scopes.md#plan-inheritance)). An explicit Plan overrides it, and must be wholly contained within the task's Time Scope and within the Plan it inherits. |
 | Agentic (Tasks)        | Override — child's explicit value (agentic *or* not agentic) replaces the inherited one; inherits through unflagged kinds |
 | Asynchronous (Tasks)   | **None** — the flag stops at the Task it is set on. "Starts a wait" describes one concrete action, and a subtask of an asynchronous Task is usually the work done *after* the wait, so inheriting it would flag exactly the wrong rows |
 

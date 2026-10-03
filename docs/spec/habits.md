@@ -96,3 +96,16 @@ The block is a **derived block reason** on the blocked iteration's **root**, in 
 **The MCP.** `arlesh_flows.recurrence` returns `cooldown_n` and `cooldown_kind` beside `clock` and `miss_policy`. A blocked root carries the reason in the snapshot's `block_reasons` (`"derived": "cooldown"`, with `until`) and in `arlesh_tasks.get`.
 
 **The editor.** The Habit editor's **Cooldown** row sits after the Gap and before Ends, in the section's flush, sparse style: a switch, then the count and the unit, the unit list holding only the kinds the window takes. It is shown only under a Window clock on a window that takes one; its explanation is its tooltip.
+
+## Plan inheritance
+
+Ruled by the user, 2026-10-03 (Task `065b`); the general rule is in [*Plan inheritance*](time-scopes.md#plan-inheritance).
+
+**Inside a Habit.** An occurrence's own Plan is its **overlay** Plan, else its **Cycle Plan** (its pair's, or the root Cycle Plan for an iteration root). One with neither reads the **iteration root's** Plan by inheritance: the usual chain, item → its parent item → iteration root → the Habit's target and above, each step clipped to the occurrence's own window (a pair's Cycle Scope, else the iteration's). It is drawn as inherited, with the fainter badge, and the editor shows it read-only, so planning one occurrence on its own still writes only its overlay. Containment holds on every edge: an item occurrence's own Plan must sit inside the Plan it inherits from the root, so a template whose item Cycle Plan falls outside its root Cycle Plan is refused when it is saved, naming the occurrences it would put outside. A Habit planned "root on Monday, item on Tuesday" now needs its root Cycle Plan to cover both days.
+
+**A Habit as a node.** Neither of the following is shown; both are derived for the containment check alone (`flows::rules::span`):
+
+- Its **effective Time Scope** runs from its first iteration's window to the end of the window its end falls in. It must sit inside its target's effective Time Scope, so an **endless** Habit needs an **unscoped** target. An Unscoped (Interval) Habit has none.
+- Its **effective Plan** runs from its first iteration root's Plan to its last's, open-ended when it has no end. It must sit inside its target's effective Plan, so an endless Habit that plans its root needs an **unplanned** target. A Habit with no root Cycle Plan has no effective Plan of its own: its occurrences inherit as any node does, and one left with an empty Plan is refused as any Task is.
+
+The guard ([`mindmap::plan_guard`](time-scopes.md#plan-inheritance)) holds these on every write that could break them: the Habit's Flow, recurrence and cycles, and its target's window, Plan and place. On the user's board on 2026-10-03 every Habit hung under an unscoped, unplanned Project or Domain, and a read-only copy showed none in conflict.
