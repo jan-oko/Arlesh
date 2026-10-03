@@ -79,11 +79,12 @@ fn items_sit_where_the_stored_kinds_they_draw_do() {
 }
 
 #[test]
-fn only_a_task_waits_and_never_on_a_commitment() {
+fn nothing_waits_on_a_commitment_and_neither_it_nor_a_wait_waits() {
     use FlowItemType::*;
     assert!(may_depend(FlowTask, FlowExpectation));
     assert!(may_depend(FlowTask, FlowGoal));
     assert!(!may_depend(FlowTask, FlowCommitment));
     assert!(!may_depend(FlowExpectation, FlowTask));
+    assert!(may_depend(FlowGoal, FlowTask), "kept, and drawn as nothing");
     assert!(!may_depend(FlowCommitment, FlowTask));
 }

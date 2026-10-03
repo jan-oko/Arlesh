@@ -1147,7 +1147,8 @@ impl<'session> FlowOperator<'session> {
     ) -> Result<(), FlowError> {
         if !rules::items::may_depend(dependent_type, depends_on_type) {
             return Err(FlowError::Invalid(
-                "only a task item waits, and on a task, goal or wait item — never a commitment"
+                "a flow item waits on a task, goal or wait item — never a commitment — and a \
+                 commitment or wait item waits on nothing"
                     .to_string(),
             ));
         }

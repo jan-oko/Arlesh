@@ -51,14 +51,14 @@ pub fn require_placement(
         return Ok(());
     }
     let what = match kind {
-        FlowItemType::FlowGoal => "a goal item sits under a goal Flow's root or a goal item",
+        FlowItemType::FlowGoal => "a goal item sits under the flow or a flow-goal",
         FlowItemType::FlowTask => "a task item",
         FlowItemType::FlowCommitment => "a commitment item",
         FlowItemType::FlowExpectation => "a wait item",
     };
     if kind == FlowItemType::FlowGoal {
         return Err(FlowError::Invalid(format!(
-            "{what} — not a {parent_type}; a Commitment or a Task holds no Goal"
+            "{what} — a {parent_type} holds no goal items, since a Commitment or a Task holds no Goal"
         )));
     }
     Err(FlowError::Invalid(format!(
@@ -66,11 +66,13 @@ pub fn require_placement(
     )))
 }
 
-/// Whether a template edge may run from `dependent` to `depends_on`: only a Task waits on
-/// anything, and it waits on a Task, a Goal or a wait — never a Commitment, which nothing waits
-/// on, stored or templated.
+/// Whether a template edge may run from `dependent` to `depends_on`: it waits on a Task, a Goal
+/// or a wait — never a Commitment, which nothing waits on, stored or templated — and neither a
+/// Commitment nor a wait waits on anything. (A Goal item's edge is kept, as it always was, and
+/// draws nothing: only a Task's occurrences wait.)
 pub fn may_depend(dependent: FlowItemType, depends_on: FlowItemType) -> bool {
-    dependent == FlowItemType::FlowTask && depends_on != FlowItemType::FlowCommitment
+    matches!(dependent, FlowItemType::FlowTask | FlowItemType::FlowGoal)
+        && depends_on != FlowItemType::FlowCommitment
 }
 
 /// The kinds a first check may be counted in, finest last.
