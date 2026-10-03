@@ -337,10 +337,12 @@ async fn snapshot_returns_what_the_mindmap_command_returns() {
     // The app's load also carries every node's short id as a map, for its "Blocked by …" text; the
     // snapshot stamps each node with its own instead.
     let mut expected = serde_json::to_value(&expected).unwrap();
-    expected
-        .as_object_mut()
-        .expect("the load is an object")
-        .remove("short_ids");
+    let expected_sections = expected.as_object_mut().expect("the load is an object");
+    expected_sections.remove("short_ids");
+    // So do the board's facts and the agent-activity counts, derived from these rows for the
+    // app's tree and keyed by its node ids. The snapshot sends the rows they are derived from.
+    expected_sections.remove("facts");
+    expected_sections.remove("agent_activity");
     assert_eq!(
         unstamped(&sections),
         expected,
