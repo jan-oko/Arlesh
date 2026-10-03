@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use chrono::{NaiveDate, NaiveDateTime};
 
-use super::model::{HabitIteration, InstanceTiming, IterationStatus, MissPolicy};
+use crate::flows::model::{HabitIteration, InstanceTiming, IterationStatus, MissPolicy};
 use crate::scopes::key::ScopeKey;
 
 /// A precomputed iteration window: its ordinal, anchoring scope, and half-open `[start, end)`
@@ -131,7 +131,7 @@ pub fn instance_timing(
 /// (all `slots` are assumed to have started on or before it).
 ///
 /// An **Interval** Habit's slots are already its chain — each placed by the completion before it
-/// ([`super::interval_slots`]) — so every one but the last is Done by construction, and it
+/// ([`crate::flows::interval_slots`]) — so every one but the last is Done by construction, and it
 /// classifies as Window + Owed does: nothing it holds lapses.
 pub fn classify_iterations(
     slots: &[SlotWindow],

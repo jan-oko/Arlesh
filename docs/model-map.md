@@ -30,9 +30,9 @@ frontend) to `ts:`.
 The load is `rs:mindmap/mod.rs` (`load_within`, then `load_blocked` adds the capacity lock's
 blocks). The steps run in this order: `rs:tasks/scope_rules.rs::derive_all_scope_lifecycles`,
 then `rs:nodes/table.rs::derive_habits`, which applies `rs:flows/occurrences.rs`,
-`rs:flows/cooldown.rs` and `rs:flows/compound_readings.rs`, then `rs:tasks/compound.rs::settle`,
-which also draws the waits, then `rs:tasks/review.rs::derive`, and the capacity lock last
-(`rs:capacity/blocks.rs`). The MCP snapshot reads the same load (`rs:mcp/`).
+`rs:flows/rules/cooldown.rs` and `rs:flows/compound_readings.rs`, then `rs:tasks/compound.rs::settle`,
+which also draws the waits, then `rs:tasks/rules/review.rs::derive`, and the capacity lock last
+(`rs:capacity/rules/blocks.rs`). The MCP snapshot reads the same load (`rs:mcp/`).
 
 ## The derivation graph
 
@@ -43,20 +43,20 @@ never stored.
 
 | Derived state | Reads | Rule | Code |
 | --- | --- | --- | --- |
-| **Timing** | Time Scope (own or inherited), now | Pending before the window, Active in it, Lapsed after it. Unscoped is Active. | `rs:tasks/lifecycle.rs::derive_timing` |
-| **Effective due** | explicit due, Time Scope, on scope exit, Backlog, Habit iteration (the clock's default) | Explicit due wins. Otherwise a backlogged Task has none. Otherwise the window under Keep Overdue and none under Archive. An occurrence's default comes from its clock: none under Window + Archive, its window otherwise. | `rs:tasks/lifecycle.rs::effective_due`, `rs:flows/occurrences.rs::default_due` |
+| **Timing** | Time Scope (own or inherited), now | Pending before the window, Active in it, Lapsed after it. Unscoped is Active. | `rs:tasks/rules/lifecycle.rs::derive_timing` |
+| **Effective due** | explicit due, Time Scope, on scope exit, Backlog, Habit iteration (the clock's default) | Explicit due wins. Otherwise a backlogged Task has none. Otherwise the window under Keep Overdue and none under Archive. An occurrence's default comes from its clock: none under Window + Archive, its window otherwise. | `rs:tasks/rules/lifecycle.rs::effective_due`, `rs:flows/occurrences.rs::default_due` |
 | **Plan position** | Plan, now | Where the Task's own Plan stands: ahead, current or past. Inherited from the nearest planned ancestor Task under Start. | `rs:filters/rules.rs::is_planned_ahead`, lifecycle `plan_timing` |
-| **Agentic (inherited)** | own Agentic flag (and ancestors') | Own flag, else the nearest flagged ancestor's. | `rs:tasks/agentic.rs`, `rs:capacity/blocks.rs::reads_agentic` |
-| **Expired** | verdict, Verdict Window, Time Scope, now | Unresolved, and now is past window end plus the Verdict Window. | `rs:tasks/lifecycle.rs::verdict_deadline`, `derive_commitment_state` |
-| **Resolution** | Timing, status, on scope exit | Only once Lapsed: Completed if done, Missed if unfinished under Archive, none under Keep Overdue. | `rs:tasks/lifecycle.rs::derive_resolution` |
+| **Agentic (inherited)** | own Agentic flag (and ancestors') | Own flag, else the nearest flagged ancestor's. | `rs:tasks/agentic.rs`, `rs:capacity/rules/blocks.rs::reads_agentic` |
+| **Expired** | verdict, Verdict Window, Time Scope, now | Unresolved, and now is past window end plus the Verdict Window. | `rs:tasks/rules/lifecycle.rs::verdict_deadline`, `derive_commitment_state` |
+| **Resolution** | Timing, status, on scope exit | Only once Lapsed: Completed if done, Missed if unfinished under Archive, none under Keep Overdue. | `rs:tasks/rules/lifecycle.rs::derive_resolution` |
 | **Compound status** | compound flag and sub-items' statuses, verdicts and waits; Archived *(of another node)* | Done when every counted item is Done; else In Progress if any is; else Started if any is Started or Done; else To Do. Effectively archived items are not counted, except those archived by finishing. | `rs:tasks/compound.rs`, `rs:flows/compound_readings.rs` |
-| **Review** | Agentic, status, agent question waits | On Agent with a pending, live agentic question wait beneath it. | `rs:tasks/review.rs::derive` |
-| **Capacity block** | capacity lock, Agentic, status | Lock on, the Task reads as Agentic, and it is not Done. | `rs:capacity/blocks.rs::blocked_tasks` |
-| **Archived** (as the presets read it) | Backlog, Goal/Project status, Delegate, Resolution, Expired, verdict and Timing (a Commitment settled), Habit iteration (Missed or Lapsed) | Effective Archival is Archived: a Completed or Missed Resolution forces it, or a Commitment is settled or Expired, or it was set by hand. Or the Task is delegated. Delegation is not the Archival axis, so it does not stop Overdue. | `rs:tasks/lifecycle.rs::derive_archival`, `rs:filters/rules.rs::is_archived` |
+| **Review** | Agentic, status, agent question waits | On Agent with a pending, live agentic question wait beneath it. | `rs:tasks/rules/review.rs::derive` |
+| **Capacity block** | capacity lock, Agentic, status | Lock on, the Task reads as Agentic, and it is not Done. | `rs:capacity/rules/blocks.rs::blocked_tasks` |
+| **Archived** (as the presets read it) | Backlog, Goal/Project status, Delegate, Resolution, Expired, verdict and Timing (a Commitment settled), Habit iteration (Missed or Lapsed) | Effective Archival is Archived: a Completed or Missed Resolution forces it, or a Commitment is settled or Expired, or it was set by hand. Or the Task is delegated. Delegation is not the Archival axis, so it does not stop Overdue. | `rs:tasks/rules/lifecycle.rs::derive_archival`, `rs:filters/rules.rs::is_archived` |
 | **Compound block** | compound status, Blocked *(of another node: its open sub-items)* | Every open counted item is blocked. A pending wait or Unresolved Commitment keeps it unblocked. | `rs:tasks/compound/blocked.rs` |
-| **Habit iteration** | status of its occurrences, compound status, clock and miss policy, now | Resolved when every template occurrence is done (a compound one by its derived status). Otherwise the clock decides: Lapsed (Archive), Missed and carried (Overdue), open and owed (Owed), or the one open Interval instance. | `rs:flows/occurrences.rs::resolutions`, `rs:flows/habits.rs` |
-| **Cooldown block** | Habit iteration (done instants), cooldown, clock, now | After an iteration is done, block the next iteration (under Owed, every open one) until the latest done instant plus the cooldown. | `rs:flows/cooldown.rs::holds`, `rs:flows/occurrences.rs::done_instants` |
-| **Overdue** | effective due, status, Archived (effective Archival), now | Unfinished, not effectively Archived, and now is at or past the due's end. | `rs:tasks/lifecycle.rs::derive_overdue` |
+| **Habit iteration** | status of its occurrences, compound status, clock and miss policy, now | Resolved when every template occurrence is done (a compound one by its derived status). Otherwise the clock decides: Lapsed (Archive), Missed and carried (Overdue), open and owed (Owed), or the one open Interval instance. | `rs:flows/occurrences.rs::resolutions`, `rs:flows/rules/habits.rs` |
+| **Cooldown block** | Habit iteration (done instants), cooldown, clock, now | After an iteration is done, block the next iteration (under Owed, every open one) until the latest done instant plus the cooldown. | `rs:flows/rules/cooldown.rs::holds`, `rs:flows/occurrences.rs::done_instants` |
+| **Overdue** | effective due, status, Archived (effective Archival), now | Unfinished, not effectively Archived, and now is at or past the due's end. | `rs:tasks/rules/lifecycle.rs::derive_overdue` |
 | **Blocked** | block reasons, dependencies, status *(of another node: each dependency's target)*, capacity block, cooldown block, compound block | Any reason: one written by hand; a dependency on a Task not Done, a Goal not Achieved or a wait still Pending; or a derived block. | `rs:filters/facts.rs::index_blocked`, `rs:filters/rules.rs::is_blocked`, `ts:utils/blocked-by.ts` |
 
 How the presets read them:
@@ -161,7 +161,7 @@ How the presets read them:
 - **Why:** it is the only way an agent hands work back, and the question says what you need to do.
 - **Without:** agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.
 - **Lives:**
-  - `rs:tasks/review.rs` (`derive`, `is_open_question`).
+  - `rs:tasks/rules/review.rs` (`derive`, `is_open_question`).
   - Frontend: `ts:utils/open-question.ts`.
   - The MCP side is `arlesh_waits.ask`, in `rs:mcp/`.
 - **Spec:** [Resources § Agentic statuses](spec/resources.md#agentic-statuses), [MCP § Agentic waits](spec/mcp-server.md#agentic-waits).
@@ -189,7 +189,7 @@ How the presets read them:
 - **Why:** a Day must contain its own Night (22:00 to 02:00). A scope contains exactly its parts.
 - **Without:** between midnight and 02:00 the Day says "today" while its Night says "yesterday", and everything derived from it flips early.
 - **Lives:**
-  - `rs:scopes/key.rs`, `rs:scopes/derive.rs` and `rs:scopes/resolve.rs`.
+  - `rs:scopes/key.rs`, `rs:scopes/rules/derive.rs` and `rs:scopes/resolve.rs`.
   - Frontend: `ts:utils/scope-key.ts`, `ts:utils/scope-window.ts` and `ts:utils/scope-calendar.ts`.
   - The shared case file is `conformance/scope-keys.json`.
   - [ADR 0009](adr/0009-derived-scopes.md) covers derived scopes.
@@ -200,7 +200,7 @@ How the presets read them:
 - **Why:** "relevant this month" and "doing it Tuesday morning" are different facts that change at different rates.
 - **Without:** either everything is scheduled rigidly, or nothing knows when it stops mattering.
 - **Lives:**
-  - `rs:tasks/scope_rules.rs` and `rs:tasks/lifecycle.rs`.
+  - `rs:tasks/scope_rules.rs` and `rs:tasks/rules/lifecycle.rs`.
   - Frontend: `ts:utils/inherited-scope.ts` and `ts:utils/plan-scope.ts`.
   - [ADR 0001](adr/0001-time-scope-model.md) covers the time-scope model.
 - **Spec:** [Time Scopes](spec/time-scopes.md).
@@ -209,7 +209,7 @@ How the presets read them:
 - **Is:** Pending before the window, Active in it, Lapsed after it. It reads the effective window, own or inherited.
 - **Why:** Start should offer only what is in scope now.
 - **Without:** next month's work and last month's both crowd today.
-- **Lives:** `rs:tasks/lifecycle.rs`; the frontend reads the backend's value (`isStartableWindow` in `ts:utils/filter-tree.ts`).
+- **Lives:** `rs:tasks/rules/lifecycle.rs`; the frontend reads the backend's value (`isStartableWindow` in `ts:utils/filter-tree.ts`).
 - **Spec:** [Time Scopes § On-exit behavior](spec/time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag).
 
 ### Due and Overdue
@@ -218,7 +218,7 @@ How the presets read them:
   - **Overdue:** a flag set when the work is unfinished, not archived and past the due's end. It shows as an amber border.
 - **Why:** being late is separate from being relevant, and late work stays live.
 - **Without:** lateness had to be a resolution, which settled and hid work that was still open.
-- **Lives:** `rs:tasks/lifecycle.rs` (`effective_due`, `derive_overdue`), and `ts:utils/overdue.ts` on the frontend.
+- **Lives:** `rs:tasks/rules/lifecycle.rs` (`effective_due`, `derive_overdue`), and `ts:utils/overdue.ts` on the frontend.
 - **Spec:** [Time Scopes § Due scope and the Overdue flag](spec/time-scopes.md#due-scope-and-the-overdue-flag).
 
 ### Habit clocks
@@ -227,7 +227,7 @@ How the presets read them:
   - **Interval:** keeps one open instance and counts the Gap from completion.
 - **Why:** habits fail differently: a missed run is gone, a missed bill is still owed.
 - **Without:** one rule that is wrong for half the habits.
-- **Lives:** `rs:flows/habits.rs` and `rs:flows/occurrences.rs`, reading `flow_recurrences.clock` and `miss_policy` (migration 0087).
+- **Lives:** `rs:flows/rules/habits.rs` and `rs:flows/occurrences.rs`, reading `flow_recurrences.clock` and `miss_policy` (migration 0087).
 - **Spec:** [Habits § Clocks](spec/habits.md#clocks).
 
 ### Cooldown and done times
@@ -239,7 +239,7 @@ How the presets read them:
   A Task's done date can be corrected in Advanced.
 - **Why:** done on Saturday shouldn't count again on Sunday, and a habit ticked late should count from when it was really done.
 - **Without:** back-to-back completions across a window edge, and clocks counting from the moment you remembered to tick.
-- **Lives:** `rs:flows/cooldown.rs` (`holds`), `rs:flows/done_date.rs`, `rs:tasks/done_date.rs`; on the frontend, `ts:utils/cooldown-until.ts` and `ts:utils/done-date.ts`.
+- **Lives:** `rs:flows/rules/cooldown.rs` (`holds`), `rs:flows/done_date.rs`, `rs:tasks/done_date.rs`; on the frontend, `ts:utils/cooldown-until.ts` and `ts:utils/done-date.ts`.
 - **Spec:** [Habits § Cooldown](spec/habits.md#cooldown), [Resources § Done date](spec/resources.md).
 
 ## 4. Lifecycle
@@ -248,7 +248,7 @@ How the presets read them:
 - **Is:** how a passed window settled an item: Completed, or Missed under Archive. A Habit iteration resolves when every occurrence its template made is done, a compound one by its derived status.
 - **Why:** a passed window needs an answer, and the clocks count from it.
 - **Without:** old work hangs on with no verdict, and clocks have nothing to count from.
-- **Lives:** `rs:tasks/lifecycle.rs` and `rs:flows/occurrences.rs` (`resolutions`, `done_instants`).
+- **Lives:** `rs:tasks/rules/lifecycle.rs` and `rs:flows/occurrences.rs` (`resolutions`, `done_instants`).
 - **Spec:** [Time Scopes § On-exit behavior](spec/time-scopes.md), [Habits](spec/habits.md).
 
 ### Archival and Backlog
@@ -259,7 +259,7 @@ How the presets read them:
   A Task is never both backlogged and planned.
 - **Why:** "set aside" and "finished" are different questions, and a backlogged Task keeps its real status.
 - **Without:** statuses multiply, and every filter has to know them all.
-- **Lives:** `rs:tasks/lifecycle.rs` and `rs:filters/facts.rs`, with the Backlog invariant in `rs:tasks/mod.rs`.
+- **Lives:** `rs:tasks/rules/lifecycle.rs` and `rs:filters/facts.rs`, with the Backlog invariant in `rs:tasks/mod.rs`.
 - **Spec:** [Time Scopes](spec/time-scopes.md), [Resources § Tasks](spec/resources.md).
 
 ### Commitment verdicts
@@ -324,7 +324,7 @@ How the presets read them:
   They gate starting work and never change a status.
 - **Why:** one mechanism, so filters, badges and the MCP need nothing new for each.
 - **Without:** a special filter rule per feature, each one missing a view.
-- **Lives:** `rs:capacity/blocks.rs` (the lock is stored in `agent-capacity.json`), `rs:flows/cooldown.rs` and `rs:tasks/compound.rs`.
+- **Lives:** `rs:capacity/rules/blocks.rs` (the lock is stored in `agent-capacity.json`), `rs:flows/rules/cooldown.rs` and `rs:tasks/compound.rs`.
 - **Spec:** [MCP § Agent capacity](spec/mcp-server.md#agent-capacity), [Habits § Cooldown](spec/habits.md#cooldown), [Filtering Logic](spec/filtering-logic.md).
 
 ## 7. Reading it out

@@ -5,7 +5,8 @@
 //! dates, bounds — is arithmetic over that key. Nothing in this module touches the database: a
 //! column referencing a scope holds the key's canonical text, written and read by the key itself.
 
-mod derive;
+pub mod rules;
+use rules::derive;
 pub mod error;
 pub mod key;
 pub mod model;

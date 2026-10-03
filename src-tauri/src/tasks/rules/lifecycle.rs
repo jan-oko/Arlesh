@@ -28,7 +28,7 @@ use chrono::NaiveDateTime;
 
 use crate::scopes::resolve::Bounds;
 
-use super::model::{
+use crate::tasks::model::{
     DurationSpec, ExpectationArchival, ExpectationStatus, OnScopeExit, TaskArchival, Verdict,
 };
 

@@ -6,12 +6,12 @@
 
 use chrono::{Datelike, Duration, NaiveDate};
 
-use super::model::ScopeKind;
+use crate::scopes::model::ScopeKind;
 
 /// The four calendar-aligned scope kinds that form the containment hierarchy and are named by a
 /// single start date. Excludes Part-of-Day and Exact, which carry more than a date.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(super) enum CanonicalKind {
+pub(in crate::scopes) enum CanonicalKind {
     Season,
     Month,
     Week,
@@ -20,7 +20,7 @@ pub(super) enum CanonicalKind {
 
 impl CanonicalKind {
     /// Narrows a `ScopeKind` to a `CanonicalKind`, or `None` for Part-of-Day / Exact.
-    pub(super) fn from_scope_kind(kind: ScopeKind) -> Option<Self> {
+    pub(in crate::scopes) fn from_scope_kind(kind: ScopeKind) -> Option<Self> {
         match kind {
             ScopeKind::Season => Some(Self::Season),
             ScopeKind::Month => Some(Self::Month),
@@ -44,7 +44,10 @@ fn first_of_next_month(date: NaiveDate) -> NaiveDate {
 }
 
 /// Computes the inclusive `[start, end]` date range of the canonical scope holding `date`.
-pub(super) fn scope_dates(kind: CanonicalKind, date: NaiveDate) -> (NaiveDate, NaiveDate) {
+pub(in crate::scopes) fn scope_dates(
+    kind: CanonicalKind,
+    date: NaiveDate,
+) -> (NaiveDate, NaiveDate) {
     match kind {
         CanonicalKind::Day => (date, date),
         CanonicalKind::Week => {
@@ -73,7 +76,7 @@ pub(super) fn scope_dates(kind: CanonicalKind, date: NaiveDate) -> (NaiveDate, N
 }
 
 /// Returns the human-readable label for the canonical scope starting on `start`.
-pub(super) fn scope_label(kind: CanonicalKind, start: NaiveDate) -> String {
+pub(in crate::scopes) fn scope_label(kind: CanonicalKind, start: NaiveDate) -> String {
     match kind {
         CanonicalKind::Day => start.format("%Y-%m-%d").to_string(),
         CanonicalKind::Week => format!("Week {} {}", week_number(start), start.year()),
@@ -86,7 +89,7 @@ pub(super) fn scope_label(kind: CanonicalKind, start: NaiveDate) -> String {
 }
 
 /// Returns the 1-based Sunday-to-Saturday week number for `date` within its year.
-pub(super) fn week_number(date: NaiveDate) -> u32 {
+pub(in crate::scopes) fn week_number(date: NaiveDate) -> u32 {
     let days_to_first_sunday = date
         .with_ordinal0(0)
         .map_or(0, |jan1| jan1.weekday().num_days_from_sunday());
@@ -95,7 +98,7 @@ pub(super) fn week_number(date: NaiveDate) -> u32 {
 
 /// Returns (season_name, display_year) for the season containing `date`. A Winter is labelled
 /// with the year its December falls in.
-pub(super) fn season_name_and_year(date: NaiveDate) -> (&'static str, i32) {
+pub(in crate::scopes) fn season_name_and_year(date: NaiveDate) -> (&'static str, i32) {
     match date.month() {
         3..=5 => ("Spring", date.year()),
         6..=8 => ("Summer", date.year()),

@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use chrono::{Duration, Months, NaiveDate, NaiveDateTime};
 
 use super::habits::SlotWindow;
-use super::model::MissPolicy;
+use crate::flows::model::MissPolicy;
 use crate::scopes::key::ScopeKey;
 use crate::scopes::model::{PartOfDay, ScopeKind};
 use crate::scopes::resolve::day_boundary;

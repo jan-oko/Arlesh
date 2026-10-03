@@ -157,6 +157,12 @@ jobs:
           fi
           echo "No inline test modules."
 
+      # A rules module is pure: no session, no sqlx, no tauri, no tokio, no file system (ADR
+      # 0010). The convention is only worth having if it cannot erode silently, and like the guard
+      # above this needs nothing but a shell, so it runs before anything is installed or built.
+      - name: Rules modules are pure
+        run: scripts/check-rules-purity.sh
+
       # Second, for the same reason the guard above is first: this needs no apt
       # packages, no cache and no build — just the toolchain — so it costs seconds
       # and a violation never reaches the six-minute compile. That is the whole

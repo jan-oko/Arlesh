@@ -14,15 +14,16 @@
 //! window reads and writes nothing.
 
 mod compound_readings;
-pub mod cooldown;
+pub use rules::cooldown;
 pub mod cycles;
 pub mod done_date;
 pub mod error;
-pub mod habits;
+pub use rules::habits;
 pub mod model;
 pub mod occurrence_edit;
 pub mod occurrences;
 mod render;
+pub mod rules;
 pub mod template;
 
 use std::collections::{HashMap, VecDeque};
