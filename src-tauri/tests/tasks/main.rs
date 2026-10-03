@@ -21,6 +21,7 @@ mod completion_instants;
 mod compound;
 mod due_scope;
 mod expectations;
+mod plan_inheritance;
 mod plan_overdue;
 mod tasks;
 mod wait_rows;
