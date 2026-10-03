@@ -1,5 +1,5 @@
 {
-  "about": "The value key of every scope kind. `cell` names a calendar cell by a date inside it (or a band, or two datetimes); `key` is the scope's key as it travels on the wire, and `text` its one canonical serialisation — what a column stores and what equality compares. The Rust ScopeKey and the TypeScript scope-key module must both produce exactly `text` from `cell`, and read `text` back to `key`. `window` is the scope's half-open `[start, end)` window in local wall-clock time — the Rust `ScopeKey::bounds` — which the TypeScript filter derives on its own, so both sides are held to it as well. See docs/adr/0009-derived-scopes.md.",
+  "about": "The value key of every scope kind. `cell` names a calendar cell by a date inside it (or a band, or two datetimes); `key` is the scope's key as it travels on the wire, and `text` its one canonical serialisation — what a column stores and what equality compares. The Rust ScopeKey and the TypeScript scope-key module must both produce exactly `text` from `cell`, and read `text` back to `key`. `window` is the scope's half-open `[start, end)` window in local wall-clock time — the Rust `ScopeKey::bounds` — which the TypeScript filter derives on its own, so both sides are held to it as well. See docs/adr/0009-derived-scopes.md. `labels` is the label each canonical key reads as — a week numbered Sunday to Saturday from the week holding the 1st of January, a Winter labelled with the year its December falls in. `instants` is which Day and which part of it hold a wall-clock instant, by the 02:00 boundary.",
   "cases": [
     { "cell": { "kind": "day", "date": "2026-09-23" }, "key": { "kind": "day", "date": "2026-09-23" }, "text": "{\"kind\":\"day\",\"date\":\"2026-09-23\"}", "window": { "start": "2026-09-23T02:00:00", "end": "2026-09-24T02:00:00" } },
     { "cell": { "kind": "week", "date": "2026-09-23" }, "key": { "kind": "week", "date": "2026-09-20" }, "text": "{\"kind\":\"week\",\"date\":\"2026-09-20\"}", "window": { "start": "2026-09-20T02:00:00", "end": "2026-09-27T02:00:00" } },
@@ -18,5 +18,25 @@
     { "cell": { "kind": "part_of_day", "date": "2026-09-23", "part": "night" }, "key": { "kind": "part_of_day", "date": "2026-09-23", "part": "night" }, "text": "{\"kind\":\"part_of_day\",\"date\":\"2026-09-23\",\"part\":\"night\"}", "window": { "start": "2026-09-23T22:00:00", "end": "2026-09-24T02:00:00" } },
     { "cell": { "kind": "part_of_day", "date": "2026-09-23", "part": "premorning" }, "key": { "kind": "part_of_day", "date": "2026-09-23", "part": "premorning" }, "text": "{\"kind\":\"part_of_day\",\"date\":\"2026-09-23\",\"part\":\"premorning\"}", "window": { "start": "2026-09-23T02:00:00", "end": "2026-09-23T06:00:00" } },
     { "cell": { "kind": "exact", "start": "2026-09-23T14:00:00", "end": "2026-09-23T15:30:00" }, "key": { "kind": "exact", "start": "2026-09-23T14:00:00", "end": "2026-09-23T15:30:00" }, "text": "{\"kind\":\"exact\",\"start\":\"2026-09-23T14:00:00\",\"end\":\"2026-09-23T15:30:00\"}", "window": { "start": "2026-09-23T14:00:00", "end": "2026-09-23T15:30:00" } }
+  ],
+  "labels": [
+    { "key": { "kind": "day", "date": "2026-09-23" }, "label": "2026-09-23" },
+    { "key": { "kind": "week", "date": "2026-09-20" }, "label": "Week 39 2026" },
+    { "key": { "kind": "week", "date": "2026-01-04" }, "label": "Week 2 2026" },
+    { "key": { "kind": "week", "date": "2025-12-28" }, "label": "Week 53 2025" },
+    { "key": { "kind": "month", "date": "2026-09-01" }, "label": "September 2026" },
+    { "key": { "kind": "season", "date": "2026-09-01" }, "label": "Autumn 2026" },
+    { "key": { "kind": "season", "date": "2025-12-01" }, "label": "Winter 2025" },
+    { "key": { "kind": "season", "date": "2026-03-01" }, "label": "Spring 2026" }
+  ],
+  "instants": [
+    { "at": "2026-09-23T01:59:00", "day": "2026-09-22", "part": "night" },
+    { "at": "2026-09-23T02:00:00", "day": "2026-09-23", "part": "premorning" },
+    { "at": "2026-09-23T06:00:00", "day": "2026-09-23", "part": "morning" },
+    { "at": "2026-09-23T12:30:00", "day": "2026-09-23", "part": "noon" },
+    { "at": "2026-09-23T15:00:00", "day": "2026-09-23", "part": "afternoon" },
+    { "at": "2026-09-23T21:59:00", "day": "2026-09-23", "part": "evening" },
+    { "at": "2026-09-23T22:00:00", "day": "2026-09-23", "part": "night" },
+    { "at": "2026-01-01T00:30:00", "day": "2025-12-31", "part": "night" }
   ]
 }
