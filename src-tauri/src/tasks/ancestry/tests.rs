@@ -2,6 +2,7 @@ use super::*;
 use crate::database::session::SessionFactory;
 use crate::database::DatabasePool;
 use crate::scopes::key::test_key;
+use crate::tasks::model::{DurationSpec, OnScopeExit, TimeScope};
 use sqlx::sqlite::SqlitePoolOptions;
 
 /// A migrated in-memory database with a single connection, as the integration tests use.

@@ -1,0 +1,326 @@
+//! The ancestry chain's pure half: the links a climb reads, how a chain ended, and the searches
+//! every ancestry question is answered by ([`AncestryChain::nearest_scoped`] and its siblings).
+//!
+//! The climb that reads the chain from the database lives in [`crate::tasks::ancestry`], which
+//! re-exports these names (ADR 0010).
+
+use crate::flows::model::ChildAttachment;
+use crate::tasks::error::TaskError;
+use crate::tasks::model::{DurationSpec, OnScopeExit, TimeScope};
+
+/// Which of the three scoped tables a chain link came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(in crate::tasks) enum NodeKind {
+    /// A row in `tasks`.
+    Task,
+    /// A row in `goals`.
+    Goal,
+    /// A row in `commitments`.
+    Commitment,
+}
+
+/// A polymorphic node reference, as the `parent_type`/`parent_id` column pair stores it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::tasks) struct NodeRef {
+    /// `"task"`, `"goal"`, `"project"`, `"domain"`, …
+    pub(in crate::tasks) node_type: String,
+    /// The referenced row's id.
+    pub(in crate::tasks) node_id: i64,
+}
+
+/// One node on the chain, carrying only the six fields any ancestry question asks about.
+///
+/// Deliberately not a [`Task`](super::model::Task) or a [`Goal`](super::model::Goal): the climb
+/// reads a handful of columns per step and no tags at all, where the full row types cost a
+/// second query each.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::tasks) struct AncestryLink {
+    /// Which table this link came from.
+    pub(in crate::tasks) kind: NodeKind,
+    /// The link's own id.
+    pub(in crate::tasks) id: i64,
+    /// Where the climb went next.
+    pub(in crate::tasks) parent: NodeRef,
+    /// The link's explicit Time Scope, if it has one.
+    pub(in crate::tasks) time_scope: Option<TimeScope>,
+    /// The link's Plan, if it has one. Always `None` for a goal: goals have no Plan column.
+    pub(in crate::tasks) plan: Option<TimeScope>,
+    /// The link's on-exit behaviour. Present iff `time_scope` is — except on a Commitment,
+    /// which has no such column and always reads as [`OnScopeExit::Keep`]: it stays until its
+    /// Verdict Window ends it, and nothing else archives it on the way out.
+    pub(in crate::tasks) on_scope_exit: Option<OnScopeExit>,
+    /// The link's **Verdict Window**, if it is a Commitment that sets one. Always `None` for a
+    /// task or a goal: neither has the column, and neither is ever asked for one — the search
+    /// stops at the first Commitment either way.
+    pub(in crate::tasks) verdict_window: Option<DurationSpec>,
+}
+
+/// Why a climb stopped short of the root.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::tasks) enum BreakCause {
+    /// The parent reference pointed at a row that does not exist.
+    Missing,
+    /// Following the parent links returned to a node already on the chain.
+    Cycle,
+}
+
+/// Where a climb stopped, and why.
+///
+/// A break is always on a **scoped** reference: anything else — a project, a domain, an aspect —
+/// ends the chain at the root instead. So the broken reference is a [`NodeKind`] and an id rather
+/// than a free-form [`NodeRef`], which is what makes the write path's error mapping total.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::tasks) enum ChainEnd {
+    /// The climb ran off the top of the scoped chain into something that carries no scope — a
+    /// project, a domain, an aspect. Every link above the start was read.
+    Root,
+    /// The climb could not continue.
+    Broken {
+        /// Which table the reference it stopped on pointed into.
+        kind: NodeKind,
+        /// The id it pointed at.
+        id: i64,
+        /// What was wrong with it.
+        cause: BreakCause,
+    },
+}
+
+/// A node's ancestry: the links from the starting node upwards, and how the walk ended.
+///
+/// **The starting node is the first link.** A caller asking about ancestors only starts the climb
+/// at the parent reference rather than skipping a link afterwards, which is what the three
+/// ancestor searches in `scope_rules` do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::tasks) struct AncestryChain {
+    /// The links, nearest first.
+    pub(in crate::tasks) links: Vec<AncestryLink>,
+    /// How the climb ended.
+    pub(in crate::tasks) end: ChainEnd,
+}
+
+/// What a search over a chain concluded.
+///
+/// The three-way answer is the point of the type. A search that could only say "found" or "not
+/// found" would fold *nothing above this carries it* together with *the chain broke and I cannot
+/// tell*, and the two want opposite treatment: see [`Self::or_unconstrained`] and
+/// [`Self::or_reject`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::tasks) enum Search<T> {
+    /// A link carries what was asked for.
+    Found(T),
+    /// Nothing carries it, and the search ended legitimately — the climb reached the root, or
+    /// the search's own stop condition fired before any broken reference mattered.
+    Unconstrained,
+    /// The chain broke before the question could be answered.
+    Undetermined {
+        /// Which table the reference the climb stopped on pointed into.
+        kind: NodeKind,
+        /// The id it pointed at.
+        id: i64,
+        /// What was wrong with it.
+        cause: BreakCause,
+    },
+}
+
+/// One virtual Habit occurrence, as the chain link an added child of it climbs into.
+///
+/// A virtual instance has no row, so it can never *be* read as a link — it is built from the
+/// attachment instead. Three fields carry its meaning and the rest are structurally absent:
+///
+/// - `time_scope` is the occurrence's window, which is what the child's own Time Scope must sit
+///   within and what governs the child when it has none of its own;
+/// - `on_scope_exit` is [`OnScopeExit::Archive`], which is how an added child archives *with* its
+///   occurrence when the window passes, rather than lingering after the thing it was written on;
+/// - `plan` is `None`: an occurrence's Cycle Plan is resolved per iteration by the renderer, and a
+///   second resolution here could disagree with it. Plan ⊆ own Time Scope ⊆ occurrence window
+///   still holds through the other two rules.
+///
+/// Its `parent` is the flow, which is not a scoped kind, so the chain ends here — an occurrence
+/// has nothing above it that a child could inherit.
+pub(in crate::tasks) fn occurrence_link(attachment: ChildAttachment) -> AncestryLink {
+    let kind = match attachment.instance_type.as_str() {
+        "goal" => NodeKind::Goal,
+        "commitment" => NodeKind::Commitment,
+        // Every other Instance Type materialises as a Task, which is also what an unrecognised
+        // one falls back to everywhere else in the renderer.
+        _ => NodeKind::Task,
+    };
+    AncestryLink {
+        kind,
+        id: attachment.flow_id,
+        parent: NodeRef::new("flow", attachment.flow_id),
+        time_scope: attachment.window,
+        plan: None,
+        on_scope_exit: Some(OnScopeExit::Archive),
+        verdict_window: None,
+    }
+}
+
+impl NodeKind {
+    /// Parses a stored `parent_type`, or `None` for anything that is not a scoped node — a
+    /// project, a domain, an aspect. Those end the chain rather than breaking it.
+    pub(in crate::tasks) fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "task" => Some(Self::Task),
+            "goal" => Some(Self::Goal),
+            "commitment" => Some(Self::Commitment),
+            _ => None,
+        }
+    }
+
+    /// How the kind spells itself in a `parent_type` column.
+    pub(in crate::tasks) fn as_db(self) -> &'static str {
+        match self {
+            Self::Task => "task",
+            Self::Goal => "goal",
+            Self::Commitment => "commitment",
+        }
+    }
+}
+
+impl NodeRef {
+    /// A reference to `node_id` in the table `node_type` names.
+    pub(in crate::tasks) fn new(node_type: impl Into<String>, node_id: i64) -> Self {
+        Self {
+            node_type: node_type.into(),
+            node_id,
+        }
+    }
+}
+
+impl<T> Search<T> {
+    /// The **read** path's policy: an unanswerable question is treated as unconstrained.
+    ///
+    /// One corrupt row must not blank the whole mindmap, so the renderer keeps going. The
+    /// corruption is logged rather than silently swallowed, which is the half the old walks
+    /// left out.
+    pub(in crate::tasks) fn or_unconstrained(self) -> Option<T> {
+        match self {
+            Self::Found(value) => Some(value),
+            Self::Unconstrained => None,
+            Self::Undetermined { kind, id, cause } => {
+                tracing::warn!(
+                    node_kind = ?kind,
+                    node_id = id,
+                    cause = ?cause,
+                    "ancestor chain is broken; treating the item as unconstrained"
+                );
+                None
+            }
+        }
+    }
+
+    /// The **write** path's policy: an unanswerable question rejects the write.
+    ///
+    /// The invariant the caller wanted checked could not be checked, and writing anyway is what
+    /// let corrupt trees grow.
+    pub(in crate::tasks) fn or_reject(self) -> Result<Option<T>, TaskError> {
+        match self {
+            Self::Found(value) => Ok(Some(value)),
+            Self::Unconstrained => Ok(None),
+            Self::Undetermined { kind, id, cause } => Err(match cause {
+                // A dangling reference keeps the not-found error the old walks propagated, so
+                // nothing on the wire changes for the case that already happened.
+                BreakCause::Missing => match kind {
+                    NodeKind::Task => TaskError::TaskNotFound(id),
+                    NodeKind::Goal => TaskError::GoalNotFound(id),
+                    NodeKind::Commitment => TaskError::CommitmentNotFound(id),
+                },
+                // A cycle has no precedent: the old walks hung instead of returning.
+                BreakCause::Cycle => TaskError::AncestorCycle { node_id: id },
+            }),
+        }
+    }
+}
+
+impl AncestryChain {
+    /// The answer a search gives when it scanned every link without finding what it wanted.
+    pub(in crate::tasks) fn exhausted<T>(&self) -> Search<T> {
+        match self.end {
+            ChainEnd::Root => Search::Unconstrained,
+            ChainEnd::Broken { kind, id, cause } => Search::Undetermined { kind, id, cause },
+        }
+    }
+
+    /// The nearest link carrying an explicit Time Scope, with the on-exit behaviour that comes
+    /// with it — defaulted to [`OnScopeExit::Keep`], matching the column's write-side default.
+    ///
+    /// **Climbs through goals:** a goal's Time Scope governs everything beneath it, tasks
+    /// included, so a goal on the chain is examined like any other link.
+    ///
+    /// Pure. No database, no `async`.
+    pub(in crate::tasks) fn nearest_scoped(&self) -> Search<(&TimeScope, OnScopeExit)> {
+        for link in &self.links {
+            if let Some(time_scope) = &link.time_scope {
+                let on_exit = link.on_scope_exit.unwrap_or(OnScopeExit::Keep);
+                return Search::Found((time_scope, on_exit));
+            }
+        }
+        self.exhausted()
+    }
+
+    /// Whether the nearest link carrying an explicit Time Scope is a **Habit occurrence** an added
+    /// child climbed into ([`occurrence_link`]) — whose window it then takes, and archives with.
+    ///
+    /// Pure. No database, no `async`.
+    pub(in crate::tasks) fn nearest_scoped_is_occurrence(&self) -> bool {
+        self.links
+            .iter()
+            .find(|link| link.time_scope.is_some())
+            .is_some_and(|link| link.parent.node_type == "flow")
+    }
+
+    /// The nearest link carrying an explicit **Verdict Window**.
+    ///
+    /// **Traverses commitments only: anything else ends the search**, and ends it definitively.
+    /// Only a Commitment has the column, and a Commitment's parent chain leaves the kind as soon
+    /// as it reaches a task, a goal or a container — so a broken reference above that point is
+    /// never consulted, exactly as [`Self::nearest_planned`] ignores one above a goal.
+    ///
+    /// Pure. No database, no `async`.
+    pub(in crate::tasks) fn nearest_verdict_window(&self) -> Search<&DurationSpec> {
+        for link in &self.links {
+            if link.kind != NodeKind::Commitment {
+                return Search::Unconstrained;
+            }
+            if let Some(window) = &link.verdict_window {
+                return Search::Found(window);
+            }
+        }
+        match self.end {
+            ChainEnd::Broken {
+                kind: NodeKind::Commitment,
+                ..
+            } => self.exhausted(),
+            ChainEnd::Broken { .. } | ChainEnd::Root => Search::Unconstrained,
+        }
+    }
+
+    /// The nearest link carrying a Plan.
+    ///
+    /// **Traverses tasks only: a goal ends the search**, and ends it *definitively*. Plans nest
+    /// within plans, and only tasks have one, so a goal is where the plan chain stops — whatever
+    /// lies above it, a broken reference included, is never consulted. That is why a chain that
+    /// broke on a **goal** still answers [`Search::Unconstrained`] here while
+    /// [`Self::nearest_scoped`] answers [`Search::Undetermined`] for the same chain: the scope
+    /// walk needed that goal and the plan walk did not.
+    ///
+    /// Pure. No database, no `async`.
+    pub(in crate::tasks) fn nearest_planned(&self) -> Search<&TimeScope> {
+        for link in &self.links {
+            if link.kind != NodeKind::Task {
+                return Search::Unconstrained;
+            }
+            if let Some(plan) = &link.plan {
+                return Search::Found(plan);
+            }
+        }
+        match self.end {
+            ChainEnd::Broken {
+                kind: NodeKind::Task,
+                ..
+            } => self.exhausted(),
+            ChainEnd::Broken { .. } | ChainEnd::Root => Search::Unconstrained,
+        }
+    }
+}

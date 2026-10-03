@@ -10,6 +10,7 @@
 //! change when they moved here.
 
 pub mod agentic;
+pub mod ancestry;
 pub mod compound;
 pub mod dependencies;
 pub mod lifecycle;
