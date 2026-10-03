@@ -11,3 +11,4 @@
 pub mod cooldown;
 pub mod habits;
 pub mod occurrences;
+pub mod schedule;
