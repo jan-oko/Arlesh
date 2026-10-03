@@ -1237,7 +1237,6 @@ async fn pasting_a_project_that_holds_a_habit_is_one_undo_step() {
             title: "step".into(),
             parent_type: "flow".into(),
             parent_id: flow.id,
-            ..Default::default()
         },
     )
     .await
