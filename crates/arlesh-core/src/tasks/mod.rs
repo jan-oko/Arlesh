@@ -17,6 +17,7 @@ pub mod compound;
 pub mod done_date;
 pub mod error;
 pub mod expectations;
+pub mod gestures;
 pub use rules::lifecycle;
 pub mod model;
 pub use rules::review;

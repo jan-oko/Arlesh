@@ -37,7 +37,9 @@ mod tests;
 pub const CAPACITY_FILE: &str = "agent-capacity.json";
 
 /// The lock as it is read and written: stored in the file, answered by the commands and the MCP.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
 pub struct CapacityState {
     /// Whether agents are at capacity. Off when nothing was ever saved.
     #[serde(default)]

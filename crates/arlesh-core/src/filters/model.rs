@@ -300,7 +300,7 @@ impl BoardFilter {
 ///
 /// `Aspect`, `Project`, `Domain` and `Tag` are the four subtypes of the single domains table;
 /// they are separate variants here because the presets treat them differently.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeKind {
     /// A top-level colour-coded container.
@@ -353,7 +353,7 @@ impl NodeKind {
 /// derivation and the block reasons, and the filter never re-derives them. Keeping the filter's
 /// input to a flat record is what lets one set of rules serve a pruned tree, a flat list of rows
 /// and a conformance corpus without any of the three knowing about the others.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeFacts {
     /// The frontend's node id, e.g. `task-12` — the identity every surface keys on.

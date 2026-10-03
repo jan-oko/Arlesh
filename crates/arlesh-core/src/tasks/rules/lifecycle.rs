@@ -36,7 +36,7 @@ use crate::tasks::model::{
 ///
 /// `Deserialize` is derived beside `Serialize` so that a filter fixture can name a window position
 /// in the same spelling the wire uses — see [`crate::filters`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Timing {
     /// Window has not started yet.
@@ -68,7 +68,7 @@ pub fn derive_timing(window: Option<Bounds>, now: NaiveDateTime) -> Timing {
 /// **Overdue is not here.** It used to be the third variant, the unresolved Keep-on-exit outcome;
 /// it is now a flag of its own ([`derive_overdue`]), because it is judged against the item's due
 /// rather than its window, and can hold while the window is still open.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Resolution {
     /// Resolved (Task Done / Goal Achieved or Archived) by the time its window lapsed.
@@ -150,7 +150,7 @@ pub fn derive_overdue(
 /// `Frozen` and `Backlog` are deliberately distinct variants rather than one state rendered under
 /// two names: the database and the wire say which state a node is in, instead of leaving it to be
 /// inferred from the node's kind. Neither translates into the other.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Archival {
     /// Actively showing.
@@ -202,7 +202,7 @@ impl From<TaskArchival> for Archival {
 
 /// The result of deriving an item's effective Archival: the value itself, and whether it silently
 /// overrode a manually-set `Frozen` or `Backlog`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct ArchivalResult {
     /// The effective Archival state to display/filter on.
     pub effective: Archival,
@@ -292,7 +292,7 @@ pub fn derive_item_state(
 }
 
 /// One item's fully-derived lifecycle state, keyed by node reference for the frontend.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ItemLifecycle {
     /// `"task"`, `"goal"`, `"commitment"` or `"expectation"`; `"expectation_check"`,
     /// `"spawned_wait"` and `"spawned_check"` time a wait's next check and a spawned wait.

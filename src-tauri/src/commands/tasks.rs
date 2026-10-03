@@ -10,7 +10,7 @@ use crate::{
     tasks::{
         lifecycle::ItemLifecycle,
         model::{
-            CreateGoalRequest, CreateTaskRequest, Dependency, Goal, GoalId, GoalStatus, Task,
+            CreateGoalRequest, CreateTaskRequest, Dependency, Goal, GoalId, Task,
             TaskDependencyEdge, TaskId, TaskWithBlockers, TimeScope, UpdateGoalRequest,
             UpdateTaskRequest,
         },
@@ -87,17 +87,8 @@ pub(crate) async fn write_task_guarded(
     confirmed: Option<bool>,
     now: chrono::NaiveDateTime,
 ) -> Result<Task, WireError> {
-    if request.status.is_some_and(|status| status.is_done()) && confirmed != Some(true) {
-        let open = write::unfinished_children(db, id, now)
-            .await
-            .map_err(WireError::from_error)?;
-        if !open.is_empty() {
-            return Err(crate::commands::flows::unfinished_refusal(&open));
-        }
-    }
-    write::update_task(db, id, request, now)
+    crate::nodes::composite::update_task_confirmed(db, id, request, confirmed == Some(true), now)
         .await
-        .map_err(WireError::from_error)
 }
 
 /// What the Task `id` may be made to depend on — what the quick dependency picker offers: every
@@ -356,17 +347,14 @@ pub async fn update_goal(
 ) -> Result<Goal, WireError> {
     let now = chrono::Local::now().naive_local();
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    if matches!(request.status, Some(GoalStatus::Achieved)) && confirmed != Some(true) {
-        let open = write::unfinished_children(&mut db, &id, now)
-            .await
-            .map_err(WireError::from_error)?;
-        if !open.is_empty() {
-            return Err(crate::commands::flows::unfinished_refusal(&open));
-        }
-    }
-    let goal = write::update_goal(&mut db, &id, request, now)
-        .await
-        .map_err(WireError::from_error)?;
+    let goal = crate::nodes::composite::update_goal_confirmed(
+        &mut db,
+        &id,
+        request,
+        confirmed == Some(true),
+        now,
+    )
+    .await?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(goal)
 }

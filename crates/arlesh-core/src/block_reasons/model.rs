@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// A single block reason attached to a task or goal: one the user wrote, or — when
 /// [`Self::derived`] says so — one the backend derived and nobody can edit.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BlockReason {
     /// Owning node kind: `task` or `goal`.
     pub owner_type: String,
@@ -25,7 +25,7 @@ pub struct BlockReason {
 }
 
 /// What derived a [`BlockReason`] that no one wrote.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DerivedBlock {
     /// The agent capacity lock is on, and the owner is an Agentic Task not yet Done. Clearing the

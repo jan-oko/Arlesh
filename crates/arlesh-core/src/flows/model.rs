@@ -6,7 +6,7 @@ use crate::scopes::key::ScopeKey;
 use crate::tasks::model::TimeScope;
 
 /// Identifies a flow row by its primary key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowId(pub i64);
 
 impl From<i64> for FlowId {
@@ -21,7 +21,7 @@ impl From<FlowId> for i64 {
 }
 
 /// What a Flow's root (and children) materialize as.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum InstanceType {
     /// Materializes as a Goal subtree.
@@ -62,7 +62,7 @@ impl InstanceType {
 }
 
 /// A flow (template) row.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Flow {
     /// Primary key.
     pub id: i64,
@@ -118,7 +118,7 @@ pub struct Flow {
 }
 
 /// A flow-goal (template item) row.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowGoal {
     /// Primary key.
     pub id: i64,
@@ -141,7 +141,7 @@ pub struct FlowGoal {
 }
 
 /// A flow-task (template item) row.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowTask {
     /// Primary key.
     pub id: i64,
@@ -164,7 +164,7 @@ pub struct FlowTask {
 }
 
 /// Request body for creating a flow.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct CreateFlowRequest {
     /// Display title.
     pub title: String,
@@ -217,7 +217,7 @@ pub struct CreateFlowRequest {
 }
 
 /// Request body for updating a flow (fields left `None` are unchanged; `Some(None)` clears).
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct UpdateFlowRequest {
     /// New title.
     pub title: Option<String>,
@@ -273,7 +273,7 @@ pub struct UpdateFlowRequest {
 }
 
 /// Request body for creating a flow item (goal or task).
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct CreateFlowItemRequest {
     /// Owning flow.
     pub flow_id: i64,
@@ -286,7 +286,7 @@ pub struct CreateFlowItemRequest {
 }
 
 /// Which flow-item table a row lives in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum FlowItemType {
     /// A `flow_goals` row.
@@ -306,7 +306,7 @@ impl FlowItemType {
 }
 
 /// Request body for updating a flow item (fields left `None` are unchanged; `Some(None)` clears).
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct UpdateFlowItemRequest {
     /// New title.
     pub title: Option<String>,
@@ -324,7 +324,7 @@ pub struct UpdateFlowItemRequest {
 }
 
 /// A relative (Cycle Scope, Cycle Plan) pair carried by a flow item.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowItemCycle {
     /// Primary key.
     pub id: i64,
@@ -349,7 +349,7 @@ pub struct FlowItemCycle {
 }
 
 /// One (Cycle Scope, Cycle Plan) pair to persist for a flow item.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 pub struct FlowCycleInput {
     /// Cycle-scope subkind (None = the whole flow scope).
     #[serde(default)]
@@ -369,7 +369,7 @@ pub struct FlowCycleInput {
 }
 
 /// Request body for starting a flow (materialising it under a target).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct StartFlowRequest {
     /// Title of the materialised root node.
     pub title: String,
@@ -382,7 +382,7 @@ pub struct StartFlowRequest {
 }
 
 /// The outcome of starting a flow: the materialised root node.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct MaterializedFlow {
     /// Root node kind (`goal` or `task`).
     pub root_type: String,
@@ -392,7 +392,7 @@ pub struct MaterializedFlow {
 
 /// A candidate target node for a flow, referenced by kind and id. Used by the target-picker
 /// scope-validity check and the flow-origin lookup.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TargetRef {
     /// Node kind (`aspect`/`domain`/`project`/`goal`/`task`).
     pub node_type: String,
@@ -401,7 +401,7 @@ pub struct TargetRef {
 }
 
 /// A materialised node's originating flow: which real node it is and the flow it was started from.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct FlowOrigin {
     /// The real node's kind (`goal` / `task`).
     pub node_type: String,
@@ -412,7 +412,7 @@ pub struct FlowOrigin {
 }
 
 /// An intra-flow dependency: `dependent` waits on `depends_on`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FlowDependency {
     /// Primary key.
     pub id: i64,
@@ -429,7 +429,7 @@ pub struct FlowDependency {
 }
 
 /// Which **clock** a Habit keeps: what decides when its next occurrence falls.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ClockKind {
     /// Iterations tile from the Start anchor, one per window (plus the Gap), whether or not the
@@ -460,7 +460,7 @@ impl ClockKind {
 }
 
 /// What a **Window** Habit does with an iteration whose window passes unfinished.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum MissPolicy {
     /// It lapses: Missed, and archived with its window. It is never Overdue. (Was Destructive.)
@@ -498,7 +498,7 @@ impl MissPolicy {
 /// A Habit's Recurrence: Repetition (Start, optional Gap, optional end) plus its **clock**. Its
 /// presence marks the owning flow as a Habit. `miss_policy` is set exactly when the clock is
 /// `window`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct FlowRecurrence {
     /// Owning flow (also the primary key — one recurrence per flow).
     pub flow_id: i64,
@@ -526,7 +526,7 @@ pub struct FlowRecurrence {
 }
 
 /// Request to set (create or replace) a flow's Recurrence, making it a Habit.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct SetRecurrenceRequest {
     /// The scope the recurrence starts on (of the flow's Duration kind).
     pub start_scope_id: ScopeKey,
@@ -552,7 +552,7 @@ pub struct SetRecurrenceRequest {
 
 /// The derived state of a Habit iteration on a given day (nothing is persisted — see the pure
 /// classifier in `flows::habits`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum IterationStatus {
     /// Open and awaiting completion.
@@ -591,7 +591,7 @@ pub use crate::nodes::key::NO_CYCLE;
 /// `Pending` is not a statement about whether the occurrence is *actionable* — only about where the
 /// clock stands. What it makes possible is the All preset showing this evening's item this morning,
 /// which dropping the occurrence during generation made impossible for every preset at once.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum InstanceTiming {
     /// Its window has not opened yet — this evening's item, seen at breakfast.
@@ -619,7 +619,7 @@ pub enum InstanceTiming {
 /// An occurrence whose window has not opened yet is produced like any other, carrying
 /// [`InstanceTiming::Pending`]: whether it is *visible* is a preset's decision, not generation's,
 /// and All shows everything.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct HabitInstance {
     /// Which flow-item table the instance draws (`flow_goal` / `flow_task`).
     pub item_type: String,
@@ -638,7 +638,7 @@ pub struct HabitInstance {
 
 /// One derived Habit iteration: its ordinal, the scope anchoring its window, current state, and the
 /// instances it renders.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct HabitIteration {
     /// Zero-based ordinal from the Repetition Start.
     pub index: i64,
@@ -675,7 +675,7 @@ pub struct HabitIteration {
 ///
 /// The four travel together because they are one identity — an item with a morning and an evening
 /// pair has two instances in the same iteration, and three of the four fields would name both.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
 pub struct HabitInstanceRef {
     /// `flow_goal`, `flow_task`, or the `flow_root` sentinel.
     pub item_type: String,
@@ -691,7 +691,7 @@ pub struct HabitInstanceRef {
 /// One instance's divergent **status** for a Habit iteration — a non-tombstoned Modification (e.g.
 /// `in_progress` or `done`). Lets the mindmap render each iteration instance's state; instances with
 /// no Modification sit at their base status (task `todo` / goal `active`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct HabitItemStatus {
     /// Which instance the status is for (`flow_goal`, `flow_task`, or `flow_root`).
     pub item_type: String,
@@ -720,7 +720,7 @@ pub const CHILD_KINDS: [&str; 5] = ["task", "goal", "commitment", "info", "expec
 /// overlay row generates. `child_type`/`child_id` name the stored row, which is an ordinary Task,
 /// Goal, Commitment, Expectation or Info in every other respect; the virtual tables read its
 /// parent as the occurrence through this attachment.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct HabitInstanceChild {
     /// The Habit the occurrence belongs to.
     pub flow_id: i64,
@@ -756,7 +756,7 @@ pub struct ChildAttachment {
 /// The title travels with the reference because a refusal the user can only accept blind is not
 /// consent: "this occurrence still holds *Buy milk*" is answerable where "this occurrence still
 /// holds 1 thing" is not.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct UnfinishedChild {
     /// Which table the child row lives in — one of [`CHILD_KINDS`].
     pub child_type: String,

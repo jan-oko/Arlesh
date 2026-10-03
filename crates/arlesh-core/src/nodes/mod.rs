@@ -17,6 +17,7 @@
 //! [`Commitment`]: crate::tasks::model::Commitment
 
 pub mod board;
+pub mod composite;
 pub mod id;
 pub mod key;
 pub mod origin;

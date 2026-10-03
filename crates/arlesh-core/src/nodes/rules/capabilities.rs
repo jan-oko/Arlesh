@@ -13,7 +13,7 @@ use serde::Serialize;
 use crate::nodes::origin::Origin;
 
 /// What a row may be done to. Every capability is on unless the row's origin turns it off.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct Capabilities {
     /// Whether it may be deleted (an occurrence is archived instead, which counts).
     pub delete: bool,

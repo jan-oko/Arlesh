@@ -358,7 +358,9 @@ impl TaskOperator<'_> {
 }
 
 /// Which kind of wait a check belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum WaitKind {
     /// A stored Expectation, named by its id.
@@ -457,7 +459,7 @@ struct KeyedCheckRow {
 }
 
 /// One completed check on a wait.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct CheckRecord {
     /// When it fell due — which check it was.
     pub due_at: NaiveDateTime,
@@ -482,7 +484,7 @@ pub(crate) async fn reopen_latest<M: SessionMode>(
 }
 
 /// A stored Expectation's next check, as the window its virtual check task is drawn in.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct ExpectationCheck {
     /// The Expectation being checked on.
     pub expectation_id: i64,
@@ -496,7 +498,7 @@ pub struct ExpectationCheck {
 }
 
 /// A completed check on a spawned wait, drawn as a done check task.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct DoneCheck {
     /// The Day it fell due on.
     pub due: TimeScope,
@@ -509,7 +511,7 @@ pub struct DoneCheck {
 /// A Task's spawned wait as the views draw it: the overlay, plus what the template makes of it —
 /// its Time Scope (the template's rule, counted from the day it began) and its next check — each
 /// under what the wait's own Expectation overlay says.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct SpawnedWaitView {
     /// The overlay itself.
     #[serde(flatten)]
@@ -536,7 +538,7 @@ pub struct SpawnedWaitView {
 
 /// Every wait's derived windows at one load: the stored Expectations' next checks, and each
 /// spawned wait with its window and next check.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct WaitWindows {
     /// Each stored Expectation with a check due.
     pub expectation_checks: Vec<ExpectationCheck>,

@@ -1,10 +1,16 @@
 //! Database connection and migration management.
 
+pub mod client;
+pub mod hold;
+pub mod open;
+pub mod rules;
 pub mod session;
 
+use std::str::FromStr;
 use std::time::Duration;
 
-use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::migrate::Migrator;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{SqliteConnection, SqlitePool};
 
 /// Shared connection pool type used throughout the application.
@@ -23,14 +29,50 @@ pub type DatabasePool = SqlitePool;
 /// could deadlock. That is what [`session::SessionFactory::begin`] is for.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Every migration this build carries, compiled in from `migrations/`.
+pub static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
+
 /// Opens a SQLite connection pool at the given file path.
 pub async fn connect(database_url: &str) -> anyhow::Result<DatabasePool> {
-    let pool = SqlitePoolOptions::new()
+    let options = SqliteConnectOptions::from_str(database_url)?;
+    Ok(connect_with(options, false).await?)
+}
+
+/// Opens a SQLite connection pool with `options`, every connection configured as
+/// [`apply_connection_settings`] says — or, when `read_only`, opened read-only and configured as
+/// [`apply_read_only_settings`] says.
+pub async fn connect_with(
+    options: SqliteConnectOptions,
+    read_only: bool,
+) -> Result<DatabasePool, sqlx::Error> {
+    let options = options.read_only(read_only);
+    SqlitePoolOptions::new()
         .max_connections(8)
-        .after_connect(|conn, _meta| Box::pin(apply_connection_settings(conn)))
-        .connect(database_url)
+        .after_connect(move |conn, _meta| {
+            Box::pin(async move {
+                if read_only {
+                    apply_read_only_settings(conn).await
+                } else {
+                    apply_connection_settings(conn).await
+                }
+            })
+        })
+        .connect_with(options)
+        .await
+}
+
+/// The settings a **read-only** connection takes: [`apply_connection_settings`] less the journal
+/// mode, which is a property of the file and so a write — a read-only connection reads whatever
+/// mode the file is in.
+async fn apply_read_only_settings(connection: &mut SqliteConnection) -> Result<(), sqlx::Error> {
+    let busy_timeout_ms = BUSY_TIMEOUT.as_millis();
+    sqlx::query(&format!("PRAGMA busy_timeout = {busy_timeout_ms}"))
+        .execute(&mut *connection)
         .await?;
-    Ok(pool)
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&mut *connection)
+        .await?;
+    Ok(())
 }
 
 /// Applies the settings every connection onto an Arlesh database needs, in the order it needs
@@ -106,6 +148,6 @@ pub(crate) async fn apply_connection_settings(
 
 /// Runs all pending migrations against the pool.
 pub async fn run_migrations(pool: &DatabasePool) -> anyhow::Result<()> {
-    sqlx::migrate!("./migrations").run(pool).await?;
+    MIGRATOR.run(pool).await?;
     Ok(())
 }

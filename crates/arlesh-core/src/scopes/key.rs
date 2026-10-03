@@ -82,15 +82,43 @@ pub enum ScopeKey {
 
 /// The wire and storage shape of a key: every date as its canonical text. Serialising this is the
 /// canonical form, because serde writes the tag first and the fields in declaration order.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum Wire {
-    Season { date: String },
-    Month { date: String },
-    Week { date: String },
-    Day { date: String },
-    PartOfDay { date: String, part: PartOfDay },
-    Exact { start: String, end: String },
+    /// A Season, by its first day (the 1st of December, March, June or September).
+    Season {
+        /// `YYYY-MM-DD`.
+        date: String,
+    },
+    /// A Month, by its first day.
+    Month {
+        /// `YYYY-MM-DD`.
+        date: String,
+    },
+    /// A Sunday-to-Saturday Week, by its Sunday.
+    Week {
+        /// `YYYY-MM-DD`, a Sunday.
+        date: String,
+    },
+    /// A Day.
+    Day {
+        /// `YYYY-MM-DD`.
+        date: String,
+    },
+    /// A Part of Day, on the day it starts on.
+    PartOfDay {
+        /// `YYYY-MM-DD`.
+        date: String,
+        /// Which part of that day.
+        part: PartOfDay,
+    },
+    /// A half-open `[start, end)` window.
+    Exact {
+        /// `YYYY-MM-DDTHH:MM:SS`.
+        start: String,
+        /// `YYYY-MM-DDTHH:MM:SS`, after `start`.
+        end: String,
+    },
 }
 
 impl ScopeKey {
@@ -367,6 +395,17 @@ impl FromStr for ScopeKey {
 impl Serialize for ScopeKey {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.wire().serialize(serializer)
+    }
+}
+
+/// A key's schema is its wire shape's: a JSON object tagged by `kind`.
+impl schemars::JsonSchema for ScopeKey {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ScopeKey".into()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        Wire::json_schema(generator)
     }
 }
 

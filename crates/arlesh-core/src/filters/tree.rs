@@ -21,7 +21,9 @@ use super::{
 };
 
 /// One node of a fact tree: what the filter reads, plus its children.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct FactNode {
     /// What the filter reads off this node.
     #[serde(flatten)]

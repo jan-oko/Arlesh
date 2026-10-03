@@ -26,7 +26,19 @@ use crate::tasks::waits::{instant_column, WaitRef};
 pub const NO_CYCLE: i64 = 0;
 
 /// Which template row an occurrence is drawn from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum TemplateKind {
     /// The flow itself: an iteration's root is drawn from the flow row.
@@ -65,7 +77,19 @@ impl fmt::Display for TemplateKind {
 }
 
 /// One template row: a flow (for an iteration root) or one of its items.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+)]
 pub struct TemplateItem {
     /// Which template table.
     pub item_type: TemplateKind,

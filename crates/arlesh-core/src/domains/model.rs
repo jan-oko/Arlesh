@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Identifies a domain row by its primary key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct DomainId(pub i64);
 
 impl From<i64> for DomainId {
@@ -19,7 +19,7 @@ impl From<DomainId> for i64 {
 }
 
 /// The four subtypes stored in the `domains` table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum DomainSubtype {
     /// Fixed, color-coded top-level container. Not user-managed.
@@ -50,7 +50,7 @@ impl DomainSubtype {
 }
 
 /// Project lifecycle status.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectStatus {
     /// Actively being worked on.
@@ -87,7 +87,7 @@ impl ProjectStatus {
 }
 
 /// A domain row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Domain {
     /// Primary key.
     pub id: i64,
@@ -112,7 +112,7 @@ pub struct Domain {
 }
 
 /// Request body for creating a new domain.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct CreateDomainRequest {
     /// Display title.
     pub title: String,
@@ -129,7 +129,7 @@ pub struct CreateDomainRequest {
 }
 
 /// Request body for updating an existing domain.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct UpdateDomainRequest {
     /// New title (if provided).
     pub title: Option<String>,

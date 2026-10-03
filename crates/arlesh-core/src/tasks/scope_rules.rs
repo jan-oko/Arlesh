@@ -34,7 +34,7 @@ pub use super::rules::scope::{mark_waits_under_pending, wait_lifecycle, Occurren
 
 /// A descendant whose explicit Time Scope would fall outside a candidate window — i.e. one that
 /// narrowing an ancestor's scope (or reparenting) would orphan.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct ViolatingDescendant {
     /// `"task"` or `"goal"`.
     pub node_type: String,
@@ -381,7 +381,7 @@ pub(super) async fn descendants_violating_window<M: SessionMode>(
 
 /// The outcome of checking a reparent: the binding ancestor Time Scope (the clamp target) and the
 /// items — the node itself and/or its descendants — that would fall outside it.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ReparentConflicts {
     /// The nearest scoped ancestor's Time Scope under the new parent, or null if unconstrained.
     pub ancestor_time_scope: Option<TimeScope>,

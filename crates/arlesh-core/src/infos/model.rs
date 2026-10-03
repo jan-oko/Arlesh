@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::nodes::id::NodeId;
 
 /// Identifies an info row by its primary key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct InfoId(pub i64);
 
 impl From<i64> for InfoId {
@@ -20,7 +20,7 @@ impl From<InfoId> for i64 {
 }
 
 /// A free-text info node attached to any other node type.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Info {
     /// Database primary key.
     pub id: i64,
@@ -39,7 +39,7 @@ pub struct Info {
 }
 
 /// Request body for creating an info node.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct CreateInfoRequest {
     /// One-line text content.
     pub body: String,
@@ -55,7 +55,7 @@ pub struct CreateInfoRequest {
 }
 
 /// Request body for updating an info node.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 pub struct UpdateInfoRequest {
     /// New one-line text content, if changing.
     pub body: Option<String>,

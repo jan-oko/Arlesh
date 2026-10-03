@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::key::ScopeKey;
 
 /// The granularity of a time scope.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ScopeKind {
     /// Three-month season (Autumn/Winter/Spring/Summer).
@@ -50,7 +50,7 @@ impl ScopeKind {
 }
 
 /// One of the six sub-day bands. Hours are local wall-clock, start inclusive / end exclusive.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum PartOfDay {
     /// 06:00–12:00.
@@ -137,7 +137,7 @@ mod tests;
 ///
 /// Nothing here is stored. A canonical scope is computed from its [`ScopeKey`] on every read, and
 /// an Exact scope's fields are its key's two datetimes (ADR 0009).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Scope {
     /// The scope's identity: its value key, e.g. `{"kind":"week","date":"2026-09-20"}`.
     pub id: ScopeKey,

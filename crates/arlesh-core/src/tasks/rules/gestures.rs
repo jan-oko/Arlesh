@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::tasks::model::{AgenticStatus, Status, TaskArchival, TaskStatus, Verdict};
 
 /// A status gesture on a Task.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum StatusStep {
     /// A click on its status glyph, or `Enter`: one step of the cycle.
@@ -20,7 +20,7 @@ pub enum StatusStep {
 }
 
 /// Why a status gesture writes nothing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum StatusRefusal {
     /// The Task consists of its sub-items: it has no status of its own to write.
@@ -83,7 +83,7 @@ pub fn status_after(
 }
 
 /// How a status write took a Task out of the Backlog, which is said out loud.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum BacklogCleared {
     /// It was set Started.
@@ -122,7 +122,7 @@ pub fn toggled_agentic(reads_agentic: bool) -> bool {
 }
 
 /// A verdict gesture on a Commitment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum VerdictPress {
     /// The keyboard's one key through all three: Unresolved → Kept → Broken → Unresolved.

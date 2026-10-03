@@ -16,7 +16,7 @@ use crate::{
 /// human-readable `message`. Serialises in snake_case.
 ///
 /// Mirrored in src/api/errors.ts
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WireErrorKind {
     /// The requested resource does not exist.
@@ -68,7 +68,7 @@ pub enum WireErrorKind {
 ///
 /// Every command should convert its `Result<_, AppError>` into
 /// `Result<_, WireError>` via [`WireError::from_error`].
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct WireError {
     /// Stable, machine-readable classification of the error.
     kind: WireErrorKind,

@@ -67,3 +67,29 @@ pub async fn load_within(
     let sources = BoardSources::read(db).await?;
     rules::derive_board(sources, now, horizon, at_capacity)
 }
+
+/// The **whole board** a host shows, at wall-clock `now`: [`load_blocked`], plus what is derived
+/// on top of it — every node's short id, the board's facts and the agent-activity counts.
+///
+/// Which nodes the MCP can see is a badge, not the board, so a failure to read the access grants
+/// still loads: the facts are then derived without it.
+#[tracing::instrument(skip(db))]
+pub async fn board(
+    db: &mut Db<Transactional>,
+    now: NaiveDateTime,
+    at_capacity: bool,
+) -> Result<MindmapLoad, AppError> {
+    let mut load = load_blocked(db, now, at_capacity).await?;
+    let access = match crate::access::access_map(db).await {
+        Ok(map) => Some(map.effective()),
+        Err(error) => {
+            tracing::warn!(error = %error, "the MCP's view could not be read");
+            None
+        }
+    };
+    load.short_ids = crate::mcp::ids::board_short_ids(&load);
+    let (facts, activity) = rules::facts::derive(&load, access.as_deref());
+    load.facts = facts;
+    load.agent_activity = Some(activity);
+    Ok(load)
+}

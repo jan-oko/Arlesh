@@ -15,7 +15,7 @@ use super::error::UndoError;
 /// so that a third source later is a change here and not a migration. Both sources are journaled;
 /// only [`WriteSource::User`] entries ever enter the Undo Stack, because Ctrl+Z reverses what the
 /// user did and never what an agent did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum WriteSource {
     /// The person using the app, through a Tauri command.
@@ -50,7 +50,7 @@ impl FromStr for WriteSource {
 ///
 /// Minted by the database (`randomblob`) when a Gesture is opened over no other, so that no two
 /// gestures in a session can collide and nothing in Rust has to hold a counter.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GestureId(pub String);
 
 impl std::fmt::Display for GestureId {
@@ -91,7 +91,7 @@ pub struct UndoContext {
 /// The three cases are the whole of what the journal records, and each has exactly one inverse:
 /// the inverse of an insert is a delete, of a delete an insert of the before image, and of an
 /// update a write of the before image back over the row.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum RowOperation {
     /// A row came into existence.
@@ -265,7 +265,7 @@ impl StackedGesture {
 /// frontend, which is where the app's translations live, and undo speaks in rows anyway — it
 /// restores what a row was, not what the user meant by changing it. A caller wanting "Undid:
 /// delete 4 items" reads `deleted` and `tables`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GestureSummary {
     /// Which Gesture is being described.
     pub gesture: GestureId,
@@ -286,7 +286,7 @@ pub struct GestureSummary {
 /// `None` means the stack is empty and the caller should disable its control; Ctrl+Z on an empty
 /// stack is a silent no-op rather than an error, so this exists to label and disable, not to
 /// prevent.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct UndoStatus {
     /// The Gesture the next undo would reverse.
     pub undo: Option<GestureSummary>,

@@ -40,6 +40,17 @@ pub fn run() {
 
             let database_url = format!("sqlite://{}/arlesh.db?mode=rwc", app_dir.display());
 
+            // Mark the database as held while the app runs, so another writer — a Python session
+            // through the bindings — is refused unless it insists (`arlesh_core::database::hold`).
+            // A hold someone else already has is not a reason to stop: the app still runs, and
+            // the other writer simply is not warned off.
+            match database::hold::AppHold::acquire(&app_dir.join("arlesh.db")) {
+                Ok(hold) => {
+                    app.manage(hold);
+                }
+                Err(error) => tracing::warn!(error = %error, "could not hold the database"),
+            }
+
             let pool = tauri::async_runtime::block_on(async {
                 let pool = database::connect(&database_url).await.map_err(|error| {
                     tracing::error!(error = %error, "bootstrap failed: database connect");

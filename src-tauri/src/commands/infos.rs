@@ -59,17 +59,10 @@ pub async fn update_info(
 /// A single `DELETE`, so it runs on a pooled session.
 #[tauri::command]
 pub async fn delete_info(factory: State<'_, SessionFactory>, id: i64) -> Result<(), WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
     // Transactional because it is two writes now: a note may be an added child of a Habit
     // occurrence, and the attachment naming it must not outlive the row it names.
-    db.flows()
-        .detach_instance_child("info", id)
-        .await
-        .map_err(WireError::from_error)?;
-    db.infos()
-        .delete(InfoId(id))
-        .await
-        .map_err(WireError::from_error)?;
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    crate::nodes::composite::delete_info(&mut db, id).await?;
     db.commit().await.map_err(WireError::from_error)
 }
 

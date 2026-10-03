@@ -11,7 +11,19 @@ use serde::{Deserialize, Serialize};
 /// node's own table keys it. A derived node (a Habit occurrence, a wait's check task, a delegated
 /// Task's wait) is a row of nothing and has no `NodeTable`: it is visible when the nearest stored
 /// node above it is, and never writable, having no row to write.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeTable {
     /// A row of `domains`: an Aspect, Project, Domain or Tag.
@@ -79,7 +91,19 @@ impl fmt::Display for NodeTable {
 }
 
 /// One stored node: its table and its row id there.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+)]
 pub struct NodeKey {
     /// The table the node is a row of.
     pub node_kind: NodeTable,
@@ -110,7 +134,9 @@ impl fmt::Display for NodeKey {
 ///
 /// Derived, never stored: a node's level follows from the MCP roots, privacy and Agentic (see
 /// [`crate::access::resolve`]). Ordered `None < Read < Write`, and write implies read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum AccessLevel {
     /// Invisible: outside every root, or private.
@@ -130,7 +156,7 @@ impl AccessLevel {
 
 /// One stored node as access resolution sees it: where it hangs, and the two flags of its own
 /// that access reads.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct StoredNode {
     /// The node.
     pub key: NodeKey,
@@ -149,7 +175,7 @@ pub struct StoredNode {
 }
 
 /// One stored node as the MCP access page lists it: enough to find it by title and name it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct CatalogueNode {
     /// The node's table.
     pub node_kind: NodeTable,
@@ -199,7 +225,7 @@ impl CatalogueNode {
 ///
 /// What the app's node badge reads. It carries no level: whether the MCP may also write a node is
 /// whether the node is an Agentic Task, which the node's own Agentic badge already says.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct EffectiveAccess {
     /// The node's table.
     pub node_kind: NodeTable,
@@ -216,7 +242,7 @@ pub struct EffectiveAccess {
 ///
 /// People, Events and Threads hang on no node, so no root contains them. The MCP sees one exactly
 /// when a node it can read points at it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct KnowledgeBaseReference {
     /// The node doing the pointing.
     pub owner: NodeKey,

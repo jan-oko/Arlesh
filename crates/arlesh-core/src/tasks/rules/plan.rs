@@ -21,7 +21,7 @@ use crate::{
 };
 
 /// Which containment bound a Plan move would break. Named, not phrased — the view words it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PlanRefusal {
     /// The Plan would leave the Task's own Time Scope.

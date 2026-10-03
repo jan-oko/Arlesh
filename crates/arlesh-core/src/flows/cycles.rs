@@ -84,7 +84,7 @@ pub fn orphaned_cycle_ids(
 
 /// What a cycle edit that would orphan recorded edits does instead of losing them — the Habit
 /// editor's own two answers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Reconcile {
     /// Archive & new: the edit lands on a fork of the Habit, and the original keeps its history.
@@ -95,7 +95,7 @@ pub enum Reconcile {
 
 /// The fork an "Archive & new" item edit landed on: the new flow, and old→new item ids, so the
 /// rest of the save (title, dependencies) can be applied to the fork's copy of the item.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
 pub struct ForkedTemplate {
     /// The fork's flow id.
     pub flow_id: i64,

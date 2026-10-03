@@ -70,7 +70,7 @@ impl TemplateTable {
 }
 
 /// A template row's own columns and relations, as its occurrences inherit them.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TemplateFields {
     /// Who every occurrence is delegated to, unless it says otherwise. Task templates only.
     #[serde(default)]
@@ -104,7 +104,7 @@ pub struct TemplateFields {
 }
 
 /// A change to a template row's own columns and relations. Each field left `None` stays as it is.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 pub struct TemplateUpdate {
     /// Delegate to set (`None` leaves it, `Some(None)` clears it). Task templates only.
     #[serde(default, deserialize_with = "crate::wire::null_clears")]

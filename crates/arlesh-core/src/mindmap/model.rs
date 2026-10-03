@@ -20,7 +20,7 @@ use crate::{
 /// than sniffing for present fields. The occurrences themselves are not here: they are ordinary
 /// rows of their kinds, and travel in [`MindmapLoad::tasks`], [`MindmapLoad::goals`] and
 /// [`MindmapLoad::commitments`] beside the stored ones.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum FlowHabitResult {
     /// Derived — or not a Habit at all, which is an answer, not a failure.
@@ -37,7 +37,7 @@ pub enum FlowHabitResult {
 ///
 /// Entries are in the same order as [`MindmapLoad::flows`]; `flow_id` is carried anyway so a
 /// consumer can key by it instead of trusting position.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct FlowHabitEntry {
     /// The flow this entry describes.
     pub flow_id: i64,
@@ -52,7 +52,7 @@ pub struct FlowHabitEntry {
 /// Each field is exactly what the equivalent single-resource command returns; this type adds no
 /// derived or assembled data. Tree assembly stays in the frontend (see the Phase 6 scope note in
 /// `docs/superpowers/plans/2026-09-13-backend-architecture-foundations.md`).
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, schemars::JsonSchema)]
 pub struct MindmapLoad {
     /// Aspects, projects, domains and tags — as `list_domains(None)`.
     pub domains: Vec<Domain>,
@@ -106,7 +106,7 @@ pub struct MindmapLoad {
 }
 
 /// A dependency a Task is blocked by: its target, which is not Done, Achieved or released yet.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct DependencyBlock {
     /// What is depended on: `task`, `goal` or `expectation`.
     pub kind: String,
@@ -121,7 +121,7 @@ pub struct DependencyBlock {
 
 /// What the board says about one node beyond its own row. Every field is left off the wire at
 /// its default.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct NodeFacts {
     /// Whether the node's ancestors read as Agentic — what it reads as when it has no flag of its
     /// own: the nearest flag above it, else not.
@@ -154,7 +154,7 @@ pub struct NodeFacts {
 }
 
 /// What the agents are doing on the whole board, counted.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct AgentActivity {
     /// Agentic Tasks that read Review: On Agent, with the agent's question open for the user.
     pub review: usize,

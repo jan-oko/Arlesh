@@ -16,7 +16,7 @@ use crate::scopes::key::ScopeKey;
 use crate::tasks::waits::WaitKind;
 
 /// Where a node row came from. Discriminated on `kind` on the wire.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Origin {
     /// A stored row, made by hand (or by starting a plain Flow, which makes ordinary copies).
@@ -48,7 +48,7 @@ impl Origin {
 }
 
 /// Which check on which wait a check task is.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CheckOrigin {
     /// A stored Expectation's check, or one on the wait a stored Task or an occurrence spawned.
     pub wait_kind: WaitKind,
@@ -60,14 +60,14 @@ pub struct CheckOrigin {
 }
 
 /// The Task a derived wait belongs to.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct WaitOrigin {
     /// The Task that spawned the wait, or that is delegated.
     pub task_id: NodeId,
 }
 
 /// A Habit occurrence's provenance: which Habit, which iteration, which template row and pair.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct HabitOrigin {
     /// The Habit (flow) the occurrence belongs to.
     pub habit_id: i64,
@@ -89,7 +89,7 @@ impl HabitOrigin {
 }
 
 /// One iteration of a Habit, as its occurrences carry it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct IterationScope {
     /// Zero-based ordinal from the Repetition Start.
     pub index: i64,

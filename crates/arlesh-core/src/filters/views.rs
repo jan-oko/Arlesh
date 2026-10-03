@@ -13,7 +13,7 @@ use super::{model::Preset, zen::ZEN_PRESET};
 pub const PLAN_VIEW_PRESET: Preset = Preset::Plan;
 
 /// One of the app's views, as a tab names it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum View {
     /// The Mindmap.

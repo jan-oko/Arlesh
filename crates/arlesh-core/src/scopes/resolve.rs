@@ -74,7 +74,7 @@ pub fn interval_contains(outer: Bounds, inner: Bounds) -> bool {
 ///
 /// Lives here rather than beside a command because both adapters that expose scopes — the Tauri
 /// commands and the MCP server — return this same shape, and neither is below the other.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct ResolvedScope {
     /// Inclusive window start.
     pub start: String,

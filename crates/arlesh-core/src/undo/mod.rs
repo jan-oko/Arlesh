@@ -77,6 +77,7 @@ pub mod statement;
 
 use sqlx::SqliteConnection;
 
+use crate::database::client::ClientId;
 use crate::database::session::SessionFactory;
 use error::UndoError;
 use model::{
@@ -411,12 +412,14 @@ impl JournalRow {
 pub struct UndoOperator<'session> {
     /// The session's connection, borrowed for the duration of this operator's life.
     connection: &'session mut SqliteConnection,
+    /// The client the session writes as: its Undo Stack holds this client's Gestures only.
+    client: ClientId,
 }
 
 impl<'session> UndoOperator<'session> {
-    /// Wraps the connection a session is lending.
-    pub(crate) fn new(connection: &'session mut SqliteConnection) -> Self {
-        Self { connection }
+    /// Wraps the connection a session is lending, for a session writing as `client`.
+    pub(crate) fn new(connection: &'session mut SqliteConnection, client: ClientId) -> Self {
+        Self { connection, client }
     }
 
     /// Reads the ambient context every journal trigger sees.
@@ -500,13 +503,17 @@ impl<'session> UndoOperator<'session> {
         Ok(ended)
     }
 
-    /// The `user` entries `gesture` produced, oldest first.
+    /// The `user` entries `gesture` produced through this session's client, oldest first.
     ///
     /// Filtered by source, which is the whole of how an agent's write stays out of the user's
     /// Ctrl+Z. The filter is per *entry* rather than per Gesture on purpose: an MCP write that
     /// landed while a user Gesture happened to be open carries that Gesture's id, because the
     /// ambient context is one row for the whole application, and it is the `source` column that
     /// tells the two apart.
+    ///
+    /// Filtered by client for the same reason, one level out: a Python session's write that landed
+    /// while one of the app's Gestures was open carries that Gesture's id too, and the `client`
+    /// column (migration 0092) is what keeps it off the app's Undo Stack.
     #[tracing::instrument(skip(self))]
     pub async fn entries_for(
         &mut self,
@@ -515,11 +522,12 @@ impl<'session> UndoOperator<'session> {
         let rows: Vec<JournalRow> = sqlx::query_as(
             "SELECT seq, table_name, row_id, operation, before_image, after_image \
                FROM undo_journal \
-              WHERE gesture_id = ? AND source = ? \
+              WHERE gesture_id = ? AND source = ? AND client = ? \
               ORDER BY seq",
         )
         .bind(&gesture.0)
         .bind(WriteSource::User.as_str())
+        .bind(self.client.as_str())
         .fetch_all(&mut *self.connection)
         .await?;
 
@@ -548,17 +556,20 @@ impl<'session> UndoOperator<'session> {
     /// leaving the forward entries there would leave the journal asserting changes the board no
     /// longer carries, with nothing after them to say they were taken back.
     ///
-    /// Filtered by source for the same reason [`entries_for`](Self::entries_for) is — an agent's
-    /// write that landed while this Gesture was open is not the Gesture's to reverse, so it is not
-    /// the Gesture's to erase either.
+    /// Filtered by source and client for the same reason [`entries_for`](Self::entries_for) is —
+    /// an agent's or another client's write that landed while this Gesture was open is not the
+    /// Gesture's to reverse, so it is not the Gesture's to erase either.
     #[tracing::instrument(skip(self))]
     pub async fn discard(&mut self, gesture: &GestureId) -> Result<u64, UndoError> {
-        let removed = sqlx::query("DELETE FROM undo_journal WHERE gesture_id = ? AND source = ?")
-            .bind(&gesture.0)
-            .bind(WriteSource::User.as_str())
-            .execute(&mut *self.connection)
-            .await?
-            .rows_affected();
+        let removed = sqlx::query(
+            "DELETE FROM undo_journal WHERE gesture_id = ? AND source = ? AND client = ?",
+        )
+        .bind(&gesture.0)
+        .bind(WriteSource::User.as_str())
+        .bind(self.client.as_str())
+        .execute(&mut *self.connection)
+        .await?
+        .rows_affected();
         Ok(removed)
     }
 
@@ -693,7 +704,8 @@ impl<'session> UndoOperator<'session> {
         sqlx::query(
             "INSERT INTO undo_context (id) VALUES (1) \
              ON CONFLICT (id) DO UPDATE \
-                SET gesture_id = NULL, depth = 0, source = 'user', suppressed = 0",
+                SET gesture_id = NULL, depth = 0, source = 'user', suppressed = 0, \
+                    client = 'desktop'",
         )
         .execute(&mut *self.connection)
         .await?;

@@ -21,7 +21,9 @@ pub const NODE_NAMESPACE: [u8; 16] = [
 ];
 
 /// A derived node's id: the canonical `8-4-4-4-12` spelling of a UUID-v5.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(transparent)]
 pub struct DerivedId(String);
 
@@ -52,7 +54,9 @@ impl fmt::Display for DerivedId {
 ///
 /// Untagged on the wire, because the two spellings cannot be confused: a number is a stored row,
 /// a string a derived one.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(untagged)]
 pub enum NodeId {
     /// A row of the kind's own table.

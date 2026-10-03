@@ -34,6 +34,7 @@ use std::ops::DerefMut;
 use sqlx::pool::PoolConnection;
 use sqlx::{Sqlite, SqliteConnection, Transaction};
 
+use super::client::ClientId;
 use super::DatabasePool;
 use crate::access::AccessOperator;
 use crate::block_reasons::BlockReasonOperator;
@@ -154,6 +155,12 @@ impl SessionMode for Transactional {
 pub struct Db<M: SessionMode> {
     /// The one connection this session owns, either pooled or with a transaction open on it.
     handle: M::Handle,
+    /// The client this session writes as — whose Gestures its Undo operator reads back.
+    client: ClientId,
+    /// The ambient context's `client` as it was before this session stamped its own over it, to
+    /// put back at the commit. `None` when nothing was stamped: a pooled session, a desktop one,
+    /// or a read-only one.
+    restore_client: Option<String>,
 }
 
 impl<M: SessionMode> Db<M> {
@@ -241,7 +248,8 @@ impl<M: SessionMode> Db<M> {
     /// by triggers, and what is reachable here is the context those triggers read. See
     /// [`crate::undo`].
     pub fn undo(&mut self) -> UndoOperator<'_> {
-        UndoOperator::new(self.connection())
+        let client = self.client.clone();
+        UndoOperator::new(self.connection(), client)
     }
 }
 
@@ -278,8 +286,18 @@ impl Db<Transactional> {
     // The blocks differ by exactly one identifier, `begin` versus `connect`, so the second cannot
     // be failing for an unrelated reason while the first still compiles. Keep them one word apart
     // if you edit either.
+    ///
+    /// A session that stamped its client over the ambient context (see
+    /// [`SessionFactory::begin`]) puts the old value back as its last statement, so the context
+    /// reads `desktop` again the moment the writer lock is released.
     #[tracing::instrument(skip(self))]
-    pub async fn commit(self) -> Result<(), sqlx::Error> {
+    pub async fn commit(mut self) -> Result<(), sqlx::Error> {
+        if let Some(previous) = self.restore_client.take() {
+            sqlx::query("UPDATE undo_context SET client = ? WHERE id = 1")
+                .bind(previous)
+                .execute(&mut *self.handle)
+                .await?;
+        }
         self.handle.commit().await
     }
 }
@@ -288,16 +306,72 @@ impl Db<Transactional> {
 ///
 /// Cloning is cheap: the pool is reference-counted, and every clone hands out sessions over the
 /// same set of connections.
+///
+/// Every factory writes as one **client** ([`ClientId`]): the desktop app's is `desktop`, and
+/// [`SessionFactory::new`] is that. A factory may instead be **read-only**, for a database opened
+/// with SQLite's `mode=ro`; see [`crate::database::open`].
 #[derive(Debug, Clone)]
 pub struct SessionFactory {
     /// The pool sessions are drawn from. Nothing outside this module may reach it.
     pool: DatabasePool,
+    /// The client every session from this factory writes as.
+    client: ClientId,
+    /// Whether the pool's connections are read-only.
+    read_only: bool,
 }
 
 impl SessionFactory {
-    /// Takes ownership of `pool`. Called once, at bootstrap.
+    /// Takes ownership of `pool`, writing as the desktop app. Called once, at bootstrap.
     pub fn new(pool: DatabasePool) -> Self {
-        Self { pool }
+        Self::with_client(pool, ClientId::desktop())
+    }
+
+    /// Takes ownership of `pool`, writing as `client`.
+    pub fn with_client(pool: DatabasePool, client: ClientId) -> Self {
+        Self {
+            pool,
+            client,
+            read_only: false,
+        }
+    }
+
+    /// Takes ownership of `pool`, whose connections are read-only.
+    ///
+    /// A read-only factory's [`begin`](Self::begin) opens a plain `BEGIN`: the immediate one takes
+    /// the writer lock, which a read-only connection cannot have, and is there only to stop a
+    /// read-then-write transaction failing to upgrade — which a session that cannot write never
+    /// tries.
+    pub fn read_only(pool: DatabasePool) -> Self {
+        Self {
+            pool,
+            client: ClientId::desktop(),
+            read_only: true,
+        }
+    }
+
+    /// The client sessions from this factory write as.
+    pub fn client(&self) -> &ClientId {
+        &self.client
+    }
+
+    /// Whether sessions from this factory can write.
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
+    }
+
+    /// Closes every connection, waiting for sessions still out to come back first.
+    ///
+    /// The app never calls it — its pool lives as long as the process. A host that opens and
+    /// closes databases (the Python bindings) does, so a closed database leaves no connection
+    /// holding its file open.
+    pub async fn close(&self) {
+        self.pool.close().await;
+    }
+
+    /// The pool itself, for tests that inspect what the sessions wrote.
+    #[cfg(test)]
+    pub(crate) fn pool_for_tests(&self) -> &DatabasePool {
+        &self.pool
     }
 
     /// Checks one connection out of the pool, waiting if none is free.
@@ -307,7 +381,11 @@ impl SessionFactory {
     #[tracing::instrument(skip(self))]
     pub async fn connect(&self) -> Result<Db<Pooled>, sqlx::Error> {
         let handle = self.pool.acquire().await?;
-        Ok(Db { handle })
+        Ok(Db {
+            handle,
+            client: self.client.clone(),
+            restore_client: None,
+        })
     }
 
     /// Checks one connection out of the pool and opens a write transaction on it.
@@ -327,11 +405,53 @@ impl SessionFactory {
     /// than the busy timeout [`crate::database`] sets. There is no second, read-only entry point
     /// beside it: a session that only reads wants [`Self::connect`], which is what its own doc
     /// already says.
+    ///
+    /// # Client stamping
+    ///
+    /// The Undo Journal's triggers stamp every entry with the `client` in the ambient context
+    /// (migration 0092), which reads `desktop` whenever no transaction is open. A factory writing
+    /// as any other client stamps its own name there as this transaction's first statement, and
+    /// [`Db::commit`] puts the old value back as its last. Both happen under the writer lock this
+    /// `BEGIN` takes, so no other connection — in this process or another — ever sees the change,
+    /// and a rollback undoes it with everything else. This is why a non-desktop client writes only
+    /// through `begin`: a pooled write has no transaction to hide the stamp in.
     #[tracing::instrument(skip(self))]
     pub async fn begin(&self) -> Result<Db<Transactional>, sqlx::Error> {
-        let handle = self.pool.begin_with("BEGIN IMMEDIATE").await?;
-        Ok(Db { handle })
+        if self.read_only {
+            let handle = self.pool.begin_with("BEGIN").await?;
+            return Ok(Db {
+                handle,
+                client: self.client.clone(),
+                restore_client: None,
+            });
+        }
+        let mut handle = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let restore_client = if self.client.is_desktop() {
+            None
+        } else {
+            Some(stamp_client(&mut handle, &self.client).await?)
+        };
+        Ok(Db {
+            handle,
+            client: self.client.clone(),
+            restore_client,
+        })
     }
+}
+
+/// Writes `client` into the ambient context, and returns the value it replaced.
+async fn stamp_client(
+    connection: &mut SqliteConnection,
+    client: &ClientId,
+) -> Result<String, sqlx::Error> {
+    let previous: String = sqlx::query_scalar("SELECT client FROM undo_context WHERE id = 1")
+        .fetch_one(&mut *connection)
+        .await?;
+    sqlx::query("UPDATE undo_context SET client = ? WHERE id = 1")
+        .bind(client.as_str())
+        .execute(&mut *connection)
+        .await?;
+    Ok(previous)
 }
 
 #[cfg(test)]

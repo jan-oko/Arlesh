@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::scopes::key::ScopeKey;
 
 /// Identifies a person row by its primary key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PersonId(pub i64);
 
 impl From<i64> for PersonId {
@@ -20,7 +20,7 @@ impl From<PersonId> for i64 {
 }
 
 /// A person row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Person {
     /// Primary key.
     pub id: i64,
@@ -33,7 +33,7 @@ pub struct Person {
 }
 
 /// Request body for creating a person.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct CreatePersonRequest {
     /// Display name.
     pub name: String,
@@ -44,7 +44,7 @@ pub struct CreatePersonRequest {
 }
 
 /// Request body for updating a person.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct UpdatePersonRequest {
     /// New name (if provided).
     pub name: Option<String>,
@@ -55,7 +55,7 @@ pub struct UpdatePersonRequest {
 }
 
 /// An event row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Event {
     /// Primary key.
     pub id: i64,
@@ -70,7 +70,7 @@ pub struct Event {
 }
 
 /// Request body for creating an event.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct CreateEventRequest {
     /// Display title.
     pub title: String,
@@ -83,7 +83,7 @@ pub struct CreateEventRequest {
 }
 
 /// A thread row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Thread {
     /// Primary key.
     pub id: i64,
@@ -94,7 +94,7 @@ pub struct Thread {
 }
 
 /// Request body for creating a thread.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct CreateThreadRequest {
     /// Display title.
     pub title: String,

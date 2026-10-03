@@ -7,7 +7,7 @@ use crate::nodes::{id::NodeId, origin::Origin};
 use crate::scopes::{key::ScopeKey, resolve::Bounds};
 
 /// Identifies a task row by its primary key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TaskId(pub i64);
 
 impl From<i64> for TaskId {
@@ -22,7 +22,7 @@ impl From<TaskId> for i64 {
 }
 
 /// Identifies a goal row by its primary key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GoalId(pub i64);
 
 impl From<i64> for GoalId {
@@ -40,7 +40,7 @@ impl From<GoalId> for i64 {
 ///
 /// One of the two status models (see [`Status`]): an Agentic Task holds an [`AgenticStatus`]
 /// instead, and neither model can hold the other's values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskStatus {
     /// Not yet started.
@@ -95,7 +95,7 @@ impl TaskStatus {
 /// **Review is derived, never stored**: an On Agent Task with an open agentic *question* wait
 /// beneath it reads Review (see [`crate::tasks::review`]). It has no database spelling, so a write
 /// naming it is refused, and [`Self::stored`] is what the row holds while it reads Review.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AgenticStatus {
     /// Ready for an agent to claim, or for the user.
@@ -174,7 +174,7 @@ impl AgenticStatus {
 ///
 /// Behaviour dispatches on the kind first; the helpers here are only what the two models really
 /// share — done, to do, begun.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", content = "status", rename_all = "snake_case")]
 pub enum Status {
     /// An ordinary Task's status.
@@ -322,7 +322,9 @@ impl Status {
 /// forced by its scope Resolution alone), and **Frozen** is Goal/Project vocabulary. Giving the
 /// Task side its own type is what makes "Backlog is valid on Tasks only" a thing the compiler
 /// knows rather than a comment: nothing can hand a Goal a `Backlog`, or a Task a `Frozen`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskArchival {
     /// In play, and filtered on its status alone. The default.
@@ -376,7 +378,9 @@ impl TaskArchival {
 /// `Option` on the request field) leaves the column alone.
 ///
 /// Independent of the delegate: a Task may be agentic and delegated, either, or neither.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskAgentic {
     /// No value of its own — reads the nearest flagged ancestor. Stored as NULL, and the state
@@ -427,7 +431,7 @@ impl TaskAgentic {
 /// never by delegation, which hands over responsibility an agent cannot hold.
 ///
 /// On the wire it is `{"kind": "person", "id": 3}`. Independent of the Agentic flag.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Delegate {
     /// Delegated to the Person with this id.
@@ -468,7 +472,7 @@ impl Delegate {
 }
 
 /// Goal lifecycle status.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GoalStatus {
     /// Actively being pursued.
@@ -509,7 +513,7 @@ impl GoalStatus {
 ///
 /// It also decides the item's **default due** (see [`crate::tasks::lifecycle::effective_due`]):
 /// Keep Overdue makes the Time Scope the due, Archive leaves the item with none.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OnScopeExit {
     /// The item **Lapses** — its Resolution reads Missed and it is archived. Its default due is
@@ -542,7 +546,7 @@ impl OnScopeExit {
 
 /// The Duration parameters of a Time Scope, retained after snapshotting so the UI can keep
 /// presenting and editing the scope in duration form.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 pub struct DurationSpec {
     /// Number of scope-kind units (e.g. 3 in "3 weeks").
     pub n: i64,
@@ -552,7 +556,7 @@ pub struct DurationSpec {
 
 /// An item's relevance window: a resolved boundaries `[start, end]` scope range (equal ids
 /// denote a single scope), optionally tagged with the Duration parameters it came from.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 pub struct TimeScope {
     /// Start boundary scope id.
     pub start_id: ScopeKey,
@@ -581,7 +585,7 @@ impl TimeScope {
 }
 
 /// A task row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Task {
     /// Primary key for a stored row, or the UUID of a derived one.
     pub id: NodeId,
@@ -646,7 +650,7 @@ pub struct Task {
 }
 
 /// A task row enriched with virtual block information.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TaskWithBlockers {
     /// The base task.
     pub task: Task,
@@ -656,7 +660,7 @@ pub struct TaskWithBlockers {
 
 /// A single dependency edge: `task_id` depends on `(dependency_type, dependency_id)`. Returned by the
 /// bulk-load endpoint so the mindmap can derive virtual "blocked by" reasons without a per-task call.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TaskDependencyEdge {
     /// The dependent task.
     pub task_id: NodeId,
@@ -667,7 +671,7 @@ pub struct TaskDependencyEdge {
 }
 
 /// A goal row as returned from the database.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Goal {
     /// Primary key for a stored row, or the UUID of a derived one.
     pub id: NodeId,
@@ -695,7 +699,7 @@ pub struct Goal {
 }
 
 /// Dependency reference: a task, a goal, or an expectation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Dependency {
     /// Depends on another task.
@@ -716,7 +720,7 @@ pub enum Dependency {
 }
 
 /// Request body for creating a task.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct CreateTaskRequest {
     /// Display title.
     pub title: String,
@@ -761,7 +765,7 @@ pub struct CreateTaskRequest {
 }
 
 /// Request body for updating a task.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct UpdateTaskRequest {
     /// New title (if provided).
     pub title: Option<String>,
@@ -825,7 +829,7 @@ pub struct UpdateTaskRequest {
 }
 
 /// Request body for creating a goal.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct CreateGoalRequest {
     /// Display title.
     pub title: String,
@@ -847,7 +851,7 @@ pub struct CreateGoalRequest {
 mod tests;
 
 /// Request body for updating a goal.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct UpdateGoalRequest {
     /// New title (if provided).
     pub title: Option<String>,
@@ -871,7 +875,7 @@ pub struct UpdateGoalRequest {
 }
 
 /// Identifies a commitment row by its primary key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CommitmentId(pub i64);
 
 impl From<i64> for CommitmentId {
@@ -894,7 +898,9 @@ impl From<CommitmentId> for i64 {
 /// default would destroy. A polarity field (abstentions default Kept, obligations default Broken)
 /// was considered and rejected on exactly this ground; see
 /// `docs/adr/0005-commitment-node-kind.md`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum Verdict {
     /// No judgement recorded. The default, and never reached by inference.
@@ -942,7 +948,7 @@ impl Verdict {
 /// commitment, so there is nothing to schedule it into), no `on_scope_exit` (a Commitment always
 /// Keeps, and the Verdict Window is what eventually ends that), no `status`, no `archival`, no
 /// `delegate_to`, and no dependency edges in either direction.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Commitment {
     /// Primary key for a stored row, or the UUID of a derived one.
     pub id: NodeId,
@@ -975,7 +981,7 @@ pub struct Commitment {
 }
 
 /// Request body for creating a commitment.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct CreateCommitmentRequest {
     /// Display title.
     pub title: String,
@@ -997,7 +1003,7 @@ pub struct CreateCommitmentRequest {
 }
 
 /// Request body for updating a commitment.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct UpdateCommitmentRequest {
     /// New title (if provided).
     pub title: Option<String>,
@@ -1080,7 +1086,7 @@ impl AgenticPriority {
 ///
 /// Every text field is plain text, empty when unset. **Spec** is the one that matters to the rules:
 /// a Task that reads as Agentic cannot be started without one.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct AgenticBrief {
     /// `MW`, `A`, `B` or `C`, most urgent first; `None` for no priority set.
     #[serde(default)]
@@ -1111,7 +1117,7 @@ impl AgenticBrief {
 ///
 /// Thinner than an Expectation on purpose — only what a wait needs up front. No status: a status
 /// exists only once the wait does. No parent: the spawned wait hangs under its Task.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct AsyncTemplate {
     /// The spawned wait's title.
     pub title: String,
@@ -1130,7 +1136,7 @@ pub struct AsyncTemplate {
 /// template is done. Its state is an **overlay** keyed by the Task, written only when the wait
 /// itself is changed; with none written it is pending and live. Everything else the wait shows is
 /// read from the Task's template.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SpawnedWait {
     /// The Task that spawned it.
     pub task_id: i64,
@@ -1148,7 +1154,7 @@ pub struct SpawnedWait {
 }
 
 /// Request body for changing a spawned wait: release it, take the release back, or archive it.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct UpdateSpawnedWaitRequest {
     /// New status (if provided).
     pub status: Option<ExpectationStatus>,
@@ -1157,7 +1163,7 @@ pub struct UpdateSpawnedWaitRequest {
 }
 
 /// Identifies an expectation row by its primary key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ExpectationId(pub i64);
 
 impl From<i64> for ExpectationId {
@@ -1176,7 +1182,9 @@ impl From<ExpectationId> for i64 {
 /// Two states and no third. An Expectation is not an action item, so it has no "in progress":
 /// the thing it waits on happens somewhere else, and the only event on this side is noticing that
 /// it has. **Released** is what unblocks the Tasks depending on it.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ExpectationStatus {
     /// Still waited on. The default, and what blocks dependents.
@@ -1209,7 +1217,9 @@ impl ExpectationStatus {
 ///
 /// A wait can be put away without pretending it was released — the reply that will never come —
 /// so this is its own column rather than a third status.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ExpectationArchival {
     /// In play. The default.
@@ -1244,7 +1254,7 @@ impl ExpectationArchival {
 /// design: no Plan and no On-exit behaviour (a wait is not something you schedule, and it is never
 /// Missed), no block reasons and no dependencies of its own — it depends on nothing,
 /// only Tasks depend on it. Beside its Time Scope it carries the optional **Check every**.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Expectation {
     /// Primary key for a stored wait, or the UUID of a derived one (a Task's spawned wait, or a
     /// delegated Task's wait on its delegate).
@@ -1307,7 +1317,7 @@ fn question_by_default() -> bool {
 }
 
 /// Request body for creating an expectation.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct CreateExpectationRequest {
     /// Display title.
     pub title: String,
@@ -1336,7 +1346,7 @@ pub struct CreateExpectationRequest {
 }
 
 /// Request body for updating an expectation.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct UpdateExpectationRequest {
     /// New title (if provided).
     pub title: Option<String>,
