@@ -2,14 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useQuickDependency } from "./use-quick-dependency";
-import type { TaskDependencyEdge } from "@/api/tasks";
+import type { Dependency } from "@/api/tasks";
 import { useDisplayStore } from "@/stores/use-display-store";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode } from "@/utils/mindmap-tree";
 import { fixtureRowId } from "@/test/node-fixture";
 
 /**
- * Nothing between the hook and Tauri is stubbed: the edges and the write go through the real
+ * Nothing between the hook and Tauri is stubbed: the candidates and the write go through the real
  * `src/api/` wrappers and the real Gesture door, so "one `Ctrl+Z`" is checked where it is decided.
  */
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -28,13 +28,19 @@ interface Write {
 }
 
 interface Backend {
-  edges?: TaskDependencyEdge[];
-  refuseEdges?: string;
+  /** What the backend offers as prerequisites — by default every other node the board holds. */
+  candidates?: Dependency[];
+  refuseCandidates?: string;
   refuseWrite?: string;
 }
 
-/** A backend that serves the board's edges and journals every write with its Gesture. */
-function installBackend({ edges = [], refuseEdges, refuseWrite }: Backend = {}): { writes: Write[]; gestures: () => number } {
+/** Every node of {@link board} but `task-1`, as the backend names them. */
+const EVERY_OTHER: Dependency[] = [
+  { type: "task", id: 2 }, { type: "task", id: 3 }, { type: "expectation", id: 7 }, { type: "goal", id: 4 },
+];
+
+/** A backend that serves the candidates and journals every write with its Gesture. */
+function installBackend({ candidates = EVERY_OTHER, refuseCandidates, refuseWrite }: Backend = {}): { writes: Write[]; gestures: () => number } {
   const writes: Write[] = [];
   let depth = 0;
   let started = 0;
@@ -50,8 +56,8 @@ function installBackend({ edges = [], refuseEdges, refuseWrite }: Backend = {}):
       if (depth === 0) current = null;
       return Promise.resolve(null);
     }
-    if (command === "list_all_task_dependencies") {
-      return refuseEdges === undefined ? Promise.resolve(edges) : Promise.reject(new Error(refuseEdges));
+    if (command === "dependency_candidates") {
+      return refuseCandidates === undefined ? Promise.resolve(candidates) : Promise.reject(new Error(refuseCandidates));
     }
     if (refuseWrite !== undefined) return Promise.reject(new Error(refuseWrite));
     writes.push({ command, args, gesture: current });
@@ -115,16 +121,15 @@ describe("useQuickDependency — opening", () => {
     expect(result.current.target?.candidates?.map((c) => c.id)).toEqual(["task-2", "task-3", "expectation-7", "goal-4"]);
   });
 
-  it("leaves out what it already depends on and what depends on it", async () => {
-    installBackend({ edges: [
-      { task_id: 1, dependency_type: "expectation", dependency_id: 7 },
-      { task_id: 1, dependency_type: "goal", dependency_id: 4 },
-      { task_id: 2, dependency_type: "task", dependency_id: 1 },
-    ] });
+  it("offers only what the backend offers for the Task", async () => {
+    // Leaving out what it already depends on and what depends on it is the backend's
+    // (`tasks::rules::dependencies::candidates`); the picker offers what comes back.
+    installBackend({ candidates: [{ type: "goal", id: 4 }] });
     const { result } = setup();
     act(() => { result.current.open(["task-1"]); });
     await waitFor(() => expect(result.current.target?.candidates).not.toBeNull());
-    expect(result.current.target?.candidates).toEqual([]);
+    expect(result.current.target?.candidates?.map((c) => c.id)).toEqual(["goal-4"]);
+    expect(tauriInvoke).toHaveBeenCalledWith("dependency_candidates", { id: 1 });
   });
 
   it("refuses a node that holds no dependencies, by name", () => {
@@ -144,8 +149,8 @@ describe("useQuickDependency — opening", () => {
     expect(lastToast(showToast)).toBe("warnings:quickDependencyOneAtATime");
   });
 
-  it("closes and says so when the edges cannot be read", async () => {
-    installBackend({ refuseEdges: "database is locked" });
+  it("closes and says so when the candidates cannot be read", async () => {
+    installBackend({ refuseCandidates: "database is locked" });
     const { result, showToast } = setup();
     act(() => { result.current.open(["task-1"]); });
     await waitFor(() => expect(result.current.target).toBeNull());

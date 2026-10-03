@@ -1,29 +1,17 @@
 import { describe, it, expect } from "vitest";
-import type { TaskDependencyEdge } from "@/api/tasks";
+import type { Dependency } from "@/api/tasks";
 import { collectSearchableNodes, flattenNodesById } from "@/utils/mindmap-tree";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
-import { canHoldDependencies, dependencyCandidates, dependencyOn, matchCandidates } from "./dependency-candidates";
+import { canHoldDependencies, dependencyCandidates, matchCandidates } from "./dependency-candidates";
 
 function node(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children: [], ...extra };
 }
 
-function edge(taskId: number | string, type: string, id: number | string): TaskDependencyEdge {
-  return { task_id: taskId, dependency_type: type, dependency_id: id };
-}
-
-function candidateIds(tree: MindmapNode, dependentId: string, edges: TaskDependencyEdge[]): string[] {
-  const byId = flattenNodesById(tree);
-  const dependent = byId.get(dependentId);
-  if (dependent === undefined) throw new Error(`no ${dependentId} in the fixture`);
-  return dependencyCandidates(dependent, collectSearchableNodes(tree), byId, edges).map((c) => c.id);
-}
-
 const checkTask = node("task-90", "task", {
   origin: { kind: "check", wait_kind: "stored", wait_id: 7, due_at: "2026-09-01T00:00:00" },
 });
-const spawnedWait = node("expectation-91", "expectation", { origin: { kind: "spawned_wait", task_id: 3 } });
 
 function board(): MindmapNode {
   return node("root", "domain", {
@@ -32,7 +20,6 @@ function board(): MindmapNode {
         children: [node("task-1", "task"), node("task-2", "task"), node("task-3", "task"), checkTask],
       }),
       node("expectation-7", "expectation"),
-      spawnedWait,
       node("domain-4", "domain"),
       node("habit_group-virtual", "habit_group", { virtual: true }),
     ],
@@ -49,41 +36,29 @@ describe("canHoldDependencies", () => {
   });
 });
 
-describe("dependencyOn", () => {
-  it("names a Task by its row, an occurrence by its UUID, a Goal by its row and a stored wait by its id", () => {
-    expect(dependencyOn(node("task-5", "task"))).toEqual({ type: "task", id: 5 });
-    expect(dependencyOn(node("goal-1", "goal"))).toEqual({ type: "goal", id: 1 });
-    expect(dependencyOn(node("occ", "task", { rowId: "9d1c-uuid" }))).toEqual({ type: "task", id: "9d1c-uuid" });
-    expect(dependencyOn(node("expectation-7", "expectation"))).toEqual({ type: "expectation", id: 7 });
-  });
-
-  it("offers no edge onto a derived wait or anything but a Task, a Goal and an Expectation", () => {
-    expect(dependencyOn(spawnedWait)).toBeNull();
-    expect(dependencyOn(checkTask)).toBeNull();
-    expect(dependencyOn(node("domain-4", "domain"))).toBeNull();
-    expect(dependencyOn(node("commitment-2", "commitment"))).toBeNull();
-  });
-});
-
 describe("dependencyCandidates", () => {
-  it("offers every Goal, every other Task and every stored Expectation", () => {
-    expect(candidateIds(board(), "task-1", [])).toEqual(["goal-1", "task-2", "task-3", "expectation-7"]);
+  // Which nodes may be depended on is the backend's (`tasks::rules::dependencies::candidates`);
+  // this pins how its answer is found in the search pool.
+  it("finds each offered prerequisite in the search pool, in search order, with the edge it writes", () => {
+    const tree = board();
+    const allowed: Dependency[] = [{ type: "expectation", id: 7 }, { type: "task", id: 3 }, { type: "goal", id: 1 }];
+    const found = dependencyCandidates(collectSearchableNodes(tree), flattenNodesById(tree), allowed);
+    expect(found.map((c) => [c.id, c.dependency])).toEqual([
+      ["goal-1", { type: "goal", id: 1 }],
+      ["task-3", { type: "task", id: 3 }],
+      ["expectation-7", { type: "expectation", id: 7 }],
+    ]);
   });
 
-  it("leaves out what the Task already depends on", () => {
-    const edges = [edge(1, "task", 2), edge(1, "expectation", 7), edge(1, "goal", 1)];
-    expect(candidateIds(board(), "task-1", edges)).toEqual(["task-3"]);
+  it("offers nothing the backend did not, whatever its kind", () => {
+    const tree = board();
+    expect(dependencyCandidates(collectSearchableNodes(tree), flattenNodesById(tree), [])).toEqual([]);
   });
 
-  it("leaves out every Task that already depends on it, through a chain too, since that closes a cycle", () => {
-    // task-3 → task-2 → task-1: making task-1 depend on either would close the loop.
-    const edges = [edge(2, "task", 1), edge(3, "task", 2)];
-    expect(candidateIds(board(), "task-1", edges)).toEqual(["goal-1", "expectation-7"]);
-  });
-
-  it("keeps a Task that depends on the same wait or Goal — neither depends on anything, so no cycle runs through one", () => {
-    const edges = [edge(2, "expectation", 7), edge(3, "goal", 1)];
-    expect(candidateIds(board(), "task-1", edges)).toEqual(["goal-1", "task-2", "task-3", "expectation-7"]);
+  it("matches an occurrence by its UUID, as the backend names it", () => {
+    const tree = node("root", "domain", { children: [node("occ", "task", { rowId: "9d1c-uuid" })] });
+    const found = dependencyCandidates(collectSearchableNodes(tree), flattenNodesById(tree), [{ type: "task", id: "9d1c-uuid" }]);
+    expect(found.map((c) => c.id)).toEqual(["occ"]);
   });
 });
 
@@ -92,10 +67,8 @@ describe("matchCandidates", () => {
     const tree = node("root", "domain", {
       children: [node("task-1", "task", { title: "Write report" }), node("task-2", "task", { title: "Call the bank" }), node("task-3", "task", { title: "Review REPORT" })],
     });
-    const byId = flattenNodesById(tree);
-    const dependent = byId.get("task-2");
-    if (dependent === undefined) throw new Error("fixture");
-    const all = dependencyCandidates(dependent, collectSearchableNodes(tree), byId, []);
+    const allowed: Dependency[] = [{ type: "task", id: 1 }, { type: "task", id: 3 }];
+    const all = dependencyCandidates(collectSearchableNodes(tree), flattenNodesById(tree), allowed);
     expect(matchCandidates(all, "  ", 8)).toEqual([]);
     expect(matchCandidates(all, "report", 8).map((c) => c.id)).toEqual(["task-1", "task-3"]);
     expect(matchCandidates(all, "report", 1).map((c) => c.id)).toEqual(["task-1"]);

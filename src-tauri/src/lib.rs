@@ -161,6 +161,7 @@ pub fn run() {
             commands::tasks::get_task,
             commands::tasks::list_tasks,
             commands::tasks::update_task,
+            commands::tasks::dependency_candidates,
             commands::gestures::step_task_status,
             commands::gestures::toggle_task_agentic,
             commands::gestures::press_commitment_verdict,

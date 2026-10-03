@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { getErrorMessage } from "@/api/errors";
 import { withGesture } from "@/api/gesture";
-import { addTaskDependency, listAllTaskDependencies } from "@/api/tasks";
+import { addTaskDependency, fetchDependencyCandidates } from "@/api/tasks";
 import { useDisplayStore } from "@/stores/use-display-store";
 import type { PendingToast } from "@/stores/use-mindmap-store";
 import { canHoldDependencies, dependencyCandidates } from "@/utils/dependency-candidates";
@@ -48,9 +48,9 @@ export interface QuickDependency {
  * Adds a prerequisite to a Task without opening the editor — bare `D` on the Mindmap, List View
  * and Steps View.
  *
- * The search offers what the editor's Dependencies field offers, less what cannot be picked: the
- * Task itself, what it already depends on, and every Task that already depends on it (a cycle the
- * backend would refuse). Archived nodes follow the node search's setting. The write is the editor's
+ * The search offers what the backend says the Task may depend on (`dependency_candidates`): not
+ * the Task itself, nor what it already depends on, nor any Task that already depends on it (a cycle
+ * the writer would refuse). Archived nodes follow the node search's setting. The write is the editor's
  * own `add_task_dependency`, so a refusal the search could not foresee still comes back from the
  * backend, and is shown as a toast rather than dropped.
  */
@@ -67,10 +67,10 @@ export function useQuickDependency({ tree, findNode, reload, showToast }: Option
       const ticket = ++opening.current;
       const nodes = collectSearchableNodes(tree, { skipArchived: !includeArchived });
       const byId = flattenNodesById(tree);
-      listAllTaskDependencies()
-        .then((edges) => {
+      fetchDependencyCandidates(rowIdOf(dependent))
+        .then((allowed) => {
           if (opening.current !== ticket) return;
-          const candidates = dependencyCandidates(dependent, nodes, byId, edges);
+          const candidates = dependencyCandidates(nodes, byId, allowed);
           setTarget((current) => (current === null ? null : { ...current, candidates }));
         })
         .catch((error: unknown) => {

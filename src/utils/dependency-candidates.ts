@@ -1,4 +1,4 @@
-import type { Dependency, TaskDependencyEdge } from "@/api/tasks";
+import type { Dependency } from "@/api/tasks";
 import type { RowId } from "@/api/node-id";
 import { isDerivedWait } from "@/utils/derived-wait";
 import type { SearchableNode } from "@/utils/mindmap-tree";
@@ -18,69 +18,29 @@ export function canHoldDependencies(node: MindmapNode): boolean {
   return node.kind === "task" && node.virtual !== true && node.rowId !== undefined && !isDerivedWait(node);
 }
 
-/**
- * The edge that makes a Task depend on `node`, or `null` when `node` cannot be depended on here.
- * A Task or a Goal (stored or an occurrence) and a **stored** Expectation can; a derived wait — a
- * check task, a delegated Task's wait, the wait an Asynchronous Task spawned — has no row an edge
- * can name, since an Expectation edge carries a stored id.
- */
-export function dependencyOn(node: MindmapNode): Dependency | null {
-  if (canHoldDependencies(node) && node.rowId !== undefined) return { type: "task", id: node.rowId };
-  if (node.kind === "goal" && node.virtual !== true && node.rowId !== undefined) return { type: "goal", id: node.rowId };
-  if (node.kind !== "expectation" || isDerivedWait(node) || typeof node.rowId !== "number") return null;
-  return { type: "expectation", id: node.rowId };
-}
-
-function edgeKey(type: string, id: RowId): string {
+/** A dependency edge's target, as a key both sides spell alike. */
+function dependencyKey(type: string, id: RowId): string {
   return `${type}:${String(id)}`;
 }
 
-/** Every Task that already depends on `dependent`, directly or through a chain — a pick among
- * them would close a cycle. `dependent` itself is included. */
-function transitiveDependents(dependent: RowId, edges: readonly TaskDependencyEdge[]): Set<string> {
-  const reached = new Set<string>([edgeKey("task", dependent)]);
-  const stack: RowId[] = [dependent];
-  for (let current = stack.pop(); current !== undefined; current = stack.pop()) {
-    const target = String(current);
-    for (const edge of edges) {
-      if (edge.dependency_type !== "task" || String(edge.dependency_id) !== target) continue;
-      const key = edgeKey("task", edge.task_id);
-      if (reached.has(key)) continue;
-      reached.add(key);
-      stack.push(edge.task_id);
-    }
-  }
-  return reached;
-}
-
 /**
- * What `dependent` may be made to depend on, in search order: every Task, Goal and stored
- * Expectation among `nodes`, less the Task itself, what it already depends on, and every Task that
- * already depends on it (directly or through a chain), since that edge would close a cycle the
- * backend refuses. A Goal or an Expectation depends on nothing, so no cycle runs through one. `nodes` is the node search's own pool, so its archived rule applies unchanged.
+ * The nodes of the search pool `nodes` the backend offers as prerequisites (`allowed`, from
+ * `fetchDependencyCandidates`), each with the edge picking it writes, in search order. Which nodes
+ * may be depended on is the backend's answer; this only finds them in the pool, whose archived rule
+ * applies unchanged.
  */
 export function dependencyCandidates(
-  dependent: MindmapNode,
   nodes: readonly SearchableNode[],
   byId: ReadonlyMap<string, MindmapNode>,
-  edges: readonly TaskDependencyEdge[],
+  allowed: readonly Dependency[],
 ): DependencyCandidate[] {
-  if (dependent.rowId === undefined) return [];
-  const own = String(dependent.rowId);
-  const existing = new Set(
-    edges.filter((edge) => String(edge.task_id) === own).map((edge) => edgeKey(edge.dependency_type, edge.dependency_id)),
-  );
-  const excluded = transitiveDependents(dependent.rowId, edges);
-  const candidates: DependencyCandidate[] = [];
-  for (const searchable of nodes) {
+  const offered = new Map(allowed.map((dependency) => [dependencyKey(dependency.type, dependency.id), dependency]));
+  return nodes.flatMap((searchable) => {
     const node = byId.get(searchable.id);
-    const dependency = node === undefined ? null : dependencyOn(node);
-    if (dependency === null) continue;
-    const key = edgeKey(dependency.type, dependency.id);
-    if (existing.has(key) || excluded.has(key)) continue;
-    candidates.push({ ...searchable, dependency });
-  }
-  return candidates;
+    if (node?.rowId === undefined) return [];
+    const dependency = offered.get(dependencyKey(node.kind, node.rowId));
+    return dependency === undefined ? [] : [{ ...searchable, dependency }];
+  });
 }
 
 /** The candidates whose title holds `query` (any case), at most `limit`; none until something is typed. */
