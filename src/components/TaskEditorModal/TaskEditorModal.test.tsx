@@ -558,7 +558,8 @@ describe("TaskEditorModal — the Agentic status model", () => {
       agentWaiting: { note: "CI is green.", question: true, answer: null },
     };
     const onAnswer = vi.fn().mockResolvedValue(true);
-    render(<TaskEditorModal {...defaultProps} node={agenticNode("review", { children: [question] })} onAnswer={onAnswer} />);
+    // The board names the open question (the load's `open_question` fact); the editor draws it.
+    render(<TaskEditorModal {...defaultProps} node={agenticNode("review", { children: [question], openQuestionId: 9 })} onAnswer={onAnswer} />);
     await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "status:agentic.review" })).toBeDisabled();
     expect(screen.getByText("Merge PR #1?")).toBeInTheDocument();
