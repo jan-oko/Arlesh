@@ -165,7 +165,7 @@ export function pasteRefusal(
   if (node.kind === "commitment") return { reason: PASTE_REFUSAL.COMMITMENT };
   if (node.kind === "expectation") return { reason: PASTE_REFUSAL.EXPECTATION };
   if (
-    (node.kind === "flow_goal" || node.kind === "flow_task") &&
+    node.kind !== "flow" && isFlowKind(node.kind) &&
     owningFlowId(tree, nodeId) !== owningFlowId(tree, target.id)
   ) {
     return { reason: PASTE_REFUSAL.OTHER_FLOW };

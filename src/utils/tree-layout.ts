@@ -328,8 +328,8 @@ export interface MindmapNode {
    * it hangs under — "the agent is waiting on you". `note` is its question, and the answer once
    * the user writes one in. */
   agentWaiting?: { note: string | null; question: boolean; answer: string | null };
-  /** The stored Expectations this Task depends on, by row id (Tasks only). */
-  expectationDependencyIds?: number[];
+  /** The Expectations this Task depends on, stored or derived (a Habit wait item's occurrence), by row id (Tasks only). */
+  expectationDependencyIds?: RowId[];
   /** Present on a Habit **iteration root** — what the Mindmap's collapse of passed iterations
    * reads off it. Absent on the occurrences beneath it, which never fold on their own. */
   habitIteration?: HabitIterationMeta;

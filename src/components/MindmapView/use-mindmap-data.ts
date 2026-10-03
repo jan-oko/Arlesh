@@ -611,7 +611,7 @@ export function buildTree(
     if (dep.dependency_type !== "expectation") continue;
     const node = nodeMap.get(`task-${dep.task_id}`);
     if (node === undefined) continue;
-    node.expectationDependencyIds = [...(node.expectationDependencyIds ?? []), storedId(dep.dependency_id)];
+    node.expectationDependencyIds = [...(node.expectationDependencyIds ?? []), dep.dependency_id];
   }
   // What the backend's rules say about each node (ADR 0010): the dependencies that block it, what
   // it inherits, its open question, whether it has expired. Drawn here, worded in the app's own
