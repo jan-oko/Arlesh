@@ -20,9 +20,9 @@ use std::collections::{HashMap, HashSet};
 use std::collections::VecDeque;
 
 use super::error::TaskError;
-use super::model::{
-    AgenticBrief, AgenticPriority, AgenticStatus, CommitmentId, GoalId, Status, TaskId,
-};
+use super::model::{AgenticBrief, AgenticPriority, CommitmentId, GoalId, Status, TaskId};
+use super::rules::agentic::stranded;
+pub(crate) use super::rules::agentic::{require_spec, settle_status};
 use super::TaskOperator;
 use crate::database::session::{Db, SessionMode};
 use crate::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind, NO_CYCLE};
@@ -454,44 +454,6 @@ pub(crate) async fn resolves_agentic<M: SessionMode>(
     }
 }
 
-/// The status a Task holds after a write, in the model its kind holds then.
-///
-/// `before` is what the row held, `requested` what the write names, `agentic` the kind after the
-/// write. A value already in that model stands — except Review, which is derived and never set. A
-/// requested value of the other model is refused when the kind does not change: an ordinary
-/// Started on an Agentic Task, say, or On Agent on an ordinary one. When the kind **does** change —
-/// a flag change, or a move under another ancestor — the value is **converted** explicitly
-/// ([`Status::converted`]), and refused, naming the Task, when it has no counterpart there.
-pub(crate) fn settle_status(
-    title: &str,
-    before: Status,
-    requested: Option<Status>,
-    agentic: bool,
-) -> Result<Status, TaskError> {
-    if requested == Some(Status::Agentic(AgenticStatus::Review)) {
-        return Err(TaskError::ReviewIsDerived);
-    }
-    let value = requested.unwrap_or(before);
-    if value.is_agentic() == agentic {
-        return Ok(value);
-    }
-    let kind_changes = before.is_agentic() != agentic;
-    if requested.is_some() && !kind_changes {
-        return Err(match agentic {
-            true => TaskError::NotAgenticStatus(value.as_str().to_string()),
-            false => TaskError::NotOrdinaryStatus(value.as_str().to_string()),
-        });
-    }
-    value
-        .converted(agentic)
-        .ok_or_else(|| TaskError::KindConversion(stranded(title, value)))
-}
-
-/// How a Task left without a counterpart is named in a refusal.
-pub(crate) fn stranded(title: &str, status: Status) -> String {
-    format!("“{title}” ({})", status.as_str().replace('_', " "))
-}
-
 /// Where a [`reconcile`] walk starts, or what it reaches next.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Reach {
@@ -602,15 +564,6 @@ async fn reconcile_occurrences<M: SessionMode>(
                 refused.push(stranded(&title, stored));
             }
         }
-    }
-    Ok(())
-}
-
-/// Refuses to start something that reads as Agentic, `agentic` already resolved, while `brief` has
-/// no Spec.
-pub(crate) fn require_spec(agentic: bool, brief: &Option<AgenticBrief>) -> Result<(), TaskError> {
-    if agentic && !brief.as_ref().is_some_and(AgenticBrief::has_spec) {
-        return Err(TaskError::AgenticSpecMissing);
     }
     Ok(())
 }

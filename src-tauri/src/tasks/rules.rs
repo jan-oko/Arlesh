@@ -9,6 +9,7 @@
 //! The submodules are re-exported at their old paths in the parent module, so callers did not
 //! change when they moved here.
 
+pub mod agentic;
 pub mod compound;
 pub mod lifecycle;
 pub mod review;
