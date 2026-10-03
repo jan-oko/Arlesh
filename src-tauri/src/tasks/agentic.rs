@@ -21,8 +21,8 @@ use std::collections::VecDeque;
 
 use super::error::TaskError;
 use super::model::{AgenticBrief, AgenticPriority, CommitmentId, GoalId, Status, TaskId};
-use super::rules::agentic::stranded;
-pub(crate) use super::rules::agentic::{require_spec, settle_status};
+
+pub(crate) use super::rules::agentic::{require_spec, settle_status, stranded};
 use super::TaskOperator;
 use crate::database::session::{Db, SessionMode};
 use crate::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind, NO_CYCLE};
