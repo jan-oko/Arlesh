@@ -27,7 +27,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-pub mod blocks;
+pub use rules::blocks;
+pub mod rules;
 
 #[cfg(test)]
 mod tests;

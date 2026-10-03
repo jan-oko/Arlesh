@@ -303,7 +303,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <p class="is">Never set: an On Agent Task with an open agent question beneath it. Answering the question puts it back On Agent.</p>
       <dl><dt>Why</dt><dd>It is the only way an agent hands work back, and the question says what you need to do.</dd>
       <dt>Without</dt><dd>Agent questions scatter as loose waits, and nothing on the Task says it is waiting on you.</dd>
-      <dt>Lives</dt><dd class="where">tasks/review.rs · src/utils/open-question.ts</dd></dl></article>
+      <dt>Lives</dt><dd class="where">tasks/rules/review.rs · src/utils/open-question.ts</dd></dl></article>
     <article class="card"><h3>Compound</h3>
       <p class="is">A Task whose status is read off its sub-items: Done when they all are, In Progress or Started as they progress. Never stored, and you cannot set it by hand.</p>
       <dl><dt>Why</dt><dd>A Task that is just the sum of its steps should never disagree with them.</dd>
@@ -334,22 +334,22 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <p class="is">Pending before the window, Active in it, Lapsed after. Worked out from the effective window, own or inherited.</p>
       <dl><dt>Why</dt><dd>Start should only offer what is in scope now.</dd>
       <dt>Without</dt><dd>Next month's work and last month's both crowd today.</dd>
-      <dt>Lives</dt><dd class="where">tasks/lifecycle.rs</dd></dl></article>
+      <dt>Lives</dt><dd class="where">tasks/rules/lifecycle.rs</dd></dl></article>
     <article class="card"><h3>Due and Overdue</h3>
       <p class="is">A due is the window whose end makes work late: one set on the Task, or by default its window under Keep Overdue. Overdue is a flag: unfinished, not archived, past the due's end. It shows as an amber border.</p>
       <dl><dt>Why</dt><dd>Being late is separate from being relevant; late work stays live.</dd>
       <dt>Without</dt><dd>Lateness had to be a resolution, which settled and hid work that was still open.</dd>
-      <dt>Lives</dt><dd class="where">tasks/lifecycle.rs (effective_due, derive_overdue)</dd></dl></article>
+      <dt>Lives</dt><dd class="where">tasks/rules/lifecycle.rs (effective_due, derive_overdue)</dd></dl></article>
     <article class="card"><h3>Habit clocks</h3>
       <p class="is">A Window clock lays iterations side by side; a missed one is Archived, carried into the next (Overdue), or left Owed. An Interval clock keeps one open instance and counts the Gap from completion.</p>
       <dl><dt>Why</dt><dd>Habits fail differently: a missed run is gone, a missed bill is still owed.</dd>
       <dt>Without</dt><dd>One rule that is wrong for half the habits.</dd>
-      <dt>Lives</dt><dd class="where">flows/habits.rs · flow_recurrences.clock, miss_policy</dd></dl></article>
+      <dt>Lives</dt><dd class="where">flows/rules/habits.rs · flow_recurrences.clock, miss_policy</dd></dl></article>
     <article class="card"><h3>Cooldown and done times</h3>
       <p class="is">A cooldown blocks the next iteration for N units after one is done; under Owed it blocks every open one. Every finish records when it happened, and a Task's done date can be corrected.</p>
       <dl><dt>Why</dt><dd>Done on Saturday should not count again on Sunday, and a habit ticked late should count from when it was really done.</dd>
       <dt>Without</dt><dd>Back-to-back completions across a window edge, and clocks counting from the moment you remembered to tick.</dd>
-      <dt>Lives</dt><dd class="where">flows/cooldown.rs · tasks/done_date.rs</dd></dl></article>
+      <dt>Lives</dt><dd class="where">flows/rules/cooldown.rs · tasks/done_date.rs</dd></dl></article>
   </div>
 </section>
 
@@ -365,12 +365,12 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <p class="is">How a passed window settled an item: Completed, or Missed under Archive. A Habit iteration resolves when every occurrence its template made is done, compound ones by their derived status.</p>
       <dl><dt>Why</dt><dd>A passed window needs an answer, and the Habit clocks count from it.</dd>
       <dt>Without</dt><dd>Old work hangs on with no verdict, and clocks have nothing to count from.</dd>
-      <dt>Lives</dt><dd class="where">tasks/lifecycle.rs · flows/occurrences.rs (resolutions)</dd></dl></article>
+      <dt>Lives</dt><dd class="where">tasks/rules/lifecycle.rs · flows/occurrences.rs (resolutions)</dd></dl></article>
     <article class="card"><h3>Archival and Backlog</h3>
       <p class="is">Live, Backlog, Frozen or Archived. Set by hand (a Goal or Project's status, a Task's Backlog) or derived: a settled window archives, and a delegated Task reads as archived.</p>
       <dl><dt>Why</dt><dd>"Set aside" and "finished" are different questions; a backlogged Task keeps its real status.</dd>
       <dt>Without</dt><dd>Statuses multiply ("done-ish", "paused-forever") and every filter has to know them all.</dd>
-      <dt>Lives</dt><dd class="where">tasks/lifecycle.rs · filters/facts.rs</dd></dl></article>
+      <dt>Lives</dt><dd class="where">tasks/rules/lifecycle.rs · filters/facts.rs</dd></dl></article>
     <article class="card"><h3>Commitment verdicts</h3>
       <p class="is">A Commitment is judged, not done: Kept, Broken or still Unresolved. Its Verdict Window bounds how long the answer stays owed; past it, it Expires.</p>
       <dl><dt>Why</dt><dd>A rule like "phone off by 23:00" is kept or broken, and an unanswered night may well have been kept.</dd>
@@ -432,7 +432,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <p class="is">Blocks no one writes: the agent capacity lock on every unfinished Agentic Task, a Habit's cooldown, and a compound Task whose open sub-items are all blocked.</p>
       <dl><dt>Why</dt><dd>One mechanism, so filters, badges and the MCP need nothing new for each.</dd>
       <dt>Without</dt><dd>A special filter rule per feature, each one missing a view.</dd>
-      <dt>Lives</dt><dd class="where">capacity/blocks.rs · flows/cooldown.rs · tasks/compound.rs</dd></dl></article>
+      <dt>Lives</dt><dd class="where">capacity/rules/blocks.rs · flows/rules/cooldown.rs · tasks/compound.rs</dd></dl></article>
   </div>
 </section>
 

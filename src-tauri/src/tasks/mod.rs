@@ -17,9 +17,10 @@ pub mod compound;
 pub mod done_date;
 pub mod error;
 pub mod expectations;
-pub mod lifecycle;
+pub use rules::lifecycle;
 pub mod model;
-pub mod review;
+pub use rules::review;
+pub mod rules;
 mod scope_rules;
 pub mod waits;
 

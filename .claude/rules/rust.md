@@ -31,6 +31,22 @@
     commands/   — Tauri command entry points (thin — delegate to domain modules)
   ```
 
+### Business rules
+- Every business rule lives in a **`rules` module inside its domain**: `tasks/rules.rs` with its
+  submodules in `tasks/rules/`, and likewise for `flows/`, `scopes/`, `capacity/` and the rest.
+  `filters/` is the presets' rules layer as a whole. See ADR 0010.
+- A rules module holds **pure functions over values**. It imports no session (`Db`,
+  `SessionMode`), no `sqlx`, no `tauri`, no `tokio` and no `std::fs`, and it is told `now`
+  rather than reading a clock. `scripts/check-rules-purity.sh` enforces this in CI. To use a
+  rule, gather what it needs in the domain's `mod.rs` (persistence and composite operations) and
+  pass it in.
+- A new rule goes in its domain's `rules`, not inline in `mod.rs` beside the SQL. A frontend copy
+  of a rule is allowed only for UX or speed, and only pinned to the Rust rule by a corpus under
+  `conformance/`.
+- Modules moved into `rules` keep their old path as a re-export in the parent
+  (`pub use rules::lifecycle;`), so callers and the integration tests did not change when they
+  moved.
+
 ### Tests
 - Unit tests: `#[cfg(test)] mod tests;` in the file under test, with the body in a
   sibling — `foo.rs` declares it and `foo/tests.rs` holds it; `mod.rs` uses

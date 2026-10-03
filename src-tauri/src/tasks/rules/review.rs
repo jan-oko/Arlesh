@@ -10,7 +10,7 @@ use std::collections::HashSet;
 
 use crate::nodes::id::NodeId;
 
-use super::model::{
+use crate::tasks::model::{
     AgenticStatus, Expectation, ExpectationArchival, ExpectationStatus, Status, Task,
 };
 
