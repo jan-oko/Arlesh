@@ -44,6 +44,8 @@ function installBackend(refuse: (args: unknown) => string | null = () => null): 
       if (depth === 0) current = null;
       return Promise.resolve(null);
     }
+    // Nothing below these Tasks holds a Plan of its own, so the clamp prompt has nothing to ask.
+    if (command === "plan_containment_conflicts") return Promise.resolve([]);
     const refusal = refuse(args);
     if (refusal !== null) return Promise.reject(new Error(refusal));
     writes.push({ command, args, gesture: current });
@@ -127,7 +129,7 @@ describe("useQuickPlan — writing", () => {
     const { result, reload, showToast } = setup([node("task-5", "task")]);
     act(() => { result.current.open(["task-5"]); });
     await act(async () => { await result.current.apply(JUNE_3); });
-    expect(backend.writes).toEqual([{ command: "update_task", args: { id: 5, request: { plan: JUNE_3 } }, gesture: "gesture-1" }]);
+    expect(backend.writes).toEqual([{ command: "update_task", args: { id: 5, request: { plan: JUNE_3 } }, gesture: expect.any(String) }]);
     expect(reload).toHaveBeenCalled();
     expect(showToast).not.toHaveBeenCalled();
     expect(result.current.target).toBeNull();
@@ -182,8 +184,10 @@ describe("useQuickPlan — a multi-selection", () => {
       { id: 1, request: { plan: JUNE_3 } },
       { id: 3, request: { plan: JUNE_3 } },
     ]);
-    expect(new Set(backend.writes.map((w) => w.gesture))).toEqual(new Set(["gesture-1"]));
-    expect(backend.gestures()).toBe(1);
+    // One Gesture holds every write; the clamp prompt's read before it holds none.
+    const held = new Set(backend.writes.map((w) => w.gesture));
+    expect(held.size).toBe(1);
+    expect(held.has(null)).toBe(false);
   });
 
   it("plans the Tasks and names the nodes it left alone, never dropping them in silence", async () => {

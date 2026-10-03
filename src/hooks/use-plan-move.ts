@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { updateTaskSettlingPlans } from "@/api/tasks";
+import { updateTask, updateTaskSettlingPlans } from "@/api/tasks";
 import { usePlanClamp } from "@/hooks/use-plan-clamp";
 import { resolveScope } from "@/api/scopes";
 import type { ScopeKey } from "@/api/scopes";
@@ -171,7 +171,8 @@ export function usePlanMove({
           const id = row.node.rowId;
           if (id === undefined) continue;
           try {
-            await updateTaskSettlingPlans(id, { plan }, clamp.descendants);
+            if (clamp.descendants === null) await updateTask(id, { plan });
+            else await updateTaskSettlingPlans(id, { plan }, clamp.descendants);
           } catch (error: unknown) {
             outcome.failed.push({ row, message: getErrorMessage(error) });
             continue;

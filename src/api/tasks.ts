@@ -232,16 +232,14 @@ export async function planContainmentConflicts(id: RowId, plan: TimeScope | null
 
 /**
  * {@link updateTask}, settling the Tasks below whose own Plan the new Plan would leave outside as
- * `descendantPlans` says — in the same write, so the whole is one undo step. With `null`, a plain
- * {@link updateTask}.
+ * `descendantPlans` says — in the same write, so the whole is one undo step.
  */
 export async function updateTaskSettlingPlans(
   id: RowId,
   request: UpdateTaskRequest,
-  descendantPlans: DescendantPlans | null,
+  descendantPlans: DescendantPlans,
   confirmed?: boolean,
 ): Promise<Task> {
-  if (descendantPlans === null) return updateTask(id, request, confirmed);
   return invoke<Task>("update_task_settling_plans", { id, request, confirmed, descendantPlans });
 }
 

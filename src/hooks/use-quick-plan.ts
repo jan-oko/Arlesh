@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { getErrorMessage } from "@/api/errors";
 import { withGesture } from "@/api/gesture";
-import { updateTaskSettlingPlans } from "@/api/tasks";
+import { updateTask, updateTaskSettlingPlans } from "@/api/tasks";
 import { usePlanClamp } from "@/hooks/use-plan-clamp";
 import type { TimeScope } from "@/api/time-scope";
 import type { PendingToast } from "@/stores/use-mindmap-store";
@@ -144,7 +144,9 @@ export function useQuickPlan({ findNode, reload, showToast }: Options): QuickPla
       await withGesture(t(gesture, { count: planning.tasks.length }), async () => {
         for (const node of planning.tasks) {
           try {
-            await updateTaskSettlingPlans(rowIdOf(node), { plan }, clamp.descendants);
+            const id = rowIdOf(node);
+            if (clamp.descendants === null) await updateTask(id, { plan });
+            else await updateTaskSettlingPlans(id, { plan }, clamp.descendants);
           } catch (error: unknown) {
             outcome.failed.push({ node, message: getErrorMessage(error) });
             continue;

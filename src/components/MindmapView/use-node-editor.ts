@@ -37,7 +37,7 @@ import {
   removeTaskDependency,
   scopeContainmentConflicts,
 } from "@/api/tasks";
-import type { ViolatingDescendant } from "@/api/tasks";
+import type { UpdateTaskRequest, ViolatingDescendant } from "@/api/tasks";
 import { TASK_ARCHIVAL } from "@/api/tasks";
 import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
 import { addTagToCommitment, removeTagFromCommitment, updateCommitment } from "@/api/commitments";
@@ -202,7 +202,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       }
       // A task that consists of its sub-items and still does has no status to save: it is derived.
       const keepsDerived = node.compound === true && data.compound;
-      await updateTaskSettlingPlans(dbId, {
+      const request: UpdateTaskRequest = {
         title: data.title,
         // Review is derived: the row holds On Agent, and that is what an unchanged save sends.
         ...(keepsDerived ? {} : { status: storedStatus(data.status) }),
@@ -218,7 +218,11 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         agentic_brief: data.agenticBrief,
         is_private: data.isPrivate,
         ...(data.delegate !== undefined ? { delegate_to: data.delegate } : {}),
-      }, data.descendantPlans ?? null);
+      };
+      // Tasks below a new Plan are settled in the same write, as the clamp prompt was answered.
+      const settle = data.descendantPlans ?? null;
+      if (settle === null) await updateTask(dbId, request);
+      else await updateTaskSettlingPlans(dbId, request, settle);
       // After the update, which is what makes a task newly marked Done Done at all.
       if (data.doneAt !== undefined) await setTaskDoneAt(dbId, data.doneAt);
       // Scheduling a set-aside task puts it back in play, and so does starting one. The editor
