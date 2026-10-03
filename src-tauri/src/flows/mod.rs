@@ -3716,9 +3716,7 @@ async fn write_plan(
             "goal" => Dependency::Goal {
                 id: blocker_id.into(),
             },
-            "expectation" => Dependency::Expectation {
-                id: blocker_id.into(),
-            },
+            "expectation" => Dependency::Expectation { id: blocker_id },
             _ => Dependency::Task {
                 id: blocker_id.into(),
             },
