@@ -37,7 +37,9 @@ pub fn subdivisions_between(parent: ScopeKind, child: ScopeKind) -> i64 {
 }
 
 /// One level of the cycle navigator: `count` sibling slots of `kind`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct CycleLevel {
     /// The level's kind.
     pub kind: ScopeKind,

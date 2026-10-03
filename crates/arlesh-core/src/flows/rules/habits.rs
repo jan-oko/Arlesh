@@ -51,7 +51,9 @@ pub const UNBOUNDED: NaiveDateTime = match NaiveDate::from_ymd_opt(9999, 12, 31)
 ///
 /// An enum rather than a pair of flags because a miss policy only means anything under a Window
 /// clock: an Interval Habit has one open instance and nothing it could miss.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum Clock {
     /// Iterations tile from the Start anchor; the policy says what a passed unfinished one does.

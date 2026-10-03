@@ -214,7 +214,7 @@ def classify_habit_iterations(
         "classify_habit_iterations",
         slots=list(slots),
         clock=clock,
-        resolved=resolved,
+        resolved=sorted(resolved.items()),
         now=now,
     )
 

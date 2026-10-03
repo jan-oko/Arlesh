@@ -32,6 +32,9 @@ from arlesh.models import (
     CreateInfoRequest,
     CreateTaskRequest,
     Dependency,
+    DependencyExpectation,
+    DependencyGoal,
+    DependencyTask,
     Domain,
     DomainSubtype,
     Expectation,
@@ -68,6 +71,9 @@ from arlesh.models import (
 
 NodeId = int | str
 """A node's id: a stored row's integer id, or a derived node's (a Habit occurrence's) UUID."""
+
+AnyDependency = Dependency | DependencyTask | DependencyGoal | DependencyExpectation
+"""What a Task can come after: a Task, a Goal or a wait — one variant, or the union model."""
 
 T = TypeVar("T")
 
@@ -224,11 +230,11 @@ class Database:
         """Flips a Task between Agentic and not."""
         return await self._call(_TASK, "toggle_task_agentic", id=id)
 
-    async def add_task_dependency(self, task_id: NodeId, dependency: Dependency) -> None:
+    async def add_task_dependency(self, task_id: NodeId, dependency: AnyDependency) -> None:
         """Makes a Task come after a Task, Goal or wait. A cycle is refused."""
         await self._call(_NOTHING, "add_task_dependency", task_id=task_id, dependency=dependency)
 
-    async def remove_task_dependency(self, task_id: NodeId, dependency: Dependency) -> None:
+    async def remove_task_dependency(self, task_id: NodeId, dependency: AnyDependency) -> None:
         """Removes one of a Task's dependencies."""
         await self._call(_NOTHING, "remove_task_dependency", task_id=task_id, dependency=dependency)
 
