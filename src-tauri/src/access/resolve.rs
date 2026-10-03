@@ -16,7 +16,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::model::{AccessLevel, EffectiveAccess, NodeKey, NodeTable, StoredNode};
+use super::model::{AccessLevel, CatalogueNode, EffectiveAccess, NodeKey, NodeTable, StoredNode};
 
 /// What resolution learned about one node.
 #[derive(Debug, Clone, Copy)]
@@ -205,6 +205,18 @@ fn resolve_chain(
             },
         );
     }
+}
+
+/// The stored nodes that may be made MCP roots: every node in the catalogue that is not one
+/// already, in catalogue order. A private one may be named — the roots cannot see it until its
+/// privacy is lifted, and the access page says so — but it may not be named twice.
+pub fn root_candidates(roots: &[NodeKey], nodes: &[CatalogueNode]) -> Vec<NodeKey> {
+    let taken: HashSet<NodeKey> = roots.iter().copied().collect();
+    nodes
+        .iter()
+        .map(CatalogueNode::key)
+        .filter(|key| !taken.contains(key))
+        .collect()
 }
 
 #[cfg(test)]

@@ -14,6 +14,8 @@ const CATALOGUE: McpAccessCatalogue = {
     { node_kind: "domain", node_id: 2, subtype: "project", title: "Arlesh", parent_kind: "domain", parent_id: 1, is_private: false, agentic: null },
     { node_kind: "goal", node_id: 10, subtype: null, title: "Ship", parent_kind: "domain", parent_id: 2, is_private: false, agentic: null },
   ],
+  // What the backend offers: every node that is not a root already.
+  candidates: [{ node_kind: "domain", node_id: 1 }, { node_kind: "goal", node_id: 10 }],
 };
 const VISIBLE: McpVisibility[] = [
   { node_kind: "domain", node_id: 2, root_kind: "domain", root_id: 2 },
@@ -36,7 +38,7 @@ beforeEach(() => {
 });
 
 describe("useMcpRoots", () => {
-  it("lists the roots named and placed, and offers every other node", async () => {
+  it("lists the roots named and placed, and offers what the backend offers", async () => {
     const { result } = renderHook(() => useMcpRoots());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 

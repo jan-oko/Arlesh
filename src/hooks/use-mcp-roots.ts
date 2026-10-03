@@ -9,7 +9,7 @@ import { catalogueKeyOf, describeRoots, rootCandidates } from "@/utils/mcp-roots
 import type { McpRootRow } from "@/utils/mcp-roots";
 import type { SearchableNode } from "@/utils/mindmap-tree";
 
-const EMPTY_CATALOGUE: McpAccessCatalogue = { roots: [], nodes: [] };
+const EMPTY_CATALOGUE: McpAccessCatalogue = { roots: [], nodes: [], candidates: [] };
 
 export interface McpRoots {
   roots: McpRootRow[];
@@ -77,7 +77,7 @@ export function useMcpRoots(): McpRoots {
     () => describeRoots(catalogue.roots, catalogue.nodes, visible),
     [catalogue, visible],
   );
-  const candidates = useMemo(() => rootCandidates(catalogue.roots, catalogue.nodes), [catalogue]);
+  const candidates = useMemo(() => rootCandidates(catalogue.candidates, catalogue.nodes), [catalogue]);
 
   return { roots, candidates, isLoading, error, addRoot, removeRoot };
 }

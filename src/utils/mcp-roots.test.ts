@@ -54,8 +54,10 @@ describe("describeRoots", () => {
 });
 
 describe("rootCandidates", () => {
-  it("offers every node that is not already a root, with its ancestors nearest first", () => {
-    const candidates = rootCandidates([{ node_kind: "goal", node_id: 10 }], NODES);
+  it("names and places the nodes the backend offers, with their ancestors nearest first", () => {
+    // Which nodes may be made roots is the backend's (`access::resolve::root_candidates`).
+    const offered = NODES.filter((n) => !(n.node_kind === "goal" && n.node_id === 10));
+    const candidates = rootCandidates(offered, NODES);
 
     expect(candidates.map((candidate) => candidate.title)).toEqual(["Growth", "Arlesh", "Write docs"]);
     expect(candidates.find((candidate) => candidate.title === "Write docs")?.path)
@@ -63,7 +65,7 @@ describe("rootCandidates", () => {
   });
 
   it("gives ids that lead back to the node they were made from", () => {
-    const [growth] = rootCandidates([], NODES);
+    const [growth] = rootCandidates(NODES, NODES);
     expect(growth).toBeDefined();
     expect(catalogueKeyOf(growth?.id ?? "", NODES)).toEqual({ node_kind: "domain", node_id: 1 });
     expect(catalogueKeyOf("nothing", NODES)).toBeUndefined();

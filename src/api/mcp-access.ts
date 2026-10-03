@@ -40,6 +40,8 @@ export interface McpCatalogueNode extends McpNodeKey {
 export interface McpAccessCatalogue {
   roots: McpNodeKey[];
   nodes: McpCatalogueNode[];
+  /** The nodes that may be made roots, decided by the backend (`access::resolve::root_candidates`). */
+  candidates: McpNodeKey[];
 }
 
 /** One stored node the MCP can see, and the root it is seen through. */

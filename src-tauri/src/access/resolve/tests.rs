@@ -395,3 +395,31 @@ fn an_agent_may_create_under_a_visible_occurrence_unless_it_is_explicitly_not_ag
         "outside"
     );
 }
+
+fn catalogued(key: NodeKey) -> CatalogueNode {
+    CatalogueNode {
+        node_kind: key.node_kind,
+        node_id: key.node_id,
+        subtype: None,
+        title: format!("{key}"),
+        parent_kind: None,
+        parent_id: None,
+        is_private: false,
+        agentic: None,
+    }
+}
+
+#[test]
+fn every_node_that_is_not_a_root_already_may_be_made_one() {
+    let nodes = [
+        catalogued(domain(1)),
+        catalogued(goal(2)),
+        catalogued(task(3)),
+    ];
+    assert_eq!(
+        root_candidates(&[goal(2)], &nodes),
+        [domain(1), task(3)],
+        "in catalogue order, less the root"
+    );
+    assert_eq!(root_candidates(&[], &nodes).len(), 3);
+}
