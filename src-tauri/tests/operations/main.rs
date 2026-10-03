@@ -15,6 +15,7 @@
 #[path = "../helpers/mod.rs"]
 mod helpers;
 
+mod cooldown_conformance;
 mod database;
 mod duplicate;
 mod gestures;

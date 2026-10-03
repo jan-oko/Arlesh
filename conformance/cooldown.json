@@ -1,0 +1,140 @@
+{
+  "about": [
+    "A Window Habit's cooldown options, written as data: which units a Habit of each window kind may",
+    "count a cooldown in, and the longest cooldown each takes.",
+    "",
+    "Both evaluators replay it. `src-tauri/tests/operations/cooldown_conformance.rs` runs every case",
+    "through `CooldownUnit::allowed_for` and `Cooldown::longest` \u2014 the bound `Cooldown::fits` refuses",
+    "past; `src/utils/cooldown-conformance.test.ts` runs them through the Flow editor's",
+    "`cooldownKinds` and `maxCooldown`, which bound the field as you type. Neither side generates",
+    "this file.",
+    "",
+    "`units` lists, for each window kind, the units finer than it, in the order the editor offers",
+    "them; a sub-day or exact window takes none. A case names a window of `habitN` \u00d7 `habitKind`, a",
+    "unit, and the longest cooldown in it that cannot reach the end of the window after the one it",
+    "follows. See `docs/spec/habits.md`, *Cooldown*."
+  ],
+  "units": [
+    {
+      "habitKind": "day",
+      "units": [
+        "part"
+      ]
+    },
+    {
+      "habitKind": "week",
+      "units": [
+        "day"
+      ]
+    },
+    {
+      "habitKind": "month",
+      "units": [
+        "week",
+        "day"
+      ]
+    },
+    {
+      "habitKind": "season",
+      "units": [
+        "month",
+        "week",
+        "day"
+      ]
+    },
+    {
+      "habitKind": "part",
+      "units": []
+    },
+    {
+      "habitKind": "exact",
+      "units": []
+    }
+  ],
+  "cases": [
+    {
+      "habitKind": "day",
+      "habitN": 1,
+      "unit": "part",
+      "longest": 5
+    },
+    {
+      "habitKind": "day",
+      "habitN": 2,
+      "unit": "part",
+      "longest": 11
+    },
+    {
+      "habitKind": "week",
+      "habitN": 1,
+      "unit": "day",
+      "longest": 6
+    },
+    {
+      "habitKind": "week",
+      "habitN": 2,
+      "unit": "day",
+      "longest": 13
+    },
+    {
+      "habitKind": "month",
+      "habitN": 1,
+      "unit": "week",
+      "longest": 3
+    },
+    {
+      "habitKind": "month",
+      "habitN": 2,
+      "unit": "week",
+      "longest": 7
+    },
+    {
+      "habitKind": "month",
+      "habitN": 1,
+      "unit": "day",
+      "longest": 27
+    },
+    {
+      "habitKind": "month",
+      "habitN": 2,
+      "unit": "day",
+      "longest": 55
+    },
+    {
+      "habitKind": "season",
+      "habitN": 1,
+      "unit": "month",
+      "longest": 2
+    },
+    {
+      "habitKind": "season",
+      "habitN": 2,
+      "unit": "month",
+      "longest": 5
+    },
+    {
+      "habitKind": "season",
+      "habitN": 1,
+      "unit": "week",
+      "longest": 11
+    },
+    {
+      "habitKind": "season",
+      "habitN": 2,
+      "unit": "week",
+      "longest": 24
+    },
+    {
+      "habitKind": "season",
+      "habitN": 1,
+      "unit": "day",
+      "longest": 89
+    },
+    {
+      "habitKind": "season",
+      "habitN": 2,
+      "unit": "day",
+      "longest": 179
+    }
+  ]
+}

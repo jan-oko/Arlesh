@@ -233,3 +233,26 @@ fn no_cooldown_holds_nothing() {
     )
     .is_empty());
 }
+
+#[test]
+fn the_longest_cooldown_is_the_last_one_that_fits() {
+    for kind in ["day", "week", "month", "season"] {
+        for &unit in CooldownUnit::allowed_for(kind) {
+            for habit_n in 1..=3 {
+                let longest = Cooldown::longest(unit, kind, habit_n);
+                for n in 1..=200 {
+                    assert_eq!(
+                        Cooldown { n, unit }.fits(kind, habit_n).is_ok(),
+                        n <= longest,
+                        "{n} {unit:?} on {habit_n} {kind}"
+                    );
+                }
+            }
+        }
+    }
+    assert_eq!(
+        Cooldown::longest(CooldownUnit::Day, "day", 1),
+        0,
+        "a unit the window does not take"
+    );
+}
