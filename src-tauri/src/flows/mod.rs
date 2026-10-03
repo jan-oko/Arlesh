@@ -3152,6 +3152,3 @@ async fn set_node_private(
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests;

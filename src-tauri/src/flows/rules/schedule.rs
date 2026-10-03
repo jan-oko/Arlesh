@@ -12,10 +12,10 @@ use chrono::{Datelike, Duration, Months, NaiveDate, NaiveDateTime, NaiveTime, Ti
 use crate::flows::{
     cooldown,
     error::FlowError,
-    habits::{instance_timing, Clock, SlotWindow},
+    habits::{self, instance_timing, Clock, SlotWindow},
     model::{
-        ClockKind, Flow, FlowGoal, FlowItemCycle, FlowItemType, FlowRecurrence, FlowTask,
-        HabitInstance, IterationStatus, MissPolicy, SetRecurrenceRequest, NO_CYCLE,
+        ClockKind, Flow, FlowItemCycle, FlowItemType, FlowRecurrence, HabitInstance,
+        IterationStatus, MissPolicy, SetRecurrenceRequest, NO_CYCLE,
     },
     render::{ResolvedPair, ScopeTable},
 };
@@ -903,3 +903,6 @@ pub(in crate::flows) fn resolve_scopes(
         pairs,
     })
 }
+
+#[cfg(test)]
+mod tests;
