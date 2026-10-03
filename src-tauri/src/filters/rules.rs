@@ -110,16 +110,35 @@ pub fn is_held_by_block(node: &NodeFacts, gate: &BlockGate<'_>, filter: &BoardFi
     filter.preset == Preset::Start && (is_blocked(node) || !is_admitted_by(node, gate))
 }
 
-/// An Archived-status node, one whose effective Archival was derived as Archived, or a delegated
-/// Task.
+/// An Archived-status node, or one whose effective Archival was derived as Archived.
 ///
 /// A scope Resolution of Completed or Missed forces the second regardless of done-ness: both
-/// render the same archive-box badge, and the Archived pill governs both together. A delegated
-/// Task has **every effect of archival** — someone else holds it, so it is off your board
-/// wherever an archived node is — and so it answers here rather than through a rule of its own.
-/// What it is waiting on stays visible: its virtual Expectation (see [`crate::filters::facts`]).
+/// render the same archive-box badge, and the Archived pill governs both together. So does a hand
+/// archive, a Task's or Commitment's own, which everything beneath it inherits (Task 269).
+///
+/// A delegated Task is **not** archived (ruled by the user, 2026-10-03): delegation has its own
+/// pill, read by [`is_dropped_for_delegation`] and [`type_hard_hidden`].
 pub fn is_archived(node: &NodeFacts) -> bool {
-    node.status_str() == "archived" || node.archived || node.delegated
+    node.status_str() == "archived" || node.archived
+}
+
+/// A Task held by someone else — a Person.
+pub fn is_delegated(node: &NodeFacts) -> bool {
+    node.kind == NodeKind::Task && node.delegated
+}
+
+/// Whether the **Delegated** pill, left off, drops a delegated Task's own match: under Plan and
+/// Start, as it always has — someone else holds it, so it is neither yours to plan nor yours to
+/// start. All, Do and Backlog leave it alone, so an in-progress delegated Task still shows under
+/// Do (the Zen View drops it by a rule of its own).
+///
+/// `Include` keeps it, judged by the preset's other rules like any Task; `Exclude` hides it, with
+/// its subtree, under every preset — in [`type_hard_hidden`]. What it waits on — its delegation
+/// wait — answers the Expectation rules beside it.
+pub fn is_dropped_for_delegation(node: &NodeFacts, filter: &BoardFilter) -> bool {
+    is_delegated(node)
+        && filter.delegated == OverrideMode::Inactive
+        && matches!(filter.preset, Preset::Plan | Preset::Start)
 }
 
 /// Forces an archived-like node to match when the Archived pill is on `Include`, overriding
@@ -335,6 +354,10 @@ pub fn type_hard_hidden(node: &NodeFacts, filter: &BoardFilter) -> bool {
     if is_hidden_backlog(node, filter) {
         return true;
     }
+    // The Delegated pill's `Exclude` gates the subtree too, under every preset, Do included.
+    if filter.delegated == OverrideMode::Exclude && is_delegated(node) {
+        return true;
+    }
     if is_shelved_project(node, filter) {
         return true;
     }
@@ -458,11 +481,14 @@ pub fn passes_status(
 /// status that would say so.
 fn passes_plan(node: &NodeFacts, filter: &BoardFilter) -> bool {
     match node.kind {
-        NodeKind::Task => with_archived_override(
-            node,
-            filter,
-            node.status_str() != "done" && !is_archived(node),
-        ),
+        NodeKind::Task => {
+            !is_dropped_for_delegation(node, filter)
+                && with_archived_override(
+                    node,
+                    filter,
+                    node.status_str() != "done" && !is_archived(node),
+                )
+        }
         NodeKind::Goal => with_archived_override(
             node,
             filter,
@@ -504,10 +530,13 @@ fn passes_start(node: &NodeFacts, filter: &BoardFilter) -> bool {
     if !matches!(node.kind, NodeKind::Task | NodeKind::Goal) {
         return true;
     }
-    // A window outside now drops out — unless the item is Overdue — and so does a delegated Task,
-    // Overdue or not: it is archived in every effect but name, and nothing someone else holds is
-    // yours to start.
-    if !is_startable_window(node) || node.delegated {
+    // A delegated Task drops out, Overdue or not, while the Delegated pill is off: nothing someone
+    // else holds is yours to start.
+    if is_dropped_for_delegation(node, filter) {
+        return false;
+    }
+    // A window outside now drops out — unless the item is Overdue.
+    if !is_startable_window(node) {
         return with_archived_override(node, filter, false);
     }
     if node.kind == NodeKind::Goal {

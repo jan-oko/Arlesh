@@ -438,33 +438,51 @@ fn a_released_or_archived_expectation_shows_under_all_only() {
 }
 
 #[test]
-fn a_delegated_task_reads_as_archived_under_plan_and_start_but_not_do() {
+fn a_delegated_task_is_not_archived_and_the_delegated_pill_off_drops_it_under_plan_and_start_only()
+{
     let mut delegated = task("in_progress");
     delegated.delegated = true;
-    assert!(is_archived(&delegated));
-    assert!(!passes_status(
-        &delegated,
-        &BoardFilter::preset(Preset::Plan),
-        UNSET_STATUS,
-        false
-    ));
-    assert!(!passes_status(
-        &delegated,
-        &BoardFilter::preset(Preset::Start),
-        UNSET_STATUS,
-        false
-    ));
+    assert!(!is_archived(&delegated));
+    for preset in [Preset::Plan, Preset::Start] {
+        assert!(
+            !passes_status(
+                &delegated,
+                &BoardFilter::preset(preset),
+                UNSET_STATUS,
+                false
+            ),
+            "{preset:?}"
+        );
+    }
     assert!(passes_status(
         &delegated,
         &BoardFilter::preset(Preset::Do),
         UNSET_STATUS,
         false
     ));
-    let exclude = BoardFilter {
+    let archived_excluded = BoardFilter {
         archived: OverrideMode::Exclude,
         ..BoardFilter::preset(Preset::All)
     };
-    assert!(type_hard_hidden(&delegated, &exclude));
+    assert!(!type_hard_hidden(&delegated, &archived_excluded));
+}
+
+#[test]
+fn the_delegated_pill_on_include_keeps_a_delegated_task_and_on_exclude_hides_it_everywhere() {
+    let mut delegated = task("todo");
+    delegated.delegated = true;
+    let include = BoardFilter {
+        delegated: OverrideMode::Include,
+        ..BoardFilter::preset(Preset::Plan)
+    };
+    assert!(passes_status(&delegated, &include, UNSET_STATUS, false));
+    for preset in [Preset::All, Preset::Do, Preset::Plan] {
+        let exclude = BoardFilter {
+            delegated: OverrideMode::Exclude,
+            ..BoardFilter::preset(preset)
+        };
+        assert!(type_hard_hidden(&delegated, &exclude), "{preset:?}");
+    }
 }
 
 #[test]

@@ -3,6 +3,15 @@ import type { Verdict } from "@/api/verdict";
 import type { TimeScope, DurationSpec } from "@/api/time-scope";
 import type { Origin, RowId } from "@/api/node-id";
 
+/** A Commitment's own archive, set by hand: archived with everything beneath it until unarchived.
+ * Beside what its verdict and Verdict Window derive. Always live on a Habit occurrence. */
+export type CommitmentArchival = "live" | "archived";
+
+export const COMMITMENT_ARCHIVAL = {
+  LIVE: "live",
+  ARCHIVED: "archived",
+} as const;
+
 export interface Commitment {
   id: RowId;
   title: string;
@@ -19,6 +28,8 @@ export interface Commitment {
   tag_ids: number[];
   position: number;
   is_private: boolean;
+  // Its own archive. Absent reads as live.
+  archival?: CommitmentArchival;
   // Where the row came from: made by hand, or a Habit's occurrence. Absent reads as manual.
   origin?: Origin;
 }
@@ -45,6 +56,9 @@ export interface UpdateCommitmentRequest {
   parent_id?: RowId;
   position?: number;
   is_private?: boolean;
+  // Archived puts it away by hand, with everything beneath it; live unarchives it. Refused on a
+  // Habit occurrence.
+  archival?: CommitmentArchival;
 }
 
 export async function listCommitments(now: string): Promise<Commitment[]> {

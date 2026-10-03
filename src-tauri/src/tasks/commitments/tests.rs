@@ -20,6 +20,7 @@ fn stored() -> Commitment {
         tag_ids: vec![3],
         position: 100,
         is_private: false,
+        archival: Default::default(),
         // Tracked in `bd`. `CommitmentWrite` has no counterpart field, so the merge cannot
         // carry it either way — which is the write-path constraint, stated in the type.
         origin: Default::default(),

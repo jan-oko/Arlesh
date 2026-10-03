@@ -9,5 +9,7 @@
   "newFlow": "New Flow",
   "convertToFlow": "Convert to flow",
   "startFlow": "Start flow",
+  "archive": "Archive",
+  "unarchive": "Unarchive",
   "delete": "Delete"
 }

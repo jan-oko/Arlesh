@@ -77,3 +77,51 @@ fn the_stored_archive_is_the_archival() {
     assert_eq!(state.archival, Archival::Archived);
     assert!(!state.archival_conflict);
 }
+
+// --- A wait archives itself once released and its window has passed (Task 269) ---
+
+#[test]
+fn a_released_wait_whose_window_has_passed_derives_archived() {
+    let state = derive_expectation_state(
+        one_day(),
+        ExpectationStatus::Released,
+        ExpectationArchival::Live,
+        at("2026-01-07T00:00:00"),
+    );
+    assert_eq!(state.archival, Archival::Archived);
+    assert!(!state.overdue);
+}
+
+#[test]
+fn a_released_wait_whose_window_is_still_open_stays_live() {
+    let state = derive_expectation_state(
+        one_day(),
+        ExpectationStatus::Released,
+        ExpectationArchival::Live,
+        at("2026-01-06T12:00:00"),
+    );
+    assert_eq!(state.archival, Archival::Live);
+}
+
+#[test]
+fn a_released_wait_with_no_window_archives_when_released() {
+    let state = derive_expectation_state(
+        None,
+        ExpectationStatus::Released,
+        ExpectationArchival::Live,
+        at("2026-01-06T12:00:00"),
+    );
+    assert_eq!(state.archival, Archival::Archived);
+}
+
+#[test]
+fn a_pending_wait_never_archives_itself_however_long_ago_its_window_passed() {
+    let state = derive_expectation_state(
+        one_day(),
+        ExpectationStatus::Pending,
+        ExpectationArchival::Live,
+        at("2030-01-01T00:00:00"),
+    );
+    assert_eq!(state.archival, Archival::Live);
+    assert!(state.overdue);
+}

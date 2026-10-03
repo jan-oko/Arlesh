@@ -23,8 +23,8 @@ use crate::scopes::db::DbScopeKey;
 use super::ancestry::{AncestryLink, NodeKind, NodeRef};
 use super::error::TaskError;
 use super::model::{
-    Commitment, CommitmentId, CreateCommitmentRequest, DurationSpec, OnScopeExit, TimeScope,
-    UpdateCommitmentRequest, Verdict,
+    Commitment, CommitmentArchival, CommitmentId, CreateCommitmentRequest, DurationSpec,
+    OnScopeExit, TimeScope, UpdateCommitmentRequest, Verdict,
 };
 use super::{insertion_position, scope_rules, time_scope_columns, time_scope_from_row};
 
@@ -44,6 +44,7 @@ struct CommitmentRow {
     verdict_window_kind: Option<String>,
     position: i64,
     is_private: bool,
+    archival: String,
 }
 
 /// Reassembles a Verdict Window from its two flat columns. A schema CHECK keeps the pair whole,
@@ -83,6 +84,9 @@ impl From<CommitmentRow> for Commitment {
             tag_ids: vec![],
             position: row.position,
             is_private: row.is_private,
+            // An unrecognised spelling reads as Live, which archives nothing; the CHECK
+            // constraint is what keeps it from arising.
+            archival: CommitmentArchival::from_db(&row.archival).unwrap_or_default(),
             origin: Origin::Manual,
         }
     }
@@ -112,6 +116,8 @@ struct CommitmentWrite {
     position: i64,
     /// Final privacy flag.
     is_private: bool,
+    /// Final own archive.
+    archival: CommitmentArchival,
 }
 
 impl CommitmentWrite {
@@ -149,6 +155,7 @@ impl CommitmentWrite {
             },
             position: request.position.unwrap_or(stored.position),
             is_private: request.is_private.unwrap_or(stored.is_private),
+            archival: request.archival.unwrap_or(stored.archival),
         })
     }
 }
@@ -328,7 +335,7 @@ impl<'session> CommitmentOperator<'session> {
             "UPDATE commitments SET title=?, verdict=?,
                 time_scope_start_id=?, time_scope_end_id=?, time_scope_duration_n=?,
                 time_scope_duration_kind=?, verdict_window_n=?, verdict_window_kind=?,
-                position=?, is_private=?,
+                position=?, is_private=?, archival=?,
                 verdict_at = CASE WHEN ? = 'unresolved' THEN NULL
                                   WHEN verdict = ? THEN verdict_at
                                   ELSE ? END
@@ -344,6 +351,7 @@ impl<'session> CommitmentOperator<'session> {
         .bind(&vw_kind)
         .bind(write.position)
         .bind(write.is_private)
+        .bind(write.archival.as_str())
         // The same verdict saved again keeps the instant it was recorded; a new one is now.
         .bind(write.verdict.as_str())
         .bind(write.verdict.as_str())

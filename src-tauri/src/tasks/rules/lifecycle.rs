@@ -13,7 +13,9 @@
 //!   analogue of a Window Habit's miss policy (Archive = Archive, Keep Overdue = Owed).
 //! - [`Archival`] — the item's effective archived/frozen/live state. Every item may carry its own
 //!   manually-set Archival (via [`derive_archival`]'s `stored` parameter): a Goal or Project
-//!   through its status (`Frozen` / `Archived`), a Task through its **Backlog** column. A
+//!   through its status (`Frozen` / `Archived`), a Task through its Archival column (**Backlog**,
+//!   or **Archived** by hand — which its whole subtree inherits, see
+//!   [`crate::tasks::rules::archival`]). A
 //!   `Completed` or `Missed` `Resolution` unconditionally forces `Archived` regardless of
 //!   `stored`, flagging a conflict when it silently overrides a manually-set `Frozen` **or**
 //!   `Backlog`.
@@ -29,7 +31,8 @@ use chrono::NaiveDateTime;
 use crate::scopes::resolve::Bounds;
 
 use crate::tasks::model::{
-    DurationSpec, ExpectationArchival, ExpectationStatus, OnScopeExit, TaskArchival, Verdict,
+    CommitmentArchival, DurationSpec, ExpectationArchival, ExpectationStatus, OnScopeExit,
+    TaskArchival, Verdict,
 };
 
 /// An item's window position relative to `now`. Unscoped items are always `Active`.
@@ -161,7 +164,9 @@ pub enum Archival {
     /// everything beneath it, shown under All, and still carrying its own status: a backlogged
     /// task that was in progress says so when it is pulled back.
     Backlog,
-    /// Archived, either manually (Goals/Projects) or because scope Resolution forced it.
+    /// Archived: by hand (a Goal or Project's status, a Task's or Commitment's own archive, or an
+    /// ancestor's hand archive inherited), or derived (a forced Resolution, a settled or expired
+    /// Commitment, a released wait whose window has passed).
     Archived,
 }
 
@@ -189,13 +194,14 @@ impl Archival {
 }
 
 impl From<TaskArchival> for Archival {
-    /// Widens a Task's two-variant stored state into the shared axis the derivation reads. Total
-    /// and lossless in this direction; there is deliberately no way back, since `Frozen` and
-    /// `Archived` have no Task-side meaning.
+    /// Widens a Task's stored state into the shared axis the derivation reads. Total and lossless
+    /// in this direction; there is deliberately no way back, since `Frozen` has no Task-side
+    /// meaning.
     fn from(archival: TaskArchival) -> Self {
         match archival {
             TaskArchival::Live => Self::Live,
             TaskArchival::Backlog => Self::Backlog,
+            TaskArchival::Archived => Self::Archived,
         }
     }
 }
@@ -395,11 +401,12 @@ pub fn verdict_deadline(
 
 /// Derives a Commitment's lifecycle state at `now`.
 ///
-/// `window` is its **effective** window — its own Time Scope when explicitly scoped, else the
+/// `stored` is its own archive, set by hand: `Archived` archives it whatever its window and
+/// verdict say (Task 269). `window` is its **effective** window — its own Time Scope when explicitly scoped, else the
 /// nearest scoped ancestor's. `verdict_window` is likewise the effective one, inherited from the
 /// nearest ancestor Commitment that sets it.
 ///
-/// Two ways to leave `Live`, and only two:
+/// Besides the hand archive, two ways to leave `Live`, and only two:
 ///
 /// * a verdict has been recorded **and** the window has passed — the commitment is settled, and
 ///   there is nothing left to say about it;
@@ -414,13 +421,15 @@ pub fn derive_commitment_state(
     window: Option<Bounds>,
     verdict: Verdict,
     verdict_window: Option<&DurationSpec>,
+    stored: CommitmentArchival,
     now: NaiveDateTime,
 ) -> CommitmentState {
     let timing = derive_timing(window, now);
     let settled = verdict.is_resolved() && timing == Timing::Lapsed;
     let expired = !verdict.is_resolved()
         && verdict_deadline(window, verdict_window).is_some_and(|deadline| now >= deadline);
-    let archival = if settled || expired {
+    let by_hand = stored == CommitmentArchival::Archived;
+    let archival = if settled || expired || by_hand {
         Archival::Archived
     } else {
         Archival::Live
@@ -440,7 +449,8 @@ mod commitment_tests;
 // ===========================================================================
 //
 // A wait sends one entry for its own Time Scope and one for the day its next check is due, which its
-// virtual "check on it" Task reads. Either way the Archival is its stored archive, nothing derived.
+// virtual "check on it" Task reads. Its Archival is its stored archive, or derived once it is
+// released and its window has passed (Task 269).
 
 /// Derives a lifecycle entry for a wait, at `now`, over `window` — its Time Scope, or the day its
 /// next check is due.
@@ -449,6 +459,12 @@ mod commitment_tests;
 /// that has passed while the wait is still **pending** flags it **Overdue**, with no Resolution:
 /// nothing about a wait archives it for being late, so it stays on screen like a Keep Overdue
 /// Task. A released wait has nothing left to be late for.
+///
+/// **A wait archives itself** once it is **released** — a question's answer releases it — **and**
+/// its window has passed, the way a done Task archives once its window lapses; with no window it
+/// is archived as soon as it is released (ruled by the user, 2026-10-03). A pending wait never
+/// archives itself. The stored hand archive wins either way: it archives a wait whatever its
+/// status.
 pub fn derive_expectation_state(
     window: Option<Bounds>,
     status: ExpectationStatus,
@@ -456,11 +472,13 @@ pub fn derive_expectation_state(
     now: NaiveDateTime,
 ) -> DerivedState {
     let timing = derive_timing(window, now);
-    let archival = match stored {
-        ExpectationArchival::Live => Archival::Live,
-        ExpectationArchival::Archived => Archival::Archived,
-    };
     let released = status == ExpectationStatus::Released;
+    let settled = released && (window.is_none() || timing == Timing::Lapsed);
+    let archival = if stored == ExpectationArchival::Archived || settled {
+        Archival::Archived
+    } else {
+        Archival::Live
+    };
     DerivedState {
         timing,
         resolution: None,

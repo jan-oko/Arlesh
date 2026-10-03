@@ -40,7 +40,8 @@ pub(in crate::tasks) fn goal_stored_archival(status: &str) -> Archival {
 }
 
 /// The lifecycle a wait — or its open check task — is sent: its window's Timing, never Missed (a
-/// passed window with the wait pending is flagged Overdue), and the wait's own archive.
+/// passed window with the wait pending is flagged Overdue), and its Archival: its own archive, or
+/// archived once released with its window passed (see [`derive_expectation_state`]).
 pub fn wait_lifecycle(
     node_type: &str,
     node_id: NodeId,
@@ -58,7 +59,7 @@ pub fn wait_lifecycle(
         overdue: state.overdue,
         verdict: None,
         archival: state.archival,
-        // Nothing is derived over a wait's own archive, so nothing can be overridden.
+        // A wait's archive and its derived archival agree on Archived: nothing is overridden.
         archival_conflict: false,
         // A wait is never scheduled, and nor is its check: neither has a Plan.
         plan_timing: None,
@@ -285,7 +286,8 @@ pub struct LifecycleRows<'rows> {
 /// A Task is resolved once Done; a Goal once Achieved or Archived. Both carry a stored Archival: a
 /// Task its Backlog column, a Goal its status via [`goal_stored_archival`]. Each is judged Overdue
 /// against its [`effective_due`]. A Commitment's Resolution axis is replaced by its recorded
-/// Verdict, and its Archival comes from the Verdict Window (see [`derive_commitment_state`]).
+/// Verdict, and its Archival from its hand archive and the Verdict Window (see
+/// [`derive_commitment_state`]).
 pub fn derive_item_lifecycles(
     rows: LifecycleRows<'_>,
     now: NaiveDateTime,
@@ -355,8 +357,13 @@ pub fn derive_item_lifecycles(
         let chain = climb_in(rows.ancestry, "commitment", id);
         let window = governance(&chain, exit).map(|(window, _)| window);
         let verdict_window = chain.nearest_verdict_window().or_unconstrained().cloned();
-        let state =
-            derive_commitment_state(window, commitment.verdict, verdict_window.as_ref(), now);
+        let state = derive_commitment_state(
+            window,
+            commitment.verdict,
+            verdict_window.as_ref(),
+            commitment.archival,
+            now,
+        );
         out.push(ItemLifecycle {
             node_type: "commitment".to_string(),
             node_id: commitment.id.clone(),
@@ -368,7 +375,7 @@ pub fn derive_item_lifecycles(
             overdue: false,
             verdict: Some(state.verdict),
             archival: state.archival,
-            // Nothing on a Commitment is manually archived, so nothing can be overridden.
+            // Its hand archive and its derived archival both say Archived: nothing is overridden.
             archival_conflict: false,
             // Never scheduled: the window *is* the commitment.
             plan_timing: None,

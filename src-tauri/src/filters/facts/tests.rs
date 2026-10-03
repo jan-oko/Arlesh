@@ -80,6 +80,7 @@ fn commitment_row(id: i64, parent_type: &str, parent_id: i64, verdict: Verdict) 
         tag_ids: Vec::new(),
         position: id,
         is_private: false,
+        archival: Default::default(),
         origin: Default::default(),
     }
 }

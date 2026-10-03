@@ -144,7 +144,7 @@ definition it loads.
 | `arlesh_snapshot` | `load(now?, sections?, cursor?, filter?, agentic?)` — `now` is a local date-time string (`"2026-09-25T09:00:00"`) and defaults to the server's current time; the whole planning graph: domains, goals, tasks, **commitments**, notes, flows, flow items, cycles, dependencies, block reasons, materialised instance nodes, every item's derived lifecycle, each flow's habit iterations and statuses, and which occurrence each **added child** hangs on. Paged; see below |
 | `arlesh_scopes` | `get(id)`, `resolve(id)`, `resolve_many(ids)` — `id` is a scope's value key, a JSON object such as `{"kind":"week","date":"2026-09-20"}` |
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
-| `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?, delegate?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, compound?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?, delegate?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`. See *Writing tasks* below |
+| `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?, delegate?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, compound?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?, delegate?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`, `unarchive(id)`. See *Writing tasks* below |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
 | `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`. See *Agentic waits* below |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
@@ -243,7 +243,8 @@ details an agent reads the payload by.
 - **Delegation.** A task's `delegate_to` is `null` or `{"kind": "person", "id": N}` (read the
   Person with `arlesh_kb`), independent of `agentic`; `arlesh_tasks` writes it (`delegate`, see
   *Writing tasks*). There is no Agent delegate (removed 2026-10-01): an agent holds a Task as
-  `on_agent`.
+  `on_agent`. A delegated Task is not archived: the filter's `delegated` pill decides where it
+  shows.
 - **Statuses.** A task's `status` names its model and its value: `{"kind": "ordinary", "status":
   "todo" | "in_progress" | "started" | "done"}`, or — for a Task that reads as Agentic —
   `{"kind": "agentic", "status": "todo" | "on_agent" | "review" | "doing" | "done"}`. `review` is
@@ -264,7 +265,9 @@ yet (see [*Mindmap*](mindmap-view.md)). `all`, `plan`, `start`, `do` and
 `backlog` are the presets; `unblock` rides beside them as a flag rather than replacing one, exactly
 as the List View stores it — beside them in shape, but not in effect: while the flag is set the
 list's rows are the blocked ones and the preset does not answer for them (see
-[*List View*](list-view.md)). The Archived and Backlog pills, the tag filters, the Info/Flow toggles
+[*List View*](list-view.md)). The Archived, Backlog and Delegated pills (`archived`, `backlog`,
+`delegated`: `inactive`, `include` or `exclude` — a delegated Task is not archived; see
+[*Filtering Logic*](filtering-logic.md#delegated-pill)), the tag filters, the Info/Flow toggles
 and Private Mode are all carried too, and so is the Plan preset's **scope narrowing** —
 `plan_scope`, a scope key, and `scope_match`, `contained` (the default) or `overlapping`, the
 app-wide setting the UI fills in (see [*Mindmap*](mindmap-view.md)) — and `start_hides_checked_waits`,
@@ -449,11 +452,16 @@ filter, as `pills.agentic`; see *Filtering a read*.)
   `invalid_request`, and so is a claim from anything but `todo`.
 - **`move`** re-parents a Task. It needs write on the Task and create permission at **both** its
   old and its new parent, so a Task can leave a subtree only for one it could have been made in.
-- **`archive`** never deletes, and for now takes **only a Habit occurrence**, archived as the app
-  archives one — tombstoned in its overlay, still on the board, and a status brings it back.
-  Archiving a **stored** Task by hand is not in the model yet (its Archival follows its scope), so
-  the call is refused as `not_permitted`, saying manual archival is not supported yet, and nothing
-  is written. Manual archival is tracked as `Arlesh-dbh` (the user's ruling, 2026-09-25).
+- **`archive`** never deletes. On a **stored** Task it is the app's hand archive (Task 269,
+  2026-10-03): the Task's stored Archival becomes `archived`, and it and everything beneath it
+  read as archived until it is unarchived (see [*Archive*](resources.md#archive)) — one write, and
+  the snapshot then carries `archival: "archived"` on it. On a **Habit occurrence** it archives as
+  the app archives one — tombstoned in its overlay, still on the board, and a status brings it
+  back.
+- **`unarchive`** makes a stored Task archived by hand Live again; its subtree comes back as it
+  was. It is refused as `invalid_request` on a Task that is not archived by hand (a backlogged one
+  included) and on a Habit occurrence, which a status brings back. The MCP writes only Agentic
+  Tasks, so it neither archives nor unarchives a Commitment.
 
 Every write but `create` needs a Task that reads as **Agentic**, stored or derived — resolved by
 the one resolver the app uses. A write to a **Habit occurrence** lands in its overlay, exactly as

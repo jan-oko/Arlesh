@@ -17,7 +17,13 @@ fn duration(n: i64, kind: &str) -> DurationSpec {
 }
 
 fn state(verdict: Verdict, verdict_window: Option<DurationSpec>, now: &str) -> CommitmentState {
-    derive_commitment_state(Some(one_day()), verdict, verdict_window.as_ref(), at(now))
+    derive_commitment_state(
+        Some(one_day()),
+        verdict,
+        verdict_window.as_ref(),
+        CommitmentArchival::Live,
+        at(now),
+    )
 }
 
 // --- The Verdict is never derived ---
@@ -67,8 +73,13 @@ fn a_commitment_with_no_effective_window_is_active_and_never_archives() {
     // Unreachable through the write path, which refuses a Commitment with no effective scope.
     // Kept total anyway: a derivation that panicked on a row the database should not hold
     // would take the whole board down over one bad row.
-    let derived =
-        derive_commitment_state(None, Verdict::Unresolved, None, at("2030-01-01T00:00:00"));
+    let derived = derive_commitment_state(
+        None,
+        Verdict::Unresolved,
+        None,
+        CommitmentArchival::Live,
+        at("2030-01-01T00:00:00"),
+    );
     assert_eq!(derived.timing, Timing::Active);
     assert_eq!(derived.archival, Archival::Live);
 }
@@ -230,4 +241,19 @@ fn a_duration_the_calendar_cannot_express_bounds_nothing_rather_than_wrapping() 
         verdict_deadline(Some(one_day()), Some(&duration(i64::MAX, "day"))),
         None
     );
+}
+
+// --- The hand archive (Task 269) ---
+
+#[test]
+fn a_commitment_archived_by_hand_is_archived_while_its_window_is_still_open() {
+    let archived = derive_commitment_state(
+        Some(one_day()),
+        Verdict::Unresolved,
+        None,
+        CommitmentArchival::Archived,
+        at("2026-01-06T12:00:00"),
+    );
+    assert_eq!(archived.archival, Archival::Archived);
+    assert_eq!(archived.verdict, Verdict::Unresolved);
 }

@@ -9,6 +9,8 @@ export const CONTEXT_ACTION = {
   NEW_FLOW: "new-flow",
   CONVERT_TO_FLOW: "convert-to-flow",
   START_FLOW: "start-flow",
+  /** Archive by hand, or unarchive the node archived — whichever the menu offered. */
+  ARCHIVE: "archive",
   DELETE: "delete",
 } as const;
 

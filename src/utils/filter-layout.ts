@@ -80,16 +80,16 @@ export function flagsFor(view: View): readonly YesNoDimension[] {
 }
 
 /** The tri-state and on/off filters every view carries in its switch block. */
-export type FilterSwitch = "private" | "archived" | "backlog";
+export type FilterSwitch = "private" | "archived" | "backlog" | "delegated";
 
 /**
  * The switches a view offers. The Plan View leaves out **Backlog**: it answers that question with a
  * switch of its own, which overrides the shared pill, so the pill would be a control that did
- * nothing there.
+ * nothing there. **Delegated** is in every view: off, it drops a delegated Task under Plan and Start.
  */
 export function filterSwitchesFor(view: View): readonly FilterSwitch[] {
-  if (view === "plan") return ["private", "archived"];
-  return ["private", "archived", "backlog"];
+  if (view === "plan") return ["private", "archived", "delegated"];
+  return ["private", "archived", "backlog", "delegated"];
 }
 
 /**
@@ -126,6 +126,7 @@ export function undrawnPillDimensions(view: View): readonly FilterDimension[] {
 export interface FilterDotState {
   archivedMode: OverrideMode;
   backlogMode: OverrideMode;
+  delegatedMode: OverrideMode;
   /** The On Agent pill: a setting no chip draws, so it lights the dot while on. */
   showOnAgent: boolean;
   valueCount: (dimension: FilterDimension) => number;
@@ -133,7 +134,7 @@ export interface FilterDotState {
 
 /**
  * Whether the Filter menu holds a setting nothing outside it shows — the Filter button's dot: a pill
- * set in a dimension the chips do not draw, or an **Archived** or **Backlog** pill the view offers
+ * set in a dimension the chips do not draw, or an **Archived**, **Backlog** or **Delegated** pill the view offers
  * set off *as the preset says*, or the **On Agent** pill on. The row kinds, the Zen strips, Private Mode and the Mindmap's
  * Info/Flow toggles are switches rather than pills and never count; tags are always chips.
  */
@@ -141,6 +142,7 @@ export function hasUndrawnFilters(view: View, state: FilterDotState): boolean {
   const switches = filterSwitchesFor(view);
   if (switches.includes("archived") && state.archivedMode !== "inactive") return true;
   if (switches.includes("backlog") && state.backlogMode !== "inactive") return true;
+  if (switches.includes("delegated") && state.delegatedMode !== "inactive") return true;
   if (offersOnAgent(view) && state.showOnAgent) return true;
   return undrawnPillDimensions(view).some((dimension) => state.valueCount(dimension) > 0);
 }
