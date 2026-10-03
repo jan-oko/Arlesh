@@ -33,9 +33,17 @@ pub async fn load_mindmap(
     let mut load = mindmap::load_blocked(&mut db, now, at_capacity)
         .await
         .map_err(WireError::from_error)?;
+    // Which nodes the MCP can see is a badge, not the board: a failure to read it still loads.
+    let access = match crate::access::access_map(&mut db).await {
+        Ok(map) => Some(map.effective()),
+        Err(error) => {
+            tracing::warn!(error = %error, "the MCP's view could not be read");
+            None
+        }
+    };
     db.commit().await.map_err(WireError::from_error)?;
     load.short_ids = crate::mcp::ids::board_short_ids(&load);
-    let (facts, activity) = mindmap::rules::facts::derive(&load);
+    let (facts, activity) = mindmap::rules::facts::derive(&load, access.as_deref());
     load.facts = facts;
     load.agent_activity = Some(activity);
     Ok(load)

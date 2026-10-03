@@ -9,6 +9,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
+    access::model::{EffectiveAccess, NodeKey, NodeTable},
     mindmap::model::{AgentActivity, DependencyBlock, MindmapLoad, NodeFacts},
     nodes::id::NodeId,
     tasks::{
@@ -27,12 +28,23 @@ mod tests;
 /// A node on the board, keyed as the app keys it in its tree.
 type Key = String;
 
-/// What one node passes down: where it hangs, and its own Agentic flag and Time Scope.
+/// What one node passes down: where it hangs, its own Agentic flag and Time Scope, and — for a
+/// stored row — which row it is and its title.
 #[derive(Default)]
 struct Link {
     parent: Option<Key>,
     agentic: Option<bool>,
     time_scope: Option<TimeScope>,
+    stored: Option<NodeKey>,
+    title: String,
+}
+
+/// The stored row `id` names in `table`, or `None` for a derived row.
+fn stored(table: NodeTable, id: &NodeId) -> Option<NodeKey> {
+    Some(NodeKey {
+        node_kind: table,
+        node_id: id.stored()?,
+    })
 }
 
 /// The key a content row's `(parent_type, parent_id)` names, as the app's tree does: the four
@@ -59,116 +71,124 @@ fn flow_item_parent(flow_id: i64, parent_type: &str, parent_id: i64) -> Key {
 fn links(load: &MindmapLoad) -> HashMap<Key, Link> {
     let mut links = HashMap::new();
     for domain in &load.domains {
-        let parent = domain.parent_id.map(|id| format!("domain-{id}"));
-        links.insert(
-            format!("domain-{}", domain.id),
-            Link {
-                parent,
-                ..Link::default()
-            },
-        );
+        let link = Link {
+            parent: domain.parent_id.map(|id| format!("domain-{id}")),
+            stored: Some(NodeKey {
+                node_kind: NodeTable::Domain,
+                node_id: domain.id,
+            }),
+            title: domain.title.clone(),
+            ..Link::default()
+        };
+        links.insert(format!("domain-{}", domain.id), link);
     }
     for goal in &load.goals {
-        let parent = Some(match goal.parent_type.as_str() {
-            "goal" => format!("goal-{}", goal.parent_id),
-            _ => format!("domain-{}", goal.parent_id),
-        });
-        let time_scope = goal.time_scope.clone();
-        links.insert(
-            format!("goal-{}", goal.id),
-            Link {
-                parent,
-                agentic: None,
-                time_scope,
-            },
-        );
+        let link = Link {
+            parent: Some(match goal.parent_type.as_str() {
+                "goal" => format!("goal-{}", goal.parent_id),
+                _ => format!("domain-{}", goal.parent_id),
+            }),
+            time_scope: goal.time_scope.clone(),
+            stored: stored(NodeTable::Goal, &goal.id),
+            title: goal.title.clone(),
+            ..Link::default()
+        };
+        links.insert(format!("goal-{}", goal.id), link);
     }
     for task in &load.tasks {
-        links.insert(
-            format!("task-{}", task.id),
-            Link {
-                parent: Some(content_parent(&task.parent_type, &task.parent_id)),
-                agentic: task.agentic,
-                time_scope: task.time_scope.clone(),
-            },
-        );
+        let link = Link {
+            parent: Some(content_parent(&task.parent_type, &task.parent_id)),
+            agentic: task.agentic,
+            time_scope: task.time_scope.clone(),
+            stored: stored(NodeTable::Task, &task.id),
+            title: task.title.clone(),
+        };
+        links.insert(format!("task-{}", task.id), link);
     }
     for commitment in &load.commitments {
-        links.insert(
-            format!("commitment-{}", commitment.id),
-            Link {
-                parent: Some(content_parent(
-                    &commitment.parent_type,
-                    &commitment.parent_id,
-                )),
-                agentic: None,
-                time_scope: commitment.time_scope.clone(),
-            },
-        );
+        let link = Link {
+            parent: Some(content_parent(
+                &commitment.parent_type,
+                &commitment.parent_id,
+            )),
+            time_scope: commitment.time_scope.clone(),
+            stored: stored(NodeTable::Commitment, &commitment.id),
+            title: commitment.title.clone(),
+            ..Link::default()
+        };
+        links.insert(format!("commitment-{}", commitment.id), link);
     }
     for expectation in &load.expectations {
-        links.insert(
-            format!("expectation-{}", expectation.id),
-            Link {
-                parent: Some(content_parent(
-                    &expectation.parent_type,
-                    &expectation.parent_id,
-                )),
-                agentic: None,
-                time_scope: expectation.time_scope.clone(),
-            },
-        );
+        let link = Link {
+            parent: Some(content_parent(
+                &expectation.parent_type,
+                &expectation.parent_id,
+            )),
+            time_scope: expectation.time_scope.clone(),
+            stored: stored(NodeTable::Expectation, &expectation.id),
+            title: expectation.title.clone(),
+            ..Link::default()
+        };
+        links.insert(format!("expectation-{}", expectation.id), link);
     }
     for info in &load.infos {
-        let parent = Some(content_parent(&info.parent_type, &info.parent_id));
-        links.insert(
-            format!("info-{}", info.id),
-            Link {
-                parent,
-                ..Link::default()
-            },
-        );
+        let link = Link {
+            parent: Some(content_parent(&info.parent_type, &info.parent_id)),
+            stored: Some(NodeKey {
+                node_kind: NodeTable::Info,
+                node_id: info.id,
+            }),
+            title: info.body.clone(),
+            ..Link::default()
+        };
+        links.insert(format!("info-{}", info.id), link);
     }
     for flow in &load.flows {
-        let parent = Some(match flow.parent_type.as_str() {
-            "goal" => format!("goal-{}", flow.parent_id),
-            _ => format!("domain-{}", flow.parent_id),
-        });
-        links.insert(
-            format!("flow-{}", flow.id),
-            Link {
-                parent,
-                ..Link::default()
-            },
-        );
+        let link = Link {
+            parent: Some(match flow.parent_type.as_str() {
+                "goal" => format!("goal-{}", flow.parent_id),
+                _ => format!("domain-{}", flow.parent_id),
+            }),
+            stored: Some(NodeKey {
+                node_kind: NodeTable::Flow,
+                node_id: flow.id,
+            }),
+            title: flow.title.clone(),
+            ..Link::default()
+        };
+        links.insert(format!("flow-{}", flow.id), link);
     }
     for goal in &load.flow_goals {
-        let parent = Some(flow_item_parent(
-            goal.flow_id,
-            &goal.parent_type,
-            goal.parent_id,
-        ));
-        links.insert(
-            format!("flowgoal-{}", goal.id),
-            Link {
-                parent,
-                ..Link::default()
-            },
-        );
+        let link = Link {
+            parent: Some(flow_item_parent(
+                goal.flow_id,
+                &goal.parent_type,
+                goal.parent_id,
+            )),
+            stored: Some(NodeKey {
+                node_kind: NodeTable::FlowGoal,
+                node_id: goal.id,
+            }),
+            title: goal.title.clone(),
+            ..Link::default()
+        };
+        links.insert(format!("flowgoal-{}", goal.id), link);
     }
     for task in &load.flow_tasks {
-        let parent = Some(flow_item_parent(
-            task.flow_id,
-            &task.parent_type,
-            task.parent_id,
-        ));
-        links.insert(
-            format!("flowtask-{}", task.id),
-            Link {
-                parent,
-                ..Link::default()
-            },
-        );
+        let link = Link {
+            parent: Some(flow_item_parent(
+                task.flow_id,
+                &task.parent_type,
+                task.parent_id,
+            )),
+            stored: Some(NodeKey {
+                node_kind: NodeTable::FlowTask,
+                node_id: task.id,
+            }),
+            title: task.title.clone(),
+            ..Link::default()
+        };
+        links.insert(format!("flowtask-{}", task.id), link);
     }
     links
 }
@@ -316,9 +336,58 @@ fn agent_activity(
     }
 }
 
+/// The title of the MCP root each node is seen through, by key — absent for a node the MCP cannot
+/// see. A stored node answers by itself, from `access`; a derived one (a Habit occurrence, a wait's
+/// check task, a delegated Task's wait) is a row of nothing, so it takes the answer of the nearest
+/// stored node above it.
+fn mcp_visible_via(links: &HashMap<Key, Link>, access: &[EffectiveAccess]) -> HashMap<Key, String> {
+    let titles: HashMap<NodeKey, &str> = links
+        .values()
+        .filter_map(|link| Some((link.stored?, link.title.as_str())))
+        .collect();
+    let via: HashMap<NodeKey, String> = access
+        .iter()
+        .map(|entry| {
+            let node = NodeKey {
+                node_kind: entry.node_kind,
+                node_id: entry.node_id,
+            };
+            let root = NodeKey {
+                node_kind: entry.root_kind,
+                node_id: entry.root_id,
+            };
+            let title = titles.get(&root).copied().unwrap_or_default();
+            (node, title.to_string())
+        })
+        .collect();
+    let mut seen = HashMap::new();
+    for (key, link) in links {
+        let mut cursor = Some(link);
+        for _ in 0..=links.len() {
+            let Some(current) = cursor else {
+                break;
+            };
+            if let Some(node) = current.stored {
+                if let Some(title) = via.get(&node) {
+                    seen.insert(key.clone(), title.clone());
+                }
+                break;
+            }
+            cursor = current
+                .parent
+                .as_deref()
+                .and_then(|parent| links.get(parent));
+        }
+    }
+    seen
+}
+
 /// Every node's facts on `load`, and what the agents are doing — what the app's load serves
-/// beside the rows.
-pub fn derive(load: &MindmapLoad) -> (HashMap<String, NodeFacts>, AgentActivity) {
+/// beside the rows. `access` is what the MCP roots make visible, when it could be read.
+pub fn derive(
+    load: &MindmapLoad,
+    access: Option<&[EffectiveAccess]>,
+) -> (HashMap<String, NodeFacts>, AgentActivity) {
     let lifecycles: HashMap<(&str, &NodeId), &ItemLifecycle> = load
         .lifecycles
         .iter()
@@ -368,6 +437,9 @@ pub fn derive(load: &MindmapLoad) -> (HashMap<String, NodeFacts>, AgentActivity)
         .collect();
     for id in expired {
         facts.entry(format!("commitment-{id}")).or_default().expired = true;
+    }
+    for (key, title) in mcp_visible_via(&links, access.unwrap_or_default()) {
+        facts.entry(key).or_default().mcp_visible_via = Some(title);
     }
     (facts, agent_activity(load, &lifecycles))
 }

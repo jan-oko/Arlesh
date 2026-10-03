@@ -43,6 +43,8 @@ export interface NodeFacts {
   /** Whether this node, depended on, no longer holds its dependents back: a Task Done, a Goal
    * Achieved, a wait no longer pending. */
   met?: boolean;
+  /** The title of the MCP root the node is seen through, when the MCP can see it. */
+  mcp_visible_via?: string;
 }
 
 /** What the agents are doing on the whole board, counted, as the load sends it. */

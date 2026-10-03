@@ -29,10 +29,7 @@ import {
 } from "@/api/flows";
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
-import { listMcpAccess } from "@/api/mcp-access";
 import { listPeople } from "@/api/people";
-import type { McpVisibility } from "@/api/mcp-access";
-import { applyMcpVisibility } from "@/utils/mcp-visibility";
 import { useMcpAccessStore } from "@/stores/use-mcp-access-store";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
@@ -395,6 +392,7 @@ function applyFacts(node: MindmapNode, fact: NodeFacts): void {
   if (fact.open_question !== undefined) node.openQuestionId = fact.open_question;
   if (fact.expired === true) node.expired = true;
   if (fact.met === true) node.met = true;
+  if (fact.mcp_visible_via !== undefined) node.mcpVisibleVia = fact.mcp_visible_via;
   for (const block of fact.dependency_blocks ?? []) {
     node.virtualBlockers = [...(node.virtualBlockers ?? []), blockedByText(block.kind, block.short_id, block.id, block.title)];
     node.blockingDependencyIds = [...(node.blockingDependencyIds ?? []), dependencyNodeId(block)];
@@ -901,19 +899,6 @@ async function createCommitmentUnderNode(
   return commitment.id;
 }
 
-/**
- * Which stored nodes the MCP can see. A failure here costs the badges, not the board: it is logged
- * and the board loads without them, since nothing else on screen depends on the answer.
- */
-async function loadMcpVisibility(): Promise<McpVisibility[]> {
-  try {
-    return await listMcpAccess();
-  } catch (error: unknown) {
-    console.warn("[arlesh] could not read which nodes the MCP can see:", error);
-    return [];
-  }
-}
-
 /** Every Person's name, by id. A failed read draws a Person delegate unnamed rather than failing
  * the board, as a failed MCP read draws no antenna. */
 async function loadPersonNames(): Promise<Map<number, string>> {
@@ -975,7 +960,7 @@ export function useMindmapData(): MindmapData {
       setError(null);
       try {
         const now = localNowIso();
-        const [data, mcpVisible] = await Promise.all([loadMindmap(now), loadMcpVisibility()]);
+        const data = await loadMindmap(now);
         // People are read only when a Task is delegated to one: their names are what a Person
         // delegate's badge and wait are labelled with, and nothing else on the board needs them.
         const personNames = data.tasks.some((task) => task.delegate_to != null)
@@ -994,8 +979,6 @@ export function useMindmapData(): MindmapData {
         // derivation failed has none, and says so as a load condition below — it is not silently
         // indistinguishable from a flow that simply has no iterations.
         decorateIterationRoots(built, data.flows, scopeLabels, now, (parts) => carriesMissedTitle.current(parts));
-        // Last, so every row — derived ones included — has its place and can take its answer.
-        applyMcpVisibility(built, mcpVisible);
         latestTree.current = built;
         setTree(built);
         // The whole board, before any view narrows it to a subtree: the top bar's agent status.

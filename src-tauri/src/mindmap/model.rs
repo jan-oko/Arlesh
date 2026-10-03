@@ -144,6 +144,9 @@ pub struct NodeFacts {
     /// Achieved, a wait no longer pending.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub met: bool,
+    /// The title of the MCP root the node is seen through, when the MCP can see it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mcp_visible_via: Option<String>,
 }
 
 /// What the agents are doing on the whole board, counted.

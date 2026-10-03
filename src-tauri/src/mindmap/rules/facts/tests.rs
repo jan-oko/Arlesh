@@ -134,7 +134,7 @@ fn board() -> MindmapLoad {
 
 #[test]
 fn a_node_inherits_the_nearest_agentic_flag_and_time_scope_above_it() {
-    let (facts, _) = derive(&board());
+    let (facts, _) = derive(&board(), None);
     let inherits = |key: &str| facts.get(key).cloned().unwrap_or_default();
     assert!(inherits("task-11").inherited_agentic);
     assert!(inherits("task-21").inherited_agentic, "through the goal");
@@ -166,7 +166,7 @@ fn a_dependency_blocks_until_its_target_is_finished() {
     ];
     load.short_ids
         .insert("task-12".to_string(), "abc".to_string());
-    let (facts, _) = derive(&load);
+    let (facts, _) = derive(&load, None);
     let blocks = &facts["task-11"].dependency_blocks;
     assert_eq!(
         blocks
@@ -193,7 +193,7 @@ fn the_open_question_is_the_first_live_one_an_agent_raised() {
         wait_row(3, 11, 1, true, false),
         wait_row(4, 11, 0, false, true),
     ];
-    let (facts, activity) = derive(&load);
+    let (facts, activity) = derive(&load, None);
     assert_eq!(facts["task-11"].open_question, Some(2.into()));
     assert_eq!(
         activity.waits, 1,
@@ -235,7 +235,34 @@ fn a_commitment_expires_unresolved_and_archived() {
         plan_timing: None,
     };
     load.lifecycles = vec![archived(40), archived(41)];
-    let (facts, _) = derive(&load);
+    let (facts, _) = derive(&load, None);
     assert!(facts["commitment-40"].expired);
     assert!(!facts.get("commitment-41").is_some_and(|fact| fact.expired));
+}
+
+#[test]
+fn a_node_is_seen_through_its_root_and_a_derived_one_through_its_nearest_stored_ancestor() {
+    use crate::access::model::{EffectiveAccess, NodeTable};
+    use crate::nodes::id::DerivedId;
+    let mut load = board();
+    let mut occurrence = task_row(0, "task", 10, "todo", None);
+    occurrence.id = NodeId::Derived(DerivedId::of_key("habit:1"));
+    let occurrence_key = format!("task-{}", occurrence.id);
+    load.tasks.push(occurrence);
+    let seen = |table: NodeTable, id: i64| EffectiveAccess {
+        node_kind: table,
+        node_id: id,
+        root_kind: NodeTable::Domain,
+        root_id: 2,
+    };
+    let access = [seen(NodeTable::Domain, 2), seen(NodeTable::Task, 10)];
+    let (facts, _) = derive(&load, Some(&access));
+    let via = |key: &str| facts.get(key).and_then(|fact| fact.mcp_visible_via.clone());
+    assert_eq!(via("task-10").as_deref(), Some("domain 2"));
+    assert_eq!(
+        via(&occurrence_key).as_deref(),
+        Some("domain 2"),
+        "through task 10"
+    );
+    assert_eq!(via("task-11"), None, "a stored node the roots do not reach");
 }
