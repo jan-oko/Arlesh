@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+
 from arlesh.models import (
     CreateTaskRequest,
     Dependency,
@@ -134,4 +135,3 @@ async def complete_spawned_wait_check(db: Writer, id: int) -> None:
 async def reopen_spawned_wait_check(db: Writer, id: int, due_at: datetime) -> None:
     """Reopens a spawned wait's check, due again at ``due_at``."""
     await db.reopen_spawned_wait_check(id, due_at)
-

@@ -29,9 +29,7 @@ async def create_commitment(db: Writer, request: CreateCommitmentRequest) -> Com
 
 
 @router.patch("/{id}")
-async def update_commitment(
-    db: Writer, id: str, request: UpdateCommitmentRequest
-) -> Commitment:
+async def update_commitment(db: Writer, id: str, request: UpdateCommitmentRequest) -> Commitment:
     """Updates a Commitment; naming a parent moves it."""
     return await db.update_commitment(node_id(id), request)
 

@@ -60,9 +60,7 @@ async def start_flow(db: Writer, id: int, request: StartFlowRequest) -> Material
 
 
 @router.put("/{id}/recurrence")
-async def set_flow_recurrence(
-    db: Writer, id: int, request: SetRecurrenceRequest
-) -> FlowRecurrence:
+async def set_flow_recurrence(db: Writer, id: int, request: SetRecurrenceRequest) -> FlowRecurrence:
     """Makes a Flow a Habit, or changes its Recurrence."""
     return await db.set_flow_recurrence(id, request)
 
@@ -153,9 +151,7 @@ async def set_flow_item_cycles(
     )
 
 
-@items.delete(
-    "/{item_type}/{id}/dependencies/{depends_on_type}/{depends_on_id}", status_code=204
-)
+@items.delete("/{item_type}/{id}/dependencies/{depends_on_type}/{depends_on_id}", status_code=204)
 async def remove_flow_dependency(
     db: Writer,
     item_type: FlowItemType,
