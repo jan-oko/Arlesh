@@ -619,8 +619,8 @@ impl<'session> FlowOperator<'session> {
     /// nothing first, which is why it stays on the operator rather than becoming a free function.
     ///
     /// ```no_run
-    /// # use arlesh_lib::database::session::SessionFactory;
-    /// # use arlesh_lib::flows::{error::FlowError, model::FlowItemType};
+    /// # use arlesh_core::database::session::SessionFactory;
+    /// # use arlesh_core::flows::{error::FlowError, model::FlowItemType};
     /// # async fn remove(factory: &SessionFactory) -> Result<(), FlowError> {
     /// let mut db = factory.begin().await?;
     /// db.flows().delete_item(FlowItemType::FlowTask, 1).await?;

@@ -17,7 +17,7 @@
 //! One [`AgentCapacity`] is shared by the Tauri commands and every MCP session, and it holds the
 //! value in memory behind a lock so a read never touches the disk. Every [`AgentCapacity::set`]
 //! writes the file before it answers and then tells the windows through the [`Notify`] it was
-//! built with — the app's is a Tauri event (see [`crate::commands::capacity`]).
+//! built with — the app's is a Tauri event (see the app crate's `commands::capacity`).
 
 use std::{
     path::{Path, PathBuf},

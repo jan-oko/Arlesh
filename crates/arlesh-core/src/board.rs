@@ -34,7 +34,7 @@
 //! reloads on the way back from it — that is the path this design reuses rather than replacing —
 //! so sending it the event too would buy a second identical read of the board for every edit.
 //! [`recipients`] is that rule, and it is all of the decision; the emitting lives in
-//! [`crate::commands::board`], which is Tauri's side of it.
+//! the app crate's `commands::board`, which is Tauri's side of it.
 
 use std::sync::Arc;
 

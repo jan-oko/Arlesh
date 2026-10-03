@@ -1,6 +1,6 @@
 //! MCP server exposing Arlesh's reads to an agent.
 //!
-//! A second adapter over the session layer, sibling to [`commands`](crate::commands): both open a
+//! A second adapter over the session layer, sibling to the app crate's `commands`: both open a
 //! session from the same [`SessionFactory`] and delegate to the same stateless resource operators,
 //! and neither depends on the other. The Tauri commands serve the app's own frontend; these tools
 //! serve an MCP client — Claude Code, Claude Desktop — over localhost HTTP.
@@ -44,7 +44,7 @@ mod capacity;
 mod delegation;
 pub mod endpoint;
 mod flows;
-pub(crate) mod ids;
+pub mod ids;
 mod infos;
 mod kb;
 mod lookup;

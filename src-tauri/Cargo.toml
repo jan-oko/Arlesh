@@ -22,6 +22,7 @@ test = false
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+arlesh-core = { path = "../crates/arlesh-core" }
 # `tray-icon` is what puts Arlesh in the system tray, so closing the window can hide it there
 # and leave the MCP endpoint answering. On Linux it needs libappindicator and libxdo at build
 # time; CI installs them.
@@ -57,15 +58,3 @@ tokio = { version = "1", features = ["rt", "macros"] }
 # newtype over a borrow with no public constructor, so without this a Tauri command cannot be
 # called from a test at all. See `tests/helpers.rs::command_host`.
 tauri = { version = "2", features = ["test"] }
-
-# Debug builds statically link the whole dependency tree into every binary (the app plus one
-# binary per integration-test file), and full DWARF debug info dominates the on-disk size. Keep
-# just line tables — enough for readable panic/test backtraces — and strip the rest. This shrinks
-# `target/debug` several-fold with no effect on behavior; step-debugging locals is the only cost.
-[profile.dev]
-debug = "line-tables-only"
-strip = "debuginfo"
-
-[profile.test]
-debug = "line-tables-only"
-strip = "debuginfo"

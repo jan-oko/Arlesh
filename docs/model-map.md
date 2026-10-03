@@ -7,7 +7,8 @@ in the same order, with fuller code pointers. It is a map, not the specification
 **Keep the two files in step.** A pull request that adds, removes or changes the meaning of a
 concept updates both files, as it updates the spec (see `AGENTS.md`).
 
-Paths are relative to the repo root. `src-tauri/src/` is abbreviated to `rs:` and `src/` (the
+Paths are relative to the repo root. `crates/arlesh-core/src/` (the core crate, where every domain
+module lives; the desktop app's `commands/` stay in `src-tauri/src/`) is abbreviated to `rs:` and `src/` (the
 frontend) to `ts:`.
 
 ## The pipeline
@@ -396,7 +397,7 @@ How the presets read them:
 - **Is:** numbered schema steps, applied in order and never edited once applied. Data is moved aside, never dropped; for example, `retired_beads_ids` from 0091.
 - **Why:** your real database must reach every new shape without losing anything.
 - **Without:** upgrades that refuse to start, or quietly discard history.
-- **Lives:** `src-tauri/migrations/`, run by sqlx at startup (`rs:database/`).
+- **Lives:** `crates/arlesh-core/migrations/`, run by sqlx at startup (`rs:database/`).
 - **Spec:** the migration notes in each area file.
 
 ### A truthful board

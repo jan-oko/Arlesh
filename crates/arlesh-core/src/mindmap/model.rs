@@ -91,7 +91,7 @@ pub struct MindmapLoad {
     pub habits: Vec<FlowHabitEntry>,
     /// Each Task's, Goal's, Commitment's and wait's **short id** on the whole board, keyed as the
     /// board keys a node (`task-12`): what the app names a dependency it is blocked by with.
-    /// Filled by the app's load only ([`crate::commands::mindmap::load_mindmap`]); empty, and left
+    /// Filled by the app's load only (the app crate's `commands::mindmap::load_mindmap`); empty, and left
     /// off the wire, everywhere else — the MCP names nodes among those it can see.
     #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub short_ids: std::collections::HashMap<String, String>,

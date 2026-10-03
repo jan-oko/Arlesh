@@ -253,7 +253,7 @@ impl Db<Transactional> {
     /// mistake the type system does not catch.
     ///
     /// ```no_run
-    /// # use arlesh_lib::database::session::SessionFactory;
+    /// # use arlesh_core::database::session::SessionFactory;
     /// # async fn atomically(factory: &SessionFactory) -> Result<(), sqlx::Error> {
     /// let session = factory.begin().await?;
     /// session.commit().await?;
@@ -265,7 +265,7 @@ impl Db<Transactional> {
     /// code with `connect` in place of `begin` is rejected:
     ///
     /// ```compile_fail,E0599
-    /// # use arlesh_lib::database::session::SessionFactory;
+    /// # use arlesh_core::database::session::SessionFactory;
     /// # async fn atomically(factory: &SessionFactory) -> Result<(), sqlx::Error> {
     /// let session = factory.connect().await?;
     /// session.commit().await?;

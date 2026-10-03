@@ -550,7 +550,7 @@ pub async fn reopen_expectation_check(
 }
 
 /// The wall-clock instant a write is stamped with.
-pub(crate) fn now() -> NaiveDateTime {
+pub fn now() -> NaiveDateTime {
     chrono::Local::now().naive_local()
 }
 

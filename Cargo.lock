@@ -58,6 +58,7 @@ name = "arlesh"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "arlesh-core",
  "axum",
  "chrono",
  "gtk",
@@ -75,6 +76,23 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "arlesh-core"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "rmcp",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

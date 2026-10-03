@@ -119,8 +119,8 @@ impl<'session> InfoOperator<'session> {
     /// could never join one.
     ///
     /// ```no_run
-    /// # use arlesh_lib::database::session::SessionFactory;
-    /// # use arlesh_lib::infos::model::{InfoId, UpdateInfoRequest};
+    /// # use arlesh_core::database::session::SessionFactory;
+    /// # use arlesh_core::infos::model::{InfoId, UpdateInfoRequest};
     /// # async fn update(factory: &SessionFactory) -> Result<(), sqlx::Error> {
     /// let mut db = factory.begin().await?;
     /// db.infos().update(InfoId(1), UpdateInfoRequest {

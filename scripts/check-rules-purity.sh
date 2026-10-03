@@ -8,7 +8,7 @@
 # nobody read the imports.
 #
 # What counts as a rules module:
-#   - every `rules.rs` under src-tauri/src, and everything under a `rules/` directory beside one;
+#   - every `rules.rs` under crates/arlesh-core/src, and everything under a `rules/` directory beside one;
 #   - all of `filters/`, which was written pure and is the presets' rules layer as a whole.
 # And the domain models the rules read, which hold to the same line (ADR 0010, decision 8: domain
 # and database models are separate, so a row type and its codec live in persistence):
@@ -20,11 +20,11 @@
 # ("no `tokio`") is not a violation. A string literal naming one of the words would be; none does,
 # and a rule has no reason to.
 #
-# Usage: scripts/check-rules-purity.sh [ROOT]   (ROOT defaults to src-tauri/src)
+# Usage: scripts/check-rules-purity.sh [ROOT]   (ROOT defaults to crates/arlesh-core/src)
 
 set -euo pipefail
 
-root="${1:-src-tauri/src}"
+root="${1:-crates/arlesh-core/src}"
 forbidden='\b(Db|SessionMode)\b|\bsqlx\b|\btauri\b|\btokio\b|\bstd::fs\b'
 
 files=$(

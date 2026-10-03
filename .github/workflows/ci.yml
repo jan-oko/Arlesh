@@ -125,10 +125,11 @@ jobs:
       # contents of a `tests.rs` or `*_tests.rs` file (llvm-cov excludes those
       # by filename, so grouping modules in there cost nothing), or on
       # `src-tauri/tests/`, which is integration tests and a different thing.
+      # Every crate's `src/` is covered: the app's and each one under crates/.
       - name: No inline test modules under src/
         run: |
           found=$(
-            find src-tauri/src -name '*.rs' ! -name 'tests.rs' ! -name '*_tests.rs' \
+            find src-tauri/src crates/*/src -name '*.rs' ! -name 'tests.rs' ! -name '*_tests.rs' \
             | sort \
             | xargs awk '
                 /^[ \t]*#\[cfg\(test\)\][ \t]*$/ { armed = 1; next }
@@ -143,7 +144,7 @@ jobs:
               '
           )
           if [ -n "$found" ]; then
-            echo "Inline test module body under src-tauri/src/:"
+            echo "Inline test module body under a crate's src/:"
             echo "$found"
             echo
             echo "Unit test bodies live in a sibling file, never inline:"
@@ -163,6 +164,23 @@ jobs:
       - name: Rules modules and domain models are pure
         run: scripts/check-rules-purity.sh
 
+      # The core is what every host builds on — the desktop app and the Python bindings — so it
+      # must never depend on Tauri, directly or through anything it pulls in. Before the workspace
+      # split that was a convention; this makes it a check. `cargo tree` resolves the lockfile and
+      # needs no build, so it costs seconds and sits with the other cheap guards.
+      - name: arlesh-core does not depend on tauri
+        run: |
+          deps=$(cargo tree --locked -p arlesh-core -e normal,build --prefix none --format '{p}' | sed 's/ .*//' | sort -u)
+          tauri=$(echo "$deps" | grep -E '^(tauri|wry|tao|webkit2gtk)' || true)
+          if [ -n "$tauri" ]; then
+            echo "arlesh-core depends on the desktop shell:"
+            echo "$tauri"
+            echo
+            echo "The core is host-agnostic. Tauri belongs to src-tauri, beside commands/."
+            exit 1
+          fi
+          echo "arlesh-core is Tauri-free ($(echo "$deps" | wc -l) crates in its tree)."
+
       # Second, for the same reason the guard above is first: this needs no apt
       # packages, no cache and no build — just the toolchain — so it costs seconds
       # and a violation never reaches the six-minute compile. That is the whole
@@ -181,8 +199,7 @@ jobs:
       # under everyone and failing here with no commit to blame. Same file, same
       # reason, second gate.
       - name: cargo fmt --check
-        working-directory: src-tauri
-        run: cargo fmt --check
+        run: cargo fmt --all --check
 
       # `tauri` is in the dependency tree with its default features, so wry and
       # webkit2gtk-sys compile even for `cargo test`, and they need the GTK/
@@ -237,7 +254,9 @@ jobs:
       # than converging. Change this key if the command below changes mode.
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          # The workspace root is the repo root; its target stays in src-tauri/target
+          # (.cargo/config.toml).
+          workspaces: ". -> src-tauri/target"
           shared-key: rust-llvm-cov-manual
 
       # `tauri::generate_context!` (src-tauri/src/lib.rs) embeds the frontend
@@ -275,8 +294,7 @@ jobs:
       # components, so it arrives with the compiler rather than depending on which
       # profile the runner image happened to install.
       - name: cargo clippy
-        working-directory: src-tauri
-        run: cargo clippy --locked --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
       # One instrumented build, three consumers. `show-env` emits the RUSTFLAGS
       # and profile paths cargo-llvm-cov would use, so the test run and the
@@ -302,13 +320,12 @@ jobs:
       # fail as well as pass (a floor of 99 exits 1, 94 exits 0), so it gates
       # rather than decorates.
       - name: cargo llvm-cov · tests, doctests, coverage
-        working-directory: src-tauri
         run: |
           set -o pipefail
           source <(cargo llvm-cov show-env --export-prefix)
           echo "building in ${CARGO_TARGET_DIR:-src-tauri/target}"
           cargo llvm-cov clean --workspace
-          cargo test --locked
+          cargo test --locked --workspace
           cargo llvm-cov report \
             --summary-only \
             --ignore-filename-regex '(^|/)src/commands/' \

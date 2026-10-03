@@ -33,9 +33,9 @@ impl<'session> DomainOperator<'session> {
     /// boundary, and a method that began its own could never join one.
     ///
     /// ```no_run
-    /// # use arlesh_lib::database::session::SessionFactory;
-    /// # use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype};
-    /// # async fn create(factory: &SessionFactory) -> Result<(), arlesh_lib::domains::error::DomainError> {
+    /// # use arlesh_core::database::session::SessionFactory;
+    /// # use arlesh_core::domains::model::{CreateDomainRequest, DomainSubtype};
+    /// # async fn create(factory: &SessionFactory) -> Result<(), arlesh_core::domains::error::DomainError> {
     /// let mut db = factory.begin().await?;
     /// db.domains().create(CreateDomainRequest {
     ///     title: "Learn Rust".into(),

@@ -83,7 +83,7 @@ impl<'session> BlockReasonOperator<'session> {
     /// `Db<Transactional>` and commit, or a failure part-way leaves the owner's list truncated:
     ///
     /// ```no_run
-    /// # use arlesh_lib::database::session::SessionFactory;
+    /// # use arlesh_core::database::session::SessionFactory;
     /// # async fn replace(factory: &SessionFactory) -> Result<(), sqlx::Error> {
     /// let mut db = factory.begin().await?;
     /// db.block_reasons().set("task", 1, &["stuck".to_string()]).await?;

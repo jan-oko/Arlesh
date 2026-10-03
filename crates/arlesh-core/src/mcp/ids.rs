@@ -500,7 +500,7 @@ fn path_above(mut cursor: Option<(NodeTable, NodeId)>, titles: &Titles) -> Strin
 /// Every node's short id on the **whole** `load` — the app's board, which sees everything — keyed
 /// as the board keys a node (see [`NodeNames::short_ids_by_key`]). Unique among every node, so each
 /// is also unique among the fewer the MCP can see, and reads back there to the same node.
-pub(crate) fn board_short_ids(load: &MindmapLoad) -> HashMap<String, String> {
+pub fn board_short_ids(load: &MindmapLoad) -> HashMap<String, String> {
     NodeNames::of(load).short_ids_by_key()
 }
 

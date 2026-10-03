@@ -1344,8 +1344,8 @@ impl<'session> TaskOperator<'session> {
 /// This is the **only** way to write a goal row: the operator method underneath is module-private.
 ///
 /// ```no_run
-/// # use arlesh_lib::database::session::SessionFactory;
-/// # use arlesh_lib::tasks::{create_goal, error::TaskError, model::CreateGoalRequest};
+/// # use arlesh_core::database::session::SessionFactory;
+/// # use arlesh_core::tasks::{create_goal, error::TaskError, model::CreateGoalRequest};
 /// # async fn add(factory: &SessionFactory) -> Result<(), TaskError> {
 /// let mut db = factory.begin().await?;
 /// create_goal(&mut db, CreateGoalRequest { title: "Ship it".into(), ..Default::default() })
@@ -1378,8 +1378,8 @@ pub async fn create_goal(
 /// `GoalWrite` value it takes.
 ///
 /// ```no_run
-/// # use arlesh_lib::database::session::SessionFactory;
-/// # use arlesh_lib::tasks::{error::TaskError, model::{GoalId, UpdateGoalRequest}, update_goal};
+/// # use arlesh_core::database::session::SessionFactory;
+/// # use arlesh_core::tasks::{error::TaskError, model::{GoalId, UpdateGoalRequest}, update_goal};
 /// # async fn rename(factory: &SessionFactory) -> Result<(), TaskError> {
 /// let mut db = factory.begin().await?;
 /// update_goal(
@@ -1435,8 +1435,8 @@ pub async fn delete_goal(db: &mut Db<Transactional>, id: GoalId) -> Result<(), T
 /// This is the **only** way to write a task row: the operator method underneath is module-private.
 ///
 /// ```no_run
-/// # use arlesh_lib::database::session::SessionFactory;
-/// # use arlesh_lib::tasks::{create_task, error::TaskError, model::CreateTaskRequest};
+/// # use arlesh_core::database::session::SessionFactory;
+/// # use arlesh_core::tasks::{create_task, error::TaskError, model::CreateTaskRequest};
 /// # async fn add(factory: &SessionFactory) -> Result<(), TaskError> {
 /// let mut db = factory.begin().await?;
 /// create_task(&mut db, CreateTaskRequest { title: "Write it up".into(), ..Default::default() })
@@ -1534,8 +1534,8 @@ pub(crate) async fn create_task_as(
 /// `TaskWrite` value it takes.
 ///
 /// ```no_run
-/// # use arlesh_lib::database::session::SessionFactory;
-/// # use arlesh_lib::tasks::{error::TaskError, model::{TaskId, UpdateTaskRequest}, update_task};
+/// # use arlesh_core::database::session::SessionFactory;
+/// # use arlesh_core::tasks::{error::TaskError, model::{TaskId, UpdateTaskRequest}, update_task};
 /// # async fn rename(factory: &SessionFactory) -> Result<(), TaskError> {
 /// let mut db = factory.begin().await?;
 /// update_task(
@@ -1641,8 +1641,8 @@ pub async fn update_task_at(
 /// second writer instead of letting both land — so it belongs in the signature.
 ///
 /// ```no_run
-/// # use arlesh_lib::database::session::SessionFactory;
-/// # use arlesh_lib::tasks::{add_task_dependency, error::TaskError, model::{Dependency, TaskId}};
+/// # use arlesh_core::database::session::SessionFactory;
+/// # use arlesh_core::tasks::{add_task_dependency, error::TaskError, model::{Dependency, TaskId}};
 /// # async fn depend(factory: &SessionFactory) -> Result<(), TaskError> {
 /// let mut db = factory.begin().await?;
 /// add_task_dependency(&mut db, TaskId(1), Dependency::Task { id: 2.into() }).await?;
