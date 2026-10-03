@@ -32,6 +32,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{Duration, NaiveDate, NaiveDateTime};
 
+use crate::access::model::NodeTable;
 use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::CreateInfoRequest;
 use crate::nodes::{
@@ -232,6 +233,31 @@ impl<'session> FlowOperator<'session> {
             flow.template = fields.remove(&flow.id).unwrap_or_default();
         }
         Ok(flows)
+    }
+
+    /// The ids of the Flows hanging directly under one stored node, in sort order.
+    ///
+    /// A domains-table parent is matched under every subtype spelling, because a Flow's
+    /// `parent_type` names that row by whichever of `aspect`, `project` or `domain` its writer used
+    /// (migration 0025). Only domains-table rows and Goals can hold a Flow, so any other table has
+    /// none.
+    pub async fn ids_under(
+        &mut self,
+        parent: NodeTable,
+        parent_id: i64,
+    ) -> Result<Vec<i64>, FlowError> {
+        let spellings = match parent {
+            NodeTable::Domain => "'aspect', 'project', 'domain'",
+            NodeTable::Goal => "'goal'",
+            _ => return Ok(Vec::new()),
+        };
+        Ok(sqlx::query_scalar(&format!(
+            "SELECT id FROM flows WHERE parent_type IN ({spellings}) AND parent_id = ?
+             ORDER BY position ASC, id ASC"
+        ))
+        .bind(parent_id)
+        .fetch_all(&mut *self.connection)
+        .await?)
     }
 
     /// The template fields of this session's connection.
@@ -2499,6 +2525,43 @@ pub async fn duplicate_flow(
             .await?;
     }
     db.flows().get(new_id).await
+}
+
+/// Copies a Flow that hangs under a node a subtree copy carried, as part of that same copy: what
+/// `duplicate::duplicate_subtree` calls for every Flow it meets.
+///
+/// It is [`duplicate_flow`] — template, Recurrence and privacy, no history and no started
+/// instances — put under the copied parent at the original's own position, so the copy has the
+/// original's shape. The one thing it adds is the **Target Node**, settled by
+/// [`rules::targets::copied_target_id`]: a target the same copy carried is remapped to the copy of
+/// it, one outside keeps pointing at the original, and NULL stays NULL. `copies` must therefore
+/// hold every node of the subtree before any Flow is copied.
+///
+/// Transactional, and only as part of the caller's: it never commits.
+#[tracing::instrument(skip(db, copies))]
+pub async fn duplicate_flow_with_subtree(
+    db: &mut Db<Transactional>,
+    flow_id: FlowId,
+    parent_type: &str,
+    parent_id: i64,
+    copies: &rules::targets::CopiedNodes,
+) -> Result<Flow, FlowError> {
+    let source = db.flows().get(flow_id).await?;
+    let copy = duplicate_flow(db, flow_id, parent_type, parent_id, source.position).await?;
+    let Some(target_id) =
+        rules::targets::copied_target_id(source.target_type.as_deref(), source.target_id, copies)
+    else {
+        return Ok(copy);
+    };
+    db.flows()
+        .update(
+            FlowId(copy.id),
+            UpdateFlowRequest {
+                target_id: Some(Some(target_id)),
+                ..Default::default()
+            },
+        )
+        .await
 }
 
 /// Copies a template item — and everything nested under it — onto `(parent_type, parent_id)` at
