@@ -47,6 +47,10 @@ export interface CorpusNode {
   missed?: boolean;
   /** Every node it depends on, met or not. */
   dependencies?: string[];
+  /** A Task is Compound: it consists of its sub-items. */
+  compound?: boolean;
+  /** An Expectation is an agentic wait: an agent raised it. */
+  agentWaiting?: boolean;
   children?: CorpusNode[];
 }
 
@@ -106,6 +110,8 @@ export function parseNode(value: unknown, what: string): CorpusNode {
     ...flag(raw.asynchronous, "asynchronous", what),
     ...flag(raw.planned, "planned", what),
     ...flag(raw.missed, "missed", what),
+    ...flag(raw.compound, "compound", what),
+    ...flag(raw.agentWaiting, "agentWaiting", what),
     ...(raw.dependencies !== undefined ? { dependencies: ids(raw.dependencies, `${what}.dependencies`) } : {}),
     ...(raw.timeScope !== undefined ? { timeScope: parseTimeScope(raw.timeScope, `${what}.timeScope`) } : {}),
     ...(raw.blockingDependencies !== undefined
@@ -226,5 +232,7 @@ export function toMindmapNode(node: CorpusNode): MindmapNode {
     ...(node.asynchronous === true ? { asynchronous: true } : {}),
     ...(node.planned === true ? { plan: SOME_PLAN } : {}),
     ...(node.missed === true ? { resolution: "missed" as const } : {}),
+    ...(node.compound === true ? { compound: true } : {}),
+    ...(node.agentWaiting === true ? { agentWaiting: { note: null, question: true, answer: null } } : {}),
   };
 }

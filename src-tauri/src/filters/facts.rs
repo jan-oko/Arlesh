@@ -215,6 +215,7 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
             .unwrap_or_default();
         node.has_todo_child = todo_parents.contains(&node.id);
         node.asynchronous = task.asynchronous;
+        node.compound = task.compound;
         node.planned = task.plan.is_some();
         node.dependencies = dependencies.get(&task.id).cloned().unwrap_or_default();
         apply_lifecycle(
@@ -233,6 +234,7 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.is_private = expectation.is_private;
         node.archived = expectation.archival == ExpectationArchival::Archived;
         node.has_check = expectation.check_every.is_some();
+        node.agent_waiting = expectation.agentic;
         node.tag_ids.clone_from(&expectation.tag_ids);
         node.time_scope.clone_from(&expectation.time_scope);
         // Its own Time Scope's Timing — the stored archive, not the lifecycle, says archived.

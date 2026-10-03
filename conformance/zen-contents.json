@@ -1,0 +1,376 @@
+{
+  "about": [
+    "The Zen View's contents, written as data: the grid's cards in order, and each strip's rows.",
+    "",
+    "Both evaluators replay it. `src-tauri/tests/operations/zen_contents_conformance.rs` runs every",
+    "case through `crate::filters::zen`; `src/utils/zen-contents-conformance.test.ts` runs the same",
+    "cases through `zen-contents.ts`. Neither side generates this file.",
+    "",
+    "A board's nodes are written as in `preset-filters.json`. `filter` is the tab's shared filter —",
+    "`preset`, `showOnAgent`, `startHidesCheckedWaits` and `privateMode`, each defaulting as the app's",
+    "does — which the Zen View reads under its own presets. `options` is what the tab asks of the",
+    "view: the two strips, the Agentic pill, and the two app-wide grid settings. The focus exemption",
+    "is a render-time overlay on the view's selection and is not here."
+  ],
+  "cases": [
+    {
+      "name": "the grid is do in board order with review first, whatever the tab's own preset",
+      "spec": "zen-view.md — The grid is the List View's Task rows under Do, Review cards first, less every delegated Task.",
+      "board": "zen",
+      "filter": {
+        "preset": "plan"
+      },
+      "options": {
+        "commitments": true,
+        "expectations": true
+      },
+      "expect": {
+        "tasks": [
+          "task-review",
+          "task-progress",
+          "task-sub",
+          "task-doing"
+        ],
+        "commitments": [
+          "commitment-open"
+        ],
+        "expectations": [
+          "expectation-delegated",
+          "expectation-person",
+          "expectation-checked"
+        ]
+      }
+    },
+    {
+      "name": "a started task joins the grid while the zen view's own setting says so",
+      "spec": "zen-view.md — Whether a Started Task counts is the Zen View's own setting, not the Do preset's.",
+      "board": "zen",
+      "filter": {
+        "preset": "plan"
+      },
+      "options": {
+        "commitments": true,
+        "expectations": true,
+        "showsStarted": true
+      },
+      "expect": {
+        "tasks": [
+          "task-review",
+          "task-progress",
+          "task-started",
+          "task-sub",
+          "task-doing"
+        ],
+        "commitments": [
+          "commitment-open"
+        ],
+        "expectations": [
+          "expectation-delegated",
+          "expectation-person",
+          "expectation-checked"
+        ]
+      }
+    },
+    {
+      "name": "a compound task's card is drawn only while its setting is on, and its sub-items always",
+      "spec": "zen-view.md — Off, a Compound Task's card is not drawn; its sub-items still are, by their own status.",
+      "board": "zen",
+      "filter": {
+        "preset": "plan"
+      },
+      "options": {
+        "commitments": true,
+        "expectations": true,
+        "showsCompound": true
+      },
+      "expect": {
+        "tasks": [
+          "task-review",
+          "task-progress",
+          "task-compound",
+          "task-sub",
+          "task-doing"
+        ],
+        "commitments": [
+          "commitment-open"
+        ],
+        "expectations": [
+          "expectation-delegated",
+          "expectation-person",
+          "expectation-checked"
+        ]
+      }
+    },
+    {
+      "name": "on agent joins the grid only with the on agent pill",
+      "spec": "zen-view.md — An On Agent Task shows only while the shared filter's showOnAgent asks for it.",
+      "board": "zen",
+      "filter": {
+        "preset": "plan",
+        "showOnAgent": true
+      },
+      "options": {
+        "commitments": true,
+        "expectations": true
+      },
+      "expect": {
+        "tasks": [
+          "task-review",
+          "task-progress",
+          "task-sub",
+          "task-doing",
+          "task-on-agent"
+        ],
+        "commitments": [
+          "commitment-open"
+        ],
+        "expectations": [
+          "expectation-delegated",
+          "expectation-person",
+          "expectation-checked"
+        ]
+      }
+    },
+    {
+      "name": "a hidden strip draws nothing",
+      "spec": "zen-view.md — A hidden strip is empty.",
+      "board": "zen",
+      "filter": {
+        "preset": "plan"
+      },
+      "options": {
+        "commitments": false,
+        "expectations": false
+      },
+      "expect": {
+        "tasks": [
+          "task-review",
+          "task-progress",
+          "task-sub",
+          "task-doing"
+        ],
+        "commitments": [],
+        "expectations": []
+      }
+    },
+    {
+      "name": "the expectations strip honours start hides waits that have checks",
+      "spec": "zen-view.md — The shared filter carries the app-wide Start hides waits that have checks setting.",
+      "board": "zen",
+      "filter": {
+        "preset": "plan",
+        "startHidesCheckedWaits": true
+      },
+      "options": {
+        "commitments": true,
+        "expectations": true
+      },
+      "expect": {
+        "tasks": [
+          "task-review",
+          "task-progress",
+          "task-sub",
+          "task-doing"
+        ],
+        "commitments": [
+          "commitment-open"
+        ],
+        "expectations": [
+          "expectation-delegated",
+          "expectation-person"
+        ]
+      }
+    },
+    {
+      "name": "the agentic pill narrows the grid and leaves the strips alone",
+      "spec": "zen-view.md — The Agentic pill narrows the grid; it asks about Tasks.",
+      "board": "zen",
+      "filter": {
+        "preset": "plan"
+      },
+      "options": {
+        "commitments": true,
+        "expectations": true,
+        "agentic": [
+          {
+            "value": "agentic",
+            "mode": "exclude"
+          }
+        ]
+      },
+      "expect": {
+        "tasks": [
+          "task-progress",
+          "task-sub"
+        ],
+        "commitments": [
+          "commitment-open"
+        ],
+        "expectations": [
+          "expectation-delegated",
+          "expectation-person",
+          "expectation-checked"
+        ]
+      }
+    },
+    {
+      "name": "an any agentic pill keeps only the agentic cards",
+      "spec": "zen-view.md — The Agentic pill narrows the grid; it asks about Tasks.",
+      "board": "zen",
+      "filter": {
+        "preset": "plan"
+      },
+      "options": {
+        "commitments": true,
+        "expectations": true,
+        "agentic": [
+          {
+            "value": "agentic",
+            "mode": "any"
+          }
+        ]
+      },
+      "expect": {
+        "tasks": [
+          "task-review",
+          "task-doing"
+        ],
+        "commitments": [
+          "commitment-open"
+        ],
+        "expectations": [
+          "expectation-delegated",
+          "expectation-person",
+          "expectation-checked"
+        ]
+      }
+    }
+  ],
+  "boards": {
+    "zen": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-work",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "goal-w",
+              "kind": "goal",
+              "status": "active",
+              "children": [
+                {
+                  "id": "task-progress",
+                  "kind": "task",
+                  "status": "in_progress"
+                },
+                {
+                  "id": "task-todo",
+                  "kind": "task",
+                  "status": "todo"
+                },
+                {
+                  "id": "task-done",
+                  "kind": "task",
+                  "status": "done"
+                },
+                {
+                  "id": "task-started",
+                  "kind": "task",
+                  "status": "started"
+                },
+                {
+                  "id": "task-compound",
+                  "kind": "task",
+                  "status": "in_progress",
+                  "compound": true,
+                  "children": [
+                    {
+                      "id": "task-sub",
+                      "kind": "task",
+                      "status": "in_progress"
+                    }
+                  ]
+                },
+                {
+                  "id": "task-delegated",
+                  "kind": "task",
+                  "status": "in_progress",
+                  "delegated": true,
+                  "children": [
+                    {
+                      "id": "expectation-delegated",
+                      "kind": "expectation",
+                      "status": "pending",
+                      "timing": "active"
+                    }
+                  ]
+                },
+                {
+                  "id": "task-review",
+                  "kind": "task",
+                  "status": "review",
+                  "agentic": true,
+                  "children": [
+                    {
+                      "id": "expectation-question",
+                      "kind": "expectation",
+                      "status": "pending",
+                      "timing": "active",
+                      "agentWaiting": true
+                    }
+                  ]
+                },
+                {
+                  "id": "task-doing",
+                  "kind": "task",
+                  "status": "doing",
+                  "agentic": true
+                },
+                {
+                  "id": "task-on-agent",
+                  "kind": "task",
+                  "status": "on_agent",
+                  "agentic": true
+                }
+              ]
+            },
+            {
+              "id": "commitment-open",
+              "kind": "commitment",
+              "verdict": "unresolved",
+              "timing": "active"
+            },
+            {
+              "id": "commitment-kept",
+              "kind": "commitment",
+              "verdict": "kept",
+              "timing": "active"
+            },
+            {
+              "id": "expectation-person",
+              "kind": "expectation",
+              "status": "pending",
+              "timing": "active"
+            },
+            {
+              "id": "expectation-ahead",
+              "kind": "expectation",
+              "status": "pending",
+              "timing": "pending"
+            },
+            {
+              "id": "expectation-checked",
+              "kind": "expectation",
+              "status": "pending",
+              "timing": "active",
+              "hasCheck": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

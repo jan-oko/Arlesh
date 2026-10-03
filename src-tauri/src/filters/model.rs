@@ -442,6 +442,12 @@ pub struct NodeFacts {
     /// Scope pill.
     #[serde(default)]
     pub missed: bool,
+    /// Whether a Task is **Compound**: it consists of its sub-items, and its status is derived.
+    #[serde(default)]
+    pub compound: bool,
+    /// Whether an Expectation is an **agentic wait**: one an agent raised on the Task it hangs under.
+    #[serde(default)]
+    pub agent_waiting: bool,
 }
 
 impl NodeFacts {
@@ -472,6 +478,8 @@ impl NodeFacts {
             dependencies: Vec::new(),
             planned: false,
             missed: false,
+            compound: false,
+            agent_waiting: false,
         }
     }
 
