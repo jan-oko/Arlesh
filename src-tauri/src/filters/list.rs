@@ -5,7 +5,7 @@
 //! ancestors explicitly here. Everything else is the same predicate the Mindmap uses, from
 //! [`rules`](super::rules).
 
-use std::{borrow::Cow, collections::HashSet};
+use std::{borrow::Cow, collections::BTreeSet};
 
 use crate::tasks::{lifecycle::Timing, model::TimeScope};
 
@@ -316,7 +316,7 @@ pub fn kept_ids_in_forest(
         (NodeKind::Commitment, passes_commitment_row),
         (NodeKind::Expectation, passes_expectation_row),
     ];
-    let mut kept = HashSet::new();
+    let mut kept = BTreeSet::new();
     for (kind, passes) in predicates {
         for row in flatten_forest(forest, kind) {
             if !passes(row.as_row(), filter) {
