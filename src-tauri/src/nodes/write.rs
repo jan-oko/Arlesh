@@ -522,6 +522,10 @@ pub async fn update_expectation(
                 DerivedKey::DelegationWait(task) => {
                     wait_edit::update_delegation_wait(db, &task, request, now).await
                 }
+                DerivedKey::Occurrence(key) => {
+                    occurrence_edit::update_wait(db, &key, request, now).await?;
+                    Ok(occurrence_edit::wait_occurrence_row(db, &key, now).await?)
+                }
                 _ => Err(wrong_kind(&NodeId::Derived(derived.clone()), "expectation")),
             };
         }

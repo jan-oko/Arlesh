@@ -25,6 +25,8 @@
     "flow",
     "flow_goal",
     "flow_task",
+    "flow_commitment",
+    "flow_expectation",
     "habit_group"
   ],
   "parents": {
@@ -97,7 +99,20 @@
     "flow_task": [
       "flow",
       "flow_goal",
-      "flow_task"
+      "flow_task",
+      "flow_commitment"
+    ],
+    "flow_commitment": [
+      "flow",
+      "flow_goal",
+      "flow_task",
+      "flow_commitment"
+    ],
+    "flow_expectation": [
+      "flow",
+      "flow_goal",
+      "flow_task",
+      "flow_commitment"
     ],
     "habit_group": []
   }

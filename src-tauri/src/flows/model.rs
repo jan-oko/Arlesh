@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::scopes::key::ScopeKey;
-use crate::tasks::model::TimeScope;
+use crate::tasks::model::{DurationSpec, TimeScope};
 
 /// Identifies a flow row by its primary key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,6 +163,76 @@ pub struct FlowTask {
     pub template: super::template::TemplateFields,
 }
 
+/// A flow **Commitment** item: each occurrence is its own Commitment, with its own Verdict.
+///
+/// It carries what a stored Commitment's editor has, less what an occurrence's window gives it:
+/// its title, privacy and the **Verdict Window** every occurrence is copied (its tags are in
+/// `template`). Its Time Scope is its cycle's, else the iteration's window, so it has none here.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowCommitment {
+    /// Primary key.
+    pub id: i64,
+    /// Owning flow.
+    pub flow_id: i64,
+    /// Display title.
+    pub title: String,
+    /// In-flow parent type (`flow`, `flow_goal`, `flow_task` or `flow_commitment`).
+    pub parent_type: String,
+    /// In-flow parent id (the flow, or a flow item).
+    pub parent_id: i64,
+    /// Sort position among siblings.
+    pub position: i64,
+    /// Whether this item is private (propagates to its instances).
+    pub is_private: bool,
+    /// How long past its window each occurrence's verdict may still be recorded; `None` reads
+    /// the Verdict Window of the nearest Commitment above it, as a stored Commitment does.
+    pub verdict_window: Option<DurationSpec>,
+    /// Its tags, as every template's are.
+    #[serde(flatten)]
+    pub template: super::template::TemplateFields,
+}
+
+/// When a wait item's first check falls in each occurrence's window: the start of the
+/// `index`-th unit of `kind` from the window's start — the relative form a Cycle Plan takes
+/// (ruled by the user, 2026-10-03). The Check every repeats from there.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FirstCheck {
+    /// The unit counted in: `day`, `week`, `month`, `season` or `part`.
+    pub kind: String,
+    /// 1-based: `1` is the window's first unit, so its start.
+    pub index: i64,
+}
+
+/// A flow **wait** (Expectation) item: each occurrence is its own wait, released on its own.
+///
+/// It carries what a stored wait's editor has, less what an occurrence's window gives it: its
+/// title, privacy, the **Check every** and when the first check falls ([`FirstCheck`], relative
+/// to each occurrence's window in place of a Starting day). Its tags are in `template`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowExpectation {
+    /// Primary key.
+    pub id: i64,
+    /// Owning flow.
+    pub flow_id: i64,
+    /// Display title.
+    pub title: String,
+    /// In-flow parent type (`flow`, `flow_goal`, `flow_task` or `flow_commitment`).
+    pub parent_type: String,
+    /// In-flow parent id (the flow, or a flow item).
+    pub parent_id: i64,
+    /// Sort position among siblings.
+    pub position: i64,
+    /// Whether this item is private (propagates to its instances).
+    pub is_private: bool,
+    /// How often each occurrence is checked on; `None` for never.
+    pub check_every: Option<DurationSpec>,
+    /// When each occurrence's first check falls; `None` is its window's start.
+    pub first_check: Option<FirstCheck>,
+    /// Its tags, as every template's are.
+    #[serde(flatten)]
+    pub template: super::template::TemplateFields,
+}
+
 /// Request body for creating a flow.
 #[derive(Debug, Default, Deserialize)]
 pub struct CreateFlowRequest {
@@ -286,21 +356,60 @@ pub struct CreateFlowItemRequest {
 }
 
 /// Which flow-item table a row lives in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FlowItemType {
     /// A `flow_goals` row.
     FlowGoal,
     /// A `flow_tasks` row.
     FlowTask,
+    /// A `flow_commitments` row.
+    FlowCommitment,
+    /// A `flow_expectations` row.
+    FlowExpectation,
 }
 
 impl FlowItemType {
-    /// The database string representation (`flow_goal` / `flow_task`).
+    /// Every item kind, in the order an iteration lists its occurrences.
+    pub const ALL: [Self; 4] = [
+        Self::FlowGoal,
+        Self::FlowTask,
+        Self::FlowCommitment,
+        Self::FlowExpectation,
+    ];
+
+    /// The database string representation (`flow_goal` / `flow_task` / …).
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::FlowGoal => "flow_goal",
             Self::FlowTask => "flow_task",
+            Self::FlowCommitment => "flow_commitment",
+            Self::FlowExpectation => "flow_expectation",
+        }
+    }
+
+    /// Parses [`Self::as_str`].
+    pub fn from_db(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.as_str() == value)
+    }
+
+    /// The table its rows live in.
+    pub fn table(&self) -> &'static str {
+        match self {
+            Self::FlowGoal => "flow_goals",
+            Self::FlowTask => "flow_tasks",
+            Self::FlowCommitment => "flow_commitments",
+            Self::FlowExpectation => "flow_expectations",
+        }
+    }
+
+    /// The stored kind its occurrences — and a started Flow's copies — are.
+    pub fn node_type(&self) -> &'static str {
+        match self {
+            Self::FlowGoal => "goal",
+            Self::FlowTask => "task",
+            Self::FlowCommitment => "commitment",
+            Self::FlowExpectation => "expectation",
         }
     }
 }
@@ -318,6 +427,16 @@ pub struct UpdateFlowItemRequest {
     pub position: Option<i64>,
     /// New private flag, if changing.
     pub is_private: Option<bool>,
+    /// A Commitment item's Verdict Window to set (`Some(None)` clears it). Commitment items only.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub verdict_window: Option<Option<DurationSpec>>,
+    /// A wait item's Check every to set (`Some(None)` clears it). Wait items only.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub check_every: Option<Option<DurationSpec>>,
+    /// A wait item's first check to set (`Some(None)` clears it, back to its window's start).
+    /// Wait items only.
+    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    pub first_check: Option<Option<FirstCheck>>,
     /// Template fields to change, flattened into the request: its kind's columns and relations.
     #[serde(flatten)]
     pub template: super::template::TemplateUpdate,

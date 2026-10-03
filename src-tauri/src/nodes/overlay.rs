@@ -318,6 +318,8 @@ pub struct HabitOverlays {
     pub commitments: HashMap<String, CommitmentOverlay>,
     /// The Expectation templates Task occurrences carry of their own.
     pub async_templates: HashMap<String, AsyncTemplate>,
+    /// Each wait item occurrence's Expectation overlay: its overrides and its own status.
+    pub expectations: HashMap<String, super::wait_overlay::ExpectationOverlay>,
 }
 
 /// A Task overlay as read back, beside its canonical key.
@@ -423,6 +425,7 @@ impl<'session> OverlayOperator<'session> {
                 .map(|row| (row.node_key, row.overlay.into()))
                 .collect(),
             async_templates: self.async_templates_for_habit(flow_id).await?,
+            expectations: self.wait_items_for_habit(flow_id).await?,
         })
     }
 
@@ -437,7 +440,16 @@ impl<'session> OverlayOperator<'session> {
         .bind(flow_id)
         .fetch_all(&mut *self.connection)
         .await?;
-        Ok(keys.into_iter().map(ScopeKey::from).collect())
+        let mut touched: Vec<ScopeKey> = keys.into_iter().map(ScopeKey::from).collect();
+        // A wait item's occurrence keeps its overlay under its own node key.
+        touched.extend(
+            self.wait_items_for_habit(flow_id)
+                .await?
+                .keys()
+                .filter_map(|key| OccurrenceKey::parse(key))
+                .map(|key| key.iteration),
+        );
+        Ok(touched)
     }
 
     /// One occurrence's Task overlay, empty when it has none.
@@ -929,9 +941,21 @@ impl<'session> OverlayOperator<'session> {
         Ok(())
     }
 
+    /// Every wait item occurrence's Expectation overlay in one Habit, by node key.
+    pub async fn wait_items_for_habit(
+        &mut self,
+        flow_id: i64,
+    ) -> Result<HashMap<String, super::wait_overlay::ExpectationOverlay>, sqlx::Error> {
+        Ok(self
+            .expectations_where(flow_id, "flow_expectation:%")
+            .await?
+            .into_iter()
+            .collect())
+    }
+
     /// Deletes every overlay drawn from one template item — the item itself is going.
     pub async fn clear_item(&mut self, item_type: &str, item_id: i64) -> Result<(), sqlx::Error> {
-        for table in ["task_overlays", "goal_overlays"] {
+        for table in ["task_overlays", "goal_overlays", "commitment_overlays"] {
             sqlx::query(&format!(
                 "DELETE FROM {table} WHERE item_type = ? AND item_id = ?"
             ))
@@ -949,6 +973,7 @@ impl<'session> OverlayOperator<'session> {
             ("occurrence_async_templates", "node_key"),
             ("occurrence_spawned_waits", "node_key"),
             ("expectation_overlays", "occurrence_key"),
+            ("expectation_overlays", "node_key"),
             ("wait_checks", "wait_key"),
         ] {
             sqlx::query(&format!("DELETE FROM {table} WHERE {column} LIKE ?"))

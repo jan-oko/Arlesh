@@ -205,9 +205,11 @@ describe("what a Step's + offers", () => {
     expect(creatableKinds(node("tag"))).toEqual(["info"]);
   });
 
-  it("offers a Flow's Step its two flow items, and a Task item's Step a Task item alone", () => {
-    expect(creatableKinds(node("flow"))).toEqual(["goal", "task"]);
-    expect(creatableKinds(node("flow_goal"))).toEqual(["goal", "task"]);
-    expect(creatableKinds(node("flow_task"))).toEqual(["task"]);
+  it("offers a Flow's Step its four flow items, a Task item's Step all but a Goal item, and a wait item's nothing", () => {
+    expect(creatableKinds(node("flow"))).toEqual(["goal", "task", "commitment", "expectation"]);
+    expect(creatableKinds(node("flow_goal"))).toEqual(["goal", "task", "commitment", "expectation"]);
+    expect(creatableKinds(node("flow_task"))).toEqual(["task", "commitment", "expectation"]);
+    expect(creatableKinds(node("flow_commitment"))).toEqual(["task", "commitment", "expectation"]);
+    expect(creatableKinds(node("flow_expectation"))).toEqual([]);
   });
 });

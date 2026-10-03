@@ -54,6 +54,12 @@ pub fn attach_children(
             present.insert(id.clone(), "commitment");
         }
     }
+    // A wait item's occurrence holds notes, as a wait does.
+    for wait in &derived.expectations {
+        if let NodeId::Derived(id) = &wait.id {
+            present.insert(id.clone(), "expectation");
+        }
+    }
     let parents: HashMap<(String, i64), (&'static str, DerivedId)> = children
         .iter()
         .filter_map(|child| {

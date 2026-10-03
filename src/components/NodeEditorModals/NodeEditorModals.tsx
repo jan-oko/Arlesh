@@ -129,6 +129,8 @@ export default function NodeEditorModals({ tree, editor }: Props) {
       );
     case "flow_goal":
     case "flow_task":
+    case "flow_commitment":
+    case "flow_expectation":
       return (
         <FlowItemEditorModal
           node={node}

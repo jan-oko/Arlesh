@@ -64,7 +64,7 @@ pub(super) struct Named {
     /// Its row id when stored, its UUID when derived — what the snapshot's `id` field holds.
     pub node_id: NodeId,
     /// `domain`/`project`/`aspect`/`tag`, `goal`, `task`, `commitment`, `expectation`, `info`,
-    /// `flow`, `flow_goal` or `flow_task`.
+    /// `flow`, `flow_goal`, `flow_task`, `flow_commitment` or `flow_expectation`.
     pub kind: String,
     /// Its title (an Info's body).
     pub title: String,
@@ -202,6 +202,24 @@ impl NodeNames {
                 table: NodeTable::FlowTask,
                 id: NodeId::Stored(item.id),
                 kind: "flow_task".into(),
+                title: item.title.clone(),
+                parent: parent(&item.parent_type, NodeId::Stored(item.parent_id)),
+            });
+        }
+        for item in &load.flow_commitments {
+            entries.push(Entry {
+                table: NodeTable::FlowCommitment,
+                id: NodeId::Stored(item.id),
+                kind: "flow_commitment".into(),
+                title: item.title.clone(),
+                parent: parent(&item.parent_type, NodeId::Stored(item.parent_id)),
+            });
+        }
+        for item in &load.flow_expectations {
+            entries.push(Entry {
+                table: NodeTable::FlowExpectation,
+                id: NodeId::Stored(item.id),
+                kind: "flow_expectation".into(),
                 title: item.title.clone(),
                 parent: parent(&item.parent_type, NodeId::Stored(item.parent_id)),
             });

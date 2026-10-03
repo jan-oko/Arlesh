@@ -9,7 +9,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::flows::model::{ChildAttachment, Flow, FlowGoal, FlowTask};
+use crate::flows::model::{
+    ChildAttachment, Flow, FlowCommitment, FlowExpectation, FlowGoal, FlowTask,
+};
 use crate::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind, NO_CYCLE};
 use crate::nodes::overlay::TaskOverlay;
 use crate::scopes::key::ScopeKey;
@@ -265,6 +267,8 @@ pub(in crate::tasks) fn template_kind_of(parent_type: &str) -> Option<TemplateKi
         "flow" => Some(TemplateKind::FlowRoot),
         "flow_task" => Some(TemplateKind::FlowTask),
         "flow_goal" => Some(TemplateKind::FlowGoal),
+        "flow_commitment" => Some(TemplateKind::FlowCommitment),
+        "flow_expectation" => Some(TemplateKind::FlowExpectation),
         _ => None,
     }
 }
@@ -280,6 +284,9 @@ pub struct AgenticIndex {
     flows: HashMap<i64, Flow>,
     flow_tasks: HashMap<i64, FlowTask>,
     flow_goals: HashMap<i64, FlowGoal>,
+    /// Where each Commitment and wait item hangs — what a Task item under a Commitment item climbs
+    /// through. Neither carries an Agentic flag of its own.
+    item_parents: HashMap<TemplateItem, (String, i64)>,
 }
 
 /// The rows an [`AgenticIndex`] is built from.
@@ -300,6 +307,10 @@ pub struct AgenticRows<'rows> {
     pub flow_tasks: &'rows [FlowTask],
     /// Every Flow's goal items.
     pub flow_goals: &'rows [FlowGoal],
+    /// Every Flow's Commitment items.
+    pub flow_commitments: &'rows [FlowCommitment],
+    /// Every Flow's wait items.
+    pub flow_expectations: &'rows [FlowExpectation],
 }
 
 impl AgenticIndex {
@@ -361,6 +372,32 @@ impl AgenticIndex {
                 .flow_goals
                 .iter()
                 .map(|goal| (goal.id, goal.clone()))
+                .collect(),
+            item_parents: rows
+                .flow_commitments
+                .iter()
+                .map(|item| {
+                    (
+                        TemplateKind::FlowCommitment,
+                        item.id,
+                        &item.parent_type,
+                        item.parent_id,
+                    )
+                })
+                .chain(rows.flow_expectations.iter().map(|item| {
+                    (
+                        TemplateKind::FlowExpectation,
+                        item.id,
+                        &item.parent_type,
+                        item.parent_id,
+                    )
+                }))
+                .map(|(item_type, item_id, parent_type, parent_id)| {
+                    (
+                        TemplateItem { item_type, item_id },
+                        (parent_type.clone(), parent_id),
+                    )
+                })
                 .collect(),
         }
     }
@@ -429,7 +466,9 @@ impl AgenticIndex {
                 .get(&key.item.item_id)
                 .filter(|flow| flow.instance_type == "task")
                 .and_then(|flow| flow.template.agentic),
-            TemplateKind::FlowGoal => None,
+            TemplateKind::FlowGoal
+            | TemplateKind::FlowCommitment
+            | TemplateKind::FlowExpectation => None,
         }
     }
 
@@ -446,6 +485,10 @@ impl AgenticIndex {
             TemplateKind::FlowGoal => {
                 let goal = self.flow_goals.get(&item.item_id)?;
                 (goal.parent_type.as_str(), goal.parent_id)
+            }
+            TemplateKind::FlowCommitment | TemplateKind::FlowExpectation => {
+                let (parent_type, parent_id) = self.item_parents.get(&item)?;
+                (parent_type.as_str(), *parent_id)
             }
         };
         let item_type = template_kind_of(parent_type)?;

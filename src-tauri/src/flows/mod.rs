@@ -54,18 +54,20 @@ use crate::tasks::{
 use error::FlowError;
 use habits::{classify_iterations, expire_unanswered, SlotWindow};
 use model::{
-    ChildAttachment, ClockKind, CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCycleInput,
-    FlowDependency, FlowGoal, FlowId, FlowItemCycle, FlowItemType, FlowOrigin, FlowRecurrence,
-    FlowTask, HabitInstanceChild, HabitInstanceRef, HabitItemStatus, HabitIteration, InstanceType,
-    MaterializedFlow, MissPolicy, SetRecurrenceRequest, StartFlowRequest, TargetRef,
-    UnfinishedChild, UpdateFlowItemRequest, UpdateFlowRequest, NO_CYCLE,
+    ChildAttachment, ClockKind, CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCommitment,
+    FlowCycleInput, FlowDependency, FlowExpectation, FlowGoal, FlowId, FlowItemCycle, FlowItemType,
+    FlowOrigin, FlowRecurrence, FlowTask, HabitInstanceChild, HabitInstanceRef, HabitItemStatus,
+    HabitIteration, InstanceType, MaterializedFlow, MissPolicy, SetRecurrenceRequest,
+    StartFlowRequest, TargetRef, UnfinishedChild, UpdateFlowItemRequest, UpdateFlowRequest,
+    NO_CYCLE,
 };
 use render::{render, FlowTemplate, NodeRef, PlannedSource, RenderedPlan, TemplateItem};
 use rows::{
-    FlowDependencyRow, FlowGoalRow, FlowItemCycleRow, FlowRecurrenceRow, FlowRow, FlowTaskRow,
-    HabitInstanceChildRow, HabitItemStatusRow, TargetRefRow,
+    FlowCommitmentRow, FlowDependencyRow, FlowExpectationRow, FlowGoalRow, FlowItemCycleRow,
+    FlowRecurrenceRow, FlowRow, FlowTaskRow, HabitInstanceChildRow, HabitItemStatusRow,
+    TargetRefRow,
 };
-use template::{TemplateFields, TemplateOperator, TemplateTable};
+use template::{duration_columns, TemplateFields, TemplateOperator, TemplateTable};
 
 use rules::schedule::*;
 pub(crate) use rules::schedule::{habit_verdict_window, iteration_window, whole_scope_plan};
@@ -366,6 +368,13 @@ impl<'session> FlowOperator<'session> {
                 .forget(TemplateTable::FlowTask, task.id)
                 .await?;
         }
+        for kind in [FlowItemType::FlowCommitment, FlowItemType::FlowExpectation] {
+            for item_id in self.item_ids(kind, id).await? {
+                self.templates()
+                    .forget(TemplateTable::of_item(kind), item_id)
+                    .await?;
+            }
+        }
         self.templates().forget(TemplateTable::Flow, id.0).await?;
         sqlx::query("DELETE FROM flows WHERE id = ?")
             .bind(id.0)
@@ -385,12 +394,18 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         request: CreateFlowItemRequest,
     ) -> Result<FlowGoal, FlowError> {
-        if self.get(FlowId(request.flow_id)).await?.instance_type == "commitment" {
+        let instance_type = self.get(FlowId(request.flow_id)).await?.instance_type;
+        if instance_type == "commitment" {
             return Err(FlowError::Invalid(
                 "a commitment flow holds no goal items — a Commitment cannot parent a Goal"
                     .to_string(),
             ));
         }
+        rules::items::require_placement(
+            FlowItemType::FlowGoal,
+            &request.parent_type,
+            &instance_type,
+        )?;
         let id = sqlx::query(
             "INSERT INTO flow_goals (flow_id, title, parent_type, parent_id, position)
              VALUES (?, ?, ?, ?, ?)",
@@ -416,6 +431,12 @@ impl<'session> FlowOperator<'session> {
         &mut self,
         request: CreateFlowItemRequest,
     ) -> Result<FlowTask, FlowError> {
+        let instance_type = self.get(FlowId(request.flow_id)).await?.instance_type;
+        rules::items::require_placement(
+            FlowItemType::FlowTask,
+            &request.parent_type,
+            &instance_type,
+        )?;
         let id = sqlx::query(
             "INSERT INTO flow_tasks (flow_id, title, parent_type, parent_id, position)
              VALUES (?, ?, ?, ?, ?)",
@@ -464,19 +485,155 @@ impl<'session> FlowOperator<'session> {
         self.with_task_templates(tasks).await
     }
 
-    /// A flow's items as `(item_type, item_id)` in render order — goal items then task items, each
-    /// block in position order — the order a Habit iteration lists its occurrences in.
+    /// Inserts a bare item row of `kind` — title, place and the head of its siblings — once its
+    /// placement is allowed, and returns its id.
+    async fn insert_item(
+        &mut self,
+        kind: FlowItemType,
+        request: &CreateFlowItemRequest,
+    ) -> Result<i64, FlowError> {
+        let instance_type = self.get(FlowId(request.flow_id)).await?.instance_type;
+        rules::items::require_placement(kind, &request.parent_type, &instance_type)?;
+        let table = kind.table();
+        Ok(sqlx::query(&format!(
+            "INSERT INTO {table} (flow_id, title, parent_type, parent_id, position)
+             VALUES (?, ?, ?, ?, ?)"
+        ))
+        .bind(request.flow_id)
+        .bind(&request.title)
+        .bind(&request.parent_type)
+        .bind(request.parent_id)
+        .bind(now_position())
+        .execute(&mut *self.connection)
+        .await?
+        .last_insert_rowid())
+    }
+
+    /// Creates a flow **Commitment** item: each occurrence is its own Commitment.
+    pub async fn create_commitment_item(
+        &mut self,
+        request: CreateFlowItemRequest,
+    ) -> Result<FlowCommitment, FlowError> {
+        let id = self
+            .insert_item(FlowItemType::FlowCommitment, &request)
+            .await?;
+        self.commitment_item(id).await
+    }
+
+    /// Creates a flow **wait** item: each occurrence is its own wait.
+    pub async fn create_expectation_item(
+        &mut self,
+        request: CreateFlowItemRequest,
+    ) -> Result<FlowExpectation, FlowError> {
+        let id = self
+            .insert_item(FlowItemType::FlowExpectation, &request)
+            .await?;
+        self.expectation_item(id).await
+    }
+
+    /// One Commitment item, with its tags.
+    pub async fn commitment_item(&mut self, id: i64) -> Result<FlowCommitment, FlowError> {
+        let mut item =
+            sqlx::query_as::<_, FlowCommitmentRow>("SELECT * FROM flow_commitments WHERE id = ?")
+                .bind(id)
+                .fetch_optional(&mut *self.connection)
+                .await?
+                .map(FlowCommitment::from)
+                .ok_or(FlowError::NotFound(id))?;
+        item.template = self
+            .templates()
+            .one(TemplateTable::FlowCommitment, id)
+            .await?;
+        Ok(item)
+    }
+
+    /// One wait item, with its tags.
+    pub async fn expectation_item(&mut self, id: i64) -> Result<FlowExpectation, FlowError> {
+        let mut item =
+            sqlx::query_as::<_, FlowExpectationRow>("SELECT * FROM flow_expectations WHERE id = ?")
+                .bind(id)
+                .fetch_optional(&mut *self.connection)
+                .await?
+                .map(FlowExpectation::from)
+                .ok_or(FlowError::NotFound(id))?;
+        item.template = self
+            .templates()
+            .one(TemplateTable::FlowExpectation, id)
+            .await?;
+        Ok(item)
+    }
+
+    /// Commitment items, one flow's or (`None`) every flow's, in position order, with their tags.
+    pub async fn list_commitment_items(
+        &mut self,
+        flow_id: Option<FlowId>,
+    ) -> Result<Vec<FlowCommitment>, FlowError> {
+        let mut items: Vec<FlowCommitment> = sqlx::query_as::<_, FlowCommitmentRow>(
+            "SELECT * FROM flow_commitments WHERE ?1 IS NULL OR flow_id = ?1 ORDER BY position ASC",
+        )
+        .bind(flow_id.map(|id| id.0))
+        .fetch_all(&mut *self.connection)
+        .await?
+        .into_iter()
+        .map(FlowCommitment::from)
+        .collect();
+        let mut fields = self.templates().all(TemplateTable::FlowCommitment).await?;
+        for item in &mut items {
+            item.template = fields.remove(&item.id).unwrap_or_default();
+        }
+        Ok(items)
+    }
+
+    /// Wait items, one flow's or (`None`) every flow's, in position order, with their tags.
+    pub async fn list_expectation_items(
+        &mut self,
+        flow_id: Option<FlowId>,
+    ) -> Result<Vec<FlowExpectation>, FlowError> {
+        let mut items: Vec<FlowExpectation> = sqlx::query_as::<_, FlowExpectationRow>(
+            "SELECT * FROM flow_expectations WHERE ?1 IS NULL OR flow_id = ?1 ORDER BY position ASC",
+        )
+        .bind(flow_id.map(|id| id.0))
+        .fetch_all(&mut *self.connection)
+        .await?
+        .into_iter()
+        .map(FlowExpectation::from)
+        .collect();
+        let mut fields = self.templates().all(TemplateTable::FlowExpectation).await?;
+        for item in &mut items {
+            item.template = fields.remove(&item.id).unwrap_or_default();
+        }
+        Ok(items)
+    }
+
+    /// The ids of one flow's items of `kind`, in position order.
+    async fn item_ids(
+        &mut self,
+        kind: FlowItemType,
+        flow_id: FlowId,
+    ) -> Result<Vec<i64>, FlowError> {
+        let table = kind.table();
+        Ok(sqlx::query_scalar(&format!(
+            "SELECT id FROM {table} WHERE flow_id = ? ORDER BY position ASC"
+        ))
+        .bind(flow_id.0)
+        .fetch_all(&mut *self.connection)
+        .await?)
+    }
+
+    /// A flow's items as `(item_type, item_id)` in render order — goal items, task items,
+    /// Commitment items then wait items, each block in position order — the order a Habit
+    /// iteration lists its occurrences in.
     pub async fn instance_items(
         &mut self,
         flow_id: FlowId,
     ) -> Result<Vec<(String, i64)>, FlowError> {
-        let goals = self.list_goals(flow_id).await?;
-        let tasks = self.list_tasks(flow_id).await?;
-        Ok(goals
-            .iter()
-            .map(|goal| ("flow_goal".to_string(), goal.id))
-            .chain(tasks.iter().map(|task| ("flow_task".to_string(), task.id)))
-            .collect())
+        let mut items = Vec::new();
+        for kind in FlowItemType::ALL {
+            for id in self.item_ids(kind, flow_id).await? {
+                items.push((kind.as_str().to_string(), id));
+            }
+        }
+        Ok(items)
     }
 
     /// A flow's cycle pairs grouped by the item that owns them, each group in position order. An
@@ -538,6 +695,7 @@ impl<'session> FlowOperator<'session> {
         id: i64,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowGoal, FlowError> {
+        Self::refuse_foreign_fields(FlowItemType::FlowGoal, &request)?;
         let goal = sqlx::query_as::<_, FlowGoalRow>("SELECT * FROM flow_goals WHERE id = ?")
             .bind(id)
             .fetch_optional(&mut *self.connection)
@@ -545,8 +703,16 @@ impl<'session> FlowOperator<'session> {
             .map(FlowGoal::from)
             .ok_or(FlowError::NotFound(id))?;
         let title = request.title.unwrap_or(goal.title);
+        let moved = request
+            .parent_type
+            .as_ref()
+            .is_some_and(|parent| *parent != goal.parent_type);
         let parent_type = request.parent_type.unwrap_or(goal.parent_type);
         let parent_id = request.parent_id.unwrap_or(goal.parent_id);
+        if moved {
+            let instance_type = self.get(FlowId(goal.flow_id)).await?.instance_type;
+            rules::items::require_placement(FlowItemType::FlowGoal, &parent_type, &instance_type)?;
+        }
         let position = request.position.unwrap_or(goal.position);
         let is_private = request.is_private.unwrap_or(goal.is_private);
         sqlx::query(
@@ -580,6 +746,7 @@ impl<'session> FlowOperator<'session> {
         id: i64,
         request: UpdateFlowItemRequest,
     ) -> Result<FlowTask, FlowError> {
+        Self::refuse_foreign_fields(FlowItemType::FlowTask, &request)?;
         let task = sqlx::query_as::<_, FlowTaskRow>("SELECT * FROM flow_tasks WHERE id = ?")
             .bind(id)
             .fetch_optional(&mut *self.connection)
@@ -587,8 +754,16 @@ impl<'session> FlowOperator<'session> {
             .map(FlowTask::from)
             .ok_or(FlowError::NotFound(id))?;
         let title = request.title.unwrap_or(task.title);
+        let moved = request
+            .parent_type
+            .as_ref()
+            .is_some_and(|parent| *parent != task.parent_type);
         let parent_type = request.parent_type.unwrap_or(task.parent_type);
         let parent_id = request.parent_id.unwrap_or(task.parent_id);
+        if moved {
+            let instance_type = self.get(FlowId(task.flow_id)).await?.instance_type;
+            rules::items::require_placement(FlowItemType::FlowTask, &parent_type, &instance_type)?;
+        }
         let position = request.position.unwrap_or(task.position);
         let is_private = request.is_private.unwrap_or(task.is_private);
         sqlx::query(
@@ -611,6 +786,140 @@ impl<'session> FlowOperator<'session> {
             .map_err(FlowError::from)
     }
 
+    /// Moves, retitles or reorders one item of `kind`, refusing a parent the table does not
+    /// allow — the part of an item update every kind shares.
+    async fn update_item_place(
+        &mut self,
+        kind: FlowItemType,
+        id: i64,
+        request: &UpdateFlowItemRequest,
+    ) -> Result<(), FlowError> {
+        let table = kind.table();
+        let (flow_id, title, parent_type, parent_id, position, is_private): (
+            i64,
+            String,
+            String,
+            i64,
+            i64,
+            bool,
+        ) = sqlx::query_as(&format!(
+            "SELECT flow_id, title, parent_type, parent_id, position, is_private
+             FROM {table} WHERE id = ?"
+        ))
+        .bind(id)
+        .fetch_optional(&mut *self.connection)
+        .await?
+        .ok_or(FlowError::NotFound(id))?;
+        let moved = request
+            .parent_type
+            .as_ref()
+            .is_some_and(|parent| *parent != parent_type);
+        let parent_type = request.parent_type.clone().unwrap_or(parent_type);
+        if moved {
+            let instance_type = self.get(FlowId(flow_id)).await?.instance_type;
+            rules::items::require_placement(kind, &parent_type, &instance_type)?;
+        }
+        sqlx::query(&format!(
+            "UPDATE {table} SET title=?, parent_type=?, parent_id=?, position=?, is_private=?
+             WHERE id=?"
+        ))
+        .bind(request.title.clone().unwrap_or(title))
+        .bind(&parent_type)
+        .bind(request.parent_id.unwrap_or(parent_id))
+        .bind(request.position.unwrap_or(position))
+        .bind(request.is_private.unwrap_or(is_private))
+        .bind(id)
+        .execute(&mut *self.connection)
+        .await?;
+        Ok(())
+    }
+
+    /// Refuses an item update naming a field its kind does not have, by name.
+    fn refuse_foreign_fields(
+        kind: FlowItemType,
+        request: &UpdateFlowItemRequest,
+    ) -> Result<(), FlowError> {
+        if request.verdict_window.is_some() && kind != FlowItemType::FlowCommitment {
+            return Err(FlowError::Invalid(
+                "only a commitment item has a Verdict Window".to_string(),
+            ));
+        }
+        let wait_fields = request.check_every.is_some() || request.first_check.is_some();
+        if wait_fields && kind != FlowItemType::FlowExpectation {
+            return Err(FlowError::Invalid(
+                "only a wait item has a Check every and a first check".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Updates a Commitment item: its place, title, privacy and Verdict Window.
+    ///
+    /// **Module-private**, for the reason [`Self::update_goal`] gives; [`update_flow_commitment`]
+    /// is the entry point.
+    async fn update_commitment_item(
+        &mut self,
+        id: i64,
+        request: UpdateFlowItemRequest,
+    ) -> Result<FlowCommitment, FlowError> {
+        Self::refuse_foreign_fields(FlowItemType::FlowCommitment, &request)?;
+        self.update_item_place(FlowItemType::FlowCommitment, id, &request)
+            .await?;
+        if let Some(window) = &request.verdict_window {
+            let (n, kind) = duration_columns(window.as_ref());
+            sqlx::query(
+                "UPDATE flow_commitments SET verdict_window_n = ?, verdict_window_kind = ?
+                 WHERE id = ?",
+            )
+            .bind(n)
+            .bind(kind)
+            .bind(id)
+            .execute(&mut *self.connection)
+            .await?;
+        }
+        self.commitment_item(id).await
+    }
+
+    /// Updates a wait item: its place, title, privacy, Check every and first check.
+    ///
+    /// **Module-private**, for the reason [`Self::update_goal`] gives; [`update_flow_expectation`]
+    /// is the entry point.
+    async fn update_expectation_item(
+        &mut self,
+        id: i64,
+        request: UpdateFlowItemRequest,
+    ) -> Result<FlowExpectation, FlowError> {
+        Self::refuse_foreign_fields(FlowItemType::FlowExpectation, &request)?;
+        self.update_item_place(FlowItemType::FlowExpectation, id, &request)
+            .await?;
+        if let Some(every) = &request.check_every {
+            let (n, kind) = duration_columns(every.as_ref());
+            sqlx::query(
+                "UPDATE flow_expectations SET check_every_n = ?, check_every_kind = ? WHERE id = ?",
+            )
+            .bind(n)
+            .bind(kind)
+            .bind(id)
+            .execute(&mut *self.connection)
+            .await?;
+        }
+        if let Some(first) = &request.first_check {
+            if let Some(first) = first {
+                rules::items::require_first_check(first)?;
+            }
+            sqlx::query(
+                "UPDATE flow_expectations SET first_check_kind = ?, first_check_index = ?
+                 WHERE id = ?",
+            )
+            .bind(first.as_ref().map(|first| first.kind.clone()))
+            .bind(first.as_ref().map(|first| first.index))
+            .bind(id)
+            .execute(&mut *self.connection)
+            .await?;
+        }
+        self.expectation_item(id).await
+    }
+
     /// Deletes a flow item and its cycles and dependency links.
     ///
     /// Three statements — the item's cycle pairs, its dependency edges, then the row — and so
@@ -629,16 +938,11 @@ impl<'session> FlowOperator<'session> {
     /// # }
     /// ```
     pub async fn delete_item(&mut self, item_type: FlowItemType, id: i64) -> Result<(), FlowError> {
-        let table = match item_type {
-            FlowItemType::FlowGoal => "flow_goals",
-            FlowItemType::FlowTask => "flow_tasks",
-        };
+        let table = item_type.table();
         self.clear_item_links(item_type, id).await?;
-        let template = match item_type {
-            FlowItemType::FlowGoal => TemplateTable::FlowGoal,
-            FlowItemType::FlowTask => TemplateTable::FlowTask,
-        };
-        self.templates().forget(template, id).await?;
+        self.templates()
+            .forget(TemplateTable::of_item(item_type), id)
+            .await?;
         // Its occurrences go with it, and so does everything recorded against them.
         OverlayOperator::new(&mut *self.connection)
             .clear_item(item_type.as_str(), id)
@@ -798,6 +1102,8 @@ impl<'session> FlowOperator<'session> {
                 "SELECT iteration_scope FROM task_overlays
                  WHERE item_type = ?1 AND item_id = ?2 AND cycle_id = ?3
                  UNION SELECT iteration_scope FROM goal_overlays
+                 WHERE item_type = ?1 AND item_id = ?2 AND cycle_id = ?3
+                 UNION SELECT iteration_scope FROM commitment_overlays
                  WHERE item_type = ?1 AND item_id = ?2 AND cycle_id = ?3",
             )
             .bind(item_type.as_str())
@@ -839,6 +1145,13 @@ impl<'session> FlowOperator<'session> {
         depends_on_type: FlowItemType,
         depends_on_id: i64,
     ) -> Result<(), FlowError> {
+        if !rules::items::may_depend(dependent_type, depends_on_type) {
+            return Err(FlowError::Invalid(
+                "a flow item waits on a task, goal or wait item — never a commitment — and a \
+                 commitment or wait item waits on nothing"
+                    .to_string(),
+            ));
+        }
         sqlx::query(
             "INSERT OR IGNORE INTO flow_dependencies
                 (flow_id, dependent_type, dependent_id, depends_on_type, depends_on_id)
@@ -1079,6 +1392,8 @@ impl<'session> FlowOperator<'session> {
         Ok(match item {
             TemplateKind::FlowGoal => "goal",
             TemplateKind::FlowTask => "task",
+            TemplateKind::FlowCommitment => "commitment",
+            TemplateKind::FlowExpectation => "expectation",
             TemplateKind::FlowRoot => match self.get(flow_id).await?.instance_type.as_str() {
                 "goal" => "goal",
                 "commitment" => "commitment",
@@ -1127,6 +1442,26 @@ impl<'session> FlowOperator<'session> {
                 overlay.tombstone = None;
                 overlays.put_commitment(flow_id.0, key, &overlay).await?;
             }
+            "expectation" => {
+                // A wait is settled by being released; `done` says the same of a wait.
+                let node_key = key.node_key();
+                let mut overlay = overlays.expectation(&node_key).await?;
+                let released = matches!(status, Some("released" | "done"));
+                overlay.status = released.then(|| "released".to_string());
+                overlay.released_at = released.then(|| {
+                    let at = chrono::DateTime::from_timestamp_millis(resolved_at_ms)
+                        .map_or_else(|| chrono::NaiveDateTime::MIN, |at| at.naive_utc());
+                    crate::tasks::waits::instant_column(at)
+                });
+                if overlay.archival.as_deref() == Some("archived") {
+                    overlay.archival = None;
+                }
+                let home = crate::nodes::wait_overlay::WaitHome {
+                    flow_id: Some(flow_id.0),
+                    occurrence_key: Some(node_key.clone()),
+                };
+                overlays.put_expectation(&node_key, &home, &overlay).await?;
+            }
             _ => {
                 let mut overlay = overlays.task(key).await?;
                 // Either model's spelling is kept as given, a To Do cleared: which model the
@@ -1169,6 +1504,11 @@ impl<'session> FlowOperator<'session> {
                     cycle_id,
                 })
                 .await?;
+            // A Commitment item's verdict is the user's to give: resolving an iteration in one
+            // step records no answer on its behalf.
+            if key.item.item_type == TemplateKind::FlowCommitment {
+                continue;
+            }
             if done {
                 self.set_occurrence_status(flow_id, &key, Some("done"), resolved_at_ms)
                     .await?;
@@ -1183,7 +1523,15 @@ impl<'session> FlowOperator<'session> {
                         .await?;
                     overlay.tombstone.is_none() && overlay.status.as_deref() == Some("achieved")
                 }
+                // A verdict is the user's answer, never a completion to take back; a wait item's
+                // release is taken back as a completion is.
                 "commitment" => false,
+                "expectation" => {
+                    let overlay = OverlayOperator::new(&mut *self.connection)
+                        .expectation(&key.node_key())
+                        .await?;
+                    overlay.status.as_deref() == Some("released")
+                }
                 _ => {
                     let overlay = OverlayOperator::new(&mut *self.connection)
                         .task(&key)
@@ -1234,7 +1582,8 @@ impl<'session> FlowOperator<'session> {
     /// scope it applies to — occurrences with none sit at their kind's default.
     ///
     /// Statuses read in the vocabulary Modifications always spoke: a Goal occurrence's
-    /// `achieved` reads `done`, and a Commitment's verdict reads as itself.
+    /// `achieved` reads `done`, a Commitment's verdict reads as itself, and a wait item's
+    /// occurrence reads `released` once it is.
     pub async fn list_item_statuses(
         &mut self,
         flow_id: FlowId,
@@ -1256,7 +1605,41 @@ impl<'session> FlowOperator<'session> {
         .await?
         .into_iter()
         .map(HabitItemStatus::from)
+        .chain(self.released_waits(flow_id).await?)
         .collect())
+    }
+
+    /// Every released, live wait item occurrence of one Habit, as a `released` status. A wait's
+    /// overlay is keyed by its node key alone, so the key is read back into its parts.
+    async fn released_waits(&mut self, flow_id: FlowId) -> Result<Vec<HabitItemStatus>, FlowError> {
+        let overlays = OverlayOperator::new(&mut *self.connection)
+            .wait_items_for_habit(flow_id.0)
+            .await?;
+        let mut released: Vec<HabitItemStatus> = overlays
+            .into_iter()
+            .filter(|(_, overlay)| {
+                overlay.status.as_deref() == Some("released")
+                    && overlay.archival.as_deref() != Some("archived")
+            })
+            .filter_map(|(node_key, _)| {
+                let key = OccurrenceKey::parse(&node_key)?;
+                Some(HabitItemStatus {
+                    item_type: key.item.item_type.as_str().to_string(),
+                    item_id: key.item.item_id,
+                    iteration_scope_id: key.iteration,
+                    cycle_id: key.cycle,
+                    status: "released".to_string(),
+                })
+            })
+            .collect();
+        released.sort_by_key(|status| {
+            (
+                status.item_id,
+                status.iteration_scope_id.start_date(),
+                status.cycle_id,
+            )
+        });
+        Ok(released)
     }
 
     /// Sets a **single** instance's status at one iteration scope. `status` `None` clears it (back
@@ -1334,17 +1717,14 @@ impl<'session> FlowOperator<'session> {
     /// The Habit an occurrence belongs to: the root's key names the flow itself, an item's names
     /// the item, whose row says which flow owns it.
     pub async fn occurrence_flow_id(&mut self, key: &OccurrenceKey) -> Result<FlowId, FlowError> {
-        Ok(FlowId(match key.item.item_type {
-            TemplateKind::FlowRoot => key.item.item_id,
-            TemplateKind::FlowGoal => {
-                self.item_flow_id(FlowItemType::FlowGoal, key.item.item_id)
-                    .await?
-            }
-            TemplateKind::FlowTask => {
-                self.item_flow_id(FlowItemType::FlowTask, key.item.item_id)
-                    .await?
-            }
-        }))
+        let kind = match key.item.item_type {
+            TemplateKind::FlowRoot => return Ok(FlowId(key.item.item_id)),
+            TemplateKind::FlowGoal => FlowItemType::FlowGoal,
+            TemplateKind::FlowTask => FlowItemType::FlowTask,
+            TemplateKind::FlowCommitment => FlowItemType::FlowCommitment,
+            TemplateKind::FlowExpectation => FlowItemType::FlowExpectation,
+        };
+        Ok(FlowId(self.item_flow_id(kind, key.item.item_id).await?))
     }
 
     /// The occurrences of one Habit that carry a relation of their own — a node hung on them, a
@@ -1583,60 +1963,57 @@ impl<'session> FlowOperator<'session> {
         .await?
         .last_insert_rowid();
 
-        let goals = self.list_goals(flow_id).await?;
-        let tasks = self.list_tasks(flow_id).await?;
-        let mut goal_map: HashMap<i64, i64> = HashMap::new();
-        let mut task_map: HashMap<i64, i64> = HashMap::new();
         // Pass 1: clone every item under the new flow (temporary parent), recording old->new ids.
-        for g in &goals {
-            let id = sqlx::query(
-                "INSERT INTO flow_goals (flow_id, title, parent_type, parent_id, position) VALUES (?, ?, 'flow', ?, ?)",
-            )
-            .bind(new_id).bind(&g.title).bind(new_id).bind(g.position)
-            .execute(&mut *self.connection).await?.last_insert_rowid();
-            goal_map.insert(g.id, id);
-        }
-        for t in &tasks {
-            let id = sqlx::query(
-                "INSERT INTO flow_tasks (flow_id, title, parent_type, parent_id, position) VALUES (?, ?, 'flow', ?, ?)",
-            )
-            .bind(new_id).bind(&t.title).bind(new_id).bind(t.position)
-            .execute(&mut *self.connection).await?.last_insert_rowid();
-            task_map.insert(t.id, id);
+        let mut placed: Vec<(FlowItemType, i64, String, i64)> = Vec::new();
+        let mut items: HashMap<(FlowItemType, i64), i64> = HashMap::new();
+        for kind in FlowItemType::ALL {
+            let table = kind.table();
+            let rows: Vec<(i64, String, i64)> = sqlx::query_as(&format!(
+                "SELECT id, parent_type, parent_id FROM {table} WHERE flow_id = ? ORDER BY position"
+            ))
+            .bind(flow_id.0)
+            .fetch_all(&mut *self.connection)
+            .await?;
+            for (id, parent_type, parent_id) in rows {
+                let clone = self
+                    .clone_item_row(
+                        kind,
+                        id,
+                        ItemLanding {
+                            flow_id: Some(new_id),
+                            parent: ("flow", new_id),
+                            position: None,
+                            privacy: false,
+                        },
+                    )
+                    .await?;
+                items.insert((kind, id), clone);
+                placed.push((kind, id, parent_type, parent_id));
+            }
         }
         // Item-id remap for parent/cycle/dependency references.
         let map_item = |item_type: &str, item_id: i64| -> Result<i64, FlowError> {
-            match item_type {
-                "flow_goal" => goal_map.get(&item_id).copied(),
-                "flow_task" => task_map.get(&item_id).copied(),
-                _ => None,
-            }
-            .ok_or_else(|| FlowError::Invalid("dangling flow-item reference in fork".to_string()))
+            FlowItemType::from_db(item_type)
+                .and_then(|kind| items.get(&(kind, item_id)).copied())
+                .ok_or_else(|| {
+                    FlowError::Invalid("dangling flow-item reference in fork".to_string())
+                })
         };
         // Pass 2: repoint each clone's parent now that all new ids exist.
-        for g in &goals {
-            let (pt, pid) = match g.parent_type.as_str() {
+        for (kind, id, parent_type, parent_id) in &placed {
+            let (pt, pid) = match parent_type.as_str() {
                 "flow" => ("flow".to_string(), new_id),
-                other => (other.to_string(), map_item(other, g.parent_id)?),
+                other => (other.to_string(), map_item(other, *parent_id)?),
             };
-            sqlx::query("UPDATE flow_goals SET parent_type = ?, parent_id = ? WHERE id = ?")
-                .bind(&pt)
-                .bind(pid)
-                .bind(map_item("flow_goal", g.id)?)
-                .execute(&mut *self.connection)
-                .await?;
-        }
-        for t in &tasks {
-            let (pt, pid) = match t.parent_type.as_str() {
-                "flow" => ("flow".to_string(), new_id),
-                other => (other.to_string(), map_item(other, t.parent_id)?),
-            };
-            sqlx::query("UPDATE flow_tasks SET parent_type = ?, parent_id = ? WHERE id = ?")
-                .bind(&pt)
-                .bind(pid)
-                .bind(map_item("flow_task", t.id)?)
-                .execute(&mut *self.connection)
-                .await?;
+            let table = kind.table();
+            sqlx::query(&format!(
+                "UPDATE {table} SET parent_type = ?, parent_id = ? WHERE id = ?"
+            ))
+            .bind(&pt)
+            .bind(pid)
+            .bind(map_item(kind.as_str(), *id)?)
+            .execute(&mut *self.connection)
+            .await?;
         }
         // Clone cycle pairs and dependencies, remapped to the new items. Each pair is a new row
         // with a new id, and a Habit occurrence's completion is keyed on its pair id (migration
@@ -1674,21 +2051,15 @@ impl<'session> FlowOperator<'session> {
         self.templates()
             .copy(TemplateTable::Flow, flow_id.0, new_id)
             .await?;
-        for (old, new) in &goal_map {
+        for ((kind, old), new) in &items {
             self.templates()
-                .copy(TemplateTable::FlowGoal, *old, *new)
-                .await?;
-        }
-        for (old, new) in &task_map {
-            self.templates()
-                .copy(TemplateTable::FlowTask, *old, *new)
+                .copy(TemplateTable::of_item(*kind), *old, *new)
                 .await?;
         }
         let cloned = self.get(FlowId(new_id)).await?;
         Ok(TemplateClone {
             flow: cloned,
-            goals: goal_map,
-            tasks: task_map,
+            items,
         })
     }
 
@@ -1713,10 +2084,7 @@ impl<'session> FlowOperator<'session> {
         from: i64,
         to: i64,
     ) -> Result<(), FlowError> {
-        let table = match item_type {
-            FlowItemType::FlowGoal => "flow_goals",
-            FlowItemType::FlowTask => "flow_tasks",
-        };
+        let table = item_type.table();
         sqlx::query(&format!(
             "UPDATE {table} SET is_private = (SELECT is_private FROM {table} WHERE id = ?)
              WHERE id = ?"
@@ -1756,10 +2124,7 @@ impl<'session> FlowOperator<'session> {
         item_type: FlowItemType,
         item_id: i64,
     ) -> Result<i64, FlowError> {
-        let table = match item_type {
-            FlowItemType::FlowGoal => "flow_goals",
-            FlowItemType::FlowTask => "flow_tasks",
-        };
+        let table = item_type.table();
         sqlx::query_scalar::<_, i64>(&format!("SELECT flow_id FROM {table} WHERE id = ?"))
             .bind(item_id)
             .fetch_optional(&mut *self.connection)
@@ -1791,7 +2156,16 @@ impl<'session> FlowOperator<'session> {
     ) -> Result<i64, FlowError> {
         let flow_id = self.item_flow_id(item_type, item_id).await?;
         let new_root = self
-            .clone_item_row(item_type, item_id, parent_type, parent_id, Some(position))
+            .clone_item_row(
+                item_type,
+                item_id,
+                ItemLanding {
+                    flow_id: None,
+                    parent: (parent_type, parent_id),
+                    position: Some(position),
+                    privacy: true,
+                },
+            )
             .await?;
 
         // Breadth-first, like `duplicate::duplicate_subtree`: a child is cloned only once its own
@@ -1802,7 +2176,16 @@ impl<'session> FlowOperator<'session> {
         while let Some((kind, old_id, new_id)) = queue.pop_front() {
             for (child_kind, child_id) in self.item_children(kind, old_id).await? {
                 let new_child = self
-                    .clone_item_row(child_kind, child_id, kind.as_str(), new_id, None)
+                    .clone_item_row(
+                        child_kind,
+                        child_id,
+                        ItemLanding {
+                            flow_id: None,
+                            parent: (kind.as_str(), new_id),
+                            position: None,
+                            privacy: true,
+                        },
+                    )
                     .await?;
                 copied.push((child_kind, child_id, new_child));
                 queue.push_back((child_kind, child_id, new_child));
@@ -1811,45 +2194,51 @@ impl<'session> FlowOperator<'session> {
 
         // Cycles and dependencies only once every copy exists, so an edge inside the copied set
         // has a copy on both ends to be remapped onto.
-        let (goals, tasks) = item_id_maps(&copied);
+        let items = item_id_maps(&copied);
         for (kind, old_id, new_id) in &copied {
-            let table = match kind {
-                FlowItemType::FlowGoal => TemplateTable::FlowGoal,
-                FlowItemType::FlowTask => TemplateTable::FlowTask,
-            };
-            self.templates().copy(table, *old_id, *new_id).await?;
+            self.templates()
+                .copy(TemplateTable::of_item(*kind), *old_id, *new_id)
+                .await?;
             self.copy_item_cycles(flow_id, *kind, *old_id, *new_id)
                 .await?;
-            self.copy_item_dependencies(flow_id, *kind, *old_id, *new_id, &goals, &tasks)
+            self.copy_item_dependencies(flow_id, *kind, *old_id, *new_id, &items)
                 .await?;
         }
         Ok(new_root)
     }
 
-    /// Clones one template item row — title and privacy included — under a given parent, keeping
-    /// the original's sort position unless `position` overrides it (the pasted root does).
+    /// Clones one template item row — title, its kind's own columns and (when `landing` says)
+    /// privacy — onto `landing`, keeping the original's flow and sort position unless the landing
+    /// overrides them.
     async fn clone_item_row(
         &mut self,
         item_type: FlowItemType,
         item_id: i64,
-        parent_type: &str,
-        parent_id: i64,
-        position: Option<i64>,
+        landing: ItemLanding<'_>,
     ) -> Result<i64, FlowError> {
-        let table = match item_type {
-            FlowItemType::FlowGoal => "flow_goals",
-            FlowItemType::FlowTask => "flow_tasks",
+        let table = item_type.table();
+        // A Commitment's and a wait's own fields live on the row; a Task's travel through
+        // `TemplateOperator::copy`.
+        let own = match item_type {
+            FlowItemType::FlowCommitment => ", verdict_window_n, verdict_window_kind",
+            FlowItemType::FlowExpectation => {
+                ", check_every_n, check_every_kind, first_check_kind, first_check_index"
+            }
+            FlowItemType::FlowGoal | FlowItemType::FlowTask => "",
         };
         // One INSERT ... SELECT so every column the source row carries is read and written in the
         // same statement, and a column added later cannot be silently dropped by the copy.
         let new_id = sqlx::query(&format!(
-            "INSERT INTO {table} (flow_id, title, parent_type, parent_id, position, is_private)
-             SELECT flow_id, title, ?, ?, COALESCE(?, position), is_private
+            "INSERT INTO {table} (flow_id, title, parent_type, parent_id, position, is_private{own})
+             SELECT COALESCE(?, flow_id), title, ?, ?, COALESCE(?, position),
+                    CASE WHEN ? THEN is_private ELSE 0 END{own}
              FROM {table} WHERE id = ?"
         ))
-        .bind(parent_type)
-        .bind(parent_id)
-        .bind(position)
+        .bind(landing.flow_id)
+        .bind(landing.parent.0)
+        .bind(landing.parent.1)
+        .bind(landing.position)
+        .bind(landing.privacy)
         .bind(item_id)
         .execute(&mut *self.connection)
         .await?
@@ -1857,33 +2246,25 @@ impl<'session> FlowOperator<'session> {
         Ok(new_id)
     }
 
-    /// The template items parented directly on `(item_type, item_id)` — goal items then task
-    /// items, each in position order.
+    /// The template items parented directly on `(item_type, item_id)` — goal, task, Commitment
+    /// then wait items, each in position order.
     async fn item_children(
         &mut self,
         item_type: FlowItemType,
         item_id: i64,
     ) -> Result<Vec<(FlowItemType, i64)>, FlowError> {
         let mut children = Vec::new();
-        // A flow-task parents only tasks; a flow-goal parents both.
-        if item_type == FlowItemType::FlowGoal {
-            let goals = sqlx::query_scalar::<_, i64>(
-                "SELECT id FROM flow_goals WHERE parent_type = 'flow_goal' AND parent_id = ?
-                 ORDER BY position ASC",
-            )
+        for kind in FlowItemType::ALL {
+            let table = kind.table();
+            let ids = sqlx::query_scalar::<_, i64>(&format!(
+                "SELECT id FROM {table} WHERE parent_type = ? AND parent_id = ? ORDER BY position ASC"
+            ))
+            .bind(item_type.as_str())
             .bind(item_id)
             .fetch_all(&mut *self.connection)
             .await?;
-            children.extend(goals.into_iter().map(|id| (FlowItemType::FlowGoal, id)));
+            children.extend(ids.into_iter().map(|id| (kind, id)));
         }
-        let tasks = sqlx::query_scalar::<_, i64>(
-            "SELECT id FROM flow_tasks WHERE parent_type = ? AND parent_id = ? ORDER BY position ASC",
-        )
-        .bind(item_type.as_str())
-        .bind(item_id)
-        .fetch_all(&mut *self.connection)
-        .await?;
-        children.extend(tasks.into_iter().map(|id| (FlowItemType::FlowTask, id)));
         Ok(children)
     }
 
@@ -1921,8 +2302,7 @@ impl<'session> FlowOperator<'session> {
         item_type: FlowItemType,
         old_id: i64,
         new_id: i64,
-        goals: &HashMap<i64, i64>,
-        tasks: &HashMap<i64, i64>,
+        items: &HashMap<(FlowItemType, i64), i64>,
     ) -> Result<(), FlowError> {
         let edges: Vec<(String, i64)> = sqlx::query_as(
             "SELECT depends_on_type, depends_on_id FROM flow_dependencies
@@ -1933,12 +2313,9 @@ impl<'session> FlowOperator<'session> {
         .fetch_all(&mut *self.connection)
         .await?;
         for (blocker_type, blocker_id) in edges {
-            let map = if blocker_type == FlowItemType::FlowGoal.as_str() {
-                goals
-            } else {
-                tasks
-            };
-            let target = map.get(&blocker_id).copied().unwrap_or(blocker_id);
+            let target = FlowItemType::from_db(&blocker_type)
+                .and_then(|kind| items.get(&(kind, blocker_id)).copied())
+                .unwrap_or(blocker_id);
             sqlx::query(
                 "INSERT INTO flow_dependencies
                     (flow_id, dependent_type, dependent_id, depends_on_type, depends_on_id)
@@ -1977,12 +2354,29 @@ impl<'session> FlowOperator<'session> {
         let tasks = self.list_tasks(flow_id).await?;
         let flow = self.get(flow_id).await?;
         let compound = occurrences::compound_items(&flow, &tasks);
-        let template = (
-            self.list_goals(flow_id).await?,
-            tasks,
-            self.cycles_by_item(flow_id).await?,
-        );
-        let parents = occurrences::occurrence_parents_of(flow_id, template, &keys);
+        let template = rules::occurrences::Template {
+            goals: self
+                .list_goals(flow_id)
+                .await?
+                .into_iter()
+                .map(|goal| (goal.id, goal))
+                .collect(),
+            tasks: tasks.into_iter().map(|task| (task.id, task)).collect(),
+            commitments: self
+                .list_commitment_items(Some(flow_id))
+                .await?
+                .into_iter()
+                .map(|item| (item.id, item))
+                .collect(),
+            expectations: self
+                .list_expectation_items(Some(flow_id))
+                .await?
+                .into_iter()
+                .map(|item| (item.id, item))
+                .collect(),
+            cycles: self.cycles_by_item(flow_id).await?,
+        };
+        let parents = occurrences::occurrence_parents_of(flow_id, &template, &keys);
         let by_verdict = flow.instance_type == "commitment";
         Ok(occurrences::CompletionInputs {
             keys,
@@ -2034,11 +2428,12 @@ impl<'session> FlowOperator<'session> {
     }
 }
 
-/// The task/goal children of a **real** node, as `(kind, id)` pairs — tasks first, then goals.
+/// The children of a **real** node that a Flow template can hold, as `(kind, id)` pairs — tasks,
+/// goals, Commitments, then waits.
 ///
-/// Reads two resources (tasks and goals), so it takes the session rather than one operator. It
-/// writes nothing, so it serves a pooled and a transactional session alike.
-async fn task_goal_children<M: SessionMode>(
+/// Reads several resources, so it takes the session rather than one operator. It writes nothing,
+/// so it serves a pooled and a transactional session alike.
+async fn template_children<M: SessionMode>(
     db: &mut Db<M>,
     parent_type: &str,
     parent_id: i64,
@@ -2048,7 +2443,119 @@ async fn task_goal_children<M: SessionMode>(
     children.extend(tasks.into_iter().map(|id| ("task".to_string(), id)));
     let goals = db.goals().child_ids(parent_type, parent_id).await?;
     children.extend(goals.into_iter().map(|id| ("goal".to_string(), id)));
+    let commitments = db.commitments().child_ids(parent_type, parent_id).await?;
+    children.extend(
+        commitments
+            .into_iter()
+            .map(|id| ("commitment".to_string(), id)),
+    );
+    let waits = db.expectations().child_ids(parent_type, parent_id).await?;
+    children.extend(waits.into_iter().map(|id| ("expectation".to_string(), id)));
     Ok(children)
+}
+
+/// What one real node of a converted subtree carries into its flow item beyond its title and
+/// window: a Commitment's Verdict Window, a wait's Check every and when it is first checked.
+enum ConvertedFields {
+    /// A Task or a Goal: nothing beyond title and window.
+    Plain,
+    /// A Commitment's Verdict Window.
+    Commitment(Option<crate::tasks::model::DurationSpec>),
+    /// A wait's Check every, and its Starting.
+    Wait(
+        Option<crate::tasks::model::DurationSpec>,
+        Option<NaiveDateTime>,
+    ),
+}
+
+/// The item kind a converted node becomes, and its title, window and own fields.
+async fn converted_node(
+    db: &mut Db<Transactional>,
+    kind: &str,
+    id: i64,
+) -> Result<(FlowItemType, String, Option<TimeScope>, ConvertedFields), FlowError> {
+    Ok(match kind {
+        "goal" => {
+            let goal = db.goals().get(GoalId(id)).await?;
+            (
+                FlowItemType::FlowGoal,
+                goal.title,
+                goal.time_scope,
+                ConvertedFields::Plain,
+            )
+        }
+        "commitment" => {
+            let commitment = db.commitments().get(CommitmentId(id)).await?;
+            (
+                FlowItemType::FlowCommitment,
+                commitment.title,
+                commitment.time_scope,
+                ConvertedFields::Commitment(commitment.verdict_window),
+            )
+        }
+        "expectation" => {
+            let wait = db
+                .expectations()
+                .get(crate::tasks::model::ExpectationId(id))
+                .await?;
+            (
+                FlowItemType::FlowExpectation,
+                wait.title,
+                wait.time_scope,
+                ConvertedFields::Wait(wait.check_every, wait.check_starting),
+            )
+        }
+        _ => {
+            let task = db.tasks().get(TaskId(id)).await?;
+            (
+                FlowItemType::FlowTask,
+                task.title,
+                task.time_scope,
+                ConvertedFields::Plain,
+            )
+        }
+    })
+}
+
+/// Writes a converted Commitment's or wait's own fields onto its new item. A wait's Starting
+/// becomes its first check, counted in days from its window's start, when its window maps to the
+/// template's (`window_start`); otherwise its first check is its window's start.
+async fn write_converted_fields(
+    db: &mut Db<Transactional>,
+    item: (FlowItemType, i64),
+    fields: ConvertedFields,
+    window_start: Option<NaiveDate>,
+) -> Result<(), FlowError> {
+    let request = match fields {
+        ConvertedFields::Plain => return Ok(()),
+        ConvertedFields::Commitment(window) => UpdateFlowItemRequest {
+            verdict_window: Some(window),
+            ..Default::default()
+        },
+        ConvertedFields::Wait(every, starting) => {
+            let first_check = starting.zip(window_start).and_then(|(starting, start)| {
+                let offset = (crate::tasks::rules::waits::day_of(starting) - start).num_days();
+                (offset >= 0).then(|| model::FirstCheck {
+                    kind: "day".to_string(),
+                    index: offset + 1,
+                })
+            });
+            UpdateFlowItemRequest {
+                first_check: Some(first_check.filter(|_| every.is_some())),
+                check_every: Some(every),
+                ..Default::default()
+            }
+        }
+    };
+    match item.0 {
+        FlowItemType::FlowCommitment => {
+            db.flows().update_commitment_item(item.1, request).await?;
+        }
+        _ => {
+            db.flows().update_expectation_item(item.1, request).await?;
+        }
+    }
+    Ok(())
 }
 
 /// Updates a flow.
@@ -2131,6 +2638,40 @@ pub async fn update_flow_task(
         .one(TemplateTable::FlowTask, id)
         .await?;
     Ok(task)
+}
+
+/// Updates a flow **Commitment** item — its place, title, privacy, Verdict Window and tags.
+/// Transactional for the same reason as [`update_flow`].
+#[tracing::instrument(skip(db))]
+pub async fn update_flow_commitment(
+    db: &mut Db<Transactional>,
+    id: i64,
+    request: UpdateFlowItemRequest,
+) -> Result<FlowCommitment, FlowError> {
+    let template = request.template.clone();
+    db.flows().update_commitment_item(id, request).await?;
+    db.flows()
+        .templates()
+        .write(TemplateTable::FlowCommitment, false, id, &template)
+        .await?;
+    db.flows().commitment_item(id).await
+}
+
+/// Updates a flow **wait** item — its place, title, privacy, Check every, first check and tags.
+/// Transactional for the same reason as [`update_flow`].
+#[tracing::instrument(skip(db))]
+pub async fn update_flow_expectation(
+    db: &mut Db<Transactional>,
+    id: i64,
+    request: UpdateFlowItemRequest,
+) -> Result<FlowExpectation, FlowError> {
+    let template = request.template.clone();
+    db.flows().update_expectation_item(id, request).await?;
+    db.flows()
+        .templates()
+        .write(TemplateTable::FlowExpectation, false, id, &template)
+        .await?;
+    db.flows().expectation_item(id).await
 }
 
 /// Sets (creates or replaces) a flow's Recurrence, making it a Habit.
@@ -2477,14 +3018,9 @@ pub async fn duplicate_flow(
     db.flows().copy_recurrence(flow_id, new_id).await?;
     // Privacy travels with the copy. Dropping it would publish a private template the moment it
     // was duplicated, which is the one way a copy can be worse than no copy at all.
-    for (old_id, cloned_id) in &clone.goals {
+    for ((kind, old_id), cloned_id) in &clone.items {
         db.flows()
-            .copy_item_privacy(FlowItemType::FlowGoal, *old_id, *cloned_id)
-            .await?;
-    }
-    for (old_id, cloned_id) in &clone.tasks {
-        db.flows()
-            .copy_item_privacy(FlowItemType::FlowTask, *old_id, *cloned_id)
+            .copy_item_privacy(*kind, *old_id, *cloned_id)
             .await?;
     }
     if source.is_private {
@@ -2530,14 +3066,10 @@ pub async fn duplicate_flow_item(
                 .to_string(),
         ));
     }
-    // The nesting rule, said by name. `flow_goals.parent_type` would refuse this anyway, as a
-    // CHECK violation with nothing in it for the user.
-    if item_type == FlowItemType::FlowGoal && parent_type == FlowItemType::FlowTask.as_str() {
-        return Err(FlowError::Invalid(
-            "a flow-task holds no goal items — paste it onto the flow or onto a flow-goal"
-                .to_string(),
-        ));
-    }
+    // The nesting rule, said by name. The item tables' `parent_type` CHECKs would refuse this
+    // anyway, as a constraint violation with nothing in it for the user.
+    let instance_type = db.flows().get(FlowId(flow_id)).await?.instance_type;
+    rules::items::require_placement(item_type, parent_type, &instance_type)?;
     db.flows()
         .clone_item_subtree(item_type, item_id, parent_type, parent_id, position)
         .await
@@ -2552,19 +3084,12 @@ async fn destination_flow_id(
 ) -> Result<i64, FlowError> {
     match parent_type {
         "flow" => Ok(db.flows().get(FlowId(parent_id)).await?.id),
-        "flow_goal" => {
-            db.flows()
-                .item_flow_id(FlowItemType::FlowGoal, parent_id)
-                .await
-        }
-        "flow_task" => {
-            db.flows()
-                .item_flow_id(FlowItemType::FlowTask, parent_id)
-                .await
-        }
-        other => Err(FlowError::Invalid(format!(
-            "a {other} cannot hold a flow item"
-        ))),
+        other => match FlowItemType::from_db(other) {
+            Some(kind) => db.flows().item_flow_id(kind, parent_id).await,
+            None => Err(FlowError::Invalid(format!(
+                "a {other} cannot hold a flow item"
+            ))),
+        },
     }
 }
 
@@ -2677,9 +3202,11 @@ pub async fn valid_targets<M: SessionMode>(
 }
 
 /// Converts a real Task/Goal subtree into a **Flow** template of the same Instance Type: the root
-/// becomes the flow, every descendant goal/task becomes a flow item mirroring the hierarchy, and
-/// the original subtree is deleted. When `keep_dependencies`, intra-subtree task dependencies are
-/// remapped to flow dependencies. When `map_scopes`, the root's Time Scope becomes the flow Window
+/// becomes the flow, every descendant Goal, Task, Commitment and wait becomes a flow item of its
+/// kind mirroring the hierarchy — a Commitment keeping its Verdict Window, a wait its Check every
+/// and, as a first check, its Starting (ruled by the user, 2026-10-03) — and the original subtree
+/// is deleted. When `keep_dependencies`, intra-subtree task dependencies — on a task, goal or
+/// wait — are remapped to flow dependencies. When `map_scopes`, the root's Time Scope becomes the flow Window
 /// and each descendant's Time Scope becomes a relative Cycle Scope (offset within the window;
 /// canonical kinds only — part/exact and Plans are dropped). Errors if the root's parent can't
 /// hold a flow (i.e. it is a task).
@@ -2811,7 +3338,7 @@ pub async fn convert_to_flow(
 
     // BFS the subtree (parents before children), tracking each node's real parent.
     let root_key = (root_type.to_string(), root_id);
-    let mut order: Vec<(String, i64)> = task_goal_children(db, root_type, root_id).await?;
+    let mut order: Vec<(String, i64)> = template_children(db, root_type, root_id).await?;
     let mut parent_of: HashMap<(String, i64), (String, i64)> = HashMap::new();
     for child in &order {
         parent_of.insert(child.clone(), root_key.clone());
@@ -2819,7 +3346,12 @@ pub async fn convert_to_flow(
     let mut i = 0;
     while i < order.len() {
         let (kind, id) = order[i].clone();
-        let children = task_goal_children(db, &kind, id).await?;
+        // A wait holds only notes, which a template does not carry.
+        let children = if kind == "expectation" {
+            Vec::new()
+        } else {
+            template_children(db, &kind, id).await?
+        };
         for child in children {
             parent_of.insert(child.clone(), (kind.clone(), id));
             order.push(child);
@@ -2830,21 +3362,7 @@ pub async fn convert_to_flow(
     // Create a flow item per subtree node, mirroring the hierarchy.
     let mut item_map: HashMap<(String, i64), (FlowItemType, i64)> = HashMap::new();
     for (kind, id) in &order {
-        let (item_title, node_ts) = match kind.as_str() {
-            "goal" => {
-                let g = db.goals().get(GoalId(*id)).await?;
-                (g.title, g.time_scope)
-            }
-            _ => {
-                let t = db.tasks().get(TaskId(*id)).await?;
-                (t.title, t.time_scope)
-            }
-        };
-        let item_type = if kind == "goal" {
-            FlowItemType::FlowGoal
-        } else {
-            FlowItemType::FlowTask
-        };
+        let (item_type, item_title, node_ts, own_fields) = converted_node(db, kind, *id).await?;
         let (parent_item_type, parent_item_id) = {
             let parent = &parent_of[&(kind.clone(), *id)];
             if parent == &root_key {
@@ -2860,12 +3378,28 @@ pub async fn convert_to_flow(
             parent_type: parent_item_type,
             parent_id: parent_item_id,
         };
-        let new_id = if kind == "goal" {
-            db.flows().create_goal(item_request).await?.id
-        } else {
-            db.flows().create_task(item_request).await?.id
+        let new_id = match item_type {
+            FlowItemType::FlowGoal => db.flows().create_goal(item_request).await?.id,
+            FlowItemType::FlowTask => db.flows().create_task(item_request).await?.id,
+            FlowItemType::FlowCommitment => {
+                db.flows().create_commitment_item(item_request).await?.id
+            }
+            FlowItemType::FlowExpectation => {
+                db.flows().create_expectation_item(item_request).await?.id
+            }
         };
         item_map.insert((kind.clone(), *id), (item_type, new_id));
+        // A wait's first check is counted from the start of the window it maps to: its own, or
+        // the template's.
+        let wait_window = if map_scopes {
+            node_ts
+                .as_ref()
+                .map(|scope| scope.start_id.start_date())
+                .or(window_start)
+        } else {
+            None
+        };
+        write_converted_fields(db, (item_type, new_id), own_fields, wait_window).await?;
 
         // Map the descendant's Time Scope to a relative Cycle Scope (canonical kinds only).
         if map_scopes {
@@ -2908,9 +3442,8 @@ pub async fn convert_to_flow(
                 let dep_key = match dep {
                     Dependency::Task { id } => ("task".to_string(), id.require_stored()?),
                     Dependency::Goal { id } => ("goal".to_string(), id.require_stored()?),
-                    // A wait is never a flow item, so an edge onto one has nothing inside the
-                    // template to become — the same as an edge onto anything outside the subtree.
-                    Dependency::Expectation { .. } => continue,
+                    // A wait in the subtree became a wait item, which a Task item may wait on.
+                    Dependency::Expectation { id } => ("expectation".to_string(), id),
                 };
                 if let Some((on_type, on_id)) = item_map.get(&dep_key).copied() {
                     db.flows()
@@ -2946,31 +3479,81 @@ async fn load_template<M: SessionMode>(
 ) -> Result<FlowTemplate, FlowError> {
     let goals = db.flows().list_goals(flow_id).await?;
     let tasks = db.flows().list_tasks(flow_id).await?;
+    let commitments = db.flows().list_commitment_items(Some(flow_id)).await?;
+    let waits = db.flows().list_expectation_items(Some(flow_id)).await?;
     let cycles = db.flows().list_all_cycles().await?;
     let dependencies = db.flows().list_all_dependencies().await?;
 
-    let mut items: Vec<TemplateItem> = Vec::with_capacity(goals.len() + tasks.len());
+    let item = |kind: FlowItemType,
+                (id, title, parent_type, parent_id, position, is_private): (
+        i64,
+        &String,
+        &String,
+        i64,
+        i64,
+        bool,
+    )| TemplateItem {
+        kind,
+        id,
+        title: title.clone(),
+        parent_type: parent_type.clone(),
+        parent_id,
+        position,
+        is_private,
+    };
+    let mut items: Vec<TemplateItem> =
+        Vec::with_capacity(goals.len() + tasks.len() + commitments.len() + waits.len());
     for goal in &goals {
-        items.push(TemplateItem {
-            kind: FlowItemType::FlowGoal,
-            id: goal.id,
-            title: goal.title.clone(),
-            parent_type: goal.parent_type.clone(),
-            parent_id: goal.parent_id,
-            position: goal.position,
-            is_private: goal.is_private,
-        });
+        items.push(item(
+            FlowItemType::FlowGoal,
+            (
+                goal.id,
+                &goal.title,
+                &goal.parent_type,
+                goal.parent_id,
+                goal.position,
+                goal.is_private,
+            ),
+        ));
     }
     for task in &tasks {
-        items.push(TemplateItem {
-            kind: FlowItemType::FlowTask,
-            id: task.id,
-            title: task.title.clone(),
-            parent_type: task.parent_type.clone(),
-            parent_id: task.parent_id,
-            position: task.position,
-            is_private: task.is_private,
-        });
+        items.push(item(
+            FlowItemType::FlowTask,
+            (
+                task.id,
+                &task.title,
+                &task.parent_type,
+                task.parent_id,
+                task.position,
+                task.is_private,
+            ),
+        ));
+    }
+    for commitment in &commitments {
+        items.push(item(
+            FlowItemType::FlowCommitment,
+            (
+                commitment.id,
+                &commitment.title,
+                &commitment.parent_type,
+                commitment.parent_id,
+                commitment.position,
+                commitment.is_private,
+            ),
+        ));
+    }
+    for wait in &waits {
+        items.push(item(
+            FlowItemType::FlowExpectation,
+            (
+                wait.id,
+                &wait.title,
+                &wait.parent_type,
+                wait.parent_id,
+                wait.position,
+                wait.is_private,
+            ),
+        ));
     }
 
     Ok(FlowTemplate {
@@ -3020,7 +3603,7 @@ async fn write_plan(
         };
 
         let created = match node.kind {
-            InstanceType::Goal => {
+            render::PlannedKind::Goal => {
                 let goal = create_goal(
                     db,
                     CreateGoalRequest {
@@ -3035,7 +3618,7 @@ async fn write_plan(
                 .await?;
                 ("goal".to_string(), goal.id.require_stored()?)
             }
-            InstanceType::Task => {
+            render::PlannedKind::Task => {
                 let task = create_task(
                     db,
                     CreateTaskRequest {
@@ -3065,7 +3648,41 @@ async fn write_plan(
                 .await?;
                 ("task".to_string(), task.id.require_stored()?)
             }
-            InstanceType::Commitment => {
+            render::PlannedKind::Expectation => {
+                let wait_item = match node.source {
+                    PlannedSource::Item(_, id) => Some(db.flows().expectation_item(id).await?),
+                    PlannedSource::Root => None,
+                };
+                let check_every = wait_item.as_ref().and_then(|item| item.check_every.clone());
+                // Its first check falls where its item says within its window — the flow
+                // window's start, for one with none of its own (ruled by the user, 2026-10-03).
+                let opens = node.time_scope.as_ref().map_or_else(
+                    || day_boundary(request.anchor_date),
+                    |scope| scope.window().0,
+                );
+                let check_starting = match (&check_every, &wait_item) {
+                    (Some(_), Some(item)) => Some(rules::items::first_check_at(
+                        opens,
+                        item.first_check.as_ref(),
+                    )?),
+                    _ => None,
+                };
+                let wait = crate::tasks::create_expectation(
+                    db,
+                    crate::tasks::model::CreateExpectationRequest {
+                        title: node.title.clone(),
+                        parent_type: create_parent.0,
+                        parent_id: create_parent.1.into(),
+                        check_every,
+                        check_starting,
+                        time_scope: node.time_scope.clone(),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+                ("expectation".to_string(), wait.id.require_stored()?)
+            }
+            render::PlannedKind::Commitment => {
                 // A commitment Habit's root. Its window comes from the iteration the same way a
                 // task's does; it arrives Unresolved, because a materialised instance is
                 // something nobody has judged yet, and the whole point of the kind is that
@@ -3073,6 +3690,13 @@ async fn write_plan(
                 //
                 // `node.plan` is ignored rather than dropped silently: a Commitment has no Plan
                 // column, and a commitment flow has no Cycle Plan to set one from.
+                // A Commitment item copies its Verdict Window onto the Commitment it becomes.
+                let verdict_window = match node.source {
+                    PlannedSource::Item(FlowItemType::FlowCommitment, id) => {
+                        db.flows().commitment_item(id).await?.verdict_window
+                    }
+                    _ => None,
+                };
                 let commitment = create_commitment(
                     db,
                     CreateCommitmentRequest {
@@ -3081,7 +3705,7 @@ async fn write_plan(
                         parent_id: create_parent.1.into(),
                         verdict: None,
                         time_scope: node.time_scope.clone(),
-                        verdict_window: None,
+                        verdict_window,
                     },
                 )
                 .await?;
@@ -3124,14 +3748,14 @@ async fn write_plan(
     for edge in &plan.edges {
         let dependent = written.get(edge.dependent.0).ok_or_else(dangling)?.1;
         let (blocker_type, blocker_id) = written.get(edge.blocker.0).ok_or_else(dangling)?.clone();
-        let dependency = if blocker_type == "goal" {
-            Dependency::Goal {
+        let dependency = match blocker_type.as_str() {
+            "goal" => Dependency::Goal {
                 id: blocker_id.into(),
-            }
-        } else {
-            Dependency::Task {
+            },
+            "expectation" => Dependency::Expectation { id: blocker_id },
+            _ => Dependency::Task {
                 id: blocker_id.into(),
-            }
+            },
         };
         add_task_dependency(db, TaskId(dependent), dependency).await?;
     }
@@ -3170,6 +3794,12 @@ pub async fn start(
     }
     for task in db.flows().list_tasks(flow_id).await? {
         fields.insert(("flow_task".to_string(), task.id), task.template);
+    }
+    for item in db.flows().list_commitment_items(Some(flow_id)).await? {
+        fields.insert(("flow_commitment".to_string(), item.id), item.template);
+    }
+    for item in db.flows().list_expectation_items(Some(flow_id)).await? {
+        fields.insert(("flow_expectation".to_string(), item.id), item.template);
     }
     write_plan(db, flow_id, &request, &plan, &fields).await
 }
@@ -3216,6 +3846,13 @@ async fn apply_template_fields(
                 db.goals().add_tag(GoalId(node_id), *tag_id).await?;
             }
         }
+        "expectation" => {
+            for tag_id in &fields.tag_ids {
+                db.expectations()
+                    .add_tag(crate::tasks::model::ExpectationId(node_id), *tag_id)
+                    .await?;
+            }
+        }
         _ => {
             for tag_id in &fields.tag_ids {
                 db.commitments()
@@ -3224,7 +3861,8 @@ async fn apply_template_fields(
             }
         }
     }
-    if !fields.block_reasons.is_empty() && node_type != "commitment" {
+    let takes_reasons = matches!(node_type, "task" | "goal");
+    if !fields.block_reasons.is_empty() && takes_reasons {
         db.block_reasons()
             .set(node_type, node_id, &fields.block_reasons)
             .await?;
@@ -3245,6 +3883,17 @@ async fn set_node_private(
             db.commitments()
                 .set_private(CommitmentId(node_id), true)
                 .await?
+        }
+        "expectation" => {
+            crate::tasks::update_expectation(
+                db,
+                crate::tasks::model::ExpectationId(node_id),
+                crate::tasks::model::UpdateExpectationRequest {
+                    is_private: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await?;
         }
         _ => db.tasks().set_private(TaskId(node_id), true).await?,
     }
