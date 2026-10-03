@@ -1,4 +1,5 @@
-//! The task rules: Timing, Resolution, Archival and the Overdue flag ([`lifecycle`]), Review
+//! The task rules: what a compound Task reads as ([`compound`]); Timing, Resolution, Archival and
+//! the Overdue flag ([`lifecycle`]); Review
 //! ([`review`]), and the containment invariants and wait lifecycles ([`scope`]).
 //!
 //! Pure functions over values: no session (`Db`, `SessionMode`), no `sqlx`, no `tauri`, no `tokio`
@@ -8,6 +9,7 @@
 //! The submodules are re-exported at their old paths in the parent module, so callers did not
 //! change when they moved here.
 
+pub mod compound;
 pub mod lifecycle;
 pub mod review;
 pub mod scope;
