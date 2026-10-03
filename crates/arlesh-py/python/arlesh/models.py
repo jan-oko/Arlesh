@@ -15,6 +15,7 @@ silences exactly that.
 from __future__ import annotations
 
 from datetime import date as date_aliased
+from datetime import datetime
 from enum import StrEnum
 from typing import TypeAlias, Annotated, Any, Literal
 
@@ -1146,7 +1147,7 @@ class SlotWindow(BaseModel):
     datetime span. Supplied index-ordered from the Repetition Start.
     """
 
-    end: str
+    end: datetime
     """
     Exclusive end of the window (the window has passed once `now >= end`). An Unscoped Interval
     Habit's instance has no window; its end is [`UNBOUNDED`], which nothing ever reaches.
@@ -1166,7 +1167,7 @@ class SlotWindow(BaseModel):
     """
     Scope anchoring the window's first period.
     """
-    start: str
+    start: datetime
     """
     Inclusive start of the window.
     """
@@ -1184,11 +1185,11 @@ class SpawnedWait(BaseModel):
     """
     Live or Archived.
     """
-    last_check_at: str | None = None
+    last_check_at: datetime | None = None
     """
     When its last check was made, if any.
     """
-    spawned_at: str | None = None
+    spawned_at: datetime | None = None
     """
     When the Task was completed — when the wait began. `None` for a Task whose completion time
     was never recorded.
@@ -1536,7 +1537,7 @@ class UpdateExpectationRequest(BaseModel):
     """
     Check every to set (None leaves unchanged, Some(None) stops checking).
     """
-    check_starting: str | None = None
+    check_starting: datetime | None = None
     """
     When the first check falls due (None leaves unchanged). Setting a Check every with no
     Starting of its own starts it now.
@@ -1899,7 +1900,7 @@ class BlockReason(BaseModel):
     """
     The reason text.
     """
-    until: str | None = None
+    until: datetime | None = None
     """
     When a derived block **lifts by itself**, for one that does — a Habit's cooldown. Absent
     otherwise, and left off the wire then.
@@ -1911,7 +1912,7 @@ class CheckOrigin(BaseModel):
     Which check on which wait a check task is.
     """
 
-    due_at: str
+    due_at: datetime
     """
     When the check fell due.
     """
@@ -2052,7 +2053,7 @@ class CreateExpectationRequest(BaseModel):
     """
     How often to check on it. Omitted, it is never checked.
     """
-    check_starting: str | None = None
+    check_starting: datetime | None = None
     """
     When the first check falls due. Omitted with a Check every, it is the moment of creation.
     """
@@ -2911,7 +2912,7 @@ class IterationScope(BaseModel):
     """
     The iteration's derived state at the reference instant.
     """
-    window_end: str
+    window_end: datetime
     """
     The window's exclusive end.
     """
@@ -2994,7 +2995,7 @@ class OriginCheck(BaseModel):
     A check on a wait: a Task drawn while the check is due, and kept, done, once it is made.
     """
 
-    due_at: str
+    due_at: datetime
     """
     When the check fell due.
     """
@@ -3698,7 +3699,7 @@ class Expectation(BaseModel):
     pending, a virtual "check on it" task is due at [`Self::check_starting`], and after each
     check one interval after that check was made. Nothing is stored for a check but its time.
     """
-    check_starting: str | None = None
+    check_starting: datetime | None = None
     """
     When the first check falls due; set to the moment Check every is first given, unless the
     request names another.
@@ -3712,7 +3713,7 @@ class Expectation(BaseModel):
     """
     Whether this node is private (hidden unless Private Mode is on).
     """
-    last_check_at: str | None = None
+    last_check_at: datetime | None = None
     """
     When the last check was made, if any. The next falls due one interval after it.
     """

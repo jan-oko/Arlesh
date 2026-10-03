@@ -250,7 +250,9 @@ pub fn derive_archival(stored: Option<Archival>, resolution: Option<Resolution>)
 
 /// One item's fully-derived lifecycle state (Timing/Resolution/Archival and the Overdue flag),
 /// without node identity — see [`ItemLifecycle`] for the keyed wire form sent to the frontend.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct DerivedState {
     /// Window position.
     pub timing: Timing,
@@ -347,7 +349,9 @@ mod tests;
 /// `verdict` is passed straight back out rather than computed. It is a field of the value only so
 /// that callers have one place to read the whole state from; see [`Verdict`] for why deriving it
 /// is the one thing this module must not do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct CommitmentState {
     /// Window position.
     pub timing: Timing,

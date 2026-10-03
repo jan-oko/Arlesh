@@ -325,12 +325,17 @@ jobs:
           source <(cargo llvm-cov show-env --export-prefix)
           echo "building in ${CARGO_TARGET_DIR:-src-tauri/target}"
           cargo llvm-cov clean --workspace
-          cargo test --locked --workspace
+          cargo test --locked --workspace --exclude arlesh-py
           cargo llvm-cov report \
             --summary-only \
-            --ignore-filename-regex '(^|/)src/commands/' \
+            --ignore-filename-regex '(^|/)src/commands/|(^|/)crates/arlesh-py/' \
             --fail-under-lines 94 \
             2>&1 | tee "$RUNNER_TEMP/coverage.log"
+
+      # The Python bindings are gated by the `python` lane instead: their Rust is an operation
+      # table whose every arm is exercised from pytest, and `cargo test` cannot load a module
+      # that links against the interpreter importing it. So they are left out of this run and
+      # out of this report — `--exclude` above, the filename regex here.
 
       # Put the percentage where it can be read without opening the log, on a
       # failing run as well as a passing one.
@@ -343,3 +348,52 @@ jobs:
             grep -E '^(Filename|TOTAL|-+$)' "$RUNNER_TEMP/coverage.log" 2>/dev/null || echo 'no coverage report'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # The Python bindings (crates/arlesh-py): build the wheel with maturin, install it, then
+  # pytest under pytest-cov (the gate for the package, since the Rust lane excludes it),
+  # mypy --strict, ruff, and a check that the generated pydantic models match the Rust types'
+  # JSON Schema. One job, because every step after the build needs the wheel the build made.
+  python:
+    name: arlesh-py · wheel · pytest · mypy · ruff
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    if: github.event_name != 'schedule'
+    defaults:
+      run:
+        working-directory: crates/arlesh-py
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: crates/arlesh-py/uv.lock
+
+      # Its own key: a plain debug build of the core and the bindings, without Tauri, shares no
+      # artifacts with the instrumented build the rust lane caches.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> src-tauri/target"
+          shared-key: python-bindings
+
+      - name: uv sync
+        run: uv sync --locked --python 3.12
+
+      # `maturin develop` builds the extension and installs it into the uv venv; the wheel it
+      # builds on the way is the installable artifact. No publishing.
+      - name: Build and install the wheel
+        run: uv run --no-sync maturin develop --uv --locked
+
+      - name: Generated models are current
+        run: uv run --no-sync python generate_models.py --check
+
+      - name: ruff
+        run: |
+          uv run --no-sync ruff check python tests generate_models.py
+          uv run --no-sync ruff format --check python tests generate_models.py
+
+      - name: mypy
+        run: uv run --no-sync mypy
+
+      - name: pytest · coverage
+        run: uv run --no-sync pytest --cov=arlesh --cov-report=term-missing --cov-fail-under=95

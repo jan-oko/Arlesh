@@ -34,13 +34,18 @@ silences exactly that.
 
 
 def _name_pairs(node: object) -> None:
-    """Titles every fixed pair of integers ``IdPair``, in place.
+    """Titles every fixed pair of integers ``IdPair``, and reads every naive datetime as a
+    ``datetime``, in place.
 
     The generator names an untitled inline schema after the field holding it, singularised — so
     ``ForkedTemplate.tasks``, a list of old-to-new id pairs, would take the name ``Task`` from the
     real Task model. A title gives the pairs a name of their own.
     """
     if isinstance(node, dict):
+        # chrono's NaiveDateTime is `partial-date-time`, which the generator reads as a plain
+        # string. A naive `datetime` is what it is, and what pydantic reads and writes it as.
+        if node.get("format") == "partial-date-time":
+            node["format"] = "date-time"
         if node.get("prefixItems") and node.get("minItems") == node.get("maxItems") == 2:
             node["title"] = "IdPair"
         for value in node.values():
@@ -148,6 +153,8 @@ def generate() -> str:
                 "--use-field-description",
                 "--use-title-as-name",
                 "--set-default-enum-member",
+                "--output-datetime-class",
+                "datetime",
                 "--enum-field-as-literal",
                 "one",
                 "--collapse-root-models",

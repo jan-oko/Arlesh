@@ -167,8 +167,9 @@ pub(crate) enum Rule {
         slots: Vec<SlotWindow>,
         /// The Habit's clock.
         clock: Clock,
-        /// When each resolved iteration (by index) was done.
-        resolved: HashMap<i64, NaiveDateTime>,
+        /// When each resolved iteration was done, as `(index, instant)` pairs. Pairs rather than a
+        /// map: an internally tagged request cannot read integer map keys.
+        resolved: Vec<(i64, NaiveDateTime)>,
         /// The instant to judge at.
         now: NaiveDateTime,
     },
@@ -329,7 +330,10 @@ fn apply(rule: Rule) -> Result<Value, WireError> {
             clock,
             resolved,
             now,
-        } => json(habits::classify_iterations(&slots, clock, &resolved, now)),
+        } => {
+            let resolved: HashMap<i64, NaiveDateTime> = resolved.into_iter().collect();
+            json(habits::classify_iterations(&slots, clock, &resolved, now))
+        }
         Rule::NextStatus { current } => json(gestures::next_status(current)),
         Rule::StatusAfter {
             step,

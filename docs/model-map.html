@@ -481,10 +481,15 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
   </div>
   <div class="cards">
     <article class="card"><h3>The undo journal</h3>
-      <p class="is">SQL triggers on every table record each row's before and after. One gesture is one step; Ctrl+Z replays it in reverse, across windows.</p>
+      <p class="is">SQL triggers on every table record each row's before and after. One gesture is one step; Ctrl+Z replays it in reverse, across windows. An agent's or another client's writes are journaled but never undone from the app.</p>
       <dl><dt>Why</dt><dd>A trigger can't be forgotten by a command that doesn't know it exists.</dd>
       <dt>Without</dt><dd>An inverse to write for every one of eighty-odd commands, and the next one missing it.</dd>
       <dt>Lives</dt><dd class="where">undo/ · scripts/generate-undo-triggers.sh · ADR 0006</dd></dl></article>
+    <article class="card"><h3>Clients and a second writer</h3>
+      <p class="is">Every write is journaled with the client it came through: the app is <code>desktop</code>, and a Python session names itself. The app's Ctrl+Z takes only its own. While the app runs it holds the database, and another writer must force its way in; reading is never refused.</p>
+      <dl><dt>Why</dt><dd>More than one program writes the board now, and each must tell its own changes from another's.</dd>
+      <dt>Without</dt><dd>Ctrl+Z in the app would reverse what a script did, and a script could rewrite rows under the app's open windows unwarned.</dd>
+      <dt>Lives</dt><dd class="where">database/ (client, hold, open) · migration 0092 · crates/arlesh-py</dd></dl></article>
     <article class="card"><h3>Migrations</h3>
       <p class="is">Numbered schema steps, applied in order and never edited once applied. Data is moved aside, never dropped.</p>
       <dl><dt>Why</dt><dd>Your real database must reach every new shape without losing anything.</dd>
