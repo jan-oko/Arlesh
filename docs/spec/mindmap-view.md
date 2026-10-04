@@ -60,7 +60,7 @@ A shortcut requires exactly the modifiers listed — `Ctrl+E` does not open the 
 
 A **drag** is the one gesture that answers by not answering, and legitimately: it refuses by not lighting the node up, which is on screen continuously while the pointer is over a target that would not take the drop, where a keystroke's refusal has no such moment. It must therefore never *offer* a drop the write cannot make.
 
-**One gesture, one message.** The view holds a single pending toast — a slot, not a queue, and it stays one: a queue would leave the user reading notices about a gesture that finished two gestures ago, and the second call would in any case overwrite the first. So a gesture with several things to say composes them into one message: a paste names every reason it skipped something, and a delete refused for two reasons says both. A message the same gesture raises **later** — a backend refusal arriving after a skip notice — replaces the earlier one only by **containing** it, carrying both sentences, so nothing the gesture said is taken off screen unsaid.
+**One gesture, one message.** The view holds a single pending toast — a slot, not a queue, and it stays one: a queue would leave the user reading notices about a gesture that finished two gestures ago, and the second call would in any case overwrite the first. So a gesture with several things to say composes them into one message: a paste names every reason it skipped something, and a delete refused for two reasons says both. A message the same gesture raises **later** replaces an earlier one only by **containing** it, carrying both sentences, so nothing the gesture said is taken off screen unsaid. A paste goes further and says nothing until it has finished: its skips, what the copy reported it left behind, and a backend refusal if there was one, in that order, in one toast.
 
 **A mixed selection** is decided by the cost of being wrong. An **additive** gesture acts on the rest and names every skip: that is paste. A **destructive** one refuses the whole selection and acts on nothing: that is delete. Refusing a delete costs a keystroke; acting on half of one costs data. The notice could not be read beside the confirmation anyway — the toast sits well below the modal's overlay and fades while it is covered — so "deleted the rest, mentioned the skip" would be a silent skip wearing a message.
 
@@ -143,9 +143,20 @@ other produces a copy whose members still wait on the originals. (That mirrors a
 is the conservative reading; Flow instances solve the same problem by remapping per instance, and
 that is the model to reach for if this proves wrong.)
 
-Projects, Domains, Tags, Goals, Tasks, Infos, **Flows and flow items** are duplicable. Aspects,
-Commitments and Habit occurrences are not, and a Flow hanging under a copied node is still not
-copied with it — but it is now **named**, not dropped in silence (see *A Flow left behind*, below).
+Projects, Domains, Tags, Goals, Tasks, Infos, **Flows and flow items** are duplicable, and a Flow
+hanging under a copied node is copied with it (see [*Copying a Flow with its subtree*](flows.md)).
+**Commitments and waits under a copied node** are copied too, each with its own subtree and as
+stored (ruled by the user, 2026-10-03): a Commitment keeps its verdict, as a copied Task keeps its
+status, and a wait keeps its status, archive, checks and agent fields. Neither holds dependencies of
+its own, and a Task that waits on a copied wait keeps waiting on the original, like every copied
+dependency. A copied node that a started Flow materialised still reads "from flow X", naming the
+original Flow. A Commitment or a wait **on the clipboard** is still refused, though: there is no
+command that copies one on its own, only as part of what holds it. The copy finds a node's children
+under **every** spelling that names it as a parent: a row under a Domain is stored as `project` by
+some writers and `domain` by others, and a copy that read only one spelling silently left the rest
+behind (fixed 2026-10-03, ruled by the user). Aspects and Habit occurrences are
+not duplicable, and neither are the rows hung on a Habit occurrence inside the copy — but those are
+**named**, not dropped in silence (see *Left behind on an occurrence*, below).
 A paste whose selection includes any of these pastes the rest and says in a toast what
 it skipped — **grouped by reason, one sentence per reason**, because only one of the reasons is about
 the destination. An Aspect is fixed wherever you point it, a Habit repetition has no row behind it to
@@ -161,19 +172,25 @@ before anything on the clipboard is considered: a folded run of Habit history or
 occurrence refuses every paste for one reason, said once, rather than telling the user of each
 node in turn that it cannot sit under a Task.
 
-**A Flow left behind.** Every other skip is about a node that was put on the clipboard. This one is
-not: a Flow hanging *underneath* a copied node is never copied with it — the duplication walk does
-not descend into a Flow — so the pasted subtree comes out smaller than the one that was copied, and
-nothing in the selection hints at what went missing. It is reported as one more reason in the same
-composed toast, and it is the one reason that **names** rather than counts: the other skips are
-about nodes the user selected and can still see, where a count identifies them, while a left-behind
-Flow was never selected and is invisible in the paste, so "2 Flows weren't copied" would leave the
-user hunting the copy for whatever is absent. The names are the remedy — they are what you go and
-copy across on their own. Past **three** names the sentence counts the rest ("and 4 more"), because
-a toast is a viewport strip and a Domain that has collected a year of Habits would fill it with a
-list nobody reads. The report changes nothing about what gets copied: everything that can be is,
-and this only says what the copy could not carry. A **cut** says nothing, because it loses nothing —
-a move re-points one parent link and the whole subtree follows, Flows included.
+**Left behind on an occurrence.** Every other skip is about a node that was put on the clipboard.
+This one is not: a row hung on a Habit occurrence — under a copied host, or on a Habit the paste
+copied — has nothing to hang on in the copy, because the occurrence is derived and the copied Habit
+regenerates its own. The copy leaves it where it is and **reports** it, so it is the one skip the
+backend decides and the one that can only be said once the paste is over. It is one more reason in
+the same composed toast, and it is the one reason that **names** rather than counts: the other skips
+are about nodes the user selected and can still see, where a count identifies them, while a
+left-behind row was never selected and is invisible in the paste, so "2 nodes weren't copied" would
+leave the user hunting the copy for whatever is absent. The names are the remedy — they are what you
+go and copy across on their own. Past **three** names the sentence counts the rest ("and 4 more"),
+because a toast is a viewport strip. The report changes nothing about what gets copied: everything
+that can be is, and this only says what the copy could not carry. A **cut** says nothing, because
+it loses nothing — a move re-points one parent link and the whole subtree follows. Because this
+skip is known only after the copy, a paste says **all** its skips in one toast once it has
+finished, rather than one toast before and another after.
+
+*Superseded* (Task `e2c`, 2026-10-03): this sentence used to name the **Flows** under a copied node,
+which the copy did not carry. Flows now come along, and the sentence names occurrence children
+instead.
 
 The refusal that **is** about the destination names the kind it refused, what that kind was dropped
 on, and — read off the drop-target rule itself, never off a list kept beside it — every kind that

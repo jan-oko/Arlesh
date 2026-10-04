@@ -1,4 +1,5 @@
 import { invoke } from "./gesture";
+import type { DuplicatedSubtree } from "@/api/duplicate";
 import type { DurationSpec, TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { isWireError } from "@/api/errors";
@@ -222,8 +223,8 @@ export async function duplicateTask(
   targetType: string,
   targetId: number,
   position: number,
-): Promise<Task> {
-  return invoke<Task>("duplicate_task", { id, targetType, targetId, position });
+): Promise<DuplicatedSubtree<Task>> {
+  return invoke<DuplicatedSubtree<Task>>("duplicate_task", { id, targetType, targetId, position });
 }
 
 /**
