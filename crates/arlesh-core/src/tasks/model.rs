@@ -318,10 +318,15 @@ impl Status {
 /// A Task's own manually-set archival state — the stored half of the
 /// [`Archival`](super::lifecycle::Archival) axis, independent of [`TaskStatus`].
 ///
-/// Two variants, not four. A Task is never manually **Archived** (a Task's effective Archival is
-/// forced by its scope Resolution alone), and **Frozen** is Goal/Project vocabulary. Giving the
-/// Task side its own type is what makes "Backlog is valid on Tasks only" a thing the compiler
-/// knows rather than a comment: nothing can hand a Goal a `Backlog`, or a Task a `Frozen`.
+/// Three variants, mutually exclusive — one stored column: **Live**, **Backlog** or **Archived**
+/// (Task 269, ruled 2026-10-03). **Frozen** is Goal/Project vocabulary. Giving the Task side its
+/// own type is what makes "Backlog is valid on Tasks only" a thing the compiler knows rather than a
+/// comment: nothing can hand a Goal a `Backlog`, or a Task a `Frozen`.
+///
+/// **Archived** is the hand archive: it writes this Task alone, and everything beneath it reads as
+/// archived through inheritance on every board load (see
+/// [`crate::tasks::rules::archival::inherit`]). Only a stored Task takes it; a Habit occurrence is
+/// archived through its tombstone, and a template carries no archive.
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
 )]
@@ -333,6 +338,8 @@ pub enum TaskArchival {
     /// Deliberately set aside: hidden from Plan and Start along with everything beneath it, still
     /// listed under All, and browsable on its own through the Backlog preset.
     Backlog,
+    /// Put away by hand: archived, with everything beneath it, until it is unarchived (Live).
+    Archived,
 }
 
 impl TaskArchival {
@@ -341,6 +348,7 @@ impl TaskArchival {
         match self {
             Self::Live => "live",
             Self::Backlog => "backlog",
+            Self::Archived => "archived",
         }
     }
 
@@ -349,6 +357,7 @@ impl TaskArchival {
         match value {
             "live" => Some(Self::Live),
             "backlog" => Some(Self::Backlog),
+            "archived" => Some(Self::Archived),
             _ => None,
         }
     }
@@ -359,8 +368,10 @@ impl TaskArchival {
     /// and scheduled, because the two say opposite things about the same week. Enforced at write
     /// time, in both directions — backlogging a planned Task is refused until the caller agrees to
     /// clear the Plan, and setting a Plan on a backlogged Task takes it out of the backlog.
+    ///
+    /// An archived Task keeps its Plan: archiving sets nothing else aside.
     pub fn allows_plan(&self) -> bool {
-        matches!(self, Self::Live)
+        !matches!(self, Self::Backlog)
     }
 }
 
@@ -975,9 +986,47 @@ pub struct Commitment {
     pub position: i64,
     /// Whether this node is private (hidden unless Private Mode is on).
     pub is_private: bool,
+    /// Its own archive, set by hand: archived with everything beneath it until unarchived. Beside
+    /// the archival its verdict and Verdict Window derive. Always Live on a Habit occurrence.
+    #[serde(default)]
+    pub archival: CommitmentArchival,
     /// Where the row came from: made by hand, or derived (a Habit occurrence).
     #[serde(default)]
     pub origin: Origin,
+}
+
+/// A Commitment's own archive, set by hand (Task 269, ruled 2026-10-03): the stored half of its
+/// Archival, beside what its verdict and Verdict Window derive. Two values: a Commitment has no
+/// Backlog, and Frozen is Goal/Project vocabulary.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum CommitmentArchival {
+    /// In play. The default.
+    #[default]
+    Live,
+    /// Put away by hand, with everything beneath it.
+    Archived,
+}
+
+impl CommitmentArchival {
+    /// Returns the database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Live => "live",
+            Self::Archived => "archived",
+        }
+    }
+
+    /// Parses the database string representation, if recognized.
+    pub fn from_db(value: &str) -> Option<Self> {
+        match value {
+            "live" => Some(Self::Live),
+            "archived" => Some(Self::Archived),
+            _ => None,
+        }
+    }
 }
 
 /// Request body for creating a commitment.
@@ -1024,6 +1073,10 @@ pub struct UpdateCommitmentRequest {
     pub position: Option<i64>,
     /// New private flag, if changing.
     pub is_private: Option<bool>,
+    /// Its own archive to set (None leaves unchanged): `Archived` puts it away by hand with
+    /// everything beneath it, `Live` unarchives it. Refused on a Habit occurrence.
+    #[serde(default)]
+    pub archival: Option<CommitmentArchival>,
 }
 
 /// An agentic brief's **priority**: four levels, most urgent first — `MW`, then `A`, `B`, `C`.

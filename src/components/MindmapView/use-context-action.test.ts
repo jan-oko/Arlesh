@@ -26,6 +26,7 @@ function makeOpts(overrides: Partial<Parameters<typeof useContextAction>[0]> = {
     onNewFlow: vi.fn(),
     onConvertToFlow: vi.fn(),
     onStartFlow: vi.fn(),
+    onToggleArchive: vi.fn(),
     ...overrides,
   };
 }
@@ -36,6 +37,13 @@ describe("useContextAction", () => {
     const { result } = renderHook(() => useContextAction(opts));
     result.current.onContextAction("missing", CONTEXT_ACTION.ENTER);
     expect(opts.enterSubtree).not.toHaveBeenCalled();
+  });
+
+  it("ARCHIVE toggles the hand archive of the node", () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useContextAction(opts));
+    result.current.onContextAction("domain-1", CONTEXT_ACTION.ARCHIVE);
+    expect(opts.onToggleArchive).toHaveBeenCalledWith("domain-1");
   });
 
   it("ENTER calls enterSubtree with the node id", () => {

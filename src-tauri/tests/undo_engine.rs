@@ -1207,3 +1207,72 @@ async fn undoing_a_completed_check_reopens_it_and_redo_completes_it_again() {
         "and redo completes it again"
     );
 }
+
+#[tokio::test]
+async fn pasting_a_project_that_holds_a_habit_is_one_undo_step() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let project_id = make_project(&pool).await;
+    let goal = task_commands::create_goal(app.state(), goal_request("project", project_id, "goal"))
+        .await
+        .expect("create goal");
+    let flow = arlesh_lib::commands::flows::create_flow(
+        app.state(),
+        CreateFlowRequest {
+            title: "habit".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "project".into(),
+            parent_id: project_id,
+            target_type: Some("goal".into()),
+            target_id: Some(goal.id.sid()),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("create flow");
+    arlesh_lib::commands::flows::create_flow_task(
+        app.state(),
+        CreateFlowItemRequest {
+            flow_id: flow.id,
+            title: "step".into(),
+            parent_type: "flow".into(),
+            parent_id: flow.id,
+        },
+    )
+    .await
+    .expect("create flow item");
+    let aspect_id: i64 = sqlx::query_scalar("SELECT parent_id FROM domains WHERE id = ?")
+        .bind(project_id)
+        .fetch_one(&pool)
+        .await
+        .expect("the project's aspect");
+
+    let before = board(&pool).await;
+
+    open_gesture(&app).await;
+    arlesh_lib::commands::domains::duplicate_domain(app.state(), project_id, aspect_id, 9)
+        .await
+        .expect("paste the project");
+    close_gesture(&app).await;
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM flows WHERE title = 'habit'")
+            .fetch_one(&pool)
+            .await
+            .expect("count"),
+        2,
+        "the paste must have copied the Habit"
+    );
+
+    undo(&app).await.expect("there is something to undo");
+
+    assert_eq!(
+        board(&pool).await,
+        before,
+        "one undo takes back the whole paste, the Habit and its items included"
+    );
+    assert_eq!(
+        undo(&app).await.map(|_| ()),
+        None,
+        "and it was a single step"
+    );
+}

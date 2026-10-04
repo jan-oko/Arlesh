@@ -22,6 +22,7 @@ from arlesh.models import (
     Archival,
     ArchivalResult,
     Clock,
+    CommitmentArchival,
     CommitmentState,
     CycleLevel,
     DerivedState,
@@ -172,14 +173,16 @@ def derive_commitment_state(
     verdict: Verdict,
     verdict_window: DurationSpec | None,
     now: datetime,
+    stored: CommitmentArchival = CommitmentArchival.live,
 ) -> CommitmentState:
-    """A Commitment's derived state."""
+    """A Commitment's derived state. ``stored`` is its own archival: archived by hand, or live."""
     return _rule(
         _COMMITMENT_STATE,
         "derive_commitment_state",
         window=window,
         verdict=verdict,
         verdict_window=verdict_window,
+        stored=stored,
         now=now,
     )
 

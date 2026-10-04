@@ -5,6 +5,8 @@ import { getErrorMessage } from "@/api/errors";
 import { withGesture } from "@/api/gesture";
 import { addTaskDependency, fetchDependencyCandidates } from "@/api/tasks";
 import { useDisplayStore } from "@/stores/use-display-store";
+import { useFilterStore } from "@/stores/use-filter-store";
+import { delegatedModeOf } from "@/utils/filter-tree";
 import type { PendingToast } from "@/stores/use-mindmap-store";
 import { canHoldDependencies, dependencyCandidates } from "@/utils/dependency-candidates";
 import type { DependencyCandidate } from "@/utils/dependency-candidates";
@@ -57,6 +59,7 @@ export interface QuickDependency {
 export function useQuickDependency({ tree, findNode, reload, showToast }: Options): QuickDependency {
   const { t } = useTranslation(["warnings", "undo"]);
   const includeArchived = useDisplayStore((s) => s.searchIncludesArchived);
+  const skipDelegated = useFilterStore((s) => delegatedModeOf(s.filter) !== "include");
   const [target, setTarget] = useState<QuickDependencyTarget | null>(null);
   // Which opening a late edge read belongs to, so a picker closed and reopened meanwhile is not
   // handed the previous one's candidates.
@@ -65,7 +68,7 @@ export function useQuickDependency({ tree, findNode, reload, showToast }: Option
   const loadCandidates = useCallback(
     (dependent: MindmapNode, anchorId: string) => {
       const ticket = ++opening.current;
-      const nodes = collectSearchableNodes(tree, { skipArchived: !includeArchived });
+      const nodes = collectSearchableNodes(tree, { skipArchived: !includeArchived, skipDelegated });
       const byId = flattenNodesById(tree);
       fetchDependencyCandidates(rowIdOf(dependent))
         .then((allowed) => {
@@ -79,7 +82,7 @@ export function useQuickDependency({ tree, findNode, reload, showToast }: Option
           showToast({ nodeId: anchorId, message: t("warnings:quickDependencyLoadFailed", { message: getErrorMessage(error) }) });
         });
     },
-    [tree, includeArchived, showToast, t],
+    [tree, includeArchived, skipDelegated, showToast, t],
   );
 
   const open = useCallback(

@@ -72,6 +72,7 @@ fn commitment(id: i64) -> Commitment {
         tag_ids: vec![],
         position: 0,
         is_private: false,
+        archival: Default::default(),
         origin: Origin::Manual,
     }
 }

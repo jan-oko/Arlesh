@@ -577,30 +577,60 @@ async fn a_task_moves_only_between_parents_it_could_be_created_under() {
     assert_eq!(succeeded(&moved)["parent_id"], goal);
 }
 
+async fn stored_archival(pool: &sqlx::SqlitePool, task: i64) -> String {
+    sqlx::query_scalar("SELECT archival FROM tasks WHERE id = ?")
+        .bind(task)
+        .fetch_one(pool)
+        .await
+        .expect("read the archival")
+}
+
 #[tokio::test]
-async fn archiving_a_stored_task_is_refused_until_manual_archival_exists() {
+async fn archive_puts_a_stored_agentic_task_away_by_hand_and_unarchive_brings_it_back_live() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let board = board(&app).await;
     helpers::make_agentic(&pool, board.inside_task).await;
+    let mcp = mcp(&pool);
 
     let archived = run(
-        &mcp(&pool),
+        &mcp,
         TasksOperation::Archive {
             id: board.inside_task.into(),
         },
     )
     .await;
+    assert_eq!(succeeded(&archived)["archival"], "archived");
+    assert_eq!(stored_archival(&pool, board.inside_task).await, "archived");
 
-    assert_eq!(refused(&archived), "not_permitted");
-    let message = body(&archived)["message"].as_str().unwrap_or("");
-    assert!(message.contains("not supported yet"), "{message}");
-    let archival: String = sqlx::query_scalar("SELECT archival FROM tasks WHERE id = ?")
-        .bind(board.inside_task)
-        .fetch_one(&pool)
-        .await
-        .expect("read the archival");
-    assert_eq!(archival, "live", "nothing was written");
+    let unarchived = run(
+        &mcp,
+        TasksOperation::Unarchive {
+            id: board.inside_task.into(),
+        },
+    )
+    .await;
+    assert_eq!(succeeded(&unarchived)["archival"], "live");
+    assert_eq!(stored_archival(&pool, board.inside_task).await, "live");
+}
+
+#[tokio::test]
+async fn unarchive_is_refused_on_a_task_nobody_archived_by_hand() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let board = board(&app).await;
+    helpers::make_agentic(&pool, board.inside_task).await;
+
+    let unarchived = run(
+        &mcp(&pool),
+        TasksOperation::Unarchive {
+            id: board.inside_task.into(),
+        },
+    )
+    .await;
+
+    assert_eq!(refused(&unarchived), "invalid_request");
+    assert_eq!(stored_archival(&pool, board.inside_task).await, "live");
 }
 
 #[tokio::test]

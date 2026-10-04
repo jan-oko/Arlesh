@@ -327,6 +327,65 @@ impl<'session> ExpectationOperator<'session> {
         Ok(expectations)
     }
 
+    /// Copies one wait row **as stored** — status, archive, window, Check every and its Starting,
+    /// its checks, privacy, position, tags and agent fields — under `(parent_type, parent_id)`, and
+    /// returns the copy's id.
+    ///
+    /// Its checks come with it, so the copy's next check falls where the original's does rather
+    /// than its `last_check_at` disagreeing with a history it does not have.
+    ///
+    /// Crate-private and unvalidated: it is correct only where the new parent is the copy of the
+    /// original's parent, so every window the row satisfied it still satisfies. That is the subtree
+    /// copy (`duplicate::duplicate_subtree`), its one caller, inside the caller's transaction.
+    pub(crate) async fn copy_row(
+        &mut self,
+        id: ExpectationId,
+        parent_type: &str,
+        parent_id: i64,
+    ) -> Result<i64, TaskError> {
+        let copy = sqlx::query(
+            "INSERT INTO expectations
+                (title, parent_type, parent_id, status, archival, position, is_private,
+                 time_scope_start_id, time_scope_end_id, time_scope_duration_n,
+                 time_scope_duration_kind, check_every_n, check_every_kind, check_starting,
+                 last_check_at, agentic, agentic_note, agentic_question, agentic_answer,
+                 released_at)
+             SELECT title, ?, ?, status, archival, position, is_private,
+                    time_scope_start_id, time_scope_end_id, time_scope_duration_n,
+                    time_scope_duration_kind, check_every_n, check_every_kind, check_starting,
+                    last_check_at, agentic, agentic_note, agentic_question, agentic_answer,
+                    released_at
+             FROM expectations WHERE id = ?",
+        )
+        .bind(parent_type)
+        .bind(parent_id)
+        .bind(id.0)
+        .execute(&mut *self.connection)
+        .await?;
+        if copy.rows_affected() == 0 {
+            return Err(TaskError::ExpectationNotFound(id.0));
+        }
+        let copy_id = copy.last_insert_rowid();
+        sqlx::query(
+            "INSERT INTO tags_on_expectations (expectation_id, tag_id)
+             SELECT ?, tag_id FROM tags_on_expectations WHERE expectation_id = ?",
+        )
+        .bind(copy_id)
+        .bind(id.0)
+        .execute(&mut *self.connection)
+        .await?;
+        sqlx::query(
+            "INSERT INTO wait_checks (wait_kind, wait_id, due_at, resolved_at)
+             SELECT 'stored', ?, due_at, resolved_at FROM wait_checks
+             WHERE wait_kind = 'stored' AND wait_id = ?",
+        )
+        .bind(copy_id)
+        .bind(id.0)
+        .execute(&mut *self.connection)
+        .await?;
+        Ok(copy_id)
+    }
+
     /// Returns the ids of the expectations parented directly by `(parent_type, parent_id)`.
     ///
     /// The parent link is polymorphic and has no foreign key, so subtree walks collect their

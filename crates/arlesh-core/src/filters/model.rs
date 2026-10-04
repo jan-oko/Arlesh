@@ -49,8 +49,8 @@ pub const EXPECTATION_PENDING: &str = "pending";
 
 /// A tri-state pill's override, on top of whatever the status preset would otherwise decide.
 ///
-/// `Inactive` defers entirely to the preset; `Include` force-shows; `Exclude` force-hides, gating
-/// the whole subtree. Shared by the Archived and Backlog pills, which behave identically.
+/// `Inactive` defers entirely to the preset; `Include` shows; `Exclude` force-hides, gating the
+/// whole subtree. Shared by the Archived, Backlog and Delegated pills.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, schemars::JsonSchema,
 )]
@@ -219,6 +219,9 @@ pub struct BoardFilter {
     pub archived: OverrideMode,
     /// The Backlog pill.
     pub backlog: OverrideMode,
+    /// The Delegated pill (Task 269): off drops a delegated Task under Plan and Start, `Include`
+    /// keeps it there, `Exclude` hides it with its subtree under every preset.
+    pub delegated: OverrideMode,
     /// The Plan preset's scope narrowing: with a scope here and the preset [`Preset::Plan`], a
     /// Task shows only when its effective Time Scope matches it by [`Self::scope_match`]. `None`
     /// narrows nothing, and no other preset reads it.
@@ -274,6 +277,7 @@ impl Default for BoardFilter {
             private_mode: false,
             archived: OverrideMode::Inactive,
             backlog: OverrideMode::Inactive,
+            delegated: OverrideMode::Inactive,
             plan_scope: None,
             scope_match: ScopeMatch::Contained,
             start_hides_checked_waits: false,
@@ -395,8 +399,8 @@ pub struct NodeFacts {
     /// Whether the node is marked private.
     #[serde(default)]
     pub is_private: bool,
-    /// Whether a Task is delegated — held by a Person. A delegated Task has every effect of
-    /// archival: it is hidden wherever an archived node is hidden.
+    /// Whether a Task is delegated — held by a Person. Read by the Delegated pill (see
+    /// [`crate::filters::rules::is_dropped_for_delegation`]); it is not archival.
     #[serde(default)]
     pub delegated: bool,
     /// Whether an Expectation is checked on — carries a Check every. Start shows a pending one only

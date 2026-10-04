@@ -8,6 +8,8 @@ import arlesh
 import pytest
 from arlesh.models import (
     ClockKind,
+    CommitmentArchival,
+    CreateCommitmentRequest,
     CreateDomainRequest,
     CreateExpectationRequest,
     CreateFlowItemRequest,
@@ -22,7 +24,9 @@ from arlesh.models import (
     ScopeKeyWeek,
     SetRecurrenceRequest,
     StatusOrdinary,
+    TaskArchival,
     TaskStatus,
+    TimeScope,
     UpdateFlowItemRequest,
     UpdateTaskRequest,
 )
@@ -50,10 +54,11 @@ async def test_copies_land_under_their_new_parent(db: arlesh.Database, domain_id
     domain_copy = await db.duplicate_domain(
         domain_id, (await db.get_domain(domain_id)).parent_id or 1, 0
     )
-    assert (task_copy.title, task_copy.parent_id) == ("Copy me", goal.id)
-    assert goal_copy.title == "Target"
-    assert info_copy.body == "Note"
-    assert domain_copy.title == "Tests"
+    assert (task_copy.copy_.title, task_copy.copy_.parent_id) == ("Copy me", goal.id)
+    assert goal_copy.copy_.title == "Target"
+    assert info_copy.copy_.body == "Note"
+    assert domain_copy.copy_.title == "Tests"
+    assert task_copy.left_behind == []
 
 
 async def test_tags_block_reasons_and_dependencies_are_written(
@@ -167,3 +172,29 @@ async def test_a_subtree_becomes_a_flow(db: arlesh.Database, domain_id: int) -> 
 async def test_a_derived_wait_cannot_be_deleted(db: arlesh.Database) -> None:
     with pytest.raises(arlesh.ArleshError):
         await db.delete_wait("00000000-0000-5000-8000-000000000000")
+
+
+async def test_a_task_and_a_commitment_are_archived_by_hand_and_put_back(
+    db: arlesh.Database, domain_id: int
+) -> None:
+    task = await db.create_task(
+        CreateTaskRequest(title="Put away", parent_type="domain", parent_id=domain_id)
+    )
+    archived = await db.set_task_archived(task.id, True)
+    assert archived.archival == TaskArchival.archived
+    assert (await db.set_task_archived(task.id, False)).archival == TaskArchival.live
+
+    week = ScopeKeyWeek(kind="week", date="2026-09-20")
+    commitment = await db.create_commitment(
+        CreateCommitmentRequest(
+            title="Rule",
+            parent_type="domain",
+            parent_id=domain_id,
+            time_scope=TimeScope(start_id=week, end_id=week),
+        )
+    )
+    put_away = await db.set_commitment_archived(commitment.id, True)
+    assert put_away.archival == CommitmentArchival.archived
+    assert (await db.set_commitment_archived(commitment.id, False)).archival == (
+        CommitmentArchival.live
+    )

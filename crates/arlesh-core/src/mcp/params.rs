@@ -452,7 +452,7 @@ pub enum TasksOperation {
         #[serde(default)]
         block_reasons: Vec<String>,
         /// Who holds it: a Person, `{"kind": "person", "id": N}`. A delegated Task is
-        /// hidden wherever an archived one is, except Do.
+        /// hidden under Plan and Start unless the filter's `delegated` pill says otherwise.
         #[serde(default)]
         delegate: Option<DelegateParam>,
     },
@@ -538,9 +538,17 @@ pub enum TasksOperation {
         /// The new parent's id: a row id or a short id.
         parent_id: NodeIdParam,
     },
-    /// Archives an Agentic Habit occurrence, as the app archives one; it is never deleted.
-    /// Archiving a stored Task by hand is not supported yet, and is refused as `not_permitted`.
+    /// Archives an Agentic Task; nothing is ever deleted. A stored Task is archived by hand: it
+    /// and everything beneath it read as archived until `unarchive`. A Habit occurrence is
+    /// archived as the app archives one, and a status brings it back.
     Archive {
+        /// Task id: a row id or a short id.
+        id: NodeIdParam,
+    },
+    /// Unarchives a stored Agentic Task archived by hand: it is Live again, and its subtree
+    /// returns as it was. Refused on a Task not archived by hand, and on a Habit occurrence, which
+    /// a status brings back.
+    Unarchive {
         /// Task id: a row id or a short id.
         id: NodeIdParam,
     },

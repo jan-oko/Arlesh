@@ -1,4 +1,5 @@
 import { invoke } from "./gesture";
+import type { DuplicatedSubtree } from "@/api/duplicate";
 import type { RowId } from "@/api/node-id";
 
 export interface Info {
@@ -50,6 +51,6 @@ export async function duplicateInfo(
   targetType: string,
   targetId: number,
   position: number,
-): Promise<Info> {
-  return invoke<Info>("duplicate_info", { id, targetType, targetId, position });
+): Promise<DuplicatedSubtree<Info>> {
+  return invoke<DuplicatedSubtree<Info>>("duplicate_info", { id, targetType, targetId, position });
 }

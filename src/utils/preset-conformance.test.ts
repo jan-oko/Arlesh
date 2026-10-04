@@ -41,6 +41,7 @@ interface CorpusFilter {
   privateMode?: boolean;
   archived?: ArchivedMode;
   backlog?: ArchivedMode;
+  delegated?: ArchivedMode;
   planScope?: ScopeKey;
   scopeMatch?: ScopeMatch;
   startHidesCheckedWaits?: boolean;
@@ -143,6 +144,7 @@ function parseFilter(value: unknown, what: string): CorpusFilter {
     ...flag(raw.privateMode, "privateMode", what),
     ...(raw.archived !== undefined ? { archived: parseOverride(raw.archived, `${what}.archived`) } : {}),
     ...(raw.backlog !== undefined ? { backlog: parseOverride(raw.backlog, `${what}.backlog`) } : {}),
+    ...(raw.delegated !== undefined ? { delegated: parseOverride(raw.delegated, `${what}.delegated`) } : {}),
     ...(raw.planScope !== undefined ? { planScope: parseScopeKey(raw.planScope, `${what}.planScope`) } : {}),
     ...(raw.scopeMatch !== undefined ? { scopeMatch: parseScopeMatch(raw.scopeMatch, `${what}.scopeMatch`) } : {}),
     ...flag(raw.startHidesCheckedWaits, "startHidesCheckedWaits", what),
@@ -196,6 +198,7 @@ function toSharedFilter(filter: CorpusFilter): FilterState {
     ...(filter.privateMode !== undefined ? { privateMode: filter.privateMode } : {}),
     ...(filter.archived !== undefined ? { archivedMode: filter.archived } : {}),
     ...(filter.backlog !== undefined ? { backlogMode: filter.backlog } : {}),
+    ...(filter.delegated !== undefined ? { delegatedMode: filter.delegated } : {}),
     ...(filter.planScope !== undefined ? { planScope: filter.planScope } : {}),
     ...(filter.scopeMatch !== undefined ? { scopeMatch: filter.scopeMatch } : {}),
     ...(filter.startHidesCheckedWaits !== undefined ? { startHidesCheckedWaits: filter.startHidesCheckedWaits } : {}),

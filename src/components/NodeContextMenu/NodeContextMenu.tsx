@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { NodeKind } from "@/utils/tree-layout";
+import type { ArchiveOffer } from "@/utils/hand-archive";
 import { canConvertNodeToFlow } from "@/utils/mindmap-tree";
 import type { ContextMenuAction } from "./context-action";
 import styles from "./NodeContextMenu.module.css";
@@ -13,11 +14,13 @@ interface Props {
   parentKind?: NodeKind | null;
   isCollapsed: boolean;
   hasClipboard: boolean;
+  /** The hand archive's item, or `null` to offer none. */
+  archive?: ArchiveOffer;
   onAction: (action: ContextMenuAction) => void;
   onClose: () => void;
 }
 
-export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, isCollapsed, hasClipboard, onAction, onClose }: Props) {
+export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, isCollapsed, hasClipboard, archive = null, onAction, onClose }: Props) {
   const { t } = useTranslation("contextMenu");
   const ref = useRef<HTMLDivElement>(null);
 
@@ -58,6 +61,7 @@ export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, isC
       {canConvertToFlow && item(t("convertToFlow"), "convert-to-flow")}
       {isFlow && item(t("startFlow"), "start-flow")}
       <div className={styles.separator} />
+      {archive !== null && item(t(archive), "archive")}
       {item(t("delete"), "delete")}
     </div>
   );

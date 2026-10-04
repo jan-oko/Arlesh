@@ -32,7 +32,8 @@ The load is `rs:mindmap/mod.rs` (`load_within`, then `load_blocked` adds the cap
 blocks). The steps run in this order: `rs:tasks/scope_rules.rs::derive_all_scope_lifecycles`,
 then `rs:nodes/table.rs::derive_habits`, which applies `rs:flows/occurrences.rs`,
 `rs:flows/rules/cooldown.rs` and `rs:flows/compound_readings.rs`, then `rs:tasks/compound.rs::settle`,
-which also draws the waits, then `rs:tasks/rules/review.rs::derive`, and the capacity lock last
+which also draws the waits, then `rs:tasks/rules/archival.rs::inherit` (what lies beneath a hand
+archive reads as archived), then `rs:tasks/rules/review.rs::derive`, and the capacity lock last
 (`rs:capacity/rules/blocks.rs`). The MCP snapshot reads the same load (`rs:mcp/`).
 
 ## The derivation graph
@@ -53,7 +54,7 @@ never stored.
 | **Compound status** | compound flag and sub-items' statuses, verdicts and waits; Archived *(of another node)* | Done when every counted item is Done; else In Progress if any is; else Started if any is Started or Done; else To Do. Effectively archived items are not counted, except those archived by finishing. | `rs:tasks/compound.rs`, `rs:flows/compound_readings.rs` |
 | **Review** | Agentic, status, agent question waits | On Agent with a pending, live agentic question wait beneath it. | `rs:tasks/rules/review.rs::derive` |
 | **Capacity block** | capacity lock, Agentic, status | Lock on, the Task reads as Agentic, and it is not Done. | `rs:capacity/rules/blocks.rs::blocked_tasks` |
-| **Archived** (as the presets read it) | Backlog, Goal/Project status, Delegate, Resolution, Expired, verdict and Timing (a Commitment settled), Habit iteration (Missed or Lapsed) | Effective Archival is Archived: a Completed or Missed Resolution forces it, or a Commitment is settled or Expired, or it was set by hand. Or the Task is delegated. Delegation is not the Archival axis, so it does not stop Overdue. | `rs:tasks/rules/lifecycle.rs::derive_archival`, `rs:filters/rules.rs::is_archived` |
+| **Archived** (as the presets read it) | stored Archival (a Task's or Commitment's hand archive, a wait's archive), Goal/Project status, Resolution, Expired, verdict and Timing (a Commitment settled), wait status and Timing, Habit iteration (Missed or Lapsed), Archived *(of another node: an ancestor archived by hand)* | Effective Archival is Archived: a Completed or Missed Resolution forces it, or a Commitment is settled or Expired, or a wait is released with its window passed (or released with none), or it was set by hand — or an ancestor Task or Commitment was archived by hand, which its whole subtree inherits. Delegation is not archival (2026-10-03): it has its own pill. | `rs:tasks/rules/lifecycle.rs::derive_archival`, `derive_expectation_state`, `derive_commitment_state`, `rs:tasks/rules/archival.rs::inherit`, `rs:filters/rules.rs::is_archived` |
 | **Compound block** | compound status, Blocked *(of another node: its open sub-items)* | Every open counted item is blocked. A pending wait or Unresolved Commitment keeps it unblocked. | `rs:tasks/compound/blocked.rs` |
 | **Habit iteration** | status of its occurrences, compound status, clock and miss policy, now | Resolved when every template occurrence is done (a compound one by its derived status). Otherwise the clock decides: Lapsed (Archive), Missed and carried (Overdue), open and owed (Owed), or the one open Interval instance. | `rs:flows/occurrences.rs::resolutions`, `rs:flows/rules/habits.rs` |
 | **Cooldown block** | Habit iteration (done instants), cooldown, clock, now | After an iteration is done, block the next iteration (under Owed, every open one) until the latest done instant plus the cooldown. | `rs:flows/rules/cooldown.rs::holds`, `rs:flows/occurrences.rs::done_instants` |
@@ -64,8 +65,8 @@ How the presets read them:
 
 | Preset | Reads | Rule | Code |
 | --- | --- | --- | --- |
-| **Plan** | status, Archived, Backlog | Hides done Tasks, archived items and backlogged Tasks. | `rs:filters/rules.rs::passes_plan`, `is_hidden_backlog` |
-| **Start** | Timing, Overdue, Archived, Blocked, Plan position, status, Agentic, Review, On Agent pill, Backlog | Drops blocked subtrees (but not the child dependencies a block waits on), windows Pending or Lapsed unless Overdue, delegated and backlogged work, Plans still ahead, and On Agent work unless the pill is on. Always keeps Review. | `rs:filters/rules.rs::passes_start`, `passes_agentic_start`, `gate_below` |
+| **Plan** | status, Archived, Backlog, Delegate, Delegated pill | Hides done Tasks, archived items, backlogged Tasks, and delegated Tasks unless the Delegated pill includes them. | `rs:filters/rules.rs::passes_plan`, `is_hidden_backlog`, `is_dropped_for_delegation` |
+| **Start** | Timing, Overdue, Archived, Blocked, Plan position, status, Agentic, Review, On Agent pill, Backlog, Delegate, Delegated pill | Drops blocked subtrees (but not the child dependencies a block waits on), windows Pending or Lapsed unless Overdue, backlogged work, delegated work unless the Delegated pill includes it, Plans still ahead, and On Agent work unless the pill is on. Always keeps Review. | `rs:filters/rules.rs::passes_start`, `passes_agentic_start`, `gate_below`, `is_dropped_for_delegation` |
 | **Do / Zen** | status, Agentic, Review, On Agent pill | In Progress and Doing, Review always, Started and On Agent only when their switches ask. | `rs:filters/rules.rs::passes_do_status` |
 | **Backlog** | Backlog flag (own or an ancestor's) | Only what was deliberately set aside, with everything beneath it. The inverse of the other presets. | `rs:filters/rules.rs::passes_status` (`Preset::Backlog`) |
 
@@ -256,14 +257,15 @@ How the presets read them:
 
 ### Archival and Backlog
 - **Is:** Live, Backlog, Frozen or Archived.
-  - **Set by hand:** a Goal or Project's status, or a Task's Backlog flag.
-  - **Derived:** a settled window archives, and a delegated Task reads as archived in the filters.
+  - **Set by hand:** a Goal or Project's status; a Task's stored Archival — Live, Backlog or Archived, one value at a time; a Commitment's or a wait's own archive.
+  - **Inherited:** everything beneath a Task or Commitment archived by hand reads as Archived. Nothing below is written, so unarchiving brings the subtree back as it was.
+  - **Derived:** a settled window archives, and so does a released wait whose window has passed (or that has none).
   
-  A Task is never both backlogged and planned.
-- **Why:** "set aside" and "finished" are different questions, and a backlogged Task keeps its real status.
-- **Without:** statuses multiply, and every filter has to know them all.
-- **Lives:** `rs:tasks/rules/lifecycle.rs` and `rs:filters/facts.rs`, with the Backlog invariant in `rs:tasks/mod.rs`.
-- **Spec:** [Time Scopes](spec/time-scopes.md), [Resources § Tasks](spec/resources.md).
+  A Task is never both backlogged and planned. Delegation is not archival: a delegated Task answers to its own Delegated pill.
+- **Why:** "set aside" and "finished" are different questions, and a backlogged Task keeps its real status. Putting a whole branch away should be one write, and taking it back should restore it exactly.
+- **Without:** statuses multiply, every filter has to know them all, and archiving a project means archiving every step in it by hand.
+- **Lives:** `rs:tasks/rules/lifecycle.rs`, the inheritance in `rs:tasks/rules/archival.rs`, and `rs:filters/facts.rs`, with the Backlog invariant in `rs:tasks/mod.rs`. Migration 0093 stores the Task's and Commitment's hand archive. The gestures: the context menus (`ts:hooks/use-hand-archive.ts`), the editors' Archived switch, and the MCP's `arlesh_tasks.archive` / `unarchive`.
+- **Spec:** [Time Scopes](spec/time-scopes.md), [Resources § Archive](spec/resources.md#archive), [Filtering Logic § The Delegated pill](spec/filtering-logic.md#delegated-pill).
 
 ### Commitment verdicts
 - **Is:** a Commitment is judged, not done: Kept, Broken or Unresolved. Its Verdict Window bounds how long the answer stays owed; past it, the Commitment Expires.
@@ -344,7 +346,7 @@ How the presets read them:
 - **Spec:** [Filtering Logic](spec/filtering-logic.md), [Mindmap § status preset](spec/mindmap-view.md).
 
 ### The conformance pair
-- **Is:** every rule the frontend must answer per render or per pointer move is written twice — in a Rust `rules` module, which is the definition, and as a TypeScript copy — and one shared case file under `conformance/` runs against both ([ADR 0010](adr/0010-business-rules-layer.md)). The pinned copies are the presets and the List View's pills (`preset-filters.json`), the list sections (`list-sections.json`), the Zen View's contents and locked presets (`zen-contents.json`), the parenting table (`parenting.json`), the status models' conversion (`task-status.json`), the Habit fold (`habit-fold.json`), the cooldown options (`cooldown.json`), the cycle grid (`flow-cycles.json`), the Plan View's triage, refusal and sections (`plan-triage.json`), and scope keys, windows, labels and the day boundary (`scope-keys.json`).
+- **Is:** every rule the frontend must answer per render or per pointer move is written twice — in a Rust `rules` module, which is the definition, and as a TypeScript copy — and one shared case file under `conformance/` runs against both ([ADR 0010](adr/0010-business-rules-layer.md)). The pinned copies are the presets, the Archived, Backlog and Delegated pills and the List View's pills (`preset-filters.json`), the list sections (`list-sections.json`), the Zen View's contents and locked presets (`zen-contents.json`), the parenting table (`parenting.json`), the status models' conversion (`task-status.json`), the Habit fold (`habit-fold.json`), the cooldown options (`cooldown.json`), the cycle grid (`flow-cycles.json`), the Plan View's triage, refusal and sections (`plan-triage.json`), and scope keys, windows, labels and the day boundary (`scope-keys.json`).
 - **Why:** the views filter and draw on every keystroke without a round trip, and the corpora keep the copies honest; everything else the frontend reads from the backend instead.
 - **Without:** the agent's board and yours drift apart silently.
 - **Lives:** `conformance/`, run by the `*-conformance.test.ts` files beside each TypeScript copy and by the Rust tests under `src-tauri/tests/`.

@@ -3,6 +3,9 @@ import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
+import { useHandArchive } from "@/hooks/use-hand-archive";
+import { archiveOfferFor } from "@/utils/hand-archive";
+import RowContextMenu from "@/components/RowContextMenu/RowContextMenu";
 import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
 import { useTaskCompound } from "@/hooks/use-task-compound";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
@@ -112,6 +115,20 @@ export default function ListView() {
     reload,
     showToast,
   });
+  const { toggleArchive } = useHandArchive({
+    findNode: (id) => findNode(tree, id),
+    reload,
+    showToast,
+  });
+  // The row context menu: the hand archive, on a row that takes one.
+  const [rowMenu, setRowMenu] = useState<{ nodeId: string; x: number; y: number; offer: "archive" | "unarchive" } | null>(null);
+  const openRowMenu = (nodeId: string, x: number, y: number) => {
+    const node = findNode(tree, nodeId);
+    const offer = node === undefined ? null : archiveOfferFor(node);
+    if (offer === null) return;
+    setSelectedRowId(nodeId);
+    setRowMenu({ nodeId, x, y, offer });
+  };
   const { toggleAsynchronous } = useTaskAsynchronous({
     findNode: (id) => findNode(tree, id),
     reload,
@@ -363,6 +380,15 @@ export default function ListView() {
   return (
     <div className={styles.container} ref={containerRef}>
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
+      {rowMenu !== null && (
+        <RowContextMenu
+          x={rowMenu.x}
+          y={rowMenu.y}
+          archive={rowMenu.offer}
+          onArchive={() => toggleArchive(rowMenu.nodeId)}
+          onClose={() => setRowMenu(null)}
+        />
+      )}
 
       {quickPlan.target !== null && (
         <QuickPlanPicker
@@ -396,6 +422,7 @@ export default function ListView() {
                 onCycleVerdict={cycleVerdict}
                 onOpenEditor={onDoubleClick}
                 onAddTagFilter={addTagFilter}
+                onContextMenu={openRowMenu}
               />
             ))}
           </div>
@@ -491,6 +518,7 @@ export default function ListView() {
                   onCycleVerdict={cycleVerdict}
                   onOpenEditor={onDoubleClick}
                   onAddTagFilter={addTagFilter}
+                  onContextMenu={openRowMenu}
                 />
               );
             }
@@ -523,6 +551,7 @@ export default function ListView() {
                 onCommitTitle={commitTitle}
                 onCancelTitleEdit={cancelTitleEdit}
                 onAddTagFilter={addTagFilter}
+                onContextMenu={openRowMenu}
               />
             );
           })}

@@ -5,7 +5,7 @@ import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
 import { agentActivityFrom } from "@/utils/agent-activity";
 import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
 import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
-import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment } from "@/api/commitments";
+import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment, COMMITMENT_ARCHIVAL } from "@/api/commitments";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { Commitment } from "@/api/commitments";
 import { createExpectation, updateExpectation, deleteExpectation } from "@/api/expectations";
@@ -17,6 +17,7 @@ import type { Delegate, TaskAgentic, TaskDependencyEdge } from "@/api/tasks";
 import type { BlockReason } from "@/api/block-reasons";
 import { createGoal, updateGoal, deleteGoal, duplicateGoal } from "@/api/goals";
 import { createInfo, updateInfo, deleteInfo, duplicateInfo } from "@/api/infos";
+import type { LeftBehindChild } from "@/api/duplicate";
 import { getErrorMessage } from "@/api/errors";
 import { loadMindmap } from "@/api/mindmap";
 import { withGesture } from "@/api/gesture";
@@ -186,7 +187,8 @@ interface MindmapData {
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
   reorderNode: (id: string, direction: 1 | -1) => Promise<void>;
   moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number) => Promise<void>;
-  duplicateNode: (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number) => Promise<void>;
+  /** Resolves with the rows hung on Habit occurrences that the copy could not carry. */
+  duplicateNode: (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number) => Promise<readonly LeftBehindChild[]>;
   removeNode: (nodesToDelete: Array<{ id: string; kind: NodeKind }>) => Promise<void>;
   /** Writes a commitment configured in the new-commitment editor, window and all, under a parent. */
   createCommitment: (parentId: string, parentKind: NodeKind, data: CommitmentSaveData) => Promise<void>;
@@ -526,6 +528,7 @@ export function buildTree(
       plan: task.plan,
       dueScope: task.due_scope ?? null,
       backlogged: task.archival === TASK_ARCHIVAL.BACKLOG,
+      ...(task.archival === TASK_ARCHIVAL.ARCHIVED ? { archivedByHand: true } : {}),
       agentic: task.agentic,
       delegate: task.delegate_to,
       ...personNameOf(task.delegate_to, personNames),
@@ -549,6 +552,7 @@ export function buildTree(
       title: commitment.title,
       verdict: commitment.verdict,
       verdictWindow: commitment.verdict_window ?? null,
+      ...(commitment.archival === COMMITMENT_ARCHIVAL.ARCHIVED ? { archivedByHand: true } : {}),
       ...cooldownFields(coolingUntil.get(`commitment-${commitment.id}`), cooldownReason),
       timeScope: commitment.time_scope,
       position: commitment.position,
@@ -1287,9 +1291,12 @@ export function useMindmapData(): MindmapData {
    * Deep-clones `id`'s whole subtree under `(targetId, targetKind)`, placing the new root at
    * `position` — the COPY counterpart to `moveNode`'s CUT. A Commitment has no duplicate command
    * of its own; callers filter those out before getting here (`onPaste` does, with a toast).
+   *
+   * Resolves with the rows hung on Habit occurrences inside the copy that it could not carry, for
+   * the paste to name. A Flow or flow item copied on its own leaves none behind.
    */
   const duplicateNode = useCallback(
-    async (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number): Promise<void> => {
+    async (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number): Promise<readonly LeftBehindChild[]> => {
       // A copy is a stored row made from a stored one: an occurrence is its template's, in its
       // iteration, and has no copy of its own to make; and none is pasted onto one.
       const dbId = storedId(rowIdOfId(id));
@@ -1297,12 +1304,13 @@ export function useMindmapData(): MindmapData {
       // Exhaustive over NodeKind, for the same reason `moveNode` is: node ids are polymorphic, so a
       // kind with no branch of its own must be a compile error rather than a fall-through that
       // hands the id to whichever table the default happens to name.
+      let leftBehind: readonly LeftBehindChild[] = [];
       switch (kind) {
         case "goal":
-          await duplicateGoal(dbId, kindToParentType(targetKind), dbTargetId, position);
+          leftBehind = (await duplicateGoal(dbId, kindToParentType(targetKind), dbTargetId, position)).left_behind;
           break;
         case "task":
-          await duplicateTask(dbId, kindToParentType(targetKind), dbTargetId, position);
+          leftBehind = (await duplicateTask(dbId, kindToParentType(targetKind), dbTargetId, position)).left_behind;
           break;
         case "commitment":
           // A Commitment has no duplicate command of its own yet, and copying one would have to
@@ -1313,12 +1321,12 @@ export function useMindmapData(): MindmapData {
           // No duplicate command either: `onPaste` refuses a copied wait by name before this.
           throw new Error("expectation nodes cannot be duplicated");
         case "info":
-          await duplicateInfo(dbId, kindToInfoParentType(targetKind), dbTargetId, position);
+          leftBehind = (await duplicateInfo(dbId, kindToInfoParentType(targetKind), dbTargetId, position)).left_behind;
           break;
         case "project":
         case "domain":
         case "tag":
-          await duplicateDomain(dbId, dbTargetId, position);
+          leftBehind = (await duplicateDomain(dbId, dbTargetId, position)).left_behind;
           break;
         case "aspect":
           // Aspects are the fixed roots of the board — there is no second Green.
@@ -1343,6 +1351,7 @@ export function useMindmapData(): MindmapData {
         }
       }
       await load(false);
+      return leftBehind;
     },
     [load, rowIdOfId],
   );

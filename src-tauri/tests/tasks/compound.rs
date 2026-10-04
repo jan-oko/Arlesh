@@ -431,7 +431,8 @@ async fn a_duplicate_carries_the_flag() {
         0,
     )
     .await
-    .unwrap();
+    .unwrap()
+    .root_id;
     db.commit().await.unwrap();
     let load = board(&pool).await;
     assert!(row(&load, copy).compound);

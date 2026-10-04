@@ -28,7 +28,10 @@ use arlesh_core::{
         resolve::{resolve, Bounds},
     },
     tasks::{
-        model::{DurationSpec, ExpectationStatus, OnScopeExit, Status, TaskStatus, Verdict},
+        model::{
+            CommitmentArchival, DurationSpec, ExpectationStatus, OnScopeExit, Status, TaskStatus,
+            Verdict,
+        },
         rules::{
             compound, gestures,
             gestures::{StatusStep, VerdictPress},
@@ -147,6 +150,9 @@ pub(crate) enum Rule {
         verdict: Verdict,
         /// How long after the window the verdict stays owed.
         verdict_window: Option<DurationSpec>,
+        /// The archival stored on it: archived by hand, or live (the default).
+        #[serde(default)]
+        stored: CommitmentArchival,
         /// The instant to judge at.
         now: NaiveDateTime,
     },
@@ -307,11 +313,13 @@ fn apply(rule: Rule) -> Result<Value, WireError> {
             window,
             verdict,
             verdict_window,
+            stored,
             now,
         } => json(lifecycle::derive_commitment_state(
             window,
             verdict,
             verdict_window.as_ref(),
+            stored,
             now,
         )),
         Rule::HabitInstanceTiming {

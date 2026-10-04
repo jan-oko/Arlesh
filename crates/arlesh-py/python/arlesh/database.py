@@ -23,6 +23,7 @@ from arlesh import _native
 from arlesh.errors import from_native
 from arlesh.models import (
     Commitment,
+    CommitmentArchival,
     CreateCommitmentRequest,
     CreateDomainRequest,
     CreateExpectationRequest,
@@ -37,6 +38,10 @@ from arlesh.models import (
     DependencyTask,
     Domain,
     DomainSubtype,
+    DuplicatedDomain,
+    DuplicatedGoal,
+    DuplicatedInfo,
+    DuplicatedTask,
     Expectation,
     Flow,
     FlowCycleInput,
@@ -56,6 +61,7 @@ from arlesh.models import (
     StatusStep,
     StatusStepOutcome,
     Task,
+    TaskArchival,
     TaskWithBlockers,
     UpdateCommitmentRequest,
     UpdateDomainRequest,
@@ -249,6 +255,15 @@ class Database:
         """Flips a Task between Agentic and not."""
         return await self._call(_TASK, "toggle_task_agentic", id=id)
 
+    async def set_task_archived(self, id: NodeId, archived: bool) -> Task:
+        """Archives a stored Task by hand, with everything beneath it, or puts it back in play.
+
+        The same write as ``update_task`` with ``archival`` — one row; its subtree reads as
+        archived through inheritance on every board load.
+        """
+        archival = TaskArchival.archived if archived else TaskArchival.live
+        return await self.update_task(id, UpdateTaskRequest(archival=archival))
+
     async def add_task_dependency(self, task_id: NodeId, dependency: AnyDependency) -> None:
         """Makes a Task come after a Task, Goal or wait. A cycle is refused."""
         await self._call(_NOTHING, "add_task_dependency", task_id=task_id, dependency=dependency)
@@ -263,10 +278,12 @@ class Database:
 
     async def duplicate_task(
         self, id: int, target_type: str, target_id: int, position: int
-    ) -> Task:
-        """Copies a Task and its subtree under a new parent."""
+    ) -> DuplicatedTask:
+        """Copies a Task and its subtree under a new parent.
+        ``left_behind`` names the rows hung on Habit occurrences the copy could not carry.
+        """
         return await self._call(
-            _TASK,
+            _DUPLICATED_TASK,
             "duplicate_task",
             id=id,
             target_type=target_type,
@@ -293,10 +310,12 @@ class Database:
 
     async def duplicate_goal(
         self, id: int, target_type: str, target_id: int, position: int
-    ) -> Goal:
-        """Copies a Goal and its subtree under a new parent."""
+    ) -> DuplicatedGoal:
+        """Copies a Goal and its subtree under a new parent.
+        ``left_behind`` names the rows hung on Habit occurrences the copy could not carry.
+        """
         return await self._call(
-            _GOAL,
+            _DUPLICATED_GOAL,
             "duplicate_goal",
             id=id,
             target_type=target_type,
@@ -318,6 +337,11 @@ class Database:
     async def delete_commitment(self, id: NodeId) -> None:
         """Deletes a Commitment."""
         await self._call(_NOTHING, "delete_commitment", id=id)
+
+    async def set_commitment_archived(self, id: NodeId, archived: bool) -> Commitment:
+        """Archives a Commitment by hand, with everything beneath it, or puts it back in play."""
+        archival = CommitmentArchival.archived if archived else CommitmentArchival.live
+        return await self.update_commitment(id, UpdateCommitmentRequest(archival=archival))
 
     async def press_commitment_verdict(self, id: NodeId, press: VerdictPress) -> Commitment:
         """A press of a verdict control: the cycle, Kept or Broken."""
@@ -396,10 +420,12 @@ class Database:
 
     async def duplicate_info(
         self, id: int, target_type: str, target_id: int, position: int
-    ) -> Info:
-        """Copies an Info and its subtree under a new parent."""
+    ) -> DuplicatedInfo:
+        """Copies an Info and its subtree under a new parent.
+        ``left_behind`` names the rows hung on Habit occurrences the copy could not carry.
+        """
         return await self._call(
-            _INFO,
+            _DUPLICATED_INFO,
             "duplicate_info",
             id=id,
             target_type=target_type,
@@ -421,10 +447,12 @@ class Database:
         """Deletes a Domain, Project or Tag."""
         await self._call(_NOTHING, "delete_domain", id=id)
 
-    async def duplicate_domain(self, id: int, target_id: int, position: int) -> Domain:
-        """Copies a Domain or Project and its subtree under a new parent."""
+    async def duplicate_domain(self, id: int, target_id: int, position: int) -> DuplicatedDomain:
+        """Copies a Domain or Project and its subtree under a new parent.
+        ``left_behind`` names the rows hung on Habit occurrences the copy could not carry.
+        """
         return await self._call(
-            _DOMAIN, "duplicate_domain", id=id, target_id=target_id, position=position
+            _DUPLICATED_DOMAIN, "duplicate_domain", id=id, target_id=target_id, position=position
         )
 
     # ---- Flows and Habits ---------------------------------------------------------------------
@@ -610,3 +638,7 @@ _DEPENDENCIES = TypeAdapter(list[Dependency])
 _STATUS_STEP = TypeAdapter(StatusStepOutcome)
 _INSTANT: TypeAdapter[datetime | None] = TypeAdapter(datetime | None)
 _ID = TypeAdapter(int)
+_DUPLICATED_TASK = TypeAdapter(DuplicatedTask)
+_DUPLICATED_GOAL = TypeAdapter(DuplicatedGoal)
+_DUPLICATED_INFO = TypeAdapter(DuplicatedInfo)
+_DUPLICATED_DOMAIN = TypeAdapter(DuplicatedDomain)

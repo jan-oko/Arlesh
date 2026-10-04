@@ -135,7 +135,9 @@ class Archival(StrEnum):
     """
     archived = "archived"
     """
-    Archived, either manually (Goals/Projects) or because scope Resolution forced it.
+    Archived: by hand (a Goal or Project's status, a Task's or Commitment's own archive, or an
+    ancestor's hand archive inherited), or derived (a forced Resolution, a settled or expired
+    Commitment, a released wait whose window has passed).
     """
 
 
@@ -213,6 +215,23 @@ class ClockKind(StrEnum):
     """
     One open instance at a time: the next one's window starts the unit after the one the last
     was completed in, plus the Gap. The flow may be Unscoped.
+    """
+
+
+class CommitmentArchival(StrEnum):
+    """
+    A Commitment's own archive, set by hand (Task 269, ruled 2026-10-03): the stored half of its
+    Archival, beside what its verdict and Verdict Window derive. Two values: a Commitment has no
+    Backlog, and Frozen is Goal/Project vocabulary.
+    """
+
+    live = "live"
+    """
+    In play. The default.
+    """
+    archived = "archived"
+    """
+    Put away by hand, with everything beneath it.
     """
 
 
@@ -704,6 +723,25 @@ class IterationStatus(StrEnum):
     Archival moves — the chance to say has gone. Distinct from [`Self::Lapsed`], which is a
     Window + Archive habit's unfinished *work* passing its window; a Commitment's work is never
     what passes, and nothing here ever concludes that one was broken.
+    """
+
+
+class LeftBehindChild(BaseModel):
+    """
+    One row hung on a Habit occurrence that a copy left behind, titled so the paste can name it.
+    """
+
+    child_id: int
+    """
+    The row's id.
+    """
+    child_type: str
+    """
+    Which table the row lives in: `task`, `goal`, `commitment`, `expectation` or `info`.
+    """
+    title: str
+    """
+    Its display title (an Info's body).
     """
 
 
@@ -1333,10 +1371,15 @@ class TaskArchival(StrEnum):
     A Task's own manually-set archival state — the stored half of the
     [`Archival`](super::lifecycle::Archival) axis, independent of [`TaskStatus`].
 
-    Two variants, not four. A Task is never manually **Archived** (a Task's effective Archival is
-    forced by its scope Resolution alone), and **Frozen** is Goal/Project vocabulary. Giving the
-    Task side its own type is what makes "Backlog is valid on Tasks only" a thing the compiler
-    knows rather than a comment: nothing can hand a Goal a `Backlog`, or a Task a `Frozen`.
+    Three variants, mutually exclusive — one stored column: **Live**, **Backlog** or **Archived**
+    (Task 269, ruled 2026-10-03). **Frozen** is Goal/Project vocabulary. Giving the Task side its
+    own type is what makes "Backlog is valid on Tasks only" a thing the compiler knows rather than a
+    comment: nothing can hand a Goal a `Backlog`, or a Task a `Frozen`.
+
+    **Archived** is the hand archive: it writes this Task alone, and everything beneath it reads as
+    archived through inheritance on every board load (see
+    [`crate::tasks::rules::archival::inherit`]). Only a stored Task takes it; a Habit occurrence is
+    archived through its tombstone, and a template carries no archive.
     """
 
     live = "live"
@@ -1347,6 +1390,10 @@ class TaskArchival(StrEnum):
     """
     Deliberately set aside: hidden from Plan and Start along with everything beneath it, still
     listed under All, and browsable on its own through the Backlog preset.
+    """
+    archived = "archived"
+    """
+    Put away by hand: archived, with everything beneath it, until it is unarchived (Live).
     """
 
 
@@ -2311,6 +2358,21 @@ class DerivedState(BaseModel):
     """
 
 
+class DuplicatedDomain(BaseModel):
+    """
+    A duplicate command's answer: the copy's root, and what the copy left behind.
+    """
+
+    copy_: Annotated[Domain, Field(alias="copy")]
+    """
+    The copy's root, as its own table returns it.
+    """
+    left_behind: list[LeftBehindChild]
+    """
+    The rows hung on Habit occurrences the copy could not carry, for the paste to name.
+    """
+
+
 class Flow(BaseModel):
     """
     A flow (template) row.
@@ -3226,6 +3288,11 @@ class UpdateCommitmentRequest(BaseModel):
     Request body for updating a commitment.
     """
 
+    archival: CommitmentArchival | None = None
+    """
+    Its own archive to set (None leaves unchanged): `Archived` puts it away by hand with
+    everything beneath it, `Live` unarchives it. Refused on a Habit occurrence.
+    """
     is_private: bool | None = None
     """
     New private flag, if changing.
@@ -3544,6 +3611,11 @@ class Commitment(BaseModel):
     `delegate_to`, and no dependency edges in either direction.
     """
 
+    archival: CommitmentArchival
+    """
+    Its own archive, set by hand: archived with everything beneath it until unarchived. Beside
+    the archival its verdict and Verdict Window derive. Always Live on a Habit occurrence.
+    """
     id: int | str
     """
     Primary key for a stored row, or the UUID of a derived one.
@@ -3662,6 +3734,36 @@ class CreateTaskRequest(BaseModel):
     title: str
     """
     Display title.
+    """
+
+
+class DuplicatedInfo(BaseModel):
+    """
+    A duplicate command's answer: the copy's root, and what the copy left behind.
+    """
+
+    copy_: Annotated[Info, Field(alias="copy")]
+    """
+    The copy's root, as its own table returns it.
+    """
+    left_behind: list[LeftBehindChild]
+    """
+    The rows hung on Habit occurrences the copy could not carry, for the paste to name.
+    """
+
+
+class DuplicatedTask(BaseModel):
+    """
+    A duplicate command's answer: the copy's root, and what the copy left behind.
+    """
+
+    copy_: Annotated[Task, Field(alias="copy")]
+    """
+    The copy's root, as its own table returns it.
+    """
+    left_behind: list[LeftBehindChild]
+    """
+    The rows hung on Habit occurrences the copy could not carry, for the paste to name.
     """
 
 
@@ -3964,6 +4066,21 @@ class StatusStepOutcome(RootModel[StatusStepOutcomeWritten | StatusStepOutcomeRe
     root: StatusStepOutcomeWritten | StatusStepOutcomeRefused
     """
     What a status gesture did.
+    """
+
+
+class DuplicatedGoal(BaseModel):
+    """
+    A duplicate command's answer: the copy's root, and what the copy left behind.
+    """
+
+    copy_: Annotated[Goal, Field(alias="copy")]
+    """
+    The copy's root, as its own table returns it.
+    """
+    left_behind: list[LeftBehindChild]
+    """
+    The rows hung on Habit occurrences the copy could not carry, for the paste to name.
     """
 
 

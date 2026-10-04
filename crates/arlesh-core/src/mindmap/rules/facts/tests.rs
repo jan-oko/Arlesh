@@ -217,6 +217,7 @@ fn a_commitment_expires_unresolved_and_archived() {
         tag_ids: Vec::new(),
         position: id,
         is_private: false,
+        archival: Default::default(),
         origin: Default::default(),
     };
     load.commitments = vec![

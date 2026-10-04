@@ -8,6 +8,7 @@
 
 use arlesh_core::{
     domains::model::Domain,
+    duplicate::DuplicatedSubtree,
     error::WireErrorKind,
     flows::{
         cycles::ForkedTemplate,
@@ -132,6 +133,10 @@ fn outputs(generator: &mut SchemaGenerator) {
     add::<FlowRecurrence>(generator);
     add::<MaterializedFlow>(generator);
     add::<ForkedTemplate>(generator);
+    add::<DuplicatedSubtree<Task>>(generator);
+    add::<DuplicatedSubtree<Goal>>(generator);
+    add::<DuplicatedSubtree<Info>>(generator);
+    add::<DuplicatedSubtree<Domain>>(generator);
     add::<Dependency>(generator);
     add::<StatusStepOutcome>(generator);
     add::<StatusAfter>(generator);

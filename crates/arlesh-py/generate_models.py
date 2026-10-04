@@ -10,15 +10,39 @@ format. CI runs this with ``--check`` and fails when the committed file differs 
 
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
 import json
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-
-from arlesh import _native
+from types import ModuleType
 
 HERE = Path(__file__).parent
+
+
+def _load_native() -> ModuleType:
+    """The built extension, loaded on its own.
+
+    Not through ``import arlesh``: the package imports the models this script writes, so a model
+    the Rust side has just added would make the package fail to import before it could be generated.
+    """
+    spec = importlib.util.find_spec("arlesh")
+    locations = list(spec.submodule_search_locations or []) if spec else []
+    for location in locations:
+        for candidate in sorted(Path(location).glob("_native*.so")):
+            loader = importlib.machinery.ExtensionFileLoader("arlesh._native", str(candidate))
+            native_spec = importlib.util.spec_from_loader("arlesh._native", loader)
+            if native_spec is None:
+                continue
+            module = importlib.util.module_from_spec(native_spec)
+            loader.exec_module(module)
+            return module
+    raise SystemExit("arlesh._native is not built: run `uv run maturin develop --uv` first.")
+
+
+_native = _load_native()
 TARGET = HERE / "python" / "arlesh" / "models.py"
 HEADER = '''# mypy: disable-error-code="assignment"
 """Pydantic models for every type the arlesh API takes or returns.

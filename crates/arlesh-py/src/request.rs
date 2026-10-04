@@ -15,7 +15,7 @@ use arlesh_core::{
     capacity::AgentCapacity,
     database::session::{Db, SessionFactory, Transactional},
     domains::model::{CreateDomainRequest, DomainId, DomainSubtype, UpdateDomainRequest},
-    duplicate::{duplicate_subtree, DuplicableKind},
+    duplicate::{duplicate_subtree, DuplicableKind, DuplicatedSubtree},
     error::{AppError, WireError, WireErrorKind},
     flows::{
         self,
@@ -757,7 +757,10 @@ async fn dispatch(
                 )
                 .await
                 .wired()?;
-                db.tasks().get(TaskId(copy)).await.wired()
+                Ok(DuplicatedSubtree {
+                    copy: db.tasks().get(TaskId(copy.root_id)).await.wired()?,
+                    left_behind: copy.left_behind,
+                })
             })
             .await
         }
@@ -801,7 +804,10 @@ async fn dispatch(
                 )
                 .await
                 .wired()?;
-                db.goals().get(GoalId(copy)).await.wired()
+                Ok(DuplicatedSubtree {
+                    copy: db.goals().get(GoalId(copy.root_id)).await.wired()?,
+                    left_behind: copy.left_behind,
+                })
             })
             .await
         }
@@ -953,7 +959,10 @@ async fn dispatch(
                 )
                 .await
                 .wired()?;
-                db.infos().get(InfoId(copy)).await.wired()
+                Ok(DuplicatedSubtree {
+                    copy: db.infos().get(InfoId(copy.root_id)).await.wired()?,
+                    left_behind: copy.left_behind,
+                })
             })
             .await
         }
@@ -986,7 +995,10 @@ async fn dispatch(
                     duplicate_subtree(db, DuplicableKind::Domain, id, "", target_id, position)
                         .await
                         .wired()?;
-                db.domains().get(DomainId(copy)).await.wired()
+                Ok(DuplicatedSubtree {
+                    copy: db.domains().get(DomainId(copy.root_id)).await.wired()?,
+                    left_behind: copy.left_behind,
+                })
             })
             .await
         }
