@@ -93,7 +93,7 @@ function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {})
     tree: ROOT,
     clipboard: null,
     moveNode: vi.fn().mockResolvedValue(undefined),
-    duplicateNode: vi.fn().mockResolvedValue(undefined),
+    duplicateNode: vi.fn().mockResolvedValue([]),
     onRequestDelete: vi.fn(),
     reload: vi.fn().mockResolvedValue(undefined),
     renameNode: vi.fn().mockResolvedValue(undefined),
@@ -601,9 +601,9 @@ describe("useNodeActions — onPaste", () => {
     consoleError.mockRestore();
   });
 
-  it("a backend refusal replaces a skip notice only by containing it", async () => {
-    // Both come from one gesture and the store holds one pending toast, so the later message
-    // carries the earlier one rather than taking it off screen unsaid.
+  it("a backend refusal is said in the same toast as the skip notice, after it", async () => {
+    // Both come from one gesture and the store holds one pending toast, so the skips wait for the
+    // paste to finish and are said together with the failure rather than taken off screen unsaid.
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["commitment-7", "task-5"] };
     const opts = makeOpts({
@@ -612,11 +612,12 @@ describe("useNodeActions — onPaste", () => {
     });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
-    await vi.waitFor(() => expect(vi.mocked(opts.showToast).mock.calls.length).toBe(2));
-    const [skip, both] = vi.mocked(opts.showToast).mock.calls;
-    expect(skip?.[0].message).toContain("pasteSkippedCommitment");
-    expect(both?.[0].message).toContain("pasteSkippedCommitment");
-    expect(both?.[0].message).toContain("pasteFailed");
+    await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalled());
+    expect(opts.showToast).toHaveBeenCalledTimes(1);
+    const message = vi.mocked(opts.showToast).mock.calls[0]?.[0].message ?? "";
+    expect(message).toContain("pasteSkippedCommitment");
+    expect(message).toContain("pasteFailed");
+    expect(message.indexOf("pasteSkippedCommitment")).toBeLessThan(message.indexOf("pasteFailed"));
     consoleError.mockRestore();
   });
 
@@ -892,62 +893,69 @@ describe("useNodeActions — onPaste", () => {
     expect(opts.moveNode).toHaveBeenCalledTimes(1);
   });
 
-  // The skip nothing in the selection hinted at. The backend's duplication walk does not descend
-  // into a Flow, so a Habit hanging under a copied Goal was simply absent from the paste — no
-  // count, no toast, a subtree quietly smaller than the one that was copied.
-  describe("a Flow left behind under a copied node", () => {
-    const habit = mkNode("flow-7", "flow", [], { title: "Morning pages" });
-    const lift = mkNode("flow-8", "flow", [], { title: "Lift" });
-    const carrier = mkNode("goal-6", "goal", [habit, mkNode("task-9", "task", [lift])]);
+  // The skip only the copy can report: a row hung on a Habit occurrence inside the copied subtree.
+  // The backend leaves it behind and says so; the paste names it rather than letting the copy come
+  // out quietly smaller than what was copied.
+  describe("a row on a Habit occurrence, left behind by the copy", () => {
+    const carrier = mkNode("goal-6", "goal", [mkNode("task-9", "task")]);
     const destination = mkNode("goal-2", "goal");
     const tree = mkNode("root", "domain", [mkNode("domain-5", "project", [carrier, destination])]);
+    const reported = [
+      { child_type: "task" as const, child_id: 11, title: "buy milk" },
+      { child_type: "info" as const, child_id: 12, title: "oat, not soy" },
+    ];
 
-    /** What the stubbed `t` makes of the sentence: the frame, the count, then the flows list. */
-    function leftBehind(count: number, ...flows: string[]): string {
-      return ["pasteSkippedFlowUnder", String(count), flows.join(", ")].join(":");
+    /** What the stubbed `t` makes of the sentence: the frame, the count, then the names. */
+    function leftBehind(count: number, ...names: string[]): string {
+      return ["pasteSkippedOccurrenceChild", String(count), names.join(", ")].join(":");
     }
-    const named = (title: string) => `warnings:pasteSkippedFlowName:${title}`;
+    const named = (title: string) => `warnings:pasteSkippedName:${title}`;
 
-    it("names the Flows it could not carry, and still copies the node it could", async () => {
-      const opts = makeOpts({ tree, clipboard: { operation: CLIPBOARD_OP.COPY, nodeIds: ["goal-6"] } });
+    it("names what the copy reported it could not carry, once the copy has landed", async () => {
+      const opts = makeOpts({
+        tree,
+        clipboard: { operation: CLIPBOARD_OP.COPY, nodeIds: ["goal-6"] },
+        duplicateNode: vi.fn().mockResolvedValue(reported),
+      });
       const { result } = renderHook(() => useNodeActions(opts));
       act(() => { result.current.onPaste("goal-2"); });
-      await vi.waitFor(() =>
-        expect(opts.duplicateNode).toHaveBeenCalledWith("goal-6", "goal", "goal-2", "goal", 0),
-      );
-      // One toast for two Flows, not one each: the store holds a single pending notice.
+      await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalled());
+      expect(opts.duplicateNode).toHaveBeenCalledWith("goal-6", "goal", "goal-2", "goal", 0);
+      // One toast for two rows, not one each: the store holds a single pending notice.
       expect(opts.showToast).toHaveBeenCalledTimes(1);
       expect(opts.showToast).toHaveBeenCalledWith({
         nodeId: "goal-2",
-        message: leftBehind(2, named("Morning pages"), named("Lift")),
+        message: leftBehind(2, named("buy milk"), named("oat, not soy")),
       });
     });
 
-    // A cut re-points one parent link and the whole subtree follows, Flows included.
-    it("says nothing when the same subtree is cut, because nothing is left behind", async () => {
-      const opts = makeOpts({ tree, clipboard: { operation: CLIPBOARD_OP.CUT, nodeIds: ["goal-6"] } });
+    it("says nothing when the copy left nothing behind", async () => {
+      const opts = makeOpts({ tree, clipboard: { operation: CLIPBOARD_OP.COPY, nodeIds: ["goal-6"] } });
       const { result } = renderHook(() => useNodeActions(opts));
       act(() => { result.current.onPaste("goal-2"); });
-      await vi.waitFor(() => expect(opts.moveNode).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(opts.duplicateNode).toHaveBeenCalledTimes(1));
+      await Promise.resolve();
       expect(opts.showToast).not.toHaveBeenCalled();
     });
 
-    // Composition: a destination refusal and a left-behind Flow arrive in the same message, or the
-    // second showToast would take the first off screen unsaid.
+    // Composition: a refusal and a left-behind row arrive in the same message, or the second
+    // showToast would take the first off screen unsaid.
     it("reports it alongside a refusal the same paste tripped", async () => {
       const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["goal-6", "aspect-1"] };
-      const opts = makeOpts({ tree: mkNode("root", "domain", [
-        mkNode("domain-5", "project", [carrier, destination, mkNode("aspect-1", "aspect")]),
-      ]), clipboard });
+      const opts = makeOpts({
+        tree: mkNode("root", "domain", [
+          mkNode("domain-5", "project", [carrier, destination, mkNode("aspect-1", "aspect")]),
+        ]),
+        clipboard,
+        duplicateNode: vi.fn().mockResolvedValue(reported.slice(0, 1)),
+      });
       const { result } = renderHook(() => useNodeActions(opts));
       act(() => { result.current.onPaste("goal-2"); });
-      await vi.waitFor(() =>
-        expect(opts.duplicateNode).toHaveBeenCalledWith("goal-6", "goal", "goal-2", "goal", 0),
-      );
+      await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalled());
       expect(opts.showToast).toHaveBeenCalledTimes(1);
       expect(opts.showToast).toHaveBeenCalledWith({
         nodeId: "goal-2",
-        message: `pasteSkippedAspect:1 ${leftBehind(2, named("Morning pages"), named("Lift"))}`,
+        message: `pasteSkippedAspect:1 ${leftBehind(1, named("buy milk"))}`,
       });
     });
   });

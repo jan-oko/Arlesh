@@ -1071,7 +1071,7 @@ describe("useMindmapData — mutations", () => {
     };
 
     it("goal: calls duplicate_goal with the target and position", async () => {
-      setupInvoke({ duplicate_goal: GOAL });
+      setupInvoke({ duplicate_goal: { copy: GOAL, left_behind: [] } });
       const { result } = await loadedHook();
 
       await act(async () => {
@@ -1084,7 +1084,7 @@ describe("useMindmapData — mutations", () => {
     });
 
     it("task: calls duplicate_task with the target and position", async () => {
-      setupInvoke({ duplicate_task: TASK });
+      setupInvoke({ duplicate_task: { copy: TASK, left_behind: [] } });
       const { result } = await loadedHook();
 
       await act(async () => {
@@ -1096,9 +1096,23 @@ describe("useMindmapData — mutations", () => {
       });
     });
 
+    // The copy reports the rows hung on Habit occurrences it could not carry; the paste names them.
+    it("hands back what the copy left behind on Habit occurrences", async () => {
+      const leftBehind = [{ child_type: "task", child_id: 9, title: "buy milk" }];
+      setupInvoke({ duplicate_task: { copy: TASK, left_behind: leftBehind } });
+      const { result } = await loadedHook();
+
+      let reported: unknown;
+      await act(async () => {
+        reported = await result.current.duplicateNode("task-1", "task", "goal-1", "goal", 0);
+      });
+
+      expect(reported).toEqual(leftBehind);
+    });
+
     it("info: calls duplicate_info with the target's own kind as parent type", async () => {
       const INFO = mkInfo({ id: 5, parent_type: "goal", parent_id: 1 });
-      setupInvoke({ list_infos: [INFO], duplicate_info: INFO });
+      setupInvoke({ list_infos: [INFO], duplicate_info: { copy: INFO, left_behind: [] } });
       const { result } = await loadedHook();
 
       await act(async () => {
@@ -1112,7 +1126,7 @@ describe("useMindmapData — mutations", () => {
 
     it("project: calls duplicate_domain, which takes a target id and no target type", async () => {
       const PROJECT = mkDomain({ id: 5, subtype: "project", parent_id: 1, title: "Ops" });
-      setupInvoke({ list_domains: [ASPECT, PROJECT], duplicate_domain: PROJECT });
+      setupInvoke({ list_domains: [ASPECT, PROJECT], duplicate_domain: { copy: PROJECT, left_behind: [] } });
       const { result } = await loadedHook();
 
       await act(async () => {

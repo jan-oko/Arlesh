@@ -827,7 +827,7 @@
     },
     {
       "name": "plan shows pending expectations and hides a delegated task that still keeps its wait on screen",
-      "spec": "resources.md, Expectations — All and Plan show a pending Expectation; released and archived ones show under All only. A delegated Task has every effect of archival; its virtual Expectation shows under the Expectation rules while the Task is not done.",
+      "spec": "resources.md, Expectations — All and Plan show a pending Expectation; released and archived ones show under All only. With the Delegated pill off, Plan drops a delegated Task; its virtual Expectation shows under the Expectation rules while the Task is not done.",
       "filter": {
         "preset": "plan"
       },
@@ -1045,8 +1045,8 @@
       "expectations": []
     },
     {
-      "name": "the archived pill on include force-shows archived expectations and delegated tasks under plan",
-      "spec": "mindmap-view.md — Include force-shows anything whose effective Archival is Archived; a delegated Task has every effect of archival.",
+      "name": "the archived pill on include force-shows archived expectations under plan, and leaves delegated tasks to their own pill",
+      "spec": "mindmap-view.md — Include force-shows anything whose effective Archival is Archived. A delegated Task is not archived (ruled 2026-10-03): with the Delegated pill off, Plan still drops it, and it stays on the Mindmap only as the ancestor of its wait.",
       "filter": {
         "preset": "plan",
         "archived": "include"
@@ -1066,14 +1066,11 @@
         "task-check-ahead",
         "task-check-open",
         "task-delegated",
-        "task-delegated-done",
         "task-waiting"
       ],
       "list": [
         "task-check-ahead",
         "task-check-open",
-        "task-delegated",
-        "task-delegated-done",
         "task-waiting"
       ],
       "commitments": [],
@@ -1088,8 +1085,8 @@
       ]
     },
     {
-      "name": "the archived pill on exclude hides archived expectations and delegated subtrees under all",
-      "spec": "mindmap-view.md — Exclude hard-hides the whole subtree of anything archived; a delegated Task has every effect of archival. In the flat list the pill hides the archived row itself, as it does for task rows: an excluded ancestor does not gate a row there, so the delegated Task's wait stays in the list while the Mindmap drops it with its Task.",
+      "name": "the archived pill on exclude hides archived expectations under all, and not delegated tasks",
+      "spec": "mindmap-view.md — Exclude hard-hides the whole subtree of anything archived. A delegated Task is not archived (ruled 2026-10-03), so it and its wait stay. In the flat list the pill hides the archived row itself, as it does for task rows.",
       "filter": {
         "preset": "all",
         "archived": "exclude"
@@ -1100,6 +1097,7 @@
         "expectation-check-ahead",
         "expectation-checked",
         "expectation-checked-idle",
+        "expectation-delegation",
         "expectation-late",
         "expectation-pending",
         "expectation-released",
@@ -1107,11 +1105,15 @@
         "info-on-wait",
         "task-check-ahead",
         "task-check-open",
+        "task-delegated",
+        "task-delegated-done",
         "task-waiting"
       ],
       "list": [
         "task-check-ahead",
         "task-check-open",
+        "task-delegated",
+        "task-delegated-done",
         "task-waiting"
       ],
       "commitments": [],
@@ -2645,6 +2647,173 @@
       "expectations": [
         "expectation-scoped",
         "expectation-unscoped"
+      ]
+    },
+    {
+      "name": "with the delegated pill off, plan drops a delegated task and keeps its wait",
+      "spec": "filtering-logic.md, Delegation — the Delegated pill (ruled 2026-10-03): off, Plan and Start drop a delegated Task as they always have, and its wait stays under the Expectation rules; All, Do and Backlog leave it alone.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "delegation",
+      "mindmap": [
+        "domain-d",
+        "expectation-delegation-todo",
+        "task-delegated-todo",
+        "task-mine"
+      ],
+      "list": [
+        "task-mine"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-delegation-todo"
+      ]
+    },
+    {
+      "name": "the delegated pill on include keeps unfinished delegated tasks under plan",
+      "spec": "filtering-logic.md, Delegation — the Delegated pill on Include keeps a delegated Task under Plan and Start, judged by the preset's other rules like any Task.",
+      "filter": {
+        "preset": "plan",
+        "delegated": "include"
+      },
+      "board": "delegation",
+      "mindmap": [
+        "domain-d",
+        "expectation-delegation-todo",
+        "task-delegated-inprogress",
+        "task-delegated-todo",
+        "task-mine"
+      ],
+      "list": [
+        "task-delegated-inprogress",
+        "task-delegated-todo",
+        "task-mine"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-delegation-todo"
+      ]
+    },
+    {
+      "name": "with the delegated pill off, start drops a delegated task and keeps its wait",
+      "spec": "filtering-logic.md, Delegation — the Delegated pill (ruled 2026-10-03): off, Plan and Start drop a delegated Task as they always have, and its wait stays under the Expectation rules; All, Do and Backlog leave it alone.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "delegation",
+      "mindmap": [
+        "domain-d",
+        "expectation-delegation-todo",
+        "task-delegated-todo",
+        "task-mine"
+      ],
+      "list": [
+        "task-mine"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-delegation-todo"
+      ]
+    },
+    {
+      "name": "the delegated pill on include lets start judge a delegated task by its status",
+      "spec": "filtering-logic.md, Delegation — the Delegated pill on Include keeps a delegated Task under Plan and Start, judged by the preset's other rules like any Task.",
+      "filter": {
+        "preset": "start",
+        "delegated": "include"
+      },
+      "board": "delegation",
+      "mindmap": [
+        "domain-d",
+        "expectation-delegation-todo",
+        "task-delegated-todo",
+        "task-mine"
+      ],
+      "list": [
+        "task-delegated-todo",
+        "task-mine"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-delegation-todo"
+      ]
+    },
+    {
+      "name": "with the delegated pill off, do still shows an in-progress delegated task",
+      "spec": "filtering-logic.md, Delegation — the Delegated pill (ruled 2026-10-03): off, Plan and Start drop a delegated Task as they always have, and its wait stays under the Expectation rules; All, Do and Backlog leave it alone.",
+      "filter": {
+        "preset": "do"
+      },
+      "board": "delegation",
+      "mindmap": [
+        "domain-d",
+        "task-delegated-inprogress"
+      ],
+      "list": [
+        "task-delegated-inprogress"
+      ],
+      "commitments": [],
+      "expectations": []
+    },
+    {
+      "name": "the delegated pill on exclude hides a delegated task under do",
+      "spec": "filtering-logic.md, Delegation — the Delegated pill on Exclude hides a delegated Task with its subtree under every preset, All and Do included. In the flat list it hides the row itself, as the Archived pill does: an excluded ancestor does not gate its wait there.",
+      "filter": {
+        "preset": "do",
+        "delegated": "exclude"
+      },
+      "board": "delegation",
+      "mindmap": [],
+      "list": [],
+      "commitments": [],
+      "expectations": []
+    },
+    {
+      "name": "the delegated pill on exclude hides delegated subtrees under all",
+      "spec": "filtering-logic.md, Delegation — the Delegated pill on Exclude hides a delegated Task with its subtree under every preset, All and Do included. In the flat list it hides the row itself, as the Archived pill does: an excluded ancestor does not gate its wait there.",
+      "filter": {
+        "preset": "all",
+        "delegated": "exclude"
+      },
+      "board": "delegation",
+      "mindmap": [
+        "domain-d",
+        "task-mine"
+      ],
+      "list": [
+        "task-mine"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-delegation-todo"
+      ]
+    },
+    {
+      "name": "the delegated pill on include changes nothing under all",
+      "spec": "filtering-logic.md, Delegation — the Delegated pill on Include keeps a delegated Task under Plan and Start, judged by the preset's other rules like any Task.",
+      "filter": {
+        "preset": "all",
+        "delegated": "include"
+      },
+      "board": "delegation",
+      "mindmap": [
+        "domain-d",
+        "expectation-delegation-todo",
+        "task-delegated-done",
+        "task-delegated-inprogress",
+        "task-delegated-todo",
+        "task-mine"
+      ],
+      "list": [
+        "task-delegated-done",
+        "task-delegated-inprogress",
+        "task-delegated-todo",
+        "task-mine"
+      ],
+      "commitments": [],
+      "expectations": [
+        "expectation-delegation-todo"
       ]
     }
   ],
@@ -4246,6 +4415,49 @@
               "id": "expectation-unscoped",
               "kind": "expectation",
               "status": "pending"
+            }
+          ]
+        }
+      ]
+    },
+    "delegation": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-d",
+          "kind": "project",
+          "status": "active",
+          "children": [
+            {
+              "id": "task-delegated-todo",
+              "kind": "task",
+              "status": "todo",
+              "delegated": true,
+              "children": [
+                {
+                  "id": "expectation-delegation-todo",
+                  "kind": "expectation",
+                  "status": "pending"
+                }
+              ]
+            },
+            {
+              "id": "task-delegated-inprogress",
+              "kind": "task",
+              "status": "in_progress",
+              "delegated": true
+            },
+            {
+              "id": "task-delegated-done",
+              "kind": "task",
+              "status": "done",
+              "delegated": true
+            },
+            {
+              "id": "task-mine",
+              "kind": "task",
+              "status": "todo"
             }
           ]
         }

@@ -277,6 +277,10 @@ export interface MindmapNode {
    * it keeps reading as backlogged even once a lapsed window has forced `archived` on top of it —
    * exactly as a Frozen goal keeps its `status` under the same override. */
   backlogged?: boolean;
+  /** The node's **own** hand archive (a stored Task or Commitment only): put away by hand, until it
+   * is unarchived. Its subtree reads as `archived` through the backend's lifecycle; this says the
+   * node is the one archived, which is what the Archive / Unarchive gestures read. */
+  archivedByHand?: boolean;
   /** The task's **own** Agentic flag (Tasks only): work that suits being handed to an agent.
    * `null`/absent means it has none of its own and reads its nearest flagged ancestor's instead
    * (see `inheritedAgentic`). Independent of the delegate: a Task can be both. */

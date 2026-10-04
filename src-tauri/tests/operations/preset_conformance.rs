@@ -79,6 +79,8 @@ struct CorpusFilter {
     #[serde(default)]
     backlog: OverrideMode,
     #[serde(default)]
+    delegated: OverrideMode,
+    #[serde(default)]
     plan_scope: Option<ScopeKey>,
     #[serde(default)]
     scope_match: ScopeMatch,
@@ -163,6 +165,7 @@ impl From<&CorpusFilter> for BoardFilter {
             private_mode: filter.private_mode,
             archived: filter.archived,
             backlog: filter.backlog,
+            delegated: filter.delegated,
             plan_scope: filter.plan_scope,
             scope_match: filter.scope_match,
             start_hides_checked_waits: filter.start_hides_checked_waits,

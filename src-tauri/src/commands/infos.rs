@@ -4,7 +4,7 @@ use tauri::State;
 
 use crate::{
     database::session::SessionFactory,
-    duplicate::{duplicate_subtree, DuplicableKind},
+    duplicate::{duplicate_subtree, DuplicableKind, DuplicatedSubtree},
     error::WireError,
     infos::model::{CreateInfoRequest, Info, InfoId, UpdateInfoRequest},
 };
@@ -76,7 +76,8 @@ pub async fn delete_info(factory: State<'_, SessionFactory>, id: i64) -> Result<
 /// Deep-clones an info node and its whole subtree under `(target_type, target_id)`, putting the
 /// new root at `position`. Backs the Mindmap's Copy+Paste.
 ///
-/// Transactional: the subtree lands whole or not at all.
+/// Transactional: the subtree lands whole or not at all, Flows included. Returns the copy with
+/// the rows hung on Habit occurrences that it could not carry, for the paste to name.
 #[tauri::command]
 pub async fn duplicate_info(
     factory: State<'_, SessionFactory>,
@@ -84,9 +85,9 @@ pub async fn duplicate_info(
     target_type: String,
     target_id: i64,
     position: i64,
-) -> Result<Info, WireError> {
+) -> Result<DuplicatedSubtree<Info>, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let new_id = duplicate_subtree(
+    let subtree = duplicate_subtree(
         &mut db,
         DuplicableKind::Info,
         id,
@@ -98,9 +99,12 @@ pub async fn duplicate_info(
     .map_err(WireError::from_error)?;
     let info = db
         .infos()
-        .get(InfoId(new_id))
+        .get(InfoId(subtree.root_id))
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
-    Ok(info)
+    Ok(DuplicatedSubtree {
+        copy: info,
+        left_behind: subtree.left_behind,
+    })
 }

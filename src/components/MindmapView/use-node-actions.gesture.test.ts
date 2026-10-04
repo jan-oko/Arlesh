@@ -84,6 +84,7 @@ function renderPaste() {
           parseInt(targetId.split("-")[1] ?? "0", 10),
           position,
         );
+        return [];
       },
       onRequestDelete: vi.fn(),
       reload: () => Promise.resolve(),

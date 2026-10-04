@@ -1,4 +1,5 @@
 import { invoke } from "./gesture";
+import type { DuplicatedSubtree } from "@/api/duplicate";
 
 export const DOMAIN_SUBTYPE = {
   TAG: "tag",
@@ -54,6 +55,6 @@ export async function deleteDomain(id: number): Promise<void> {
   return invoke<void>("delete_domain", { id });
 }
 
-export async function duplicateDomain(id: number, targetId: number, position: number): Promise<Domain> {
-  return invoke<Domain>("duplicate_domain", { id, targetId, position });
+export async function duplicateDomain(id: number, targetId: number, position: number): Promise<DuplicatedSubtree<Domain>> {
+  return invoke<DuplicatedSubtree<Domain>>("duplicate_domain", { id, targetId, position });
 }

@@ -174,3 +174,21 @@ fn a_write_reaches_its_subtree_and_the_habits_hung_there_and_nothing_above() {
     let habit_reach = audit.reach(&["flow-7".to_string()]);
     assert!(habit_reach.contains("task-3") && !habit_reach.contains("task-2"));
 }
+
+#[test]
+fn an_archived_subtree_raises_no_plan_conflict() {
+    let mut parent = task_row(1, "domain", 1);
+    parent.plan = Some(week("2026-10-11"));
+    let mut child = task_row(2, "task", 1);
+    child.time_scope = Some(week("2026-09-27"));
+    let tasks = [parent, child];
+    let live = audit_of(&tasks, &[lifecycle(2, false)], &[]);
+    assert_eq!(live.conflicts.len(), 1);
+    let archived = ItemLifecycle {
+        archival: Archival::Archived,
+        ..lifecycle(2, false)
+    };
+    let audit = audit_of(&tasks, &[archived], &[]);
+    assert!(audit.conflicts.is_empty());
+    assert_eq!(audit.readings["task-2"].conflict, None);
+}

@@ -1,6 +1,6 @@
 import { createStore, type StoreApi } from "zustand";
 import type { FilterState, OverrideMode, StatusMode, TagFilterMode } from "@/utils/filter-tree";
-import { DEFAULT_FILTER, NEXT_OVERRIDE_MODE } from "@/utils/filter-tree";
+import { DEFAULT_FILTER, NEXT_OVERRIDE_MODE, delegatedModeOf } from "@/utils/filter-tree";
 import { tabStoreHook } from "@/stores/tab-stores-context";
 import { nextMode } from "@/utils/filter-modes";
 import type { ScopeKey } from "@/api/scopes";
@@ -34,6 +34,9 @@ export interface FilterStore {
   cycleBacklogMode: () => void;
   setArchivedMode: (mode: OverrideMode) => void;
   setBacklogMode: (mode: OverrideMode) => void;
+  /** The Delegated pill: off → include → exclude. */
+  cycleDelegatedMode: () => void;
+  setDelegatedMode: (mode: OverrideMode) => void;
   reset: () => void;
 }
 
@@ -77,6 +80,9 @@ export function createFilterStore(seed: FilterState = DEFAULT_FILTER): StoreApi<
       set((s) => ({ filter: { ...s.filter, archivedMode: NEXT_OVERRIDE_MODE[s.filter.archivedMode] } })),
     cycleBacklogMode: () =>
       set((s) => ({ filter: { ...s.filter, backlogMode: NEXT_OVERRIDE_MODE[s.filter.backlogMode] } })),
+    setDelegatedMode: (mode) => set((s) => ({ filter: { ...s.filter, delegatedMode: mode } })),
+    cycleDelegatedMode: () =>
+      set((s) => ({ filter: { ...s.filter, delegatedMode: NEXT_OVERRIDE_MODE[delegatedModeOf(s.filter)] } })),
     reset: () => set({ filter: DEFAULT_FILTER }),
   }));
 }

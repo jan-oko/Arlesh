@@ -77,6 +77,7 @@ pub(super) fn commitment(id: i64, parent: (&str, i64), verdict: Verdict) -> Comm
         tag_ids: Vec::new(),
         position: id,
         is_private: false,
+        archival: Default::default(),
         origin: Origin::Manual,
     }
 }

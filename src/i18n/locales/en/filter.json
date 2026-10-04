@@ -20,6 +20,12 @@
     "include": "Backlog: included. Click to cycle off → include → exclude.",
     "exclude": "Backlog: excluded. Click to cycle off → include → exclude."
   },
+  "delegatedPill": "Delegated",
+  "delegatedTooltip": {
+    "inactive": "Delegated: hidden from Plan and Start, as before. Click (or g) to cycle off → include → exclude.",
+    "include": "Delegated: included. Click (or g) to cycle off → include → exclude.",
+    "exclude": "Delegated: excluded everywhere. Click (or g) to cycle off → include → exclude."
+  },
   "onAgentPill": "On Agent",
   "onAgentTooltip": {
     "off": "Agentic tasks an agent holds are hidden from Start, Do and Zen. Click (or o) to show them",

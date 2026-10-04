@@ -6,6 +6,7 @@ import { computeNodeDimensions, computeEditHeight } from "@/utils/node-meta";
 import { computeNodeAppearance, DIMMED_OPACITY, nodeStrokeColor } from "@/utils/node-visuals";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import NodeContextMenu from "@/components/NodeContextMenu/NodeContextMenu";
+import { archiveOfferFor } from "@/utils/hand-archive";
 import type { ContextMenuAction } from "@/components/NodeContextMenu/context-action";
 import StatusIconRow from "@/components/StatusIcons/StatusIconRow";
 import NodeRect from "./NodeRect";
@@ -113,7 +114,7 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
         <StatusIconRow node={node} indicators={statusIndicators} top={activeHeight} />
       )}
       {contextMenu !== null && createPortal(
-        <NodeContextMenu x={contextMenu.x} y={contextMenu.y} nodeKind={node.kind} parentKind={parentKind} isCollapsed={isCollapsed} hasClipboard={hasClipboard} onAction={(action) => onContextAction(node.id, action)} onClose={() => setContextMenu(null)} />,
+        <NodeContextMenu x={contextMenu.x} y={contextMenu.y} nodeKind={node.kind} parentKind={parentKind} isCollapsed={isCollapsed} hasClipboard={hasClipboard} archive={archiveOfferFor(node)} onAction={(action) => onContextAction(node.id, action)} onClose={() => setContextMenu(null)} />,
         document.body,
       )}
     </g>

@@ -3,7 +3,7 @@ import { isNodeBlocked } from "@/utils/tree-layout";
 import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
 import {
   typeHardHidden, passesTags, withArchivedOverride, isShelvedProject, isHiddenBacklog,
-  isUnopenedOccurrence, isUnopenedWait, passesCommitmentPreset, passesExpectationPreset, isArchived, isDelegated,
+  isUnopenedOccurrence, isUnopenedWait, passesCommitmentPreset, passesExpectationPreset, isArchived, isDroppedForDelegation,
   isLiveExpectation, isPlannedAhead, isOutsidePlanScope, passesStartStatus, passesDoStatus, isStartableWindow,
 } from "@/utils/filter-tree";
 import type { TimeScope } from "@/api/time-scope";
@@ -413,16 +413,16 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
       return true;
     case "plan":
       if (isOutsidePlanScope(row.node, f, inheritedTimeScope(row.ancestors))) return false;
-      return withArchivedOverride(row.node, f, row.node.status !== "done" && !isArchived(row.node));
+      return !isDroppedForDelegation(row.node, f)
+        && withArchivedOverride(row.node, f, row.node.status !== "done" && !isArchived(row.node));
     case "start": {
       if (row.isBlocked || row.heldByBlockedAncestor) return false;
       // The row's Plan position is its effective Plan's, inherited or its own.
       if (isPlannedAhead(row.node, f)) return false;
       // A window that has passed or has not begun drops out, as on the canvas — unless the row is
       // Overdue.
-      if (!isStartableWindow(row.node) || isDelegated(row.node)) {
-        return withArchivedOverride(row.node, f, false);
-      }
+      if (isDroppedForDelegation(row.node, f)) return false;
+      if (!isStartableWindow(row.node)) return withArchivedOverride(row.node, f, false);
       return passesStartStatus(row.node, f);
     }
     case "do":

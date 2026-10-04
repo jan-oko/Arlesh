@@ -1,5 +1,5 @@
 //! The task rules: what a compound Task reads as ([`compound`]); Timing, Resolution, Archival and
-//! the Overdue flag ([`lifecycle`]); Review
+//! the Overdue flag ([`lifecycle`]), and the hand archive a subtree inherits ([`archival`]); Review
 //! ([`review`]), and the containment invariants and wait lifecycles ([`scope`]).
 //!
 //! Pure functions over values: no session (`Db`, `SessionMode`), no `sqlx`, no `tauri`, no `tokio`
@@ -11,6 +11,7 @@
 
 pub mod agentic;
 pub mod ancestry;
+pub mod archival;
 pub mod compound;
 pub mod dependencies;
 pub mod gestures;

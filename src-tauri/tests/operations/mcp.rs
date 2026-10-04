@@ -1103,6 +1103,7 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
                 "set_status",
                 "move",
                 "archive",
+                "unarchive",
                 "containment_conflicts",
             ],
             &[

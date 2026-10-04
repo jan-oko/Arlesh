@@ -12,7 +12,7 @@ use serde::Serialize;
 use crate::{
     nodes::{id::NodeId, origin::Origin},
     tasks::{
-        lifecycle::{derive_timing, ItemLifecycle},
+        lifecycle::{derive_timing, Archival, ItemLifecycle},
         model::{Commitment, Expectation, Goal, Task, TimeScope},
         rules::plan_inheritance::{
             clamps_for, effective_time_scope, habit_conflicts, read_plans, HabitConflict,
@@ -150,6 +150,15 @@ fn links(rows: &PlanRows<'_>) -> HashMap<String, PlanLink<String>> {
         .filter(|entry| entry.node_type == "task" && entry.overdue)
         .map(|entry| &entry.node_id)
         .collect();
+    // Work that is effectively archived — archived by hand or under a node that was, settled by
+    // its window, delegated away — is off the table: it still passes a Plan down, but no plan rule
+    // is judged on it, so an archived subtree raises no conflict.
+    let archived: HashSet<&NodeId> = rows
+        .lifecycles
+        .iter()
+        .filter(|entry| entry.node_type == "task" && entry.archival == Archival::Archived)
+        .map(|entry| &entry.node_id)
+        .collect();
     let mut links = HashMap::new();
     for (id, parent) in &rows.domains {
         let link = PlanLink {
@@ -193,7 +202,7 @@ fn links(rows: &PlanRows<'_>) -> HashMap<String, PlanLink<String>> {
             // A check task's window is the day it fell due, and an Overdue Task's Plan may leave
             // its window: neither clips what it inherits.
             clips: !check && !overdue.contains(&task.id),
-            is_task: true,
+            is_task: !archived.contains(&task.id),
         };
         links.insert(format!("task-{}", task.id), link);
     }

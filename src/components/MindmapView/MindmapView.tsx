@@ -52,6 +52,7 @@ import ConvertToFlowModal from "@/components/ConvertToFlowModal/ConvertToFlowMod
 import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/UnfinishedChildrenModal";
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
+import { useHandArchive } from "@/hooks/use-hand-archive";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useOpenAsyncTemplate } from "@/hooks/use-open-async-template";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
@@ -330,6 +331,7 @@ export default function MindmapView() {
   });
 
   const { toggleAgentic } = useTaskAgentic({ findNode: findNodeById, reload, showToast });
+  const { toggleArchive } = useHandArchive({ findNode: findNodeById, reload, showToast });
   const { toggleAsynchronous } = useTaskAsynchronous({ findNode: findNodeById, reload, showToast });
   const { toggleCompound } = useTaskCompound({ findNode: findNodeById, reload, showToast });
   // The same hook the List View's tick and cross go through, so the canvas grows no second write
@@ -464,6 +466,7 @@ export default function MindmapView() {
   const { onContextAction } = useContextAction({
     findNodeById, enterSubtree, setEditingNodeId,
     setClipboard, clipboard, onPaste, toggleCollapsed: toggleCollapsedOrGroup, onDelete, onNewFlow, onConvertToFlow, onStartFlow,
+    onToggleArchive: toggleArchive,
   });
 
   const handleCtrlClick = useCallback((id: string) => { addToSelection(id); }, [addToSelection]);

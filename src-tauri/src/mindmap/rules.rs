@@ -23,8 +23,11 @@ use crate::{
     },
     tasks::{
         compound::{Board, Rows},
+        expectations::EXPECTATION,
+        model::{Commitment, CommitmentArchival, Expectation, Goal, Task, TaskArchival},
         rules::{
             agentic::{AgenticIndex, AgenticRows},
+            archival::{self, TreeNode},
             compound::settle_in,
             scope::{derive_item_lifecycles, LifecycleRows, OccurrenceExit},
             waits::wait_windows,
@@ -95,6 +98,60 @@ fn habit_edges(
         }
     }
     edges
+}
+
+/// Every content node of the board as the hand archive's inheritance reads it: a stored Task or
+/// Commitment carries its own archive; nothing else can be archived by hand.
+fn tree_nodes<'rows>(
+    tasks: &'rows [Task],
+    goals: &'rows [Goal],
+    commitments: &'rows [Commitment],
+    expectations: &'rows [Expectation],
+) -> Vec<TreeNode<'rows>> {
+    let node = |node_type, id, parent_type: &'rows String, parent_id, archived_by_hand| TreeNode {
+        node_type,
+        id,
+        parent_type: parent_type.as_str(),
+        parent_id,
+        archived_by_hand,
+    };
+    tasks
+        .iter()
+        .map(|task| {
+            let by_hand = task.archival == TaskArchival::Archived;
+            node(
+                "task",
+                &task.id,
+                &task.parent_type,
+                &task.parent_id,
+                by_hand,
+            )
+        })
+        .chain(
+            goals
+                .iter()
+                .map(|goal| node("goal", &goal.id, &goal.parent_type, &goal.parent_id, false)),
+        )
+        .chain(commitments.iter().map(|commitment| {
+            let by_hand = commitment.archival == CommitmentArchival::Archived;
+            node(
+                "commitment",
+                &commitment.id,
+                &commitment.parent_type,
+                &commitment.parent_id,
+                by_hand,
+            )
+        }))
+        .chain(expectations.iter().map(|wait| {
+            node(
+                EXPECTATION,
+                &wait.id,
+                &wait.parent_type,
+                &wait.parent_id,
+                false,
+            )
+        }))
+        .collect()
 }
 
 /// The board at `now`: what [`super::load_within`] serves, derived from what it read.
@@ -199,6 +256,12 @@ pub fn derive_board(
     lifecycles.extend(waits.lifecycles);
     // Only now is every parent's Timing in, stored and derived alike.
     crate::tasks::mark_waits_under_pending(&expectations, &mut lifecycles);
+    // Every lifecycle is in, compound ones re-derived: what lies beneath a node archived by hand
+    // reads as archived (see `tasks::rules::archival`).
+    archival::inherit(
+        &tree_nodes(&tasks, &goals, &commitments, &expectations),
+        &mut lifecycles,
+    );
     // Every status is final now, and every wait drawn: an On Agent Task whose agent has a
     // question open reads Review (see `tasks::review`).
     crate::tasks::review::derive(&mut tasks, &expectations);
