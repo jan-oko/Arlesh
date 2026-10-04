@@ -1,7 +1,8 @@
 name: Bundles
 
-# Installable Linux builds — an AppImage and a tarball of the bare release
-# binary — published to GitHub Releases. No .deb or .rpm, by choice.
+# Installable builds published to GitHub Releases: for Linux an AppImage and a
+# tarball of the bare release binary (no .deb or .rpm, by choice), and for
+# Windows the NSIS setup .exe and the .msi.
 #
 #   push to master   rolling pre-release, tag `latest`: the tag is moved to the
 #                    pushed commit and the assets replaced, so
@@ -13,20 +14,24 @@ name: Bundles
 #                    fails before building.
 #   dispatch         rolling, to the tag named by the `release_tag` input. It
 #                    exists for testing on a throwaway tag; `latest` itself is
-#                    only ever written from master.
+#                    only ever written from master. With `publish` off it builds
+#                    and keeps the workflow artifacts but touches no release —
+#                    how a branch tries a change to the build itself.
 #
 # This is not a gate and never runs on pull requests: a release build compiles
 # the whole tree a second way (optimised, uninstrumented), and paying that on
 # every PR would roughly double PR wall time for something only master needs.
 # Being its own workflow on its own triggers, it cannot become a required check.
 #
-# Two jobs, so write access is as narrow as it can be: `build` runs npm ci,
-# build scripts and the compiler with a read-only token and hands its output
-# over as workflow artifacts (kept 30 days, which also gives every master commit
-# its own downloadable build); `release` holds contents: write and runs nothing
-# but gh.
+# Write access is as narrow as it can be: `build` and `build-windows` run npm
+# ci, build scripts and the compiler with a read-only token and hand their
+# output over as workflow artifacts (kept 30 days, which also gives every master
+# commit its own downloadable build); `release` holds contents: write and runs
+# nothing but gh. `meta` reads the version once, for all three.
 #
-# Nothing is signed; there are no secrets beyond the default GITHUB_TOKEN.
+# Nothing is signed; there are no secrets beyond the default GITHUB_TOKEN. On
+# Windows that means SmartScreen warns on first run ("Windows protected your
+# PC" → More info → Run anyway); signing is a separate piece of work.
 #
 # It builds on ubuntu-22.04 deliberately. A Linux binary links against the glibc
 # of the machine that built it and runs on that version or newer, not older.
@@ -44,6 +49,10 @@ on:
         description: Rolling pre-release tag to publish to (`latest` only from master)
         default: latest
         required: true
+      publish:
+        description: Publish to the release (off builds the artifacts only)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -52,17 +61,17 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    name: tauri build · linux bundles
-    runs-on: ubuntu-22.04
-    timeout-minutes: 60
+  # First, so a mistyped tag fails in seconds rather than after either build.
+  meta:
+    name: version · sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       version: ${{ steps.meta.outputs.version }}
       sha: ${{ steps.meta.outputs.sha }}
     steps:
       - uses: actions/checkout@v5
 
-      # First, so a mistyped tag fails in seconds rather than after the build.
       - name: Read version and short sha
         id: meta
         run: |
@@ -73,6 +82,14 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: tauri build · linux bundles
+    needs: meta
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
 
       # Same set as ci.yml's rust lane — webkit2gtk-4.1 exists on 22.04 too.
       # `file` is what linuxdeploy (the AppImage bundler) uses to classify ELF
@@ -136,7 +153,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: arlesh-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.sha }}-linux-appimage
+          name: arlesh-${{ needs.meta.outputs.version }}-${{ needs.meta.outputs.sha }}-linux-appimage
           path: ${{ runner.temp }}/bundles/*.AppImage
           if-no-files-found: error
           retention-days: 30
@@ -144,15 +161,125 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: arlesh-${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.sha }}-linux-x86_64-tarball
+          name: arlesh-${{ needs.meta.outputs.version }}-${{ needs.meta.outputs.sha }}-linux-x86_64-tarball
           path: ${{ runner.temp }}/bundles/*.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  # The Windows installers. `tauri build` makes both from tauri.conf.json's
+  # bundle settings: the NSIS setup .exe (per-user, into %LOCALAPPDATA%, no
+  # admin prompt) and the .msi (per-machine, for anyone who deploys with
+  # msiexec). Both bootstrap WebView2 if it is missing, which on Windows 10 and
+  # 11 it almost never is. Nothing is signed.
+  build-windows:
+    name: tauri build · windows installers
+    needs: meta
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # /rust-toolchain.toml resolves here as on Linux; rustup installs the
+      # pinned toolchain on first use, and this prints the proof.
+      - name: Show toolchain
+        run: |
+          rustc --version
+          cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: release-bundles-windows
+
+      # Tauri fetches NSIS and WiX itself on first use.
+      - name: tauri build
+        run: npx tauri build --ci --bundles nsis,msi
+
+      # The same stable-name rule as the Linux assets: no version or sha, so a
+      # download link to the rolling release never goes stale.
+      - name: Stage installers under stable names
+        run: |
+          out="$RUNNER_TEMP/bundles"
+          mkdir -p "$out"
+          bundle=src-tauri/target/release/bundle
+          cp $bundle/nsis/*-setup.exe "$out/Arlesh-windows-x86_64-setup.exe"
+          cp $bundle/msi/*.msi "$out/Arlesh-windows-x86_64.msi"
+          ls -la "$out"
+
+      # Installs the setup .exe silently, launches what it installed and
+      # requires it to be alive, with its MCP endpoint answering on 127.0.0.1,
+      # 30 seconds later. A crash on start — a Linux-only path, a missing
+      # resource, a panic in setup — fails here rather than on someone's desk.
+      # What it cannot see: the runner has no one at the screen, so the tray,
+      # the windows and tab dragging are checked by hand (see README).
+      - name: Smoke test · install, start, MCP answers
+        shell: pwsh
+        env:
+          RUST_LOG: info
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Join-Path $env:RUNNER_TEMP 'bundles\Arlesh-windows-x86_64-setup.exe'
+          Start-Process -FilePath $setup -ArgumentList '/S' -Wait
+          $dir = Join-Path $env:LOCALAPPDATA 'Arlesh'
+          Get-ChildItem $dir
+          $exe = Get-ChildItem $dir -Filter *.exe | Where-Object { $_.Name -notmatch 'uninstall' } | Select-Object -First 1
+          if (-not $exe) { throw "the installer put no app executable in $dir" }
+
+          $log = Join-Path $env:RUNNER_TEMP 'arlesh-out.log'
+          $err = Join-Path $env:RUNNER_TEMP 'arlesh-err.log'
+          $app = Start-Process -FilePath $exe.FullName -PassThru -RedirectStandardOutput $log -RedirectStandardError $err
+
+          $answered = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep -Seconds 1
+            if ($app.HasExited) { break }
+            $client = New-Object System.Net.Sockets.TcpClient
+            try { $client.Connect('127.0.0.1', 4747); $answered = $true } catch { } finally { $client.Dispose() }
+          }
+          $alive = -not $app.HasExited
+
+          Write-Host '--- stdout'; Get-Content $log -ErrorAction SilentlyContinue
+          Write-Host '--- stderr'; Get-Content $err -ErrorAction SilentlyContinue
+          Write-Host "--- app data"; Get-ChildItem (Join-Path $env:APPDATA 'com.atai.arlesh') -ErrorAction SilentlyContinue
+
+          if ($alive) { Stop-Process -Id $app.Id -Force }
+          if (-not $alive) { throw "Arlesh exited on start (exit code $($app.ExitCode))" }
+          if (-not $answered) { throw 'Arlesh started but its MCP endpoint never answered on 127.0.0.1:4747' }
+          Write-Host 'Arlesh started, stayed up, and its MCP endpoint answered.'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arlesh-${{ needs.meta.outputs.version }}-${{ needs.meta.outputs.sha }}-windows-setup
+          path: ${{ runner.temp }}/bundles/*.exe
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arlesh-${{ needs.meta.outputs.version }}-${{ needs.meta.outputs.sha }}-windows-msi
+          path: ${{ runner.temp }}/bundles/*.msi
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
 
   release:
     name: publish · github release
-    needs: build
+    needs: [meta, build, build-windows]
+    # A dispatch with `publish` off stops at the artifacts.
+    if: github.event_name != 'workflow_dispatch' || inputs.publish
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -161,8 +288,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag || 'latest' }}
-      VERSION: ${{ needs.build.outputs.version }}
-      SHORT_SHA: ${{ needs.build.outputs.sha }}
+      VERSION: ${{ needs.meta.outputs.version }}
+      SHORT_SHA: ${{ needs.meta.outputs.sha }}
     # One publisher per release at a time, so two master pushes never race on
     # `latest`. A queued run that is superseded by a newer one is cancelled,
     # which is fine: the newer one publishes the newer commit.
@@ -172,7 +299,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v5
         with:
-          pattern: arlesh-${{ needs.build.outputs.version }}-${{ needs.build.outputs.sha }}-linux-*
+          pattern: arlesh-${{ needs.meta.outputs.version }}-${{ needs.meta.outputs.sha }}-*
           path: bundles
           merge-multiple: true
 
@@ -182,7 +309,9 @@ jobs:
           cd bundles
 
           if [ "$GITHUB_REF_TYPE" = tag ]; then
-            for f in *; do mv "$f" "${f/-linux-/-$VERSION-linux-}"; done
+            # Arlesh-linux-x86_64.AppImage -> Arlesh-0.3.0-linux-x86_64.AppImage,
+            # and the same for the Windows installers.
+            for f in *; do mv "$f" "$(sed -E "s/-(linux|windows)-/-$VERSION-\1-/" <<<"$f")"; done
             ls -la
             if ! gh release view "$TAG" >/dev/null 2>&1; then
               gh release create "$TAG" --verify-tag \

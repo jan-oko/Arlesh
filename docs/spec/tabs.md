@@ -242,6 +242,17 @@ agreed to and never resets it when the compositor cancels the drag (`data_source
 it, so a drag released over the desktop still ends reporting `"move"` and a tear-off keyed on
 `"none"` never happened — which is what the first manual test showed.
 
+**On Windows the same drag runs through WebView2**, and the workarounds above are harmless there
+rather than needed. The drag session is OLE's: a drag leaving one window is delivered to another
+window's WebView2 like any drag between Edge windows, and Chromium carries a custom type such as
+`application/x-arlesh-tab` between its own windows (and shows it in `types` during `dragover`), so a
+drop on another Arlesh window still arrives as a claim. A drop on the desktop or Explorer is
+accepted by nothing, so it is a tear-off as on Linux. Chromium does report `dropEffect` truthfully,
+but nothing reads it, and the claim-or-timeout rule gives the same answer. The two WebKitGTK facts —
+data must be set for `drop` to fire, and the type must not be `text/plain` — cost nothing under
+Chromium. `dragDropEnabled: false` is the one setting Windows actually needs: with it on, Tauri's
+native drop handler swallows every HTML drop. Pressing Escape mid-drag tears the tab off here too.
+
 **Moving is let-go-then-send.** The source window removes the tab **before** handing it over and
 takes it back only if the hand-over fails, so a tab is never in two windows at once; the first
 build sent first and removed once the send resolved, and a drop on another window left the tab in

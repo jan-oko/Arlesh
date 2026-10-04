@@ -356,3 +356,55 @@ fn closing_back_to_one_window_drops_both_the_number_and_the_tray_list() {
     assert_eq!(window_title("Arlesh", 2, one.len()), "Arlesh");
     assert!(menu_entries("Arlesh", one).is_empty());
 }
+
+fn rect(x: i32, y: i32, width: u32, height: u32) -> WindowRect {
+    WindowRect {
+        x,
+        y,
+        width,
+        height,
+    }
+}
+
+#[test]
+fn a_window_on_screen_saves_where_it_is_now() {
+    let now = rect(10, 20, 800, 600);
+
+    assert_eq!(
+        rect_to_save(Some(now), false, Some(rect(0, 0, 1, 1))),
+        Some(now)
+    );
+}
+
+#[test]
+fn a_minimised_window_keeps_the_rectangle_it_was_saved_with() {
+    let before = rect(10, 20, 800, 600);
+    let parked = rect(-32000, -32000, 0, 0);
+
+    assert_eq!(rect_to_save(Some(parked), true, Some(before)), Some(before));
+}
+
+#[test]
+fn a_reading_with_no_area_keeps_the_saved_rectangle_even_unminimised() {
+    let before = rect(10, 20, 800, 600);
+
+    assert_eq!(
+        rect_to_save(Some(rect(5, 5, 0, 600)), false, Some(before)),
+        Some(before)
+    );
+}
+
+#[test]
+fn a_minimised_window_never_saved_before_has_no_rectangle() {
+    assert_eq!(
+        rect_to_save(Some(rect(-32000, -32000, 0, 0)), true, None),
+        None
+    );
+}
+
+#[test]
+fn an_unreadable_window_keeps_the_saved_rectangle() {
+    let before = rect(10, 20, 800, 600);
+
+    assert_eq!(rect_to_save(None, false, Some(before)), Some(before));
+}

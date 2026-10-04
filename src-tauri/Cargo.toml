@@ -51,6 +51,12 @@ ksni = "0.3.6"
 # inside a window on Wayland, whose title does not follow the window's. See `commands::header_bar`.
 gtk = "0.18"
 
+# Windows' taskbar follows the system's light or dark mode, and a white tray mark on a light one is
+# invisible, so the tray reads `SystemUsesLightTheme` from the registry to pick the mark's ink. Tauri
+# already pulls in this crate on Windows. See `commands::tray`.
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }
 # `test` brings `tauri::test::mock_app`, the only way to obtain a real `tauri::State` — it is a

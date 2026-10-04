@@ -19,6 +19,12 @@
 //! pixels, and a session saved on one scale factor and replayed through logical coordinates lands
 //! somewhere else. Windows are built hidden and shown once placed, so restoring never shows a
 //! window jumping from the default spot to its own.
+//!
+//! **Per platform.** On Windows (and X11) the saved position is honoured as it is: the window
+//! manager lets an app place its own windows, and `set_position` puts each window back where it
+//! was. On Wayland the compositor owns placement — `outer_position` reads `(0, 0)` and
+//! `set_position` is ignored — so there only the size comes back and the compositor places the
+//! window. The same code serves both; nothing here branches on the platform.
 
 use tauri::{AppHandle, Manager, Runtime, WebviewWindow, WebviewWindowBuilder};
 
@@ -189,7 +195,8 @@ fn open_labels<R: Runtime>(app: &AppHandle<R>, session: &WindowSession) -> Vec<S
 ///
 /// Called whenever that could have changed: a window hidden to the tray, one closed for good, and
 /// the moment before a quit. Reading geometry is cheap and these are all user gestures, so there
-/// is nothing to debounce.
+/// is nothing to debounce. A minimised window keeps the rectangle it was saved with, because
+/// Windows reports a minimised one off screen at no size — see [`windows::rect_to_save`].
 pub fn snapshot<R: Runtime>(app: &AppHandle<R>) {
     let Some(store) = app.try_state::<SessionStore>() else {
         return;
@@ -200,9 +207,17 @@ pub fn snapshot<R: Runtime>(app: &AppHandle<R>) {
         .filter_map(|label| {
             let window = app.get_webview_window(&label)?;
             let ordinal = ordinal_of(app, &label);
+            // Unreadable reads as not minimised: the live rectangle is then used if it has an
+            // area, which is what this did before minimised windows were told apart.
+            let minimised = window.is_minimized().unwrap_or(false);
+            let previous = session
+                .windows
+                .iter()
+                .find(|saved| saved.label == label)
+                .and_then(|saved| saved.rect);
             Some(WindowRecord {
+                rect: windows::rect_to_save(rect_of(&window), minimised, previous),
                 label,
-                rect: rect_of(&window),
                 ordinal,
             })
         })
