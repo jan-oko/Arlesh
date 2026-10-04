@@ -62,7 +62,7 @@ pub async fn step_task_status(
         status: Some(next),
         ..UpdateTaskRequest::default()
     };
-    let task = write_task_guarded(&mut db, &id, request, confirmed, now).await?;
+    let task = write_task_guarded(&mut db, &id, request, (confirmed, None), now).await?;
     db.commit().await.map_err(WireError::from_error)?;
     let backlog_cleared = gestures::backlog_cleared(before.archival, task.archival, next);
     Ok(StatusStepOutcome::Written {

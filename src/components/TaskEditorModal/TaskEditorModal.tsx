@@ -27,6 +27,11 @@ import ShortIdField from "./ShortIdField";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import OnScopeExitField from "@/components/ScopePicker/OnScopeExitField";
 import PlanField from "@/components/ScopePicker/PlanField";
+import { usePlanClamp } from "@/hooks/use-plan-clamp";
+import type { PlanClampAnswer } from "@/hooks/use-plan-clamp";
+import type { DescendantPlans } from "@/api/tasks";
+import { sameScopeKey } from "@/utils/scope-key";
+import type { InheritedPlan } from "@/components/ScopePicker/PlanField";
 import DueField from "@/components/ScopePicker/DueField";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import Switch from "@/components/Switch/Switch";
@@ -42,6 +47,15 @@ import AnswerField from "@/components/AnswerField/AnswerField";
 import { isOverdue } from "@/utils/overdue";
 import { blockedByText } from "@/utils/blocked-by";
 
+/** A save that leaves the Plan as it was has nothing below it to settle. */
+const NOTHING_TO_SETTLE: PlanClampAnswer = { proceed: true, descendants: null };
+
+/** Whether two Plans name the same window. */
+function sameTimeScope(a: TimeScope | null, b: TimeScope | null): boolean {
+  if (a === null || b === null) return a === b;
+  return sameScopeKey(a.start_id, b.start_id) && sameScopeKey(a.end_id, b.end_id);
+}
+
 export interface TaskSaveData {
   title: string;
   /** In the model of the kind the form leaves the Task: the backend converts it when the same save
@@ -54,6 +68,9 @@ export interface TaskSaveData {
   timeScope: TimeScope | null;
   onScopeExit: OnScopeExit | null;
   plan: TimeScope | null;
+  /** What becomes of the Tasks below whose own Plan the new `plan` leaves outside — the answer to
+   * the clamp-or-cancel prompt — or `null` when there are none. */
+  descendantPlans?: DescendantPlans | null;
   /** The task's own explicit due, `null` for the default. Absent when the form has no Due field —
    * a Habit occurrence's or a wait's check task's — so the save says nothing about it. */
   dueScope?: TimeScope | null;
@@ -160,6 +177,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const dbId = rowIdOf(node);
+  const askPlanClamp = usePlanClamp();
 
   // Where the editor opens: on the title, or — from `Shift+W` — on the Expectation section.
   useEffect(() => {
@@ -218,6 +236,14 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         setIsSaving(false);
         return;
       }
+      // A new Plan that Tasks below hold their own Plans inside asks first, as a narrower window
+      // does; what the user chose rides the save, so it is one write and one Ctrl+Z.
+      const planChanged = !sameTimeScope(plan, node.plan ?? null);
+      const clamp = planChanged ? await askPlanClamp([{ id: dbId, plan }]) : NOTHING_TO_SETTLE;
+      if (!clamp.proceed) {
+        setIsSaving(false);
+        return;
+      }
       // One Gesture, all or nothing: the update, the block reasons, the tags and the dependencies
       // are several commands but one thing the user filled in, so they are one
       // Ctrl+Z — and a refusal partway takes back the ones that landed rather than leaving a form
@@ -228,6 +254,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           tagIds, addedDeps, removedDeps, timeScope,
           onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
           plan,
+          descendantPlans: clamp.descendants,
           ...(hasDueField ? { dueScope } : {}),
           archival: savedArchival(isArchivedByHand, isBacklogged),
           agentic,
@@ -292,6 +319,10 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   // here wins over it.
   const occurrence = isOccurrence(node);
   const inheritedScope = node.inheritedTimeScope ?? null;
+  // The Plan it inherits, and where from — the planned node's short id, else its node id.
+  const inheritedPlan: InheritedPlan | null = node.planSource === undefined
+    ? null
+    : { plan: node.inheritedPlan ?? null, source: node.planSource.shortId ?? node.planSource.nodeId };
   const hasDueField = checkOrigin(node.origin) === undefined
     && (occurrence || timeScope !== null || inheritedScope === null || dueScope !== null);
   const dueDefaultLabel = occurrence
@@ -387,6 +418,8 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         <PlanField
           value={plan}
           timeScope={isOverdue(node) && !isDone(status) ? null : timeScope}
+          inherited={inheritedPlan}
+          conflict={node.planConflict ?? null}
           onChange={setPlanAndClearBacklog}
         />
       </div>

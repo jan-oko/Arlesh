@@ -25,7 +25,7 @@ import type { FilterState } from "@/utils/filter-tree";
 import { PLAN_VIEW_STATUS_MODE } from "@/utils/filter-tree";
 import type { TaskListRow } from "@/utils/list-filter";
 import { DEFAULT_LIST_FILTER, filterTaskList } from "@/utils/list-filter";
-import { partitionForScope, referencedScopeIds } from "@/utils/plan-triage";
+import { effectivePlan, partitionForScope, referencedScopeIds } from "@/utils/plan-triage";
 import { scopeKeyText } from "@/utils/scope-key";
 import { buildPlanSections } from "@/utils/plan-sections";
 import type { PlanSection } from "@/utils/plan-sections";
@@ -162,8 +162,8 @@ export default function PlanView() {
     if (!subscopeSplit || targetScopeId === null) return [];
     const ids = [targetScopeId];
     for (const row of panes.planned) {
-      const plan = row.node.plan;
-      if (plan != null) ids.push(plan.start_id, plan.end_id);
+      const plan = effectivePlan(row);
+      if (plan !== null) ids.push(plan.start_id, plan.end_id);
     }
     return ids;
   }, [subscopeSplit, targetScopeId, panes.planned]);

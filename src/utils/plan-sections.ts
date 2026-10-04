@@ -8,6 +8,7 @@
 // business, and an interval built here from a date would bake in an answer this file has no
 // business knowing. Dates are dates under either convention.
 
+import { effectivePlan } from "@/utils/plan-triage";
 import type { Scope, ScopeKind } from "@/api/scopes";
 import { scopeKeyText, type ScopeKeyText } from "@/utils/scope-key";
 import type { TaskListRow } from "@/utils/list-filter";
@@ -169,7 +170,8 @@ export function buildPlanSections(
 
   const unplaced: TaskListRow[] = [];
   for (const row of planned) {
-    const plan = row.node.plan;
+    // Bucketed by the Plan it reads, inherited or its own.
+    const plan = effectivePlan(row);
     const start = plan == null ? undefined : scopes.get(scopeKeyText(plan.start_id));
     const end = plan == null ? undefined : scopes.get(scopeKeyText(plan.end_id));
     const index = start === undefined || end === undefined

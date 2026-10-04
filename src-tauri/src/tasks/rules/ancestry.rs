@@ -277,7 +277,7 @@ impl AncestryChain {
     /// **Traverses commitments only: anything else ends the search**, and ends it definitively.
     /// Only a Commitment has the column, and a Commitment's parent chain leaves the kind as soon
     /// as it reaches a task, a goal or a container — so a broken reference above that point is
-    /// never consulted, exactly as [`Self::nearest_planned`] ignores one above a goal.
+    /// never consulted.
     ///
     /// Pure. No database, no `async`.
     pub(in crate::tasks) fn nearest_verdict_window(&self) -> Search<&DurationSpec> {
@@ -300,30 +300,20 @@ impl AncestryChain {
 
     /// The nearest link carrying a Plan.
     ///
-    /// **Traverses tasks only: a goal ends the search**, and ends it *definitively*. Plans nest
-    /// within plans, and only tasks have one, so a goal is where the plan chain stops — whatever
-    /// lies above it, a broken reference included, is never consulted. That is why a chain that
-    /// broke on a **goal** still answers [`Search::Unconstrained`] here while
-    /// [`Self::nearest_scoped`] answers [`Search::Undetermined`] for the same chain: the scope
-    /// walk needed that goal and the plan walk did not.
+    /// **Climbs through every kind** (`docs/spec/time-scopes.md`, *Plan inheritance*): a Goal or a
+    /// Commitment carries no Plan of its own and passes the one above it down, so the search runs
+    /// on past it. Only a Task carries one. A chain that broke before any Plan was found cannot say
+    /// what was above the break, so it answers [`Search::Undetermined`], as
+    /// [`Self::nearest_scoped`] does.
     ///
     /// Pure. No database, no `async`.
     pub(in crate::tasks) fn nearest_planned(&self) -> Search<&TimeScope> {
         for link in &self.links {
-            if link.kind != NodeKind::Task {
-                return Search::Unconstrained;
-            }
             if let Some(plan) = &link.plan {
                 return Search::Found(plan);
             }
         }
-        match self.end {
-            ChainEnd::Broken {
-                kind: NodeKind::Task,
-                ..
-            } => self.exhausted(),
-            ChainEnd::Broken { .. } | ChainEnd::Root => Search::Unconstrained,
-        }
+        self.exhausted()
     }
 }
 

@@ -33,8 +33,6 @@ vi.mock("./use-node-editor", () => ({
     onFlowItemSave: vi.fn(),
     checkScopeClamp: vi.fn(),
     confirmScopeClamp: vi.fn(),
-    scopeClampRequest: null,
-    resolveScopeClamp: vi.fn(),
   }),
 }));
 vi.mock("react-i18next", () => ({

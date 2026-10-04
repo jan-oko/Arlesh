@@ -22,6 +22,7 @@ mod compound;
 mod due_scope;
 mod expectations;
 mod hand_archive;
+mod plan_inheritance;
 mod plan_overdue;
 mod tasks;
 mod wait_rows;

@@ -31,12 +31,13 @@ import {
   addTagToTask,
   removeTagFromTask,
   updateTask,
+  updateTaskSettlingPlans,
   setTaskDoneAt,
   addTaskDependency,
   removeTaskDependency,
   scopeContainmentConflicts,
 } from "@/api/tasks";
-import type { ViolatingDescendant } from "@/api/tasks";
+import type { UpdateTaskRequest, ViolatingDescendant } from "@/api/tasks";
 import { TASK_ARCHIVAL } from "@/api/tasks";
 import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
 import { addTagToCommitment, removeTagFromCommitment, updateCommitment, COMMITMENT_ARCHIVAL } from "@/api/commitments";
@@ -46,6 +47,7 @@ import { rowIdOf } from "@/utils/node-identity";
 import { DOMAIN_SUBTYPE } from "@/api/domains";
 import { isBegun, storedStatus } from "@/utils/status-mapping";
 import { useAnswerQuestion } from "@/hooks/use-answer-question";
+import { useScopeClampStore } from "@/stores/use-scope-clamp-store";
 
 /** A flow item's id on the fork an "Archive & new" save landed on — or its own, with no fork. */
 function forkedItemId(forked: ForkedTemplate | null, type: FlowItemType, id: number): number {
@@ -59,14 +61,6 @@ export interface EditorModalState {
   node: MindmapNode;
   /** Opens a Task's editor at its Expectation section, Asynchronous switched on — `Shift+W`. */
   focus?: "asyncTemplate";
-}
-
-/** A pending clamp-or-cancel prompt: the descendants a narrowed scope would orphan. */
-export interface ScopeClampRequest {
-  conflicts: ViolatingDescendant[];
-  /** `"type-id"` → originating flow title, for descendants materialized from a flow. */
-  flowOrigins: Record<string, string>;
-  resolve: (proceed: boolean) => void;
 }
 
 /** Clamps every conflicting descendant's Time Scope to `window` before the parent narrows. */
@@ -116,10 +110,9 @@ export interface NodeEditorHandles {
   onFlowItemSave: (data: FlowItemSaveData) => Promise<void>;
   /** Prompts to clamp orphaned descendants; resolves true to proceed, false to abort. */
   checkScopeClamp: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
-  /** Opens the clamp prompt for an already-computed conflict set (e.g. from a drag reparent). */
+  /** Opens the clamp prompt for an already-computed conflict set (e.g. from a drag reparent). The
+   * prompt itself is `ScopeClampPrompt`, mounted at the root, so every view gets it. */
   confirmScopeClamp: (conflicts: ViolatingDescendant[]) => Promise<boolean>;
-  scopeClampRequest: ScopeClampRequest | null;
-  resolveScopeClamp: (proceed: boolean) => void;
 }
 
 export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): NodeEditorHandles {
@@ -129,20 +122,13 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   const [editorModal, setEditorModal] = useState<EditorModalState | null>(null);
   const [allTags, setAllTags] = useState<Domain[]>([]);
   const [domainNames, setDomainNames] = useState<Map<number, string>>(new Map());
-  const [scopeClampRequest, setScopeClampRequest] = useState<ScopeClampRequest | null>(null);
+  const askScopeClamp = useScopeClampStore((s) => s.ask);
 
   // One load gives both the tags and the parent-domain titles used to section the tag picker.
   useEffect(() => {
     void listDomains().then((all) => {
       setAllTags(all.filter((d) => d.subtype === DOMAIN_SUBTYPE.TAG));
       setDomainNames(new Map(all.map((d) => [d.id, d.title])));
-    });
-  }, []);
-
-  const resolveScopeClamp = useCallback((proceed: boolean) => {
-    setScopeClampRequest((request) => {
-      request?.resolve(proceed);
-      return null;
     });
   }, []);
 
@@ -157,11 +143,9 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       for (const origin of origins) {
         flowOriginMap[`${origin.node_type}-${origin.node_id}`] = origin.flow_title;
       }
-      return new Promise<boolean>((resolve) =>
-        setScopeClampRequest({ conflicts, flowOrigins: flowOriginMap, resolve }),
-      );
+      return askScopeClamp(conflicts, flowOriginMap);
     },
-    [],
+    [askScopeClamp],
   );
 
   // Returns true if the save may proceed: no orphaned descendants, or the user chose to clamp them.
@@ -201,7 +185,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       }
       // A task that consists of its sub-items and still does has no status to save: it is derived.
       const keepsDerived = node.compound === true && data.compound;
-      await updateTask(dbId, {
+      const request: UpdateTaskRequest = {
         title: data.title,
         // Review is derived: the row holds On Agent, and that is what an unchanged save sends.
         ...(keepsDerived ? {} : { status: storedStatus(data.status) }),
@@ -217,7 +201,11 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         agentic_brief: data.agenticBrief,
         is_private: data.isPrivate,
         ...(data.delegate !== undefined ? { delegate_to: data.delegate } : {}),
-      });
+      };
+      // Tasks below a new Plan are settled in the same write, as the clamp prompt was answered.
+      const settle = data.descendantPlans ?? null;
+      if (settle === null) await updateTask(dbId, request);
+      else await updateTaskSettlingPlans(dbId, request, settle);
       // After the update, which is what makes a task newly marked Done Done at all.
       if (data.doneAt !== undefined) await setTaskDoneAt(dbId, data.doneAt);
       // Scheduling a set-aside task puts it back in play, and so does starting one. The editor
@@ -475,6 +463,6 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
     editorModal, setEditorModal, allTags, domainNames, availableForDep, onDoubleClick,
     onTaskSave, onAnswer, onGoalSave, onCommitmentSave, onExpectationSave, onSimpleSave, onProjectSave, onInfoSave,
     onFlowSave, onFlowItemSave,
-    checkScopeClamp, confirmScopeClamp, scopeClampRequest, resolveScopeClamp,
+    checkScopeClamp, confirmScopeClamp,
   };
 }

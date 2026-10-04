@@ -216,12 +216,14 @@ pub fn forest(load: &MindmapLoad) -> Vec<FactNode> {
         node.has_todo_child = todo_parents.contains(&node.id);
         node.asynchronous = task.asynchronous;
         node.compound = task.compound;
-        node.planned = task.plan.is_some();
         node.dependencies = dependencies.get(&task.id).cloned().unwrap_or_default();
         apply_lifecycle(
             &mut node,
             lifecycles.get(&("task", task.id.clone())).copied(),
         );
+        // Planned by its effective Plan: its own, or one it inherits — whose position the
+        // lifecycle carries.
+        node.planned = task.plan.is_some() || node.plan_timing.is_some();
         facts.push(node);
         parents.push(Some(content_parent_id(&task.parent_type, &task.parent_id)));
     }

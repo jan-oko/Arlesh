@@ -56,6 +56,8 @@ vi.mock("@/api/tasks", async (importOriginal) => ({
   addTaskDependency: (id: number, dependency: unknown) => addTaskDependency(id, dependency),
   listAllTaskDependencies: () => listAllTaskDependencies(),
   fetchDependencyCandidates: (id: number) => fetchDependencyCandidates(id),
+  // Nothing below the cards holds a Plan of its own, so the clamp prompt has nothing to ask.
+  planContainmentConflicts: () => Promise.resolve([]),
 }));
 
 /** A fixture node; it draws the row its id names (`task-12` is row 12), unless it is virtual. */

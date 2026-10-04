@@ -1,0 +1,1 @@
+- **Narrowing a Time Scope from the List View or the Plan View no longer hangs.** When narrowing a window would leave nested items outside it, the prompt to clamp them or cancel now appears in every view. Before, only the Mindmap showed it, so the same save from the List View or the Plan View waited forever.

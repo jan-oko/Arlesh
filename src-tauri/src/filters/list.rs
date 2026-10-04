@@ -7,7 +7,7 @@
 
 use std::{borrow::Cow, collections::BTreeSet};
 
-use crate::tasks::{lifecycle::Timing, model::TimeScope};
+use crate::tasks::model::TimeScope;
 
 use super::{
     model::{BoardFilter, NodeFacts, NodeKind, Preset, RowKind},
@@ -42,21 +42,6 @@ impl<'a> Row<'a> {
     /// even when the row itself is not flagged.
     fn has_private_ancestor(&self) -> bool {
         self.ancestors.iter().any(|a| a.is_private)
-    }
-
-    /// The nearest ancestor's own Plan position — what an unplanned row inherits under Start
-    /// (see [`rules::is_planned_ahead`]). Only a Task carries one, and a wait cuts the chain: a
-    /// check task answers to its own due time, not to the Plan of the Task its wait hangs under.
-    fn inherited_plan(&self) -> Option<Timing> {
-        for ancestor in self.ancestors.iter().rev() {
-            if ancestor.kind == NodeKind::Expectation {
-                return None;
-            }
-            if ancestor.plan_timing.is_some() {
-                return ancestor.plan_timing;
-            }
-        }
-        None
     }
 
     /// The nearest scoped ancestor's Time Scope — what an unscoped row inherits for the Plan
@@ -155,7 +140,7 @@ fn passes_row_preset(row: Row<'_>, filter: &BoardFilter) -> bool {
     if rules::is_held_by_block(row.node, &row.block_gate(filter), filter) {
         return false;
     }
-    if rules::is_planned_ahead(row.node, filter, row.inherited_plan()) {
+    if rules::is_planned_ahead(row.node, filter) {
         return false;
     }
     if rules::is_outside_plan_scope(row.node, filter, row.inherited_time_scope()) {

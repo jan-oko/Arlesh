@@ -26,6 +26,8 @@ fn row(id: &str) -> PlanRow {
         stored: true,
         time_scope: None,
         plan: None,
+        inherited_plan: None,
+        empty_plan: false,
         overdue: false,
         ancestors: Vec::new(),
     }
@@ -97,21 +99,27 @@ fn a_move_out_of_the_own_window_is_refused_unless_the_task_is_overdue() {
 }
 
 #[test]
-fn a_move_out_of_the_parents_plan_is_refused_and_a_wait_cuts_the_chain() {
+fn a_move_out_of_the_plan_it_inherits_is_refused() {
     let mut task = row("t");
-    task.ancestors = vec![PlanAncestor {
-        is_wait: false,
-        time_scope: None,
-        plan: Some(on(week("2026-09-14"))),
-    }];
-    let next_week = week("2026-09-21").bounds();
-    assert_eq!(task.refusal(next_week), Some(PlanRefusal::ParentPlan));
-    task.ancestors.push(PlanAncestor {
-        is_wait: true,
-        time_scope: None,
-        plan: None,
-    });
-    assert_eq!(task.refusal(next_week), None, "a check task under a wait");
+    task.inherited_plan = Some(on(week("2026-09-14")));
+    assert_eq!(
+        task.refusal(week("2026-09-21").bounds()),
+        Some(PlanRefusal::ParentPlan)
+    );
+    assert_eq!(task.refusal(week("2026-09-14").bounds()), None);
+}
+
+#[test]
+fn a_row_inheriting_a_plan_is_placed_by_it_and_one_inheriting_nothing_is_in_no_heap() {
+    let mut inherits = row("inherits");
+    inherits.inherited_plan = Some(on(week("2026-09-14")));
+    let mut empty = row("empty");
+    empty.empty_plan = true;
+    let rows = [inherits, empty];
+    let month = ScopeKey::containing(ScopeKind::Month, date("2026-09-01")).unwrap();
+    let panes = triage(&rows, month.bounds(), None);
+    assert_eq!(ids(&panes.planned), vec!["inherits".to_string()]);
+    assert!(panes.unplanned.is_empty());
 }
 
 #[test]

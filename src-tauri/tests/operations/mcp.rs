@@ -38,7 +38,17 @@ fn unstamped(value: &serde_json::Value) -> serde_json::Value {
         serde_json::Value::Object(fields) => serde_json::Value::Object(
             fields
                 .iter()
-                .filter(|(key, _)| !matches!(key.as_str(), "short_id" | "full_id"))
+                // Stamped by the MCP alone: a node's ids, and a Task's effective Plan beside its own.
+                .filter(|(key, _)| {
+                    !matches!(
+                        key.as_str(),
+                        "short_id"
+                            | "full_id"
+                            | "effective_plan"
+                            | "plan_inherited_from"
+                            | "plan_conflict"
+                    )
+                })
                 .map(|(key, value)| (key.clone(), unstamped(value)))
                 .collect(),
         ),
@@ -471,6 +481,11 @@ async fn tasks_get_returns_what_the_command_returns() {
     assert!(got["task"]["short_id"]
         .as_str()
         .is_some_and(|short| short.len() >= 3));
+    // Own and effective Plan both travel: an unplanned Task reads none.
+    assert_eq!(got["task"]["effective_plan"], serde_json::Value::Null);
+    assert!(got["task"]
+        .as_object()
+        .is_some_and(|task| task.contains_key("effective_plan")));
     assert_eq!(
         got["task"]["full_id"],
         arlesh_lib::nodes::id::uuid_v5(
