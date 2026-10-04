@@ -231,7 +231,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
   </div>
   <div class="graph-wrap">
     <div class="diagram graph-scroll">
-      <svg id="dgraph" viewBox="0 0 1260 690" role="group" aria-label="Derivation graph: each derived state with arrows from the facts it is computed from."></svg>
+      <svg id="dgraph" viewBox="0 0 1260 724" role="group" aria-label="Derivation graph: each derived state with arrows from the facts it is computed from."></svg>
     </div>
     <div class="hint" id="dhint" aria-live="polite">
       <p class="hint-title">Pick a box</p>
@@ -367,10 +367,10 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dt>Without</dt><dd>Old work hangs on with no verdict, and clocks have nothing to count from.</dd>
       <dt>Lives</dt><dd class="where">tasks/rules/lifecycle.rs · flows/occurrences.rs (resolutions)</dd></dl></article>
     <article class="card"><h3>Archival and Backlog</h3>
-      <p class="is">Live, Backlog, Frozen or Archived. Set by hand (a Goal or Project's status, a Task's Backlog) or derived: a settled window archives, and a delegated Task reads as archived.</p>
-      <dl><dt>Why</dt><dd>"Set aside" and "finished" are different questions; a backlogged Task keeps its real status.</dd>
-      <dt>Without</dt><dd>Statuses multiply ("done-ish", "paused-forever") and every filter has to know them all.</dd>
-      <dt>Lives</dt><dd class="where">tasks/rules/lifecycle.rs · filters/facts.rs</dd></dl></article>
+      <p class="is">Live, Backlog, Frozen or Archived. Set by hand (a Goal or Project's status; a Task's stored Archival, Live, Backlog or Archived; a Commitment's or wait's own archive), inherited (everything beneath a Task or Commitment archived by hand), or derived: a settled window archives, and so does a released wait whose window has passed. Delegation is not archival: it has its own pill.</p>
+      <dl><dt>Why</dt><dd>"Set aside" and "finished" are different questions; a backlogged Task keeps its real status. Putting a branch away is one write, and taking it back restores it exactly.</dd>
+      <dt>Without</dt><dd>Statuses multiply ("done-ish", "paused-forever"), every filter has to know them all, and archiving a project means archiving every step in it.</dd>
+      <dt>Lives</dt><dd class="where">tasks/rules/lifecycle.rs · tasks/rules/archival.rs · filters/facts.rs</dd></dl></article>
     <article class="card"><h3>Commitment verdicts</h3>
       <p class="is">A Commitment is judged, not done: Kept, Broken or still Unresolved. Its Verdict Window bounds how long the answer stays owed; past it, it Expires.</p>
       <dl><dt>Why</dt><dd>A rule like "phone off by 23:00" is kept or broken, and an unanswered night may well have been kept.</dd>
@@ -519,9 +519,9 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["exit", "On scope exit", 0, 2, "in", "Keep Overdue or Archive: what happens to unfinished work once its window passes. Inherited with the window.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],
     ["duex", "Explicit due", 0, 3, "in", "A due set on the Task itself. It always wins over the default.", "time-scopes.md#due-scope-and-the-overdue-flag"],
     ["plan", "Plan", 0, 4, "in", "The slot the Task is scheduled into, inside its window. Tasks only.", "time-scopes.md#plan-scheduling"],
-    ["backlog", "Backlog flag", 0, 5, "in", "A Task deliberately set aside. Stored as its Archival, beside its real status.", "resources.md#tasks"],
+    ["backlog", "Stored archival", 0, 5, "in", "A Task's stored Archival (Live, Backlog, or Archived by hand: one value), a Commitment's hand archive, a wait's archive. Stored beside the real status.", "resources.md#archive"],
     ["gstatus", "Goal / Project status", 0, 6, "in", "Frozen or Archived set by hand on a Goal or Project.", "resources.md#goals"],
-    ["delegate", "Delegate", 0, 7, "in", "The Person a Task is handed to. It has every effect of archival in the presets.", "resources.md#tasks"],
+    ["delegate", "Delegate", 0, 7, "in", "The Person a Task is handed to. Not archival: the Delegated pill decides where a delegated Task shows.", "resources.md#tasks"],
     ["status", "Status", 0, 8, "in", "Where the work stands, in the ordinary model (To Do, In Progress, Started, Done) or the Agentic one (To Do, On Agent, Doing, Done). Dashed arrows from here read a dependency target's status.", "resources.md#tasks"],
     ["subs", "Compound, sub-items", 0, 9, "in", "Whether a Task is Compound, and the items beneath it: Tasks, Goals, waits and Commitments in its whole subtree.", "resources.md#tasks"],
     ["aflag", "Agentic flag (own)", 0, 10, "in", "Yes, No or unset on the Task itself. Unset reads the nearest flagged ancestor.", "link-inheritance.md"],
@@ -533,6 +533,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["reasons", "Block reasons", 0, 16, "in", "Reasons written on a Task or Goal by hand.", "resources.md#tasks"],
     ["deps", "Dependencies", 0, 17, "in", "Edges from a Task to the Tasks, Goals and stored waits it depends on.", "resources.md#tasks"],
     ["pill", "On Agent pill", 0, 18, "in", "A filter switch, per tab, asking Start, Do and Zen to show work an agent holds.", "filtering-logic.md"],
+    ["dpill", "Delegated pill", 0, 19, "in", "A tri-state filter pill, per tab: off drops delegated Tasks under Plan and Start, Include keeps them, Exclude hides them everywhere.", "filtering-logic.md#delegated-pill"],
 
     ["timing", "Timing", 1, 0.5, "dv", "Pending before the window, Active in it, Lapsed after it. Unscoped is always Active.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],
     ["due", "Effective due", 1, 3, "dv", "The window whose end makes work late: the explicit due; otherwise none while backlogged; otherwise the window under Keep Overdue and none under Archive. A Habit occurrence's default comes from its clock.", "time-scopes.md#due-scope-and-the-overdue-flag"],
@@ -545,7 +546,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["review", "Review", 2, 11, "dv", "An On Agent Task with an open agent question beneath it. Never stored; answering returns it to On Agent.", "resources.md#agentic-statuses"],
     ["capblock", "Capacity block", 2, 12.3, "dv", "While the lock is on, every Task that reads as Agentic and is not Done carries the derived reason Agents at capacity.", "mcp-server.md#agent-capacity"],
 
-    ["archived", "Archived", 3, 6, "dv", "What the presets treat as archived: effective Archival is Archived (forced by a Completed or Missed Resolution, a Missed Habit iteration, a settled or Expired Commitment, or set by hand), or the Task is delegated. Delegation is not the Archival axis itself, so it does not stop Overdue.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],
+    ["archived", "Archived", 3, 6, "dv", "What the presets treat as archived: effective Archival is Archived (forced by a Completed or Missed Resolution, a Missed Habit iteration, a settled or Expired Commitment, a released wait whose window has passed, or set by hand), or an ancestor Task or Commitment was archived by hand, which its whole subtree inherits. Delegation is not archival.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],
     ["compblock", "Compound block", 3, 9.6, "dv", "A Compound Task is blocked when every one of its open counted items is blocked. A pending wait or an Unresolved Commitment keeps it unblocked.", "resources.md#tasks"],
     ["iter", "Habit iteration", 3, 12.6, "dv", "Whether an iteration resolved (every template occurrence settled: a Task or Goal done, a compound one by its derived status, a Commitment item given a verdict, a wait item released) and, if not, what the clock makes it: Lapsed, Missed and carried, Owed, or Interval-open. It also sets an occurrence's default due.", "habits.md"],
     ["cooldown", "Cooldown block", 3, 14.4, "dv", "After an iteration is done, the next one is blocked until the cooldown passes; under Owed, every open iteration. It counts from the latest done instant.", "habits.md#cooldown"],
@@ -553,8 +554,8 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["overdue", "Overdue", 4, 3.6, "dv", "Unfinished, not effectively archived, and now is past the end of the effective due. Shown as an amber border.", "time-scopes.md#due-scope-and-the-overdue-flag"],
     ["blocked", "Blocked", 4, 13.6, "dv", "Any reason at all: one written by hand, a dependency whose target is not Done, Achieved or Released, or a derived block (capacity, cooldown, compound). Blocks gate starting; they never change a status.", "resources.md#tasks"],
 
-    ["pplan", "Plan preset", 5, 4.5, "rd", "Hides done Tasks, archived items and backlogged Tasks.", "filtering-logic.md"],
-    ["start", "Start preset", 5, 8, "rd", "What can be begun now: drops blocked subtrees, Pending and Lapsed windows unless Overdue, delegated and backlogged work, Plans still ahead, and On Agent work unless the pill asks. Always keeps Review.", "filtering-logic.md"],
+    ["pplan", "Plan preset", 5, 4.5, "rd", "Hides done Tasks, archived items, backlogged Tasks, and delegated Tasks unless the Delegated pill includes them.", "filtering-logic.md"],
+    ["start", "Start preset", 5, 8, "rd", "What can be begun now: drops blocked subtrees, Pending and Lapsed windows unless Overdue, backlogged work, delegated work unless the Delegated pill includes it, Plans still ahead, and On Agent work unless the pill asks. Always keeps Review.", "filtering-logic.md"],
     ["pdo", "Do preset / Zen", 5, 11.5, "rd", "What is under way: In Progress and Doing, Review always, Started and On Agent only when their switches ask.", "zen-view.md"],
     ["pbacklog", "Backlog preset", 5, 15, "rd", "Only what was deliberately set aside, together with everything beneath it. The inverse of the other presets.", "filtering-logic.md"],
   ];
@@ -570,7 +571,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["subs", "compound"], ["archived", "compound", true],
     ["agentic", "review"], ["status", "review"], ["question", "review"],
     ["lock", "capblock"], ["agentic", "capblock"], ["status", "capblock"],
-    ["backlog", "archived"], ["gstatus", "archived"], ["delegate", "archived"], ["resolution", "archived"],
+    ["backlog", "archived"], ["gstatus", "archived"], ["status", "archived"], ["resolution", "archived"],
     ["expired", "archived"], ["verdict", "archived"], ["timing", "archived"], ["iter", "archived"],
     ["compound", "compblock"], ["blocked", "compblock", true],
     ["status", "iter"], ["verdict", "iter"], ["compound", "iter"], ["clock", "iter"], ["now", "iter"],
@@ -578,9 +579,10 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["due", "overdue"], ["status", "overdue"], ["archived", "overdue"], ["now", "overdue"],
     ["reasons", "blocked"], ["deps", "blocked"], ["status", "blocked", true],
     ["capblock", "blocked"], ["cooldown", "blocked"], ["compblock", "blocked"],
-    ["status", "pplan"], ["archived", "pplan"], ["backlog", "pplan"],
+    ["status", "pplan"], ["archived", "pplan"], ["backlog", "pplan"], ["delegate", "pplan"], ["dpill", "pplan"],
     ["timing", "start"], ["overdue", "start"], ["archived", "start"], ["blocked", "start"], ["planpos", "start"],
     ["status", "start"], ["review", "start"], ["agentic", "start"], ["pill", "start"], ["backlog", "start"],
+    ["delegate", "start"], ["dpill", "start"],
     ["status", "pdo"], ["review", "pdo"], ["agentic", "pdo"], ["pill", "pdo"],
     ["backlog", "pbacklog"],
   ];

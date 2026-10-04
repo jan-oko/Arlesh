@@ -5,6 +5,8 @@
 
 use crate::scopes::db::DbScopeKey;
 
+use super::rules::instance_copies::InstanceNode;
+
 use super::model::{
     FirstCheck, Flow, FlowCommitment, FlowDependency, FlowExpectation, FlowGoal, FlowItemCycle,
     FlowRecurrence, FlowTask, HabitInstanceChild, HabitItemStatus, TargetRef,
@@ -332,6 +334,39 @@ impl From<HabitInstanceChildRow> for HabitInstanceChild {
             parent_key: row.parent_key,
             child_type: row.child_type,
             child_id: row.child_id,
+        }
+    }
+}
+
+/// One `flow_instance_nodes` row joined to its `flow_instances` run, as
+/// [`super::copy_instance_links`] reads it.
+#[derive(sqlx::FromRow)]
+pub(crate) struct InstanceNodeRow {
+    flow_instance_id: i64,
+    flow_id: Option<i64>,
+    root_type: String,
+    root_id: i64,
+    started_at: i64,
+    node_type: String,
+    node_id: i64,
+    source_item_type: String,
+    source_item_id: i64,
+    original_parent_type: String,
+    original_parent_id: i64,
+}
+
+impl InstanceNodeRow {
+    /// The row as the rule reads it.
+    pub(crate) fn node(self) -> InstanceNode {
+        let reference = |node_type, node_id| TargetRef { node_type, node_id };
+        InstanceNode {
+            instance_id: self.flow_instance_id,
+            flow_id: self.flow_id,
+            root: reference(self.root_type, self.root_id),
+            started_at: self.started_at,
+            node: reference(self.node_type, self.node_id),
+            source: reference(self.source_item_type, self.source_item_id),
+            original_parent: reference(self.original_parent_type, self.original_parent_id),
         }
     }
 }

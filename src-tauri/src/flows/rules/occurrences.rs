@@ -56,9 +56,9 @@ use crate::{
             Resolution, Timing,
         },
         model::{
-            Commitment, Delegate, DurationSpec, Expectation, ExpectationArchival,
-            ExpectationStatus, Goal, OnScopeExit, Status, Task, TaskArchival, TaskDependencyEdge,
-            TimeScope, Verdict,
+            Commitment, CommitmentArchival, Delegate, DurationSpec, Expectation,
+            ExpectationArchival, ExpectationStatus, Goal, OnScopeExit, Status, Task, TaskArchival,
+            TaskDependencyEdge, TimeScope, Verdict,
         },
         rules::agentic::AgenticIndex,
     },
@@ -1267,7 +1267,14 @@ pub(in crate::flows) fn commitment_item_row(
         .and_then(Verdict::from_db)
         .unwrap_or(Verdict::Unresolved);
     let window = occurrence.time_scope.as_ref().map(TimeScope::window);
-    let state = derive_commitment_state(window, verdict, effective.as_ref(), now);
+    // An occurrence has no archive of its own: it is archived through its tombstone.
+    let state = derive_commitment_state(
+        window,
+        verdict,
+        effective.as_ref(),
+        CommitmentArchival::Live,
+        now,
+    );
     let lifecycle = ItemLifecycle {
         node_type: "commitment".to_string(),
         node_id: id.clone(),
@@ -1291,6 +1298,8 @@ pub(in crate::flows) fn commitment_item_row(
         verdict,
         time_scope: occurrence.time_scope,
         verdict_window: own,
+        // An occurrence is archived through its tombstone, never by a hand archive of its own.
+        archival: CommitmentArchival::Live,
         tag_ids: occurrence.fields.tag_ids.clone(),
         position: overlay.position.unwrap_or(occurrence.position),
         is_private: overlay.is_private.unwrap_or(occurrence.is_private),
@@ -1819,7 +1828,14 @@ pub(in crate::flows) fn commitment_row(
         .unwrap_or(Verdict::Unresolved);
     // An Interval instance never expires: no Verdict Window applies to it.
     let verdict_window = habit_verdict_window(flow, clock);
-    let state = derive_commitment_state(Some(window), verdict, verdict_window.as_ref(), now);
+    // An occurrence has no archive of its own: it is archived through its tombstone.
+    let state = derive_commitment_state(
+        Some(window),
+        verdict,
+        verdict_window.as_ref(),
+        CommitmentArchival::Live,
+        now,
+    );
     let lifecycle = ItemLifecycle {
         node_type: "commitment".to_string(),
         node_id: id.clone(),
@@ -1847,6 +1863,8 @@ pub(in crate::flows) fn commitment_row(
         tag_ids: occurrence.fields.tag_ids.clone(),
         position: overlay.position.unwrap_or(occurrence.position),
         is_private: overlay.is_private.unwrap_or(occurrence.is_private),
+        // An occurrence is archived through its tombstone, never by a hand archive of its own.
+        archival: CommitmentArchival::Live,
         origin: occurrence.origin,
     };
     (commitment, lifecycle)

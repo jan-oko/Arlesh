@@ -427,8 +427,12 @@ describe("collectSearchableNodes with skipArchived", () => {
     ],
   };
 
-  it("drops an archived node and a delegated Task, which reads as archived, but keeps a live child of an archived node", () => {
-    expect(collectSearchableNodes(tree, { skipArchived: true }).map((n) => n.title)).toEqual(["Under it", "Live"]);
+  it("drops an archived node but keeps a live child of it, and a delegated Task, which is not archived", () => {
+    expect(collectSearchableNodes(tree, { skipArchived: true }).map((n) => n.title)).toEqual(["Under it", "Delegated", "Live"]);
+  });
+
+  it("drops a delegated Task when the Delegated pill is not on Include", () => {
+    expect(collectSearchableNodes(tree, { skipArchived: true, skipDelegated: true }).map((n) => n.title)).toEqual(["Under it", "Live"]);
   });
 
   it("keeps the archived ancestor in a live child's path", () => {

@@ -1,4 +1,5 @@
 import type { MindmapNode, NodeKind } from "./tree-layout";
+import type { LeftBehindChild } from "@/api/duplicate";
 import { isDerivedWait } from "@/utils/derived-wait";
 import { can } from "@/utils/capabilities";
 import { ALL_NODE_KINDS } from "./tree-layout";
@@ -31,11 +32,12 @@ export const PASTE_REFUSAL = {
   /** A COPY of a flow item into another Flow: its Cycle Scope offsets into its own Flow's window. */
   OTHER_FLOW: "otherFlow",
   /**
-   * A Flow hanging *underneath* a copied node. The backend's duplication walk does not descend
-   * into a Flow (`src-tauri/src/duplicate/mod.rs`), so the pasted subtree is smaller than the one
-   * that was copied — the only skip here that is not about a node the user put on the clipboard.
+   * A row hung on a Habit occurrence that a copy carried — under a copied host, or on a copied
+   * Habit. The occurrence is derived and the copy regenerates its own, so the row has nothing to
+   * hang on and is left behind (`src-tauri/src/duplicate/mod.rs`) — the only skip here that is not
+   * about a node the user put on the clipboard, and the only one the backend reports.
    */
-  FLOW_UNDER: "flowUnder",
+  OCCURRENCE_CHILD: "occurrenceChild",
 } as const;
 
 /** Which of the refusals happened. */
@@ -56,31 +58,31 @@ export interface HereRefusal {
 }
 
 /**
- * One Flow left behind underneath a copied node, carrying its title.
+ * One row hung on a Habit occurrence that a copy left behind, carrying its title.
  *
  * It is the one refusal that names a node instead of counting one. Every other skip is about a
- * node the user selected and can still see highlighted, so a count identifies it; a Flow under a
- * copied node was never on the clipboard and is invisible in the paste, so a bare count would
- * leave the user searching the copy for whatever is missing.
+ * node the user selected and can still see highlighted, so a count identifies it; an occurrence's
+ * child was never on the clipboard and is invisible in the paste, so a bare count would leave the
+ * user searching the copy for whatever is missing.
  */
-export interface FlowUnderRefusal {
-  reason: typeof PASTE_REFUSAL.FLOW_UNDER;
-  /** The Flow's title, as the sentence reads it out. */
+export interface OccurrenceChildRefusal {
+  reason: typeof PASTE_REFUSAL.OCCURRENCE_CHILD;
+  /** The row's title, as the sentence reads it out. */
   title: string;
 }
 
 /** A refusal about the node itself: no destination would have changed the answer. */
 export interface NodeRefusal {
-  reason: Exclude<PasteRefusalReason, typeof PASTE_REFUSAL.HERE | typeof PASTE_REFUSAL.FLOW_UNDER>;
+  reason: Exclude<PasteRefusalReason, typeof PASTE_REFUSAL.HERE | typeof PASTE_REFUSAL.OCCURRENCE_CHILD>;
 }
 
 /** One reason a single node was left behind by a paste. */
-export type PasteRefusal = HereRefusal | FlowUnderRefusal | NodeRefusal;
+export type PasteRefusal = HereRefusal | OccurrenceChildRefusal | NodeRefusal;
 
 /**
  * The `warnings` key each refusal about the node reports itself with. Every one is pluralised,
- * because each counts the nodes it applies to — the left-behind Flow counts them *and* names them,
- * but the count still governs the sentence.
+ * because each counts the nodes it applies to — the left-behind occurrence child counts them *and*
+ * names them, but the count still governs the sentence.
  *
  * The destination refusal is not in this shape — it picks between two sentences, so it goes
  * through {@link pasteRefusalKey} like the rest.
@@ -94,7 +96,7 @@ export const PASTE_REFUSAL_KEY = {
   expectation: "pasteSkippedExpectation",
   derivedWait: "pasteSkippedDerivedWait",
   otherFlow: "pasteSkippedOtherFlow",
-  flowUnder: "pasteSkippedFlowUnder",
+  occurrenceChild: "pasteSkippedOccurrenceChild",
 } as const satisfies Record<PasteRefusalReason, string>;
 
 /** A `warnings` key one refusal line can be said with. */
@@ -103,20 +105,20 @@ export type PasteRefusalMessageKey =
   | "pasteSkippedHereInFlow";
 
 /**
- * How many left-behind Flows one sentence names before it counts the rest as "and N more".
+ * How many left-behind rows one sentence names before it counts the rest as "and N more".
  *
- * Naming is the point — see {@link FlowUnderRefusal} — but a toast is a viewport strip, and a
- * Domain that collects a year of Habits would fill it with a list nobody reads. Three names is
- * what a glance takes; past that the count is the honest summary and the copy itself is where the
+ * Naming is the point — see {@link OccurrenceChildRefusal} — but a toast is a viewport strip, and
+ * a Domain whose Habits collect a year of notes would fill it with a list nobody reads. Three names
+ * is what a glance takes; past that the count is the honest summary and the original is where the
  * rest are found.
  */
-export const NAMED_FLOWS_LIMIT = 3;
+export const NAMED_LEFT_BEHIND_LIMIT = 3;
 
 /**
  * Report order, fixed so the same mixed selection always produces the same sentence. Destination
  * first because it is the one the user can act on where they are standing; the stale clipboard last
- * because it is about a gesture already finished. The left-behind Flow sits just above it, since
- * it too is about what the paste has already done rather than about where it was aimed.
+ * because it is about a gesture already finished. The left-behind occurrence child sits just above
+ * it, since it too is about what the paste has already done rather than about where it was aimed.
  */
 const REFUSAL_ORDER: readonly PasteRefusalReason[] = [
   PASTE_REFUSAL.HERE,
@@ -126,7 +128,7 @@ const REFUSAL_ORDER: readonly PasteRefusalReason[] = [
   PASTE_REFUSAL.COMMITMENT,
   PASTE_REFUSAL.EXPECTATION,
   PASTE_REFUSAL.OTHER_FLOW,
-  PASTE_REFUSAL.FLOW_UNDER,
+  PASTE_REFUSAL.OCCURRENCE_CHILD,
   PASTE_REFUSAL.GONE,
 ];
 
@@ -174,52 +176,29 @@ export function pasteRefusal(
 }
 
 /**
- * The Flows a copy of `nodeIds` will leave behind: every Flow with a selected node *above* it.
- *
- * A Flow put on the clipboard directly is copied — `duplicate_flow` clones the template and its
- * Recurrence — but the subtree walk behind a Goal, Task, Project or Domain does not descend into
- * one, so a Habit hanging inside the copied subtree is simply absent from the paste. That is the
- * silent half of the skip this whole vocabulary exists to end, and the only one the selection
- * gives no hint of.
- *
- * Read off the tree rather than off the selection for two reasons. The walk is one pre-order pass
- * from the root, so the same selection always names the Flows in the same order however the
- * clipboard was assembled; and a Flow under *two* selected nodes — a Goal and its Task, both
- * picked — is reached once, so one loss is reported once.
- *
- * The walk stops at a Flow. Nothing under one is separately at risk: a flow item goes wherever its
- * Flow goes, and a Habit's repetitions are drawn from the template rather than stored.
- *
- * Only a **copy** loses them. A cut re-points one parent link and the whole subtree follows, Flows
- * included, so the caller asks this only when the clipboard holds a copy.
+ * The refusals for the rows a copy reported it left behind on Habit occurrences, in the order the
+ * backend named them. Which rows those are is decided there, not here: the walk that skips them is
+ * the only place that knows (ADR 0010).
  */
-export function flowsLeftBehind(tree: MindmapNode, nodeIds: readonly string[]): FlowUnderRefusal[] {
-  const selected = new Set(nodeIds);
-  const leftBehind: FlowUnderRefusal[] = [];
-  const walk = (node: MindmapNode, underACopiedNode: boolean): void => {
-    if (node.kind === "flow") {
-      if (underACopiedNode) leftBehind.push({ reason: PASTE_REFUSAL.FLOW_UNDER, title: node.title });
-      return;
-    }
-    const inside = underACopiedNode || selected.has(node.id);
-    for (const child of node.children) walk(child, inside);
-  };
-  walk(tree, false);
-  return leftBehind;
+export function occurrenceChildrenLeftBehind(
+  children: readonly LeftBehindChild[],
+): OccurrenceChildRefusal[] {
+  return children.map((child) => ({ reason: PASTE_REFUSAL.OCCURRENCE_CHILD, title: child.title }));
 }
 
 /**
- * Every Flow one paste left behind, folded into a single line the sentence can read out.
+ * Every occurrence child one paste left behind, folded into a single line the sentence can read
+ * out.
  *
  * It is the one line that carries titles rather than a count alone, and the only one whose
  * contents can outgrow a toast — hence the split between the names it says and the number it
  * only counts. `unnamed` is `0` whenever the line names them all.
  */
-export interface FlowUnderCount {
-  reason: typeof PASTE_REFUSAL.FLOW_UNDER;
-  /** How many Flows were left behind altogether, named or not. */
+export interface OccurrenceChildCount {
+  reason: typeof PASTE_REFUSAL.OCCURRENCE_CHILD;
+  /** How many rows were left behind altogether, named or not. */
   count: number;
-  /** The titles the sentence reads out, at most {@link NAMED_FLOWS_LIMIT} of them. */
+  /** The titles the sentence reads out, at most {@link NAMED_LEFT_BEHIND_LIMIT} of them. */
   named: readonly string[];
   /** How many more there were than the sentence names. */
   unnamed: number;
@@ -229,7 +208,7 @@ export interface FlowUnderCount {
 export type PasteRefusalCount =
   | (HereRefusal & { count: number })
   | (NodeRefusal & { count: number })
-  | FlowUnderCount;
+  | OccurrenceChildCount;
 
 /**
  * The refusals a paste collected, counted and in report order. Reasons nothing hit are dropped, so
@@ -242,8 +221,8 @@ export function countPasteRefusals(refusals: readonly PasteRefusal[]): PasteRefu
       counts.push(...countByRefusedKind(refusals));
       continue;
     }
-    if (reason === PASTE_REFUSAL.FLOW_UNDER) {
-      const line = countLeftBehindFlows(refusals);
+    if (reason === PASTE_REFUSAL.OCCURRENCE_CHILD) {
+      const line = countLeftBehindChildren(refusals);
       if (line !== null) counts.push(line);
       continue;
     }
@@ -254,21 +233,22 @@ export function countPasteRefusals(refusals: readonly PasteRefusal[]): PasteRefu
 }
 
 /**
- * The left-behind Flows as one line, or `null` when none were left behind.
+ * The left-behind occurrence children as one line, or `null` when none were left behind.
  *
  * The cap is applied here rather than where the sentence is built, so the decision about how much
  * a toast can say lives beside the reason it is being said at all.
  */
-function countLeftBehindFlows(refusals: readonly PasteRefusal[]): FlowUnderCount | null {
+function countLeftBehindChildren(refusals: readonly PasteRefusal[]): OccurrenceChildCount | null {
   const titles = refusals
-    .filter((candidate): candidate is FlowUnderRefusal => candidate.reason === PASTE_REFUSAL.FLOW_UNDER)
+    .filter((candidate): candidate is OccurrenceChildRefusal =>
+      candidate.reason === PASTE_REFUSAL.OCCURRENCE_CHILD)
     .map((candidate) => candidate.title);
   if (titles.length === 0) return null;
   return {
-    reason: PASTE_REFUSAL.FLOW_UNDER,
+    reason: PASTE_REFUSAL.OCCURRENCE_CHILD,
     count: titles.length,
-    named: titles.slice(0, NAMED_FLOWS_LIMIT),
-    unnamed: Math.max(0, titles.length - NAMED_FLOWS_LIMIT),
+    named: titles.slice(0, NAMED_LEFT_BEHIND_LIMIT),
+    unnamed: Math.max(0, titles.length - NAMED_LEFT_BEHIND_LIMIT),
   };
 }
 

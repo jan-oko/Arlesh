@@ -39,7 +39,7 @@ import {
 import type { ViolatingDescendant } from "@/api/tasks";
 import { TASK_ARCHIVAL } from "@/api/tasks";
 import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
-import { addTagToCommitment, removeTagFromCommitment, updateCommitment } from "@/api/commitments";
+import { addTagToCommitment, removeTagFromCommitment, updateCommitment, COMMITMENT_ARCHIVAL } from "@/api/commitments";
 import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
 import { rowIdOf } from "@/utils/node-identity";
@@ -322,6 +322,9 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         time_scope: data.timeScope,
         verdict_window: data.verdictWindow,
         is_private: data.isPrivate,
+        ...(data.archivedByHand !== undefined
+          ? { archival: data.archivedByHand ? COMMITMENT_ARCHIVAL.ARCHIVED : COMMITMENT_ARCHIVAL.LIVE }
+          : {}),
       });
       const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
       const tagsRemoved = node.tagIds.filter((id) => !data.tagIds.includes(id));

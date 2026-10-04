@@ -4,7 +4,7 @@ use tauri::State;
 
 use crate::{
     database::session::SessionFactory,
-    duplicate::{duplicate_subtree, DuplicableKind},
+    duplicate::{duplicate_subtree, DuplicableKind, DuplicatedSubtree},
     error::WireError,
     nodes::{id::NodeId, write},
     tasks::{
@@ -174,7 +174,8 @@ pub async fn delete_task(factory: State<'_, SessionFactory>, id: NodeId) -> Resu
 /// Deep-clones a task and its whole subtree under `(target_type, target_id)`, putting the new
 /// root at `position`. Backs the Mindmap's Copy+Paste.
 ///
-/// Transactional: the subtree lands whole or not at all.
+/// Transactional: the subtree lands whole or not at all, Flows included. Returns the copy with
+/// the rows hung on Habit occurrences that it could not carry, for the paste to name.
 #[tauri::command]
 pub async fn duplicate_task(
     factory: State<'_, SessionFactory>,
@@ -182,9 +183,9 @@ pub async fn duplicate_task(
     target_type: String,
     target_id: i64,
     position: i64,
-) -> Result<Task, WireError> {
+) -> Result<DuplicatedSubtree<Task>, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let new_id = duplicate_subtree(
+    let subtree = duplicate_subtree(
         &mut db,
         DuplicableKind::Task,
         id,
@@ -196,11 +197,14 @@ pub async fn duplicate_task(
     .map_err(WireError::from_error)?;
     let task = db
         .tasks()
-        .get(TaskId(new_id))
+        .get(TaskId(subtree.root_id))
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
-    Ok(task)
+    Ok(DuplicatedSubtree {
+        copy: task,
+        left_behind: subtree.left_behind,
+    })
 }
 
 /// Adds a dependency to a task.
@@ -384,7 +388,8 @@ pub async fn delete_goal(factory: State<'_, SessionFactory>, id: NodeId) -> Resu
 /// Deep-clones a goal and its whole subtree under `(target_type, target_id)`, putting the new
 /// root at `position`. Backs the Mindmap's Copy+Paste.
 ///
-/// Transactional: the subtree lands whole or not at all.
+/// Transactional: the subtree lands whole or not at all, Flows included. Returns the copy with
+/// the rows hung on Habit occurrences that it could not carry, for the paste to name.
 #[tauri::command]
 pub async fn duplicate_goal(
     factory: State<'_, SessionFactory>,
@@ -392,9 +397,9 @@ pub async fn duplicate_goal(
     target_type: String,
     target_id: i64,
     position: i64,
-) -> Result<Goal, WireError> {
+) -> Result<DuplicatedSubtree<Goal>, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let new_id = duplicate_subtree(
+    let subtree = duplicate_subtree(
         &mut db,
         DuplicableKind::Goal,
         id,
@@ -406,11 +411,14 @@ pub async fn duplicate_goal(
     .map_err(WireError::from_error)?;
     let goal = db
         .goals()
-        .get(GoalId(new_id))
+        .get(GoalId(subtree.root_id))
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
-    Ok(goal)
+    Ok(DuplicatedSubtree {
+        copy: goal,
+        left_behind: subtree.left_behind,
+    })
 }
 
 /// Adds a tag to a task.

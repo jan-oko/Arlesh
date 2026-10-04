@@ -486,6 +486,10 @@ impl<'session> TemplateOperator<'session> {
                 .await?;
         }
         if let Some(archival) = update.archival {
+            // A template carries no hand archive: what it makes is archived once it is made.
+            if archival == TaskArchival::Archived {
+                return Err(crate::tasks::error::TaskError::ArchiveOnDerived.into());
+            }
             sqlx::query(&format!("UPDATE {name} SET archival = ? WHERE id = ?"))
                 .bind(archival.as_str())
                 .bind(id)

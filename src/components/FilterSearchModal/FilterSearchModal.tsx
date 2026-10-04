@@ -70,6 +70,7 @@ export default function FilterSearchModal({ onClose }: Props) {
   const rowKinds = useRowKindToggle();
   const setArchivedMode = useFilterStore((s) => s.setArchivedMode);
   const setBacklogMode = useFilterStore((s) => s.setBacklogMode);
+  const setDelegatedMode = useFilterStore((s) => s.setDelegatedMode);
   const catalogue = useFilterDimensions();
   const entries = useFilterEntries();
   const groups = useFilterSearchGroups(view, catalogue, entries);
@@ -91,7 +92,8 @@ export default function FilterSearchModal({ onClose }: Props) {
   function pickSwitch(result: SwitchResult, keys: ModifierKeys) {
     const next = switchStateAfterPick(result.state, keys);
     if (result.target === "archived") setArchivedMode(next);
-    else setBacklogMode(next);
+    else if (result.target === "backlog") setBacklogMode(next);
+    else setDelegatedMode(next);
   }
 
 

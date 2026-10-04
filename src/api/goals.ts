@@ -1,4 +1,5 @@
 import { invoke } from "./gesture";
+import type { DuplicatedSubtree } from "@/api/duplicate";
 import type { TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
 import type { Origin, RowId } from "@/api/node-id";
@@ -73,8 +74,8 @@ export async function duplicateGoal(
   targetType: string,
   targetId: number,
   position: number,
-): Promise<Goal> {
-  return invoke<Goal>("duplicate_goal", { id, targetType, targetId, position });
+): Promise<DuplicatedSubtree<Goal>> {
+  return invoke<DuplicatedSubtree<Goal>>("duplicate_goal", { id, targetType, targetId, position });
 }
 
 export async function addTagToGoal(goalId: RowId, tagId: number): Promise<void> {

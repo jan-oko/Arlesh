@@ -5,7 +5,8 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { findNode, findParent, collectAllNodeIds } from "@/utils/mindmap-tree";
 import { canAdoptChildren, canParentNewChild, isCommitmentFlow, typedChildStoredKind, validParentKinds } from "@/utils/node-meta";
-import { pasteRefusal, countPasteRefusals, pasteRefusalKey, flowsLeftBehind, PASTE_REFUSAL } from "@/utils/paste-refusal";
+import type { LeftBehindChild } from "@/api/duplicate";
+import { pasteRefusal, countPasteRefusals, pasteRefusalKey, occurrenceChildrenLeftBehind, PASTE_REFUSAL } from "@/utils/paste-refusal";
 import type { PasteRefusal, PasteRefusalCount } from "@/utils/paste-refusal";
 import type { TypedChildKind } from "@/utils/node-meta";
 import type { TaskAgentic } from "@/api/tasks";
@@ -27,7 +28,8 @@ interface Options {
   tree: MindmapNode;
   clipboard: ClipboardEntry | null;
   moveNode: (id: string, kind: NodeKind, parentId: string, parentKind: NodeKind, position: number) => Promise<void>;
-  duplicateNode: (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number) => Promise<void>;
+  /** Resolves with the rows hung on Habit occurrences that the copy could not carry. */
+  duplicateNode: (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number) => Promise<readonly LeftBehindChild[]>;
   onRequestDelete: (nodeIds: string[]) => void;
   reload: () => Promise<void>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
@@ -254,10 +256,10 @@ export function useNodeActions({
       // The one line that names rather than counts. The names are assembled here because the list
       // separator and the overflow tail are words, not punctuation the util should be inventing —
       // the same reason the destination refusal joins its parent labels here too.
-      if (line.reason === PASTE_REFUSAL.FLOW_UNDER) {
-        const flows = line.named.map((title) => t("warnings:pasteSkippedFlowName", { title }));
-        if (line.unnamed > 0) flows.push(t("warnings:pasteSkippedFlowMore", { count: line.unnamed }));
-        return t(key, { count: line.count, flows: flows.join(", ") });
+      if (line.reason === PASTE_REFUSAL.OCCURRENCE_CHILD) {
+        const names = line.named.map((title) => t("warnings:pasteSkippedName", { title }));
+        if (line.unnamed > 0) names.push(t("warnings:pasteSkippedMore", { count: line.unnamed }));
+        return t(key, { count: line.count, names: names.join(", ") });
       }
       if (line.reason !== PASTE_REFUSAL.HERE) return t(key, { count: line.count });
       return t(key, {
@@ -304,22 +306,24 @@ export function useNodeActions({
         refusals.push(refusal);
         return false;
       });
-      // The skip nothing in the selection hints at: a Flow hanging *under* one of the nodes being
-      // copied. The backend's duplication walk does not descend into a Flow, so the pasted subtree
-      // comes out quietly smaller than the one that was copied. It leaves `nodeIds` untouched —
-      // everything that can be copied still is, and this only says what the copy could not carry.
-      // Copies alone: a cut re-points one parent link and the whole subtree follows.
-      if (isCopy) refusals.push(...flowsLeftBehind(tree, nodeIds));
       // One toast carrying every reason, never one call per reason: the store holds a single pending
       // toast, so a second `showToast` would overwrite the first and the node it spoke for would be
-      // dropped in silence — exactly what this message exists to prevent.
-      const skipped = refusals.length === 0
-        ? ""
-        : countPasteRefusals(refusals)
-          .map((line) => refusalSentence(line, targetNode.kind))
-          .join(" ");
-      if (skipped !== "") showToast({ nodeId: targetId, message: skipped });
-      if (nodeIds.length === 0) return;
+      // dropped in silence — exactly what this message exists to prevent. So the skips are said
+      // once the paste is over, together with the one skip only the copy itself can report: a row
+      // hung on a Habit occurrence, which the copy cannot carry because the occurrence is derived.
+      const sayRefusals = (more: readonly PasteRefusal[]): string => {
+        const all = [...refusals, ...more];
+        return all.length === 0
+          ? ""
+          : countPasteRefusals(all)
+            .map((line) => refusalSentence(line, targetNode.kind))
+            .join(" ");
+      };
+      if (nodeIds.length === 0) {
+        const skipped = sayRefusals([]);
+        if (skipped !== "") showToast({ nodeId: targetId, message: skipped });
+        return;
+      }
       const selectedSet = new Set(nodeIds);
 
       // Keep only top-level nodes (no ancestor in the selected set)
@@ -346,28 +350,35 @@ export function useNodeActions({
       const label = isCopy
         ? t("undo:gestures.paste", { count: topLevel.length })
         : t("undo:gestures.move", { count: topLevel.length });
+      // A copy reports what it could not carry; a cut re-points one parent link and the whole
+      // subtree follows, occurrence children included.
+      const leftBehind: LeftBehindChild[] = [];
       void withGesture(label, async () => {
         for (let i = 0; i < topLevel.length; i++) {
           const nodeId = topLevel[i]!;
           const sourceNode = findNode(tree, nodeId);
           if (sourceNode === undefined) continue;
           if (isCopy) {
-            await duplicateNode(nodeId, sourceNode.kind, targetId, targetNode.kind, basePosition + i);
+            leftBehind.push(
+              ...await duplicateNode(nodeId, sourceNode.kind, targetId, targetNode.kind, basePosition + i),
+            );
           } else {
             await moveNode(nodeId, sourceNode.kind, targetId, targetNode.kind, basePosition + i);
           }
         }
         if (!isCopy) setClipboard(null);
+      }).then(() => {
+        const skipped = sayRefusals(occurrenceChildrenLeftBehind(leftBehind));
+        if (skipped !== "") showToast({ nodeId: targetId, message: skipped });
       }).catch((err: unknown) => {
         console.error(`${LOG_PREFIX} paste failed:`, err);
         // Every refusal the *backend* raises — a CHECK constraint, a cycle, a foreign key — used
         // to reach the user as nothing at all: a board that silently did not change, which is
         // worse than a wrong reason or a generic one.
         //
-        // It arrives after the skip notice this same gesture may already have put up, and the
-        // store holds one toast. So it replaces that notice only by **containing** it: both
-        // sentences, in the order they happened. Nothing the gesture said is taken off screen
-        // unsaid, and the timer restarts on a message that now has more to read.
+        // It is said together with every skip this same gesture collected, including what the
+        // copies that did land left behind, in the order they happened: one toast, nothing unsaid.
+        const skipped = sayRefusals(occurrenceChildrenLeftBehind(leftBehind));
         const failure = t("warnings:pasteFailed", { message: getErrorMessage(err) });
         showToast({ nodeId: targetId, message: skipped === "" ? failure : `${skipped} ${failure}` });
       });

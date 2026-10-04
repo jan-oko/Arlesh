@@ -37,8 +37,8 @@ export type ScopeMatch = "contained" | "overlapping";
 export type TagFilterMode = "any" | "all" | "exclude";
 
 /** A tri-state pill's override, on top of whatever the status preset would otherwise decide.
- * `inactive` defers entirely to the preset; `include` force-shows; `exclude` force-hides, gating
- * the whole subtree. Shared by the Archived and Backlog pills, which behave identically. */
+ * `inactive` defers entirely to the preset; `include` shows; `exclude` force-hides, gating the
+ * whole subtree. Shared by the Archived, Backlog and Delegated pills. */
 export type OverrideMode = "inactive" | "include" | "exclude";
 
 /** Override for Archived-status/scope-Lapsed nodes. */
@@ -46,6 +46,9 @@ export type ArchivedMode = OverrideMode;
 
 /** Override for backlogged Tasks. */
 export type BacklogMode = OverrideMode;
+
+/** Override for delegated Tasks. */
+export type DelegatedMode = OverrideMode;
 
 /** The mode a tri-state pill advances to when clicked (Inactive → Include → Exclude → Inactive). */
 export const NEXT_OVERRIDE_MODE: Record<OverrideMode, OverrideMode> = {
@@ -75,6 +78,12 @@ export interface FilterState {
   archivedMode: ArchivedMode;
   /** Override for backlogged Tasks on top of the status preset — the Archived pill's twin. */
   backlogMode: BacklogMode;
+  /**
+   * The **Delegated** pill (Task 269): off drops a delegated Task under Plan and Start, `include`
+   * keeps it there, `exclude` hides it with its subtree under every preset. Absent reads as off — a
+   * tab saved before the pill existed. Mirrors `BoardFilter::delegated`.
+   */
+  delegatedMode?: DelegatedMode;
   /** The Plan preset's scope narrowing: under Plan, a Task shows only when its effective Time
    * Scope matches this scope. `null` narrows nothing. Persisted with the tab. */
   planScope: ScopeKey | null;
@@ -119,6 +128,7 @@ export const DEFAULT_FILTER: FilterState = {
   privateMode: false,
   archivedMode: "inactive",
   backlogMode: "inactive",
+  delegatedMode: "inactive",
   planScope: null,
 };
 
@@ -151,18 +161,35 @@ function flowHardHidden(node: MindmapNode, f: FilterState): boolean {
   return false;
 }
 
-/** A Task held by someone else — a Person. It has every effect of archival. */
+/** A Task held by someone else — a Person. Its own pill decides where it shows; it is not archival. */
 export function isDelegated(node: MindmapNode): boolean {
   return node.kind === "task" && node.delegate !== undefined && node.delegate !== null;
 }
 
-/** An Archived-status node, one whose effective Archival was derived as archived (a scope
+/** The Delegated pill's mode, a tab saved before the pill existed reading as off. */
+export function delegatedModeOf(f: FilterState): DelegatedMode {
+  return f.delegatedMode ?? "inactive";
+}
+
+/**
+ * Whether the **Delegated** pill, left off, drops a delegated Task's own match: under Plan and Start
+ * — someone else holds it, so it is neither yours to plan nor to start. All, Do and Backlog leave it
+ * alone. `include` keeps it, judged by the preset's other rules; `exclude` hides it with its subtree
+ * under every preset, in `typeHardHidden`. What it waits on — its delegation wait — answers the
+ * Expectation rules. Mirrors `is_dropped_for_delegation` in `src-tauri/src/filters/rules.rs`.
+ */
+export function isDroppedForDelegation(node: MindmapNode, f: FilterState): boolean {
+  if (!isDelegated(node) || delegatedModeOf(f) !== "inactive") return false;
+  return f.statusMode === "plan" || f.statusMode === "start";
+}
+
+/** An Archived-status node, or one whose effective Archival was derived as archived (a scope
  * Resolution of Completed or Missed forces this, regardless of done-ness — SPEC treats both as
- * "archived-looking", same status-row icon, and the archivedMode filter governs both together), or
- * a delegated Task: someone else holds it, so it is off your board wherever an archived node is.
- * What it waits on stays visible — its virtual Expectation answers the Expectation rules. */
+ * "archived-looking", same status-row icon, and the archivedMode filter governs both together). A
+ * hand archive — a Task's or Commitment's own, inherited by everything beneath it — arrives the same
+ * way, on the backend's lifecycle. A delegated Task is not archived: it has a pill of its own. */
 export function isArchived(node: MindmapNode): boolean {
-  return node.status === "archived" || node.archived === true || isDelegated(node);
+  return node.status === "archived" || node.archived === true;
 }
 
 /** A Task the user deliberately set aside. Read off the node's own stored flag, not the derived
@@ -368,6 +395,8 @@ export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   // A backlogged Task gates its subtree the same way a shelved Project does — the work is
   // deliberately not on the table, so nothing under it is plannable or startable either.
   if (isHiddenBacklog(node, f)) return true;
+  // The Delegated pill's Exclude gates the subtree too, under every preset, Do included.
+  if (delegatedModeOf(f) === "exclude" && isDelegated(node)) return true;
   // A Frozen/Archived Project gates its subtree the same way: hide it outright rather than keeping it
   // as the ancestor of unresolved work that is, by its status, not on the table.
   if (isShelvedProject(node, f)) return true;
@@ -432,7 +461,10 @@ function passesStatus(
       // is itself achieved/frozen/archived (RESOLVED_GOAL), but any scoped item a forced Resolution
       // archived regardless of its stored status (e.g. a still-"active" goal, or any task, which has
       // no stored status of its own to catch this).
-      if (node.kind === "task") return withArchivedOverride(node, f, node.status !== "done" && !isArchived(node));
+      if (node.kind === "task") {
+        return !isDroppedForDelegation(node, f)
+          && withArchivedOverride(node, f, node.status !== "done" && !isArchived(node));
+      }
       if (node.kind === "goal") {
         return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? "") && node.archived !== true);
       }
@@ -446,8 +478,10 @@ function passesStatus(
       // window still ahead fails only the node's own match, as a lapsed one and a Plan still ahead do:
       // a child with no window of its own reads its parent's and drops too, while one whose own window
       // is open still shows, holding its parent as an ancestor.
-      // A delegated Task drops out with them: nothing someone else holds is yours to start.
-      if (!isStartableWindow(node) || isDelegated(node)) return withArchivedOverride(node, f, false);
+      // A delegated Task drops out, Overdue or not, while the Delegated pill is off: nothing someone
+      // else holds is yours to start.
+      if (isDroppedForDelegation(node, f)) return false;
+      if (!isStartableWindow(node)) return withArchivedOverride(node, f, false);
       if (node.kind === "goal") return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? ""));
       return passesStartStatus(node, f);
     }

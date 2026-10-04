@@ -48,9 +48,9 @@ describe("offeredDimensions", () => {
 });
 
 describe("filterSwitchesFor", () => {
-  it("offers Private, Archived and Backlog, leaving Backlog out of the Plan View, which answers it itself", () => {
-    expect(filterSwitchesFor("list")).toEqual(["private", "archived", "backlog"]);
-    expect(filterSwitchesFor("plan")).toEqual(["private", "archived"]);
+  it("offers Private, Archived, Backlog and Delegated, leaving Backlog out of the Plan View, which answers it itself", () => {
+    expect(filterSwitchesFor("list")).toEqual(["private", "archived", "backlog", "delegated"]);
+    expect(filterSwitchesFor("plan")).toEqual(["private", "archived", "delegated"]);
   });
 });
 
@@ -64,7 +64,9 @@ describe("undrawnPillDimensions", () => {
 });
 
 describe("hasUndrawnFilters", () => {
-  const clean: FilterDotState = { archivedMode: "inactive", backlogMode: "inactive", showOnAgent: false, valueCount: () => 0 };
+  const clean: FilterDotState = {
+    archivedMode: "inactive", backlogMode: "inactive", delegatedMode: "inactive", showOnAgent: false, valueCount: () => 0,
+  };
 
   it("lights for the On Agent pill wherever it is offered, and not in the Plan View", () => {
     const shown = { ...clean, showOnAgent: true };
@@ -82,6 +84,12 @@ describe("hasUndrawnFilters", () => {
     const backlog: FilterDotState = { ...clean, backlogMode: "exclude" };
     expect(hasUndrawnFilters("steps", backlog)).toBe(true);
     expect(hasUndrawnFilters("plan", backlog)).toBe(false);
+  });
+
+  it("is true for the Delegated pill off its default in every view, the Plan View included", () => {
+    const delegated: FilterDotState = { ...clean, delegatedMode: "include" };
+    expect(hasUndrawnFilters("mindmap", delegated)).toBe(true);
+    expect(hasUndrawnFilters("plan", delegated)).toBe(true);
   });
 
   it("ignores tags, which are always chips", () => {

@@ -19,6 +19,8 @@ import { getErrorMessage } from "@/api/errors";
 import { withAtomicGesture } from "@/api/gesture";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
+import ArchivedField from "@/components/EditorModal/ArchivedField";
+import { canArchiveByHand } from "@/utils/hand-archive";
 import AgenticField from "./AgenticField";
 import AgenticBriefFields from "./AgenticBriefFields";
 import ShortIdField from "./ShortIdField";
@@ -55,8 +57,9 @@ export interface TaskSaveData {
   /** The task's own explicit due, `null` for the default. Absent when the form has no Due field —
    * a Habit occurrence's or a wait's check task's — so the save says nothing about it. */
   dueScope?: TimeScope | null;
-  /** `backlog` when deliberately set aside. Never `backlog` while `plan` is set — the form keeps
-   * the two exclusive, so the save never has to be refused for it. */
+  /** `backlog` when deliberately set aside, `archived` when archived by hand. Never `backlog` while
+   * `plan` is set — the form keeps the two exclusive, so the save never has to be refused for it —
+   * and never both backlogged and archived: one value. */
   archival: TaskArchival;
   /** The task's own Agentic state. `"inherit"` is a real instruction — it clears a stored flag
    * and puts the task back to reading its ancestors — not an absent value. */
@@ -95,6 +98,13 @@ function sameStatus(a: TaskStatus | null, b: TaskStatus): boolean {
 }
 
 function depKey(dep: Dependency): string { return `${dep.type}-${dep.id}`; }
+/** The stored archival a save writes: archived by hand wins, then backlogged, else live. The form
+ * keeps the two switches exclusive, so the order only settles what cannot happen. */
+function savedArchival(archivedByHand: boolean, backlogged: boolean): TaskArchival {
+  if (archivedByHand) return TASK_ARCHIVAL.ARCHIVED;
+  return backlogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE;
+}
+
 /** The edge type a dependency on `candidate` is stored under. */
 function dependencyKindOf(candidate: MindmapNode): Dependency["type"] {
   if (candidate.kind === "goal") return "goal";
@@ -130,6 +140,9 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   const [plan, setPlan] = useState<TimeScope | null>(node.plan ?? null);
   const [dueScope, setDueScope] = useState<TimeScope | null>(node.dueScope ?? null);
   const [isBacklogged, setIsBacklogged] = useState(node.backlogged === true);
+  // The hand archive, offered on a stored task only (see `canArchiveByHand`).
+  const takesArchive = canArchiveByHand(node);
+  const [isArchivedByHand, setIsArchivedByHand] = useState(node.archivedByHand === true);
   const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(node.agentic));
   const [isAsynchronous, setIsAsynchronous] = useState(node.asynchronous === true || openAtTemplate);
   const [isCompound, setIsCompound] = useState(node.compound === true);
@@ -216,7 +229,7 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
           onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
           plan,
           ...(hasDueField ? { dueScope } : {}),
-          archival: isBacklogged ? TASK_ARCHIVAL.BACKLOG : TASK_ARCHIVAL.LIVE,
+          archival: savedArchival(isArchivedByHand, isBacklogged),
           agentic,
           asynchronous: isAsynchronous,
           compound: isCompound,
@@ -242,6 +255,14 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   function setBacklogAndClearPlan(next: boolean) {
     setIsBacklogged(next);
     if (next) setPlan(null);
+    // Backlog and Archived are one stored value: setting one aside un-archives it, in front of
+    // the user.
+    if (next) setIsArchivedByHand(false);
+  }
+
+  function setArchivedAndClearBacklog(next: boolean) {
+    setIsArchivedByHand(next);
+    if (next) setIsBacklogged(false);
   }
 
   function setPlanAndClearBacklog(next: TimeScope | null) {
@@ -457,8 +478,9 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
       <EditorAdvanced
         isPrivate={isPrivate}
         onPrivateChange={setIsPrivate}
-        startOpen={agentic !== TASK_AGENTIC.INHERIT || question !== undefined || (readsAgentic && !isEmptyBrief(agenticBrief))}
+        startOpen={isArchivedByHand || agentic !== TASK_AGENTIC.INHERIT || question !== undefined || (readsAgentic && !isEmptyBrief(agenticBrief))}
       >
+        {takesArchive && <ArchivedField checked={isArchivedByHand} onChange={setArchivedAndClearBacklog} />}
         {/* Its short id — the one the MCP and a "Blocked by …" reason name it by — so the user can
             name the Task to an agent. A node the load gave no short id shows nothing. */}
         {node.shortId !== undefined && <ShortIdField shortId={node.shortId} />}

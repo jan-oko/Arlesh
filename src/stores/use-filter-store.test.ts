@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useFilterStore } from "./use-filter-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
+import type { FilterState } from "@/utils/filter-tree";
 
 beforeEach(() => {
   useFilterStore.setState({ filter: DEFAULT_FILTER });
@@ -16,6 +17,20 @@ describe("cycleArchivedMode", () => {
     expect(useFilterStore.getState().filter.archivedMode).toBe("exclude");
     useFilterStore.getState().cycleArchivedMode();
     expect(useFilterStore.getState().filter.archivedMode).toBe("inactive");
+  });
+});
+
+describe("cycleDelegatedMode", () => {
+  it("cycles off -> include -> exclude -> off, a tab saved before the pill reading as off", () => {
+    const saved: FilterState = { ...DEFAULT_FILTER };
+    delete saved.delegatedMode;
+    useFilterStore.setState({ filter: saved });
+    const modes: string[] = [];
+    for (let step = 0; step < 3; step += 1) {
+      useFilterStore.getState().cycleDelegatedMode();
+      modes.push(useFilterStore.getState().filter.delegatedMode ?? "");
+    }
+    expect(modes).toEqual(["include", "exclude", "inactive"]);
   });
 });
 

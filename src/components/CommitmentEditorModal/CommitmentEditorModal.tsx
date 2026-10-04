@@ -11,6 +11,8 @@ import { getErrorMessage } from "@/api/errors";
 import { withAtomicGesture } from "@/api/gesture";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
+import ArchivedField from "@/components/EditorModal/ArchivedField";
+import { canArchiveByHand } from "@/utils/hand-archive";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
 import VerdictWindowField from "./VerdictWindowField";
 import { useInputCapture } from "@/hooks/use-input-capture";
@@ -24,6 +26,9 @@ export interface CommitmentSaveData {
   timeScope: TimeScope | null;
   verdictWindow: DurationSpec | null;
   isPrivate: boolean;
+  /** Its hand archive, present only on a stored Commitment — the one kind of Commitment that takes
+   * it (see `canArchiveByHand`). */
+  archivedByHand?: boolean;
 }
 
 interface Props {
@@ -54,6 +59,8 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, head
   const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
   const [verdictWindow, setVerdictWindow] = useState<DurationSpec | null>(node.verdictWindow ?? null);
   const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
+  const takesArchive = canArchiveByHand(node);
+  const [isArchivedByHand, setIsArchivedByHand] = useState(node.archivedByHand === true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -78,7 +85,10 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, head
       // but one thing the user filled in, so they are one Ctrl+Z — and a refusal partway takes
       // back the ones that landed rather than leaving a form half-applied.
       await withAtomicGesture(t("undo:gestures.editCommitment"), async () => {
-        await onSave({ title: title.trim(), verdict, tagIds, timeScope, verdictWindow, isPrivate });
+        await onSave({
+          title: title.trim(), verdict, tagIds, timeScope, verdictWindow, isPrivate,
+          ...(takesArchive ? { archivedByHand: isArchivedByHand } : {}),
+        });
       });
     } catch (err) {
       // A commitment that can never come due is not written — whether that is a new one saved
@@ -157,7 +167,9 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, head
         </div>
       )}
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
-      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} />
+      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} startOpen={isArchivedByHand}>
+        {takesArchive && <ArchivedField checked={isArchivedByHand} onChange={setIsArchivedByHand} />}
+      </EditorAdvanced>
     </EditorModal>
   );
 }

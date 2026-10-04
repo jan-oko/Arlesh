@@ -5,7 +5,7 @@ use tauri::State;
 use crate::{
     database::session::SessionFactory,
     domains::model::{CreateDomainRequest, Domain, DomainId, DomainSubtype, UpdateDomainRequest},
-    duplicate::{duplicate_subtree, DuplicableKind},
+    duplicate::{duplicate_subtree, DuplicableKind, DuplicatedSubtree},
     error::WireError,
 };
 
@@ -88,23 +88,27 @@ pub async fn delete_domain(factory: State<'_, SessionFactory>, id: i64) -> Resul
 /// The target is always another domains-table row, which that table names by `parent_id` alone —
 /// hence no target kind on the wire, unlike the goal, task and info duplicates.
 ///
-/// Transactional: the subtree lands whole or not at all.
+/// Transactional: the subtree lands whole or not at all, Flows included. Returns the copy with
+/// the rows hung on Habit occurrences that it could not carry, for the paste to name.
 #[tauri::command]
 pub async fn duplicate_domain(
     factory: State<'_, SessionFactory>,
     id: i64,
     target_id: i64,
     position: i64,
-) -> Result<Domain, WireError> {
+) -> Result<DuplicatedSubtree<Domain>, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let new_id = duplicate_subtree(&mut db, DuplicableKind::Domain, id, "", target_id, position)
+    let subtree = duplicate_subtree(&mut db, DuplicableKind::Domain, id, "", target_id, position)
         .await
         .map_err(WireError::from_error)?;
     let domain = db
         .domains()
-        .get(DomainId(new_id))
+        .get(DomainId(subtree.root_id))
         .await
         .map_err(WireError::from_error)?;
     db.commit().await.map_err(WireError::from_error)?;
-    Ok(domain)
+    Ok(DuplicatedSubtree {
+        copy: domain,
+        left_behind: subtree.left_behind,
+    })
 }

@@ -274,7 +274,8 @@ fn task_kind(error: &TaskError) -> WireErrorKind {
         // carries no flag.
         TaskError::CompoundStatus(_)
         | TaskError::CompoundOccurrenceStatus
-        | TaskError::CompoundOnDerived => WireErrorKind::InvalidRequest,
+        | TaskError::CompoundOnDerived
+        | TaskError::ArchiveOnDerived => WireErrorKind::InvalidRequest,
         // Mark it done first, or name an instant that has already been.
         TaskError::NotDone | TaskError::DoneInFuture => WireErrorKind::InvalidRequest,
         // A status outside the Task's model, the derived Review, or a change of kind that would
