@@ -73,6 +73,33 @@ fn derive_habits(
     (rows, failures)
 }
 
+/// Every Habit as a node of the containment chain: its span and the node its roots hang under. A
+/// Habit whose span cannot be worked out is left out here; its derivation reports the failure.
+fn habit_edges(
+    flows: &[Flow],
+    habits: &HashMap<i64, Result<HabitSource, FlowError>>,
+) -> Vec<plans::HabitEdge> {
+    let mut edges = Vec::new();
+    for flow in flows.iter().filter(|flow| flow.is_habit) {
+        let Some(Ok(source)) = habits.get(&flow.id) else {
+            continue;
+        };
+        match source.span(flow) {
+            Some(Ok((span, (host_type, host_id)))) => edges.push(plans::HabitEdge {
+                flow_id: flow.id,
+                title: flow.title.clone(),
+                host: facts::content_parent(&host_type, &NodeId::Stored(host_id)),
+                span,
+            }),
+            Some(Err(error)) => {
+                tracing::warn!(flow_id = flow.id, error = %error, "habit span failed");
+            }
+            None => {}
+        }
+    }
+    edges
+}
+
 /// Every content node of the board as the hand archive's inheritance reads it: a stored Task or
 /// Commitment carries its own archive; nothing else can be archived by hand.
 fn tree_nodes<'rows>(
@@ -155,6 +182,7 @@ pub fn derive_board(
         habits,
         derived_edges,
     } = sources;
+    let habit_edges = habit_edges(&flows, &habits);
     let waits_sources = stored.waits.sources();
     let mut lifecycles = derive_item_lifecycles(
         LifecycleRows {
@@ -283,6 +311,21 @@ pub fn derive_board(
         &task_dependencies,
     );
     block_reasons.extend(compound_blocks);
+    // Only now is every row in and every Overdue flag derived: each Task reads its effective
+    // Plan, and Start reads where that Plan stands.
+    let plans = plans::audit(&plans::PlanRows {
+        domains: domains
+            .iter()
+            .map(|domain| (domain.id, domain.parent_id))
+            .collect(),
+        goals: &goals,
+        tasks: &tasks,
+        commitments: &commitments,
+        expectations: &expectations,
+        lifecycles: &lifecycles,
+        habits: &habit_edges,
+    });
+    plans::stamp_plan_timing(&mut lifecycles, &plans, now);
 
     let habits = flows
         .iter()
@@ -320,7 +363,9 @@ pub fn derive_board(
         short_ids: std::collections::HashMap::new(),
         facts: std::collections::HashMap::new(),
         agent_activity: None,
+        plans,
     })
 }
 
 pub mod facts;
+pub mod plans;

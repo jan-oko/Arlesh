@@ -123,6 +123,26 @@ describe("deriveStatusIndicators", () => {
     expect(types(node("task", { status: "todo", plan: scope }))).toEqual(["planned"]);
   });
 
+  it("shows a faint calendar for a Plan the task inherits, and its own plainly", () => {
+    // Plan inheritance: the badge reads the effective Plan, fainter when it is inherited.
+    expect(deriveStatusIndicators(node("task", { status: "todo", inheritedPlan: scope }))).toEqual([
+      { type: "planned", inherited: true, conflict: false },
+    ]);
+    expect(deriveStatusIndicators(node("task", { status: "todo", plan: scope, inheritedPlan: scope }))).toEqual([
+      { type: "planned", conflict: false },
+    ]);
+  });
+
+  it("flags a task that breaks a plan rule on its calendar", () => {
+    expect(deriveStatusIndicators(node("task", { status: "todo", plan: scope, planConflict: "parent_plan" }))).toEqual([
+      { type: "planned", conflict: true },
+    ]);
+    // Nothing of the Plan above meets its window: there is no Plan to show, but the flag stays.
+    expect(deriveStatusIndicators(node("task", { status: "todo", planConflict: "empty" }))).toEqual([
+      { type: "planned", inherited: true, conflict: true },
+    ]);
+  });
+
   it("shows an info mark only for an info node that has details", () => {
     expect(types(node("info", { infoDetails: "a stack trace" }))).toEqual(["info"]);
     expect(types(node("info", { infoDetails: null }))).toEqual([]);

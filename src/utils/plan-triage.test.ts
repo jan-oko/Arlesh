@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import {
-  effectiveTimeScope, nearestPlannedAncestor, partitionForScope, planRefusal, referencedScopeIds,
+  effectiveTimeScope, effectivePlan, partitionForScope, planRefusal, referencedScopeIds,
   timeScopeWindow,
 } from "./plan-triage";
 import type { ScopeWindows } from "./plan-triage";
@@ -82,28 +82,19 @@ describe("effectiveTimeScope", () => {
   });
 });
 
-describe("nearestPlannedAncestor", () => {
-  it("is the closest planned ancestor, not the highest", () => {
-    const result = nearestPlannedAncestor(row({
-      ancestors: [node("task-a", { plan: scope(4) }), node("task-b", { plan: scope(1) })],
-    }));
-    expect(result?.id).toBe("task-b");
+describe("effectivePlan", () => {
+  it("is the task's own Plan when it has one, over the one it inherits", () => {
+    const own = scope(2);
+    expect(effectivePlan(row({ node: node("task-1", { plan: own, inheritedPlan: scope(1) }) }))).toBe(own);
   });
 
-  it("is null when no ancestor is planned", () => {
-    expect(nearestPlannedAncestor(row({ ancestors: [node("task-a")] }))).toBeNull();
+  it("is the Plan it inherits when it has none of its own", () => {
+    const inherited = scope(1);
+    expect(effectivePlan(row({ node: node("task-1", { inheritedPlan: inherited }) }))).toBe(inherited);
   });
 
-  // A wait has no Plan and takes none from the Task it hangs under — the one an Asynchronous Task
-  // spawned included — so a check task beneath it is not bound by that Task's Plan.
-  it("stops at a wait: a check task under a spawned wait is not bound by its Task's Plan", () => {
-    const spawned = node("wait-s", { origin: { kind: "spawned_wait", task_id: 7 } }, "expectation");
-    const check = row({
-      node: node("check-1", { origin: { kind: "check", wait_kind: "spawned", wait_id: 7, due_at: "2026-09-22T02:00:00" } }),
-      ancestors: [node("task-7", { plan: scope(2), asynchronous: true, status: "done" }), spawned],
-    });
-    expect(nearestPlannedAncestor(check)).toBeNull();
-    expect(planRefusal(check, WEEK, WINDOWS)).toBeNull();
+  it("is null when nothing above is planned either", () => {
+    expect(effectivePlan(row())).toBeNull();
   });
 });
 
@@ -121,11 +112,10 @@ describe("timeScopeWindow", () => {
 });
 
 describe("referencedScopeIds", () => {
-  it("collects the row's own boundaries and its ancestors'", () => {
+  it("collects the row's own boundaries and the Plan it inherits", () => {
     const ids = referencedScopeIds([
       row({
-        node: node("task-1", { timeScope: { start_id: testKey(1), end_id: testKey(3) } }),
-        ancestors: [node("task-0", { plan: scope(4) })],
+        node: node("task-1", { timeScope: { start_id: testKey(1), end_id: testKey(3) }, inheritedPlan: scope(4) }),
       }),
     ]);
     expect(ids.map(scopeKeyText).sort()).toEqual([testKey(1), testKey(3), testKey(4)].map(scopeKeyText));
@@ -333,16 +323,13 @@ describe("planRefusal", () => {
     expect(planRefusal(rows, WEEK, WINDOWS)).toBe("ownTimeScope");
   });
 
-  it("refuses a move into a scope that escapes the nearest planned ancestor's Plan", () => {
-    const rows = row({ ancestors: [node("task-0", { plan: scope(2) })] });
+  it("refuses a move into a scope that escapes the Plan it inherits", () => {
+    const rows = row({ node: node("task-1", { inheritedPlan: scope(2) }) });
     expect(planRefusal(rows, WEEK, WINDOWS)).toBe("parentPlan");
   });
 
   it("names the task's own window first, as the backend does", () => {
-    const rows = row({
-      node: node("task-1", { timeScope: scope(2) }),
-      ancestors: [node("task-0", { plan: scope(2) })],
-    });
+    const rows = row({ node: node("task-1", { timeScope: scope(2), inheritedPlan: scope(2) }) });
     expect(planRefusal(rows, WEEK, WINDOWS)).toBe("ownTimeScope");
   });
 
@@ -361,11 +348,8 @@ describe("planRefusal", () => {
     expect(planRefusal(rows, WEEK, WINDOWS)).toBeNull();
   });
 
-  it("still holds an overdue task to its nearest planned ancestor's Plan", () => {
-    const rows = row({
-      node: node("task-1", { timeScope: scope(2), overdue: true }),
-      ancestors: [node("task-0", { plan: scope(2) })],
-    });
+  it("still holds an overdue task to the Plan it inherits", () => {
+    const rows = row({ node: node("task-1", { timeScope: scope(2), overdue: true, inheritedPlan: scope(2) }) });
     expect(planRefusal(rows, WEEK, WINDOWS)).toBe("parentPlan");
   });
 

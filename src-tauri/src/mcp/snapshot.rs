@@ -33,7 +33,10 @@ impl ArleshMcp {
     /// Every node carries `id` (a number, or a UUID for a derived row such as a Habit
     /// occurrence), `short_id` and `full_id`; any tool taking a node id takes any of them.
     /// `time_scope` and `plan` are scope keys with the dates inside (`{"kind":"week",
-    /// "date":"2026-09-20"}`); `arlesh_scopes` resolves them further. `filter` applies a List View
+    /// "date":"2026-09-20"}`); `arlesh_scopes` resolves them further. A Task's `plan` is its own;
+    /// `effective_plan` is the one it reads — its own, else the nearest planned node's above it,
+    /// clipped to its Time Scope — with `plan_inherited_from` naming where an inherited one comes
+    /// from, and `plan_conflict` (`parent_plan` or `empty`) when it breaks a plan rule. `filter` applies a List View
     /// preset (`plan`, `start`, `do`, `backlog`, `all`); `agentic: {}` (or `{"max_priority":"A"}`)
     /// keeps only the Tasks that read as Agentic, most urgent first. Read-only.
     #[tool(
@@ -183,6 +186,7 @@ fn split_into_sections(
         }
     };
 
+    let short_ids = names.short_ids_by_key();
     Ok(wanted
         .iter()
         .map(|&section| SectionItems {
@@ -192,6 +196,9 @@ fn split_into_sections(
                     if let Some(table) = node_table(section) {
                         for item in &mut items {
                             names.stamp(item, table);
+                            if table == NodeTable::Task {
+                                stamp_effective_plan(item, &load.plans, &short_ids);
+                            }
                             if let (NodeTable::Task, Some(matched)) = (table, matched) {
                                 mark_match(item, matched);
                             }
@@ -206,6 +213,49 @@ fn split_into_sections(
             },
         })
         .collect())
+}
+
+/// Stamps a task row with the Plan it reads beside its own (`plan`): `effective_plan`, its own or
+/// the one it inherits (`null` when it reads none); `plan_inherited_from`, the short id of the
+/// node an inherited one comes from; and `plan_conflict` when it breaks a plan rule —
+/// `parent_plan` (its own Plan leaves the one it inherits) or `empty` (the Plan above it does not
+/// meet its window).
+pub(super) fn stamp_effective_plan(
+    item: &mut Value,
+    plans: &crate::mindmap::rules::plans::PlanAudit,
+    short_ids: &std::collections::HashMap<String, String>,
+) {
+    use crate::tasks::rules::plan_inheritance::EffectivePlan;
+    let Value::Object(fields) = item else {
+        return;
+    };
+    let Some(id) = fields
+        .get("id")
+        .and_then(|id| serde_json::from_value::<NodeId>(id.clone()).ok())
+    else {
+        return;
+    };
+    let Some(reading) = plans.readings.get(&format!("task-{id}")) else {
+        return;
+    };
+    let effective = reading
+        .effective
+        .plan()
+        .and_then(|plan| serde_json::to_value(plan).ok())
+        .unwrap_or(Value::Null);
+    fields.insert("effective_plan".into(), effective);
+    if let EffectivePlan::Inherited { source, .. } = &reading.effective {
+        let named = short_ids
+            .get(source)
+            .cloned()
+            .map_or(Value::Null, Value::String);
+        fields.insert("plan_inherited_from".into(), named);
+    }
+    if let Some(conflict) = reading.conflict {
+        if let Ok(conflict) = serde_json::to_value(conflict) {
+            fields.insert("plan_conflict".into(), conflict);
+        }
+    }
 }
 
 /// Marks a task row with whether it matched the agentic query or is there for context.

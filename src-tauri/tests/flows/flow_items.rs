@@ -811,3 +811,49 @@ async fn a_note_hangs_on_a_wait_occurrence_and_a_release_is_listed() {
         "the board reads it under the occurrence"
     );
 }
+
+#[tokio::test]
+async fn a_task_under_a_commitment_item_inherits_the_roots_plan_through_it() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    // A weekly task Habit whose root is planned into Days 2 to 3 of its week.
+    let flow = flow_commands::create_flow(
+        app.state(),
+        CreateFlowRequest {
+            title: "Weekly".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("week".into()),
+            root_plan_kind: Some("day".into()),
+            root_plan_start: Some(2),
+            root_plan_end: Some(3),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .id;
+    let promise = commitment_item(&app, flow, ("flow", flow)).await;
+    let step = task_item(&app, flow, ("flow_commitment", promise)).await;
+    wait_item(&app, flow, ("flow_commitment", promise)).await;
+    recur(&app, flow, ScopeKind::Week, ymd(2026, 1, 4)).await;
+    let week = ScopeKey::containing(ScopeKind::Week, ymd(2026, 1, 4)).unwrap();
+
+    let board = load(&app, "2026-01-05T09:00:00").await;
+    let step_id = occurrence(TemplateKind::FlowTask, step, week);
+    let task = board.tasks.iter().find(|task| task.id == step_id).unwrap();
+    assert_eq!(task.plan, None, "no Cycle Plan of its own");
+    let facts = board
+        .facts
+        .get(&format!("task-{step_id}"))
+        .expect("the board says what it inherits");
+    let inherited = facts
+        .inherited_plan
+        .as_ref()
+        .expect("the root's Plan, through the Commitment");
+    assert_eq!(inherited.start_id, ScopeKey::day(ymd(2026, 1, 5)));
+    assert_eq!(inherited.end_id, ScopeKey::day(ymd(2026, 1, 6)));
+    assert!(facts.plan_conflict.is_none());
+}

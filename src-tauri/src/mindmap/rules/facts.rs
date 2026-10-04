@@ -18,7 +18,7 @@ use crate::{
             AgenticStatus, Expectation, ExpectationArchival, ExpectationStatus, Status, TimeScope,
             Verdict,
         },
-        rules::review::is_open_question,
+        rules::{plan_inheritance::EffectivePlan, review::is_open_question},
     },
 };
 
@@ -49,7 +49,7 @@ fn stored(table: NodeTable, id: &NodeId) -> Option<NodeKey> {
 
 /// The key a content row's `(parent_type, parent_id)` names, as the app's tree does: the four
 /// domains-table subtypes share one `domain-` namespace.
-fn content_parent(parent_type: &str, parent_id: &NodeId) -> Key {
+pub(super) fn content_parent(parent_type: &str, parent_id: &NodeId) -> Key {
     match parent_type {
         "goal" | "task" | "commitment" | "expectation" | "info" => {
             format!("{parent_type}-{parent_id}")
@@ -432,6 +432,32 @@ fn origins(load: &MindmapLoad) -> impl Iterator<Item = (Key, &Origin)> {
     tasks.chain(goals).chain(commitments).chain(waits)
 }
 
+/// Each Task's inherited Plan, where it comes from, and the plan rule it breaks — read off the
+/// board's [`crate::mindmap::rules::plans`] audit.
+fn plan_facts(load: &MindmapLoad, facts: &mut HashMap<String, NodeFacts>) {
+    // Only a Task holds a Plan, so only a Task is shown one.
+    let tasks = load
+        .plans
+        .readings
+        .iter()
+        .filter(|(key, _)| key.starts_with("task-"));
+    for (key, reading) in tasks {
+        let source = match (&reading.inherited, &reading.effective) {
+            (Some((_, source)), _) => Some(source),
+            (None, EffectivePlan::Empty { source }) => Some(source),
+            _ => None,
+        };
+        if source.is_none() && reading.conflict.is_none() {
+            continue;
+        }
+        let node = facts.entry(key.clone()).or_default();
+        node.inherited_plan = reading.inherited.as_ref().map(|(plan, _)| plan.clone());
+        node.plan_source = source.cloned();
+        node.plan_source_short_id = source.and_then(|source| load.short_ids.get(source).cloned());
+        node.plan_conflict = reading.conflict;
+    }
+}
+
 /// Every node's facts on `load`, and what the agents are doing — what the app's load serves
 /// beside the rows. `access` is what the MCP roots make visible, when it could be read.
 pub fn derive(
@@ -466,6 +492,7 @@ pub fn derive(
             facts.entry(key).or_default().capabilities = Some(capabilities);
         }
     }
+    plan_facts(load, &mut facts);
     let targets = dependency_targets(load);
     for (key, blocks) in dependency_blocks(load, &targets) {
         facts.entry(key).or_default().dependency_blocks = blocks;

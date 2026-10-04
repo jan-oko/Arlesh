@@ -228,27 +228,21 @@ pub fn is_unopened_wait(node: &NodeFacts, filter: &BoardFilter) -> bool {
 /// Whether `node` is a Task that Start hides because its Plan has not begun yet.
 ///
 /// Start asks what can be begun **now**, and a Task scheduled into next week is not that. The
-/// Plan's position is `node`'s own when it has a Plan, and otherwise `inherited_plan` — the
-/// nearest planned ancestor Task's, which the walk carries down. That inheritance is the interim
-/// reading of an unplanned sub-step under a planned Task, pending real Plan inheritance, and lives
-/// only here: nothing stored, edited or badged inherits a Plan yet. A Task with a Plan of its own
-/// answers to it alone, whatever its parent's says.
+/// Plan's position is the Task's **effective** Plan's — its own, or the one it inherits from the
+/// nearest planned node above it (`docs/spec/time-scopes.md`, *Plan inheritance*) — which the
+/// backend derives onto the lifecycle, so the filter inherits nothing itself.
 ///
 /// Only a Plan still **ahead** hides. One that has already ended unfulfilled keeps the Task on
 /// screen as missed work — a missed slot does not make the work any less startable; the Task's
-/// own Time Scope is what decides when it stops being relevant. An unplanned Task with no planned
-/// ancestor is unaffected, as is every other kind.
+/// own Time Scope is what decides when it stops being relevant. An unplanned Task is unaffected,
+/// as is every other kind.
 ///
 /// It fails the Task's own match rather than gating its subtree, so a sub-step with a current
 /// Plan of its own still shows, holding its future-planned parent on screen as its ancestor.
-pub fn is_planned_ahead(
-    node: &NodeFacts,
-    filter: &BoardFilter,
-    inherited_plan: Option<Timing>,
-) -> bool {
+pub fn is_planned_ahead(node: &NodeFacts, filter: &BoardFilter) -> bool {
     filter.preset == Preset::Start
         && node.kind == NodeKind::Task
-        && node.plan_timing.or(inherited_plan) == Some(Timing::Pending)
+        && node.plan_timing == Some(Timing::Pending)
 }
 
 /// Whether two half-open windows share any instant. Adjacent windows — one ending where the next

@@ -326,10 +326,10 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dt>Without</dt><dd>Between midnight and 02:00 the Day says "today" while its Night says "yesterday", and everything derived from it flips early.</dd>
       <dt>Lives</dt><dd class="where">scopes/ (key, derive, resolve) · ADR 0009</dd></dl></article>
     <article class="card"><h3>Time Scope and Plan</h3>
-      <p class="is">A Time Scope is when something matters; a Plan is the slot you mean to do it in, inside that window. An empty Time Scope inherits the nearest window above.</p>
+      <p class="is">A Time Scope is when something matters; a Plan is the slot you mean to do it in, inside that window. An empty Time Scope inherits the nearest window above, and a Task with no Plan inherits the nearest Plan above, clipped to its own window.</p>
       <dl><dt>Why</dt><dd>"Relevant this month" and "doing it Tuesday morning" are different facts that change at different rates.</dd>
       <dt>Without</dt><dd>Either everything is scheduled rigidly or nothing knows when it stops mattering.</dd>
-      <dt>Lives</dt><dd class="where">tasks/scope_rules.rs · ADR 0001</dd></dl></article>
+      <dt>Lives</dt><dd class="where">tasks/scope_rules.rs · tasks/rules/plan_inheritance.rs · ADR 0001</dd></dl></article>
     <article class="card"><h3>Timing</h3>
       <p class="is">Pending before the window, Active in it, Lapsed after. Worked out from the effective window, own or inherited.</p>
       <dl><dt>Why</dt><dd>Start should only offer what is in scope now.</dd>
@@ -393,12 +393,12 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dt>Without</dt><dd>Flagging every Task by hand, and agents writing into your own work.</dd>
       <dt>Lives</dt><dd class="where">tasks/agentic.rs · src/utils/agentic.ts</dd></dl></article>
     <article class="card"><h3>Scope containment</h3>
-      <p class="is">A child's window sits inside its parent's, a Plan inside its window, a due inside its window. Checked on every write; narrowing a parent offers to clamp its children.</p>
+      <p class="is">A child's window sits inside its parent's, a Plan inside its window and inside the Plan it inherits, a due inside its window. Checked on every write; a write that leaves a Task with no Plan inside its window is refused, naming it; narrowing a parent offers to clamp its children (or, for Plans, clear theirs so they inherit).</p>
       <dl><dt>Why</dt><dd>A step can't matter outside the window of the thing it is a step of.</dd>
       <dt>Without</dt><dd>Children outliving their parents and plans scheduled after the work stopped mattering.</dd>
       <dt>Lives</dt><dd class="where">tasks/scope_rules.rs</dd></dl></article>
     <article class="card"><h3>Link inheritance</h3>
-      <p class="is">Time Scope and Agentic inherit today. Asynchronous deliberately does not. Tags, knowledge-base links and delegation are specified to inherit but not built.</p>
+      <p class="is">Time Scope, Plan and Agentic inherit today. Asynchronous deliberately does not. Tags, knowledge-base links and delegation are specified to inherit but not built.</p>
       <dl><dt>Why</dt><dd>Context belongs on the branch; a filter on a parent's tag should find its children.</dd>
       <dt>Without</dt><dd>Re-tagging every child, or filters that miss half a project.</dd>
       <dt>Lives</dt><dd class="where">docs/spec/link-inheritance.md</dd></dl></article>
@@ -537,7 +537,8 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
 
     ["timing", "Timing", 1, 0.5, "dv", "Pending before the window, Active in it, Lapsed after it. Unscoped is always Active.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],
     ["due", "Effective due", 1, 3, "dv", "The window whose end makes work late: the explicit due; otherwise none while backlogged; otherwise the window under Keep Overdue and none under Archive. A Habit occurrence's default comes from its clock.", "time-scopes.md#due-scope-and-the-overdue-flag"],
-    ["planpos", "Plan position", 1, 4.5, "dv", "Whether the Task's Plan is still ahead, current or past, read like Timing.", "filtering-logic.md"],
+    ["eplan", "Effective Plan", 1, 4.5, "dv", "The Plan a Task reads: its own, else its parent's effective Plan clipped to its own window. It climbs through every kind; a wait, a check task and an Overdue Task do not clip. Flagged when an own Plan leaves it, or when nothing of it meets the window.", "time-scopes.md#plan-inheritance"],
+    ["planpos", "Plan position", 2, 4.5, "dv", "Whether the Task's effective Plan is still ahead, current or past, read like Timing.", "filtering-logic.md"],
     ["agentic", "Agentic (inherited)", 1, 10, "dv", "Whether a Task reads as Agentic: its own flag, else its nearest flagged ancestor's. It picks the status model and what the MCP may write.", "link-inheritance.md"],
     ["expired", "Expired", 1, 15, "dv", "A Commitment still Unresolved once its Verdict Window has run out. Only Archival moves; the verdict stays Unresolved.", "resources.md#commitments"],
 
@@ -564,7 +565,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
   const EDGES = [
     ["ts", "timing"], ["now", "timing"],
     ["duex", "due"], ["ts", "due"], ["exit", "due"], ["backlog", "due"], ["iter", "due"],
-    ["plan", "planpos"], ["now", "planpos"],
+    ["plan", "eplan"], ["ts", "eplan"], ["eplan", "planpos"], ["now", "planpos"],
     ["aflag", "agentic"],
     ["verdict", "expired"], ["ts", "expired"], ["now", "expired"],
     ["timing", "resolution"], ["status", "resolution"], ["exit", "resolution"],

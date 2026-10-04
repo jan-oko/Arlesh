@@ -234,10 +234,9 @@ fn nearest_planned_takes_the_nearest_task_plan() {
 }
 
 #[test]
-fn nearest_planned_stops_at_a_goal_and_ignores_every_plan_above_it() {
-    // The schema cannot currently put a task above a goal (a goal's parent is a project,
-    // domain or goal), so this chain is hand-built to pin the *search's* rule rather than
-    // the schema's — the rule is what the four old walks disagreed about.
+fn nearest_planned_climbs_past_a_goal_or_a_commitment() {
+    // Plan inheritance climbs through every kind (`docs/spec/time-scopes.md`): a Goal or a
+    // Commitment passes the Plan above it down.
     let chain = rooted(vec![
         task_link(1),
         goal_link(2),
@@ -247,30 +246,21 @@ fn nearest_planned_stops_at_a_goal_and_ignores_every_plan_above_it() {
         },
     ]);
 
-    assert_eq!(
-        chain.nearest_planned(),
-        Search::Unconstrained,
-        "the plan chain is tasks-only: a goal ends it"
-    );
+    assert_eq!(chain.nearest_planned(), Search::Found(&scope(90)));
 }
 
 #[test]
-fn nearest_planned_ignores_a_break_beyond_the_goal_that_already_stopped_it() {
+fn nearest_planned_on_a_chain_broken_at_a_goal_is_undetermined() {
     let chain = broken_at(vec![task_link(1)], NodeKind::Goal, 2);
 
     assert_eq!(
         chain.nearest_planned(),
-        Search::Unconstrained,
-        "the tasks-only walk stops at that goal without reading it, so the break is moot"
-    );
-    assert_eq!(
-        chain.nearest_scoped(),
         Search::Undetermined {
             kind: NodeKind::Goal,
             id: 2,
             cause: BreakCause::Missing
         },
-        "the same chain leaves the scope question unanswered — this pair is the quirk"
+        "a plan above the break could bind it, so the question is left unanswered"
     );
 }
 

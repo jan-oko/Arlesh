@@ -34,6 +34,17 @@ export interface NodeFacts {
   inherited_agentic?: boolean;
   /** The Time Scope the node inherits: the nearest scoped ancestor's. */
   inherited_time_scope?: TimeScope;
+  /** The Plan a Task takes from above: its parent's effective Plan, clipped to its own Time Scope.
+   * Sent whether or not it has a Plan of its own — what it reads with none, and what an own Plan
+   * must sit inside. */
+  inherited_plan?: TimeScope;
+  /** The node an inherited Plan comes from, keyed as the board keys it (`task-12`). */
+  plan_source?: string;
+  /** That node's short id. */
+  plan_source_short_id?: string;
+  /** The plan rule a Task breaks, as an undo or older data can leave one: its own Plan leaves the one it
+   * inherits, or the Plan above it does not meet its window. */
+  plan_conflict?: PlanConflict;
   /** The dependencies a Task is blocked by, in edge order. */
   dependency_blocks?: DependencyBlock[];
   /** The open agentic question beneath a Task — the wait that makes it read Review. */
@@ -49,6 +60,9 @@ export interface NodeFacts {
    * derived wait). Absent, everything is allowed. */
   capabilities?: NodeCapabilities;
 }
+
+/** A plan rule a Task breaks (`tasks::rules::plan_inheritance::PlanConflict`). */
+export type PlanConflict = "parent_plan" | "empty";
 
 /** What a row may be done to, as the backend decides it (`nodes::rules::capabilities`). */
 export interface NodeCapabilities {

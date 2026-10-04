@@ -13,7 +13,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::tasks::{lifecycle::Timing, model::TimeScope};
+use crate::tasks::model::TimeScope;
 
 use super::{
     model::{BoardFilter, NodeFacts, NodeKind},
@@ -57,7 +57,6 @@ pub fn prune(root: &FactNode, filter: &BoardFilter) -> Option<FactNode> {
         Inherited {
             status: UNSET_STATUS,
             under_backlog: false,
-            plan: None,
             time_scope: None,
         },
         &None,
@@ -112,8 +111,6 @@ struct Inherited<'a> {
     status: &'a str,
     /// Whether some ancestor is a backlogged Task.
     under_backlog: bool,
-    /// The nearest planned ancestor's Plan position, for Start.
-    plan: Option<Timing>,
     /// The nearest scoped ancestor's Time Scope, for the Plan preset's scope narrowing.
     time_scope: Option<&'a TimeScope>,
 }
@@ -129,7 +126,6 @@ fn prune_at<'a>(
     let Inherited {
         status: inherited_status,
         under_backlog,
-        plan: inherited_plan,
         time_scope: inherited_time_scope,
     } = inherited;
     if rules::type_hard_hidden(&node.facts, filter) {
@@ -144,15 +140,6 @@ fn prune_at<'a>(
     };
     // Backlog, unlike status, does propagate: everything under a set-aside Task is set aside too.
     let backlog_for_children = under_backlog || node.facts.backlogged;
-    // So, for Start, does a Plan: an unplanned sub-step is read by its nearest planned ancestor's.
-    // A wait cuts the chain: the check task beneath it has no Plan, answers to its own due time,
-    // and must not vanish because the Task the wait hangs under is planned for next week.
-    let plan_for_children = if node.facts.kind == NodeKind::Expectation {
-        None
-    } else {
-        node.facts.plan_timing.or(inherited_plan)
-    };
-
     // A Time Scope is inherited from the nearest scoped ancestor, as it is everywhere else.
     let time_scope_for_children = node.facts.time_scope.as_ref().or(inherited_time_scope);
     // Under Start a blocked node gates what lies beneath it, letting only its child dependencies
@@ -169,7 +156,6 @@ fn prune_at<'a>(
             Inherited {
                 status: inherited_for_children,
                 under_backlog: backlog_for_children,
-                plan: plan_for_children,
                 time_scope: time_scope_for_children,
             },
             &gate_for_children,
@@ -190,7 +176,7 @@ fn prune_at<'a>(
     if has_content_match
         || (!held
             && rules::self_matches(&node.facts, filter, inherited_status, under_backlog)
-            && !rules::is_planned_ahead(&node.facts, filter, inherited_plan)
+            && !rules::is_planned_ahead(&node.facts, filter)
             && !rules::is_outside_plan_scope(&node.facts, filter, inherited_time_scope))
     {
         return Some(FactNode::with_children(node.facts.clone(), children));
