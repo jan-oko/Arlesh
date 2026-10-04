@@ -4,13 +4,15 @@ import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { isWireError } from "@/api/errors";
 import type { Origin, RowId } from "@/api/node-id";
 
-/** A Task's own stored archival state. Two values only: a Task is never manually Archived, and
- * Frozen is Goal/Project vocabulary. */
-export type TaskArchival = "live" | "backlog";
+/** A Task's own stored archival state: Live, Backlog or Archived by hand — one value at a time.
+ * Frozen is Goal/Project vocabulary. Archived reaches the Task's whole subtree through the backend's
+ * lifecycle; only a stored Task takes it. */
+export type TaskArchival = "live" | "backlog" | "archived";
 
 export const TASK_ARCHIVAL = {
   LIVE: "live",
   BACKLOG: "backlog",
+  ARCHIVED: "archived",
 } as const;
 
 /** A Task's Agentic state as an update names it. Three states, not two: a Task with no value of

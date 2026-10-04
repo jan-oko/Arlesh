@@ -6,6 +6,8 @@ import type { FilterEntries } from "@/hooks/use-filter-entries";
 import { NO_VALUE, isYesNoDimension } from "@/utils/filter-modes";
 import { filterMenuRows, filterSwitchesFor, offeredDimensions } from "@/utils/filter-layout";
 import { useRowKindToggle } from "@/hooks/use-row-kind-toggle";
+import { delegatedModeOf } from "@/utils/filter-tree";
+import type { OverrideMode } from "@/utils/filter-tree";
 import type { FilterRowId } from "@/utils/filter-layout";
 import type { RowKindResult, SearchGroup, SearchResult, SearchSwitch, SwitchResult } from "@/utils/filter-search";
 
@@ -14,7 +16,7 @@ function isNodeSearch(row: FilterRowId): boolean {
   return row === "antecedent" || row === "dependency";
 }
 
-/** The switches the search offers: Archived and Backlog where the view has them. Private Mode is
+/** The switches the search offers: Archived, Backlog and Delegated where the view has them. Private Mode is
  * the menu's switch; while it is on, the Private yes/no pill is what the search offers instead. */
 function searchSwitches(view: View): SearchSwitch[] {
   return filterSwitchesFor(view).flatMap((target) => (target === "private" ? [] : [target]));
@@ -23,7 +25,7 @@ function searchSwitches(view: View): SearchSwitch[] {
 /**
  * The `Ctrl+F` filter search's catalogue for a view: every dimension the view's Filter menu has, in
  * the menu's order, with the values not yet added; then the switches — in the List View the three
- * row kinds, then Archived and Backlog — each one result wearing its current state.
+ * row kinds, then Archived, Backlog and Delegated — each one result wearing its current state.
  */
 export function useFilterSearchGroups(view: View, catalogue: FilterDimensions, entries: FilterEntries): SearchGroup[] {
   const { t } = useTranslation(["filter", "listView"]);
@@ -43,7 +45,13 @@ export function useFilterSearchGroups(view: View, catalogue: FilterDimensions, e
   }
 
   function switchLabel(target: SearchSwitch): string {
-    return target === "archived" ? t("archivedPill") : t("backlogPill");
+    return t(`${target}Pill`);
+  }
+
+  function switchState(target: SearchSwitch): OverrideMode {
+    if (target === "archived") return filter.archivedMode;
+    if (target === "backlog") return filter.backlogMode;
+    return delegatedModeOf(filter);
   }
 
   // The List View's row kinds, or the Zen View's strips — whatever the view's switch block holds.
@@ -59,7 +67,7 @@ export function useFilterSearchGroups(view: View, catalogue: FilterDimensions, e
     kind: "switch",
     target,
     label: switchLabel(target),
-    state: target === "archived" ? filter.archivedMode : filter.backlogMode,
+    state: switchState(target),
     matchText: switchLabel(target),
   }));
 

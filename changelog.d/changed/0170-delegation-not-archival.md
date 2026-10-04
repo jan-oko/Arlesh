@@ -1,0 +1,1 @@
+- **Delegated Tasks are no longer treated as archived.** The Archived pill no longer shows or hides them: the new Delegated pill does.

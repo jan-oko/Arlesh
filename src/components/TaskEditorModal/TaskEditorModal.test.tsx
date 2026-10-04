@@ -232,6 +232,42 @@ describe("TaskEditorModal — save error", () => {
   });
 });
 
+describe("TaskEditorModal — the Archived switch under Advanced", () => {
+  it("archives a stored task by hand, taking it out of the backlog in front of the user", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ backlogged: true })} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "archivedOff" }));
+    expect(screen.getByRole("checkbox", { name: "backlogOff" })).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ archival: "archived" });
+  });
+
+  it("opens Advanced on a task archived by hand, and unarchives it to live", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ archivedByHand: true })} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "archivedOn" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ archival: "live" });
+  });
+
+  it("offers no Archived switch on a Habit occurrence", async () => {
+    render(<TaskEditorModal {...defaultProps} node={mkNode({ ...occurrenceRow({ habitId: 3, itemType: "flow_task", itemId: 4 }) })} />);
+    await waitFor(() => expect(screen.getByDisplayValue("Write tests")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
+    expect(screen.queryByRole("checkbox", { name: "archivedOff" })).toBeNull();
+  });
+});
+
 describe("TaskEditorModal — Backlog control", () => {
   const PLAN = { start_id: testKey(4), end_id: testKey(4) };
 

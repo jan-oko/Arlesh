@@ -1,7 +1,7 @@
 import type { MindmapNode, NodeKind, Position } from "@/utils/tree-layout";
 import { isDerivedWait } from "@/utils/derived-wait";
 import { can } from "@/utils/capabilities";
-import { isArchived } from "@/utils/filter-tree";
+import { isArchived, isDelegated } from "@/utils/filter-tree";
 import { isValidDropTarget } from "@/utils/node-meta";
 
 export function findNode(root: MindmapNode, id: string): MindmapNode | undefined {
@@ -182,11 +182,18 @@ export interface SearchableNode { id: string; title: string; kind: NodeKind; pat
 /** How a node search reads the tree. */
 export interface SearchableNodeOptions {
   /**
-   * Leave out archived nodes — each judged by its **own** archival (see `isArchived`: an Archived
-   * status, a derived Archival of Archived, or a delegated Task). What lies beneath an archived node
-   * is not archived by being there, so it stays searchable (ruled by the user, 2026-09-27).
+   * Leave out archived nodes — each judged by its **own** effective archival (see `isArchived`: an
+   * Archived status, or a derived Archival of Archived). What lies beneath an archived node is not
+   * archived by being there (ruled by the user, 2026-09-27) — except beneath a hand archive, which
+   * its whole subtree inherits on the backend's lifecycle (Task 269), so that subtree is left out
+   * too.
    */
   skipArchived: boolean;
+  /**
+   * Leave out delegated Tasks. The search follows the Delegated pill (ruled 2026-10-03): it offers
+   * them only while the pill is on Include.
+   */
+  skipDelegated?: boolean;
 }
 
 /** Flattens the tree (excluding the virtual root) into searchable rows carrying each node's ancestry. */
@@ -195,8 +202,10 @@ export function collectSearchableNodes(
   options: SearchableNodeOptions = { skipArchived: false },
 ): SearchableNode[] {
   const out: SearchableNode[] = [];
+  const skipped = (n: MindmapNode) =>
+    (options.skipArchived && isArchived(n)) || (options.skipDelegated === true && isDelegated(n));
   function visit(n: MindmapNode, isRoot: boolean, ancestors: string[]): void {
-    if (!isRoot && !(options.skipArchived && isArchived(n))) {
+    if (!isRoot && !skipped(n)) {
       out.push({ id: n.id, title: n.title, kind: n.kind, path: ancestors });
     }
     const childAncestors = isRoot ? [] : [n.title, ...ancestors];

@@ -45,7 +45,7 @@ enum Write {
     Create(CreateTaskRequest, Option<Delegate>, Relations),
     /// A change to an existing Task, stored or an occurrence, and to its relations.
     Update(NodeId, UpdateTaskRequest, Relations),
-    /// A Habit occurrence archived.
+    /// A Habit occurrence archived, through its tombstone.
     ArchiveOccurrence(NodeId),
 }
 
@@ -60,12 +60,13 @@ impl ArleshMcp {
     ///
     /// Writes: `create` makes a Task, always Agentic, anywhere inside the MCP roots that holds one
     /// — except under a Task explicitly marked Not agentic. `update`, `set_status`, `move` and
-    /// `archive` need a Task that reads as Agentic. `create` and `update` also set its Time Scope,
+    /// `archive`/`unarchive` need a Task that reads as Agentic. `create` and `update` also set its Time Scope,
     /// Plan and due (scope ids, as `containment_conflicts` takes them; the Plan and the due within
     /// the Time Scope), `on_scope_exit` (`keep` is Keep Overdue), `asynchronous`, its explicit
     /// `block_reasons`, its tags (Tag ids), its `delegate` (`{"kind": "person",
     /// "id": N}` — an existing Person — or `null` on update to take it back; a delegated Task is
-    /// hidden wherever an archived one is, except Do) and its prerequisites —
+    /// hidden under Plan and Start unless the filter's `delegated` pill says otherwise) and its
+    /// prerequisites —
     /// what it comes after, a task, goal or wait: `dependencies` on create,
     /// `add_dependencies`/`remove_dependencies` (and `add_tags`/`remove_tags`) on update. A
     /// prerequisite or tag need only be visible; one that is not is `not_permitted`, and a
@@ -82,10 +83,11 @@ impl ArleshMcp {
     /// (`compound`, set with `update`) has its status derived from its whole subtree, so
     /// `set_status` on it is refused; `update` with `compound: false` switches that off and
     /// keeps the status it showed. `move` needs create permission at both the old and
-    /// the new parent; a Habit occurrence cannot move. `archive` never deletes, and takes only a Habit
-    /// occurrence, archived as the app archives one; archiving a stored Task by hand is not
-    /// supported yet and is refused as `not_permitted`. A write to a Habit occurrence lands in its
-    /// overlay, as the user's own edit would.
+    /// the new parent; a Habit occurrence cannot move. `archive` never deletes: a stored Task is
+    /// archived by hand, and it and everything beneath it read as archived until `unarchive`
+    /// makes it Live again; a Habit occurrence is archived as the app archives one, and a status
+    /// brings it back. A write to a Habit occurrence lands in its overlay, as the user's own edit
+    /// would.
     ///
     /// Ids are row ids or short ids (the snapshot's `short_id`); a short id matching several
     /// nodes is refused as `ambiguous_id`, listing them. A node outside the MCP roots, or one you
@@ -308,15 +310,39 @@ impl ArleshMcp {
             }
             TasksOperation::Archive { id } => {
                 let (id, _) = found!(writable(&mut db, &board, &id, now).await);
-                if matches!(id, NodeId::Stored(_)) {
-                    // Manual archival of a stored Task is not in the model yet (Arlesh-dbh).
-                    return result::not_permitted(format!(
-                        "task {id} is a stored Task, and archiving one by hand is not supported \
-                         yet; only a Habit occurrence can be archived. Finish it with \
-                         set_status, or set it aside with update's backlog"
+                match id {
+                    NodeId::Stored(_) => Write::Update(
+                        id,
+                        UpdateTaskRequest {
+                            archival: Some(TaskArchival::Archived),
+                            ..Default::default()
+                        },
+                        Relations::default(),
+                    ),
+                    NodeId::Derived(_) => Write::ArchiveOccurrence(id),
+                }
+            }
+            TasksOperation::Unarchive { id } => {
+                let (id, task) = found!(writable(&mut db, &board, &id, now).await);
+                if matches!(id, NodeId::Derived(_)) {
+                    return result::refused(format!(
+                        "task {id} is a Habit occurrence; an archived one comes back when you \
+                         set its status"
                     ));
                 }
-                Write::ArchiveOccurrence(id)
+                if task.archival != TaskArchival::Archived {
+                    return result::refused(format!(
+                        "task {id} is not archived by hand, so there is nothing to unarchive"
+                    ));
+                }
+                Write::Update(
+                    id,
+                    UpdateTaskRequest {
+                        archival: Some(TaskArchival::Live),
+                        ..Default::default()
+                    },
+                    Relations::default(),
+                )
             }
         };
 

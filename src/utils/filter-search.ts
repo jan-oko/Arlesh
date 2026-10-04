@@ -2,9 +2,9 @@ import type { OverrideMode } from "@/utils/filter-tree";
 import type { FilterDimension, ModifierKeys } from "@/utils/filter-modes";
 import type { ListRowKind, PillMode } from "@/utils/list-filter";
 
-/** The tri-state switches the search offers: Archived and Backlog. (Private is a yes/no pill here,
- * offered while Private Mode is on.) */
-export type SearchSwitch = "archived" | "backlog";
+/** The tri-state switches the search offers: Archived, Backlog and Delegated. (Private is a yes/no
+ * pill here, offered while Private Mode is on.) */
+export type SearchSwitch = "archived" | "backlog" | "delegated";
 
 /** A value that can be added to a dimension, as the menu and the search draw it. */
 export interface FilterOption {
@@ -25,7 +25,7 @@ export interface ValueResult extends FilterOption {
 }
 
 /**
- * A switch result — Archived or Backlog. It is not added and does not drop out: it shows its
+ * A switch result — Archived, Backlog or Delegated. It is not added and does not drop out: it shows its
  * current state, and picking it sets that state (see {@link switchStateAfterPick}).
  */
 export interface SwitchResult {

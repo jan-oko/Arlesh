@@ -8,7 +8,7 @@ import { useRowKindToggle } from "@/hooks/use-row-kind-toggle";
 import { useSetPrivateMode } from "@/hooks/use-private-mode";
 import { YES_VALUE, modeFromModifiers } from "@/utils/filter-modes";
 import type { YesNoDimension } from "@/utils/filter-modes";
-import { ON_AGENT_KEY, flagForCode, rowKindForCode } from "@/utils/filter-menu-keys";
+import { DELEGATED_KEY, ON_AGENT_KEY, flagForCode, rowKindForCode } from "@/utils/filter-menu-keys";
 import type { ListRowKind } from "@/utils/list-filter";
 import type { View } from "@/stores/use-view-store";
 import { flagsFor, offersOnAgent, rowKindsFor } from "@/utils/filter-layout";
@@ -26,7 +26,7 @@ function isBareEscape(event: KeyboardEvent): boolean {
 /**
  * The Filter menu's keys (see `filter-menu-keys.ts`), as a keydown handler for the menu: `Esc`
  * closes it (a search box with a query clears that first, and stops the key there), `Ctrl+P`
- * in every view, and the letters for whatever row kinds and flags `view` offers — all of them in
+ * in every view, `g` (the Delegated pill) in every view, and the letters for whatever row kinds and flags `view` offers — all of them in
  * the List View, `c` / `e` (its strips) and `a` (Agentic) in the Zen View. A key typed into one of
  * its search boxes is left to type.
  */
@@ -40,6 +40,7 @@ export function useFilterMenuKeys(view: View): (event: KeyboardEvent) => void {
   const setPillMode = useListFilterStore((s) => s.setPillMode);
   const setFilterPopover = useFilterStore((s) => s.setFilterPopover);
   const toggleShowOnAgent = useFilterStore((s) => s.toggleShowOnAgent);
+  const cycleDelegatedMode = useFilterStore((s) => s.cycleDelegatedMode);
 
   function onRowKind(kind: ListRowKind, event: KeyboardEvent) {
     if (event.shiftKey) rowKinds.showOnly(kind);
@@ -78,6 +79,12 @@ export function useFilterMenuKeys(view: View): (event: KeyboardEvent) => void {
     if (event.code === ON_AGENT_KEY && offersOnAgent(view) && !event.altKey && !event.shiftKey) {
       event.preventDefault();
       toggleShowOnAgent();
+      return;
+    }
+    // `g`: the Delegated pill, off → include → exclude, in every view. Bare only.
+    if (event.code === DELEGATED_KEY && !event.altKey && !event.shiftKey) {
+      event.preventDefault();
+      cycleDelegatedMode();
       return;
     }
     const kindCandidate = rowKindForCode(event.code);

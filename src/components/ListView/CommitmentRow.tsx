@@ -24,6 +24,8 @@ interface Props {
   onCycleVerdict: (nodeId: string) => void;
   onOpenEditor: (nodeId: string) => void;
   onAddTagFilter: (tagId: number) => void;
+  /** Opens the row's context menu at the pointer. */
+  onContextMenu?: (nodeId: string, x: number, y: number) => void;
 }
 
 /**
@@ -35,7 +37,7 @@ interface Props {
  * and works like every other row, and `X` remains the one-press route to Broken.
  */
 export default function CommitmentRow({
-  row, visibleDepth = 0, isSelected, isFocusExempt = false, onSelect, onCycleVerdict, onOpenEditor, onAddTagFilter,
+  row, visibleDepth = 0, isSelected, isFocusExempt = false, onSelect, onCycleVerdict, onOpenEditor, onAddTagFilter, onContextMenu,
 }: Props) {
   const { t } = useTranslation("listView");
   const tagNames = useTagNames();
@@ -58,6 +60,7 @@ export default function CommitmentRow({
       style={cardStyle}
       onClick={() => onSelect(node.id)}
       onDoubleClick={() => onOpenEditor(node.id)}
+      onContextMenu={onContextMenu === undefined ? undefined : (e) => { e.preventDefault(); onContextMenu(node.id, e.clientX, e.clientY); }}
     >
       <button
         type="button"

@@ -21,6 +21,7 @@ mod completion_instants;
 mod compound;
 mod due_scope;
 mod expectations;
+mod hand_archive;
 mod plan_overdue;
 mod tasks;
 mod wait_rows;

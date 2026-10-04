@@ -31,8 +31,8 @@ use crate::{
     },
     scopes::resolve::interval_contains,
     tasks::model::{
-        Commitment, Delegate, Goal, Status, Task, TaskArchival, TimeScope, UpdateCommitmentRequest,
-        UpdateGoalRequest, UpdateTaskRequest,
+        Commitment, CommitmentArchival, Delegate, Goal, Status, Task, TaskArchival, TimeScope,
+        UpdateCommitmentRequest, UpdateGoalRequest, UpdateTaskRequest,
     },
 };
 
@@ -372,6 +372,9 @@ pub async fn update_task(
         }
     }
     if let Some(archival) = request.archival {
+        if archival == TaskArchival::Archived {
+            return Err(crate::tasks::error::TaskError::ArchiveOnDerived.into());
+        }
         let planned = if overlay.plan_set {
             overlay.plan_start_id.is_some()
         } else {
@@ -569,6 +572,11 @@ pub async fn update_commitment(
         return Err(FlowError::Refused(
             "a habit's verdict window is set on the habit, for every iteration".to_string(),
         ));
+    }
+    // An occurrence has no hand archive: it is archived through its tombstone. Live, which it
+    // always is, is no change.
+    if request.archival == Some(CommitmentArchival::Archived) {
+        return Err(crate::tasks::error::TaskError::ArchiveOnDerived.into());
     }
     let template = template_values(db, &flow, key, iteration_index(&current.origin)).await?;
     let mut overlay = db.overlays().commitment(key).await?;

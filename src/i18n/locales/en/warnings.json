@@ -40,6 +40,7 @@
   "backlogHasPlanUnnamed": "It is planned. A task in the backlog is never also planned, so that plan will be cleared.",
   "backlogClearPlanAction": "Clear the plan and backlog it",
   "backlogFailed": "Backlog failed: {{message}}",
+  "archiveFailed": "Archive failed: {{message}}",
   "backlogClearedByPlan": "Taken out of the backlog — it is planned now.",
   "backlogClearedByStart": "Taken out of the backlog — it is in progress now.",
   "backlogClearedByStarted": "Taken out of the backlog — it is started now.",
