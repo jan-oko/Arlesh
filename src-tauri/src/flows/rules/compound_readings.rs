@@ -165,6 +165,7 @@ fn derive_subtrees(
     tasks.extend(provisional.tasks);
     goals.extend(provisional.goals);
     commitments.extend(provisional.commitments);
+    expectations.extend(provisional.expectations);
     lifecycles.extend(provisional.lifecycles);
     let settled = settle_in(
         &waits,

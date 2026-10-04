@@ -14,6 +14,7 @@ pub mod cycle_grid;
 pub mod fold;
 pub mod habits;
 pub mod instance_copies;
+pub mod items;
 pub mod occurrences;
 pub mod schedule;
 pub mod span;

@@ -55,6 +55,12 @@ export default function NodeIcon({ kind, status, verdict, expired = false, isBlo
   // Flow items are templates for goals/tasks — reuse their icons.
   if (kind === "flow_goal") return <GoalIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} />;
   if (kind === "flow_task") return <TaskIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} isBlocked={isBlocked} />;
+  if (kind === "flow_commitment") {
+    return <CommitmentIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} state={commitmentGlyphState(verdict, expired)} />;
+  }
+  if (kind === "flow_expectation") {
+    return <ExpectationIcon cx={cx} cy={cy} r={r} color={color} opacity={opacity} status={status} />;
+  }
   const _exhaustive: never = kind;
   throw new Error(`NodeIcon: unhandled kind "${String(_exhaustive)}"`);
 }

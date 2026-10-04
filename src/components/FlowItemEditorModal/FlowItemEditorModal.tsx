@@ -4,8 +4,12 @@ import { useTranslation } from "react-i18next";
 import { rowIdOf } from "@/utils/node-identity";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { FlowCyclePair, FlowItemDep } from "@/utils/tree-layout";
-import type { CycleReconcile, FlowItemType, TemplateUpdate } from "@/api/flows";
-import { orphanedEditCount } from "@/api/flows";
+import type { CycleReconcile, FirstCheck, FlowItemType, TemplateUpdate, UpdateFlowItemRequest } from "@/api/flows";
+import { flowItemNodeId, orphanedEditCount } from "@/api/flows";
+import type { DurationSpec } from "@/api/time-scope";
+import VerdictWindowField from "@/components/CommitmentEditorModal/VerdictWindowField";
+import CountedDurationField from "@/components/EditorModal/CountedDurationField";
+import FirstCheckField from "./FirstCheckField";
 import type { Domain } from "@/api/domains";
 import type { TaskAgentic } from "@/api/tasks";
 import { TASK_ARCHIVAL } from "@/api/tasks";
@@ -36,6 +40,8 @@ export interface FlowItemSaveData {
   /** The template item's own fields, which every occurrence it draws reads unless that
    * occurrence says otherwise. */
   template: TemplateUpdate;
+  /** A Commitment item's Verdict Window, or a wait item's Check every and first check. */
+  itemFields?: Pick<UpdateFlowItemRequest, "verdict_window" | "check_every" | "first_check">;
   /**
    * The answer to a cycle change that would orphan what this Habit's occurrences recorded:
    * `"fork"` (Archive & new) or `"discard"` (Discard & regenerate). Absent on a first save.
@@ -84,6 +90,13 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
   const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate>(template.async_template ?? EMPTY_ASYNC_TEMPLATE);
   const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(template.agentic ?? null));
   const [agenticBrief, setAgenticBrief] = useState<AgenticBrief>(template.agentic_brief ?? EMPTY_AGENTIC_BRIEF);
+  const [verdictWindow, setVerdictWindow] = useState<DurationSpec | null>(node.flowItem?.verdictWindow ?? null);
+  const [checkEvery, setCheckEvery] = useState<DurationSpec | null>(node.flowItem?.checkEvery ?? null);
+  const [firstCheck, setFirstCheck] = useState<FirstCheck | null>(node.flowItem?.firstCheck ?? null);
+  // A Task or Goal item waits on others; a Commitment or wait item is waited on, never waits.
+  const takesDependencies = itemType === "flow_task" || itemType === "flow_goal";
+  // A Commitment and a wait take no block reasons, stored or templated.
+  const takesBlockReasons = itemType === "flow_task" || itemType === "flow_goal";
   const [orphanedCount, setOrphanedCount] = useState<number | null>(null);
   const [depSearch, setDepSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -104,7 +117,16 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
     setDepSearch("");
   }
 
+  function itemFields(): NonNullable<FlowItemSaveData["itemFields"]> {
+    if (itemType === "flow_commitment") return { verdict_window: verdictWindow };
+    if (itemType === "flow_expectation") {
+      return { check_every: checkEvery, first_check: checkEvery === null ? null : firstCheck };
+    }
+    return {};
+  }
+
   function templateUpdate(): TemplateUpdate {
+    if (!takesBlockReasons) return { tag_ids: tagIds };
     const shared = { tag_ids: tagIds, block_reasons: blockReasons.filter((reason) => reason.trim() !== "") };
     if (itemType === "flow_goal") return shared;
     return {
@@ -132,6 +154,7 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
       const removedDeps = initialDeps.filter((d) => !currentDeps.some((cd) => depEquals(cd, d)));
       await onSave({
         title: title.trim(), cycles, addedDeps, removedDeps, isPrivate, template: templateUpdate(),
+        itemFields: itemFields(),
         ...(reconcile !== undefined ? { reconcile } : {}),
       });
     } catch (err) {
@@ -156,6 +179,8 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
   const depSearchLower = depSearch.trim().toLowerCase();
   const searchResults = depSearchLower === "" ? [] : availableDeps
     .filter((n) => n.title.toLowerCase().includes(depSearchLower))
+    // Nothing waits on a Commitment.
+    .filter((n) => n.kind !== "flow_commitment")
     .filter((n) => {
       const dep = nodeToDep(n);
       return dep !== null && !currentDeps.some((d) => depEquals(d, dep));
@@ -163,11 +188,16 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
     .slice(0, 8);
 
   function depTitle(dep: FlowItemDep): string {
-    const id = dep.type === "flow_goal" ? `flowgoal-${dep.id}` : `flowtask-${dep.id}`;
+    const id = flowItemNodeId(dep.type, dep.id);
     return availableDeps.find((n) => n.id === id)?.title ?? `#${dep.id}`;
   }
 
-  const heading = itemType === "flow_goal" ? t("editGoal") : t("editTask");
+  const heading = {
+    flow_goal: t("editGoal"),
+    flow_task: t("editTask"),
+    flow_commitment: t("editCommitment"),
+    flow_expectation: t("expectation:editHeading"),
+  }[itemType];
 
   return (
     <EditorModal heading={heading} onClose={onClose} onKeyDown={handleKeyDown} isSaving={isSaving} onSave={handleSave} saveError={saveError}>
@@ -193,7 +223,37 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
           />
         </div>
       )}
-      <div className={styles.depSection}>
+      {itemType === "flow_commitment" && (
+        <div className={styles.label}>
+          {t("fieldVerdictWindow")}
+          <VerdictWindowField value={verdictWindow} onChange={setVerdictWindow} />
+        </div>
+      )}
+      {itemType === "flow_expectation" && (
+        <>
+          <div className={styles.label}>
+            {t("expectation:fieldCheckEvery")}
+            <CountedDurationField
+              value={checkEvery}
+              onChange={setCheckEvery}
+              label={t("expectation:fieldCheckEvery")}
+              emptyLabel={t("expectation:checkEveryNone")}
+              subDay
+            />
+          </div>
+          {checkEvery !== null && (
+            <div className={styles.label}>
+              {t("fieldFirstCheck")}
+              <FirstCheckField
+                value={firstCheck}
+                onChange={setFirstCheck}
+                flowScopeKind={node.flowItem?.flowScopeKind ?? null}
+              />
+            </div>
+          )}
+        </>
+      )}
+      {takesDependencies && <div className={styles.depSection}>
         <span className={styles.label}>{t("fieldDependencies")}</span>
         {currentDeps.length > 0 && (
           <div className={styles.depList}>
@@ -218,7 +278,7 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
             </div>
           )}
         </div>
-      </div>
+      </div>}
       {itemType === "flow_task" && (
         <>
           <div className={styles.label}>
@@ -242,7 +302,7 @@ export default function FlowItemEditorModal({ node, availableDeps, allTags, doma
           />
         </>
       )}
-      <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />
+      {takesBlockReasons && <BlockReasonsField reasons={blockReasons} onChange={setBlockReasons} />}
       <TagPicker allTags={allTags} domainNames={domainNames} selectedIds={tagIds} onChange={setTagIds} />
       {/* In Advanced, as in the Task editor: the Agentic control, then the brief every occurrence
           reads while the template is marked Agentic. */}

@@ -157,6 +157,8 @@ pub(super) fn narrow(
     load.flows.clear();
     load.flow_goals.clear();
     load.flow_tasks.clear();
+    load.flow_commitments.clear();
+    load.flow_expectations.clear();
     load.flow_cycles.clear();
     load.flow_dependencies.clear();
     load.flow_instance_nodes.clear();

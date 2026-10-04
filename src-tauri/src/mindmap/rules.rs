@@ -172,6 +172,8 @@ pub fn derive_board(
         flows,
         flow_goals,
         flow_tasks,
+        flow_commitments,
+        flow_expectations,
         flow_cycles,
         flow_dependencies,
         mut block_reasons,
@@ -204,6 +206,8 @@ pub fn derive_board(
         flows: &flows,
         flow_tasks: &flow_tasks,
         flow_goals: &flow_goals,
+        flow_commitments: &flow_commitments,
+        flow_expectations: &flow_expectations,
     });
     let (derived, failures) = derive_habits(&flows, habits, (&stored, &agentic), now, horizon);
     let mut goals = stored.goals.clone();
@@ -225,6 +229,7 @@ pub fn derive_board(
     tasks.extend(derived.tasks);
     goals.extend(derived.goals);
     commitments.extend(derived.commitments);
+    expectations.extend(derived.expectations);
     lifecycles.extend(derived.lifecycles);
     block_reasons.extend(derived.block_reasons);
     task_dependencies.extend(derived.dependencies);
@@ -346,6 +351,8 @@ pub fn derive_board(
         flows,
         flow_goals,
         flow_tasks,
+        flow_commitments,
+        flow_expectations,
         flow_cycles,
         flow_dependencies,
         block_reasons,

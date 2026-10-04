@@ -125,11 +125,13 @@ struct CheckDraw<'wait> {
 }
 
 /// Derives every wait's rows at `now`. `tasks` is the Task table the waits hang on — stored and
-/// derived — which is what says which Tasks are delegated.
+/// derived — which is what says which Tasks are delegated. `waits` is the Expectation table: each
+/// wait item occurrence among it is checked on here, as a stored wait is.
 pub fn derive_waits_in(
     sources: &WaitBoardSources<'_>,
     now: NaiveDateTime,
     tasks: &[Task],
+    waits: &[Expectation],
 ) -> Result<WaitRows, AppError> {
     let windows = waits::wait_windows(&sources.windows, now)?;
     let state = sources.checks;
@@ -241,6 +243,9 @@ pub fn derive_waits_in(
     for task in tasks.iter().filter(|task| task.origin.habit().is_some()) {
         rows.push_occurrence_wait(sources, task, now)?;
     }
+    for wait in waits.iter().filter(|wait| is_wait_item(wait)) {
+        rows.push_item_checks(state, &sources.windows, wait, now);
+    }
     for task in tasks
         .iter()
         .filter(|task| task.delegate_to.is_some() && !task.status.is_done())
@@ -251,6 +256,13 @@ pub fn derive_waits_in(
         rows.expectations.push(row);
     }
     Ok(rows)
+}
+
+/// Whether `wait` is an occurrence of a Flow's wait item.
+fn is_wait_item(wait: &Expectation) -> bool {
+    wait.origin
+        .habit()
+        .is_some_and(|habit| habit.item_type == crate::nodes::key::TemplateKind::FlowExpectation)
 }
 
 /// The occurrence a Habit origin names.
@@ -434,6 +446,54 @@ impl WaitRows {
         self.drawn.insert(wait_row, drawn);
         self.expectations.push(row);
         Ok(())
+    }
+
+    /// Draws the checks on one wait item occurrence — each one made, and the one due now — as a
+    /// stored wait's are drawn: due at its first check, then one Check every after each one made,
+    /// while it is pending and live. Keyed by the occurrence (`WaitRef::Occurrence`).
+    fn push_item_checks(
+        &mut self,
+        state: &CheckState,
+        windows: &WaitSources<'_>,
+        wait: &Expectation,
+        now: NaiveDateTime,
+    ) {
+        let Some(habit) = wait.origin.habit() else {
+            return;
+        };
+        let wait_ref = WaitRef::Occurrence(occurrence_key(habit).node_key());
+        let made = windows
+            .checks
+            .get(&wait_ref)
+            .map_or(&[][..], Vec::as_slice)
+            .to_vec();
+        let draw = |due_at: NaiveDateTime, done: bool| CheckDraw {
+            key: CheckKey {
+                wait: wait_ref.clone(),
+                due_at,
+            },
+            wait_title: &wait.title,
+            wait_row: wait.id.clone(),
+            due: waits::check_window(due_at),
+            done,
+            is_private: wait.is_private,
+        };
+        for check in &made {
+            self.push_check(state, draw(check.due_at, true));
+        }
+        let due = waits::stored_check_due(wait).filter(|due| waits::is_due(*due, now));
+        if let Some(due_at) = due {
+            let open = draw(due_at, false);
+            self.lifecycles.push(wait_lifecycle(
+                "task",
+                DerivedKey::Check(open.key.clone()).node_id(),
+                Some(&open.due),
+                wait.status,
+                wait.archival,
+                now,
+            ));
+            self.push_check(state, open);
+        }
     }
 
     /// Draws one check task, overlaid with what it has had done to it.

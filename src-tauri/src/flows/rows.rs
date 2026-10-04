@@ -8,9 +8,81 @@ use crate::scopes::db::DbScopeKey;
 use super::rules::instance_copies::InstanceNode;
 
 use super::model::{
-    Flow, FlowDependency, FlowGoal, FlowItemCycle, FlowRecurrence, FlowTask, HabitInstanceChild,
-    HabitItemStatus, TargetRef,
+    FirstCheck, Flow, FlowCommitment, FlowDependency, FlowExpectation, FlowGoal, FlowItemCycle,
+    FlowRecurrence, FlowTask, HabitInstanceChild, HabitItemStatus, TargetRef,
 };
+use crate::tasks::model::DurationSpec;
+
+/// A Duration read from its two columns; absent unless both are there.
+fn duration(n: Option<i64>, kind: Option<String>) -> Option<DurationSpec> {
+    Some(DurationSpec { n: n?, kind: kind? })
+}
+
+/// A [`FlowCommitment`] as its table holds it.
+#[derive(sqlx::FromRow)]
+pub(crate) struct FlowCommitmentRow {
+    id: i64,
+    flow_id: i64,
+    title: String,
+    parent_type: String,
+    parent_id: i64,
+    position: i64,
+    is_private: bool,
+    verdict_window_n: Option<i64>,
+    verdict_window_kind: Option<String>,
+}
+
+impl From<FlowCommitmentRow> for FlowCommitment {
+    fn from(row: FlowCommitmentRow) -> Self {
+        Self {
+            id: row.id,
+            flow_id: row.flow_id,
+            title: row.title,
+            parent_type: row.parent_type,
+            parent_id: row.parent_id,
+            position: row.position,
+            is_private: row.is_private,
+            verdict_window: duration(row.verdict_window_n, row.verdict_window_kind),
+            template: Default::default(),
+        }
+    }
+}
+
+/// A [`FlowExpectation`] as its table holds it.
+#[derive(sqlx::FromRow)]
+pub(crate) struct FlowExpectationRow {
+    id: i64,
+    flow_id: i64,
+    title: String,
+    parent_type: String,
+    parent_id: i64,
+    position: i64,
+    is_private: bool,
+    check_every_n: Option<i64>,
+    check_every_kind: Option<String>,
+    first_check_kind: Option<String>,
+    first_check_index: Option<i64>,
+}
+
+impl From<FlowExpectationRow> for FlowExpectation {
+    fn from(row: FlowExpectationRow) -> Self {
+        Self {
+            id: row.id,
+            flow_id: row.flow_id,
+            title: row.title,
+            parent_type: row.parent_type,
+            parent_id: row.parent_id,
+            position: row.position,
+            is_private: row.is_private,
+            check_every: duration(row.check_every_n, row.check_every_kind),
+            first_check: row
+                .first_check_kind
+                .zip(row.first_check_index)
+                .map(|(kind, index)| FirstCheck { kind, index }),
+            template: Default::default(),
+        }
+    }
+}
 
 /// A [`FlowRecurrence`] as its table holds it.
 #[derive(sqlx::FromRow)]

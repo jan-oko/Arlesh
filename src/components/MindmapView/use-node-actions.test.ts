@@ -455,18 +455,18 @@ describe("useNodeActions — onCreateTypedChild inside a Flow template", () => {
     expect(opts.setEditingNodeId).toHaveBeenCalledWith("flowitem-99");
   });
 
-  it.each<[string, "commitment" | "expectation"]>([
-    ["flow-1", "commitment"],
-    ["flow-1", "expectation"],
-    ["flowtask-4", "commitment"],
-    ["flowgoal-5", "expectation"],
-  ])("under %s, Shift+%s is refused by name — no flow item can be one", (id, chord) => {
-    const opts = makeOpts({ tree: TREE });
+  it.each<[string, NodeKind, "commitment" | "expectation", NodeKind]>([
+    ["flow-1", "flow", "commitment", "flow_commitment"],
+    ["flow-1", "flow", "expectation", "flow_expectation"],
+    ["flowtask-4", "flow_task", "commitment", "flow_commitment"],
+    ["flowgoal-5", "flow_goal", "expectation", "flow_expectation"],
+  ])("under %s (%s), Shift+%s creates a %s inline", async (id, kind, chord, itemKind) => {
+    const opts = makeOpts({ tree: TREE, createNode: vi.fn().mockResolvedValue(mkNode("flowitem-99", itemKind)) });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onCreateTypedChild(id, chord); });
-    expect(opts.createNode).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(opts.createNode).toHaveBeenCalledWith(id, kind, itemKind, ""));
     expect(opts.onNewCommitment).not.toHaveBeenCalled();
-    expect(opts.showToast).toHaveBeenCalledWith({ nodeId: id, message: `warnings:notAFlowItemKind:nodeKinds:${chord}` });
+    expect(opts.setEditingNodeId).toHaveBeenCalledWith("flowitem-99");
   });
 
   it("refuses a Goal item under a Task item, naming where a Goal item does go", () => {
@@ -792,7 +792,7 @@ describe("useNodeActions — onPaste", () => {
       nodeId: "task-5",
       message: [
         "pasteSkippedHereInFlow", "1", "nodeKinds:flow_task:1", "nodeKinds:task",
-        "nodeKinds:flow, nodeKinds:flow_goal, nodeKinds:flow_task",
+        "nodeKinds:flow, nodeKinds:flow_goal, nodeKinds:flow_task, nodeKinds:flow_commitment",
       ].join(":"),
     });
   });

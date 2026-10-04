@@ -40,13 +40,53 @@ pub(crate) enum PlannedSource {
     Item(FlowItemType, i64),
 }
 
-/// One goal or task the flow will materialise.
+/// What a planned node materialises as: the root's Instance Type, or an item's kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlannedKind {
+    /// A Goal.
+    Goal,
+    /// A Task.
+    Task,
+    /// A Commitment: a commitment Flow's root, or a Commitment item.
+    Commitment,
+    /// A stored wait: a wait item.
+    Expectation,
+}
+
+impl From<InstanceType> for PlannedKind {
+    fn from(kind: InstanceType) -> Self {
+        match kind {
+            InstanceType::Goal => Self::Goal,
+            InstanceType::Task => Self::Task,
+            InstanceType::Commitment => Self::Commitment,
+        }
+    }
+}
+
+impl From<FlowItemType> for PlannedKind {
+    fn from(kind: FlowItemType) -> Self {
+        match kind {
+            FlowItemType::FlowGoal => Self::Goal,
+            FlowItemType::FlowTask => Self::Task,
+            FlowItemType::FlowCommitment => Self::Commitment,
+            FlowItemType::FlowExpectation => Self::Expectation,
+        }
+    }
+}
+
+impl PartialEq<InstanceType> for PlannedKind {
+    fn eq(&self, other: &InstanceType) -> bool {
+        *self == Self::from(*other)
+    }
+}
+
+/// One node the flow will materialise.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PlannedNode {
     /// The node this one hangs under; `None` for the root, whose parent is the start target.
     pub parent: Option<NodeRef>,
-    /// Whether this materialises as a goal or a task.
-    pub kind: InstanceType,
+    /// What this materialises as.
+    pub kind: PlannedKind,
     /// Title to create it with.
     pub title: String,
     /// Resolved relevance window, if the item is scoped.
@@ -89,7 +129,7 @@ pub(crate) struct TemplateItem {
     pub id: i64,
     /// Display title.
     pub title: String,
-    /// In-flow parent type (`flow`, `flow_goal` or `flow_task`).
+    /// In-flow parent type (`flow` or an item kind).
     pub parent_type: String,
     /// In-flow parent id.
     pub parent_id: i64,
@@ -241,7 +281,7 @@ pub(crate) fn render(
     template: &FlowTemplate,
     scopes: &ScopeTable,
 ) -> RenderedPlan {
-    let root_kind = InstanceType::from_db(&flow.instance_type);
+    let root_kind = PlannedKind::from(InstanceType::from_db(&flow.instance_type));
     let mut nodes = vec![PlannedNode {
         parent: None,
         kind: root_kind,
@@ -253,7 +293,7 @@ pub(crate) fn render(
     }];
 
     // Template item -> the nodes it became, in pair order, with the kind the fan-in filters on.
-    let mut instances: HashMap<(String, i64), Vec<(InstanceType, NodeRef)>> = HashMap::new();
+    let mut instances: HashMap<(String, i64), Vec<(PlannedKind, NodeRef)>> = HashMap::new();
     // Per visit, the node its children nest under: the FIRST instance of that item.
     let mut first_instance: Vec<NodeRef> = Vec::new();
 
@@ -269,22 +309,27 @@ pub(crate) fn render(
             first_instance.get(parent).copied().unwrap_or(NodeRef(0))
         });
 
-        let kind = match item.kind {
-            FlowItemType::FlowGoal => InstanceType::Goal,
-            FlowItemType::FlowTask => InstanceType::Task,
-        };
-        let mut refs: Vec<(InstanceType, NodeRef)> = Vec::with_capacity(visit.pairs.len());
+        let kind = PlannedKind::from(item.kind);
+        let mut refs: Vec<(PlannedKind, NodeRef)> = Vec::with_capacity(visit.pairs.len());
         for pair in &visit.pairs {
             let resolved = pair
                 .and_then(|id| scopes.pairs.get(&id))
                 .cloned()
                 .unwrap_or_default();
             refs.push((kind, NodeRef(nodes.len())));
+            // A Commitment and a wait are over a window of their own: the flow window, when no
+            // Cycle Scope gives them one.
+            let time_scope = match kind {
+                PlannedKind::Commitment | PlannedKind::Expectation => {
+                    resolved.time_scope.or_else(|| scopes.window.clone())
+                }
+                PlannedKind::Goal | PlannedKind::Task => resolved.time_scope,
+            };
             nodes.push(PlannedNode {
                 parent: Some(parent_ref),
                 kind,
                 title: item.title.clone(),
-                time_scope: resolved.time_scope,
+                time_scope,
                 plan: resolved.plan,
                 is_private: item.is_private,
                 source: PlannedSource::Item(item.kind, item.id),
@@ -309,7 +354,7 @@ pub(crate) fn render(
             .unwrap_or_default();
         for (dependent_kind, dependent) in &dependents {
             // Only tasks can be dependents in the real model. Blockers are NOT filtered.
-            if *dependent_kind != InstanceType::Task {
+            if *dependent_kind != PlannedKind::Task {
                 continue;
             }
             for (_, blocker) in &blockers {

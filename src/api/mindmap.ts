@@ -7,7 +7,7 @@ import type { Expectation } from "@/api/expectations";
 import type { Info } from "@/api/infos";
 import type { BlockReason } from "@/api/block-reasons";
 import type {
-  Flow, FlowGoal, FlowTask, FlowItemCycle, FlowDependency, TargetRef,
+  Flow, FlowGoal, FlowTask, FlowCommitment, FlowExpectation, FlowItemCycle, FlowDependency, TargetRef,
 } from "@/api/flows";
 import type { ItemLifecycle } from "@/api/scope-lifecycle";
 import type { RowId } from "@/api/node-id";
@@ -121,6 +121,8 @@ export interface MindmapLoad {
   flows: Flow[];
   flow_goals: FlowGoal[];
   flow_tasks: FlowTask[];
+  flow_commitments: FlowCommitment[];
+  flow_expectations: FlowExpectation[];
   flow_cycles: FlowItemCycle[];
   flow_dependencies: FlowDependency[];
   block_reasons: BlockReason[];

@@ -12,7 +12,10 @@ use crate::{
     error::AppError,
     flows::{
         error::FlowError,
-        model::{Flow, FlowDependency, FlowGoal, FlowItemCycle, FlowTask, TargetRef},
+        model::{
+            Flow, FlowCommitment, FlowDependency, FlowExpectation, FlowGoal, FlowItemCycle,
+            FlowTask, TargetRef,
+        },
         occurrences::HabitSource,
     },
     nodes::{board::StoredBoard, relations::DerivedEdge},
@@ -31,6 +34,10 @@ pub struct BoardSources {
     pub flow_goals: Vec<FlowGoal>,
     /// Every Flow's task items.
     pub flow_tasks: Vec<FlowTask>,
+    /// Every Flow's Commitment items.
+    pub flow_commitments: Vec<FlowCommitment>,
+    /// Every Flow's wait items.
+    pub flow_expectations: Vec<FlowExpectation>,
     /// Every flow item's cycle pairs.
     pub flow_cycles: Vec<FlowItemCycle>,
     /// Every Flow's template edges.
@@ -64,6 +71,8 @@ impl BoardSources {
             stored,
             flow_goals: db.flows().list_all_goals().await?,
             flow_tasks: db.flows().list_all_tasks().await?,
+            flow_commitments: db.flows().list_commitment_items(None).await?,
+            flow_expectations: db.flows().list_expectation_items(None).await?,
             flow_cycles: db.flows().list_all_cycles().await?,
             flow_dependencies: db.flows().list_all_dependencies().await?,
             block_reasons: db.block_reasons().list_all().await?,

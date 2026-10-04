@@ -16,7 +16,7 @@ import { invoke } from "./gesture";
 /** The table a stored node is a row of — every domain-table subtype is `domain`. */
 export type McpNodeKind =
   | "domain" | "goal" | "task" | "commitment" | "expectation" | "info"
-  | "flow" | "flow_goal" | "flow_task";
+  | "flow" | "flow_goal" | "flow_task" | "flow_commitment" | "flow_expectation";
 
 /** One stored node, as a root is named. */
 export interface McpNodeKey {

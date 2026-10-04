@@ -283,3 +283,53 @@ describe("FlowItemEditorModal — focus on open", () => {
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("FlowItemEditorModal — Commitment and wait items", () => {
+  function commitmentItem(): MindmapNode {
+    return mkItem({
+      id: "flowcommitment-3", rowId: 3, kind: "flow_commitment", title: "Asleep by 23:00",
+      flowItem: {
+        itemType: "flow_commitment", flowId: 5, flowScopeN: 1, flowScopeKind: "week", cycles: [],
+        dependsOn: [], template: {}, verdictWindow: { n: 2, kind: "day" },
+      },
+    });
+  }
+
+  function waitItem(): MindmapNode {
+    return mkItem({
+      id: "flowexpectation-4", rowId: 4, kind: "flow_expectation", title: "Coach replies",
+      flowItem: {
+        itemType: "flow_expectation", flowId: 5, flowScopeN: 1, flowScopeKind: "week", cycles: [],
+        dependsOn: [], template: {}, checkEvery: { n: 1, kind: "day" }, firstCheck: { kind: "day", index: 3 },
+      },
+    });
+  }
+
+  it("edits a Commitment item's Verdict Window, and offers it no dependencies or block reasons", async () => {
+    render(<FlowItemEditorModal {...defaultProps} node={commitmentItem()} />);
+    expect(screen.getByText("editCommitment")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("placeholderDepSearch")).not.toBeInTheDocument();
+    const count = screen.getByLabelText("fieldVerdictWindow");
+    fireEvent.change(count, { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
+        itemFields: { verdict_window: { n: 4, kind: "day" } },
+        template: { tag_ids: [] },
+      })),
+    );
+  });
+
+  it("saves a wait item's Check every and its first check, counted into each window", async () => {
+    render(<FlowItemEditorModal {...defaultProps} node={waitItem()} />);
+    const index = screen.getByLabelText("fieldFirstCheck");
+    expect(index).toHaveValue(3);
+    fireEvent.change(index, { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() =>
+      expect(defaultProps.onSave).toHaveBeenCalledWith(expect.objectContaining({
+        itemFields: { check_every: { n: 1, kind: "day" }, first_check: { kind: "day", index: 5 } },
+      })),
+    );
+  });
+});

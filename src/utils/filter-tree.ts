@@ -139,7 +139,7 @@ const RESOLVED_GOAL = new Set(["achieved", "frozen", "archived"]);
  * deliberately absent — finished work can still hold unfinished items worth surfacing. */
 const SHELVED_PROJECT = new Set(["frozen", "archived"]);
 
-const FLOW_KINDS = new Set(["flow", "flow_goal", "flow_task"]);
+const FLOW_KINDS = new Set(["flow", "flow_goal", "flow_task", "flow_commitment", "flow_expectation"]);
 /** Container kinds with no status of their own — shown only as ancestors of a content match. */
 const STRUCTURAL_KINDS = new Set(["aspect", "domain", "project", "tag"]);
 

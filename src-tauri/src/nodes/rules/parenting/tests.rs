@@ -54,3 +54,26 @@ fn every_stored_parent_spelling_names_its_kind() {
     );
     assert_eq!(kind_of("person"), None);
 }
+
+#[test]
+fn template_items_follow_the_stored_table() {
+    for child in [
+        NodeKind::FlowTask,
+        NodeKind::FlowCommitment,
+        NodeKind::FlowExpectation,
+    ] {
+        for parent in [
+            NodeKind::Flow,
+            NodeKind::FlowGoal,
+            NodeKind::FlowTask,
+            NodeKind::FlowCommitment,
+        ] {
+            assert!(may_parent(child, parent), "{child:?} under {parent:?}");
+        }
+        assert!(!may_parent(child, NodeKind::FlowExpectation));
+        assert!(!may_parent(child, NodeKind::Task));
+    }
+    assert!(!may_parent(NodeKind::FlowGoal, NodeKind::FlowCommitment));
+    assert!(!may_parent(NodeKind::Info, NodeKind::FlowCommitment));
+    assert_eq!(kind_of("flow_expectation"), Some(NodeKind::FlowExpectation));
+}

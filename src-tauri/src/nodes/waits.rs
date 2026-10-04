@@ -86,12 +86,14 @@ impl WaitData {
 }
 
 /// Derives every wait's rows at `now`. `tasks` is the Task table the waits hang on — stored and
-/// derived — which is what says which Tasks are delegated.
+/// derived — which is what says which Tasks are delegated; `waits` holds the wait item
+/// occurrences whose checks are drawn here.
 pub async fn derive_waits<M: SessionMode>(
     db: &mut Db<M>,
     now: NaiveDateTime,
     tasks: &[Task],
+    waits: &[Expectation],
 ) -> Result<WaitRows, AppError> {
     let data = WaitData::read(db).await?;
-    derive_waits_in(&data.sources(), now, tasks)
+    derive_waits_in(&data.sources(), now, tasks, waits)
 }

@@ -82,7 +82,7 @@ function envelope(): MindmapLoad {
       is_habit: true, root_plan_kind: null, root_plan_start: null, root_plan_end: null,
       verdict_window_n: null, verdict_window_kind: null, position: 0, is_private: false,
     }],
-    flow_goals: [], flow_tasks: [], flow_cycles: [], flow_dependencies: [],
+    flow_goals: [], flow_tasks: [], flow_commitments: [], flow_expectations: [], flow_cycles: [], flow_dependencies: [],
     block_reasons: [], task_dependencies: [], flow_instance_nodes: [], lifecycles: [],
     habits: [{ flow_id: FLOW_ID, flow_title: "Evening routine", result: { outcome: "loaded" } }],
   };

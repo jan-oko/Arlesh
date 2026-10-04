@@ -18,7 +18,7 @@ import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal"
 import { recurrenceRequest } from "@/components/FlowEditorModal/recurrence-ui";
 import type { FlowItemSaveData } from "@/components/FlowItemEditorModal/FlowItemEditorModal";
 import {
-  updateFlow, updateFlowGoal, updateFlowTask, setFlowItemCycles,
+  updateFlow, updateFlowItem, setFlowItemCycles,
   addFlowDependency, removeFlowDependency, flowOrigins,
   setFlowRecurrence, deleteFlowRecurrence, forkFlow, clearHabitModifications,
 } from "@/api/flows";
@@ -52,7 +52,12 @@ import { useScopeClampStore } from "@/stores/use-scope-clamp-store";
 /** A flow item's id on the fork an "Archive & new" save landed on — or its own, with no fork. */
 function forkedItemId(forked: ForkedTemplate | null, type: FlowItemType, id: number): number {
   if (forked === null) return id;
-  const pairs = type === "flow_goal" ? forked.goals : forked.tasks;
+  const pairs = {
+    flow_goal: forked.goals,
+    flow_task: forked.tasks,
+    flow_commitment: forked.commitments,
+    flow_expectation: forked.expectations,
+  }[type];
   return pairs.find(([old]) => old === id)?.[1] ?? id;
 }
 
@@ -400,13 +405,9 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         const flowId = forked?.flow_id ?? flowItem.flowId;
         const itemId = onto(flowItem.itemType, dbId);
         const patch = {
-          title: data.title, is_private: data.isPrivate, ...data.template,
+          title: data.title, is_private: data.isPrivate, ...data.template, ...data.itemFields,
         } satisfies UpdateFlowItemRequest;
-        if (flowItem.itemType === "flow_goal") {
-          await updateFlowGoal(itemId, patch);
-        } else {
-          await updateFlowTask(itemId, patch);
-        }
+        await updateFlowItem(flowItem.itemType, itemId, patch);
         for (const dep of data.addedDeps) {
           await addFlowDependency(flowId, flowItem.itemType, itemId, dep.type, onto(dep.type, dep.id));
         }

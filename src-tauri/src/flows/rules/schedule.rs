@@ -609,26 +609,32 @@ pub(in crate::flows) struct ClonePlacement {
 pub(in crate::flows) struct TemplateClone {
     /// The new flow row.
     pub(in crate::flows) flow: Flow,
-    /// Old→new `flow_goals` ids.
-    pub(in crate::flows) goals: HashMap<i64, i64>,
-    /// Old→new `flow_tasks` ids.
-    pub(in crate::flows) tasks: HashMap<i64, i64>,
+    /// Old→new item ids, by `(kind, old id)`.
+    pub(in crate::flows) items: HashMap<(FlowItemType, i64), i64>,
 }
 
-/// Splits a list of copied items into per-table old→new id maps, for remapping references that
-/// name an item by `(item_type, item_id)`.
+/// Where one cloned item row lands.
+pub(in crate::flows) struct ItemLanding<'parent> {
+    /// The flow the clone belongs to; `None` keeps the original's.
+    pub(in crate::flows) flow_id: Option<i64>,
+    /// The clone's `(parent_type, parent_id)`.
+    pub(in crate::flows) parent: (&'parent str, i64),
+    /// The clone's sort position; `None` keeps the original's.
+    pub(in crate::flows) position: Option<i64>,
+    /// Whether the clone keeps the original's privacy (a paste does; a template clone leaves it
+    /// to its caller).
+    pub(in crate::flows) privacy: bool,
+}
+
+/// A list of copied items as an old→new id map keyed by `(kind, old id)`, for remapping
+/// references that name an item by `(item_type, item_id)`.
 pub(in crate::flows) fn item_id_maps(
     copied: &[(FlowItemType, i64, i64)],
-) -> (HashMap<i64, i64>, HashMap<i64, i64>) {
-    let mut goals = HashMap::new();
-    let mut tasks = HashMap::new();
-    for (kind, old_id, new_id) in copied {
-        match kind {
-            FlowItemType::FlowGoal => goals.insert(*old_id, *new_id),
-            FlowItemType::FlowTask => tasks.insert(*old_id, *new_id),
-        };
-    }
-    (goals, tasks)
+) -> HashMap<(FlowItemType, i64), i64> {
+    copied
+        .iter()
+        .map(|(kind, old_id, new_id)| ((*kind, *old_id), *new_id))
+        .collect()
 }
 
 /// The window of the iteration anchored on `iteration` and its first day, or `None` when the flow

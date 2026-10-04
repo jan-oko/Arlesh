@@ -1438,3 +1438,132 @@ async fn a_copied_domain_carries_children_whatever_spelling_names_it_as_their_pa
         assert_eq!(under_copy, 1, "{title} came with the copied Domain");
     }
 }
+
+#[tokio::test]
+async fn a_flows_commitment_and_wait_items_and_what_they_started_come_with_a_copied_project() {
+    use arlesh_lib::flows::model::UpdateFlowItemRequest;
+    use arlesh_lib::tasks::model::DurationSpec;
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let aspect = growth_aspect_id(&pool).await;
+    let project = make_domain(&pool, "Fitness", DomainSubtype::Project, aspect).await;
+    let flow = flow_commands::create_flow(
+        app.state(),
+        CreateFlowRequest {
+            title: "Training week".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "project".into(),
+            parent_id: project,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("week".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let item = |title: &str, parent: (&str, i64)| CreateFlowItemRequest {
+        flow_id: flow.id,
+        title: title.into(),
+        parent_type: parent.0.into(),
+        parent_id: parent.1,
+    };
+    let promise = flow_commands::create_flow_commitment(
+        app.state(),
+        item("Rest days kept", ("flow", flow.id)),
+    )
+    .await
+    .unwrap();
+    let days = DurationSpec {
+        n: 2,
+        kind: "day".into(),
+    };
+    flow_commands::update_flow_commitment(
+        app.state(),
+        promise.id,
+        UpdateFlowItemRequest {
+            verdict_window: Some(Some(days.clone())),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    flow_commands::create_flow_expectation(
+        app.state(),
+        item("Coach's plan arrives", ("flow_commitment", promise.id)),
+    )
+    .await
+    .unwrap();
+    flow_commands::start_flow(
+        app.state(),
+        flow.id,
+        StartFlowRequest {
+            title: "Week 1".into(),
+            target_type: "project".into(),
+            target_id: project,
+            anchor_date: NaiveDate::from_ymd_opt(2026, 1, 5).unwrap(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let pasted = duplicate_domain(app.state(), project, aspect, 9)
+        .await
+        .unwrap();
+
+    let [_, copy] = flows_titled(&pool, "Training week")
+        .await
+        .try_into()
+        .unwrap();
+    let promise_copy: (i64, String, i64, Option<i64>, Option<String>) = sqlx::query_as(
+        "SELECT id, parent_type, parent_id, verdict_window_n, verdict_window_kind
+         FROM flow_commitments WHERE flow_id = ?",
+    )
+    .bind(copy.id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!((promise_copy.1.as_str(), promise_copy.2), ("flow", copy.id));
+    assert_eq!(
+        (promise_copy.3, promise_copy.4.as_deref()),
+        (Some(2), Some("day"))
+    );
+    let wait_parent: (String, i64) =
+        sqlx::query_as("SELECT parent_type, parent_id FROM flow_expectations WHERE flow_id = ?")
+            .bind(copy.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(wait_parent, ("flow_commitment".to_string(), promise_copy.0));
+
+    // The started run's Commitment and wait were copied as stored, and still read "from flow".
+    let copies: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT 'commitment', id FROM commitments WHERE title = 'Rest days kept'
+         UNION ALL SELECT 'expectation', id FROM expectations WHERE title = 'Coach''s plan arrives'
+         ORDER BY 1, 2",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(copies.len(), 4, "the started originals and their copies");
+    let refs = copies
+        .iter()
+        .map(|(node_type, node_id)| TargetRef {
+            node_type: node_type.clone(),
+            node_id: *node_id,
+        })
+        .collect();
+    let origins = helpers::session_factory(&pool)
+        .connect()
+        .await
+        .unwrap()
+        .flows()
+        .origins(refs)
+        .await
+        .unwrap();
+    assert_eq!(
+        origins.len(),
+        4,
+        "every one reads 'from flow Training week'"
+    );
+    assert!(pasted.left_behind.is_empty());
+}

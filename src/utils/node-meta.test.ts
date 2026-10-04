@@ -239,7 +239,7 @@ describe("validParentKinds", () => {
   // A flow item used to get an empty list, because the candidates were the real kinds only — so a
   // refusal could say a flow item cannot sit here without being able to say where it does sit.
   it("puts a flow item inside a Flow, which is the only place one lives", () => {
-    expect(validParentKinds("flow_task")).toEqual(["flow", "flow_goal", "flow_task"]);
+    expect(validParentKinds("flow_task")).toEqual(["flow", "flow_goal", "flow_task", "flow_commitment"]);
     expect(validParentKinds("flow_goal")).toEqual(["flow", "flow_goal"]);
   });
 
@@ -412,9 +412,9 @@ describe("typedChildStoredKind", () => {
     expect(typedChildStoredKind(parent, "goal")).toBe("flow_goal");
   });
 
-  it.each(["flow", "flow_goal", "flow_task"] as const)("inside a Flow template (%s) has no Commitment or Expectation item", (parent) => {
-    expect(typedChildStoredKind(parent, "commitment")).toBeNull();
-    expect(typedChildStoredKind(parent, "expectation")).toBeNull();
+  it.each(["flow", "flow_goal", "flow_task", "flow_commitment"] as const)("inside a Flow template (%s) makes Commitment and Expectation items", (parent) => {
+    expect(typedChildStoredKind(parent, "commitment")).toBe("flow_commitment");
+    expect(typedChildStoredKind(parent, "expectation")).toBe("flow_expectation");
   });
 
   it("leaves the other chords their own kind inside a Flow, for the parenting rule to refuse", () => {
