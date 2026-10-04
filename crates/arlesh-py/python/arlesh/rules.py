@@ -44,6 +44,7 @@ from arlesh.models import (
     StatusAfter,
     StatusStep,
     TaskStatus,
+    TimeScope,
     Timing,
     Verdict,
     VerdictPress,
@@ -222,6 +223,12 @@ def classify_habit_iterations(
     )
 
 
+def clip_plan(plan: TimeScope, scope: TimeScope) -> TimeScope | None:
+    """The part of ``plan`` inside ``scope``, or ``None`` when they do not meet: the Plan as it is
+    when the scope holds it, the scope when the Plan holds it, and otherwise the overlap."""
+    return _rule(_OPTIONAL_TIME_SCOPE, "clip_plan", plan=plan, scope=scope)
+
+
 def cycle_levels(flow_n: int, flow_kind: ScopeKind, target: ScopeKind) -> list[CycleLevel]:
     """The cycle navigator's levels, from a Flow's period down to ``target``."""
     return _rule(_CYCLE_LEVELS, "cycle_levels", flow_n=flow_n, flow_kind=flow_kind, target=target)
@@ -281,4 +288,5 @@ _STATUS: TypeAdapter[Status] = TypeAdapter(Status)
 _STATUS_AFTER = TypeAdapter(StatusAfter)
 _VERDICT = TypeAdapter(Verdict)
 _TASK_STATUS = TypeAdapter(TaskStatus)
+_OPTIONAL_TIME_SCOPE: TypeAdapter[TimeScope | None] = TypeAdapter(TimeScope | None)
 _OPTIONAL_INSTANT: TypeAdapter[datetime | None] = TypeAdapter(datetime | None)

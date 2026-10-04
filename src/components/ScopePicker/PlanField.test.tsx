@@ -122,3 +122,30 @@ describe("PlanField — the opening is the selection", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+describe("PlanField — an inherited Plan", () => {
+  it("shows the Plan it inherits, read-only and named by its source, while it has none of its own", async () => {
+    render(
+      <PlanField value={null} timeScope={null} inherited={{ plan: single(JUNE), source: "a1b2" }} onChange={vi.fn()} />,
+    );
+    expect(await screen.findByText("planInheritedFrom")).toBeInTheDocument();
+    // The control to set an own Plan over it is still there.
+    expect(screen.getByRole("button", { name: "edit plan" })).toBeInTheDocument();
+  });
+
+  it("shows its own Plan over the inherited one", async () => {
+    render(
+      <PlanField value={single(JUNE)} timeScope={null} inherited={{ plan: single(JUNE), source: "a1b2" }} onChange={vi.fn()} />,
+    );
+    await waitFor(() => expect(screen.queryByText("planInheritedFrom")).not.toBeInTheDocument());
+  });
+
+  it("flags a Plan outside the one it inherits, and a Plan above that meets nothing", () => {
+    const { rerender } = render(
+      <PlanField value={single(AUGUST)} timeScope={null} inherited={{ plan: single(JUNE), source: "a1b2" }} conflict="parent_plan" onChange={vi.fn()} />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("planOutsideInherited");
+    rerender(<PlanField value={null} timeScope={null} inherited={{ plan: null, source: "a1b2" }} conflict="empty" onChange={vi.fn()} />);
+    expect(screen.getByRole("status")).toHaveTextContent("planEmptyInherited");
+  });
+});

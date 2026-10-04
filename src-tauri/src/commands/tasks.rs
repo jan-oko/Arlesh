@@ -10,7 +10,7 @@ use crate::{
     tasks::{
         lifecycle::ItemLifecycle,
         model::{
-            CreateGoalRequest, CreateTaskRequest, Dependency, Goal, GoalId, Task,
+            CreateGoalRequest, CreateTaskRequest, Dependency, DescendantPlans, Goal, GoalId, Task,
             TaskDependencyEdge, TaskId, TaskWithBlockers, TimeScope, UpdateGoalRequest,
             UpdateTaskRequest,
         },
@@ -73,22 +73,49 @@ pub async fn update_task(
 ) -> Result<Task, WireError> {
     let now = chrono::Local::now().naive_local();
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let task = write_task_guarded(&mut db, &id, request, confirmed, now).await?;
+    let task = write_task_guarded(&mut db, &id, request, (confirmed, None), now).await?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(task)
+}
+
+/// [`update_task`], settling the Tasks below whose own Plan the new Plan would leave outside as
+/// `descendant_plans` says — clamped into it, or cleared to inherit it — in the same write: the
+/// answer to the clamp-or-cancel prompt ([`plan_containment_conflicts`]).
+#[tauri::command]
+pub async fn update_task_settling_plans(
+    factory: State<'_, SessionFactory>,
+    id: NodeId,
+    request: UpdateTaskRequest,
+    confirmed: Option<bool>,
+    descendant_plans: DescendantPlans,
+) -> Result<Task, WireError> {
+    let now = chrono::Local::now().naive_local();
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let answer = (confirmed, Some(descendant_plans));
+    let task = write_task_guarded(&mut db, &id, request, answer, now).await?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(task)
 }
 
 /// Writes `request` to the Task `id` — through the guard that asks, unless `confirmed`, before a
-/// Habit occurrence is marked done while it still holds unfinished children it would close over.
+/// Habit occurrence is marked done while it still holds unfinished children it would close over —
+/// settling the Tasks below a new Plan would leave outside as `descendant_plans` says.
 pub(crate) async fn write_task_guarded(
     db: &mut crate::database::session::Db<crate::database::session::Transactional>,
     id: &NodeId,
     request: UpdateTaskRequest,
-    confirmed: Option<bool>,
+    (confirmed, descendant_plans): (Option<bool>, Option<DescendantPlans>),
     now: chrono::NaiveDateTime,
 ) -> Result<Task, WireError> {
-    crate::nodes::composite::update_task_confirmed(db, id, request, confirmed == Some(true), now)
-        .await
+    crate::nodes::composite::update_task_confirmed(
+        db,
+        id,
+        request,
+        confirmed == Some(true),
+        descendant_plans,
+        now,
+    )
+    .await
 }
 
 /// What the Task `id` may be made to depend on — what the quick dependency picker offers: every
@@ -113,6 +140,24 @@ pub async fn dependency_candidates(
         &load.expectations,
         &load.task_dependencies,
     ))
+}
+
+/// The Tasks below the Task `id` whose own Plan `plan` would leave outside the Plan they inherit,
+/// each with what clamping would give it — for the clamp-or-cancel prompt before a Plan is
+/// narrowed or moved. Nearest first.
+#[tauri::command]
+pub async fn plan_containment_conflicts(
+    factory: State<'_, SessionFactory>,
+    id: NodeId,
+    plan: Option<TimeScope>,
+) -> Result<Vec<crate::mindmap::rules::plans::PlanClampTarget>, WireError> {
+    let now = chrono::Local::now().naive_local();
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    let targets =
+        crate::nodes::composite::plan_containment_conflicts(&mut db, &id, plan.as_ref(), now)
+            .await?;
+    db.commit().await.map_err(WireError::from_error)?;
+    Ok(targets)
 }
 
 /// Returns the task/goal descendants of a node that a candidate Time Scope would orphan, for the

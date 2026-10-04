@@ -775,6 +775,17 @@ pub struct CreateTaskRequest {
     pub agentic_brief: Option<AgenticBrief>,
 }
 
+/// What becomes of the Tasks below a Task whose own Plan its new Plan would leave outside — the
+/// answer to the clamp-or-cancel prompt (`docs/spec/time-scopes.md`, *Plan inheritance*).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DescendantPlans {
+    /// Each is clamped into the Plan it would inherit.
+    Clamp,
+    /// Each has its Plan cleared, and inherits.
+    Clear,
+}
+
 /// Request body for updating a task.
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct UpdateTaskRequest {

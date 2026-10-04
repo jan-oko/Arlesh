@@ -18,9 +18,11 @@ from arlesh.models import (
     CreateInfoRequest,
     CreateTaskRequest,
     DependencyTask,
+    DescendantPlans,
     DomainSubtype,
     DurationSpec,
     FlowItemType,
+    ScopeKeyDay,
     ScopeKeyWeek,
     SetRecurrenceRequest,
     StatusOrdinary,
@@ -198,3 +200,40 @@ async def test_a_task_and_a_commitment_are_archived_by_hand_and_put_back(
     assert (await db.set_commitment_archived(commitment.id, False)).archival == (
         CommitmentArchival.live
     )
+
+
+async def test_a_narrowed_plan_asks_about_the_plans_below_then_clamps_them(
+    db: arlesh.Database, domain_id: int
+) -> None:
+    def days(first: str, last: str) -> TimeScope:
+        return TimeScope(
+            start_id=ScopeKeyDay(kind="day", date=first),
+            end_id=ScopeKeyDay(kind="day", date=last),
+        )
+
+    parent = await db.create_task(
+        CreateTaskRequest(
+            title="Week",
+            parent_type="domain",
+            parent_id=domain_id,
+            plan=days("2026-09-20", "2026-09-26"),
+        )
+    )
+    child = await db.create_task(
+        CreateTaskRequest(
+            title="Friday",
+            parent_type="task",
+            parent_id=parent.id,
+            plan=days("2026-09-25", "2026-09-25"),
+        )
+    )
+    narrower = days("2026-09-21", "2026-09-22")
+    conflicts = await db.plan_containment_conflicts(parent.id, narrower)
+    assert [target.id for target in conflicts] == [child.id]
+
+    with pytest.raises(arlesh.ArleshError):
+        await db.update_task(parent.id, UpdateTaskRequest(plan=narrower))
+    await db.update_task(
+        parent.id, UpdateTaskRequest(plan=narrower), descendant_plans=DescendantPlans.clear
+    )
+    assert (await db.get_task(stored(child.id))).task.plan is None

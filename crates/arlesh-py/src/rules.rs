@@ -30,13 +30,13 @@ use arlesh_core::{
     tasks::{
         model::{
             CommitmentArchival, DurationSpec, ExpectationStatus, OnScopeExit, Status, TaskStatus,
-            Verdict,
+            TimeScope, Verdict,
         },
         rules::{
             compound, gestures,
             gestures::{StatusStep, VerdictPress},
             lifecycle::{self, Archival, Resolution, Timing},
-            waits,
+            plan_inheritance, waits,
         },
     },
 };
@@ -224,6 +224,14 @@ pub(crate) enum Rule {
         /// How often it is checked.
         every: DurationSpec,
     },
+    /// `plan` clipped to `scope`: the part of the Plan inside the window, or nothing when they do
+    /// not meet.
+    ClipPlan {
+        /// The Plan.
+        plan: TimeScope,
+        /// The Time Scope it has to fit.
+        scope: TimeScope,
+    },
     /// The cycle navigator's levels from a Flow's period down to `target`.
     CycleLevels {
         /// How many of its kind the Flow spans.
@@ -356,6 +364,7 @@ fn apply(rule: Rule) -> Result<Value, WireError> {
         Rule::CompoundProgress { states } => json(compound::progress(states)),
         Rule::ExpectationReading { status } => json(compound::expectation_reading(status)),
         Rule::AdvanceCheck { at, every } => json(waits::advance_check(at, &every)),
+        Rule::ClipPlan { plan, scope } => json(plan_inheritance::clip(&plan, &scope)),
         Rule::CycleLevels {
             flow_n,
             flow_kind,

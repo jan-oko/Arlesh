@@ -22,10 +22,20 @@ use crate::{
         self,
         cycles::{ForkedTemplate, Reconcile},
         error::FlowError,
-        model::{FlowCycleInput, FlowId, FlowItemType, UnfinishedChild},
+        model::{
+            Flow, FlowCycleInput, FlowId, FlowItemType, FlowRecurrence, SetRecurrenceRequest,
+            UnfinishedChild, UpdateFlowRequest,
+        },
     },
     infos::model::InfoId,
-    tasks::model::{ExpectationId, Goal, GoalStatus, Task, UpdateGoalRequest, UpdateTaskRequest},
+    mindmap::{
+        plan_guard,
+        rules::plans::{self, PlanClampTarget},
+    },
+    tasks::model::{
+        DescendantPlans, ExpectationId, Goal, GoalStatus, Task, TimeScope, UpdateGoalRequest,
+        UpdateTaskRequest,
+    },
 };
 
 /// The refusal a completion with unfinished children comes back as.
@@ -46,19 +56,78 @@ pub fn unfinished_refusal(open: &[UnfinishedChild]) -> WireError {
 }
 
 /// Writes `request` to the Task `id` — through the guard that asks, unless `confirmed`, before a
-/// Habit occurrence is marked done while it still holds unfinished children it would close over.
+/// Habit occurrence is marked done while it still holds unfinished children it would close over —
+/// settling the Tasks below whose own Plan a new Plan would leave outside as `descendant_plans`
+/// says (clamped, or cleared to inherit). Without `descendant_plans` such a write is refused.
 #[tracing::instrument(skip(db, request))]
 pub async fn update_task_confirmed(
     db: &mut Db<Transactional>,
     id: &NodeId,
     request: UpdateTaskRequest,
     confirmed: bool,
+    descendant_plans: Option<DescendantPlans>,
     now: NaiveDateTime,
 ) -> Result<Task, WireError> {
     if request.status.is_some_and(|status| status.is_done()) && !confirmed {
         refuse_over_unfinished_children(db, id, now).await?;
     }
-    write::update_task(db, id, request, now)
+    write::plan_task(db, id, request, now, descendant_plans)
+        .await
+        .map_err(WireError::from_error)
+}
+
+/// The Tasks below the Task `id` whose own Plan `plan` would leave outside the Plan they inherit,
+/// each with what clamping would give it — what the clamp-or-cancel prompt shows. Nearest first.
+#[tracing::instrument(skip(db))]
+pub async fn plan_containment_conflicts(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    plan: Option<&TimeScope>,
+    now: NaiveDateTime,
+) -> Result<Vec<PlanClampTarget>, WireError> {
+    let audit = plan_guard::audit(db, now)
+        .await
+        .map_err(WireError::from_error)?;
+    Ok(plans::clamp_targets(&audit, id, plan))
+}
+
+/// Updates the Flow `id`, refused when the change leaves a Plan rule broken within its reach.
+#[tracing::instrument(skip(db, request))]
+pub async fn update_flow_checked(
+    db: &mut Db<Transactional>,
+    id: FlowId,
+    request: UpdateFlowRequest,
+    now: NaiveDateTime,
+) -> Result<Flow, WireError> {
+    let flow = flows::update_flow(db, id, request)
+        .await
+        .map_err(WireError::from_error)?;
+    check_flow_plans(db, id, now).await?;
+    Ok(flow)
+}
+
+/// Sets the Flow `id`'s Recurrence, refused when the change leaves a Plan rule broken.
+#[tracing::instrument(skip(db, request))]
+pub async fn set_flow_recurrence_checked(
+    db: &mut Db<Transactional>,
+    id: FlowId,
+    request: SetRecurrenceRequest,
+    now: NaiveDateTime,
+) -> Result<FlowRecurrence, WireError> {
+    let recurrence = flows::set_flow_recurrence(db, id, request)
+        .await
+        .map_err(WireError::from_error)?;
+    check_flow_plans(db, id, now).await?;
+    Ok(recurrence)
+}
+
+/// Refuses a write to the Flow `id` that left a Plan rule broken within its reach.
+async fn check_flow_plans(
+    db: &mut Db<Transactional>,
+    id: FlowId,
+    now: NaiveDateTime,
+) -> Result<(), WireError> {
+    plan_guard::check(db, now, &[format!("flow-{}", id.0)])
         .await
         .map_err(WireError::from_error)
 }
@@ -97,7 +166,8 @@ async fn refuse_over_unfinished_children(
 }
 
 /// Sets a Flow item's cycles — through the guard that asks, unless `reconcile` says how, before
-/// the change would orphan what Habit iterations recorded against the old cycles.
+/// the change would orphan what Habit iterations recorded against the old cycles. `fork_at` is
+/// the instant a fork is taken at; `now` the instant the Plan rules are checked at.
 #[allow(clippy::too_many_arguments)]
 #[tracing::instrument(skip(db, cycles))]
 pub async fn set_item_cycles_confirmed(
@@ -107,7 +177,8 @@ pub async fn set_item_cycles_confirmed(
     item_id: i64,
     cycles: &[FlowCycleInput],
     reconcile: Option<Reconcile>,
-    now: Option<NaiveDateTime>,
+    fork_at: Option<NaiveDateTime>,
+    now: NaiveDateTime,
 ) -> Result<Option<ForkedTemplate>, WireError> {
     if reconcile.is_none() {
         let orphaned = flows::cycles::orphaned_edits(db, item_type, item_id, cycles)
@@ -123,9 +194,12 @@ pub async fn set_item_cycles_confirmed(
             ));
         }
     }
-    flows::cycles::set_item_cycles(db, flow_id, item_type, item_id, cycles, reconcile, now)
-        .await
-        .map_err(WireError::from_error)
+    let fork =
+        flows::cycles::set_item_cycles(db, flow_id, item_type, item_id, cycles, reconcile, fork_at)
+            .await
+            .map_err(WireError::from_error)?;
+    check_flow_plans(db, flow_id, now).await?;
+    Ok(fork)
 }
 
 /// Deletes the stored wait `id`. A derived wait is refused: it goes with its Task, by completing

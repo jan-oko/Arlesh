@@ -320,6 +320,22 @@ class DerivedBlock(StrEnum):
     """
 
 
+class DescendantPlans(StrEnum):
+    """
+    What becomes of the Tasks below a Task whose own Plan its new Plan would leave outside — the
+    answer to the clamp-or-cancel prompt (`docs/spec/time-scopes.md`, *Plan inheritance*).
+    """
+
+    clamp = "clamp"
+    """
+    Each is clamped into the Plan it would inherit.
+    """
+    clear = "clear"
+    """
+    Each has its Plan cleared, and inherits.
+    """
+
+
 class Domain(BaseModel):
     """
     A domain row as returned from the database.
@@ -926,6 +942,21 @@ class PartOfDay(StrEnum):
     premorning = "premorning"
     """
     02:00–06:00.
+    """
+
+
+class PlanConflict(StrEnum):
+    """
+    Which plan rule a node breaks.
+    """
+
+    parent_plan = "parent_plan"
+    """
+    Its own Plan is not inside the Plan it inherits.
+    """
+    empty = "empty"
+    """
+    It has no Plan of its own, and the one above it does not meet its window.
     """
 
 
@@ -3004,6 +3035,12 @@ class NodeFacts(BaseModel):
     Whether the node's ancestors read as Agentic — what it reads as when it has no flag of its
     own: the nearest flag above it, else not.
     """
+    inherited_plan: TimeScope | None = None
+    """
+    The Plan the node takes from above: its parent's effective Plan, clipped to its own Time
+    Scope. Sent whether or not it has a Plan of its own — it is what it reads when it has none,
+    and what an own Plan must sit inside.
+    """
     inherited_time_scope: TimeScope | None = None
     """
     The Time Scope the node inherits: the nearest scoped ancestor's, when it has none of its
@@ -3021,6 +3058,20 @@ class NodeFacts(BaseModel):
     open_question: int | str | None = None
     """
     The open agentic question beneath a Task — the wait that makes it read Review.
+    """
+    plan_conflict: PlanConflict | None = None
+    """
+    The plan rule a Task breaks — one that arose outside the writer, as an undo or older data
+    can leave; the guard never lets a write leave one.
+    """
+    plan_source: str | None = None
+    """
+    The node whose own Plan [`Self::inherited_plan`] comes from, keyed as the board keys it —
+    or, for a node whose inherited Plan came to nothing, the node it would have come from.
+    """
+    plan_source_short_id: str | None = None
+    """
+    [`Self::plan_source`]'s short id, when the board has one for it.
     """
 
 
@@ -3071,6 +3122,25 @@ class OriginCheck(BaseModel):
     A stored Expectation's check, or one on the wait a stored Task or an occurrence spawned.
     """
     kind: Literal["check"]
+
+
+class PlanClampTarget(BaseModel):
+    """
+    A Task a new Plan above it would leave outside, and what clamping would give it.
+    """
+
+    clamp_to: TimeScope | None
+    """
+    The Plan clamping gives it, or `None` when nothing above would admit it.
+    """
+    id: int | str
+    """
+    The Task.
+    """
+    title: str
+    """
+    Its title, to name it by.
+    """
 
 
 class Scope(BaseModel):

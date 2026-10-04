@@ -3,6 +3,7 @@ import { isOccurrence } from "@/utils/node-identity";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { StatusIndicator } from "@/utils/node-status-indicators";
 import { useScopeRangeLabel } from "@/hooks/use-scope-range-label";
+import { usePlanBadge } from "@/hooks/use-plan-badge";
 import { useTagNames } from "@/hooks/use-tag-names";
 import FlowIcon from "@/components/NodeIcon/FlowIcon";
 import HabitIcon from "@/components/NodeIcon/HabitIcon";
@@ -36,7 +37,7 @@ interface Props {
 export default function TaskRowBadges({ node, indicators }: Props) {
   const { t } = useTranslation("statusIcons");
   const scopeLabel = useScopeRangeLabel(node.timeScope);
-  const planLabel = useScopeRangeLabel(node.plan);
+  const planBadge = usePlanBadge(node);
   const tagNames = useTagNames();
   const tagsValue = node.tagIds.map((id) => tagNames.get(id) ?? `#${id}`).join(", ");
 
@@ -56,8 +57,8 @@ export default function TaskRowBadges({ node, indicators }: Props) {
         };
       case "planned":
         return {
-          tooltip: t("plan", { value: planLabel ?? t("loading") }),
-          icon: <CalendarIcon cx={R} cy={R} r={R} color={MUTED} />,
+          tooltip: planBadge.tooltip,
+          icon: <CalendarIcon cx={R} cy={R} r={R} color={planBadge.conflict ? DANGER : MUTED} opacity={planBadge.opacity} />,
         };
       case "frozen":
         return { tooltip: t("frozen"), icon: <IceIcon cx={R} cy={R} r={R} color={MUTED} /> };

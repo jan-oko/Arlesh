@@ -8,9 +8,11 @@
     "`src/utils/plan-triage-conformance.test.ts` runs them through `plan-triage.ts`,",
     "`plan-take-out.ts` and `parentRefs`. Neither side generates this file.",
     "",
-    "A row names its own `timeScope` and `plan` (scope keys, as `scope-keys.json` spells them),",
+    "A row names its own `timeScope` and `plan` (scope keys, as `scope-keys.json` spells them), the",
+    "`inheritedPlan` the board serves it (its parent's effective Plan clipped to its window, see",
+    "`docs/spec/time-scopes.md`, *Plan inheritance*), whether that came to nothing (`emptyPlan`),",
     "whether it is `overdue`, whether it is a drawing with no row (`virtual`), and its `ancestors`,",
-    "outermost first, each with its kind and own Time Scope and Plan. `triage` lists each heap's rows",
+    "outermost first, each with its kind and own Time Scope. `triage` lists each heap's rows",
     "in row order for a `target` scope whose `parent` is given (null for a Season); a row in none of",
     "them is planned elsewhere, irrelevant, or a drawing. `refusals` names the bound a move into",
     "`target` breaks, or null. `parents` gives the scope one rung up; `takeOut` says where work taken",
@@ -279,6 +281,105 @@
       "parentPlanned": [
         "to-september"
       ]
+    },
+    {
+      "name": "an inherited Plan places a row, and one that came to nothing is in no heap",
+      "spec": "plan-view.md — a Task with an inherited Plan is placed by its effective Plan, not among the unplanned candidates; 'unplanned' means nothing above it is planned either.",
+      "target": {
+        "kind": "week",
+        "date": "2026-09-13"
+      },
+      "parent": {
+        "kind": "month",
+        "date": "2026-09-01"
+      },
+      "rows": [
+        {
+          "id": "inherits-week",
+          "inheritedPlan": {
+            "start_id": {
+              "kind": "week",
+              "date": "2026-09-13"
+            },
+            "end_id": {
+              "kind": "week",
+              "date": "2026-09-13"
+            }
+          }
+        },
+        {
+          "id": "inherits-month",
+          "inheritedPlan": {
+            "start_id": {
+              "kind": "month",
+              "date": "2026-09-01"
+            },
+            "end_id": {
+              "kind": "month",
+              "date": "2026-09-01"
+            }
+          }
+        },
+        {
+          "id": "inherits-nothing",
+          "timeScope": {
+            "start_id": {
+              "kind": "week",
+              "date": "2026-09-13"
+            },
+            "end_id": {
+              "kind": "week",
+              "date": "2026-09-13"
+            }
+          },
+          "emptyPlan": true
+        },
+        {
+          "id": "unplanned",
+          "timeScope": {
+            "start_id": {
+              "kind": "week",
+              "date": "2026-09-13"
+            },
+            "end_id": {
+              "kind": "week",
+              "date": "2026-09-13"
+            }
+          }
+        },
+        {
+          "id": "own-wins",
+          "plan": {
+            "start_id": {
+              "kind": "week",
+              "date": "2026-09-20"
+            },
+            "end_id": {
+              "kind": "week",
+              "date": "2026-09-20"
+            }
+          },
+          "inheritedPlan": {
+            "start_id": {
+              "kind": "month",
+              "date": "2026-09-01"
+            },
+            "end_id": {
+              "kind": "month",
+              "date": "2026-09-01"
+            }
+          }
+        }
+      ],
+      "unplanned": [
+        "unplanned"
+      ],
+      "planned": [
+        "inherits-week"
+      ],
+      "parentPlanned": [
+        "inherits-month"
+      ]
     }
   ],
   "refusals": [
@@ -355,25 +456,20 @@
       "refusal": null
     },
     {
-      "name": "a plan out of the nearest planned ancestor's",
-      "spec": "plan-view.md — child.Plan ⊆ parent.Plan, against the nearest planned ancestor.",
+      "name": "a plan out of the Plan it inherits",
+      "spec": "time-scopes.md, Plan inheritance — a child's own Plan must sit inside the Plan it inherits, as the board serves it.",
       "row": {
         "id": "t",
-        "ancestors": [
-          {
-            "kind": "task",
-            "plan": {
-              "start_id": {
-                "kind": "week",
-                "date": "2026-09-13"
-              },
-              "end_id": {
-                "kind": "week",
-                "date": "2026-09-13"
-              }
-            }
+        "inheritedPlan": {
+          "start_id": {
+            "kind": "week",
+            "date": "2026-09-13"
+          },
+          "end_id": {
+            "kind": "week",
+            "date": "2026-09-13"
           }
-        ]
+        }
       },
       "target": {
         "kind": "week",
@@ -382,74 +478,72 @@
       "refusal": "parentPlan"
     },
     {
-      "name": "the nearest planned ancestor is the nearest, not the first",
-      "spec": "plan-view.md — child.Plan ⊆ parent.Plan, against the nearest planned ancestor.",
+      "name": "a plan inside the Plan it inherits is allowed",
+      "spec": "time-scopes.md, Plan inheritance — an own Plan inside the inherited one overrides it.",
       "row": {
         "id": "t",
-        "ancestors": [
-          {
-            "kind": "task",
-            "plan": {
-              "start_id": {
-                "kind": "month",
-                "date": "2026-09-01"
-              },
-              "end_id": {
-                "kind": "month",
-                "date": "2026-09-01"
-              }
-            }
+        "inheritedPlan": {
+          "start_id": {
+            "kind": "month",
+            "date": "2026-09-01"
           },
-          {
-            "kind": "task",
-            "plan": {
-              "start_id": {
-                "kind": "week",
-                "date": "2026-09-13"
-              },
-              "end_id": {
-                "kind": "week",
-                "date": "2026-09-13"
-              }
-            }
+          "end_id": {
+            "kind": "month",
+            "date": "2026-09-01"
           }
-        ]
+        }
       },
       "target": {
         "kind": "week",
-        "date": "2026-09-20"
-      },
-      "refusal": "parentPlan"
-    },
-    {
-      "name": "a wait cuts the plan chain",
-      "spec": "plan-view.md — An Expectation has no Plan and takes none from the Task it hangs under.",
-      "row": {
-        "id": "t",
-        "ancestors": [
-          {
-            "kind": "task",
-            "plan": {
-              "start_id": {
-                "kind": "week",
-                "date": "2026-09-13"
-              },
-              "end_id": {
-                "kind": "week",
-                "date": "2026-09-13"
-              }
-            }
-          },
-          {
-            "kind": "expectation"
-          }
-        ]
-      },
-      "target": {
-        "kind": "week",
-        "date": "2026-09-20"
+        "date": "2026-09-13"
       },
       "refusal": null
+    },
+    {
+      "name": "a Plan above that does not meet the window admits nothing",
+      "spec": "time-scopes.md, Plan inheritance — a Task whose inherited Plan comes to nothing inside its window can hold no Plan inside it.",
+      "row": {
+        "id": "t",
+        "timeScope": {
+          "start_id": {
+            "kind": "week",
+            "date": "2026-09-20"
+          },
+          "end_id": {
+            "kind": "week",
+            "date": "2026-09-20"
+          }
+        },
+        "emptyPlan": true
+      },
+      "target": {
+        "kind": "week",
+        "date": "2026-09-20"
+      },
+      "refusal": "parentPlan"
+    },
+    {
+      "name": "with nothing inherited, the own window is still read first",
+      "spec": "plan-view.md — The two rules are read in the order the writer reads them.",
+      "row": {
+        "id": "t",
+        "timeScope": {
+          "start_id": {
+            "kind": "week",
+            "date": "2026-09-20"
+          },
+          "end_id": {
+            "kind": "week",
+            "date": "2026-09-20"
+          }
+        },
+        "emptyPlan": true
+      },
+      "target": {
+        "kind": "week",
+        "date": "2026-09-27"
+      },
+      "refusal": "ownTimeScope"
     },
     {
       "name": "the task's own window is read first",
@@ -466,21 +560,16 @@
             "date": "2026-09-13"
           }
         },
-        "ancestors": [
-          {
-            "kind": "task",
-            "plan": {
-              "start_id": {
-                "kind": "week",
-                "date": "2026-09-13"
-              },
-              "end_id": {
-                "kind": "week",
-                "date": "2026-09-13"
-              }
-            }
+        "inheritedPlan": {
+          "start_id": {
+            "kind": "week",
+            "date": "2026-09-13"
+          },
+          "end_id": {
+            "kind": "week",
+            "date": "2026-09-13"
           }
-        ]
+        }
       },
       "target": {
         "kind": "week",
@@ -503,21 +592,16 @@
             "date": "2026-09-01"
           }
         },
-        "ancestors": [
-          {
-            "kind": "task",
-            "plan": {
-              "start_id": {
-                "kind": "month",
-                "date": "2026-09-01"
-              },
-              "end_id": {
-                "kind": "month",
-                "date": "2026-09-01"
-              }
-            }
+        "inheritedPlan": {
+          "start_id": {
+            "kind": "month",
+            "date": "2026-09-01"
+          },
+          "end_id": {
+            "kind": "month",
+            "date": "2026-09-01"
           }
-        ]
+        }
       },
       "target": {
         "kind": "week",

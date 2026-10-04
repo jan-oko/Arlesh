@@ -5,7 +5,7 @@ import type { InstanceType, FlowItemType, TemplateFields } from "@/api/flows";
 import type { Origin, RowId } from "@/api/node-id";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
-import type { NodeCapabilities } from "@/api/mindmap";
+import type { NodeCapabilities, PlanConflict } from "@/api/mindmap";
 import type { Delegate, TaskStatus } from "@/api/tasks";
 import type { DurationSpec } from "@/api/time-scope";
 import type { AgenticBrief, AsyncTemplate } from "@/api/tasks";
@@ -185,6 +185,14 @@ export interface HabitGroup {
   spanLabel: string;
 }
 
+/** The planned node an inherited Plan comes from. */
+export interface PlanSource {
+  /** Its node id (`task-12`). */
+  nodeId: string;
+  /** Its short id, when the board has one for it. */
+  shortId: string | null;
+}
+
 export interface MindmapNode {
   /** The node's display key: unique and comparable, **not** an address — never parse it. Read the
    * row through `rowId` (via `rowIdOf`). A node kind added from now on mints a UUID here rather
@@ -334,8 +342,17 @@ export interface MindmapNode {
   /** Present on a `habit_group` node, and on no other kind: what it stands for. */
   habitGroup?: HabitGroup;
   plan?: TimeScope | null;
-  /** Where this Task's **own** Plan stands at "now" (real Tasks with a Plan only); set by the view
-   * from the derived lifecycle, never persisted. */
+  /** The Plan a Task takes from above — its parent's effective Plan clipped to its own Time Scope —
+   * whether or not it has one of its own: what it reads with none, and what an own Plan must sit
+   * inside. The backend's rule (`docs/spec/time-scopes.md`, *Plan inheritance*), read off the
+   * load's facts; absent when nothing above is planned. */
+  inheritedPlan?: TimeScope;
+  /** Where an inherited Plan comes from: the planned node above, by node id and short id. */
+  planSource?: PlanSource;
+  /** The plan rule this Task breaks: one that arose outside the writer, as an undo or older data can leave. */
+  planConflict?: PlanConflict;
+  /** Where this Task's **effective** Plan — its own, or the one it inherits — stands at "now"; set
+   * by the view from the derived lifecycle, never persisted. */
   planTiming?: Timing;
   flow?: FlowData;
   flowItem?: FlowItemData;

@@ -36,6 +36,7 @@ from arlesh.models import (
     DependencyExpectation,
     DependencyGoal,
     DependencyTask,
+    DescendantPlans,
     Domain,
     DomainSubtype,
     DuplicatedDomain,
@@ -54,6 +55,7 @@ from arlesh.models import (
     Info,
     MaterializedFlow,
     MindmapLoad,
+    PlanClampTarget,
     Reconcile,
     SetRecurrenceRequest,
     SpawnedWait,
@@ -63,6 +65,7 @@ from arlesh.models import (
     Task,
     TaskArchival,
     TaskWithBlockers,
+    TimeScope,
     UpdateCommitmentRequest,
     UpdateDomainRequest,
     UpdateExpectationRequest,
@@ -230,14 +233,36 @@ class Database:
         return await self._call(_TASK, "create_task", request=request)
 
     async def update_task(
-        self, id: NodeId, request: UpdateTaskRequest, *, confirmed: bool = False
+        self,
+        id: NodeId,
+        request: UpdateTaskRequest,
+        *,
+        confirmed: bool = False,
+        descendant_plans: DescendantPlans | None = None,
     ) -> Task:
         """Updates a Task, stored or a Habit occurrence; naming a parent moves it.
 
         Completing an occurrence that holds unfinished children raises
-        :class:`NeedsConfirmation` unless ``confirmed``.
+        :class:`NeedsConfirmation` unless ``confirmed``. A new Plan that would leave a Task below
+        outside the Plan it inherits is refused unless ``descendant_plans`` says what becomes of
+        them — ``clamp`` into the new Plan, or ``clear`` to inherit it (see
+        :meth:`plan_containment_conflicts`).
         """
-        return await self._call(_TASK, "update_task", id=id, request=request, confirmed=confirmed)
+        return await self._call(
+            _TASK,
+            "update_task",
+            id=id,
+            request=request,
+            confirmed=confirmed,
+            descendant_plans=descendant_plans,
+        )
+
+    async def plan_containment_conflicts(
+        self, id: NodeId, plan: TimeScope | None
+    ) -> list[PlanClampTarget]:
+        """The Tasks below the Task ``id`` whose own Plan ``plan`` would leave outside the Plan
+        they inherit, each with what clamping would give it. Nearest first."""
+        return await self._call(_CLAMPS, "plan_containment_conflicts", id=id, plan=plan)
 
     async def delete_task(self, id: NodeId) -> None:
         """Deletes a Task and its subtree."""
@@ -638,6 +663,7 @@ _DEPENDENCIES = TypeAdapter(list[Dependency])
 _STATUS_STEP = TypeAdapter(StatusStepOutcome)
 _INSTANT: TypeAdapter[datetime | None] = TypeAdapter(datetime | None)
 _ID = TypeAdapter(int)
+_CLAMPS = TypeAdapter(list[PlanClampTarget])
 _DUPLICATED_TASK = TypeAdapter(DuplicatedTask)
 _DUPLICATED_GOAL = TypeAdapter(DuplicatedGoal)
 _DUPLICATED_INFO = TypeAdapter(DuplicatedInfo)

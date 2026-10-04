@@ -32,9 +32,9 @@ use arlesh_core::{
         self, gestures,
         model::{
             CommitmentId, CreateCommitmentRequest, CreateExpectationRequest, CreateGoalRequest,
-            CreateTaskRequest, Dependency, ExpectationId, GoalId, TaskId, UpdateCommitmentRequest,
-            UpdateExpectationRequest, UpdateGoalRequest, UpdateSpawnedWaitRequest,
-            UpdateTaskRequest,
+            CreateTaskRequest, Dependency, DescendantPlans, ExpectationId, GoalId, TaskId,
+            TimeScope, UpdateCommitmentRequest, UpdateExpectationRequest, UpdateGoalRequest,
+            UpdateSpawnedWaitRequest, UpdateTaskRequest,
         },
         rules::gestures::{StatusStep, VerdictPress},
     },
@@ -117,6 +117,19 @@ pub(crate) enum Request {
         /// Completing a Habit occurrence over unfinished children asks first unless this is set.
         #[serde(default)]
         confirmed: bool,
+        /// What becomes of the Tasks below whose own Plan the new Plan would leave outside:
+        /// clamped, or cleared to inherit. Without it such a write is refused.
+        #[serde(default)]
+        descendant_plans: Option<DescendantPlans>,
+    },
+    /// The Tasks below a Task whose own Plan `plan` would leave outside, with what clamping would
+    /// give each — before narrowing or moving a Plan.
+    PlanContainmentConflicts {
+        /// The Task whose Plan would change.
+        id: NodeId,
+        /// The Plan it would get.
+        #[serde(default)]
+        plan: Option<TimeScope>,
     },
     /// Deletes a Task and its subtree.
     DeleteTask {
@@ -540,6 +553,7 @@ impl Request {
                 | Self::GetFlow { .. }
                 | Self::TaskDependencies { .. }
                 | Self::TaskDoneAt { .. }
+                | Self::PlanContainmentConflicts { .. }
                 | Self::ListDomains { .. }
         )
     }
@@ -684,9 +698,24 @@ async fn dispatch(
             id,
             request,
             confirmed,
+            descendant_plans,
         } => {
             transaction(factory, async |db| {
-                composite::update_task_confirmed(db, &id, request, confirmed, now()).await
+                composite::update_task_confirmed(
+                    db,
+                    &id,
+                    request,
+                    confirmed,
+                    descendant_plans,
+                    now(),
+                )
+                .await
+            })
+            .await
+        }
+        Request::PlanContainmentConflicts { id, plan } => {
+            transaction(factory, async |db| {
+                composite::plan_containment_conflicts(db, &id, plan.as_ref(), now()).await
             })
             .await
         }
@@ -1008,7 +1037,7 @@ async fn dispatch(
         }
         Request::UpdateFlow { id, request } => {
             transaction(factory, async |db| {
-                flows::update_flow(db, FlowId(id), request).await.wired()
+                composite::update_flow_checked(db, FlowId(id), request, now()).await
             })
             .await
         }
@@ -1065,6 +1094,7 @@ async fn dispatch(
                     &cycles,
                     reconcile,
                     at,
+                    now(),
                 )
                 .await
             })
@@ -1113,9 +1143,7 @@ async fn dispatch(
         }
         Request::SetFlowRecurrence { flow_id, request } => {
             transaction(factory, async |db| {
-                flows::set_flow_recurrence(db, FlowId(flow_id), request)
-                    .await
-                    .wired()
+                composite::set_flow_recurrence_checked(db, FlowId(flow_id), request, now()).await
             })
             .await
         }

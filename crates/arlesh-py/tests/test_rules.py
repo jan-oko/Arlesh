@@ -27,6 +27,7 @@ from arlesh.models import (
     PartOfDay,
     Resolution,
     ScopeKeyDay,
+    ScopeKeyWeek,
     ScopeKind,
     SlotWindow,
     StatusAfterRefused,
@@ -34,6 +35,7 @@ from arlesh.models import (
     StatusOrdinary,
     StatusStep,
     TaskStatus,
+    TimeScope,
     Timing,
     Verdict,
     VerdictPress,
@@ -267,3 +269,23 @@ def test_a_pending_wait_counts_as_started_and_a_released_one_as_done() -> None:
 
 def test_a_key_names_its_scope() -> None:
     assert rules.scope(ScopeKeyDay(kind="day", date="2026-09-23")).label == "2026-09-23"
+
+
+def test_a_plan_inside_its_scope_is_kept_and_one_outside_is_clipped_away() -> None:
+    """`plan_inheritance.rs::clip`: inside the window as it is; not meeting it, nothing."""
+    week = TimeScope(
+        start_id=ScopeKeyWeek(kind="week", date="2026-09-20"),
+        end_id=ScopeKeyWeek(kind="week", date="2026-09-20"),
+    )
+    tuesday = TimeScope(
+        start_id=ScopeKeyDay(kind="day", date="2026-09-22"),
+        end_id=ScopeKeyDay(kind="day", date="2026-09-22"),
+    )
+    later = TimeScope(
+        start_id=ScopeKeyDay(kind="day", date="2026-10-22"),
+        end_id=ScopeKeyDay(kind="day", date="2026-10-22"),
+    )
+    kept = rules.clip_plan(tuesday, week)
+    assert kept is not None
+    assert kept.start_id == tuesday.start_id
+    assert rules.clip_plan(later, week) is None

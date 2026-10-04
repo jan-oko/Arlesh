@@ -76,8 +76,6 @@ function editorOn(node: MindmapNode): NodeEditorHandles {
     onFlowItemSave: vi.fn(() => resolved),
     checkScopeClamp: vi.fn(() => Promise.resolve(true)),
     confirmScopeClamp: vi.fn(() => Promise.resolve(true)),
-    scopeClampRequest: null,
-    resolveScopeClamp: vi.fn(),
   };
 }
 

@@ -205,9 +205,10 @@ row and tag differences where they are, ignored; when it is derived again it rea
 What they refuse is what their origin fixes: none leaves its parent (a request naming the current
 parent — a full editor save — is not a move) and none is deleted or copied; a check task keeps its
 day and is not delegated; a delegation wait's status is its Task's (only the Task being done
-releases it), and nothing schedules checks on it, so it takes no Check every. None of them takes a
-Plan from where it hangs: a spawned wait does not take its Task's, and a wait cuts the Plan chain
-for what is beneath it. A delegation wait is drawn with a label naming who is to finish it ("Tuli
+releases it), and nothing schedules checks on it, so it takes no Check every. A wait holds no
+Plan of its own, but it passes the one above it down: a check task beneath it inherits its Task's
+Plan in full, unclipped by the day the check fell due (see *Plan inheritance* in
+[Time Scopes](time-scopes.md#plan-inheritance)). A delegation wait is drawn with a label naming who is to finish it ("Tuli
 finish: …"; see *Delegation* in [Resources](resources.md)) while that title is its Task's; one given
 a title of its own is drawn with it.
 

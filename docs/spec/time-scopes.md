@@ -109,18 +109,58 @@ The **presets**: Plan shows an Overdue item because it is not archived. **Start 
 
 A **Task** (not a Goal) may be **planned** into a single Scope. The Plan must be wholly contained within the task's Time Scope (the same scope or a subscope) — unless the task is **Overdue** (below).
 
+### Plan inheritance
+
+Ruled by the user, 2026-10-03 (Task `065b`). It replaced an interim, filter-only rule (`Arlesh-zwm` / `Arlesh-67y`) under which only the Start preset read an unplanned Task by its nearest planned ancestor Task's Plan.
+
+**The effective Plan.** A Task with a Plan of its own reads it. One without reads the Plan it **inherits**: its parent's effective Plan, **clipped to its own Time Scope**. So it is the nearest planned node's Plan above it, narrowed by every window in between. It is derived on every load and never stored, as an inherited Time Scope is. Setting an own Plan overrides it. There is **no opt-out**: no "deliberately unplanned" state; a Task has its own Plan or inherits one, and is unplanned only when nothing above it is planned either.
+
+- **The chain climbs through everything.** Goals, Commitments, Projects and Domains carry no Plan and pass the one above them down, a Goal's or a Commitment's own window clipping it on the way. **Waits** pass it down too, unclipped, and a wait's **check task inherits fully**: its window is the day its check fell due, not a relevance anyone chose, so it does not clip what it inherits. The user accepted the consequence: Start hides a check due today under a Task planned ahead ("Inherit fully").
+- **Clipping.** A Plan inside the window is kept as it is, and a window inside the Plan is taken. A partial overlap reads as a range of Days when both ends fall on the 02:00 day boundary, which every canonical scope does, and otherwise as the two scopes whose ends bound it. An **Overdue** Task does not clip: its Plan may leave its window (see *The Overdue exemption* below), so the one it inherits may too.
+- **Empty.** When the inherited Plan and the Task's own window do not meet, it reads no Plan, and is flagged.
+
+**Every reader uses it.** The rule is one pure function in the rules layer (`tasks::rules::plan_inheritance`), read over the whole board on every load (`mindmap::rules::plans`) and sent with the board's facts (`inherited_plan`, `plan_source`, `plan_source_short_id`, `plan_conflict`). The frontend keeps no copy of it. What reads it:
+
+- **Start** reads where the effective Plan stands, which the backend derives onto each Task's lifecycle (`plan_timing`) — see [Filtering Logic](filtering-logic.md);
+- the List View's **planned / unplanned** scope-state pill;
+- the [Plan View](plan-view.md), which places a Task by its effective Plan;
+- the **badges**: a calendar badge for an own Plan, and a **fainter** one for an inherited Plan, whose tooltip names where it comes from;
+- the **Task editor**: its Plan field shows an inherited Plan read-only, with its source's short id ("W41 — inherited from 9e3"), beside the control that sets an own Plan; the picker is held to the inherited Plan;
+- the **MCP**, which carries both: a Task's `plan` is its own, `effective_plan` the one it reads, with `plan_inherited_from` naming the source (see [MCP Server](mcp-server.md)).
+
+**Containment.** A Task's own Plan must sit inside the Plan it inherits — its parent's effective Plan clipped to its own window — and nothing may be left with an **empty** effective Plan. A write that breaks either is **refused, naming the Tasks**, and nothing of it is kept. A write can break a rule below the row it touches, so after the write, inside its transaction, the backend reads the board's plan rules once (`mindmap::plan_guard`) and refuses any rule broken within the write's **reach**: the nodes it wrote, everything beneath them, and the Habits hung there — the only nodes whose effective Plan it can have changed. The board holds no violation to begin with (the user cleared the only ones before this shipped, 2026-10-03), so whatever the check finds there is the write's own. That covers:
+
+- a child's own Plan outside the one above it;
+- narrowing a child's window away from the Plan it inherits;
+- narrowing or moving a parent's Plan away from a child's window, or past a child's own Plan;
+- moving a Task under a planned node it does not fit;
+- narrowing a Goal's or a Commitment's window between them;
+- a Habit's template or recurrence that would put its occurrences outside (see [Habits](habits.md#plan-inheritance)).
+
+The writes it guards are a Task created with a Plan or a window; a Task's Plan, window or place changed; a Goal's or a Commitment's window or place changed; and a Habit's Flow, recurrence or cycles edited. A status change is not guarded, though finishing an Overdue Task makes its window clip again.
+
+**A violation that arises outside the writer is flagged.** A few things change a Plan's reading without passing the guard: a status change (finishing an Overdue Task makes its window clip what it inherits again), an undo or redo, which replays rows as they were, and data written outside the app. So the board still checks every load: a Task breaking a rule draws its calendar badge in the danger colour, the editor says which rule under its Plan field, and the MCP carries `plan_conflict` (`parent_plan` or `empty`). Nothing is rewritten. Any later write whose reach covers it — its own, or its parent's — must leave it resolved, or is refused. A read-only copy of the user's board, taken 2026-10-03, held three: Tasks 188, 189 and 190, planned into October under a parent (187) planned into the week of 4 October. The user fixed those before this shipped.
+
+**The clamp-or-cancel prompt.** Narrowing or moving a Task's Plan, when Tasks below hold their own Plans that the new one would leave outside, gets the prompt Time Scope uses, before anything is written. The writers that ask are the editor's Save, the `P` quick picker and the Plan View. It names those Tasks, nearest first, and offers three ways on:
+
+- **Clamp**: each is planned to the part of its own Plan inside the new bound, or to the bound itself where they do not meet;
+- **Clear**: each has its Plan cleared, and inherits;
+- **Cancel**.
+
+The backend works the list out (`plan_containment_conflicts`), each one read as if the ones above it had been clamped already. The answer rides the write (`update_task_settling_plans`), which settles them in the same transaction after the parent: **one Gesture, one Ctrl+Z**. Only that write reads the board before writing, to know what to settle; every guarded write reads it once after. A batch is asked once, over every Task it would leave outside. An **empty** effective Plan is not offered: clamping cannot fix a window, so the write is refused, naming the Tasks. The MCP has no prompt: such a write is refused there.
+
 ## Containment invariants
 
 Evaluated as interval containment on resolved datetime boundaries:
 
 - `Plan ⊆ TimeScope`
 - `child.TimeScope ⊆ parent.TimeScope`
-- `child.Plan ⊆ parent.Plan`
+- `child.Plan ⊆ parent.Plan`: a Task's own Plan within the Plan it inherits, its parent's effective Plan clipped to its own window (see *Plan inheritance* above), and no Task with an empty effective Plan
 - `Due ⊆ TimeScope` — an explicit due, within the effective window (see *Due scope and the Overdue flag* above)
 
-**The Overdue exemption** (ruled by the user, 2026-09-26; re-keyed onto the flag 2026-09-30). `Plan ⊆ TimeScope` does not bind a Task flagged **Overdue** — unfinished, not effectively archived, and past the end of its due, judged over its **own** window on the task as the write leaves it at the moment of the write. Under the default due that is exactly the old rule: its own window has fully passed, it is not Done, and it is Keep Overdue. With an explicit due it holds from the due's end, which may be inside the window: work that is late needs rescheduling whether or not its window has closed. A due that has passed can only refuse now and later, which is exactly where overdue work has to be rescheduled to. The exemption lifts that one bound and nothing else: the task's **Time Scope is not changed or widened** (a window is an editing decision), `child.TimeScope ⊆ parent.TimeScope` still holds, and so does `child.Plan ⊆ parent.Plan` — an overdue task is planned inside its nearest planned ancestor's Plan like any other. A task that lapsed **Done** (Completed) or **Missed** is not exempt. A **Habit occurrence** flagged Overdue by its Habit's clock or its own due is exempt as a Task is (Task #245): its Plan may leave its window; one that is not Overdue stays within its window. Only a task's **own** Time Scope bounds its Plan in the first place, so an inherited window has nothing to lift. Descendants stay coherent without a rule of their own: a child's own window sits inside the overdue parent's, so an unfinished Keep Overdue child is Overdue too and may follow its parent into a later Plan, while a Done child keeps its window's bound. The backend lifts the bound on the way in, and the [Plan View](plan-view.md)'s pre-check and the Task editor's Plan picker lift it with it.
+**The Overdue exemption** (ruled by the user, 2026-09-26; re-keyed onto the flag 2026-09-30). `Plan ⊆ TimeScope` does not bind a Task flagged **Overdue** — unfinished, not effectively archived, and past the end of its due, judged over its **own** window on the task as the write leaves it at the moment of the write. Under the default due that is exactly the old rule: its own window has fully passed, it is not Done, and it is Keep Overdue. With an explicit due it holds from the due's end, which may be inside the window: work that is late needs rescheduling whether or not its window has closed. A due that has passed can only refuse now and later, which is exactly where overdue work has to be rescheduled to. The exemption lifts that one bound and nothing else: the task's **Time Scope is not changed or widened** (a window is an editing decision), `child.TimeScope ⊆ parent.TimeScope` still holds, and so does `child.Plan ⊆ parent.Plan` — an overdue task is planned inside the Plan it inherits like any other (an Overdue task does not clip that Plan to its passed window). A task that lapsed **Done** (Completed) or **Missed** is not exempt. A **Habit occurrence** flagged Overdue by its Habit's clock or its own due is exempt as a Task is (Task #245): its Plan may leave its window; one that is not Overdue stays within its window. Only a task's **own** Time Scope bounds its Plan in the first place, so an inherited window has nothing to lift. Descendants stay coherent without a rule of their own: a child's own window sits inside the overdue parent's, so an unfinished Keep Overdue child is Overdue too and may follow its parent into a later Plan, while a Done child keeps its window's bound. The backend lifts the bound on the way in, and the [Plan View](plan-view.md)'s pre-check and the Task editor's Plan picker lift it with it.
 
-**Enforcement:** a local edit that exceeds a bound (a child or Plan set too wide) is rejected at write time. A parent-narrowing or reparent that would orphan descendants prompts the user to *clamp descendants to the intersection* or *cancel*.
+**Enforcement:** a local edit that exceeds a bound (a child or Plan set too wide) is rejected at write time. A parent-narrowing or reparent that would orphan descendants prompts the user to *clamp descendants to the intersection* or *cancel*. For Plans the prompt also offers to *clear* the descendants' Plans so they inherit, and a write that would break a plan rule anywhere on the board is refused, naming the Tasks (see *Plan inheritance* above). Both prompts are drawn **once, at the root of the app**, and asked from whichever view the write starts in — the Mindmap, the List View, the Plan View or the Steps View, from an editor or a drag. Until 2026-10-03 the Time Scope prompt was drawn by the Mindmap alone, so a narrowing saved from the List View or the Plan View waited on a prompt nothing showed, and the save never finished (fixed with Task `065b`).
 
 ## Scope Picker
 

@@ -166,6 +166,8 @@ pub fn run() {
             commands::gestures::toggle_task_agentic,
             commands::gestures::press_commitment_verdict,
             commands::tasks::scope_containment_conflicts,
+            commands::tasks::plan_containment_conflicts,
+            commands::tasks::update_task_settling_plans,
             commands::tasks::reparent_scope_conflicts,
             commands::tasks::delete_task,
             commands::tasks::duplicate_task,

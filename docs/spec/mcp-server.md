@@ -245,6 +245,14 @@ details an agent reads the payload by.
   `{"kind":"part_of_day","date":"2026-09-23","part":"morning"}`,
   `{"kind":"exact","start":…,"end":…}`. The dates are right there; `arlesh_scopes` adds labels,
   end dates and datetime windows.
+- **Own and effective Plan** (Task `065b`, see [*Plan inheritance*](time-scopes.md#plan-inheritance)).
+  A Task's `plan` is its **own**. Every Task row in the snapshot, and the Task `arlesh_tasks.get`
+  returns, also carries `effective_plan`: the Plan it reads, its own or the one it inherits from
+  the nearest planned node above it, clipped to its Time Scope. It is `null` when it reads none.
+  An inherited one names its source by short id in `plan_inherited_from`. A Task breaking a plan
+  rule carries `plan_conflict`: `parent_plan` when its own Plan leaves the one it inherits, `empty`
+  when the Plan above it does not meet its window. The Start filter reads `effective_plan`'s
+  position.
 - **Commitments** carry a `verdict`, `unresolved`/`kept`/`broken`, recorded and never inferred:
   `unresolved` means the user has not said, not "not done".
 - **Expectations** are waits: `pending` blocks the tasks depending on it, `released` frees them. A
@@ -413,8 +421,10 @@ filter, as `pills.agentic`; see *Filtering a read*.)
   flagged Overdue; `resolution` is only ever `completed` or `missed`.
   Each goes through the same backend write the app's own command uses (`nodes::write` —
   `update_task`, `add_dependency`, `remove_dependency`, `set_tag`, `set_block_reasons`), so its
-  rules are the app's: a Plan outside the Time Scope or a window outside an ancestor's is
-  `containment_violated`, a backlogged Task given a Plan leaves the Backlog, a Task set aside while
+  rules are the app's: a Plan outside the Time Scope or outside the Plan it inherits, a window
+  outside an ancestor's, or a write that leaves any Task with no Plan inside its window (naming the
+  Tasks) is `containment_violated` — there is no clamp prompt over the MCP, so a Plan the Tasks below
+  would fall outside of is refused rather than clamped — a backlogged Task given a Plan leaves the Backlog, a Task set aside while
   planned is `needs_confirmation` (resend with `plan: null`), and a dependency that would close a
   cycle — a Task after itself included — is `invalid_request` with the app's reason. The Task must
   be writable; a **prerequisite or Tag need only be visible** (inside the roots, not private), and

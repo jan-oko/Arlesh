@@ -103,6 +103,10 @@ pub struct MindmapLoad {
     /// What the agents are doing on the whole board. Filled by the app's load only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_activity: Option<AgentActivity>,
+    /// Every node's effective Plan and every plan rule the board breaks — what the app's facts,
+    /// the MCP and the write guard read. Never sent as it is.
+    #[serde(skip)]
+    pub plans: super::rules::plans::PlanAudit,
 }
 
 /// A dependency a Task is blocked by: its target, which is not Done, Achieved or released yet.
@@ -131,6 +135,22 @@ pub struct NodeFacts {
     /// own to replace it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inherited_time_scope: Option<TimeScope>,
+    /// The Plan the node takes from above: its parent's effective Plan, clipped to its own Time
+    /// Scope. Sent whether or not it has a Plan of its own — it is what it reads when it has none,
+    /// and what an own Plan must sit inside.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inherited_plan: Option<TimeScope>,
+    /// The node whose own Plan [`Self::inherited_plan`] comes from, keyed as the board keys it —
+    /// or, for a node whose inherited Plan came to nothing, the node it would have come from.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_source: Option<String>,
+    /// [`Self::plan_source`]'s short id, when the board has one for it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_source_short_id: Option<String>,
+    /// The plan rule a Task breaks — one that arose outside the writer, as an undo or older data
+    /// can leave; the guard never lets a write leave one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_conflict: Option<crate::tasks::rules::plan_inheritance::PlanConflict>,
     /// The dependencies a Task is blocked by, in edge order.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub dependency_blocks: Vec<DependencyBlock>,

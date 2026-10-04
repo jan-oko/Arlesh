@@ -19,7 +19,7 @@ use arlesh_core::{
         rules::cycle_grid::CycleLevel,
     },
     infos::model::Info,
-    mindmap::model::MindmapLoad,
+    mindmap::{model::MindmapLoad, rules::plans::PlanClampTarget},
     scopes::{model::Scope, resolve::ResolvedScope},
     tasks::{
         gestures::StatusStepOutcome,
@@ -54,8 +54,8 @@ use arlesh_core::{
     tasks::{
         model::{
             CreateCommitmentRequest, CreateExpectationRequest, CreateGoalRequest,
-            CreateTaskRequest, DurationSpec, ExpectationStatus, OnScopeExit, Status,
-            UpdateCommitmentRequest, UpdateExpectationRequest, UpdateGoalRequest,
+            CreateTaskRequest, DescendantPlans, DurationSpec, ExpectationStatus, OnScopeExit,
+            Status, UpdateCommitmentRequest, UpdateExpectationRequest, UpdateGoalRequest,
             UpdateSpawnedWaitRequest, UpdateTaskRequest, Verdict,
         },
         rules::gestures::{StatusStep, VerdictPress},
@@ -98,6 +98,7 @@ fn inputs(generator: &mut SchemaGenerator) {
     add::<StartFlowRequest>(generator);
     add::<SetRecurrenceRequest>(generator);
     add::<StatusStep>(generator);
+    add::<DescendantPlans>(generator);
     add::<VerdictPress>(generator);
     add::<NodeId>(generator);
     add::<ScopeKey>(generator);
@@ -138,6 +139,7 @@ fn outputs(generator: &mut SchemaGenerator) {
     add::<DuplicatedSubtree<Info>>(generator);
     add::<DuplicatedSubtree<Domain>>(generator);
     add::<Dependency>(generator);
+    add::<PlanClampTarget>(generator);
     add::<StatusStepOutcome>(generator);
     add::<StatusAfter>(generator);
     add::<Scope>(generator);

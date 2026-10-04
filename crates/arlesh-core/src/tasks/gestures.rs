@@ -60,7 +60,7 @@ pub async fn step_status(
         status: Some(next),
         ..UpdateTaskRequest::default()
     };
-    let task = composite::update_task_confirmed(db, id, request, confirmed, now).await?;
+    let task = composite::update_task_confirmed(db, id, request, confirmed, None, now).await?;
     let backlog_cleared = gestures::backlog_cleared(before.archival, task.archival, next);
     Ok(StatusStepOutcome::Written {
         task: Box::new(task),

@@ -58,10 +58,10 @@ pub async fn update_flow(
     id: i64,
     request: UpdateFlowRequest,
 ) -> Result<Flow, WireError> {
+    let now = chrono::Local::now().naive_local();
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let flow = flows::update_flow(&mut db, FlowId(id), request)
-        .await
-        .map_err(WireError::from_error)?;
+    let flow =
+        crate::nodes::composite::update_flow_checked(&mut db, FlowId(id), request, now).await?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(flow)
 }
@@ -226,10 +226,15 @@ pub async fn set_flow_recurrence(
     flow_id: i64,
     request: SetRecurrenceRequest,
 ) -> Result<FlowRecurrence, WireError> {
+    let now = chrono::Local::now().naive_local();
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let recurrence = flows::set_flow_recurrence(&mut db, FlowId(flow_id), request)
-        .await
-        .map_err(WireError::from_error)?;
+    let recurrence = crate::nodes::composite::set_flow_recurrence_checked(
+        &mut db,
+        FlowId(flow_id),
+        request,
+        now,
+    )
+    .await?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(recurrence)
 }
@@ -325,6 +330,7 @@ pub async fn set_flow_item_cycles(
         &cycles,
         reconcile,
         now,
+        chrono::Local::now().naive_local(),
     )
     .await?;
     db.commit().await.map_err(WireError::from_error)?;

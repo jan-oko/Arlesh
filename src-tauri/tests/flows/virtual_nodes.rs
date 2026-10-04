@@ -1113,8 +1113,8 @@ fn occurrence_starting<'a>(
 async fn a_root_and_an_item_cycle_plan_resolve_onto_their_occurrences() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
-    // A weekly task Habit whose root is planned into Day 2 of the week, with one item on Day 3
-    // planned into that day's first part — its morning.
+    // A weekly task Habit whose root is planned into Days 2 to 3 of the week, with one item on
+    // Day 3 planned into that day's first part — its morning, inside the root's Plan.
     let flow = flow_commands::create_flow(
         app.state(),
         CreateFlowRequest {
@@ -1126,7 +1126,7 @@ async fn a_root_and_an_item_cycle_plan_resolve_onto_their_occurrences() {
             flow_duration_kind: Some("week".into()),
             root_plan_kind: Some("day".into()),
             root_plan_start: Some(2),
-            root_plan_end: Some(2),
+            root_plan_end: Some(3),
             ..Default::default()
         },
     )
@@ -1198,18 +1198,93 @@ async fn a_root_and_an_item_cycle_plan_resolve_onto_their_occurrences() {
         .find(|task| task.id == root_id)
         .expect("the week's root occurrence");
     let monday = ScopeKey::day(ymd(2026, 1, 5));
+    let tuesday = ScopeKey::day(ymd(2026, 1, 6));
     assert_eq!(
         root.plan.as_ref().map(|plan| (plan.start_id, plan.end_id)),
-        Some((monday, monday)),
+        Some((monday, tuesday)),
         "the root reads the flow's root Cycle Plan"
     );
-    let tuesday = ScopeKey::day(ymd(2026, 1, 6));
     let item = occurrence_starting(&board, "Prepare", tuesday);
     let morning = ScopeKey::part(ymd(2026, 1, 6), PartOfDay::Morning);
     assert_eq!(
         item.plan.as_ref().map(|plan| (plan.start_id, plan.end_id)),
         Some((morning, morning)),
         "the item reads its pair's Cycle Plan"
+    );
+}
+
+#[tokio::test]
+async fn an_item_cycle_plan_outside_the_roots_plan_is_refused_naming_it() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    // The root planned into Day 2 alone: an item planned into Day 3's morning would sit outside
+    // the Plan its occurrence inherits (`docs/spec/time-scopes.md`, *Plan inheritance*).
+    let flow = flow_commands::create_flow(
+        app.state(),
+        CreateFlowRequest {
+            title: "Weekly".into(),
+            instance_type: Some(InstanceType::Task),
+            parent_type: "aspect".into(),
+            parent_id: 1,
+            flow_duration_n: Some(1),
+            flow_duration_kind: Some("week".into()),
+            root_plan_kind: Some("day".into()),
+            root_plan_start: Some(2),
+            root_plan_end: Some(2),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let prepare = flow_commands::create_flow_task(
+        app.state(),
+        CreateFlowItemRequest {
+            flow_id: flow.id,
+            title: "Prepare".into(),
+            parent_type: "flow".into(),
+            parent_id: flow.id,
+        },
+    )
+    .await
+    .unwrap();
+    let week = scope(&pool, ScopeKind::Week, ymd(2026, 1, 5)).await;
+    flow_commands::set_flow_recurrence(
+        app.state(),
+        flow.id,
+        SetRecurrenceRequest {
+            start_scope_id: week,
+            gap_n: None,
+            gap_kind: None,
+            end_scope_id: None,
+            clock: ClockKind::Window,
+            miss_policy: Some(MissPolicy::Owed),
+            cooldown_n: None,
+            cooldown_kind: None,
+        },
+    )
+    .await
+    .unwrap();
+    let refused = flow_commands::set_flow_item_cycles(
+        app.state(),
+        flow.id,
+        FlowItemType::FlowTask,
+        prepare.id,
+        vec![FlowCycleInput {
+            scope_kind: Some("day".into()),
+            scope_index: Some(3),
+            plan_kind: Some("part_of_day".into()),
+            plan_start: Some(1),
+            plan_end: Some(1),
+        }],
+        None,
+        None,
+    )
+    .await
+    .expect_err("a cycle plan outside the root's is refused");
+    let message = serde_json::to_value(&refused).unwrap()["message"].to_string();
+    assert!(
+        message.contains("“Prepare”"),
+        "the refusal names the occurrence: {message}"
     );
 }
 
