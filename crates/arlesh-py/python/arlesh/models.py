@@ -459,6 +459,23 @@ class ExpectationStatus(StrEnum):
     """
 
 
+class FirstCheck(BaseModel):
+    """
+    When a wait item's first check falls in each occurrence's window: the start of the
+    `index`-th unit of `kind` from the window's start — the relative form a Cycle Plan takes
+    (ruled by the user, 2026-10-03). The Check every repeats from there.
+    """
+
+    index: int
+    """
+    1-based: `1` is the window's first unit, so its start.
+    """
+    kind: str
+    """
+    The unit counted in: `day`, `week`, `month`, `season` or `part`.
+    """
+
+
 class FlowCycleInput(BaseModel):
     """
     One (Cycle Scope, Cycle Plan) pair to persist for a flow item.
@@ -598,6 +615,14 @@ class FlowItemType(StrEnum):
     """
     A `flow_tasks` row.
     """
+    flow_commitment = "flow_commitment"
+    """
+    A `flow_commitments` row.
+    """
+    flow_expectation = "flow_expectation"
+    """
+    A `flow_expectations` row.
+    """
 
 
 class IdPair(RootModel[tuple[int, int]]):
@@ -610,6 +635,14 @@ class ForkedTemplate(BaseModel):
     rest of the save (title, dependencies) can be applied to the fork's copy of the item.
     """
 
+    commitments: list[IdPair]
+    """
+    Old→new `flow_commitments` ids.
+    """
+    expectations: list[IdPair]
+    """
+    Old→new `flow_expectations` ids.
+    """
     flow_id: int
     """
     The fork's flow id.
@@ -853,6 +886,14 @@ class NodeKind(StrEnum):
     flow_task = "flow_task"
     """
     A Flow's task item.
+    """
+    flow_commitment = "flow_commitment"
+    """
+    A Flow's Commitment item.
+    """
+    flow_expectation = "flow_expectation"
+    """
+    A Flow's wait (Expectation) item.
     """
     habit_group = "habit_group"
     """
@@ -1490,6 +1531,14 @@ class TemplateKind(StrEnum):
     flow_task = "flow_task"
     """
     A flow task item.
+    """
+    flow_commitment = "flow_commitment"
+    """
+    A flow Commitment item.
+    """
+    flow_expectation = "flow_expectation"
+    """
+    A flow wait (Expectation) item.
     """
 
 
@@ -2536,6 +2585,173 @@ class Flow(BaseModel):
     """
 
 
+class FlowCommitment(BaseModel):
+    """
+    A flow **Commitment** item: each occurrence is its own Commitment, with its own Verdict.
+
+    It carries what a stored Commitment's editor has, less what an occurrence's window gives it:
+    its title, privacy and the **Verdict Window** every occurrence is copied (its tags are in
+    `template`). Its Time Scope is its cycle's, else the iteration's window, so it has none here.
+    """
+
+    agentic: bool | None
+    """
+    Every occurrence's own Agentic flag; `None` inherits from its ancestors. Task templates only.
+    """
+    agentic_brief: AgenticBrief | None
+    """
+    The agentic brief every occurrence reads, field by field, until it says otherwise. Task
+    templates only.
+    """
+    archival: TaskArchival
+    """
+    Whether every occurrence is set aside in the Backlog. Task templates only.
+    """
+    async_template: AsyncTemplate | None = None
+    """
+    The wait template every instance's completion spawns its wait from, kept only while the
+    item is Asynchronous. Flow Task items only.
+    """
+    asynchronous: bool
+    """
+    Whether doing an occurrence starts a wait. Task templates only.
+    """
+    block_reasons: list[str]
+    """
+    Block reasons every occurrence carries until it has its own.
+    """
+    compound: bool
+    """
+    Whether every instance **consists of its sub-items**. Flow Task items only.
+    """
+    delegate_to: Delegate | None
+    """
+    Who every occurrence is delegated to, unless it says otherwise. Task templates only.
+    """
+    flow_id: int
+    """
+    Owning flow.
+    """
+    id: int
+    """
+    Primary key.
+    """
+    is_private: bool
+    """
+    Whether this item is private (propagates to its instances).
+    """
+    parent_id: int
+    """
+    In-flow parent id (the flow, or a flow item).
+    """
+    parent_type: str
+    """
+    In-flow parent type (`flow`, `flow_goal`, `flow_task` or `flow_commitment`).
+    """
+    position: int
+    """
+    Sort position among siblings.
+    """
+    tag_ids: list[int]
+    """
+    Tags every occurrence carries.
+    """
+    title: str
+    """
+    Display title.
+    """
+    verdict_window: DurationSpec | None
+    """
+    How long past its window each occurrence's verdict may still be recorded; `None` reads
+    the Verdict Window of the nearest Commitment above it, as a stored Commitment does.
+    """
+
+
+class FlowExpectation(BaseModel):
+    """
+    A flow **wait** (Expectation) item: each occurrence is its own wait, released on its own.
+
+    It carries what a stored wait's editor has, less what an occurrence's window gives it: its
+    title, privacy, the **Check every** and when the first check falls ([`FirstCheck`], relative
+    to each occurrence's window in place of a Starting day). Its tags are in `template`.
+    """
+
+    agentic: bool | None
+    """
+    Every occurrence's own Agentic flag; `None` inherits from its ancestors. Task templates only.
+    """
+    agentic_brief: AgenticBrief | None
+    """
+    The agentic brief every occurrence reads, field by field, until it says otherwise. Task
+    templates only.
+    """
+    archival: TaskArchival
+    """
+    Whether every occurrence is set aside in the Backlog. Task templates only.
+    """
+    async_template: AsyncTemplate | None = None
+    """
+    The wait template every instance's completion spawns its wait from, kept only while the
+    item is Asynchronous. Flow Task items only.
+    """
+    asynchronous: bool
+    """
+    Whether doing an occurrence starts a wait. Task templates only.
+    """
+    block_reasons: list[str]
+    """
+    Block reasons every occurrence carries until it has its own.
+    """
+    check_every: DurationSpec | None
+    """
+    How often each occurrence is checked on; `None` for never.
+    """
+    compound: bool
+    """
+    Whether every instance **consists of its sub-items**. Flow Task items only.
+    """
+    delegate_to: Delegate | None
+    """
+    Who every occurrence is delegated to, unless it says otherwise. Task templates only.
+    """
+    first_check: FirstCheck | None
+    """
+    When each occurrence's first check falls; `None` is its window's start.
+    """
+    flow_id: int
+    """
+    Owning flow.
+    """
+    id: int
+    """
+    Primary key.
+    """
+    is_private: bool
+    """
+    Whether this item is private (propagates to its instances).
+    """
+    parent_id: int
+    """
+    In-flow parent id (the flow, or a flow item).
+    """
+    parent_type: str
+    """
+    In-flow parent type (`flow`, `flow_goal`, `flow_task` or `flow_commitment`).
+    """
+    position: int
+    """
+    Sort position among siblings.
+    """
+    tag_ids: list[int]
+    """
+    Tags every occurrence carries.
+    """
+    title: str
+    """
+    Display title.
+    """
+
+
 class FlowGoal(BaseModel):
     """
     A flow-goal (template item) row.
@@ -3428,6 +3644,10 @@ class UpdateFlowItemRequest(BaseModel):
     """
     The whole block-reason list to set, in order.
     """
+    check_every: DurationSpec | None = None
+    """
+    A wait item's Check every to set (`Some(None)` clears it). Wait items only.
+    """
     compound: bool | None = None
     """
     Compound flag to set. Flow Task items only.
@@ -3435,6 +3655,11 @@ class UpdateFlowItemRequest(BaseModel):
     delegate_to: Delegate | None = None
     """
     Delegate to set (`None` leaves it, `Some(None)` clears it). Task templates only.
+    """
+    first_check: FirstCheck | None = None
+    """
+    A wait item's first check to set (`Some(None)` clears it, back to its window's start).
+    Wait items only.
     """
     is_private: bool | None = None
     """
@@ -3459,6 +3684,10 @@ class UpdateFlowItemRequest(BaseModel):
     title: str | None = None
     """
     New title.
+    """
+    verdict_window: DurationSpec | None = None
+    """
+    A Commitment item's Verdict Window to set (`Some(None)` clears it). Commitment items only.
     """
 
 
@@ -4057,6 +4286,10 @@ class MindmapLoad(BaseModel):
     which of its dependencies block it, what it inherits, its open question, whether it has
     expired. Filled by the app's load only, as [`Self::short_ids`] is.
     """
+    flow_commitments: list[FlowCommitment]
+    """
+    Every flow's Commitment items.
+    """
     flow_cycles: list[FlowItemCycle]
     """
     Every flow's cycle pairs — as `list_all_flow_cycles`.
@@ -4064,6 +4297,10 @@ class MindmapLoad(BaseModel):
     flow_dependencies: list[FlowDependency]
     """
     Every flow's intra-flow dependencies — as `list_all_flow_dependencies`.
+    """
+    flow_expectations: list[FlowExpectation]
+    """
+    Every flow's wait items.
     """
     flow_goals: list[FlowGoal]
     """

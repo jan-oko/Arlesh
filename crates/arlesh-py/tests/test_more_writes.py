@@ -237,3 +237,21 @@ async def test_a_narrowed_plan_asks_about_the_plans_below_then_clamps_them(
         parent.id, UpdateTaskRequest(plan=narrower), descendant_plans=DescendantPlans.clear
     )
     assert (await db.get_task(stored(child.id))).task.plan is None
+
+
+async def test_a_flow_holds_commitment_and_wait_items(db: arlesh.Database, domain_id: int) -> None:
+    flow = await db.create_flow(
+        CreateFlowRequest(title="Rules and waits", parent_type="domain", parent_id=domain_id)
+    )
+    commitment = await db.create_flow_commitment(
+        CreateFlowItemRequest(flow_id=flow.id, title="Keep", parent_type="flow", parent_id=flow.id)
+    )
+    wait = await db.create_flow_wait(
+        CreateFlowItemRequest(flow_id=flow.id, title="Hear", parent_type="flow", parent_id=flow.id)
+    )
+    renamed = await db.update_flow_commitment(commitment.id, UpdateFlowItemRequest(title="Kept"))
+    assert renamed.title == "Kept"
+    reworded = await db.update_flow_wait(wait.id, UpdateFlowItemRequest(title="Heard"))
+    assert reworded.title == "Heard"
+    await db.delete_flow_item(FlowItemType.flow_commitment, commitment.id)
+    await db.delete_flow_item(FlowItemType.flow_expectation, wait.id)

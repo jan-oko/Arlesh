@@ -42,8 +42,20 @@ pub fn occurrence_instants(overlays: &HabitOverlays) -> Instants {
         .goals
         .iter()
         .map(|(key, overlay)| (key, overlay.resolved_at));
+    // A Commitment item's verdict and a wait item's release are their occurrences' finish.
+    let commitments = overlays
+        .commitments
+        .iter()
+        .map(|(key, overlay)| (key, overlay.resolved_at));
+    let waits = overlays.expectations.iter().map(|(key, overlay)| {
+        let released = instant_from_column(overlay.released_at.clone())
+            .map(|at| at.and_utc().timestamp_millis());
+        (key, released)
+    });
     tasks
         .chain(goals)
+        .chain(commitments)
+        .chain(waits)
         .filter_map(|(key, at)| {
             let id = NodeId::Derived(OccurrenceKey::parse(key)?.id());
             Some((id, from_millis(at?)?))

@@ -1,7 +1,7 @@
 import { hierarchy, tree } from "d3-hierarchy";
 import type { HierarchyPointNode } from "d3-hierarchy";
 import type { TimeScope } from "@/api/time-scope";
-import type { InstanceType, FlowItemType, TemplateFields } from "@/api/flows";
+import type { InstanceType, FirstCheck, FlowItemType, TemplateFields } from "@/api/flows";
 import type { Origin, RowId } from "@/api/node-id";
 import type { OnScopeExit, Timing, Resolution } from "@/api/scope-lifecycle";
 import type { Verdict } from "@/api/verdict";
@@ -14,7 +14,7 @@ import { expectationNodeId } from "@/utils/node-uuid";
 
 export type NodeKind =
   | "aspect" | "project" | "domain" | "goal" | "task" | "commitment" | "expectation" | "tag" | "info"
-  | "flow" | "flow_goal" | "flow_task"
+  | "flow" | "flow_goal" | "flow_task" | "flow_commitment" | "flow_expectation"
   /** A display-only stand-in for a run of passed Habit iterations — see {@link HabitGroup}. */
   | "habit_group";
 
@@ -25,7 +25,7 @@ export type NodeKind =
  */
 export const ALL_NODE_KINDS: readonly NodeKind[] = [
   "aspect", "project", "domain", "goal", "task", "commitment", "expectation", "tag", "info",
-  "flow", "flow_goal", "flow_task", "habit_group",
+  "flow", "flow_goal", "flow_task", "flow_commitment", "flow_expectation", "habit_group",
 ];
 
 /** Type guard: whether a string is a `NodeKind`. */
@@ -127,6 +127,12 @@ export interface FlowItemData {
   /** The template item's own fields — what every occurrence it draws reads unless it says
    * otherwise (ADR 0008): its delegate, flags, set-aside state, tags and block reasons. */
   template: TemplateFields;
+  /** A Commitment item's Verdict Window, copied to every occurrence; `null` for none. */
+  verdictWindow?: DurationSpec | null;
+  /** A wait item's Check every; `null` for never. */
+  checkEvery?: DurationSpec | null;
+  /** A wait item's first check, relative to each occurrence's window; `null` is its start. */
+  firstCheck?: FirstCheck | null;
 }
 
 /**
@@ -334,8 +340,8 @@ export interface MindmapNode {
    * it hangs under — "the agent is waiting on you". `note` is its question, and the answer once
    * the user writes one in. */
   agentWaiting?: { note: string | null; question: boolean; answer: string | null };
-  /** The stored Expectations this Task depends on, by row id (Tasks only). */
-  expectationDependencyIds?: number[];
+  /** The Expectations this Task depends on, stored or derived (a Habit wait item's occurrence), by row id (Tasks only). */
+  expectationDependencyIds?: RowId[];
   /** Present on a Habit **iteration root** — what the Mindmap's collapse of passed iterations
    * reads off it. Absent on the occurrences beneath it, which never fold on their own. */
   habitIteration?: HabitIterationMeta;

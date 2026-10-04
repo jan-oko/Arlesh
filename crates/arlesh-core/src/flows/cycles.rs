@@ -103,6 +103,10 @@ pub struct ForkedTemplate {
     pub goals: Vec<(i64, i64)>,
     /// Old→new `flow_tasks` ids.
     pub tasks: Vec<(i64, i64)>,
+    /// Old→new `flow_commitments` ids.
+    pub commitments: Vec<(i64, i64)>,
+    /// Old→new `flow_expectations` ids.
+    pub expectations: Vec<(i64, i64)>,
 }
 
 /// How many iterations hold something recorded that a cycle edit would orphan: an overlay, a
@@ -182,15 +186,8 @@ async fn fork_and_set_cycles(
     let clone = db.flows().clone_template(flow_id, None).await?;
     let fork = FlowId(clone.flow.id);
     db.flows().copy_recurrence(flow_id, fork).await?;
-    for (old, new) in &clone.goals {
-        db.flows()
-            .copy_item_privacy(FlowItemType::FlowGoal, *old, *new)
-            .await?;
-    }
-    for (old, new) in &clone.tasks {
-        db.flows()
-            .copy_item_privacy(FlowItemType::FlowTask, *old, *new)
-            .await?;
+    for ((kind, old), new) in &clone.items {
+        db.flows().copy_item_privacy(*kind, *old, *new).await?;
     }
     if source.is_private {
         db.flows()
@@ -203,24 +200,28 @@ async fn fork_and_set_cycles(
             )
             .await?;
     }
-    let ids = match item_type {
-        FlowItemType::FlowGoal => &clone.goals,
-        FlowItemType::FlowTask => &clone.tasks,
-    };
-    let forked_item = *ids.get(&item_id).ok_or_else(|| {
+    let forked_item = *clone.items.get(&(item_type, item_id)).ok_or_else(|| {
         FlowError::Invalid("the item is not part of the habit it was edited in".to_string())
     })?;
     db.flows()
         .set_cycles(fork.0, item_type, forked_item, cycles)
         .await?;
-    let mut goals: Vec<(i64, i64)> = clone.goals.into_iter().collect();
-    let mut tasks: Vec<(i64, i64)> = clone.tasks.into_iter().collect();
-    goals.sort_unstable();
-    tasks.sort_unstable();
+    let of_kind = |kind: FlowItemType| {
+        let mut ids: Vec<(i64, i64)> = clone
+            .items
+            .iter()
+            .filter(|((item_kind, _), _)| *item_kind == kind)
+            .map(|((_, old), new)| (*old, *new))
+            .collect();
+        ids.sort_unstable();
+        ids
+    };
     Ok(ForkedTemplate {
         flow_id: fork.0,
-        goals,
-        tasks,
+        goals: of_kind(FlowItemType::FlowGoal),
+        tasks: of_kind(FlowItemType::FlowTask),
+        commitments: of_kind(FlowItemType::FlowCommitment),
+        expectations: of_kind(FlowItemType::FlowExpectation),
     })
 }
 

@@ -13,8 +13,8 @@ use arlesh_core::{
     flows::{
         cycles::ForkedTemplate,
         model::{
-            Flow, FlowGoal, FlowRecurrence, FlowTask, HabitIteration, InstanceTiming,
-            MaterializedFlow,
+            Flow, FlowCommitment, FlowExpectation, FlowGoal, FlowRecurrence, FlowTask,
+            HabitIteration, InstanceTiming, MaterializedFlow,
         },
         rules::cycle_grid::CycleLevel,
     },
@@ -131,6 +131,8 @@ fn outputs(generator: &mut SchemaGenerator) {
     add::<Flow>(generator);
     add::<FlowGoal>(generator);
     add::<FlowTask>(generator);
+    add::<FlowCommitment>(generator);
+    add::<FlowExpectation>(generator);
     add::<FlowRecurrence>(generator);
     add::<MaterializedFlow>(generator);
     add::<ForkedTemplate>(generator);

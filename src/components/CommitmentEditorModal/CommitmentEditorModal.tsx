@@ -67,6 +67,15 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, head
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
 
+  function windowKindLabel(kind: string): string {
+    switch (kind) {
+      case "week": return t("editor:kindWeek");
+      case "month": return t("editor:kindMonth");
+      case "season": return t("editor:kindSeason");
+      default: return t("editor:kindDay");
+    }
+  }
+
   async function handleSave() {
     if (title.trim() === "") return;
     setIsSaving(true);
@@ -137,7 +146,17 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, head
       </div>
       <div className={styles.label}>
         {t("fieldVerdictWindow")}
-        <VerdictWindowField value={verdictWindow} onChange={setVerdictWindow} />
+        {/* An occurrence's Verdict Window is its template's, for every occurrence: shown, not
+            edited (ruled by the user, 2026-10-03). */}
+        {isOccurrence(node) ? (
+          <span title={t("editor:verdictWindowLockedOccurrence")}>
+            {verdictWindow === null
+              ? t("editor:verdictWindowNone")
+              : t("editor:verdictWindowSummary", { n: verdictWindow.n, kind: windowKindLabel(verdictWindow.kind) })}
+          </span>
+        ) : (
+          <VerdictWindowField value={verdictWindow} onChange={setVerdictWindow} />
+        )}
       </div>
       {/* A Commitment takes no block reasons of its own; the one it can carry is its Habit's
           cooldown, derived and read-only. A verdict may still be recorded while it is blocked. */}

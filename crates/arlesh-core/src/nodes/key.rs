@@ -47,6 +47,10 @@ pub enum TemplateKind {
     FlowGoal,
     /// A flow task item.
     FlowTask,
+    /// A flow Commitment item.
+    FlowCommitment,
+    /// A flow wait (Expectation) item.
+    FlowExpectation,
 }
 
 impl TemplateKind {
@@ -56,6 +60,8 @@ impl TemplateKind {
             Self::FlowRoot => "flow_root",
             Self::FlowGoal => "flow_goal",
             Self::FlowTask => "flow_task",
+            Self::FlowCommitment => "flow_commitment",
+            Self::FlowExpectation => "flow_expectation",
         }
     }
 
@@ -65,6 +71,8 @@ impl TemplateKind {
             "flow_root" => Some(Self::FlowRoot),
             "flow_goal" => Some(Self::FlowGoal),
             "flow_task" => Some(Self::FlowTask),
+            "flow_commitment" => Some(Self::FlowCommitment),
+            "flow_expectation" => Some(Self::FlowExpectation),
             _ => None,
         }
     }

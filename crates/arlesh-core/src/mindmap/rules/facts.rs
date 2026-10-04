@@ -63,6 +63,7 @@ fn flow_item_parent(flow_id: i64, parent_type: &str, parent_id: i64) -> Key {
     match parent_type {
         "flow_goal" => format!("flowgoal-{parent_id}"),
         "flow_task" => format!("flowtask-{parent_id}"),
+        "flow_commitment" => format!("flowcommitment-{parent_id}"),
         _ => format!("flow-{flow_id}"),
     }
 }
@@ -186,6 +187,37 @@ fn links(load: &MindmapLoad) -> HashMap<Key, Link> {
             ..Link::default()
         };
         links.insert(format!("flowtask-{}", task.id), link);
+    }
+    let items = load
+        .flow_commitments
+        .iter()
+        .map(|item| {
+            (
+                NodeTable::FlowCommitment,
+                "flowcommitment",
+                (item.id, item.flow_id, &item.parent_type, item.parent_id),
+                &item.title,
+            )
+        })
+        .chain(load.flow_expectations.iter().map(|item| {
+            (
+                NodeTable::FlowExpectation,
+                "flowexpectation",
+                (item.id, item.flow_id, &item.parent_type, item.parent_id),
+                &item.title,
+            )
+        }));
+    for (node_kind, prefix, (id, flow_id, parent_type, parent_id), title) in items {
+        let link = Link {
+            parent: Some(flow_item_parent(flow_id, parent_type, parent_id)),
+            stored: Some(NodeKey {
+                node_kind,
+                node_id: id,
+            }),
+            title: title.clone(),
+            ..Link::default()
+        };
+        links.insert(format!("{prefix}-{id}"), link);
     }
     links
 }

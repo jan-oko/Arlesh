@@ -164,7 +164,9 @@ impl TaskOperator<'_> {
                 .fetch_optional(&mut *self.connection)
                 .await?
             }
-            TemplateKind::FlowGoal => None,
+            TemplateKind::FlowGoal
+            | TemplateKind::FlowCommitment
+            | TemplateKind::FlowExpectation => None,
         };
         Ok(template.flatten())
     }
@@ -177,6 +179,8 @@ impl TaskOperator<'_> {
         let table = match item.item_type {
             TemplateKind::FlowTask => "flow_tasks",
             TemplateKind::FlowGoal => "flow_goals",
+            TemplateKind::FlowCommitment => "flow_commitments",
+            TemplateKind::FlowExpectation => "flow_expectations",
             TemplateKind::FlowRoot => {
                 let row: Option<(Option<String>, Option<i64>, String, i64)> = sqlx::query_as(
                     "SELECT target_type, target_id, parent_type, parent_id FROM flows WHERE id = ?",
@@ -210,6 +214,8 @@ impl TaskOperator<'_> {
                 "flow" => TemplateKind::FlowRoot,
                 "flow_task" => TemplateKind::FlowTask,
                 "flow_goal" => TemplateKind::FlowGoal,
+                "flow_commitment" => TemplateKind::FlowCommitment,
+                "flow_expectation" => TemplateKind::FlowExpectation,
                 _ => return None,
             };
             Some(TemplateParent::Item(TemplateItem {

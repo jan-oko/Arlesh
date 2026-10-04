@@ -100,7 +100,7 @@ pub fn settle_in(
         instants,
         exit,
     } = board;
-    let mut waits = derive_waits_in(waits_sources, now, &*tasks)?;
+    let mut waits = derive_waits_in(waits_sources, now, &*tasks, expectations)?;
     if !tasks.iter().any(|task| task.compound) {
         return Ok(Settled {
             waits,
@@ -133,7 +133,7 @@ pub fn settle_in(
             return Ok(Settled { waits, outcomes });
         }
         drawn_for = delegated;
-        waits = derive_waits_in(waits_sources, now, &*tasks)?;
+        waits = derive_waits_in(waits_sources, now, &*tasks, expectations)?;
     }
     tracing::warn!(
         rounds = MAX_ROUNDS,

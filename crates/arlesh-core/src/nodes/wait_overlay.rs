@@ -60,6 +60,10 @@ pub struct ExpectationOverlay {
     pub agentic_answer: Option<String>,
     /// Whether the answer above is its own — possibly none.
     pub agentic_answer_set: bool,
+    /// A wait item's occurrence's status (`pending`/`released`) — state only an occurrence has.
+    pub status: Option<String>,
+    /// When a wait item's occurrence was released, as an instant column.
+    pub released_at: Option<String>,
 }
 
 /// A [`ExpectationOverlay`] as its table holds it.
@@ -83,6 +87,8 @@ pub(crate) struct ExpectationOverlayRow {
     agentic_question: Option<bool>,
     agentic_answer: Option<String>,
     agentic_answer_set: bool,
+    status: Option<String>,
+    released_at: Option<String>,
 }
 
 impl From<ExpectationOverlayRow> for ExpectationOverlay {
@@ -106,6 +112,8 @@ impl From<ExpectationOverlayRow> for ExpectationOverlay {
             agentic_question: row.agentic_question,
             agentic_answer: row.agentic_answer,
             agentic_answer_set: row.agentic_answer_set,
+            status: row.status,
+            released_at: row.released_at,
         }
     }
 }
@@ -121,7 +129,8 @@ struct KeyedExpectation {
 const EXPECTATION_COLUMNS: &str = "title, time_scope_start_id, time_scope_end_id, \
      time_scope_duration_n, time_scope_duration_kind, time_scope_set, check_every_n, \
      check_every_kind, check_every_set, check_starting, is_private, archival, agentic, \
-     agentic_note, agentic_note_set, agentic_question, agentic_answer, agentic_answer_set";
+     agentic_note, agentic_note_set, agentic_question, agentic_answer, agentic_answer_set, \
+     status, released_at";
 
 /// Where a derived wait's overlay belongs besides its key: the Habit and occurrence its Task is,
 /// when its Task is a Habit occurrence, so the overlay goes with them.
@@ -314,6 +323,26 @@ impl OverlayOperator<'_> {
             .collect())
     }
 
+    /// One Habit's Expectation overlays whose node key is `LIKE` `pattern`.
+    pub(crate) async fn expectations_where(
+        &mut self,
+        flow_id: i64,
+        pattern: &str,
+    ) -> Result<Vec<(String, ExpectationOverlay)>, sqlx::Error> {
+        let rows: Vec<KeyedExpectation> = sqlx::query_as(&format!(
+            "SELECT node_key, {EXPECTATION_COLUMNS} FROM expectation_overlays
+             WHERE flow_id = ? AND node_key LIKE ?"
+        ))
+        .bind(flow_id)
+        .bind(pattern)
+        .fetch_all(&mut *self.connection)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| (row.node_key, row.overlay.into()))
+            .collect())
+    }
+
     /// One derived wait's Expectation overlay, empty when it has none.
     pub async fn expectation(&mut self, node_key: &str) -> Result<ExpectationOverlay, sqlx::Error> {
         Ok(sqlx::query_as::<_, ExpectationOverlayRow>(&format!(
@@ -342,7 +371,7 @@ impl OverlayOperator<'_> {
         }
         sqlx::query(&format!(
             "INSERT INTO expectation_overlays (node_key, flow_id, occurrence_key, {EXPECTATION_COLUMNS})
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         ))
         .bind(node_key)
         .bind(home.flow_id)
@@ -365,6 +394,8 @@ impl OverlayOperator<'_> {
         .bind(overlay.agentic_question)
         .bind(&overlay.agentic_answer)
         .bind(overlay.agentic_answer_set)
+        .bind(&overlay.status)
+        .bind(&overlay.released_at)
         .execute(&mut *self.connection)
         .await?;
         Ok(())

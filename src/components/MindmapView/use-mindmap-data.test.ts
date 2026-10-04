@@ -426,6 +426,26 @@ describe("buildTree", () => {
     const implementNode = items.find((n) => n.id === "flowtask-2");
     expect(implementNode?.flowItem?.dependsOn).toEqual([{ type: "flow_task", id: 1 }]);
   });
+
+  it("wires Commitment and wait items under their in-flow parents with their own fields", () => {
+    const aspect = mkDomain({ id: 1, subtype: "aspect" });
+    const flow = { id: 5, title: "Routine", instance_type: "task" as const, parent_type: "aspect", parent_id: 1, target_type: null, target_id: null, flow_duration_n: 1, flow_duration_kind: "week", flow_window_part: null, flow_window_time_start: null, flow_window_time_end: null, is_habit: false, root_plan_kind: null, root_plan_start: null, root_plan_end: null, verdict_window_n: null, verdict_window_kind: null, position: 0, is_private: false };
+    const promise = { id: 3, flow_id: 5, title: "Asleep by 23:00", parent_type: "flow", parent_id: 5, position: 0, is_private: false, verdict_window: { n: 2, kind: "day" } };
+    const wait = { id: 4, flow_id: 5, title: "Coach replies", parent_type: "flow_commitment", parent_id: 3, position: 0, is_private: false, check_every: { n: 1, kind: "day" }, first_check: { kind: "day", index: 3 } };
+
+    const root = buildTree(
+      [aspect], [], [], [], [], [flow], [], [], [], [], [], [], [], [], undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, [promise], [wait],
+    );
+    const promiseNode = root.children[0]?.children[0]?.children[0];
+    expect(promiseNode?.id).toBe("flowcommitment-3");
+    expect(promiseNode?.kind).toBe("flow_commitment");
+    expect(promiseNode?.flowItem?.verdictWindow).toEqual({ n: 2, kind: "day" });
+    const waitNode = promiseNode?.children[0];
+    expect(waitNode?.id).toBe("flowexpectation-4");
+    expect(waitNode?.flowItem?.checkEvery).toEqual({ n: 1, kind: "day" });
+    expect(waitNode?.flowItem?.firstCheck).toEqual({ kind: "day", index: 3 });
+  });
 });
 
 // --- useMindmapData hook integration ---
@@ -438,7 +458,7 @@ function mindmapEnvelope(overrides: Partial<MindmapLoad> = {}): MindmapLoad {
   const flows = overrides.flows ?? [];
   return {
     domains: [], goals: [], tasks: [], commitments: [], expectations: [], infos: [], flows: [],
-    flow_goals: [], flow_tasks: [], flow_cycles: [], flow_dependencies: [],
+    flow_goals: [], flow_tasks: [], flow_commitments: [], flow_expectations: [], flow_cycles: [], flow_dependencies: [],
     block_reasons: [], task_dependencies: [], flow_instance_nodes: [], lifecycles: [],
     habits: flows.map((flow) => ({
       flow_id: flow.id,

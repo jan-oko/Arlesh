@@ -6,7 +6,7 @@
 //! [`crate::flows::rules::occurrences`]. Its names are re-exported here, so callers did not change
 //! when it moved (ADR 0010).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use chrono::NaiveDateTime;
 
@@ -17,8 +17,9 @@ use super::{
 };
 use crate::{
     database::session::{Db, SessionMode},
-    nodes::key::OccurrenceKey,
+    nodes::key::{OccurrenceKey, TemplateKind},
     scopes::key::ScopeKey,
+    tasks::waits::WaitRef,
 };
 
 pub(crate) use super::rules::occurrences::effective_tags;
@@ -44,8 +45,44 @@ async fn load_template<M: SessionMode>(
             .into_iter()
             .map(|task| (task.id, task))
             .collect(),
+        commitments: db
+            .flows()
+            .list_commitment_items(Some(flow_id))
+            .await?
+            .into_iter()
+            .map(|item| (item.id, item))
+            .collect(),
+        expectations: db
+            .flows()
+            .list_expectation_items(Some(flow_id))
+            .await?
+            .into_iter()
+            .map(|item| (item.id, item))
+            .collect(),
         cycles: db.flows().cycles_by_item(flow_id).await?,
     })
+}
+
+/// When each of a Habit's wait item occurrences was last checked on, by its node key.
+async fn last_checks<M: SessionMode>(
+    db: &mut Db<M>,
+    template: &Template,
+) -> Result<HashMap<String, NaiveDateTime>, FlowError> {
+    let mut latest = HashMap::new();
+    for (wait, checks) in db.tasks().all_wait_checks().await? {
+        let WaitRef::Occurrence(key) = wait else {
+            continue;
+        };
+        let Some(occurrence) = OccurrenceKey::parse(&key) else {
+            continue;
+        };
+        let ours = occurrence.item.item_type == TemplateKind::FlowExpectation
+            && template.expectations.contains_key(&occurrence.item.item_id);
+        if let (true, Some(last)) = (ours, checks.iter().map(|check| check.resolved_at).max()) {
+            latest.insert(key, last);
+        }
+    }
+    Ok(latest)
 }
 
 /// Reads what one Habit's rows are drawn from, or `None` when there is nothing to draw: a flow
@@ -78,6 +115,7 @@ async fn read_habit<M: SessionMode>(
         return Ok(None);
     }
     let template = load_template(db, flow_id, goals).await?;
+    let last_checks = last_checks(db, &template).await?;
     let overlays = db.overlays().for_habit(flow.id).await?;
     let relations = HabitRelations {
         tags: db.relations().tags_for_habit(flow.id).await?,
@@ -107,6 +145,7 @@ async fn read_habit<M: SessionMode>(
         host: (host_type, host_id),
         host_agentic: false,
         instance_items,
+        last_checks,
     }))
 }
 

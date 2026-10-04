@@ -202,16 +202,32 @@ pub async fn set_item_cycles_confirmed(
     Ok(fork)
 }
 
-/// Deletes the stored wait `id`. A derived wait is refused: it goes with its Task, by completing
-/// it again or taking its template away.
+/// Deletes the wait `id`. A stored wait is deleted with its notes and every edge aimed at it; a
+/// Habit's wait item occurrence is archived, as every occurrence is; any other derived wait is
+/// refused — it goes with its Task, by completing it again or taking its template away.
 #[tracing::instrument(skip(db))]
-pub async fn delete_wait(db: &mut Db<Transactional>, id: &NodeId) -> Result<(), WireError> {
-    let NodeId::Stored(id) = id else {
+pub async fn delete_wait(
+    db: &mut Db<Transactional>,
+    id: &NodeId,
+    now: NaiveDateTime,
+) -> Result<(), WireError> {
+    let derived = match id {
+        NodeId::Stored(id) => {
+            return crate::tasks::delete_expectation(db, ExpectationId(*id))
+                .await
+                .map_err(WireError::from_error)
+        }
+        NodeId::Derived(derived) => derived,
+    };
+    let key = crate::nodes::table::resolve_key(db, derived, now)
+        .await
+        .map_err(WireError::from_error)?;
+    let crate::nodes::key::DerivedKey::Occurrence(key) = key else {
         return Err(WireError::from_error(FlowError::Refused(
             "a derived wait is not deleted; it goes with its Task".to_string(),
         )));
     };
-    crate::tasks::delete_expectation(db, ExpectationId(*id))
+    crate::flows::occurrence_edit::archive(db, &key)
         .await
         .map_err(WireError::from_error)
 }

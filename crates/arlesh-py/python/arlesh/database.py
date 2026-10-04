@@ -45,7 +45,9 @@ from arlesh.models import (
     DuplicatedTask,
     Expectation,
     Flow,
+    FlowCommitment,
     FlowCycleInput,
+    FlowExpectation,
     FlowGoal,
     FlowItemType,
     FlowRecurrence,
@@ -502,6 +504,24 @@ class Database:
         """Creates a Task item in a Flow."""
         return await self._call(_FLOW_TASK, "create_flow_task", request=request)
 
+    async def create_flow_commitment(self, request: CreateFlowItemRequest) -> FlowCommitment:
+        """Creates a Commitment item in a Flow."""
+        return await self._call(_FLOW_COMMITMENT, "create_flow_commitment", request=request)
+
+    async def create_flow_wait(self, request: CreateFlowItemRequest) -> FlowExpectation:
+        """Creates a wait item in a Flow."""
+        return await self._call(_FLOW_WAIT, "create_flow_wait", request=request)
+
+    async def update_flow_commitment(
+        self, id: int, request: UpdateFlowItemRequest
+    ) -> FlowCommitment:
+        """Updates a Flow's Commitment item."""
+        return await self._call(_FLOW_COMMITMENT, "update_flow_commitment", id=id, request=request)
+
+    async def update_flow_wait(self, id: int, request: UpdateFlowItemRequest) -> FlowExpectation:
+        """Updates a Flow's wait item."""
+        return await self._call(_FLOW_WAIT, "update_flow_wait", id=id, request=request)
+
     async def update_flow_goal(self, id: int, request: UpdateFlowItemRequest) -> FlowGoal:
         """Updates a Flow's Goal item."""
         return await self._call(_FLOW_GOAL, "update_flow_goal", id=id, request=request)
@@ -656,6 +676,8 @@ _DOMAINS = TypeAdapter(list[Domain])
 _FLOW = TypeAdapter(Flow)
 _FLOW_GOAL = TypeAdapter(FlowGoal)
 _FLOW_TASK = TypeAdapter(FlowTask)
+_FLOW_COMMITMENT = TypeAdapter(FlowCommitment)
+_FLOW_WAIT = TypeAdapter(FlowExpectation)
 _RECURRENCE = TypeAdapter(FlowRecurrence)
 _MATERIALIZED = TypeAdapter(MaterializedFlow)
 _FORK: TypeAdapter[ForkedTemplate | None] = TypeAdapter(ForkedTemplate | None)

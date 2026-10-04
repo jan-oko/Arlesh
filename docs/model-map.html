@@ -264,10 +264,10 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dt>Without</dt><dd>Every node carries all its own context, and moving a branch means editing every row in it.</dd>
       <dt>Lives</dt><dd class="where">parent_type / parent_id on each kind; tasks/ancestry.rs</dd></dl></article>
     <article class="card"><h3>Flows and Habits</h3>
-      <p class="is">A Flow is a template of items placed relatively in time. Starting it copies real nodes. A Habit is a Flow with a Recurrence: its instances are derived, never copied.</p>
+      <p class="is">A Flow is a template of Task, Goal, Commitment and wait items placed relatively in time. Starting it copies real nodes. A Habit is a Flow with a Recurrence: its instances are derived, never copied.</p>
       <dl><dt>Why</dt><dd>Repeated structure without retyping it, and recurring work without a growing pile of rows.</dd>
       <dt>Without</dt><dd>Weekly chores retyped every week, or thousands of stored copies a daily habit would leave behind.</dd>
-      <dt>Lives</dt><dd class="where">flows/ (template.rs, habits.rs) · ADR 0002</dd></dl></article>
+      <dt>Lives</dt><dd class="where">flows/ (template.rs, habits.rs, rules/items.rs) · ADR 0002</dd></dl></article>
     <article class="card"><h3>Overlays</h3>
       <p class="is">The difference between one Habit occurrence and its template: a status, a done time, any field edited on that one occurrence. An empty column means "as the template says".</p>
       <dl><dt>Why</dt><dd>Storage grows with what you change, not with how many weeks pass, and editing the template still reaches every untouched occurrence.</dd>
@@ -362,7 +362,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
   </div>
   <div class="cards">
     <article class="card"><h3>Resolution</h3>
-      <p class="is">How a passed window settled an item: Completed, or Missed under Archive. A Habit iteration resolves when every occurrence its template made is done, compound ones by their derived status.</p>
+      <p class="is">How a passed window settled an item: Completed, or Missed under Archive. A Habit iteration resolves when every occurrence its template made is settled: done, compound ones by their derived status, a Commitment item's by a verdict, a wait item's by its release.</p>
       <dl><dt>Why</dt><dd>A passed window needs an answer, and the Habit clocks count from it.</dd>
       <dt>Without</dt><dd>Old work hangs on with no verdict, and clocks have nothing to count from.</dd>
       <dt>Lives</dt><dd class="where">tasks/rules/lifecycle.rs · flows/occurrences.rs (resolutions)</dd></dl></article>
@@ -554,7 +554,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
 
     ["archived", "Archived", 3, 6, "dv", "What the presets treat as archived: effective Archival is Archived (forced by a Completed or Missed Resolution, a Missed Habit iteration, a settled or Expired Commitment, a released wait whose window has passed, or set by hand), or an ancestor Task or Commitment was archived by hand, which its whole subtree inherits. Delegation is not archival.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],
     ["compblock", "Compound block", 3, 9.6, "dv", "A Compound Task is blocked when every one of its open counted items is blocked. A pending wait or an Unresolved Commitment keeps it unblocked.", "resources.md#tasks"],
-    ["iter", "Habit iteration", 3, 12.6, "dv", "Whether an iteration resolved (every template occurrence done, a compound one by its derived status) and, if not, what the clock makes it: Lapsed, Missed and carried, Owed, or Interval-open. It also sets an occurrence's default due.", "habits.md"],
+    ["iter", "Habit iteration", 3, 12.6, "dv", "Whether an iteration resolved (every template occurrence settled: a Task or Goal done, a compound one by its derived status, a Commitment item given a verdict, a wait item released) and, if not, what the clock makes it: Lapsed, Missed and carried, Owed, or Interval-open. It also sets an occurrence's default due.", "habits.md"],
     ["cooldown", "Cooldown block", 3, 14.4, "dv", "After an iteration is done, the next one is blocked until the cooldown passes; under Owed, every open iteration. It counts from the latest done instant.", "habits.md#cooldown"],
 
     ["overdue", "Overdue", 4, 3.6, "dv", "Unfinished, not effectively archived, and now is past the end of the effective due. Shown as an amber border.", "time-scopes.md#due-scope-and-the-overdue-flag"],
@@ -580,7 +580,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["backlog", "archived"], ["gstatus", "archived"], ["status", "archived"], ["resolution", "archived"],
     ["expired", "archived"], ["verdict", "archived"], ["timing", "archived"], ["iter", "archived"],
     ["compound", "compblock"], ["blocked", "compblock", true],
-    ["status", "iter"], ["compound", "iter"], ["clock", "iter"], ["now", "iter"],
+    ["status", "iter"], ["verdict", "iter"], ["compound", "iter"], ["clock", "iter"], ["now", "iter"],
     ["iter", "cooldown"], ["cool", "cooldown"], ["clock", "cooldown"], ["now", "cooldown"],
     ["due", "overdue"], ["status", "overdue"], ["archived", "overdue"], ["now", "overdue"],
     ["reasons", "blocked"], ["deps", "blocked"], ["status", "blocked", true],

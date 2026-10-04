@@ -407,6 +407,30 @@ pub(crate) enum Request {
         /// What to create.
         request: CreateFlowItemRequest,
     },
+    /// Creates a Commitment item in a Flow.
+    CreateFlowCommitment {
+        /// What to create.
+        request: CreateFlowItemRequest,
+    },
+    /// Creates a wait item in a Flow.
+    CreateFlowWait {
+        /// What to create.
+        request: CreateFlowItemRequest,
+    },
+    /// Updates a Flow's Commitment item.
+    UpdateFlowCommitment {
+        /// The item's row id.
+        id: i64,
+        /// What to change.
+        request: UpdateFlowItemRequest,
+    },
+    /// Updates a Flow's wait item.
+    UpdateFlowWait {
+        /// The item's row id.
+        id: i64,
+        /// What to change.
+        request: UpdateFlowItemRequest,
+    },
     /// Updates a Flow's Goal item.
     UpdateFlowGoal {
         /// The item's row id.
@@ -883,7 +907,10 @@ async fn dispatch(
             .await
         }
         Request::DeleteWait { id } => {
-            transaction(factory, async |db| composite::delete_wait(db, &id).await).await
+            transaction(factory, async |db| {
+                composite::delete_wait(db, &id, now()).await
+            })
+            .await
         }
         Request::CompleteWaitCheck { id } => {
             transaction(factory, async |db| {
@@ -1068,6 +1095,32 @@ async fn dispatch(
         Request::UpdateFlowTask { id, request } => {
             transaction(factory, async |db| {
                 flows::update_flow_task(db, id, request).await.wired()
+            })
+            .await
+        }
+        Request::CreateFlowCommitment { request } => {
+            transaction(factory, async |db| {
+                db.flows().create_commitment_item(request).await.wired()
+            })
+            .await
+        }
+        Request::CreateFlowWait { request } => {
+            transaction(factory, async |db| {
+                db.flows().create_expectation_item(request).await.wired()
+            })
+            .await
+        }
+        Request::UpdateFlowCommitment { id, request } => {
+            transaction(factory, async |db| {
+                flows::update_flow_commitment(db, id, request).await.wired()
+            })
+            .await
+        }
+        Request::UpdateFlowWait { id, request } => {
+            transaction(factory, async |db| {
+                flows::update_flow_expectation(db, id, request)
+                    .await
+                    .wired()
             })
             .await
         }

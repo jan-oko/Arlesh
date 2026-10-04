@@ -1,5 +1,6 @@
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isDerivedId } from "@/api/node-id";
+import { isFlowKind } from "@/utils/node-meta";
 import type { TargetSelection } from "@/components/FlowEditorModal/FlowEditorModal";
 
 /**
@@ -37,7 +38,7 @@ export function flowTargetNodes(tree: MindmapNode): MindmapNode[] {
 export function allFlowItemNodes(tree: MindmapNode): MindmapNode[] {
   const acc: MindmapNode[] = [];
   const walk = (node: MindmapNode): void => {
-    if (node.kind === "flow_goal" || node.kind === "flow_task") acc.push(node);
+    if (node.kind !== "flow" && isFlowKind(node.kind)) acc.push(node);
     node.children.forEach(walk);
   };
   walk(tree);

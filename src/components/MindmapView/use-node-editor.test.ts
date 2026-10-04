@@ -7,7 +7,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
 import { updateTask, scopeContainmentConflicts, setTaskDoneAt } from "@/api/tasks";
 import { updateGoal } from "@/api/goals";
-import { flowOrigins, setFlowItemCycles, updateFlowTask, addFlowDependency } from "@/api/flows";
+import { flowOrigins, setFlowItemCycles, updateFlowItem, addFlowDependency } from "@/api/flows";
 import { testKey } from "@/test/scope-key";
 
 vi.mock("@/api/domains", () => ({
@@ -30,7 +30,7 @@ vi.mock("@/api/goals", () => ({
   removeTagFromGoal: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/api/flows", () => ({
-  updateFlow: vi.fn(), updateFlowGoal: vi.fn(), updateFlowTask: vi.fn(),
+  updateFlow: vi.fn(), updateFlowItem: vi.fn(),
   setFlowItemCycles: vi.fn().mockResolvedValue(null), addFlowDependency: vi.fn(), removeFlowDependency: vi.fn(),
   flowOrigins: vi.fn().mockResolvedValue([]),
 }));
@@ -260,7 +260,7 @@ describe("useNodeEditor — saving a flow item", () => {
     }));
 
     // Privacy travels as the backend spells it; `isPrivate` was dropped on the floor.
-    expect(updateFlowTask).toHaveBeenCalledWith(7, expect.objectContaining({
+    expect(updateFlowItem).toHaveBeenCalledWith("flow_task", 7, expect.objectContaining({
       title: "Stretch well", is_private: true, tag_ids: [4], block_reasons: [], asynchronous: true,
     }));
   });
@@ -282,7 +282,7 @@ describe("useNodeEditor — saving a flow item", () => {
   });
 
   it("lands the rest of the save on the fork an Archive & new answer created", async () => {
-    vi.mocked(setFlowItemCycles).mockResolvedValueOnce({ flow_id: 9, goals: [], tasks: [[7, 70], [6, 60]] });
+    vi.mocked(setFlowItemCycles).mockResolvedValueOnce({ flow_id: 9, goals: [], commitments: [], expectations: [], tasks: [[7, 70], [6, 60]] });
     const reload = vi.fn().mockResolvedValue(undefined);
     const tree: MindmapNode = { ...root, children: [flowTask] };
     const { result } = renderHook(() => useNodeEditor({ tree, allTasksAndGoals: [], reload }));
@@ -294,7 +294,7 @@ describe("useNodeEditor — saving a flow item", () => {
     }));
 
     expect(setFlowItemCycles).toHaveBeenCalledWith(3, "flow_task", 7, [], "fork", expect.any(String));
-    expect(updateFlowTask).toHaveBeenCalledWith(70, expect.objectContaining({ title: "Stretch well" }));
+    expect(updateFlowItem).toHaveBeenCalledWith("flow_task", 70, expect.objectContaining({ title: "Stretch well" }));
     expect(addFlowDependency).toHaveBeenCalledWith(9, "flow_task", 70, "flow_task", 60);
   });
 });

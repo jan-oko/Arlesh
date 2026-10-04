@@ -31,8 +31,9 @@ use crate::{
     },
     scopes::resolve::interval_contains,
     tasks::model::{
-        Commitment, CommitmentArchival, Delegate, Goal, Status, Task, TaskArchival, TimeScope,
-        UpdateCommitmentRequest, UpdateGoalRequest, UpdateTaskRequest,
+        Commitment, CommitmentArchival, Delegate, Expectation, ExpectationArchival,
+        ExpectationStatus, Goal, Status, Task, TaskArchival, TimeScope, UpdateCommitmentRequest,
+        UpdateExpectationRequest, UpdateGoalRequest, UpdateTaskRequest,
     },
 };
 
@@ -102,6 +103,26 @@ async fn template_values(
                 fields: task.template,
             })
         }
+        TemplateKind::FlowCommitment => {
+            let item = db.flows().commitment_item(key.item.item_id).await?;
+            Ok(TemplateValues {
+                title: item.title,
+                is_private: item.is_private,
+                position: item.position,
+                plan: None,
+                fields: item.template,
+            })
+        }
+        TemplateKind::FlowExpectation => {
+            let item = db.flows().expectation_item(key.item.item_id).await?;
+            Ok(TemplateValues {
+                title: item.title,
+                is_private: item.is_private,
+                position: item.position,
+                plan: None,
+                fields: item.template,
+            })
+        }
     }
 }
 
@@ -142,6 +163,15 @@ pub async fn template_fields<M: SessionMode>(
             .find(|task| task.id == key.item.item_id)
             .map(|task| task.template)
             .unwrap_or_default(),
+        TemplateKind::FlowCommitment => {
+            db.flows().commitment_item(key.item.item_id).await?.template
+        }
+        TemplateKind::FlowExpectation => {
+            db.flows()
+                .expectation_item(key.item.item_id)
+                .await?
+                .template
+        }
     })
 }
 
@@ -151,6 +181,7 @@ enum Current {
     Task(Box<Task>, bool),
     Goal(Box<Goal>),
     Commitment(Box<Commitment>),
+    Expectation(Box<Expectation>),
 }
 
 /// Derives the one occurrence `key` names, as its row.
@@ -180,6 +211,9 @@ async fn current(
     if let Some(goal) = rows.goals.into_iter().find(|goal| goal.id == id) {
         return Ok(Current::Goal(Box::new(goal)));
     }
+    if let Some(wait) = rows.expectations.into_iter().find(|wait| wait.id == id) {
+        return Ok(Current::Expectation(Box::new(wait)));
+    }
     rows.commitments
         .into_iter()
         .find(|commitment| commitment.id == id)
@@ -199,7 +233,128 @@ pub async fn occurrence_row(
         Current::Task(task, _) => (Some(*task), None, None),
         Current::Goal(goal) => (None, Some(*goal), None),
         Current::Commitment(commitment) => (None, None, Some(*commitment)),
+        Current::Expectation(_) => (None, None, None),
     })
+}
+
+/// Derives the one wait item occurrence `key` names, as the Expectation it is.
+pub async fn wait_occurrence_row(
+    db: &mut Db<Transactional>,
+    key: &OccurrenceKey,
+    now: NaiveDateTime,
+) -> Result<Expectation, FlowError> {
+    let flow_id = db.flows().occurrence_flow_id(key).await?;
+    let flow = db.flows().get(flow_id).await?;
+    match current(db, &flow, key, now).await? {
+        Current::Expectation(wait) => Ok(*wait),
+        _ => Err(FlowError::Refused(
+            "this occurrence is not a wait".to_string(),
+        )),
+    }
+}
+
+/// A wait item occurrence as its item draws it, before anything written to it: what a write
+/// compares against, so a field set back to it clears the override.
+fn drawn_wait(
+    item: &super::model::FlowExpectation,
+    current: &Expectation,
+) -> Result<Expectation, FlowError> {
+    let opens = current
+        .time_scope
+        .as_ref()
+        .map(|scope| scope.window().0)
+        .or(current.check_starting);
+    let check_starting = match (&item.check_every, opens) {
+        (Some(_), Some(opens)) => Some(super::rules::items::first_check_at(
+            opens,
+            item.first_check.as_ref(),
+        )?),
+        _ => None,
+    };
+    Ok(Expectation {
+        title: item.title.clone(),
+        is_private: item.is_private,
+        check_every: item.check_every.clone(),
+        check_starting,
+        archival: ExpectationArchival::Live,
+        status: ExpectationStatus::Pending,
+        agentic: false,
+        agentic_note: None,
+        question: false,
+        answer: None,
+        ..current.clone()
+    })
+}
+
+/// Applies an ordinary Expectation update to one wait item occurrence: its title, Check every,
+/// Starting and privacy into its overlay as overrides of what its item draws, and its status — it
+/// is released on its own — and archive as its own. It cannot leave its iteration or change its
+/// window, and it is not an agent's wait.
+#[tracing::instrument(skip(db, request))]
+pub async fn update_wait(
+    db: &mut Db<Transactional>,
+    key: &OccurrenceKey,
+    request: UpdateExpectationRequest,
+    now: NaiveDateTime,
+) -> Result<(), FlowError> {
+    let flow_id = db.flows().occurrence_flow_id(key).await?;
+    let current = wait_occurrence_row(db, key, now).await?;
+    refuse_moves(
+        (request.parent_type.as_ref(), request.parent_id.as_ref()),
+        (&current.parent_type, &current.parent_id),
+        request.time_scope.as_ref(),
+        &current.time_scope,
+    )?;
+    if request.agentic == Some(true) {
+        return Err(FlowError::Refused(
+            "a habit's wait is not one an agent raised".to_string(),
+        ));
+    }
+    let item = db.flows().expectation_item(key.item.item_id).await?;
+    let drawn = drawn_wait(&item, &current)?;
+    let node_key = key.node_key();
+    let mut overlay = db.overlays().expectation(&node_key).await?;
+    if let Some(title) = request.title {
+        overlay.set_title(title, &drawn);
+    }
+    if let Some(every) = request.check_every {
+        overlay.set_check_every(every, &drawn);
+    }
+    if let Some(starting) = request.check_starting {
+        let shown = current
+            .check_starting
+            .is_some_and(|shown| shown.date() == starting.date());
+        if !shown {
+            overlay.set_check_starting(starting, &drawn);
+        }
+    }
+    if let Some(is_private) = request.is_private {
+        overlay.set_is_private(is_private, &drawn);
+    }
+    if let Some(status) = request.status {
+        let released = status == ExpectationStatus::Released;
+        let was = overlay.status.as_deref() == Some("released");
+        overlay.status = released.then(|| status.as_str().to_string());
+        overlay.released_at = match (released, was) {
+            (true, true) => overlay
+                .released_at
+                .take()
+                .or_else(|| Some(crate::tasks::waits::instant_column(now))),
+            (true, false) => Some(crate::tasks::waits::instant_column(now)),
+            (false, _) => None,
+        };
+    }
+    if let Some(archival) = request.archival {
+        overlay.set_archival(archival, &drawn);
+    }
+    let home = crate::nodes::wait_overlay::WaitHome {
+        flow_id: Some(flow_id.0),
+        occurrence_key: Some(node_key.clone()),
+    };
+    db.overlays()
+        .put_expectation(&node_key, &home, &overlay)
+        .await?;
+    Ok(())
 }
 
 /// Refuses a move out of the occurrence's iteration: a new parent, or a new window. A request
@@ -570,7 +725,8 @@ pub async fn update_commitment(
         .is_some_and(|wanted| *wanted != current.verdict_window)
     {
         return Err(FlowError::Refused(
-            "a habit's verdict window is set on the habit, for every iteration".to_string(),
+            "an occurrence's verdict window is set on its template, for every occurrence"
+                .to_string(),
         ));
     }
     // An occurrence has no hand archive: it is archived through its tombstone. Live, which it
@@ -629,6 +785,18 @@ pub async fn archive(db: &mut Db<Transactional>, key: &OccurrenceKey) -> Result<
             overlay.tombstone = tombstone;
             db.overlays()
                 .put_commitment(flow_id.0, key, &overlay)
+                .await?;
+        }
+        "expectation" => {
+            let node_key = key.node_key();
+            let mut overlay = db.overlays().expectation(&node_key).await?;
+            overlay.archival = Some(ExpectationArchival::Archived.as_str().to_string());
+            let home = crate::nodes::wait_overlay::WaitHome {
+                flow_id: Some(flow_id.0),
+                occurrence_key: Some(node_key.clone()),
+            };
+            db.overlays()
+                .put_expectation(&node_key, &home, &overlay)
                 .await?;
         }
         _ => {

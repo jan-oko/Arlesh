@@ -22,6 +22,8 @@ pub fn kind_of(parent_type: &str) -> Option<NodeKind> {
         "flow" => NodeKind::Flow,
         "flow_goal" => NodeKind::FlowGoal,
         "flow_task" => NodeKind::FlowTask,
+        "flow_commitment" => NodeKind::FlowCommitment,
+        "flow_expectation" => NodeKind::FlowExpectation,
         _ => return None,
     })
 }
@@ -30,8 +32,11 @@ pub fn kind_of(parent_type: &str) -> Option<NodeKind> {
 ///
 /// - An **Aspect** never moves: it is the top of the board.
 /// - A **folded run** of Habit history is a drawing, neither a thing to move nor a place to put one.
-/// - **Flows** live in their own world: a Flow hangs under an Aspect, a Domain, a Project or a Goal;
-///   a Goal item under its Flow or another Goal item; a Task item under its Flow or any item. No
+/// - **Flows** live in their own world: a Flow hangs under an Aspect, a Domain, a Project or a Goal,
+///   and its items obey the table below as the stored kinds they draw (ruled by the user,
+///   2026-10-03: "follow the table"), the Flow standing for its root: a Goal item under its Flow or
+///   another Goal item; a Task, Commitment or wait item under its Flow or a Goal, Task or
+///   Commitment item. A wait item holds nothing in a template, since a template holds no notes. No
 ///   real node hangs under a Flow, nor a Flow item under a real node.
 /// - A **Tag**, an **Info** and a wait (**Expectation**) hold notes about them and nothing else.
 /// - An **Info** hangs on any real node.
@@ -47,16 +52,21 @@ pub fn kind_of(parent_type: &str) -> Option<NodeKind> {
 /// someone teaches this rule about it.
 pub fn may_parent(child: NodeKind, parent: NodeKind) -> bool {
     use NodeKind::{
-        Aspect, Commitment, Domain, Expectation, Flow, FlowGoal, FlowTask, Goal, HabitGroup, Info,
-        Project, Tag, Task,
+        Aspect, Commitment, Domain, Expectation, Flow, FlowCommitment, FlowExpectation, FlowGoal,
+        FlowTask, Goal, HabitGroup, Info, Project, Tag, Task,
     };
     let container = matches!(parent, Aspect | Domain | Project);
     match child {
         Aspect | HabitGroup => false,
         Flow => container || parent == Goal,
         FlowGoal => matches!(parent, Flow | FlowGoal),
-        FlowTask => matches!(parent, Flow | FlowGoal | FlowTask),
-        Info => !matches!(parent, Flow | FlowGoal | FlowTask | HabitGroup),
+        FlowTask | FlowCommitment | FlowExpectation => {
+            matches!(parent, Flow | FlowGoal | FlowTask | FlowCommitment)
+        }
+        Info => !matches!(
+            parent,
+            Flow | FlowGoal | FlowTask | FlowCommitment | FlowExpectation | HabitGroup
+        ),
         Commitment | Expectation | Task => {
             container || matches!(parent, Goal | Commitment) || parent == Task
         }

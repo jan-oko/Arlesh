@@ -44,6 +44,10 @@ pub enum NodeTable {
     FlowGoal,
     /// A row of `flow_tasks` — a Task item of a Flow template.
     FlowTask,
+    /// A row of `flow_commitments` — a Commitment item of a Flow template.
+    FlowCommitment,
+    /// A row of `flow_expectations` — a wait item of a Flow template.
+    FlowExpectation,
 }
 
 impl NodeTable {
@@ -59,6 +63,8 @@ impl NodeTable {
             Self::Flow => "flow",
             Self::FlowGoal => "flow_goal",
             Self::FlowTask => "flow_task",
+            Self::FlowCommitment => "flow_commitment",
+            Self::FlowExpectation => "flow_expectation",
         }
     }
 
@@ -77,6 +83,8 @@ impl NodeTable {
             Self::Flow => &["flow"],
             Self::FlowGoal => &["flow_goal"],
             Self::FlowTask => &["flow_task"],
+            Self::FlowCommitment => &["flow_commitment"],
+            Self::FlowExpectation => &["flow_expectation"],
         }
     }
 
@@ -97,6 +105,8 @@ impl NodeTable {
             "flow" => Some(Self::Flow),
             "flow_goal" => Some(Self::FlowGoal),
             "flow_task" => Some(Self::FlowTask),
+            "flow_commitment" => Some(Self::FlowCommitment),
+            "flow_expectation" => Some(Self::FlowExpectation),
             _ => None,
         }
     }

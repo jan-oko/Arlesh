@@ -170,9 +170,10 @@ pub async fn delete_expectation(
     factory: State<'_, SessionFactory>,
     id: NodeId,
 ) -> Result<(), WireError> {
-    // A derived wait goes with its Task: completing it again, or taking its template away.
+    // A Habit's wait item occurrence is archived, as every occurrence is; any other derived wait
+    // goes with its Task: completing it again, or taking its template away.
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    crate::nodes::composite::delete_wait(&mut db, &id).await?;
+    crate::nodes::composite::delete_wait(&mut db, &id, chrono::Local::now().naive_local()).await?;
     db.commit().await.map_err(WireError::from_error)
 }
 

@@ -1,6 +1,7 @@
 import { invoke } from "./gesture";
 import { isWireError } from "@/api/errors";
 import type { ScopeKey } from "@/api/scopes";
+import type { DurationSpec } from "@/api/time-scope";
 import type { AgenticBrief, AsyncTemplate, Delegate, TaskAgentic, TaskArchival } from "@/api/tasks";
 
 /**
@@ -346,7 +347,7 @@ export async function convertToFlow(
 // --- Flow items (Phase 7.3) ---
 
 /** Which flow-item table a row lives in. */
-export type FlowItemType = "flow_goal" | "flow_task";
+export type FlowItemType = "flow_goal" | "flow_task" | "flow_commitment" | "flow_expectation";
 
 /**
  * What a template row says about the rows it draws beyond its title and place: its kind's columns
@@ -407,6 +408,46 @@ export interface FlowTask extends TemplateFields {
   is_private: boolean;
 }
 
+/**
+ * A flow Commitment item: every occurrence is its own Commitment, with its own verdict, over its
+ * Cycle Scope or else its iteration's window. Its Verdict Window is copied to every occurrence.
+ */
+export interface FlowCommitment extends TemplateFields {
+  id: number;
+  flow_id: number;
+  title: string;
+  parent_type: string;
+  parent_id: number;
+  position: number;
+  is_private: boolean;
+  verdict_window: DurationSpec | null;
+}
+
+/**
+ * When a wait item's first check falls in each occurrence's window: the start of the `index`-th
+ * unit of `kind` from the window's start, the relative form a Cycle Plan takes.
+ */
+export interface FirstCheck {
+  kind: string;
+  index: number;
+}
+
+/**
+ * A flow wait item: every occurrence is its own wait, released on its own, checked every Check
+ * every from its first check in its window.
+ */
+export interface FlowExpectation extends TemplateFields {
+  id: number;
+  flow_id: number;
+  title: string;
+  parent_type: string;
+  parent_id: number;
+  position: number;
+  is_private: boolean;
+  check_every: DurationSpec | null;
+  first_check: FirstCheck | null;
+}
+
 /** A relative (Cycle Scope, Cycle Plan) pair carried by a flow item. */
 export interface FlowItemCycle {
   id: number;
@@ -453,6 +494,12 @@ export interface UpdateFlowItemRequest extends TemplateUpdate {
   parent_id?: number;
   position?: number;
   is_private?: boolean;
+  /** A Commitment item's alone. Absent = leave unchanged, null = none. */
+  verdict_window?: DurationSpec | null;
+  /** A wait item's alone. Absent = leave unchanged, null = never. */
+  check_every?: DurationSpec | null;
+  /** A wait item's alone. Absent = leave unchanged, null = its window's start. */
+  first_check?: FirstCheck | null;
 }
 
 export async function listAllFlowGoals(): Promise<FlowGoal[]> {
@@ -479,12 +526,61 @@ export async function createFlowTask(request: CreateFlowItemRequest): Promise<Fl
   return invoke<FlowTask>("create_flow_task", { request });
 }
 
+export async function createFlowCommitment(request: CreateFlowItemRequest): Promise<FlowCommitment> {
+  return invoke<FlowCommitment>("create_flow_commitment", { request });
+}
+
+export async function createFlowExpectation(request: CreateFlowItemRequest): Promise<FlowExpectation> {
+  return invoke<FlowExpectation>("create_flow_expectation", { request });
+}
+
+export async function updateFlowCommitment(id: number, request: UpdateFlowItemRequest): Promise<FlowCommitment> {
+  return invoke<FlowCommitment>("update_flow_commitment", { id, request });
+}
+
+export async function updateFlowExpectation(id: number, request: UpdateFlowItemRequest): Promise<FlowExpectation> {
+  return invoke<FlowExpectation>("update_flow_expectation", { id, request });
+}
+
 export async function updateFlowGoal(id: number, request: UpdateFlowItemRequest): Promise<FlowGoal> {
   return invoke<FlowGoal>("update_flow_goal", { id, request });
 }
 
 export async function updateFlowTask(id: number, request: UpdateFlowItemRequest): Promise<FlowTask> {
   return invoke<FlowTask>("update_flow_task", { id, request });
+}
+
+/** Whether `kind` names a flow-item table. */
+export function isFlowItemType(kind: string): kind is FlowItemType {
+  return kind === "flow_goal" || kind === "flow_task" || kind === "flow_commitment" || kind === "flow_expectation";
+}
+
+/** Creates a flow item of any kind; resolves to the new item's id and title. */
+export async function createFlowItem(
+  kind: FlowItemType,
+  request: CreateFlowItemRequest,
+): Promise<{ id: number; title: string; position: number }> {
+  switch (kind) {
+    case "flow_goal": return createFlowGoal(request);
+    case "flow_task": return createFlowTask(request);
+    case "flow_commitment": return createFlowCommitment(request);
+    case "flow_expectation": return createFlowExpectation(request);
+  }
+}
+
+/** Updates a flow item of any kind. */
+export async function updateFlowItem(kind: FlowItemType, id: number, request: UpdateFlowItemRequest): Promise<void> {
+  switch (kind) {
+    case "flow_goal": await updateFlowGoal(id, request); return;
+    case "flow_task": await updateFlowTask(id, request); return;
+    case "flow_commitment": await updateFlowCommitment(id, request); return;
+    case "flow_expectation": await updateFlowExpectation(id, request); return;
+  }
+}
+
+/** The board's node id for a flow item — `flowtask-12`, `flowcommitment-3` — distinct from real rows. */
+export function flowItemNodeId(kind: FlowItemType, id: number): string {
+  return `${kind.replace("_", "")}-${id}`;
 }
 
 export async function deleteFlowItem(itemType: FlowItemType, id: number): Promise<void> {
@@ -500,6 +596,8 @@ export interface ForkedTemplate {
   flow_id: number;
   goals: [number, number][];
   tasks: [number, number][];
+  commitments: [number, number][];
+  expectations: [number, number][];
 }
 
 /**

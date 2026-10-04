@@ -58,8 +58,8 @@ never stored.
 | **Capacity block** | capacity lock, Agentic, status | Lock on, the Task reads as Agentic, and it is not Done. | `rs:capacity/rules/blocks.rs::blocked_tasks` |
 | **Archived** (as the presets read it) | stored Archival (a Task's or Commitment's hand archive, a wait's archive), Goal/Project status, Resolution, Expired, verdict and Timing (a Commitment settled), wait status and Timing, Habit iteration (Missed or Lapsed), Archived *(of another node: an ancestor archived by hand)* | Effective Archival is Archived: a Completed or Missed Resolution forces it, or a Commitment is settled or Expired, or a wait is released with its window passed (or released with none), or it was set by hand — or an ancestor Task or Commitment was archived by hand, which its whole subtree inherits. Delegation is not archival (2026-10-03): it has its own pill. | `rs:tasks/rules/lifecycle.rs::derive_archival`, `derive_expectation_state`, `derive_commitment_state`, `rs:tasks/rules/archival.rs::inherit`, `rs:filters/rules.rs::is_archived` |
 | **Compound block** | compound status, Blocked *(of another node: its open sub-items)* | Every open counted item is blocked. A pending wait or Unresolved Commitment keeps it unblocked. | `rs:tasks/compound/blocked.rs` |
-| **Habit iteration** | status of its occurrences, compound status, clock and miss policy, now | Resolved when every template occurrence is done (a compound one by its derived status). Otherwise the clock decides: Lapsed (Archive), Missed and carried (Overdue), open and owed (Owed), or the one open Interval instance. | `rs:flows/occurrences.rs::resolutions`, `rs:flows/rules/habits.rs` |
-| **Cooldown block** | Habit iteration (done instants), cooldown, clock, now | After an iteration is done, block the next iteration (under Owed, every open one) until the latest done instant plus the cooldown. | `rs:flows/rules/cooldown.rs::holds`, `rs:flows/occurrences.rs::done_instants` |
+| **Habit iteration** | status of its occurrences, compound status, verdicts of its Commitment items, releases of its wait items, clock and miss policy, now | Resolved when every template occurrence is settled: done (a compound one by its derived status), a Commitment item's given a verdict, a wait item's released. Otherwise the clock decides: Lapsed (Archive), Missed and carried (Overdue), open and owed (Owed), or the one open Interval instance. | `rs:flows/occurrences.rs::resolutions`, `rs:flows/rules/habits.rs` |
+| **Cooldown block** | Habit iteration (done instants, a verdict's or a release's among them), cooldown, clock, now | After an iteration is done, block the next iteration (under Owed, every open one) until the latest done instant plus the cooldown. | `rs:flows/rules/cooldown.rs::holds`, `rs:flows/occurrences.rs::done_instants` |
 | **Overdue** | effective due, status, Archived (effective Archival), now | Unfinished, not effectively Archived, and now is at or past the due's end. | `rs:tasks/rules/lifecycle.rs::derive_overdue` |
 | **Blocked** | block reasons, dependencies, status *(of another node: each dependency's target)*, capacity block, cooldown block, compound block | Any reason: one written by hand; a dependency on a Task not Done, a Goal not Achieved or a wait still Pending; or a derived block. | `rs:filters/facts.rs::index_blocked`, `rs:filters/rules.rs::is_blocked`, `rs:mindmap/rules/facts.rs` (the board's `dependency_blocks`) |
 
@@ -102,12 +102,13 @@ How the presets read them:
 - **Spec:** [Resources](spec/resources.md), [Mindmap](spec/mindmap-view.md).
 
 ### Flows and Habits
-- **Is:** a Flow is a template of items with relative Cycle Scopes and Plans. Starting it copies real, independent nodes. A Habit is a Flow with a Recurrence (`flow_recurrences`), whose instances are derived, never copied.
+- **Is:** a Flow is a template of Task, Goal, Commitment and wait items with relative Cycle Scopes and Plans; the items nest by the parenting table stored nodes obey. Starting it copies real, independent nodes. A Habit is a Flow with a Recurrence (`flow_recurrences`), whose instances are derived, never copied.
 - **Why:** repeated structure without retyping it, and recurring work without a growing pile of rows.
 - **Without:** weekly chores retyped every week, or the thousands of stored copies a daily habit would leave.
 - **Lives:**
   - Templates live in `rs:flows/template.rs`, starting a flow in `rs:flows/mod.rs` and cycles in `rs:flows/cycles.rs`.
-  - Tables: `flows`, `flow_tasks`, `flow_goals`, `flow_item_cycles`, `flow_dependencies` and `flow_recurrences`.
+  - Tables: `flows`, `flow_tasks`, `flow_goals`, `flow_commitments`, `flow_expectations`, `flow_item_cycles`, `flow_dependencies` and `flow_recurrences` (migration 0094 added the Commitment and wait items).
+  - Where an item may sit and what a wait item's first check is: `rs:flows/rules/items.rs`.
   - [ADR 0002](adr/0002-flow-habit-instance-materialization.md) covers how instances are materialised.
 - **Spec:** [Flows](spec/flows.md), [Habits](spec/habits.md).
 
@@ -252,7 +253,7 @@ How the presets read them:
 ## 4. Lifecycle
 
 ### Resolution
-- **Is:** how a passed window settled an item: Completed, or Missed under Archive. A Habit iteration resolves when every occurrence its template made is done, a compound one by its derived status.
+- **Is:** how a passed window settled an item: Completed, or Missed under Archive. A Habit iteration resolves when every occurrence its template made is settled: done, a compound one by its derived status, a Commitment item's by a verdict (Kept or Broken), a wait item's by its release. A settled item's instant counts for cooldowns and an Interval's gap.
 - **Why:** a passed window needs an answer, and the clocks count from it.
 - **Without:** old work hangs on with no verdict, and clocks have nothing to count from.
 - **Lives:** `rs:tasks/rules/lifecycle.rs` and `rs:flows/occurrences.rs` (`resolutions`, `done_instants`).

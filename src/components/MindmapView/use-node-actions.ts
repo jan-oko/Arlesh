@@ -148,13 +148,9 @@ export function useNodeActions({
       // instances are Goals draws an iteration root of kind `goal`, and a Flow may sit under a
       // Goal), route straight to the Flow editor below, and post a parent id of `NaN`.
       //
-      // Inside a Flow template the Task and Goal chords make that kind's flow item; a Commitment or
-      // an Expectation has no flow-item form, and says so rather than reaching for a stored node.
+      // Inside a Flow template the Task, Goal, Commitment and Expectation chords make that kind's
+      // flow item, created inline like any other.
       const storedKind = typedChildStoredKind(parent.kind, childKind);
-      if (storedKind === null) {
-        showToast({ nodeId, message: t("warnings:notAFlowItemKind", { child: t(`nodeKinds:${childKind}`) }) });
-        return;
-      }
       if (!canParentNewChild(parent, storedKind)) {
         showToast({ nodeId, message: typedChildRefusal(parent, childKind, storedKind) });
         return;
@@ -165,7 +161,9 @@ export function useNodeActions({
       // posting a bare row first would only earn a refusal and leave the user at a dead end.
       if (childKind === "flow") { onNewFlow(nodeId); return; }
       if (childKind === "habit") { onNewHabit(nodeId); return; }
-      if (childKind === "commitment") { onNewCommitment(nodeId); return; }
+      // A Commitment item is configured after it exists, as every flow item is: its window is its
+      // occurrences', so it is valid without one.
+      if (childKind === "commitment" && storedKind === "commitment") { onNewCommitment(nodeId); return; }
 
       void (async () => {
         try {

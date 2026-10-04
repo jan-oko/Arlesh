@@ -493,6 +493,8 @@ fn pair(id: i64, item_id: i64, position: i64) -> FlowItemCycle {
 fn children_nest_under_their_parents_first_occurrence() {
     let template = Template {
         goals: HashMap::new(),
+        commitments: HashMap::new(),
+        expectations: HashMap::new(),
         tasks: [
             flow_task(1, "flow", 1),
             flow_task(2, "flow_task", 1),

@@ -41,7 +41,7 @@ export interface HabitOrigin {
   habit_id: number;
   iteration_scope: IterationScope;
   /** `flow_root` for the iteration's root, else the template item's table. */
-  item_type: "flow_root" | "flow_goal" | "flow_task";
+  item_type: "flow_root" | "flow_goal" | "flow_task" | "flow_commitment" | "flow_expectation";
   item_id: number;
   cycle_id: number;
 }

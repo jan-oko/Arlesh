@@ -32,7 +32,8 @@ Every row carries an **`origin`**, a union discriminated on `kind`:
   "cycle_id": …}` — a Habit's occurrence. `iteration_scope` carries the iteration's ordinal, the date
   its window starts, its exclusive end, its anchoring scope's key, the Habit's window kind and the
   iteration's derived state; `item_type` is `flow_root` for the iteration's root and `flow_goal` /
-  `flow_task` for an item's occurrence.
+  `flow_task` / `flow_commitment` / `flow_expectation` for an item's occurrence — a Goal, Task,
+  Commitment or wait (Expectation) row.
 
 The few rules that genuinely differ for a derived row key off `origin` and nothing else:
 
@@ -81,8 +82,11 @@ to name it. On the wire, `origin.iteration_scope.scope_id` is the key as its JSO
 ## Overlays
 
 What makes one derived row differ from its template lives in its kind's **overlay** — one table per
-kind (`task_overlays`, `goal_overlays`, `commitment_overlays`, migration 0060) mirroring that kind's
-columns. Every column is nullable and **NULL inherits the template's value**; where NULL is itself a
+kind (`task_overlays`, `goal_overlays`, `commitment_overlays`, migration 0060; `expectation_overlays`,
+migration 0083) mirroring that kind's columns. A Commitment item's occurrence keeps its verdict in
+`commitment_overlays`, as a commitment Habit's root does; a wait item's occurrence keeps its
+overrides in `expectation_overlays` under its own node key, beside the state only an occurrence has —
+its `status` and `released_at` (migration 0094). Every column is nullable and **NULL inherits the template's value**; where NULL is itself a
 value (no Plan, no delegate) a `*_set` flag marks the column overridden **to** NULL. An
 overlay row whose every column inherits says nothing and is deleted rather than kept, so an occurrence
 nobody touched has no row at all and storage stays proportional to divergences
@@ -142,8 +146,11 @@ tag or a delegate on the template once and every occurrence has it; set one on a
 only that occurrence differs. What stays per-occurrence is what only one repetition can say — its
 status and when it was resolved, and its archive.
 
-A template item — a Flow's own row for the iteration root, a `flow_goals` or `flow_tasks` row for an
-item — carries the **full schema of its kind** (migration 0061): a task template its delegate, Agentic
+A template item — a Flow's own row for the iteration root, a `flow_goals`, `flow_tasks`,
+`flow_commitments` or `flow_expectations` row for an item — carries the **full schema of its kind**
+(migration 0061; the last two since 0094, each with the fields its stored editor has less what its
+window gives it — a Commitment item's Verdict Window, a wait item's Check every and first check; see
+[Flows](flows.md#commitment-and-wait-items)): a task template its delegate, Agentic
 and Asynchronous flags and Backlog state; both kinds their tags
 (`template_tags`) and block reasons (`template_block_reasons`). Every occurrence reads them unless its
 overlay says otherwise. They are edited in the flow item's editor, beside the item's cycle pairs and
@@ -201,6 +208,12 @@ wait under a Habit occurrence keeps its row with the Habit (`flow_id`) and the o
 Check every and Starting when it has them. A wait that stops being derived — its Task reopened, or no longer delegated — leaves its overlay
 row and tag differences where they are, ignored; when it is derived again it reads them again
 (see *Asynchronous* in [Resources](resources.md)).
+
+A **wait item**'s occurrence is a Habit occurrence, not one of these: its origin is `habit` with
+`item_type` `flow_expectation`, and its check tasks are `{"kind": "check", "wait_kind": "occurrence",
+…}` rows keyed by its node key, drawn as a stored wait's are — from its first check, then a Check
+every after each check made — and recorded in `wait_checks` under that key. Its editor is the
+Expectation editor with its window locked; `Delete` archives it, as it archives every occurrence.
 
 What they refuse is what their origin fixes: none leaves its parent (a request naming the current
 parent — a full editor save — is not a move) and none is deleted or copied; a check task keeps its
