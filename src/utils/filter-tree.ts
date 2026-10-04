@@ -477,15 +477,16 @@ function passesStatus(
       // A delegated Task drops out, Overdue or not, while the Delegated pill is off: nothing someone
       // else holds is yours to start.
       if (isDroppedForDelegation(node, f)) return false;
-      if (!isStartableWindow(node)) return withArchivedOverride(node, f, false);
+      // So does anything archived — by hand, beneath a hand archive, or derived (ruled 2026-10-04).
+      if (!isStartableWindow(node) || isArchived(node)) return withArchivedOverride(node, f, false);
       if (node.kind === "goal") return withArchivedOverride(node, f, !RESOLVED_GOAL.has(node.status ?? ""));
       return passesStartStatus(node, f);
     }
     case "do":
       // Only in-progress tasks match (and Started ones, by the setting); goals/structure appear
-      // solely as ancestors. archivedMode does not apply here — Do's "in-progress tasks only"
-      // invariant isn't about archived/lapsed status.
-      return node.kind === "task" && passesDoStatus(node, f);
+      // solely as ancestors. An archived Task drops out unless the Archived pill includes it (ruled
+      // 2026-10-04): what is put away is not under way.
+      return node.kind === "task" && withArchivedOverride(node, f, !isArchived(node) && passesDoStatus(node, f));
     case "backlog":
       // The inverse of every other preset: only what was deliberately set aside, plus everything
       // beneath it. Structural containers already dropped to ancestor-only above.
@@ -557,9 +558,12 @@ export function passesCommitmentPreset(node: MindmapNode, f: FilterState): boole
     case "all":
       return true;
     case "plan":
+      return verdict === VERDICT.UNRESOLVED;
     case "start":
     case "do":
-      return verdict === VERDICT.UNRESOLVED;
+      // An archived Commitment is not live now, whatever its verdict (ruled 2026-10-04); the
+      // Archived pill's Include brings it back through the caller's override.
+      return verdict === VERDICT.UNRESOLVED && !isArchived(node);
     case "backlog":
       return false;
   }

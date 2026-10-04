@@ -380,7 +380,11 @@ pub fn passes_commitment_preset(node: &NodeFacts, filter: &BoardFilter) -> bool 
     let verdict = node.verdict.unwrap_or(Verdict::Unresolved);
     match filter.preset {
         Preset::All => true,
-        Preset::Plan | Preset::Start | Preset::Do => verdict == Verdict::Unresolved,
+        Preset::Plan => verdict == Verdict::Unresolved,
+        // Start and Do ask what is live now, and an archived Commitment — by hand, beneath a hand
+        // archive, or Expired — is not, whatever its verdict (ruled 2026-10-04). The Archived
+        // pill's Include still brings it back, through the caller's override.
+        Preset::Start | Preset::Do => verdict == Verdict::Unresolved && !is_archived(node),
         Preset::Backlog => false,
     }
 }
@@ -463,7 +467,16 @@ pub fn passes_status(
         // Only in-progress Tasks match — and Started ones while the setting says so; of Agentic
         // ones Doing and Review, and On Agent while it is asked for. Goals and structure appear
         // solely as ancestors.
-        Preset::Do => node.kind == NodeKind::Task && passes_do_status(node, filter),
+        // An archived Task drops out, by hand, beneath a hand archive, or derived (ruled
+        // 2026-10-04), unless the Archived pill includes it.
+        Preset::Do => {
+            node.kind == NodeKind::Task
+                && with_archived_override(
+                    node,
+                    filter,
+                    !is_archived(node) && passes_do_status(node, filter),
+                )
+        }
         // The inverse of every other preset: only what was deliberately set aside, plus everything
         // beneath it. Structural containers already dropped to ancestor-only above.
         Preset::Backlog => under_backlog || node.backlogged,
@@ -529,8 +542,11 @@ fn passes_start(node: &NodeFacts, filter: &BoardFilter) -> bool {
     if is_dropped_for_delegation(node, filter) {
         return false;
     }
-    // A window outside now drops out — unless the item is Overdue.
-    if !is_startable_window(node) {
+    // A window outside now drops out — unless the item is Overdue — and so does anything
+    // archived: by hand, beneath a hand archive, or derived. Before hand archives every archived
+    // Task had a lapsed window, so the window alone caught it; an archived Task with no window
+    // does not (ruled 2026-10-04). The Archived pill's Include brings either back.
+    if !is_startable_window(node) || is_archived(node) {
         return with_archived_override(node, filter, false);
     }
     if node.kind == NodeKind::Goal {
