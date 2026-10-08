@@ -26,14 +26,13 @@ from arlesh.server.entrypoints.fastapi.routers.flow_items import FlowItemsRouter
 from arlesh.server.entrypoints.fastapi.routers.flows import FlowsRouter
 from arlesh.server.entrypoints.fastapi.routers.goals import GoalsRouter
 from arlesh.server.entrypoints.fastapi.routers.infos import InfosRouter
-from arlesh.server.entrypoints.fastapi.routers.mcp import McpRouter
 from arlesh.server.entrypoints.fastapi.routers.nodes import NodesRouter
 from arlesh.server.entrypoints.fastapi.routers.scopes import RulesRouter, ScopesRouter
 from arlesh.server.entrypoints.fastapi.routers.tasks import TasksRouter
 from arlesh.server.entrypoints.fastapi.routers.waits import WaitsRouter
 from arlesh.server.entrypoints.fastapi.security_scheme import BearerTokenSecurityScheme
-from arlesh.server.ports.board.databases import Databases
-from arlesh.server.ports.mcp.mcp_backend import McpBackend
+from arlesh.server.business_logic.board import Board
+from arlesh.server.entrypoints.mcp.proxy import McpProxyRouter
 from arlesh.server.ports.tokens.token_store import TokenStore
 
 DESCRIPTION = """\
@@ -57,49 +56,49 @@ class AppRouter(APIRouter):
     def __init__(
         self,
         *,
-        databases: Databases,
+        board: Board,
         client_context: ContextVar[str],
         security_scheme: BearerTokenSecurityScheme,
-        mcp_router: McpRouter,
+        mcp_router: McpProxyRouter,
     ) -> None:
         super().__init__(dependencies=[Depends(security_scheme.validate_auth)])
-        board = (databases, client_context)
-        self.include_router(BoardsRouter(*board, tag="board"), prefix="/board")
-        self.include_router(TasksRouter(*board, tag="tasks"), prefix="/tasks")
-        self.include_router(GoalsRouter(*board, tag="goals"), prefix="/goals")
-        self.include_router(CommitmentsRouter(*board, tag="commitments"), prefix="/commitments")
-        self.include_router(WaitsRouter(*board, tag="waits"), prefix="/waits")
-        self.include_router(InfosRouter(*board, tag="infos"), prefix="/infos")
-        self.include_router(DomainsRouter(*board, tag="domains"), prefix="/domains")
-        self.include_router(FlowsRouter(*board, tag="flows"), prefix="/flows")
-        self.include_router(FlowItemsRouter(*board, tag="flows"), prefix="/flow-items")
-        self.include_router(NodesRouter(*board, tag="nodes"), prefix="/nodes")
+        routed = (board, client_context)
+        self.include_router(BoardsRouter(*routed, tag="board"), prefix="/board")
+        self.include_router(TasksRouter(*routed, tag="tasks"), prefix="/tasks")
+        self.include_router(GoalsRouter(*routed, tag="goals"), prefix="/goals")
+        self.include_router(CommitmentsRouter(*routed, tag="commitments"), prefix="/commitments")
+        self.include_router(WaitsRouter(*routed, tag="waits"), prefix="/waits")
+        self.include_router(InfosRouter(*routed, tag="infos"), prefix="/infos")
+        self.include_router(DomainsRouter(*routed, tag="domains"), prefix="/domains")
+        self.include_router(FlowsRouter(*routed, tag="flows"), prefix="/flows")
+        self.include_router(FlowItemsRouter(*routed, tag="flows"), prefix="/flow-items")
+        self.include_router(NodesRouter(*routed, tag="nodes"), prefix="/nodes")
         self.include_router(ScopesRouter(), prefix="/scopes")
         self.include_router(RulesRouter(), prefix="/rules")
         self.include_router(mcp_router, prefix="/mcp")
 
 
 class ArleshServer(FastAPI):
-    """The server over ``databases``, admitting the clients ``tokens`` knows.
+    """The server over the ``board``, admitting the clients ``tokens`` knows.
 
     Starting it write-opens the database — refused while the desktop app holds it, unless the
-    databases were made with ``force`` — so a server that is up is one that may write.
+    board was made with ``force`` — so a server that is up is one that may write.
     """
 
     def __init__(
-        self, *, databases: Databases, tokens: TokenStore, mcp: McpBackend, version: str
+        self, *, board: Board, tokens: TokenStore, version: str
     ) -> None:
         client_context: ContextVar[str] = ContextVar("arlesh_client")
-        mcp_router = McpRouter(mcp, client_context)
+        mcp_router = McpProxyRouter(board, client_context)
         super().__init__(
             title="Arlesh",
             description=DESCRIPTION,
             version=version,
-            lifespan=lifespan(databases, closers=[mcp_router.aclose]),
+            lifespan=lifespan(board, closers=[mcp_router.aclose]),
         )
         self.include_router(
             AppRouter(
-                databases=databases,
+                board=board,
                 client_context=client_context,
                 security_scheme=BearerTokenSecurityScheme(tokens, client_context),
                 mcp_router=mcp_router,

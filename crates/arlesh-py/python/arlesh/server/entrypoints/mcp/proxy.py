@@ -1,4 +1,7 @@
-"""``/mcp``: a streaming reverse proxy to the client's own MCP endpoint.
+"""``/mcp``: the MCP entrypoint, a streaming reverse proxy to the client's own MCP endpoint.
+
+The endpoint itself is the core's, served per client by the :class:`Board`; this router is the
+way in to it, mounted on the FastAPI app behind the bearer token.
 
 The upstream is the core's MCP router, which has no authentication of its own, admits a loopback
 ``Host`` only and refuses any request carrying an ``Origin``. So this proxy sits behind the bearer
@@ -17,7 +20,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 
-from arlesh.server.ports.mcp.mcp_backend import McpBackend
+from arlesh.server.business_logic.board import Board
 
 REQUEST_HEADERS = (
     "accept",
@@ -38,17 +41,17 @@ RESPONSE_HEADERS = (
 """What the upstream's answer carries back."""
 
 
-class McpRouter(APIRouter):
+class McpProxyRouter(APIRouter):
     """Proxies POST, GET (the event stream) and DELETE (ending a session) on ``/mcp``."""
 
     def __init__(
         self,
-        backend: McpBackend,
+        board: Board,
         client_context: ContextVar[str],
         http: httpx.AsyncClient | None = None,
     ) -> None:
         super().__init__(include_in_schema=False)
-        self._backend = backend
+        self._board = board
         self._client_context = client_context
         # A read timeout would cut a long-lived event stream; connecting still times out.
         self._http = http or httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=None))
@@ -59,7 +62,7 @@ class McpRouter(APIRouter):
         await self._http.aclose()
 
     async def _proxy(self, request: Request) -> StreamingResponse:
-        upstream = await self._backend.endpoint(self._client_context.get())
+        upstream = await self._board.mcp_endpoint(self._client_context.get())
         forwarded = self._http.build_request(
             request.method,
             upstream,

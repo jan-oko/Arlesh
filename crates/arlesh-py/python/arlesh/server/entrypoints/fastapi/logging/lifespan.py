@@ -9,20 +9,20 @@ from fastapi import FastAPI
 from loguru import logger
 
 from arlesh import ArleshError
-from arlesh.server.ports.board.databases import Databases
+from arlesh.server.business_logic.board import Board
 
 
 def lifespan(
-    databases: Databases, closers: Sequence[Callable[[], Awaitable[None]]] = ()
+    board: Board, closers: Sequence[Callable[[], Awaitable[None]]] = ()
 ) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
-    """Opens ``databases`` for writing as the server starts — refused while the desktop app holds
-    the database, unless forced — and, as it stops, runs ``closers`` and closes them (which stops
+    """Opens the ``board`` for writing as the server starts — refused while the desktop app holds
+    the database, unless forced — and, as it stops, runs ``closers`` and closes it (which stops
     every MCP endpoint they serve)."""
 
     @asynccontextmanager
     async def run(app: FastAPI) -> AsyncIterator[None]:
         try:
-            await databases.open()
+            await board.open()
         except ArleshError as refusal:
             logger.critical("Refusing to start", reason=refusal.message, details=refusal.details)
             raise
@@ -32,7 +32,7 @@ def lifespan(
         finally:
             for close in closers:
                 await close()
-            await databases.close()
+            await board.close()
             logger.info("Shut down")
 
     return run

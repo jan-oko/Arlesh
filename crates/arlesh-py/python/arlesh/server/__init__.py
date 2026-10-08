@@ -1,10 +1,13 @@
 """Arlesh over HTTP: the ``arlesh-server`` service, installed with ``arlesh[server]``.
 
-Every route is a thin translation between HTTP and one call on the ``arlesh`` bindings; the
-rules, the writes' atomicity and their refusals are the Rust core's own.
+The ``arlesh`` bindings are the business logic: every rule, every write's atomicity and every
+refusal is the Rust core's own. Around them:
 
-- :mod:`arlesh.server.cli` is the composition root and the ``arlesh-server`` command.
-- :mod:`arlesh.server.entrypoints.fastapi` holds the application, its routers, its security
-  scheme and its error answers.
-- :mod:`arlesh.server.ports` holds what it stands on: the databases, and the token store.
+- :mod:`arlesh.server.business_logic` holds the :class:`~.business_logic.board.Board`: which open
+  database a request reads and writes through, one write-open per client, and the startup guard.
+- :mod:`arlesh.server.entrypoints` holds the ways in: ``cli`` (the ``arlesh-server`` command and
+  the composition root), ``fastapi`` (the HTTP routes) and ``mcp`` (``/mcp``, proxied to each
+  client's own MCP endpoint).
+- :mod:`arlesh.server.ports` holds the ways out: ``data_access`` (the database file) and
+  ``tokens`` (the token file).
 """

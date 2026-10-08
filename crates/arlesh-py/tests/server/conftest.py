@@ -15,8 +15,8 @@ from typing import Any
 import arlesh
 import pytest
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
-from arlesh.server.ports.board.arlesh_databases import ArleshDatabases
-from arlesh.server.ports.mcp.arlesh_mcp_backend import ArleshMcpBackend
+from arlesh.server.business_logic.board import Board
+from arlesh.server.ports.data_access.sqlite_database_file import SqliteDatabaseFile
 from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 
 with warnings.catch_warnings():
@@ -67,11 +67,9 @@ def start(server_db: Path, tokens: FileTokenStore) -> Start:
 
     def build(*, force: bool = False, path: Path | None = None) -> ArleshServer:
         database = path if path is not None else server_db
-        databases = ArleshDatabases(database, force=force)
         return ArleshServer(
-            databases=databases,
+            board=Board(SqliteDatabaseFile(database), force=force),
             tokens=FileTokenStore.beside(database) if path is not None else tokens,
-            mcp=ArleshMcpBackend(databases),
             version="test",
         )
 
