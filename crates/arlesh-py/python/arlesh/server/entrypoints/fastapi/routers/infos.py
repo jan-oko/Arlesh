@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from arlesh.models import CreateInfoRequest, Info, UpdateInfoRequest
+from arlesh.models import CreateInfoRequest, DuplicatedInfo, Info, UpdateInfoRequest
 from arlesh.server.entrypoints.fastapi.routers.base import BoardRouter
 
 
@@ -32,6 +32,8 @@ class InfosRouter(BoardRouter):
         """Deletes an Info."""
         await (await self._writer()).delete_info(id)
 
-    async def _duplicate(self, id: int, target_type: str, target_id: int, position: int) -> Info:
+    async def _duplicate(
+        self, id: int, target_type: str, target_id: int, position: int
+    ) -> DuplicatedInfo:
         """Copies an Info and its subtree under a new parent."""
         return await (await self._writer()).duplicate_info(id, target_type, target_id, position)

@@ -19,6 +19,7 @@ class CommitmentsRouter(BoardRouter):
         self.post("", status_code=201)(self._create)
         self.patch("/{id}")(self._update)
         self.delete("/{id}", status_code=204)(self._delete)
+        self.put("/{id}/archived")(self._set_archived)
         self.post("/{id}/verdict")(self._press_verdict)
 
     async def _get(self, id: int) -> Commitment:
@@ -37,6 +38,10 @@ class CommitmentsRouter(BoardRouter):
     async def _delete(self, id: str) -> None:
         """Deletes a Commitment."""
         await (await self._writer()).delete_commitment(node_id(id))
+
+    async def _set_archived(self, id: str, archived: bool) -> Commitment:
+        """Archives a Commitment by hand, with everything beneath it, or puts it back in play."""
+        return await (await self._writer()).set_commitment_archived(node_id(id), archived)
 
     async def _press_verdict(self, id: str, press: VerdictPress) -> Commitment:
         """A press of a verdict control: the cycle, Kept or Broken."""

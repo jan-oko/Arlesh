@@ -150,3 +150,21 @@ def test_a_habit_forks_and_a_flow_duplicates(server: TestClient, create: Create)
     assert forked.status_code == 201, forked.text
     assert forked.json()["id"] != flow
     assert copy.status_code == 201, copy.text
+
+
+def test_commitment_and_wait_items_are_created_and_updated(
+    server: TestClient, create: Create
+) -> None:
+    flow = _flow(create)
+    commitment = _item(create, flow, "flow_commitment", "Phone off by 23:00")
+    wait = _item(create, flow, "flow_expectation", "Reply from Ana")
+
+    renamed_commitment = server.patch(
+        f"/flow-items/flow_commitment/{commitment}", json={"title": "Phone off"}
+    )
+    renamed_wait = server.patch(f"/flow-items/flow_expectation/{wait}", json={"title": "Reply"})
+    deleted = server.delete(f"/flow-items/flow_expectation/{wait}")
+
+    assert renamed_commitment.json()["title"] == "Phone off"
+    assert renamed_wait.json()["title"] == "Reply"
+    assert deleted.status_code == 204

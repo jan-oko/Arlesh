@@ -7,12 +7,16 @@ from datetime import datetime
 from arlesh.models import (
     CreateTaskRequest,
     Dependency,
+    DescendantPlans,
+    DuplicatedTask,
     Flow,
+    PlanClampTarget,
     SpawnedWait,
     StatusStep,
     StatusStepOutcome,
     Task,
     TaskWithBlockers,
+    TimeScope,
     UpdateSpawnedWaitRequest,
     UpdateTaskRequest,
 )
@@ -26,9 +30,11 @@ class TasksRouter(BoardRouter):
         self.get("/{id}")(self._get)
         self.get("/{id}/dependencies")(self._dependencies)
         self.get("/{id}/done-at")(self._done_at)
+        self.post("/{id}/plan-containment-conflicts")(self._plan_containment_conflicts)
         self.post("", status_code=201)(self._create)
         self.patch("/{id}")(self._update)
         self.delete("/{id}", status_code=204)(self._delete)
+        self.put("/{id}/archived")(self._set_archived)
         self.post("/{id}/status")(self._step_status)
         self.post("/{id}/agentic/toggle")(self._toggle_agentic)
         self.post("/{id}/dependencies", status_code=204)(self._add_dependency)
@@ -52,22 +58,43 @@ class TasksRouter(BoardRouter):
         """When a Task was done, or ``null`` if it is not."""
         return await self._reader.task_done_at(node_id(id))
 
+    async def _plan_containment_conflicts(
+        self, id: str, plan: TimeScope | None = None
+    ) -> list[PlanClampTarget]:
+        """The Tasks below whose own Plan the body's ``plan`` would leave outside the Plan they
+        inherit, each with what clamping would give it. Nearest first. Writes nothing."""
+        return await self._reader.plan_containment_conflicts(node_id(id), plan)
+
     async def _create(self, request: CreateTaskRequest) -> Task:
         """Creates a Task."""
         return await (await self._writer()).create_task(request)
 
-    async def _update(self, id: str, request: UpdateTaskRequest, confirmed: bool = False) -> Task:
+    async def _update(
+        self,
+        id: str,
+        request: UpdateTaskRequest,
+        confirmed: bool = False,
+        descendant_plans: DescendantPlans | None = None,
+    ) -> Task:
         """Updates a Task, stored or a Habit occurrence. A field left out is unchanged; ``null``
         clears it. Naming ``parent_type``, ``parent_id`` and ``position`` moves it.
 
         Completing an occurrence that still holds unfinished children is refused 422
         ``needs_confirmation``, naming them; send it again with ``?confirmed=true`` to go ahead.
+        A new Plan that would leave a Task below outside the Plan it inherits is refused until
+        ``?descendant_plans=`` says what becomes of them: ``clamp`` or ``clear``.
         """
-        return await (await self._writer()).update_task(node_id(id), request, confirmed=confirmed)
+        return await (await self._writer()).update_task(
+            node_id(id), request, confirmed=confirmed, descendant_plans=descendant_plans
+        )
 
     async def _delete(self, id: str) -> None:
         """Deletes a Task and its subtree."""
         await (await self._writer()).delete_task(node_id(id))
+
+    async def _set_archived(self, id: str, archived: bool) -> Task:
+        """Archives a Task by hand, with everything beneath it, or puts it back in play."""
+        return await (await self._writer()).set_task_archived(node_id(id), archived)
 
     async def _step_status(
         self, id: str, step: StatusStep, confirmed: bool = False
@@ -92,7 +119,9 @@ class TasksRouter(BoardRouter):
         """Corrects when a done Task was done."""
         await (await self._writer()).set_task_done_at(node_id(id), at)
 
-    async def _duplicate(self, id: int, target_type: str, target_id: int, position: int) -> Task:
+    async def _duplicate(
+        self, id: int, target_type: str, target_id: int, position: int
+    ) -> DuplicatedTask:
         """Copies a Task and its subtree under a new parent."""
         return await (await self._writer()).duplicate_task(id, target_type, target_id, position)
 

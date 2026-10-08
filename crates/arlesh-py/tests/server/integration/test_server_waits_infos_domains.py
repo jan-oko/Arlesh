@@ -87,7 +87,7 @@ def test_domains_list_by_subtype_and_read_one(server: TestClient, domain: int) -
 def test_a_domain_is_updated_duplicated_and_deleted(server: TestClient, domain: int) -> None:
     updated = server.patch(f"/domains/{domain}", json={"title": "House"})
     copy = server.post(f"/domains/{domain}/duplicate", params={"target_id": 1, "position": 0})
-    deleted = server.delete(f"/domains/{copy.json()['id']}")
+    deleted = server.delete(f"/domains/{copy.json()['copy']['id']}")
 
     assert updated.json()["title"] == "House"
     assert copy.status_code == 201

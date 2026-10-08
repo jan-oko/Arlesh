@@ -53,7 +53,7 @@ def test_a_duplicate_goal_is_a_new_goal(server: TestClient, goal: int, domain: i
     )
 
     assert response.status_code == 201
-    assert response.json()["id"] != goal
+    assert response.json()["copy"]["id"] != goal
 
 
 def test_a_goal_converts_to_a_flow(server: TestClient, goal: int) -> None:
@@ -85,3 +85,11 @@ def test_pressing_kept_keeps_it(server: TestClient, commitment: int) -> None:
 def test_a_deleted_commitment_is_gone(server: TestClient, commitment: int) -> None:
     assert server.delete(f"/commitments/{commitment}").status_code == 204
     assert server.get(f"/commitments/{commitment}").status_code == 404
+
+
+def test_a_commitment_is_archived_by_hand_and_put_back(server: TestClient, commitment: int) -> None:
+    archived = server.put(f"/commitments/{commitment}/archived", params={"archived": True})
+    restored = server.put(f"/commitments/{commitment}/archived", params={"archived": False})
+
+    assert archived.status_code == 200, archived.text
+    assert archived.json()["archival"] != restored.json()["archival"]

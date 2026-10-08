@@ -116,8 +116,9 @@ def test_a_duplicate_is_a_new_task_under_the_target(
     )
 
     assert response.status_code == 201
-    assert response.json()["id"] != identifier
-    assert response.json()["title"] == "Original"
+    assert response.json()["copy"]["id"] != identifier
+    assert response.json()["copy"]["title"] == "Original"
+    assert response.json()["left_behind"] == []
 
 
 def test_a_task_converts_to_a_flow(server: TestClient, domain: int, new_task: NewTask) -> None:
@@ -153,3 +154,40 @@ def test_an_asynchronous_tasks_spawned_wait_is_released_and_its_checks_reach_the
     assert "reopened" in reopened.json()["message"]
     assert released.status_code == 200, released.text
     assert released.json()["status"] == "released"
+
+
+def test_a_task_is_archived_by_hand_and_put_back(
+    server: TestClient, domain: int, new_task: NewTask
+) -> None:
+    identifier = new_task(domain)
+
+    archived = server.put(f"/tasks/{identifier}/archived", params={"archived": True})
+    restored = server.put(f"/tasks/{identifier}/archived", params={"archived": False})
+
+    assert archived.status_code == 200, archived.text
+    assert archived.json()["archival"] == "archived"
+    assert restored.json()["archival"] == "live"
+
+
+def test_a_plan_that_strands_a_childs_plan_is_named_then_clamped(
+    server: TestClient, domain: int, new_task: NewTask, one_day: OneDay
+) -> None:
+    parent = new_task(domain, "Parent")
+    child = server.post(
+        "/tasks",
+        json={
+            "title": "Child",
+            "parent_type": "task",
+            "parent_id": parent,
+            "plan": one_day("2026-06-20"),
+        },
+    ).json()["id"]
+    narrower = {"plan": one_day("2026-06-10")}
+
+    conflicts = server.post(f"/tasks/{parent}/plan-containment-conflicts", json=narrower["plan"])
+    refused = server.patch(f"/tasks/{parent}", json=narrower)
+    clamped = server.patch(f"/tasks/{parent}", params={"descendant_plans": "clamp"}, json=narrower)
+
+    assert [target["id"] for target in conflicts.json()] == [child]
+    assert (refused.status_code, refused.json()["kind"]) == (409, "containment_violated")
+    assert clamped.status_code == 200, clamped.text

@@ -104,13 +104,13 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 | Path | What |
 | --- | --- |
 | `GET /board?now=&at_capacity=` | The whole board: every node with its lifecycle, short id and facts |
-| `/tasks` | `GET /{id}`, create, `PATCH /{id}?confirmed=` (an update; naming a parent and position moves the Task), delete, `POST /{id}/status?step=`, `/agentic/toggle`, `/dependencies` (`GET`, `POST`, and `DELETE` with the dependency as its body), `/done-at`, `/duplicate`, `/convert-to-flow`, `/spawned-wait` and its check |
+| `/tasks` | `GET /{id}`, create, `PATCH /{id}?confirmed=&descendant_plans=` (an update; naming a parent and position moves the Task), delete, `PUT /{id}/archived?archived=`, `POST /{id}/plan-containment-conflicts` (the body is the new Plan; writes nothing), `POST /{id}/status?step=`, `/agentic/toggle`, `/dependencies` (`GET`, `POST`, and `DELETE` with the dependency as its body), `/done-at`, `/duplicate`, `/convert-to-flow`, `/spawned-wait` and its check |
 | `/goals` | `GET /{id}`, create, `PATCH /{id}?confirmed=`, delete, `/duplicate`, `/convert-to-flow` |
-| `/commitments` | `GET /{id}`, create, update, delete, `POST /{id}/verdict?press=` |
+| `/commitments` | `GET /{id}`, create, update, delete, `PUT /{id}/archived?archived=`, `POST /{id}/verdict?press=` |
 | `/waits` | create, update, delete, `/check/complete`, `/check/reopen` |
 | `/infos`, `/domains` | read, create, update, delete, `/duplicate`; `GET /domains?subtype=` |
 | `/flows` | read, create, update, delete, `/start`, `/recurrence`, `/habit-modifications`, `/fork`, `/duplicate`, `/dependencies` |
-| `/flow-items` | create and update `flow_goal` and `flow_task` items, delete, `/cycles?reconcile=`, `/dependencies`, `/duplicate` |
+| `/flow-items` | create and update `flow_goal`, `flow_task`, `flow_commitment` and `flow_expectation` items, delete, `/cycles?reconcile=`, `/dependencies`, `/duplicate` |
 | `/nodes/{kind}/{id}` | `/tags/{tag_id}` (`PUT` and `DELETE`), `/block-reasons` |
 | `/scopes` | `GET /containing?kind=&date=`, `POST /resolve?now=` (the body is a scope key) |
 | `/rules` | `POST /item-state`, `POST /commitment-state`: the derived lifecycles |
@@ -141,7 +141,10 @@ consent, such as completing a Habit occurrence that still holds unfinished child
 422 `needs_confirmation`. Its `details` name what is at stake. The same request sent again with
 `?confirmed=true` goes ahead. Setting a Flow item's cycles is confirmed with `?reconcile=fork` or
 `discard`. A Commitment with no window is refused 422 `needs_time_scope`, and goes ahead when sent
-again with a `time_scope`.
+again with a `time_scope`. A new Plan on a Task that would leave a Task below it outside the Plan
+it inherits is refused 409 `containment_violated`. `POST /tasks/{id}/plan-containment-conflicts`
+names those Tasks, and the update goes ahead when sent again with `?descendant_plans=clamp` or
+`clear`.
 
 ## The MCP at `/mcp`
 

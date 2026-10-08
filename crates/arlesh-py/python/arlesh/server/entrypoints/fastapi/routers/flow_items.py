@@ -6,7 +6,9 @@ from datetime import datetime
 
 from arlesh.models import (
     CreateFlowItemRequest,
+    FlowCommitment,
     FlowCycleInput,
+    FlowExpectation,
     FlowGoal,
     FlowItemType,
     FlowTask,
@@ -23,8 +25,12 @@ class FlowItemsRouter(BoardRouter):
     def _register_routes(self) -> None:
         self.post("/flow_goal", status_code=201)(self._create_goal)
         self.post("/flow_task", status_code=201)(self._create_task)
+        self.post("/flow_commitment", status_code=201)(self._create_commitment)
+        self.post("/flow_expectation", status_code=201)(self._create_wait)
         self.patch("/flow_goal/{id}")(self._update_goal)
         self.patch("/flow_task/{id}")(self._update_task)
+        self.patch("/flow_commitment/{id}")(self._update_commitment)
+        self.patch("/flow_expectation/{id}")(self._update_wait)
         self.delete("/{item_type}/{id}", status_code=204)(self._delete)
         self.put("/{item_type}/{id}/cycles")(self._set_cycles)
         self.delete(
@@ -40,6 +46,14 @@ class FlowItemsRouter(BoardRouter):
         """Creates a Task item in a Flow."""
         return await (await self._writer()).create_flow_task(request)
 
+    async def _create_commitment(self, request: CreateFlowItemRequest) -> FlowCommitment:
+        """Creates a Commitment item in a Flow."""
+        return await (await self._writer()).create_flow_commitment(request)
+
+    async def _create_wait(self, request: CreateFlowItemRequest) -> FlowExpectation:
+        """Creates a wait item in a Flow."""
+        return await (await self._writer()).create_flow_wait(request)
+
     async def _update_goal(self, id: int, request: UpdateFlowItemRequest) -> FlowGoal:
         """Updates a Flow's Goal item."""
         return await (await self._writer()).update_flow_goal(id, request)
@@ -47,6 +61,14 @@ class FlowItemsRouter(BoardRouter):
     async def _update_task(self, id: int, request: UpdateFlowItemRequest) -> FlowTask:
         """Updates a Flow's Task item."""
         return await (await self._writer()).update_flow_task(id, request)
+
+    async def _update_commitment(self, id: int, request: UpdateFlowItemRequest) -> FlowCommitment:
+        """Updates a Flow's Commitment item."""
+        return await (await self._writer()).update_flow_commitment(id, request)
+
+    async def _update_wait(self, id: int, request: UpdateFlowItemRequest) -> FlowExpectation:
+        """Updates a Flow's wait item."""
+        return await (await self._writer()).update_flow_wait(id, request)
 
     async def _delete(self, item_type: FlowItemType, id: int) -> None:
         """Deletes a Flow item."""

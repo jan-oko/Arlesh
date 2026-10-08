@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from arlesh.models import CreateDomainRequest, Domain, DomainSubtype, UpdateDomainRequest
+from arlesh.models import (
+    CreateDomainRequest,
+    Domain,
+    DomainSubtype,
+    DuplicatedDomain,
+    UpdateDomainRequest,
+)
 from arlesh.server.entrypoints.fastapi.routers.base import BoardRouter
 
 
@@ -37,6 +43,6 @@ class DomainsRouter(BoardRouter):
         """Deletes a Domain, Project or Tag."""
         await (await self._writer()).delete_domain(id)
 
-    async def _duplicate(self, id: int, target_id: int, position: int) -> Domain:
+    async def _duplicate(self, id: int, target_id: int, position: int) -> DuplicatedDomain:
         """Copies a Domain or Project and its subtree under a new parent."""
         return await (await self._writer()).duplicate_domain(id, target_id, position)
