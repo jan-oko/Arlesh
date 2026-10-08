@@ -202,7 +202,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          # The workspace root is the repo root; its target stays in src-tauri/target
+          # (.cargo/config.toml).
+          workspaces: ". -> src-tauri/target"
           shared-key: release-bundles-windows
 
       # Tauri fetches NSIS and WiX itself on first use.
