@@ -35,6 +35,18 @@ binds again on the current port; **applying a new port** saves it and moves the 
 once, with no app restart. Each answers with the status it left behind. A client still connected to
 the old listener is not cut off, but no new connection reaches it.
 
+**Served from Python** (2026-10-03, `a77`). The same endpoint — the core's own router, the same
+tools and rules — can be served by a Python process through the bindings instead of the app:
+`await db.serve_mcp(host="127.0.0.1", port=0)` on a database opened for writing answers the port it
+bound, and `await db.stop_mcp()` (or closing the database) stops it. It is for the FastAPI server
+(`arlesh-server`), which proxies `/mcp` to it behind its own authentication, so it binds a loopback
+address only and refuses any other. An agent's writes there are journaled as source `mcp` from the
+server's client rather than `desktop` (see [Undo](undo.md), *Clients, and a second writer*). The
+board-changed announcement is silent, since there are no windows to tell, and the agent capacity
+lock is the same `agent-capacity.json` the app keeps beside the database. In local mode the app
+serves its own endpoint as before; the app's hold on the database keeps the two from running over
+one file.
+
 **Connecting.** `claude mcp add --transport http Arlesh http://127.0.0.1:4747/mcp` — the server is named `Arlesh` (renamed from `arlesh` on 2026-09-25, so Claude Code's tool prefix is `mcp__Arlesh__`); the tools keep their `arlesh_*` names.
 
 ## Access

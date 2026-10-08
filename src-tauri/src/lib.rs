@@ -2,29 +2,18 @@
 #![deny(missing_docs)]
 //! Arlesh — task management and knowledge-base desktop app.
 
-pub mod access;
-pub mod block_reasons;
-pub mod board;
-pub mod capacity;
 pub mod commands;
-pub mod database;
-pub mod domains;
-pub mod duplicate;
-pub mod error;
-pub mod filters;
-pub mod flows;
 pub mod icon;
-pub mod infos;
-pub mod knowledge_base;
-pub mod mcp;
-pub mod mindmap;
-pub mod nodes;
-pub mod scopes;
-pub mod tasks;
 pub mod tray;
-pub mod undo;
 pub mod windows;
-pub mod wire;
+
+// The domain lives in `arlesh-core`. Its modules are re-exported here under the paths they had
+// before the workspace split, so `crate::tasks` in a command and `arlesh_lib::tasks` in an
+// integration test still name the same thing.
+pub use arlesh_core::{
+    access, block_reasons, board, capacity, database, domains, duplicate, error, filters, flows,
+    infos, knowledge_base, mcp, mindmap, nodes, scopes, tasks, undo, wire,
+};
 
 use tauri::Manager;
 use tracing_subscriber::EnvFilter;
@@ -50,6 +39,17 @@ pub fn run() {
             std::fs::create_dir_all(&app_dir).expect("could not create app data dir");
 
             let database_url = format!("sqlite://{}/arlesh.db?mode=rwc", app_dir.display());
+
+            // Mark the database as held while the app runs, so another writer — a Python session
+            // through the bindings — is refused unless it insists (`arlesh_core::database::hold`).
+            // A hold someone else already has is not a reason to stop: the app still runs, and
+            // the other writer simply is not warned off.
+            match database::hold::AppHold::acquire(&app_dir.join("arlesh.db")) {
+                Ok(hold) => {
+                    app.manage(hold);
+                }
+                Err(error) => tracing::warn!(error = %error, "could not hold the database"),
+            }
 
             let pool = tauri::async_runtime::block_on(async {
                 let pool = database::connect(&database_url).await.map_err(|error| {

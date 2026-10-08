@@ -7,7 +7,6 @@
 
 use tauri::State;
 
-use crate::mindmap::plan_guard;
 use crate::{
     database::session::SessionFactory,
     error::WireError,
@@ -17,7 +16,7 @@ use crate::{
             CreateFlowItemRequest, CreateFlowRequest, Flow, FlowCommitment, FlowCycleInput,
             FlowDependency, FlowExpectation, FlowGoal, FlowId, FlowItemCycle, FlowItemType,
             FlowOrigin, FlowRecurrence, FlowTask, MaterializedFlow, SetRecurrenceRequest,
-            StartFlowRequest, TargetRef, UnfinishedChild, UpdateFlowItemRequest, UpdateFlowRequest,
+            StartFlowRequest, TargetRef, UpdateFlowItemRequest, UpdateFlowRequest,
         },
     },
 };
@@ -61,12 +60,8 @@ pub async fn update_flow(
 ) -> Result<Flow, WireError> {
     let now = chrono::Local::now().naive_local();
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let flow = flows::update_flow(&mut db, FlowId(id), request)
-        .await
-        .map_err(WireError::from_error)?;
-    plan_guard::check(&mut db, now, &[format!("flow-{id}")])
-        .await
-        .map_err(WireError::from_error)?;
+    let flow =
+        crate::nodes::composite::update_flow_checked(&mut db, FlowId(id), request, now).await?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(flow)
 }
@@ -289,12 +284,13 @@ pub async fn set_flow_recurrence(
 ) -> Result<FlowRecurrence, WireError> {
     let now = chrono::Local::now().naive_local();
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let recurrence = flows::set_flow_recurrence(&mut db, FlowId(flow_id), request)
-        .await
-        .map_err(WireError::from_error)?;
-    plan_guard::check(&mut db, now, &[format!("flow-{flow_id}")])
-        .await
-        .map_err(WireError::from_error)?;
+    let recurrence = crate::nodes::composite::set_flow_recurrence_checked(
+        &mut db,
+        FlowId(flow_id),
+        request,
+        now,
+    )
+    .await?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(recurrence)
 }
@@ -382,21 +378,7 @@ pub async fn set_flow_item_cycles(
     now: Option<chrono::NaiveDateTime>,
 ) -> Result<Option<flows::cycles::ForkedTemplate>, WireError> {
     let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    if reconcile.is_none() {
-        let orphaned = flows::cycles::orphaned_edits(&mut db, item_type, item_id, &cycles)
-            .await
-            .map_err(WireError::from_error)?;
-        if orphaned > 0 {
-            return Err(WireError::needs_confirmation(
-                format!("changing these cycles would orphan what {orphaned} iteration(s) recorded"),
-                serde_json::json!({
-                    "reason": "orphaned_edits",
-                    "iterations": orphaned,
-                }),
-            ));
-        }
-    }
-    let fork = flows::cycles::set_item_cycles(
+    let fork = crate::nodes::composite::set_item_cycles_confirmed(
         &mut db,
         FlowId(flow_id),
         item_type,
@@ -404,16 +386,9 @@ pub async fn set_flow_item_cycles(
         &cycles,
         reconcile,
         now,
-    )
-    .await
-    .map_err(WireError::from_error)?;
-    plan_guard::check(
-        &mut db,
         chrono::Local::now().naive_local(),
-        &[format!("flow-{flow_id}")],
     )
-    .await
-    .map_err(WireError::from_error)?;
+    .await?;
     db.commit().await.map_err(WireError::from_error)?;
     Ok(fork)
 }
@@ -479,23 +454,6 @@ pub async fn list_all_flow_dependencies(
         .list_all_dependencies()
         .await
         .map_err(WireError::from_error)
-}
-
-/// The refusal a completion with unfinished children comes back as.
-///
-/// The children are named, not counted. A prompt the user can only accept blind is not consent,
-/// and the whole point of the guard is being able to see what is about to be closed over.
-pub(crate) fn unfinished_refusal(open: &[UnfinishedChild]) -> WireError {
-    WireError::needs_confirmation(
-        format!(
-            "this occurrence still holds {} unfinished item(s)",
-            open.len()
-        ),
-        serde_json::json!({
-            "reason": "unfinished_children",
-            "children": open,
-        }),
-    )
 }
 
 /// Number of distinct completed iterations of a Habit (divergence detection for reconciliation).

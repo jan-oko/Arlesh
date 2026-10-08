@@ -10,7 +10,6 @@ use tauri::State;
 use crate::{
     database::session::SessionFactory,
     error::WireError,
-    flows::error::FlowError,
     nodes::id::NodeId,
     tasks::model::{
         CreateExpectationRequest, Expectation, ExpectationId, SpawnedWait, TaskId,
@@ -171,30 +170,10 @@ pub async fn delete_expectation(
     factory: State<'_, SessionFactory>,
     id: NodeId,
 ) -> Result<(), WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
     // A Habit's wait item occurrence is archived, as every occurrence is; any other derived wait
     // goes with its Task: completing it again, or taking its template away.
-    let id = match id {
-        NodeId::Stored(id) => id,
-        NodeId::Derived(derived) => {
-            let now = chrono::Local::now().naive_local();
-            let key = crate::nodes::table::resolve_key(&mut db, &derived, now)
-                .await
-                .map_err(WireError::from_error)?;
-            let crate::nodes::key::DerivedKey::Occurrence(key) = key else {
-                return Err(WireError::from_error(FlowError::Refused(
-                    "a derived wait is not deleted; it goes with its Task".to_string(),
-                )));
-            };
-            crate::flows::occurrence_edit::archive(&mut db, &key)
-                .await
-                .map_err(WireError::from_error)?;
-            return db.commit().await.map_err(WireError::from_error);
-        }
-    };
-    crate::tasks::delete_expectation(&mut db, ExpectationId(id))
-        .await
-        .map_err(WireError::from_error)?;
+    let mut db = factory.begin().await.map_err(WireError::from_error)?;
+    crate::nodes::composite::delete_wait(&mut db, &id, chrono::Local::now().naive_local()).await?;
     db.commit().await.map_err(WireError::from_error)
 }
 

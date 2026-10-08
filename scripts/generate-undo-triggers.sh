@@ -9,11 +9,11 @@
 # Usage:
 #   scripts/generate-undo-triggers.sh > /tmp/triggers.sql
 #
-# It builds a throwaway database by applying every migration in src-tauri/migrations in order, then
+# It builds a throwaway database by applying every migration in crates/arlesh-core/migrations in order, then
 # prints one INSERT/UPDATE/DELETE trigger per journaled table. Paste the output into a **new**
 # migration that first drops the triggers it replaces; never edit a migration that has already run.
 #
-# EXCLUDED below must agree with `arlesh_lib::undo::EXCLUDED_TABLES`. It is checked from the other
+# EXCLUDED below must agree with `arlesh_core::undo::EXCLUDED_TABLES`. It is checked from the other
 # side by `undo_journal.rs::every_journaled_table_has_its_three_triggers`, which enumerates
 # sqlite_master and fails when a non-excluded table has no triggers — so a divergence here shows up
 # as a failing test rather than as silently unjournaled rows.
@@ -22,7 +22,7 @@ set -euo pipefail
 EXCLUDED="undo_context undo_journal"
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-migrations="$repository_root/src-tauri/migrations"
+migrations="$repository_root/crates/arlesh-core/migrations"
 
 schema="$(mktemp -d)/schema.db"
 trap 'rm -rf "$(dirname "$schema")"' EXIT
