@@ -287,6 +287,23 @@ pub fn placement(rect: Option<WindowRect>, displays: &[WindowRect]) -> Placement
     }
 }
 
+/// Which rectangle to write down for one window, given what it reports now and what was saved before.
+///
+/// A **minimised** window's geometry is not where the window is. Windows parks a minimised window
+/// at `(-32000, -32000)` and reports its client area as `0 × 0`, so writing that down would reopen
+/// it centred at no size at all. A window minimised when the session is written — hidden to the
+/// tray from minimised, or minimised at a quit — therefore keeps the rectangle it was last saved
+/// with. A reading with no area is treated the same way whatever the platform, since no window
+/// was ever on screen at that size.
+pub fn rect_to_save(
+    live: Option<WindowRect>,
+    minimised: bool,
+    previous: Option<WindowRect>,
+) -> Option<WindowRect> {
+    let usable = live.filter(|rect| !minimised && rect.width > 0 && rect.height > 0);
+    usable.or(previous)
+}
+
 /// What to write down, given the windows that are open now and what was written down before.
 ///
 /// **An empty session is never saved.** The windows of a quitting app are destroyed one at a time,

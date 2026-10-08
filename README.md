@@ -82,17 +82,34 @@ connect.
 
 # Installing
 
-Linux builds are published to GitHub Releases:
+Linux and Windows builds are published to GitHub Releases:
 
 - [**latest**](https://github.com/jan-oko/Arlesh/releases/tag/latest) — a pre-release rebuilt from every commit to master.
 - [**Versioned releases**](https://github.com/jan-oko/Arlesh/releases) — one per `vX.Y.Z` tag.
 
-Each carries two files:
+## Linux
+
+Two files:
 
 - **AppImage** (any distro, including Arch): download `Arlesh-linux-x86_64.AppImage`, `chmod +x` it and run it.
 - **Tarball** (the bare binary): `tar -xzf arlesh-linux-x86_64.tar.gz -C ~/.local/bin` and run `arlesh`. It needs `webkit2gtk-4.1` installed (`pacman -S webkit2gtk-4.1` on Arch).
 
 An installed build keeps its data in the same directory as dev builds (`~/.local/share/com.atai.arlesh`), so it opens the same database.
+
+## Windows
+
+Two installers of the same app (64-bit Windows 10 or 11). Pick one:
+
+- **Setup** (recommended): download `Arlesh-windows-x86_64-setup.exe` and run it. It installs for your user only, into `%LOCALAPPDATA%\Arlesh`, with no admin prompt, and adds a Start-menu entry and an uninstaller (Settings → Apps).
+- **MSI**: `Arlesh-windows-x86_64.msi`, installed for every user on the machine (it asks for admin). For deploying with `msiexec /i Arlesh-windows-x86_64.msi`.
+
+Both use the WebView2 runtime that ships with Windows 10 and 11, and download it if it is missing.
+
+**The installers are not signed**, so the first run shows SmartScreen's *Windows protected your PC*. Click **More info**, then **Run anyway**. The browser may also flag the download as rarely downloaded; keep it.
+
+Data lives in `%APPDATA%\com.atai.arlesh`: the database, the window session, the MCP settings and the agent capacity lock. The windows' tabs and settings are kept by WebView2 under `%LOCALAPPDATA%\com.atai.arlesh`. Uninstalling keeps both unless you tick the setup uninstaller's option to delete the app data.
+
+Arlesh sits in the notification area by the clock. If its icon is hidden in the overflow (the `^` arrow), drag it onto the taskbar to keep it in reach. A left click shows or hides the windows; a right click opens the menu with Show, the open windows and Quit.
 
 # Development 
 
