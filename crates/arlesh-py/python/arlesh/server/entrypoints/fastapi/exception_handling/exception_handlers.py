@@ -41,7 +41,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     for code, description in (
         (400, "invalid_request or ambiguous_id"),
         (401, "not_permitted: no bearer token, or one this server did not issue"),
-        (403, "not_permitted: e.g. a write-open refused while the desktop app holds the database"),
+        (403, "not_permitted: the core refused what the request names"),
         (404, "not_found"),
         (409, "containment_violated or status_changed"),
         (422, "needs_confirmation or needs_time_scope: send it again with more"),

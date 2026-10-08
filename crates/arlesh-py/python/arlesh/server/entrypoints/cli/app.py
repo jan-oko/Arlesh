@@ -24,12 +24,12 @@ from typing import Annotated, Any
 import typer
 from pydantic import ValidationError
 
-from arlesh.server.business_logic.board import Board
+import arlesh
+from arlesh.server.business_logic.board import Board, OpenAs, TakeHold
 from arlesh.server.config import Config
 from arlesh.server.entrypoints.fastapi import run
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.logger import setup_logger
-from arlesh.server.ports.data_access.sqlite_database_file import SqliteDatabaseFile
 from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from arlesh.server.ports.tokens.token_store import ClientAlreadyHasToken, UnknownClient
 
@@ -76,13 +76,18 @@ def serve(
     setup_logger()
     tokens = FileTokenStore.beside(config.database.path)
     if not tokens.issued():
-        typer.echo(f"{PROGRAM}: no tokens yet: add one with `{PROGRAM} token add <client>`", err=True)
-    board = Board(SqliteDatabaseFile(config.database.path), force=config.database.force)
+        typer.echo(
+            f"{PROGRAM}: no tokens yet: add one with `{PROGRAM} token add <client>`", err=True
+        )
+    path = config.database.path
+    board = Board(opener(path), holder(path), force=config.database.force)
     run.run(ArleshServer(board=board, tokens=tokens, version=version("arlesh")), config.server)
 
 
 @token_app.command("add")
-def add_token(client: Annotated[str, typer.Argument(help="Who the token is for.")], db: Db = None) -> None:
+def add_token(
+    client: Annotated[str, typer.Argument(help="Who the token is for.")], db: Db = None
+) -> None:
     """Issues CLIENT a token and prints it. It is shown this once."""
     try:
         typer.echo(_tokens(db).add(client))
@@ -98,7 +103,9 @@ def list_tokens(db: Db = None) -> None:
 
 
 @token_app.command("revoke")
-def revoke_token(client: Annotated[str, typer.Argument(help="Whose token.")], db: Db = None) -> None:
+def revoke_token(
+    client: Annotated[str, typer.Argument(help="Whose token.")], db: Db = None
+) -> None:
     """Revokes CLIENT's token. It stops working at once."""
     try:
         _tokens(db).revoke(client)
@@ -109,6 +116,23 @@ def revoke_token(client: Annotated[str, typer.Argument(help="Whose token.")], db
 def main() -> None:
     """The ``arlesh-server`` console script."""
     app(prog_name=PROGRAM)
+
+
+def opener(path: Path) -> OpenAs:
+    """Opens the database at ``path`` with the ``arlesh`` package's own implementation.
+
+    Always past the hold check: the server either holds the database itself or was forced.
+    """
+
+    async def open_as(client: str) -> arlesh.Database:
+        return await arlesh.open(path, client=client, force=True)
+
+    return open_as
+
+
+def holder(path: Path) -> TakeHold:
+    """Takes the hold on the database at ``path``, as the desktop app does."""
+    return lambda: arlesh.hold(path)
 
 
 def _tokens(db: Path | None) -> FileTokenStore:

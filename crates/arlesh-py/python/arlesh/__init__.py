@@ -11,7 +11,10 @@
                                                       parent_id=7))
 
 - :func:`open` opens a database: read-only by default, for writing when you name a ``client``.
-- :class:`Database` holds every operation; each is a coroutine.
+- :class:`Database` is the port holding every operation, each a coroutine;
+  :class:`SqliteDatabase`, which :func:`open` returns, is its implementation over the core.
+- :func:`hold` takes the hold on a database, as the desktop app does, for a writer that means
+  to be the only one while it runs.
 - :mod:`arlesh.rules` holds the pure rules, as plain functions.
 - :mod:`arlesh.models` holds the pydantic models, generated from the Rust types' JSON Schema.
 - :mod:`arlesh.errors` holds the exceptions, one per ``WireError`` kind.
@@ -19,7 +22,7 @@
 
 from arlesh import errors, models, rules
 from arlesh._native import json_schema
-from arlesh.database import Database, NodeId, open
+from arlesh.database import Database, NodeId, SqliteDatabase, open
 from arlesh.errors import (
     AmbiguousId,
     ArleshError,
@@ -33,6 +36,7 @@ from arlesh.errors import (
     NotPermitted,
     StatusChanged,
 )
+from arlesh.hold import Hold, hold
 
 __all__ = [
     "AmbiguousId",
@@ -40,6 +44,7 @@ __all__ = [
     "ContainmentViolated",
     "Database",
     "DatabaseError",
+    "Hold",
     "InternalError",
     "InvalidRequest",
     "NeedsConfirmation",
@@ -47,8 +52,10 @@ __all__ = [
     "NodeId",
     "NotFound",
     "NotPermitted",
+    "SqliteDatabase",
     "StatusChanged",
     "errors",
+    "hold",
     "json_schema",
     "models",
     "open",

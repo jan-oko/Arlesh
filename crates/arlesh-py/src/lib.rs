@@ -16,6 +16,7 @@
 //! and `details` — which the Python half raises as the exception class for that kind.
 
 mod errors;
+mod hold;
 mod mcp;
 mod opening;
 mod request;
@@ -162,7 +163,9 @@ fn json_schema() -> PyResult<String> {
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NativeDatabase>()?;
+    module.add_class::<hold::NativeHold>()?;
     module.add_function(wrap_pyfunction!(open, module)?)?;
+    module.add_function(wrap_pyfunction!(hold::hold, module)?)?;
     module.add_function(wrap_pyfunction!(rule, module)?)?;
     module.add_function(wrap_pyfunction!(json_schema, module)?)?;
     module.add("NativeError", module.py().get_type::<NativeError>())?;

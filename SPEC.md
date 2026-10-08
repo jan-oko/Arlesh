@@ -55,7 +55,7 @@ so a change to what a node *is* belongs above, and a change to how it is *shown*
 | --- | --- |
 | [Windows & Tray](docs/spec/window-tray.md) | Tearing a tab into its own window, the board-changed broadcast, session restore; the tray icon, what the close button does, quitting, the monochrome tray mark |
 | [MCP Server](docs/spec/mcp-server.md) | The read-only endpoint an agent reaches the board through: tools, paging, errors |
-| [HTTP Server](docs/spec/http-api.md) | `arlesh-server`: the board over HTTP for multi-device, with bearer tokens per client, the routes, the error statuses, the two-writer guard, and the MCP proxied at `/mcp` |
+| [HTTP Server](docs/spec/http-api.md) | `arlesh-server`: the board over HTTP for multi-device, with bearer tokens per client, the routes, the error statuses, the hold that keeps one writer per database, and the MCP proxied at `/mcp` |
 | [Undo](docs/spec/undo.md) | The journal, which gestures are one step, the two stacks, what is deliberately not undoable |
 
 Decisions with a rationale worth keeping live in [`docs/adr/`](docs/adr/) and are referenced from

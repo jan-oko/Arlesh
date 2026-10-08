@@ -9,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 
 from arlesh import ArleshError
+from arlesh.server.business_logic.board import Board
 from arlesh.server.entrypoints.fastapi.exception_handling.exception_handlers import (
     handle_authentication_failure,
     handle_core_refusal,
@@ -31,7 +32,6 @@ from arlesh.server.entrypoints.fastapi.routers.scopes import RulesRouter, Scopes
 from arlesh.server.entrypoints.fastapi.routers.tasks import TasksRouter
 from arlesh.server.entrypoints.fastapi.routers.waits import WaitsRouter
 from arlesh.server.entrypoints.fastapi.security_scheme import BearerTokenSecurityScheme
-from arlesh.server.business_logic.board import Board
 from arlesh.server.entrypoints.mcp.proxy import McpProxyRouter
 from arlesh.server.ports.tokens.token_store import TokenStore
 
@@ -85,9 +85,7 @@ class ArleshServer(FastAPI):
     board was made with ``force`` — so a server that is up is one that may write.
     """
 
-    def __init__(
-        self, *, board: Board, tokens: TokenStore, version: str
-    ) -> None:
+    def __init__(self, *, board: Board, tokens: TokenStore, version: str) -> None:
         client_context: ContextVar[str] = ContextVar("arlesh_client")
         mcp_router = McpProxyRouter(board, client_context)
         super().__init__(

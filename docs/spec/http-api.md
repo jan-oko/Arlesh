@@ -21,8 +21,9 @@ The desktop app will run in one of two modes:
 
 There is never more than one writer, and there is a single user, so neither mode needs
 multi-writer support. Server mode in the app does not exist yet; it is separate work. Until it
-does, the **two-writer guard** below is the safety net. A server started while the app runs over
-the same file is refused, so the server and the app cannot both write by accident.
+does, the **hold** below is the safety net. The server takes the same hold the app takes, so
+there is one writer per database: whichever of the app and the server starts second cannot hold
+it, and the server refuses to start rather than become a second writer.
 
 ## Running
 
@@ -71,19 +72,26 @@ it opens. Client names follow the core's rule: letters, digits, `.`, `_` and `-`
 not check a name when it issues the token. A token issued to a name the core refuses can still
 read, but its first write is refused 400 with `details.reason = "invalid_client"`.
 
-## The two-writer guard
+## The hold: one writer per database
 
-The desktop app holds its database while it runs (a lock on `<db>.lock`). At startup the server
-write-opens the database through the core's guard:
+The desktop app holds its database while it runs: an operating-system lock on `<db>.lock`
+(`AppHold` in the core, released when its process ends, so a crash leaves nothing stale). The
+server takes **the same hold** at startup and keeps it until it stops (2026-10-08). So:
 
-- **While the app holds it**, the server refuses to start. It logs *Refusing to start* with the
-  core's reason (`not_permitted`, `details.reason = "held_by_app"`) and exits.
-- **`--force`** (or `ARLESH_DATABASE__FORCE=true`) opens it anyway, and the server warns plainly
-  that if the app is running, the two are now two writers to one file.
-- **A client's first write** opens its write-open, so the guard runs again then. A client that
-  first writes after the app took the database is refused 403 `not_permitted` (`held_by_app`).
-  A client already open keeps writing. The guard is checked when a database is opened, not on
-  every write.
+- **While the app or another server holds the database**, the server refuses to start. It logs
+  *Refusing to start* with the reason (`not_permitted`, `details.reason = "held"`) and exits.
+- **An app started while the server runs** cannot take its hold. The app does not stop for that:
+  it logs a warning (`could not hold the database`) and runs, with nothing shown in its window.
+  Making the app refuse, or say so, is the app's server-mode work, not this server's.
+- **A script's write-open** (`arlesh.open(path, client=...)`) keeps its check-only behaviour: it
+  is refused (`held_by_app`) while the server holds the database, unless it forces.
+- **`--force`** (or `ARLESH_DATABASE__FORCE=true`) starts the server even though the database is
+  held, and then it takes no hold. It warns plainly that the app or another server, if writing,
+  and this server are now two writers to one file.
+
+Holding the database, the server opens every write-open (its own at startup, and each client's
+on its first write) past the open's own check, which would otherwise find the server's own hold.
+The bindings expose the hold as `arlesh.hold(path)`, which answers an `arlesh.Hold` to `release()`.
 
 ## Routes
 
@@ -157,30 +165,46 @@ bindings (`Database.serve_mcp`), and `/mcp` is a **streaming reverse proxy** to 
 ## Code
 
 The server lives in the `arlesh` package as `arlesh.server`, installed by the optional extra
-`arlesh[server]` (FastAPI, uvicorn, pydantic-settings, loguru, httpx). The extra also installs the
-`arlesh-server` command. Its layout follows the user's Librarian project:
+`arlesh[server]` (FastAPI, uvicorn, pydantic-settings, loguru, httpx, Typer). The extra also
+installs the `arlesh-server` command. Its layout follows the user's Librarian project:
+`business_logic/`, `entrypoints/` (the ways in) and `ports/` (the ways out).
 
-- `cli.py` is the composition root. `config.py` holds the settings, and `logger.py` sets up
-  loguru.
-- `entrypoints/fastapi/`:
-  - `app.py`: `ArleshServer` (a `FastAPI` subclass) and `AppRouter`, which puts every router
-    behind the token.
-  - `routers/`: one `APIRouter` subclass per kind, each registering its routes in
-    `_register_routes`, plus the `/mcp` proxy.
-  - `security_scheme.py`: the bearer scheme, which puts the client in a `ContextVar` the routes
-    read.
-  - `exception_handling/`: kinds to statuses.
-  - `logging/`: the request middleware, which stamps a transaction id, and the lifespan, which
-    holds the startup guard.
-  - `run.py` starts uvicorn.
-- `ports/` holds the base classes and their implementations: `board/` (the databases a request
-  reads and writes through), `tokens/` (the token store) and `mcp/` (the MCP backend).
+- **The database seam belongs to the `arlesh` package.** `arlesh.Database` is the port: an
+  abstract class listing every operation. `arlesh.SqliteDatabase` is its implementation, the
+  Rust core over the SQLite file, which `arlesh.open` returns. The server depends on the port
+  only. Its composition root injects the implementation, and its unit tests inject a fake.
+- **`business_logic/board.py`**: the `Board` holds which open database a request reads and writes
+  through. It takes the hold, keeps one write-open per client, and serves each client's MCP
+  endpoint from that client's write-open. It is handed an `open_as(client)` answering the
+  package's port, and a `take_hold()`.
+- **`entrypoints/`**, the ways in:
+  - `cli/app.py`: the `arlesh-server` command (Typer), and the composition root. Run with no
+    command, it serves; `token add|list|revoke` manage tokens. It builds the `Board` over
+    `arlesh.open` and `arlesh.hold`.
+  - `fastapi/`:
+    - `app.py`: `ArleshServer` (a `FastAPI` subclass) and `AppRouter`, which puts every router
+      behind the token.
+    - `routers/`: one `APIRouter` subclass per kind, each registering its routes in
+      `_register_routes`.
+    - `security_scheme.py`: the bearer scheme, which puts the client in a `ContextVar` the routes
+      read.
+    - `exception_handling/`: kinds to statuses.
+    - `logging/`: the request middleware, which stamps a transaction id, and the lifespan, which
+      holds the startup guard.
+    - `run.py`: starts uvicorn.
+  - `mcp/proxy.py`: `/mcp`, the streaming reverse proxy, mounted on the FastAPI app. Its way out
+    is an injected httpx client, so it needs no port of its own.
+- **`ports/tokens/`**: the server's own way out, the token file. `TokenStore` is the port and
+  `FileTokenStore` the adapter; the tests' fake is the second adapter.
+- **Configuration and logging:** `config.py` holds the settings (pydantic-settings), and
+  `logger.py` sets up loguru.
 
 There is no managers layer: the bindings are the business logic.
 
-The tests are in `crates/arlesh-py/tests/server/`. `unit/` mirrors the source tree, with fakes
-for the ports. `integration/` drives the HTTP surface with FastAPI's `TestClient` against a
-temporary database. It covers every route, every error kind's status and body, auth, the
-confirmation retry, the two-writer guard, `/mcp`, and a few derived values checked against what
-the Rust tests assert for the same input. They run in CI's `python` lane, beside the bindings'
-own tests, under the same pytest-cov gate, mypy and ruff.
+The tests are in `crates/arlesh-py/tests/server/`. `unit/` mirrors the source tree, with fakes of
+the package's `Database` port and of the hold. `integration/` drives the HTTP surface with
+FastAPI's `TestClient` against a temporary database. It covers every route, every error kind's
+status and body, auth, the confirmation retry, the hold (a second server refused, a forced start,
+the hold released on shutdown), `/mcp`, and a few derived values checked against what the Rust
+tests assert for the same input. They run in CI's `python` lane, beside the bindings' own tests,
+under the same pytest-cov gate, mypy and ruff.

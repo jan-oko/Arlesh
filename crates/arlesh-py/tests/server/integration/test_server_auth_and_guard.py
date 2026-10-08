@@ -93,8 +93,38 @@ def test_the_server_refuses_to_start_while_the_app_holds_the_database(
     with app_hold(), pytest.raises(arlesh.NotPermitted) as refusal, TestClient(start()):
         pass
 
-    assert refusal.value.details["reason"] == "held_by_app"
+    assert refusal.value.details["reason"] == "held"
     assert any("Refusing to start" in line for line in logged)
+
+
+def test_a_second_server_on_the_same_database_is_refused(server: TestClient, start: Start) -> None:
+    with pytest.raises(arlesh.NotPermitted) as refusal, TestClient(start()):
+        pass
+
+    assert refusal.value.details["reason"] == "held"
+
+
+def test_the_app_cannot_take_its_hold_while_the_server_runs(
+    server: TestClient, server_db: Path
+) -> None:
+    with pytest.raises(arlesh.NotPermitted):
+        arlesh.hold(server_db)
+
+
+async def test_a_scripts_write_open_is_refused_while_the_server_runs(
+    server: TestClient, server_db: Path
+) -> None:
+    with pytest.raises(arlesh.NotPermitted) as refusal:
+        await arlesh.open(server_db, client="script")
+
+    assert refusal.value.details["reason"] == "held_by_app"
+
+
+def test_the_hold_is_released_on_shutdown(start: Start, server_db: Path) -> None:
+    with TestClient(start()):
+        pass
+
+    arlesh.hold(server_db).release()
 
 
 def test_forced_it_starts_beside_the_app_and_says_plainly_there_are_two_writers(
@@ -108,16 +138,13 @@ def test_forced_it_starts_beside_the_app_and_says_plainly_there_are_two_writers(
     assert any("two writers" in line for line in logged)
 
 
-def test_a_client_first_writing_after_the_app_took_the_database_is_refused_403(
-    server: TestClient, tokens: FileTokenStore, app_hold: Hold
+def test_forced_it_takes_no_hold_so_a_second_forced_server_starts_too(
+    start: Start, tokens: FileTokenStore
 ) -> None:
-    late = tokens.add("late-comer")
-    with app_hold():
-        response = server.post("/domains", json=DOMAIN, headers={"Authorization": f"Bearer {late}"})
+    with TestClient(start(force=True)), TestClient(start(force=True)) as second:
+        response = second.get("/board", headers={"Authorization": f"Bearer {tokens.add('t')}"})
 
-    assert response.status_code == 403
-    assert response.json()["kind"] == "not_permitted"
-    assert response.json()["details"]["reason"] == "held_by_app"
+    assert response.status_code == 200
 
 
 def test_a_missing_database_is_created_and_migrated_at_startup(

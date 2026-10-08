@@ -7,10 +7,10 @@ from contextvars import ContextVar
 from fastapi import APIRouter
 
 import arlesh
+from arlesh.server.business_logic.board import Board
 from arlesh.server.entrypoints.fastapi.exception_handling.exception_handlers import (
     ERROR_RESPONSES,
 )
-from arlesh.server.business_logic.board import Board
 
 
 def node_id(raw: str) -> arlesh.NodeId:

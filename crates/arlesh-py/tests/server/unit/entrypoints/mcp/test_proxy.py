@@ -4,21 +4,13 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
 from contextvars import ContextVar
+from typing import Any
 
 import httpx
-from arlesh.server.entrypoints.fastapi.routers.mcp import McpRouter
-from arlesh.server.ports.mcp.mcp_backend import McpBackend
+from arlesh.server.business_logic.board import Board
+from arlesh.server.entrypoints.mcp.proxy import McpProxyRouter
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-
-
-class FakeBackend(McpBackend):
-    def __init__(self) -> None:
-        self.asked: list[str] = []
-
-    async def endpoint(self, client: str) -> str:
-        self.asked.append(client)
-        return "http://127.0.0.1:5000/mcp"
 
 
 class Upstream(httpx.AsyncBaseTransport):
@@ -39,19 +31,21 @@ def chunked(body: bytes) -> AsyncIterator[bytes]:
     return chunks()
 
 
-def _proxy(upstream: Upstream, backend: FakeBackend) -> TestClient:
+def _proxy(upstream: Upstream, board: Board) -> TestClient:
     context: ContextVar[str] = ContextVar("client")
 
     async def as_phone() -> None:
         context.set("phone")
 
-    router = McpRouter(backend, context, http=httpx.AsyncClient(transport=upstream))
+    router = McpProxyRouter(board, context, http=httpx.AsyncClient(transport=upstream))
     app = FastAPI(dependencies=[Depends(as_phone)])
     app.include_router(router, prefix="/mcp")
     return TestClient(app)
 
 
-def test_a_request_reaches_the_clients_endpoint_with_only_the_protocols_headers() -> None:
+def test_a_request_reaches_the_clients_endpoint_with_only_the_protocols_headers(
+    fake_opener: Any, fake_holds: Any
+) -> None:
     seen: list[httpx.Request] = []
 
     def upstream(request: httpx.Request) -> httpx.Response:
@@ -62,8 +56,7 @@ def test_a_request_reaches_the_clients_endpoint_with_only_the_protocols_headers(
             headers={"content-type": "text/event-stream", "mcp-session-id": "s1", "x-other": "1"},
         )
 
-    backend = FakeBackend()
-    with _proxy(Upstream(upstream), backend) as client:
+    with _proxy(Upstream(upstream), Board(fake_opener, fake_holds)) as client:
         response = client.post(
             "/mcp?probe=1",
             content=b'{"jsonrpc":"2.0"}',
@@ -78,7 +71,7 @@ def test_a_request_reaches_the_clients_endpoint_with_only_the_protocols_headers(
         )
 
     forwarded = seen[0]
-    assert backend.asked == ["phone"]
+    assert fake_opener.calls == ["phone"]
     assert str(forwarded.url) == "http://127.0.0.1:5000/mcp?probe=1"
     assert forwarded.headers["host"] == "127.0.0.1:5000"
     assert forwarded.headers["mcp-session-id"] == "s1"
@@ -92,14 +85,16 @@ def test_a_request_reaches_the_clients_endpoint_with_only_the_protocols_headers(
     assert "x-other" not in response.headers
 
 
-def test_get_and_delete_pass_through_with_the_upstreams_status() -> None:
+def test_get_and_delete_pass_through_with_the_upstreams_status(
+    fake_opener: Any, fake_holds: Any
+) -> None:
     methods: list[str] = []
 
     def upstream(request: httpx.Request) -> httpx.Response:
         methods.append(request.method)
         return httpx.Response(405 if request.method == "GET" else 202, content=chunked(b""))
 
-    with _proxy(Upstream(upstream), FakeBackend()) as client:
+    with _proxy(Upstream(upstream), Board(fake_opener, fake_holds)) as client:
         streamed = client.get("/mcp")
         ended = client.delete("/mcp")
 

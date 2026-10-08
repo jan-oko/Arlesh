@@ -4,7 +4,6 @@ it with, and the few nodes most tests hang things on."""
 from __future__ import annotations
 
 import asyncio
-import fcntl
 import shutil
 import warnings
 from collections.abc import Callable, Iterator
@@ -14,9 +13,9 @@ from typing import Any
 
 import arlesh
 import pytest
-from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.business_logic.board import Board
-from arlesh.server.ports.data_access.sqlite_database_file import SqliteDatabaseFile
+from arlesh.server.entrypoints.cli.app import holder, opener
+from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 
 with warnings.catch_warnings():
@@ -68,7 +67,7 @@ def start(server_db: Path, tokens: FileTokenStore) -> Start:
     def build(*, force: bool = False, path: Path | None = None) -> ArleshServer:
         database = path if path is not None else server_db
         return ArleshServer(
-            board=Board(SqliteDatabaseFile(database), force=force),
+            board=Board(opener(database), holder(database), force=force),
             tokens=FileTokenStore.beside(database) if path is not None else tokens,
             version="test",
         )
@@ -120,17 +119,12 @@ def new_task(create: Create) -> NewTask:
 
 @pytest.fixture
 def app_hold(server_db: Path) -> Callable[[], AbstractContextManager[None]]:
-    """The desktop app's hold on the test's database, taken as the app takes it: an exclusive
-    lock on ``<db>.lock``."""
+    """The desktop app's hold on the test's database: the lock on ``<db>.lock`` the app takes."""
 
     @contextmanager
     def hold() -> Iterator[None]:
-        with server_db.with_name(server_db.name + ".lock").open("wb") as file:
-            fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            try:
-                yield
-            finally:
-                fcntl.flock(file, fcntl.LOCK_UN)
+        with arlesh.hold(server_db):
+            yield
 
     return hold
 

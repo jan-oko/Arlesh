@@ -4,4 +4,6 @@
   needs a token you issue per device with `arlesh-server token add <name>`. That name is recorded
   on every change the device makes, and a token can be revoked at any time. It listens on this
   machine only unless you pass `--host`, and serves HTTPS when given `--tls-cert` and `--tls-key`.
-  It will not start while the Arlesh app has the same database open, unless you pass `--force`.
+  While it runs it holds the database, as the app does, so only one writer works on it at a
+  time: it will not start while the Arlesh app or another server has the same database, unless
+  you pass `--force`.
