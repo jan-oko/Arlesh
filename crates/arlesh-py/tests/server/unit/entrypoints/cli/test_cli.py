@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,11 @@ from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from typer.testing import CliRunner
 
 runner = CliRunner()
+
+
+def _plain(output: str) -> str:
+    """``output`` without the colours and box a terminal would show it in."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", output)
 
 
 @pytest.fixture(autouse=True)
@@ -72,7 +78,7 @@ def test_no_database_is_a_usage_error() -> None:
     result = runner.invoke(app, [])
 
     assert result.exit_code == 2
-    assert "--db" in result.output
+    assert "--db" in _plain(result.output)
 
 
 def test_half_of_tls_is_a_usage_error(tmp_path: Path) -> None:

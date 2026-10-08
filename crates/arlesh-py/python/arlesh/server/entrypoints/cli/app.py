@@ -55,7 +55,10 @@ def serve(
     db: Db = None,
     force: Annotated[
         bool | None,
-        typer.Option("--force", help="Write even while the desktop app holds the database."),
+        typer.Option(
+            "--force",
+            help="Start even while the app or another server holds the database, taking no hold.",
+        ),
     ] = None,
     host: Annotated[
         str | None, typer.Option(help="The address to listen on (default 127.0.0.1).")
