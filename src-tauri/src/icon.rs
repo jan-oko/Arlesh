@@ -5,9 +5,10 @@
 //! ours to know, so it is a monochrome silhouette — which is also what every other tray icon on
 //! that bar is, and looking like a sticker among them is worse than looking plain.
 //!
-//! Tauri has a mode for exactly this, [`icon_as_template`], but it is macOS-only: on Linux, where
-//! Arlesh runs, it is ignored and the bitmap is drawn as given. The silhouette is therefore
-//! rendered here rather than asked for.
+//! Tauri has a mode for exactly this, [`icon_as_template`], but it is macOS-only: on Linux and
+//! Windows it is ignored and the bitmap is drawn as given. The silhouette is therefore rendered
+//! here rather than asked for — white by default, and black on a light Windows taskbar, where white
+//! would not show (see [`TrayBackground`]).
 //!
 //! Both come out of assets compiled into the binary. Tauri hands out a window icon from the bundle
 //! configuration, but only where a bundle was produced — a plain `cargo run`, which is how a branch
@@ -69,6 +70,55 @@ pub fn tray_mark(size: u32) -> anyhow::Result<Image<'static>> {
 /// [`tray_mark`] at [`TRAY_ICON_SIZE`].
 pub fn tray() -> anyhow::Result<Image<'static>> {
     tray_mark(TRAY_ICON_SIZE)
+}
+
+/// What the tray sits on, as far as the mark's colour is concerned.
+///
+/// Linux bars and the macOS menu bar take the white mark as it is — a Linux bar is dark by
+/// convention, and macOS tints a template image itself. **Windows does neither**: its taskbar
+/// follows the system's light or dark mode, Windows 11 ships light, and a white mark on a light
+/// taskbar is an empty slot. So on Windows the mark is drawn in whichever ink the taskbar can show.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayBackground {
+    /// A dark bar: the mark is white. Also the answer when nothing better is known.
+    Dark,
+    /// A light bar: the mark is black.
+    Light,
+}
+
+impl TrayBackground {
+    /// Reads Windows' own answer: `SystemUsesLightTheme` is `1` for a light taskbar.
+    ///
+    /// `None` — the value is absent, which is a Windows 10 from before light taskbars existed —
+    /// reads as dark, because that taskbar was always dark.
+    pub fn from_system_uses_light_theme(value: Option<u32>) -> Self {
+        match value {
+            Some(1) => Self::Light,
+            _ => Self::Dark,
+        }
+    }
+
+    /// The colour the mark is filled with on this background, as RGB.
+    fn ink(self) -> [u8; 3] {
+        match self {
+            Self::Dark => [u8::MAX; 3],
+            Self::Light => [0; 3],
+        }
+    }
+}
+
+/// Refills every pixel of an RGBA buffer with `ink`, leaving its alpha — and so the shape — alone.
+fn recolour(buffer: &mut [u8], ink: [u8; 3]) {
+    for pixel in buffer.as_chunks_mut::<4>().0 {
+        pixel[..3].copy_from_slice(&ink);
+    }
+}
+
+/// The tray mark at [`TRAY_ICON_SIZE`], in the ink that shows on `background`.
+pub fn tray_on(background: TrayBackground) -> anyhow::Result<Image<'static>> {
+    let mut pixels = tray()?.rgba().to_vec();
+    recolour(&mut pixels, background.ink());
+    Ok(Image::new_owned(pixels, TRAY_ICON_SIZE, TRAY_ICON_SIZE))
 }
 
 /// Reorders an RGBA buffer in place into ARGB32, big-endian — alpha first, then red, green, blue.

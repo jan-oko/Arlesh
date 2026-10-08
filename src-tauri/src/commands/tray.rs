@@ -31,6 +31,32 @@
 //! toggles the window, and the same two-item menu. The right button still opens that menu; the
 //! left button no longer has to.
 //!
+//! # The Windows tray
+//!
+//! On Windows Tauri's tray is a notification-area icon (`Shell_NotifyIcon`, through `tray-icon`'s
+//! Win32 backend), and its events reach [`on_tray_icon_event`] directly — none of Linux's detour
+//! is needed. What each gesture does there:
+//!
+//! - **Left click** arrives as `TrayIconEvent::Click { button: Left, button_state: Up }` on
+//!   `WM_LBUTTONUP`, and toggles the windows exactly as Linux's `Activate` does. The press
+//!   (`Down`) is ignored, so a click is acted on once. A double click is two releases and so two
+//!   toggles, which leaves the windows as they were — the single click is the gesture.
+//! - **Right click** opens the menu: `show_menu_on_left_click(false)` keeps the left button for
+//!   the toggle, and `tray-icon` pops the menu itself on `WM_RBUTTONUP`. The menu is Tauri's
+//!   ([`window_menu`]), its selections arrive through [`on_menu_event`], and it is rebuilt by
+//!   [`refresh_menu`] wherever the window set changes.
+//! - **Close to tray** is the same window event on every platform ([`on_window_event`]): the last
+//!   window's close is turned into a hide, and a hidden window leaves the taskbar.
+//! - **Quit** in the menu, or Ctrl+Q, is [`quit`], which ends the process through `app.exit`; the
+//!   icon is removed with it.
+//! - **A minimised window** counts as off screen. Windows reports a minimised window as visible,
+//!   so without that a click on the icon would "hide" a window that is already out of sight, and
+//!   showing one would leave it minimised on the taskbar. See [`on_screen`] and [`show_window`].
+//! - **The mark's ink.** The taskbar follows the system's light or dark mode, and Windows 11
+//!   ships light, where the white silhouette Linux uses would not show. So the mark is black on a
+//!   light taskbar, read from the registry's `SystemUsesLightTheme` when the tray is built and
+//!   again whenever a window reports the theme changed. See [`crate::icon::TrayBackground`].
+//!
 //! [StatusNotifierItem]: https://www.freedesktop.org/wiki/Specifications/StatusNotifierItem/
 //! [tauri-apps/tray-icon#104]: https://github.com/tauri-apps/tray-icon/issues/104
 
@@ -127,6 +153,9 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
                 windows::snapshot(app);
             }
         }
+        // Windows broadcasts a change of light or dark mode to every top-level window, hidden
+        // ones included, and the taskbar the tray mark sits on may just have changed colour.
+        WindowEvent::ThemeChanged(_) => refresh_icon(app),
         // Not during a quit: every window is destroyed in turn, and the session was written
         // down intact before the first of them went.
         WindowEvent::Destroyed if !quit_requested(app) => {
@@ -209,8 +238,8 @@ fn build_tray(app: &AppHandle) -> anyhow::Result<()> {
     let menu = window_menu(app, &show, &quit)?;
 
     TrayIconBuilder::with_id(TRAY_ID)
-        // The white silhouette, not the colour logo: see `crate::icon`.
-        .icon(icon::tray()?)
+        // The silhouette, not the colour logo: see `crate::icon`.
+        .icon(tray_mark()?)
         // What the silhouette already is, said out loud. macOS is the only platform that acts on
         // it — it tints a template image to suit a light or dark menu bar.
         .icon_as_template(true)
@@ -225,6 +254,51 @@ fn build_tray(app: &AppHandle) -> anyhow::Result<()> {
 
     Ok(())
 }
+
+/// The tray mark in the ink the bar can show: white, or black on a light Windows taskbar.
+#[cfg(not(target_os = "linux"))]
+fn tray_mark() -> anyhow::Result<tauri::image::Image<'static>> {
+    icon::tray_on(taskbar_background())
+}
+
+/// What the taskbar is, read from the setting Windows' own light and dark mode writes.
+///
+/// An unreadable key is a Windows 10 from before light taskbars existed, whose taskbar is dark.
+#[cfg(windows)]
+fn taskbar_background() -> icon::TrayBackground {
+    use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+
+    let value = RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+        .and_then(|key| key.get_value::<u32, _>("SystemUsesLightTheme"))
+        .ok();
+    icon::TrayBackground::from_system_uses_light_theme(value)
+}
+
+/// macOS tints the template image itself, so the mark stays white there.
+#[cfg(all(not(windows), not(target_os = "linux")))]
+fn taskbar_background() -> icon::TrayBackground {
+    icon::TrayBackground::Dark
+}
+
+/// Redraws the tray mark for the taskbar as it is now, for a change of light or dark mode.
+#[cfg(not(target_os = "linux"))]
+fn refresh_icon<R: Runtime>(app: &AppHandle<R>) {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
+    let redraw = || -> anyhow::Result<()> {
+        tray.set_icon(Some(tray_mark()?))?;
+        Ok(())
+    };
+    if let Err(error) = redraw() {
+        tracing::warn!(error = %error, "could not redraw the tray icon");
+    }
+}
+
+/// Linux's mark is white on every bar; there is nothing to redraw.
+#[cfg(target_os = "linux")]
+fn refresh_icon<R: Runtime>(_app: &AppHandle<R>) {}
 
 /// Puts the icon and its two-item menu on the bar, as a StatusNotifierItem Arlesh exports itself.
 ///
@@ -460,16 +534,35 @@ fn on_tray_icon_event(app: &AppHandle, event: TrayIconEvent) {
 /// is more "the app" than the others.
 pub fn show_windows(app: &AppHandle) {
     for window in app.webview_windows().values() {
-        if let Err(error) = window.show() {
+        if let Err(error) = show_window(window) {
             tracing::warn!(error = %error, "could not show a window");
-            continue;
-        }
-        if let Err(error) = window.set_focus() {
-            tracing::warn!(error = %error, "could not focus a window");
         }
     }
     // Every entry's check has just changed.
     refresh_menu(app);
+}
+
+/// Puts one window on screen and gives it the keyboard: shown, brought back from minimised, and
+/// focused.
+///
+/// Unminimised only when it **is** minimised. Windows restores a window with `SW_RESTORE`, which
+/// also takes a maximised window out of maximised, so asking unconditionally would shrink a window
+/// the user had maximised.
+fn show_window<R: Runtime>(window: &tauri::WebviewWindow<R>) -> tauri::Result<()> {
+    window.show()?;
+    if window.is_minimized().unwrap_or(false) {
+        window.unminimize()?;
+    }
+    window.set_focus()
+}
+
+/// Whether a window is on screen: shown, and not minimised.
+///
+/// Windows reports a minimised window as visible. Read on its own, that makes a click on the icon
+/// "hide" a window that is already out of sight; with the minimised check, the click brings it
+/// back instead, which is what the person clicking wanted.
+fn on_screen<R: Runtime>(window: &tauri::WebviewWindow<R>) -> tauri::Result<bool> {
+    Ok(window.is_visible()? && !window.is_minimized()?)
 }
 
 /// Hides one window, or shows it and puts the keyboard in it, for a click on its own tray entry.
@@ -481,10 +574,10 @@ fn toggle_window<R: Runtime>(app: &AppHandle<R>, label: &str) {
         return;
     };
     // Unreadable reads as hidden, so the click shows it — the failure that leaves nothing lost.
-    let result = if window.is_visible().unwrap_or(false) {
+    let result = if on_screen(&window).unwrap_or(false) {
         window.hide()
     } else {
-        window.show().and_then(|()| window.set_focus())
+        show_window(&window)
     };
     if let Err(error) = result {
         tracing::warn!(error = %error, label = %label, "could not toggle the window");
@@ -512,7 +605,7 @@ fn hide_windows<R: Runtime>(app: &AppHandle<R>) {
 fn toggle_windows(app: &AppHandle) {
     let mut any_visible = None;
     for window in app.webview_windows().values() {
-        match window.is_visible() {
+        match on_screen(window) {
             Ok(visible) => any_visible = Some(any_visible.unwrap_or(false) || visible),
             Err(error) => {
                 tracing::warn!(error = %error, "could not read a window's visibility");

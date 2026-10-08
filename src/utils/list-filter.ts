@@ -422,11 +422,11 @@ function passesListPreset(row: TaskListRow, f: FilterState): boolean {
       // A window that has passed or has not begun drops out, as on the canvas — unless the row is
       // Overdue.
       if (isDroppedForDelegation(row.node, f)) return false;
-      if (!isStartableWindow(row.node)) return withArchivedOverride(row.node, f, false);
+      if (!isStartableWindow(row.node) || isArchived(row.node)) return withArchivedOverride(row.node, f, false);
       return passesStartStatus(row.node, f);
     }
     case "do":
-      return passesDoStatus(row.node, f);
+      return withArchivedOverride(row.node, f, !isArchived(row.node) && passesDoStatus(row.node, f));
     case "backlog":
       // Everything set aside, plus everything beneath it — the Mindmap's subtree rule, flattened.
       return row.node.backlogged === true || row.ancestors.some((a) => a.backlogged === true);

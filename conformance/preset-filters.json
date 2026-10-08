@@ -709,19 +709,17 @@
     },
     {
       "name": "do shows a backlogged in-progress task",
-      "spec": "resources.md — Backlog says \"not planning this now\" and Do asks \"what is underway\": a Task can answer yes to both, so Do shows a backlogged in-progress Task. (Setting a Task In Progress clears the flag, so the pair is reached by setting aside work already under way.)",
+      "spec": "resources.md — Backlog says \"not planning this now\" and Do asks \"what is underway\": a Task can answer yes to both, so Do shows a backlogged in-progress Task. (Setting a Task In Progress clears the flag, so the pair is reached by setting aside work already under way.) An archived in-progress Task is not under way: Do drops it unless the Archived pill includes it (ruled 2026-10-04).",
       "filter": {
         "preset": "do"
       },
       "board": "do-edges",
       "mindmap": [
         "domain-do",
-        "task-inprogress-archived",
         "task-inprogress-backlogged",
         "task-inprogress-plain"
       ],
       "list": [
-        "task-inprogress-archived",
         "task-inprogress-backlogged",
         "task-inprogress-plain"
       ],
@@ -2815,6 +2813,98 @@
       "expectations": [
         "expectation-delegation-todo"
       ]
+    },
+    {
+      "name": "start drops a task archived by hand, one beneath a hand archive, and an archived commitment",
+      "spec": "filtering-logic.md — an archived Task or Commitment — archived by hand, beneath a hand archive, or derived — drops out of Start and Do, window or none (ruled 2026-10-04). Before hand archives every archived Task had a lapsed window, which Start already dropped.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "archived-now",
+      "mindmap": [
+        "domain-a",
+        "task-live-todo"
+      ],
+      "list": [
+        "task-live-todo"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "the archived pill on include brings archived tasks and commitments back under start",
+      "spec": "filtering-logic.md — the Archived pill's Include brings archived Tasks and Commitments back under Start and Do, as it does everywhere.",
+      "filter": {
+        "preset": "start",
+        "archived": "include"
+      },
+      "board": "archived-now",
+      "mindmap": [
+        "commitment-archived-open",
+        "domain-a",
+        "task-archived-parent",
+        "task-by-hand",
+        "task-doing-by-hand",
+        "task-inherited",
+        "task-inherited-doing",
+        "task-live-todo"
+      ],
+      "list": [
+        "task-archived-parent",
+        "task-by-hand",
+        "task-doing-by-hand",
+        "task-inherited",
+        "task-inherited-doing",
+        "task-live-todo"
+      ],
+      "commitments": [
+        "commitment-archived-open"
+      ]
+    },
+    {
+      "name": "do drops an archived in-progress task, one beneath a hand archive, and an archived commitment",
+      "spec": "filtering-logic.md — an archived Task or Commitment — archived by hand, beneath a hand archive, or derived — drops out of Start and Do, window or none (ruled 2026-10-04). Before hand archives every archived Task had a lapsed window, which Start already dropped.",
+      "filter": {
+        "preset": "do"
+      },
+      "board": "archived-now",
+      "mindmap": [
+        "domain-a",
+        "task-live-doing"
+      ],
+      "list": [
+        "task-live-doing"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "the archived pill on include brings archived tasks and commitments back under do",
+      "spec": "filtering-logic.md — the Archived pill's Include brings archived Tasks and Commitments back under Start and Do, as it does everywhere.",
+      "filter": {
+        "preset": "do",
+        "archived": "include"
+      },
+      "board": "archived-now",
+      "mindmap": [
+        "commitment-archived-open",
+        "domain-a",
+        "task-archived-parent",
+        "task-by-hand",
+        "task-doing-by-hand",
+        "task-inherited",
+        "task-inherited-doing",
+        "task-live-doing"
+      ],
+      "list": [
+        "task-archived-parent",
+        "task-by-hand",
+        "task-doing-by-hand",
+        "task-inherited",
+        "task-inherited-doing",
+        "task-live-doing"
+      ],
+      "commitments": [
+        "commitment-archived-open"
+      ]
     }
   ],
   "boards": {
@@ -4458,6 +4548,67 @@
               "id": "task-mine",
               "kind": "task",
               "status": "todo"
+            }
+          ]
+        }
+      ]
+    },
+    "archived-now": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-a",
+          "kind": "domain",
+          "children": [
+            {
+              "id": "task-by-hand",
+              "kind": "task",
+              "status": "todo",
+              "archived": true
+            },
+            {
+              "id": "task-doing-by-hand",
+              "kind": "task",
+              "status": "in_progress",
+              "archived": true
+            },
+            {
+              "id": "task-archived-parent",
+              "kind": "task",
+              "status": "todo",
+              "archived": true,
+              "children": [
+                {
+                  "id": "task-inherited",
+                  "kind": "task",
+                  "status": "todo",
+                  "archived": true
+                },
+                {
+                  "id": "task-inherited-doing",
+                  "kind": "task",
+                  "status": "in_progress",
+                  "archived": true
+                }
+              ]
+            },
+            {
+              "id": "commitment-archived-open",
+              "kind": "commitment",
+              "verdict": "unresolved",
+              "timing": "active",
+              "archived": true
+            },
+            {
+              "id": "task-live-todo",
+              "kind": "task",
+              "status": "todo"
+            },
+            {
+              "id": "task-live-doing",
+              "kind": "task",
+              "status": "in_progress"
             }
           ]
         }

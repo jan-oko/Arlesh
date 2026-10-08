@@ -51,6 +51,10 @@ compositor, and it would land the window rather than let it follow the drag. **R
 #12164 or #10456 lands: interactive move would let the new window follow the pointer through
 `startDragging()` with no binding.
 
+On **Windows** (and X11) the window manager lets the app place its windows, and the same code that
+asks for a position gets one: a torn-off window opens 48 pixels down and right of the window it was
+torn out of, kept on a connected display. It still does not follow the pointer.
+
 ## The board-changed broadcast
 
 Every mutation used to end in a reload **in the window that issued it**, which was the whole story
@@ -115,6 +119,17 @@ logical, and a session saved at one scale factor and replayed through logical co
 somewhere else. Windows are built hidden and shown once placed, so restoring never shows a window
 jumping from a default spot to its own.
 
+**Where the platform allows it, a window comes back where it was.** On Windows and X11 the saved
+position is applied as it is. On Wayland the compositor owns placement — an app can neither read
+its window's position nor set it — so only the size comes back and the compositor places the
+window. One code path serves both; it does not branch on the platform.
+
+**A minimised window keeps the rectangle it was last saved with.** Windows parks a minimised window
+at `(-32000, -32000)` with a client area of `0 × 0`, and writing that down would bring it back
+centred at no size. So a window that is minimised when the session is written — hidden to the tray
+from minimised, or minimised at a quit — keeps its last real rectangle, and a reading with no area is
+ignored the same way on every platform.
+
 **A window whose saved position is on no connected display reopens at a default position**, keeping
 its size. This is the one case where restoring faithfully is worse than not: a window reopened on a
 monitor that has been unplugged is a window the user cannot reach. "On a display" is deliberately
@@ -147,7 +162,10 @@ malformed stored value falls back to on rather than being read as falsy.
 gesture for the thing done most often. It is one answer for the whole app rather than one per
 window: the tray holds Arlesh, not a window, and a click that hid one window and showed another
 would be a gesture with no stable meaning. Any window showing means the app is on screen, so the
-click puts it away; none showing brings them all back. **Ctrl+Q** quits from the keyboard and
+click puts it away; none showing brings them all back. A **minimised** window is not showing: Windows
+reports a minimised window as visible, and taking that at its word would make the click "hide" a
+window already out of sight. Showing a window brings it back from minimised as well, and only then —
+asking a window that is not minimised to restore would take a maximised one out of maximised. **Ctrl+Q** quits from the keyboard and
 appears in the cheat-sheet. The windows return where and how they were left, since hiding never
 destroys them.
 
@@ -203,6 +221,16 @@ what Arlesh does. It costs a dependency and buys back the plainest gesture the f
 the hover tooltip libappindicator drops. Windows and macOS keep the tray Tauri builds, whose click
 events work.
 
+**On Windows the tray is Tauri's, in the notification area.** It is the icon `tray-icon` puts there
+through `Shell_NotifyIcon`, and its events reach the app with nothing in between. A left click is
+acted on at its **release** (`WM_LBUTTONUP`), the press ignored, and toggles the windows as above. A
+double click is two releases and so two toggles, which leaves the windows as they were; the single
+click is the gesture. The right button opens the same menu — Show, the open windows, Quit — popped
+by `tray-icon` itself, and rebuilt whenever the windows change as on Linux. Closing the last window
+hides it, which also takes it off the taskbar; Quit and `Ctrl+Q` end the process and the icon goes
+with it. Windows tucks a new icon into the overflow behind the `^` arrow until the user pins it to
+the taskbar; that is the user's choice to make, and nothing the app can do for them.
+
 **The tray item is called Arlesh.** Its title, its tooltip and its StatusNotifierItem `Id` are all
 the app's name — never an internal identifier, because bars show the `Id`: DankMaterialShell heads
 the item's menu with it. Not a window's title either, which carries a number and a tab, while the
@@ -216,7 +244,17 @@ smear. The tray therefore has a mark of its own, `icons/tray.svg` — the same s
 to three, each thick enough to survive with clear air between them — rasterised at the size the bar
 actually draws rather than resampled down from a larger bitmap, which is the other way a tray icon
 goes soft. It is filled flat white with the shape carried by alpha. Tauri has a mode that says this
-out loud, `icon_as_template`, but only macOS acts on it. The window and launcher keep the
+out loud, `icon_as_template`, but only macOS acts on it.
+
+**On a light Windows taskbar the mark is black.** The Windows taskbar follows the system's light or
+dark mode, Windows 11 ships light, and a white silhouette there is an empty slot. So on Windows the
+mark is drawn in black when `SystemUsesLightTheme` says the taskbar is light, and white otherwise —
+including when the setting is absent, which is a Windows 10 from before light taskbars, whose taskbar
+was always dark. It is read when the tray is built and again whenever a window reports the theme
+changed. A window reports the **app** mode changing, so switching Windows between light and dark
+redraws the mark at once; in Windows' *Custom* mode, changing the taskbar's mode alone is picked up
+at the next start. Rejected: the colour logo, which Windows apps often use — it is the same smear at 16 pixels
+that it is on a Linux bar. The window and launcher keep the
 full-colour logo, which is what an app icon is for.
 
 **With no tray, closing means quit.** A desktop with no tray host is an ordinary condition and must

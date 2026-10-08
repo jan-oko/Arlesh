@@ -155,3 +155,44 @@ fn the_tray_mark_in_argb_still_carries_its_shape_in_the_leading_byte() {
         "the mark must be a silhouette, not a filled square"
     );
 }
+
+#[test]
+fn on_a_light_taskbar_the_tray_mark_is_black_with_the_same_shape() {
+    let white = tray().expect("renders").rgba().to_vec();
+    let black = tray_on(TrayBackground::Light).expect("renders");
+
+    assert_eq!(black.width(), TRAY_ICON_SIZE);
+    assert_eq!(black.rgba().len(), white.len());
+    for (from, to) in white
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(black.rgba().as_chunks::<4>().0)
+    {
+        assert_eq!(to, &[0, 0, 0, from[3]]);
+    }
+}
+
+#[test]
+fn on_a_dark_taskbar_the_tray_mark_is_the_white_one() {
+    let white = tray().expect("renders");
+    let on_dark = tray_on(TrayBackground::Dark).expect("renders");
+
+    assert_eq!(on_dark.rgba(), white.rgba());
+}
+
+#[test]
+fn windows_reports_a_light_taskbar_as_one_and_anything_else_as_dark() {
+    assert_eq!(
+        TrayBackground::from_system_uses_light_theme(Some(1)),
+        TrayBackground::Light
+    );
+    assert_eq!(
+        TrayBackground::from_system_uses_light_theme(Some(0)),
+        TrayBackground::Dark
+    );
+    assert_eq!(
+        TrayBackground::from_system_uses_light_theme(None),
+        TrayBackground::Dark
+    );
+}
