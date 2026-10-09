@@ -78,7 +78,8 @@ fn is_review(row: &OwnedRow) -> bool {
 /// - **The grid** is the Task rows under **Do**, in board order, with **Review** cards first —
 ///   each one an agent idle until the user answers — less every **delegated** Task, which someone
 ///   else holds, and less every **Compound** one unless `shows_compound`. Whether a **Started**
-///   Task counts is `shows_started`, not the Do preset's own setting.
+///   Task counts is `shows_started`, not the Do preset's own setting; a **Review** one shows only
+///   while the filter's [`BoardFilter::show_review`] asks for it.
 /// - **The Commitments strip** is what the List View shows under Do: the unresolved ones.
 /// - **The Expectations strip** is what **Start** shows — Do shows no wait at all — less every
 ///   wait an agent raised: a question is drawn on its Review card, and a wait on something else is
@@ -100,6 +101,7 @@ pub fn contents<'a>(
         .filter(|row| list::passes_row(row.as_row(), &under_do))
         .filter(|row| options.shows_compound || !row.node.compound)
         .filter(|row| !row.node.delegated)
+        .filter(|row| filter.show_review || !is_review(row))
         .collect();
     let (mut tasks, rest): (Vec<_>, Vec<_>) = grid.into_iter().partition(|row| is_review(row));
     tasks.extend(rest);

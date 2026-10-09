@@ -115,6 +115,14 @@ export interface FilterState {
    * Absent reads as off. Mirrors `BoardFilter::show_on_agent`.
    */
   showOnAgent?: boolean;
+  /**
+   * Whether the **Zen View** shows an Agentic Task in **Review** — On Agent with a question open,
+   * waiting on the user. Off by default; the Zen View's Filter menu's **Review** pill (key `r`)
+   * turns it on, and while it is on the Filter button wears its dot there. Kept with the tab. Only
+   * the Zen View reads it: Do and Start show Review whatever it says. Absent reads as off. Mirrors
+   * `BoardFilter::show_review`.
+   */
+  showReview?: boolean;
 }
 
 /** The neutral, indicator-off filter — shows everything except nodes marked private. */

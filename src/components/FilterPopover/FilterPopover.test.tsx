@@ -490,6 +490,38 @@ describe("FilterPopover — letter keys (List View)", () => {
   });
 });
 
+describe("FilterPopover — the Review pill (Zen View)", () => {
+  const menu = () => screen.getByRole("dialog", { name: "common:filter" });
+  const showReview = () => useFilterStore.getState().filter.showReview === true;
+
+  it("offers the Review pill only in the Zen View, off by default, and a click turns it on", () => {
+    useViewStore.setState({ view: "list" });
+    const { unmount } = render(<FilterPopover />);
+    expect(screen.queryByText("reviewPill")).not.toBeInTheDocument();
+    unmount();
+    useViewStore.setState({ view: "zen" });
+    render(<FilterPopover />);
+    expect(pill("reviewPill")).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(pill("reviewPill"));
+    expect(showReview()).toBe(true);
+    expect(pill("reviewPill")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("r toggles it in the Zen View, and does nothing in the List View", () => {
+    useViewStore.setState({ view: "list" });
+    const { unmount } = render(<FilterPopover />);
+    fireEvent.keyDown(menu(), { code: "KeyR" });
+    expect(showReview()).toBe(false);
+    unmount();
+    useViewStore.setState({ view: "zen" });
+    render(<FilterPopover />);
+    fireEvent.keyDown(menu(), { code: "KeyR" });
+    expect(showReview()).toBe(true);
+    fireEvent.keyDown(menu(), { code: "KeyR" });
+    expect(showReview()).toBe(false);
+  });
+});
+
 describe("FilterPopover row-kind selector", () => {
   const kindButton = (kind: string) => screen.getByRole("button", { name: `rowKind.${kind}` });
 

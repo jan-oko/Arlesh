@@ -7,8 +7,8 @@
     "cases through `zen-contents.ts`. Neither side generates this file.",
     "",
     "A board's nodes are written as in `preset-filters.json`. `filter` is the tab's shared filter —",
-    "`preset`, `showOnAgent`, `startHidesCheckedWaits` and `privateMode`, each defaulting as the app's",
-    "does — which the Zen View reads under its own presets. `options` is what the tab asks of the",
+    "`preset`, `showOnAgent`, `showReview`, `startHidesCheckedWaits` and `privateMode`, each",
+    "defaulting as the app's does — which the Zen View reads under its own presets. `options` is what the tab asks of the",
     "view: the two strips, the Agentic pill, and the two app-wide grid settings. The focus exemption",
     "is a render-time overlay on the view's selection and is not here.",
     "",
@@ -21,7 +21,8 @@
       "spec": "zen-view.md — The grid is the List View's Task rows under Do, Review cards first, less every delegated Task.",
       "board": "zen",
       "filter": {
-        "preset": "plan"
+        "preset": "plan",
+        "showReview": true
       },
       "options": {
         "commitments": true,
@@ -49,7 +50,8 @@
       "spec": "zen-view.md — Whether a Started Task counts is the Zen View's own setting, not the Do preset's.",
       "board": "zen",
       "filter": {
-        "preset": "plan"
+        "preset": "plan",
+        "showReview": true
       },
       "options": {
         "commitments": true,
@@ -79,7 +81,8 @@
       "spec": "zen-view.md — Off, a Compound Task's card is not drawn; its sub-items still are, by their own status.",
       "board": "zen",
       "filter": {
-        "preset": "plan"
+        "preset": "plan",
+        "showReview": true
       },
       "options": {
         "commitments": true,
@@ -110,6 +113,7 @@
       "board": "zen",
       "filter": {
         "preset": "plan",
+        "showReview": true,
         "showOnAgent": true
       },
       "options": {
@@ -135,11 +139,41 @@
       }
     },
     {
+      "name": "review stays off the grid until the review pill asks for it, whatever on agent says",
+      "spec": "zen-view.md — A Review card shows only while the shared filter's showReview asks for it; Do itself still shows it.",
+      "board": "zen",
+      "filter": {
+        "preset": "plan",
+        "showOnAgent": true
+      },
+      "options": {
+        "commitments": true,
+        "expectations": true
+      },
+      "expect": {
+        "tasks": [
+          "task-progress",
+          "task-sub",
+          "task-doing",
+          "task-on-agent"
+        ],
+        "commitments": [
+          "commitment-open"
+        ],
+        "expectations": [
+          "expectation-delegated",
+          "expectation-person",
+          "expectation-checked"
+        ]
+      }
+    },
+    {
       "name": "a hidden strip draws nothing",
       "spec": "zen-view.md — A hidden strip is empty.",
       "board": "zen",
       "filter": {
-        "preset": "plan"
+        "preset": "plan",
+        "showReview": true
       },
       "options": {
         "commitments": false,
@@ -162,6 +196,7 @@
       "board": "zen",
       "filter": {
         "preset": "plan",
+        "showReview": true,
         "startHidesCheckedWaits": true
       },
       "options": {
@@ -221,7 +256,8 @@
       "spec": "zen-view.md — The Agentic pill narrows the grid; it asks about Tasks.",
       "board": "zen",
       "filter": {
-        "preset": "plan"
+        "preset": "plan",
+        "showReview": true
       },
       "options": {
         "commitments": true,

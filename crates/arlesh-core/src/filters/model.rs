@@ -247,6 +247,12 @@ pub struct BoardFilter {
     /// tab's filter (the Filter menu's **On Agent** pill, key `o`). Review — On Agent with a
     /// question open — shows whatever this says.
     pub show_on_agent: bool,
+    /// Whether the **Zen View** shows an Agentic Task in **Review** — On Agent with a question
+    /// open, waiting on the user. **Off by default**: the Zen View is for the work in hand, and a
+    /// question is the Review pill's to bring in. Kept with the tab's filter (the Zen View's Filter
+    /// menu's **Review** pill, key `r`). Only the Zen View reads it: Do, which the Zen View reads
+    /// under, shows Review whatever this says, and so does Start.
+    pub show_review: bool,
     /// Which kinds the List View draws as rows. Every kind by default; ignored under
     /// [`Self::expectations`], which is itself a kind choice.
     #[serde(default = "every_row_kind")]
@@ -284,6 +290,7 @@ impl Default for BoardFilter {
             start_shows_started: true,
             do_shows_started: false,
             show_on_agent: false,
+            show_review: false,
             kinds: every_row_kind(),
             pills: ListPills::default(),
         }

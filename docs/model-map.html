@@ -231,7 +231,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
   </div>
   <div class="graph-wrap">
     <div class="diagram graph-scroll">
-      <svg id="dgraph" viewBox="0 0 1260 724" role="group" aria-label="Derivation graph: each derived state with arrows from the facts it is computed from."></svg>
+      <svg id="dgraph" viewBox="0 0 1260 758" role="group" aria-label="Derivation graph: each derived state with arrows from the facts it is computed from."></svg>
     </div>
     <div class="hint" id="dhint" aria-live="polite">
       <p class="hint-title">Pick a box</p>
@@ -544,6 +544,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["deps", "Dependencies", 0, 17, "in", "Edges from a Task to the Tasks, Goals and stored waits it depends on.", "resources.md#tasks"],
     ["pill", "On Agent pill", 0, 18, "in", "A filter switch, per tab, asking Start, Do and Zen to show work an agent holds.", "filtering-logic.md"],
     ["dpill", "Delegated pill", 0, 19, "in", "A tri-state filter pill, per tab: off drops delegated Tasks under Plan and Start, Include keeps them, Exclude hides them everywhere.", "filtering-logic.md#delegated-pill"],
+    ["rpill", "Review pill", 0, 20, "in", "A filter switch, per tab, offered only in the Zen View: Zen shows Review cards only while it is on. Off by default; Do ignores it.", "zen-view.md"],
 
     ["timing", "Timing", 1, 0.5, "dv", "Pending before the window, Active in it, Lapsed after it. Unscoped is always Active.", "time-scopes.md#on-exit-behavior-timing-resolution-archival-and-the-overdue-flag"],
     ["due", "Effective due", 1, 3, "dv", "The window whose end makes work late: the explicit due; otherwise none while backlogged; otherwise the window under Keep Overdue and none under Archive. A Habit occurrence's default comes from its clock.", "time-scopes.md#due-scope-and-the-overdue-flag"],
@@ -567,7 +568,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
 
     ["pplan", "Plan preset", 5, 4.5, "rd", "Hides done Tasks, archived items, backlogged Tasks, and delegated Tasks unless the Delegated pill includes them.", "filtering-logic.md"],
     ["start", "Start preset", 5, 8, "rd", "What can be begun now: drops blocked subtrees, Pending and Lapsed windows unless Overdue, backlogged work, delegated work unless the Delegated pill includes it, Plans still ahead, and On Agent work unless the pill asks. Always keeps Review.", "filtering-logic.md"],
-    ["pdo", "Do preset / Zen", 5, 11.5, "rd", "What is under way: In Progress and Doing, Review always, Started and On Agent only when their switches ask.", "zen-view.md"],
+    ["pdo", "Do preset / Zen", 5, 11.5, "rd", "What is under way: In Progress and Doing, Review always, Started and On Agent only when their switches ask. Zen drops Review unless its own Review pill is on.", "zen-view.md"],
     ["pbacklog", "Backlog preset", 5, 15, "rd", "Only what was deliberately set aside, together with everything beneath it. The inverse of the other presets.", "filtering-logic.md"],
   ];
 
@@ -594,7 +595,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["timing", "start"], ["overdue", "start"], ["archived", "start"], ["blocked", "start"], ["planpos", "start"],
     ["status", "start"], ["review", "start"], ["agentic", "start"], ["pill", "start"], ["backlog", "start"],
     ["delegate", "start"], ["dpill", "start"],
-    ["status", "pdo"], ["review", "pdo"], ["agentic", "pdo"], ["pill", "pdo"],
+    ["status", "pdo"], ["review", "pdo"], ["agentic", "pdo"], ["pill", "pdo"], ["rpill", "pdo"],
     ["backlog", "pbacklog"],
   ];
 

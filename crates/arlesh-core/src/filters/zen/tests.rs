@@ -104,17 +104,47 @@ fn review_leads_doing_stays_and_on_agent_waits_for_its_pill() {
         commitments: &[],
         expectations: &[],
     };
-    let zen = contents(source, &BoardFilter::default(), &every_strip());
+    let review = BoardFilter {
+        show_review: true,
+        ..BoardFilter::default()
+    };
+    let zen = contents(source, &review, &every_strip());
     assert_eq!(ids(&zen.tasks), ["task-review", "task-doing"]);
     let on_agent = BoardFilter {
         show_on_agent: true,
-        ..BoardFilter::default()
+        ..review
     };
     let zen = contents(source, &on_agent, &every_strip());
     assert_eq!(
         ids(&zen.tasks),
         ["task-review", "task-doing", "task-on-agent"]
     );
+}
+
+#[test]
+fn review_stays_off_the_grid_until_its_pill_asks_whatever_on_agent_says() {
+    let tasks = [
+        agentic("task-doing", "doing"),
+        agentic("task-on-agent", "on_agent"),
+        agentic("task-review", "review"),
+    ];
+    let source = ZenSource {
+        tasks: &tasks,
+        commitments: &[],
+        expectations: &[wait("expectation-question", true)],
+    };
+    let zen = contents(source, &BoardFilter::default(), &every_strip());
+    assert_eq!(ids(&zen.tasks), ["task-doing"]);
+    assert!(
+        zen.expectations.is_empty(),
+        "its question stays off the strip"
+    );
+    let on_agent = BoardFilter {
+        show_on_agent: true,
+        ..BoardFilter::default()
+    };
+    let zen = contents(source, &on_agent, &every_strip());
+    assert_eq!(ids(&zen.tasks), ["task-doing", "task-on-agent"]);
 }
 
 #[test]

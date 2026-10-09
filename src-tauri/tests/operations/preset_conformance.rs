@@ -172,6 +172,8 @@ impl From<&CorpusFilter> for BoardFilter {
             start_shows_started: filter.start_shows_started,
             do_shows_started: filter.do_shows_started,
             show_on_agent: filter.show_on_agent,
+            // The Zen View's own pill: no preset reads it.
+            show_review: false,
             kinds: filter
                 .kinds
                 .clone()

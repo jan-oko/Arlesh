@@ -67,7 +67,14 @@ are listed at the end.
    Land the cheaper one first.
 8. **Write the brief from the template in `briefs.md`.** Every section exists because an
    early brief lacked it and an agent went wrong.
-9. **Record the dispatch** (agent id, Task, worktree, branch) somewhere that survives
+9. **Name the worktree and branch `<short id>-<slug>`**, both the same, e.g. `bd3-archive-domain`.
+   User: *"make branch names indicative (short id + short description), so they are
+   distinguishable in branch_instances."* `scripts/branch-instance.sh` names each instance after
+   its worktree directory, so a random name (`agent-a89bbbce…`, which the Agent tool's
+   `isolation: "worktree"` produces) tells the user nothing. Create it yourself —
+   `git worktree add .claude/worktrees/<name> -b <name> origin/master` — and hand the agent the
+   path, instead of using `isolation: "worktree"`. A bundle of Tasks takes the first one's short id.
+10. **Record the dispatch** (agent id, Task, worktree, branch) somewhere that survives
    compaction — the Task's brief notes (`arlesh_tasks.update`) or your own checklist. User on
    the orchestrator's own checklist: *"Use the todo list tool, since beads is global and 'resolve conflicts and
    merge' is a smaller scope then a beads ticket"*. Orchestration steps live on
