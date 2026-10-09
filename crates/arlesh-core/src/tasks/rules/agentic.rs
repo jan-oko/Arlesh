@@ -256,7 +256,7 @@ pub(in crate::tasks) fn flow_host(flow: &Flow) -> (String, i64) {
     };
     let kind = match kind.as_str() {
         "goal" | "task" => kind,
-        _ => "project".to_string(),
+        _ => "domain".to_string(),
     };
     (kind, id)
 }

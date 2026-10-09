@@ -180,12 +180,11 @@ fields have one name everywhere — `agentic_note`, `question`, `answer` — in 
 every `arlesh_waits` operation, `get` returning the same row.
 
 **Domain-table parents.** Aspect, Project, Domain and Tag are subtypes of one table. A parent
-reference to one is reported **one way**, derived from the parent row rather than from whatever
-was stored: `project` when the parent is a Project, `domain` for any other subtype — the spelling
-the Task, Goal and Commitment tables' constraints allow and the app writes. The parent's own
-subtype is on its row in `domains`. On input, any of the four subtype names or `domain` is accepted
-for a domain-table parent — they name the same table, so none is wrong — and the row is written
-with that one spelling. A name of another kind (`goal` for a domain row) is not a domain-table
+reference to one is stored and reported **one way**, `domain`, whatever its subtype (Task 13c,
+migration 0096) — the only spelling the tables' constraints allow. The parent's own subtype is on
+its row in `domains`, and it is what the parenting rules read. On input, any of the four subtype
+names is accepted for a domain-table parent — they name the same table, so none is wrong — and the
+row is written as `domain`. A name of another kind (`goal` for a domain row) is not a domain-table
 name and is resolved as that kind.
 
 `arlesh_snapshot.load` is the entry point and covers the common case. The other reads

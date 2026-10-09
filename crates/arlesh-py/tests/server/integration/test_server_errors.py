@@ -166,7 +166,7 @@ def test_an_unscoped_commitment_is_422_needs_time_scope_until_sent_with_one(
 
 def test_a_database_failure_is_500_database(server: TestClient) -> None:
     response = server.post(
-        "/tasks", json={"title": "Loose", "parent_type": "aspect", "parent_id": 1}
+        "/tasks", json={"title": "Loose", "parent_type": "nowhere", "parent_id": 1}
     )
 
     assert response.status_code == 500

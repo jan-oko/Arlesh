@@ -4,6 +4,8 @@ pub mod model;
 
 use model::{CreateInfoRequest, Info, InfoId, UpdateInfoRequest};
 
+use crate::nodes::rules::parenting::stored_reference;
+
 #[derive(sqlx::FromRow)]
 struct InfoRow {
     id: i64,
@@ -62,7 +64,7 @@ impl<'session> InfoOperator<'session> {
         )
         .bind(&req.body)
         .bind(&req.details)
-        .bind(&req.parent_type)
+        .bind(stored_reference(&req.parent_type))
         .bind(stored_parent(&req.parent_id)?)
         .bind(req.position)
         .fetch_one(&mut *self.connection)
@@ -105,7 +107,7 @@ impl<'session> InfoOperator<'session> {
         parent_id: i64,
     ) -> Result<Vec<i64>, sqlx::Error> {
         sqlx::query_scalar("SELECT id FROM infos WHERE parent_type = ? AND parent_id = ?")
-            .bind(parent_type)
+            .bind(stored_reference(parent_type))
             .bind(parent_id)
             .fetch_all(&mut *self.connection)
             .await
@@ -171,7 +173,7 @@ impl<'session> InfoOperator<'session> {
             sqlx::query(
                 "UPDATE infos SET parent_type = ?, parent_id = ?, updated_at = datetime('now') WHERE id = ?",
             )
-            .bind(&pt)
+            .bind(stored_reference(&pt))
             .bind(stored_parent(&pi)?)
             .bind(id.0)
             .execute(&mut *self.connection)

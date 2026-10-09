@@ -24,7 +24,7 @@ pub(in crate::tasks) enum NodeKind {
 /// A polymorphic node reference, as the `parent_type`/`parent_id` column pair stores it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::tasks) struct NodeRef {
-    /// `"task"`, `"goal"`, `"project"`, `"domain"`, …
+    /// `"task"`, `"goal"`, `"commitment"`, `"domain"`, …
     pub(in crate::tasks) node_type: String,
     /// The referenced row's id.
     pub(in crate::tasks) node_id: i64,

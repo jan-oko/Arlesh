@@ -18,6 +18,7 @@
 
 use crate::database::session::{Db, Transactional};
 use crate::nodes::origin::Origin;
+use crate::nodes::rules::parenting::stored_reference;
 use crate::scopes::db::DbScopeKey;
 
 use super::ancestry::{AncestryLink, NodeKind, NodeRef};
@@ -194,7 +195,7 @@ impl<'session> CommitmentOperator<'session> {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
-        .bind(&request.parent_type)
+        .bind(stored_reference(&request.parent_type))
         .bind(request.parent_id.require_stored()?)
         .bind(verdict.as_str())
         .bind(ts_start)
@@ -313,7 +314,7 @@ impl<'session> CommitmentOperator<'session> {
                     verdict_window_kind, position, is_private, verdict_at
              FROM commitments WHERE id = ?",
         )
-        .bind(parent_type)
+        .bind(stored_reference(parent_type))
         .bind(parent_id)
         .bind(id.0)
         .execute(&mut *self.connection)
@@ -346,7 +347,7 @@ impl<'session> CommitmentOperator<'session> {
             sqlx::query_scalar(
                 "SELECT id FROM commitments WHERE parent_type = ? AND parent_id = ?",
             )
-            .bind(parent_type)
+            .bind(stored_reference(parent_type))
             .bind(parent_id)
             .fetch_all(&mut *self.connection)
             .await?,
@@ -366,7 +367,7 @@ impl<'session> CommitmentOperator<'session> {
 
         if let Some((new_parent_type, new_parent_id)) = &write.reparent {
             sqlx::query("UPDATE commitments SET parent_type = ?, parent_id = ? WHERE id = ?")
-                .bind(new_parent_type)
+                .bind(stored_reference(new_parent_type))
                 .bind(new_parent_id)
                 .bind(id.0)
                 .execute(&mut *self.connection)

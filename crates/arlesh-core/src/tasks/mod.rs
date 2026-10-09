@@ -32,6 +32,7 @@ use crate::database::session::{Db, SessionMode, Transactional};
 use crate::infos::model::InfoId;
 use crate::nodes::id::NodeId;
 use crate::nodes::origin::Origin;
+use crate::nodes::rules::parenting::stored_reference;
 use crate::scopes::db::DbScopeKey;
 use ancestry::{AncestryLink, NodeKind, NodeRef};
 use chrono::NaiveDateTime;
@@ -655,7 +656,7 @@ impl<'session> GoalOperator<'session> {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
-        .bind(&request.parent_type)
+        .bind(stored_reference(&request.parent_type))
         .bind(request.parent_id.require_stored()?)
         .bind(status)
         .bind(ts_start)
@@ -761,7 +762,7 @@ impl<'session> GoalOperator<'session> {
     ) -> Result<Vec<i64>, TaskError> {
         Ok(
             sqlx::query_scalar("SELECT id FROM goals WHERE parent_type = ? AND parent_id = ?")
-                .bind(parent_type)
+                .bind(stored_reference(parent_type))
                 .bind(parent_id)
                 .fetch_all(&mut *self.connection)
                 .await?,
@@ -784,7 +785,7 @@ impl<'session> GoalOperator<'session> {
 
         if let Some((new_parent_type, new_parent_id)) = &write.reparent {
             sqlx::query("UPDATE goals SET parent_type = ?, parent_id = ? WHERE id = ?")
-                .bind(new_parent_type)
+                .bind(stored_reference(new_parent_type))
                 .bind(new_parent_id)
                 .bind(id.0)
                 .execute(&mut *self.connection)
@@ -930,7 +931,7 @@ impl<'session> TaskOperator<'session> {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
-        .bind(&request.parent_type)
+        .bind(stored_reference(&request.parent_type))
         .bind(request.parent_id.require_stored()?)
         .bind(status_spelling)
         .bind(ts_start)
@@ -1052,7 +1053,7 @@ impl<'session> TaskOperator<'session> {
     ) -> Result<Vec<i64>, TaskError> {
         Ok(
             sqlx::query_scalar("SELECT id FROM tasks WHERE parent_type = ? AND parent_id = ?")
-                .bind(parent_type)
+                .bind(stored_reference(parent_type))
                 .bind(parent_id)
                 .fetch_all(&mut *self.connection)
                 .await?,
@@ -1079,7 +1080,7 @@ impl<'session> TaskOperator<'session> {
 
         if let Some((new_parent_type, new_parent_id)) = &write.reparent {
             sqlx::query("UPDATE tasks SET parent_type = ?, parent_id = ? WHERE id = ?")
-                .bind(new_parent_type)
+                .bind(stored_reference(new_parent_type))
                 .bind(new_parent_id)
                 .bind(id.0)
                 .execute(&mut *self.connection)

@@ -1,8 +1,8 @@
-//! The node tables and how a reference column spells each.
+//! The node tables and how a reference spells each.
 
 use super::*;
 
-const TABLES: [NodeTable; 9] = [
+const TABLES: [NodeTable; 11] = [
     NodeTable::Domain,
     NodeTable::Goal,
     NodeTable::Task,
@@ -12,25 +12,24 @@ const TABLES: [NodeTable; 9] = [
     NodeTable::Flow,
     NodeTable::FlowGoal,
     NodeTable::FlowTask,
+    NodeTable::FlowCommitment,
+    NodeTable::FlowExpectation,
 ];
 
 #[test]
-fn every_spelling_of_a_table_reads_back_as_that_table() {
+fn every_table_reads_back_from_its_own_spelling() {
     for table in TABLES {
-        for spelling in table.reference_spellings() {
-            assert_eq!(
-                NodeTable::from_reference(spelling),
-                Some(table),
-                "{spelling}"
-            );
-        }
+        assert_eq!(NodeTable::from_reference(table.as_str()), Some(table));
     }
 }
 
 #[test]
-fn a_domains_row_is_named_by_any_of_its_subtypes() {
-    assert_eq!(
-        NodeTable::Domain.reference_spellings(),
-        &["aspect", "project", "domain", "tag"]
-    );
+fn a_domains_row_named_by_any_of_its_subtypes_reads_as_the_domains_table() {
+    for subtype in ["aspect", "project", "domain", "tag"] {
+        assert_eq!(
+            NodeTable::from_reference(subtype),
+            Some(NodeTable::Domain),
+            "{subtype}"
+        );
+    }
 }

@@ -28,6 +28,33 @@ pub fn kind_of(parent_type: &str) -> Option<NodeKind> {
     })
 }
 
+/// Whether `reference` names a row of the `domains` table: an Aspect, a Project, a Domain or a Tag.
+pub fn names_a_domain(reference: &str) -> bool {
+    matches!(reference, "aspect" | "project" | "domain" | "tag")
+}
+
+/// The one spelling a stored reference column holds for the node `reference` names (Task 13c,
+/// migration 0096): `domain` for every domains-table row, whichever subtype the caller named it
+/// by, and any other spelling as given. Every writer stores this, and every lookup asks by it.
+pub fn stored_reference(reference: &str) -> &str {
+    if names_a_domain(reference) {
+        "domain"
+    } else {
+        reference
+    }
+}
+
+/// The kind of the parent a `(parent_type, parent_id)` pair names. A domains-table parent is the
+/// kind its row's `subtype` says — the reference spells every one of them `domain` — so `subtype`
+/// is that row's, or `None` when the parent is no domains-table row or the row was not found, in
+/// which case the spelling is all there is to go on.
+pub fn parent_kind(parent_type: &str, subtype: Option<&str>) -> Option<NodeKind> {
+    match subtype {
+        Some(subtype) if names_a_domain(parent_type) => kind_of(subtype),
+        _ => kind_of(parent_type),
+    }
+}
+
 /// Whether a node of kind `child` may hang under one of kind `parent`.
 ///
 /// - An **Aspect** never moves: it is the top of the board.

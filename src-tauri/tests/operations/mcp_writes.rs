@@ -1493,36 +1493,32 @@ async fn an_id_given_as_a_number_or_its_digits_names_the_row() {
 }
 
 #[tokio::test]
-async fn a_domain_table_parent_is_named_by_its_true_subtype_whatever_it_was_called() {
+async fn a_domain_table_parent_is_spelled_domain_whatever_it_was_called() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
     let board = board(&app).await;
     let mcp = mcp(&pool);
 
     // Any of the four spellings names the same table, so each is accepted — and the row is
-    // written, and reported, under its parent's true subtype.
-    let created = run(&mcp, create("domain", board.inside, "Called a domain")).await;
-    assert_eq!(succeeded(&created)["parent_type"], "project");
-    let id = succeeded(&created)["id"].as_i64().expect("a stored row");
-    let stored: String = sqlx::query_scalar("SELECT parent_type FROM tasks WHERE id = ?")
-        .bind(id)
-        .fetch_one(&pool)
-        .await
-        .expect("read the parent type");
-    assert_eq!(stored, "project");
+    // written, and reported, under the one spelling a reference to that table takes (Task 13c).
+    for spelling in ["project", "aspect", "domain"] {
+        let created = run(&mcp, create(spelling, board.inside, "Called something")).await;
+        assert_eq!(succeeded(&created)["parent_type"], "domain", "{spelling}");
+        let id = succeeded(&created)["id"].as_i64().expect("a stored row");
+        let stored: String = sqlx::query_scalar("SELECT parent_type FROM tasks WHERE id = ?")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .expect("read the parent type");
+        assert_eq!(stored, "domain", "{spelling}");
+    }
 
-    // A row stored under a wrong spelling is still reported by the true one.
-    sqlx::query("UPDATE tasks SET parent_type = 'domain' WHERE id = ?")
-        .bind(board.inside_task)
-        .execute(&pool)
-        .await
-        .expect("misspell the fixture's parent");
     let row = snapshot(&mcp, "tasks")
         .await
         .into_iter()
         .find(|row| row["id"] == board.inside_task)
         .expect("the task is on the board");
-    assert_eq!(row["parent_type"], "project");
+    assert_eq!(row["parent_type"], "domain");
     assert!(row["full_id"].is_string() && row["short_id"].is_string());
 }
 

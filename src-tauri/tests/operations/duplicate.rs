@@ -198,7 +198,7 @@ async fn duplicating_a_project_clones_its_whole_subtree_and_leaves_the_original_
             .await
             .unwrap();
     let goal_copy: i64 =
-        sqlx::query_scalar("SELECT id FROM goals WHERE parent_type = 'project' AND parent_id = ?")
+        sqlx::query_scalar("SELECT id FROM goals WHERE parent_type = 'domain' AND parent_id = ?")
             .bind(engines_copy)
             .fetch_one(&pool)
             .await
@@ -230,7 +230,7 @@ async fn duplicating_a_project_clones_its_whole_subtree_and_leaves_the_original_
         .unwrap();
     assert_eq!(original.parent_id, Some(aspect));
     let still_under_engines: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM goals WHERE parent_id = ? AND parent_type = 'project'",
+        "SELECT COUNT(*) FROM goals WHERE parent_id = ? AND parent_type = 'domain'",
     )
     .bind(engines)
     .fetch_one(&pool)
@@ -1027,7 +1027,7 @@ async fn a_flow_under_a_copied_project_comes_with_it_and_its_target_follows_the_
     assert_eq!(original.id, inside);
     assert_eq!(
         (copy.parent_type.as_str(), copy.parent_id),
-        ("project", pasted.copy.id)
+        ("domain", pasted.copy.id)
     );
     assert_eq!(
         (copy.target_type.as_deref(), copy.target_id),
@@ -1045,7 +1045,7 @@ async fn a_flow_under_a_copied_project_comes_with_it_and_its_target_follows_the_
     assert_ne!(copy.id, outside);
     assert_eq!(
         (copy.target_type.as_deref(), copy.target_id),
-        (Some("project"), Some(elsewhere))
+        (Some("domain"), Some(elsewhere))
     );
 
     // A NULL target stays NULL, so it follows its copied parent; a Flow under a copied Goal comes.

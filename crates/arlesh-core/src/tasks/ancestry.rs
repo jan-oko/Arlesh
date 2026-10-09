@@ -42,7 +42,7 @@ pub(super) async fn occurrence_of<M: SessionMode>(
 /// either operator — see [`Db`]'s `# Where an operation lives`. Read-only, so it is generic over
 /// the session mode and serves a pooled read command and a transactional writer alike.
 ///
-/// A start that is not a scoped node — `("project", 7)` — yields an empty chain that reached the
+/// A start that is not a scoped node — `("domain", 7)` — yields an empty chain that reached the
 /// root, which is the correct answer to every question: nothing above it is scoped.
 ///
 /// Never loops. A corrupt tree whose parent links cycle is reachable today (nothing on the write
