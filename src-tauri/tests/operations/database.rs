@@ -55,16 +55,46 @@ async fn aspects_have_expected_titles() {
     );
 }
 
+/// A one-connection database with foreign keys on, migrated through every migration numbered
+/// below `version`, and the whole chain to finish it with.
+async fn pool_before(version: i64) -> (sqlx::SqlitePool, sqlx::migrate::Migrator) {
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .after_connect(|conn, _| {
+            Box::pin(async move {
+                sqlx::query("PRAGMA foreign_keys = ON")
+                    .execute(conn)
+                    .await?;
+                Ok(())
+            })
+        })
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    let everything = sqlx::migrate!("./migrations");
+    let mut before = sqlx::migrate!("./migrations");
+    before.migrations = std::borrow::Cow::Owned(
+        everything
+            .migrations
+            .iter()
+            .filter(|migration| migration.version < version)
+            .cloned()
+            .collect(),
+    );
+    before.run(&pool).await.unwrap();
+    (pool, everything)
+}
+
 /// Migration `0025` clears the Target Node of every flow that already points at its own parent, so
 /// that the parent default lives in the read path instead of in a column a move would leave behind.
 ///
 /// The comparison is on the **normalised node id**: aspects, projects, domains and tags share one
 /// `domains` table, so a flow can name the very same row `project` as a parent and `domain` as a
-/// target — 8 of the 15 flows on the author's board do. A flow pointed at anything else keeps the
-/// target it was given.
+/// target — 8 of the 15 flows on the author's board did. A flow pointed at anything else keeps the
+/// target it was given. Run on the schema before 0096, which stores only `domain`.
 #[tokio::test]
 async fn migration_0025_clears_a_target_that_is_already_the_parent() {
-    let pool = helpers::test_pool().await;
+    let (pool, _) = pool_before(96).await;
     sqlx::query(
         "INSERT INTO flows (id, title, instance_type, parent_type, parent_id, target_type, target_id) VALUES
            (1, 'target is the parent',            'task', 'domain',  7, 'domain', 7),
@@ -626,4 +656,152 @@ async fn migration_0087_gives_every_habit_a_clock_and_keeps_every_overlay() {
         plan.as_deref(),
         Some(r#"{"kind":"day","date":"2026-09-30"}"#)
     );
+}
+
+/// Migration `0096` (Task 13c) respells every reference to a domains-table row — stored as
+/// `aspect`, `project`, `domain` or `tag`, whichever its writer used — as `domain`, rebuilding the
+/// seven tables that hold one so their CHECKs admit no other spelling. Dropping `tasks`, `goals`,
+/// `commitments`, `expectations` and `flows` cascades to everything hanging off them, so this seeds
+/// a row in each kind of dependent, nested ones included, and checks that every one survives; and
+/// the undo journal's images, written under the old spellings, are respelled to match.
+#[tokio::test]
+async fn migration_0096_spells_every_domains_table_parent_domain_and_keeps_every_link() {
+    let (pool, everything) = pool_before(96).await;
+    sqlx::query(
+        "INSERT INTO domains (id, title, subtype, parent_id) VALUES
+             (100, 'Project', 'project', 1), (101, 'Tag', 'tag', NULL);
+         INSERT INTO goals (id, title, parent_type, parent_id) VALUES (1, 'goal', 'project', 100);
+         INSERT INTO tasks (id, title, parent_type, parent_id) VALUES
+             (1, 'under an aspect', 'aspect', 1), (2, 'under a project', 'project', 100),
+             (3, 'under a goal', 'goal', 1), (4, 'already domain', 'domain', 100);
+         INSERT INTO commitments (id, title, parent_type, parent_id)
+             VALUES (1, 'vow', 'project', 100);
+         INSERT INTO expectations (id, title, parent_type, parent_id)
+             VALUES (1, 'wait', 'project', 100);
+         INSERT INTO infos (id, body, parent_type, parent_id) VALUES
+             (1, 'about the tag', 'tag', 101), (2, 'about the aspect', 'aspect', 1),
+             (3, 'about a task', 'task', 2);
+         INSERT INTO flows (id, title, instance_type, parent_type, parent_id, target_type, target_id)
+             VALUES (1, 'habit', 'task', 'project', 100, 'aspect', 1);
+         INSERT INTO flow_goals (id, flow_id, title, parent_type, parent_id)
+             VALUES (1, 1, 'goal item', 'flow', 1);
+         INSERT INTO flow_tasks (id, flow_id, title, parent_type, parent_id)
+             VALUES (1, 1, 'task item', 'flow', 1);
+         INSERT INTO flow_task_async_templates (flow_task_id, title) VALUES (1, 'reply');
+         INSERT INTO tags_on_flow_task_async_templates (flow_task_id, tag_id) VALUES (1, 101);
+         INSERT INTO flow_instances (id, flow_id, root_type, root_id, started_at)
+             VALUES (1, 1, 'task', 2, 0);
+         INSERT INTO flow_instance_nodes (flow_instance_id, node_type, node_id, source_item_type,
+                                          source_item_id, original_parent_type, original_parent_id)
+             VALUES (1, 'task', 2, 'flow', 1, 'project', 100);
+         INSERT INTO tags_on_tasks (task_id, tag_id) VALUES (2, 101);
+         INSERT INTO task_dependencies (task_id, dependency_type, dependency_id)
+             VALUES (2, 'task', 1);
+         INSERT INTO tags_on_goals (goal_id, tag_id) VALUES (1, 101);
+         INSERT INTO tags_on_commitments (commitment_id, tag_id) VALUES (1, 101);
+         INSERT INTO tags_on_expectations (expectation_id, tag_id) VALUES (1, 101);",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let journalled: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM undo_journal
+         WHERE json_extract(after_image, '$.parent_type') IN ('aspect', 'project', 'tag')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(journalled > 0, "the seeding is journalled under the old spellings");
+
+    everything.run(&pool).await.unwrap();
+
+    for (table, expected) in [
+        ("tasks", vec!["domain", "domain", "goal", "domain"]),
+        ("goals", vec!["domain"]),
+        ("commitments", vec!["domain"]),
+        ("expectations", vec!["domain"]),
+        ("infos", vec!["domain", "domain", "task"]),
+        ("flows", vec!["domain"]),
+    ] {
+        let spellings: Vec<String> =
+            sqlx::query_scalar(&format!("SELECT parent_type FROM {table} ORDER BY id"))
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(spellings, expected, "{table}");
+    }
+    let target: (String, i64) = sqlx::query_as("SELECT target_type, target_id FROM flows")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(target, ("domain".to_string(), 1));
+    let original: String =
+        sqlx::query_scalar("SELECT original_parent_type FROM flow_instance_nodes")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(original, "domain");
+
+    for table in [
+        "flow_goals",
+        "flow_tasks",
+        "flow_task_async_templates",
+        "tags_on_flow_task_async_templates",
+        "flow_instance_nodes",
+        "tags_on_tasks",
+        "task_dependencies",
+        "tags_on_goals",
+        "tags_on_commitments",
+        "tags_on_expectations",
+    ] {
+        let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 1, "{table} lost its row in the rebuild");
+    }
+    let run_flow: Option<i64> = sqlx::query_scalar("SELECT flow_id FROM flow_instances")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(run_flow, Some(1), "a started run keeps its Flow");
+
+    let old_spellings: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM undo_journal
+         WHERE json_extract(before_image, '$.parent_type') IN ('aspect', 'project', 'tag')
+            OR json_extract(after_image, '$.parent_type') IN ('aspect', 'project', 'tag')
+            OR json_extract(after_image, '$.target_type') IN ('aspect', 'project', 'tag')
+            OR json_extract(after_image, '$.original_parent_type') IN ('aspect', 'project', 'tag')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(old_spellings, 0, "the journal's images are respelled");
+
+    let violations: Vec<(String, i64, String, i64)> = sqlx::query_as("PRAGMA foreign_key_check")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    assert!(violations.is_empty(), "{violations:?}");
+
+    for (table, insert) in [
+        (
+            "tasks",
+            "INSERT INTO tasks (title, parent_type, parent_id) VALUES ('x', 'project', 100)",
+        ),
+        (
+            "infos",
+            "INSERT INTO infos (body, parent_type, parent_id) VALUES ('x', 'tag', 101)",
+        ),
+        (
+            "flows",
+            "INSERT INTO flows (title, instance_type, parent_type, parent_id)
+             VALUES ('x', 'task', 'aspect', 1)",
+        ),
+    ] {
+        assert!(
+            sqlx::query(insert).execute(&pool).await.is_err(),
+            "{table} refuses an old spelling"
+        );
+    }
 }

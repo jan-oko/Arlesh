@@ -108,7 +108,7 @@ async fn create_and_get_flow() {
         .unwrap();
     assert_eq!(flow.title, "Add Feature");
     assert_eq!(flow.instance_type, "task");
-    assert_eq!(flow.parent_type, "aspect");
+    assert_eq!(flow.parent_type, "domain");
     assert_eq!(flow.flow_duration_n, Some(2));
     assert_eq!(flow.flow_duration_kind.as_deref(), Some("week"));
 

@@ -22,6 +22,7 @@
 use chrono::NaiveDateTime;
 
 use crate::database::session::{Db, Transactional};
+use crate::nodes::rules::parenting::stored_reference;
 use crate::scopes::db::DbScopeKey;
 
 use super::error::TaskError;
@@ -243,7 +244,7 @@ impl<'session> ExpectationOperator<'session> {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&request.title)
-        .bind(&request.parent_type)
+        .bind(stored_reference(&request.parent_type))
         .bind(request.parent_id.require_stored()?)
         .bind(every_n)
         .bind(&every_kind)
@@ -357,7 +358,7 @@ impl<'session> ExpectationOperator<'session> {
                     released_at
              FROM expectations WHERE id = ?",
         )
-        .bind(parent_type)
+        .bind(stored_reference(parent_type))
         .bind(parent_id)
         .bind(id.0)
         .execute(&mut *self.connection)
@@ -398,7 +399,7 @@ impl<'session> ExpectationOperator<'session> {
         Ok(sqlx::query_scalar(
             "SELECT id FROM expectations WHERE parent_type = ? AND parent_id = ?",
         )
-        .bind(parent_type)
+        .bind(stored_reference(parent_type))
         .bind(parent_id)
         .fetch_all(&mut *self.connection)
         .await?)
@@ -415,7 +416,7 @@ impl<'session> ExpectationOperator<'session> {
         let (ts_start, ts_end, ts_n, ts_kind) = time_scope_columns(&write.time_scope);
         if let Some((parent_type, parent_id)) = &write.reparent {
             sqlx::query("UPDATE expectations SET parent_type = ?, parent_id = ? WHERE id = ?")
-                .bind(parent_type)
+                .bind(stored_reference(parent_type))
                 .bind(parent_id)
                 .bind(id.0)
                 .execute(&mut *self.connection)

@@ -91,3 +91,50 @@ async fn a_writer_refuses_a_kind_the_table_does_not_allow_there() {
     assert_eq!(wire["kind"], "invalid_request");
     assert_eq!(wire["message"], "a goal cannot hang under a task");
 }
+
+/// A reference names every domains-table row `domain` (Task 13c), so the kind of such a parent is
+/// read from its row's subtype, not from how the request spelled it: a Goal asked for under a Tag
+/// spelled `domain` is refused as under a Tag, and one under a Project spelled `aspect` is written
+/// — and stored as `domain`.
+#[tokio::test]
+async fn a_domains_table_parent_is_the_kind_its_subtype_says_however_it_is_spelled() {
+    use arlesh_lib::{commands::tasks as task_commands, tasks::model::CreateGoalRequest};
+    use tauri::Manager;
+
+    let pool = crate::helpers::test_pool().await;
+    let app = crate::helpers::command_host(&pool);
+    sqlx::query(
+        "INSERT INTO domains (id, title, subtype, parent_id) VALUES
+             (100, 'Label', 'tag', NULL), (101, 'Engines', 'project', 1)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let refused = task_commands::create_goal(
+        app.state(),
+        CreateGoalRequest {
+            title: "Ship".into(),
+            parent_type: "domain".into(),
+            parent_id: 100.into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap_err();
+    let wire = serde_json::to_value(&refused).unwrap();
+    assert_eq!(wire["message"], "a goal cannot hang under a tag");
+
+    let goal = task_commands::create_goal(
+        app.state(),
+        CreateGoalRequest {
+            title: "Ship".into(),
+            parent_type: "aspect".into(),
+            parent_id: 101.into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(goal.parent_type, "domain");
+}

@@ -29,6 +29,7 @@ pub(crate) use super::rules::agentic::{require_spec, settle_status, stranded};
 use super::TaskOperator;
 use crate::database::session::{Db, SessionMode};
 use crate::nodes::key::{OccurrenceKey, TemplateItem, TemplateKind};
+use crate::nodes::rules::parenting::stored_reference;
 
 #[derive(sqlx::FromRow)]
 struct BriefRow {
@@ -197,7 +198,7 @@ impl TaskOperator<'_> {
                     };
                     let kind = match kind.as_str() {
                         "goal" | "task" => kind,
-                        _ => "project".to_string(),
+                        _ => "domain".to_string(),
                     };
                     TemplateParent::Host(kind, id)
                 }));
@@ -244,7 +245,7 @@ impl TaskOperator<'_> {
             "SELECT id FROM flows
               WHERE COALESCE(target_type, parent_type) = ? AND COALESCE(target_id, parent_id) = ?",
         )
-        .bind(kind)
+        .bind(stored_reference(kind))
         .bind(id)
         .fetch_all(&mut *self.connection)
         .await?)

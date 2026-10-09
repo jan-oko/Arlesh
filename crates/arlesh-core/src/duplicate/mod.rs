@@ -62,6 +62,7 @@ use crate::error::AppError;
 use crate::flows::model::FlowId;
 use crate::flows::rules::targets::CopiedNodes;
 use crate::infos::model::{CreateInfoRequest, InfoId, UpdateInfoRequest};
+use crate::nodes::rules::parenting::stored_reference;
 use crate::tasks::model::{
     CommitmentId, CreateGoalRequest, CreateTaskRequest, ExpectationId, GoalId, GoalStatus,
     TaskAgentic, TaskId, UpdateGoalRequest, UpdateTaskRequest,
@@ -181,9 +182,10 @@ struct ClonedNode {
 /// new root at `position`, and returns the new root's id together with the occurrence children
 /// it left behind.
 ///
-/// `target_kind` is the target's kind as the *root's own table* spells a parent: `"project"`,
-/// `"goal"` or `"task"` for a goal or task root, the target's exact subtype for an info root, and
-/// unused for a domain root (the `domains` table has only a `parent_id`).
+/// `target_kind` is the target's kind: `"goal"`, `"task"`, `"commitment"` and the like, or any
+/// domains-table spelling for a domains-table target, which the copy stores as `domain`
+/// ([`stored_reference`]). It is unused for a domain root (the `domains` table has only a
+/// `parent_id`).
 ///
 /// Every Flow under a copied node is copied too, after the nodes, with its Target Node remapped
 /// when the copy carried it — see the module docs.
@@ -371,12 +373,11 @@ async fn clone_node(
 /// The direct children of a just-cloned node, each already pointed at its new parent, and the
 /// Flows hanging under it.
 ///
-/// Children are found under **every** spelling that names the original as a parent
-/// ([`NodeTable::reference_spellings`]): a row under a Domain may be stored as `project` or as
-/// `domain`, depending on which writer made it, and a copy that read only one spelling would drop
-/// the others in silence. The copies get `cloned.kind` — the clone keeps its subtype — collapsed
-/// per table by each clone function. A row in `attached` hangs on a Habit occurrence rather than
-/// on this node, so it is skipped here and named by [`left_behind`] instead.
+/// Children are found under the spelling of the original's table ([`NodeTable::as_str`]), which is
+/// how every reference column names a parent — `domain` for any domains-table row (migration
+/// 0096). The copies get `cloned.kind`, which each clone function stores the same way
+/// ([`stored_reference`]). A row in `attached` hangs on a Habit occurrence rather than on this
+/// node, so it is skipped here and named by [`left_behind`] instead.
 async fn children_of(
     db: &mut Db<Transactional>,
     item: &PendingClone,
@@ -390,11 +391,10 @@ async fn children_of(
         let ids = child_ids(db, DuplicableKind::Domain, "", old_id).await?;
         extend(&mut children, DuplicableKind::Domain, ids);
     }
+    let parent_type = item.kind.table().as_str();
     for child_kind in held_kinds(item.kind) {
-        for spelling in item.kind.table().reference_spellings() {
-            let ids = child_ids(db, *child_kind, spelling, old_id).await?;
-            extend(&mut children, *child_kind, ids);
-        }
+        let ids = child_ids(db, *child_kind, parent_type, old_id).await?;
+        extend(&mut children, *child_kind, ids);
     }
     let nodes = children
         .into_iter()
@@ -410,8 +410,7 @@ async fn children_of(
             forced_position: None,
         })
         .collect();
-    // A copied domains-table row keeps its subtype, which is the spelling the `flows` table takes
-    // for it (a Tag holds no Flow, so `ids_under` finds none under one).
+    // A Tag holds no Flow, so `ids_under` finds none under one.
     let flows = db
         .flows()
         .ids_under(item.kind.table(), old_id)
@@ -461,18 +460,6 @@ fn extend(children: &mut Vec<(DuplicableKind, i64)>, kind: DuplicableKind, ids: 
     children.extend(ids.into_iter().map(|id| (kind, id)));
 }
 
-/// A goal's, task's, Commitment's or wait's stored `parent_type`: `"goal"`, `"task"` and
-/// `"commitment"` pass through, and every domains-table kind (aspect, project, domain, tag)
-/// collapses to the literal `"project"`, which every one of those tables accepts for a
-/// domains-table parent. (No Goal is ever queued under a Commitment, which cannot hold one.)
-fn collapse_parent_kind(kind: &str) -> &str {
-    if matches!(kind, "goal" | "task" | "commitment") {
-        kind
-    } else {
-        "project"
-    }
-}
-
 /// Clones a Project, Domain or Tag row.
 async fn clone_domain(
     db: &mut Db<Transactional>,
@@ -519,7 +506,7 @@ async fn clone_goal(
         db,
         CreateGoalRequest {
             title: original.title.clone(),
-            parent_type: collapse_parent_kind(&item.new_parent_kind).to_string(),
+            parent_type: stored_reference(&item.new_parent_kind).to_string(),
             parent_id: item.new_parent_id.into(),
             status: GoalStatus::from_db(&original.status),
             time_scope: original.time_scope.clone(),
@@ -558,7 +545,7 @@ async fn clone_task(
         db,
         CreateTaskRequest {
             title: original.title.clone(),
-            parent_type: collapse_parent_kind(&item.new_parent_kind).to_string(),
+            parent_type: stored_reference(&item.new_parent_kind).to_string(),
             parent_id: item.new_parent_id.into(),
             status: Some(original.status),
             time_scope: original.time_scope.clone(),
@@ -624,7 +611,7 @@ async fn clone_commitment(
         .commitments()
         .copy_row(
             CommitmentId(item.old_id),
-            collapse_parent_kind(&item.new_parent_kind),
+            stored_reference(&item.new_parent_kind),
             item.new_parent_id,
         )
         .await?;
@@ -645,7 +632,7 @@ async fn clone_expectation(
         .expectations()
         .copy_row(
             ExpectationId(item.old_id),
-            collapse_parent_kind(&item.new_parent_kind),
+            stored_reference(&item.new_parent_kind),
             item.new_parent_id,
         )
         .await?;
@@ -666,7 +653,7 @@ async fn clone_info(
         .create(CreateInfoRequest {
             body: original.body.clone(),
             details: original.details.clone(),
-            parent_type: item.new_parent_kind.clone(),
+            parent_type: stored_reference(&item.new_parent_kind).to_string(),
             parent_id: item.new_parent_id.into(),
             position: item.forced_position.unwrap_or(original.position),
         })

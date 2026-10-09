@@ -159,7 +159,7 @@ async fn text_that_is_not_json_is_refused_by_the_schema() {
     let written = sqlx::query(
         "INSERT INTO tasks (title, parent_type, parent_id, time_scope_start_id, time_scope_end_id,
                             on_scope_exit)
-         VALUES ('Raw', 'project', ?, 'week:2026-09-20', 'week:2026-09-20', 'keep')",
+         VALUES ('Raw', 'domain', ?, 'week:2026-09-20', 'week:2026-09-20', 'keep')",
     )
     .bind(project_id)
     .execute(&pool)
@@ -179,7 +179,7 @@ async fn a_hand_built_key_that_misses_its_start_is_refused_on_write() {
     let written = sqlx::query(
         "INSERT INTO tasks (title, parent_type, parent_id, time_scope_start_id, time_scope_end_id,
                             on_scope_exit)
-         VALUES ('Raw', 'project', ?, ?, ?, 'keep')",
+         VALUES ('Raw', 'domain', ?, ?, ?, 'keep')",
     )
     .bind(project_id)
     .bind(DbScopeKey(wednesday))

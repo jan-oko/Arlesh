@@ -198,7 +198,7 @@ async fn duplicating_a_project_clones_its_whole_subtree_and_leaves_the_original_
             .await
             .unwrap();
     let goal_copy: i64 =
-        sqlx::query_scalar("SELECT id FROM goals WHERE parent_type = 'project' AND parent_id = ?")
+        sqlx::query_scalar("SELECT id FROM goals WHERE parent_type = 'domain' AND parent_id = ?")
             .bind(engines_copy)
             .fetch_one(&pool)
             .await
@@ -230,7 +230,7 @@ async fn duplicating_a_project_clones_its_whole_subtree_and_leaves_the_original_
         .unwrap();
     assert_eq!(original.parent_id, Some(aspect));
     let still_under_engines: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM goals WHERE parent_id = ? AND parent_type = 'project'",
+        "SELECT COUNT(*) FROM goals WHERE parent_id = ? AND parent_type = 'domain'",
     )
     .bind(engines)
     .fetch_one(&pool)

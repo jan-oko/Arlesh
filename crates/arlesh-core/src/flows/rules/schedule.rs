@@ -41,12 +41,12 @@ pub(in crate::flows) fn advance(date: NaiveDate, k: i64, kind: &str) -> Option<N
     }
 }
 
-/// Maps a target node kind to the parent_type a real goal/task uses (domain-table kinds → project).
+/// Maps a target node kind to the parent_type a real goal/task uses (domain-table kinds → `domain`).
 pub(in crate::flows) fn target_parent_type(kind: &str) -> String {
     match kind {
         "goal" => "goal",
         "task" => "task",
-        _ => "project",
+        _ => "domain",
     }
     .to_string()
 }

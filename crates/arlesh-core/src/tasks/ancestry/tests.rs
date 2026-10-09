@@ -335,7 +335,7 @@ fn both_policies_pass_a_found_answer_and_an_unconstrained_one_straight_through()
 #[tokio::test]
 async fn a_three_deep_chain_climbs_to_the_root() {
     let pool = scratch_pool().await;
-    insert_goal(&pool, 1, "project", 99).await;
+    insert_goal(&pool, 1, "domain", 99).await;
     insert_task(&pool, 2, "goal", 1).await;
     insert_task(&pool, 3, "task", 2).await;
     let mut db = SessionFactory::new(pool.clone())
@@ -417,7 +417,7 @@ async fn a_start_that_is_not_a_scoped_node_yields_an_empty_rooted_chain() {
         .await
         .expect("connect failed");
 
-    let chain = climb(&mut db, "project", 99).await.expect("climb failed");
+    let chain = climb(&mut db, "domain", 99).await.expect("climb failed");
 
     assert!(chain.links.is_empty());
     assert_eq!(chain.end, ChainEnd::Root);
