@@ -10,6 +10,8 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
+- **Review pill in the Zen View.** The Zen View's Filter menu has a **Review** pill (key **R** in the menu) that shows the agentic tasks waiting on your answer. It is off by default, so Zen now leaves those tasks out until you turn it on. The setting is kept with the tab. Do, Start and the List View still show Review as before.
+
 - **Downloadable builds for Linux and Windows.** Every commit to master publishes builds to the rolling *latest* pre-release on GitHub, and each `vX.Y.Z` tag gets a release of its own. Linux gets an AppImage and a tarball of the binary, built to run on current distributions. Windows gets a per-user setup `.exe` and an `.msi`; they are not signed yet, so the first run shows SmartScreen's warning (**More info**, then **Run anyway**). Data lives in `%APPDATA%\com.atai.arlesh`, and the tray works as on Linux.
 
 - **Archive a Task or Commitment by hand.** Right-click it on the Mindmap or in the List View and pick **Archive**, or turn on **Archived** in its editor's Advanced section. The whole branch reads as archived and leaves Plan, Start and Do; **Unarchive** brings it back as it was. Either is one **Ctrl+Z**.
