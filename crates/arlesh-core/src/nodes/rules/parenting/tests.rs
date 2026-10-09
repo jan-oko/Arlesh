@@ -77,3 +77,45 @@ fn template_items_follow_the_stored_table() {
     assert!(!may_parent(NodeKind::Info, NodeKind::FlowCommitment));
     assert_eq!(kind_of("flow_expectation"), Some(NodeKind::FlowExpectation));
 }
+
+#[test]
+fn every_domains_table_subtype_is_stored_as_domain() {
+    for spelling in ["aspect", "project", "domain", "tag"] {
+        assert_eq!(stored_reference(spelling), "domain", "{spelling}");
+    }
+}
+
+#[test]
+fn every_other_reference_is_stored_as_given() {
+    for spelling in [
+        "goal",
+        "task",
+        "commitment",
+        "expectation",
+        "info",
+        "flow",
+        "flow_task",
+    ] {
+        assert_eq!(stored_reference(spelling), spelling);
+    }
+}
+
+#[test]
+fn a_domains_table_parent_is_the_kind_its_subtype_says() {
+    assert_eq!(parent_kind("domain", Some("tag")), Some(NodeKind::Tag));
+    assert_eq!(
+        parent_kind("domain", Some("project")),
+        Some(NodeKind::Project)
+    );
+    assert_eq!(
+        parent_kind("project", Some("aspect")),
+        Some(NodeKind::Aspect)
+    );
+}
+
+#[test]
+fn a_parent_with_no_subtype_is_the_kind_its_spelling_says() {
+    assert_eq!(parent_kind("goal", None), Some(NodeKind::Goal));
+    assert_eq!(parent_kind("domain", None), Some(NodeKind::Domain));
+    assert_eq!(parent_kind("goal", Some("tag")), Some(NodeKind::Goal));
+}

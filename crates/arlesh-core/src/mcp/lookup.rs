@@ -10,7 +10,7 @@ use rmcp::model::{CallToolResult, ErrorData};
 
 use super::{
     access,
-    ids::{parent_spelling, IdRefusal, Named, NodeNames},
+    ids::{IdRefusal, Named, NodeNames},
     params::NodeIdParam,
     result,
 };
@@ -62,25 +62,11 @@ impl Board {
     ) -> Result<Self, AppError> {
         let mut load = crate::mindmap::load_blocked(db, now, at_capacity).await?;
         let map = crate::access::access_map(db).await?;
-        let domains = load.domains.clone();
         access::restrict_snapshot(&mut load, &map);
         let people = db.people().list().await?;
         super::delegation::label_waits(&mut load, &people);
-        let names = NodeNames::of(&load).with_subtypes(&domains);
+        let names = NodeNames::of(&load);
         Ok(Self { map, load, names })
-    }
-
-    /// `parent_type` as a Task stores it. A domain-table parent may be asked for by any of the
-    /// four subtype names or `domain` — they name the same table, so all are accepted — and is
-    /// written as the board spells it ([`parent_spelling`]); any other kind as given.
-    pub fn stored_parent_type(&self, parent_type: &str, parent: &NodeId) -> String {
-        match (NodeTable::from_reference(parent_type), parent) {
-            (Some(NodeTable::Domain), NodeId::Stored(row)) => match self.names.subtype(*row) {
-                Some(subtype) => parent_spelling(subtype).to_string(),
-                None => parent_type.to_string(),
-            },
-            _ => parent_type.to_string(),
-        }
     }
 
     /// The visible node `id` names, which must be of the kind `node_type` spells — matched as a

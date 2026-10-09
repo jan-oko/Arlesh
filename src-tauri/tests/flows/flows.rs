@@ -108,7 +108,7 @@ async fn create_and_get_flow() {
         .unwrap();
     assert_eq!(flow.title, "Add Feature");
     assert_eq!(flow.instance_type, "task");
-    assert_eq!(flow.parent_type, "aspect");
+    assert_eq!(flow.parent_type, "domain");
     assert_eq!(flow.flow_duration_n, Some(2));
     assert_eq!(flow.flow_duration_kind.as_deref(), Some("week"));
 
@@ -4371,7 +4371,7 @@ async fn copying_a_habit_gives_a_habit_on_the_same_schedule_under_the_new_parent
     );
     assert_eq!(
         (copy.parent_type.as_str(), copy.parent_id, copy.position),
-        ("aspect", 2, 7)
+        ("domain", 2, 7)
     );
     assert!(copy.is_habit, "a copy of a Habit is a Habit");
     let recurrence = helpers::session_factory(&pool)

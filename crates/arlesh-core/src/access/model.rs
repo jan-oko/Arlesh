@@ -68,32 +68,13 @@ impl NodeTable {
         }
     }
 
-    /// Every spelling a reference column may use to name a row of this table — what
-    /// [`Self::from_reference`] reads back as this table. A domains-table row is named by any of
-    /// its subtypes, whichever its writer used (a Task under a Domain is stored as `project` by
-    /// some writers and `domain` by others), so all four are listed; every other table has one.
-    pub fn reference_spellings(self) -> &'static [&'static str] {
-        match self {
-            Self::Domain => &["aspect", "project", "domain", "tag"],
-            Self::Goal => &["goal"],
-            Self::Task => &["task"],
-            Self::Commitment => &["commitment"],
-            Self::Expectation => &["expectation"],
-            Self::Info => &["info"],
-            Self::Flow => &["flow"],
-            Self::FlowGoal => &["flow_goal"],
-            Self::FlowTask => &["flow_task"],
-            Self::FlowCommitment => &["flow_commitment"],
-            Self::FlowExpectation => &["flow_expectation"],
-        }
-    }
-
     /// Parses a node reference as the board spells it anywhere a row names another row: a
     /// `parent_type`, a dependency's type, a lifecycle's `node_type`, an MCP `node_type`.
     ///
-    /// Those columns name a domain-table row by its **subtype** (`aspect`, `project`, `domain`,
-    /// `tag`), so all four read as [`NodeTable::Domain`]. Anything that is not a stored row —
-    /// `flow_root`, `expectation_check`, a typo — is `None`.
+    /// A stored reference column names every domains-table row `domain` (migration 0096), but a
+    /// caller may still name one by its **subtype** (`aspect`, `project`, `tag`) — a lifecycle's
+    /// `node_type`, an MCP parameter — so all four read as [`NodeTable::Domain`]. Anything that is
+    /// not a stored row — `flow_root`, `expectation_check`, a typo — is `None`.
     pub fn from_reference(value: &str) -> Option<Self> {
         match value {
             "aspect" | "project" | "domain" | "tag" => Some(Self::Domain),

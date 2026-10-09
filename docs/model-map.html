@@ -262,7 +262,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <p class="is">Every node has exactly one parent. The tree is the board: views draw it, and context flows down it.</p>
       <dl><dt>Why</dt><dd>Windows, the Agentic flag, privacy and archival all reach children through it, so a branch is set once.</dd>
       <dt>Without</dt><dd>Every node carries all its own context, and moving a branch means editing every row in it.</dd>
-      <dt>Lives</dt><dd class="where">parent_type / parent_id on each kind; tasks/ancestry.rs</dd></dl></article>
+      <dt>Lives</dt><dd class="where">parent_type / parent_id on each kind (a domains-table parent always spelled domain; its kind is the row’s subtype); tasks/ancestry.rs</dd></dl></article>
     <article class="card"><h3>Flows and Habits</h3>
       <p class="is">A Flow is a template of Task, Goal, Commitment and wait items placed relatively in time. Starting it copies real nodes. A Habit is a Flow with a Recurrence: its instances are derived, never copied.</p>
       <dl><dt>Why</dt><dd>Repeated structure without retyping it, and recurring work without a growing pile of rows.</dd>

@@ -96,7 +96,7 @@ How the presets read them:
 - **Why:** windows, the Agentic flag, privacy and archival reach children through it, so a branch is set once.
 - **Without:** every node carries its own context, and moving a branch means editing every row.
 - **Lives:**
-  - `parent_type` / `parent_id` on each kind's table.
+  - `parent_type` / `parent_id` on each kind's table. A domains-table parent is always spelled `domain`; its kind is the row's `subtype` (`rs:nodes/rules/parenting.rs`).
   - Ancestor climbs live in `rs:tasks/ancestry.rs`.
   - Frontend tree building lives in `ts:utils/mindmap-tree.ts`.
 - **Spec:** [Resources](spec/resources.md), [Mindmap](spec/mindmap-view.md).

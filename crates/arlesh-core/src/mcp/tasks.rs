@@ -31,7 +31,7 @@ use crate::{
     access::model::{AccessLevel, NodeTable},
     database::session::{Db, Transactional},
     knowledge_base::model::PersonId,
-    nodes::id::NodeId,
+    nodes::{id::NodeId, rules::parenting::stored_reference},
     tasks::model::{
         AgenticBrief, AgenticStatus, CreateTaskRequest, Delegate, Status, Task, TaskAgentic,
         TaskArchival, TaskId, TimeScope, UpdateTaskRequest,
@@ -176,7 +176,7 @@ impl ArleshMcp {
                 Write::Create(
                     CreateTaskRequest {
                         title,
-                        parent_type: board.stored_parent_type(&parent_type, &parent),
+                        parent_type: stored_reference(&parent_type).to_string(),
                         parent_id: parent,
                         agentic: Some(TaskAgentic::Yes),
                         agentic_brief: brief.map(|brief| brief.over(AgenticBrief::default())),
@@ -301,7 +301,7 @@ impl ArleshMcp {
                 Write::Update(
                     id,
                     UpdateTaskRequest {
-                        parent_type: Some(board.stored_parent_type(&parent_type, &parent)),
+                        parent_type: Some(stored_reference(&parent_type).to_string()),
                         parent_id: Some(parent),
                         ..Default::default()
                     },

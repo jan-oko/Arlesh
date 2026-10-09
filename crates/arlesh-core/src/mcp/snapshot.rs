@@ -90,7 +90,7 @@ impl ArleshMcp {
         let names = {
             let mut whole = load.clone();
             access::restrict_snapshot(&mut whole, &map);
-            NodeNames::of(&whole).with_subtypes(&load.domains)
+            NodeNames::of(&whole)
         };
 
         // The presets are defined in `crate::filters`, and the frontend's own evaluator is held

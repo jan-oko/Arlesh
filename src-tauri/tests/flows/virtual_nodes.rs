@@ -153,7 +153,7 @@ async fn every_occurrence_is_an_ordinary_row_with_a_habit_origin() {
     assert_eq!(first_root.status.as_str(), "todo");
     assert_eq!(
         (first_root.parent_type.as_str(), &first_root.parent_id),
-        ("project", &NodeId::Stored(1)),
+        ("domain", &NodeId::Stored(1)),
         "a root hangs on the Habit's host"
     );
     let Origin::Habit(origin) = &first_root.origin else {

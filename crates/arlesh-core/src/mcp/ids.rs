@@ -95,9 +95,6 @@ pub(super) struct NodeNames {
     by_node: HashMap<(NodeTable, NodeId), usize>,
     /// Every visible stored node's row id, in decimal — what no short id may equal.
     rows: HashSet<String>,
-    /// Every domain-table row's true subtype, visible or not — what a parent reference to one
-    /// is reported as.
-    subtypes: HashMap<i64, String>,
 }
 
 /// A node by table and id.
@@ -294,26 +291,10 @@ impl NodeNames {
             nodes,
             by_node,
             rows,
-            subtypes: HashMap::new(),
         }
     }
 
-    /// Records every domain-table row's true subtype, from the whole board, visible or not.
-    pub fn with_subtypes(mut self, domains: &[crate::domains::model::Domain]) -> Self {
-        self.subtypes = domains
-            .iter()
-            .map(|domain| (domain.id, domain.subtype.clone()))
-            .collect();
-        self
-    }
-
-    /// The true subtype of the domain-table row `id`, when it is one.
-    pub fn subtype(&self, id: i64) -> Option<&str> {
-        self.subtypes.get(&id).map(String::as_str)
-    }
-
-    /// Stamps a node's JSON with the ids it goes by — `short_id` and `full_id` beside its `id` —
-    /// and names a domain-table parent the one way the board does: see [`parent_spelling`].
+    /// Stamps a node's JSON with the ids it goes by — `short_id` and `full_id` beside its `id`.
     /// A node this list does not hold, such as one written a moment ago, gets the short id it
     /// would have among them.
     pub fn stamp(&self, item: &mut Value, table: NodeTable) {
@@ -333,20 +314,6 @@ impl NodeNames {
         };
         fields.insert("short_id".into(), Value::String(short));
         fields.insert("full_id".into(), Value::String(full));
-
-        let parent_row = fields.get("parent_id").and_then(Value::as_i64);
-        let under_domain = fields
-            .get("parent_type")
-            .and_then(Value::as_str)
-            .and_then(NodeTable::from_reference)
-            == Some(NodeTable::Domain);
-        if let (true, Some(subtype)) = (under_domain, parent_row.and_then(|row| self.subtype(row)))
-        {
-            fields.insert(
-                "parent_type".into(),
-                Value::String(parent_spelling(subtype).to_string()),
-            );
-        }
     }
 
     /// `value` serialised and [stamped](Self::stamp).
@@ -467,17 +434,6 @@ fn clear_of_rows(hex: &str, length: usize, rows: &HashSet<String>, full: &str) -
         .map(|length| &hex[..length])
         .find(|prefix| !rows.contains(*prefix))
         .map_or_else(|| full.to_string(), str::to_string)
-}
-
-/// How a parent reference names a domain-table row: `project` for a Project, `domain` for any
-/// other subtype (Aspect, Domain, Tag). It is the spelling the Task, Goal and Commitment tables'
-/// CHECK constraints allow and the app writes, so it is what the MCP writes and reports, whatever
-/// spelling a row was stored or asked with.
-pub(super) fn parent_spelling(subtype: &str) -> &'static str {
-    match subtype {
-        "project" => "project",
-        _ => "domain",
-    }
 }
 
 fn common_prefix(left: &str, right: &str) -> usize {

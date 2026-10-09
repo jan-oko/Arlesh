@@ -40,6 +40,7 @@ use crate::nodes::{
     id::NodeId,
     key::{OccurrenceKey, TemplateKind},
     overlay::OverlayOperator,
+    rules::parenting::stored_reference,
 };
 use crate::scopes::db::DbScopeKey;
 use crate::scopes::key::ScopeKey;
@@ -182,9 +183,9 @@ impl<'session> FlowOperator<'session> {
         )
         .bind(&request.title)
         .bind(instance_type)
-        .bind(&request.parent_type)
+        .bind(stored_reference(&request.parent_type))
         .bind(request.parent_id)
-        .bind(&request.target_type)
+        .bind(request.target_type.as_deref().map(stored_reference))
         .bind(request.target_id)
         .bind(request.flow_duration_n)
         .bind(&request.flow_duration_kind)
@@ -239,29 +240,22 @@ impl<'session> FlowOperator<'session> {
 
     /// The ids of the Flows hanging directly under one stored node, in sort order.
     ///
-    /// The parent is matched under every spelling that names it
-    /// ([`NodeTable::reference_spellings`]), because a Flow's `parent_type` names a domains-table
-    /// row by whichever subtype its writer used (migration 0025). Only domains-table rows and
+    /// A Flow's `parent_type` names its parent's table — `domain` for every domains-table row
+    /// (migration 0096) — so the table's own spelling finds them all. Only domains-table rows and
     /// Goals can hold a Flow, so any other table finds none.
     pub async fn ids_under(
         &mut self,
         parent: NodeTable,
         parent_id: i64,
     ) -> Result<Vec<i64>, FlowError> {
-        let spellings = parent.reference_spellings();
-        let placeholders = vec!["?"; spellings.len()].join(", ");
-        let sql = format!(
-            "SELECT id FROM flows WHERE parent_type IN ({placeholders}) AND parent_id = ?
-             ORDER BY position ASC, id ASC"
-        );
-        let mut query = sqlx::query_scalar(&sql);
-        for spelling in spellings {
-            query = query.bind(*spelling);
-        }
-        Ok(query
-            .bind(parent_id)
-            .fetch_all(&mut *self.connection)
-            .await?)
+        Ok(sqlx::query_scalar(
+            "SELECT id FROM flows WHERE parent_type = ? AND parent_id = ?
+             ORDER BY position ASC, id ASC",
+        )
+        .bind(parent.as_str())
+        .bind(parent_id)
+        .fetch_all(&mut *self.connection)
+        .await?)
     }
 
     /// The template fields of this session's connection.
@@ -354,9 +348,9 @@ impl<'session> FlowOperator<'session> {
         )
         .bind(&title)
         .bind(&instance_type)
-        .bind(&parent_type)
+        .bind(stored_reference(&parent_type))
         .bind(parent_id)
-        .bind(&target_type)
+        .bind(target_type.as_deref().map(stored_reference))
         .bind(target_id)
         .bind(flow_duration_n)
         .bind(&flow_duration_kind)
@@ -1284,7 +1278,7 @@ impl<'session> FlowOperator<'session> {
         .bind(node.1)
         .bind(source.0)
         .bind(source.1)
-        .bind(parent.0)
+        .bind(stored_reference(parent.0))
         .bind(parent.1)
         .execute(&mut *self.connection)
         .await?;
@@ -2003,13 +1997,13 @@ impl<'session> FlowOperator<'session> {
         )
         .bind(&flow.title)
         .bind(&flow.instance_type)
-        .bind(&parent_type)
+        .bind(stored_reference(&parent_type))
         .bind(parent_id)
         // The Target Node is bound **as stored**, NULL included. A NULL target means "my parent"
         // and is resolved on read (migration 0025), so a clone of a flow that never named a target
         // resolves to wherever *it* was put — and a clone of one that did keeps pointing there.
         // Resolving the target here would pin every copy to the original's parent for ever.
-        .bind(&flow.target_type)
+        .bind(flow.target_type.as_deref().map(stored_reference))
         .bind(flow.target_id)
         .bind(flow.flow_duration_n)
         .bind(&flow.flow_duration_kind)
