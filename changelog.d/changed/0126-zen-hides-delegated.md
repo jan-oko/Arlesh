@@ -1,1 +1,0 @@
-- **Zen shows only what you hold.** A delegated Task no longer gets a card on the Zen grid, even while it is In Progress. Do still lists it. A card you have just delegated stays where it is until you move the selection off it.

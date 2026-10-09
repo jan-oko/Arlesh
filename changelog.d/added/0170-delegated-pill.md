@@ -1,1 +1,0 @@
-- **A Delegated pill in the Filter menu.** Delegated Tasks have a pill of their own beside Archived and Backlog (key `g` in the menu). Left off, Plan and Start hide delegated Tasks as they did before; **Include** shows them there; **Exclude** hides them everywhere, Do included. The node searches follow it, offering delegated Tasks only while it is on Include.

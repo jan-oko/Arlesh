@@ -1,0 +1,1 @@
+- **Tab always creates a Task.** On the Mindmap (and in the new Steps View), **Tab** makes a Task child whatever is selected, instead of a child whose kind depended on the parent. Where a Task cannot go, nothing is created and a toast says where it can; inside a Flow template it makes a Task item. Other kinds have their own **Shift**+letter chords (see Added).

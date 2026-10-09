@@ -1,0 +1,1 @@
+- **Views are switched from a dropdown, each with its own chord.** **Ctrl+M** Mindmap, **Ctrl+L** List, **Ctrl+P** Plan, **Ctrl+S** Steps and **Ctrl+J** Zen; **Alt+L** no longer switches views. The status presets stay on **Alt+A/P/S/D/B**. Shortcuts that act on the tab rather than the view — leaving a subtree, **Ctrl+O** search, the filter menu — now work in every view.

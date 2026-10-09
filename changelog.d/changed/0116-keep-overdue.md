@@ -1,1 +1,0 @@
-- **"Keep" is now "Keep Overdue".** The choice for what happens when a Task's or Goal's Time Scope passes unfinished now reads **Keep Overdue** / **Archive**, in the editors and on Steps View cards. It means what it did — the item stays and is flagged Overdue — and it is also what gives the item its default Due.

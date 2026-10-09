@@ -1,0 +1,6 @@
+- **List View additions.**
+  - **Ctrl+O** searches every node on the board and enters the one you pick, as on the Mindmap. The List and the Mindmap share one location, and entering a subtree leaves your filters alone.
+  - **Creating and deleting:** **Shift+Enter** creates a sibling Task, **Tab** a child Task, and the **+** at the end of each path header adds one under it. A new task opens straight into its title, and **Escape** discards it. **Delete** removes the selected row, with the Mindmap's confirmation and undo.
+  - **Scrolling:** the list follows the selection, **J** / **K** scroll without moving it, and **Ctrl+Home** / **Ctrl+End** select the first and last rows.
+  - **Alt+U** selects the Unblock preset.
+  - **Sections at the top:** a **Review** section for Agentic tasks waiting on you; under Start, an **Overdue** section (Settings → List → *Overdue first under Start*, on by default); and an optional **Asynchronous** section (*Asynchronous first*, off by default).

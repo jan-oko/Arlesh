@@ -1,3 +1,0 @@
-- **A dot on the Filter button for filters you can't see.** When the Filter menu holds a setting that nothing outside it shows, the Filter button wears a small dot: the Zen View's Agentic pill (which draws no chip), or the Archived or Backlog pill set to include or exclude, in any view that offers it. Tags and the List View's pills already show as chips, and the row-kind and strip toggles, Private Mode and the Mindmap's Info / Flow toggles never light it.
-
-  **Esc** now closes the Filter menu in every view, and focus goes back to where it was; the view underneath never sees the key, so the Mindmap's selection stays. In a search box with text in it, the first Esc clears the text and the second closes the menu.

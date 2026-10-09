@@ -1,0 +1,3 @@
+- **A Habit's passed iterations fold into one node.** A run of passed iterations draws as one node with its tally, for example "Journal: 14 passed · 9 done, 5 missed", while the open iteration stays on its own. **Ctrl+/** opens it into a tree of years, seasons, months and weeks (only the levels the run spans), each with its own tally and opened one level at a time; it stays open across restarts. How many passed iterations it takes is set by *Collapse habit history after* in Settings → General (default 3), and applies in the Mindmap and the Steps View.
+
+  **Ctrl+Alt+/** opens a cell and everything under it, folded Habit runs included, and pressing it again shuts them all.

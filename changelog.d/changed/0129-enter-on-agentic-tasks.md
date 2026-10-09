@@ -1,1 +1,0 @@
-- **Enter and Alt+Enter on Agentic tasks.** `Enter` cycles an Agentic task Review → Doing → Done → To Do, and takes an On Agent task over (Doing). `Alt+Enter` hands a task you are Doing back to its agent (On Agent). On any other Agentic status it now says so out loud instead of setting Started.

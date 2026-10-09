@@ -1,1 +1,0 @@
-- **Archived Tasks and Commitments no longer show in Start or Do.** A Task archived by hand, or one beneath an archived Task, could still appear in Start, and an archived in-progress Task still appeared in Do and the Zen View. Now anything archived stays out of both unless the Archived pill is on Include.
