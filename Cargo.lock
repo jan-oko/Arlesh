@@ -63,6 +63,7 @@ dependencies = [
  "chrono",
  "gtk",
  "ksni",
+ "libsqlite3-sys",
  "png 0.17.16",
  "rmcp",
  "schemars 1.2.2",

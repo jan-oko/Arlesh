@@ -20,7 +20,7 @@ use super::client::ClientId;
 use super::hold::{self, HoldError};
 use super::rules::{schema_state, SchemaState};
 use super::session::SessionFactory;
-use super::{connect_with, DatabasePool, MIGRATOR};
+use super::{connect_with, migrate, DatabasePool, MIGRATOR};
 
 /// How a database is opened.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,7 +111,7 @@ async fn open_for_writing(
     if let SchemaState::Ahead { unknown } = current_schema(&pool).await? {
         return Err(OpenError::SchemaAhead { unknown });
     }
-    MIGRATOR.run(&pool).await?;
+    migrate(&pool).await?;
     tracing::info!(client = %client, "database open for writing");
     Ok(SessionFactory::with_client(pool, client))
 }

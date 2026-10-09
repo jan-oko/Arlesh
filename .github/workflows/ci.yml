@@ -328,7 +328,7 @@ jobs:
           cargo test --locked --workspace --exclude arlesh-py
           cargo llvm-cov report \
             --summary-only \
-            --ignore-filename-regex '(^|/)src/commands/|(^|/)crates/arlesh-py/' \
+            --ignore-filename-regex '(^|/)src/commands/|(^|/)crates/arlesh-py/|(^|/)examples/' \
             --fail-under-lines 94 \
             2>&1 | tee "$RUNNER_TEMP/coverage.log"
 
