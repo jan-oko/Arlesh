@@ -1,0 +1,152 @@
+name: Master bot
+
+# Keeps two derived files on master in step with what produces them, and commits the result:
+#
+#   1. The fresh-database baseline (crates/arlesh-core/baseline/): re-cut to the newest migration
+#      whenever one lands, so a new database never replays migrations on top of a stale baseline.
+#      See scripts/recut-baseline.mjs and crates/arlesh-core/src/database/baseline.rs.
+#   2. CHANGELOG.md's [Unreleased] section: reassembled from changelog.d/. See
+#      scripts/assemble-changelog.mjs.
+#
+# Both happen here and never on a branch. A branch that re-cut the baseline or reassembled the
+# changelog would put back exactly the merge conflicts the fragment convention and the generated
+# baseline exist to remove: five of five master-merges measured on 2026-09-20 conflicted on
+# [Unreleased], every one the same shape.
+#
+# There is no gate. Nothing in CI asserts on CHANGELOG.md, and the baseline is checked by a unit
+# test that compares the file with the chain, which a re-cut keeps passing. The `changelog:check`
+# step that used to run on master was dropped on 2026-09-22 because it could only fire after the
+# merge that carried a fragment, so master went red on it 17 times out of 18 and a red master said
+# nothing about the code. This workflow repairs the files; it never fails a branch or a master run
+# over what they contain.
+#
+# Racing a human push is not the hazard it looks like. Both steps are pure functions of the tree,
+# so overlapping writers converge rather than fight: the job re-reads origin/master immediately
+# before it writes and redoes the work if master moved under it.
+#
+# It has to stay cheap, because the repo is private and every minute is billed. The Rust toolchain
+# is installed and the baseline regenerated only when migrations/** changed in the push, or the
+# baseline is behind the newest migration, or the run was dispatched by hand. The common push (no
+# migration) costs about twenty seconds of node, with no `npm ci`: both scripts import only node
+# builtins.
+
+on:
+  push:
+    branches: [master]
+  # For repairing master by hand, and for checking the bot after it changes: dispatched on a
+  # master that is in step, it must end with no commit.
+  workflow_dispatch:
+
+# Serialize rather than supersede: the run that waits is the run that sees every merge.
+concurrency:
+  group: master-bot
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  maintain:
+    name: re-cut baseline · assemble CHANGELOG.md
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: master
+          # The whole history, so the push's own range (`before..HEAD`) can be read.
+          fetch-depth: 0
+          # The push below must get past master's required checks (`lint · tsc · vitest` and
+          # `cargo llvm-cov · tests + coverage`), which the default GITHUB_TOKEN cannot: its push is
+          # rejected with GH006 ("Changes must be made through a pull request"), and
+          # `enforce_admins: false` does not rescue it because the token is not an administrator's.
+          # BOT_COMMIT_ACCESS_TOKEN is a fine-grained PAT with contents:write belonging to an
+          # administrator, which lands. A push made with a PAT starts workflows like a person's, so
+          # the bot's commit gets its own CI run, and the loop guard is that the bot commits only
+          # when a file changed: its own push triggers this workflow, finds nothing to do, and
+          # stops. With no secret set the checkout fails, which is the truth.
+          token: ${{ secrets.BOT_COMMIT_ACCESS_TOKEN }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      # Whether the Rust half is needed is decided before the toolchain is touched. `behind` is
+      # the baseline version against the newest migration number; `changed` is whether the push
+      # touched a migration (an existing one edited would not make the baseline behind, but would
+      # make it wrong). A dispatched run always regenerates.
+      - name: Decide whether the baseline needs work
+        id: baseline
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          needed=false
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            needed=true
+          else
+            latest=$(ls crates/arlesh-core/migrations | sed -nE 's/^0*([0-9]+)_.*\.sql$/\1/p' | sort -n | tail -1)
+            current=$(tr -d '[:space:]' < crates/arlesh-core/baseline/version.txt)
+            if [ "$latest" -gt "$current" ]; then
+              needed=true
+            elif [ -n "$BEFORE" ] && ! [ "$BEFORE" = 0000000000000000000000000000000000000000 ] \
+                 && ! git diff --quiet "$BEFORE" HEAD -- crates/arlesh-core/migrations; then
+              needed=true
+            fi
+          fi
+          echo "needed=$needed" >> "$GITHUB_OUTPUT"
+
+      - name: Show toolchain
+        if: steps.baseline.outputs.needed == 'true'
+        run: |
+          rustc --version
+          cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.baseline.outputs.needed == 'true'
+        with:
+          workspaces: ". -> src-tauri/target"
+          shared-key: master-bot
+
+      - name: Re-cut, assemble and push
+        env:
+          BASELINE_NEEDED: ${{ steps.baseline.outputs.needed }}
+          BOT_TOKEN: ${{ secrets.BOT_COMMIT_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          # Three attempts, because a rejected push would be a red run. Each attempt re-reads the
+          # real tip and redoes both steps against it, so a merge that landed mid-run is folded
+          # in rather than clobbered.
+          for attempt in 1 2 3; do
+            git fetch --quiet origin master
+            git reset --hard --quiet FETCH_HEAD
+
+            if [ "$BASELINE_NEEDED" = true ]; then
+              node scripts/recut-baseline.mjs --force
+            fi
+            node scripts/assemble-changelog.mjs
+
+            if [ -z "$(git status --porcelain -- CHANGELOG.md crates/arlesh-core/baseline)" ]; then
+              echo "Baseline and CHANGELOG.md are in step - nothing to commit."
+              exit 0
+            fi
+
+            latest=$(ls crates/arlesh-core/migrations | sed -nE 's/^0*([0-9]+)_.*\.sql$/\1/p' | sort -n | tail -1)
+            git add CHANGELOG.md crates/arlesh-core/baseline
+            git commit --quiet -m "Re-cut baseline to ${latest}; assemble CHANGELOG.md"
+            if git push origin HEAD:master; then
+              echo "Pushed."
+              exit 0
+            fi
+            echo "::notice::master moved while this ran; redoing against the new tip (attempt ${attempt} of 3)."
+          done
+
+          echo "::error::Could not push. If the log above says GH006, master's protection rejected the credential: BOT_COMMIT_ACCESS_TOKEN must belong to a repository administrator and carry contents:write."
+          exit 1

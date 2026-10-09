@@ -9,7 +9,8 @@
 //!
 //! The migration files themselves are untouched and still drive every existing database: one at a
 //! lower version runs the chain from where it stopped. `baseline/schema.sql` is generated from the
-//! chain (`cargo run -p arlesh-core --example generate_baseline`) and CI fails when it drifts.
+//! chain (`cargo run -p arlesh-core --example generate_baseline`) and a unit test fails when it drifts.
+//! When a migration lands on master the bot re-cuts it to that migration (`scripts/recut-baseline.mjs`).
 
 use sqlx::migrate::{Migrate, MigrateError, Migrator};
 use sqlx::Executor;
@@ -19,7 +20,30 @@ use super::DatabasePool;
 pub mod generate;
 
 /// The last migration the baseline stands for. A migration with a higher number runs on top of it.
-pub const BASELINE_VERSION: i64 = 94;
+///
+/// Read from `baseline/version.txt`, which the master bot rewrites together with `schema.sql` when
+/// a migration lands (`scripts/recut-baseline.mjs`), so nobody re-cuts the baseline by hand.
+pub const BASELINE_VERSION: i64 = parse_version(include_str!("../../baseline/version.txt"));
+
+/// The number in `text`, ignoring surrounding whitespace; fails the build on anything else.
+const fn parse_version(text: &str) -> i64 {
+    let bytes = text.as_bytes();
+    let mut version = 0i64;
+    let mut digits = 0;
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte.is_ascii_digit() {
+            version = version * 10 + (byte - b'0') as i64;
+            digits += 1;
+        } else if !byte.is_ascii_whitespace() {
+            panic!("baseline/version.txt must hold one number");
+        }
+        index += 1;
+    }
+    assert!(digits > 0, "baseline/version.txt must hold one number");
+    version
+}
 
 /// The baseline schema and seed data, as `examples/generate_baseline.rs` writes them.
 pub const BASELINE_SQL: &str = include_str!("../../baseline/schema.sql");

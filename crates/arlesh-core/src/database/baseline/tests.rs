@@ -1,10 +1,11 @@
 use std::borrow::Cow;
 
+use sqlx::migrate::{Migration, MigrationType};
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
 
 use super::*;
-use crate::database::{migrate, MIGRATOR};
+use crate::database::{migrate, migrate_with, MIGRATOR};
 
 async fn empty_database() -> SqlitePool {
     SqlitePoolOptions::new()
@@ -169,4 +170,41 @@ async fn the_baseline_file_is_what_the_migrations_generate() {
         "baseline/schema.sql is out of date with the migrations. Regenerate it:\n  \
          cargo run -p arlesh-core --example generate_baseline"
     );
+}
+
+#[tokio::test]
+async fn a_migration_newer_than_the_baseline_runs_on_top_of_it() {
+    let newer = BASELINE_VERSION + 1000;
+    let mut migrations = MIGRATOR.migrations.to_vec();
+    migrations.push(Migration::new(
+        newer,
+        Cow::Borrowed("add a probe table"),
+        MigrationType::Simple,
+        Cow::Borrowed("CREATE TABLE baseline_probe (id INTEGER PRIMARY KEY);"),
+        false,
+    ));
+    let chain = Migrator {
+        migrations: Cow::Owned(migrations),
+        ignore_missing: false,
+        locking: true,
+        no_tx: false,
+    };
+
+    let pool = empty_database().await;
+    migrate_with(&pool, &chain).await.unwrap();
+
+    let probe: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'baseline_probe'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let recorded: Vec<i64> =
+        sqlx::query_scalar("SELECT version FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(probe, 1);
+    assert_eq!(recorded.last().copied(), Some(newer));
+    assert_eq!(recorded.len(), MIGRATOR.iter().count() + 1);
 }

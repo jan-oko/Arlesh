@@ -154,10 +154,18 @@ pub(crate) async fn apply_connection_settings(
 /// [`baseline::BASELINE_VERSION`], recorded as migrations applied) and then runs whatever
 /// migration is newer. Any other database runs the chain from where it stopped.
 pub async fn migrate(pool: &DatabasePool) -> Result<(), sqlx::migrate::MigrateError> {
+    migrate_with(pool, &MIGRATOR).await
+}
+
+/// [`migrate`] over `chain` rather than this build's own, so a test can add a migration.
+async fn migrate_with(
+    pool: &DatabasePool,
+    chain: &Migrator,
+) -> Result<(), sqlx::migrate::MigrateError> {
     if baseline::is_fresh(pool).await? {
-        baseline::install(pool, &MIGRATOR).await?;
+        baseline::install(pool, chain).await?;
     }
-    MIGRATOR.run(pool).await
+    chain.run(pool).await
 }
 
 /// Runs all pending migrations against the pool. See [`migrate`].
