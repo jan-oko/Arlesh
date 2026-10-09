@@ -3,6 +3,7 @@
 pub mod error;
 pub mod model;
 mod rows;
+pub mod rules;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -63,9 +64,9 @@ impl<'session> DomainOperator<'session> {
         // Store what the app already means. Only a Project carries a status — a Domain or Tag
         // keeps NULL, since the vocabulary does not apply to them.
         let status_str = match request.status.as_ref() {
-            Some(status) => Some(status_to_str(status)),
+            Some(status) => rules::stored_status(&request.subtype, status)?,
             None if request.subtype == DomainSubtype::Project => {
-                Some(status_to_str(&model::ProjectStatus::Active))
+                Some(model::ProjectStatus::Active.as_str())
             }
             None => None,
         };
@@ -159,19 +160,18 @@ impl<'session> DomainOperator<'session> {
 
         let subtype = match request.subtype {
             Some(DomainSubtype::Aspect) => return Err(DomainError::FixedAspect),
-            Some(DomainSubtype::Project) => "project".to_string(),
-            Some(DomainSubtype::Domain) => "domain".to_string(),
-            Some(DomainSubtype::Tag) => "tag".to_string(),
-            None => domain.subtype.clone(),
+            Some(subtype) => subtype,
+            None => DomainSubtype::from_db(&domain.subtype).ok_or(DomainError::FixedAspect)?,
         };
         let title = request.title.unwrap_or(domain.title);
         let description = request.description.or(domain.description);
         let parent_id = request.parent_id.or(domain.parent_id);
-        let status = request
-            .status
-            .as_ref()
-            .map(|s| status_to_str(s).to_string())
-            .or(domain.status);
+        // An archived Domain unarchives to no status at all, so an asked-for status replaces the
+        // stored one outright, `None` included.
+        let status = match request.status.as_ref() {
+            Some(requested) => rules::stored_status(&subtype, requested)?.map(str::to_string),
+            None => domain.status,
+        };
         let knowledge_base_directory = request
             .knowledge_base_directory
             .or(domain.knowledge_base_directory);
@@ -183,7 +183,7 @@ impl<'session> DomainOperator<'session> {
         )
         .bind(&title)
         .bind(&description)
-        .bind(&subtype)
+        .bind(subtype_to_str(&subtype))
         .bind(parent_id)
         .bind(&status)
         .bind(&knowledge_base_directory)
@@ -255,14 +255,5 @@ fn subtype_to_str(subtype: &DomainSubtype) -> &'static str {
         DomainSubtype::Project => "project",
         DomainSubtype::Domain => "domain",
         DomainSubtype::Tag => "tag",
-    }
-}
-
-fn status_to_str(status: &model::ProjectStatus) -> &'static str {
-    match status {
-        model::ProjectStatus::Active => "active",
-        model::ProjectStatus::Achieved => "achieved",
-        model::ProjectStatus::Frozen => "frozen",
-        model::ProjectStatus::Archived => "archived",
     }
 }

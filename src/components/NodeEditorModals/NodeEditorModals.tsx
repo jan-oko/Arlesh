@@ -11,6 +11,7 @@ import CommitmentEditorModal from "@/components/CommitmentEditorModal/Commitment
 import ExpectationEditorModal from "@/components/ExpectationEditorModal/ExpectationEditorModal";
 import TitleEditorModal from "@/components/TitleEditorModal/TitleEditorModal";
 import ProjectEditorModal from "@/components/ProjectEditorModal/ProjectEditorModal";
+import { isArchivedByHand } from "@/utils/hand-archive";
 import InfoEditorModal from "@/components/InfoEditorModal/InfoEditorModal";
 import FlowEditorModal from "@/components/FlowEditorModal/FlowEditorModal";
 import FlowItemEditorModal from "@/components/FlowItemEditorModal/FlowItemEditorModal";
@@ -101,7 +102,7 @@ export default function NodeEditorModals({ tree, editor }: Props) {
       return (
         <TitleEditorModal
           heading={t("editor:editDomain")} title={node.title}
-          isPrivate={node.isPrivate ?? false} onSave={onSimpleSave} onClose={close}
+          isPrivate={node.isPrivate ?? false} archived={isArchivedByHand(node)} onSave={onSimpleSave} onClose={close}
         />
       );
     case "tag":

@@ -33,6 +33,14 @@ describe("archiveOfferFor", () => {
     expect(archiveOfferFor(node({ archivedByHand: true }))).toBe("unarchive");
   });
 
+  it("offers Archive on a Domain and Unarchive on an archived one, but nothing on a Project, Aspect or Tag", () => {
+    expect(archiveOfferFor(node({ id: "domain-2", kind: "domain" }))).toBe("archive");
+    expect(archiveOfferFor(node({ id: "domain-2", kind: "domain", status: "archived" }))).toBe("unarchive");
+    expect(archiveOfferFor(node({ id: "domain-3", kind: "project", status: "archived" }))).toBeNull();
+    expect(archiveOfferFor(node({ id: "domain-4", kind: "aspect" }))).toBeNull();
+    expect(archiveOfferFor(node({ id: "domain-5", kind: "tag" }))).toBeNull();
+  });
+
   it("offers nothing on a node beneath a hand archive, which is archived but not by hand", () => {
     expect(archiveOfferFor(node({ kind: "goal", archived: true }))).toBeNull();
   });

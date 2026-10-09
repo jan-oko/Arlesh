@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/api/errors";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
+import ArchivedField from "@/components/EditorModal/ArchivedField";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
@@ -10,15 +11,19 @@ interface Props {
   heading: string;
   title: string;
   isPrivate?: boolean;
-  onSave: (title: string, isPrivate: boolean) => Promise<void>;
+  /** Its archive, for a node that takes one — a Domain (Task bd3). Left out, the editor offers no
+   * Archived switch and saves `undefined` in its place. */
+  archived?: boolean;
+  onSave: (title: string, isPrivate: boolean, archived: boolean | undefined) => Promise<void>;
   onClose: () => void;
 }
 
-export default function TitleEditorModal({ heading, title: initialTitle, isPrivate: initialIsPrivate, onSave, onClose }: Props) {
+export default function TitleEditorModal({ heading, title: initialTitle, isPrivate: initialIsPrivate, archived: initialArchived, onSave, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation("editor");
   const [title, setTitle] = useState(initialTitle);
   const [isPrivate, setIsPrivate] = useState(initialIsPrivate ?? false);
+  const [archived, setArchived] = useState(initialArchived);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -33,7 +38,7 @@ export default function TitleEditorModal({ heading, title: initialTitle, isPriva
     setIsSaving(true);
     setSaveError(null);
     try {
-      await onSave(title.trim(), isPrivate);
+      await onSave(title.trim(), isPrivate, archived);
     } catch (err) {
       setSaveError(getErrorMessage(err));
       setIsSaving(false);
@@ -64,7 +69,9 @@ export default function TitleEditorModal({ heading, title: initialTitle, isPriva
           type="text"
         />
       </label>
-      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} />
+      <EditorAdvanced isPrivate={isPrivate} onPrivateChange={setIsPrivate} startOpen={initialArchived === true}>
+        {archived !== undefined && <ArchivedField checked={archived} onChange={setArchived} />}
+      </EditorAdvanced>
     </EditorModal>
   );
 }

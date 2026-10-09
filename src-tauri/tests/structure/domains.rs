@@ -205,6 +205,49 @@ async fn update_domain() {
 }
 
 #[tokio::test]
+async fn a_domain_archives_and_unarchives_back_to_no_status() {
+    let pool = helpers::test_pool().await;
+    let aspect_id = green_aspect_id(&pool).await;
+    let mut db = helpers::session_factory(&pool).connect().await.unwrap();
+    let domain = db
+        .domains()
+        .create(CreateDomainRequest {
+            title: "Old hobby".into(),
+            description: None,
+            subtype: DomainSubtype::Domain,
+            parent_id: Some(aspect_id),
+            status: None,
+            knowledge_base_directory: None,
+        })
+        .await
+        .unwrap();
+    let set = |status| UpdateDomainRequest {
+        status: Some(status),
+        ..UpdateDomainRequest::default()
+    };
+
+    let archived = db
+        .domains()
+        .update(domain.id.into(), set(ProjectStatus::Archived))
+        .await
+        .unwrap();
+    assert_eq!(archived.status.as_deref(), Some("archived"));
+
+    let unarchived = db
+        .domains()
+        .update(domain.id.into(), set(ProjectStatus::Active))
+        .await
+        .unwrap();
+    assert_eq!(unarchived.status, None);
+
+    let frozen = db
+        .domains()
+        .update(domain.id.into(), set(ProjectStatus::Frozen))
+        .await;
+    assert!(frozen.is_err(), "a Domain takes no Frozen");
+}
+
+#[tokio::test]
 async fn list_all_domains_includes_aspects_and_created() {
     let pool = helpers::test_pool().await;
     let aspect_id = green_aspect_id(&pool).await;

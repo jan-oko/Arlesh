@@ -367,7 +367,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dt>Without</dt><dd>Old work hangs on with no verdict, and clocks have nothing to count from.</dd>
       <dt>Lives</dt><dd class="where">tasks/rules/lifecycle.rs · flows/occurrences.rs (resolutions)</dd></dl></article>
     <article class="card"><h3>Archival and Backlog</h3>
-      <p class="is">Live, Backlog, Frozen or Archived. Set by hand (a Goal or Project's status; a Task's stored Archival, Live, Backlog or Archived; a Commitment's or wait's own archive), inherited (everything beneath a Task or Commitment archived by hand), or derived: a settled window archives, and so does a released wait whose window has passed. Delegation is not archival: it has its own pill.</p>
+      <p class="is">Live, Backlog, Frozen or Archived. Set by hand (a Goal or Project's status, a Domain's archive; a Task's stored Archival, Live, Backlog or Archived; a Commitment's or wait's own archive), inherited (everything beneath a Task or Commitment archived by hand), or derived: a settled window archives, and so does a released wait whose window has passed. Delegation is not archival: it has its own pill.</p>
       <dl><dt>Why</dt><dd>"Set aside" and "finished" are different questions; a backlogged Task keeps its real status. Putting a branch away is one write, and taking it back restores it exactly.</dd>
       <dt>Without</dt><dd>Statuses multiply ("done-ish", "paused-forever"), every filter has to know them all, and archiving a project means archiving every step in it.</dd>
       <dt>Lives</dt><dd class="where">tasks/rules/lifecycle.rs · tasks/rules/archival.rs · filters/facts.rs</dd></dl></article>
@@ -530,7 +530,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
     ["duex", "Explicit due", 0, 3, "in", "A due set on the Task itself. It always wins over the default.", "time-scopes.md#due-scope-and-the-overdue-flag"],
     ["plan", "Plan", 0, 4, "in", "The slot the Task is scheduled into, inside its window. Tasks only.", "time-scopes.md#plan-scheduling"],
     ["backlog", "Stored archival", 0, 5, "in", "A Task's stored Archival (Live, Backlog, or Archived by hand: one value), a Commitment's hand archive, a wait's archive. Stored beside the real status.", "resources.md#archive"],
-    ["gstatus", "Goal / Project status", 0, 6, "in", "Frozen or Archived set by hand on a Goal or Project.", "resources.md#goals"],
+    ["gstatus", "Goal / Project / Domain status", 0, 6, "in", "Frozen or Archived set by hand on a Goal or Project, or Archived on a Domain.", "resources.md#goals"],
     ["delegate", "Delegate", 0, 7, "in", "The Person a Task is handed to. Not archival: the Delegated pill decides where a delegated Task shows.", "resources.md#tasks"],
     ["status", "Status", 0, 8, "in", "Where the work stands, in the ordinary model (To Do, In Progress, Started, Done) or the Agentic one (To Do, On Agent, Doing, Done). Dashed arrows from here read a dependency target's status.", "resources.md#tasks"],
     ["subs", "Compound, sub-items", 0, 9, "in", "Whether a Task is Compound, and the items beneath it: Tasks, Goals, waits and Commitments in its whole subtree.", "resources.md#tasks"],

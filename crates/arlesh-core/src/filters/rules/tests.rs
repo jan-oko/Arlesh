@@ -490,21 +490,47 @@ fn a_frozen_or_archived_project_shelves_its_subtree_in_plan_and_start_only() {
     for status in ["frozen", "archived"] {
         let node = project(status);
         assert!(
-            is_shelved_project(&node, &BoardFilter::preset(Preset::Plan)),
+            is_shelved_container(&node, &BoardFilter::preset(Preset::Plan)),
             "{status}"
         );
         assert!(
-            is_shelved_project(&node, &BoardFilter::preset(Preset::Start)),
+            is_shelved_container(&node, &BoardFilter::preset(Preset::Start)),
             "{status}"
         );
         assert!(
-            !is_shelved_project(&node, &BoardFilter::preset(Preset::All)),
+            !is_shelved_container(&node, &BoardFilter::preset(Preset::All)),
             "{status}"
         );
     }
     // Achieved keeps the ordinary ancestor-keeping.
-    assert!(!is_shelved_project(
+    assert!(!is_shelved_container(
         &project("achieved"),
+        &BoardFilter::preset(Preset::Plan)
+    ));
+}
+
+#[test]
+fn an_archived_domain_shelves_its_subtree_in_plan_and_start_and_the_pill_brings_it_back() {
+    let mut archived = NodeFacts::new("domain-2", NodeKind::Domain);
+    archived.status = Some("archived".to_string());
+    for preset in [Preset::Plan, Preset::Start] {
+        assert!(is_shelved_container(
+            &archived,
+            &BoardFilter::preset(preset)
+        ));
+    }
+    assert!(!is_shelved_container(
+        &archived,
+        &BoardFilter::preset(Preset::All)
+    ));
+    let include = BoardFilter {
+        archived: OverrideMode::Include,
+        ..BoardFilter::preset(Preset::Plan)
+    };
+    assert!(!is_shelved_container(&archived, &include));
+    let live = NodeFacts::new("domain-3", NodeKind::Domain);
+    assert!(!is_shelved_container(
+        &live,
         &BoardFilter::preset(Preset::Plan)
     ));
 }
@@ -515,8 +541,8 @@ fn the_archived_pill_include_rescues_an_archived_project_but_not_a_frozen_one() 
         archived: OverrideMode::Include,
         ..BoardFilter::preset(Preset::Plan)
     };
-    assert!(!is_shelved_project(&project("archived"), &filter));
-    assert!(is_shelved_project(&project("frozen"), &filter));
+    assert!(!is_shelved_container(&project("archived"), &filter));
+    assert!(is_shelved_container(&project("frozen"), &filter));
 }
 
 #[test]

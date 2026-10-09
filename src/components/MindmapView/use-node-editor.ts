@@ -27,6 +27,7 @@ import { withAtomicGesture } from "@/api/gesture";
 import { localNowIso } from "@/utils/local-now";
 import type { Domain } from "@/api/domains";
 import { listDomains, updateDomain } from "@/api/domains";
+import { domainArchiveStatus, isArchivedByHand } from "@/utils/hand-archive";
 import {
   addTagToTask,
   removeTagFromTask,
@@ -108,7 +109,7 @@ export interface NodeEditorHandles {
   onGoalSave: (data: GoalSaveData) => Promise<void>;
   onCommitmentSave: (data: CommitmentSaveData) => Promise<void>;
   onExpectationSave: (data: ExpectationSaveData) => Promise<void>;
-  onSimpleSave: (title: string, isPrivate: boolean) => Promise<void>;
+  onSimpleSave: (title: string, isPrivate: boolean, archived: boolean | undefined) => Promise<void>;
   onProjectSave: (data: ProjectSaveData) => Promise<void>;
   onInfoSave: (data: InfoSaveData) => Promise<void>;
   onFlowSave: (data: FlowSaveData) => Promise<void>;
@@ -422,11 +423,17 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
   );
 
   const onSimpleSave = useCallback(
-    async (title: string, isPrivate: boolean) => {
+    async (title: string, isPrivate: boolean, archived: boolean | undefined) => {
       if (editorModal === null) return;
       const dbId = storedId(rowIdOf(editorModal.node));
-      // Domain/tag editors: persist title and privacy together, then refresh.
-      await updateDomain(dbId, { title, is_private: isPrivate });
+      // Domain/tag editors: persist title, privacy and — a Domain's, when its switch moved — the
+      // archive together, in one write, then refresh.
+      const archiveChanged = archived !== undefined && archived !== isArchivedByHand(editorModal.node);
+      await updateDomain(dbId, {
+        title,
+        is_private: isPrivate,
+        ...(archiveChanged ? { status: domainArchiveStatus(archived) } : {}),
+      });
       await reload();
       setEditorModal(null);
     },

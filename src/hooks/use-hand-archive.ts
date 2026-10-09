@@ -2,9 +2,11 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
-import { canArchiveByHand } from "@/utils/hand-archive";
+import { canArchiveByHand, isArchivedByHand, domainArchiveStatus } from "@/utils/hand-archive";
 import { updateTask, TASK_ARCHIVAL } from "@/api/tasks";
 import { updateCommitment, COMMITMENT_ARCHIVAL } from "@/api/commitments";
+import { updateDomain } from "@/api/domains";
+import { storedId } from "@/api/node-id";
 import { getErrorMessage } from "@/api/errors";
 
 interface Options {
@@ -21,6 +23,9 @@ interface Result {
 /** The write that puts `node` away by hand — `archive` true — or brings it back Live. */
 function writeArchive(node: MindmapNode, archive: boolean): Promise<unknown> {
   const rowId = rowIdOf(node);
+  if (node.kind === "domain") {
+    return updateDomain(storedId(rowId), { status: domainArchiveStatus(archive) });
+  }
   if (node.kind === "commitment") {
     return updateCommitment(rowId, { archival: archive ? COMMITMENT_ARCHIVAL.ARCHIVED : COMMITMENT_ARCHIVAL.LIVE });
   }
@@ -29,7 +34,7 @@ function writeArchive(node: MindmapNode, archive: boolean): Promise<unknown> {
 
 /**
  * The hand archive shared by the context menus (Task 269): Archive on a stored Task or Commitment
- * puts it away with everything beneath it; Unarchive on the one archived makes it Live again. One
+ * — or a Domain (Task bd3) — puts it away with everything beneath it; Unarchive on the one archived makes it Live again. One
  * write — the stored archival of that node alone — so one undo step; the subtree reads as archived
  * through the backend's lifecycle and comes back untouched. A refusal is a toast, never silent.
  */
@@ -40,7 +45,7 @@ export function useHandArchive({ findNode, reload, showToast }: Options): Result
     (nodeId: string) => {
       const node = findNode(nodeId);
       if (node === undefined || !canArchiveByHand(node)) return;
-      void writeArchive(node, node.archivedByHand !== true).then(
+      void writeArchive(node, !isArchivedByHand(node)).then(
         () => reload(),
         (error: unknown) => showToast({ nodeId, message: t("archiveFailed", { message: getErrorMessage(error) }) }),
       );
