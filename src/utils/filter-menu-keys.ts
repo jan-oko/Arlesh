@@ -8,7 +8,7 @@ import type { YesNoDimension } from "@/utils/filter-modes";
  * not in one of its search boxes. `t` / `c` / `e` toggle a row kind (Shift: show only that one);
  * `a` / `w` / `b` / `p` add a flag in the key's mode (plain All, Shift Any, Alt Not), switch a set
  * flag to that mode, or remove it when it is already in that mode;
- * `o` toggles the On Agent pill; `g` cycles the Delegated pill; `Ctrl+P` toggles Private Mode itself — taking over the global "Plan View" chord only while focus
+ * `o` toggles the On Agent pill; `r` the Zen View's Review pill; `g` cycles the Delegated pill; `Ctrl+P` toggles Private Mode itself — taking over the global "Plan View" chord only while focus
  * is in the menu.
  */
 export const ROW_KIND_KEYS: Readonly<Record<ListRowKind, string>> = {
@@ -27,6 +27,9 @@ export const FLAG_KEYS: Readonly<Record<YesNoDimension, string>> = {
 /** The key that toggles the **On Agent** pill, in every view that offers it. `d` is spoken for. */
 export const ON_AGENT_KEY = "KeyO";
 
+/** The key that toggles the Zen View's **Review** pill. Free there: the Zen View binds no `r`. */
+export const REVIEW_KEY = "KeyR";
+
 /** The key that cycles the **Delegated** pill (off → include → exclude), in every view — `g`, for
  * dele*g*ated, since `d` is spoken for. */
 export const DELEGATED_KEY = "KeyG";
@@ -36,7 +39,7 @@ export const PRIVATE_MODE_TOKEN = "Ctrl+KeyP";
 
 /** Every key the menu handles itself — what it lists in `data-owns-keys`. */
 export const FILTER_MENU_CODES: readonly string[] = [
-  ...Object.values(ROW_KIND_KEYS), ...Object.values(FLAG_KEYS), ON_AGENT_KEY, DELEGATED_KEY, PRIVATE_MODE_TOKEN,
+  ...Object.values(ROW_KIND_KEYS), ...Object.values(FLAG_KEYS), ON_AGENT_KEY, REVIEW_KEY, DELEGATED_KEY, PRIVATE_MODE_TOKEN,
 ];
 
 /** The letter keys the Filter menu takes in a view: its row kinds', its flags' and the Delegated

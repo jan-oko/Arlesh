@@ -102,6 +102,15 @@ export function offersOnAgent(view: View): boolean {
   return view !== "plan";
 }
 
+/**
+ * Whether a view's Filter menu offers the **Review** pill — the control that shows an Agentic Task
+ * waiting on the user's answer. The Zen View alone: every other view shows Review under its preset
+ * as it always has.
+ */
+export function offersReview(view: View): boolean {
+  return view === "zen";
+}
+
 /** The dimensions whose added values the chip row under the top bar draws: tags everywhere, and the
  * List View's pills there. */
 export function chipDimensions(view: View): readonly FilterDimension[] {
@@ -129,13 +138,15 @@ export interface FilterDotState {
   delegatedMode: OverrideMode;
   /** The On Agent pill: a setting no chip draws, so it lights the dot while on. */
   showOnAgent: boolean;
+  /** The Zen View's Review pill: likewise drawn by no chip. */
+  showReview: boolean;
   valueCount: (dimension: FilterDimension) => number;
 }
 
 /**
  * Whether the Filter menu holds a setting nothing outside it shows — the Filter button's dot: a pill
  * set in a dimension the chips do not draw, or an **Archived**, **Backlog** or **Delegated** pill the view offers
- * set off *as the preset says*, or the **On Agent** pill on. The row kinds, the Zen strips, Private Mode and the Mindmap's
+ * set off *as the preset says*, or the **On Agent** or (Zen View) **Review** pill on. The row kinds, the Zen strips, Private Mode and the Mindmap's
  * Info/Flow toggles are switches rather than pills and never count; tags are always chips.
  */
 export function hasUndrawnFilters(view: View, state: FilterDotState): boolean {
@@ -144,5 +155,6 @@ export function hasUndrawnFilters(view: View, state: FilterDotState): boolean {
   if (switches.includes("backlog") && state.backlogMode !== "inactive") return true;
   if (switches.includes("delegated") && state.delegatedMode !== "inactive") return true;
   if (offersOnAgent(view) && state.showOnAgent) return true;
+  if (offersReview(view) && state.showReview) return true;
   return undrawnPillDimensions(view).some((dimension) => state.valueCount(dimension) > 0);
 }

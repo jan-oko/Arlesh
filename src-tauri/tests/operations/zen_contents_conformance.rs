@@ -35,6 +35,8 @@ struct CorpusFilter {
     #[serde(default)]
     show_on_agent: bool,
     #[serde(default)]
+    show_review: bool,
+    #[serde(default)]
     start_hides_checked_waits: bool,
     #[serde(default)]
     private_mode: bool,
@@ -104,6 +106,7 @@ fn every_case_draws_what_the_corpus_says() {
         let expectations = list::flatten(root, NodeKind::Expectation);
         let filter = BoardFilter {
             show_on_agent: case.filter.show_on_agent,
+            show_review: case.filter.show_review,
             start_hides_checked_waits: case.filter.start_hides_checked_waits,
             private_mode: case.filter.private_mode,
             ..BoardFilter::preset(case.filter.preset)

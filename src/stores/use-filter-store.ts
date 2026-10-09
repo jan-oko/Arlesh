@@ -28,6 +28,8 @@ export interface FilterStore {
   toggleShowFlow: () => void;
   /** Shows or hides Agentic Tasks an agent holds (On Agent) under Start, Do and the Zen View. */
   toggleShowOnAgent: () => void;
+  /** Shows or hides Agentic Tasks in Review in the Zen View. */
+  toggleShowReview: () => void;
   togglePrivateMode: () => void;
   setPrivateMode: (on: boolean) => void;
   cycleArchivedMode: () => void;
@@ -72,6 +74,7 @@ export function createFilterStore(seed: FilterState = DEFAULT_FILTER): StoreApi<
     toggleShowInfo: () => set((s) => ({ filter: { ...s.filter, showInfo: !s.filter.showInfo } })),
     toggleShowFlow: () => set((s) => ({ filter: { ...s.filter, showFlow: !s.filter.showFlow } })),
     toggleShowOnAgent: () => set((s) => ({ filter: { ...s.filter, showOnAgent: s.filter.showOnAgent !== true } })),
+    toggleShowReview: () => set((s) => ({ filter: { ...s.filter, showReview: s.filter.showReview !== true } })),
     togglePrivateMode: () => set((s) => ({ filter: { ...s.filter, privateMode: !s.filter.privateMode } })),
     setPrivateMode: (on) => set((s) => ({ filter: { ...s.filter, privateMode: on } })),
     setArchivedMode: (mode) => set((s) => ({ filter: { ...s.filter, archivedMode: mode } })),
