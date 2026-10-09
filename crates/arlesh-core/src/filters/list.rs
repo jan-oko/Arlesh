@@ -64,7 +64,7 @@ impl<'a> Row<'a> {
     /// Whether any ancestor gates the whole subtree beneath it under this filter.
     fn has_gating_ancestor(&self, filter: &BoardFilter) -> bool {
         self.ancestors.iter().any(|ancestor| {
-            rules::is_shelved_project(ancestor, filter)
+            rules::is_shelved_container(ancestor, filter)
                 || rules::is_hidden_backlog(ancestor, filter)
                 || rules::is_unopened_occurrence(ancestor, filter)
                 || rules::is_unopened_wait(ancestor, filter)

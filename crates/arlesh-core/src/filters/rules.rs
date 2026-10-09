@@ -27,7 +27,10 @@ const RESOLVED_GOAL: [&str; 3] = ["achieved", "frozen", "archived"];
 ///
 /// `achieved` is deliberately absent — finished work can still hold unfinished items worth
 /// surfacing, so it keeps the ordinary ancestor-keeping.
-const SHELVED_PROJECT: [&str; 2] = ["frozen", "archived"];
+const SHELVED_PROJECT: [&str; 2] = ["frozen", ARCHIVED_STATUS];
+
+/// The status an archived Project or Domain carries.
+const ARCHIVED_STATUS: &str = "archived";
 
 /// The status a container falls back to when neither it nor any ancestor carries one.
 pub const UNSET_STATUS: &str = "active";
@@ -286,18 +289,22 @@ pub fn is_outside_plan_scope(
     }
 }
 
-/// Whether `node` is a Project that Plan/Start shelve along with everything inside it.
+/// Whether `node` is a container that Plan/Start shelve along with everything inside it: a Frozen
+/// or Archived Project, or an archived Domain (Task bd3), which takes a Project's archive and
+/// nothing else of its vocabulary.
 ///
 /// The Archived pill's `Include` still wins for the Archived case, as it does everywhere else; a
 /// Frozen Project is not archived, so nothing rescues it.
-pub fn is_shelved_project(node: &NodeFacts, filter: &BoardFilter) -> bool {
-    if node.kind != NodeKind::Project {
-        return false;
-    }
+pub fn is_shelved_container(node: &NodeFacts, filter: &BoardFilter) -> bool {
     if !matches!(filter.preset, Preset::Plan | Preset::Start) {
         return false;
     }
-    if !SHELVED_PROJECT.contains(&node.status_str()) {
+    let shelved = match node.kind {
+        NodeKind::Project => SHELVED_PROJECT.contains(&node.status_str()),
+        NodeKind::Domain => node.status_str() == ARCHIVED_STATUS,
+        _ => false,
+    };
+    if !shelved {
         return false;
     }
     !(filter.archived == OverrideMode::Include && is_archived(node))
@@ -352,7 +359,7 @@ pub fn type_hard_hidden(node: &NodeFacts, filter: &BoardFilter) -> bool {
     if filter.delegated == OverrideMode::Exclude && is_delegated(node) {
         return true;
     }
-    if is_shelved_project(node, filter) {
+    if is_shelved_container(node, filter) {
         return true;
     }
     if is_unopened_occurrence(node, filter) {

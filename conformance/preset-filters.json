@@ -2905,6 +2905,83 @@
       "commitments": [
         "commitment-archived-open"
       ]
+    },
+    {
+      "name": "plan hides an archived domain with its whole subtree",
+      "spec": "resources.md — an archived Domain (Task bd3) is shelved with its whole subtree under Plan and Start, as an Archived Project is; the Archived pill brings it back.",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "archived-domain",
+      "mindmap": [
+        "domain-live",
+        "task-in-live"
+      ],
+      "list": [
+        "task-in-live"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "start hides an archived domain with its whole subtree",
+      "spec": "resources.md — an archived Domain (Task bd3) is shelved with its whole subtree under Plan and Start, as an Archived Project is; the Archived pill brings it back.",
+      "filter": {
+        "preset": "start"
+      },
+      "board": "archived-domain",
+      "mindmap": [
+        "domain-live",
+        "task-in-live"
+      ],
+      "list": [
+        "task-in-live"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "the archived pill on include brings an archived domain back under plan",
+      "spec": "resources.md — an archived Domain (Task bd3) is shelved with its whole subtree under Plan and Start, as an Archived Project is; the Archived pill brings it back.",
+      "filter": {
+        "preset": "plan",
+        "archived": "include"
+      },
+      "board": "archived-domain",
+      "mindmap": [
+        "domain-archived",
+        "domain-inside-archived",
+        "domain-live",
+        "task-deep-in-archived",
+        "task-in-archived",
+        "task-in-live"
+      ],
+      "list": [
+        "task-deep-in-archived",
+        "task-in-archived",
+        "task-in-live"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "all shows an archived domain",
+      "spec": "resources.md — an archived Domain (Task bd3) is shelved with its whole subtree under Plan and Start, as an Archived Project is; the Archived pill brings it back.",
+      "filter": {
+        "preset": "all"
+      },
+      "board": "archived-domain",
+      "mindmap": [
+        "domain-archived",
+        "domain-inside-archived",
+        "domain-live",
+        "task-deep-in-archived",
+        "task-in-archived",
+        "task-in-live"
+      ],
+      "list": [
+        "task-deep-in-archived",
+        "task-in-archived",
+        "task-in-live"
+      ],
+      "commitments": []
     }
   ],
   "boards": {
@@ -4609,6 +4686,46 @@
               "id": "task-live-doing",
               "kind": "task",
               "status": "in_progress"
+            }
+          ]
+        }
+      ]
+    },
+    "archived-domain": {
+      "id": "root",
+      "kind": "aspect",
+      "children": [
+        {
+          "id": "domain-archived",
+          "kind": "domain",
+          "status": "archived",
+          "children": [
+            {
+              "id": "domain-inside-archived",
+              "kind": "domain",
+              "children": [
+                {
+                  "id": "task-deep-in-archived",
+                  "kind": "task",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "task-in-archived",
+              "kind": "task",
+              "status": "todo"
+            }
+          ]
+        },
+        {
+          "id": "domain-live",
+          "kind": "domain",
+          "children": [
+            {
+              "id": "task-in-live",
+              "kind": "task",
+              "status": "todo"
             }
           ]
         }

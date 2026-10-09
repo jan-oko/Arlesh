@@ -246,7 +246,8 @@ fn domain_kind(error: &DomainError) -> WireErrorKind {
         DomainError::NotFound(_) => WireErrorKind::NotFound,
         DomainError::FixedAspect
         | DomainError::TagCannotHaveChildren
-        | DomainError::InvalidParent(_) => WireErrorKind::InvalidRequest,
+        | DomainError::InvalidParent(_)
+        | DomainError::StatusRefused(_) => WireErrorKind::InvalidRequest,
         DomainError::Database(_) => WireErrorKind::Database,
     }
 }

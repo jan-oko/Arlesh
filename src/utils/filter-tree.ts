@@ -323,14 +323,18 @@ export function isOutsidePlanScope(node: MindmapNode, f: FilterState, inheritedT
 }
 
 /**
- * Whether `node` is a Project that Plan/Start shelve along with everything inside it. The Mindmap gets
- * the subtree removal from tree-pruning; List View has no tree to prune, so it applies this to each
- * row's ancestors itself (as it already does for blocked/private ancestors).
+ * Whether `node` is a container that Plan/Start shelve along with everything inside it: a Frozen or
+ * Archived Project, or an archived Domain (Task bd3), which takes a Project's archive and nothing
+ * else of its vocabulary. The Mindmap gets the subtree removal from tree-pruning; List View has no
+ * tree to prune, so it applies this to each row's ancestors itself (as it already does for
+ * blocked/private ancestors).
  */
-export function isShelvedProject(node: MindmapNode, f: FilterState): boolean {
-  if (node.kind !== "project") return false;
+export function isShelvedContainer(node: MindmapNode, f: FilterState): boolean {
   if (f.statusMode !== "plan" && f.statusMode !== "start") return false;
-  if (!SHELVED_PROJECT.has(node.status ?? "")) return false;
+  const shelved =
+    (node.kind === "project" && SHELVED_PROJECT.has(node.status ?? ""))
+    || (node.kind === "domain" && node.status === "archived");
+  if (!shelved) return false;
   // The Archived pill's Include still wins for the Archived case, as it does everywhere else.
   return !(f.archivedMode === "include" && isArchived(node));
 }
@@ -395,7 +399,7 @@ export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   if (delegatedModeOf(f) === "exclude" && isDelegated(node)) return true;
   // A Frozen/Archived Project gates its subtree the same way: hide it outright rather than keeping it
   // as the ancestor of unresolved work that is, by its status, not on the table.
-  if (isShelvedProject(node, f)) return true;
+  if (isShelvedContainer(node, f)) return true;
   // A habit occurrence whose window has not opened: hidden by every preset but All, subtree and all.
   if (isUnopenedOccurrence(node, f)) return true;
   // Under Start, a wait whose window has not begun: its check tasks go with it.

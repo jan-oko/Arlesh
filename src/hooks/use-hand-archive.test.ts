@@ -3,6 +3,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { useHandArchive } from "./use-hand-archive";
 import { updateTask } from "@/api/tasks";
 import { updateCommitment } from "@/api/commitments";
+import { updateDomain } from "@/api/domains";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
 import { occurrenceRow } from "@/test/occurrence";
@@ -14,6 +15,10 @@ vi.mock("@/api/tasks", async (importOriginal) => ({
 vi.mock("@/api/commitments", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/commitments")>()),
   updateCommitment: vi.fn(),
+}));
+vi.mock("@/api/domains", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/domains")>()),
+  updateDomain: vi.fn(),
 }));
 
 function node(id: string, extra: Partial<MindmapNode> = {}): MindmapNode {
@@ -57,6 +62,19 @@ describe("useHandArchive", () => {
     act(() => { result.current.toggleArchive("commitment-7"); });
 
     await waitFor(() => expect(updateCommitment).toHaveBeenCalledWith(7, { archival: "archived" }));
+  });
+
+  it("archives a Domain through its status, and unarchives an archived one back to Active", async () => {
+    vi.mocked(updateDomain).mockResolvedValue(Object.create(null));
+    const { result } = setup([node("domain-8", { kind: "domain" }), node("domain-9", { kind: "domain", status: "archived" })]);
+
+    act(() => {
+      result.current.toggleArchive("domain-8");
+      result.current.toggleArchive("domain-9");
+    });
+
+    await waitFor(() => expect(updateDomain).toHaveBeenCalledWith(8, { status: "archived" }));
+    await waitFor(() => expect(updateDomain).toHaveBeenCalledWith(9, { status: "active" }));
   });
 
   it("leaves a Habit occurrence and a Goal alone", () => {

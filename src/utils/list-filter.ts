@@ -2,7 +2,7 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
 import type { FilterState, TagFilterMode } from "@/utils/filter-tree";
 import {
-  typeHardHidden, passesTags, withArchivedOverride, isShelvedProject, isHiddenBacklog,
+  typeHardHidden, passesTags, withArchivedOverride, isShelvedContainer, isHiddenBacklog,
   isUnopenedOccurrence, isUnopenedWait, passesCommitmentPreset, passesExpectationPreset, isArchived, isDroppedForDelegation,
   isLiveExpectation, isPlannedAhead, isOutsidePlanScope, passesStartStatus, passesDoStatus, isStartableWindow,
 } from "@/utils/filter-tree";
@@ -375,8 +375,8 @@ export function deriveScopeStateTokens(node: MindmapNode): string[] {
 /**
  * Whether some ancestor of a row gates the whole subtree beneath it under this filter.
  *
- * Four rules hide a node *together with everything under it*: a Frozen/Archived Project shelved by
- * Plan/Start, a backlogged Task, a habit occurrence whose window has not opened, and, under Start, a
+ * Four rules hide a node *together with everything under it*: a Frozen/Archived Project or an
+ * archived Domain shelved by Plan/Start, a backlogged Task, a habit occurrence whose window has not opened, and, under Start, a
  * wait whose window has not begun (which is what takes its check task out). The Mindmap
  * gets that for free from tree-pruning — drop the node and its descendants go with it — but a flat
  * list has no tree to prune, so it asks each row's chain outright. (A row's own four are handled
@@ -387,7 +387,7 @@ export function deriveScopeStateTokens(node: MindmapNode): string[] {
  */
 function hasGatingAncestor(ancestors: readonly MindmapNode[], f: FilterState): boolean {
   return ancestors.some(
-    (a) => isShelvedProject(a, f) || isHiddenBacklog(a, f) || isUnopenedOccurrence(a, f) || isUnopenedWait(a, f),
+    (a) => isShelvedContainer(a, f) || isHiddenBacklog(a, f) || isUnopenedOccurrence(a, f) || isUnopenedWait(a, f),
   );
 }
 

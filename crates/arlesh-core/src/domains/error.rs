@@ -15,6 +15,10 @@ pub enum DomainError {
     /// The specified parent is incompatible with the subtype being created.
     #[error("invalid parent for this domain subtype: {0}")]
     InvalidParent(String),
+    /// The status asked for is not one this subtype carries (see
+    /// [`super::rules::stored_status`]).
+    #[error("status refused: {0}")]
+    StatusRefused(String),
     /// A database error occurred.
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),
