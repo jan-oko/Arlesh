@@ -37,6 +37,7 @@ Three views (`Ctrl+M`, `Ctrl+L` and `Ctrl+P`, or the view tabs in the top bar):
 - **Steps** — a flat view to look at the tree on level at at a time.
 - **List** — a list of the actionable resources to serve as your to do list, with extensive filtering options
 - **Plan** — a two-pane triage over one scope at a time: unscheduled work that is relevant now on the left, what the scope already holds on the right, and moving a card across sets its Plan
+- **Zen** - a large card views that shows what you're doing now large on screen + a strip with pending expectations and commitments.
 
 Tabs and windows are supported.
 
@@ -58,10 +59,12 @@ It also supports additional filtering by various conditions - antedecants, tags,
 ## Agent access
 
 While the app is running it serves an MCP. You configure root nodes available from it in the app settings, and the agent can read and create nodes between them.
-You can mark a task agentic to allow the agent to edit it. 
 
-Agentic tasks also get additional fields: spec, design, acceptance criteria and notes, for the agent to use. Spec must be given for agentic tasks to change status.
-The MCP also allows creating agent *Agentic Expectations*, which can present a question you can answer and relase from the UI. It serves for agents to model blocking underspecification and asyncronous tasks (waiting for CI).
+You can mark a task agentic to allow the agent to edit it. It gains "On Agent" and an "Awaiting Review" statuses, and additional fields: spec, design, acceptance criteria and notes, for the agent to use. Spec must be given for agentic tasks to change status.
+
+The MCP also allows creating agent *Agentic Expectations*, which can present a question you can answer and relase from the UI. It serves for agents to model blocking underspecification and asyncronous tasks (waiting for CI); also *Capacity Lock* if your agent is working on the maximum parallelization you allow, blocking agentic tasks from starting.
+
+You can see agent status in the top bar, popping up whenever it works, waits, or at capacity.
 
 
 The [MCP](https://modelcontextprotocol.io) serves at `http://127.0.0.1:4747/mcp`.
@@ -103,13 +106,6 @@ Two installers of the same app (64-bit Windows 10 or 11). Pick one:
 - **Setup** (recommended): download `Arlesh-windows-x86_64-setup.exe` and run it. It installs for your user only, into `%LOCALAPPDATA%\Arlesh`, with no admin prompt, and adds a Start-menu entry and an uninstaller (Settings → Apps).
 - **MSI**: `Arlesh-windows-x86_64.msi`, installed for every user on the machine (it asks for admin). For deploying with `msiexec /i Arlesh-windows-x86_64.msi`.
 
-Both use the WebView2 runtime that ships with Windows 10 and 11, and download it if it is missing.
-
-**The installers are not signed**, so the first run shows SmartScreen's *Windows protected your PC*. Click **More info**, then **Run anyway**. The browser may also flag the download as rarely downloaded; keep it.
-
-Data lives in `%APPDATA%\com.atai.arlesh`: the database, the window session, the MCP settings and the agent capacity lock. The windows' tabs and settings are kept by WebView2 under `%LOCALAPPDATA%\com.atai.arlesh`. Uninstalling keeps both unless you tick the setup uninstaller's option to delete the app data.
-
-Arlesh sits in the notification area by the clock. If its icon is hidden in the overflow (the `^` arrow), drag it onto the taskbar to keep it in reach. A left click shows or hides the windows; a right click opens the menu with Show, the open windows and Quit.
 
 # Development 
 
