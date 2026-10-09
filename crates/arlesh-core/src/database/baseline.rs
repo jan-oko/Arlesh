@@ -16,6 +16,8 @@ use sqlx::Executor;
 
 use super::DatabasePool;
 
+pub mod generate;
+
 /// The last migration the baseline stands for. A migration with a higher number runs on top of it.
 pub const BASELINE_VERSION: i64 = 94;
 

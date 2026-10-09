@@ -1,12 +1,20 @@
 // Included by every integration-test binary via `mod helpers;`, and no one binary uses all of it.
 #![allow(dead_code)]
 
+use std::sync::{Mutex, OnceLock};
+
 use arlesh_lib::database::session::SessionFactory;
 use arlesh_lib::undo::stacks::UndoStacks;
+use libsqlite3_sys as ffi;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
 
 /// A migrated, in-memory database for one test.
+///
+/// Created the way a fresh install is (`database::migrate`), but only once per test binary: the
+/// first caller migrates a template database, and every test then starts from a copy of it made
+/// with SQLite's backup API. The copy is page for page what migrating would have built, at a
+/// fraction of the cost.
 ///
 /// **One connection only.** Anything that holds a `Db` session open and then queries the pool
 /// waits on `acquire` for sqlx's 30-second default and fails with a connection timeout rather than
@@ -26,12 +34,105 @@ pub async fn test_pool() -> SqlitePool {
         .await
         .expect("failed to open in-memory SQLite");
 
-    sqlx::migrate!("./migrations")
-        .run(&pool)
+    let mut connection = pool
+        .acquire()
         .await
-        .expect("migrations failed");
+        .expect("failed to acquire the connection");
+    let mut handle = connection
+        .lock_handle()
+        .await
+        .expect("failed to lock the connection");
+    // SAFETY: the pointer is the open handle of the connection locked just above, which stays
+    // locked, and so unused by anything else, until `handle` drops at the end of the block.
+    unsafe {
+        copy_database(
+            template().lock().expect("template poisoned").0,
+            handle.as_raw_handle().as_ptr(),
+        )
+    };
+    drop(handle);
+    drop(connection);
 
     pool
+}
+
+/// An open SQLite handle that may be moved between threads: the template is only ever touched
+/// under the [`Mutex`] it lives in, and the bundled SQLite is built thread-safe.
+struct Handle(*mut ffi::sqlite3);
+
+// SAFETY: see the type's documentation.
+unsafe impl Send for Handle {}
+
+/// The migrated database every test copies, built the first time it is asked for.
+fn template() -> &'static Mutex<Handle> {
+    static TEMPLATE: OnceLock<Mutex<Handle>> = OnceLock::new();
+    TEMPLATE.get_or_init(|| {
+        // A runtime of its own on its own thread: the first caller is one test's runtime, and a
+        // pool created on it would not outlive that test.
+        std::thread::spawn(build_template)
+            .join()
+            .expect("the template database could not be built")
+    })
+}
+
+/// Migrates an in-memory database and moves its pages into a handle opened directly, which does
+/// not depend on the runtime and pool that migrated it.
+fn build_template() -> Mutex<Handle> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build the template runtime");
+    runtime.block_on(async {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("failed to open the template database");
+        arlesh_lib::database::migrate(&pool)
+            .await
+            .expect("migrations failed");
+
+        let mut connection = pool
+            .acquire()
+            .await
+            .expect("failed to acquire the template");
+        let mut handle = connection
+            .lock_handle()
+            .await
+            .expect("failed to lock the template connection");
+        let mut template = std::ptr::null_mut();
+        // SAFETY: `template` is a valid out-pointer; the source handle is the template
+        // connection's, locked until `handle` drops.
+        unsafe {
+            let opened = ffi::sqlite3_open_v2(
+                c":memory:".as_ptr(),
+                &mut template,
+                ffi::SQLITE_OPEN_READWRITE | ffi::SQLITE_OPEN_CREATE,
+                std::ptr::null(),
+            );
+            assert_eq!(opened, ffi::SQLITE_OK, "failed to open the template copy");
+            copy_database(handle.as_raw_handle().as_ptr(), template);
+        }
+        Mutex::new(Handle(template))
+    })
+}
+
+/// Copies every page of `from` over `to` with SQLite's online backup API.
+///
+/// # Safety
+///
+/// Both must be open handles that nothing else is using for the duration of the call.
+unsafe fn copy_database(from: *mut ffi::sqlite3, to: *mut ffi::sqlite3) {
+    let backup = ffi::sqlite3_backup_init(to, c"main".as_ptr(), from, c"main".as_ptr());
+    assert!(!backup.is_null(), "failed to start the database copy");
+    let stepped = ffi::sqlite3_backup_step(backup, -1);
+    let finished = ffi::sqlite3_backup_finish(backup);
+    assert_eq!(stepped, ffi::SQLITE_DONE, "failed to copy the database");
+    assert_eq!(
+        finished,
+        ffi::SQLITE_OK,
+        "failed to finish the database copy"
+    );
 }
 
 /// A mock Tauri app managing a [`SessionFactory`] over `pool`, so that Tauri commands can be

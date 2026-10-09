@@ -160,3 +160,13 @@ async fn migrating_a_baseline_database_again_changes_nothing() {
     migrate(&pool).await.unwrap();
     assert_eq!(fingerprint(&pool).await, before);
 }
+
+#[tokio::test]
+async fn the_baseline_file_is_what_the_migrations_generate() {
+    let generated = generate::render().await.unwrap();
+    assert!(
+        generated == BASELINE_SQL,
+        "baseline/schema.sql is out of date with the migrations. Regenerate it:\n  \
+         cargo run -p arlesh-core --example generate_baseline"
+    );
+}
