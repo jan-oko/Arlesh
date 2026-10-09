@@ -3,6 +3,13 @@ import type { MindmapNode } from "@/utils/tree-layout";
 /** The status an archived Domain carries — the Project status it shares (Task bd3). */
 export const DOMAIN_ARCHIVED_STATUS = "archived";
 
+/** The status a Domain's archive write sends: Archived, or Active to unarchive it, which the
+ * backend stores as no status at all. One mapping for every gesture that archives a Domain — the
+ * context menu and the editor's Archived switch. */
+export function domainArchiveStatus(archive: boolean): string {
+  return archive ? DOMAIN_ARCHIVED_STATUS : "active";
+}
+
 /**
  * Whether a node takes the hand archive — Archive and Unarchive: a **stored** Task or Commitment
  * (Task 269), or a Domain (Task bd3), which is archived through the status a Project already has.

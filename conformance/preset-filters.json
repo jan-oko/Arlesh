@@ -2907,12 +2907,12 @@
       ]
     },
     {
-      "name": "plan hides an archived domain with its whole subtree",
+      "name": "plan hides an archived domain or project with its whole subtree",
       "spec": "resources.md — an archived Domain (Task bd3) is shelved with its whole subtree under Plan and Start, as an Archived Project is; the Archived pill brings it back.",
       "filter": {
         "preset": "plan"
       },
-      "board": "archived-domain",
+      "board": "archived-containers",
       "mindmap": [
         "domain-live",
         "task-in-live"
@@ -2923,12 +2923,12 @@
       "commitments": []
     },
     {
-      "name": "start hides an archived domain with its whole subtree",
+      "name": "start hides an archived domain or project with its whole subtree",
       "spec": "resources.md — an archived Domain (Task bd3) is shelved with its whole subtree under Plan and Start, as an Archived Project is; the Archived pill brings it back.",
       "filter": {
         "preset": "start"
       },
-      "board": "archived-domain",
+      "board": "archived-containers",
       "mindmap": [
         "domain-live",
         "task-in-live"
@@ -2939,46 +2939,69 @@
       "commitments": []
     },
     {
-      "name": "the archived pill on include brings an archived domain back under plan",
+      "name": "the archived pill on include brings an archived domain or project back under plan",
       "spec": "resources.md — an archived Domain (Task bd3) is shelved with its whole subtree under Plan and Start, as an Archived Project is; the Archived pill brings it back.",
       "filter": {
         "preset": "plan",
         "archived": "include"
       },
-      "board": "archived-domain",
+      "board": "archived-containers",
       "mindmap": [
         "domain-archived",
         "domain-inside-archived",
         "domain-live",
+        "project-archived",
         "task-deep-in-archived",
         "task-in-archived",
+        "task-in-archived-project",
         "task-in-live"
       ],
       "list": [
         "task-deep-in-archived",
         "task-in-archived",
+        "task-in-archived-project",
         "task-in-live"
       ],
       "commitments": []
     },
     {
-      "name": "all shows an archived domain",
+      "name": "all shows an archived domain or project",
       "spec": "resources.md — an archived Domain (Task bd3) is shelved with its whole subtree under Plan and Start, as an Archived Project is; the Archived pill brings it back.",
       "filter": {
         "preset": "all"
       },
-      "board": "archived-domain",
+      "board": "archived-containers",
       "mindmap": [
         "domain-archived",
         "domain-inside-archived",
         "domain-live",
+        "project-archived",
         "task-deep-in-archived",
         "task-in-archived",
+        "task-in-archived-project",
         "task-in-live"
       ],
       "list": [
         "task-deep-in-archived",
         "task-in-archived",
+        "task-in-archived-project",
+        "task-in-live"
+      ],
+      "commitments": []
+    },
+    {
+      "name": "the archived pill on exclude hides an archived domain or project with its subtree even under all, in both views",
+      "spec": "mindmap-view.md — Archived Exclude hard-hides an archived item with its whole subtree under every preset; the List View gates a row on an archived ancestor the same way (bd3).",
+      "filter": {
+        "preset": "all",
+        "archived": "exclude"
+      },
+      "board": "archived-containers",
+      "mindmap": [
+        "domain-live",
+        "task-in-live"
+      ],
+      "list": [
         "task-in-live"
       ],
       "commitments": []
@@ -4691,7 +4714,7 @@
         }
       ]
     },
-    "archived-domain": {
+    "archived-containers": {
       "id": "root",
       "kind": "aspect",
       "children": [
@@ -4724,6 +4747,18 @@
           "children": [
             {
               "id": "task-in-live",
+              "kind": "task",
+              "status": "todo"
+            }
+          ]
+        },
+        {
+          "id": "project-archived",
+          "kind": "project",
+          "status": "archived",
+          "children": [
+            {
+              "id": "task-in-archived-project",
               "kind": "task",
               "status": "todo"
             }

@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { rowIdOf } from "@/utils/node-identity";
-import { canArchiveByHand, isArchivedByHand, DOMAIN_ARCHIVED_STATUS } from "@/utils/hand-archive";
+import { canArchiveByHand, isArchivedByHand, domainArchiveStatus } from "@/utils/hand-archive";
 import { updateTask, TASK_ARCHIVAL } from "@/api/tasks";
 import { updateCommitment, COMMITMENT_ARCHIVAL } from "@/api/commitments";
 import { updateDomain } from "@/api/domains";
@@ -23,9 +23,8 @@ interface Result {
 /** The write that puts `node` away by hand — `archive` true — or brings it back Live. */
 function writeArchive(node: MindmapNode, archive: boolean): Promise<unknown> {
   const rowId = rowIdOf(node);
-  // A Domain unarchives to Active, which the backend stores as no status at all.
   if (node.kind === "domain") {
-    return updateDomain(storedId(rowId), { status: archive ? DOMAIN_ARCHIVED_STATUS : "active" });
+    return updateDomain(storedId(rowId), { status: domainArchiveStatus(archive) });
   }
   if (node.kind === "commitment") {
     return updateCommitment(rowId, { archival: archive ? COMMITMENT_ARCHIVAL.ARCHIVED : COMMITMENT_ARCHIVAL.LIVE });

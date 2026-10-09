@@ -1,0 +1,1 @@
+- **List View hides what is inside an archived Project when Archived is on Exclude.** With the **Archived** pill on Exclude, the List View still listed the Tasks inside an Archived Project, though the Mindmap hid them. It now hides them too, and the same goes for an archived Domain.

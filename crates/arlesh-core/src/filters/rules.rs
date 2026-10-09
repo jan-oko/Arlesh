@@ -310,6 +310,15 @@ pub fn is_shelved_container(node: &NodeFacts, filter: &BoardFilter) -> bool {
     !(filter.archived == OverrideMode::Include && is_archived(node))
 }
 
+/// Whether the Archived pill's `Exclude` hides `node` — and, since it gates, everything beneath it.
+///
+/// The List View asks it of each row's ancestors, so the rows inside an archived container — an
+/// Archived Project or an archived Domain, whose contents do not read as archived themselves —
+/// drop there as they do in the Mindmap (Task bd3).
+pub fn is_excluded_archived(node: &NodeFacts, filter: &BoardFilter) -> bool {
+    filter.archived == OverrideMode::Exclude && is_archived(node)
+}
+
 /// Whether a Flow subtree is hidden as a unit rather than softly, via ancestor-keeping.
 ///
 /// Hard-hiding the Flow node drops its whole item subtree with it.
@@ -349,7 +358,7 @@ pub fn type_hard_hidden(node: &NodeFacts, filter: &BoardFilter) -> bool {
     // `Exclude` gates the whole subtree the way blocked and private do — otherwise an excluded
     // Habit-instance goal with one still-undone item and one already-done sibling would stay
     // visible as that sibling's ancestor.
-    if filter.archived == OverrideMode::Exclude && is_archived(node) {
+    if is_excluded_archived(node, filter) {
         return true;
     }
     if is_hidden_backlog(node, filter) {

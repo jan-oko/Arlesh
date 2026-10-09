@@ -383,6 +383,13 @@ export function isHeldByBlock(node: MindmapNode, gate: BlockGate, f: FilterState
   return f.statusMode === "start" && (isNodeBlocked(node) || !isAdmittedBy(node, gate));
 }
 
+/** Whether the Archived pill's Exclude hides `node` — and, since it gates, everything beneath it.
+ * The List View asks it of each row's ancestors, so the rows inside an archived container drop as
+ * they do in the Mindmap (Task bd3). */
+export function isExcludedArchived(node: MindmapNode, f: FilterState): boolean {
+  return f.archivedMode === "exclude" && isArchived(node);
+}
+
 /** Kinds hidden outright (their subtree is removed, not kept as an ancestor). */
 export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   // Outside Private Mode, a private node and everything beneath it are dropped, regardless of kind.
@@ -391,7 +398,7 @@ export function typeHardHidden(node: MindmapNode, f: FilterState): boolean {
   // archivedMode Exclude gates the whole subtree, same as blocked/private above — otherwise an excluded
   // Habit-instance goal with one still-undone (also-excluded) item and one already-`done` item would
   // stay visible anyway, kept as an ancestor of that unrelated, ordinarily-visible done sibling.
-  if (f.archivedMode === "exclude" && isArchived(node)) return true;
+  if (isExcludedArchived(node, f)) return true;
   // A backlogged Task gates its subtree the same way a shelved Project does — the work is
   // deliberately not on the table, so nothing under it is plannable or startable either.
   if (isHiddenBacklog(node, f)) return true;

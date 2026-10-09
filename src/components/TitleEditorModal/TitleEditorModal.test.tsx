@@ -33,7 +33,7 @@ describe("TitleEditorModal", () => {
   it("calls onSave with trimmed title when save button is clicked", async () => {
     render(<TitleEditorModal {...defaultProps} title="  My Title  " />);
     fireEvent.click(screen.getByRole("button", { name: "save" }));
-    await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalledWith("My Title", false));
+    await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalledWith("My Title", false, undefined));
   });
 
   it("does not call onSave when title is blank", () => {
@@ -46,7 +46,7 @@ describe("TitleEditorModal", () => {
     render(<TitleEditorModal {...defaultProps} />);
     const input = screen.getByRole("textbox");
     fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalledWith("Original Title", false));
+    await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalledWith("Original Title", false, undefined));
   });
 
   it("calls onClose when Escape is pressed", () => {
@@ -87,5 +87,21 @@ describe("TitleEditorModal — focus on open", () => {
     render(<TitleEditorModal {...defaultProps} />);
     await user.keyboard("{Escape}");
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers no Archived switch unless the node takes one, and saves no archive then", async () => {
+    render(<TitleEditorModal {...defaultProps} />);
+    fireEvent.click(screen.getByRole("button", { name: /advanced/ }));
+    expect(screen.queryByText("fieldArchived")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalledWith("Original Title", false, undefined));
+  });
+
+  it("opens Advanced on an archived Domain and saves the Archived switch with the form", async () => {
+    render(<TitleEditorModal {...defaultProps} archived />);
+    expect(screen.getByText("fieldArchived")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "archivedOn" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(defaultProps.onSave).toHaveBeenCalledWith("Original Title", false, false));
   });
 });

@@ -9,6 +9,7 @@ import { updateTask, scopeContainmentConflicts, setTaskDoneAt } from "@/api/task
 import { updateGoal } from "@/api/goals";
 import { flowOrigins, setFlowItemCycles, updateFlowItem, addFlowDependency } from "@/api/flows";
 import { testKey } from "@/test/scope-key";
+import { updateDomain } from "@/api/domains";
 
 vi.mock("@/api/domains", () => ({
   listDomains: vi.fn().mockResolvedValue([]),
@@ -296,5 +297,36 @@ describe("useNodeEditor — saving a flow item", () => {
     expect(setFlowItemCycles).toHaveBeenCalledWith(3, "flow_task", 7, [], "fork", expect.any(String));
     expect(updateFlowItem).toHaveBeenCalledWith("flow_task", 70, expect.objectContaining({ title: "Stretch well" }));
     expect(addFlowDependency).toHaveBeenCalledWith(9, "flow_task", 70, "flow_task", 60);
+  });
+});
+
+describe("useNodeEditor — archiving a Domain from its editor", () => {
+  const domainNode: MindmapNode = {
+    id: "domain-8", rowId: 8, kind: "domain", title: "Old hobby", tagIds: [], position: 0, children: [],
+  };
+
+  function openDomain(node: MindmapNode) {
+    const reload = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useNodeEditor({ tree: root, allTasksAndGoals: [], reload }));
+    act(() => result.current.setEditorModal({ nodeId: node.id, node }));
+    return result;
+  }
+
+  it("writes the archive with the title and privacy, in one update", async () => {
+    const result = openDomain(domainNode);
+    await act(() => result.current.onSimpleSave("Old hobby", false, true));
+    expect(updateDomain).toHaveBeenCalledWith(8, { title: "Old hobby", is_private: false, status: "archived" });
+  });
+
+  it("unarchives back to Active", async () => {
+    const result = openDomain({ ...domainNode, status: "archived" });
+    await act(() => result.current.onSimpleSave("Old hobby", false, false));
+    expect(updateDomain).toHaveBeenCalledWith(8, { title: "Old hobby", is_private: false, status: "active" });
+  });
+
+  it("sends no status when the switch was left as it was", async () => {
+    const result = openDomain(domainNode);
+    await act(() => result.current.onSimpleSave("Renamed", false, false));
+    expect(updateDomain).toHaveBeenCalledWith(8, { title: "Renamed", is_private: false });
   });
 });
