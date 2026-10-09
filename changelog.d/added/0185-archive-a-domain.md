@@ -1,0 +1,1 @@
+- **Archive a Domain.** A Domain you no longer need can be archived instead of deleted, so its history stays. Right-click it in the Mindmap and choose **Archive**. Plan and Start then hide it and everything inside it, the same way they hide an Archived Project. Set the **Archived** pill to Include to see it again, and choose **Unarchive** to bring it back as it was.
