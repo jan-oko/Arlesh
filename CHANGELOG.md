@@ -10,6 +10,8 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
+- **Archive a Domain.** A Domain you no longer need can be archived instead of deleted, so its history stays. Right-click it in the Mindmap and choose **Archive**, or turn on **Archived** under **Advanced** in its editor. Plan and Start then hide it and everything inside it, the same way they hide an Archived Project. Set the **Archived** pill to Include to see it again, and choose **Unarchive** (or turn the switch off) to bring it back as it was.
+
 - **Review pill in the Zen View.** The Zen View's Filter menu has a **Review** pill (key **R** in the menu) that shows the agentic tasks waiting on your answer. It is off by default, so Zen now leaves those tasks out until you turn it on. The setting is kept with the tab. Do, Start and the List View still show Review as before.
 
 - **Downloadable builds for Linux and Windows.** Every commit to master publishes builds to the rolling *latest* pre-release on GitHub, and each `vX.Y.Z` tag gets a release of its own. Linux gets an AppImage and a tarball of the binary, built to run on current distributions. Windows gets a per-user setup `.exe` and an `.msi`; they are not signed yet, so the first run shows SmartScreen's warning (**More info**, then **Run anyway**). Data lives in `%APPDATA%\com.atai.arlesh`, and the tray works as on Linux.
@@ -161,6 +163,8 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 - **The delete confirmation opens with Delete focused**, so deleting is Delete, then Enter. **Tab** / **Shift+Tab** move between Delete and Cancel without leaving the dialog, and **Escape** or a click outside still cancels. The warning prompts that list what you would lose still open on Cancel.
 
 ### Fixed
+- **List View hides what is inside an archived Project when Archived is on Exclude.** With the **Archived** pill on Exclude, the List View still listed the Tasks inside an Archived Project, though the Mindmap hid them. It now hides them too, and the same goes for an archived Domain.
+
 - **Narrowing a Time Scope from the List View no longer hangs.** The prompt to clamp nested items or cancel appeared only on the Mindmap; it now appears in every view.
 
 - **Marking a Flow or a flow step Private now sticks**, in the Flow editor, the flow item editor and when creating a new Flow.
