@@ -13,9 +13,8 @@ name: CI
 # minute, against ~5 saved on every PR that touches Rust.
 #
 # Coverage is LLVM source-based, via cargo-llvm-cov, on the pinned stable
-# toolchain. Two rejected alternatives, both measured on this tree — see
-# the sprint log (`git show 2c61c39f:progress.md`; removed in #140), and do
-# not re-litigate either without new numbers:
+# toolchain. Two rejected alternatives, both measured on this tree — do not
+# re-litigate either without new numbers:
 #
 #   cargo tarpaulin --engine ptrace   correct, but 4m53s of the 6m26s job was
 #                                     breakpoint machinery: an INT3 per coverable
@@ -94,9 +93,8 @@ jobs:
       # --maxWorkers=2 is not a runner concession that can be relaxed later: the
       # suite produces phantom `Test timed out` failures in untouched files under
       # memory pressure, and a hosted runner has 2 cores and less RAM than the
-      # laptop this pin was measured on. The generous timeouts are from the same
-      # incident — see "Standing risks" in the sprint log
-      # (`git show 2c61c39f:progress.md`; removed in #140).
+      # laptop this pin was measured on (~200 s with scattered timeouts unbounded,
+      # 74 s and green at 2). The generous timeouts are from the same incident.
       - name: npx vitest run
         run: npx vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000
 
