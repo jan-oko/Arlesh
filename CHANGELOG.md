@@ -10,6 +10,294 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
+- **Windows installers.** Every build of master, and every tagged release, now carries a Windows setup `.exe` (per-user, no admin prompt) and an `.msi`, beside the Linux AppImage and tarball. They are not signed yet, so the first run shows SmartScreen's warning: **More info**, then **Run anyway**. Data is kept in `%APPDATA%\com.atai.arlesh`.
+  The tray works the same way as on Linux: a left click shows or hides the windows, a right click opens the menu, and closing the last window hides it there. On a light taskbar the tray icon is drawn black so it stays visible. A window restored at the next start comes back where it was left, and a window that was minimised when Arlesh was hidden or quit comes back at its real size and position.
+
+- **Subtasks inherit their parent's Plan.** A Task with no Plan of its own now reads the nearest Plan above it, narrowed to its own Time Scope. That holds through Goals, Commitments and waits too. It shows as a fainter calendar badge, and the editor's Plan field shows it read-only, naming where it comes from, beside the control that sets a Plan of its own. Start, the planned / unplanned pill, the Plan View and the MCP all read it. The Plan View places a subtask in its parent's slot rather than among the unplanned candidates. Start now also hides a wait's check under a Task planned ahead.
+  A Plan of its own must sit inside the one a Task inherits. A change that would put a Task outside it, or leave a Task whose window misses the Plan above it, is refused, and the refusal names the Tasks. Narrowing or moving a Task's Plan when subtasks below hold Plans of their own first asks whether to clamp their Plans into the new one, clear them so they inherit it, or cancel, and the whole change is one undo step. A Task that still ends up breaking the rule another way, such as through an undo, is flagged in red.
+
+- **Archive a Task or Commitment by hand.** Right-click a Task or Commitment, on the Mindmap or in the List View, and pick **Archive** — or turn on **Archived** under the editor's Advanced section. It is put away with everything beneath it: the whole branch reads as archived, carries the archive badge and drops out of Plan and Start. **Unarchive** brings it back exactly as it was. Either is one `Ctrl+Z`. An agent can archive and unarchive its Agentic Tasks over the MCP too.
+
+- **Commitments and waits in Flow templates.** A Flow or Habit template can now hold a Commitment item and a wait item beside its Task and Goal items: inside a template, `Shift+C` and `Shift+E` create them inline, where they used to be refused. They sit wherever a Commitment or a wait could sit outside a template.
+  Each iteration of a Habit gets its own Commitment, judged on its own, with the Verdict Window set on the item, and its own wait, released on its own and checked every so often from a first check you place inside the window ("the third day"). An iteration stays open until its Commitments have a verdict and its waits are released, and a Task item can wait on a wait item. Starting a plain Flow makes them real Commitments and waits; copying a Flow copies them; and converting a subtree into a Flow now keeps its Commitments and waits as items instead of deleting them.
+
+- **A Delegated pill in the Filter menu.** Delegated Tasks have a pill of their own beside Archived and Backlog (key `g` in the menu). Left off, Plan and Start hide delegated Tasks as they did before; **Include** shows them there; **Exclude** hides them everywhere, Do included. The node searches follow it, offering delegated Tasks only while it is on Include.
+
+- **Arlesh over HTTP.** `pip install 'arlesh[server]'` adds `arlesh-server`, which serves your
+  board over HTTP from the machine that holds it: the whole board in one request, every kind of
+  node's edits, Arlesh's scope and lifecycle rules, and the MCP endpoint at `/mcp`. Every request
+  needs a token you issue per device with `arlesh-server token add <name>`. That name is recorded
+  on every change the device makes, and a token can be revoked at any time. It listens on this
+  machine only unless you pass `--host`, and serves HTTPS when given `--tls-cert` and `--tls-key`.
+  While it runs it holds the database, as the app does, so only one writer works on it at a
+  time: it will not start while the Arlesh app or another server has the same database, unless
+  you pass `--force`.
+
+- **Python bindings.** A Python package, `arlesh`, can open your Arlesh database and run the app's own
+  logic on it: read the whole board with everything Arlesh derives, create, edit, move and delete
+  every kind of node, and call the rules directly (scope windows, lifecycles, Habit iterations). It
+  opens read-only unless you give it a client name. A Python session writing while the app is open is
+  refused unless it forces its way in, and the app's Ctrl+Z only ever undoes what you did in the app,
+  never a script's changes.
+
+- **An agent can filter the board by the List View's pills.** The MCP snapshot's `filter` now takes the List View's kind selector and its pills — Under, Depends on, Task, Goal and Project status, Verdict, Scope, Blocked, Agentic, Asynchronous and Private — and answers them by the same rules the List View uses, so an agent asking for "the blocked Tasks under this Project" sees the rows you would see.
+
+- **A Task's short id in its editor.** The Task editor's Advanced section now shows the Task's short id — the one an agent names it by and a "Blocked by" reason shows — with a Copy button beside it, so you can name a Task to an agent by the id you see. Habit occurrences and a wait's check tasks show theirs too.
+
+- **Compound and the wait template on Habit and Flow templates.** The flow item editor now has the Task editor's **Compound** switch and, under its **Asynchronous** switch, the same wait-template fields: title, tags, Time Scope and Check every. The Flow editor offers both for the root of a task-instance flow. Every Task the template spawns takes them: starting a Flow copies them onto the Tasks it makes, and each Habit occurrence, an iteration's root included, reads them from its template.
+  An occurrence can say otherwise in its own editor, or with `V`. It can switch Compound on or off for itself alone, or have a wait of its own, or none by emptying the section. A compound occurrence's status follows its sub-items as a compound Task's does, and it is blocked when all of its open sub-items are. Its iteration waits on it: steps you add to it by hand, and waits under its steps, keep the iteration open until they are done. A cooldown or an Interval's next window counts from when its last step was finished.
+
+- **Habit cooldown.** A Window Habit can now rest between completions: set a **Cooldown** in the Habit editor (after the Gap) — days for a weekly Habit, weeks or days for a monthly one, parts of the day for a daily one. After an iteration is done, the next one is **blocked** — "Cooling down until Mon 5 Oct, 02:00" — until the cooldown has passed, and the block lifts by itself: a weekly Habit done on Saturday with a one-day cooldown is blocked through Sunday. Catching up last week late blocks this week the same way, and on an Owed Habit a completion blocks every week still open. Only completing starts a cooldown — setting work aside does not. A cooldown as long as the Habit's window is refused, and Interval and commitment Habits take none.
+  **Done date.** A Done Task's editor now shows when it was done, under Advanced, and lets you set it back — so something ticked late counts from when it was really done, for a Habit's cooldown and an Interval Habit's next window alike. A date in the future is refused, and saving a done Habit occurrence again no longer moves its done time to the moment of saving.
+  **Completion times.** Achieving a Goal, releasing a wait and giving a Commitment its verdict now record when it happened, the way finishing a Task always has.
+  **Commitment Habits** can now run on an **Interval**: give a verdict, Kept or Broken, and the next one comes after the Gap; an unanswered one waits for you rather than expiring. A commitment Habit on Window + Owed takes a **cooldown** too, which blocks its unanswered nights until it passes — you can still record a verdict on a blocked one.
+
+- **On Agent and Review: Agentic tasks get statuses of their own.** A task that reads as Agentic now has its own set of statuses: **To Do**, **On Agent** (an agent holds it), **Review** (its agent has asked you something and is waiting), **Doing** (you are on it) and **Done**. There is no Started on an Agentic task. Ordinary tasks are unchanged.
+  On Agent is hidden from Start, Do and the Zen View, so an agent's work no longer reads as yours. To see it, turn on the new **On Agent** pill in the Filter menu (or press `o` there); the Filter button wears its dot while it is on.
+  A task reads **Review** while its agent has an open question under it, and goes back to On Agent once the question is answered. Review shows in Start, Do and the Zen View whatever the "shows Started tasks" settings say, comes first (a **Review** section at the top of the List View, Review cards first in the Zen grid), and draws with Started's glyph, the ring with a hollow centre. On Agent's glyph is a small bot head.
+  Changing whether a task reads as Agentic, by its flag or by moving it, converts its status and every inheriting task's beneath it (In Progress ↔ Doing). A task with no counterpart, Started or On Agent, stops the change, and a message names it so you can settle it first.
+
+- **Answer an agent's question where you see it.** A Review card in the Zen View, and the agentic part of the Task editor, show the agent's question with an answer field. **Send**, or `Ctrl+Enter` in the field, stores your answer and closes the question, and the task goes back to its agent.
+
+- **Delegation you can see, and agents can set.** A delegated Task now wears a paper-plane badge in its status row in every view that draws one (Mindmap, List, Steps, Plan and Zen). Hovering says "Delegated to <name>". The wait a delegated Task carries now names who is to finish it, for example "Tuli finish: Book the venue". A wait you gave a title of your own keeps that title. Agents can delegate to a person through the MCP: `arlesh_tasks.create` and `update` take `delegate`, set to `{"kind": "person", "id": N}`, or `null` on update to take the delegation back.
+
+- **Interval Habits.** A Habit on an **Interval** clock has one open occurrence at a time: complete it, and the next one's window starts the unit after the one you completed it in, plus the Gap — "every three weeks from the last haircut" rather than every third week on the calendar. An open occurrence left past its window stays, flagged Overdue.
+  An Interval Habit can be **Unscoped**: its occurrences have no window and are never Overdue, and the next one appears the Gap after the day you completed the last — with no Gap, the moment you do.
+
+- **Overdue work shows under Start.** Start used to drop anything whose window had passed, so late work vanished from the one view that asks what to begin now. An Overdue Task, Goal or wait now stays under Start; blocked, backlogged and delegated items, work rescheduled into a Plan still ahead, and Missed items still drop out.
+
+  Under Start the List View gathers Overdue work into an **Overdue** section at the top, above the Asynchronous section, with its subtasks brought along. Switch it with **Overdue first under Start** under Settings → List (on by default). **Show the overdue border on rows**, on the same page, turns the amber border off in the List View, as Zen's switch does for its cards.
+
+  Under Start, a blocked task no longer hides a subtask it depends on: that subtask, and everything under it, shows, with the blocked task above it. The rest of the blocked task's subtree stays hidden, as before.
+
+- **Agent capacity lock.** Agents can now say they are at capacity. While they are, every Agentic task that isn't done is blocked with the reason "Agents at capacity", and it behaves like any other block: Start hides it, it can't be started, it shows the blocked sign, and Unblock lists it. Tasks already In Progress or Started keep their status. Agentic waits are not affected.
+
+  An agent sets and clears the lock over the MCP (`arlesh_capacity`), and the agents' own reading of the board shows the same block. You can set and clear it under Settings → Agents. Every open window updates as soon as the lock changes.
+
+  A small bot head now appears in the top bar whenever agents need watching: while the lock is on (amber padlock), while an agent has a question waiting for you (red !) or is waiting on something else such as CI (blue hourglass), or while Agentic work is In Progress. Its tooltip gives the counts. Clicking it opens a short menu that clears the lock or shows the waits and the work in the List View. To hide the head entirely, turn off **Show agent status in the top bar** under Settings → Agents.
+
+- **Compound tasks: a status made of their sub-items.** Press `V` on a Task (Mindmap, List View, Steps View, Zen View), or turn on *Compound* in its editor, and its status follows everything beneath it: Done when every sub-item is Done, In Progress when any is, Started when any has begun or finished, To Do otherwise. Sub-tasks, goals (Done once achieved), waits and commitments (Started while pending or unresolved) all count, however deep; archived items don't. When every sub-item still open is blocked, the compound is blocked too, with the reason "All open sub-items are blocked". Its status glyph gets a dashed outer ring, and setting its status by hand is refused with a note saying why. Turning it off keeps the status it was showing, in one undoable step. Agents can switch it too (`compound` on `arlesh_tasks.update`). A new setting, *Show compound tasks on the grid* under Settings → Zen (on by default), takes compound tasks' cards off the Zen grid while their sub-items stay.
+
+- **A tabbed keyboard cheat-sheet you can search.** The cheat-sheet (`Ctrl+Shift+/`) now shows one tab per area — Global, Filters, Tabs, each view and the Scope pickers — and opens on the view you are in, marked *here*. The sheet now fills most of the window at one size on every tab, and only its list scrolls (`PgUp` / `PgDn` page it, even while you type). A tab's shortcuts sit in two columns, and the long ones (Global, Mindmap, List View, Steps View) are split under headings such as Create and Edit. Switch tabs with a click or with `←` / `→`.
+  A search field is focused when the sheet opens: type part of a description (`flow`) or a key (`shift+t`) and the matching shortcuts from every tab are listed under their headings, with a message when nothing matches. `Esc` clears the search and returns to the tab you were on; a second `Esc` closes the sheet.
+  The flag keys now read **Toggle Agentic**, **Toggle Asynchronous** and **Toggle Backlog** on the sheet.
+
+- **A dot on the Filter button for filters you can't see.** When the Filter menu holds a setting that nothing outside it shows, the Filter button wears a small dot: the Zen View's Agentic pill (which draws no chip), or the Archived or Backlog pill set to include or exclude, in any view that offers it. Tags and the List View's pills already show as chips, and the row-kind and strip toggles, Private Mode and the Mindmap's Info / Flow toggles never light it.
+
+  **Esc** now closes the Filter menu in every view, and focus goes back to where it was; the view underneath never sees the key, so the Mindmap's selection stays. In a search box with text in it, the first Esc clears the text and the second closes the menu.
+
+- **The amber Overdue border in every view.** List View rows and Steps, Plan and Zen View cards now draw the amber border an Overdue node has on the Mindmap. A selected item that is Overdue, in any view, draws its selection in a colour of its own, so you can see both at once. In the Zen View it can be turned off: Settings → Zen → *Show the overdue border on cards*. Screen readers hear "Overdue" on every Overdue item.
+
+- **A Due for every Task, and Overdue measured against it.** A Task can now carry a **Due** — the scope by which it should be finished — set in the Task editor beside the Keep Overdue / Archive pills, and held inside the Task's Time Scope. Past the end of its Due, a Task that is not done (and not archived) is **Overdue**: it gets an amber border — on the Mindmap and on List View rows and Steps, Plan and Zen View cards — may be planned outside its Time Scope, and matches the List View's Overdue filter. That now includes a Task past a Due inside a window that is still open, and a delegated Task.
+
+  Without a Due of its own, a Task keeps behaving as it did: under Keep Overdue its Time Scope is its Due, so it turns Overdue once the window passes; under Archive it has none. Sub-tasks take theirs from the window they inherit. A Task in the Backlog is never Overdue unless you gave it a Due. A Task with no Time Scope anywhere above it can have a Due too — the field then has its own row, below the Plan. Agents can read and set `due_scope` through the MCP.
+
+- **Started: a status for work you have begun and put down.** A Task (or Habit occurrence) can now be **Started** as well as To Do, In Progress or Done. `Alt+Enter` sets a To Do or Done task Started, and flips an In Progress one to Started and back — pause and resume — in the Mindmap, List, Steps and Zen views; plain `Enter` on a Started task resumes it. Its icon is In Progress's with the inner circle left open. Like In Progress, it is refused while the task is blocked, takes a task out of the Backlog (with a toast), needs a Spec on an Agentic task, and is offered in the Task editor.
+  Plan shows Started tasks, and so does Start by default; Do and the Zen View leave them out by default. Three settings switch them: *Start shows Started tasks* and *Do shows Started tasks* under Settings → General, and *Show Started tasks on the grid* under Settings → Zen. On the Zen grid, a card that is not In Progress — a Started one, or one you just marked Done or To Do and still have selected — shows its status icon at the head of its badge row. Agents can set `started` through the MCP `set_status`.
+
+- **Zen View: only what you are doing now.** A fifth view, beside Mindmap, List, Plan and Steps — pick it from the top bar's view selector or press `Ctrl+J`. It shows the Tasks in progress (the Do preset, always, whatever the tab's own preset is) as a grid of cards that fills the window: one to three tasks make big cards with big titles, many make smaller ones, and once the cards reach a single line of text the grid scrolls instead of shrinking further. Each card centres its title, the path to it and the usual badges, all scaled together with the card (Settings → Zen → *Show badges on cards* turns the badges off).
+
+  Above the grid sit two strips: the Commitments you have not judged yet, and the Expectations that are open now. Turn either off in the Filter menu — the same switches and keys as the List View's row kinds (`c` / `e` while the menu is open, Shift for one alone) — per tab. The Filter menu also has the List View's **Agentic** pill, to show only agentic work or only the rest. The List View's keys work here — `Enter`, `E`, `R`, `P`, `D`, `B`, `A`, `W`, `X`, `Delete`, `Ctrl+Home`/`Ctrl+End` and the rest — except the ones that create something. The arrow keys move across and down the grid, and up into the strips.
+
+- **`D` adds a dependency without opening the editor.** With a Task selected on the Mindmap, in the List View or in the Steps View, `D` opens a small search bar right at the selected node, row or card. Type to find the Task, Goal or Expectation it should wait on, move with the arrow keys, and press Enter (or click) to add it; Esc closes without a change. The search leaves out the Task itself, what it already depends on, and anything that would make a circle of dependencies, and one `Ctrl+Z` takes the new dependency back.
+
+  Only a Task can depend on something, so `D` on anything else says so in a toast, and so does `D` on a Mindmap multi-selection — pick one Task.
+
+- **Ctrl+Home and Ctrl+End in the List View.** `Ctrl+Home` selects the first row and scrolls the list to the top; `Ctrl+End` selects the last row and scrolls to the bottom. Path headers are skipped, as the arrow keys skip them, and an empty list is left alone.
+
+- **Scope pickers work from the keyboard.** In any scope picker — the `P` quick picker, and the Time Scope and Plan fields in the editors — the arrow keys move a highlight over the scopes shown, Space picks the highlighted one (a second pick makes a range), Enter steps into it (a month into its weeks), `[` and `]` show the previous and next period, `\` goes up a level, and Ctrl+Enter applies. The keys are listed in the cheat-sheet under *Scope pickers*.
+
+- **`P` sets a Task's Plan without opening the editor.** With a Task selected on the Mindmap, in the List View or in the Steps View, `P` opens the editor's own Scope Picker right at the selected node, row or card. Pick a scope and press Ctrl+Enter or Apply to plan it, Clear to unplan it, or Esc to close without a change. Every Plan rule still holds — it stays inside the Task's Time Scope (Overdue Tasks excepted) and its parent's Plan, a backlogged Task comes out of the Backlog with a toast, and a refusal says why — and one `Ctrl+Z` takes it back.
+
+  On the Mindmap a multi-selection is planned in one go, as a single undo step; anything selected that isn't a Task is left alone and counted in a toast, and a node that can't hold a Plan is refused by name. The Plan View keeps its own `P`, which fills parts of the day.
+
+- **Private nodes wear a crossed-out eye.** A node you mark Private now shows a small crossed-out-eye badge in its status row, with the tooltip "Private", on the Mindmap, List View rows, and Steps and Plan View cards — Habit occurrences and derived waits included. Only the node that carries the flag is badged: what sits under it is hidden with it outside Private Mode, but carries no badge of its own.
+
+  A Steps View card no longer spells out a separate "Private" field — the badge says it.
+
+- **Turning pages in the Steps View with `[` and `]`, and with the arrows.** `[` and `]` turn to the previous and next page of a Step, alongside `PageUp` and `PageDown`. And the arrows no longer stop dead at a page's edge: `→` on the last card of a page moves on to the first card of the next page, and `←` on the first card goes back to the last card of the page before.
+
+- **The Steps View folds passed Habit history, and you can walk down into it.** A run of passed iterations of one Habit that reaches your "Collapse habit history after N" threshold is now one card, titled like the Mindmap's folded node — "Journal: 14 passed · 9 done, 5 missed" — with its day span in a tooltip. Press `Enter` on it to step inside: the run opens onto its years, seasons, months or weeks (only the levels it actually spans), each a card of its own with its own tally, down to the iterations themselves. Every level is a segment in the breadcrumb, `Shift+Escape` climbs back through them, and a tab left standing inside a run comes back there after a restart. The card is a drawing rather than something stored, so `E`, creating inside it, deleting and marking it are refused with a message saying so.
+
+- **Add filters from the keyboard with `Ctrl+F`.** Type a tag, a status, a Verdict or Scope value, Blocked / Agentic / Asynchronous (and Private while Private Mode is on), Archived or Backlog — or, in the List View, any node's name to filter by **Under** or **Depends on** it, or Tasks / Commitments / Expectations to show or hide that kind of row — and pick from the matches. Enter adds as All, Shift+Enter as Any, Alt+Enter as Not, and the box clears and stays open so you can add several in a row. The filters you already have are listed first, so you can change one with Enter or remove it with Delete. Esc closes it.
+
+- **Choose which kinds of row the List View shows.** The top of the filter popover now has Tasks, Commitments and Expectations toggles, all on by default, so you can hide a kind of row without touching the rest of your filter. At least one stays on. The toggles step aside while the Expectations option (`Alt+E`) is chosen, Reset turns all three back on, and each tab remembers its own choice. `Alt+Shift+T`, `Alt+Shift+C` and `Alt+Shift+E` flip them from the keyboard.
+
+- **Downloadable Linux builds.** Every commit to master publishes an AppImage and a tarball of the bare binary to the rolling *latest* pre-release on GitHub, and each `vX.Y.Z` tag gets a release of its own. They are built against an older glibc, so they run on current distributions including Arch, and they share their data directory with a locally built Arlesh.
+
+- **A scope for the Plan preset.** While Plan is the preset, the top bar offers a *Plan scope* beside it: pick any scope in the calendar and the Mindmap, List and Steps Views show only the Tasks relevant to it — by default, those whose Time Scope (their own, or the nearest scoped parent's) lies within it. Tasks with no Time Scope are hidden, and a wider parent stays on screen above a sub-step that fits. Each tab keeps its own scope; *Clear* removes it.
+  A new switch under Settings → General, *Plan scope keeps Tasks that overlap it*, widens the match to any Task whose Time Scope overlaps the scope, Tasks with no Time Scope included. An agent reading the board over MCP can ask the same question with `plan_scope` and `scope_match`.
+
+- **Agents manage a whole Agentic Task over MCP.** `arlesh_tasks.create` and `update` now also set a Task's Time Scope and Plan, what it does when its scope passes, whether it is Asynchronous, its block reasons, its tags and its prerequisites — so an agent can record "this comes after that" in Arlesh instead of `bd`. The app's own rules apply: a Plan must fit its Time Scope, a dependency cannot close a cycle, and a prerequisite or tag must be one the agent can see. An update lands whole or not at all, and none of it enters your Undo Stack.
+
+- **Choose the MCP port in Settings, and see whether the endpoint is running.** The Settings MCP
+  page now has a port field (4747 by default). Changing it moves the endpoint straight away — no
+  restart of Arlesh needed. The page also says whether the endpoint is listening and on which
+  address, or why it is not — typically that another Arlesh already holds the port — with a
+  Restart button to try again. `ARLESH_MCP_PORT` still overrides the setting when it is set, and
+  the page says when it does.
+
+- **Agents can leave a note under their Tasks over MCP.** An agent can now hang an Info — a
+  one-line text with optional longer details — under a Task that reads as Agentic inside the parts
+  of the board you have opened to the MCP. When it shortens a long Task title, it can keep the full
+  wording there. Like the agent's other writes, the note never ends up on your Undo stack.
+
+- **Agents can create and work their own Tasks over MCP.** Inside the parts of the board you have
+  opened to the MCP, an agent can now create Tasks — always Agentic — anywhere except under a Task
+  you marked Not agentic, and can retitle, brief, start, finish and move Tasks that read as
+  Agentic, including Habit occurrences, whose edits land on that one occurrence — and archive a
+  Habit occurrence. A status change
+  names the status the agent last saw, so two agents cannot both claim the same Task. Nothing is
+  ever deleted, and an agent's writes never end up on your Undo stack.
+  Agents can name any node by a short id — the first few characters of its id — shown beside every
+  node the MCP reads; one that has become ambiguous is refused with the candidates listed.
+  An agent can also ask for just the Tasks that read as Agentic — optionally only the most urgent
+  ones — each with its brief, most urgent first.
+  The MCP server is now called `Arlesh` (connect with
+  `claude mcp add --transport http Arlesh http://127.0.0.1:4747/mcp`); its tools keep their names.
+
+- **A cycle can be planned into itself.** Each cycle in a flow item's Cycles list has a **Planned** toggle beside it. On, the cycle is planned into its own window — a Noon cycle into Noon, a Day 3 cycle into Day 3, a whole-scope cycle into the whole flow window — and every occurrence it draws counts as planned in the Plan View and the filters. Off, the default, leaves it unplanned. This is what lets a part-of-the-day cycle, which has nothing finer to plan within, be planned at all.
+
+  A task Habit's root can be planned the same way: its Plan dropdown offers the window's own kind as "(instance scope)", which plans each iteration's root into that iteration's whole window.
+
+- **A Habit occurrence can start a wait.** Switch an occurrence to Asynchronous and give it an Expectation, exactly as on any Task: once it is done, the wait appears beneath it with its checks, and you can release it or archive it. `Shift+W` works on occurrences too. An occurrence can also have its issue link cleared on its own.
+
+- **A Habit's steps carry the fields of their kind.** The flow item editor now sets a step's tags, block reasons and — for a task — Backlog, Asynchronous and Agentic. Every occurrence reads them unless you changed that occurrence yourself.
+
+  Saving a step's cycle pairs keeps what its occurrences recorded. A change that would drop something recorded asks first: **Archive & new** or **Discard & regenerate**.
+
+- **Agentic tasks carry a brief.** In the Task editor's and the flow item editor's Advanced
+  section, while a task is agentic the Agentic control is followed by a **Brief**, collapsed until
+  you open it: a priority (MW, A, B or C, most urgent first), the Spec, the Design, the Acceptance criteria and Notes — what
+  an agent reads about the work. Advanced opens by itself while the task is marked Agentic or its
+  brief is written. The
+  brief belongs to the task and is not inherited, even though the Agentic flag is. An agentic task
+  cannot be started without a Spec: moving it to In Progress is refused with a message saying so,
+  from the status control, `Enter`, the editor and every view.
+- **An agent can wait on you.** An agent working an agentic task through the MCP can raise a wait
+  under it with its question in a note — "the agent is waiting on you". It shows among your waits
+  with the bot-head badge in the accent colour, the question as its tooltip, and in the
+  Expectations list. Answer it in the wait's editor, in its own Answer field: a question can't be
+  released without an answer, from anywhere. An agent can also wait on something other than you,
+  such as CI; that wait wears a quieter badge and the agent releases it itself when it is done.
+  Only a wait directly under an agentic task can be one.
+
+- **Settings modal.** The gear in the top bar now opens a settings modal organised into pages —
+  General, Mindmap, List, Steps, Plan, Windows & tray, Expectations and MCP access — in place of the
+  small popover whose switches came and went with the active view. Every setting is reachable from
+  any view, and each keeps the value it had. Move between pages with ↑/↓, and close with Escape or
+  the ×.
+
+- **MCP access.** The MCP endpoint now sees only the parts of the board you open to it. On the
+  settings modal's *MCP access* page, add **MCP roots** with the node search: an agent can read
+  everything inside a root and nothing outside, Agentic tasks inside a root are the only thing it
+  can write, and private nodes stay hidden even inside one. With no roots it sees nothing — so
+  after updating, add a root before an agent can read the board again. Every node the MCP can see
+  shows an antenna in its status badges, naming the root it is seen through. The agent is told its
+  roots when it connects, and a request for anything outside them is refused as `not_permitted`.
+  Adding or removing a root is undoable.
+
+- **Expectations: waits your tasks depend on.** A new kind of node for something outside your own action that you are waiting on — a training run finishing, someone replying. Create one with `Shift+E` anywhere a Task can live; it holds notes, carries a Time Scope and tags like a task, is Pending until you release it (`Enter` or a click on its icon — a still spinner of short ticks that gains a check once released), and can be archived. A task that depends on a pending Expectation reads as blocked until it is released, and the Task editor's dependency picker offers Expectations beside Tasks and Goals.
+  Say how often to look in on one with **Check every** — every N days, weeks, months or seasons, starting today or on a day you pick. Check every can also count hours or minutes. A "check on it" task appears beneath the wait once a check is due, never before the starting day; completing it (`Enter`, or its status control) marks it done — it stays, like any done task — and the next one falls due one interval later. Pressing it again reopens the latest check. Clear the setting to stop checking, or release the wait. The check task's title prefix ("Check: " by default) can be changed in the settings. The List View has an **Expectations** option (`Alt+E`) showing every pending wait, and Plan and Start show them by their own rules. A delegated task now waits on a derived Expectation of its own, released when the task is done.
+
+- **Switch what the Plan View is filling with one letter.** With nothing selected, `S`, `M`, `W`, `D` and `P` fill seasons, months, weeks, days and parts of the day. Going coarser lands on the scope holding where you are — `M` from a week goes to that week's month (the month its first day is in). Going finer lands on today if today is inside, and otherwise on the first one. The kind dropdown now lands the same way. With rows selected the letters keep planning into a subscope as before, and no letter fires while you are typing or while the dropdown or date picker is open.
+
+- **Go up to the parent scope from the Plan View.** An **↑** button beside the step back fills the scope one rung up instead: a part of the day goes to its day, a day to its week, a week to its month, a month to its season, and the kind selector follows. A week that crosses into the next month goes to the month its first day is in. `\` does the same from the keyboard. A season is the top, so there the button is greyed out and says why on hover, and `\` says so in a toast rather than doing nothing.
+
+- **Select several rows in the Plan View and plan them in one go.** `Shift+↑`/`Shift+↓` and `Shift+click` extend a run from wherever the cursor was, and `Ctrl+click` adds or removes one row. `Enter`, a number, a letter or a drag then acts on the whole selection, and the lot is a single `Ctrl+Z`.
+
+  A batch that plans five of six is not taken back because the sixth was refused: those five happened and you can see them. Whatever did not land is counted in the toast instead — which bound refused it, what came out of the Backlog on the way in, and a straddling bucket that carried its rows outside the scope you are filling.
+
+- **Plan into a week, a day or a part of a day without leaving the scope you are filling.** With *Split by subscope* on, a card reaches one of the buckets three ways: drag it onto the bucket, press the bucket's **number** — `1` through `7`, counting down the pane in calendar order — or press its **initial** where one letter names it and nothing else. Monday and Wednesday answer to `M` and `W`; Tuesday and Thursday both start with T and so take their numbers, as do Saturday and Sunday. Premorning, Morning and Afternoon answer to their letters; Noon and Night collide on N. Week numbers never get a letter, because every week of a month starts with the same one. Whatever keys a bucket answers to are printed on its heading.
+
+  The other half of that is what the split no longer does: there is no longer a "plan into this scope" while its parts are what you are filling, and no catch-all section collecting the work that fell between the buckets. Work pinned to the scope itself, or spread across several of its parts, now appears on the **candidates** side — where it still needs placing, and where the gestures that place it are.
+
+- **A tab can be torn into its own window.** Drag a tab out of the strip and it becomes a second
+  window — a full window, with its own tab strip, its own tabs and its own filters — so two parts
+  of the board can be on screen at once, one per monitor. The tab menu offers the same thing as
+  **Move tab to new window**, and offers **Move tab to "…"** for every other open window, which is
+  how a tab comes back. Closing a window's last tab closes that window; closing a window that is
+  not the last one simply closes it, and only the final close is governed by *Close to tray*.
+
+  Dragging works both ways: drop a tab anywhere on another window and it moves there, drop it
+  anywhere that is not an Arlesh window and it becomes a window of its own. Dragging works on
+  Wayland, where apps are not told where the pointer or their windows are.
+
+  Every window is numbered in its title — `Arlesh 1`, `Arlesh 2 — Bugfixes` — and the tray's menu lists them by the same title, each with a check
+  while it is on screen: click one to hide or show that window alone, where clicking the tray icon
+  still hides or shows them all. A window keeps its number while it is open and gets it back when
+  Arlesh reopens; a new window takes the lowest number not in use.
+
+  From the keyboard: **Ctrl+N** opens a new window, beside Ctrl+T's new tab, starting at the
+  subtree you are looking at. **Ctrl+Alt+N** takes the current tab into a new window — the same
+  thing, but with what you are holding. Both are on the cheat-sheet.
+
+  Your windows come back when you reopen Arlesh, at the size, the position and with the tabs you
+  left them with. A window whose monitor is no longer connected reopens somewhere you can reach it
+  rather than off screen.
+
+- **An edit in one window appears in the others.** Create, edit or delete anything and every other
+  open window catches up by itself — no refresh, no switching back and forth to make a change show.
+  A node you delete in one window stops being there in the other, so you can never act on something
+  that is already gone. An issue link set by an agent over the MCP endpoint now shows up the same
+  way, where before it needed a restart to appear.
+
+- **Steps View: one level at a time, as cards you enter.** A fourth view, on `Ctrl+S`. The node
+  you are standing on is drawn as a header card and its direct children as cards beneath it, and
+  nothing deeper — so a wide branch stops being a wall and picking the next thing stops meaning
+  reading the whole subtree.
+
+  Entering a card makes it the Step and redraws. It moves the same place the breadcrumb and `Ctrl+O`
+  move, so switching to the Mindmap afterwards lands you where you walked to, the breadcrumb names
+  the Step as it does everywhere else, and `Shift+Escape` and `Ctrl+Escape` climb back out — there
+  is no new navigation vocabulary to learn. Each tab remembers it is showing Steps, so one tab can
+  be a walk while another stays a Mindmap.
+
+  A card carries what the editor carries: the fields you would open the editor to read, chosen by
+  kind, and never a second copy of what its icon or its badges already say. Under them sit the
+  node's first Info notes as bullets, as many as the card has room for, with the last line saying
+  how many did not fit rather than dropping them in silence. A card that holds something says how
+  much — "3 of 12", what the current filter will show against what the board actually holds. All four arrows move between cards, `Enter` descends, `E` opens the editor, `Space` cycles
+  a status, and a leaf opens on an empty Step that offers to create the first child rather than
+  being a dead end.
+
+  Every card is coloured by the aspect it lives under, as a List View row is, so a Step reads at a
+  glance as one place on the board. It is a light wash of the aspect's hue rather than the colour itself, so text stays
+  legible on every aspect in both themes, the pale ones and an Aspect's own card included. What
+  state a card is in is left to its icon and its badges.
+
+  Cards are created and deleted with the Mindmap's keys and rules: `Shift+Enter` puts a new card
+  beside the selected one, `Ctrl+Enter` a new parent around it, and `Tab` (or `Shift` and a kind's
+  initial) makes a child of the selected card and steps into it to show it. With nothing selected,
+  `Shift` and a kind's initial puts that kind on the Step you are looking at, and so does the "+"
+  beside the Step's header card, which lists the kinds the Step can hold. A new card is selected
+  with its title open for naming. `Delete` asks first, then lands on the next card. The Step you
+  are standing on cannot be deleted or given a sibling from inside it, and says so. `Ctrl+Z` takes
+  back either in one press.
+
+  A wide Step turns to pages rather than scrolling, with `PageUp` and `PageDown` for the landings,
+  and a card-size setting per tab in the gear menu.
+
+- **Delegate a task to the agent.** An agentic Task now has a **Delegate to agent** button beside its Agentic flag in the Task editor's Advanced section. One click hands the Task to the agent and a second takes it back. A task can now be delegated to the agent itself instead of to a person made up to stand in for it.
+
+- **The Plan View can group by path, and split what is planned into its subscopes.** Two new switches in the settings gear, both off until you turn them on, both shown only while the Plan View is up.
+
+  **Group by path** gives both panes the same headers the List View has: one line naming the chain — `Growth › CODE › ARLESH › Features` — above each run of work that lives in the same place, instead of nothing at all. The segments behave as they do in the List: click one to enter it, Ctrl-click to file it as an Antecedent pill.
+
+  **Split planned by subscope** turns the right-hand pane into one section per bucket — the weeks of a month, the days of a week, the parts of a day — so filling a month shows you every week and what is in it at once, rather than one scope at a time. Every bucket is always open; there is nothing to unfold. Weeks that poke outside the month are shown and labelled *partial* with their dates rather than quietly left out, empty buckets are drawn because an empty week is worth seeing when you are deciding what to put in it, and anything planned to the month itself — or across several of its weeks — is collected under its own heading at the top instead of disappearing. The left-hand pane is not split: work that is not planned yet is not in any bucket.
+
+  The keyboard is unchanged: `Down` walks from the last card of one bucket straight into the next, and headings are never landed on.
+
+- **A third view — Plan — fills one scope at a time, as a two-pane triage.** Filling a week used to mean re-filtering the List View, opening a task, setting its Plan, closing it and doing it again, with nothing on screen saying what the week already held. The Plan View puts both halves of that question side by side: on the left, the **candidates** — work that is relevant now and unscheduled — and on the right, **what the scope already holds**. Moving a card across sets its Plan; moving one back clears it. That is the only thing this view writes, and a move is undone by `Ctrl+Z` like any other change.
+
+  **A candidate is unplanned work whose window reaches into the scope** — its own Time Scope, or the one it inherits — and unscoped work, which is always relevant, is always offered. The right-hand pane counts anything planned *inside* the scope, so a week being filled shows the task you pinned to Tuesday rather than pretending the week is emptier than it is. Work planned somewhere else appears in neither pane: it is neither unscheduled nor here.
+
+  **Backlogged work is off the table by default, and one switch away from being on it.** Backlog means deliberately not now — and a planning pass is also when you reconsider that. Planning something out of the Backlog takes it out of the Backlog, and the view says so rather than letting a badge quietly stop being drawn.
+
+  **A move that would break a containment rule is refused, and the toast says which rule.** A task cannot be planned outside its own Time Scope, or outside its parent task's Plan, and nothing is widened on your behalf — a window says when work *matters*, and changing one is a decision for the editor. The selection stays on the task the message is about; a move that went through advances to the next card, so a pass is `Enter` down the candidates.
+
+  **`Ctrl+P` opens it from anywhere**, and **any scope kind can be filled** — season, month, week, day or part of day — with `[` and `]` stepping to the one before or after, and the scope's own name opening the calendar to jump anywhere. A pass opens on the *current* scope of the kind you last filled: the kind is remembered with the tab, the week is not, because last Friday's week is not the one you want on Monday. The view shares the tab's subtree and filters with the other two, so entering a branch anywhere narrows all three.
+
 - **Closing the window no longer quits Arlesh — it hides it to the system tray, and everything keeps running.** Arlesh is open all day and looked at in short bursts, so the most reflexive control on the screen was the one that ended the session: close it and you paid for a cold start the next time you wanted thirty seconds with the board. Worse, the MCP endpoint went with it. An agent could only read your board while you happened to have a window open for it.
 
   Now there is an **Arlesh mark in the system tray** — the chevrons, flat and white, cut down to three so they stay legible at the size a panel draws them — for as long as the app is running, and the close button puts the window there instead of shutting anything down. Reopening is instant and the window comes back exactly where and how you left it, because it was never gone. **The MCP endpoint keeps answering the whole time** — Claude can read the board while Arlesh is out of your way, which is the point.
@@ -182,6 +470,145 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 - **A keyboard cheat-sheet**, opened with **Ctrl+Shift+/** or from the settings popover's **Keyboard shortcuts** entry. Lists every binding in the app grouped into Global / Mindmap / List View, with the chords that share an action merged onto one row (so the four arrow keys read as a single `← → ↑ ↓` line). The list is generated from the same binding table the keyboard handlers dispatch from, so it can't fall out of date with what the keys actually do.
 
 ### Changed
+- **A released wait archives itself once its window has passed.** A wait with no window is archived as soon as it is released, and answering a question releases it. A wait still pending never archives itself; it goes Overdue as before.
+
+- **Delegated Tasks are no longer treated as archived.** The Archived pill no longer shows or hides them: the new Delegated pill does.
+
+- **Copying a node copies the Flows, Commitments and waits under it.** Copy and paste a Project, Domain or Goal and every Flow hanging under it now comes along — template, items and Recurrence — in the same single undo step. Commitments and waits anywhere in the copied subtree come along too, as they are, with everything under them; they used to be dropped without a word, and so did some Tasks and Goals under a copied Domain. Copies of work a Flow started still say which Flow they came from. A copied Habit starts fresh, with no completions. Its Target Node follows the copy when the target was copied too, and keeps pointing at the original when it was outside what you copied.
+
+  Rows added to a Habit occurrence can't come along, because the copy regenerates its own occurrences. The paste toast names them, so you can copy them across on their own.
+
+- **"Blocked by" names the dependency by its short id.** A Task blocked by unfinished work now reads "Blocked by task 6f3 (Write spec)" — the short id an agent sees over the MCP — instead of the row number, on the board, the cards, the editor and in `arlesh_tasks.get`.
+
+- **Agentic waits are no longer drawn in the Zen View's Expectations strip.** The strip now shows only waits on people. An agent's question is drawn on its Review card, and an agent's wait on something else, such as CI, is the agent's own business. Both still show under their task in the Mindmap and the List View.
+
+- **Enter and Alt+Enter on Agentic tasks.** `Enter` cycles an Agentic task Review → Doing → Done → To Do, and takes an On Agent task over (Doing). `Alt+Enter` hands a task you are Doing back to its agent (On Agent). On any other Agentic status it now says so out loud instead of setting Started.
+
+- **The MCP speaks the Agentic statuses.** An agent sees an Agentic task as `todo`, `on_agent`, `review`, `doing` or `done`, and every task's status now says which set it belongs to. An agent claims a task with `on_agent` (from `todo`, needing a Spec as before), hands it back with `todo` and finishes it with `done`. It may not set `doing`, which says you are working, or `review`; to hand a task to you it asks a question, and the task reads `review` until you answer. A compare-and-set may expect `review`. The top bar's agent status now counts tasks waiting for your review and tasks on an agent.
+
+- **Zen shows only what you hold.** A delegated Task no longer gets a card on the Zen grid, even while it is In Progress. Do still lists it. A card you have just delegated stays where it is until you move the selection off it.
+
+- **No red X over the Time Scope clock.** An item whose window has passed no longer draws its clock badge crossed out, on the Mindmap, in the List View or on the Steps, Plan and Zen cards. An Overdue item shows the amber border, and a Missed or Completed one shows the archive box.
+
+- **A Habit keeps a clock instead of a Consumption.** The Flow editor's Consumption, Overlapping / Blocking and Catch-up choices are gone. A Habit now has a **Clock**: **Window** (a new occurrence every window, done or not) with a choice of what happens to one you miss — **Archive** (it is archived as Missed), **Owed** (it stays open and is flagged Overdue beside the later ones) or **Overdue** (it is archived, and the one open now carries it, Overdue until you complete one) — or **Interval** (below).
+  Every existing Habit keeps behaving as closely as it can: a Destructive one is now Window + Archive, an Overlapping one Window + Owed, and every Blocking one, whatever its catch-up, Window + Overdue. A Blocking Habit's old open occurrence, if it was not the current one, is now archived as Missed with everything on it, and the current window's occurrence is the open one.
+  Under Window + Overdue the open occurrence is drawn "Water the plants W3 from W1": its window reaches back to the first one you missed, and it has the amber Overdue border until it is done.
+  Habit occurrences can now be Overdue — Owed and Overdue ones past their due, Interval ones past their window — and a Habit occurrence's Task editor offers the **Due** field, so you can give one occurrence a due of its own.
+  In the Flow editor the Habit settings are sparser and start with the clock, then what happens to a missed one, then Starts, Gap and Ends. Each choice explains itself in its tooltip.
+  Under Window + Owed, an occurrence still open past its window is never folded into the Habit's collapsed history: it stays drawn beside it, where you can see it is owed.
+
+- **Settings: *MCP access* is now *Agents*.** The settings page with the MCP roots and the endpoint has been renamed **Agents**. It now also holds the agent capacity lock and the switch for the agent status in the top bar.
+
+- **"Keep" is now "Keep Overdue".** The choice for what happens when a Task's or Goal's Time Scope passes unfinished now reads **Keep Overdue** / **Archive**, in the editors and on Steps View cards. It means what it did — the item stays and is flagged Overdue — and it is also what gives the item its default Due.
+
+- **Inside a Flow template, the create keys make flow items.** On the Mindmap and in the Steps View, with a Flow or one of its items selected, `Tab` and `Shift+T` now make a Task item and `Shift+G` a Goal item. Before, `Tab` added an item of whatever kind the Flow implied, and `Shift+T` and `Shift+G` were refused. A Flow template holds only Task and Goal items, so `Shift+C` and `Shift+E` there say "Commitment can't be a flow item" (or "Expectation…"). A Goal item still goes only under the Flow or another Goal item, and a Commitment Flow holds no Goal items. A Step standing on a Flow now offers Task and Goal in its "+" menu. Outside Flow templates nothing changes.
+
+- **Tab always creates a Task; Shift+H creates a Habit.** On the Mindmap and in the Steps View, `Tab` now makes a Task child whatever is selected, instead of a child whose kind depended on the parent (a Domain under an Aspect or a Domain, a Project under a Project, a Goal under a Goal, a Commitment under a Commitment, an Info under an Info). Where a Task cannot go — a Tag, an Info note, an Expectation, a folded run of Habit history — `Tab` creates nothing and a toast says where a Task does go. Inside a Flow template `Tab` still adds the template's next item. Every other kind stays on its own `Shift`+letter chord and in the Step's "+" menu.
+
+  `Shift+H` is new: it opens the new-Flow editor as a **New Habit**, with Repeating already switched on, so you can set the recurrence and save the Habit in one step — one `Ctrl+Z` takes it back. It works wherever `Shift+F` does, and the Step's "+" menu offers Habit too.
+
+- **Start hides work whose window has not begun yet.** A Task, Goal or wait whose Time Scope is still in the future no longer shows under the Start preset, in the Mindmap and the List View alike — just as work whose window has passed does not. A sub-step with no Time Scope of its own goes with its parent; one whose own window is already open still shows, with its parent above it. A wait still ahead takes its check tasks with it, even when a check is already due; the check stays due and shows again under the other presets. Plan, Do, All and Backlog are unchanged.
+
+- **"Collapse habit history after N" has moved to the General settings page.** It now applies to the Steps View as well as the Mindmap, so it lives with the other app-wide settings rather than on the Mindmap page. Your current value is kept.
+
+- **Searches leave archived nodes out.** `Ctrl+O`, the node results of `Ctrl+F`, and the Under and Depends on boxes in the Filter menu no longer offer archived nodes — including delegated tasks, which count as archived. Turn on **Include archived nodes in search** in Settings → General to see them again.
+
+- **A denser Filter menu, with your filters shown where you set them.** The Filter menu is a little wider and lays every dimension out as one compact labelled row: in the List View, Under, Tags and Depends on, then Scope and Yes / no, then Task, Goal, Project and Verdict; elsewhere, Tags. The switches sit at the top in every view — the row kinds or Info / Flow, Private, and the Archived and Backlog pills, which no longer hide behind "Advanced" and now work in the List View too. Antecedent is now called **Under** and Dependency **Depends on**.
+  A value you add stays in its row wearing its mode, like its chip in the top bar: click it to cycle All → Any → Not, press Delete to remove it. Tags, Under and Depends on each have their own search box. Blocked, Agentic and Asynchronous are one pill each — "Blocked", or with Alt, "Not blocked" — and take Any too: Agentic (Any) with Asynchronous (Any) shows what is either.
+  Adding now defaults to **All**: click or Enter adds as All, Shift adds as Any, and Alt adds as Not. Chips cycle All → Any → Not. The keyboard cheat-sheet (`Ctrl+Shift+/`) lists these in a new Filters section.
+  While Private Mode is on, the List View also offers a **Private** pill — only private rows, or with Alt, only the rest. Turning Private Mode off removes it, and a message says so.
+  The **Alt+Shift+T / C / E** shortcuts for showing or hiding Tasks, Commitments and Expectations are gone: on keyboards where Alt+Shift switches layout they never worked, and could trigger other shortcuts instead. Toggle the kinds in the Filter menu, or type their name into `Ctrl+F`.
+  With the Filter menu open in the List View, letter keys work on it: **T / C / E** show or hide Tasks, Commitments and Expectations (Shift shows only that kind), and **A / W / B / P** add Agentic, Asynchronous, Blocked or Private (Shift Any, Alt Not; on a set flag the key switches it to that mode, or removes it if it is already in it). **Ctrl+P** in the menu turns Private Mode on or off. The keys are listed in the keyboard cheat-sheet.
+
+- **Start shows a wait even when it has checks; hiding it is now a setting.** Under the Start preset, a pending wait that is checked on used to disappear, leaving only its check task. That was confusing for a wait checked often, such as every hour. Start now shows the wait itself, checked on or not, and its check task still shows beside it by the usual rules. To get the old behaviour back, turn on **Start hides waits that have checks (shows their check task instead)** in Settings → General. It is off by default, applies to every view, and applies to an agent's snapshot filter as well.
+
+- **Overdue tasks can be planned past their window.** A task whose Time Scope has passed while it is still not done (and set to Keep on exit) can now be planned into this week or any later scope, from the Plan View or the task editor's Plan picker, so late work can be rescheduled. Its Time Scope is left as it is, and it still has to fit inside a planned parent's Plan. Tasks that lapsed done or missed, and Habit occurrences, keep the old bound.
+
+- **The Plan View always reads under the Plan preset.** Whatever preset the tab has, the Plan View now shows its work as Plan does, and the top bar draws Plan as active with the other presets disabled — hover one to see why. `Alt+A`, `Alt+S`, `Alt+D` and `Alt+B` say so instead of switching. The tab keeps its own preset: switch back to the Mindmap, the List or the Steps View and it is still there.
+  The Plan View's planned pane now opens **split by subscope** — the weeks of a month, the days of a week — by default. If you had turned the split off, it comes back on once; turn it off again from the pane's menu and it stays off.
+
+- **Archiving a Habit repetition takes what it holds with it.** Deleting an iteration's root archives the whole iteration, and archiving one occurrence archives the steps nested under it — as archiving any Task does. An archived iteration counts as over, so a Blocking Habit moves on to the next one without anything being marked done.
+
+- **A Habit's occurrences are ordinary Tasks, Goals and Commitments.** Each repetition now behaves like any other node of its kind, everywhere: `E` opens its editor, and what you save there changes that one occurrence only. You can plan it, set it aside in the Backlog, flag it Agentic or Asynchronous, tag it, give it block reasons and dependencies in either direction, and hang Tasks, Goals, Commitments, Expectations and Infos under it — or cut and paste something onto it. Its window stays its iteration's: the editor shows it and says so.
+
+  Deleting an occurrence archives that one repetition; giving it a status again brings it back. Moving it out of its iteration, changing its kind, or copying it is refused with a reason. A blocked occurrence's status is now gated like any blocked Task's.
+
+- **A wait's check tasks are Tasks.** `E` on a check task now opens its own editor: give it a title, a Plan, tags or block reasons, flag it Agentic or put it in the Backlog. Its status cycles To Do → In Progress → Done like any Task, Done recording the check and taking it back reopening it. The day it fell due stays fixed.
+
+  A Task's spawned wait and a delegated Task's wait are drawn and released like any other wait; a spawned wait's title, tags and schedule still come from its Task's Expectation template.
+
+- **Opening the board no longer writes to it.** Every Season, Month, Week, Day and Part of Day is now worked out from its dates when it is needed instead of being saved the first time something touches it, so loading the Mindmap, List or Plan View — and an agent's MCP snapshot — only reads. Boards with long-running Habits load faster.
+
+  A week that spans New Year is always labelled with the year it starts in (e.g. "Week 53 2026"); it used to depend on which of its days was used first. A retype prompt that warns a Plan or Time Scope will be dropped now names it ("Week 39 2026") instead of showing an internal number.
+
+- **Unjudged Commitment rows no longer carry a marked left edge.** It looked like a selection; the row's glyph already says the verdict is unresolved.
+
+- **An asynchronous task can say what it will be waiting on.** Turning Asynchronous on in the Task editor now shows an Expectation section: a title, tags, a Time Scope and how often to check on it. Fill it in, and while the task is done a wait with those details appears beneath it, to release, archive and check on like any Expectation; reopen the task and the wait goes, and it comes back as you left it if you finish the task again. Leave the section empty and nothing changes from before. `Shift+W` on a task opens its editor straight at that section; `W` still turns Asynchronous on and off.
+
+- **Commitments in the List View work like task rows, and can sit among them.** A Commitment's row now has the ordinary status control — its own glyph — and a click cycles the verdict just as `Enter` does; the separate tick and cross are gone. A new setting draws Commitments and Expectations either in bands above the list (as before) or as ordinary rows at their place in the tree.
+  The Plan preset now hides a Broken commitment the way it hides a Kept one, even while its window is open: a recorded verdict is an answer either way. A delegated task is treated as archived — hidden from Plan and Start, and governed by the Archived pill — while what it waits on stays in view.
+
+- **Window numbers only show while several windows are open.** With one window, its title reads
+  `Arlesh` as it did before windows were numbered, and the tray's menu is just
+  Show and Quit. Open a second window and both titles gain their number, now in brackets —
+  `Arlesh [1]`, `Arlesh [2]` — and the tray menu lists each window by that title; close
+  back down to one and the number and the list go away again. A window still keeps its number
+  while it is open, and gets it back when Arlesh reopens.
+
+- **Start no longer shows work planned for later.** Under the Start preset, a Task whose Plan has not begun yet — planned for next week, say, or for Friday when it is Wednesday — is hidden, in both the Mindmap and the List View, and so is its answer over the MCP server. Its sub-steps go with it unless they carry a Plan of their own that has already begun. A Task whose Plan has already ended without being done stays visible, so missed work does not disappear. Plan, All, Do and Backlog are unchanged.
+
+- **Plan View cards take their aspect's colour flat, no longer fading with depth.** A card in either pane is now washed in its aspect's colour the same way a List View row and a Steps card are, so two tasks from one aspect look alike however deep each sits. The path line under the title uses a muted colour drawn from the card itself, so it stays readable on every aspect in both light and dark themes.
+
+- **The Plan View's two halves each have their own menu, and a pass opens on what still needs placing.** The two switches that lived in the settings gear have moved out of it, into a kebab beside the heading of the pane each one acts on, with two new ones beside them. A control three rows up from the thing it changes has to name which half it means, and a settings popover is somewhere you go once rather than somewhere you reach for mid-pass.
+
+  **Candidates** holds *Show only planned to parent scope* and *Group by path*, both on. **Planned** holds *Split by subscope* and *Include premorning*, both off.
+
+  The left-hand pane holds the relevant work that is either unplanned or planned to the **parent scope** — the scope one rung up from the one you are filling: the month, while you fill a week; the week, while you fill a day. *Show only planned to parent scope* hides the unplanned half, so a pass opens on the work committed a rung up and not yet placed here — the list that shrinks as you work. Untick it to see the unplanned pool as well. A week at a month's edge has both months above it, and work planned to either counts. A Season is the top of the ladder and has no parent, so for a Season the switch is greyed out and the pane shows the unplanned work.
+
+  *Group by path* is now the candidates pane's alone, and is on by default: that pane is read for where work lives, and the pane opposite it is read for when work is planned. A card no longer repeats the path the header above it just gave — the two used to sit on one line narrow enough to clip it.
+
+- **A List View row keeps its aspect's colour, no longer faded by depth, and its text is readable
+  on every aspect.** A row used to be filled with its aspect colour at an opacity that changed with
+  how deep its task sat, so the same aspect looked different from row to row, and on a pale aspect
+  like Steel in the dark theme the text could get hard to read. Every row is now washed in its
+  aspect's colour at one fixed strength, the same wash the Steps View uses, and the row's secondary
+  text is adjusted so it stays readable on each aspect in both themes. Self and Flow, the two grey
+  aspects, are now told apart: Self reads lighter.
+
+- **The view switcher is a dropdown** rather than a row of tabs. With a fourth view the row had
+  started to crowd the top bar, and a control that grows with every view is a bar that shrinks with
+  every view. The chords are unchanged: `Ctrl+M`, `Ctrl+L`, `Ctrl+P`, `Ctrl+S`.
+
+- **Setting a task In Progress takes it out of the Backlog, and says so.** You cannot be actively
+  doing something you have deliberately put down, so starting a set-aside task now clears the flag
+  in the same write — one `Ctrl+Z` takes the status and the Backlog back together — and a toast
+  names the change rather than leaving it to be noticed. It works from the status control in either
+  view and from the Task editor, where the Backlog switch now goes off as you pick **In Progress**,
+  the way it already does when you set a Plan. The reverse still works as it did: a task already
+  under way can be put in the Backlog and keeps its status, so it says where the work stood when you
+  pick it back up. **Do** therefore still shows a backlogged in-progress task — what is underway and
+  what you are not planning are different questions — rather than hiding it.
+
+- **The day now turns over at 02:00, not at midnight — and so do the week, the month and the season.** Night runs 22:00–02:00 and belongs to the day it starts on, but a day used to end at midnight, so for two hours every night the two disagreed: by the parts of the day you were still in last night, and by the day scope you were already in today. A daily habit's next iteration appeared at midnight while the day it belonged to had not ended, and last night's still-open one was archived out from under you.
+
+  A day now runs 02:00 to 02:00, and the whole ladder moves with it — a week is Monday 02:00 to the next Monday 02:00, a month the 1st at 02:00 to the next 1st at 02:00. A day therefore contains all six of its own parts, Night included, and a week contains exactly its seven days. Habit iterations are generated and archived on that boundary: at 01:30 yesterday's is still the one that is open, and the new one arrives at 02:00.
+
+  The practical difference is what "today" means after midnight. At 00:30 you are still in the previous date's day: that is the cell the scope picker outlines, the day a task plans into, and the date a new repetition starts from by default. Nothing stored changed — every existing scope keeps its dates and simply covers a window that begins and ends two hours later.
+
+- **Shortcuts that work everywhere are now listed once on the cheat-sheet, instead of once per view.** `Ctrl+Shift+/` had grown into a list that repeated itself: leaving a subtree, searching for a node and opening the filter menu appeared under **Mindmap**, again under **List**, and again under **Plan**, because each view declared them separately. They were never view shortcuts — what they act on is the tab you are in, not the thing drawing it — so they have moved to **Global** and appear there once. The chords themselves are unchanged, and so is where they work and where they don't: all four are still ignored while a modal or an inline rename has the keyboard.
+
+  **`Ctrl+O` now works in the Plan view too**, which it did not before: search every node and enter the one you pick, exactly as on the Mindmap and in the List. Its cheat-sheet line also stops underselling it — it now reads *"Search for a node and enter its subtree"* everywhere, which is what the chord has always done.
+
+  Warning prompts — backlogging a Task that still has a Plan, completing an occurrence that still holds unfinished work — now hold the keyboard for as long as they are up, like every other dialog in the app. A shortcut fired at one of them reached the board underneath in a couple of cases; now none of them do.
+
+- **Switching views moved to `Ctrl`: `Ctrl+M` for the Mindmap, `Ctrl+L` for the List, `Ctrl+P` for the new Plan view — and `Alt+L` no longer switches views at all.** `Alt+L` used to toggle between the only two views there were. With a third, a toggle has nothing to mean: it would have had to become "next view", quietly turning a chord you already have in your fingers into something that depends on where you happen to be standing. Each view now names itself instead, so every one of them is a single press from any other and there is no cycle order to learn.
+
+  **The status presets are untouched.** `Alt+A`, `Alt+P`, `Alt+S`, `Alt+D` and `Alt+B` are still All, Plan, Start, Do and Backlog, exactly where they have always been — which is why the *views* are the ones that moved. `Ctrl+S` is deliberately left free, held for a view still to come, so this is the last time these chords change.
+
+  `Ctrl+P` and `Ctrl+S` are the browser's print and save. Arlesh takes them the way it already takes `Ctrl+W` and `Ctrl+T`, and a rename box or an editor field still gets them first, so a save reflex while you are typing is still just a reflex that does nothing. The view chords also stop working while a modal or an inline rename is open, so a view can never change out from under something you have open on top of it — `Ctrl+Q` and the `Ctrl+Shift+/` cheat-sheet stay live as they always have.
+
+  The cheat-sheet lists all three.
+
 - **One breadcrumb in the top bar replaces the two back buttons and the "you are here" label — and it reaches the middle of a deep chain.** Inside a subtree the bar used to carry three things that all said the same thing: an `↑` back-to-the-root button, a `←` up-one-level button, and, in the centre, the name of the subtree you were in. Between them they could take you up exactly one step or all the way out, so from `Arlesh › CODE › ARLESH › Features` there was no way to get back to `ARLESH` without leaving the subtree and entering it again.
 
   In their place is the whole path, centred in the bar: `Arlesh › CODE › ARLESH › Features`. Click any step and you go straight there — the first one is the root, so it does what `↑` did, and the one before the end does what `←` did. The last step is where you are and stays plain text, since there is nowhere for it to take you. **Shift+Esc** and **Ctrl+Esc** are untouched.
@@ -201,6 +628,174 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 - **The NSFW flag is now called Private, and the Work filter is now Private Mode — with the switch turned around.** Marking a node **Private** (the toggle in each editor modal's **Advanced** section) means the same thing it always did: the node and its whole subtree are hidden as a unit. What changed is the default. The old **Work** toggle was off by default and showed everything, hiding marked nodes only once you turned it on; the new **Private Mode** toggle is off by default and *hides* private nodes, and you turn it on to reveal them — so private work stays out of sight unless you ask for it. If you had the Work toggle on, nothing visibly changes; if you had it off, nodes you'd marked are now hidden until you switch Private Mode on in the filter popover. Migration `0022` renames the `nsfw` column to `is_private` on every node table; no flags are lost.
 
 ### Fixed
+- **Archived Tasks and Commitments no longer show in Start or Do.** A Task archived by hand, or one beneath an archived Task, could still appear in Start, and an archived in-progress Task still appeared in Do and the Zen View. Now anything archived stays out of both unless the Archived pill is on Include.
+
+- **Narrowing a Time Scope from the List View or the Plan View no longer hangs.** When narrowing a window would leave nested items outside it, the prompt to clamp them or cancel now appears in every view. Before, only the Mindmap showed it, so the same save from the List View or the Plan View waited forever.
+
+- **Steps View: `Space` no longer moves a blocked card.** Cycling the status of a blocked Task or Goal is now refused, as `Enter` is in the Mindmap and the List View, with a notice naming what blocks it; nothing is written.
+
+- **A new Flow or Habit marked Private is created Private.** The Private switch in the New Flow (`Shift+F`) and New Habit (`Shift+H`) editors was not saved, so the Flow was created public and showed with Private Mode off. It is now stored as set.
+
+- **The subtree breadcrumb follows the window's width.** Entering a subtree while the window was narrow folded the middle of the path into `…`, and it stayed folded however wide the window then grew. The breadcrumb now folds levels away as the top bar narrows and brings them back as soon as they fit.
+  In a very narrow bar it now gives up whole segments before cutting any text: `Arlesh › … › Here`, then `… › Here`, then `Arlesh › …` if *Here* alone is too long, and only then *Here* truncated beside the `…`. It no longer clips where you are off the end while leaving the root.
+
+- **A done Habit occurrence archives once its window passes, whatever the Habit's Consumption.** Under an Accumulating Habit, a completed Task or achieved Goal occurrence used to stay Active and live forever after its day (or week, or morning) was over, as though it were unfinished work piling up. Now, once its own window has passed, it reads Lapsed with a Completed Resolution and is archived, just as a stored Task or Goal is. The iteration itself does the same once every occurrence in it is done and its window has passed. Unfinished occurrences of an Accumulating Habit still pile up as before, and a commitment Habit's supporting steps still wait on the verdict.
+
+- **A task's virtual wait is a full Expectation: `E` opens its own editor, and everything in it is editable.** Pressing `E` on the wait an asynchronous task spawned used to open the task's editor, so the task's Plan looked as though it belonged to the wait. Now `E` opens the ordinary Expectation editor on the wait itself: title, status, Time Scope, Check every and Starting, tags, archive, privacy and the agent fields. An edit changes that one wait only. The task's Expectation template stays as it is, and every other wait it draws keeps following it. Set a field back to the template's value and the wait follows the template again. A delegated task's wait opens the same editor too; only the task being done releases it, and it takes no Check every. Neither kind of wait has a Plan or takes one from its task: in the Plan View, a check task under a wait is no longer refused because of the task's Plan.
+
+- **Taking work out in the Plan View no longer makes it vanish.** Pressing Enter on planned work, or dropping it on the candidates pane, used to clear its Plan — and with *Show only planned to parent scope* on, it then showed in neither pane. It now moves one rung up, where the candidates side shows it: to the scope being filled when the planned pane is split by subscope, and to the parent scope when it is not. Only on a Season, which has nothing above it, is the Plan cleared.
+  A Habit occurrence moves the same way, and taking one out to its Cycle Plan's own scope simply returns it to its Cycle Plan. Work whose own Time Scope cannot hold the scope above is refused with a toast, as planning is.
+  A Plan View card's path line no longer flips its separators around right-to-left names: `Connections › BOND › נרי › חברים קרובים` reads left to right with every `›` the right way round, each name still written in its own direction.
+
+- **A window of one scope reads once.** A Time Scope or Plan whose start and end are the same scope showed it twice, as "2026-09-24 morning-2026-09-24 morning". It now shows once, everywhere a window is written: the editors, the List View badges, the Steps cards and the status tooltips.
+
+- **Marking a Flow or a flow step private now sticks.** The Private switch in the Flow editor and the flow item editor was never saved; it is now.
+
+- **Habit occurrences in the Plan View, a week at a month's edge reads as its first month, and a selected Commitment that stays put.** A Habit's occurrences now appear like any other work: where their Habit's plan puts them, or among the candidates when nothing has planned them yet. Planning one — or taking it out of a scope — moves that occurrence alone, in the same batch as everything else; the rest of the Habit keeps its plan.
+
+  The week at a month's edge, which Up and `M` call the earlier month's, no longer offers work planned for the later month. Only work planned to its own month is offered.
+
+  In the List View, a selected Commitment or wait now stays on screen, dimmed, after your own edit stops it matching the filter — marking a Commitment Kept under Plan, or releasing a wait under Expectations — just as a completed task does, until you move the selection.
+
+- **`E` on a Habit repetition says why there is no editor.** Pressing it on a commitment Habit's iteration in the List View used to do nothing at all; it now explains that a repetition is edited through its Habit's template.
+
+- **Window titles are just the name and number, and the title bar inside a window shows them.** A
+  window is titled `Arlesh` when it is the only one open, and `Arlesh [1]`, `Arlesh [2]` and so on
+  while there are several. The tray menu lists windows by those same titles. The active tab is no
+  longer part of the title, so the title no longer changes as you switch tabs.
+
+  On Wayland, the title bar Arlesh draws inside each window, the one with the minimise, maximise
+  and close buttons, used to read plain `Arlesh` even while the window manager's bars showed the
+  window's number. It now matches the title everywhere else, and it updates when a second window
+  opens or the last but one closes.
+
+- **Path headers in the Plan View are no longer cut through.** Once a pane held more than fit, the headers naming where each run of tasks lives were squeezed shorter than their own line, clipping the text. The pane now scrolls instead, and the headers keep their full height.
+
+- **A day's parts are no longer labelled *partial*.** Splitting a day into its bands marked Night as poking outside the day it belongs to. It does not: since the ladder moved to a 02:00 boundary a day runs 02:00 to 02:00 and contains its own Night whole. Night's calendar cell still carries the next date, for a month grid to shade, and the split was reading that as the band reaching past the day. A month's first and last weeks still straddle it and are still marked, which is what the label is for.
+
+- **An Info note can hang under a Commitment.** `Shift+I` on a Commitment, dropping a note onto
+  one, or retyping a Commitment's child to an Info was offered but failed with a database error,
+  because the database had never been told a Commitment may hold notes. It now can, the same as a
+  Task, and deleting the Commitment takes its notes with it.
+
+- **"Archive & new" archives the old Habit.** Editing a Habit's schedule and choosing *Archive &
+  new* made the new Habit but left the old one recurring beside it, so every occurrence arrived
+  twice. The old Habit now stops recurring after today; the occurrences it already had keep their
+  history. The new Habit, the archive and the edit are one step, so a single `Ctrl+Z` takes all
+  three back.
+
+- **The tray icon is called Arlesh.** Some bars headed its menu with an internal name,
+  `arlesh-tray`; it now reads Arlesh there and on hover.
+
+- **Closing a window's last tab closes the window.** Ctrl+W, the tab's ×, a middle-click or
+  **Close tab** on the only tab used to do nothing. It now closes the window exactly as its close
+  button does: another window stays open, and the last window hides to the tray with *Close to
+  tray* on, or quits with it off.
+
+- **Creating a child of a Tag now makes a note**, which is the only thing a Tag can hold. The
+  gesture still offered a Domain, which the backend refused.
+
+- **Dragging a tab along the strip reorders it on Linux.** The drag started and the tab faded, but
+  letting go did nothing, because the Linux webview never completes a drag that carries no data.
+  The drag now carries the tab, and the drop lands.
+
+- **A Flow's target list no longer offers Habit repetitions, and its scope check works again.**
+  The Target Node search in the Flow editor and the Start Flow dialog listed every Goal and Task on
+  the board — including the virtual repetitions a Habit draws, which have no row a Flow could point
+  at. Choosing one saved a target that did not exist, and while any Habit was drawing repetitions
+  the check that narrows a scoped Flow's targets to the ones whose window can hold it failed
+  outright, so every node stayed on offer. Only real nodes are listed now, and the narrowing applies
+  again.
+
+- **A paste now says which Flows it left behind.** Copying a Goal, Task, Project or Domain has
+  never carried the Habits hanging inside it, and until now it said nothing about them either — the
+  subtree you pasted was quietly smaller than the one you copied, with no count and no notice, so
+  the only way to find out was to go looking. The paste names them now: *2 Flows under what you
+  copied weren't copied with it — copy “Morning pages”, “Lift” across on their own*, in the same
+  single toast as any other reason the same paste skipped something. It names rather than counts
+  because a Flow under a copied node was never selected and cannot be seen in the paste, so a
+  number alone would leave you hunting; past three names it counts the rest. Everything that can be
+  copied still is, and cutting the same subtree says nothing, because a cut takes its Flows with it.
+
+- **An open dropdown no longer moves the board behind it.** Arrowing through the view or status
+  preset menu also walked the Mindmap's selection or the List View's rows, because the menu and the
+  board listen for keys separately. A menu now holds the keyboard while it is open, the way a modal
+  or an inline rename already did.
+
+- **Apply no longer throws away the scope you already had.** Opening the Scope Picker on a task
+  that was already scoped and pressing Apply without clicking a cell cleared the scope: nothing had
+  been chosen, so the picker reported "no scope" rather than "no change". The picker now opens with
+  that scope selected — the period it shows is the period Apply commits — so applying an untouched
+  picker re-applies what was there, and a range round-trips with both its endpoints. Applying with
+  nothing selected now changes nothing at all. Clearing is Clear's job, and Clear's alone. The Plan
+  picker behaves the same way.
+
+- **A Tag can hold an Info note again.** The app kept two answers to "what hangs under a Tag" and
+  they disagreed: the retype menu believed a Tag holds Info notes, while every create, drag and
+  paste gesture refused it everything — so `Shift+I` on a Tag was turned down, and a note could not
+  be dropped on one, although the database had always allowed it. A Tag now holds Info notes, and
+  only those: a label with a note about it. `Tab` on a Tag still declines — the child it would
+  create is a Domain — but now says which key does work.
+
+- **The board alone (`F11`) no longer leaves a strip along the bottom** of the List, Plan and Steps
+  views. Each of them sized itself by subtracting the top bar's height from the window's, including
+  when the top bar was the thing that had just been hidden.
+
+- **A commitment under a habit occurrence that has not started no longer outlives it.** A Habit's
+  later-today occurrences are hidden from every preset but **All**, together with everything hanging
+  off them — but a **Commitment** attached to one stayed in the Commitments band above the list,
+  describing a branch the rows below it had already dropped. The band now follows the same rule the
+  task rows and the Mindmap do, so a commitment appears there exactly while the occurrence it
+  belongs to is on screen.
+
+- **Pressing `E` on an Aspect in the Steps View no longer kills every shortcut.** An Aspect has no
+  editor, so the modal never appeared — but the view had already put itself into the state it holds
+  while one is open, and stayed there. It now says why there is nothing to open, as the other
+  refusals do. The same applies to a recurring occurrence, which is drawn from its Habit rather than
+  stored.
+
+- **Saving an editor is now one `Ctrl+Z`, and a save that fails leaves nothing behind.** A save writes several things at once — the fields, the block reasons, each tag you added or removed, each dependency, the `bd` link you dropped — and every one of them used to be its own undo step. Taking back a save meant pressing `Ctrl+Z` several times, and how many depended on which fields you had touched, so there was no way to know when you had got it all. One press now takes back the whole save, and one `Ctrl+Y` puts it back, for the Task, Goal, Commitment and Project editors alike.
+
+  The undo notice names which it was — "Undid: edit a task" — rather than counting rows.
+
+  A save that is refused partway is now **taken back in full** instead of leaving the fields that happened to be written first standing. The editor stays open with the reason on it, as before, and what you are looking at is the node exactly as it was — nothing half-applied, and nothing left on the redo stack waiting to reapply a save that never happened.
+
+- **The scope picker opens on the scope you already have.** Editing a task scoped to a Wednesday
+  opened the calendar on the month view, showing September when the answer was already the day. The
+  picker now opens on the narrowest view that can show the scope it was handed, on the period that
+  scope names: a Day scope on that day's week, a Week, Month or Season on its own period, a range at
+  its endpoints' granularity starting from the earlier one. The Plan picker opens the same way. With
+  nothing chosen yet, they still open where they always did — Month for a Time Scope, Day for a Plan.
+
+- **Only one part of the day is marked as now.** In the part-of-day view every part carried the
+  current-period outline, on every date. The outline now falls on the single part holding the
+  current time, and only on the date that part belongs to — including past midnight, where Night
+  runs to 02:00 and so still belongs to the previous date: at 00:30 it is yesterday's Night that is
+  outlined, and today shows no current part at all.
+
+- **A gesture on the Mindmap that cannot act now says so, instead of doing nothing.** Several keys
+  used to fail in silence, which is indistinguishable from a broken keyboard. `Delete` on an Aspect
+  did nothing at all, and an Aspect in a multi-selection was quietly dropped from the delete set
+  while everything else went; `Shift+Enter` and `Ctrl+Shift+Enter` on one were equally inert. All
+  three now name the reason — the Aspects are fixed, they can't be deleted, they have no new one
+  alongside them and nothing above them — and a selection holding an Aspect refuses the whole
+  delete rather than taking the rest, exactly as a Habit repetition already did. `Tab` on a Tag or
+  on a folded run of Habit history says why nothing hangs there.
+
+  **And every refusal the backend raises now reaches you.** A paste it rejected — a cycle, a
+  constraint, a stale row — used to leave a board that had silently not changed, and a refused
+  rename left the old title in place with nothing said. Paste, rename, both status controls,
+  `Tab`, `Shift+Enter` and `Ctrl+Shift+Enter` all now show what failed together with the reason
+  given. When a paste both skipped something and was then refused, the two are shown in one
+  message rather than the second quietly replacing the first.
+
+  **`Shift+F` on a Habit occurrence is fixed** — it opened the Flow editor on a repetition that has
+  no row behind it, and saving could only fail. It is refused up front now, as `Shift+C` already
+  was. The rule behind all of these is asked about the node rather than about its kind, so a folded
+  run of Habit history no longer accepts dropped or pasted nodes, a drag no longer offers a target
+  it cannot write to, and creating a Task under a Habit occurrence works in the List View as it
+  already did on the Mindmap.
+
 - **Unblock no longer comes back empty.** Choosing Unblock in List View while the shared status
   preset was Start showed nothing at all: Start hides a blocked task along with everything under it,
   and that rule was still being applied to the very rows Unblock asks for. Unblock now replaces the
@@ -265,6 +860,34 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 - **Keyboard shortcuts no longer fire when extra modifiers are held.** A shortcut now requires exactly the modifiers it names: **Ctrl+E** or **Shift+E** no longer open the editor (bare **E** still does), **Ctrl+Shift+C/X/V** no longer cut/copy/paste, and **Shift+Tab** no longer creates a child cell, so it returns to normal focus traversal. Most visibly, **Ctrl+Shift+/** no longer also collapses the selected node while opening the cheat-sheet.
 
 ### Removed
+- **The beads id.** A Task, Goal, Commitment or Project no longer carries the id of a bd issue. The
+  editors' **Issue** row and its × are gone, a Steps card no longer lists an **Issue** field, a
+  copied node no longer carries the link, and the MCP server no longer has the `arlesh_beads` tool
+  or a `beads_id` on anything it returns. bd is retired, and work is tracked on the Arlesh board.
+
+  Nothing is lost: every id that was set is kept in a `retired_beads_ids` table in the database.
+
+- **The Agent delegate.** A task can no longer be delegated to the Agent, and the editor's **Delegate to agent** button is gone. Tasks that were delegated to the Agent and in progress are now **On Agent**, and their delegate is cleared. Delegating to a person is unchanged.
+
+- **The red exclamation badge for Overdue items.** An Overdue item is marked by its amber border alone; the badge row no longer repeats it.
+
+- **Changing a node's type.** A node now keeps the kind it was created as. `Ctrl+↑` and `Ctrl+↓`
+  no longer cycle the selected node through Domain, Project, Tag, Goal, Task, Commitment and Info,
+  and the node context menu's **Set type** submenu is gone, along with the prompts that came with
+  them: the list of what a conversion would drop, the status-remap notice, and the "over what
+  window?" question for a node becoming a Commitment. A Flow's goal and task items can no longer be
+  converted into each other either. `Ctrl+↑` and `Ctrl+↓` do nothing in the Mindmap now. To make
+  something of another kind, create it as that kind and move or delete the old node.
+
+- **The path-header icons, and the switch for them.** A path header used to open with a kind glyph
+  for the node its run hangs from, on by default, turned off from **Path icons** in the settings
+  popover. Both are gone, in the **List View and the Plan View** alike — they draw the same header —
+  so a header is now its titles, their separators and, in the List View, the `+` that creates a task
+  under them. The glyph competed with the very titles it was there to qualify, and the Mindmap
+  already says what kind each node is. Nothing else changes: the same icon vocabulary still marks
+  Mindmap nodes and task rows, and an existing stored preference is simply ignored rather than
+  migrated.
+
 - **The Parent filter and the parent label on each row card.** Both said what the screen already said: every run of rows sits under a path header naming the branch it belongs to, so a **Parent** pill and a parent label on the card itself were restating the line directly above them. The new **Antecedent** dimension covers everything Parent could ask and more — a parent is an ancestor — so nothing has been lost. **Tag pills stay on the card**: a tag appears in no header, and clicking one there is still the only way to filter by it from a row. A saved filter still holding a Parent pill loads with it quietly dropped rather than narrowing your list with a filter no chip shows and no control can clear.
 
 - **Hebrew is no longer a supported interface language**, and the **Language** row is gone from the settings popover — the app is English-only. If you had switched the interface to Hebrew, it now reads English. This only affects the app's own labels: **titles you type yourself still render right-to-left when you write them in Hebrew**, on mindmap nodes and in the List View, exactly as before. Status badges under a node now always sit along its left edge rather than flipping with the interface language.
