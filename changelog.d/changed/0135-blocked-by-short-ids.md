@@ -1,1 +1,0 @@
-- **"Blocked by" names the dependency by its short id.** A Task blocked by unfinished work now reads "Blocked by task 6f3 (Write spec)" — the short id an agent sees over the MCP — instead of the row number, on the board, the cards, the editor and in `arlesh_tasks.get`.

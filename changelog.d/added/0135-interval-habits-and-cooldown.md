@@ -1,0 +1,4 @@
+- **Interval Habits, cooldowns and done dates.**
+  - An **Interval** Habit has one open occurrence at a time; complete it and the next one starts the Gap after — "every three weeks from the last haircut". An open one past its window stays, flagged Overdue. An Interval Habit can be unscoped. Commitment Habits can run on an Interval too.
+  - A Window Habit can take a **Cooldown**: after an iteration is done the next one is blocked ("Cooling down until Mon 5 Oct, 02:00") until it passes.
+  - A Done Task's editor shows when it was done and lets you set it back, so something ticked late counts from when it was really done. Achieving a Goal, releasing a wait and judging a Commitment record their time as well.

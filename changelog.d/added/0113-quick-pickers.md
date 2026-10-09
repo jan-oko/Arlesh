@@ -1,0 +1,3 @@
+- **Plan and depend without opening the editor.** With a Task selected on the Mindmap, in the List View or in the Steps View, **P** opens the Scope Picker at it to set or clear its Plan (a Mindmap multi-selection is planned in one go), and **D** opens a search to add a dependency on a Task, Goal or Expectation. Every rule the editor applies still holds, and one **Ctrl+Z** takes either back.
+
+  Every scope picker now works from the keyboard: arrows move, **Space** picks (a second pick makes a range), **Enter** steps in, **[** / **]** change period, `\` goes up a level and **Ctrl+Enter** applies.

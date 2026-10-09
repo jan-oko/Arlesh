@@ -1,1 +1,0 @@
-- **The Agent delegate.** A task can no longer be delegated to the Agent, and the editor's **Delegate to agent** button is gone. Tasks that were delegated to the Agent and in progress are now **On Agent**, and their delegate is cleared. Delegating to a person is unchanged.

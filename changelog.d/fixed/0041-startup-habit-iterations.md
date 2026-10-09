@@ -1,0 +1,1 @@
+- **Habits no longer lose their iterations at startup.** Simultaneous loads could lock each other out of the database. The database now uses SQLite's write-ahead log, so it is three files — `arlesh.db`, `arlesh.db-wal` and `arlesh.db-shm`: back up all three, or close the app first.

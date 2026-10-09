@@ -1,0 +1,3 @@
+- **A denser Filter menu, with your filters shown where you set them.** Each dimension is one labelled row, with the switches at the top; the Archived and Backlog pills are no longer behind "Advanced" and now work in the List View too. A value you add stays in its row wearing its mode: click to cycle, **Delete** to remove. Adding now defaults to **All** (Shift adds as Any, Alt as Not), and chips cycle All → Any → Not. Blocked is one pill, with Alt for "Not blocked".
+
+  The List View's **Antecedent** filter is now **Under**, and Dependency is **Depends on**. Under's search covers every node, and on a path header **Ctrl+click** a segment to show only what is under it, or **Alt+click** to hide it.

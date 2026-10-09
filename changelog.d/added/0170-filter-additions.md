@@ -1,0 +1,5 @@
+- **Filter additions.**
+  - **Ctrl+F** adds filters from the keyboard: type a tag, a status, a Verdict or Scope value, a flag, or (in the List View) a node's name for **Under** / **Depends on**, then **Enter** adds it as All, **Shift+Enter** as Any and **Alt+Enter** as Not. Filters you already have are listed first, to change or remove.
+  - The List View can show or hide **Tasks**, **Commitments** and **Expectations** rows; with the Filter menu open, **T** / **C** / **E** toggle them and **A** / **W** / **B** / **P** add the Agentic, Asynchronous, Blocked and Private pills. **Ctrl+P** in the menu toggles Private Mode.
+  - New pills: **Agentic**, **Asynchronous**, **Private** (while Private Mode is on) and, beside Archived and Backlog, **Delegated** and **On Agent**.
+  - The Filter button wears a dot when a filter is set that no chip shows. **Esc** closes the Filter menu in every view.

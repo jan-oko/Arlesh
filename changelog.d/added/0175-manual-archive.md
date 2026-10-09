@@ -1,0 +1,1 @@
+- **Archive a Task or Commitment by hand.** Right-click it on the Mindmap or in the List View and pick **Archive**, or turn on **Archived** in its editor's Advanced section. The whole branch reads as archived and leaves Plan, Start and Do; **Unarchive** brings it back as it was. Either is one **Ctrl+Z**.

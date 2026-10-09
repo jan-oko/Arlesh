@@ -1,0 +1,1 @@
+- **Settings modal.** The gear in the top bar opens a settings modal with pages — General, Mindmap, List, Steps, Plan, Windows & tray, Expectations, Agents and Zen — in place of the popover whose switches came and went with the view. Every setting is reachable from any view and keeps its value. **↑** / **↓** move between pages; **Escape** closes it.

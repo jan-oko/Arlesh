@@ -1,2 +1,0 @@
-- **The subtree breadcrumb follows the window's width.** Entering a subtree while the window was narrow folded the middle of the path into `…`, and it stayed folded however wide the window then grew. The breadcrumb now folds levels away as the top bar narrows and brings them back as soon as they fit.
-  In a very narrow bar it now gives up whole segments before cutting any text: `Arlesh › … › Here`, then `… › Here`, then `Arlesh › …` if *Here* alone is too long, and only then *Here* truncated beside the `…`. It no longer clips where you are off the end while leaving the root.

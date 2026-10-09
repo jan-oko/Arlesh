@@ -1,1 +1,0 @@
-- **A released wait archives itself once its window has passed.** A wait with no window is archived as soon as it is released, and answering a question releases it. A wait still pending never archives itself; it goes Overdue as before.

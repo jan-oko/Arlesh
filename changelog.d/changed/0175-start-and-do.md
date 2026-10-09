@@ -1,0 +1,5 @@
+- **Start shows what you can begin now.** Under the Start preset, in every view and over MCP:
+  - Overdue Tasks, Goals and waits stay instead of dropping out; Missed items still drop out.
+  - Work whose Time Scope or Plan has not begun yet is hidden, along with sub-steps that have no window or Plan of their own that has begun.
+  - A blocked task no longer hides a subtask it depends on.
+  - Anything archived, including an in-progress Task, stays out of Start, Do and the Zen View unless the Archived pill is on Include.

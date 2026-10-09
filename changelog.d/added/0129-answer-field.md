@@ -1,1 +1,0 @@
-- **Answer an agent's question where you see it.** A Review card in the Zen View, and the agentic part of the Task editor, show the agent's question with an answer field. **Send**, or `Ctrl+Enter` in the field, stores your answer and closes the question, and the task goes back to its agent.

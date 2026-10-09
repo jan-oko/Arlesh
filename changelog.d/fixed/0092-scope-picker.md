@@ -1,0 +1,1 @@
+- **Scope picker fixes.** It opens on the scope you already have rather than on the current month, and pressing Apply without picking anything keeps that scope instead of clearing it. Only the part of the day holding the current time is marked as now. A window of a single scope reads once ("2026-09-24 morning"), not twice, wherever it is written.

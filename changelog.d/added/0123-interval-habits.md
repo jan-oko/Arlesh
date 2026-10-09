@@ -1,2 +1,0 @@
-- **Interval Habits.** A Habit on an **Interval** clock has one open occurrence at a time: complete it, and the next one's window starts the unit after the one you completed it in, plus the Gap — "every three weeks from the last haircut" rather than every third week on the calendar. An open occurrence left past its window stays, flagged Overdue.
-  An Interval Habit can be **Unscoped**: its occurrences have no window and are never Overdue, and the next one appears the Gap after the day you completed the last — with no Gap, the moment you do.

@@ -1,0 +1,1 @@
+- **What you are working on no longer vanishes when you change it.** Marking a task Done under Plan, releasing a wait or any other edit that stops the selected node matching the filter used to remove it on the spot. It now stays, dimmed, until you move the selection, press Escape, touch a filter or reload, on the Mindmap (with its parents) and in the List View.

@@ -1,1 +1,0 @@
-- **Ctrl+Home and Ctrl+End in the List View.** `Ctrl+Home` selects the first row and scrolls the list to the top; `Ctrl+End` selects the last row and scrolls to the bottom. Path headers are skipped, as the arrow keys skip them, and an empty list is left alone.

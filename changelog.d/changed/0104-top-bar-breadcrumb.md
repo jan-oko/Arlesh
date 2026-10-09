@@ -1,0 +1,1 @@
+- **A breadcrumb in the top bar replaces the back buttons.** Inside a subtree the bar shows the whole path, `Arlesh › CODE › ARLESH › Features`, in every view; click any step to go there. A path too long for the bar folds its middle into **…**, a menu of the hidden steps, and unfolds as the window widens. **Shift+Esc** and **Ctrl+Esc** are unchanged.

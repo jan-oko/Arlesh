@@ -1,0 +1,6 @@
+- **Several windows, and the system tray.**
+  - **Closing hides to the tray.** Closing the window puts Arlesh in the system tray instead of quitting, so it reopens instantly and the MCP endpoint keeps answering. Click the tray icon to show or hide the windows; its menu has **Show**, each open window, and **Quit**. **Ctrl+Q** also quits. Turn this off with *Close to tray* in Settings → Windows & tray.
+  - **Tear-off windows.** Drag a tab out of the strip, or use the tab menu's **Move tab to new window**, to give it a window of its own with its own tabs and filters; drop a tab on another window, or use **Move tab to "…"**, to move it back. This works on Wayland too. **Ctrl+N** opens a new window at the current subtree, and **Ctrl+Alt+N** moves the current tab into one.
+  - While several windows are open their titles are numbered, `Arlesh [1]`, `Arlesh [2]`, and the tray menu lists them so you can hide or show one alone. A window keeps its number while open.
+  - An edit in one window shows in the others at once, including changes made by an agent.
+  - Windows come back when you reopen Arlesh, at their size and position and with their tabs; one whose monitor is gone reopens on screen.
