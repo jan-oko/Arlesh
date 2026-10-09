@@ -1,5 +1,6 @@
 //! Database connection and migration management.
 
+pub mod baseline;
 pub mod client;
 pub mod hold;
 pub mod open;
@@ -29,7 +30,8 @@ pub type DatabasePool = SqlitePool;
 /// could deadlock. That is what [`session::SessionFactory::begin`] is for.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Every migration this build carries, compiled in from `migrations/`.
+/// Every migration this build carries, compiled in from `migrations/`: the whole chain, which
+/// [`baseline`] stands in for on a fresh database but which still migrates every existing one.
 pub static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 /// Opens a SQLite connection pool at the given file path.
@@ -146,8 +148,20 @@ pub(crate) async fn apply_connection_settings(
     Ok(())
 }
 
-/// Runs all pending migrations against the pool.
+/// Brings the database behind `pool` up to this build's schema.
+///
+/// A database no migration has touched starts from the [`baseline`] (the finished schema at
+/// [`baseline::BASELINE_VERSION`], recorded as migrations applied) and then runs whatever
+/// migration is newer. Any other database runs the chain from where it stopped.
+pub async fn migrate(pool: &DatabasePool) -> Result<(), sqlx::migrate::MigrateError> {
+    if baseline::is_fresh(pool).await? {
+        baseline::install(pool, &MIGRATOR).await?;
+    }
+    MIGRATOR.run(pool).await
+}
+
+/// Runs all pending migrations against the pool. See [`migrate`].
 pub async fn run_migrations(pool: &DatabasePool) -> anyhow::Result<()> {
-    MIGRATOR.run(pool).await?;
+    migrate(pool).await?;
     Ok(())
 }
