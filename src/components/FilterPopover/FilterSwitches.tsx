@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useSetPrivateMode } from "@/hooks/use-private-mode";
 import type { View } from "@/stores/use-view-store";
-import { filterSwitchesFor, offersOnAgent, rowKindsFor } from "@/utils/filter-layout";
+import { filterSwitchesFor, offersOnAgent, offersReview, rowKindsFor } from "@/utils/filter-layout";
 import { delegatedModeOf } from "@/utils/filter-tree";
 import type { StatusMode } from "@/utils/filter-tree";
 import Switch from "@/components/Switch/Switch";
@@ -21,7 +21,8 @@ interface Props {
  * or the Mindmap's
  * Info / Flow pills (with **Include flows** while the preset is Plan or Start), then, in every view,
  * the Private switch and the Archived, Backlog and Delegated tri-state pills (Delegated on key `g`), and — wherever Start or Do can be
- * read — the **On Agent** pill, which shows the Agentic Tasks an agent holds.
+ * read — the **On Agent** pill, which shows the Agentic Tasks an agent holds; and in the Zen View the
+ * **Review** pill, which shows the Agentic Tasks waiting on the user's answer.
  */
 export default function FilterSwitches({ view, statusMode }: Props) {
   const { t } = useTranslation(["filter", "nodeKinds"]);
@@ -36,6 +37,8 @@ export default function FilterSwitches({ view, statusMode }: Props) {
   const delegatedMode = delegatedModeOf(filter);
   const toggleShowOnAgent = useFilterStore((s) => s.toggleShowOnAgent);
   const showOnAgent = filter.showOnAgent === true;
+  const toggleShowReview = useFilterStore((s) => s.toggleShowReview);
+  const showReview = filter.showReview === true;
   const switches = filterSwitchesFor(view);
   const showFlowsSub = statusMode === "plan" || statusMode === "start";
 
@@ -93,6 +96,17 @@ export default function FilterSwitches({ view, statusMode }: Props) {
             onClick={toggleShowOnAgent}
           >
             {t("onAgentPill")}
+          </button>
+        )}
+        {offersReview(view) && (
+          <button
+            type="button"
+            aria-pressed={showReview}
+            className={`${styles.typePill}${showReview ? ` ${styles.typePillActive}` : ""}`}
+            title={t(showReview ? "reviewTooltip.on" : "reviewTooltip.off")}
+            onClick={toggleShowReview}
+          >
+            {t("reviewPill")}
           </button>
         )}
       </div>

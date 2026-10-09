@@ -12,12 +12,14 @@ export function useFilterDot(): boolean {
   const backlogMode = useFilterStore((s) => s.filter.backlogMode);
   const delegatedMode = useFilterStore((s) => delegatedModeOf(s.filter));
   const showOnAgent = useFilterStore((s) => s.filter.showOnAgent === true);
+  const showReview = useFilterStore((s) => s.filter.showReview === true);
   const entries = useFilterEntries();
   return hasUndrawnFilters(view, {
     archivedMode,
     backlogMode,
     delegatedMode,
     showOnAgent,
+    showReview,
     valueCount: (dimension) => entries.entries(dimension).length,
   });
 }

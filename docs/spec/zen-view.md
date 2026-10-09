@@ -117,13 +117,25 @@ row": one switch and one height rule for everything under the title.)
 
 **Agentic cards** (Task 68f, 2026-10-01; see [*Agentic statuses*](resources.md#agentic-statuses)).
 The grid reads under Do, so of the Agentic Tasks it holds **Doing** (drawn as In Progress, with no
-icon), **Review** always, and **On Agent** only while the Filter menu's **On Agent** pill is on. A
+icon), **Review** only while the Filter menu's **Review** pill is on, and **On Agent** only while
+its **On Agent** pill is on. A
 **Review** card — an agent idle until its question is answered — comes **first** in the grid, says
 its status with **Started's glyph** (the ring with a hollow centre; ruled by the user, 2026-10-02)
 whether or not badges are shown, and draws the agent's open question — its title, its note on hover — with
 an **answer field**: **Send**, or `Ctrl+Enter` in the field, stores the answer and releases the
 question, and the Task reads On Agent again (leaving the grid unless the On Agent pill is on). An On
 Agent card says its status with the **On Agent glyph** (a small bot head inside the ring).
+
+**The Review pill** (Task ac8, ruled by the user, 2026-10-09). The Zen View's Filter menu carries a
+**Review** pill beside On Agent, key `r` in the menu, **off by default**: with it off the grid
+leaves out every Review card — the Zen View is for the work in hand, and the questions are a pill
+away. It is the Zen View's alone. Do, which the grid reads under, still shows Review whatever the
+pill says, and so do Start and the List View; no other view's menu offers it. It is independent of
+the On Agent pill: On Agent on brings in the Tasks an agent holds and leaves Review out, and Review
+on brings Review in whatever On Agent says. Like On Agent it is kept with the tab's filter
+(`showReview` / `BoardFilter::show_review`) and lights the Filter button's dot while on. A Review
+card that is focused stays on the grid, under the focus exemption, until the selection leaves it.
+Its question is not moved to the Expectations strip, which carries no agentic wait either way.
 
 ## The strips
 

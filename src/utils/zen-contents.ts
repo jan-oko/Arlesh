@@ -72,19 +72,43 @@ function withoutAgenticWaits(strip: FocusFilteredRows<ExpectationListRow>): Focu
 }
 
 /**
- * The grid without its **delegated** Tasks — someone else holds them, and the Zen View shows only
- * what you hold — under the same focus exemption: a card you have just delegated stays, reported as
- * exempted, until the selection leaves it.
+ * The grid less every card `drops` names, under the focus exemption: the focused card stays, reported
+ * as exempted, until the selection leaves it.
  */
-function withoutDelegated(grid: FocusFilteredRows<TaskListRow>, focusedId: string | null): FocusFilteredRows<TaskListRow> {
+function without(
+  grid: FocusFilteredRows<TaskListRow>,
+  drops: (row: TaskListRow) => boolean,
+  focusedId: string | null,
+): FocusFilteredRows<TaskListRow> {
   const exemptedIds = new Set(grid.exemptedIds);
   const rows = grid.rows.filter((row) => {
-    if (!isDelegated(row.node)) return true;
+    if (!drops(row)) return true;
     if (row.node.id !== focusedId) return false;
     exemptedIds.add(row.node.id);
     return true;
   });
   return { rows, exemptedIds };
+}
+
+/**
+ * The grid without its **delegated** Tasks — someone else holds them, and the Zen View shows only
+ * what you hold. A card you have just delegated stays while it is focused.
+ */
+function withoutDelegated(grid: FocusFilteredRows<TaskListRow>, focusedId: string | null): FocusFilteredRows<TaskListRow> {
+  return without(grid, (row) => isDelegated(row.node), focusedId);
+}
+
+/**
+ * The grid without its **Review** cards unless the shared filter's Review pill (`showReview`) asks
+ * for them. Do shows Review whatever the pill says; the Zen View alone reads it. A focused card stays.
+ */
+function withoutReview(
+  grid: FocusFilteredRows<TaskListRow>,
+  shared: FilterState,
+  focusedId: string | null,
+): FocusFilteredRows<TaskListRow> {
+  if (shared.showReview === true) return grid;
+  return without(grid, (row) => isReview(row.node.taskStatus), focusedId);
 }
 
 /** A hidden strip: no rows, nothing exempted. */
@@ -115,7 +139,8 @@ function sharedUnder(shared: FilterState, mode: FilterState["statusMode"]): Filt
  *   every delegated Task**: Do still shows an in-progress Task someone else holds, the Zen View
  *   shows only what you hold. Whether a
  *   **Started** Task counts is the Zen View's own setting (`showsStarted`), not the Do preset's; an
- *   **On Agent** one shows only while the shared filter's `showOnAgent` asks for it.
+ *   **On Agent** one shows only while the shared filter's `showOnAgent` asks for it, and a **Review**
+ *   one only while its `showReview` does — the Zen View's own pill, which Do does not read.
  * - **The Commitments strip** is what the List View shows under Do: the unresolved ones.
  * - **The Expectations strip** is what **Start** shows — Do shows no Expectation at all, so this
  *   strip alone reads another preset — less every wait an agent raised. The shared filter already
@@ -134,8 +159,12 @@ export function zenContents(
   const underDo = { ...sharedUnder(shared, ZEN_VIEW_STATUS_MODE), doShowsStarted: options.showsStarted };
   const doFilter = listFilterUnder(ZEN_VIEW_STATUS_MODE, options.agentic);
   return {
-    tasks: reviewFirst(withoutDelegated(
-      withoutCompounds(filterTaskListWithFocus(source.tasks, underDo, doFilter, focusedId), options, focusedId),
+    tasks: reviewFirst(withoutReview(
+      withoutDelegated(
+        withoutCompounds(filterTaskListWithFocus(source.tasks, underDo, doFilter, focusedId), options, focusedId),
+        focusedId,
+      ),
+      shared,
       focusedId,
     )),
     commitments: options.commitments

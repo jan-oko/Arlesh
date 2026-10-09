@@ -139,6 +139,7 @@
   "filterKindKeys": "In the Filter menu (List View): show or hide Tasks / Commitments / Expectations; with Shift, show only that kind. In the Zen View, c / e show or hide its Commitments / Expectations strips",
   "filterFlagKeys": "In the Filter menu (List View; Agentic alone in the Zen View): Agentic / Asynchronous / Blocked / Private — adds as All (Shift Any, Alt Not); on a set flag, switches it to that mode, or removes it if already in it",
   "filterDelegatedKey": "In the Filter menu (every view): cycle the Delegated pill — off (hidden from Plan and Start), include, exclude",
+  "filterReviewKey": "In the Zen View's Filter menu: show or hide the agentic tasks waiting on your answer (Review)",
   "filterOnAgentKey": "In the Filter menu (every view but the Plan View): show or hide the agentic tasks an agent holds (On Agent) under Start, Do and Zen",
   "filterCloseMenu": "Close the Filter menu (in a search box with a query, the first Esc clears it)",
   "filterPrivateMode": "In the Filter menu: turn Private Mode on or off",

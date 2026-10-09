@@ -1,0 +1,1 @@
+- **Review pill in the Zen View.** The Zen View's Filter menu has a **Review** pill (key **R** in the menu) that shows the agentic tasks waiting on your answer. It is off by default, so Zen now leaves those tasks out until you turn it on. The setting is kept with the tab. Do, Start and the List View still show Review as before.

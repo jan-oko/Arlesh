@@ -134,14 +134,28 @@ describe("zenContents — Agentic Tasks", () => {
     commitments: flattenCommitmentRows(agentRoot),
     expectations: flattenExpectationRows(agentRoot),
   };
-  const readAgents = (shared: Partial<FilterState> = {}) => zenContents(agentSource, { ...DEFAULT_FILTER, ...shared }, BOTH, null);
+  const readAgents = (shared: Partial<FilterState> = {}, focusedId: string | null = null) =>
+    zenContents(agentSource, { ...DEFAULT_FILTER, ...shared }, BOTH, focusedId);
 
-  it("leads with Review, keeps Doing, and hides On Agent", () => {
-    expect(ids(readAgents().tasks.rows)).toEqual(["task-asking", "task-mine", "task-taken"]);
+  it("with the Review pill on, leads with Review, keeps Doing, and hides On Agent", () => {
+    expect(ids(readAgents({ showReview: true }).tasks.rows)).toEqual(["task-asking", "task-mine", "task-taken"]);
   });
 
   it("shows On Agent while the On Agent pill is on", () => {
-    expect(ids(readAgents({ showOnAgent: true }).tasks.rows)).toEqual(["task-asking", "task-mine", "task-held", "task-taken"]);
+    expect(ids(readAgents({ showReview: true, showOnAgent: true }).tasks.rows))
+      .toEqual(["task-asking", "task-mine", "task-held", "task-taken"]);
+  });
+
+  it("leaves Review off the grid by default, whatever the On Agent pill says, and its question off the strip", () => {
+    expect(ids(readAgents().tasks.rows)).toEqual(["task-mine", "task-taken"]);
+    expect(ids(readAgents({ showOnAgent: true }).tasks.rows)).toEqual(["task-mine", "task-held", "task-taken"]);
+    expect(ids(readAgents().expectations.rows)).toEqual(["expectation-person"]);
+  });
+
+  it("keeps a selected Review card on the grid with the pill off, as exempted", () => {
+    const contents = readAgents({}, "task-asking");
+    expect(ids(contents.tasks.rows)).toEqual(["task-asking", "task-mine", "task-taken"]);
+    expect(contents.tasks.exemptedIds).toEqual(new Set(["task-asking"]));
   });
 
   it("keeps every agentic wait out of the Expectations strip, question or not", () => {
@@ -149,7 +163,7 @@ describe("zenContents — Agentic Tasks", () => {
   });
 
   it("shows Review whatever the Started setting says", () => {
-    const contents = zenContents(agentSource, DEFAULT_FILTER, { ...BOTH, showsStarted: false }, null);
+    const contents = zenContents(agentSource, { ...DEFAULT_FILTER, showReview: true }, { ...BOTH, showsStarted: false }, null);
     expect(ids(contents.tasks.rows)).toContain("task-asking");
   });
 });

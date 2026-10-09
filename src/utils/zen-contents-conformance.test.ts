@@ -63,6 +63,7 @@ function parseShared(value: unknown, what: string): FilterState {
     ...DEFAULT_FILTER,
     statusMode: STATUS_MODES.find((mode) => mode === preset) ?? fail(`${what}.preset is not a preset`),
     ...(raw.showOnAgent !== undefined ? { showOnAgent: bool(raw.showOnAgent, `${what}.showOnAgent`) } : {}),
+    ...(raw.showReview !== undefined ? { showReview: bool(raw.showReview, `${what}.showReview`) } : {}),
     ...(raw.startHidesCheckedWaits !== undefined
       ? { startHidesCheckedWaits: bool(raw.startHidesCheckedWaits, `${what}.startHidesCheckedWaits`) }
       : {}),

@@ -31,6 +31,11 @@
     "off": "Agentic tasks an agent holds are hidden from Start, Do and Zen. Click (or o) to show them",
     "on": "Showing agentic tasks an agent holds. Click (or o) to hide them again"
   },
+  "reviewPill": "Review",
+  "reviewTooltip": {
+    "off": "Agentic tasks waiting on your answer are hidden from Zen. Click (or r) to show them",
+    "on": "Showing agentic tasks waiting on your answer, first. Click (or r) to hide them again"
+  },
   "planScopeLabel": "Plan scope",
   "planScopeAny": "Any scope",
   "planScopeClear": "Clear",
