@@ -126,7 +126,14 @@ pub async fn create_task(
     request: CreateTaskRequest,
     now: NaiveDateTime,
 ) -> Result<Task, AppError> {
-    require_parent(db, NodeKind::Task, "task", &request.parent_type, Some(&request.parent_id)).await?;
+    require_parent(
+        db,
+        NodeKind::Task,
+        "task",
+        &request.parent_type,
+        Some(&request.parent_id),
+    )
+    .await?;
     if request.plan.is_none() && request.time_scope.is_none() {
         return insert_task(db, request, now).await;
     }
@@ -166,7 +173,14 @@ pub async fn create_goal(
     mut request: CreateGoalRequest,
     now: NaiveDateTime,
 ) -> Result<Goal, AppError> {
-    require_parent(db, NodeKind::Goal, "goal", &request.parent_type, Some(&request.parent_id)).await?;
+    require_parent(
+        db,
+        NodeKind::Goal,
+        "goal",
+        &request.parent_type,
+        Some(&request.parent_id),
+    )
+    .await?;
     let NodeId::Derived(parent) = request.parent_id.clone() else {
         return Ok(crate::tasks::create_goal(db, request).await?);
     };
@@ -189,7 +203,14 @@ pub async fn create_commitment(
     mut request: CreateCommitmentRequest,
     now: NaiveDateTime,
 ) -> Result<Commitment, AppError> {
-    require_parent(db, NodeKind::Commitment, "commitment", &request.parent_type, Some(&request.parent_id)).await?;
+    require_parent(
+        db,
+        NodeKind::Commitment,
+        "commitment",
+        &request.parent_type,
+        Some(&request.parent_id),
+    )
+    .await?;
     let NodeId::Derived(parent) = request.parent_id.clone() else {
         return Ok(crate::tasks::create_commitment(db, request).await?);
     };
@@ -220,7 +241,14 @@ pub async fn create_expectation(
     mut request: CreateExpectationRequest,
     now: NaiveDateTime,
 ) -> Result<Expectation, AppError> {
-    require_parent(db, NodeKind::Expectation, "expectation", &request.parent_type, Some(&request.parent_id)).await?;
+    require_parent(
+        db,
+        NodeKind::Expectation,
+        "expectation",
+        &request.parent_type,
+        Some(&request.parent_id),
+    )
+    .await?;
     let NodeId::Derived(parent) = request.parent_id.clone() else {
         return Ok(crate::tasks::create_expectation(db, request).await?);
     };
@@ -254,7 +282,14 @@ pub async fn create_info(
     mut request: CreateInfoRequest,
     now: NaiveDateTime,
 ) -> Result<Info, AppError> {
-    require_parent(db, NodeKind::Info, "info", &request.parent_type, Some(&request.parent_id)).await?;
+    require_parent(
+        db,
+        NodeKind::Info,
+        "info",
+        &request.parent_type,
+        Some(&request.parent_id),
+    )
+    .await?;
     let NodeId::Derived(parent) = request.parent_id.clone() else {
         return Ok(db.infos().create(request).await?);
     };
@@ -425,7 +460,14 @@ async fn write_task(
     now: NaiveDateTime,
 ) -> Result<Task, AppError> {
     if let Some(parent_type) = &request.parent_type {
-        require_parent(db, NodeKind::Task, "task", parent_type, request.parent_id.as_ref()).await?;
+        require_parent(
+            db,
+            NodeKind::Task,
+            "task",
+            parent_type,
+            request.parent_id.as_ref(),
+        )
+        .await?;
     }
     let derived = match id {
         NodeId::Stored(id) => {
@@ -518,7 +560,14 @@ async fn write_goal(
     now: NaiveDateTime,
 ) -> Result<Goal, AppError> {
     if let Some(parent_type) = &request.parent_type {
-        require_parent(db, NodeKind::Goal, "goal", parent_type, request.parent_id.as_ref()).await?;
+        require_parent(
+            db,
+            NodeKind::Goal,
+            "goal",
+            parent_type,
+            request.parent_id.as_ref(),
+        )
+        .await?;
     }
     let derived = match id {
         NodeId::Stored(id) => {
@@ -581,7 +630,14 @@ async fn write_commitment(
     now: NaiveDateTime,
 ) -> Result<Commitment, AppError> {
     if let Some(parent_type) = &request.parent_type {
-        require_parent(db, NodeKind::Commitment, "commitment", parent_type, request.parent_id.as_ref()).await?;
+        require_parent(
+            db,
+            NodeKind::Commitment,
+            "commitment",
+            parent_type,
+            request.parent_id.as_ref(),
+        )
+        .await?;
     }
     let derived = match id {
         NodeId::Stored(id) => {
@@ -652,7 +708,14 @@ pub async fn update_expectation(
     now: NaiveDateTime,
 ) -> Result<Expectation, AppError> {
     if let Some(parent_type) = &request.parent_type {
-        require_parent(db, NodeKind::Expectation, "expectation", parent_type, request.parent_id.as_ref()).await?;
+        require_parent(
+            db,
+            NodeKind::Expectation,
+            "expectation",
+            parent_type,
+            request.parent_id.as_ref(),
+        )
+        .await?;
     }
     let id = match id {
         NodeId::Stored(id) => *id,
@@ -712,7 +775,14 @@ pub async fn update_info(
     now: NaiveDateTime,
 ) -> Result<Info, AppError> {
     if let Some(parent_type) = &request.parent_type {
-        require_parent(db, NodeKind::Info, "info", parent_type, request.parent_id.as_ref()).await?;
+        require_parent(
+            db,
+            NodeKind::Info,
+            "info",
+            parent_type,
+            request.parent_id.as_ref(),
+        )
+        .await?;
     }
     let moved = move_stored(
         db,

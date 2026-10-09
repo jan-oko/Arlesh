@@ -672,7 +672,7 @@ async fn migration_0096_spells_every_domains_table_parent_domain_and_keeps_every
              (100, 'Project', 'project', 1), (101, 'Tag', 'tag', NULL);
          INSERT INTO goals (id, title, parent_type, parent_id) VALUES (1, 'goal', 'project', 100);
          INSERT INTO tasks (id, title, parent_type, parent_id) VALUES
-             (1, 'under an aspect', 'aspect', 1), (2, 'under a project', 'project', 100),
+             (1, 'under an aspect', 'project', 1), (2, 'under a project', 'project', 100),
              (3, 'under a goal', 'goal', 1), (4, 'already domain', 'domain', 100);
          INSERT INTO commitments (id, title, parent_type, parent_id)
              VALUES (1, 'vow', 'project', 100);
@@ -711,7 +711,10 @@ async fn migration_0096_spells_every_domains_table_parent_domain_and_keeps_every
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert!(journalled > 0, "the seeding is journalled under the old spellings");
+    assert!(
+        journalled > 0,
+        "the seeding is journalled under the old spellings"
+    );
 
     everything.run(&pool).await.unwrap();
 

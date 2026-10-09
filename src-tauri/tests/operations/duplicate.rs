@@ -1027,7 +1027,7 @@ async fn a_flow_under_a_copied_project_comes_with_it_and_its_target_follows_the_
     assert_eq!(original.id, inside);
     assert_eq!(
         (copy.parent_type.as_str(), copy.parent_id),
-        ("project", pasted.copy.id)
+        ("domain", pasted.copy.id)
     );
     assert_eq!(
         (copy.target_type.as_deref(), copy.target_id),
@@ -1045,7 +1045,7 @@ async fn a_flow_under_a_copied_project_comes_with_it_and_its_target_follows_the_
     assert_ne!(copy.id, outside);
     assert_eq!(
         (copy.target_type.as_deref(), copy.target_id),
-        (Some("project"), Some(elsewhere))
+        (Some("domain"), Some(elsewhere))
     );
 
     // A NULL target stays NULL, so it follows its copied parent; a Flow under a copied Goal comes.

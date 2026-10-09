@@ -17,8 +17,8 @@
 //! `scope_rules`. Splitting it out would mean either duplicating that chain or making it public.
 
 use crate::database::session::{Db, Transactional};
-use crate::nodes::rules::parenting::stored_reference;
 use crate::nodes::origin::Origin;
+use crate::nodes::rules::parenting::stored_reference;
 use crate::scopes::db::DbScopeKey;
 
 use super::ancestry::{AncestryLink, NodeKind, NodeRef};

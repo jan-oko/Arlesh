@@ -4371,7 +4371,7 @@ async fn copying_a_habit_gives_a_habit_on_the_same_schedule_under_the_new_parent
     );
     assert_eq!(
         (copy.parent_type.as_str(), copy.parent_id, copy.position),
-        ("aspect", 2, 7)
+        ("domain", 2, 7)
     );
     assert!(copy.is_habit, "a copy of a Habit is a Habit");
     let recurrence = helpers::session_factory(&pool)
