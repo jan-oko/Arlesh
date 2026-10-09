@@ -9,9 +9,9 @@ what else was in flight, and who decides the merge. The late ones went wrong far
 Fill every section. Delete one only when it truly does not apply, never to save space.
 
 ````markdown
-Repo: `/home/atai/Green/CODE/Arlesh`. <Either> Create your own git worktree off
-`origin/master` (currently `<sha>`). <Or> Your worktree: `<path>` (branch `<branch>`); work only
-there. Do NOT work in the main checkout or any other worktree under `.claude/worktrees/` —
+Repo: `/home/atai/Green/CODE/Arlesh`. Your worktree: `.claude/worktrees/<short id>-<slug>`
+(branch `<short id>-<slug>`, off `origin/master` at `<sha>`); work only there. Keep the branch
+name — it is how the user tells instances apart in `scripts/branch-instance.sh`. Do NOT work in the main checkout or any other worktree under `.claude/worktrees/` —
 <n> other agents are live in them.
 
 ## Do not run local builds            <!-- when df -h / is 90%+ -->
