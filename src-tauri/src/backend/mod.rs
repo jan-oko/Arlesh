@@ -83,3 +83,6 @@ impl Deref for AppBackend {
         self.0.as_ref()
     }
 }
+
+#[cfg(test)]
+mod tests;
