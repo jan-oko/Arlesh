@@ -36,6 +36,7 @@ fn port() -> BTreeSet<String> {
     PORT_FILES.iter().flat_map(|file| methods(file)).collect()
 }
 
+/// The contract's three lists: routed, Standalone-only, and waiting on a design decision.
 fn contract() -> (BTreeSet<String>, BTreeSet<String>) {
     let contract: serde_json::Value =
         serde_json::from_str(CONTRACT).expect("conformance/client-mode.json is JSON");
@@ -45,13 +46,18 @@ fn contract() -> (BTreeSet<String>, BTreeSet<String>) {
         .keys()
         .cloned()
         .collect();
-    let standalone = contract["standalone_only"]
-        .as_array()
-        .expect("`standalone_only` is a list")
+    let unrouted = ["standalone_only", "undecided"]
         .iter()
-        .map(|name| name.as_str().expect("a method name").to_owned())
+        .flat_map(|list| {
+            contract[*list]
+                .as_array()
+                .unwrap_or(&Vec::new())
+                .iter()
+                .map(|name| name.as_str().expect("a method name").to_owned())
+                .collect::<Vec<_>>()
+        })
         .collect();
-    (routed, standalone)
+    (routed, unrouted)
 }
 
 #[test]

@@ -10,7 +10,10 @@
     "Both sides replay it. `src-tauri/src/backend/tests.rs` fails when a port method is in neither",
     "list, or a listed method is not on the port; `crates/arlesh-py/tests/server/integration/",
     "test_server_parity.py` fails when a listed route is not served or the server's `API_VERSION`",
-    "differs. See `docs/spec/client-mode.md`, *REST parity*."
+    "differs. See `docs/spec/client-mode.md`, *REST parity*.",
+    "",
+    "`undecided` lists the methods whose route waits on an open design question (how a Gesture",
+    "crosses HTTP; Task 9f0, wait `dd2`). They are routed when it is answered, and the list goes."
   ],
   "api_version": 1,
   "standalone_only": [
@@ -23,6 +26,14 @@
     "list_events",
     "create_thread",
     "list_threads"
+  ],
+  "undecided": [
+    "open_gesture",
+    "close_gesture",
+    "abort_gesture",
+    "undo",
+    "redo",
+    "undo_status"
   ],
   "routes": {
     "load_mindmap": [
