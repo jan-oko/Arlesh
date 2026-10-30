@@ -19,7 +19,7 @@ use crate::{
 };
 
 /// What a status gesture did.
-#[derive(Debug, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Serialize, schemars::JsonSchema, serde::Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum StatusStepOutcome {
     /// The status was written. `backlog_cleared` says, when it did, that the write took the Task

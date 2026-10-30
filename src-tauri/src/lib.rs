@@ -3,6 +3,7 @@
 //! Arlesh — task management and knowledge-base desktop app.
 
 pub mod backend;
+pub mod client_mode;
 pub mod commands;
 pub mod icon;
 pub mod tray;
@@ -39,77 +40,22 @@ pub fn run() {
                 .expect("could not resolve app data dir");
             std::fs::create_dir_all(&app_dir).expect("could not create app data dir");
 
-            let database_url = format!("sqlite://{}/arlesh.db?mode=rwc", app_dir.display());
-
-            // Mark the database as held while the app runs, so another writer — a Python session
-            // through the bindings — is refused unless it insists (`arlesh_core::database::hold`).
-            // A hold someone else already has is not a reason to stop: the app still runs, and
-            // the other writer simply is not warned off.
-            match database::hold::AppHold::acquire(&app_dir.join("arlesh.db")) {
-                Ok(hold) => {
-                    app.manage(hold);
+            // Standalone or Client: which backend every command calls through on this device.
+            let saved = client_mode::settings::read(&app_dir);
+            let startup = client_mode::settings::startup(saved, app_dir.join("arlesh.db").exists());
+            let server = match &startup.mode {
+                client_mode::settings::Mode::Standalone => {
+                    setup_standalone(app, &app_dir)?;
+                    None
                 }
-                Err(error) => tracing::warn!(error = %error, "could not hold the database"),
-            }
-
-            let pool = tauri::async_runtime::block_on(async {
-                let pool = database::connect(&database_url).await.map_err(|error| {
-                    tracing::error!(error = %error, "bootstrap failed: database connect");
-                    error
-                })?;
-                database::run_migrations(&pool).await.map_err(|error| {
-                    tracing::error!(error = %error, "bootstrap failed: migrations");
-                    error
-                })?;
-                tracing::info!("database ready");
-                Ok::<_, anyhow::Error>(pool)
-            })
-            .expect("database setup failed");
-
-            // The factory is the sole owner of the pool: every command resolves
-            // `State<SessionFactory>` and reaches the database only through a session it hands
-            // out. Nothing managed here can acquire a connection behind a session's back.
-            let factory = database::session::SessionFactory::new(pool);
-
-            // The Undo Stack is session-scoped, so the journal starts every run empty and the
-            // ambient context starts every run clear. A `suppressed` flag or a half-open Gesture
-            // left behind by a crash mid-undo would otherwise silently stop the triggers
-            // recording for the whole of this session.
-            tauri::async_runtime::block_on(undo::reset_journal(&factory))?;
-
-            // The MCP endpoint shares the factory rather than the pool, so an agent's reads go
-            // through the same session layer the commands do. It also gets a way to say the board
-            // changed, so an agent's write refreshes the windows that are open rather than leaving
-            // them showing the old value. A bind failure is recorded in its status, for the
-            // settings page to show and retry: an occupied port must not take the windows down.
-            // The agent capacity lock is shared by the endpoint's sessions and the settings
-            // commands, and tells every window when either side changes it.
-            let capacity = capacity::AgentCapacity::open(
-                app_dir.join(capacity::CAPACITY_FILE),
-                commands::capacity::notifier(app.handle()),
-            );
-            let endpoint = mcp::endpoint::McpEndpoint::new(
-                factory.clone(),
-                commands::board::announcer(app.handle()),
-                capacity.clone(),
-                app_dir.join(mcp::endpoint::SETTINGS_FILE),
-                mcp::endpoint::env_port(),
-            );
-            app.manage(endpoint.clone());
-            tauri::async_runtime::spawn(async move {
-                endpoint.restart().await;
-            });
-
-            // The Backend port every command calls through, in-process over the local file. The
-            // Undo and Redo Stacks are one pair for the whole app, in memory inside it.
-            // Constructing them here is the whole of "session-scoped" — a restart is an empty
-            // history, and nothing has to clear them.
-            app.manage(backend::AppBackend::new(
-                backend::sqlite::SqliteBackend::new(
-                    factory,
-                    undo::stacks::UndoStacks::new(),
-                    capacity,
-                ),
+                client_mode::settings::Mode::Client { url, token_in_file } => {
+                    Some(setup_client(app, &app_dir, url, *token_in_file)?)
+                }
+            };
+            app.manage(commands::client_mode::ClientModeState::new(
+                app_dir.clone(),
+                startup,
+                server,
             ));
 
             // The window session is read before any window exists and reopened before the event
@@ -134,6 +80,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::tray::set_close_to_tray,
             commands::tray::quit_app,
+            commands::client_mode::mode_status,
+            commands::client_mode::keychain_available,
+            commands::client_mode::test_server,
+            commands::client_mode::connect_to_server,
+            commands::client_mode::use_standalone,
             commands::undo::open_gesture,
             commands::undo::close_gesture,
             commands::undo::abort_gesture,
@@ -268,4 +219,128 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Standalone mode: the local database, held while the app runs, served in-process by
+/// [`backend::sqlite::SqliteBackend`], with the app's own MCP endpoint.
+#[cfg(feature = "standalone")]
+fn setup_standalone(
+    app: &mut tauri::App,
+    app_dir: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let database_url = format!("sqlite://{}/arlesh.db?mode=rwc", app_dir.display());
+
+    // Mark the database as held while the app runs, so another writer — a Python session
+    // through the bindings — is refused unless it insists (`arlesh_core::database::hold`).
+    // A hold someone else already has is not a reason to stop: the app still runs, and
+    // the other writer simply is not warned off.
+    match database::hold::AppHold::acquire(&app_dir.join("arlesh.db")) {
+        Ok(hold) => {
+            app.manage(hold);
+        }
+        Err(error) => tracing::warn!(error = %error, "could not hold the database"),
+    }
+
+    let pool = tauri::async_runtime::block_on(async {
+        let pool = database::connect(&database_url).await.map_err(|error| {
+            tracing::error!(error = %error, "bootstrap failed: database connect");
+            error
+        })?;
+        database::run_migrations(&pool).await.map_err(|error| {
+            tracing::error!(error = %error, "bootstrap failed: migrations");
+            error
+        })?;
+        tracing::info!("database ready");
+        Ok::<_, anyhow::Error>(pool)
+    })
+    .expect("database setup failed");
+
+    // The factory is the sole owner of the pool: every command resolves
+    // `State<SessionFactory>` and reaches the database only through a session it hands
+    // out. Nothing managed here can acquire a connection behind a session's back.
+    let factory = database::session::SessionFactory::new(pool);
+
+    // The Undo Stack is session-scoped, so the journal starts every run empty and the
+    // ambient context starts every run clear. A `suppressed` flag or a half-open Gesture
+    // left behind by a crash mid-undo would otherwise silently stop the triggers
+    // recording for the whole of this session.
+    tauri::async_runtime::block_on(undo::reset_journal(&factory))?;
+
+    // The MCP endpoint shares the factory rather than the pool, so an agent's reads go
+    // through the same session layer the commands do. It also gets a way to say the board
+    // changed, so an agent's write refreshes the windows that are open rather than leaving
+    // them showing the old value. A bind failure is recorded in its status, for the
+    // settings page to show and retry: an occupied port must not take the windows down.
+    // The agent capacity lock is shared by the endpoint's sessions and the settings
+    // commands, and tells every window when either side changes it.
+    let capacity = capacity::AgentCapacity::open(
+        app_dir.join(capacity::CAPACITY_FILE),
+        commands::capacity::notifier(app.handle()),
+    );
+    let endpoint = mcp::endpoint::McpEndpoint::new(
+        factory.clone(),
+        commands::board::announcer(app.handle()),
+        capacity.clone(),
+        app_dir.join(mcp::endpoint::SETTINGS_FILE),
+        mcp::endpoint::env_port(),
+    );
+    app.manage(endpoint.clone());
+    tauri::async_runtime::spawn(async move {
+        endpoint.restart().await;
+    });
+
+    // The Backend port every command calls through, in-process over the local file. The
+    // Undo and Redo Stacks are one pair for the whole app, in memory inside it.
+    // Constructing them here is the whole of "session-scoped" — a restart is an empty
+    // history, and nothing has to clear them.
+    app.manage(backend::AppBackend::new(
+        backend::sqlite::SqliteBackend::new(factory, undo::stacks::UndoStacks::new(), capacity),
+    ));
+    Ok(())
+}
+
+/// A build without the `standalone` feature has no local database to run on.
+#[cfg(not(feature = "standalone"))]
+fn setup_standalone(
+    _app: &mut tauri::App,
+    _app_dir: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    Err("this build has no Standalone mode: connect it to a server (mode.json)".into())
+}
+
+/// Client mode: every command calls `arlesh-server` through [`backend::http::HttpBackend`]. No
+/// database is opened and no MCP endpoint is served: agents use the server's. The server's change
+/// stream is followed for the life of the app, and every window hears of a change as it would of
+/// a local one.
+fn setup_client(
+    app: &mut tauri::App,
+    app_dir: &std::path::Path,
+    url: &str,
+    token_in_file: bool,
+) -> Result<std::sync::Arc<backend::http::HttpBackend>, Box<dyn std::error::Error>> {
+    let token = match client_mode::vault::load(app_dir, url, token_in_file) {
+        Ok(Some(token)) => token,
+        Ok(None) => {
+            tracing::warn!("no token is kept for the server; every call will be refused");
+            String::new()
+        }
+        Err(error) => {
+            tracing::warn!(error = %error, "the server's token could not be read");
+            String::new()
+        }
+    };
+    let backend = std::sync::Arc::new(
+        backend::http::HttpBackend::new(
+            backend::http::Connection::new(url, token),
+            commands::client_mode::status_notifier(app.handle()),
+        )
+        .map_err(|error| format!("{error:?}"))?,
+    );
+    app.manage(backend::AppBackend::shared(backend.clone()));
+    let announce = commands::board::announcer(app.handle());
+    let following = std::sync::Arc::clone(&backend);
+    tauri::async_runtime::spawn(async move {
+        backend::http::events::follow(following, std::sync::Arc::new(move || announce(None))).await;
+    });
+    Ok(backend)
 }

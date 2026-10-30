@@ -59,7 +59,11 @@ fn the_port_files_are_read_whole() {
     // The scan above is only as good as its file list: the port's own module list is longer than
     // this one only when a file was added without being read here.
     let declared = include_str!("mod.rs").matches("\npub mod ").count();
-    assert_eq!(declared, PORT_FILES.len() + 1, "every port module but `sqlite`");
+    assert_eq!(
+        declared,
+        PORT_FILES.len() + 1,
+        "every port module but `sqlite`"
+    );
 }
 
 #[test]

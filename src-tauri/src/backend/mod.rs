@@ -3,7 +3,8 @@
 //! A command is a thin adapter from `invoke` to a call on the [`AppBackend`] the app manages. What
 //! answers the call depends on the mode the app runs in (see `docs/spec/client-mode.md`):
 //! [`SqliteBackend`](sqlite::SqliteBackend) is the in-process core over the local database file,
-//! as the app has always been. The port is split by domain, one trait per command module, and
+//! as the app has always been (Standalone mode), and [`HttpBackend`](http::HttpBackend) calls
+//! `arlesh-server` over HTTP (Client mode). The port is split by domain, one trait per command module, and
 //! [`Backend`] is all of them together — so an implementation that misses one operation does not
 //! compile.
 //!
@@ -22,9 +23,11 @@ pub mod domains;
 pub mod expectations;
 pub mod flows;
 pub mod gestures;
+pub mod http;
 pub mod infos;
 pub mod knowledge_base;
 pub mod mindmap;
+#[cfg(feature = "standalone")]
 pub mod sqlite;
 pub mod tasks;
 pub mod undo;
@@ -73,6 +76,12 @@ impl AppBackend {
     /// Wraps `backend` for Tauri to manage.
     pub fn new(backend: impl Backend + 'static) -> Self {
         Self(Arc::new(backend))
+    }
+
+    /// Wraps a backend the app also holds elsewhere: Client mode's, which the change stream and
+    /// the status commands reach too.
+    pub fn shared(backend: Arc<dyn Backend>) -> Self {
+        Self(backend)
     }
 }
 

@@ -184,7 +184,7 @@ pub struct StoredNode {
 }
 
 /// One stored node as the MCP access page lists it: enough to find it by title and name it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema, serde::Deserialize)]
 pub struct CatalogueNode {
     /// The node's table.
     pub node_kind: NodeTable,
@@ -234,7 +234,9 @@ impl CatalogueNode {
 ///
 /// What the app's node badge reads. It carries no level: whether the MCP may also write a node is
 /// whether the node is an Agentic Task, which the node's own Agentic badge already says.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema, serde::Deserialize,
+)]
 pub struct EffectiveAccess {
     /// The node's table.
     pub node_kind: NodeTable,
@@ -266,7 +268,7 @@ mod tests;
 
 /// What the *MCP access* page lists: the roots, every stored node that could be one, and which of
 /// those may be added now.
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema, serde::Deserialize)]
 pub struct McpAccessCatalogue {
     /// The MCP roots as they stand.
     pub roots: Vec<NodeKey>,

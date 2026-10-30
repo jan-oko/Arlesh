@@ -134,10 +134,14 @@ pub struct TemplateFields {
 }
 
 /// A change to a template row's own columns and relations. Each field left `None` stays as it is.
-#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct TemplateUpdate {
     /// Delegate to set (`None` leaves it, `Some(None)` clears it). Task templates only.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub delegate_to: Option<Option<Delegate>>,
     /// Agentic state to set. Task templates only.
     #[serde(default)]
@@ -155,14 +159,22 @@ pub struct TemplateUpdate {
     #[serde(default)]
     pub block_reasons: Option<Vec<String>>,
     /// The agentic brief to set (`None` leaves it, `Some(None)` removes it). Task templates only.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub agentic_brief: Option<Option<AgenticBrief>>,
     /// Compound flag to set. Flow Task items only.
     #[serde(default)]
     pub compound: Option<bool>,
     /// The wait template to set (`None` leaves it, `Some(None)` removes it). Dropped when the item
     /// ends up not Asynchronous. Flow Task items only.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub async_template: Option<Option<AsyncTemplate>>,
 }
 
