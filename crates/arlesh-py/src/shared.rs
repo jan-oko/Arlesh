@@ -62,6 +62,9 @@ impl Changes {
 pub(crate) struct Shared {
     /// The agent capacity lock, kept beside the database as the app keeps it.
     pub(crate) capacity: AgentCapacity,
+    /// Held across every write's Gesture — open, write, close — so two clients' writes never
+    /// share the one ambient Gesture the journal stamps from. See [`crate::request::run`].
+    pub(crate) writes: tokio::sync::Mutex<()>,
     /// The board's revision.
     pub(crate) changes: Changes,
 }
@@ -83,6 +86,10 @@ pub(crate) fn for_database(path: &Path) -> Arc<Shared> {
             // The lock is part of the board as drawn, so a change to it is a change to the board.
             Arc::new(move |_state| notified.bump()),
         );
-        Arc::new(Shared { capacity, changes })
+        Arc::new(Shared {
+            capacity,
+            writes: tokio::sync::Mutex::new(()),
+            changes,
+        })
     }))
 }

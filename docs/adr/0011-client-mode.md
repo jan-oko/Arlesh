@@ -55,9 +55,18 @@ able to send those same operations to a server instead.
    already reload on that event, so a write from another device needs no new path in the frontend.
    SSE is one-way, plain HTTP, and resumable, which is all a "reload now" signal needs.
 
-6. **Undo is per device.** Each device's token is its own client, so the journal already tells
-   devices apart. `POST /undo` and `POST /redo` act on the calling client's stacks, with today's
-   conflict refusals. *Why:* Ctrl+Z on a laptop must never take back what was done on a phone.
+6. **Undo is per device, and a Gesture never crosses a request.** Each device's token is its own
+   client, so the journal already tells devices apart. `POST /undo` and `POST /redo` act on the
+   calling client's stacks, with today's conflict refusals. Every write request is one Gesture of
+   its client, opened and closed by the server under a per-file write lock. A gesture that issues
+   several commands on the desktop becomes **its own operation and its own endpoint** (ruled by the
+   user on 2026-10-30: *REST should support an endpoint per gesture*): the whole gesture runs
+   server-side as one request, one transaction, one undo step, and the app calls the same operation
+   in Standalone mode. *Why:* Ctrl+Z on a laptop must never take back what was done on a phone.
+   The ambient Gesture is one row for the whole database, so a Gesture held open across requests
+   would take in another device's writes, and one abandoned by a device that died would take in
+   everyone's. A Gesture id carried on each request (the alternative weighed) would have kept the
+   frontend's command runs, but at the price of server state that outlives a request.
 
 7. **Offline is read-only.** With the server unreachable, the app shows the last board it loaded,
    read-only, with a *Server unreachable* banner and the last sync time. Writes are refused with a

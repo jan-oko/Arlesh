@@ -24,6 +24,7 @@ use arlesh_core::{
     },
     infos::model::Info,
     mindmap::{model::MindmapLoad, rules::plans::PlanClampTarget},
+    nodes::gestures::GestureNode,
     scopes::{model::Scope, resolve::ResolvedScope},
     tasks::{
         gestures::StatusStepOutcome,
@@ -36,6 +37,7 @@ use arlesh_core::{
         },
         ReparentConflicts, ViolatingDescendant,
     },
+    undo::model::{GestureSummary, UndoStatus},
 };
 use schemars::{generate::SchemaSettings, JsonSchema, SchemaGenerator};
 use serde_json::{json, Map, Value};
@@ -123,6 +125,7 @@ fn inputs(generator: &mut SchemaGenerator) {
     add::<DurationSpec>(generator);
     add::<TargetRef>(generator);
     add::<NodeTable>(generator);
+    add::<GestureNode>(generator);
 }
 
 /// What the calls answer — written by the core, so described as it **serialises** them: a field
@@ -176,6 +179,8 @@ fn outputs(generator: &mut SchemaGenerator) {
     add::<McpAccessCatalogue>(generator);
     add::<EffectiveAccess>(generator);
     add::<CapacityState>(generator);
+    add::<UndoStatus>(generator);
+    add::<GestureSummary>(generator);
 }
 
 /// The document: `$defs` holding every request body, rule argument and answer type.

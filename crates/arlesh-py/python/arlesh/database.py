@@ -61,6 +61,8 @@ from arlesh.models import (
     FlowRecurrence,
     FlowTask,
     ForkedTemplate,
+    GestureNode,
+    GestureSummary,
     Goal,
     Info,
     ItemLifecycle,
@@ -82,6 +84,7 @@ from arlesh.models import (
     TaskDependencyEdge,
     TaskWithBlockers,
     TimeScope,
+    UndoStatus,
     UpdateCommitmentRequest,
     UpdateDomainRequest,
     UpdateExpectationRequest,
@@ -713,6 +716,29 @@ class Database(ABC):
     async def set_agent_capacity(self, at_capacity: bool) -> CapacityState:
         """Sets the agent capacity lock on or off, and counts it as a change to the board."""
 
+    @abstractmethod
+    async def delete_nodes(self, nodes: list[GestureNode]) -> None:
+        """Deletes every node in ``nodes``, all or nothing: the app's multi-node delete, as one
+        Gesture."""
+
+    @abstractmethod
+    async def undo(self) -> GestureSummary | None:
+        """Reverses this client's most recent Gesture, and answers it; ``None`` when this client's
+        Undo Stack is empty. Each write through this open is one Gesture of its client."""
+
+    @abstractmethod
+    async def redo(self) -> GestureSummary | None:
+        """Reapplies this client's most recently undone Gesture; ``None`` when there is none."""
+
+    @abstractmethod
+    async def undo_status(self) -> UndoStatus:
+        """What this client's next undo and redo would be."""
+
+    @abstractmethod
+    async def reset_undo(self) -> None:
+        """Empties the journal and clears the ambient Gesture, as the app does at every start. For
+        a server's startup, while it holds the database."""
+
     @property
     @abstractmethod
     def revision(self) -> int:
@@ -1243,6 +1269,24 @@ class SqliteDatabase(Database):
     async def set_agent_capacity(self, at_capacity: bool) -> CapacityState:
         return await self._call(_CAPACITY, "set_agent_capacity", at_capacity=at_capacity)
 
+    async def delete_nodes(self, nodes: list[GestureNode]) -> None:
+        await self._call(_NOTHING, "delete_nodes", nodes=nodes)
+
+    async def undo(self) -> GestureSummary | None:
+        return await self._call(_SUMMARY_OR_NONE, "undo")
+
+    async def redo(self) -> GestureSummary | None:
+        return await self._call(_SUMMARY_OR_NONE, "redo")
+
+    async def undo_status(self) -> UndoStatus:
+        return await self._call(_UNDO_STATUS, "undo_status")
+
+    async def reset_undo(self) -> None:
+        try:
+            await self._native.reset_undo()
+        except _native.NativeError as error:
+            raise from_native(error) from None
+
     @property
     def revision(self) -> int:
         return self._native.revision
@@ -1299,3 +1343,5 @@ _BLOCK_REASONS: TypeAdapter[list[BlockReason]] = TypeAdapter(list[BlockReason])
 _ACCESS_CATALOGUE: TypeAdapter[McpAccessCatalogue] = TypeAdapter(McpAccessCatalogue)
 _EFFECTIVE_ACCESS: TypeAdapter[list[EffectiveAccess]] = TypeAdapter(list[EffectiveAccess])
 _CAPACITY: TypeAdapter[CapacityState] = TypeAdapter(CapacityState)
+_SUMMARY_OR_NONE: TypeAdapter[GestureSummary | None] = TypeAdapter(GestureSummary | None)
+_UNDO_STATUS = TypeAdapter(UndoStatus)

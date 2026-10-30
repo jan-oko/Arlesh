@@ -1222,37 +1222,37 @@ describe("useMindmapData — mutations", () => {
   });
 
   describe("removeNode", () => {
-    it("goal: calls delete_goal with the db id", async () => {
-      setupInvoke({ delete_goal: undefined });
+    it("goal: deletes it by its db id, as one gesture operation", async () => {
+      setupInvoke({ delete_nodes: undefined });
       const { result } = await loadedHook();
 
       await act(async () => { await result.current.removeNode([{ id: "goal-1", kind: "goal" }]); });
 
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_goal", { id: 1 });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_nodes", { nodes: [{ kind: "goal", id: 1 }] });
     });
 
-    it("task: calls delete_task with the db id", async () => {
-      setupInvoke({ delete_task: undefined });
+    it("task: deletes it by its db id, as one gesture operation", async () => {
+      setupInvoke({ delete_nodes: undefined });
       const { result } = await loadedHook();
 
       await act(async () => { await result.current.removeNode([{ id: "task-1", kind: "task" }]); });
 
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_task", { id: 1 });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_nodes", { nodes: [{ kind: "task", id: 1 }] });
     });
 
-    it("domain/project: calls delete_domain with the db id", async () => {
-      setupInvoke({ delete_domain: undefined });
+    it("domain/project: deletes it by its db id, as one gesture operation", async () => {
+      setupInvoke({ delete_nodes: undefined });
       const { result } = await loadedHook();
 
       // Wire a project under the aspect so it can be deleted
       const PROJECT = mkDomain({ id: 5, subtype: "project", parent_id: 1, title: "Ops" });
-      setupInvoke({ list_domains: [ASPECT, PROJECT], delete_domain: undefined });
+      setupInvoke({ list_domains: [ASPECT, PROJECT], delete_nodes: undefined });
       await act(async () => { await result.current.reload(); });
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
       await act(async () => { await result.current.removeNode([{ id: "domain-5", kind: "project" }]); });
 
-      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_domain", { id: 5 });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("delete_nodes", { nodes: [{ kind: "project", id: 5 }] });
     });
 
     it("aspect: skips deletion (aspects are immutable)", async () => {
@@ -1260,7 +1260,7 @@ describe("useMindmapData — mutations", () => {
 
       await act(async () => { await result.current.removeNode([{ id: "domain-1", kind: "aspect" }]); });
 
-      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("delete_domain", expect.anything());
+      expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("delete_nodes", expect.anything());
     });
   });
 

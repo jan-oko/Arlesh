@@ -135,6 +135,8 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 | `/flow-items` | create and update `flow_goal`, `flow_task`, `flow_commitment` and `flow_expectation` items, delete, `/cycles?reconcile=`, `/dependencies`, `/duplicate`; `GET /flow_goal`, `/flow_task`, `/cycles`, `/dependencies`: every Flow's |
 | `/nodes/{kind}/{id}` | `/tags/{tag_id}` (`PUT` and `DELETE`), `/block-reasons`, `POST /scope-containment-conflicts` (the body a Time Scope) and `GET /reparent-conflicts?parent_type=&parent_id=`: what-ifs that write nothing |
 | `/capacity` | The agent capacity lock: `GET`, and `PUT` with `{"at_capacity": …}`. One lock per database file, shared by every route and every client's MCP endpoint |
+| `/undo`, `/redo` | `GET /undo` (what the calling client's next undo and redo would be), `POST /undo`, `POST /redo`: the calling client's own stacks. `null` when there is nothing to take back |
+| `/gestures` | The gesture operations: each gesture the app makes over several nodes, as one request — one transaction, one undo step. `POST /delete-nodes` (the body a list of `{kind, id}`) |
 | `/mcp-access` | The MCP roots: `GET` (what the MCP can see), `GET /catalogue`, `PUT` and `DELETE /roots/{node_kind}/{node_id}` |
 | `/scopes` | `GET /containing?kind=&date=`, `POST /resolve?now=` (the body is a scope key) |
 | `/rules` | `POST /item-state`, `POST /commitment-state`: the derived lifecycles |
@@ -144,6 +146,17 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 People and the knowledge base, which have none (see [Client Mode](client-mode.md)). The mapping is
 `conformance/client-mode.json`, which both sides test: the app that every port method is listed, the
 server that every listed route is served and that its `API_VERSION` is the app's.
+
+## Undo: every write is one Gesture
+
+Each write request is one Gesture of the client its token names: the server opens it before the
+write and closes it after, so it reaches that client's Undo Stack as one step, and a client's undo
+never takes back another's write. The open, the write and the close run under a lock per database
+file, so no other client's write lands inside the Gesture; an agent's write through `/mcp` still
+can, journaled as source `mcp` and kept off every stack, as in the app. A Gesture never stays open
+between requests: a gesture the app makes over several nodes is one of the `/gestures` operations
+instead (see [Client Mode](client-mode.md), *Undo*). The stacks are in memory, one pair per client,
+and start empty with the server, which also clears the journal at startup as the app does.
 
 ## Live sync: `/events`
 

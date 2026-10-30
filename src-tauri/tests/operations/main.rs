@@ -28,6 +28,7 @@ mod mcp_capacity;
 mod mcp_endpoint;
 mod mcp_writes;
 mod mindmap_commands;
+mod multi_node_gestures;
 mod parenting_conformance;
 mod plan_triage_conformance;
 mod preset_conformance;

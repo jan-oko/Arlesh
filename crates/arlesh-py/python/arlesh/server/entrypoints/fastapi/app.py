@@ -28,12 +28,14 @@ from arlesh.server.entrypoints.fastapi.routers.domains import DomainsRouter
 from arlesh.server.entrypoints.fastapi.routers.events import EventsRouter
 from arlesh.server.entrypoints.fastapi.routers.flow_items import FlowItemsRouter
 from arlesh.server.entrypoints.fastapi.routers.flows import FlowsRouter
+from arlesh.server.entrypoints.fastapi.routers.gestures import GesturesRouter
 from arlesh.server.entrypoints.fastapi.routers.goals import GoalsRouter
 from arlesh.server.entrypoints.fastapi.routers.health import HealthRouter
 from arlesh.server.entrypoints.fastapi.routers.infos import InfosRouter
 from arlesh.server.entrypoints.fastapi.routers.nodes import NodesRouter
 from arlesh.server.entrypoints.fastapi.routers.scopes import RulesRouter, ScopesRouter
 from arlesh.server.entrypoints.fastapi.routers.tasks import TasksRouter
+from arlesh.server.entrypoints.fastapi.routers.undo import UndoRouter
 from arlesh.server.entrypoints.fastapi.routers.waits import WaitsRouter
 from arlesh.server.entrypoints.fastapi.security_scheme import BearerTokenSecurityScheme
 from arlesh.server.entrypoints.mcp.proxy import McpProxyRouter
@@ -76,6 +78,8 @@ class AppRouter(APIRouter):
         self.include_router(EventsRouter(*routed, tag="events"), prefix="/events")
         self.include_router(CapacityRouter(*routed, tag="capacity"), prefix="/capacity")
         self.include_router(McpAccessRouter(*routed, tag="mcp-access"), prefix="/mcp-access")
+        self.include_router(UndoRouter(*routed, tag="undo"))
+        self.include_router(GesturesRouter(*routed, tag="gestures"), prefix="/gestures")
         self.include_router(TasksRouter(*routed, tag="tasks"), prefix="/tasks")
         self.include_router(GoalsRouter(*routed, tag="goals"), prefix="/goals")
         self.include_router(CommitmentsRouter(*routed, tag="commitments"), prefix="/commitments")

@@ -27,6 +27,7 @@ pub mod http;
 pub mod infos;
 pub mod knowledge_base;
 pub mod mindmap;
+pub mod node_gestures;
 #[cfg(feature = "standalone")]
 pub mod sqlite;
 pub mod tasks;
@@ -45,6 +46,7 @@ pub trait Backend:
     + infos::InfosPort
     + knowledge_base::KnowledgeBasePort
     + mindmap::BoardPort
+    + node_gestures::NodeGesturesPort
     + tasks::TasksPort
     + undo::UndoPort
 {
@@ -62,6 +64,7 @@ impl<T> Backend for T where
         + infos::InfosPort
         + knowledge_base::KnowledgeBasePort
         + mindmap::BoardPort
+        + node_gestures::NodeGesturesPort
         + tasks::TasksPort
         + undo::UndoPort
 {

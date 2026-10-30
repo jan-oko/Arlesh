@@ -83,10 +83,26 @@ Undo is **per device**. Each device's token is its own client, so its writes are
 own name (see [Undo](undo.md), *Clients, and a second writer*). `POST /undo` and `POST /redo` act on
 the calling client's stacks only, and today's conflict refusals still apply.
 
-**Open:** how a Gesture crosses HTTP (a paste of five nodes is five requests and one Ctrl+Z) is an
-open question on Task 9f0. Until it is settled, Client mode keeps the Gesture nesting on the
-device so the frontend's protocol still pairs up, and undo and redo are refused as not available
-in Client mode.
+**A Gesture never crosses a request** (ruled by the user, 2026-10-30: *REST should support an
+endpoint per gesture*). The ambient Gesture is one row the whole database shares, so one held open
+between requests would take in another device's writes, and one left open by a device that died
+would take in everyone's. Instead:
+
+- **Every write request is one Gesture** of the calling client: the server opens it, runs the write
+  in its own transaction, and closes it, under a per-file write lock so no other client's write
+  lands inside it. A lone command is one undo step, as on the desktop.
+- **Every gesture that issues several commands on the desktop is its own operation**, with its own
+  Backend method and its own route under `/gestures`. The operation runs the whole gesture
+  server-side as one request: one transaction, one Gesture, one undo step. The app calls the same
+  operation in Standalone mode, so both modes run one implementation (`arlesh_core::nodes::gestures`).
+- `HttpBackend` keeps the frontend's `open_gesture` and `close_gesture` on the device, where they
+  only pair up; it sends nothing for them (`local` in the parity contract).
+
+The gesture operations so far: **delete nodes** (`POST /gestures/delete-nodes`), a multi-selection
+or an expanded subtree, all or nothing. The other multi-command gestures — paste and duplicate,
+moves with their scope clamps, insert parent, the Plan View and quick-plan moves, quick dependency,
+and the editors' saves — still run as a run of commands in Standalone; each gets its operation
+next (Task 9f0).
 
 ## Offline
 

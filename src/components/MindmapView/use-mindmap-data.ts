@@ -3,20 +3,20 @@ import { useDisplayStore } from "@/stores/use-display-store";
 import { useTranslation } from "react-i18next";
 import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
 import { agentActivityFrom } from "@/utils/agent-activity";
-import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
-import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
-import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment, COMMITMENT_ARCHIVAL } from "@/api/commitments";
+import { createDomain, updateDomain, duplicateDomain } from "@/api/domains";
+import { createTask, updateTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
+import { createCommitment, updateCommitment, addTagToCommitment, COMMITMENT_ARCHIVAL } from "@/api/commitments";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { Commitment } from "@/api/commitments";
-import { createExpectation, updateExpectation, deleteExpectation } from "@/api/expectations";
+import { createExpectation, updateExpectation } from "@/api/expectations";
 import { EXPECTATION_ARCHIVAL } from "@/api/expectation-status";
 import type { Expectation } from "@/api/expectations";
 import { expectationNodeId } from "@/utils/node-uuid";
 import { VERDICT } from "@/api/verdict";
 import type { Delegate, TaskAgentic, TaskDependencyEdge } from "@/api/tasks";
 import type { BlockReason } from "@/api/block-reasons";
-import { createGoal, updateGoal, deleteGoal, duplicateGoal } from "@/api/goals";
-import { createInfo, updateInfo, deleteInfo, duplicateInfo } from "@/api/infos";
+import { createGoal, updateGoal, duplicateGoal } from "@/api/goals";
+import { createInfo, updateInfo, duplicateInfo } from "@/api/infos";
 import type { LeftBehindChild } from "@/api/duplicate";
 import { getErrorMessage } from "@/api/errors";
 import { loadMindmap } from "@/api/mindmap";
@@ -24,14 +24,15 @@ import { withGesture } from "@/api/gesture";
 import { useBoardChanged } from "@/hooks/use-board-changed";
 import type { MindmapLoad } from "@/api/mindmap";
 import {
-  createFlow, updateFlow, deleteFlow,
-  createFlowItem, updateFlowItem, deleteFlowItem, isFlowItemType, flowItemNodeId,
+  createFlow, updateFlow,
+  createFlowItem, updateFlowItem, isFlowItemType, flowItemNodeId,
   duplicateFlow, duplicateFlowItem,
 } from "@/api/flows";
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { listPeople } from "@/api/people";
 import { isClientMode, useClientModeStore } from "@/stores/use-client-mode-store";
+import { deleteNodes } from "@/api/multi-node-gestures";
 import { useMcpAccessStore } from "@/stores/use-mcp-access-store";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
@@ -1382,21 +1383,15 @@ export function useMindmapData(): MindmapData {
 
   const removeNode = useCallback(
     async (nodesToDelete: Array<{ id: string; kind: NodeKind }>): Promise<void> => {
-      // One delete per node, so one Gesture around the lot: a multi-selection, or the subtree the
-      // confirm dialog expanded into its nodes, has to come back in a single press.
-      await withGesture(t("gestures.delete", { count: nodesToDelete.length }), async () => {
-        for (const { id, kind } of nodesToDelete) {
-          const dbId = rowIdOfId(id);
-          if (kind === "goal") await deleteGoal(dbId);
-          else if (kind === "task") await deleteTask(dbId);
-          else if (kind === "commitment") await deleteCommitment(dbId);
-          else if (kind === "expectation") await deleteExpectation(dbId);
-          else if (kind === "info") await deleteInfo(storedId(dbId));
-          else if (kind === "flow") await deleteFlow(storedId(dbId));
-          else if (isFlowItemType(kind)) await deleteFlowItem(kind, storedId(dbId));
-          else if (kind !== "aspect") await deleteDomain(storedId(dbId));
-        }
-      });
+      // One gesture operation for the lot — a multi-selection, or the subtree the confirm dialog
+      // expanded into its nodes — so it comes back in a single press, and against a server it is
+      // one request. The Aspects are the board's fixed roots and are never deleted.
+      const nodes = nodesToDelete
+        .filter(({ kind }) => kind !== "aspect" && kind !== "habit_group")
+        .map(({ id, kind }) => ({ kind, id: rowIdOfId(id) }));
+      if (nodes.length > 0) {
+        await withGesture(t("gestures.delete", { count: nodesToDelete.length }), () => deleteNodes(nodes));
+      }
       await load(false);
     },
     [load, rowIdOfId, t],

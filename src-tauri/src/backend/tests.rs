@@ -17,6 +17,7 @@ const PORT_FILES: &[&str] = &[
     include_str!("infos.rs"),
     include_str!("knowledge_base.rs"),
     include_str!("mindmap.rs"),
+    include_str!("node_gestures.rs"),
     include_str!("tasks.rs"),
     include_str!("undo.rs"),
 ];
@@ -36,7 +37,7 @@ fn port() -> BTreeSet<String> {
     PORT_FILES.iter().flat_map(|file| methods(file)).collect()
 }
 
-/// The contract's three lists: routed, Standalone-only, and waiting on a design decision.
+/// The contract's lists: routed, and with no route (Standalone-only, or answered on the device).
 fn contract() -> (BTreeSet<String>, BTreeSet<String>) {
     let contract: serde_json::Value =
         serde_json::from_str(CONTRACT).expect("conformance/client-mode.json is JSON");
@@ -46,7 +47,7 @@ fn contract() -> (BTreeSet<String>, BTreeSet<String>) {
         .keys()
         .cloned()
         .collect();
-    let unrouted = ["standalone_only", "undecided"]
+    let unrouted = ["standalone_only", "local"]
         .iter()
         .flat_map(|list| {
             contract[*list]

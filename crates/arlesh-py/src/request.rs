@@ -30,7 +30,7 @@ use arlesh_core::{
     },
     infos::model::{CreateInfoRequest, InfoId, UpdateInfoRequest},
     mindmap,
-    nodes::{composite, id::NodeId, write},
+    nodes::{self, composite, gestures::GestureNode, id::NodeId, write},
     tasks::{
         self, gestures,
         model::{
@@ -45,6 +45,8 @@ use arlesh_core::{
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use arlesh_core::undo::stacks::UndoStacks;
 
 use crate::errors::{Failure, Raised};
 
@@ -706,6 +708,17 @@ pub(crate) enum Request {
     },
     /// The agent capacity lock as it stands.
     AgentCapacity,
+    /// Deletes every node in `nodes`, all or nothing: the multi-node delete gesture.
+    DeleteNodes {
+        /// The nodes, in the order they are deleted.
+        nodes: Vec<GestureNode>,
+    },
+    /// Reverses this client's most recent Gesture; `null` when its Undo Stack is empty.
+    Undo,
+    /// Reapplies this client's most recently undone Gesture; `null` when its Redo Stack is empty.
+    Redo,
+    /// What this client's next undo and redo would be.
+    UndoStatus,
     /// Sets the agent capacity lock on or off.
     SetAgentCapacity {
         /// Whether agents are at capacity.
@@ -755,14 +768,25 @@ impl Request {
                 | Self::McpAccessCatalogue
                 | Self::ListMcpAccess
                 | Self::AgentCapacity
+                | Self::UndoStatus
         )
     }
 }
 
 /// Reads `request` as a [`Request`], runs it, and answers its result as JSON.
+///
+/// **Every write is one Gesture** of the open's client: it is opened before the write and closed
+/// after it, so it reaches that client's Undo Stack as one step (`POST /undo`). A gesture that
+/// issues several commands on the desktop is one request here — one of the gesture operations —
+/// so it is one step too. The open, the write and the close run under the file's write lock
+/// ([`crate::shared::Shared::writes`]), so no other client's write can land inside this Gesture.
+/// An agent's write through the MCP still can, as it can in the app; it is journaled as source
+/// `mcp` and stays off every stack. Undo and redo are writes that open no Gesture: a replay is
+/// never journaled.
 pub(crate) async fn run(
     factory: &SessionFactory,
     path: &Path,
+    stacks: &UndoStacks,
     request: &str,
 ) -> Result<String, Raised> {
     let request: Request = serde_json::from_str(request).map_err(|error| {
@@ -779,13 +803,42 @@ pub(crate) async fn run(
         .with_details(serde_json::json!({ "reason": "read_only" }))
         .into());
     }
-    let writes = request.writes();
-    let answer = dispatch(factory, path, request).await?;
-    if writes {
-        // Committed: every device showing the board has to hear about it (`GET /events`).
-        crate::shared::for_database(path).changes.bump();
+    if !request.writes() {
+        return Ok(Box::pin(dispatch(factory, path, stacks, request))
+            .await?
+            .to_string());
     }
+    let shared = crate::shared::for_database(path);
+    let _writing = shared.writes.lock().await;
+    let answer = match request {
+        Request::Undo | Request::Redo => Box::pin(dispatch(factory, path, stacks, request)).await,
+        // Boxed: `dispatch`'s future is as large as its largest arm, and held inline inside
+        // another future it overflowed a runtime worker's stack on the deeper writes.
+        request => {
+            let write = Box::pin(dispatch(factory, path, stacks, request));
+            as_gesture(factory, stacks, write).await
+        }
+    }?;
+    // Committed: every device showing the board has to hear about it (`GET /events`).
+    shared.changes.bump();
     Ok(answer.to_string())
+}
+
+/// Runs `write` as one Gesture of the factory's client, putting it on `stacks` when it wrote
+/// something that client can undo. A write that fails wrote nothing, and its Gesture closes empty.
+async fn as_gesture(
+    factory: &SessionFactory,
+    stacks: &UndoStacks,
+    write: impl std::future::Future<Output = Result<Value, WireError>>,
+) -> Result<Value, WireError> {
+    let mut db = factory.connect().await.wired()?;
+    db.undo().open_gesture().await.wired()?;
+    drop(db);
+    let answer = write.await;
+    arlesh_core::undo::close_gesture(factory, stacks)
+        .await
+        .wired()?;
+    answer
 }
 
 /// Converts a domain result's error to its wire form.
@@ -834,6 +887,7 @@ async fn at_capacity(path: &Path) -> bool {
 async fn dispatch(
     factory: &SessionFactory,
     path: &Path,
+    stacks: &UndoStacks,
     request: Request,
 ) -> Result<Value, WireError> {
     match request {
@@ -1661,6 +1715,15 @@ async fn dispatch(
             .await
         }
         Request::AgentCapacity => json(crate::shared::for_database(path).capacity.get().await),
+        Request::DeleteNodes { nodes } => {
+            transaction(factory, async |db| {
+                nodes::gestures::delete_nodes(db, &nodes, now()).await
+            })
+            .await
+        }
+        Request::Undo => json(arlesh_core::undo::undo(factory, stacks).await.wired()?),
+        Request::Redo => json(arlesh_core::undo::redo(factory, stacks).await.wired()?),
+        Request::UndoStatus => json(stacks.status()),
         Request::SetAgentCapacity { at_capacity } => json(
             crate::shared::for_database(path)
                 .capacity
