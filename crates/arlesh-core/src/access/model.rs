@@ -263,3 +263,15 @@ pub struct KnowledgeBaseReference {
 
 #[cfg(test)]
 mod tests;
+
+/// What the *MCP access* page lists: the roots, every stored node that could be one, and which of
+/// those may be added now.
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+pub struct McpAccessCatalogue {
+    /// The MCP roots as they stand.
+    pub roots: Vec<NodeKey>,
+    /// Every stored node that could be a root.
+    pub nodes: Vec<CatalogueNode>,
+    /// The nodes that may be added as a root now.
+    pub candidates: Vec<NodeKey>,
+}

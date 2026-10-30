@@ -2,23 +2,11 @@
 //! [`crate::commands::access`] ask of whichever backend the app runs on.
 
 use crate::{
-    access::model::{CatalogueNode, EffectiveAccess, NodeKey, NodeTable},
+    access::model::{EffectiveAccess, NodeTable},
     error::WireError,
 };
-use serde::Serialize;
 
-/// What the *MCP access* page lists: the roots, and every stored node one could be.
-#[derive(Debug, Clone, Serialize)]
-pub struct McpAccessCatalogue {
-    /// Every MCP root, in node order.
-    pub roots: Vec<NodeKey>,
-    /// Every stored node, with its title and where it hangs — what names a root and spells its
-    /// path, and the candidates' titles.
-    pub nodes: Vec<CatalogueNode>,
-    /// The nodes that may be made roots — what the page's node search searches
-    /// ([`crate::access::resolve::root_candidates`]).
-    pub candidates: Vec<NodeKey>,
-}
+pub use crate::access::model::McpAccessCatalogue;
 
 /// The `access` operations a backend serves.
 #[async_trait::async_trait]
