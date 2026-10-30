@@ -11,6 +11,8 @@
 //! Each operation takes the session its caller opened and does not commit: the caller's
 //! transaction is the gesture's.
 
+pub mod steps;
+
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
@@ -92,4 +94,109 @@ async fn delete_item(
         .delete_item(item_type, stored(node)?)
         .await
         .map_err(WireError::from_error)
+}
+
+/// The gesture operations made of listed writes: each its own endpoint (`POST /gestures/<name>`),
+/// each one transaction and one undo step. Each admits only the writes its gesture makes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum GestureName {
+    /// Paste: copies, or moves, the clipboard's nodes under a target.
+    Paste,
+    /// Insert parent: makes a node, then moves a node under it.
+    InsertParent,
+    /// A drag: moves a node, after clamping the windows the move would leave outside.
+    MoveNode,
+    /// Quick plan: plans or unplans a run of Tasks, each allowed to be refused alone.
+    PlanTasks,
+    /// A Plan View move: the same, for the rows dragged between its panes.
+    PlanMove,
+    /// The Task editor's Save.
+    SaveTask,
+    /// The Goal editor's Save.
+    SaveGoal,
+    /// The Commitment editor's Save.
+    SaveCommitment,
+    /// The Project and Domain editor's Save.
+    SaveProject,
+    /// The wait editor's Save.
+    SaveWait,
+    /// The Flow and Habit editor's Save, its *Archive & new* included.
+    SaveFlow,
+    /// The Flow item editor's Save.
+    SaveFlowItem,
+    /// The new Flow or Habit editor's Create.
+    NewFlow,
+}
+
+impl GestureName {
+    /// Every gesture operation, as the routes list them.
+    pub const ALL: [GestureName; 13] = [
+        GestureName::Paste,
+        GestureName::InsertParent,
+        GestureName::MoveNode,
+        GestureName::PlanTasks,
+        GestureName::PlanMove,
+        GestureName::SaveTask,
+        GestureName::SaveGoal,
+        GestureName::SaveCommitment,
+        GestureName::SaveProject,
+        GestureName::SaveWait,
+        GestureName::SaveFlow,
+        GestureName::SaveFlowItem,
+        GestureName::NewFlow,
+    ];
+
+    /// Whether this gesture makes `step`.
+    fn admits(self, step: &steps::GestureStep) -> bool {
+        use steps::GestureStep as S;
+        match self {
+            Self::Paste => matches!(step, S::Move { .. } | S::Duplicate { .. }),
+            Self::InsertParent => matches!(
+                step,
+                S::Move { .. }
+                    | S::CreateTask { .. }
+                    | S::CreateGoal { .. }
+                    | S::CreateCommitment { .. }
+                    | S::CreateInfo { .. }
+                    | S::CreateDomain { .. }
+                    | S::CreateFlowItem { .. }
+            ),
+            Self::MoveNode => matches!(
+                step,
+                S::Move { .. } | S::UpdateTask { .. } | S::UpdateGoal { .. }
+            ),
+            Self::PlanTasks | Self::PlanMove => matches!(step, S::UpdateTask { .. }),
+            // An editor's Save writes the node and what hangs on it, and may fork a Habit; it
+            // never deletes, copies or moves another node.
+            Self::SaveTask
+            | Self::SaveGoal
+            | Self::SaveCommitment
+            | Self::SaveProject
+            | Self::SaveWait
+            | Self::SaveFlow
+            | Self::SaveFlowItem
+            | Self::NewFlow => !matches!(
+                step,
+                S::Delete { .. } | S::Duplicate { .. } | S::Move { .. }
+            ),
+        }
+    }
+}
+
+/// Runs the gesture `name` — its `steps`, in order — answering each step's result. A step this
+/// gesture does not make is refused before anything is written.
+pub async fn run(
+    db: &mut Db<Transactional>,
+    name: GestureName,
+    steps: Vec<steps::StepEntry>,
+    now: NaiveDateTime,
+) -> Result<Vec<serde_json::Value>, WireError> {
+    if let Some(stray) = steps.iter().find(|entry| !name.admits(&entry.step)) {
+        return Err(WireError::invalid_request(format!(
+            "the {name:?} gesture does not make {:?}",
+            stray.step
+        )));
+    }
+    steps::run(db, steps, now).await
 }

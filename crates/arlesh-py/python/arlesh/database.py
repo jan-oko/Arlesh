@@ -61,6 +61,7 @@ from arlesh.models import (
     FlowRecurrence,
     FlowTask,
     ForkedTemplate,
+    GestureName,
     GestureNode,
     GestureSummary,
     Goal,
@@ -78,6 +79,7 @@ from arlesh.models import (
     StartFlowRequest,
     StatusStep,
     StatusStepOutcome,
+    StepEntry,
     TargetRef,
     Task,
     TaskArchival,
@@ -722,6 +724,12 @@ class Database(ABC):
         Gesture."""
 
     @abstractmethod
+    async def run_gesture(self, name: GestureName, steps: list[StepEntry]) -> list[Any]:
+        """Runs the gesture operation ``name``: its listed writes, in order, as one Gesture,
+        answering each write's result. All or nothing, except a write marked
+        ``may_be_refused``."""
+
+    @abstractmethod
     async def undo(self) -> GestureSummary | None:
         """Reverses this client's most recent Gesture, and answers it; ``None`` when this client's
         Undo Stack is empty. Each write through this open is one Gesture of its client."""
@@ -1272,6 +1280,9 @@ class SqliteDatabase(Database):
     async def delete_nodes(self, nodes: list[GestureNode]) -> None:
         await self._call(_NOTHING, "delete_nodes", nodes=nodes)
 
+    async def run_gesture(self, name: GestureName, steps: list[StepEntry]) -> list[Any]:
+        return await self._call(_ANSWERS, "run_gesture", name=name, steps=steps)
+
     async def undo(self) -> GestureSummary | None:
         return await self._call(_SUMMARY_OR_NONE, "undo")
 
@@ -1345,3 +1356,4 @@ _EFFECTIVE_ACCESS: TypeAdapter[list[EffectiveAccess]] = TypeAdapter(list[Effecti
 _CAPACITY: TypeAdapter[CapacityState] = TypeAdapter(CapacityState)
 _SUMMARY_OR_NONE: TypeAdapter[GestureSummary | None] = TypeAdapter(GestureSummary | None)
 _UNDO_STATUS = TypeAdapter(UndoStatus)
+_ANSWERS: TypeAdapter[list[Any]] = TypeAdapter(list[Any])

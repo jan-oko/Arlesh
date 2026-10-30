@@ -687,6 +687,66 @@ class ForkedTemplate(BaseModel):
     """
 
 
+class GestureName(StrEnum):
+    """
+    The gesture operations made of listed writes: each its own endpoint (`POST /gestures/<name>`),
+    each one transaction and one undo step. Each admits only the writes its gesture makes.
+    """
+
+    paste = "paste"
+    """
+    Paste: copies, or moves, the clipboard's nodes under a target.
+    """
+    insert_parent = "insert-parent"
+    """
+    Insert parent: makes a node, then moves a node under it.
+    """
+    move_node = "move-node"
+    """
+    A drag: moves a node, after clamping the windows the move would leave outside.
+    """
+    plan_tasks = "plan-tasks"
+    """
+    Quick plan: plans or unplans a run of Tasks, each allowed to be refused alone.
+    """
+    plan_move = "plan-move"
+    """
+    A Plan View move: the same, for the rows dragged between its panes.
+    """
+    save_task = "save-task"
+    """
+    The Task editor's Save.
+    """
+    save_goal = "save-goal"
+    """
+    The Goal editor's Save.
+    """
+    save_commitment = "save-commitment"
+    """
+    The Commitment editor's Save.
+    """
+    save_project = "save-project"
+    """
+    The Project and Domain editor's Save.
+    """
+    save_wait = "save-wait"
+    """
+    The wait editor's Save.
+    """
+    save_flow = "save-flow"
+    """
+    The Flow and Habit editor's Save, its *Archive & new* included.
+    """
+    save_flow_item = "save-flow-item"
+    """
+    The Flow item editor's Save.
+    """
+    new_flow = "new-flow"
+    """
+    The new Flow or Habit editor's Create.
+    """
+
+
 class GestureSummary(BaseModel):
     """
     What one Gesture on a stack amounts to, for a caller that has to label it.
@@ -1509,6 +1569,71 @@ class StatusStepOutcomeRefused(BaseModel):
     reason: StatusRefusal
     """
     Why the gesture writes nothing.
+    """
+
+
+class StepEntryDuplicate(BaseModel):
+    """
+    Copies a node's subtree under a parent. Answers the copy's id and what it left behind.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    id: int
+    """
+    The node's row id.
+    """
+    kind: str
+    """
+    The node's kind.
+    """
+    op: Literal["duplicate"]
+    parent_id: int
+    """
+    The parent's row id.
+    """
+    parent_kind: str
+    """
+    The parent's kind.
+    """
+    position: int
+    """
+    Where among the parent's children.
+    """
+
+
+class StepEntryCreateFlowItem(BaseModel):
+    """
+    Creates a Flow item.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    item_type: FlowItemType
+    """
+    Which kind of item.
+    """
+    op: Literal["create_flow_item"]
+    request: CreateFlowItemRequest
+    """
+    What to create.
+    """
+
+
+class StepTarget1(BaseModel):
+    """
+    The node made by step `step` (counting from 0) of this gesture.
+    """
+
+    step: Annotated[int, Field(ge=0)]
+    """
+    The earlier step's index.
     """
 
 
@@ -2575,13 +2700,6 @@ class DependencyGoal(BaseModel):
     The goal being depended on — a stored one, or a Habit occurrence.
     """
     type: Literal["goal"]
-
-
-class Dependency(RootModel[DependencyTask | DependencyGoal | DependencyExpectation]):
-    root: DependencyTask | DependencyGoal | DependencyExpectation
-    """
-    Dependency reference: a task, a goal, or an expectation.
-    """
 
 
 class DependencyBlock(BaseModel):
@@ -3719,6 +3837,493 @@ class StatusAfter(RootModel[StatusAfterWritten | StatusAfterRefused]):
     """
 
 
+class StepEntryMove(BaseModel):
+    """
+    Moves a node under a new parent at `position`: its parent link is rewritten as its own
+    update would rewrite it.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    id: StepTarget1 | int | str
+    """
+    The node.
+    """
+    kind: str
+    """
+    The node's kind.
+    """
+    op: Literal["move"]
+    parent: StepTarget1 | int | str
+    """
+    The new parent.
+    """
+    parent_kind: str
+    """
+    The new parent's kind.
+    """
+    position: int
+    """
+    Where among the new parent's children.
+    """
+
+
+class StepEntryDelete(BaseModel):
+    """
+    Deletes a node.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    node: GestureNode
+    """
+    The node.
+    """
+    op: Literal["delete"]
+
+
+class StepEntryCreateGoal(BaseModel):
+    """
+    Creates a Goal.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    op: Literal["create_goal"]
+    request: CreateGoalRequest
+    """
+    What to create.
+    """
+
+
+class StepEntryCreateCommitment(BaseModel):
+    """
+    Creates a Commitment.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    op: Literal["create_commitment"]
+    request: CreateCommitmentRequest
+    """
+    What to create.
+    """
+
+
+class StepEntryCreateExpectation(BaseModel):
+    """
+    Creates a wait.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    op: Literal["create_expectation"]
+    request: CreateExpectationRequest
+    """
+    What to create.
+    """
+
+
+class StepEntryCreateInfo(BaseModel):
+    """
+    Creates an Info.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    op: Literal["create_info"]
+    request: CreateInfoRequest
+    """
+    What to create.
+    """
+
+
+class StepEntryCreateDomain(BaseModel):
+    """
+    Creates a Domain, Project or Tag.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    op: Literal["create_domain"]
+    request: CreateDomainRequest
+    """
+    What to create.
+    """
+
+
+class StepEntryCreateFlow(BaseModel):
+    """
+    Creates a Flow.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    op: Literal["create_flow"]
+    request: CreateFlowRequest
+    """
+    What to create.
+    """
+
+
+class StepEntryUpdateGoal(BaseModel):
+    """
+    Updates a Goal.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    confirmed: bool | None = False
+    """
+    Achieving a Goal over open work asks first unless this is set.
+    """
+    id: StepTarget1 | int | str
+    """
+    The Goal.
+    """
+    op: Literal["update_goal"]
+    request: UpdateGoalRequest
+    """
+    What to change.
+    """
+
+
+class StepEntryUpdateExpectation(BaseModel):
+    """
+    Updates a wait.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    id: StepTarget1 | int | str
+    """
+    The wait.
+    """
+    op: Literal["update_expectation"]
+    request: UpdateExpectationRequest
+    """
+    What to change.
+    """
+
+
+class StepEntryUpdateInfo(BaseModel):
+    """
+    Updates an Info.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    id: StepTarget1 | int | str
+    """
+    The Info.
+    """
+    op: Literal["update_info"]
+    request: UpdateInfoRequest
+    """
+    What to change.
+    """
+
+
+class StepEntryUpdateDomain(BaseModel):
+    """
+    Updates a Domain, Project or Tag.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    id: StepTarget1 | int | str
+    """
+    Its row.
+    """
+    op: Literal["update_domain"]
+    request: UpdateDomainRequest
+    """
+    What to change.
+    """
+
+
+class StepEntryUpdateSpawnedWait(BaseModel):
+    """
+    Updates the wait an Asynchronous Task spawns when done.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    op: Literal["update_spawned_wait"]
+    request: UpdateSpawnedWaitRequest
+    """
+    What to change.
+    """
+    task_id: StepTarget1 | int | str
+    """
+    The Task.
+    """
+
+
+class StepEntrySetTaskDoneAt(BaseModel):
+    """
+    Corrects when a Task was done.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    at: datetime
+    """
+    When it was done.
+    """
+    id: StepTarget1 | int | str
+    """
+    The Task.
+    """
+    op: Literal["set_task_done_at"]
+
+
+class StepEntrySetBlockReasons(BaseModel):
+    """
+    Replaces a Task's or Goal's explicit block reasons.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    id: StepTarget1 | int | str
+    """
+    The Task or Goal.
+    """
+    op: Literal["set_block_reasons"]
+    owner_type: str
+    """
+    `task` or `goal`.
+    """
+    reasons: list[str]
+    """
+    The reasons, in order.
+    """
+
+
+class StepEntrySetTag(BaseModel):
+    """
+    Puts a Tag on a node, or takes it off.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    id: StepTarget1 | int | str
+    """
+    The node.
+    """
+    kind: str
+    """
+    `task`, `goal`, `commitment` or `expectation`.
+    """
+    op: Literal["set_tag"]
+    present: bool
+    """
+    On, or off.
+    """
+    tag_id: int
+    """
+    The Tag's row id.
+    """
+
+
+class StepEntrySetTaskDependency(BaseModel):
+    """
+    Makes a Task depend on a Task, Goal or wait, or stops it.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    dependency: DependencyTask | DependencyGoal | DependencyExpectation
+    """
+    What it depends on.
+    """
+    op: Literal["set_task_dependency"]
+    present: bool
+    """
+    Add, or remove.
+    """
+    task_id: StepTarget1 | int | str
+    """
+    The dependent Task.
+    """
+
+
+class StepEntrySetFlowRecurrence(BaseModel):
+    """
+    Makes a Flow a Habit, or changes its recurrence.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    flow_id: StepTarget1 | int | str
+    """
+    The Flow.
+    """
+    op: Literal["set_flow_recurrence"]
+    request: SetRecurrenceRequest
+    """
+    The recurrence.
+    """
+
+
+class StepEntryDeleteFlowRecurrence(BaseModel):
+    """
+    Makes a Habit a plain Flow again.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    flow_id: StepTarget1 | int | str
+    """
+    The Flow.
+    """
+    op: Literal["delete_flow_recurrence"]
+
+
+class StepEntryForkFlow(BaseModel):
+    """
+    Archives a Habit and forks a fresh copy of it. Answers the copy.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    flow_id: StepTarget1 | int | str
+    """
+    The Habit.
+    """
+    op: Literal["fork_flow"]
+
+
+class StepEntrySetFlowItemCycles(BaseModel):
+    """
+    Sets a Flow item's cycles. Answers the template a Habit was forked into, if it was.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    cycles: list[FlowCycleInput]
+    """
+    Its cycles.
+    """
+    flow_id: StepTarget1 | int | str
+    """
+    The item's Flow.
+    """
+    item_id: StepTarget1 | int | str
+    """
+    The item.
+    """
+    item_type: FlowItemType
+    """
+    Which kind of item.
+    """
+    op: Literal["set_flow_item_cycles"]
+    reconcile: Reconcile | None = None
+    """
+    How the occurrences already edited are reconciled.
+    """
+
+
+class StepEntrySetFlowDependency(BaseModel):
+    """
+    Makes one Flow item depend on another in its Flow, or stops it.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    dependent_id: StepTarget1 | int | str
+    """
+    The dependent item.
+    """
+    dependent_type: FlowItemType
+    """
+    The dependent item's kind.
+    """
+    depends_on_id: StepTarget1 | int | str
+    """
+    The prerequisite.
+    """
+    depends_on_type: FlowItemType
+    """
+    The prerequisite's kind.
+    """
+    flow_id: StepTarget1 | int | str
+    """
+    The Flow.
+    """
+    op: Literal["set_flow_dependency"]
+    present: bool
+    """
+    Add, or remove.
+    """
+
+
 class Task(BaseModel):
     """
     A task row as returned from the database.
@@ -4667,6 +5272,188 @@ class StatusStepOutcome(RootModel[StatusStepOutcomeWritten | StatusStepOutcomeRe
     """
 
 
+class StepEntryCreateTask(BaseModel):
+    """
+    Creates a Task.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    op: Literal["create_task"]
+    request: CreateTaskRequest
+    """
+    What to create.
+    """
+
+
+class StepEntryUpdateTask(BaseModel):
+    """
+    Updates a Task, settling the Plans below as `descendant_plans` says when it is given.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    confirmed: bool | None = False
+    """
+    Completing a Habit occurrence over unfinished children asks first unless this is set.
+    """
+    descendant_plans: DescendantPlans | None = None
+    """
+    What becomes of the Tasks below whose own Plan the new Plan would leave outside.
+    """
+    id: StepTarget1 | int | str
+    """
+    The Task.
+    """
+    op: Literal["update_task"]
+    request: UpdateTaskRequest
+    """
+    What to change.
+    """
+
+
+class StepEntryUpdateCommitment(BaseModel):
+    """
+    Updates a Commitment.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    id: StepTarget1 | int | str
+    """
+    The Commitment.
+    """
+    op: Literal["update_commitment"]
+    request: UpdateCommitmentRequest
+    """
+    What to change.
+    """
+
+
+class StepEntryUpdateFlow(BaseModel):
+    """
+    Updates a Flow.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    id: StepTarget1 | int | str
+    """
+    The Flow.
+    """
+    op: Literal["update_flow"]
+    request: UpdateFlowRequest
+    """
+    What to change.
+    """
+
+
+class StepEntryUpdateFlowItem(BaseModel):
+    """
+    Updates a Flow item.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    id: StepTarget1 | int | str
+    """
+    The item.
+    """
+    item_type: FlowItemType
+    """
+    Which kind of item.
+    """
+    op: Literal["update_flow_item"]
+    request: UpdateFlowItemRequest
+    """
+    What to change.
+    """
+
+
+class StepEntry(
+    RootModel[
+        StepEntryMove
+        | StepEntryDuplicate
+        | StepEntryDelete
+        | StepEntryCreateTask
+        | StepEntryCreateGoal
+        | StepEntryCreateCommitment
+        | StepEntryCreateExpectation
+        | StepEntryCreateInfo
+        | StepEntryCreateDomain
+        | StepEntryCreateFlow
+        | StepEntryCreateFlowItem
+        | StepEntryUpdateTask
+        | StepEntryUpdateGoal
+        | StepEntryUpdateCommitment
+        | StepEntryUpdateExpectation
+        | StepEntryUpdateInfo
+        | StepEntryUpdateDomain
+        | StepEntryUpdateFlow
+        | StepEntryUpdateFlowItem
+        | StepEntryUpdateSpawnedWait
+        | StepEntrySetTaskDoneAt
+        | StepEntrySetBlockReasons
+        | StepEntrySetTag
+        | StepEntrySetTaskDependency
+        | StepEntrySetFlowRecurrence
+        | StepEntryDeleteFlowRecurrence
+        | StepEntryForkFlow
+        | StepEntrySetFlowItemCycles
+        | StepEntrySetFlowDependency
+    ]
+):
+    root: (
+        StepEntryMove
+        | StepEntryDuplicate
+        | StepEntryDelete
+        | StepEntryCreateTask
+        | StepEntryCreateGoal
+        | StepEntryCreateCommitment
+        | StepEntryCreateExpectation
+        | StepEntryCreateInfo
+        | StepEntryCreateDomain
+        | StepEntryCreateFlow
+        | StepEntryCreateFlowItem
+        | StepEntryUpdateTask
+        | StepEntryUpdateGoal
+        | StepEntryUpdateCommitment
+        | StepEntryUpdateExpectation
+        | StepEntryUpdateInfo
+        | StepEntryUpdateDomain
+        | StepEntryUpdateFlow
+        | StepEntryUpdateFlowItem
+        | StepEntryUpdateSpawnedWait
+        | StepEntrySetTaskDoneAt
+        | StepEntrySetBlockReasons
+        | StepEntrySetTag
+        | StepEntrySetTaskDependency
+        | StepEntrySetFlowRecurrence
+        | StepEntryDeleteFlowRecurrence
+        | StepEntryForkFlow
+        | StepEntrySetFlowItemCycles
+        | StepEntrySetFlowDependency
+    )
+    """
+    One step as a gesture lists it: the write, and whether the gesture goes on without it.
+    """
+
+
 class DuplicatedGoal(BaseModel):
     """
     A duplicate command's answer: the copy's root, and what the copy left behind.
@@ -4683,6 +5470,7 @@ class DuplicatedGoal(BaseModel):
 
 
 # The tagged unions, by the names the Rust types have.
+Dependency: TypeAlias = DependencyTask | DependencyGoal | DependencyExpectation
 FlowHabitResult: TypeAlias = FlowHabitResultLoaded | FlowHabitResultFailed
 Origin: TypeAlias = OriginManual | OriginHabit | OriginCheck | OriginSpawnedWait | OriginDelegationWait
 ScopeKey: TypeAlias = ScopeKeySeason | ScopeKeyMonth | ScopeKeyWeek | ScopeKeyDay | ScopeKeyPartOfDay | ScopeKeyExact

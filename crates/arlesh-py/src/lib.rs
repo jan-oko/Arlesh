@@ -193,6 +193,9 @@ fn token_call(py: Python<'_>, path: PathBuf, request: String) -> PyResult<String
         .map_err(raise)
 }
 
+/// The stack each of the bindings' runtime workers gets.
+const WORKER_STACK_BYTES: usize = 16 * 1024 * 1024;
+
 #[pyfunction]
 fn rule(request: &str) -> PyResult<String> {
     rules::run(request).map_err(raise)
@@ -208,6 +211,12 @@ fn json_schema() -> PyResult<String> {
 /// The native module, imported as `arlesh._native`.
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    // The core's writes are deep async call chains, and a gesture runs several inside one future;
+    // in a debug build their frames overflow tokio's default 2 MiB worker stack (a segfault, not
+    // an error). The desktop app's runtime is Tauri's; this is the bindings' own.
+    let mut runtime = tokio::runtime::Builder::new_multi_thread();
+    runtime.enable_all().thread_stack_size(WORKER_STACK_BYTES);
+    pyo3_async_runtimes::tokio::init(runtime);
     module.add_class::<NativeDatabase>()?;
     module.add_class::<hold::NativeHold>()?;
     module.add_function(wrap_pyfunction!(open, module)?)?;
