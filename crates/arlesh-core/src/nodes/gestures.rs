@@ -61,13 +61,10 @@ async fn delete_one(
         "flow" => crate::flows::delete_flow(db, FlowId(stored(node)?))
             .await
             .map_err(WireError::from_error),
-        "flow_goal" | "flow_task" | "flow_commitment" | "flow_expectation" => {
-            let item_type = flow_item_type(kind)?;
-            db.flows()
-                .delete_item(item_type, stored(node)?)
-                .await
-                .map_err(WireError::from_error)
-        }
+        "flow_goal" => delete_item(db, FlowItemType::FlowGoal, node).await,
+        "flow_task" => delete_item(db, FlowItemType::FlowTask, node).await,
+        "flow_commitment" => delete_item(db, FlowItemType::FlowCommitment, node).await,
+        "flow_expectation" => delete_item(db, FlowItemType::FlowExpectation, node).await,
         "domain" | "project" | "tag" => db
             .domains()
             .delete(DomainId(stored(node)?))
@@ -86,7 +83,13 @@ fn stored(node: &GestureNode) -> Result<i64, WireError> {
     })
 }
 
-fn flow_item_type(kind: &str) -> Result<FlowItemType, WireError> {
-    serde_json::from_value(serde_json::Value::String(kind.to_owned()))
-        .map_err(|_| WireError::invalid_request(format!("{kind} is not a flow item kind")))
+async fn delete_item(
+    db: &mut Db<Transactional>,
+    item_type: FlowItemType,
+    node: &GestureNode,
+) -> Result<(), WireError> {
+    db.flows()
+        .delete_item(item_type, stored(node)?)
+        .await
+        .map_err(WireError::from_error)
 }
