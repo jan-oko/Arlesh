@@ -67,8 +67,8 @@ fn the_port_files_are_read_whole() {
     let declared = include_str!("mod.rs").matches("\npub mod ").count();
     assert_eq!(
         declared,
-        PORT_FILES.len() + 1,
-        "every port module but `sqlite`"
+        PORT_FILES.len() + 2,
+        "every port module but `sqlite` and `http`"
     );
 }
 
