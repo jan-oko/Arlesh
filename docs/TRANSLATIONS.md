@@ -27,6 +27,7 @@ second locale — not because a translation is pending.
 | `expectation`  | Expectation editor, gestures, refusals and prompts |
 | `hotkeys`      | Keyboard cheat-sheet action labels             |
 | `settings`     | Settings modal pages, and the Agents page  |
+| `server`       | Client mode: the first-run chooser, Settings → Server, the top bar's mode, the offline banner |
 | `zenView`      | Zen View strips, empty state, preset refusal, its settings switch |
 
 ---

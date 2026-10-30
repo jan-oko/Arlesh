@@ -31,6 +31,7 @@ import {
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { listPeople } from "@/api/people";
+import { isClientMode, useClientModeStore } from "@/stores/use-client-mode-store";
 import { useMcpAccessStore } from "@/stores/use-mcp-access-store";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
@@ -925,6 +926,8 @@ async function createCommitmentUnderNode(
 /** Every Person's name, by id. A failed read draws a Person delegate unnamed rather than failing
  * the board, as a failed MCP read draws no antenna. */
 async function loadPersonNames(): Promise<Map<number, string>> {
+  // People are Standalone-only: a server has none to name (docs/spec/client-mode.md).
+  if (isClientMode(useClientModeStore.getState().status)) return new Map();
   try {
     const people = await listPeople();
     return new Map((people ?? []).map((person) => [person.id, person.name]));

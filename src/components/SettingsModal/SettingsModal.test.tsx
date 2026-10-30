@@ -51,7 +51,7 @@ describe("SettingsModal", () => {
 
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "page.general", "page.mindmap", "page.list", "page.steps", "page.plan", "page.zen", "page.windows",
-      "page.expectations", "page.mcp",
+      "page.expectations", "page.mcp", "page.server",
     ]);
   });
 
@@ -73,7 +73,7 @@ describe("SettingsModal", () => {
 
     fireEvent.keyDown(screen.getByRole("tab", { name: "page.mindmap" }), { key: "ArrowUp" });
     fireEvent.keyDown(screen.getByRole("tab", { name: "page.general" }), { key: "ArrowUp" });
-    expect(screen.getByRole("tab", { name: "page.mcp" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "page.server" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("closes on Escape", () => {
