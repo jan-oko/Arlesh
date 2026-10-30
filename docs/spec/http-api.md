@@ -12,18 +12,20 @@ layer.
 
 ## Direction
 
-The desktop app will run in one of two modes:
+The desktop app runs in one of two modes (see [Client Mode](client-mode.md), Task `9f0`):
 
-- **Local mode** is the app as it is today. It owns the database, holds it while it runs, and
-  serves its own MCP endpoint.
-- **Server mode** makes the app a client of `arlesh-server`. The server is then the only writer,
-  and it serves its own copy of the MCP. The app serves none.
+- **Standalone** is the app as it has always been. It owns its local database, holds it while it
+  runs, and serves its own MCP endpoint.
+- **Client** makes the app a client of `arlesh-server`. The server is then the only writer, and it
+  serves the MCP. The app serves none. Every operation the app's commands make goes through its
+  Backend port, which in Client mode calls this server's routes; so every port method has a route
+  here, except People and the knowledge base, which stay Standalone-only.
 
-There is never more than one writer, and there is a single user, so neither mode needs
-multi-writer support. Server mode in the app does not exist yet; it is separate work. Until it
-does, the **hold** below is the safety net. The server takes the same hold the app takes, so
-there is one writer per database: whichever of the app and the server starts second cannot hold
-it, and the server refuses to start rather than become a second writer.
+There is never more than one writer per database, and there is a single user, so neither mode needs
+multi-writer support. The **hold** below is the safety net. The server takes the same hold the app
+takes, so whichever of a Standalone app and the server starts second on the same file cannot hold
+it, and the server refuses to start rather than become a second writer. A Client-mode app opens no
+database, so it takes no hold.
 
 ## Running
 

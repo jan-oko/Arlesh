@@ -4,30 +4,14 @@
 //! Root changes are ordinary board writes on the journal's ambient source, so the frontend's
 //! per-command Gesture makes each one an undo step like any other edit.
 
-use serde::Serialize;
 use tauri::State;
 
+pub use crate::backend::access::McpAccessCatalogue;
+use crate::backend::AppBackend;
 use crate::{
-    access::{
-        self,
-        model::{CatalogueNode, EffectiveAccess, NodeKey, NodeTable},
-    },
-    database::session::SessionFactory,
+    access::model::{EffectiveAccess, NodeTable},
     error::WireError,
 };
-
-/// What the *MCP access* page lists: the roots, and every stored node one could be.
-#[derive(Debug, Clone, Serialize)]
-pub struct McpAccessCatalogue {
-    /// Every MCP root, in node order.
-    pub roots: Vec<NodeKey>,
-    /// Every stored node, with its title and where it hangs — what names a root and spells its
-    /// path, and the candidates' titles.
-    pub nodes: Vec<CatalogueNode>,
-    /// The nodes that may be made roots — what the page's node search searches
-    /// ([`crate::access::resolve::root_candidates`]).
-    pub candidates: Vec<NodeKey>,
-}
 
 /// The MCP roots and every node that could be one.
 ///
@@ -35,21 +19,9 @@ pub struct McpAccessCatalogue {
 /// two reads is picked up on the next open.
 #[tauri::command]
 pub async fn mcp_access_catalogue(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
 ) -> Result<McpAccessCatalogue, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    let roots = db.access().roots().await.map_err(WireError::from_error)?;
-    let nodes = db
-        .access()
-        .catalogue()
-        .await
-        .map_err(WireError::from_error)?;
-    let candidates = crate::access::resolve::root_candidates(&roots, &nodes);
-    Ok(McpAccessCatalogue {
-        roots,
-        nodes,
-        candidates,
-    })
+    backend.mcp_access_catalogue().await
 }
 
 /// Every stored node the MCP can see, with the root it is seen through.
@@ -59,13 +31,9 @@ pub async fn mcp_access_catalogue(
 /// queue behind every write.
 #[tauri::command]
 pub async fn list_mcp_access(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
 ) -> Result<Vec<EffectiveAccess>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    let map = access::access_map(&mut db)
-        .await
-        .map_err(WireError::from_error)?;
-    Ok(map.effective())
+    backend.list_mcp_access().await
 }
 
 /// Makes one stored node an MCP root.
@@ -75,30 +43,19 @@ pub async fn list_mcp_access(
 /// root on nothing.
 #[tauri::command]
 pub async fn add_mcp_root(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     node_kind: NodeTable,
     node_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    db.access()
-        .add_root(NodeKey::new(node_kind, node_id))
-        .await
-        .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(())
+    backend.add_mcp_root(node_kind, node_id).await
 }
 
 /// Stops one node being an MCP root.
 #[tauri::command]
 pub async fn remove_mcp_root(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     node_kind: NodeTable,
     node_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.access()
-        .remove_root(NodeKey::new(node_kind, node_id))
-        .await
-        .map_err(WireError::from_error)?;
-    Ok(())
+    backend.remove_mcp_root(node_kind, node_id).await
 }

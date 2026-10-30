@@ -6,11 +6,11 @@
 
 use tauri::State;
 
+use crate::backend::AppBackend;
 use crate::{
-    database::session::SessionFactory,
     error::WireError,
-    nodes::{id::NodeId, write},
-    tasks::model::{Commitment, CommitmentId, CreateCommitmentRequest, UpdateCommitmentRequest},
+    nodes::id::NodeId,
+    tasks::model::{Commitment, CreateCommitmentRequest, UpdateCommitmentRequest},
 };
 
 /// Creates a new commitment.
@@ -20,119 +20,70 @@ use crate::{
 /// nothing to be kept or broken over.
 #[tauri::command]
 pub async fn create_commitment(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     request: CreateCommitmentRequest,
 ) -> Result<Commitment, WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let commitment = write::create_commitment(&mut db, request, chrono::Local::now().naive_local())
-        .await
-        .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(commitment)
+    backend.create_commitment(request).await
 }
 
 /// Fetches a commitment by id.
 #[tauri::command]
 pub async fn get_commitment(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     id: i64,
 ) -> Result<Commitment, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.commitments()
-        .get(CommitmentId(id))
-        .await
-        .map_err(WireError::from_error)
+    backend.get_commitment(id).await
 }
 
 /// Lists every commitment — the Commitment virtual table: stored rows and every commitment
 /// Habit's iterations.
 #[tauri::command]
 pub async fn list_commitments(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     now: chrono::NaiveDateTime,
 ) -> Result<Vec<Commitment>, WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let load = crate::mindmap::load(&mut db, now)
-        .await
-        .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(load.commitments)
+    backend.list_commitments(now).await
 }
 
 /// Updates a commitment, stored or derived — including recording, changing or clearing its
 /// Verdict.
 #[tauri::command]
 pub async fn update_commitment(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     id: NodeId,
     request: UpdateCommitmentRequest,
 ) -> Result<Commitment, WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let commitment =
-        write::update_commitment(&mut db, &id, request, chrono::Local::now().naive_local())
-            .await
-            .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(commitment)
+    backend.update_commitment(id, request).await
 }
 
 /// Deletes a commitment and everything beneath it — or archives a commitment Habit's iteration,
 /// which is never deleted.
 #[tauri::command]
 pub async fn delete_commitment(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     id: NodeId,
 ) -> Result<(), WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    write::delete(
-        &mut db,
-        "commitment",
-        &id,
-        chrono::Local::now().naive_local(),
-    )
-    .await
-    .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)
+    backend.delete_commitment(id).await
 }
 
 /// Adds a tag to a commitment.
 #[tauri::command]
 pub async fn add_tag_to_commitment(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     commitment_id: NodeId,
     tag_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    write::set_tag(
-        &mut db,
-        "commitment",
-        &commitment_id,
-        tag_id,
-        true,
-        chrono::Local::now().naive_local(),
-    )
-    .await
-    .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)
+    backend.add_tag_to_commitment(commitment_id, tag_id).await
 }
 
 /// Removes a tag from a commitment.
 #[tauri::command]
 pub async fn remove_tag_from_commitment(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     commitment_id: NodeId,
     tag_id: i64,
 ) -> Result<(), WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    write::set_tag(
-        &mut db,
-        "commitment",
-        &commitment_id,
-        tag_id,
-        false,
-        chrono::Local::now().naive_local(),
-    )
-    .await
-    .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)
+    backend
+        .remove_tag_from_commitment(commitment_id, tag_id)
+        .await
 }
