@@ -20,12 +20,16 @@ from arlesh.server.entrypoints.fastapi.exception_handling.exception_handlers imp
 from arlesh.server.entrypoints.fastapi.exceptions import AuthenticationFailed
 from arlesh.server.entrypoints.fastapi.logging.lifespan import lifespan
 from arlesh.server.entrypoints.fastapi.logging.log_middleware import RequestLoggingMiddleware
+from arlesh.server.entrypoints.fastapi.routers.access import McpAccessRouter
 from arlesh.server.entrypoints.fastapi.routers.board import BoardsRouter
+from arlesh.server.entrypoints.fastapi.routers.capacity import CapacityRouter
 from arlesh.server.entrypoints.fastapi.routers.commitments import CommitmentsRouter
 from arlesh.server.entrypoints.fastapi.routers.domains import DomainsRouter
+from arlesh.server.entrypoints.fastapi.routers.events import EventsRouter
 from arlesh.server.entrypoints.fastapi.routers.flow_items import FlowItemsRouter
 from arlesh.server.entrypoints.fastapi.routers.flows import FlowsRouter
 from arlesh.server.entrypoints.fastapi.routers.goals import GoalsRouter
+from arlesh.server.entrypoints.fastapi.routers.health import HealthRouter
 from arlesh.server.entrypoints.fastapi.routers.infos import InfosRouter
 from arlesh.server.entrypoints.fastapi.routers.nodes import NodesRouter
 from arlesh.server.entrypoints.fastapi.routers.scopes import RulesRouter, ScopesRouter
@@ -45,6 +49,9 @@ Arlesh's board over HTTP, run by Arlesh's own Rust core through the `arlesh` bin
 * **422** means *send it again with more*: `needs_confirmation` (add `?confirmed=true`, or for
   cycles a `reconcile`) or `needs_time_scope` (add a `time_scope`).
 * An update's field left out is unchanged; `null` clears it.
+* **`/health`** answers the API version (`api_version`, bumped only on a breaking change) and
+  the build commit: the desktop app's handshake before it uses the server.
+* **`/events`** streams `board-changed` (Server-Sent Events) after every committed write.
 * **`/mcp`** is Arlesh's MCP endpoint, behind the same token: an agent's writes there are
   journaled under the token's client.
 """
@@ -60,10 +67,15 @@ class AppRouter(APIRouter):
         client_context: ContextVar[str],
         security_scheme: BearerTokenSecurityScheme,
         mcp_router: McpProxyRouter,
+        version: str,
     ) -> None:
         super().__init__(dependencies=[Depends(security_scheme.validate_auth)])
         routed = (board, client_context)
+        self.include_router(HealthRouter(version), prefix="/health")
         self.include_router(BoardsRouter(*routed, tag="board"), prefix="/board")
+        self.include_router(EventsRouter(*routed, tag="events"), prefix="/events")
+        self.include_router(CapacityRouter(*routed, tag="capacity"), prefix="/capacity")
+        self.include_router(McpAccessRouter(*routed, tag="mcp-access"), prefix="/mcp-access")
         self.include_router(TasksRouter(*routed, tag="tasks"), prefix="/tasks")
         self.include_router(GoalsRouter(*routed, tag="goals"), prefix="/goals")
         self.include_router(CommitmentsRouter(*routed, tag="commitments"), prefix="/commitments")
@@ -100,6 +112,7 @@ class ArleshServer(FastAPI):
                 client_context=client_context,
                 security_scheme=BearerTokenSecurityScheme(tokens, client_context),
                 mcp_router=mcp_router,
+                version=version,
             )
         )
         self.add_middleware(RequestLoggingMiddleware)

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import date, datetime
 from types import TracebackType
 from typing import Any, Self, TypeVar
 
@@ -24,6 +24,8 @@ from pydantic_core import to_json
 from arlesh import _native
 from arlesh.errors import from_native
 from arlesh.models import (
+    BlockReason,
+    CapacityState,
     Commitment,
     CommitmentArchival,
     CreateCommitmentRequest,
@@ -45,29 +47,39 @@ from arlesh.models import (
     DuplicatedGoal,
     DuplicatedInfo,
     DuplicatedTask,
+    EffectiveAccess,
     Expectation,
     Flow,
     FlowCommitment,
     FlowCycleInput,
+    FlowDependency,
     FlowExpectation,
     FlowGoal,
+    FlowItemCycle,
     FlowItemType,
+    FlowOrigin,
     FlowRecurrence,
     FlowTask,
     ForkedTemplate,
     Goal,
     Info,
+    ItemLifecycle,
     MaterializedFlow,
+    McpAccessCatalogue,
     MindmapLoad,
+    NodeTable,
     PlanClampTarget,
     Reconcile,
+    ReparentConflicts,
     SetRecurrenceRequest,
     SpawnedWait,
     StartFlowRequest,
     StatusStep,
     StatusStepOutcome,
+    TargetRef,
     Task,
     TaskArchival,
+    TaskDependencyEdge,
     TaskWithBlockers,
     TimeScope,
     UpdateCommitmentRequest,
@@ -80,6 +92,7 @@ from arlesh.models import (
     UpdateSpawnedWaitRequest,
     UpdateTaskRequest,
     VerdictPress,
+    ViolatingDescendant,
 )
 
 NodeId = int | str
@@ -565,6 +578,151 @@ class Database(ABC):
     ) -> Flow:
         """Turns a Task or Goal subtree into a Flow."""
 
+    # ---- Client mode: the reads and settings the app's Backend port needs ---------------------
+
+    @abstractmethod
+    async def list_tasks(self, *, now: datetime | None = None) -> list[Task]:
+        """Every Task — stored rows and every Habit occurrence — derived at ``now``."""
+
+    @abstractmethod
+    async def list_goals(self, *, now: datetime | None = None) -> list[Goal]:
+        """Every Goal, derived at ``now``."""
+
+    @abstractmethod
+    async def list_commitments(self, *, now: datetime | None = None) -> list[Commitment]:
+        """Every Commitment, derived at ``now``."""
+
+    @abstractmethod
+    async def list_waits(self, *, now: datetime | None = None) -> list[Expectation]:
+        """Every wait, derived at ``now``."""
+
+    @abstractmethod
+    async def scope_lifecycles(self, *, now: datetime | None = None) -> list[ItemLifecycle]:
+        """Every node's derived lifecycle, at ``now``."""
+
+    @abstractmethod
+    async def all_task_dependencies(
+        self, *, now: datetime | None = None
+    ) -> list[TaskDependencyEdge]:
+        """Every dependency edge on the board."""
+
+    @abstractmethod
+    async def dependency_candidates(
+        self, id: NodeId, *, now: datetime | None = None
+    ) -> list[Dependency]:
+        """What the Task ``id`` may be made to depend on: what the quick dependency picker
+        offers."""
+
+    @abstractmethod
+    async def scope_containment_conflicts(
+        self, node_type: str, node_id: int, time_scope: TimeScope
+    ) -> list[ViolatingDescendant]:
+        """The descendants of a node that ``time_scope`` would leave outside it. Writes nothing."""
+
+    @abstractmethod
+    async def reparent_conflicts(
+        self, node_type: str, node_id: int, new_parent_type: str, new_parent_id: int
+    ) -> ReparentConflicts:
+        """What moving a node under a new parent would leave outside its new ancestors' Time
+        Scope, and the scope to clamp them to. Writes nothing."""
+
+    @abstractmethod
+    async def list_infos(self) -> list[Info]:
+        """Every Info."""
+
+    @abstractmethod
+    async def list_flows(self) -> list[Flow]:
+        """Every Flow and Habit template."""
+
+    @abstractmethod
+    async def list_flow_goals(self, flow_id: int) -> list[FlowGoal]:
+        """One Flow's Goal items."""
+
+    @abstractmethod
+    async def list_flow_tasks(self, flow_id: int) -> list[FlowTask]:
+        """One Flow's Task items."""
+
+    @abstractmethod
+    async def list_all_flow_goals(self) -> list[FlowGoal]:
+        """Every Flow's Goal items."""
+
+    @abstractmethod
+    async def list_all_flow_tasks(self) -> list[FlowTask]:
+        """Every Flow's Task items."""
+
+    @abstractmethod
+    async def list_all_flow_cycles(self) -> list[FlowItemCycle]:
+        """Every Flow item's cycles."""
+
+    @abstractmethod
+    async def list_all_flow_dependencies(self) -> list[FlowDependency]:
+        """Every dependency between Flow items."""
+
+    @abstractmethod
+    async def get_flow_recurrence(self, flow_id: int) -> FlowRecurrence | None:
+        """A Habit's recurrence, or ``None`` for a Flow without one."""
+
+    @abstractmethod
+    async def habit_completion_count(self, flow_id: int) -> int:
+        """How many of a Habit's occurrences are complete."""
+
+    @abstractmethod
+    async def flow_origins(self, nodes: list[TargetRef]) -> list[FlowOrigin]:
+        """Which Flow, if any, each of ``nodes`` was started from."""
+
+    @abstractmethod
+    async def list_flow_instance_nodes(self) -> list[TargetRef]:
+        """Every node a started Flow produced."""
+
+    @abstractmethod
+    async def scope_valid_flow_targets(
+        self,
+        candidates: list[TargetRef],
+        *,
+        duration_n: int | None = None,
+        duration_kind: str | None = None,
+        anchor_date: date | None = None,
+    ) -> list[TargetRef]:
+        """Which of ``candidates`` a Flow of the given duration may be started under."""
+
+    @abstractmethod
+    async def list_all_block_reasons(self) -> list[BlockReason]:
+        """Every stored and derived block reason."""
+
+    @abstractmethod
+    async def mcp_access_catalogue(self) -> McpAccessCatalogue:
+        """The MCP roots, every node that could be one, and which may be added now."""
+
+    @abstractmethod
+    async def list_mcp_access(self) -> list[EffectiveAccess]:
+        """Every stored node the MCP can see, with the root it is seen through."""
+
+    @abstractmethod
+    async def add_mcp_root(self, node_kind: NodeTable, node_id: int) -> None:
+        """Makes one stored node an MCP root."""
+
+    @abstractmethod
+    async def remove_mcp_root(self, node_kind: NodeTable, node_id: int) -> None:
+        """Stops one node being an MCP root."""
+
+    @abstractmethod
+    async def agent_capacity(self) -> CapacityState:
+        """The agent capacity lock, as every open of this file in the process shares it."""
+
+    @abstractmethod
+    async def set_agent_capacity(self, at_capacity: bool) -> CapacityState:
+        """Sets the agent capacity lock on or off, and counts it as a change to the board."""
+
+    @property
+    @abstractmethod
+    def revision(self) -> int:
+        """The board's revision: how many writes have been committed to this database file
+        through any open of it in this process."""
+
+    @abstractmethod
+    async def next_change(self, after: int) -> int:
+        """Waits until the board's revision is past ``after``, and answers it."""
+
 
 class SqliteDatabase(Database):
     """The :class:`Database` port's implementation: Arlesh's Rust core over the SQLite file,
@@ -963,6 +1121,135 @@ class SqliteDatabase(Database):
             map_scopes=map_scopes,
         )
 
+    async def list_tasks(self, *, now: datetime | None = None) -> list[Task]:
+        return await self._call(_TASKS, "list_tasks", now=now)
+
+    async def list_goals(self, *, now: datetime | None = None) -> list[Goal]:
+        return await self._call(_GOALS, "list_goals", now=now)
+
+    async def list_commitments(self, *, now: datetime | None = None) -> list[Commitment]:
+        return await self._call(_COMMITMENTS, "list_commitments", now=now)
+
+    async def list_waits(self, *, now: datetime | None = None) -> list[Expectation]:
+        return await self._call(_WAITS, "list_waits", now=now)
+
+    async def scope_lifecycles(self, *, now: datetime | None = None) -> list[ItemLifecycle]:
+        return await self._call(_LIFECYCLES, "scope_lifecycles", now=now)
+
+    async def all_task_dependencies(
+        self, *, now: datetime | None = None
+    ) -> list[TaskDependencyEdge]:
+        return await self._call(_DEPENDENCY_EDGES, "list_all_task_dependencies", now=now)
+
+    async def dependency_candidates(
+        self, id: NodeId, *, now: datetime | None = None
+    ) -> list[Dependency]:
+        return await self._call(_DEPENDENCIES, "dependency_candidates", id=id, now=now)
+
+    async def scope_containment_conflicts(
+        self, node_type: str, node_id: int, time_scope: TimeScope
+    ) -> list[ViolatingDescendant]:
+        return await self._call(
+            _VIOLATIONS,
+            "scope_containment_conflicts",
+            node_type=node_type,
+            node_id=node_id,
+            time_scope=time_scope,
+        )
+
+    async def reparent_conflicts(
+        self, node_type: str, node_id: int, new_parent_type: str, new_parent_id: int
+    ) -> ReparentConflicts:
+        return await self._call(
+            _REPARENT_CONFLICTS,
+            "reparent_conflicts",
+            node_type=node_type,
+            node_id=node_id,
+            new_parent_type=new_parent_type,
+            new_parent_id=new_parent_id,
+        )
+
+    async def list_infos(self) -> list[Info]:
+        return await self._call(_INFOS, "list_infos")
+
+    async def list_flows(self) -> list[Flow]:
+        return await self._call(_FLOWS, "list_flows")
+
+    async def list_flow_goals(self, flow_id: int) -> list[FlowGoal]:
+        return await self._call(_FLOW_GOALS, "list_flow_goals", flow_id=flow_id)
+
+    async def list_flow_tasks(self, flow_id: int) -> list[FlowTask]:
+        return await self._call(_FLOW_TASKS, "list_flow_tasks", flow_id=flow_id)
+
+    async def list_all_flow_goals(self) -> list[FlowGoal]:
+        return await self._call(_FLOW_GOALS, "list_all_flow_goals")
+
+    async def list_all_flow_tasks(self) -> list[FlowTask]:
+        return await self._call(_FLOW_TASKS, "list_all_flow_tasks")
+
+    async def list_all_flow_cycles(self) -> list[FlowItemCycle]:
+        return await self._call(_FLOW_CYCLES, "list_all_flow_cycles")
+
+    async def list_all_flow_dependencies(self) -> list[FlowDependency]:
+        return await self._call(_FLOW_DEPENDENCIES, "list_all_flow_dependencies")
+
+    async def get_flow_recurrence(self, flow_id: int) -> FlowRecurrence | None:
+        return await self._call(_RECURRENCE_OR_NONE, "get_flow_recurrence", flow_id=flow_id)
+
+    async def habit_completion_count(self, flow_id: int) -> int:
+        return await self._call(_ID, "habit_completion_count", flow_id=flow_id)
+
+    async def flow_origins(self, nodes: list[TargetRef]) -> list[FlowOrigin]:
+        return await self._call(_FLOW_ORIGINS, "flow_origins", nodes=nodes)
+
+    async def list_flow_instance_nodes(self) -> list[TargetRef]:
+        return await self._call(_TARGETS, "list_flow_instance_nodes")
+
+    async def scope_valid_flow_targets(
+        self,
+        candidates: list[TargetRef],
+        *,
+        duration_n: int | None = None,
+        duration_kind: str | None = None,
+        anchor_date: date | None = None,
+    ) -> list[TargetRef]:
+        return await self._call(
+            _TARGETS,
+            "scope_valid_flow_targets",
+            candidates=candidates,
+            duration_n=duration_n,
+            duration_kind=duration_kind,
+            anchor_date=anchor_date,
+        )
+
+    async def list_all_block_reasons(self) -> list[BlockReason]:
+        return await self._call(_BLOCK_REASONS, "list_all_block_reasons")
+
+    async def mcp_access_catalogue(self) -> McpAccessCatalogue:
+        return await self._call(_ACCESS_CATALOGUE, "mcp_access_catalogue")
+
+    async def list_mcp_access(self) -> list[EffectiveAccess]:
+        return await self._call(_EFFECTIVE_ACCESS, "list_mcp_access")
+
+    async def add_mcp_root(self, node_kind: NodeTable, node_id: int) -> None:
+        await self._call(_NOTHING, "add_mcp_root", node_kind=node_kind, node_id=node_id)
+
+    async def remove_mcp_root(self, node_kind: NodeTable, node_id: int) -> None:
+        await self._call(_NOTHING, "remove_mcp_root", node_kind=node_kind, node_id=node_id)
+
+    async def agent_capacity(self) -> CapacityState:
+        return await self._call(_CAPACITY, "agent_capacity")
+
+    async def set_agent_capacity(self, at_capacity: bool) -> CapacityState:
+        return await self._call(_CAPACITY, "set_agent_capacity", at_capacity=at_capacity)
+
+    @property
+    def revision(self) -> int:
+        return self._native.revision
+
+    async def next_change(self, after: int) -> int:
+        return await self._native.next_change(after)
+
 
 _BOARD = TypeAdapter(MindmapLoad)
 _TASK = TypeAdapter(Task)
@@ -991,3 +1278,24 @@ _DUPLICATED_TASK = TypeAdapter(DuplicatedTask)
 _DUPLICATED_GOAL = TypeAdapter(DuplicatedGoal)
 _DUPLICATED_INFO = TypeAdapter(DuplicatedInfo)
 _DUPLICATED_DOMAIN = TypeAdapter(DuplicatedDomain)
+_TASKS: TypeAdapter[list[Task]] = TypeAdapter(list[Task])
+_GOALS: TypeAdapter[list[Goal]] = TypeAdapter(list[Goal])
+_COMMITMENTS: TypeAdapter[list[Commitment]] = TypeAdapter(list[Commitment])
+_WAITS: TypeAdapter[list[Expectation]] = TypeAdapter(list[Expectation])
+_LIFECYCLES: TypeAdapter[list[ItemLifecycle]] = TypeAdapter(list[ItemLifecycle])
+_DEPENDENCY_EDGES: TypeAdapter[list[TaskDependencyEdge]] = TypeAdapter(list[TaskDependencyEdge])
+_VIOLATIONS: TypeAdapter[list[ViolatingDescendant]] = TypeAdapter(list[ViolatingDescendant])
+_REPARENT_CONFLICTS: TypeAdapter[ReparentConflicts] = TypeAdapter(ReparentConflicts)
+_INFOS: TypeAdapter[list[Info]] = TypeAdapter(list[Info])
+_FLOWS: TypeAdapter[list[Flow]] = TypeAdapter(list[Flow])
+_FLOW_GOALS: TypeAdapter[list[FlowGoal]] = TypeAdapter(list[FlowGoal])
+_FLOW_TASKS: TypeAdapter[list[FlowTask]] = TypeAdapter(list[FlowTask])
+_FLOW_CYCLES: TypeAdapter[list[FlowItemCycle]] = TypeAdapter(list[FlowItemCycle])
+_FLOW_DEPENDENCIES: TypeAdapter[list[FlowDependency]] = TypeAdapter(list[FlowDependency])
+_RECURRENCE_OR_NONE: TypeAdapter[FlowRecurrence | None] = TypeAdapter(FlowRecurrence | None)
+_FLOW_ORIGINS: TypeAdapter[list[FlowOrigin]] = TypeAdapter(list[FlowOrigin])
+_TARGETS: TypeAdapter[list[TargetRef]] = TypeAdapter(list[TargetRef])
+_BLOCK_REASONS: TypeAdapter[list[BlockReason]] = TypeAdapter(list[BlockReason])
+_ACCESS_CATALOGUE: TypeAdapter[McpAccessCatalogue] = TypeAdapter(McpAccessCatalogue)
+_EFFECTIVE_ACCESS: TypeAdapter[list[EffectiveAccess]] = TypeAdapter(list[EffectiveAccess])
+_CAPACITY: TypeAdapter[CapacityState] = TypeAdapter(CapacityState)

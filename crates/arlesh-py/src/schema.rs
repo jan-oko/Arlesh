@@ -7,14 +7,18 @@
 //! so a Rust type cannot change without its Python model changing with it.
 
 use arlesh_core::{
+    access::model::{EffectiveAccess, McpAccessCatalogue, NodeTable},
+    block_reasons::model::BlockReason,
+    capacity::CapacityState,
     domains::model::Domain,
     duplicate::DuplicatedSubtree,
     error::WireErrorKind,
     flows::{
         cycles::ForkedTemplate,
         model::{
-            Flow, FlowCommitment, FlowExpectation, FlowGoal, FlowRecurrence, FlowTask,
-            HabitIteration, InstanceTiming, MaterializedFlow,
+            Flow, FlowCommitment, FlowDependency, FlowExpectation, FlowGoal, FlowItemCycle,
+            FlowOrigin, FlowRecurrence, FlowTask, HabitIteration, InstanceTiming, MaterializedFlow,
+            TargetRef,
         },
         rules::cycle_grid::CycleLevel,
     },
@@ -24,10 +28,13 @@ use arlesh_core::{
     tasks::{
         gestures::StatusStepOutcome,
         model::{
-            Commitment, Dependency, Expectation, Goal, SpawnedWait, Task, TaskStatus,
-            TaskWithBlockers,
+            Commitment, Dependency, Expectation, Goal, SpawnedWait, Task, TaskDependencyEdge,
+            TaskStatus, TaskWithBlockers,
         },
-        rules::lifecycle::{ArchivalResult, CommitmentState, DerivedState, Resolution, Timing},
+        rules::lifecycle::{
+            ArchivalResult, CommitmentState, DerivedState, ItemLifecycle, Resolution, Timing,
+        },
+        ReparentConflicts, ViolatingDescendant,
     },
 };
 use schemars::{generate::SchemaSettings, JsonSchema, SchemaGenerator};
@@ -114,6 +121,8 @@ fn inputs(generator: &mut SchemaGenerator) {
     add::<Archival>(generator);
     add::<OnScopeExit>(generator);
     add::<DurationSpec>(generator);
+    add::<TargetRef>(generator);
+    add::<NodeTable>(generator);
 }
 
 /// What the calls answer — written by the core, so described as it **serialises** them: a field
@@ -156,6 +165,17 @@ fn outputs(generator: &mut SchemaGenerator) {
     add::<TaskStatus>(generator);
     add::<CycleLevel>(generator);
     add::<WireErrorKind>(generator);
+    add::<ItemLifecycle>(generator);
+    add::<TaskDependencyEdge>(generator);
+    add::<ViolatingDescendant>(generator);
+    add::<ReparentConflicts>(generator);
+    add::<FlowItemCycle>(generator);
+    add::<FlowDependency>(generator);
+    add::<FlowOrigin>(generator);
+    add::<BlockReason>(generator);
+    add::<McpAccessCatalogue>(generator);
+    add::<EffectiveAccess>(generator);
+    add::<CapacityState>(generator);
 }
 
 /// The document: `$defs` holding every request body, rule argument and answer type.

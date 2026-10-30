@@ -201,6 +201,17 @@ class Capabilities(BaseModel):
     """
 
 
+class CapacityState(BaseModel):
+    """
+    The lock as it is read and written: stored in the file, answered by the commands and the MCP.
+    """
+
+    at_capacity: bool
+    """
+    Whether agents are at capacity. Off when nothing was ever saved.
+    """
+
+
 class ClockKind(StrEnum):
     """
     Which **clock** a Habit keeps: what decides when its next occurrence falls.
@@ -625,6 +636,25 @@ class FlowItemType(StrEnum):
     """
 
 
+class FlowOrigin(BaseModel):
+    """
+    A materialised node's originating flow: which real node it is and the flow it was started from.
+    """
+
+    flow_title: str
+    """
+    Title of the flow this node was materialised from.
+    """
+    node_id: int
+    """
+    The real node's id.
+    """
+    node_type: str
+    """
+    The real node's kind (`goal` / `task`).
+    """
+
+
 class IdPair(RootModel[tuple[int, int]]):
     root: Annotated[tuple[int, int], Field(max_length=2, min_length=2, title="IdPair")]
 
@@ -898,6 +928,63 @@ class NodeKind(StrEnum):
     habit_group = "habit_group"
     """
     The display-only stand-in for a run of passed Habit iterations.
+    """
+
+
+class NodeTable(StrEnum):
+    """
+    The table a stored node is a row of — the half of its identity an MCP root is keyed by.
+
+    Deliberately the **table**, not the display kind: an Aspect, Project, Domain and Tag are all
+    rows of `domains` and are all [`NodeTable::Domain`], keyed by `domains.id`, exactly as the
+    node's own table keys it. A derived node (a Habit occurrence, a wait's check task, a delegated
+    Task's wait) is a row of nothing and has no `NodeTable`: it is visible when the nearest stored
+    node above it is, and never writable, having no row to write.
+    """
+
+    domain = "domain"
+    """
+    A row of `domains`: an Aspect, Project, Domain or Tag.
+    """
+    goal = "goal"
+    """
+    A row of `goals`.
+    """
+    task = "task"
+    """
+    A row of `tasks`.
+    """
+    commitment = "commitment"
+    """
+    A row of `commitments`.
+    """
+    expectation = "expectation"
+    """
+    A row of `expectations` — a stored wait.
+    """
+    info = "info"
+    """
+    A row of `infos`.
+    """
+    flow = "flow"
+    """
+    A row of `flows`.
+    """
+    flow_goal = "flow_goal"
+    """
+    A row of `flow_goals` — a Goal item of a Flow template.
+    """
+    flow_task = "flow_task"
+    """
+    A row of `flow_tasks` — a Task item of a Flow template.
+    """
+    flow_commitment = "flow_commitment"
+    """
+    A row of `flow_commitments` — a Commitment item of a Flow template.
+    """
+    flow_expectation = "flow_expectation"
+    """
+    A row of `flow_expectations` — a wait item of a Flow template.
     """
 
 
@@ -1835,6 +1922,22 @@ class VerdictPress(StrEnum):
     """
 
 
+class ViolatingDescendant(BaseModel):
+    """
+    A descendant whose explicit Time Scope would fall outside a candidate window — i.e. one that
+    narrowing an ancestor's scope (or reparenting) would orphan.
+    """
+
+    node_id: int
+    """
+    The descendant's id.
+    """
+    node_type: str
+    """
+    `"task"` or `"goal"`.
+    """
+
+
 class WaitKind(StrEnum):
     """
     Which kind of wait a check belongs to.
@@ -2031,6 +2134,46 @@ class BlockReason(BaseModel):
     """
     When a derived block **lifts by itself**, for one that does — a Habit's cooldown. Absent
     otherwise, and left off the wire then.
+    """
+
+
+class CatalogueNode(BaseModel):
+    """
+    One stored node as the MCP access page lists it: enough to find it by title and name it.
+    """
+
+    agentic: bool | None
+    """
+    Its own Agentic flag, for a Task that sets one.
+    """
+    is_private: bool
+    """
+    Its own private flag.
+    """
+    node_id: int
+    """
+    The node's row id.
+    """
+    node_kind: NodeTable
+    """
+    The node's table.
+    """
+    parent_id: int | None
+    """
+    The row id of the stored node it hangs under, if any.
+    """
+    parent_kind: NodeTable | None
+    """
+    The table of the stored node it hangs under, if any.
+    """
+    subtype: str | None
+    """
+    For a domain-table row, its subtype (`aspect`, `project`, `domain` or `tag`); `None`
+    otherwise.
+    """
+    title: str
+    """
+    Its title — an Info's body.
     """
 
 
@@ -2450,6 +2593,32 @@ class DuplicatedDomain(BaseModel):
     left_behind: list[LeftBehindChild]
     """
     The rows hung on Habit occurrences the copy could not carry, for the paste to name.
+    """
+
+
+class EffectiveAccess(BaseModel):
+    """
+    One node the MCP can see, and the root it is seen through.
+
+    What the app's node badge reads. It carries no level: whether the MCP may also write a node is
+    whether the node is an Agentic Task, which the node's own Agentic badge already says.
+    """
+
+    node_id: int
+    """
+    The node's row id.
+    """
+    node_kind: NodeTable
+    """
+    The node's table.
+    """
+    root_id: int
+    """
+    The row id of that root.
+    """
+    root_kind: NodeTable
+    """
+    The table of the nearest MCP root at or above the node.
     """
 
 
@@ -3291,6 +3460,21 @@ class NodeFacts(BaseModel):
     """
 
 
+class NodeKey(BaseModel):
+    """
+    One stored node: its table and its row id there.
+    """
+
+    node_id: int
+    """
+    Its primary key in that table.
+    """
+    node_kind: NodeTable
+    """
+    The table the node is a row of.
+    """
+
+
 class OriginHabit(BaseModel):
     """
     An occurrence of a Habit, derived from its template and overlaid with what differs.
@@ -3356,6 +3540,22 @@ class PlanClampTarget(BaseModel):
     title: str
     """
     Its title, to name it by.
+    """
+
+
+class ReparentConflicts(BaseModel):
+    """
+    The outcome of checking a reparent: the binding ancestor Time Scope (the clamp target) and the
+    items — the node itself and/or its descendants — that would fall outside it.
+    """
+
+    ancestor_time_scope: TimeScope | None
+    """
+    The nearest scoped ancestor's Time Scope under the new parent, or null if unconstrained.
+    """
+    conflicts: list[ViolatingDescendant]
+    """
+    The items that would be orphaned (empty if the move is already valid).
     """
 
 
@@ -4246,6 +4446,26 @@ class HabitOrigin(BaseModel):
     iteration_scope: IterationScope
     """
     The iteration the occurrence is in.
+    """
+
+
+class McpAccessCatalogue(BaseModel):
+    """
+    What the *MCP access* page lists: the roots, every stored node that could be one, and which of
+    those may be added now.
+    """
+
+    candidates: list[NodeKey]
+    """
+    The nodes that may be added as a root now.
+    """
+    nodes: list[CatalogueNode]
+    """
+    Every stored node that could be a root.
+    """
+    roots: list[NodeKey]
+    """
+    The MCP roots as they stand.
     """
 
 

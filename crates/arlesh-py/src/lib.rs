@@ -22,6 +22,7 @@ mod opening;
 mod request;
 mod rules;
 mod schema;
+mod shared;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -54,6 +55,22 @@ impl NativeDatabase {
     }
 
     /// The client this database writes as, or `None` when it was opened read-only.
+    /// The board's revision: how many writes have been committed to this database file, through
+    /// any open of it in this process, since the process started.
+    #[getter]
+    fn revision(&self) -> u64 {
+        shared::for_database(&self.path).changes.revision()
+    }
+
+    /// Waits until the board's revision is past `after`, and answers it: what `GET /events`
+    /// streams.
+    fn next_change<'py>(&self, py: Python<'py>, after: u64) -> PyResult<Bound<'py, PyAny>> {
+        let shared = shared::for_database(&self.path);
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            Ok(shared.changes.after(after).await)
+        })
+    }
+
     #[getter]
     fn client(&self) -> Option<String> {
         if self.factory.is_read_only() {

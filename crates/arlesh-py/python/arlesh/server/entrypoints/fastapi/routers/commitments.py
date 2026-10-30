@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from arlesh.models import (
     Commitment,
     CreateCommitmentRequest,
@@ -15,6 +17,7 @@ class CommitmentsRouter(BoardRouter):
     """``/commitments``."""
 
     def _register_routes(self) -> None:
+        self.get("")(self._list)
         self.get("/{id}")(self._get)
         self.post("", status_code=201)(self._create)
         self.patch("/{id}")(self._update)
@@ -46,3 +49,7 @@ class CommitmentsRouter(BoardRouter):
     async def _press_verdict(self, id: str, press: VerdictPress) -> Commitment:
         """A press of a verdict control: the cycle, Kept or Broken."""
         return await (await self._writer()).press_commitment_verdict(node_id(id), press)
+
+    async def _list(self, now: datetime | None = None) -> list[Commitment]:
+        """Every Commitment, derived at ``now`` (default: the server's clock)."""
+        return await self._reader.list_commitments(now=now)

@@ -44,10 +44,11 @@ impl Changes {
     pub(crate) async fn after(&self, after: u64) -> u64 {
         let mut receiver = self.revision.subscribe();
         // `wait_for` fails only when the sender is gone, and this `Changes` holds it.
-        match receiver.wait_for(|revision| *revision > after).await {
+        let reached = match receiver.wait_for(|revision| *revision > after).await {
             Ok(revision) => *revision,
             Err(_) => self.revision(),
-        }
+        };
+        reached
     }
 
     /// An [`Announce`] that counts an agent's write as a change.

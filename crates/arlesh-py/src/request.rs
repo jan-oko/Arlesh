@@ -9,10 +9,12 @@
 //! no transaction to hide the stamp in.
 
 use std::path::Path;
-use std::sync::Arc;
 
 use arlesh_core::{
-    capacity::AgentCapacity,
+    access::{
+        self,
+        model::{McpAccessCatalogue, NodeKey, NodeTable},
+    },
     database::session::{Db, SessionFactory, Transactional},
     domains::model::{CreateDomainRequest, DomainId, DomainSubtype, UpdateDomainRequest},
     duplicate::{duplicate_subtree, DuplicableKind, DuplicatedSubtree},
@@ -22,7 +24,8 @@ use arlesh_core::{
         cycles::Reconcile,
         model::{
             CreateFlowItemRequest, CreateFlowRequest, FlowCycleInput, FlowId, FlowItemType,
-            SetRecurrenceRequest, StartFlowRequest, UpdateFlowItemRequest, UpdateFlowRequest,
+            SetRecurrenceRequest, StartFlowRequest, TargetRef, UpdateFlowItemRequest,
+            UpdateFlowRequest,
         },
     },
     infos::model::{CreateInfoRequest, InfoId, UpdateInfoRequest},
@@ -39,7 +42,7 @@ use arlesh_core::{
         rules::gestures::{StatusStep, VerdictPress},
     },
 };
-use chrono::NaiveDateTime;
+use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -561,6 +564,153 @@ pub(crate) enum Request {
         /// Keep its Time Scopes, relative to the root's.
         map_scopes: bool,
     },
+
+    // ---- Reads the app's Client mode needs (Task 9f0) -------------------------------------
+    /// Every Task — stored rows and every Habit occurrence — derived at `now`.
+    ListTasks {
+        /// The instant the board is derived at (default: the local wall clock).
+        #[serde(default)]
+        now: Option<NaiveDateTime>,
+    },
+    /// Every Goal, derived at `now`.
+    ListGoals {
+        /// The instant the board is derived at (default: the local wall clock).
+        #[serde(default)]
+        now: Option<NaiveDateTime>,
+    },
+    /// Every Commitment, derived at `now`.
+    ListCommitments {
+        /// The instant the board is derived at (default: the local wall clock).
+        #[serde(default)]
+        now: Option<NaiveDateTime>,
+    },
+    /// Every wait, derived at `now`.
+    ListWaits {
+        /// The instant the board is derived at (default: the local wall clock).
+        #[serde(default)]
+        now: Option<NaiveDateTime>,
+    },
+    /// Every node's derived lifecycle, at `now`.
+    ScopeLifecycles {
+        /// The instant the board is derived at (default: the local wall clock).
+        #[serde(default)]
+        now: Option<NaiveDateTime>,
+    },
+    /// Every dependency edge between Tasks, Goals and waits.
+    ListAllTaskDependencies {
+        /// The instant the board is derived at (default: the local wall clock).
+        #[serde(default)]
+        now: Option<NaiveDateTime>,
+    },
+    /// What a Task may be made to depend on: what the quick dependency picker offers.
+    DependencyCandidates {
+        /// The Task, stored or derived.
+        id: NodeId,
+        /// The instant the board is derived at (default: the local wall clock).
+        #[serde(default)]
+        now: Option<NaiveDateTime>,
+    },
+    /// The descendants of a node a candidate Time Scope would leave outside it.
+    ScopeContainmentConflicts {
+        /// The node's kind.
+        node_type: String,
+        /// Its row id.
+        node_id: i64,
+        /// The Time Scope it would get.
+        time_scope: TimeScope,
+    },
+    /// The items a move would leave outside their new ancestors' Time Scope, and the scope to
+    /// clamp them to.
+    ReparentConflicts {
+        /// The moving node's kind.
+        node_type: String,
+        /// Its row id.
+        node_id: i64,
+        /// The new parent's kind.
+        new_parent_type: String,
+        /// The new parent's row id.
+        new_parent_id: i64,
+    },
+    /// Every Info.
+    ListInfos,
+    /// Every Flow and Habit template.
+    ListFlows,
+    /// One Flow's Goal items.
+    ListFlowGoals {
+        /// The Flow's row id.
+        flow_id: i64,
+    },
+    /// One Flow's Task items.
+    ListFlowTasks {
+        /// The Flow's row id.
+        flow_id: i64,
+    },
+    /// Every Flow's Goal items.
+    ListAllFlowGoals,
+    /// Every Flow's Task items.
+    ListAllFlowTasks,
+    /// Every Flow item's cycles.
+    ListAllFlowCycles,
+    /// Every dependency between Flow items.
+    ListAllFlowDependencies,
+    /// A Habit's recurrence, if it has one.
+    GetFlowRecurrence {
+        /// The Flow's row id.
+        flow_id: i64,
+    },
+    /// How many of a Habit's occurrences are complete.
+    HabitCompletionCount {
+        /// The Flow's row id.
+        flow_id: i64,
+    },
+    /// Which Flow, if any, each node was started from.
+    FlowOrigins {
+        /// The nodes.
+        nodes: Vec<TargetRef>,
+    },
+    /// Every node a started Flow produced.
+    ListFlowInstanceNodes,
+    /// Which of `candidates` a Flow of the given duration may be started under.
+    ScopeValidFlowTargets {
+        /// The duration's count of units, with `duration_kind`.
+        #[serde(default)]
+        duration_n: Option<i64>,
+        /// The duration's unit, with `duration_n`.
+        #[serde(default)]
+        duration_kind: Option<String>,
+        /// The day the window is anchored on.
+        #[serde(default)]
+        anchor_date: Option<NaiveDate>,
+        /// The targets to check.
+        candidates: Vec<TargetRef>,
+    },
+    /// Every stored and derived block reason.
+    ListAllBlockReasons,
+    /// The MCP roots, every node that could be one, and which may be added now.
+    McpAccessCatalogue,
+    /// Every stored node the MCP can see, with the root it is seen through.
+    ListMcpAccess,
+    /// Makes one stored node an MCP root.
+    AddMcpRoot {
+        /// The node's table.
+        node_kind: NodeTable,
+        /// Its row id.
+        node_id: i64,
+    },
+    /// Stops one node being an MCP root.
+    RemoveMcpRoot {
+        /// The node's table.
+        node_kind: NodeTable,
+        /// Its row id.
+        node_id: i64,
+    },
+    /// The agent capacity lock as it stands.
+    AgentCapacity,
+    /// Sets the agent capacity lock on or off.
+    SetAgentCapacity {
+        /// Whether agents are at capacity.
+        at_capacity: bool,
+    },
 }
 
 impl Request {
@@ -579,6 +729,32 @@ impl Request {
                 | Self::TaskDoneAt { .. }
                 | Self::PlanContainmentConflicts { .. }
                 | Self::ListDomains { .. }
+                | Self::ListTasks { .. }
+                | Self::ListGoals { .. }
+                | Self::ListCommitments { .. }
+                | Self::ListWaits { .. }
+                | Self::ScopeLifecycles { .. }
+                | Self::ListAllTaskDependencies { .. }
+                | Self::DependencyCandidates { .. }
+                | Self::ScopeContainmentConflicts { .. }
+                | Self::ReparentConflicts { .. }
+                | Self::ListInfos
+                | Self::ListFlows
+                | Self::ListFlowGoals { .. }
+                | Self::ListFlowTasks { .. }
+                | Self::ListAllFlowGoals
+                | Self::ListAllFlowTasks
+                | Self::ListAllFlowCycles
+                | Self::ListAllFlowDependencies
+                | Self::GetFlowRecurrence { .. }
+                | Self::HabitCompletionCount { .. }
+                | Self::FlowOrigins { .. }
+                | Self::ListFlowInstanceNodes
+                | Self::ScopeValidFlowTargets { .. }
+                | Self::ListAllBlockReasons
+                | Self::McpAccessCatalogue
+                | Self::ListMcpAccess
+                | Self::AgentCapacity
         )
     }
 }
@@ -603,7 +779,12 @@ pub(crate) async fn run(
         .with_details(serde_json::json!({ "reason": "read_only" }))
         .into());
     }
+    let writes = request.writes();
     let answer = dispatch(factory, path, request).await?;
+    if writes {
+        // Committed: every device showing the board has to hear about it (`GET /events`).
+        crate::shared::for_database(path).changes.bump();
+    }
     Ok(answer.to_string())
 }
 
@@ -642,7 +823,8 @@ fn now() -> NaiveDateTime {
 
 /// Whether the agent capacity lock beside the database at `path` is on.
 async fn at_capacity(path: &Path) -> bool {
-    AgentCapacity::open(crate::mcp::capacity_file(path), Arc::new(|_| {}))
+    crate::shared::for_database(path)
+        .capacity
         .get()
         .await
         .at_capacity
@@ -1271,5 +1453,220 @@ async fn dispatch(
             })
             .await
         }
+        Request::ListTasks { now: at } => {
+            let at = at.unwrap_or_else(now);
+            transaction(factory, async |db| {
+                Ok(mindmap::load(db, at).await.wired()?.tasks)
+            })
+            .await
+        }
+        Request::ListGoals { now: at } => {
+            let at = at.unwrap_or_else(now);
+            transaction(factory, async |db| {
+                Ok(mindmap::load(db, at).await.wired()?.goals)
+            })
+            .await
+        }
+        Request::ListCommitments { now: at } => {
+            let at = at.unwrap_or_else(now);
+            transaction(factory, async |db| {
+                Ok(mindmap::load(db, at).await.wired()?.commitments)
+            })
+            .await
+        }
+        Request::ListWaits { now: at } => {
+            let at = at.unwrap_or_else(now);
+            transaction(factory, async |db| {
+                Ok(mindmap::load(db, at).await.wired()?.expectations)
+            })
+            .await
+        }
+        Request::ScopeLifecycles { now: at } => {
+            let at = at.unwrap_or_else(now);
+            transaction(factory, async |db| {
+                Ok(mindmap::load(db, at).await.wired()?.lifecycles)
+            })
+            .await
+        }
+        Request::ListAllTaskDependencies { now: at } => {
+            let at = at.unwrap_or_else(now);
+            transaction(factory, async |db| {
+                write::all_dependencies(db, at).await.wired()
+            })
+            .await
+        }
+        Request::DependencyCandidates { id, now: at } => {
+            let at = at.unwrap_or_else(now);
+            transaction(factory, async |db| {
+                let load = mindmap::load(db, at).await.wired()?;
+                Ok(tasks::rules::dependencies::candidates(
+                    &id,
+                    &load.tasks,
+                    &load.goals,
+                    &load.expectations,
+                    &load.task_dependencies,
+                ))
+            })
+            .await
+        }
+        Request::ScopeContainmentConflicts {
+            node_type,
+            node_id,
+            time_scope,
+        } => {
+            transaction(factory, async |db| {
+                tasks::conflicts_for_new_time_scope(db, &node_type, node_id, &time_scope)
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::ReparentConflicts {
+            node_type,
+            node_id,
+            new_parent_type,
+            new_parent_id,
+        } => {
+            transaction(factory, async |db| {
+                tasks::reparent_conflicts(db, &node_type, node_id, &new_parent_type, new_parent_id)
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::ListInfos => {
+            transaction(factory, async |db| db.infos().list().await.wired()).await
+        }
+        Request::ListFlows => {
+            transaction(factory, async |db| db.flows().list().await.wired()).await
+        }
+        Request::ListFlowGoals { flow_id } => {
+            transaction(factory, async |db| {
+                db.flows().list_goals(FlowId(flow_id)).await.wired()
+            })
+            .await
+        }
+        Request::ListFlowTasks { flow_id } => {
+            transaction(factory, async |db| {
+                db.flows().list_tasks(FlowId(flow_id)).await.wired()
+            })
+            .await
+        }
+        Request::ListAllFlowGoals => {
+            transaction(factory, async |db| {
+                db.flows().list_all_goals().await.wired()
+            })
+            .await
+        }
+        Request::ListAllFlowTasks => {
+            transaction(factory, async |db| {
+                db.flows().list_all_tasks().await.wired()
+            })
+            .await
+        }
+        Request::ListAllFlowCycles => {
+            transaction(factory, async |db| {
+                db.flows().list_all_cycles().await.wired()
+            })
+            .await
+        }
+        Request::ListAllFlowDependencies => {
+            transaction(factory, async |db| {
+                db.flows().list_all_dependencies().await.wired()
+            })
+            .await
+        }
+        Request::GetFlowRecurrence { flow_id } => {
+            transaction(factory, async |db| {
+                db.flows().get_recurrence(FlowId(flow_id)).await.wired()
+            })
+            .await
+        }
+        Request::HabitCompletionCount { flow_id } => {
+            transaction(factory, async |db| {
+                db.flows()
+                    .habit_completion_count(FlowId(flow_id))
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::FlowOrigins { nodes } => {
+            transaction(factory, async |db| db.flows().origins(nodes).await.wired()).await
+        }
+        Request::ListFlowInstanceNodes => {
+            transaction(factory, async |db| {
+                db.flows().list_instance_node_refs().await.wired()
+            })
+            .await
+        }
+        Request::ScopeValidFlowTargets {
+            duration_n,
+            duration_kind,
+            anchor_date,
+            candidates,
+        } => {
+            let duration = match (duration_n, duration_kind) {
+                (Some(n), Some(kind)) => Some((n, kind)),
+                _ => None,
+            };
+            transaction(factory, async |db| {
+                flows::valid_targets(db, duration, anchor_date, candidates)
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::ListAllBlockReasons => {
+            transaction(factory, async |db| {
+                db.block_reasons().list_all().await.wired()
+            })
+            .await
+        }
+        Request::McpAccessCatalogue => {
+            transaction(factory, async |db| {
+                let roots = db.access().roots().await.wired()?;
+                let nodes = db.access().catalogue().await.wired()?;
+                let candidates = access::resolve::root_candidates(&roots, &nodes);
+                Ok(McpAccessCatalogue {
+                    roots,
+                    nodes,
+                    candidates,
+                })
+            })
+            .await
+        }
+        Request::ListMcpAccess => {
+            transaction(factory, async |db| {
+                Ok(access::access_map(db).await.wired()?.effective())
+            })
+            .await
+        }
+        Request::AddMcpRoot { node_kind, node_id } => {
+            transaction(factory, async |db| {
+                db.access()
+                    .add_root(NodeKey::new(node_kind, node_id))
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::RemoveMcpRoot { node_kind, node_id } => {
+            transaction(factory, async |db| {
+                db.access()
+                    .remove_root(NodeKey::new(node_kind, node_id))
+                    .await
+                    .wired()
+            })
+            .await
+        }
+        Request::AgentCapacity => json(crate::shared::for_database(path).capacity.get().await),
+        Request::SetAgentCapacity { at_capacity } => json(
+            crate::shared::for_database(path)
+                .capacity
+                .set(at_capacity)
+                .await
+                .map_err(|error| WireError::internal(error.to_string()))?,
+        ),
     }
 }
