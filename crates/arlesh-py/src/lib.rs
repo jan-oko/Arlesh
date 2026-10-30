@@ -29,6 +29,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use arlesh_core::database::session::SessionFactory;
+use arlesh_core::undo::stacks::UndoStacks;
 use pyo3::prelude::*;
 
 use errors::{raise, NativeError};
@@ -42,6 +43,9 @@ struct NativeDatabase {
     path: Arc<PathBuf>,
     /// The MCP endpoint this database serves, while it serves one.
     serving: Arc<tokio::sync::Mutex<Option<mcp::Serving>>>,
+    /// This open's Undo and Redo Stacks. The server keeps one write-open per client, so these
+    /// are that client's — undo is per device.
+    stacks: Arc<UndoStacks>,
 }
 
 #[pymethods]
@@ -50,8 +54,11 @@ impl NativeDatabase {
     fn call<'py>(&self, py: Python<'py>, request: String) -> PyResult<Bound<'py, PyAny>> {
         let factory = self.factory.clone();
         let path = Arc::clone(&self.path);
+        let stacks = Arc::clone(&self.stacks);
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            request::run(&factory, &path, &request).await.map_err(raise)
+            request::run(&factory, &path, &stacks, &request)
+                .await
+                .map_err(raise)
         })
     }
 
@@ -123,6 +130,18 @@ impl NativeDatabase {
 
     /// Stops the MCP endpoint, if one is served, then closes every connection once calls still
     /// running have finished.
+    /// Empties the journal and clears the ambient Gesture, as the desktop app does at every start:
+    /// a Gesture left open by a crash mid-write would otherwise swallow every later write. For the
+    /// server's startup only — the server holds the database, so no other writer is mid-Gesture.
+    fn reset_undo<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let factory = self.factory.clone();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            arlesh_core::undo::reset_journal(&factory)
+                .await
+                .map_err(|error| raise(arlesh_core::error::WireError::from_error(error)))
+        })
+    }
+
     fn close<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let factory = self.factory.clone();
         let serving = Arc::clone(&self.serving);
@@ -160,6 +179,7 @@ fn open(
             factory,
             path: Arc::new(path),
             serving: Arc::new(tokio::sync::Mutex::new(None)),
+            stacks: Arc::new(UndoStacks::new()),
         })
     })
 }

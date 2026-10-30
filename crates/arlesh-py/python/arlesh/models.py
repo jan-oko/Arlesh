@@ -687,6 +687,42 @@ class ForkedTemplate(BaseModel):
     """
 
 
+class GestureSummary(BaseModel):
+    """
+    What one Gesture on a stack amounts to, for a caller that has to label it.
+
+    Deliberately **counts and table names rather than a sentence**: the phrasing belongs to the
+    frontend, which is where the app's translations live, and undo speaks in rows anyway — it
+    restores what a row was, not what the user meant by changing it. A caller wanting "Undid:
+    delete 4 items" reads `deleted` and `tables`.
+    """
+
+    deleted: Annotated[int, Field(ge=0)]
+    """
+    How many rows it removed.
+    """
+    gesture: str
+    """
+    Which Gesture is being described.
+    """
+    inserted: Annotated[int, Field(ge=0)]
+    """
+    How many rows it created.
+    """
+    rows: Annotated[int, Field(ge=0)]
+    """
+    How many rows it changed in total.
+    """
+    tables: list[str]
+    """
+    The tables it touched, in name order and without repetition.
+    """
+    updated: Annotated[int, Field(ge=0)]
+    """
+    How many rows it rewrote.
+    """
+
+
 class GoalStatus(StrEnum):
     """
     Goal lifecycle status.
@@ -1682,6 +1718,25 @@ class Timing(StrEnum):
     lapsed = "lapsed"
     """
     Window has fully passed (`now >= end`).
+    """
+
+
+class UndoStatus(BaseModel):
+    """
+    Whether there is anything to undo or redo, and what each one is.
+
+    `None` means the stack is empty and the caller should disable its control; Ctrl+Z on an empty
+    stack is a silent no-op rather than an error, so this exists to label and disable, not to
+    prevent.
+    """
+
+    redo: GestureSummary | None
+    """
+    The Gesture the next redo would reapply.
+    """
+    undo: GestureSummary | None
+    """
+    The Gesture the next undo would reverse.
     """
 
 
@@ -3151,6 +3206,22 @@ class FlowTask(BaseModel):
     title: str
     """
     Display title.
+    """
+
+
+class GestureNode(BaseModel):
+    """
+    One node a gesture acts on: its kind, as the board names it, and its id.
+    """
+
+    id: int | str
+    """
+    Its id: a row id, or a derived node's UUID where the kind has derived rows.
+    """
+    kind: str
+    """
+    `task`, `goal`, `commitment`, `expectation`, `info`, `flow`, a flow item kind
+    (`flow_task`…), or `domain`, `project` or `tag`.
     """
 
 

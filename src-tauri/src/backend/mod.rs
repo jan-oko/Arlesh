@@ -25,6 +25,7 @@ pub mod gestures;
 pub mod infos;
 pub mod knowledge_base;
 pub mod mindmap;
+pub mod node_gestures;
 pub mod sqlite;
 pub mod tasks;
 pub mod undo;
@@ -42,6 +43,7 @@ pub trait Backend:
     + infos::InfosPort
     + knowledge_base::KnowledgeBasePort
     + mindmap::BoardPort
+    + node_gestures::NodeGesturesPort
     + tasks::TasksPort
     + undo::UndoPort
 {
@@ -59,6 +61,7 @@ impl<T> Backend for T where
         + infos::InfosPort
         + knowledge_base::KnowledgeBasePort
         + mindmap::BoardPort
+        + node_gestures::NodeGesturesPort
         + tasks::TasksPort
         + undo::UndoPort
 {

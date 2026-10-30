@@ -12,8 +12,9 @@
     "test_server_parity.py` fails when a listed route is not served or the server's `API_VERSION`",
     "differs. See `docs/spec/client-mode.md`, *REST parity*.",
     "",
-    "`undecided` lists the methods whose route waits on an open design question (how a Gesture",
-    "crosses HTTP; Task 9f0, wait `dd2`). They are routed when it is answered, and the list goes."
+    "`local` lists the Gesture boundary: on a server every write is already one Gesture of its",
+    "client, and a gesture over several nodes is one gesture operation with its own route, so",
+    "`HttpBackend` keeps the frontend's open and close on the device and sends nothing."
   ],
   "api_version": 1,
   "standalone_only": [
@@ -27,13 +28,10 @@
     "create_thread",
     "list_threads"
   ],
-  "undecided": [
+  "local": [
     "open_gesture",
     "close_gesture",
-    "abort_gesture",
-    "undo",
-    "redo",
-    "undo_status"
+    "abort_gesture"
   ],
   "routes": {
     "load_mindmap": [
@@ -351,6 +349,18 @@
     ],
     "remove_mcp_root": [
       "DELETE /mcp-access/roots/{node_kind}/{node_id}"
+    ],
+    "undo": [
+      "POST /undo"
+    ],
+    "redo": [
+      "POST /redo"
+    ],
+    "undo_status": [
+      "GET /undo"
+    ],
+    "delete_nodes": [
+      "POST /gestures/delete-nodes"
     ]
   }
 }
