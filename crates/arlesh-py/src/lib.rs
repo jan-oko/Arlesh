@@ -23,6 +23,7 @@ mod request;
 mod rules;
 mod schema;
 mod shared;
+mod tokens;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -164,6 +165,14 @@ fn open(
 }
 
 /// Runs one pure rule — a JSON object tagged by `rule` — and answers its result as JSON.
+/// Runs one call on `arlesh-server`'s token table in the database at `path`, and waits for it:
+/// the token store's way in, which is not a coroutine. See [`tokens`].
+#[pyfunction]
+fn token_call(py: Python<'_>, path: PathBuf, request: String) -> PyResult<String> {
+    py.detach(move || tokens::run(&path, &request))
+        .map_err(raise)
+}
+
 #[pyfunction]
 fn rule(request: &str) -> PyResult<String> {
     rules::run(request).map_err(raise)
@@ -184,6 +193,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(open, module)?)?;
     module.add_function(wrap_pyfunction!(hold::hold, module)?)?;
     module.add_function(wrap_pyfunction!(rule, module)?)?;
+    module.add_function(wrap_pyfunction!(token_call, module)?)?;
     module.add_function(wrap_pyfunction!(json_schema, module)?)?;
     module.add("NativeError", module.py().get_type::<NativeError>())?;
     Ok(())

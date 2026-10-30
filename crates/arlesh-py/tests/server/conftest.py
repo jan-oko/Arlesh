@@ -16,7 +16,7 @@ import pytest
 from arlesh.server.business_logic.board import Board
 from arlesh.server.entrypoints.cli.app import holder, opener
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
-from arlesh.server.ports.tokens.file_token_store import FileTokenStore
+from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", DeprecationWarning)
@@ -55,20 +55,20 @@ def server_db(tmp_path: Path, migrated: Path) -> Path:
 
 
 @pytest.fixture
-def tokens(server_db: Path) -> FileTokenStore:
-    """The token store beside the test's database."""
-    return FileTokenStore.beside(server_db)
+def tokens(server_db: Path) -> DatabaseTokenStore:
+    """The token store in the test's database."""
+    return DatabaseTokenStore(server_db)
 
 
 @pytest.fixture
-def start(server_db: Path, tokens: FileTokenStore) -> Start:
+def start(server_db: Path, tokens: DatabaseTokenStore) -> Start:
     """Builds the server over the test's database, as ``arlesh-server`` does."""
 
     def build(*, force: bool = False, path: Path | None = None) -> ArleshServer:
         database = path if path is not None else server_db
         return ArleshServer(
             board=Board(opener(database), holder(database), force=force),
-            tokens=FileTokenStore.beside(database) if path is not None else tokens,
+            tokens=DatabaseTokenStore(database) if path is not None else tokens,
             version="test",
         )
 
@@ -76,7 +76,7 @@ def start(server_db: Path, tokens: FileTokenStore) -> Start:
 
 
 @pytest.fixture
-def server(start: Start, tokens: FileTokenStore) -> Iterator[TestClient]:
+def server(start: Start, tokens: DatabaseTokenStore) -> Iterator[TestClient]:
     """The server, started, and reached with the token of client ``tests``."""
     headers = {"Authorization": f"Bearer {tokens.add('tests')}"}
     with TestClient(start(), headers=headers) as client:

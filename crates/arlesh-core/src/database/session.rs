@@ -44,6 +44,7 @@ use crate::infos::InfoOperator;
 use crate::knowledge_base::{EventOperator, PersonOperator, ThreadOperator};
 use crate::nodes::overlay::OverlayOperator;
 use crate::nodes::relations::RelationOperator;
+use crate::server_tokens::ServerTokenOperator;
 use crate::tasks::{CommitmentOperator, ExpectationOperator, GoalOperator, TaskOperator};
 use crate::undo::UndoOperator;
 
@@ -180,6 +181,11 @@ impl<M: SessionMode> Db<M> {
     /// Block reasons — the reasons a task or goal is blocked.
     pub fn block_reasons(&mut self) -> BlockReasonOperator<'_> {
         BlockReasonOperator::new(self.connection())
+    }
+
+    /// `arlesh-server`'s bearer tokens, kept as digests.
+    pub fn server_tokens(&mut self) -> ServerTokenOperator<'_> {
+        ServerTokenOperator::new(self.connection())
     }
 
     /// Commitments — rules held over a window, kept or broken.
