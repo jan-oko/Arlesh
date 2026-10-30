@@ -96,6 +96,8 @@ def test_an_unknown_route_is_404_not_found(server: TestClient) -> None:
 
     assert response.status_code == 404
     assert response.json()["kind"] == "not_found"
+    # Told apart from a missing node, so a newer app can hide a feature this server lacks.
+    assert response.json()["details"] == {"reason": "unknown_route"}
 
 
 def test_a_wrong_method_is_405_invalid_request(server: TestClient) -> None:

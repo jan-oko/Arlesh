@@ -119,12 +119,16 @@ async def handle_request_validation_exception(request: Request, exc: Exception) 
 
 
 async def handle_http_exception(request: Request, exc: Exception) -> JSONResponse:
-    """Routing's own refusals: an unknown route is ``not_found``, a wrong method
-    ``invalid_request``."""
+    """Routing's own refusals: an unknown route is ``not_found`` with ``details.reason =
+    "unknown_route"`` — so a newer app can tell a feature this server lacks from a node that does
+    not exist — and a wrong method ``invalid_request``."""
     code = exc.status_code if isinstance(exc, HTTPException) else 500
     detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
-    kind = WireErrorKind.not_found if code == 404 else WireErrorKind.invalid_request
-    return _answer(request, code, kind, str(detail))
+    if code == 404:
+        return _answer(
+            request, code, WireErrorKind.not_found, str(detail), {"reason": "unknown_route"}
+        )
+    return _answer(request, code, WireErrorKind.invalid_request, str(detail))
 
 
 async def handle_unknown_exception(request: Request, exc: Exception) -> JSONResponse:

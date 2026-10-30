@@ -173,7 +173,8 @@ in the server's log. A client branches on `kind`, never on the status alone.
 | `database`, `internal` | 500 |
 
 A request that does not match its schema is 400 `invalid_request`, with `details.reason =
-"validation"` and the field errors. An unknown route is 404 `not_found`, and a kind the server
+"validation"` and the field errors. An unknown route is 404 `not_found` with `details.reason = "unknown_route"`, so a newer app can tell a
+feature this server lacks from a missing node; a kind the server
 does not know is answered as 500 `internal`. FastAPI's own 422 for a malformed request is
 replaced, because 422 here means *confirm or add a window*.
 
