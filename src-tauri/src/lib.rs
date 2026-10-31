@@ -27,12 +27,17 @@ pub fn run() {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        // One handler for every window, rather than one attached per window at creation: a torn-off
-        // window is a window like any other, and a handler wired up at creation time is one a future
-        // path that creates a window could forget.
-        .on_window_event(commands::tray::on_window_event)
+    let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+    // One handler for every window, rather than one attached per window at creation: a torn-off
+    // window is a window like any other, and a handler wired up at creation time is one a future
+    // path that creates a window could forget. A phone has one window and nothing to hide into.
+    #[cfg(desktop)]
+    let builder = builder.on_window_event(commands::tray::on_window_event);
+    // A phone suspends the app when it leaves the foreground: the server's change stream is
+    // dropped then and opened again, with `/health` checked, when the app returns.
+    #[cfg(mobile)]
+    let builder = builder.on_window_event(commands::client_mode::on_lifecycle);
+    builder
         .setup(|app| {
             let app_dir = app
                 .path()
@@ -42,7 +47,11 @@ pub fn run() {
 
             // Standalone or Client: which backend every command calls through on this device.
             let saved = client_mode::settings::read(&app_dir);
-            let startup = client_mode::settings::startup(saved, app_dir.join("arlesh.db").exists());
+            let startup = client_mode::settings::startup(
+                saved,
+                app_dir.join("arlesh.db").exists(),
+                cfg!(feature = "standalone"),
+            );
             let server = match &startup.mode {
                 client_mode::settings::Mode::Standalone => {
                     setup_standalone(app, &app_dir)?;
@@ -58,22 +67,8 @@ pub fn run() {
                 server,
             ));
 
-            // The window session is read before any window exists and reopened before the event
-            // loop runs, so that by the time one window's frontend executes a line of JavaScript
-            // every window of the session is already there. `tauri.conf.json` marks its window
-            // `"create": false` for exactly this: every window, including the first, is built here
-            // from that config under the label its tabs are stored beside.
-            app.manage(commands::windows::SessionStore::open(&app_dir));
-            // The numbers the windows wear, seeded as they are rebuilt. Managed before `restore`
-            // so a restored window's saved number is the one it keeps.
-            app.manage(commands::windows::Ordinals::default());
-            commands::windows::restore(app.handle())?;
-
-            // The tray goes up last, so that everything its Quit has to release cleanly — the
-            // factory, the journal, the MCP listener — is already in place before the user can
-            // ask for it. Closing the last window hides it to this tray by default, which is what
-            // keeps the MCP endpoint answering while no window is open.
-            commands::tray::install(app.handle());
+            #[cfg(desktop)]
+            setup_desktop_shell(app, &app_dir)?;
 
             Ok(())
         })
@@ -339,10 +334,44 @@ fn setup_client(
         .map_err(|error| format!("{error:?}"))?,
     );
     app.manage(backend::AppBackend::shared(backend.clone()));
-    let announce = commands::board::announcer(app.handle());
-    let following = std::sync::Arc::clone(&backend);
-    tauri::async_runtime::spawn(async move {
-        backend::http::events::follow(following, std::sync::Arc::new(move || announce(None))).await;
-    });
+    if url.is_empty() {
+        // First run of a build with no Standalone mode: no server chosen yet, so nothing to follow.
+        return Ok(backend);
+    }
+    let follower = backend::http::events::Follower::new(
+        backend.clone(),
+        std::sync::Arc::new({
+            let announce = commands::board::announcer(app.handle());
+            move || announce(None)
+        }),
+    );
+    follower.resume();
+    app.manage(follower);
     Ok(backend)
+}
+
+/// The desktop's shell, built after the backend is up: the saved window session reopened, and the
+/// tray. A phone has one window, which Tauri builds from `tauri.android.conf.json`, and neither.
+#[cfg(desktop)]
+fn setup_desktop_shell(
+    app: &mut tauri::App,
+    app_dir: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // The window session is read before any window exists and reopened before the event
+    // loop runs, so that by the time one window's frontend executes a line of JavaScript
+    // every window of the session is already there. `tauri.conf.json` marks its window
+    // `"create": false` for exactly this: every window, including the first, is built here
+    // from that config under the label its tabs are stored beside.
+    app.manage(commands::windows::SessionStore::open(app_dir));
+    // The numbers the windows wear, seeded as they are rebuilt. Managed before `restore`
+    // so a restored window's saved number is the one it keeps.
+    app.manage(commands::windows::Ordinals::default());
+    commands::windows::restore(app.handle())?;
+
+    // The tray goes up last, so that everything its Quit has to release cleanly — the
+    // factory, the journal, the MCP listener — is already in place before the user can
+    // ask for it. Closing the last window hides it to this tray by default, which is what
+    // keeps the MCP endpoint answering while no window is open.
+    commands::tray::install(app.handle());
+    Ok(())
 }

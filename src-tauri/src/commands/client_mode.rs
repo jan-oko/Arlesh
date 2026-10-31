@@ -167,3 +167,18 @@ pub fn status_notifier<R: Runtime>(app: &tauri::AppHandle<R>) -> StatusNotify {
         }
     })
 }
+
+/// Holds no connection while the app is in the background: the change stream stops when the app is
+/// suspended and is followed again, `/health` checked, when it is resumed. Standalone has no
+/// stream to stop, and so no `Follower` to find.
+#[cfg(mobile)]
+pub fn on_lifecycle<R: Runtime>(window: &tauri::Window<R>, event: &tauri::WindowEvent) {
+    let Some(follower) = window.app_handle().try_state::<crate::backend::http::events::Follower>() else {
+        return;
+    };
+    match event {
+        tauri::WindowEvent::Suspended => follower.suspend(),
+        tauri::WindowEvent::Resumed => follower.resume(),
+        _ => {}
+    }
+}

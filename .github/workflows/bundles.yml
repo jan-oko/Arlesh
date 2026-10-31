@@ -27,11 +27,13 @@ name: Bundles
 # ci, build scripts and the compiler with a read-only token and hand their
 # output over as workflow artifacts (kept 30 days, which also gives every master
 # commit its own downloadable build); `release` holds contents: write and runs
-# nothing but gh. `meta` reads the version once, for all three.
+# nothing but gh. `meta` reads the version once, for all of them.
 #
-# Nothing is signed; there are no secrets beyond the default GITHUB_TOKEN. On
-# Windows that means SmartScreen warns on first run ("Windows protected your
-# PC" → More info → Run anyway); signing is a separate piece of work.
+# The desktop bundles are not signed. The Android APK is, with the release key held in the
+# ANDROID_KEYSTORE_* secrets, and only the step that signs it can read them: the build before it
+# runs npm ci, build scripts and Gradle with none. On Windows the lack of signing means
+# SmartScreen warns on first run ("Windows protected your PC" → More info → Run anyway); signing
+# is a separate piece of work.
 #
 # It builds on ubuntu-22.04 deliberately. A Linux binary links against the glibc
 # of the machine that built it and runs on that version or newer, not older.
@@ -279,9 +281,91 @@ jobs:
           retention-days: 30
           compression-level: 0
 
+  # The Android app: Client mode only (the cargo `standalone` feature off), arm64 only, as a
+  # universal-named APK signed with the release key. ubuntu-latest has the Android SDK and an NDK
+  # installed already, so nothing large is downloaded; the disk it has is cleared of what a
+  # build here never touches (.NET, GHC, CodeQL) before the NDK, Gradle and cargo fill it.
+  build-android:
+    name: tauri build · android apk
+    needs: meta
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
+      # AGP 8.11 and Gradle 8.14 (gen/android) run on 17 through 24; pinned rather than inherited.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Show toolchain
+        run: |
+          rustc --version
+          rustup target add aarch64-linux-android
+          echo "NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+          echo "NDK: $ANDROID_NDK_HOME"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> src-tauri/target"
+          shared-key: release-bundles-android-arm64
+
+      # The Android build is Client-only: no SQLite core, no local MCP endpoint.
+      - name: tauri build
+        run: npx tauri android build --apk --target aarch64 --ci -- --no-default-features
+
+      # Signs with the key from the secrets, and nothing before this step could read them. The
+      # passwords go through files, never the command line.
+      - name: Sign and stage under the stable name
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/bundles"
+          mkdir -p "$out"
+          secrets="$RUNNER_TEMP/android-signing"
+          mkdir -m 700 "$secrets"
+          printf %s "$KEYSTORE_BASE64" | base64 -d > "$secrets/release.jks"
+          printf %s "$KEYSTORE_PASSWORD" > "$secrets/store-password"
+          printf %s "$KEY_PASSWORD" > "$secrets/key-password"
+          unsigned=$(find src-tauri/gen/android/app/build/outputs/apk -name '*-release-unsigned.apk' | head -1)
+          [ -n "$unsigned" ] || { echo "::error::the build produced no unsigned release APK"; find src-tauri/gen/android/app/build/outputs; exit 1; }
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
+          "$apksigner" sign --ks "$secrets/release.jks" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass "file:$secrets/store-password" --key-pass "file:$secrets/key-password" \
+            --out "$out/arlesh-android-arm64.apk" "$unsigned"
+          "$apksigner" verify --print-certs "$out/arlesh-android-arm64.apk" | grep -v "SHA"
+          rm -rf "$secrets"
+          ls -la "$out"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arlesh-${{ needs.meta.outputs.version }}-${{ needs.meta.outputs.sha }}-android-apk
+          path: ${{ runner.temp }}/bundles/*.apk
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
   release:
     name: publish · github release
-    needs: [meta, build, build-windows]
+    needs: [meta, build, build-windows, build-android]
     # A dispatch with `publish` off stops at the artifacts.
     if: github.event_name != 'workflow_dispatch' || inputs.publish
     runs-on: ubuntu-latest
@@ -314,8 +398,8 @@ jobs:
 
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             # Arlesh-linux-x86_64.AppImage -> Arlesh-0.3.0-linux-x86_64.AppImage,
-            # and the same for the Windows installers.
-            for f in *; do mv "$f" "$(sed -E "s/-(linux|windows)-/-$VERSION-\1-/" <<<"$f")"; done
+            # and the same for the Windows installers and the Android APK.
+            for f in *; do mv "$f" "$(sed -E "s/-(linux|windows|android)-/-$VERSION-\1-/" <<<"$f")"; done
             ls -la
             if ! gh release view "$TAG" >/dev/null 2>&1; then
               gh release create "$TAG" --verify-tag \

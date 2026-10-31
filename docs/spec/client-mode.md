@@ -144,6 +144,29 @@ Credential Manager, the Secret Service on Linux), filed under the server's URL. 
 available, Settings → Server says so and offers to keep the token in `server-token` in the app's
 data directory, readable by its owner only (mode 0600); it is not stored until the user ticks that.
 
+## Android
+
+The Android app (Task `3d6`) is the Client-mode app on a phone, built with the cargo `standalone`
+feature **off**: it has no SQLite core and no local MCP endpoint, and agents use the server's
+`/mcp`. It ships as `arlesh-android-arm64.apk` on the GitHub release, signed with the project's
+release key; there is no Play Store.
+
+- **First run** goes straight to *Connect to a server*. There is no Standalone option, and the
+  setting cannot be dismissed until a server is chosen.
+- **The token** is kept in `server-token` in the app's private storage, which no other app can read.
+  Android has no keychain the `keyring` crate reaches, so the vault always uses the file there and
+  asks for no consent.
+- **One window.** No tabs to tear off, no tray, no close-to-tray: those commands answer with the
+  single window (`commands/mobile_shell.rs`).
+- **System back** closes the topmost sheet; otherwise leaves the stepped-into node; otherwise goes
+  up a scope in the Plan View; and only at the root leaves the app. It never deselects.
+- **Foreground only.** When the app is suspended the change stream is dropped, so no connection is
+  held in the background. When it resumes the stream is opened again, `/health` is checked and the
+  windows reload.
+- **The soft keyboard** shrinks the page (the activity pads its content by the keyboard's inset),
+  so sheets resize above it. Enter confirms in the editors, as on the desktop.
+- **The touch layout** is a separate Task (`201`); this one only builds and wires the platform.
+
 ## Versions
 
 `/health` reports `api_version`, an integer bumped only on a breaking change, and the build commit.

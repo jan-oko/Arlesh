@@ -37,8 +37,19 @@ pub struct Startup {
 ///
 /// A device that already has a database and no setting is an install from before Client mode
 /// existed: it is Standalone, and nobody is asked.
-pub fn startup(saved: Option<Mode>, database_exists: bool) -> Startup {
+///
+/// A build without Standalone (`standalone_built` false: the Android app) has no such mode to
+/// start in. Until a server is chosen it runs as a Client of no server at all (an empty URL), and
+/// the question it asks is only *which server*.
+pub fn startup(saved: Option<Mode>, database_exists: bool, standalone_built: bool) -> Startup {
     match saved {
+        Some(Mode::Standalone) | None if !standalone_built => Startup {
+            mode: Mode::Client {
+                url: String::new(),
+                token_in_file: false,
+            },
+            first_run: true,
+        },
         Some(mode) => Startup {
             mode,
             first_run: false,
