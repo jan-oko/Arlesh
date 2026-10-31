@@ -70,7 +70,7 @@ const KEYBOARD_PAN_STEP = 80;
 
 export default function MindmapView() {
   const { t } = useTranslation(["common", "editor", "warnings", "nodeKinds", "undo"]);
-  const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, reorderNode, moveNode, duplicateNode, removeNode, createCommitment, createFlow, reload } =
+  const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, reorderNode, moveNode, duplicateNode, pasteNodes, insertParent, removeNode, createCommitment, createFlow, reload } =
     useMindmapData();
   const {
     selectedNodeId, selectedNodeIds, subtreeRootId, collapsedNodeIds, expandedHabitGroupIds, pendingToast,
@@ -396,7 +396,7 @@ export default function MindmapView() {
     onStatusClick, onToggleStarted, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling, onInsertParent,
     onDelete, onPaste, occurrencePrompt, confirmOccurrence, cancelOccurrence,
   } = useNodeActions({
-    tree, clipboard, moveNode, duplicateNode, onRequestDelete: setDeleteTargets, reload, renameNode,
+    tree, clipboard, moveNode, duplicateNode, pasteNodes, insertParent, onRequestDelete: setDeleteTargets, reload, renameNode,
     createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewHabit, onNewCommitment,
   });
 

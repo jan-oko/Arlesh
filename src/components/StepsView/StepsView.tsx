@@ -104,7 +104,7 @@ function steppedZoom(zoom: StepsZoom, direction: 1 | -1): StepsZoom {
 export default function StepsView() {
   const { t } = useTranslation(["common", "stepsView", "warnings"]);
   const {
-    tree, isLoading, error, reload, createChild, createNode, renameNode, moveNode, duplicateNode, removeNode,
+    tree, isLoading, error, reload, createChild, createNode, renameNode, moveNode, duplicateNode, pasteNodes, insertParent, removeNode,
     createCommitment, createFlow,
   } = useMindmapData();
   const clipboard = useClipboardStore((s) => s.clipboard);
@@ -266,7 +266,7 @@ export default function StepsView() {
   // The Mindmap's creation and deletion actions, whole: the type rules, the parent rules, the
   // refusals and the undo Gestures all come with them.
   const actions = useNodeActions({
-    tree, clipboard, moveNode, duplicateNode, reload, renameNode, createNode, createChild, setClipboard,
+    tree, clipboard, moveNode, duplicateNode, pasteNodes, insertParent, reload, renameNode, createNode, createChild, setClipboard,
     showToast, setEditingNodeId,
     onRequestDelete: (ids) => { const first = ids[0]; if (first !== undefined) requestDelete(first); },
     selectNode: selectCreated,

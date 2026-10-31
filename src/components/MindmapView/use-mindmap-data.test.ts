@@ -1221,6 +1221,58 @@ describe("useMindmapData — mutations", () => {
     });
   });
 
+  describe("pasteNodes", () => {
+    it("copies every node in one paste gesture, each a position further on", async () => {
+      setupInvoke({ run_gesture: [{ id: 9, left_behind: [] }, { id: 10, left_behind: [] }] });
+      const { result } = await loadedHook();
+
+      await act(async () => {
+        await result.current.pasteNodes(
+          [{ id: "task-1", kind: "task" }, { id: "goal-1", kind: "goal" }], "goal-1", "goal", 3, true,
+        );
+      });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("run_gesture", {
+        name: "paste",
+        steps: [
+          { op: "duplicate", kind: "task", id: 1, parent_kind: "goal", parent_id: 1, position: 3 },
+          { op: "duplicate", kind: "goal", id: 1, parent_kind: "goal", parent_id: 1, position: 4 },
+        ],
+      });
+    });
+
+    it("moves on a cut", async () => {
+      setupInvoke({ run_gesture: [{ id: 1 }] });
+      const { result } = await loadedHook();
+
+      await act(async () => { await result.current.pasteNodes([{ id: "task-1", kind: "task" }], "goal-1", "goal", 0, false); });
+
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("run_gesture", {
+        name: "paste",
+        steps: [{ op: "move", kind: "task", id: 1, parent_kind: "goal", parent: 1, position: 0 }],
+      });
+    });
+  });
+
+  describe("insertParent", () => {
+    it("makes the parent and moves the node under it in one gesture, answering the new node", async () => {
+      setupInvoke({ run_gesture: [{ id: 42 }, { id: 1 }] });
+      const { result } = await loadedHook();
+
+      let made = "";
+      await act(async () => { made = await result.current.insertParent("task-1", "task", "goal-1", "goal"); });
+
+      expect(made).toBe("goal-42");
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("run_gesture", {
+        name: "insert-parent",
+        steps: [
+          { op: "create_goal", request: { title: "", parent_type: "goal", parent_id: 1 } },
+          { op: "move", kind: "task", id: 1, parent_kind: "goal", parent: { step: 0 }, position: 0 },
+        ],
+      });
+    });
+  });
+
   describe("removeNode", () => {
     it("goal: deletes it by its db id, as one gesture operation", async () => {
       setupInvoke({ delete_nodes: undefined });
