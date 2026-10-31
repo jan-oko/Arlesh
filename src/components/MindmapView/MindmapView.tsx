@@ -12,12 +12,13 @@ import { useNavigateArrow } from "./use-navigate-arrow";
 import { useKeyboardMindmap } from "./use-keyboard-mindmap";
 import { useUndo } from "@/hooks/use-undo";
 import { withGesture } from "@/api/gesture";
+import { runGesture } from "@/api/multi-node-gestures";
+import type { GestureStep } from "@/api/multi-node-gestures";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useClipboardStore, CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 import { useTabsStore } from "@/stores/use-tabs-store";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
-import { updateTask, reparentScopeConflicts } from "@/api/tasks";
-import { updateGoal } from "@/api/goals";
+import { reparentScopeConflicts } from "@/api/tasks";
 import { getErrorMessage } from "@/api/errors";
 import { findNode, findParent, collectTasksAndGoals, collectSubtreePostOrder, computeShiftSelectRange, conversionNeedsConfirm, canConvertNodeToFlow } from "@/utils/mindmap-tree";
 import { storedSubtreeBase } from "@/utils/drawn-path";
@@ -260,29 +261,35 @@ export default function MindmapView() {
   // move without them would leave the scopes the drag rewrote sitting at their clamped values.
   const guardedMoveNode = useCallback(
     async (id: string, kind: NodeKind, parentId: string, parentKind: NodeKind, position: number) => {
-      await withGesture(t("undo:gestures.move", { count: 1 }), async () => {
-        const clamps = kind === "task" || kind === "goal";
-        const nodeDbId = clamps ? rowIdOfNodeId(tree, id) : null;
-        const parentDbId = clamps ? rowIdOfNodeId(tree, parentId) : null;
-        // A Habit occurrence has no stored Time Scope to clamp against: moving one is refused by the
-        // backend, and a row moved onto one takes its iteration's window there.
-        if (clamps && typeof nodeDbId === "number" && typeof parentDbId === "number") {
-          const { ancestor_time_scope, conflicts } = await reparentScopeConflicts(kind, nodeDbId, parentKind, parentDbId);
-          if (ancestor_time_scope !== null && conflicts.length > 0) {
-            if (!(await confirmScopeClamp(conflicts))) return;
-            for (const conflict of conflicts) {
-              if (conflict.node_type === "goal") {
-                await updateGoal(conflict.node_id, { time_scope: ancestor_time_scope });
-              } else {
-                await updateTask(conflict.node_id, { time_scope: ancestor_time_scope });
-              }
-            }
+      const clamps = kind === "task" || kind === "goal";
+      const nodeDbId = clamps ? rowIdOfNodeId(tree, id) : null;
+      const parentDbId = clamps ? rowIdOfNodeId(tree, parentId) : null;
+      const steps: GestureStep[] = [];
+      // A Habit occurrence has no stored Time Scope to clamp against: moving one is refused by the
+      // backend, and a row moved onto one takes its iteration's window there.
+      if (clamps && typeof nodeDbId === "number" && typeof parentDbId === "number") {
+        const { ancestor_time_scope, conflicts } = await reparentScopeConflicts(kind, nodeDbId, parentKind, parentDbId);
+        if (ancestor_time_scope !== null && conflicts.length > 0) {
+          if (!(await confirmScopeClamp(conflicts))) return;
+          for (const conflict of conflicts) {
+            steps.push({
+              op: conflict.node_type === "goal" ? "update_goal" : "update_task",
+              id: conflict.node_id,
+              request: { time_scope: ancestor_time_scope },
+            });
           }
         }
-        await moveNode(id, kind, parentId, parentKind, position);
+      }
+      steps.push({
+        op: "move", kind, id: rowIdOfNodeId(tree, id), parent_kind: parentKind,
+        parent: rowIdOfNodeId(tree, parentId), position,
       });
+      // One gesture operation: the clamps only exist because of the move, so they and the move
+      // are one request and one undo step.
+      await withGesture(t("undo:gestures.move", { count: 1 }), () => runGesture("move-node", steps));
+      await reload();
     },
-    [confirmScopeClamp, moveNode, t, tree],
+    [confirmScopeClamp, reload, t, tree],
   );
 
   const { dragSourceId, dragTargetId, ghostPos, onDragStart } = useDrag({ tree, moveNode: guardedMoveNode });
