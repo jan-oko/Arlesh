@@ -58,6 +58,7 @@ import StepCreateMenu from "./StepCreateMenu";
 import { useKeyboardStepsView } from "./use-keyboard-steps-view";
 import { useStepGrid } from "./use-step-grid";
 import styles from "./StepsView.module.css";
+import { usePublishSelection } from "@/hooks/use-publish-selection";
 
 /**
  * What the Steps View has picked, held as **the card's node id** rather than its place in the grid.
@@ -217,6 +218,7 @@ export default function StepsView() {
     return pageChildren[cursor.index] ?? null;
   }
   const selectedNode = cursorNode();
+  usePublishSelection(selectedNode === null ? [] : [selectedNode.kind]);
 
   const { cycleStatus, toggleStarted, occurrencePrompt, confirmOccurrence, cancelOccurrence } = useStatusCycle({
     findNode: (id) => findNode(tree, id), reload, showToast,

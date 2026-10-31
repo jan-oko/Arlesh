@@ -77,3 +77,15 @@
   color: var(--text-primary);
   opacity: 1;
 }
+
+/* The phone layout (docs/spec/touch.md): a path header sticks to the top while its rows scroll
+   beneath it, so a row far down still says where it lives. */
+@media (max-width: 699.98px) {
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding-bottom: var(--space-1);
+    background: var(--canvas-bg);
+  }
+}

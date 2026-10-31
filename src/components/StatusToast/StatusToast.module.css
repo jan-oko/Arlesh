@@ -11,7 +11,8 @@
 .toast {
   position: fixed;
   left: 50%;
-  bottom: var(--space-6);
+  /* Above the phone layout's action bar and bottom navigation, which publish their height. */
+  bottom: calc(var(--bottom-chrome-height, 0px) + var(--space-6));
   transform: translateX(-50%);
   /* Bounded by the viewport itself, so the box can never reach either edge however long the
      message is — the refusal messages name a kind and every parent it would have been legal

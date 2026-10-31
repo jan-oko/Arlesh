@@ -184,3 +184,24 @@
   font-size: var(--text-sm);
   color: var(--text-primary);
 }
+
+/* The phone layout (docs/spec/touch.md; the breakpoint is `PHONE_LAYOUT_QUERY`): the keyboard sheet fills the screen. */
+@media (max-width: 699.98px) {
+  .overlay {
+    align-items: stretch;
+    padding: 0;
+  }
+  .modal {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+    border: none;
+    overflow-y: auto;
+    padding-top: max(var(--space-4), env(safe-area-inset-top));
+    padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  }
+}

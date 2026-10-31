@@ -133,3 +133,26 @@
   color: var(--text-primary);
   border-color: var(--node-border-selected);
 }
+
+/* The phone layout (docs/spec/touch.md): a row takes two lines — the title on the first, its badges
+   and tags on the second — and a shallower indent, so a nested title keeps its room. */
+@media (max-width: 699.98px) {
+  .card {
+    --row-indent: calc(min(var(--row-depth, 0), 4) * var(--space-3));
+    gap: var(--space-3);
+    padding: var(--space-3);
+  }
+
+  .titleRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+
+  .title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+}

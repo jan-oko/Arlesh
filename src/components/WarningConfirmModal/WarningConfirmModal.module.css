@@ -81,3 +81,22 @@
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
 }
+
+/* The phone layout (docs/spec/touch.md; the breakpoint is `PHONE_LAYOUT_QUERY`): the prompt rises from the bottom as a sheet. */
+@media (max-width: 699.98px) {
+  .overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .modal {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    max-height: 85vh;
+    overflow-y: auto;
+    border-radius: 16px 16px 0 0;
+    border-bottom: none;
+    padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  }
+}

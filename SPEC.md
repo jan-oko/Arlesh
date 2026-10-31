@@ -48,6 +48,7 @@ so a change to what a node *is* belongs above, and a change to how it is *shown*
 | [Plan View](docs/spec/plan-view.md) | Scope-by-scope triage: the two panes, the Backlog switch, the containment refusal, walking the scopes |
 | [Steps View](docs/spec/steps-view.md) | One Step at a time: the header card, what a card carries, descending and climbing, pages and zoom |
 | [Zen View](docs/spec/zen-view.md) | What is in progress, and nothing else: the size-to-fit card grid under Do, the Commitments and Expectations strips, 2D keys |
+| [Phone Layout & Touch](docs/spec/touch.md) | The width, touch and touch-only axes; the phone layout (bottom navigation, preset chip, sheets); the context action bar; the command palette generated from the hotkey registry; the gestures |
 
 ### Everything else
 
