@@ -343,8 +343,8 @@ jobs:
           secrets="$RUNNER_TEMP/android-signing"
           mkdir -m 700 "$secrets"
           printf %s "$KEYSTORE_BASE64" | base64 -d > "$secrets/release.jks"
-          printf %s "$KEYSTORE_PASSWORD" > "$secrets/store-password"
-          printf %s "$KEY_PASSWORD" > "$secrets/key-password"
+          printf '%s\n' "$KEYSTORE_PASSWORD" > "$secrets/store-password"
+          printf '%s\n' "$KEY_PASSWORD" > "$secrets/key-password"
           unsigned=$(find src-tauri/gen/android/app/build/outputs/apk -name '*-release-unsigned.apk' | head -1)
           [ -n "$unsigned" ] || { echo "::error::the build produced no unsigned release APK"; find src-tauri/gen/android/app/build/outputs; exit 1; }
           apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"

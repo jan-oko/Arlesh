@@ -173,7 +173,10 @@ pub fn status_notifier<R: Runtime>(app: &tauri::AppHandle<R>) -> StatusNotify {
 /// stream to stop, and so no `Follower` to find.
 #[cfg(mobile)]
 pub fn on_lifecycle<R: Runtime>(window: &tauri::Window<R>, event: &tauri::WindowEvent) {
-    let Some(follower) = window.app_handle().try_state::<crate::backend::http::events::Follower>() else {
+    let Some(follower) = window
+        .app_handle()
+        .try_state::<crate::backend::http::events::Follower>()
+    else {
         return;
     };
     match event {

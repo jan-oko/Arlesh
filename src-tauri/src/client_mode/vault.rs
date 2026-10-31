@@ -94,7 +94,9 @@ fn load_from_keychain(_url: &str) -> Result<Option<String>, VaultError> {
 
 #[cfg(target_os = "android")]
 fn no_keychain() -> VaultError {
-    VaultError::File(std::io::Error::other("Android has no keychain; the token is kept in a file"))
+    VaultError::File(std::io::Error::other(
+        "Android has no keychain; the token is kept in a file",
+    ))
 }
 
 fn file(app_dir: &Path) -> PathBuf {

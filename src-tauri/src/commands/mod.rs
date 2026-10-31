@@ -25,14 +25,13 @@ pub mod tasks;
 #[cfg(desktop)]
 pub mod tray;
 
+#[cfg(mobile)]
+pub mod mobile_shell;
 pub mod undo;
 /// Tabs, tear-off windows and the saved window session are desktop-only.
 #[cfg(desktop)]
 pub mod windows;
 #[cfg(mobile)]
-pub mod mobile_shell;
-#[cfg(mobile)]
 pub use mobile_shell as tray;
 #[cfg(mobile)]
 pub use mobile_shell as windows;
-
