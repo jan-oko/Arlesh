@@ -32,7 +32,7 @@ def test_an_update_changes_only_what_it_names_and_null_clears(
 
     assert renamed.json()["title"] == "Renamed"
     assert renamed.json()["time_scope"]["start_id"] == {"kind": "day", "date": "2026-06-10"}
-    assert cleared.json()["time_scope"] is None
+    assert "time_scope" not in cleared.json()
     assert cleared.json()["title"] == "Renamed"
 
 
