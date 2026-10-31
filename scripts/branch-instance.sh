@@ -10,6 +10,7 @@
 #   scripts/branch-instance.sh clean [name ... | all]   # default: all
 #   scripts/branch-instance.sh server start <name>      # arlesh-server from worktree <name>
 #   scripts/branch-instance.sh server stop  [name ... | all]
+#   scripts/branch-instance.sh server token <name> <args...>   # arlesh-server token <args...> on that server
 #
 # Servers, for Client mode (Task 9f0): `server start <name>` runs `arlesh-server` from worktree
 # <name>'s own code: the bindings are built into that worktree's own venv (uv, maturin develop, the
@@ -26,6 +27,12 @@
 # instance's 0600 token file and is never printed. `--standalone` writes the instance back to
 # Standalone; with neither, the instance keeps whichever mode it had. An app branch from before
 # Client mode ignores mode.json and runs Standalone whatever it says.
+#
+# `server start` ends with a block giving the server's URL and a token for the client `cli`
+# (revoked and re-added on every start, so the printed one always works). That block is the only
+# place a token is printed, and it is not written to any log. `server token <name> add phone`,
+# `… list`, `… revoke phone` run `arlesh-server token <args>` against that server's database, from
+# its worktree's venv, with the arguments passed through untouched.
 #
 # `all` means every worktree. `run all` launches each built instance at once, detached, so the
 # branches can be compared side by side and survive the shell that started them.
@@ -543,14 +550,38 @@ standalone_instance() {
   printf '  %-28s Standalone\n' "$1"
 }
 
+# Runs `arlesh-server token <args>` against server <name>'s database from its worktree's venv.
+server_token() {
+  local name="$1"; shift
+  local wt dir
+  wt="$(worktree_path "$name")"
+  dir="$(server_dir "$name")"
+  [ -x "$wt/crates/arlesh-py/.venv/bin/arlesh-server" ] && [ -f "$dir/data/arlesh.db" ] ||
+    die "Server '$name' has no venv or data yet. Run: $0 server start $name"
+  ( cd "$wt/crates/arlesh-py" && uv run --no-sync arlesh-server token "$@" --db "$dir/data/arlesh.db" )
+}
+
+# The connection block `server start` ends with: the one place a token is printed.
+print_connection() {
+  local name="$1" token
+  token="$(server_token "$name" revoke cli >/dev/null 2>&1; server_token "$name" add cli)" ||
+    die "Could not mint a token on server '$name'."
+  printf '\n── arlesh-server %s ──\nURL:   http://127.0.0.1:%s\nToken: %s   (client "cli")\n' \
+    "$name" "$(server_port_for "$name")" "$token"
+}
+
 cmd_server() {
   local sub="${1:-}"; shift || true
   case "$sub" in
     start)
       [ "$#" -eq 1 ] || die "Usage: $0 server start <name>"
-      server_start "$1" ;;
+      server_start "$1"
+      print_connection "$1" ;;
     stop) server_stop "$@" ;;
-    *) die "Usage: $0 server {start <name> | stop [name...|all]}" ;;
+    token)
+      [ "$#" -ge 2 ] || die "Usage: $0 server token <name> <arlesh-server token args...>"
+      server_token "$@" ;;
+    *) die "Usage: $0 server {start <name> | stop [name...|all] | token <name> <args...>}" ;;
   esac
 }
 
@@ -591,5 +622,5 @@ case "${1:-list}" in
          if [ "$#" -eq 0 ] || { [ "$#" -eq 1 ] && [ "$1" = "all" ]; }; then server_stop all; fi ;;
   server) shift; cmd_server "$@" ;;
   clean) shift; cmd_clean "$@" ;;
-  *)     die "Usage: $0 {list | build [name...|all] | run <name|all> [--server <name>|--standalone] | start <name|all> [--server <name>|--standalone] | stop [name...|all] | clean [name...|all] | server {start <name>|stop [name...|all]}}" ;;
+  *)     die "Usage: $0 {list | build [name...|all] | run <name|all> [--server <name>|--standalone] | start <name|all> [--server <name>|--standalone] | stop [name...|all] | clean [name...|all] | server {start <name>|stop [name...|all]|token <name> <args...>}}" ;;
 esac
