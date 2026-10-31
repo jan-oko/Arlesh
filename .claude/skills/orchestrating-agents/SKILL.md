@@ -88,8 +88,15 @@ are listed at the end.
    - **One fresh agent per PR or review round.** Hand it a short written handover (worktree,
      branch, head, uncommitted files, done / left, rulings) instead of `SendMessage`-resuming a
      long transcript. Resume only for a small follow-up while the context is still small.
-   - **`model: "sonnet"` on every Agent call** unless the user names another model. Reserve
-     stronger models for work the user asks for by name.
+   - **Pick the model by role.** User: *"sonnet specifically for implementation subagents.
+     Architecture and Design belong with opus. When they require a heavy exploration phase, a
+     sonnet explorer should report to the opus designer."*
+     - Implementation (code, wiring, rebases, CI fixes): `model: "sonnet"`.
+     - Architecture and design (ADRs, specs, design proposals, seams, data models):
+       `model: "opus"`.
+     - Design that needs heavy exploration: a `sonnet` explorer maps the code first and
+       reports a compact summary; the `opus` designer works from that summary rather than
+       exploring itself.
    - **Read by symbol, not by file.** Brief agents to locate code with Serena
      (`get_symbols_overview`, `find_symbol`, `find_referencing_symbols`) and `Read` with
      `offset`/`limit`; whole-file reads of `flows/mod.rs` (~4k lines) or `tasks/mod.rs` are
