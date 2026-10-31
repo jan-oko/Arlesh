@@ -136,7 +136,7 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 | `/nodes/{kind}/{id}` | `/tags/{tag_id}` (`PUT` and `DELETE`), `/block-reasons`, `POST /scope-containment-conflicts` (the body a Time Scope) and `GET /reparent-conflicts?parent_type=&parent_id=`: what-ifs that write nothing |
 | `/capacity` | The agent capacity lock: `GET`, and `PUT` with `{"at_capacity": …}`. One lock per database file, shared by every route and every client's MCP endpoint |
 | `/undo`, `/redo` | `GET /undo` (what the calling client's next undo and redo would be), `POST /undo`, `POST /redo`: the calling client's own stacks. `null` when there is nothing to take back |
-| `/gestures` | The gesture operations: each gesture the app makes over several nodes, as one request — one transaction, one undo step. `POST /delete-nodes` (the body a list of `{kind, id}`) |
+| `/gestures` | The gesture operations: each gesture the app makes over several commands, as one request — one transaction, one undo step. `POST /delete-nodes` (the body a list of `{kind, id}`), and `POST /paste`, `/insert-parent`, `/move-node`, `/plan-tasks`, `/plan-move`, `/save-task`, `/save-goal`, `/save-commitment`, `/save-project`, `/save-wait`, `/save-flow`, `/save-flow-item` and `/new-flow`, each with the gesture's writes as its body and answering each write's result (see [Client Mode](client-mode.md), *Undo*) |
 | `/mcp-access` | The MCP roots: `GET` (what the MCP can see), `GET /catalogue`, `PUT` and `DELETE /roots/{node_kind}/{node_id}` |
 | `/scopes` | `GET /containing?kind=&date=`, `POST /resolve?now=` (the body is a scope key) |
 | `/rules` | `POST /item-state`, `POST /commitment-state`: the derived lifecycles |

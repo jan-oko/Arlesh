@@ -211,3 +211,286 @@ async fn a_kind_that_is_not_deletable_or_not_stored_is_refused() {
     assert!(derived_flow.is_err());
     assert!(bad_item.is_err());
 }
+
+// ---- Gesture operations made of listed writes ------------------------------------------------
+
+/// Runs the gesture `name` from its writes as JSON, as the frontend sends them.
+async fn gesture(
+    app: &tauri::App<tauri::test::MockRuntime>,
+    name: &str,
+    steps: serde_json::Value,
+) -> Result<Vec<serde_json::Value>, arlesh_lib::error::WireError> {
+    node_gestures::run_gesture(
+        app.state(),
+        serde_json::from_value(serde_json::json!(name)).expect("a gesture name"),
+        serde_json::from_value(steps).expect("gesture steps"),
+    )
+    .await
+}
+
+fn id_of(answer: &serde_json::Value) -> i64 {
+    answer["id"].as_i64().expect("an id")
+}
+
+#[tokio::test]
+async fn paste_copies_and_moves_each_kind_under_its_target() {
+    use serde_json::json;
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let target = task(&app, "Target").await;
+    let moved = task(&app, "Moved").await;
+    let copied = task(&app, "Copied").await;
+    let made = gesture(
+        &app,
+        "insert-parent",
+        json!([
+            { "op": "create_goal", "request": { "title": "Goal", "parent_type": "domain", "parent_id": 1 } },
+            { "op": "create_info", "request": { "body": "Note", "parent_type": "domain", "parent_id": 1, "position": 0 } },
+            { "op": "create_domain", "request": { "title": "Project", "description": null, "subtype": "project", "parent_id": 1, "status": null, "knowledge_base_directory": null } },
+        ]),
+    )
+    .await
+    .unwrap();
+    let (goal, info, project) = (id_of(&made[0]), id_of(&made[1]), id_of(&made[2]));
+    let target_id = target.id.stored().unwrap();
+
+    let answers = gesture(
+        &app,
+        "paste",
+        json!([
+            { "op": "move", "kind": "task", "id": moved.id, "parent_kind": "task", "parent": target_id, "position": 0 },
+            { "op": "duplicate", "kind": "task", "id": copied.id, "parent_kind": "task", "parent_id": target_id, "position": 1 },
+            { "op": "duplicate", "kind": "goal", "id": goal, "parent_kind": "project", "parent_id": project, "position": 0 },
+            { "op": "duplicate", "kind": "info", "id": info, "parent_kind": "task", "parent_id": target_id, "position": 2 },
+            { "op": "duplicate", "kind": "project", "id": project, "parent_kind": "domain", "parent_id": 1, "position": 9 },
+            { "op": "move", "kind": "goal", "id": goal, "parent_kind": "project", "parent": project, "position": 1 },
+            { "op": "move", "kind": "info", "id": info, "parent_kind": "goal", "parent": goal, "position": 0 },
+            { "op": "move", "kind": "project", "id": project, "parent_kind": "domain", "parent": 1, "position": 3 },
+        ]),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(answers.len(), 8);
+    let moved_task = task_commands::get_task(app.state(), moved.id.stored().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(moved_task.task.parent_id, target.id);
+    assert_eq!(answers[1]["left_behind"], json!([]));
+}
+
+#[tokio::test]
+async fn a_write_can_name_the_node_an_earlier_write_made() {
+    use serde_json::json;
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let child = task(&app, "Child").await;
+
+    let answers = gesture(
+        &app,
+        "insert-parent",
+        json!([
+            { "op": "create_task", "request": { "title": "Parent", "parent_type": "domain", "parent_id": 1 } },
+            { "op": "move", "kind": "task", "id": child.id, "parent_kind": "task", "parent": { "step": 0 }, "position": 0 },
+        ]),
+    )
+    .await
+    .unwrap();
+
+    let moved = task_commands::get_task(app.state(), child.id.stored().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(moved.task.parent_id, id_of(&answers[0]));
+}
+
+#[tokio::test]
+async fn a_gesture_refuses_a_write_it_does_not_make_and_a_bad_reference() {
+    use serde_json::json;
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let first = task(&app, "First").await;
+
+    let stray = gesture(
+        &app,
+        "paste",
+        json!([{ "op": "delete", "node": { "kind": "task", "id": first.id } }]),
+    )
+    .await;
+    let dangling = gesture(
+        &app,
+        "save-task",
+        json!([{ "op": "update_task", "id": { "step": 3 }, "request": { "title": "x" } }]),
+    )
+    .await;
+    let not_made = gesture(
+        &app,
+        "save-task",
+        json!([
+            { "op": "set_block_reasons", "owner_type": "task", "id": first.id, "reasons": [] },
+            { "op": "update_task", "id": { "step": 0 }, "request": { "title": "x" } },
+        ]),
+    )
+    .await;
+
+    assert!(stray.is_err());
+    assert!(dangling.is_err());
+    assert!(not_made.is_err());
+    assert!(exists(&app, &first).await);
+}
+
+#[tokio::test]
+async fn a_write_that_may_be_refused_is_taken_back_alone_and_the_rest_lands() {
+    use serde_json::json;
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let kept = task(&app, "Kept").await;
+
+    let answers = gesture(
+        &app,
+        "plan-tasks",
+        json!([
+            { "op": "update_task", "id": 99999, "request": { "title": "nobody" }, "may_be_refused": true },
+            { "op": "update_task", "id": kept.id, "request": { "title": "Renamed" }, "may_be_refused": true },
+        ]),
+    )
+    .await
+    .unwrap();
+
+    assert!(answers[0].get("refused").is_some());
+    let renamed = task_commands::get_task(app.state(), kept.id.stored().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(renamed.task.title, "Renamed");
+}
+
+#[tokio::test]
+async fn a_task_save_writes_the_task_and_what_hangs_on_it_together() {
+    use serde_json::json;
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let saved = task(&app, "Saved").await;
+    let prerequisite = task(&app, "Prerequisite").await;
+    let made = gesture(
+        &app,
+        "save-project",
+        json!([
+            { "op": "create_domain", "request": { "title": "Tag", "description": null, "subtype": "tag", "parent_id": 1, "status": null, "knowledge_base_directory": null } },
+            { "op": "update_domain", "id": { "step": 0 }, "request": { "title": "Renamed tag" } },
+        ]),
+    )
+    .await
+    .unwrap();
+    let tag = id_of(&made[0]);
+
+    gesture(
+        &app,
+        "save-task",
+        json!([
+            { "op": "update_task", "id": saved.id, "request": { "title": "Saved again", "status": { "kind": "ordinary", "status": "done" } } },
+            { "op": "set_task_done_at", "id": saved.id, "at": "2026-09-26T19:00:00" },
+            { "op": "set_block_reasons", "owner_type": "task", "id": saved.id, "reasons": ["Waiting"] },
+            { "op": "set_tag", "kind": "task", "id": saved.id, "tag_id": tag, "present": true },
+            { "op": "set_task_dependency", "task_id": saved.id, "dependency": { "type": "task", "id": prerequisite.id }, "present": true },
+            { "op": "set_task_dependency", "task_id": saved.id, "dependency": { "type": "task", "id": prerequisite.id }, "present": false },
+            { "op": "set_tag", "kind": "task", "id": saved.id, "tag_id": tag, "present": false },
+        ]),
+    )
+    .await
+    .unwrap();
+
+    let read = task_commands::get_task(app.state(), saved.id.stored().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(read.task.title, "Saved again");
+}
+
+#[tokio::test]
+async fn the_goal_wait_and_info_saves() {
+    use serde_json::json;
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+
+    let made = gesture(
+        &app,
+        "save-wait",
+        json!([
+            { "op": "create_goal", "request": { "title": "Goal", "parent_type": "domain", "parent_id": 1 } },
+            { "op": "update_goal", "id": { "step": 0 }, "request": { "title": "Goal again" } },
+        ]),
+    )
+    .await
+    .unwrap();
+    let goal = id_of(&made[0]);
+    let wait = gesture(
+        &app,
+        "save-wait",
+        json!([
+            { "op": "create_expectation", "request": { "title": "Reply", "parent_type": "goal", "parent_id": goal } },
+            { "op": "update_expectation", "id": { "step": 0 }, "request": { "is_private": true } },
+            { "op": "create_info", "request": { "body": "Note", "parent_type": "goal", "parent_id": goal, "position": 0 } },
+            { "op": "update_info", "id": { "step": 2 }, "request": { "body": "Note again" } },
+        ]),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(wait.len(), 4);
+}
+
+#[tokio::test]
+async fn a_new_habit_and_its_save_with_archive_and_new() {
+    use serde_json::json;
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let made = gesture(
+        &app,
+        "new-flow",
+        json!([
+            { "op": "create_flow", "request": { "title": "Morning", "instance_type": "task", "parent_type": "aspect", "parent_id": 1, "flow_duration_n": 1, "flow_duration_kind": "day" } },
+            { "op": "update_flow", "id": { "step": 0 }, "request": { "title": "Morning routine" } },
+            { "op": "set_flow_recurrence", "flow_id": { "step": 0 }, "request": { "start_scope_id": { "kind": "day", "date": "2026-01-05" }, "gap_n": null, "gap_kind": null, "end_scope_id": null, "clock": "interval", "miss_policy": null } },
+            { "op": "create_flow_item", "item_type": "flow_task", "request": { "flow_id": 0, "title": "placeholder", "parent_type": "flow", "parent_id": 0 }, "may_be_refused": true },
+        ]),
+    )
+    .await
+    .unwrap();
+    let flow = id_of(&made[0]);
+    let items = gesture(
+        &app,
+        "save-flow",
+        json!([
+            { "op": "create_flow_item", "item_type": "flow_task", "request": { "flow_id": flow, "title": "Stretch", "parent_type": "flow", "parent_id": flow } },
+            { "op": "create_flow_item", "item_type": "flow_task", "request": { "flow_id": flow, "title": "Breathe", "parent_type": "flow", "parent_id": flow } },
+        ]),
+    )
+    .await
+    .unwrap();
+    let (stretch, breathe) = (id_of(&items[0]), id_of(&items[1]));
+
+    gesture(
+        &app,
+        "save-flow-item",
+        json!([
+            { "op": "set_flow_item_cycles", "flow_id": flow, "item_type": "flow_task", "item_id": stretch, "cycles": [] },
+            { "op": "update_flow_item", "item_type": "flow_task", "id": { "step": 0, "forked": "flow_task", "id": stretch }, "request": { "title": "Stretch well" } },
+            { "op": "set_flow_dependency", "flow_id": { "step": 0, "forked": "flow", "id": flow }, "dependent_type": "flow_task", "dependent_id": { "step": 0, "forked": "flow_task", "id": stretch }, "depends_on_type": "flow_task", "depends_on_id": breathe, "present": true },
+            { "op": "set_flow_dependency", "flow_id": flow, "dependent_type": "flow_task", "dependent_id": stretch, "depends_on_type": "flow_task", "depends_on_id": breathe, "present": false },
+        ]),
+    )
+    .await
+    .unwrap();
+    let forked = gesture(
+        &app,
+        "save-flow",
+        json!([
+            { "op": "clear_habit_modifications", "flow_id": flow },
+            { "op": "fork_flow", "flow_id": flow },
+            { "op": "update_flow", "id": { "step": 1 }, "request": { "title": "Morning, again" } },
+            { "op": "delete_flow_recurrence", "flow_id": { "step": 1 } },
+        ]),
+    )
+    .await
+    .unwrap();
+
+    assert_ne!(id_of(&forked[1]), flow);
+}
