@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
-
 from typing import Any
 
 from fastapi import APIRouter
