@@ -1,5 +1,5 @@
 import type { BindingMeta } from "@/utils/hotkeys/chord";
-import type { SurfaceCommand } from "@/stores/use-command-surface-store";
+import type { SurfaceCommand, TouchLabelKey } from "@/stores/use-command-surface-store";
 
 /**
  * The gestures that stand in for a binding the palette leaves out (`docs/spec/touch.md`). A binding
@@ -56,10 +56,10 @@ export function replacingGesture(id: string): TouchGesture | null {
 
 /**
  * Families of bindings that share one cheat-sheet line but are each their own action: the Plan
- * View's subscope keys, one per bucket. The sheet lists the first of each family and hides the rest;
- * the palette lists every member that can act, since only the buckets on screen can.
+ * View's subscope keys, one per bucket, and the tab jumps, one per position. The sheet lists the
+ * first of each family and hides the rest; the palette lists every member that can act.
  */
-export const PALETTE_FAMILIES: readonly string[] = ["planView.subscope."];
+export const PALETTE_FAMILIES: readonly string[] = ["planView.subscope.", "tabs.jump"];
 
 /** Whether a binding is a member of a family in `PALETTE_FAMILIES`. */
 export function isFamilyMember(id: string): boolean {
@@ -67,41 +67,67 @@ export function isFamilyMember(id: string): boolean {
 }
 
 /**
- * Whether a binding is reachable without a keyboard: it is a palette entry, a gesture replaces it,
- * or it is a hidden alias of a binding in the same table that is one of those (the numpad zoom
- * beside `+`, `Ctrl+Y` beside `Ctrl+Shift+Z`).
+ * Bindings the cheat-sheet lists but that only give a second key to another binding's action — the
+ * numpad zoom beside `+`, `F2` beside `R`, the Steps View's `[` `]` beside its page keys. A hidden
+ * binding outside a family is an alias too. The palette lists the action once, under its first key.
  */
-export function isReachableByTouch(binding: BindingMeta, table: readonly BindingMeta[]): boolean {
-  if (replacingGesture(binding.id) !== null) return true;
-  if (binding.hidden !== true || isFamilyMember(binding.id)) return true;
-  return table.some((other) =>
-    other.hidden !== true && other.section === binding.section && other.labelKey === binding.labelKey);
-}
+export const PALETTE_ALIASES: ReadonlySet<string> = new Set([
+  "mindmap.zoomInNumpad", "mindmap.zoomOutNumpad", "mindmap.renameF2",
+  "stepsView.pagePreviousBracket", "stepsView.pageNextBracket",
+]);
 
-/** What makes two rows one action: the same words in the same table — or, in a family, the id. */
-function rowIdentity(command: SurfaceCommand): string {
-  if (isFamilyMember(command.id)) return command.id;
-  return `${command.section}:${command.label.namespace}:${command.label.key}`;
+/** Whether a binding only duplicates another's action under a second key. */
+export function isAlias(binding: { id: string; hidden?: boolean }): boolean {
+  return (binding.hidden === true && !isFamilyMember(binding.id)) || PALETTE_ALIASES.has(binding.id);
 }
 
 /**
- * The palette's rows: every published command that can act now, less the hidden aliases and the
- * bindings a gesture replaces, one row per action — bindings that share a label in one table
- * collapse into their first runnable member, except a family's, which are each their own. The tab
- * chords are left out where the tab strip is not drawn, since a tab nobody can see is not one to
- * open.
+ * The palette's own words for bindings that share one cheat-sheet line with a sibling doing the
+ * opposite — the sheet's row carries both keys, and a palette row carries one, so it must say which
+ * way it goes.
+ */
+export const PALETTE_LABELS: Readonly<Record<string, TouchLabelKey>> = {
+  "planView.previousScope": "palettePreviousScope",
+  "planView.nextScope": "paletteNextScope",
+  "planView.focusCandidates": "paletteFocusCandidates",
+  "planView.focusPlanned": "paletteFocusPlanned",
+  "stepsView.pagePrevious": "palettePreviousPage",
+  "stepsView.pageNext": "paletteNextPage",
+  "mindmap.reorderUp": "paletteReorderUp",
+  "mindmap.reorderDown": "paletteReorderDown",
+  "mindmap.extendSelection.ArrowUp": "paletteExtendUp",
+  "mindmap.extendSelection.ArrowDown": "paletteExtendDown",
+  "mindmap.extendSelection.ArrowLeft": "paletteExtendLeft",
+  "mindmap.extendSelection.ArrowRight": "paletteExtendRight",
+  "planView.extendUp": "paletteExtendUp",
+  "planView.extendDown": "paletteExtendDown",
+};
+
+/**
+ * Whether a binding is reachable without a keyboard: a gesture replaces it, it is a palette entry,
+ * or it is an alias of a binding in the same table that is one (`isAlias`).
+ */
+export function isReachableByTouch(binding: BindingMeta, table: readonly BindingMeta[]): boolean {
+  if (replacingGesture(binding.id) !== null || !isAlias(binding)) return true;
+  return table.some((other) =>
+    !isAlias(other) && other.section === binding.section && other.labelKey === binding.labelKey);
+}
+
+/** A command with the palette's own words where it has them (`PALETTE_LABELS`). */
+function withPaletteLabel(command: SurfaceCommand): SurfaceCommand {
+  const key = Object.prototype.hasOwnProperty.call(PALETTE_LABELS, command.id) ? PALETTE_LABELS[command.id] : undefined;
+  return key === undefined ? command : { ...command, label: { namespace: "touch", key } };
+}
+
+/**
+ * The palette's rows: every published command that can act now, one per action — less the aliases
+ * and the bindings a gesture replaces. The tab chords are left out where the tab strip is not drawn,
+ * since a tab nobody can see is not one to open.
  */
 export function paletteEntries(commands: readonly SurfaceCommand[], options: { showTabs: boolean }): SurfaceCommand[] {
-  const seen = new Set<string>();
-  const entries: SurfaceCommand[] = [];
-  for (const command of commands) {
-    if (command.hidden && !isFamilyMember(command.id)) continue;
-    if (replacingGesture(command.id) !== null) continue;
-    if (!options.showTabs && command.section === "tabs") continue;
-    const identity = rowIdentity(command);
-    if (seen.has(identity) || !command.canRun()) continue;
-    seen.add(identity);
-    entries.push(command);
-  }
-  return entries;
+  return commands
+    .filter((command) => !isAlias(command) && replacingGesture(command.id) === null)
+    .filter((command) => options.showTabs || command.section !== "tabs")
+    .filter((command) => command.canRun())
+    .map(withPaletteLabel);
 }

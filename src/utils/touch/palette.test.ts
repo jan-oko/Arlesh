@@ -32,12 +32,17 @@ describe("paletteEntries", () => {
     expect(rows).toEqual([]);
   });
 
-  it("collapses two commands with the same words into the first that can act", () => {
-    const rows = paletteEntries([
-      command("stepsView.zoomIn", { canRun: () => false, label: { namespace: "hotkeys", key: "zoomIn" } }),
-      command("stepsView.zoomInOther", { label: { namespace: "hotkeys", key: "zoomIn" } }),
-    ], { showTabs: true });
-    expect(rows.map((row) => row.id)).toEqual(["stepsView.zoomInOther"]);
+  it("leaves out a second key for the same action, listing the action once", () => {
+    const rows = paletteEntries([command("mindmap.zoomIn"), command("mindmap.zoomInNumpad")], { showTabs: true });
+    expect(rows.map((row) => row.id)).toEqual(["mindmap.zoomIn"]);
+  });
+
+  it("says which way a pair of opposites goes, where the cheat-sheet's one line names both", () => {
+    const rows = paletteEntries([command("planView.previousScope"), command("planView.nextScope")], { showTabs: true });
+    expect(rows.map((row) => row.label)).toEqual([
+      { namespace: "touch", key: "palettePreviousScope" },
+      { namespace: "touch", key: "paletteNextScope" },
+    ]);
   });
 
   it("lists each hidden member of a family that can act — the Plan View's buckets", () => {
