@@ -7,18 +7,16 @@
 
 use tauri::State;
 
+use crate::backend::AppBackend;
+pub use crate::tasks::gestures::StatusStepOutcome;
 use crate::{
-    database::session::SessionFactory,
     error::WireError,
     nodes::id::NodeId,
     tasks::{
-        gestures,
         model::{Commitment, Task},
         rules::gestures::{StatusStep, VerdictPress},
     },
 };
-
-pub use crate::tasks::gestures::StatusStepOutcome;
 
 /// Applies a status gesture to the Task `id`: one step of the cycle, or `Alt+Enter`.
 ///
@@ -26,17 +24,12 @@ pub use crate::tasks::gestures::StatusStepOutcome;
 /// as an edit is, unless `confirmed`.
 #[tauri::command]
 pub async fn step_task_status(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     id: NodeId,
     step: StatusStep,
     confirmed: Option<bool>,
 ) -> Result<StatusStepOutcome, WireError> {
-    let now = chrono::Local::now().naive_local();
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let outcome = gestures::step_status(&mut db, &id, step, confirmed == Some(true), now).await?;
-    // A refusal wrote nothing, so committing it is committing nothing.
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(outcome)
+    backend.step_task_status(id, step, confirmed).await
 }
 
 /// The Agentic key on the Task `id`: writes the opposite of what it reads as, as its own flag.
@@ -45,26 +38,18 @@ pub async fn step_task_status(
 /// model it holds is what it reads as.
 #[tauri::command]
 pub async fn toggle_task_agentic(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     id: NodeId,
 ) -> Result<Task, WireError> {
-    let now = chrono::Local::now().naive_local();
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let task = gestures::toggle_agentic(&mut db, &id, now).await?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(task)
+    backend.toggle_task_agentic(id).await
 }
 
 /// A verdict gesture on the Commitment `id`: the cycle, or the Kept or Broken control.
 #[tauri::command]
 pub async fn press_commitment_verdict(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     id: NodeId,
     press: VerdictPress,
 ) -> Result<Commitment, WireError> {
-    let now = chrono::Local::now().naive_local();
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let commitment = gestures::press_verdict(&mut db, &id, press, now).await?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(commitment)
+    backend.press_commitment_verdict(id, press).await
 }

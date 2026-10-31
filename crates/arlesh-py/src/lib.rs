@@ -22,11 +22,14 @@ mod opening;
 mod request;
 mod rules;
 mod schema;
+mod shared;
+mod tokens;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use arlesh_core::database::session::SessionFactory;
+use arlesh_core::undo::stacks::UndoStacks;
 use pyo3::prelude::*;
 
 use errors::{raise, NativeError};
@@ -40,6 +43,9 @@ struct NativeDatabase {
     path: Arc<PathBuf>,
     /// The MCP endpoint this database serves, while it serves one.
     serving: Arc<tokio::sync::Mutex<Option<mcp::Serving>>>,
+    /// This open's Undo and Redo Stacks. The server keeps one write-open per client, so these
+    /// are that client's — undo is per device.
+    stacks: Arc<UndoStacks>,
 }
 
 #[pymethods]
@@ -48,12 +54,31 @@ impl NativeDatabase {
     fn call<'py>(&self, py: Python<'py>, request: String) -> PyResult<Bound<'py, PyAny>> {
         let factory = self.factory.clone();
         let path = Arc::clone(&self.path);
+        let stacks = Arc::clone(&self.stacks);
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            request::run(&factory, &path, &request).await.map_err(raise)
+            request::run(&factory, &path, &stacks, &request)
+                .await
+                .map_err(raise)
         })
     }
 
     /// The client this database writes as, or `None` when it was opened read-only.
+    /// The board's revision: how many writes have been committed to this database file, through
+    /// any open of it in this process, since the process started.
+    #[getter]
+    fn revision(&self) -> u64 {
+        shared::for_database(&self.path).changes.revision()
+    }
+
+    /// Waits until the board's revision is past `after`, and answers it: what `GET /events`
+    /// streams.
+    fn next_change<'py>(&self, py: Python<'py>, after: u64) -> PyResult<Bound<'py, PyAny>> {
+        let shared = shared::for_database(&self.path);
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            Ok(shared.changes.after(after).await)
+        })
+    }
+
     #[getter]
     fn client(&self) -> Option<String> {
         if self.factory.is_read_only() {
@@ -105,6 +130,18 @@ impl NativeDatabase {
 
     /// Stops the MCP endpoint, if one is served, then closes every connection once calls still
     /// running have finished.
+    /// Empties the journal and clears the ambient Gesture, as the desktop app does at every start:
+    /// a Gesture left open by a crash mid-write would otherwise swallow every later write. For the
+    /// server's startup only — the server holds the database, so no other writer is mid-Gesture.
+    fn reset_undo<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let factory = self.factory.clone();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            arlesh_core::undo::reset_journal(&factory)
+                .await
+                .map_err(|error| raise(arlesh_core::error::WireError::from_error(error)))
+        })
+    }
+
     fn close<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let factory = self.factory.clone();
         let serving = Arc::clone(&self.serving);
@@ -142,11 +179,23 @@ fn open(
             factory,
             path: Arc::new(path),
             serving: Arc::new(tokio::sync::Mutex::new(None)),
+            stacks: Arc::new(UndoStacks::new()),
         })
     })
 }
 
 /// Runs one pure rule — a JSON object tagged by `rule` — and answers its result as JSON.
+/// Runs one call on `arlesh-server`'s token table in the database at `path`, and waits for it:
+/// the token store's way in, which is not a coroutine. See [`tokens`].
+#[pyfunction]
+fn token_call(py: Python<'_>, path: PathBuf, request: String) -> PyResult<String> {
+    py.detach(move || tokens::run(&path, &request))
+        .map_err(raise)
+}
+
+/// The stack each of the bindings' runtime workers gets.
+const WORKER_STACK_BYTES: usize = 16 * 1024 * 1024;
+
 #[pyfunction]
 fn rule(request: &str) -> PyResult<String> {
     rules::run(request).map_err(raise)
@@ -162,11 +211,18 @@ fn json_schema() -> PyResult<String> {
 /// The native module, imported as `arlesh._native`.
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    // The core's writes are deep async call chains, and a gesture runs several inside one future;
+    // in a debug build their frames overflow tokio's default 2 MiB worker stack (a segfault, not
+    // an error). The desktop app's runtime is Tauri's; this is the bindings' own.
+    let mut runtime = tokio::runtime::Builder::new_multi_thread();
+    runtime.enable_all().thread_stack_size(WORKER_STACK_BYTES);
+    pyo3_async_runtimes::tokio::init(runtime);
     module.add_class::<NativeDatabase>()?;
     module.add_class::<hold::NativeHold>()?;
     module.add_function(wrap_pyfunction!(open, module)?)?;
     module.add_function(wrap_pyfunction!(hold::hold, module)?)?;
     module.add_function(wrap_pyfunction!(rule, module)?)?;
+    module.add_function(wrap_pyfunction!(token_call, module)?)?;
     module.add_function(wrap_pyfunction!(json_schema, module)?)?;
     module.add("NativeError", module.py().get_type::<NativeError>())?;
     Ok(())

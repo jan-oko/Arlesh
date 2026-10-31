@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from arlesh.models import (
     CreateFlowRequest,
     Flow,
+    FlowGoal,
     FlowItemType,
+    FlowOrigin,
     FlowRecurrence,
+    FlowTask,
     MaterializedFlow,
     SetRecurrenceRequest,
     StartFlowRequest,
+    TargetRef,
     UpdateFlowRequest,
 )
 from arlesh.server.entrypoints.fastapi.routers.base import BoardRouter
@@ -21,7 +25,15 @@ class FlowsRouter(BoardRouter):
     """``/flows``."""
 
     def _register_routes(self) -> None:
+        self.get("")(self._list)
+        self.get("/instance-nodes")(self._instance_nodes)
+        self.post("/origins")(self._origins)
+        self.post("/scope-valid-targets")(self._scope_valid_targets)
         self.get("/{id}")(self._get)
+        self.get("/{id}/goals")(self._goals)
+        self.get("/{id}/tasks")(self._tasks)
+        self.get("/{id}/recurrence")(self._recurrence)
+        self.get("/{id}/completion-count")(self._completion_count)
         self.post("", status_code=201)(self._create)
         self.patch("/{id}")(self._update)
         self.delete("/{id}", status_code=204)(self._delete)
@@ -85,3 +97,47 @@ class FlowsRouter(BoardRouter):
         await (await self._writer()).add_flow_dependency(
             id, dependent_type, dependent_id, depends_on_type, depends_on_id
         )
+
+    async def _list(self) -> list[Flow]:
+        """Every Flow and Habit template."""
+        return await self._reader.list_flows()
+
+    async def _instance_nodes(self) -> list[TargetRef]:
+        """Every node a started Flow produced."""
+        return await self._reader.list_flow_instance_nodes()
+
+    async def _origins(self, nodes: list[TargetRef]) -> list[FlowOrigin]:
+        """Which Flow, if any, each node was started from. Writes nothing."""
+        return await self._reader.flow_origins(nodes)
+
+    async def _scope_valid_targets(
+        self,
+        candidates: list[TargetRef],
+        duration_n: int | None = None,
+        duration_kind: str | None = None,
+        anchor_date: date | None = None,
+    ) -> list[TargetRef]:
+        """Which of ``candidates`` (the body) a Flow of the given duration may be started under.
+        Writes nothing."""
+        return await self._reader.scope_valid_flow_targets(
+            candidates,
+            duration_n=duration_n,
+            duration_kind=duration_kind,
+            anchor_date=anchor_date,
+        )
+
+    async def _goals(self, id: int) -> list[FlowGoal]:
+        """The Flow's Goal items."""
+        return await self._reader.list_flow_goals(id)
+
+    async def _tasks(self, id: int) -> list[FlowTask]:
+        """The Flow's Task items."""
+        return await self._reader.list_flow_tasks(id)
+
+    async def _recurrence(self, id: int) -> FlowRecurrence | None:
+        """The Habit's recurrence, or ``null`` for a Flow without one."""
+        return await self._reader.get_flow_recurrence(id)
+
+    async def _completion_count(self, id: int) -> int:
+        """How many of the Habit's occurrences are complete."""
+        return await self._reader.habit_completion_count(id)

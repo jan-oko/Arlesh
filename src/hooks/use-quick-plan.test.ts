@@ -46,6 +46,19 @@ function installBackend(refuse: (args: unknown) => string | null = () => null): 
     }
     // Nothing below these Tasks holds a Plan of its own, so the clamp prompt has nothing to ask.
     if (command === "plan_containment_conflicts") return Promise.resolve([]);
+    // A gesture operation's writes, journaled one by one as the commands they stand for; a
+    // refused write that may be refused answers `{refused}`, as the backend's savepoint does.
+    if (command === "run_gesture") {
+      const steps: unknown = Reflect.get(Object(args), "steps");
+      const answers = (Array.isArray(steps) ? steps : []).map((step: unknown) => {
+        const write = { id: Reflect.get(Object(step), "id"), request: Reflect.get(Object(step), "request") };
+        const refused = refuse(write);
+        if (refused !== null) return { refused: { kind: "invalid_request", message: refused } };
+        writes.push({ command: String(Reflect.get(Object(step), "op")), args: write, gesture: current });
+        return { id: 1 };
+      });
+      return Promise.resolve(answers);
+    }
     const refusal = refuse(args);
     if (refusal !== null) return Promise.reject(new Error(refusal));
     writes.push({ command, args, gesture: current });

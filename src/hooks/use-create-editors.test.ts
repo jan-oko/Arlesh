@@ -7,7 +7,18 @@ import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal"
 import { setFlowRecurrence } from "@/api/flows";
 import { withAtomicGesture } from "@/api/gesture";
 
-vi.mock("@/api/flows", () => ({ setFlowRecurrence: vi.fn().mockResolvedValue(undefined) }));
+// A gesture operation's writes are replayed onto the mocked api calls below, one call per write.
+vi.mock("@/api/multi-node-gestures", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/multi-node-gestures")>()),
+  runGesture: (await import("@/test/gesture-replay")).replayGesture,
+}));
+// A Habit's Flow is made inside its gesture operation, through the api's own `createFlow`; it
+// reaches the same spy the hook's prop is, so either path reads as one creation.
+const apiCreateFlow = vi.hoisted(() => vi.fn());
+vi.mock("@/api/flows", () => ({
+  setFlowRecurrence: vi.fn().mockResolvedValue(undefined),
+  createFlow: (...args: unknown[]) => apiCreateFlow(...args),
+}));
 vi.mock("@/api/gesture", () => ({
   withAtomicGesture: vi.fn((_name: string, run: () => Promise<unknown>) => run()),
 }));
@@ -20,6 +31,7 @@ const tree: MindmapNode = {
 
 function setup() {
   const createFlow = vi.fn().mockResolvedValue({ id: 31 });
+  apiCreateFlow.mockImplementation(createFlow);
   const createCommitment = vi.fn().mockResolvedValue(undefined);
   const reload = vi.fn().mockResolvedValue(undefined);
   const hook = renderHook(() => useCreateEditors({ tree, createFlow, createCommitment, reload }));

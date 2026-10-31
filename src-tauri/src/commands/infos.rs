@@ -2,11 +2,11 @@
 
 use tauri::State;
 
+use crate::backend::AppBackend;
 use crate::{
-    database::session::SessionFactory,
-    duplicate::{duplicate_subtree, DuplicableKind, DuplicatedSubtree},
+    duplicate::DuplicatedSubtree,
     error::WireError,
-    infos::model::{CreateInfoRequest, Info, InfoId, UpdateInfoRequest},
+    infos::model::{CreateInfoRequest, Info, UpdateInfoRequest},
 };
 
 /// Creates a new info node.
@@ -15,23 +15,16 @@ use crate::{
 /// statement-level atomicity on its own.
 #[tauri::command]
 pub async fn create_info(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     request: CreateInfoRequest,
 ) -> Result<Info, WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let info =
-        crate::nodes::write::create_info(&mut db, request, chrono::Local::now().naive_local())
-            .await
-            .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(info)
+    backend.create_info(request).await
 }
 
 /// Lists all info nodes.
 #[tauri::command]
-pub async fn list_infos(factory: State<'_, SessionFactory>) -> Result<Vec<Info>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.infos().list().await.map_err(WireError::from_error)
+pub async fn list_infos(backend: State<'_, AppBackend>) -> Result<Vec<Info>, WireError> {
+    backend.list_infos().await
 }
 
 /// Updates an info node.
@@ -41,29 +34,19 @@ pub async fn list_infos(factory: State<'_, SessionFactory>) -> Result<Vec<Info>,
 /// update back when the session drops.
 #[tauri::command]
 pub async fn update_info(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     id: i64,
     request: UpdateInfoRequest,
 ) -> Result<Info, WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let info =
-        crate::nodes::write::update_info(&mut db, id, request, chrono::Local::now().naive_local())
-            .await
-            .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(info)
+    backend.update_info(id, request).await
 }
 
 /// Deletes an info node.
 ///
 /// A single `DELETE`, so it runs on a pooled session.
 #[tauri::command]
-pub async fn delete_info(factory: State<'_, SessionFactory>, id: i64) -> Result<(), WireError> {
-    // Transactional because it is two writes now: a note may be an added child of a Habit
-    // occurrence, and the attachment naming it must not outlive the row it names.
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    crate::nodes::composite::delete_info(&mut db, id).await?;
-    db.commit().await.map_err(WireError::from_error)
+pub async fn delete_info(backend: State<'_, AppBackend>, id: i64) -> Result<(), WireError> {
+    backend.delete_info(id).await
 }
 
 /// Deep-clones an info node and its whole subtree under `(target_type, target_id)`, putting the
@@ -73,31 +56,13 @@ pub async fn delete_info(factory: State<'_, SessionFactory>, id: i64) -> Result<
 /// the rows hung on Habit occurrences that it could not carry, for the paste to name.
 #[tauri::command]
 pub async fn duplicate_info(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     id: i64,
     target_type: String,
     target_id: i64,
     position: i64,
 ) -> Result<DuplicatedSubtree<Info>, WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let subtree = duplicate_subtree(
-        &mut db,
-        DuplicableKind::Info,
-        id,
-        &target_type,
-        target_id,
-        position,
-    )
-    .await
-    .map_err(WireError::from_error)?;
-    let info = db
-        .infos()
-        .get(InfoId(subtree.root_id))
+    backend
+        .duplicate_info(id, target_type, target_id, position)
         .await
-        .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(DuplicatedSubtree {
-        copy: info,
-        left_behind: subtree.left_behind,
-    })
 }

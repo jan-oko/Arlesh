@@ -1,10 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import "@/styles/tokens.css";
 import TabStrip from "@/components/TabStrip/TabStrip";
 import ActiveTab from "@/components/ActiveTab/ActiveTab";
 import PlanClampPrompt from "@/components/PlanClampPrompt/PlanClampPrompt";
 import ScopeClampPrompt from "@/components/ScopeClampPrompt/ScopeClampPrompt";
 import HotkeysModal from "@/components/HotkeysModal/HotkeysModal";
+import ServerBanner from "@/components/ServerBanner/ServerBanner";
+import FirstRunChooser from "@/components/FirstRunChooser/FirstRunChooser";
+import SettingsModal from "@/components/SettingsModal/SettingsModal";
+import { runStandalone } from "@/api/client-mode";
+import { useClientModeStore } from "@/stores/use-client-mode-store";
+import { useClientModeSync } from "@/hooks/use-client-mode";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
@@ -36,6 +42,12 @@ export default function App() {
   // The agent capacity lock is the backend's, shared with every window and with agents over the
   // MCP; this keeps this window's copy of it current.
   useAgentCapacitySync();
+  // Standalone or Client, and how the server is doing — for the top bar and the banner.
+  useClientModeSync();
+  const firstRun = useClientModeStore((s) => s.status?.first_run === true);
+  const answered = useClientModeStore((s) => s.answered);
+  const toggleHotkeys = useHotkeysStore((s) => s.toggle);
+  const [serverSettings, setServerSettings] = useState(false);
   // Every window is the same thing, so this is all it takes to be one of several: accept a tab
   // another window hands over, and — in the first window only — forget the tabs of windows that
   // are no longer open.
@@ -69,6 +81,7 @@ export default function App() {
   return (
     <div className={styles.shell}>
       {!isFullscreen && <TabStrip />}
+      <ServerBanner />
       {active !== undefined && (
         <TabStoresContext.Provider value={active.stores}>
           <ActiveTab />
@@ -80,6 +93,19 @@ export default function App() {
       {/* Any view's editor, drag or Plan writer may ask these, so they hang above them all. */}
       <PlanClampPrompt />
       <ScopeClampPrompt />
+      {firstRun && !serverSettings && (
+        <FirstRunChooser
+          onStandalone={() => { answered(); void runStandalone(); }}
+          onServer={() => setServerSettings(true)}
+        />
+      )}
+      {serverSettings && (
+        <SettingsModal
+          initialPage="server"
+          onClose={() => setServerSettings(false)}
+          onOpenHotkeys={() => { setServerSettings(false); toggleHotkeys(); }}
+        />
+      )}
     </div>
   );
 }

@@ -1,9 +1,9 @@
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { getErrorMessage } from "@/api/errors";
 import { withGesture } from "@/api/gesture";
-import { updateTask, updateTaskSettlingPlans } from "@/api/tasks";
+import { isRefusedStep, runGesture } from "@/api/multi-node-gestures";
+import type { GestureStep } from "@/api/multi-node-gestures";
 import { usePlanClamp } from "@/hooks/use-plan-clamp";
 import type { TimeScope } from "@/api/time-scope";
 import type { PendingToast } from "@/stores/use-mindmap-store";
@@ -141,19 +141,22 @@ export function useQuickPlan({ findNode, reload, showToast }: Options): QuickPla
       if (!clamp.proceed) return;
       const outcome: Outcome = { planned: [], failed: [], unbacklogged: [] };
       const gesture = plan === null ? "undo:gestures.clearPlan" : "undo:gestures.plan";
-      await withGesture(t(gesture, { count: planning.tasks.length }), async () => {
-        for (const node of planning.tasks) {
-          try {
-            const id = rowIdOf(node);
-            if (clamp.descendants === null) await updateTask(id, { plan });
-            else await updateTaskSettlingPlans(id, { plan }, clamp.descendants);
-          } catch (error: unknown) {
-            outcome.failed.push({ node, message: getErrorMessage(error) });
-            continue;
-          }
-          outcome.planned.push(node);
-          if (plan !== null && node.backlogged === true) outcome.unbacklogged.push(node);
+      // One gesture operation: every Task's Plan in one request and one undo step, each write
+      // allowed to be refused on its own, as the Tasks are planned one by one.
+      const steps: GestureStep[] = planning.tasks.map((node) => ({
+        op: "update_task", id: rowIdOf(node), request: { plan },
+        ...(clamp.descendants === null ? {} : { descendant_plans: clamp.descendants }),
+        may_be_refused: true,
+      }));
+      const answers = await withGesture(t(gesture, { count: planning.tasks.length }), () => runGesture("plan-tasks", steps));
+      planning.tasks.forEach((node, index) => {
+        const answer = answers[index];
+        if (isRefusedStep(answer)) {
+          outcome.failed.push({ node, message: answer.refused.message });
+          return;
         }
+        outcome.planned.push(node);
+        if (plan !== null && node.backlogged === true) outcome.unbacklogged.push(node);
       });
       if (outcome.planned.length > 0) await reload();
       const message = headline(outcome, planning);

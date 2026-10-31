@@ -18,6 +18,7 @@
 
 pub mod board;
 pub mod composite;
+pub mod gestures;
 pub mod id;
 pub mod key;
 pub mod origin;

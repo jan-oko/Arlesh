@@ -94,6 +94,8 @@ function makeOpts(overrides: Partial<Parameters<typeof useNodeActions>[0]> = {})
     clipboard: null,
     moveNode: vi.fn().mockResolvedValue(undefined),
     duplicateNode: vi.fn().mockResolvedValue([]),
+    pasteNodes: vi.fn().mockResolvedValue([]),
+    insertParent: vi.fn().mockResolvedValue("domain-99"),
     onRequestDelete: vi.fn(),
     reload: vi.fn().mockResolvedValue(undefined),
     renameNode: vi.fn().mockResolvedValue(undefined),
@@ -568,7 +570,7 @@ describe("useNodeActions — onPaste", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
     expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: expect.any(String) });
-    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.pasteNodes).not.toHaveBeenCalled();
   });
 
   it("a CUT of a Commitment still moves it — only copying has no command", async () => {
@@ -577,7 +579,7 @@ describe("useNodeActions — onPaste", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
     await vi.waitFor(() =>
-      expect(opts.moveNode).toHaveBeenCalledWith("commitment-7", "commitment", "goal-2", "goal", 0),
+      expect(opts.pasteNodes).toHaveBeenCalledWith([{ id: "commitment-7", kind: "commitment" }], "goal-2", "goal", 0, false),
     );
   });
 
@@ -586,7 +588,7 @@ describe("useNodeActions — onPaste", () => {
     const clipboard = { operation: CLIPBOARD_OP.CUT, nodeIds: ["task-5"] };
     const opts = makeOpts({
       clipboard,
-      moveNode: vi.fn().mockRejectedValue({ kind: "invalid_request", message: "would create a cycle" }),
+      pasteNodes: vi.fn().mockRejectedValue({ kind: "invalid_request", message: "would create a cycle" }),
     });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
@@ -608,7 +610,7 @@ describe("useNodeActions — onPaste", () => {
     const clipboard = { operation: CLIPBOARD_OP.COPY, nodeIds: ["commitment-7", "task-5"] };
     const opts = makeOpts({
       clipboard,
-      duplicateNode: vi.fn().mockRejectedValue(new Error("UNIQUE constraint failed")),
+      pasteNodes: vi.fn().mockRejectedValue(new Error("UNIQUE constraint failed")),
     });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
@@ -627,7 +629,7 @@ describe("useNodeActions — onPaste", () => {
     const opts = makeOpts({ tree: TREE, clipboard });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("habitgroup-3-run"); });
-    expect(opts.moveNode).not.toHaveBeenCalled();
+    expect(opts.pasteNodes).not.toHaveBeenCalled();
     expect(opts.showToast).toHaveBeenCalledTimes(1);
     expect(vi.mocked(opts.showToast).mock.calls[0]?.[0].message)
       .toContain("pasteOntoRepetitionRefused");
@@ -638,7 +640,7 @@ describe("useNodeActions — onPaste", () => {
     const opts = makeOpts({ clipboard });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("habit-3-0-virtual"); });
-    await vi.waitFor(() => expect(opts.moveNode).toHaveBeenCalled());
+    await vi.waitFor(() => expect(opts.pasteNodes).toHaveBeenCalled());
   });
 
   it("refuses a copy onto a Habit occurrence, since a copy is made under a stored row", () => {
@@ -646,7 +648,7 @@ describe("useNodeActions — onPaste", () => {
     const opts = makeOpts({ clipboard });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("habit-3-0-virtual"); });
-    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.pasteNodes).not.toHaveBeenCalled();
     expect(opts.showToast).toHaveBeenCalledWith({
       nodeId: "habit-3-0-virtual",
       message: expect.stringContaining("pasteCopyOntoOccurrenceRefused"),
@@ -657,8 +659,8 @@ describe("useNodeActions — onPaste", () => {
     const opts = makeOpts({ clipboard: null });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("domain-3"); });
-    expect(opts.moveNode).not.toHaveBeenCalled();
-    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.pasteNodes).not.toHaveBeenCalled();
+    expect(opts.pasteNodes).not.toHaveBeenCalled();
   });
 
   it("CUT moves clipboard nodes as children of the target", async () => {
@@ -667,9 +669,8 @@ describe("useNodeActions — onPaste", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
     await vi.waitFor(() =>
-      expect(opts.moveNode).toHaveBeenCalledWith("task-5", "task", "goal-2", "goal", 0),
+      expect(opts.pasteNodes).toHaveBeenCalledWith([{ id: "task-5", kind: "task" }], "goal-2", "goal", 0, false),
     );
-    expect(opts.duplicateNode).not.toHaveBeenCalled();
   });
 
   it("clears clipboard after a CUT paste", async () => {
@@ -686,9 +687,8 @@ describe("useNodeActions — onPaste", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
     await vi.waitFor(() =>
-      expect(opts.duplicateNode).toHaveBeenCalledWith("task-5", "task", "goal-2", "goal", 0),
+      expect(opts.pasteNodes).toHaveBeenCalledWith([{ id: "task-5", kind: "task" }], "goal-2", "goal", 0, true),
     );
-    expect(opts.moveNode).not.toHaveBeenCalled();
   });
 
   it("does not clear clipboard after a COPY paste", async () => {
@@ -696,7 +696,7 @@ describe("useNodeActions — onPaste", () => {
     const opts = makeOpts({ clipboard });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
-    await vi.waitFor(() => expect(opts.duplicateNode).toHaveBeenCalled());
+    await vi.waitFor(() => expect(opts.pasteNodes).toHaveBeenCalled());
     expect(opts.setClipboard).not.toHaveBeenCalled();
   });
 
@@ -706,8 +706,8 @@ describe("useNodeActions — onPaste", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
     await Promise.resolve();
-    expect(opts.duplicateNode).not.toHaveBeenCalled();
-    expect(opts.moveNode).not.toHaveBeenCalled();
+    expect(opts.pasteNodes).not.toHaveBeenCalled();
+    expect(opts.pasteNodes).not.toHaveBeenCalled();
   });
 
   it("pastes valid nodes alongside an aspect, skipping only the aspect, and toasts the skip", async () => {
@@ -715,8 +715,8 @@ describe("useNodeActions — onPaste", () => {
     const opts = makeOpts({ clipboard });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
-    await vi.waitFor(() => expect(opts.duplicateNode).toHaveBeenCalledWith("task-5", "task", "goal-2", "goal", 0));
-    expect(opts.duplicateNode).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(opts.pasteNodes).toHaveBeenCalledWith([{ id: "task-5", kind: "task" }], "goal-2", "goal", 0, true));
+    expect(opts.pasteNodes).toHaveBeenCalledTimes(1);
     expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkippedAspect:1" });
   });
 
@@ -726,7 +726,7 @@ describe("useNodeActions — onPaste", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
     await Promise.resolve();
-    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.pasteNodes).not.toHaveBeenCalled();
     expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkippedRepetition:1" });
   });
 
@@ -738,7 +738,7 @@ describe("useNodeActions — onPaste", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
     await Promise.resolve();
-    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.pasteNodes).not.toHaveBeenCalled();
     expect(opts.showToast).toHaveBeenCalledWith({
       nodeId: "goal-2",
       message: refusedHere("project", "goal", 1, ["aspect", "project"]),
@@ -753,7 +753,7 @@ describe("useNodeActions — onPaste", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("task-5"); });
     await Promise.resolve();
-    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.pasteNodes).not.toHaveBeenCalled();
     expect(opts.showToast).toHaveBeenCalledWith({
       nodeId: "task-5",
       message: refusedHere("goal", "task", 1, ["aspect", "domain", "project", "goal"]),
@@ -768,7 +768,7 @@ describe("useNodeActions — onPaste", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("task-5"); });
     await Promise.resolve();
-    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.pasteNodes).not.toHaveBeenCalled();
     expect(opts.showToast).toHaveBeenCalledTimes(1);
     expect(opts.showToast).toHaveBeenCalledWith({
       nodeId: "task-5",
@@ -787,7 +787,7 @@ describe("useNodeActions — onPaste", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("task-5"); });
     await Promise.resolve();
-    expect(opts.moveNode).not.toHaveBeenCalled();
+    expect(opts.pasteNodes).not.toHaveBeenCalled();
     expect(opts.showToast).toHaveBeenCalledWith({
       nodeId: "task-5",
       message: [
@@ -803,7 +803,7 @@ describe("useNodeActions — onPaste", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
     await Promise.resolve();
-    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.pasteNodes).not.toHaveBeenCalled();
     expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkippedCommitment:1" });
   });
 
@@ -813,7 +813,7 @@ describe("useNodeActions — onPaste", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
     await Promise.resolve();
-    expect(opts.duplicateNode).not.toHaveBeenCalled();
+    expect(opts.pasteNodes).not.toHaveBeenCalled();
     expect(opts.showToast).toHaveBeenCalledWith({ nodeId: "goal-2", message: "pasteSkippedGone:1" });
   });
 
@@ -824,8 +824,8 @@ describe("useNodeActions — onPaste", () => {
     const opts = makeOpts({ clipboard });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
-    await vi.waitFor(() => expect(opts.duplicateNode).toHaveBeenCalledWith("task-5", "task", "goal-2", "goal", 0));
-    expect(opts.duplicateNode).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(opts.pasteNodes).toHaveBeenCalledWith([{ id: "task-5", kind: "task" }], "goal-2", "goal", 0, true));
+    expect(opts.pasteNodes).toHaveBeenCalledTimes(1);
     expect(opts.showToast).toHaveBeenCalledTimes(1);
     expect(opts.showToast).toHaveBeenCalledWith({
       nodeId: "goal-2",
@@ -838,7 +838,7 @@ describe("useNodeActions — onPaste", () => {
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("flow-1"); });
     await vi.waitFor(() =>
-      expect(opts.duplicateNode).toHaveBeenCalledWith("flowtask-4", "flow_task", "flow-1", "flow", 1),
+      expect(opts.pasteNodes).toHaveBeenCalledWith([{ id: "flowtask-4", kind: "flow_task" }], "flow-1", "flow", 1, true),
     );
     expect(opts.showToast).not.toHaveBeenCalled();
   });
@@ -849,14 +849,14 @@ describe("useNodeActions — onPaste", () => {
     act(() => { copyResult.current.onPaste("flow-2"); });
     await Promise.resolve();
     // Its Cycle Scope is an offset into flow-1's window, which flow-2's window does not share.
-    expect(copyOpts.duplicateNode).not.toHaveBeenCalled();
+    expect(copyOpts.pasteNodes).not.toHaveBeenCalled();
     expect(copyOpts.showToast).toHaveBeenCalledWith({ nodeId: "flow-2", message: "pasteSkippedOtherFlow:1" });
 
     const cutOpts = makeOpts({ clipboard: { operation: CLIPBOARD_OP.CUT, nodeIds: ["flowtask-4"] } });
     const { result: cutResult } = renderHook(() => useNodeActions(cutOpts));
     act(() => { cutResult.current.onPaste("flow-2"); });
     await vi.waitFor(() =>
-      expect(cutOpts.moveNode).toHaveBeenCalledWith("flowtask-4", "flow_task", "flow-2", "flow", 0),
+      expect(cutOpts.pasteNodes).toHaveBeenCalledWith([{ id: "flowtask-4", kind: "flow_task" }], "flow-2", "flow", 0, false),
     );
   });
 
@@ -867,7 +867,7 @@ describe("useNodeActions — onPaste", () => {
     const { result: copyResult } = renderHook(() => useNodeActions(copyOpts));
     act(() => { copyResult.current.onPaste("goal-2"); });
     await vi.waitFor(() =>
-      expect(copyOpts.duplicateNode).toHaveBeenCalledWith("flow-5", "flow", "goal-2", "goal", 0),
+      expect(copyOpts.pasteNodes).toHaveBeenCalledWith([{ id: "flow-5", kind: "flow" }], "goal-2", "goal", 0, true),
     );
     expect(copyOpts.showToast).not.toHaveBeenCalled();
 
@@ -875,7 +875,7 @@ describe("useNodeActions — onPaste", () => {
     const { result: cutResult } = renderHook(() => useNodeActions(cutOpts));
     act(() => { cutResult.current.onPaste("goal-2"); });
     await vi.waitFor(() =>
-      expect(cutOpts.moveNode).toHaveBeenCalledWith("flow-5", "flow", "goal-2", "goal", 0),
+      expect(cutOpts.pasteNodes).toHaveBeenCalledWith([{ id: "flow-5", kind: "flow" }], "goal-2", "goal", 0, false),
     );
   });
 
@@ -889,8 +889,8 @@ describe("useNodeActions — onPaste", () => {
     const opts = makeOpts({ tree, clipboard });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onPaste("goal-2"); });
-    await vi.waitFor(() => expect(opts.moveNode).toHaveBeenCalledWith("flow-5", "flow", "goal-2", "goal", 0));
-    expect(opts.moveNode).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(opts.pasteNodes).toHaveBeenCalledWith([{ id: "flow-5", kind: "flow" }], "goal-2", "goal", 0, false));
+    expect(opts.pasteNodes).toHaveBeenCalledTimes(1);
   });
 
   // The skip only the copy can report: a row hung on a Habit occurrence inside the copied subtree.
@@ -915,12 +915,12 @@ describe("useNodeActions — onPaste", () => {
       const opts = makeOpts({
         tree,
         clipboard: { operation: CLIPBOARD_OP.COPY, nodeIds: ["goal-6"] },
-        duplicateNode: vi.fn().mockResolvedValue(reported),
+        pasteNodes: vi.fn().mockResolvedValue(reported),
       });
       const { result } = renderHook(() => useNodeActions(opts));
       act(() => { result.current.onPaste("goal-2"); });
       await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalled());
-      expect(opts.duplicateNode).toHaveBeenCalledWith("goal-6", "goal", "goal-2", "goal", 0);
+      expect(opts.pasteNodes).toHaveBeenCalledWith([{ id: "goal-6", kind: "goal" }], "goal-2", "goal", 0, true);
       // One toast for two rows, not one each: the store holds a single pending notice.
       expect(opts.showToast).toHaveBeenCalledTimes(1);
       expect(opts.showToast).toHaveBeenCalledWith({
@@ -933,7 +933,7 @@ describe("useNodeActions — onPaste", () => {
       const opts = makeOpts({ tree, clipboard: { operation: CLIPBOARD_OP.COPY, nodeIds: ["goal-6"] } });
       const { result } = renderHook(() => useNodeActions(opts));
       act(() => { result.current.onPaste("goal-2"); });
-      await vi.waitFor(() => expect(opts.duplicateNode).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(opts.pasteNodes).toHaveBeenCalledTimes(1));
       await Promise.resolve();
       expect(opts.showToast).not.toHaveBeenCalled();
     });
@@ -947,7 +947,7 @@ describe("useNodeActions — onPaste", () => {
           mkNode("domain-5", "project", [carrier, destination, mkNode("aspect-1", "aspect")]),
         ]),
         clipboard,
-        duplicateNode: vi.fn().mockResolvedValue(reported.slice(0, 1)),
+        pasteNodes: vi.fn().mockResolvedValue(reported.slice(0, 1)),
       });
       const { result } = renderHook(() => useNodeActions(opts));
       act(() => { result.current.onPaste("goal-2"); });
@@ -973,9 +973,9 @@ describe("useNodeActions — onInsertParent", () => {
     });
   });
 
-  it("says so when the backend refuses one of its two writes", async () => {
+  it("says so when the backend refuses the gesture", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const opts = makeOpts({ createChild: vi.fn().mockRejectedValue(new Error("no such parent")) });
+    const opts = makeOpts({ insertParent: vi.fn().mockRejectedValue(new Error("no such parent")) });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onInsertParent("task-5"); });
     await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
@@ -989,19 +989,16 @@ describe("useNodeActions — onInsertParent", () => {
     const opts = makeOpts({ tree: mkNode("root", "domain", [TASK_NODE]) });
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onInsertParent("task-5"); });
-    expect(opts.createChild).not.toHaveBeenCalled();
+    expect(opts.insertParent).not.toHaveBeenCalled();
   });
 
   it("creates a child of the parent, then moves the node under it", async () => {
-    const intermediary = mkNode("domain-99", "project");
-    const opts = makeOpts({
-      createChild: vi.fn().mockResolvedValue(intermediary),
-    });
+    const opts = makeOpts();
     const { result } = renderHook(() => useNodeActions(opts));
     act(() => { result.current.onInsertParent("task-5"); });
     await vi.waitFor(() => expect(opts.setEditingNodeId).toHaveBeenCalledWith("domain-99"));
-    expect(opts.createChild).toHaveBeenCalledWith("domain-3", "project", "");
-    expect(opts.moveNode).toHaveBeenCalledWith("task-5", "task", "domain-99", "project", 0);
+    // One gesture operation makes the parent and moves the node under it.
+    expect(opts.insertParent).toHaveBeenCalledWith("task-5", "task", "domain-3", "project");
     expect(opts.selectNode).toHaveBeenCalledWith("domain-99");
   });
 });

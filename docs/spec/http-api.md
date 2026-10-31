@@ -12,18 +12,20 @@ layer.
 
 ## Direction
 
-The desktop app will run in one of two modes:
+The desktop app runs in one of two modes (see [Client Mode](client-mode.md), Task `9f0`):
 
-- **Local mode** is the app as it is today. It owns the database, holds it while it runs, and
-  serves its own MCP endpoint.
-- **Server mode** makes the app a client of `arlesh-server`. The server is then the only writer,
-  and it serves its own copy of the MCP. The app serves none.
+- **Standalone** is the app as it has always been. It owns its local database, holds it while it
+  runs, and serves its own MCP endpoint.
+- **Client** makes the app a client of `arlesh-server`. The server is then the only writer, and it
+  serves the MCP. The app serves none. Every operation the app's commands make goes through its
+  Backend port, which in Client mode calls this server's routes; so every port method has a route
+  here, except People and the knowledge base, which stay Standalone-only.
 
-There is never more than one writer, and there is a single user, so neither mode needs
-multi-writer support. Server mode in the app does not exist yet; it is separate work. Until it
-does, the **hold** below is the safety net. The server takes the same hold the app takes, so
-there is one writer per database: whichever of the app and the server starts second cannot hold
-it, and the server refuses to start rather than become a second writer.
+There is never more than one writer per database, and there is a single user, so neither mode needs
+multi-writer support. The **hold** below is the safety net. The server takes the same hold the app
+takes, so whichever of a Standalone app and the server starts second on the same file cannot hold
+it, and the server refuses to start rather than become a second writer. A Client-mode app opens no
+database, so it takes no hold.
 
 ## Running
 
@@ -35,6 +37,12 @@ arlesh-server --db <path> [--host <addr>] [--port N] [--tls-cert F --tls-key F] 
 It is started by hand on whichever machine holds the database. There is no unit file and no
 service manager. The flags can also come from the environment, as `ARLESH_DATABASE__PATH`,
 `ARLESH_DATABASE__FORCE`, `ARLESH_SERVER__HOST` and so on (pydantic-settings, nested with `__`).
+
+- **The database as a URL.** `ARLESH_DATABASE_URL` names the database the way a container expects:
+  `sqlite:///relative.db` or `sqlite:////absolute/arlesh.db`. `ARLESH_DATABASE_URL_FILE` names a
+  file holding the URL instead, for a secret mounted as a file; giving both is refused. SQLite is
+  the only scheme for now (Postgres comes later, through portable SQL). `--db` and
+  `ARLESH_DATABASE__PATH` stay as the shorthand and win over the URL.
 
 - **Address.** It listens on `127.0.0.1:4750` by default. `--host` opts in to a LAN or Tailscale
   address.
@@ -59,10 +67,20 @@ arlesh-server token list --db <path>
 arlesh-server token revoke <client> --db <path>
 ```
 
-Tokens live in `<db>.tokens` beside the database, readable by its owner only (mode 0600). Each is
-kept as a SHA-256 digest; a token is 256 random bits, so a slow hash would add nothing. A client has
-one token at a time: `add` refuses a client that already holds one, so revoke it first. The file is
-read on every request, so a revoke takes effect at once, without a restart.
+Tokens live **in the database**, in the server-only table `server_tokens` (migration 0097, Task
+`9f0`), so they travel with the database they guard: a server seeded by copying `arlesh.db` keeps
+its devices. The desktop app never reads the table, and it is not journaled, so no Ctrl+Z can bring
+a revoked token back. Each token is kept as a SHA-256 digest; a token is 256 random bits, so a slow
+hash would add nothing. A client has one token at a time: `add` refuses a client that already holds
+one, so revoke it first. The table is read on every request, so a revoke takes effect at once,
+without a restart.
+
+The table is reached through the bindings, never Python's own `sqlite3`: two copies of SQLite in one
+process do not see each other's locks, and the WAL is corrupted under them. Tokens used to live in
+`<db>.tokens` beside the database. The first time the server or a `token` command runs, that file's
+tokens are moved into the table and the file is renamed `<db>.tokens.imported`, so a token revoked
+later cannot come back from it. Reading the table migrates the database if it is behind, so the
+server reads it at startup only when nothing holds the database (or it was forced).
 
 **The token decides the client.** The client is the name the undo journal records on every write
 (see [Undo](undo.md), *Clients, and a second writer*), so a request cannot write under another
@@ -103,18 +121,54 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 
 | Path | What |
 | --- | --- |
+| `GET /health` | `api_version`, the package `version` and the build `commit` (`ARLESH_COMMIT`): the app's handshake. Behind the token, so checking it checks the token |
+| `GET /events` | The change stream (below) |
 | `GET /board?now=&at_capacity=` | The whole board: every node with its lifecycle, short id and facts |
-| `/tasks` | `GET /{id}`, create, `PATCH /{id}?confirmed=&descendant_plans=` (an update; naming a parent and position moves the Task), delete, `PUT /{id}/archived?archived=`, `POST /{id}/plan-containment-conflicts` (the body is the new Plan; writes nothing), `POST /{id}/status?step=`, `/agentic/toggle`, `/dependencies` (`GET`, `POST`, and `DELETE` with the dependency as its body), `/done-at`, `/duplicate`, `/convert-to-flow`, `/spawned-wait` and its check |
+| `/board` | `GET /lifecycles?now=`, `/task-dependencies?now=`, `/block-reasons`: the board's parts on their own |
+| `GET /tasks`, `/goals`, `/commitments`, `/waits` `?now=` | Every node of the kind, derived at `now`, as the board has them |
+| `/tasks` | `GET /{id}`, create, `PATCH /{id}?confirmed=&descendant_plans=` (an update; naming a parent and position moves the Task), delete, `PUT /{id}/archived?archived=`, `POST /{id}/plan-containment-conflicts` (the body is the new Plan; writes nothing), `POST /{id}/status?step=`, `/agentic/toggle`, `/dependencies` (`GET`, `POST`, and `DELETE` with the dependency as its body), `/done-at`, `/duplicate`, `/convert-to-flow`, `/spawned-wait` and its check, `GET /{id}/dependency-candidates` (what the quick dependency picker offers) |
 | `/goals` | `GET /{id}`, create, `PATCH /{id}?confirmed=`, delete, `/duplicate`, `/convert-to-flow` |
 | `/commitments` | `GET /{id}`, create, update, delete, `PUT /{id}/archived?archived=`, `POST /{id}/verdict?press=` |
 | `/waits` | create, update, delete, `/check/complete`, `/check/reopen` |
-| `/infos`, `/domains` | read, create, update, delete, `/duplicate`; `GET /domains?subtype=` |
-| `/flows` | read, create, update, delete, `/start`, `/recurrence`, `/habit-modifications`, `/fork`, `/duplicate`, `/dependencies` |
-| `/flow-items` | create and update `flow_goal`, `flow_task`, `flow_commitment` and `flow_expectation` items, delete, `/cycles?reconcile=`, `/dependencies`, `/duplicate` |
-| `/nodes/{kind}/{id}` | `/tags/{tag_id}` (`PUT` and `DELETE`), `/block-reasons` |
+| `/infos`, `/domains` | read, create, update, delete, `/duplicate`; `GET /infos`; `GET /domains?subtype=` |
+| `/flows` | read, create, update, delete, `/start`, `/recurrence` (`GET` too), `/habit-modifications`, `/fork`, `/duplicate`, `/dependencies`; `GET` the list, `/{id}/goals`, `/{id}/tasks`, `/{id}/completion-count`, `/instance-nodes`; `POST /origins` and `/scope-valid-targets` (reads, the body a list of nodes) |
+| `/flow-items` | create and update `flow_goal`, `flow_task`, `flow_commitment` and `flow_expectation` items, delete, `/cycles?reconcile=`, `/dependencies`, `/duplicate`; `GET /flow_goal`, `/flow_task`, `/cycles`, `/dependencies`: every Flow's |
+| `/nodes/{kind}/{id}` | `/tags/{tag_id}` (`PUT` and `DELETE`), `/block-reasons`, `POST /scope-containment-conflicts` (the body a Time Scope) and `GET /reparent-conflicts?parent_type=&parent_id=`: what-ifs that write nothing |
+| `/capacity` | The agent capacity lock: `GET`, and `PUT` with `{"at_capacity": …}`. One lock per database file, shared by every route and every client's MCP endpoint |
+| `/undo`, `/redo` | `GET /undo` (what the calling client's next undo and redo would be), `POST /undo`, `POST /redo`: the calling client's own stacks. `null` when there is nothing to take back |
+| `/gestures` | The gesture operations: each gesture the app makes over several commands, as one request — one transaction, one undo step. `POST /delete-nodes` (the body a list of `{kind, id}`), and `POST /paste`, `/insert-parent`, `/move-node`, `/plan-tasks`, `/plan-move`, `/save-task`, `/save-goal`, `/save-commitment`, `/save-project`, `/save-wait`, `/save-flow`, `/save-flow-item` and `/new-flow`, each with the gesture's writes as its body and answering each write's result (see [Client Mode](client-mode.md), *Undo*) |
+| `/mcp-access` | The MCP roots: `GET` (what the MCP can see), `GET /catalogue`, `PUT` and `DELETE /roots/{node_kind}/{node_id}` |
 | `/scopes` | `GET /containing?kind=&date=`, `POST /resolve?now=` (the body is a scope key) |
 | `/rules` | `POST /item-state`, `POST /commitment-state`: the derived lifecycles |
 | `/mcp` | Arlesh's MCP endpoint (below) |
+
+**Parity with the app.** Every method of the desktop app's Backend port has a route here, except
+People and the knowledge base, which have none (see [Client Mode](client-mode.md)). The mapping is
+`conformance/client-mode.json`, which both sides test: the app that every port method is listed, the
+server that every listed route is served and that its `API_VERSION` is the app's.
+
+## Undo: every write is one Gesture
+
+Each write request is one Gesture of the client its token names: the server opens it before the
+write and closes it after, so it reaches that client's Undo Stack as one step, and a client's undo
+never takes back another's write. The open, the write and the close run under a lock per database
+file, so no other client's write lands inside the Gesture; an agent's write through `/mcp` still
+can, journaled as source `mcp` and kept off every stack, as in the app. A Gesture never stays open
+between requests: a gesture the app makes over several nodes is one of the `/gestures` operations
+instead (see [Client Mode](client-mode.md), *Undo*). The stacks are in memory, one pair per client,
+and start empty with the server, which also clears the journal at startup as the app does.
+
+## Live sync: `/events`
+
+`GET /events` is a Server-Sent Events stream. Every committed write bumps the board's **revision**:
+a write through any route as any client, the capacity lock, and an agent's write through `/mcp`.
+The revision is one per database file, shared by every open of it in the process, and it starts at
+0 when the server starts. The stream sends `event: board-changed` with `data: {"revision": n,
+"epoch": e}` when the revision moves past the last one it sent, so writes close together arrive as
+one event. Each event's id is `<epoch>:<revision>`, the epoch naming this run of the server. A
+client reconnecting with `Last-Event-ID` is sent one event at once if it missed anything: the
+revision moved past its own, or the server restarted. A comment goes out every 15 s of silence, so
+a proxy keeps the stream open.
 
 ## Errors
 
@@ -132,7 +186,8 @@ in the server's log. A client branches on `kind`, never on the status alone.
 | `database`, `internal` | 500 |
 
 A request that does not match its schema is 400 `invalid_request`, with `details.reason =
-"validation"` and the field errors. An unknown route is 404 `not_found`, and a kind the server
+"validation"` and the field errors. An unknown route is 404 `not_found` with `details.reason = "unknown_route"`, so a newer app can tell a
+feature this server lacks from a missing node; a kind the server
 does not know is answered as 500 `internal`. FastAPI's own 422 for a malformed request is
 replaced, because 422 here means *confirm or add a window*.
 
@@ -197,8 +252,10 @@ installs the `arlesh-server` command. Its layout follows the user's Librarian pr
     - `run.py`: starts uvicorn.
   - `mcp/proxy.py`: `/mcp`, the streaming reverse proxy, mounted on the FastAPI app. Its way out
     is an injected httpx client, so it needs no port of its own.
-- **`ports/tokens/`**: the server's own way out, the token file. `TokenStore` is the port and
-  `FileTokenStore` the adapter; the tests' fake is the second adapter.
+- **`ports/tokens/`**: the server's own way out, the token table. `TokenStore` is the port and
+  `DatabaseTokenStore` the adapter over the `server_tokens` table (through the bindings'
+  `token_call`); the tests' fake is the second adapter. `FileTokenStore` is kept only to read an
+  old `<db>.tokens` file once.
 - **Configuration and logging:** `config.py` holds the settings (pydantic-settings), and
   `logger.py` sets up loguru.
 

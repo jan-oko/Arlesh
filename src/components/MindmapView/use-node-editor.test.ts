@@ -11,6 +11,11 @@ import { flowOrigins, setFlowItemCycles, updateFlowItem, addFlowDependency } fro
 import { testKey } from "@/test/scope-key";
 import { updateDomain } from "@/api/domains";
 
+// A gesture operation's writes are replayed onto the mocked api calls below, one call per write.
+vi.mock("@/api/multi-node-gestures", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/multi-node-gestures")>()),
+  runGesture: (await import("@/test/gesture-replay")).replayGesture,
+}));
 vi.mock("@/api/domains", () => ({
   listDomains: vi.fn().mockResolvedValue([]),
   updateDomain: vi.fn(),

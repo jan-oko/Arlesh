@@ -7,7 +7,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from arlesh.server.ports.tokens.file_token_store import FileTokenStore
+from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from fastapi.testclient import TestClient
 
 INITIALIZE = {
@@ -78,7 +78,7 @@ def test_a_session_lists_tools_and_ends(server: TestClient) -> None:
 
 
 def test_an_agents_write_is_journaled_under_its_tokens_client(
-    server: TestClient, tokens: FileTokenStore, server_db: Path, domain: int
+    server: TestClient, tokens: DatabaseTokenStore, server_db: Path, domain: int
 ) -> None:
     # Open the Domain to the MCP, as the app's MCP settings do: its roots are board rows.
     with sqlite3.connect(server_db) as connection:
