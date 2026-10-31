@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useState } from "react";
 import type { ZenArea, ZenGridLayout } from "@/utils/zen-grid";
-import { fitZenGrid } from "@/utils/zen-grid";
+import { fitZenGrid, fitZenList } from "@/utils/zen-grid";
 
 interface MeasuredZenGrid {
   /** Attach to the element the grid fills — the area left below the strips. */
@@ -19,7 +19,7 @@ interface MeasuredZenGrid {
  * `ResizeObserver` is absent from some test environments; its absence costs the re-measure, not the
  * render — the layout effect measures once either way.
  */
-export function useZenGrid(count: number): MeasuredZenGrid {
+export function useZenGrid(count: number, stacked = false): MeasuredZenGrid {
   const [area, setArea] = useState<ZenArea | null>(null);
   const [element, setElement] = useState<HTMLElement | null>(null);
 
@@ -39,5 +39,6 @@ export function useZenGrid(count: number): MeasuredZenGrid {
     return () => observer.disconnect();
   }, [element]);
 
-  return { ref, layout: fitZenGrid(count, area) };
+  // Stacked in the phone layout: one column of cards, sized to fit (`fitZenList`).
+  return { ref, layout: stacked ? fitZenList(count, area) : fitZenGrid(count, area) };
 }

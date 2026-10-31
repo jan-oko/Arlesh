@@ -53,6 +53,7 @@ export default function ExpectationRow({
       <button
         type="button"
         className={taskStyles.statusButton}
+        data-gesture-skip=""
         aria-label={t("releaseToggle")}
         onClick={(e) => { e.stopPropagation(); onSelect(node.id); onToggleRelease(node.id); }}
       >

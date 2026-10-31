@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  fitZenList,
   fitZenGrid, zenCardShowsBadges, zenDrawnOrder, zenNavigationTarget, zenTextSize,
   ZEN_GAP_PX, ZEN_MIN_CARD_HEIGHT_PX, ZEN_MIN_CARD_WIDTH_PX,
 } from "./zen-grid";
@@ -167,5 +168,19 @@ describe("zenNavigationTarget", () => {
 describe("zenDrawnOrder", () => {
   it("lists the Commitments strip, the Expectations strip, then the grid", () => {
     expect(zenDrawnOrder(RAGGED)).toEqual(["c1", "c2", "e1", "e2", "t0", "t1", "t2", "t3", "t4", "t5", "t6"]);
+  });
+});
+
+describe("fitZenList (the phone layout)", () => {
+  it("stacks the cards in one column the area's width, sharing its height", () => {
+    expect(fitZenList(2, { width: 360, height: 400 })).toEqual({ columns: 1, cardWidth: 360, cardHeight: 150, scrolls: false });
+  });
+
+  it("caps a card at the box its width allows, however few there are", () => {
+    expect(fitZenList(1, { width: 360, height: 800 }).cardHeight).toBe(150);
+  });
+
+  it("scrolls at the minimum height when the cards outnumber the room", () => {
+    expect(fitZenList(30, { width: 360, height: 600 })).toEqual({ columns: 1, cardWidth: 360, cardHeight: 48, scrolls: true });
   });
 });

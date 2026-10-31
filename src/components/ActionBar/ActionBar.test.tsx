@@ -18,14 +18,14 @@ function publish(commands: readonly SurfaceCommand[]) {
 
 beforeEach(() => {
   useViewStore.setState({ view: "list" });
-  useSelectionSurfaceStore.setState({ kinds: [] });
+  useSelectionSurfaceStore.setState({ kinds: [], multiSelect: false });
   usePaletteStore.setState({ isOpen: false });
   publish([]);
 });
 
 describe("ActionBar", () => {
   it("draws a selected Task's slots, then More", () => {
-    useSelectionSurfaceStore.setState({ kinds: ["task"] });
+    useSelectionSurfaceStore.setState({ kinds: ["task"], multiSelect: false });
     render(<ActionBar />);
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
       "✓actionStatus", "＋actionChild", "▦actionPlan", "⇢actionDependency", "↗actionOpen", "⋯actionMore",
@@ -35,7 +35,7 @@ describe("ActionBar", () => {
   it("runs the view's own binding for a slot — the List View's status cycle", () => {
     const cycle = surfaceCommand("listView.cycleStatus", "cycleRowStatus");
     publish([cycle]);
-    useSelectionSurfaceStore.setState({ kinds: ["task"] });
+    useSelectionSurfaceStore.setState({ kinds: ["task"], multiSelect: false });
     render(<ActionBar />);
     fireEvent.click(screen.getByRole("button", { name: "actionStatus" }));
     expect(cycle.run).toHaveBeenCalledTimes(1);
@@ -43,7 +43,7 @@ describe("ActionBar", () => {
 
   it("draws a slot disabled while its binding's guard says no", () => {
     publish([surfaceCommand("listView.cycleStatus", "cycleRowStatus", { canRun: () => false })]);
-    useSelectionSurfaceStore.setState({ kinds: ["task"] });
+    useSelectionSurfaceStore.setState({ kinds: ["task"], multiSelect: false });
     render(<ActionBar />);
     expect(screen.getByRole("button", { name: "actionStatus" })).toBeDisabled();
   });

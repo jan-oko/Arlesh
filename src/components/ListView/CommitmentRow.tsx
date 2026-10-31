@@ -65,6 +65,7 @@ export default function CommitmentRow({
       <button
         type="button"
         className={taskStyles.statusButton}
+        data-gesture-skip=""
         aria-label={t("cycleVerdict")}
         onClick={(e) => { e.stopPropagation(); onSelect(node.id); onCycleVerdict(node.id); }}
       >
@@ -91,6 +92,7 @@ export default function CommitmentRow({
                 key={tagId}
                 type="button"
                 className={taskStyles.tagPill}
+        data-gesture-skip=""
                 title={t("filterByTag")}
                 onClick={() => onAddTagFilter(tagId)}
               >

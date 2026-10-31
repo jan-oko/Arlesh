@@ -190,6 +190,7 @@ export default function StepCard({
         <button
           type="button"
           className={styles.editBtn}
+        data-gesture-skip=""
           title={t("stepsView:openEditor")}
           aria-label={t("stepsView:openEditor")}
           onClick={(event) => { event.stopPropagation(); onOpenEditor(); }}

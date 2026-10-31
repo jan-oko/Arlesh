@@ -1,6 +1,7 @@
 import type { View } from "@/stores/use-view-store";
 import type { NodeKind } from "@/utils/tree-layout";
 import type { TouchLabelKey } from "@/stores/use-command-surface-store";
+import { OPEN_EDITOR_IDS, everyView } from "./command-ids";
 
 /** Which row of the action bar's table applies (`docs/spec/touch.md`). */
 export type ActionContext =
@@ -20,11 +21,6 @@ export interface ActionSlot {
   commandIds: readonly string[];
 }
 
-/** The same command in each view that has one, in the order the views are listed. */
-function everyView(suffix: string): string[] {
-  return [`mindmap.${suffix}`, `listView.${suffix}`, `planView.${suffix}`, `stepsView.${suffix}`, `zenView.${suffix}`];
-}
-
 function run(key: string, labelKey: TouchLabelKey, glyph: string, commandIds: readonly string[]): ActionSlot {
   return { key, labelKey, glyph, kind: "run", commandIds };
 }
@@ -37,7 +33,7 @@ const FILTER = run("filter", "actionFilter", "⧩", ["global.openFilterSearch"])
 const OPEN = run("open", "actionOpen", "↗", ["global.openSearch"]);
 const CHILD = run("child", "actionChild", "＋", everyView("createChild"));
 const PLAN = run("plan", "actionPlan", "▦", everyView("quickPlan"));
-const EDIT = run("edit", "actionEdit", "✎", everyView("openEditor"));
+const EDIT = run("edit", "actionEdit", "✎", OPEN_EDITOR_IDS);
 
 /** Plain Enter's cycle, in each view's own name for it (the Mindmap's is `mindmap.enter`). */
 const STATUS_CYCLE = ["mindmap.enter", ...everyView("cycleStatus")];

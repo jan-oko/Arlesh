@@ -59,6 +59,9 @@ import { useKeyboardStepsView } from "./use-keyboard-steps-view";
 import { useStepGrid } from "./use-step-grid";
 import styles from "./StepsView.module.css";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
+import { runFirst, useViewGestures } from "@/hooks/use-view-gestures";
+import { usePinchSteps } from "@/hooks/use-pinch-steps";
+import { useHasTouch } from "@/hooks/use-media-query";
 
 /**
  * What the Steps View has picked, held as **the card's node id** rather than its place in the grid.
@@ -489,6 +492,25 @@ export default function StepsView() {
     onRedo,
   });
 
+  // The touch gestures (docs/spec/touch.md): a single tap selects, double-tap steps into the card,
+  // pinch walks the zoom. The header card carries the Step's own id, or "board" at the true root.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const headerCardId = rawStepNode?.id ?? "board";
+  const hasTouch = useHasTouch();
+  useViewGestures(rootRef, {
+    idAttribute: "data-step-card",
+    ready: !isLoading && error === null,
+    isSelected: (id) => (id === headerCardId ? cursor?.cell === "header" : selectedNode?.id === id && cursor?.cell === "child"),
+    select: (id) => setSelection(id === headerCardId ? { cell: "header" } : { cell: "child", nodeId: id }),
+    deselect: () => setSelection(null),
+    goInto: (id) => (id === headerCardId ? refuseAtBoardRoot() : onDescend(id)),
+  });
+  usePinchSteps(rootRef, {
+    enabled: hasTouch && !isLoading && error === null,
+    onZoomIn: () => runFirst(["stepsView.zoomIn"]),
+    onZoomOut: () => runFirst(["stepsView.zoomOut"]),
+  });
+
   if (isLoading) return <div className={styles.centered}>{t("common:loading")}</div>;
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
 
@@ -510,7 +532,7 @@ export default function StepsView() {
   const stepCreatableKinds = rawStepNode === null ? [] : creatableKinds(rawStepNode);
 
   return (
-    <div className={styles.container} style={gridStyle}>
+    <div ref={rootRef} className={styles.container} style={gridStyle}>
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
       {quickPlan.target !== null && (

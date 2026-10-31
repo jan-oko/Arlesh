@@ -94,6 +94,7 @@ export default function TaskRow({
       <button
         type="button"
         className={styles.statusButton}
+        data-gesture-skip=""
         disabled={!canClickStatus}
         aria-label={t("cycleStatus")}
         onClick={() => onCycleStatus(node.id)}
@@ -133,6 +134,7 @@ export default function TaskRow({
                 key={tagId}
                 type="button"
                 className={styles.tagPill}
+        data-gesture-skip=""
                 title={t("filterByTag")}
                 onClick={() => onAddTagFilter(tagId)}
               >
