@@ -60,8 +60,10 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORKTREES="$REPO/.claude/worktrees"
-SHARED_TARGET="${ARLESH_SHARED_TARGET:-$REPO/src-tauri/target}"
+# The main checkout, even when this copy of the script runs from inside one of its worktrees.
+MAIN="$(dirname "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)")"
+WORKTREES="$MAIN/.claude/worktrees"
+SHARED_TARGET="${ARLESH_SHARED_TARGET:-$MAIN/src-tauri/target}"
 INSTANCES="${ARLESH_INSTANCES:-$HOME/.cache/arlesh/instances}"
 REAL_DB="${ARLESH_REAL_DB:-$HOME/.local/share/com.atai.arlesh/arlesh.db}"
 MIN_FREE_GB="${ARLESH_MIN_FREE_GB:-5}"
@@ -144,7 +146,7 @@ build_one() {
 
   # Each worktree needs node_modules reachable. A symlink to the main checkout's costs nothing and
   # is what the agents already use; npm install must never run inside a worktree.
-  [ -e "$wt/node_modules" ] || ln -s "$REPO/node_modules" "$wt/node_modules"
+  [ -e "$wt/node_modules" ] || ln -s "$MAIN/node_modules" "$wt/node_modules"
 
   conf="$wt/src-tauri/tauri.conf.json"
   cp "$conf" "$conf.orig"
