@@ -182,6 +182,23 @@ There is no sync between a device's local database and a server. A device switch
 its local database untouched, and switching back finds it as it was. A server is seeded by copying
 `arlesh.db` into its volume.
 
+## Trying it: branch instances
+
+`scripts/branch-instance.sh` runs a branch's server as well as its app, so any app branch can be
+tried against any server branch — the version handshake included:
+
+```
+scripts/branch-instance.sh server start 9f0-client-mode              # arlesh-server from that worktree
+scripts/branch-instance.sh start 201-client-gaps --server 9f0-client-mode
+scripts/branch-instance.sh run some-app --standalone                 # back to the local board
+scripts/branch-instance.sh stop all                                  # apps and servers
+```
+
+A server runs its worktree's own code (its bindings built into that worktree's venv) on its own
+port, over a copy of the real database taken read-only (`sqlite3 -readonly … .backup`), seeded once
+and kept. `--server` mints the app instance a token and writes its `mode.json` and its token file,
+so the instance comes up connected; the token is never printed. `list` shows the servers too.
+
 ## Not in phase 1
 
 Pairing codes and the Devices page, Postgres (later, through portable SQL), offline writes, and the
