@@ -574,3 +574,33 @@ async fn every_write_a_gesture_makes_runs_against_its_kind() {
         "a Commitment has no copy"
     );
 }
+
+#[tokio::test]
+async fn archive_nodes_archives_each_node_and_admits_no_other_write() {
+    use serde_json::json;
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let first = task(&app, "First").await;
+    let second = task(&app, "Second").await;
+    let archive = |task: &Task| {
+        json!({ "op": "update_task", "id": task.id, "request": { "archival": "archived" } })
+    };
+
+    gesture(&app, "archive-nodes", json!([archive(&first), archive(&second)]))
+        .await
+        .unwrap();
+    let refused = gesture(
+        &app,
+        "archive-nodes",
+        json!([{ "op": "delete", "node": { "kind": "task", "id": first.id } }]),
+    )
+    .await;
+
+    for archived in [&first, &second] {
+        let read = task_commands::get_task(app.state(), archived.id.stored().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(json!(read.task.archival), json!("archived"));
+    }
+    assert!(refused.is_err());
+}
