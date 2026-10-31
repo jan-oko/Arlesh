@@ -90,7 +90,8 @@ The gesture operations:
   `plan-tasks` (quick plan), `plan-move` (the Plan View), `save-task`, `save-goal`,
   `save-commitment`, `save-project`, `save-wait` (the wait editor's Save and its Create),
   `save-flow` (the Flow and Habit editor, its *Archive & new* included), `save-flow-item`, and
-  `new-flow` (a new Flow or Habit). The writes run in order in one transaction; a later write names
+  `new-flow` (a new Flow or Habit), and `archive-nodes` (a hand archive or unarchive of Tasks,
+  Commitments and Domains: it admits only their three updates). The writes run in order in one transaction; a later write names
   the node an earlier one made as `{"step": n}`, or the node a Habit fork replaced as
   `{"step": n, "forked": <kind>, "id": <old id>}`. Each gesture admits only the writes it makes,
   and refuses any other before writing. A write marked `may_be_refused` is taken back alone

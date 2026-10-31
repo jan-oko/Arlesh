@@ -138,3 +138,35 @@ def test_a_write_that_may_be_refused_is_taken_back_alone(
 
     assert answers[0]["refused"]["kind"] == "not_found"
     assert server.get(f"/tasks/{task}").json()["task"]["title"] == "Renamed"
+
+
+def test_archiving_several_nodes_is_one_undo_step(
+    server: TestClient, domain: int, new_task: NewTask
+) -> None:
+    first, second = new_task(domain, "First"), new_task(domain, "Second")
+    steps = [
+        {"op": "update_task", "id": task, "request": {"archival": "archived"}}
+        for task in (first, second)
+    ]
+
+    archived = server.post("/gestures/archive-nodes", json=steps)
+    states = [server.get(f"/tasks/{task}").json()["task"]["archival"] for task in (first, second)]
+    server.post("/undo")
+
+    assert archived.status_code == 200, archived.text
+    assert states == ["archived", "archived"]
+    assert server.get(f"/tasks/{first}").json()["task"]["archival"] == "live"
+    assert server.get(f"/tasks/{second}").json()["task"]["archival"] == "live"
+
+
+def test_archive_nodes_refuses_a_delete_before_anything_is_written(
+    server: TestClient, domain: int, new_task: NewTask
+) -> None:
+    task = new_task(domain)
+
+    refused = server.post(
+        "/gestures/archive-nodes", json=[{"op": "delete", "node": {"kind": "task", "id": task}}]
+    )
+
+    assert refused.status_code == 400
+    assert _exists(server, task)
