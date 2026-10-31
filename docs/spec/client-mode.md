@@ -98,11 +98,25 @@ would take in everyone's. Instead:
 - `HttpBackend` keeps the frontend's `open_gesture` and `close_gesture` on the device, where they
   only pair up; it sends nothing for them (`local` in the parity contract).
 
-The gesture operations so far: **delete nodes** (`POST /gestures/delete-nodes`), a multi-selection
-or an expanded subtree, all or nothing. The other multi-command gestures — paste and duplicate,
-moves with their scope clamps, insert parent, the Plan View and quick-plan moves, quick dependency,
-and the editors' saves — still run as a run of commands in Standalone; each gets its operation
-next (Task 9f0).
+The gesture operations:
+
+- **Delete nodes** (`POST /gestures/delete-nodes`): a multi-selection or an expanded subtree.
+- **The listed-writes gestures**, each `POST /gestures/<name>` with the gesture's writes as its body:
+  `paste` (copies or moves), `insert-parent`, `move-node` (a drag, with the clamps it asked about),
+  `plan-tasks` (quick plan), `plan-move` (the Plan View), `save-task`, `save-goal`,
+  `save-commitment`, `save-project`, `save-wait` (the wait editor's Save and its Create),
+  `save-flow` (the Flow and Habit editor, its *Archive & new* included), `save-flow-item`, and
+  `new-flow` (a new Flow or Habit). The writes run in order in one transaction; a later write names
+  the node an earlier one made as `{"step": n}`, or the node a Habit fork replaced as
+  `{"step": n, "forked": <kind>, "id": <old id>}`. Each gesture admits only the writes it makes,
+  and refuses any other before writing. A write marked `may_be_refused` is taken back alone
+  inside a savepoint and answered `{"refused": <error>}`: the two plan gestures mark every write,
+  so one Task that cannot take the Plan does not stop the others, as before. Every other refusal
+  refuses the whole gesture.
+
+The frontend's prompts (the clamp-or-cancel question, the Plan clamp, the reconcile question) are
+asked before the request, from reads, so the request carries the answers. Quick dependency is one
+write already, and needs no operation of its own.
 
 ## Offline
 

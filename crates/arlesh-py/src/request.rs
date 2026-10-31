@@ -30,7 +30,12 @@ use arlesh_core::{
     },
     infos::model::{CreateInfoRequest, InfoId, UpdateInfoRequest},
     mindmap,
-    nodes::{self, composite, gestures::GestureNode, id::NodeId, write},
+    nodes::{
+        self, composite,
+        gestures::{steps::StepEntry, GestureName, GestureNode},
+        id::NodeId,
+        write,
+    },
     tasks::{
         self, gestures,
         model::{
@@ -712,6 +717,13 @@ pub(crate) enum Request {
     DeleteNodes {
         /// The nodes, in the order they are deleted.
         nodes: Vec<GestureNode>,
+    },
+    /// Runs a gesture operation: its listed writes, in order, as one Gesture.
+    RunGesture {
+        /// Which gesture.
+        name: GestureName,
+        /// Its writes.
+        steps: Vec<StepEntry>,
     },
     /// Reverses this client's most recent Gesture; `null` when its Undo Stack is empty.
     Undo,
@@ -1718,6 +1730,12 @@ async fn dispatch(
         Request::DeleteNodes { nodes } => {
             transaction(factory, async |db| {
                 nodes::gestures::delete_nodes(db, &nodes, now()).await
+            })
+            .await
+        }
+        Request::RunGesture { name, steps } => {
+            transaction(factory, async |db| {
+                nodes::gestures::run(db, name, steps, now()).await
             })
             .await
         }

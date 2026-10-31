@@ -152,3 +152,25 @@ async fn gestures_pair_up_on_the_device() {
 
     assert!(backend.close_gesture().await.is_err(), "nothing is open");
 }
+
+#[tokio::test]
+async fn a_gesture_operation_is_a_write_and_refused_while_the_server_is_away() {
+    use crate::backend::node_gestures::NodeGesturesPort;
+    use crate::nodes::gestures::GestureName;
+    let (backend, _) = nowhere();
+    backend.set_reachable(false);
+
+    let refused = backend
+        .run_gesture(GestureName::SaveTask, Vec::new())
+        .await
+        .expect_err("refused");
+
+    assert!(is_unreachable(&refused));
+}
+
+#[test]
+fn a_gesture_names_its_own_route() {
+    use crate::nodes::gestures::GestureName;
+
+    assert_eq!(segment(&GestureName::SaveFlowItem), "save-flow-item");
+}

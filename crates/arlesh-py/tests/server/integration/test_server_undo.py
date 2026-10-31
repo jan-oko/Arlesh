@@ -80,3 +80,61 @@ def test_a_delete_that_fails_part_way_deletes_nothing(
 
     assert refused.status_code == 400
     assert _exists(server, task)
+
+
+def test_insert_parent_names_the_node_it_made_and_is_one_undo_step(
+    server: TestClient, domain: int, new_task: NewTask
+) -> None:
+    child = new_task(domain, "Child")
+    steps = [
+        {
+            "op": "create_task",
+            "request": {"title": "Parent", "parent_type": "domain", "parent_id": domain},
+        },
+        {
+            "op": "move",
+            "kind": "task",
+            "id": child,
+            "parent_kind": "task",
+            "parent": {"step": 0},
+            "position": 0,
+        },
+    ]
+
+    answers = server.post("/gestures/insert-parent", json=steps)
+    parent = answers.json()[0]["id"]
+    moved_under = server.get(f"/tasks/{child}").json()["task"]["parent_id"]
+    server.post("/undo")
+
+    assert answers.status_code == 200, answers.text
+    assert moved_under == parent
+    assert not _exists(server, parent)
+    assert server.get(f"/tasks/{child}").json()["task"]["parent_id"] == domain
+
+
+def test_a_write_a_gesture_does_not_make_is_refused_before_anything_is_written(
+    server: TestClient, domain: int, new_task: NewTask
+) -> None:
+    task = new_task(domain)
+
+    refused = server.post(
+        "/gestures/paste", json=[{"op": "delete", "node": {"kind": "task", "id": task}}]
+    )
+
+    assert refused.status_code == 400
+    assert _exists(server, task)
+
+
+def test_a_write_that_may_be_refused_is_taken_back_alone(
+    server: TestClient, domain: int, new_task: NewTask
+) -> None:
+    task = new_task(domain)
+    steps = [
+        {"op": "update_task", "id": 99999, "request": {"title": "x"}, "may_be_refused": True},
+        {"op": "update_task", "id": task, "request": {"title": "Renamed"}},
+    ]
+
+    answers = server.post("/gestures/plan-tasks", json=steps).json()
+
+    assert answers[0]["refused"]["kind"] == "not_found"
+    assert server.get(f"/tasks/{task}").json()["task"]["title"] == "Renamed"

@@ -24,7 +24,7 @@ use arlesh_core::{
     },
     infos::model::Info,
     mindmap::{model::MindmapLoad, rules::plans::PlanClampTarget},
-    nodes::gestures::GestureNode,
+    nodes::gestures::{steps::StepEntry, GestureName, GestureNode},
     scopes::{model::Scope, resolve::ResolvedScope},
     tasks::{
         gestures::StatusStepOutcome,
@@ -126,6 +126,8 @@ fn inputs(generator: &mut SchemaGenerator) {
     add::<TargetRef>(generator);
     add::<NodeTable>(generator);
     add::<GestureNode>(generator);
+    add::<GestureName>(generator);
+    add::<StepEntry>(generator);
 }
 
 /// What the calls answer — written by the core, so described as it **serialises** them: a field

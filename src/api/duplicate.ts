@@ -17,3 +17,20 @@ export interface DuplicatedSubtree<T> {
   copy: T;
   left_behind: LeftBehindChild[];
 }
+
+const HABIT_CHILD_KINDS: readonly HabitChildKind[] = ["task", "goal", "commitment", "info", "expectation"];
+
+function isLeftBehindChild(value: unknown): value is LeftBehindChild {
+  if (typeof value !== "object" || value === null) return false;
+  const childType: unknown = Reflect.get(value, "child_type");
+  return HABIT_CHILD_KINDS.some((kind) => kind === childType)
+    && typeof Reflect.get(value, "child_id") === "number"
+    && typeof Reflect.get(value, "title") === "string";
+}
+
+/** What a copy a gesture made left behind: its answer's `left_behind`, or nothing. */
+export function leftBehindOf(answer: unknown): LeftBehindChild[] {
+  if (typeof answer !== "object" || answer === null) return [];
+  const list: unknown = Reflect.get(answer, "left_behind");
+  return Array.isArray(list) ? list.filter(isLeftBehindChild) : [];
+}

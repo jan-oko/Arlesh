@@ -214,6 +214,7 @@ pub fn run() {
             commands::flows::list_all_flow_dependencies,
             commands::mindmap::load_mindmap,
             commands::node_gestures::delete_nodes,
+            commands::node_gestures::run_gesture,
             commands::windows::open_board_window,
             commands::windows::board_windows,
             commands::windows::focus_board_window,

@@ -361,6 +361,21 @@
     ],
     "delete_nodes": [
       "POST /gestures/delete-nodes"
+    ],
+    "run_gesture": [
+      "POST /gestures/paste",
+      "POST /gestures/insert-parent",
+      "POST /gestures/move-node",
+      "POST /gestures/plan-tasks",
+      "POST /gestures/plan-move",
+      "POST /gestures/save-task",
+      "POST /gestures/save-goal",
+      "POST /gestures/save-commitment",
+      "POST /gestures/save-project",
+      "POST /gestures/save-wait",
+      "POST /gestures/save-flow",
+      "POST /gestures/save-flow-item",
+      "POST /gestures/new-flow"
     ]
   }
 }
