@@ -582,13 +582,15 @@ async fn archive_nodes_archives_each_node_and_admits_no_other_write() {
     let app = helpers::command_host(&pool);
     let first = task(&app, "First").await;
     let second = task(&app, "Second").await;
-    let archive = |task: &Task| {
-        json!({ "op": "update_task", "id": task.id, "request": { "archival": "archived" } })
-    };
+    let archive = |task: &Task| json!({ "op": "update_task", "id": task.id, "request": { "archival": "archived" } });
 
-    gesture(&app, "archive-nodes", json!([archive(&first), archive(&second)]))
-        .await
-        .unwrap();
+    gesture(
+        &app,
+        "archive-nodes",
+        json!([archive(&first), archive(&second)]),
+    )
+    .await
+    .unwrap();
     let refused = gesture(
         &app,
         "archive-nodes",
