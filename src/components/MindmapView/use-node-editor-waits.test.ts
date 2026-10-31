@@ -6,6 +6,11 @@ import { addTagToExpectation, removeTagFromExpectation, updateExpectation } from
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { expectationNodeId } from "@/utils/node-uuid";
 
+// A gesture operation's writes are replayed onto the mocked api calls below, one call per write.
+vi.mock("@/api/multi-node-gestures", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/multi-node-gestures")>()),
+  runGesture: (await import("@/test/gesture-replay")).replayGesture,
+}));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/api/domains", () => ({ listDomains: vi.fn().mockResolvedValue([]), updateDomain: vi.fn(), DOMAIN_SUBTYPE: { TAG: "tag" } }));
 vi.mock("@/api/flows", () => ({ flowOrigins: vi.fn().mockResolvedValue([]) }));

@@ -24,8 +24,12 @@ export type GestureName =
   | "save-task" | "save-goal" | "save-commitment" | "save-project" | "save-wait"
   | "save-flow" | "save-flow-item" | "new-flow";
 
-/** A node a write acts on: its id, or the node an earlier write of the same gesture made. */
-export type StepTarget = RowId | { step: number };
+/**
+ * A node a write acts on: its id; the node an earlier write of the same gesture made; or the node
+ * that replaces `id` in the Habit an earlier write forked (`forked` names its kind: `flow` or a
+ * Flow item kind), `id` itself when that write forked nothing.
+ */
+export type StepTarget = RowId | { step: number } | { step: number; forked: string; id: number };
 
 /**
  * One write of a gesture: `op` names it and the rest are its arguments, as the backend's

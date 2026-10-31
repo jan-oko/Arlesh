@@ -496,7 +496,8 @@ async fn run_one(
                 stored(&id(&item_id)?)?,
                 &cycles,
                 reconcile,
-                None,
+                // An *Archive & new* archives the original as of now.
+                reconcile.map(|_| now),
                 now,
             )
             .await?,
