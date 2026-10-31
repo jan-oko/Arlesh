@@ -494,3 +494,73 @@ async fn a_new_habit_and_its_save_with_archive_and_new() {
 
     assert_ne!(id_of(&forked[1]), flow);
 }
+
+/// Every write the gesture operations can make, each against a kind it is made for. The writes
+/// whose outcome is not this test's point may be refused, so one refusal cannot hide the rest.
+#[tokio::test]
+async fn every_write_a_gesture_makes_runs_against_its_kind() {
+    use serde_json::json;
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    let holder = task(&app, "Holder").await;
+    let day = json!({ "start_id": { "kind": "day", "date": "2026-06-10" }, "end_id": { "kind": "day", "date": "2026-06-10" } });
+    let made = gesture(
+        &app,
+        "save-commitment",
+        json!([
+            { "op": "create_commitment", "request": { "title": "Rule", "parent_type": "domain", "parent_id": 1, "time_scope": day }, "may_be_refused": true },
+            { "op": "update_commitment", "id": { "step": 0 }, "request": { "title": "Rule again" }, "may_be_refused": true },
+            { "op": "create_expectation", "request": { "title": "Reply", "parent_type": "task", "parent_id": holder.id } },
+            { "op": "create_flow", "request": { "title": "Plan", "instance_type": "goal", "parent_type": "aspect", "parent_id": 1, "flow_duration_n": 1, "flow_duration_kind": "week" } },
+        ]),
+    )
+    .await
+    .unwrap();
+    let (wait, flow) = (id_of(&made[2]), id_of(&made[3]));
+    let items = gesture(
+        &app,
+        "new-flow",
+        json!([
+            { "op": "create_flow_item", "item_type": "flow_goal", "request": { "flow_id": flow, "title": "Goal item", "parent_type": "flow", "parent_id": flow } },
+            { "op": "create_flow_item", "item_type": "flow_commitment", "request": { "flow_id": flow, "title": "Rule item", "parent_type": "flow", "parent_id": flow }, "may_be_refused": true },
+            { "op": "create_flow_item", "item_type": "flow_expectation", "request": { "flow_id": flow, "title": "Wait item", "parent_type": "flow", "parent_id": flow }, "may_be_refused": true },
+            { "op": "update_flow_item", "item_type": "flow_goal", "id": { "step": 0 }, "request": { "title": "Goal item again" } },
+            { "op": "update_flow_item", "item_type": "flow_commitment", "id": { "step": 1 }, "request": { "title": "Rule item again" }, "may_be_refused": true },
+            { "op": "update_flow_item", "item_type": "flow_expectation", "id": { "step": 2 }, "request": { "title": "Wait item again" }, "may_be_refused": true },
+            { "op": "update_spawned_wait", "task_id": holder.id, "request": { "title": "Spawned" }, "may_be_refused": true },
+        ]),
+    )
+    .await
+    .unwrap();
+    let goal_item = id_of(&items[0]);
+
+    let answers = gesture(
+        &app,
+        "paste",
+        json!([
+            { "op": "move", "kind": "expectation", "id": wait, "parent_kind": "domain", "parent": 1, "position": 0, "may_be_refused": true },
+            { "op": "move", "kind": "commitment", "id": { "step": 0 }, "parent_kind": "task", "parent": holder.id, "position": 0, "may_be_refused": true },
+            { "op": "duplicate", "kind": "flow", "id": flow, "parent_kind": "aspect", "parent_id": 1, "position": 5 },
+            { "op": "duplicate", "kind": "flow_goal", "id": goal_item, "parent_kind": "flow", "parent_id": flow, "position": 2 },
+            { "op": "move", "kind": "flow_goal", "id": goal_item, "parent_kind": "flow", "parent": flow, "position": 3 },
+            { "op": "move", "kind": "flow", "id": flow, "parent_kind": "domain", "parent": 1, "position": 6 },
+            { "op": "move", "kind": "flow", "id": flow, "parent_kind": "task", "parent": holder.id, "position": 0, "may_be_refused": true },
+            { "op": "move", "kind": "info", "id": 1, "parent_kind": "flow", "parent": flow, "position": 0, "may_be_refused": true },
+            { "op": "move", "kind": "flow_task", "id": 1, "parent_kind": "task", "parent": holder.id, "position": 0, "may_be_refused": true },
+            { "op": "move", "kind": "aspect", "id": 1, "parent_kind": "domain", "parent": 1, "position": 0, "may_be_refused": true },
+            { "op": "duplicate", "kind": "commitment", "id": 1, "parent_kind": "task", "parent_id": 1, "position": 0, "may_be_refused": true },
+            { "op": "duplicate", "kind": "flow_task", "id": 1, "parent_kind": "task", "parent_id": 1, "position": 0, "may_be_refused": true },
+            { "op": "move", "kind": "task", "id": "00000000-0000-5000-8000-000000000000", "parent_kind": "info", "parent": 1, "position": 0, "may_be_refused": true },
+            { "op": "update_info", "id": "00000000-0000-5000-8000-000000000000", "request": { "body": "x" }, "may_be_refused": true },
+        ]),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(answers.len(), 14);
+    assert!(answers[9].get("refused").is_some(), "an Aspect never moves");
+    assert!(
+        answers[10].get("refused").is_some(),
+        "a Commitment has no copy"
+    );
+}
