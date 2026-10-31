@@ -10,8 +10,9 @@ export interface TouchGestureHandlers {
   onDoubleTap: (id: string | null) => void;
   /** A finger held still on a node and lifted: the node's palette. */
   onLongPress: (id: string) => void;
-  onFlickUp: (id: string | null) => void;
-  onSwipe: (id: string | null, direction: "left" | "right") => void;
+  /** `target` is the element the finger went down on, for a view that asks where it was. */
+  onFlickUp: (id: string | null, target: Element) => void;
+  onSwipe: (id: string | null, direction: "left" | "right", target: Element) => void;
   /**
    * Whether a tap on `id` waits out the double-tap window before it counts: the tap that deselects
    * the selected node must not fire when it turns out to be the first half of "go into".
@@ -48,6 +49,7 @@ interface Press {
   last: TouchSample;
   id: string | null;
   element: HTMLElement | null;
+  target: Element;
   held: boolean;
   dragging: boolean;
 }
@@ -131,6 +133,7 @@ export function useTouchGestures(
       press = {
         start, last: start, id,
         element: nodeElement instanceof HTMLElement ? nodeElement : null,
+        target,
         held: false, dragging: false,
       };
       clearHold();
@@ -186,8 +189,8 @@ export function useTouchGestures(
       // A tap on no node is the control's under it — a path header's segment, a pane's button.
       if (gesture.kind === "tap" && current.id === null) return;
       event.preventDefault();
-      if (gesture.kind === "flickUp") { on.onFlickUp(current.id); return; }
-      if (gesture.kind === "swipe") { on.onSwipe(current.id, gesture.direction); return; }
+      if (gesture.kind === "flickUp") { on.onFlickUp(current.id, current.target); return; }
+      if (gesture.kind === "swipe") { on.onSwipe(current.id, gesture.direction, current.target); return; }
 
       if (lastTap !== null && lastTap.id === current.id && isSecondTap(lastTap, end)) {
         if (tapTimer !== null) clearTimeout(tapTimer);

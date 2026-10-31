@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import TopBar from "@/components/TopBar/TopBar";
 import PhoneTopBar from "@/components/PhoneTopBar/PhoneTopBar";
 import BottomChrome from "@/components/BottomChrome/BottomChrome";
@@ -10,9 +11,11 @@ import ZenView from "@/components/ZenView/ZenView";
 import { useViewStore } from "@/stores/use-view-store";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { usePaletteStore } from "@/stores/use-palette-store";
+import { useSelectModeStore } from "@/stores/use-select-mode-store";
 import { useGlobalHotkeys } from "@/hooks/use-global-hotkeys";
 import { useTabTitle } from "@/hooks/use-tab-title";
 import { usePhoneLayout, useShowsActionBar } from "@/hooks/use-media-query";
+import { useTwoFingerPreset } from "@/hooks/use-two-finger-preset";
 
 /**
  * Everything one tab shows: its top bar and whichever view it is on — and, in the phone layout or
@@ -32,6 +35,9 @@ export default function ActiveTab() {
 
   useTabTitle();
   useGlobalHotkeys();
+  useTwoFingerPreset();
+  // The palette's Select mode builds one view's selection; another view starts with taps that select.
+  useEffect(() => () => useSelectModeStore.getState().stop(), [view]);
 
   return (
     <>

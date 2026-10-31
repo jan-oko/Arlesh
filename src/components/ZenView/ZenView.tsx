@@ -51,6 +51,7 @@ import styles from "./ZenView.module.css";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
 import { useViewGestures } from "@/hooks/use-view-gestures";
 import { usePhoneLayout } from "@/hooks/use-media-query";
+import touchStyles from "@/styles/touch-surface.module.css";
 
 /** Where the toast saying the preset cannot change is anchored — no card, the view as a whole. */
 const PRESET_TOAST_ANCHOR = "zenView:preset";
@@ -237,7 +238,7 @@ export default function ZenView() {
   const text = zenTextSize(layout.cardWidth, layout.cardHeight, showBadges);
 
   return (
-    <div ref={rootRef} className={styles.container}>
+    <div ref={rootRef} className={`${styles.container} ${touchStyles.surface}`}>
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
       {quickPlan.target !== null && (

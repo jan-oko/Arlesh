@@ -69,3 +69,11 @@
   background: var(--surface);
   transform: translateX(-50%);
 }
+
+/* The phone layout (docs/spec/touch.md): the stepper and the kind controls wrap rather than run off. */
+@media (max-width: 699.98px) {
+  .bar {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+}

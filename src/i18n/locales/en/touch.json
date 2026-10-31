@@ -54,5 +54,7 @@
   "paletteExtendUp": "Extend the selection up",
   "paletteExtendDown": "Extend the selection down",
   "paletteExtendLeft": "Extend the selection left",
-  "paletteExtendRight": "Extend the selection right"
+  "paletteExtendRight": "Extend the selection right",
+  "paletteSelect": "Select several",
+  "paletteSelectHint": "While on, a tap adds a node to the selection or takes it out"
 }

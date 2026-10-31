@@ -3,4 +3,8 @@
   display: block;
   user-select: none;
   direction: ltr;
+  /* Every finger on the canvas is the canvas's own — pan, pinch and the node gestures — never the
+     browser's scroll or page zoom (docs/spec/touch.md). No effect on a mouse. */
+  touch-action: none;
+  -webkit-touch-callout: none;
 }

@@ -1,0 +1,16 @@
+/* A surface whose nodes take the touch gestures (docs/spec/touch.md): vertical scrolling stays the
+   browser's, a sideways swipe is the row's, and a held finger selects no text and raises no
+   callout. Only where a touchscreen is present; a mouse-only desktop is untouched. */
+@media (any-pointer: coarse) {
+  .surface {
+    touch-action: pan-y;
+    -webkit-touch-callout: none;
+  }
+
+  .surface [data-row-id],
+  .surface [data-step-card],
+  .surface [data-plan-card-id] {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}

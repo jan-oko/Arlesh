@@ -60,6 +60,7 @@ import { useDisplayStore } from "@/stores/use-display-store";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
 import { useTouchCommand } from "@/hooks/use-touch-command";
 import { useViewGestures } from "@/hooks/use-view-gestures";
+import touchStyles from "@/styles/touch-surface.module.css";
 
 export default function ListView() {
   const { t } = useTranslation(["common", "listView", "editor", "expectation", "touch"]);
@@ -408,7 +409,7 @@ export default function ListView() {
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
 
   return (
-    <div className={styles.container} ref={containerRef}>
+    <div className={`${styles.container} ${touchStyles.surface}`} ref={containerRef}>
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
       {rowMenu !== null && (
         <RowContextMenu

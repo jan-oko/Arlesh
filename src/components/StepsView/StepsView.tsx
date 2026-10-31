@@ -62,6 +62,7 @@ import { usePublishSelection } from "@/hooks/use-publish-selection";
 import { runFirst, useViewGestures } from "@/hooks/use-view-gestures";
 import { usePinchSteps } from "@/hooks/use-pinch-steps";
 import { useHasTouch } from "@/hooks/use-media-query";
+import touchStyles from "@/styles/touch-surface.module.css";
 
 /**
  * What the Steps View has picked, held as **the card's node id** rather than its place in the grid.
@@ -532,7 +533,7 @@ export default function StepsView() {
   const stepCreatableKinds = rawStepNode === null ? [] : creatableKinds(rawStepNode);
 
   return (
-    <div ref={rootRef} className={styles.container} style={gridStyle}>
+    <div ref={rootRef} className={`${styles.container} ${touchStyles.surface}`} style={gridStyle}>
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
       {quickPlan.target !== null && (

@@ -21,9 +21,9 @@ export interface ViewGestureOptions {
   /** Adds a node to the selection or takes it out — the Select toggle. Absent: a single selection. */
   toggleInSelection?: (id: string) => void;
   /** A swipe the view answers itself; returns whether it did. Unanswered, a swipe advances or starts. */
-  onSwipe?: (id: string | null, direction: "left" | "right") => boolean;
+  onSwipe?: (id: string | null, direction: "left" | "right", target: Element) => boolean;
   /** A flick up the view answers itself; returns whether it did. Unanswered, it opens the editor. */
-  onFlickUp?: (id: string | null) => boolean;
+  onFlickUp?: (id: string | null, target: Element) => boolean;
   /** Whether a sideways move slides the row under the finger. */
   slidesRows?: boolean;
   holdDrag?: TouchGestureHandlers["holdDrag"];
@@ -73,13 +73,13 @@ export function useViewGestures(containerRef: RefObject<HTMLElement | SVGElement
       selectOnly(id);
       openPalette();
     },
-    onFlickUp: (id) => {
-      if (options.onFlickUp?.(id) === true || id === null) return;
+    onFlickUp: (id, target) => {
+      if (options.onFlickUp?.(id, target) === true || id === null) return;
       selectOnly(id);
       runAfterSelect(OPEN_EDITOR_IDS);
     },
-    onSwipe: (id, direction) => {
-      if (options.onSwipe?.(id, direction) === true || id === null) return;
+    onSwipe: (id, direction, target) => {
+      if (options.onSwipe?.(id, direction, target) === true || id === null) return;
       selectOnly(id);
       runAfterSelect(direction === "right" ? ADVANCE_IDS : TOGGLE_STARTED_IDS);
     },
