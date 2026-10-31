@@ -32,8 +32,9 @@ Below 700 px:
 - **Bottom navigation** for the views, in this order: **Zen, List, Plan, Steps, Map**. It replaces
   the top bar's view selector. `Ctrl+M/L/P/S/J` still switch views from a keyboard.
 - **The top bar** holds, in order: a **☰ menu**, the **title**, the **preset chip** and the agents'
-  status. The title is the view's name at the board's root, and the breadcrumb inside a subtree.
-  The server status joins it when Client mode lands (Task 9f0).
+  status and the **server status** (the desktop bar's mode indicator: *This device*, or the server and
+  whether it answers; [Client mode](client-mode.md)). The title is the view's name at the board's
+  root, and the breadcrumb inside a subtree.
   - **The preset chip** shows the preset the view reads under and opens the **preset sheet**: Plan,
     Start, Do, Backlog and All, plus the List View's Unblock and Expectations while the List View is
     showing. In the Plan View and the Zen View the chip shows their locked preset and the sheet says
@@ -89,9 +90,24 @@ A slot whose binding cannot act in the current state is drawn disabled, never hi
 does not jump about. Two slots have no key of their own and are touch commands a view registers
 beside its bindings: **New** (a Task under the subtree you are in, refused out loud where a Task
 cannot hang) and **Kind**, which opens a sheet of the five scope kinds, each its own binding.
+Two more are touch commands for the same reason: **Check done** (on a wait, completes its
+earliest-due open check task) and **Archive** (on a selection, puts away every node that takes the
+hand archive — a stored Task or Commitment, or a Domain — and **brings them all back** when every
+one is already archived). Archive is **one gesture**, one transaction and one undo step, run
+through the `save-project` gesture operation of [Client mode](client-mode.md#undo), which admits
+the three updates it is made of. A selected node with no archive of its own is left as it was and
+a toast says how many.
 
 *Open (`Ctrl+O`)* is the node search that re-roots the tab, as the chord is everywhere.
-*Archive* and *Check done* have no binding yet; until they do their slots are drawn disabled.
+
+**A read-only board.** In Client mode, while the server is unreachable or speaks another API
+version, the board is read-only ([Client mode](client-mode.md#offline)). Every touch surface greys
+out its writes instead of letting them fail: the action bar draws the write slots disabled, the
+palette lists the writes as unavailable, and the write gestures — a swipe's advance or Started, a
+Plan View swipe's move across, the Mindmap's hold-and-drag — do nothing. What only reads stays:
+moving the selection, the presets and filters, search, zoom, folding, the tab chords, opening an
+editor. `utils/touch/writes.ts` says which commands only read; anything it does not list is taken
+to write, so a new binding is greyed out until someone says it reads.
 
 ## The command palette
 

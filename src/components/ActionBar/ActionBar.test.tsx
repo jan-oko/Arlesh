@@ -6,6 +6,7 @@ import type { SurfaceCommand } from "@/stores/use-command-surface-store";
 import { useSelectionSurfaceStore } from "@/stores/use-selection-surface-store";
 import { usePaletteStore } from "@/stores/use-palette-store";
 import { useViewStore } from "@/stores/use-view-store";
+import { useClientModeStore } from "@/stores/use-client-mode-store";
 import { surfaceCommand } from "@/test/surface-command";
 
 vi.mock("react-i18next", () => ({
@@ -20,6 +21,7 @@ beforeEach(() => {
   useViewStore.setState({ view: "list" });
   useSelectionSurfaceStore.setState({ kinds: [], multiSelect: false });
   usePaletteStore.setState({ isOpen: false });
+  useClientModeStore.setState({ status: null });
   publish([]);
 });
 
@@ -63,5 +65,19 @@ describe("ActionBar", () => {
     fireEvent.click(screen.getByRole("button", { name: /planKindWeek/ }));
     expect(week.run).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("draws the write slots disabled, and keeps the reads, while the server cannot be written", () => {
+    useClientModeStore.setState({
+      status: {
+        mode: "client", first_run: false, api_version: 1, standalone_available: true,
+        server: { url: "u", reachable: false, last_sync: null, read_only: "server_unreachable", server_api_version: null },
+      },
+    });
+    publish([surfaceCommand("listView.cycleStatus", "cycleRowStatus"), surfaceCommand("global.openSearch", "openSearch")]);
+    useSelectionSurfaceStore.setState({ kinds: ["task"], multiSelect: false });
+    render(<ActionBar />);
+    expect(screen.getByRole("button", { name: "actionStatus" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "actionOpen" })).toBeEnabled();
   });
 });

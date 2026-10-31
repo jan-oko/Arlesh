@@ -5,6 +5,8 @@ import { useHasTouch } from "@/hooks/use-media-query";
 import { allSurfaceCommands, firstRunnable, useCommandSurfaceStore } from "@/stores/use-command-surface-store";
 import { usePaletteStore } from "@/stores/use-palette-store";
 import { useSelectModeStore } from "@/stores/use-select-mode-store";
+import { currentReadOnlyReason } from "@/hooks/use-board-read-only";
+import { gateWrites } from "@/utils/touch/writes";
 import { ADVANCE_IDS, OPEN_EDITOR_IDS, TOGGLE_STARTED_IDS } from "@/utils/touch/command-ids";
 
 /** What a view tells the shared gestures about its selection and its "go into". */
@@ -29,9 +31,20 @@ export interface ViewGestureOptions {
   holdDrag?: TouchGestureHandlers["holdDrag"];
 }
 
+/** A drag moves a node, which is a write: on a read-only board it does not start. */
+function gatedDrag(drag: NonNullable<TouchGestureHandlers["holdDrag"]>): NonNullable<TouchGestureHandlers["holdDrag"]> {
+  const writable = () => currentReadOnlyReason() === null;
+  return {
+    start: (id, x, y) => { if (writable()) drag.start(id, x, y); },
+    move: (x, y) => { if (writable()) drag.move(x, y); },
+    end: (x, y) => { if (writable()) drag.end(x, y); },
+  };
+}
+
 /** Runs the first of `ids` that can act now — a gesture with no selection to wait for. */
 export function runFirst(ids: readonly string[]): void {
-  firstRunnable(allSurfaceCommands(useCommandSurfaceStore.getState().tables), ids)?.run();
+  const commands = gateWrites(allSurfaceCommands(useCommandSurfaceStore.getState().tables), currentReadOnlyReason() !== null);
+  firstRunnable(commands, ids)?.run();
 }
 
 /**
@@ -85,7 +98,7 @@ export function useViewGestures(containerRef: RefObject<HTMLElement | SVGElement
     },
     // The selected node's tap waits: it may be the first half of a double-tap's "go into".
     defersTap: (id) => options.isSelected(id) && !useSelectModeStore.getState().active,
-    ...(options.holdDrag === undefined ? {} : { holdDrag: options.holdDrag }),
+    ...(options.holdDrag === undefined ? {} : { holdDrag: gatedDrag(options.holdDrag) }),
   };
 
   useTouchGestures(containerRef, handlers, {

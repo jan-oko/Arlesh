@@ -1,5 +1,8 @@
 import { invoke } from "./gesture";
 import type { RowId } from "./node-id";
+import { TASK_ARCHIVAL } from "./tasks";
+import { COMMITMENT_ARCHIVAL } from "./commitments";
+import { domainArchiveStatus } from "@/utils/hand-archive";
 
 /**
  * The gesture operations: a gesture the app makes over several nodes, as **one** command — one
@@ -54,4 +57,26 @@ export function isRefusedStep(answer: unknown): answer is RefusedStep {
  */
 export async function runGesture(name: GestureName, steps: GestureStep[]): Promise<unknown[]> {
   return invoke<unknown[]>("run_gesture", { name, steps });
+}
+
+/** A node's own archive write: what puts it away by hand, or brings it back. */
+export interface ArchiveWrite {
+  kind: "task" | "commitment" | "domain";
+  id: RowId;
+  archive: boolean;
+}
+
+/**
+ * Archives — or unarchives — every node in `writes` as **one** gesture: one transaction, one undo
+ * step. It runs as the `save-project` gesture, which admits the three updates a hand archive is
+ * made of and nothing that moves or deletes.
+ */
+export async function archiveNodes(writes: ArchiveWrite[]): Promise<void> {
+  await runGesture("save-project", writes.map(archiveStep));
+}
+
+function archiveStep({ kind, id, archive }: ArchiveWrite): GestureStep {
+  if (kind === "domain") return { op: "update_domain", id, request: { status: domainArchiveStatus(archive) } };
+  if (kind === "commitment") return { op: "update_commitment", id, request: { archival: archive ? COMMITMENT_ARCHIVAL.ARCHIVED : COMMITMENT_ARCHIVAL.LIVE } };
+  return { op: "update_task", id, request: { archival: archive ? TASK_ARCHIVAL.ARCHIVED : TASK_ARCHIVAL.LIVE } };
 }

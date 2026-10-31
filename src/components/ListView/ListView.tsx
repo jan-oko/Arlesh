@@ -4,6 +4,7 @@ import { useListData } from "@/hooks/use-list-data";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useHandArchive } from "@/hooks/use-hand-archive";
+import { useTouchBoardCommands } from "@/hooks/use-touch-board-commands";
 import { archiveOfferFor } from "@/utils/hand-archive";
 import RowContextMenu from "@/components/RowContextMenu/RowContextMenu";
 import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
@@ -275,6 +276,11 @@ export default function ListView() {
     [tree, subtreeRootId],
   );
 
+  useTouchBoardCommands({
+    selection: () => (activeSelectedId === null ? [] : [findNode(tree, activeSelectedId) ?? []].flat()),
+    reload,
+    showToast,
+  });
   // The action bar's New, with nothing selected: a Task under the subtree you are in, refused out
   // loud where a Task cannot hang (the board's root holds Aspects, not Tasks).
   useTouchCommand({

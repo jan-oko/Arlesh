@@ -58,8 +58,7 @@ const CONTEXT_SLOTS: Readonly<Record<ActionContext, readonly ActionSlot[]>> = {
     run("release", "actionRelease", "✓", [
       "mindmap.enter", "listView.toggleReleaseEnter", "zenView.toggleReleaseEnter", "stepsView.cycleStatus",
     ]),
-    // No binding completes a wait's due check yet; the slot holds its place, drawn disabled.
-    run("checkDone", "actionCheckDone", "☑", []),
+    run("checkDone", "actionCheckDone", "☑", ["touch.checkDone"]),
     CHILD,
     OPEN,
   ],
@@ -68,8 +67,7 @@ const CONTEXT_SLOTS: Readonly<Record<ActionContext, readonly ActionSlot[]>> = {
   several: [
     run("status", "actionStatus", "✓", STATUS_CYCLE),
     PLAN,
-    // No binding archives by hand yet; the slot holds its place, drawn disabled.
-    run("archive", "actionArchive", "▣", []),
+    run("archive", "actionArchive", "▣", ["touch.archiveSelection"]),
     UNDO,
   ],
   planView: [

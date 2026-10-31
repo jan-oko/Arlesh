@@ -21,3 +21,19 @@ const READS_ONLY: readonly RegExp[] = [
 export function isWriteCommand(id: string): boolean {
   return !READS_ONLY.some((pattern) => pattern.test(id));
 }
+
+/** A command as the touch surfaces hold it: enough to gate it. */
+interface Gateable {
+  id: string;
+  canRun: () => boolean;
+}
+
+/**
+ * The commands as a read-only board offers them: every write cannot act (so its slot is drawn
+ * disabled, its palette row dimmed and its gesture does nothing), and the reads are untouched.
+ * With `readOnly` false the commands come back as they were.
+ */
+export function gateWrites<T extends Gateable>(commands: readonly T[], readOnly: boolean): T[] {
+  if (!readOnly) return [...commands];
+  return commands.map((command) => (isWriteCommand(command.id) ? { ...command, canRun: () => false } : command));
+}

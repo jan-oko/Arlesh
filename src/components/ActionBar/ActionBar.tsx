@@ -7,6 +7,8 @@ import type { SurfaceCommand } from "@/stores/use-command-surface-store";
 import { usePaletteStore } from "@/stores/use-palette-store";
 import { useSelectionSurfaceStore } from "@/stores/use-selection-surface-store";
 import { useViewStore } from "@/stores/use-view-store";
+import { useBoardReadOnly } from "@/hooks/use-board-read-only";
+import { gateWrites } from "@/utils/touch/writes";
 import { actionContextFor, actionSlotsFor } from "@/utils/touch/action-bar";
 import type { ActionSlot } from "@/utils/touch/action-bar";
 import styles from "./ActionBar.module.css";
@@ -45,7 +47,8 @@ export default function ActionBar() {
   const openPalette = usePaletteStore((s) => s.open);
   const [openMenu, setOpenMenu] = useState<DrawnSlot | null>(null);
 
-  const commands = allSurfaceCommands(tables);
+  const readOnly = useBoardReadOnly() !== null;
+  const commands = gateWrites(allSurfaceCommands(tables), readOnly);
   const slots = actionSlotsFor(actionContextFor(view, kinds)).map((slot) => drawSlot(slot, commands));
 
   function press(drawn: DrawnSlot) {
