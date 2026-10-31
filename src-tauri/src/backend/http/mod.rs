@@ -59,6 +59,10 @@ const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 /// phone changed network) is found and dropped instead of waited on.
 const TCP_KEEPALIVE: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// How long a finished connection is kept for the next call. Short, so a call made after the
+/// phone slept does not start on a connection the network dropped meanwhile.
+const POOL_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Consecutive failed attempts before the server is shown as unreachable. One timeout on a flaky
 /// link is not an outage; any success starts the count again.
 pub const FAILURES_BEFORE_UNREACHABLE: u32 = 2;
@@ -153,6 +157,7 @@ impl HttpBackend {
         let http = reqwest::Client::builder()
             .connect_timeout(CONNECT_TIMEOUT)
             .tcp_keepalive(TCP_KEEPALIVE)
+            .pool_idle_timeout(POOL_IDLE_TIMEOUT)
             .build()
             .map_err(|error| {
                 WireError::internal(format!("could not build the HTTP client: {error}"))
