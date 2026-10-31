@@ -81,6 +81,23 @@ are listed at the end.
    that checklist; work items stay Tasks on the Arlesh board.
    Keep a running log too — *"Keep a progress.md on your own worktree to keep."*
 
+11. **Spend tokens like they cost something — they do.** User, 2026-10-31: *"We're consuming
+   a lot of tokens"* and *"use sonnet for subagents from now on"*. Lesson: one Opus agent
+   carried the whole 9f0 three-PR stack plus follow-up rounds to ~820k tokens; each resume
+   re-sends the whole growing context, and every rate-limit restart pays it again.
+   - **One fresh agent per PR or review round.** Hand it a short written handover (worktree,
+     branch, head, uncommitted files, done / left, rulings) instead of `SendMessage`-resuming a
+     long transcript. Resume only for a small follow-up while the context is still small.
+   - **`model: "sonnet"` on every Agent call** unless the user names another model. Reserve
+     stronger models for work the user asks for by name.
+   - **Read by symbol, not by file.** Brief agents to locate code with Serena
+     (`get_symbols_overview`, `find_symbol`, `find_referencing_symbols`) and `Read` with
+     `offset`/`limit`; whole-file reads of `flows/mod.rs` (~4k lines) or `tasks/mod.rs` are
+     paid again on every turn after.
+   - **Cap output.** `tail -40` on builds and tests, `gh run view --log-failed`, quiet
+     reporters; narrow `arlesh_snapshot.load` with `sections` and a filter, and `arlesh_waits.get`
+     one wait rather than loading every expectation. This binds the orchestrator too.
+
 No time estimates, anywhere. User: *"stop the time estimates"* — they were off by about an
 order of magnitude: *"You sometimes say that a tasj us  "a day of work", but it's actually
 about an hour."*
@@ -170,7 +187,9 @@ In this order:
 1. **The worktree first.** `git -C <wt> status` — uncommitted work there is the only copy.
 2. **Then the remote.** `git -C <wt> log @{u}..`, `gh pr view <n>`.
 3. **Resume the agent that built the branch** (`SendMessage` to its id) — it holds the
-   reasons its side is written the way it is. User: *"(in general you can use this method,
+   reasons its side is written the way it is. But if its transcript is already large, prefer a
+   fresh `sonnet` agent with a handover (Dispatching, rule 11): the reasons belong in the PR
+   body and the spec anyway. User: *"(in general you can use this method,
    resuming agents to resolve their branch conflicts)"*. Same for a stale branch or a new
    review round on its PR.
 4. **An agent stopped by the user cannot be resumed** — the harness treats that as permanent,
