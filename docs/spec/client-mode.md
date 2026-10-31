@@ -106,7 +106,8 @@ The gesture operations:
   `plan-tasks` (quick plan), `plan-move` (the Plan View), `save-task`, `save-goal`,
   `save-commitment`, `save-project`, `save-wait` (the wait editor's Save and its Create),
   `save-flow` (the Flow and Habit editor, its *Archive & new* included), `save-flow-item`, and
-  `new-flow` (a new Flow or Habit). The writes run in order in one transaction; a later write names
+  `new-flow` (a new Flow or Habit), and `archive-nodes` (a hand archive or unarchive of Tasks,
+  Commitments and Domains: it admits only their three updates). The writes run in order in one transaction; a later write names
   the node an earlier one made as `{"step": n}`, or the node a Habit fork replaced as
   `{"step": n, "forked": <kind>, "id": <old id>}`. Each gesture admits only the writes it makes,
   and refuses any other before writing. A write marked `may_be_refused` is taken back alone
@@ -158,6 +159,23 @@ the board.
 There is no sync between a device's local database and a server. A device switched to Client keeps
 its local database untouched, and switching back finds it as it was. A server is seeded by copying
 `arlesh.db` into its volume.
+
+## Trying it: branch instances
+
+`scripts/branch-instance.sh` runs a branch's server as well as its app, so any app branch can be
+tried against any server branch — the version handshake included:
+
+```
+scripts/branch-instance.sh server start 9f0-client-mode              # arlesh-server from that worktree
+scripts/branch-instance.sh start 201-client-gaps --server 9f0-client-mode
+scripts/branch-instance.sh run some-app --standalone                 # back to the local board
+scripts/branch-instance.sh stop all                                  # apps and servers
+```
+
+A server runs its worktree's own code (its bindings built into that worktree's venv) on its own
+port, over a copy of the real database taken read-only (`sqlite3 -readonly … .backup`), seeded once
+and kept. `--server` mints the app instance a token and writes its `mode.json` and its token file,
+so the instance comes up connected; the token is never printed. `list` shows the servers too.
 
 ## Not in phase 1
 

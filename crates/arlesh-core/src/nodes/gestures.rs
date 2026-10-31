@@ -127,11 +127,13 @@ pub enum GestureName {
     SaveFlowItem,
     /// The new Flow or Habit editor's Create.
     NewFlow,
+    /// A hand archive or unarchive of Tasks, Commitments and Domains, as one undo step.
+    ArchiveNodes,
 }
 
 impl GestureName {
     /// Every gesture operation, as the routes list them.
-    pub const ALL: [GestureName; 13] = [
+    pub const ALL: [GestureName; 14] = [
         GestureName::Paste,
         GestureName::InsertParent,
         GestureName::MoveNode,
@@ -145,6 +147,7 @@ impl GestureName {
         GestureName::SaveFlow,
         GestureName::SaveFlowItem,
         GestureName::NewFlow,
+        GestureName::ArchiveNodes,
     ];
 
     /// Whether this gesture makes `step`.
@@ -165,6 +168,12 @@ impl GestureName {
             Self::MoveNode => matches!(
                 step,
                 S::Move { .. } | S::UpdateTask { .. } | S::UpdateGoal { .. }
+            ),
+            // A hand archive is an update of the node's archival state: nothing is created,
+            // moved, copied or deleted.
+            Self::ArchiveNodes => matches!(
+                step,
+                S::UpdateTask { .. } | S::UpdateCommitment { .. } | S::UpdateDomain { .. }
             ),
             Self::PlanTasks | Self::PlanMove => matches!(step, S::UpdateTask { .. }),
             // An editor's Save writes the node and what hangs on it, and may fork a Habit; it

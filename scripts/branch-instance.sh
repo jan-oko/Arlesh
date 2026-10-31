@@ -4,10 +4,28 @@
 #
 #   scripts/branch-instance.sh list
 #   scripts/branch-instance.sh build [name ... | all]   # default: all
-#   scripts/branch-instance.sh run   <name | all>
-#   scripts/branch-instance.sh start <name | all>       # build, then run
-#   scripts/branch-instance.sh stop  [name ... | all]   # default: all
+#   scripts/branch-instance.sh run   <name | all> [--server <name> | --standalone]
+#   scripts/branch-instance.sh start <name | all> [--server <name> | --standalone]   # build, then run
+#   scripts/branch-instance.sh stop  [name ... | all]   # default: all (servers too, with `all`)
 #   scripts/branch-instance.sh clean [name ... | all]   # default: all
+#   scripts/branch-instance.sh server start <name>      # arlesh-server from worktree <name>
+#   scripts/branch-instance.sh server stop  [name ... | all]
+#
+# Servers, for Client mode (Task 9f0): `server start <name>` runs `arlesh-server` from worktree
+# <name>'s own code: the bindings are built into that worktree's own venv (uv, maturin develop, the
+# shared CARGO_TARGET_DIR), and it serves on its own port (from ARLESH_SERVER_BASE_PORT, kept per
+# server as an app's is) over its own database. That database is a copy of the real one taken with
+# `sqlite3 -readonly … .backup` — the real file is never opened for writing — seeded once and then
+# kept, like an instance's.
+#
+# `run`/`start <app> --server <name>` start the app instance in Client mode against that server: the
+# server is started if it is not up, a token is minted for the instance (client `branch-<app>`), and
+# the instance's mode.json and token file are written so it comes up connected, with nothing to click
+# through. Any app branch against any server branch: an old server under a new app (or the reverse)
+# shows the version handshake. The token goes from `arlesh-server token add` straight into the
+# instance's 0600 token file and is never printed. `--standalone` writes the instance back to
+# Standalone; with neither, the instance keeps whichever mode it had. An app branch from before
+# Client mode ignores mode.json and runs Standalone whatever it says.
 #
 # `all` means every worktree. `run all` launches each built instance at once, detached, so the
 # branches can be compared side by side and survive the shell that started them.
@@ -42,12 +60,17 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORKTREES="$REPO/.claude/worktrees"
-SHARED_TARGET="${ARLESH_SHARED_TARGET:-$REPO/src-tauri/target}"
+# The main checkout, even when this copy of the script runs from inside one of its worktrees.
+MAIN="$(dirname "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)")"
+WORKTREES="$MAIN/.claude/worktrees"
+SHARED_TARGET="${ARLESH_SHARED_TARGET:-$MAIN/src-tauri/target}"
 INSTANCES="${ARLESH_INSTANCES:-$HOME/.cache/arlesh/instances}"
 REAL_DB="${ARLESH_REAL_DB:-$HOME/.local/share/com.atai.arlesh/arlesh.db}"
 MIN_FREE_GB="${ARLESH_MIN_FREE_GB:-5}"
 BASE_PORT="${ARLESH_BASE_PORT:-14200}"
+SERVER_BASE_PORT="${ARLESH_SERVER_BASE_PORT:-14700}"
+# Servers live beside the app instances, under a dot directory so no worktree name can collide.
+SERVERS="$INSTANCES/.servers"
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 
@@ -123,7 +146,7 @@ build_one() {
 
   # Each worktree needs node_modules reachable. A symlink to the main checkout's costs nothing and
   # is what the agents already use; npm install must never run inside a worktree.
-  [ -e "$wt/node_modules" ] || ln -s "$REPO/node_modules" "$wt/node_modules"
+  [ -e "$wt/node_modules" ] || ln -s "$MAIN/node_modules" "$wt/node_modules"
 
   conf="$wt/src-tauri/tauri.conf.json"
   cp "$conf" "$conf.orig"
@@ -182,6 +205,16 @@ cmd_list() {
     head="$(git -C "$WORKTREES/$name" log --oneline -1 2>/dev/null || echo '?')"
     printf '%-28s %-7s %-7s %-7s %s\n' "$name" "$built" "$port" "$size" "${head:0:50}"
   done < <(all_names)
+  local servers; resolve_server_names servers
+  if [ "${#servers[@]}" -gt 0 ]; then
+    printf '\n%-28s %-7s %-7s %s\n' SERVER RUNNING PORT DATABASE
+    for s in "${servers[@]}"; do
+      local up=no
+      server_running "$s" && up=yes
+      printf '%-28s %-7s %-7s %s\n' "$s" "$up" "$(cat "$(server_dir "$s")/port" 2>/dev/null || echo -)" \
+        "$(server_dir "$s")/data/arlesh.db"
+    done
+  fi
   printf '\n%sG free on /\n' "$(free_gb)"
 }
 
@@ -256,6 +289,7 @@ memory_guard() {
 # last looked at how much memory was free.
 run_instances() {
   memory_guard "$#" || exit 1
+  apply_mode "$@"
   for n in "$@"; do start_vite "$n"; launch "$n"; done
 }
 
@@ -379,12 +413,183 @@ cmd_clean() {
   printf '%sG free.\n' "$(free_gb)"
 }
 
+# ---- Servers ------------------------------------------------------------------------------------
+
+server_dir() { printf '%s' "$SERVERS/$1"; }
+
+# Kept once assigned, as an app instance's port is, so a running app's mode.json stays right.
+server_port_for() {
+  local name="$1" dir portfile port taken
+  dir="$(server_dir "$name")"; portfile="$dir/port"
+  if [ -f "$portfile" ]; then cat "$portfile"; return; fi
+  port="$SERVER_BASE_PORT"
+  while :; do
+    taken=no
+    for f in "$SERVERS"/*/port; do
+      [ -f "$f" ] && [ "$(cat "$f")" = "$port" ] && taken=yes && break
+    done
+    [ "$taken" = no ] && break
+    port=$((port + 1))
+  done
+  mkdir -p "$dir"
+  printf '%s' "$port" > "$portfile"
+  printf '%s' "$port"
+}
+
+server_running() {
+  local pidfile; pidfile="$(server_dir "$1")/server.pid"
+  [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null
+}
+
+# Builds worktree <name>'s bindings into its own venv: `uv sync` for the dependencies, then
+# `maturin develop`, which recompiles whatever changed into the shared target and installs it.
+build_server() {
+  local name="$1" wt
+  wt="$(worktree_path "$name")"
+  [ -f "$wt/crates/arlesh-py/pyproject.toml" ] || die "'$name' has no arlesh-server (no crates/arlesh-py)."
+  require_space
+  printf '\n=== server %s: bindings into its own venv (shared target) ===\n' "$name"
+  ( cd "$wt/crates/arlesh-py" &&
+    CARGO_TARGET_DIR="$SHARED_TARGET" uv sync --locked --all-extras --python 3.12 --no-install-project &&
+    CARGO_TARGET_DIR="$SHARED_TARGET" uv run --no-sync maturin develop --uv --locked )
+}
+
+# A copy of the real database taken read-only, once. `.backup` reads a consistent snapshot even
+# while the real app has the file open, and `-readonly` means the real file is never written.
+seed_server() {
+  local name="$1" db
+  db="$(server_dir "$name")/data/arlesh.db"
+  [ -f "$db" ] && return 0
+  mkdir -p "$(dirname "$db")"
+  if [ -f "$REAL_DB" ]; then
+    sqlite3 -readonly "$REAL_DB" ".backup '$db'"
+    printf '    seeded from %s (read-only)\n' "$REAL_DB"
+  fi
+}
+
+server_start() {
+  local name="$1" wt dir port db
+  wt="$(worktree_path "$name")"
+  dir="$(server_dir "$name")"
+  port="$(server_port_for "$name")"
+  db="$dir/data/arlesh.db"
+  if server_running "$name"; then
+    printf '  server %-21s already up on %s\n' "$name" "$port"
+    return 0
+  fi
+  build_server "$name"
+  seed_server "$name"
+  # The pid is the child's own, written before it execs, for the reason start_vite gives.
+  ( cd "$wt/crates/arlesh-py" && setsid sh -c 'printf "%s" "$$" > "$1"; shift; exec "$@"' \
+      _ "$dir/server.pid" uv run --no-sync arlesh-server --db "$db" --port "$port" \
+      >"$dir/server.log" 2>&1 < /dev/null & )
+  # `/openapi.json` answers without a token on every server, old ones included.
+  for _ in $(seq 60); do
+    curl -sf -o /dev/null "http://127.0.0.1:$port/openapi.json" 2>/dev/null && {
+      printf '  server %-21s up on %s, db %s, logs %s\n' "$name" "$port" "$db" "$dir/server.log"
+      return 0
+    }
+    server_running "$name" || break
+    sleep 1
+  done
+  die "arlesh-server '$name' never came up on port $port — see $dir/server.log"
+}
+
+server_stop() {
+  local names; resolve_server_names names "$@"
+  for name in "${names[@]}"; do
+    kill_pidfile "$(server_dir "$name")/server.pid" server "$name"
+  done
+}
+
+# Expands a server list: empty or `all` means every server that has a directory.
+resolve_server_names() {
+  local -n found=$1; shift
+  if [ "$#" -eq 0 ] || { [ "$#" -eq 1 ] && [ "$1" = "all" ]; }; then
+    found=()
+    [ -d "$SERVERS" ] || return 0
+    for d in "$SERVERS"/*/; do [ -d "$d" ] && found+=("$(basename "$d")"); done
+  else
+    found=("$@")
+  fi
+}
+
+# Points app instance <app> at server <server>: mints the instance a token (replacing any it held)
+# straight into its 0600 token file, and writes its mode.json. Nothing is printed of the token.
+connect_instance() {
+  local app="$1" server="$2" wt port appdir client
+  wt="$(worktree_path "$server")"
+  port="$(server_port_for "$server")"
+  appdir="$INSTANCES/$app/data/com.atai.arlesh"
+  client="branch-$app"
+  mkdir -p "$appdir"
+  ( cd "$wt/crates/arlesh-py" &&
+    uv run --no-sync arlesh-server token revoke "$client" --db "$(server_dir "$server")/data/arlesh.db" \
+      >/dev/null 2>&1 || true
+    umask 077
+    uv run --no-sync arlesh-server token add "$client" --db "$(server_dir "$server")/data/arlesh.db" \
+      > "$appdir/server-token.new" ) || die "Could not mint a token on server '$server' for '$app'."
+  chmod 600 "$appdir/server-token.new"
+  mv -f "$appdir/server-token.new" "$appdir/server-token"
+  printf '{\n  "mode": "client",\n  "url": "http://127.0.0.1:%s",\n  "token_in_file": true\n}\n' \
+    "$port" > "$appdir/mode.json"
+  printf '  %-28s Client mode against server %s (port %s)\n' "$app" "$server" "$port"
+}
+
+standalone_instance() {
+  local appdir="$INSTANCES/$1/data/com.atai.arlesh"
+  mkdir -p "$appdir"
+  printf '{\n  "mode": "standalone"\n}\n' > "$appdir/mode.json"
+  printf '  %-28s Standalone\n' "$1"
+}
+
+cmd_server() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    start)
+      [ "$#" -eq 1 ] || die "Usage: $0 server start <name>"
+      server_start "$1" ;;
+    stop) server_stop "$@" ;;
+    *) die "Usage: $0 server {start <name> | stop [name...|all]}" ;;
+  esac
+}
+
+# Splits `--server <name>` / `--standalone` off a run or start argument list. Sets MODE_FLAG to
+# `server:<name>`, `standalone` or empty, and leaves the rest in REST_ARGS.
+MODE_FLAG=""
+REST_ARGS=()
+parse_mode_flags() {
+  MODE_FLAG=""; REST_ARGS=()
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --server) [ "$#" -ge 2 ] || die "--server needs a worktree name"; MODE_FLAG="server:$2"; shift 2 ;;
+      --standalone) MODE_FLAG="standalone"; shift ;;
+      *) REST_ARGS+=("$1"); shift ;;
+    esac
+  done
+}
+
+# Applies the parsed mode flag to each named app instance, starting the server first if needed.
+apply_mode() {
+  case "$MODE_FLAG" in
+    "") return 0 ;;
+    standalone) for app in "$@"; do standalone_instance "$app"; done ;;
+    server:*)
+      local server="${MODE_FLAG#server:}"
+      server_start "$server"
+      for app in "$@"; do connect_instance "$app" "$server"; done ;;
+  esac
+}
+
 case "${1:-list}" in
   list)  shift || true; cmd_list ;;
   build) shift; cmd_build "$@" ;;
-  run)   shift; cmd_run "$@" ;;
-  start) shift; cmd_start "$@" ;;
-  stop)  shift; cmd_stop "$@" ;;
+  run)   shift; parse_mode_flags "$@"; cmd_run "${REST_ARGS[@]}" ;;
+  start) shift; parse_mode_flags "$@"; cmd_start "${REST_ARGS[@]}" ;;
+  stop)  shift; cmd_stop "$@"
+         # `stop` with no names, or `all`, takes the servers down with the apps.
+         if [ "$#" -eq 0 ] || { [ "$#" -eq 1 ] && [ "$1" = "all" ]; }; then server_stop all; fi ;;
+  server) shift; cmd_server "$@" ;;
   clean) shift; cmd_clean "$@" ;;
-  *)     die "Usage: $0 {list | build [name...|all] | run <name|all> | start <name|all> | stop [name...|all] | clean [name...|all]}" ;;
+  *)     die "Usage: $0 {list | build [name...|all] | run <name|all> [--server <name>|--standalone] | start <name|all> [--server <name>|--standalone] | stop [name...|all] | clean [name...|all] | server {start <name>|stop [name...|all]}}" ;;
 esac
