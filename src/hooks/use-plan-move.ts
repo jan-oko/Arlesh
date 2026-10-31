@@ -1,12 +1,13 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { updateTask, updateTaskSettlingPlans } from "@/api/tasks";
 import { usePlanClamp } from "@/hooks/use-plan-clamp";
 import { resolveScope } from "@/api/scopes";
 import type { ScopeKey } from "@/api/scopes";
 import { keyForRef } from "@/utils/scope-key";
 import { getErrorMessage } from "@/api/errors";
 import { withGesture } from "@/api/gesture";
+import { isRefusedStep, runGesture } from "@/api/multi-node-gestures";
+import type { GestureStep } from "@/api/multi-node-gestures";
 import type { PendingToast } from "@/stores/use-mindmap-store";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { ScopeInterval } from "@/utils/scope-interval";
@@ -166,20 +167,23 @@ export function usePlanMove({
       const ids = rows.flatMap((row) => (row.node.rowId === undefined ? [] : [row.node.rowId]));
       const clamp = await askPlanClamp(ids.map((id) => ({ id, plan })));
       if (!clamp.proceed) return outcome;
-      await withGesture(t(gesture, { count: rows.length }), async () => {
-        for (const row of rows) {
-          const id = row.node.rowId;
-          if (id === undefined) continue;
-          try {
-            if (clamp.descendants === null) await updateTask(id, { plan });
-            else await updateTaskSettlingPlans(id, { plan }, clamp.descendants);
-          } catch (error: unknown) {
-            outcome.failed.push({ row, message: getErrorMessage(error) });
-            continue;
-          }
-          outcome.moved.push(row.node.id);
-          if (plan !== null && row.node.backlogged === true) outcome.unbacklogged.push(row);
+      // One gesture operation: every row's Plan in one request and one undo step, each write
+      // allowed to be refused on its own, as the rows are planned one by one.
+      const planned = rows.flatMap((row) => (row.node.rowId === undefined ? [] : [{ row, id: row.node.rowId }]));
+      const steps: GestureStep[] = planned.map(({ id }) => ({
+        op: "update_task", id, request: { plan },
+        ...(clamp.descendants === null ? {} : { descendant_plans: clamp.descendants }),
+        may_be_refused: true,
+      }));
+      const answers = await withGesture(t(gesture, { count: rows.length }), () => runGesture("plan-move", steps));
+      planned.forEach(({ row }, index) => {
+        const answer = answers[index];
+        if (isRefusedStep(answer)) {
+          outcome.failed.push({ row, message: answer.refused.message });
+          return;
         }
+        outcome.moved.push(row.node.id);
+        if (plan !== null && row.node.backlogged === true) outcome.unbacklogged.push(row);
       });
       if (outcome.moved.length > 0) await reload();
       return outcome;

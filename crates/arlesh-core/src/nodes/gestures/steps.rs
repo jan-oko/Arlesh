@@ -37,6 +37,16 @@ use super::GestureNode;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(untagged)]
 pub enum StepTarget {
+    /// The node that replaces `id` in the Habit an earlier step forked — `forked` names its kind
+    /// (`flow`, or a Flow item kind) — or `id` itself when that step forked nothing.
+    Forked {
+        /// The earlier step: one that sets a Flow item's cycles.
+        step: usize,
+        /// `flow`, `flow_goal`, `flow_task`, `flow_commitment` or `flow_expectation`.
+        forked: String,
+        /// The node in the Habit as it was.
+        id: i64,
+    },
     /// The node made by step `step` (counting from 0) of this gesture.
     Made {
         /// The earlier step's index.
@@ -244,6 +254,11 @@ pub enum GestureStep {
     /// Makes a Habit a plain Flow again.
     DeleteFlowRecurrence {
         /// The Flow.
+        flow_id: StepTarget,
+    },
+    /// Drops every edit made to one of a Habit's occurrences, as the editor's *Discard* does.
+    ClearHabitModifications {
+        /// The Habit.
         flow_id: StepTarget,
     },
     /// Archives a Habit and forks a fresh copy of it. Answers the copy.
@@ -459,6 +474,11 @@ async fn run_one(
                 .delete_recurrence(FlowId(stored(&id(&flow_id)?)?))
                 .await,
         ),
+        GestureStep::ClearHabitModifications { flow_id } => wire(
+            db.flows()
+                .clear_habit_modifications(FlowId(stored(&id(&flow_id)?)?))
+                .await,
+        ),
         GestureStep::ForkFlow { flow_id } => {
             wire(flows::archive_and_fork(db, FlowId(stored(&id(&flow_id)?)?), now).await)
         }
@@ -520,6 +540,46 @@ async fn run_one(
 fn resolve(target: &StepTarget, made: &[Value]) -> Result<NodeId, WireError> {
     match target {
         StepTarget::Id(id) => Ok(id.clone()),
+        StepTarget::Forked { step, forked, id } => {
+            let answer = made.get(*step).ok_or_else(|| {
+                WireError::invalid_request(format!("no earlier step {step} to name"))
+            })?;
+            if answer.is_null() {
+                return Ok(NodeId::Stored(*id));
+            }
+            if forked == "flow" {
+                let flow = answer
+                    .get("flow_id")
+                    .and_then(Value::as_i64)
+                    .ok_or_else(|| {
+                        WireError::invalid_request(format!("step {step} forked no Habit"))
+                    })?;
+                return Ok(NodeId::Stored(flow));
+            }
+            let pairs = match forked.as_str() {
+                "flow_goal" => "goals",
+                "flow_task" => "tasks",
+                "flow_commitment" => "commitments",
+                "flow_expectation" => "expectations",
+                other => {
+                    return Err(WireError::invalid_request(format!(
+                        "{other} is not a forked kind"
+                    )))
+                }
+            };
+            let renamed = answer
+                .get(pairs)
+                .and_then(Value::as_array)
+                .and_then(|pairs| {
+                    pairs.iter().find_map(|pair| {
+                        (pair.get(0).and_then(Value::as_i64) == Some(*id))
+                            .then(|| pair.get(1).and_then(Value::as_i64))
+                            .flatten()
+                    })
+                })
+                .unwrap_or(*id);
+            Ok(NodeId::Stored(renamed))
+        }
         StepTarget::Made { step } => {
             let answer = made.get(*step).ok_or_else(|| {
                 WireError::invalid_request(format!("no earlier step {step} to name"))
