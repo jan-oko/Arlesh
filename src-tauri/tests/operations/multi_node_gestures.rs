@@ -551,13 +551,23 @@ async fn every_write_a_gesture_makes_runs_against_its_kind() {
             { "op": "duplicate", "kind": "commitment", "id": 1, "parent_kind": "task", "parent_id": 1, "position": 0, "may_be_refused": true },
             { "op": "duplicate", "kind": "flow_task", "id": 1, "parent_kind": "task", "parent_id": 1, "position": 0, "may_be_refused": true },
             { "op": "move", "kind": "task", "id": "00000000-0000-5000-8000-000000000000", "parent_kind": "info", "parent": 1, "position": 0, "may_be_refused": true },
-            { "op": "update_info", "id": "00000000-0000-5000-8000-000000000000", "request": { "body": "x" }, "may_be_refused": true },
         ]),
     )
     .await
     .unwrap();
+    let derived = gesture(
+        &app,
+        "save-wait",
+        json!([{ "op": "update_info", "id": "00000000-0000-5000-8000-000000000000", "request": { "body": "x" }, "may_be_refused": true }]),
+    )
+    .await
+    .unwrap();
 
-    assert_eq!(answers.len(), 14);
+    assert_eq!(answers.len(), 13);
+    assert!(
+        derived[0].get("refused").is_some(),
+        "an Info has no derived rows"
+    );
     assert!(answers[9].get("refused").is_some(), "an Aspect never moves");
     assert!(
         answers[10].get("refused").is_some(),
