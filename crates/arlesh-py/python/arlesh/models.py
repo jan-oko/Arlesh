@@ -1628,6 +1628,26 @@ class StepEntryCreateFlowItem(BaseModel):
 
 class StepTarget1(BaseModel):
     """
+    The node that replaces `id` in the Habit an earlier step forked — `forked` names its kind
+    (`flow`, or a Flow item kind) — or `id` itself when that step forked nothing.
+    """
+
+    forked: str
+    """
+    `flow`, `flow_goal`, `flow_task`, `flow_commitment` or `flow_expectation`.
+    """
+    id: int
+    """
+    The node in the Habit as it was.
+    """
+    step: Annotated[int, Field(ge=0)]
+    """
+    The earlier step: one that sets a Flow item's cycles.
+    """
+
+
+class StepTarget2(BaseModel):
+    """
     The node made by step `step` (counting from 0) of this gesture.
     """
 
@@ -3848,7 +3868,7 @@ class StepEntryMove(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | int | str
+    id: StepTarget1 | StepTarget2 | int | str
     """
     The node.
     """
@@ -3857,7 +3877,7 @@ class StepEntryMove(BaseModel):
     The node's kind.
     """
     op: Literal["move"]
-    parent: StepTarget1 | int | str
+    parent: StepTarget1 | StepTarget2 | int | str
     """
     The new parent.
     """
@@ -4004,7 +4024,7 @@ class StepEntryUpdateGoal(BaseModel):
     """
     Achieving a Goal over open work asks first unless this is set.
     """
-    id: StepTarget1 | int | str
+    id: StepTarget1 | StepTarget2 | int | str
     """
     The Goal.
     """
@@ -4025,7 +4045,7 @@ class StepEntryUpdateExpectation(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | int | str
+    id: StepTarget1 | StepTarget2 | int | str
     """
     The wait.
     """
@@ -4046,7 +4066,7 @@ class StepEntryUpdateInfo(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | int | str
+    id: StepTarget1 | StepTarget2 | int | str
     """
     The Info.
     """
@@ -4067,7 +4087,7 @@ class StepEntryUpdateDomain(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | int | str
+    id: StepTarget1 | StepTarget2 | int | str
     """
     Its row.
     """
@@ -4093,7 +4113,7 @@ class StepEntryUpdateSpawnedWait(BaseModel):
     """
     What to change.
     """
-    task_id: StepTarget1 | int | str
+    task_id: StepTarget1 | StepTarget2 | int | str
     """
     The Task.
     """
@@ -4113,7 +4133,7 @@ class StepEntrySetTaskDoneAt(BaseModel):
     """
     When it was done.
     """
-    id: StepTarget1 | int | str
+    id: StepTarget1 | StepTarget2 | int | str
     """
     The Task.
     """
@@ -4130,7 +4150,7 @@ class StepEntrySetBlockReasons(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | int | str
+    id: StepTarget1 | StepTarget2 | int | str
     """
     The Task or Goal.
     """
@@ -4155,7 +4175,7 @@ class StepEntrySetTag(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | int | str
+    id: StepTarget1 | StepTarget2 | int | str
     """
     The node.
     """
@@ -4193,7 +4213,7 @@ class StepEntrySetTaskDependency(BaseModel):
     """
     Add, or remove.
     """
-    task_id: StepTarget1 | int | str
+    task_id: StepTarget1 | StepTarget2 | int | str
     """
     The dependent Task.
     """
@@ -4209,7 +4229,7 @@ class StepEntrySetFlowRecurrence(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    flow_id: StepTarget1 | int | str
+    flow_id: StepTarget1 | StepTarget2 | int | str
     """
     The Flow.
     """
@@ -4230,11 +4250,28 @@ class StepEntryDeleteFlowRecurrence(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    flow_id: StepTarget1 | int | str
+    flow_id: StepTarget1 | StepTarget2 | int | str
     """
     The Flow.
     """
     op: Literal["delete_flow_recurrence"]
+
+
+class StepEntryClearHabitModifications(BaseModel):
+    """
+    Drops every edit made to one of a Habit's occurrences, as the editor's *Discard* does.
+    """
+
+    may_be_refused: bool | None = False
+    """
+    When the write is refused, take back what it wrote and carry on, answering
+    `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
+    """
+    flow_id: StepTarget1 | StepTarget2 | int | str
+    """
+    The Habit.
+    """
+    op: Literal["clear_habit_modifications"]
 
 
 class StepEntryForkFlow(BaseModel):
@@ -4247,7 +4284,7 @@ class StepEntryForkFlow(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    flow_id: StepTarget1 | int | str
+    flow_id: StepTarget1 | StepTarget2 | int | str
     """
     The Habit.
     """
@@ -4268,11 +4305,11 @@ class StepEntrySetFlowItemCycles(BaseModel):
     """
     Its cycles.
     """
-    flow_id: StepTarget1 | int | str
+    flow_id: StepTarget1 | StepTarget2 | int | str
     """
     The item's Flow.
     """
-    item_id: StepTarget1 | int | str
+    item_id: StepTarget1 | StepTarget2 | int | str
     """
     The item.
     """
@@ -4297,7 +4334,7 @@ class StepEntrySetFlowDependency(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    dependent_id: StepTarget1 | int | str
+    dependent_id: StepTarget1 | StepTarget2 | int | str
     """
     The dependent item.
     """
@@ -4305,7 +4342,7 @@ class StepEntrySetFlowDependency(BaseModel):
     """
     The dependent item's kind.
     """
-    depends_on_id: StepTarget1 | int | str
+    depends_on_id: StepTarget1 | StepTarget2 | int | str
     """
     The prerequisite.
     """
@@ -4313,7 +4350,7 @@ class StepEntrySetFlowDependency(BaseModel):
     """
     The prerequisite's kind.
     """
-    flow_id: StepTarget1 | int | str
+    flow_id: StepTarget1 | StepTarget2 | int | str
     """
     The Flow.
     """
@@ -5307,7 +5344,7 @@ class StepEntryUpdateTask(BaseModel):
     """
     What becomes of the Tasks below whose own Plan the new Plan would leave outside.
     """
-    id: StepTarget1 | int | str
+    id: StepTarget1 | StepTarget2 | int | str
     """
     The Task.
     """
@@ -5328,7 +5365,7 @@ class StepEntryUpdateCommitment(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | int | str
+    id: StepTarget1 | StepTarget2 | int | str
     """
     The Commitment.
     """
@@ -5349,7 +5386,7 @@ class StepEntryUpdateFlow(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | int | str
+    id: StepTarget1 | StepTarget2 | int | str
     """
     The Flow.
     """
@@ -5370,7 +5407,7 @@ class StepEntryUpdateFlowItem(BaseModel):
     When the write is refused, take back what it wrote and carry on, answering
     `{"refused": <the error>}` for it. Without it, a refusal refuses the whole gesture.
     """
-    id: StepTarget1 | int | str
+    id: StepTarget1 | StepTarget2 | int | str
     """
     The item.
     """
@@ -5413,6 +5450,7 @@ class StepEntry(
         | StepEntrySetTaskDependency
         | StepEntrySetFlowRecurrence
         | StepEntryDeleteFlowRecurrence
+        | StepEntryClearHabitModifications
         | StepEntryForkFlow
         | StepEntrySetFlowItemCycles
         | StepEntrySetFlowDependency
@@ -5445,6 +5483,7 @@ class StepEntry(
         | StepEntrySetTaskDependency
         | StepEntrySetFlowRecurrence
         | StepEntryDeleteFlowRecurrence
+        | StepEntryClearHabitModifications
         | StepEntryForkFlow
         | StepEntrySetFlowItemCycles
         | StepEntrySetFlowDependency
