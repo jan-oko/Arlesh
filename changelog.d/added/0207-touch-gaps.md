@@ -1,0 +1,1 @@
+- **Check done and Archive on the phone's action bar.** *Check done* completes a wait's earliest open check; *Archive* puts every selected node that can be archived away as one undo step. The phone's top bar shows where the board lives, and while the server is unreachable or on another version the action bar, the palette and the write gestures are greyed out instead of failing.
