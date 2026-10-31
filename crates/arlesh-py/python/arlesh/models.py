@@ -745,6 +745,10 @@ class GestureName(StrEnum):
     """
     The new Flow or Habit editor's Create.
     """
+    archive_nodes = "archive-nodes"
+    """
+    A hand archive or unarchive of Tasks, Commitments and Domains, as one undo step.
+    """
 
 
 class GestureSummary(BaseModel):

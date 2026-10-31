@@ -375,7 +375,8 @@
       "POST /gestures/save-wait",
       "POST /gestures/save-flow",
       "POST /gestures/save-flow-item",
-      "POST /gestures/new-flow"
+      "POST /gestures/new-flow",
+      "POST /gestures/archive-nodes"
     ]
   }
 }
