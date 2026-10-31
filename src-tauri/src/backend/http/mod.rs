@@ -15,6 +15,7 @@
 //!
 //! Status changes reach the windows through [`StatusNotify`], which the shell wires to an event.
 
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chrono::NaiveDateTime;
@@ -47,8 +48,20 @@ mod undo;
 /// `conformance/client-mode.json`.
 pub const API_VERSION: u32 = 1;
 
-/// How long a call waits for the server before it counts as unreachable.
-const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+/// How long a connection waits to be made before the attempt counts as a failure.
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How long a whole call may take. The board is a few hundred kilobytes and a phone on a mobile
+/// network (or a tailnet waking up) is slow to start, so this is generous.
+const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// How often the operating system probes an idle connection, so one that has silently died (the
+/// phone changed network) is found and dropped instead of waited on.
+const TCP_KEEPALIVE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Consecutive failed attempts before the server is shown as unreachable. One timeout on a flaky
+/// link is not an outage; any success starts the count again.
+pub const FAILURES_BEFORE_UNREACHABLE: u32 = 2;
 
 /// Why writes are refused right now, when they are.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -126,6 +139,8 @@ pub struct HttpBackend {
     notify: StatusNotify,
     /// Gestures this device has open: the nesting depth the frontend's opens and closes keep.
     gestures: Mutex<u32>,
+    /// Failed attempts in a row since the server last answered.
+    failures: AtomicU32,
 }
 
 impl HttpBackend {
@@ -136,7 +151,8 @@ impl HttpBackend {
         // provider already installed — by an earlier backend — is not an error.
         let _ = rustls::crypto::ring::default_provider().install_default();
         let http = reqwest::Client::builder()
-            .connect_timeout(TIMEOUT)
+            .connect_timeout(CONNECT_TIMEOUT)
+            .tcp_keepalive(TCP_KEEPALIVE)
             .build()
             .map_err(|error| {
                 WireError::internal(format!("could not build the HTTP client: {error}"))
@@ -152,6 +168,7 @@ impl HttpBackend {
             }),
             notify,
             gestures: Mutex::new(0),
+            failures: AtomicU32::new(0),
         })
     }
 
@@ -178,7 +195,17 @@ impl HttpBackend {
 
     /// Records that the server answered (or did not), telling the windows when that changes.
     pub fn set_reachable(&self, reachable: bool) {
+        self.failures.store(0, Ordering::SeqCst);
         self.update(|link| link.reachable = reachable);
+    }
+
+    /// Records one failed attempt to reach the server. The server is shown as unreachable only
+    /// once [`FAILURES_BEFORE_UNREACHABLE`] have followed one another.
+    pub fn record_failure(&self) {
+        let failures = self.failures.fetch_add(1, Ordering::SeqCst) + 1;
+        if failures >= FAILURES_BEFORE_UNREACHABLE {
+            self.update(|link| link.reachable = false);
+        }
     }
 
     /// Runs `call` as a read.
@@ -221,7 +248,7 @@ impl HttpBackend {
             .http
             .request(call.method, url)
             .bearer_auth(&self.connection.token)
-            .timeout(TIMEOUT)
+            .timeout(REQUEST_TIMEOUT)
             .query(&call.query);
         if let Some(body) = call.body {
             request = request.json(&body);
@@ -230,7 +257,7 @@ impl HttpBackend {
             Ok(response) => response,
             Err(error) => {
                 tracing::warn!(error = %error, "the server could not be reached");
-                self.set_reachable(false);
+                self.record_failure();
                 return Err(unreachable_error());
             }
         };

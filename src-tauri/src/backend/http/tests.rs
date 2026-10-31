@@ -63,6 +63,22 @@ fn a_new_backend_is_writable_until_told_otherwise() {
     assert!(backend.status().reachable);
 }
 
+#[test]
+fn one_failed_attempt_is_not_an_outage_but_two_in_a_row_are() {
+    let (backend, _) = nowhere();
+
+    backend.record_failure();
+    let after_one = backend.status().reachable;
+    backend.set_reachable(true);
+    backend.record_failure();
+    let after_a_success_between = backend.status().reachable;
+    backend.record_failure();
+
+    assert!(after_one);
+    assert!(after_a_success_between);
+    assert!(!backend.status().reachable);
+}
+
 #[tokio::test]
 async fn an_unreachable_server_makes_the_board_read_only_and_says_so_once() {
     let (backend, notified) = nowhere();
