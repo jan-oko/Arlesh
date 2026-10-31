@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import AgentStatus from "@/components/TopBar/AgentStatus";
+import ModeIndicator from "@/components/TopBar/ModeIndicator";
 import SubtreeBreadcrumb from "@/components/TopBar/SubtreeBreadcrumb";
 import FilterChips from "@/components/FilterChips/FilterChips";
 import FilterPopover from "@/components/FilterPopover/FilterPopover";
@@ -26,7 +27,8 @@ type OpenSheet = "menu" | "preset" | "settings" | null;
 
 /**
  * The phone layout's top bar (`docs/spec/touch.md`): the ☰ menu, the title — the view at the
- * board's root, the breadcrumb inside a subtree — the preset chip, and the agents' status. The
+ * board's root, the breadcrumb inside a subtree — the preset chip, the agents' status and the server
+ * status. The
  * filter chips follow it, as they follow the desktop bar.
  */
 export default function PhoneTopBar() {
@@ -69,6 +71,8 @@ export default function PhoneTopBar() {
           {presetLabel} {CHEVRON_GLYPH}
         </button>
         <AgentStatus />
+        {/* Where the board lives — this device, or a server and whether it answers (Task 9f0). */}
+        <ModeIndicator />
       </header>
       <FilterChips />
       {sheet === "menu" && (
