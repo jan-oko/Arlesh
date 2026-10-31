@@ -131,7 +131,7 @@ pub async fn connect_to_server<R: Runtime>(
     vault::store(&state.app_dir, &url, &token, token_in_file)
         .map_err(|error| WireError::internal(error.to_string()))?;
     save(&state, &Mode::Client { url, token_in_file })?;
-    app.restart()
+    restart(&app)
 }
 
 /// Runs this device Standalone: the first-run chooser's *This device only*, or Settings → Server
@@ -145,9 +145,37 @@ pub fn use_standalone<R: Runtime>(
     save(&state, &Mode::Standalone)?;
     *state.first_run() = false;
     if matches!(state.mode, Mode::Client { .. }) {
-        app.restart();
+        restart(&app)?;
     }
     Ok(())
+}
+
+/// Starts the app again so it comes up in the mode just saved. A desktop re-executes its binary;
+/// on Android that only exits the app, so the activity is asked to start a new process (see
+/// `MainActivity.restartApp`).
+#[cfg(not(target_os = "android"))]
+fn restart<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), WireError> {
+    app.restart()
+}
+
+#[cfg(target_os = "android")]
+fn restart<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), WireError> {
+    let window = app
+        .webview_windows()
+        .into_values()
+        .next()
+        .ok_or_else(|| WireError::internal("no window to restart the app from"))?;
+    window
+        .with_webview(|webview| {
+            webview.jni_handle().exec(|env, activity, _| {
+                if let Err(error) = env.call_method(activity, "restartApp", "()V", &[]) {
+                    // Leave the exception pending and the next JNI call fails with it.
+                    let _ = env.exception_clear();
+                    tracing::error!(error = %error, "the app could not be restarted");
+                }
+            });
+        })
+        .map_err(|error| WireError::internal(format!("could not restart the app: {error}")))
 }
 
 fn save(state: &ClientModeState, mode: &Mode) -> Result<(), WireError> {

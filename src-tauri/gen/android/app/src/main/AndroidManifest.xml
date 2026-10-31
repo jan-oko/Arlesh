@@ -25,6 +25,14 @@
             </intent-filter>
         </activity>
 
+        <!-- Relaunches the app: lives in its own process so it outlasts the one it kills. -->
+        <activity
+            android:name=".RestartActivity"
+            android:process=":restart"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <provider
           android:name="androidx.core.content.FileProvider"
           android:authorities="${applicationId}.fileprovider"

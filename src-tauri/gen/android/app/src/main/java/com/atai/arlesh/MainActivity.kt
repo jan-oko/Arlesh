@@ -1,6 +1,8 @@
 package com.atai.arlesh
 
+import android.content.Intent
 import android.os.Bundle
+import android.os.Process
 import android.view.View
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
@@ -22,5 +24,18 @@ class MainActivity : TauriActivity() {
       view.setPadding(covered.left, covered.top, covered.right, covered.bottom)
       WindowInsetsCompat.CONSUMED
     }
+  }
+
+  /**
+   * Starts the app afresh in a new process. Tauri's own restart spawns the app's binary, which
+   * Android does not allow, and so only exits. Called from Rust (JNI) when the mode is switched.
+   */
+  fun restartApp() {
+    val launch = packageManager.getLaunchIntentForPackage(packageName) ?: return
+    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+    val restart = Intent(this, RestartActivity::class.java)
+    restart.putExtra(RestartActivity.NEXT, launch)
+    restart.putExtra(RestartActivity.PID, Process.myPid())
+    startActivity(restart)
   }
 }
