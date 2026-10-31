@@ -94,7 +94,7 @@ Two more are touch commands for the same reason: **Check done** (on a wait, comp
 earliest-due open check task) and **Archive** (on a selection, puts away every node that takes the
 hand archive — a stored Task or Commitment, or a Domain — and **brings them all back** when every
 one is already archived). Archive is **one gesture**, one transaction and one undo step, run
-through the `save-project` gesture operation of [Client mode](client-mode.md#undo), which admits
+through the `archive-nodes` gesture operation of [Client mode](client-mode.md#undo), which admits
 the three updates it is made of. A selected node with no archive of its own is left as it was and
 a toast says how many.
 

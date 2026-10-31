@@ -25,7 +25,7 @@ export async function deleteNodes(nodes: GestureNode[]): Promise<void> {
 export type GestureName =
   | "paste" | "insert-parent" | "move-node" | "plan-tasks" | "plan-move"
   | "save-task" | "save-goal" | "save-commitment" | "save-project" | "save-wait"
-  | "save-flow" | "save-flow-item" | "new-flow";
+  | "save-flow" | "save-flow-item" | "new-flow" | "archive-nodes";
 
 /**
  * A node a write acts on: its id; the node an earlier write of the same gesture made; or the node
@@ -68,11 +68,11 @@ export interface ArchiveWrite {
 
 /**
  * Archives — or unarchives — every node in `writes` as **one** gesture: one transaction, one undo
- * step. It runs as the `save-project` gesture, which admits the three updates a hand archive is
+ * step. It runs as the `archive-nodes` gesture, which admits the three updates a hand archive is
  * made of and nothing that moves or deletes.
  */
 export async function archiveNodes(writes: ArchiveWrite[]): Promise<void> {
-  await runGesture("save-project", writes.map(archiveStep));
+  await runGesture("archive-nodes", writes.map(archiveStep));
 }
 
 function archiveStep({ kind, id, archive }: ArchiveWrite): GestureStep {
