@@ -16,7 +16,7 @@ function Surface({ handlers }: { handlers: Handlers }) {
   return (
     <div ref={ref} data-testid="surface">
       <div data-row-id="task-1" data-testid="row">
-        <button type="button" data-gesture-skip="" data-testid="status">status</button>
+        <button type="button" data-gesture-skip="" data-testid="status" />
       </div>
     </div>
   );
