@@ -9,7 +9,7 @@ import { PLAN_BINDINGS } from "@/utils/hotkeys/plan-bindings";
 import { STEPS_BINDINGS } from "@/utils/hotkeys/steps-bindings";
 import { ZEN_BINDINGS } from "@/utils/hotkeys/zen-bindings";
 import {
-  PALETTE_EXCLUSIONS, PALETTE_FAMILIES, isReachableByTouch, paletteEntries, replacingGesture,
+  PALETTE_ALIASES, PALETTE_EXCLUSIONS, PALETTE_FAMILIES, PALETTE_LABELS, isAlias, isFamilyMember, isReachableByTouch, paletteEntries, replacingGesture,
 } from "./palette";
 
 /** Every table in the registry, as the keyboard dispatches them. */
@@ -32,16 +32,17 @@ function asCommands(table: readonly BindingMeta[]): SurfaceCommand[] {
   }));
 }
 
-/** Whether `binding` has a palette row: its own, or the one its action collapses into. */
-function hasPaletteRow(binding: BindingMeta, rows: readonly SurfaceCommand[]): boolean {
-  return rows.some((row) => row.id === binding.id ||
-    (row.section === binding.section && row.label.key === binding.labelKey && !binding.id.startsWith("planView.subscope.")));
+/** Whether `binding` has a palette row of its own, or is an alias of a binding that has one. */
+function hasPaletteRow(binding: BindingMeta, table: readonly BindingMeta[], rows: readonly SurfaceCommand[]): boolean {
+  if (rows.some((row) => row.id === binding.id)) return true;
+  return isAlias(binding) && table.some((other) =>
+    other.section === binding.section && other.labelKey === binding.labelKey && rows.some((row) => row.id === other.id));
 }
 
 describe("palette coverage: no binding is lost without a keyboard", () => {
   it.each(TABLES.map((table, index) => [index, table] as const))("table %i: every binding has a palette row or a gesture", (_index, table) => {
     const rows = paletteEntries(asCommands(table), { showTabs: true });
-    const lost = table.filter((binding) => replacingGesture(binding.id) === null && !hasPaletteRow(binding, rows))
+    const lost = table.filter((binding) => replacingGesture(binding.id) === null && !hasPaletteRow(binding, table, rows))
       .map((binding) => binding.id);
     expect(lost).toEqual([]);
   });
@@ -54,9 +55,24 @@ describe("palette coverage: no binding is lost without a keyboard", () => {
   });
 
   it("every exclusion and family still names a binding, so none outlives what it excused", () => {
-    const stale = [...PALETTE_EXCLUSIONS.map((exclusion) => exclusion.idPattern), ...PALETTE_FAMILIES]
+    const staleExclusions = PALETTE_EXCLUSIONS.map((exclusion) => exclusion.idPattern)
       .filter((pattern) => !ALL.some((binding) => (pattern.endsWith(".") ? binding.id.startsWith(pattern) : binding.id === pattern)));
+    const staleFamilies = PALETTE_FAMILIES.filter((prefix) => !ALL.some((binding) => binding.id.startsWith(prefix)));
+    const stale = [...staleExclusions, ...staleFamilies];
     expect(stale).toEqual([]);
+  });
+
+  it("every alias and every palette label still names a binding", () => {
+    const stale = [...PALETTE_ALIASES, ...Object.keys(PALETTE_LABELS)].filter((id) => !ALL.some((binding) => binding.id === id));
+    expect(stale).toEqual([]);
+  });
+
+  it("no two palette rows of one table read the same — a pair of opposites says which way it goes", () => {
+    for (const table of TABLES) {
+      const rows = paletteEntries(asCommands(table), { showTabs: true }).filter((row) => !isFamilyMember(row.id));
+      const words = rows.map((row) => `${row.label.namespace}:${row.label.key}`);
+      expect(words.filter((word, index) => words.indexOf(word) !== index)).toEqual([]);
+    }
   });
 
   it("a binding added to a table appears in the palette with no other change", () => {

@@ -98,7 +98,10 @@ cannot hang) and **Kind**, which opens a sheet of the five scope kinds, each its
 A sheet listing **every binding that can act right now**: generated from the hotkey registry,
 filtered to the tables the current view has mounted (the global ones, the tab's, and the view's)
 and, through each binding's own guard, to the selection. Each row shows its action and its key.
-A search box narrows the list. Choosing a row closes the sheet and runs the binding.
+A search box narrows the list. Choosing a row closes the sheet and runs the binding. A binding that
+only gives another one a second key (the numpad zoom, `F2`) is listed once, under the first; a pair
+of opposites the cheat-sheet lists on one line (previous and next scope) gets a row each, worded
+for its direction.
 
 It is opened by the action bar's **More**, by the ☰ menu, and by a **long-press** on a node.
 

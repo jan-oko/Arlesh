@@ -42,5 +42,17 @@
   "paletteSearch": "Search commands",
   "paletteEmpty": "Nothing can act here right now",
   "commandNewTask": "New Task here",
-  "newTaskRefused": "A Task cannot go here: select where it belongs first"
+  "newTaskRefused": "A Task cannot go here: select where it belongs first",
+  "palettePreviousScope": "Previous scope",
+  "paletteNextScope": "Next scope",
+  "paletteFocusCandidates": "Go to the candidates pane",
+  "paletteFocusPlanned": "Go to the planned pane",
+  "palettePreviousPage": "Previous page",
+  "paletteNextPage": "Next page",
+  "paletteReorderUp": "Move earlier among its siblings",
+  "paletteReorderDown": "Move later among its siblings",
+  "paletteExtendUp": "Extend the selection up",
+  "paletteExtendDown": "Extend the selection down",
+  "paletteExtendLeft": "Extend the selection left",
+  "paletteExtendRight": "Extend the selection right"
 }
