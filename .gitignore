@@ -24,3 +24,6 @@ coverage/
 # Per-branch Firebase config and build leftovers from scripts/box.py (Android builds)
 google-services.json
 *.box-orig
+
+__pycache__/
+*.pyc
