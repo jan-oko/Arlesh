@@ -46,6 +46,8 @@ interface Props {
   /** A line under the heading, for the create paths that say why the editor opened. */
   lead?: string;
   onSave: (data: ExpectationSaveData) => Promise<void>;
+  /** A Save the server refused: the editor opens again on what was typed, with the reason on its error line. */
+  reopened?: { draft: ExpectationSaveData; error: string } | undefined;
   onClose: () => void;
   /** The tags to pick from. Omitted — as on the paths that create a wait for a Task — the tag
    * picker is not drawn, and the wait starts with none. */
@@ -61,28 +63,31 @@ interface Props {
  * Shorter than the Task editor on purpose. A wait has no Plan, no dependencies of its own and no
  * block reasons.
  */
-export default function ExpectationEditorModal({ node, heading, lead, onSave, onClose, allTags, domainNames }: Props) {
+export default function ExpectationEditorModal({ node, heading, lead, onSave, reopened, onClose, allTags, domainNames }: Props) {
   useInputCapture();
   const { t } = useTranslation(["expectation", "editor"]);
   // A delegation wait is drawn with a label round its title; the editor edits the title itself.
-  const [title, setTitle] = useState(node.rowTitle ?? node.title);
+  const draft = reopened?.draft;
+  const [title, setTitle] = useState(draft?.title ?? node.rowTitle ?? node.title);
   const [status, setStatus] = useState<ExpectationStatus>(
-    node.status === EXPECTATION_STATUS.RELEASED ? EXPECTATION_STATUS.RELEASED : EXPECTATION_STATUS.PENDING,
+    (draft?.status ?? node.status) === EXPECTATION_STATUS.RELEASED ? EXPECTATION_STATUS.RELEASED : EXPECTATION_STATUS.PENDING,
   );
-  const [checkEvery, setCheckEvery] = useState<DurationSpec | null>(node.checkEvery ?? null);
-  const [checkStartingDate, setCheckStartingDate] = useState<string | null>(node.checkStarting?.slice(0, 10) ?? null);
-  const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
-  const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
-  const [archived, setArchived] = useState(node.archived === true);
-  const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
-  const [agentic, setAgentic] = useState(node.agentWaiting !== undefined);
-  const [agenticNote, setAgenticNote] = useState(node.agentWaiting?.note ?? "");
-  const [agenticAnswer, setAgenticAnswer] = useState(node.agentWaiting?.answer ?? "");
+  const [checkEvery, setCheckEvery] = useState<DurationSpec | null>(draft ? draft.checkEvery : node.checkEvery ?? null);
+  const [checkStartingDate, setCheckStartingDate] = useState<string | null>(
+    draft ? draft.checkStartingDate : node.checkStarting?.slice(0, 10) ?? null,
+  );
+  const [timeScope, setTimeScope] = useState<TimeScope | null>(draft ? draft.timeScope : node.timeScope ?? null);
+  const [tagIds, setTagIds] = useState<number[]>(draft?.tagIds ?? node.tagIds);
+  const [archived, setArchived] = useState(draft?.archived ?? node.archived === true);
+  const [isPrivate, setIsPrivate] = useState(draft?.isPrivate ?? node.isPrivate ?? false);
+  const [agentic, setAgentic] = useState(draft?.agentic ?? node.agentWaiting !== undefined);
+  const [agenticNote, setAgenticNote] = useState(draft ? draft.agenticNote ?? "" : node.agentWaiting?.note ?? "");
+  const [agenticAnswer, setAgenticAnswer] = useState(draft ? draft.agenticAnswer ?? "" : node.agentWaiting?.answer ?? "");
   // A question for the user unless the agent said otherwise — and a wait the user makes agentic
   // here is one too, as the backend defaults it.
   const isQuestion = node.agentWaiting?.question !== false;
   const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(reopened?.error ?? null);
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);

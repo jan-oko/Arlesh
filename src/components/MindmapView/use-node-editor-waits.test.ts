@@ -1,5 +1,7 @@
+import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
+import { settleLane } from "@/test/lane-helpers";
 import { useNodeEditor } from "./use-node-editor";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { addTagToExpectation, removeTagFromExpectation, updateExpectation } from "@/api/expectations";
@@ -36,7 +38,7 @@ function setup() {
 }
 
 describe("useNodeEditor — waits", () => {
-  beforeEach(() => { vi.clearAllMocks(); useMindmapStore.getState().clearToast(); });
+  beforeEach(() => { vi.clearAllMocks(); useMindmapStore.getState().clearToast(); usePendingWritesStore.getState().reset(); });
 
   it("E on a check task opens its own editor: it is a Task row", () => {
     const result = setup();
@@ -71,6 +73,7 @@ describe("useNodeEditor — waits", () => {
       title: "Chase the reviewer", status: "released", checkEvery: { n: 2, kind: "day" }, checkStartingDate: null,
       timeScope: null, tagIds: [6], archived: true, isPrivate: true, agentic: false, agenticNote: null, agenticAnswer: null,
     }));
+    await settleLane();
     expect(updateExpectation).toHaveBeenCalledWith("5b1d7c3e-0000-5000-8000-000000000005", expect.objectContaining({
       title: "Chase the reviewer", status: "released", check_every: { n: 2, kind: "day" },
       archival: "archived", is_private: true,
@@ -86,6 +89,7 @@ describe("useNodeEditor — waits", () => {
       title: "wait", status: "pending", checkEvery: null, checkStartingDate: null, timeScope: null,
       tagIds: [], archived: false, isPrivate: false, agentic: false, agenticNote: null, agenticAnswer: null,
     }));
+    await settleLane();
     const request = vi.mocked(updateExpectation).mock.calls[0]?.[1];
     expect(request).toHaveProperty("check_every", null);
     expect(JSON.parse(JSON.stringify(request))).toHaveProperty("check_every", null);
