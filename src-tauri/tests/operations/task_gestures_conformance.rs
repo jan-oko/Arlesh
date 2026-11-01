@@ -161,7 +161,11 @@ fn every_status_and_every_press_has_a_case() {
             }
         }
     }
-    for press in [VerdictPress::Cycle, VerdictPress::Kept, VerdictPress::Broken] {
+    for press in [
+        VerdictPress::Cycle,
+        VerdictPress::Kept,
+        VerdictPress::Broken,
+    ] {
         for current in [Verdict::Unresolved, Verdict::Kept, Verdict::Broken] {
             assert!(
                 corpus
