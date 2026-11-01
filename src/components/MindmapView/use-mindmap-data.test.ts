@@ -780,8 +780,11 @@ describe("useMindmapData — mutations", () => {
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_domain", {
         request: { title: "Ops", description: null, subtype: "project", parent_id: 1, status: null, knowledge_base_directory: null },
       });
-      expect(returned?.id).toBe("domain-10");
+      // The placeholder comes back at once; the server's id replaces it when the create is answered.
+      expect(returned?.id).toMatch(/^tmp:/);
       expect(returned?.kind).toBe("project");
+      await act(async () => { await usePendingWritesStore.getState().whenDrained(); });
+      expect(usePendingWritesStore.getState().aliases.get(returned?.id ?? "")).toBe("domain-10");
     });
 
     it("goal child kind: calls create_goal with kindToParentType of the parent", async () => {
@@ -849,7 +852,8 @@ describe("useMindmapData — mutations", () => {
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_task", {
         request: expect.objectContaining({ title: "buy milk", parent_type: "task", parent_id: occurrence.id }),
       });
-      expect(returned?.id).toBe("task-42");
+      await act(async () => { await usePendingWritesStore.getState().whenDrained(); });
+      expect(usePendingWritesStore.getState().aliases.get(returned?.id ?? "")).toBe("task-42");
     });
 
     it("throws for an invalid child kind", async () => {
