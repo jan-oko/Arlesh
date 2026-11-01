@@ -65,6 +65,8 @@ the only paths open without a token: they describe the API and hold no board dat
 arlesh-server token add <client> --db <path>     # prints the token, once
 arlesh-server token list --db <path>
 arlesh-server token revoke <client> --db <path>
+arlesh-server pin list --db <path>                       # devices showing a PIN
+arlesh-server pin approve <pin> [--name <n>] --db <path> # prompts for the name on a terminal
 ```
 
 Tokens live **in the database**, in the server-only table `server_tokens` (migration 0097, Task
@@ -141,6 +143,24 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 | `/scopes` | `GET /containing?kind=&date=`, `POST /resolve?now=` (the body is a scope key) |
 | `/rules` | `POST /item-state`, `POST /commitment-state`: the derived lifecycles |
 | `/mcp` | Arlesh's MCP endpoint (below) |
+| `POST /pair`, `POST /pair/poll` | **Open without a token.** A new device asks for a PIN (body `{"name"}`, answers `id`, `pin`, `name`, `expires_at`; rate limited per address) and polls with `{"id", "pin"}` (answers `pending`, or `approved` with the device's `name` and `token`, once). See *Pairing* below |
+| `/devices`, `/pairings` | `GET /devices` (name, `created_at`, `last_seen_at`, `current`), `DELETE /devices/{name}` (not the asking device's own), `GET /pairings/{pin}` (the name a waiting device suggests) and `POST /pairings/{pin}/approve` (body `{"name"}`, optional; answers the name as saved) |
+
+## Pairing
+
+A device with no token gets one by pairing (Task 289): `POST /pair` and `POST /pair/poll` are the only
+routes besides `/openapi.json` and `/docs` open without a token, and `/pair` is rate limited per
+address (429, `details.reason = "rate_limited"`, `Retry-After`). The PIN rules, the safeguards and
+the naming are in [Client Mode](client-mode.md), *Pairing a device*. The signed-in side is
+`arlesh-server pin list|approve` on the command line, and `/devices` and `/pairings` over HTTP.
+
+Pairing refusals carry `details.reason`: `unknown_pairing` (404: the request is unknown, used,
+expired or invalidated), `unknown_pin` and `unknown_device` (404), `wrong_pin` (403, with
+`remaining`), `pin_invalidated` and `current_device` (403), `too_many_pending` (429).
+
+The PINs are in the server-only table `pairing_pins` (migration 0098), reached through the bindings
+like the tokens, and not journaled. The same migration adds `server_tokens.last_seen_at`, which
+`/devices` reports; the server writes it at most once a minute per device.
 
 **Parity with the app.** Every method of the desktop app's Backend port has a route here, except
 People and the knowledge base, which have none (see [Client Mode](client-mode.md)). The mapping is
@@ -256,6 +276,9 @@ installs the `arlesh-server` command. Its layout follows the user's Librarian pr
   `DatabaseTokenStore` the adapter over the `server_tokens` table (through the bindings'
   `token_call`); the tests' fake is the second adapter. `FileTokenStore` is kept only to read an
   old `<db>.tokens` file once.
+- **`ports/pairing/`**: `PairingStore` and `DatabasePairingStore` over `pairing_pins`, through the
+  same `token_call`. The rules (PIN, lifetime, attempts, names) are `business_logic/pairing.py`,
+  over the two ports and a clock, so they are unit-tested with no database.
 - **Configuration and logging:** `config.py` holds the settings (pydantic-settings), and
   `logger.py` sets up loguru.
 

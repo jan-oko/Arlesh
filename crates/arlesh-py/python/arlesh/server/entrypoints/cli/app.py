@@ -10,6 +10,9 @@
     arlesh-server token add phone --db ~/arlesh.db      # prints phone's token, once
     arlesh-server token list --db ~/arlesh.db
     arlesh-server token revoke phone --db ~/arlesh.db
+
+    arlesh-server pin list --db ~/arlesh.db             # devices showing a PIN, waiting
+    arlesh-server pin approve 123456 --name phone --db ~/arlesh.db
     ARLESH_DATABASE_URL=sqlite:////data/arlesh.db arlesh-server   # the database as a URL
 
 Every flag can come from the environment instead (``ARLESH_DATABASE__PATH`` and so on; see
@@ -18,6 +21,7 @@ Every flag can come from the environment instead (``ARLESH_DATABASE__PATH`` and 
 
 from __future__ import annotations
 
+import sys
 from importlib.metadata import version
 from pathlib import Path
 from typing import Annotated, Any
@@ -27,10 +31,12 @@ from pydantic import ValidationError
 
 import arlesh
 from arlesh.server.business_logic.board import Board, OpenAs, TakeHold
+from arlesh.server.business_logic.pairing import Pairing, PairingRefused
 from arlesh.server.config import Config
 from arlesh.server.entrypoints.fastapi import run
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.logger import setup_logger
+from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from arlesh.server.ports.tokens.token_store import ClientAlreadyHasToken, UnknownClient
@@ -45,6 +51,8 @@ app = typer.Typer(
 )
 token_app = typer.Typer(help="Manage the bearer tokens, one per client.", no_args_is_help=True)
 app.add_typer(token_app, name="token")
+pin_app = typer.Typer(help="Pair devices: list and approve the PINs they show.", no_args_is_help=True)
+app.add_typer(pin_app, name="pin")
 
 Db = Annotated[
     Path | None,
@@ -93,7 +101,15 @@ def serve(
                 f"{PROGRAM}: no tokens yet: add one with `{PROGRAM} token add <client>`", err=True
             )
     board = Board(opener(path), holder(path), force=config.database.force)
-    run.run(ArleshServer(board=board, tokens=tokens, version=version("arlesh")), config.server)
+    run.run(
+        ArleshServer(
+            board=board,
+            tokens=tokens,
+            pairs=DatabasePairingStore(path),
+            version=version("arlesh"),
+        ),
+        config.server,
+    )
 
 
 @token_app.command("add")
@@ -123,6 +139,35 @@ def revoke_token(
         _tokens(db).revoke(client)
     except UnknownClient as refusal:
         _fail(refusal)
+
+
+@pin_app.command("list")
+def list_pins(db: Db = None) -> None:
+    """The devices waiting for approval: PIN, suggested name and when the PIN lapses."""
+    for waiting in _pairing(db).pending():
+        typer.echo(f"{waiting.pin}\t{waiting.name}\t{waiting.expires:%Y-%m-%d %H:%M:%S}")
+
+
+@pin_app.command("approve")
+def approve_pin(
+    pin: Annotated[str, typer.Argument(help="The PIN the device shows.")],
+    name: Annotated[
+        str | None,
+        typer.Option(help="The name for the device (default: the one it suggested)."),
+    ] = None,
+    db: Db = None,
+) -> None:
+    """Approves the device showing PIN. Its next poll receives its token."""
+    pairing = _pairing(db)
+    try:
+        waiting = pairing.lookup(pin)
+        if name is None and sys.stdin.isatty():
+            name = typer.prompt("Name for the device", default=waiting.name)
+        final = pairing.approve(pin, name)
+    except PairingRefused as refusal:
+        _fail(refusal)
+    else:
+        typer.echo(f"{PROGRAM}: approved {final}")
 
 
 def main() -> None:
@@ -167,6 +212,11 @@ def _unheld(path: Path) -> bool:
 
 def _tokens(db: Path | None) -> DatabaseTokenStore:
     return prepare(_config(database={"path": db}).database.path)
+
+
+def _pairing(db: Path | None) -> Pairing:
+    path = _config(database={"path": db}).database.path
+    return Pairing(DatabasePairingStore(path), prepare(path))
 
 
 def _config(**sections: dict[str, Any]) -> Config:

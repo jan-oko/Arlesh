@@ -1,4 +1,4 @@
-//! The server's bearer tokens, reached **synchronously**: `arlesh-server`'s token store asks on
+//! The server's bearer tokens and pending device pairings (migrations 0097 and 0098), reached **synchronously**: `arlesh-server`'s token store asks on
 //! every request, from code that is not a coroutine, and its command line has no event loop.
 //!
 //! The tokens are in the database (migration 0097), so they go through the core — the same SQLite
@@ -16,6 +16,7 @@ use std::sync::OnceLock;
 use arlesh_core::{
     database::session::SessionFactory,
     error::{WireError, WireErrorKind},
+    server_pairing::model::PairingPin,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -43,6 +44,26 @@ enum Request {
     Issued,
     /// The client a digest belongs to, or `null`.
     ClientFor { sha256: String },
+    /// Records that a client used its token; answers whether it holds one.
+    Touch { client: String, seen_at: String },
+    /// Records a pairing request; answers whether it was recorded.
+    PairingCreate {
+        id_sha256: String,
+        pin: String,
+        name: String,
+        created_at: String,
+        expires_at: String,
+    },
+    /// Every pairing request, oldest first.
+    PairingAll,
+    /// Deletes the requests that lapsed at or before `now`; answers how many.
+    PairingPurge { now: String },
+    /// Counts a wrong PIN against a request; answers the count, or `null` for no such request.
+    PairingAttempt { id_sha256: String },
+    /// Approves the pending request with a PIN under a name; answers whether there was one.
+    PairingApprove { pin: String, name: String },
+    /// Deletes a request; answers whether there was one.
+    PairingDelete { id_sha256: String },
 }
 
 /// Runs one token call on the database at `path`, waiting for it.
@@ -98,6 +119,55 @@ async fn dispatch(factory: &SessionFactory, request: Request) -> Result<Value, W
         Request::ClientFor { sha256 } => json!(db
             .server_tokens()
             .client_for(&sha256)
+            .await
+            .map_err(WireError::from_error)?),
+        Request::Touch { client, seen_at } => json!(db
+            .server_tokens()
+            .touch(&client, &seen_at)
+            .await
+            .map_err(WireError::from_error)?),
+        Request::PairingCreate {
+            id_sha256,
+            pin,
+            name,
+            created_at,
+            expires_at,
+        } => json!(db
+            .pairing_pins()
+            .create(&PairingPin {
+                id_sha256,
+                pin,
+                name,
+                approved_name: None,
+                attempts: 0,
+                created_at,
+                expires_at,
+            })
+            .await
+            .map_err(WireError::from_error)?),
+        Request::PairingAll => json!(db
+            .pairing_pins()
+            .all()
+            .await
+            .map_err(WireError::from_error)?),
+        Request::PairingPurge { now } => json!(db
+            .pairing_pins()
+            .purge_expired(&now)
+            .await
+            .map_err(WireError::from_error)?),
+        Request::PairingAttempt { id_sha256 } => json!(db
+            .pairing_pins()
+            .count_attempt(&id_sha256)
+            .await
+            .map_err(WireError::from_error)?),
+        Request::PairingApprove { pin, name } => json!(db
+            .pairing_pins()
+            .approve(&pin, &name)
+            .await
+            .map_err(WireError::from_error)?),
+        Request::PairingDelete { id_sha256 } => json!(db
+            .pairing_pins()
+            .delete(&id_sha256)
             .await
             .map_err(WireError::from_error)?),
     };
