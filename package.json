@@ -12,7 +12,8 @@
     "changelog:check": "node scripts/assemble-changelog.mjs --check",
     "test": "vitest run",
     "test:watch": "vitest",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "box": "scripts/branch-instance.sh"
   },
   "dependencies": {
     "@react-spring/web": "^10.1.1",

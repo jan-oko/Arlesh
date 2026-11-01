@@ -8,9 +8,36 @@
 #   scripts/branch-instance.sh start <name | all> [--server <name> | --standalone]   # build, then run
 #   scripts/branch-instance.sh stop  [name ... | all]   # default: all (servers too, with `all`)
 #   scripts/branch-instance.sh clean [name ... | all]   # default: all
-#   scripts/branch-instance.sh server start <name>      # arlesh-server from worktree <name>
+#   scripts/branch-instance.sh server start <name> [--public]   # arlesh-server from worktree <name>
 #   scripts/branch-instance.sh server stop  [name ... | all]
 #   scripts/branch-instance.sh server token <name> <args...>   # arlesh-server token <args...> on that server
+#   scripts/branch-instance.sh server pin <name> approve <pin> [--name <device>]
+#   scripts/branch-instance.sh server pin <name> list
+#   scripts/branch-instance.sh apk <branch> [host[:port]] [--build-only | --install-only | --no-launch | --no-firebase]
+#   scripts/branch-instance.sh apk clean <branch> [host[:port]]   # Firebase app + uninstall
+#   scripts/branch-instance.sh apk prune [host[:port]]            # the same for every gone worktree
+#
+# Also reachable as `npm run box -- <command> ...`. `npm run dev` stays Vite.
+#
+# Android test builds (`apk`, in scripts/box-android.sh): builds <branch>'s Android APK, signs it
+# with the standard debug keystore (~/.android/debug.keystore, created if missing), installs it
+# over adb and launches it. The package is com.atai.arlesh.box.<branch> (the branch lowercased,
+# anything outside [a-z0-9_] turned into _, a `b` prefixed when it starts with a digit) and the
+# label is "Arlesh (<branch>)", so it sits beside the real app and beside other branches. Only this
+# build is renamed: build.gradle.kts and strings.xml are patched for the length of the build and
+# restored, also when it fails. <host[:port]> is the device (or ARLESH_BOX_DEVICE); without a port
+# it is found in `adb mdns services`. The script never pairs: pair once by hand with `adb pair`.
+#   --build-only / --install-only / --no-launch   run the steps separately.
+# It needs ANDROID_HOME, ANDROID_NDK_HOME and a JDK (JAVA_HOME or ARLESH_BOX_JAVA_HOME). The first
+# build in a worktree first runs `cargo clean -p tauri -p wry --release --target
+# aarch64-linux-android` (marked in the worktree's git dir), because with the shared target dir
+# the generated TauriActivity is otherwise missing.
+# Firebase: with ARLESH_BOX_FIREBASE_PROJECT set and gcloud application-default credentials, the
+# build registers the package as an Android app in that project (reusing one that exists) and
+# writes its config as a gitignored google-services.json beside app/build.gradle.kts. Without
+# either it says so and carries on; --no-firebase turns it off. `clean <branch>` (explicit names
+# only) and `apk clean` remove that app and uninstall the test app; `apk prune` does so for every
+# com.atai.arlesh.box.* whose worktree is gone. Needs jq and curl.
 #
 # Servers, for Client mode (Task 9f0): `server start <name>` runs `arlesh-server` from worktree
 # <name>'s own code: the bindings are built into that worktree's own venv (uv, maturin develop, the
@@ -32,7 +59,12 @@
 # (revoked and re-added on every start, so the printed one always works). That block is the only
 # place a token is printed, and it is not written to any log. `server token <name> add phone`,
 # `… list`, `… revoke phone` run `arlesh-server token <args>` against that server's database, from
-# its worktree's venv, with the arguments passed through untouched.
+# its worktree's venv, with the arguments passed through untouched. `server pin <name> approve
+# <pin> [--name <device>]` and `… list` do the same with `arlesh-server pin <args>`.
+#
+# `server start <name> --public` listens on 0.0.0.0 instead of loopback, so a phone can reach it,
+# and the block lists the LAN and tailnet (`tailscale ip -4`) URLs. Plain HTTP: use it on a network
+# you trust. Stop the server before changing between loopback and --public.
 #
 # `all` means every worktree. `run all` launches each built instance at once, detached, so the
 # branches can be compared side by side and survive the shell that started them.
@@ -78,6 +110,9 @@ BASE_PORT="${ARLESH_BASE_PORT:-14200}"
 SERVER_BASE_PORT="${ARLESH_SERVER_BASE_PORT:-14700}"
 # Servers live beside the app instances, under a dot directory so no worktree name can collide.
 SERVERS="$INSTANCES/.servers"
+
+# shellcheck source=scripts/box-android.sh
+. "$(dirname "${BASH_SOURCE[0]}")/box-android.sh"
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 
@@ -414,7 +449,7 @@ cmd_clean() {
   for name in "${names[@]}"; do
     # Only the binary goes. An instance's database is the state you built up while testing that
     # branch, and it is not rebuildable — delete those by hand if you really want them gone.
-    rm -f "$INSTANCES/$name/arlesh"
+    rm -f "$INSTANCES/$name/arlesh" "$INSTANCES/$name/arlesh-box.apk"
     printf 'removed binary for %s (its data and port kept at %s)\n' "$name" "$INSTANCES/$name"
   done
   printf '%sG free.\n' "$(free_gb)"
@@ -475,21 +510,25 @@ seed_server() {
 }
 
 server_start() {
-  local name="$1" wt dir port db
+  local name="$1" host="${2:-127.0.0.1}" wt dir port db
   wt="$(worktree_path "$name")"
   dir="$(server_dir "$name")"
   port="$(server_port_for "$name")"
   db="$dir/data/arlesh.db"
   if server_running "$name"; then
     printf '  server %-21s already up on %s\n' "$name" "$port"
+    [ "$host" = "$(cat "$dir/host" 2>/dev/null || echo 127.0.0.1)" ] ||
+      printf '  (it listens on %s, not %s: stop it first to change that)\n' \
+        "$(cat "$dir/host" 2>/dev/null || echo 127.0.0.1)" "$host" >&2
     return 0
   fi
   build_server "$name"
   seed_server "$name"
   # The pid is the child's own, written before it execs, for the reason start_vite gives.
   ( cd "$wt/crates/arlesh-py" && setsid sh -c 'printf "%s" "$$" > "$1"; shift; exec "$@"' \
-      _ "$dir/server.pid" uv run --no-sync arlesh-server --db "$db" --port "$port" \
+      _ "$dir/server.pid" uv run --no-sync arlesh-server --db "$db" --host "$host" --port "$port" \
       >"$dir/server.log" 2>&1 < /dev/null & )
+  printf '%s' "$host" > "$dir/host"
   # `/openapi.json` answers without a token on every server, old ones included.
   for _ in $(seq 60); do
     curl -sf -o /dev/null "http://127.0.0.1:$port/openapi.json" 2>/dev/null && {
@@ -563,25 +602,70 @@ server_token() {
 
 # The connection block `server start` ends with: the one place a token is printed.
 print_connection() {
-  local name="$1" token
+  local name="$1" public="${2:-no}" token port
+  port="$(server_port_for "$name")"
   token="$(server_token "$name" revoke cli >/dev/null 2>&1; server_token "$name" add cli)" ||
     die "Could not mint a token on server '$name'."
-  printf '\n── arlesh-server %s ──\nURL:   http://127.0.0.1:%s\nToken: %s   (client "cli")\n' \
-    "$name" "$(server_port_for "$name")" "$token"
+  printf '\n── arlesh-server %s ──\nURL:   http://127.0.0.1:%s\n' "$name" "$port"
+  if [ "$public" = yes ]; then
+    local ip
+    ip="$(lan_ip)"; [ -z "$ip" ] || printf 'LAN:   http://%s:%s\n' "$ip" "$port"
+    ip="$(tailnet_ip)"; [ -z "$ip" ] || printf 'Tailnet: http://%s:%s\n' "$ip" "$port"
+  fi
+  printf 'Token: %s   (client "cli")\n' "$token"
+}
+
+# This machine's LAN address, on Linux and macOS; empty when it cannot be told.
+lan_ip() {
+  local ip=""
+  if command -v ip >/dev/null 2>&1; then
+    ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit }}')"
+  fi
+  if [ -z "$ip" ] && command -v ipconfig >/dev/null 2>&1; then
+    ip="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
+  fi
+  if [ -z "$ip" ] && command -v hostname >/dev/null 2>&1; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
+  printf '%s' "$ip"
+}
+
+tailnet_ip() {
+  command -v tailscale >/dev/null 2>&1 || return 0
+  tailscale ip -4 2>/dev/null | head -1 || true
+}
+
+# Runs `arlesh-server pin <args>` against server <name>'s database, as server_token does for tokens.
+server_pin() {
+  local name="$1"; shift
+  local wt dir
+  wt="$(worktree_path "$name")"
+  dir="$(server_dir "$name")"
+  [ -x "$wt/crates/arlesh-py/.venv/bin/arlesh-server" ] && [ -f "$dir/data/arlesh.db" ] ||
+    die "Server '$name' has no venv or data yet. Run: $0 server start $name"
+  ( cd "$wt/crates/arlesh-py" && uv run --no-sync arlesh-server pin "$@" --db "$dir/data/arlesh.db" )
 }
 
 cmd_server() {
   local sub="${1:-}"; shift || true
   case "$sub" in
     start)
-      [ "$#" -eq 1 ] || die "Usage: $0 server start <name>"
-      server_start "$1"
-      print_connection "$1" ;;
+      local public=no
+      if [ "$#" -eq 2 ] && [ "$2" = "--public" ]; then public=yes; set -- "$1"; fi
+      [ "$#" -eq 1 ] || die "Usage: $0 server start <name> [--public]"
+      if [ "$public" = yes ]; then server_start "$1" 0.0.0.0; else server_start "$1"; fi
+      print_connection "$1" "$public" ;;
     stop) server_stop "$@" ;;
     token)
       [ "$#" -ge 2 ] || die "Usage: $0 server token <name> <arlesh-server token args...>"
       server_token "$@" ;;
-    *) die "Usage: $0 server {start <name> | stop [name...|all] | token <name> <args...>}" ;;
+    pin)
+      [ "$#" -ge 2 ] || die "Usage: $0 server pin <name> {approve <pin> [--name <device>] | list}"
+      case "$2" in
+        approve|list) server_pin "$@" ;;
+        *) die "Usage: $0 server pin <name> {approve <pin> [--name <device>] | list}" ;;
+      esac ;;
+    *) die "Usage: $0 server {start <name> [--public] | stop [name...|all] | token <name> <args...> | pin <name> {approve <pin> [--name <d>]|list}}" ;;
   esac
 }
 
@@ -621,6 +705,11 @@ case "${1:-list}" in
          # `stop` with no names, or `all`, takes the servers down with the apps.
          if [ "$#" -eq 0 ] || { [ "$#" -eq 1 ] && [ "$1" = "all" ]; }; then server_stop all; fi ;;
   server) shift; cmd_server "$@" ;;
-  clean) shift; cmd_clean "$@" ;;
-  *)     die "Usage: $0 {list | build [name...|all] | run <name|all> [--server <name>|--standalone] | start <name|all> [--server <name>|--standalone] | stop [name...|all] | clean [name...|all] | server {start <name>|stop [name...|all]|token <name> <args...>}}" ;;
+  clean) shift; cmd_clean "$@"
+         # Named branches only: `clean` and `clean all` never reach into Firebase or a phone.
+         if [ "$#" -gt 0 ] && [ "$*" != "all" ]; then
+           for n in "$@"; do apk_clean "$n"; done
+         fi ;;
+  apk)   shift; cmd_apk "$@" ;;
+  *)     die "Usage: $0 {list | build [name...|all] | run <name|all> [--server <name>|--standalone] | start <name|all> [--server <name>|--standalone] | stop [name...|all] | clean [name...|all] | apk {<branch> [device]|clean <branch> [device]|prune [device]} | server {start <name> [--public]|stop [name...|all]|token <name> <args...>|pin <name> {approve <pin>|list}}}" ;;
 esac
