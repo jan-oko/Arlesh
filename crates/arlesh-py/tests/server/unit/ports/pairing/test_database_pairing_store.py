@@ -18,7 +18,9 @@ def store(server_db: Path) -> DatabasePairingStore:
 
 
 def request(pin: str, expires: datetime = datetime(2026, 11, 1, 10, 10, 0)) -> PairingRequest:
-    return PairingRequest(id_sha256=f"id-{pin}", pin=pin, name="phone", created=NOW, expires=expires)
+    return PairingRequest(
+        id_sha256=f"id-{pin}", pin=pin, name="phone", created=NOW, expires=expires
+    )
 
 
 def test_a_request_is_stored_and_read_back(store: DatabasePairingStore) -> None:

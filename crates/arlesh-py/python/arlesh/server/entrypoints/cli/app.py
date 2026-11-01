@@ -51,7 +51,9 @@ app = typer.Typer(
 )
 token_app = typer.Typer(help="Manage the bearer tokens, one per client.", no_args_is_help=True)
 app.add_typer(token_app, name="token")
-pin_app = typer.Typer(help="Pair devices: list and approve the PINs they show.", no_args_is_help=True)
+pin_app = typer.Typer(
+    help="Pair devices: list and approve the PINs they show.", no_args_is_help=True
+)
 app.add_typer(pin_app, name="pin")
 
 Db = Annotated[
@@ -161,7 +163,7 @@ def approve_pin(
     pairing = _pairing(db)
     try:
         waiting = pairing.lookup(pin)
-        if name is None and sys.stdin.isatty():
+        if name is None and _interactive():
             name = typer.prompt("Name for the device", default=waiting.name)
         final = pairing.approve(pin, name)
     except PairingRefused as refusal:
@@ -212,6 +214,11 @@ def _unheld(path: Path) -> bool:
 
 def _tokens(db: Path | None) -> DatabaseTokenStore:
     return prepare(_config(database={"path": db}).database.path)
+
+
+def _interactive() -> bool:
+    """Whether a person is at the terminal, so a missing name may be asked for."""
+    return sys.stdin.isatty()
 
 
 def _pairing(db: Path | None) -> Pairing:

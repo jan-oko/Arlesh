@@ -47,6 +47,11 @@ impl ClientModeState {
         }
     }
 
+    /// The link to the server, in Client mode (the Devices commands use it).
+    pub fn server(&self) -> Option<&Arc<HttpBackend>> {
+        self.server.as_ref()
+    }
+
     fn first_run(&self) -> std::sync::MutexGuard<'_, bool> {
         self.first_run
             .lock()

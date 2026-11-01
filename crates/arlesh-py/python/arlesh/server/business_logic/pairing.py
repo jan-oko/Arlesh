@@ -130,7 +130,9 @@ class Pairing:
                     "pin_invalidated", "too many wrong PINs: this request is invalidated"
                 )
             raise PairingRefused(
-                "wrong_pin", "that is not this request's PIN", remaining=MAX_WRONG_ATTEMPTS - attempts
+                "wrong_pin",
+                "that is not this request's PIN",
+                remaining=MAX_WRONG_ATTEMPTS - attempts,
             )
         if request.approved_name is None:
             return Polled(status="pending")

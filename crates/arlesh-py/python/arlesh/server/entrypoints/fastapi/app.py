@@ -14,9 +14,9 @@ from arlesh.server.business_logic.pairing import Pairing, PairingRefused
 from arlesh.server.entrypoints.fastapi.exception_handling.exception_handlers import (
     handle_authentication_failure,
     handle_core_refusal,
+    handle_http_exception,
     handle_pairing_refusal,
     handle_rate_limit,
-    handle_http_exception,
     handle_request_validation_exception,
     handle_unknown_exception,
 )
@@ -50,9 +50,9 @@ from arlesh.server.ports.tokens.token_store import TokenStore
 DESCRIPTION = """\
 Arlesh's board over HTTP, run by Arlesh's own Rust core through the `arlesh` bindings.
 
-* **Every request but `/pair`** carries a bearer token from `arlesh-server token add <client>`. The token
-  names the client, and the undo journal records that client on every write it makes. A request
-  without one, or with one this server did not issue, is refused 401.
+* **Every request but `/pair`** carries a bearer token from `arlesh-server token add <client>`.
+  The token names the client, and the undo journal records that client on every write it makes.
+  A request without one, or with one this server did not issue, is refused 401.
 * **Every error** carries the core's `kind` in its body. Branch on it, not on the status.
 * **422** means *send it again with more*: `needs_confirmation` (add `?confirmed=true`, or for
   cycles a `reconcile`) or `needs_time_scope` (add a `time_scope`).
