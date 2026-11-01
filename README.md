@@ -115,6 +115,13 @@ Full spec at docs/spec/ dir, with top level reference at SPEC.md
 Important decisions reflected in docs/adr/ and changelog.d/
 Agents configured via AGENTS.md and .claude/, with arlesh itself serving as an MCP for task management.
 
+## Trying a branch
+
+`npm run box -- run <branch> [<target>]` builds a branch's worktree (only when it changed) and launches it
+beside your real app, on this machine (`desktop`) or on an Android phone registered with
+`npm run box -- devices add <name> --os android --host <host[:port]>`. It needs [uv](https://docs.astral.sh/uv/);
+the tool is `scripts/box.py`, see `docs/spec/client-mode.md` for the full reference.
+
 ## Stack
 
 | Layer     | Choice                        |

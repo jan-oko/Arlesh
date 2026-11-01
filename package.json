@@ -13,7 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri",
-    "box": "scripts/branch-instance.sh"
+    "box": "uv run --script scripts/box.py"
   },
   "dependencies": {
     "@react-spring/web": "^10.1.1",

@@ -21,6 +21,6 @@ coverage/
 .beads/proxieddb/
 *.gate.lock*
 
-# Per-branch Firebase config and build leftovers from scripts/branch-instance.sh apk
+# Per-branch Firebase config and build leftovers from scripts/box.py (Android builds)
 google-services.json
 *.box-orig

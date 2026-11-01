@@ -257,30 +257,47 @@ its local database untouched, and switching back finds it as it was. A server is
 
 ## Trying it: branch instances
 
-`scripts/branch-instance.sh` runs a branch's server as well as its app, so any app branch can be
-tried against any server branch — the version handshake included:
+`npm run box -- …` (the single-file Python tool `scripts/box.py`, run with `uv run --script`, stdlib
+only) runs a branch's server as well as its app, so any app branch can be tried against any server
+branch — the version handshake included:
 
 ```
-scripts/branch-instance.sh server start 9f0-client-mode              # arlesh-server from that worktree
-scripts/branch-instance.sh start 201-client-gaps --server 9f0-client-mode
-scripts/branch-instance.sh run some-app --standalone                 # back to the local board
-scripts/branch-instance.sh stop all                                  # apps and servers
+npm run box -- server start 9f0-client-mode                 # arlesh-server from that worktree
+npm run box -- run 201-client-gaps desktop --server 9f0-client-mode
+npm run box -- run some-app desktop --standalone            # the local board, no server
+npm run box -- run 201-client-gaps pixel                    # the Android build on a registered phone
+npm run box -- stop all                                     # apps and servers
 ```
 
-A server runs its worktree's own code (its bindings built into that worktree's venv) on its own
-port, over a copy of the real database taken read-only (`sqlite3 -readonly … .backup`), seeded once
-and kept. `--server` mints the app instance a token and writes its `mode.json` and its token file,
-so the instance comes up connected; the token is never printed. `list` shows the servers too.
+`run <branch> [<target>]` builds only when the worktree changed (a hash of `HEAD` plus the
+uncommitted diff, per branch and OS, kept in `$XDG_STATE_HOME/arlesh/box/`), installs on an Android
+device only when that device lacks this build or the package, and always launches. The target is
+`desktop` (this machine, built in) or a name registered with `devices add <name> --os
+android|desktop [--host host[:port]]`; the registry is per user, in
+`$XDG_CONFIG_HOME/arlesh/box-devices.json`, never in the repo. Without a target, `run` reuses the last
+one. An Android host without a port is found in `adb mdns services`.
 
-More of the script, for trying pairing and the phone build:
+On desktop, `run` uses the branch's own server and starts it if it is not up (the first start
+in a fresh worktree builds arlesh-py and says so); `--server <other>` picks another branch's server and
+`--standalone` uses none. A server runs its worktree's own code (its bindings built into that
+worktree's venv) on its own port, over a copy of the real database taken read-only
+(`sqlite3` backup API, opened `mode=ro`), seeded once and kept. The instance gets a token
+(client `branch-<app>`) and its `mode.json` and token file, so it comes up connected; the token is
+never printed. `list` shows the servers and targets too.
+
+More of the tool, for trying pairing and the phone build:
 
 - `server start <name> --public` binds `0.0.0.0` (the server's `--host`) and prints the LAN and
   tailnet URLs a phone can reach.
 - `server pin <name> approve <pin> [--name <d>]` and `server pin <name> list` run
   `arlesh-server pin approve|list` against that server's database.
-- `apk <branch> [host[:port]]` builds a debug-signed APK that installs beside the real app as
-  `com.atai.arlesh.box.<branch>`; `apk clean` and `apk prune` remove the builds. `npm run box -- …`
-  runs the script.
+- An Android `run` builds a debug-signed APK that installs beside the real app as
+  `com.atai.arlesh.box.<branch>`, labelled "Arlesh (<branch>)" (the two files that carry the name
+  are patched for the build and restored). Firebase, per branch, when
+  `ARLESH_BOX_FIREBASE_PROJECT` is set (`--no-firebase` skips it). Server flags are desktop-only.
+- `clean <branch>` also removes that branch's Firebase app and uninstalls the package from the
+  registered Android devices; `prune [<device>]` does so for every `com.atai.arlesh.box.*` whose
+  worktree is gone.
 
 ## Not in phase 1
 
