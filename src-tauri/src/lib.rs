@@ -2,6 +2,7 @@
 #![deny(missing_docs)]
 //! Arlesh — task management and knowledge-base desktop app.
 
+pub mod backend;
 pub mod commands;
 pub mod icon;
 pub mod tray;
@@ -87,11 +88,10 @@ pub fn run() {
                 app_dir.join(capacity::CAPACITY_FILE),
                 commands::capacity::notifier(app.handle()),
             );
-            app.manage(capacity.clone());
             let endpoint = mcp::endpoint::McpEndpoint::new(
                 factory.clone(),
                 commands::board::announcer(app.handle()),
-                capacity,
+                capacity.clone(),
                 app_dir.join(mcp::endpoint::SETTINGS_FILE),
                 mcp::endpoint::env_port(),
             );
@@ -100,12 +100,17 @@ pub fn run() {
                 endpoint.restart().await;
             });
 
-            app.manage(factory);
-
-            // The Undo and Redo Stacks: one pair for the whole app, in memory beside the factory.
+            // The Backend port every command calls through, in-process over the local file. The
+            // Undo and Redo Stacks are one pair for the whole app, in memory inside it.
             // Constructing them here is the whole of "session-scoped" — a restart is an empty
             // history, and nothing has to clear them.
-            app.manage(undo::stacks::UndoStacks::new());
+            app.manage(backend::AppBackend::new(
+                backend::sqlite::SqliteBackend::new(
+                    factory,
+                    undo::stacks::UndoStacks::new(),
+                    capacity,
+                ),
+            ));
 
             // The window session is read before any window exists and reopened before the event
             // loop runs, so that by the time one window's frontend executes a line of JavaScript

@@ -128,7 +128,7 @@ fn occurrence(item_type: TemplateKind, item_id: i64, iteration: ScopeKey) -> Nod
 }
 
 async fn load(app: &App, instant: &str) -> MindmapLoad {
-    mindmap_commands::load_mindmap(app.state(), app.state(), at(instant))
+    mindmap_commands::load_mindmap(app.state(), at(instant))
         .await
         .unwrap()
 }

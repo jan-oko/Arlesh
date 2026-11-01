@@ -2,12 +2,12 @@
 
 use tauri::State;
 
+use crate::backend::AppBackend;
 use crate::{
-    database::session::SessionFactory,
     error::WireError,
     knowledge_base::model::{
-        CreateEventRequest, CreatePersonRequest, CreateThreadRequest, Event, Person, PersonId,
-        Thread, UpdatePersonRequest,
+        CreateEventRequest, CreatePersonRequest, CreateThreadRequest, Event, Person, Thread,
+        UpdatePersonRequest,
     },
 };
 
@@ -17,31 +17,22 @@ use crate::{
 /// statement-level atomicity on its own.
 #[tauri::command]
 pub async fn create_person(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     request: CreatePersonRequest,
 ) -> Result<Person, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.people()
-        .create(request)
-        .await
-        .map_err(WireError::from_error)
+    backend.create_person(request).await
 }
 
 /// Fetches a person by id.
 #[tauri::command]
-pub async fn get_person(factory: State<'_, SessionFactory>, id: i64) -> Result<Person, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.people()
-        .get(PersonId(id))
-        .await
-        .map_err(WireError::from_error)
+pub async fn get_person(backend: State<'_, AppBackend>, id: i64) -> Result<Person, WireError> {
+    backend.get_person(id).await
 }
 
 /// Lists all people.
 #[tauri::command]
-pub async fn list_people(factory: State<'_, SessionFactory>) -> Result<Vec<Person>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.people().list().await.map_err(WireError::from_error)
+pub async fn list_people(backend: State<'_, AppBackend>) -> Result<Vec<Person>, WireError> {
+    backend.list_people().await
 }
 
 /// Updates a person.
@@ -49,27 +40,19 @@ pub async fn list_people(factory: State<'_, SessionFactory>) -> Result<Vec<Perso
 /// A single `UPDATE` (once the read work is done), so it runs on a pooled session.
 #[tauri::command]
 pub async fn update_person(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     id: i64,
     request: UpdatePersonRequest,
 ) -> Result<Person, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.people()
-        .update(PersonId(id), request)
-        .await
-        .map_err(WireError::from_error)
+    backend.update_person(id, request).await
 }
 
 /// Deletes a person by id.
 ///
 /// A single `DELETE` (once the read work is done), so it runs on a pooled session.
 #[tauri::command]
-pub async fn delete_person(factory: State<'_, SessionFactory>, id: i64) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.people()
-        .delete(PersonId(id))
-        .await
-        .map_err(WireError::from_error)
+pub async fn delete_person(backend: State<'_, AppBackend>, id: i64) -> Result<(), WireError> {
+    backend.delete_person(id).await
 }
 
 /// Creates a new event.
@@ -77,21 +60,16 @@ pub async fn delete_person(factory: State<'_, SessionFactory>, id: i64) -> Resul
 /// A single `INSERT`, so it runs on a pooled session.
 #[tauri::command]
 pub async fn create_event(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     request: CreateEventRequest,
 ) -> Result<Event, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.events()
-        .create(request)
-        .await
-        .map_err(WireError::from_error)
+    backend.create_event(request).await
 }
 
 /// Lists all events.
 #[tauri::command]
-pub async fn list_events(factory: State<'_, SessionFactory>) -> Result<Vec<Event>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.events().list().await.map_err(WireError::from_error)
+pub async fn list_events(backend: State<'_, AppBackend>) -> Result<Vec<Event>, WireError> {
+    backend.list_events().await
 }
 
 /// Creates a new thread.
@@ -99,19 +77,14 @@ pub async fn list_events(factory: State<'_, SessionFactory>) -> Result<Vec<Event
 /// A single `INSERT`, so it runs on a pooled session.
 #[tauri::command]
 pub async fn create_thread(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     request: CreateThreadRequest,
 ) -> Result<Thread, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.threads()
-        .create(request)
-        .await
-        .map_err(WireError::from_error)
+    backend.create_thread(request).await
 }
 
 /// Lists all threads.
 #[tauri::command]
-pub async fn list_threads(factory: State<'_, SessionFactory>) -> Result<Vec<Thread>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.threads().list().await.map_err(WireError::from_error)
+pub async fn list_threads(backend: State<'_, AppBackend>) -> Result<Vec<Thread>, WireError> {
+    backend.list_threads().await
 }

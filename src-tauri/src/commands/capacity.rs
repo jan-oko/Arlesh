@@ -7,8 +7,9 @@
 use tauri::{Emitter, Manager, Runtime, State};
 
 use crate::{
+    backend::AppBackend,
     board::recipients,
-    capacity::{AgentCapacity, CapacityState, Notify},
+    capacity::{CapacityState, Notify},
     error::WireError,
 };
 
@@ -18,22 +19,17 @@ pub const AGENT_CAPACITY_CHANGED: &str = "agent-capacity-changed";
 
 /// The lock as it stands.
 #[tauri::command]
-pub async fn agent_capacity(
-    capacity: State<'_, AgentCapacity>,
-) -> Result<CapacityState, WireError> {
-    Ok(capacity.get().await)
+pub async fn agent_capacity(backend: State<'_, AppBackend>) -> Result<CapacityState, WireError> {
+    backend.agent_capacity().await
 }
 
 /// Sets the lock on or off. Every window — this one included — hears the change.
 #[tauri::command]
 pub async fn set_agent_capacity(
-    capacity: State<'_, AgentCapacity>,
+    backend: State<'_, AppBackend>,
     at_capacity: bool,
 ) -> Result<CapacityState, WireError> {
-    capacity
-        .set(at_capacity)
-        .await
-        .map_err(|error| WireError::internal(error.to_string()))
+    backend.set_agent_capacity(at_capacity).await
 }
 
 /// A [`Notify`] that tells **every** window the lock's new state, and that the board changed.

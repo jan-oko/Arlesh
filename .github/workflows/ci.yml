@@ -328,9 +328,12 @@ jobs:
           cargo test --locked --workspace --exclude arlesh-py
           cargo llvm-cov report \
             --summary-only \
-            --ignore-filename-regex '(^|/)src/commands/|(^|/)crates/arlesh-py/|(^|/)examples/' \
+            --ignore-filename-regex '(^|/)src/commands/|(^|/)src/backend/|(^|/)crates/arlesh-py/|(^|/)examples/' \
             --fail-under-lines 94 \
             2>&1 | tee "$RUNNER_TEMP/coverage.log"
+
+      # `src/backend/` is the Tauri commands' former bodies, moved behind the Backend port (Task
+      # 9f0) unchanged; they were out of this report as `src/commands/` and stay out of it.
 
       # The Python bindings are gated by the `python` lane instead: their Rust is an operation
       # table whose every arm is exercised from pytest, and `cargo test` cannot load a module
