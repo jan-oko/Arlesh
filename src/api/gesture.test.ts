@@ -4,6 +4,7 @@ import {
   gestureName,
   invoke,
   redo,
+  setGestureBracketing,
   undo,
   undoStatus,
   withAtomicGesture,
@@ -140,6 +141,21 @@ describe("invoke", () => {
 
     expect(backend.gestureOf).toEqual([null]);
     expect(backend.closed).toBe(0);
+  });
+});
+
+describe("in Client mode", () => {
+  afterEach(() => { setGestureBracketing(true); });
+
+  it("sends one call per command, with no open or close around it", async () => {
+    const backend = installBackend();
+    setGestureBracketing(false);
+
+    await invoke("step_task_status", { id: 1 });
+    await withGesture("paste", async () => { await invoke("update_task"); });
+    await withAtomicGesture("save", async () => { await invoke("update_goal"); });
+
+    expect(backend.commands).toEqual(["step_task_status", "update_task", "update_goal"]);
   });
 });
 

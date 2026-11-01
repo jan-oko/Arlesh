@@ -23,6 +23,10 @@ from arlesh.server.entrypoints.fastapi.exception_handling.exception_handlers imp
 from arlesh.server.entrypoints.fastapi.exceptions import AuthenticationFailed, RateLimited
 from arlesh.server.entrypoints.fastapi.logging.lifespan import lifespan
 from arlesh.server.entrypoints.fastapi.logging.log_middleware import RequestLoggingMiddleware
+from arlesh.server.entrypoints.fastapi.revision import (
+    GzipExceptEventsMiddleware,
+    RevisionHeadersMiddleware,
+)
 from arlesh.server.entrypoints.fastapi.routers.access import McpAccessRouter
 from arlesh.server.entrypoints.fastapi.routers.board import BoardsRouter
 from arlesh.server.entrypoints.fastapi.routers.capacity import CapacityRouter
@@ -63,6 +67,9 @@ Arlesh's board over HTTP, run by Arlesh's own Rust core through the `arlesh` bin
 * **`/health`** answers the API version (`api_version`, bumped only on a breaking change) and
   the build commit: the desktop app's handshake before it uses the server.
 * **`/events`** streams `board-changed` (Server-Sent Events) after every committed write.
+* **Every answer** carries `X-Arlesh-Revision` and `X-Arlesh-Epoch`: the board's revision (the
+  one `/events` sends) and the run of the server it counts in. Answers over 1 KB are gzipped when
+  the client accepts it; `/events` never is.
 * **`/mcp`** is Arlesh's MCP endpoint, behind the same token: an agent's writes there are
   journaled under the token's client.
 """
@@ -139,6 +146,11 @@ class ArleshServer(FastAPI):
             )
         )
         self.add_middleware(RequestLoggingMiddleware)
+        self.add_middleware(
+            RevisionHeadersMiddleware, revision=lambda: board.revision, epoch=board.epoch
+        )
+        # Outermost, so it compresses the answer the stamp was put on.
+        self.add_middleware(GzipExceptEventsMiddleware)
         self.add_exception_handler(ArleshError, handle_core_refusal)
         self.add_exception_handler(PairingRefused, handle_pairing_refusal)
         self.add_exception_handler(RateLimited, handle_rate_limit)

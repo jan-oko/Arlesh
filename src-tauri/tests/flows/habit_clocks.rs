@@ -99,6 +99,7 @@ async fn load(app: &App, instant: &str) -> MindmapLoad {
     mindmap_commands::load_mindmap(app.state(), at(instant))
         .await
         .unwrap()
+        .into_load()
 }
 
 fn task(board: &MindmapLoad, key: &OccurrenceKey) -> Option<Task> {
