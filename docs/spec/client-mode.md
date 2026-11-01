@@ -242,11 +242,12 @@ action's **patch**, a set of the node's own fields, drawn over the loaded board.
 
 - **The status family:** the status step (a click on the glyph, `Enter`) on a Task or a Goal,
   `Alt+Enter`, the Commitment verdict (Kept, Broken, the cycle key) and the wait release. A
-  Compound Task's step is refused locally, with today's toast and no write. *(How the Task step,
-  `Alt+Enter` and the verdict predict their value is ADR 0012's open question 1.)*
+  Compound Task's step is refused locally, with today's toast and no write. The step, `Alt+Enter`,
+  the Compound refusal and the verdict are predicted by a TypeScript copy pinned to the Rust rules
+  by `conformance/task-gestures.json` (ADR 0012, decision 13).
 - **Rename and the editors' Save:** the Task, Goal, Commitment, wait, Project, Domain, Tag and Info
   editors. The editor closes as soon as its own prompts are answered. The Flow and flow-item
-  editors stay write-then-reload (ADR 0012's open question 4).
+  editors stay write-then-reload in v1 (ADR 0012, decision 16).
 - **Create a child or a sibling:** a placeholder node, for every kind whose create is one write
   with no prompt.
 
@@ -289,7 +290,8 @@ undo) **waits for the lane to empty** before it is sent, so it never overtakes a
   then it stays, so a reload that was skipped or still in flight never shows the old value.
 - **Refused.** That write's patch, and every later one on the **same node**, are rolled back. Those
   later writes are never sent. **One toast**, at the node, names the backend's reason. Writes on
-  other nodes carry on. A refused editor Save is ADR 0012's open question 2.
+  other nodes carry on. A refused editor **Save** also reopens the editor with what the user typed and the backend's
+  reason on its error line (ADR 0012, decision 14).
 - **Asks first.** Marking a Habit occurrence done over unfinished children rolls back quietly and
   opens the occurrence prompt. Confirming applies the patch again and sends the write with the
   confirmation.
