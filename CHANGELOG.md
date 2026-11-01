@@ -10,6 +10,8 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
+- **Arlesh for Android.** A signed Android app (`arlesh-android-arm64.apk`, on the same release page as the desktop builds) that connects to your `arlesh-server`. It opens straight to **Connect to a server**: there is no local board on the phone. The Back button closes a sheet, steps out of a node you stepped into, or goes up a scope, and leaves the app only from the top. The app holds no connection while it is in the background; coming back reconnects and refreshes the board. The phone layout is still to come.
+
 - **Use Arlesh against a server.** The app can now run as a client of `arlesh-server`, so one board can be shared between devices. On a new device Arlesh asks where your board lives: **This device only**, or **Connect to a server**. Switch any time in **Settings → Server**: paste the server's address and a token from `arlesh-server token add <device>`, press **Test**, then **Connect and restart**. The token is kept in your system's keychain.
   The top bar shows **This device** or **Server**, with a dot that turns red when the server cannot be reached. Changes made on another device appear by themselves. If the server goes away, the board you last saw stays on screen, read-only, under a banner saying when it last synced; if the server and the app are different versions, the banner says which one to update. Undo and redo work per device: Ctrl+Z takes back only what you did on this device. People and the knowledge base are not available while connected to a server, and the app's own MCP endpoint is off: agents connect to the server's. Your local board is left as it is, and comes back when you switch to **This device only**.
 
