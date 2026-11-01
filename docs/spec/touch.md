@@ -32,7 +32,10 @@ Below 700 px:
 - **Bottom navigation** for the views, in this order: **Zen, List, Plan, Steps, Map**. It replaces
   the top bar's view selector. `Ctrl+M/L/P/S/J` still switch views from a keyboard.
 - **The top bar** holds, in order: a **☰ menu**, the **title**, the **preset chip** and the agents'
-  status. The title is the view's name at the board's root, and the breadcrumb inside a subtree.
+  status, then a [free square](#the-top-bar-square). The title is the view's name at the board's
+  root, and the breadcrumb inside a subtree. **In portrait the breadcrumb is `‹ {current node}`**:
+  the chevron opens the full path as the `…` of the long form does (a menu of every level above, each
+  one exiting to it). Landscape keeps the whole chain.
   There is **no server indicator** on the phone's bar (feedback from a Pixel 10 Pro: it crowded the
   bar); the server's status lives on **Settings → Server** ([Client mode](client-mode.md)).
   - **The preset chip** shows the preset the view reads under and opens the **preset sheet**: Plan,
@@ -69,6 +72,14 @@ Below 700 px:
   the reversible choice.)*
 - **Full screen** (`F11` / `F`) hides the top bar and the chips, as it does on the desktop; the
   bottom navigation and the action bar stay, since they are the only way back on a phone.
+
+### The top bar square
+
+The last cell of the top bar is left **free**: a 36 px dashed square with nothing in it. A
+**double-tap** on it opens **Open** (`Ctrl+O`'s node search), and a **long-press** (the hold, then
+the finger lifting, as on a node) opens the [command palette](#the-command-palette). A single tap
+does nothing. It is where a thumb rests, and it keeps Open off the action bar when a node is
+selected.
 
 ## The action bar
 

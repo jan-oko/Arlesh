@@ -117,6 +117,19 @@ describe("SubtreeBreadcrumb", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("compact form: draws only the chevron and where you are, and the chevron opens the full path", () => {
+    enterDeepSubtree();
+    render(<SubtreeBreadcrumb compact />);
+    expect(screen.getByText("Deep")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "B-two" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "fullPath" }));
+    const items = screen.getAllByRole("menuitem").map((item) => item.textContent);
+    expect(items).toEqual(["Arlesh", "A-one", "B-two", "C-three"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "B-two" }));
+    expect(useMindmapStore.getState().subtreeRootId).toBe("a-2");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
   it("runs from the true root to where you are", () => {
     giveChainRoom(1000);
     enterDeepSubtree();

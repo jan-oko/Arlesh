@@ -1,9 +1,11 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import PhoneTopBar from "./PhoneTopBar";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
+import { useCommandSurfaceStore } from "@/stores/use-command-surface-store";
+import { surfaceCommand } from "@/test/surface-command";
 import { usePaletteStore } from "@/stores/use-palette-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
@@ -60,5 +62,97 @@ describe("PhoneTopBar", () => {
     fireEvent.click(screen.getByRole("button", { name: "touch:menuOpen" }));
     fireEvent.click(screen.getByRole("button", { name: "touch:menuPalette" }));
     expect(usePaletteStore.getState().isOpen).toBe(true);
+  });
+});
+
+describe("PhoneTopBar — the path", () => {
+  const enterSubtree = () => useMindmapStore.setState({
+    subtreeRootId: "a-3",
+    subtreeNav: { ancestors: [{ id: null, title: "Arlesh" }, { id: "a-1", title: "A-one" }], currentTitle: "Deep" },
+  });
+
+  function matchPortrait(portrait: boolean) {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(orientation: portrait)" ? portrait : false,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+  }
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("in portrait shows `‹ current` and opens the full path from the chevron", () => {
+    matchPortrait(true);
+    enterSubtree();
+    render(<PhoneTopBar />);
+    expect(screen.queryByRole("button", { name: "Arlesh" })).not.toBeInTheDocument();
+    expect(screen.getByText("Deep")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "fullPath" }));
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Arlesh", "A-one"]);
+  });
+
+  it("in landscape keeps the whole chain", () => {
+    matchPortrait(false);
+    enterSubtree();
+    render(<PhoneTopBar />);
+    expect(screen.getByRole("button", { name: "A-one" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "fullPath" })).not.toBeInTheDocument();
+  });
+});
+
+describe("PhoneTopBar — the free square", () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  function publishOpen() {
+    const open = surfaceCommand("global.openSearch", "openSearch");
+    useCommandSurfaceStore.setState({ tables: new Map([["global", [open]]]), revision: 1 });
+    return open;
+  }
+
+  it("opens Open on a double-tap", () => {
+    const open = publishOpen();
+    render(<PhoneTopBar />);
+    const square = screen.getByRole("button", { name: "topBarSquare" });
+    fireEvent.pointerDown(square);
+    fireEvent.pointerUp(square);
+    act(() => { vi.advanceTimersByTime(120); });
+    fireEvent.pointerDown(square);
+    fireEvent.pointerUp(square);
+    expect(open.run).toHaveBeenCalledTimes(1);
+    expect(usePaletteStore.getState().isOpen).toBe(false);
+  });
+
+  it("does nothing on a single tap, or on two taps too far apart", () => {
+    const open = publishOpen();
+    render(<PhoneTopBar />);
+    const square = screen.getByRole("button", { name: "topBarSquare" });
+    fireEvent.pointerDown(square);
+    fireEvent.pointerUp(square);
+    act(() => { vi.advanceTimersByTime(600); });
+    fireEvent.pointerDown(square);
+    fireEvent.pointerUp(square);
+    expect(open.run).not.toHaveBeenCalled();
+    expect(usePaletteStore.getState().isOpen).toBe(false);
+  });
+
+  it("opens the command palette on a long-press, when the finger lifts", () => {
+    const open = publishOpen();
+    render(<PhoneTopBar />);
+    const square = screen.getByRole("button", { name: "topBarSquare" });
+    fireEvent.pointerDown(square);
+    act(() => { vi.advanceTimersByTime(700); });
+    fireEvent.pointerUp(square);
+    expect(usePaletteStore.getState().isOpen).toBe(true);
+    expect(open.run).not.toHaveBeenCalled();
+  });
+
+  it("opens nothing when the finger slides off before the hold registers", () => {
+    render(<PhoneTopBar />);
+    const square = screen.getByRole("button", { name: "topBarSquare" });
+    fireEvent.pointerDown(square);
+    fireEvent.pointerLeave(square);
+    act(() => { vi.advanceTimersByTime(700); });
+    fireEvent.pointerUp(square);
+    expect(usePaletteStore.getState().isOpen).toBe(false);
   });
 });
