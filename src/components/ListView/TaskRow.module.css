@@ -156,3 +156,25 @@
     overflow: hidden;
   }
 }
+
+/* A write on this node the server has not answered (ADR 0012, decision 10): a faint pulse, or a
+   dotted outline under reduced motion. It starts after a delay, so an answer within it never shows. */
+@keyframes pendingPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: var(--pending-cue-low-opacity); }
+}
+
+@keyframes pendingDotted {
+  from { outline: 0 dotted transparent; }
+  to { outline: 2px dotted var(--pending-cue-color); outline-offset: 2px; }
+}
+
+.card[data-pending] {
+  animation: pendingPulse var(--pending-cue-duration) ease-in-out var(--pending-cue-delay) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card[data-pending] {
+    animation: pendingDotted 1ms linear var(--pending-cue-delay) both;
+  }
+}

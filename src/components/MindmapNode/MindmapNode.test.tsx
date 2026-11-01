@@ -57,3 +57,20 @@ describe("MindmapNode — Overdue", () => {
     expect(getByRole("treeitem")).not.toHaveAttribute("aria-describedby");
   });
 });
+
+describe("MindmapNode — pending write", () => {
+  it("carries data-pending while its write is unanswered, and loses it on the answer", () => {
+    const { container, rerender } = draw(node({ pending: true }));
+    expect(container.querySelector("[data-node-id]")).toHaveAttribute("data-pending");
+    rerender(
+      <svg>
+        <MindmapNode
+          node={node()} parentKind={null} position={{ x: 0, y: 0, depth: 1 }} isSelected={false} isFocusExempt={false}
+          isCollapsed={false} isDragTarget={false} hasClipboard={false} isEditing={false} onSelect={vi.fn()}
+          onDoubleClick={vi.fn()} onCommitEdit={vi.fn()} onCancelEdit={vi.fn()} onContextAction={vi.fn()} onDragStart={vi.fn()}
+        />
+      </svg>,
+    );
+    expect(container.querySelector("[data-node-id]")).not.toHaveAttribute("data-pending");
+  });
+});

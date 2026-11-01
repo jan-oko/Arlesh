@@ -1,3 +1,4 @@
+import { afterLane } from "@/stores/use-pending-writes-store";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -45,7 +46,7 @@ export function useHandArchive({ findNode, reload, showToast }: Options): Result
     (nodeId: string) => {
       const node = findNode(nodeId);
       if (node === undefined || !canArchiveByHand(node)) return;
-      void writeArchive(node, !isArchivedByHand(node)).then(
+      void afterLane(() => writeArchive(node, !isArchivedByHand(node))).then(
         () => reload(),
         (error: unknown) => showToast({ nodeId, message: t("archiveFailed", { message: getErrorMessage(error) }) }),
       );

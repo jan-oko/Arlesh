@@ -46,6 +46,7 @@ export default function ExpectationRow({
     <div
       className={`${taskStyles.card} ${indentClass}${isSelected ? ` ${taskStyles.cardSelected}` : ""}${isFocusExempt ? ` ${taskStyles.cardFocusExempt}` : ""}`}
       data-row-id={node.id}
+      data-pending={node.pending === true ? "" : undefined}
       style={cardStyle}
       onClick={() => onSelect(node.id)}
       onDoubleClick={() => onOpenEditor(node.id)}

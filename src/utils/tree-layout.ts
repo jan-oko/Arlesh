@@ -373,6 +373,10 @@ export interface MindmapNode {
   capabilities?: NodeCapabilities;
   /** Whether this real Goal/Task was materialized by a started flow (drives the flow-instance badge). */
   fromFlow?: boolean;
+  /** Set by `applyPendingWrites` while a write on this node has not been answered: the board shows
+   * the node's patched value, and every view draws the cue (ADR 0012, decision 10). Never set by a
+   * load. */
+  pending?: true;
   position: number;
   tagIds: number[];
   children: MindmapNode[];

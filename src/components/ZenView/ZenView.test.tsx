@@ -405,3 +405,24 @@ describe("the overdue border", () => {
     expect(zenCard("task-5").className).toMatch(/cardSelected/);
   });
 });
+
+describe("the pending-write cue", () => {
+  it("marks a task card and a strip card whose node has an unanswered write, and clears it on the answer", () => {
+    const withPending = standardBoard();
+    const goal = withPending[0];
+    const commitment = withPending[1];
+    if (goal === undefined || commitment === undefined) throw new Error("fixture");
+    const task = goal.children[0];
+    if (task === undefined) throw new Error("fixture");
+    mockBoard([{ ...goal, children: [{ ...task, pending: true }, ...goal.children.slice(1)] }, { ...commitment, pending: true }, ...withPending.slice(2)]);
+    const { rerender } = render(<ZenViewInApp />);
+    expect(document.querySelector('[data-row-id="task-1"]')).toHaveAttribute("data-pending");
+    expect(document.querySelector('[data-row-id="task-2"]')).not.toHaveAttribute("data-pending");
+    expect(document.querySelector('[data-row-id="commitment-1"]')).toHaveAttribute("data-pending");
+
+    mockBoard(standardBoard());
+    rerender(<ZenViewInApp />);
+    expect(document.querySelector('[data-row-id="task-1"]')).not.toHaveAttribute("data-pending");
+    expect(document.querySelector('[data-row-id="commitment-1"]')).not.toHaveAttribute("data-pending");
+  });
+});

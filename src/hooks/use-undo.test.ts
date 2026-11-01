@@ -3,6 +3,8 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { useUndo, UNDO_TOAST_ANCHOR } from "./use-undo";
 import { gestureName, redo, undo } from "@/api/gesture";
 import type { GestureSummary } from "@/api/gesture";
+import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
+import type { WriteResult } from "@/stores/use-pending-writes-store";
 
 vi.mock("@/api/gesture", () => ({
   undo: vi.fn(),
@@ -32,6 +34,7 @@ function renderUndo() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  usePendingWritesStore.getState().reset();
   vi.mocked(gestureName).mockReturnValue(undefined);
 });
 
@@ -152,5 +155,67 @@ describe("useUndo", () => {
     await act(async () => {
       release();
     });
+  });
+});
+
+describe("useUndo with pending writes", () => {
+  /** A write whose send the test settles. */
+  function held(nodeId: string, label: string) {
+    let settle: (result: WriteResult) => void = () => undefined;
+    let fail: (error: unknown) => void = () => undefined;
+    usePendingWritesStore.getState().enqueue({
+      nodeId, label, patch: { kind: "fields", fields: { title: nodeId } },
+      send: () => new Promise<WriteResult>((resolve, reject) => { settle = resolve; fail = reject; }),
+      showToast: vi.fn(), unreachableMessage: "unreachable",
+    });
+    return {
+      answer: () => settle({ outcome: "written", response: { epoch: null, revision: null, fields: null, createdId: null } }),
+      refuse: () => fail({ kind: "invalid_request", message: "no" }),
+    };
+  }
+
+  it("cancels a queued tail with no call to undo, and names it", () => {
+    held("a", "rename");
+    held("b", "mark done");
+    const { result } = renderUndo();
+    act(() => result.current.onUndo());
+
+    expect(undo).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith({ nodeId: UNDO_TOAST_ANCHOR, message: 'undid({"gesture":"mark done"})' });
+    expect(usePendingWritesStore.getState().writes.map((w) => w.nodeId)).toEqual(["a"]);
+  });
+
+  it("calls undo only after the write in flight has answered", async () => {
+    vi.mocked(undo).mockResolvedValue(summary());
+    const write = held("a", "rename");
+    const { result } = renderUndo();
+    act(() => result.current.onUndo());
+
+    await act(async () => { await Promise.resolve(); });
+    expect(undo).not.toHaveBeenCalled();
+    await act(async () => { write.answer(); await Promise.resolve(); });
+    await waitFor(() => expect(undo).toHaveBeenCalledTimes(1));
+  });
+
+  it("waits for the lane before a redo as well", async () => {
+    vi.mocked(redo).mockResolvedValue(summary());
+    const write = held("a", "rename");
+    const { result } = renderUndo();
+    act(() => result.current.onRedo());
+
+    expect(redo).not.toHaveBeenCalled();
+    await act(async () => { write.answer(); await Promise.resolve(); });
+    await waitFor(() => expect(redo).toHaveBeenCalledTimes(1));
+  });
+
+  it("spends the press on a write that was refused and calls nothing", async () => {
+    const write = held("a", "rename");
+    const { result } = renderUndo();
+    act(() => result.current.onUndo());
+
+    await act(async () => { write.refuse(); await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(undo).not.toHaveBeenCalled();
+    expect(redo).not.toHaveBeenCalled();
   });
 });

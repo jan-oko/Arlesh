@@ -44,6 +44,13 @@ html, body, #root {
      here (4.74:1 at worst, Self in dark). */
   --card-text-muted-mix: 65%;
 
+  /* The cue on a node with a write the server has not answered (ADR 0012, decision 10). It starts
+     after the delay, so a write answered within it never flickers. */
+  --pending-cue-color: var(--accent);
+  --pending-cue-duration: 1.4s;
+  --pending-cue-delay: 300ms;
+  --pending-cue-low-opacity: 0.6;
+
   /* Canvas */
   --canvas-bg: #13131f;
   --edge-color: #3a3a5a;
