@@ -10,7 +10,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import ClassVar
 from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parent.parent / "box.py"
@@ -274,51 +273,17 @@ class ClientNaming(unittest.TestCase):
 
 
 class ServerAddress(unittest.TestCase):
-    LAN: ClassVar[list] = [box.ipaddress.IPv4Interface("192.168.1.5/24")]
-    OTHER: ClassVar[list] = [
-        box.ipaddress.IPv4Interface("10.0.0.2/24"),
-        box.ipaddress.IPv4Interface("192.168.1.5/24"),
-        box.ipaddress.IPv4Interface("100.100.1.1/32"),
-    ]
-
-    def pick(self, host: str, ifaces: list, tailnet: str = "100.100.1.1") -> str:
-        return box.pick_server_address(host, ifaces, tailnet, lambda h: "192.168.1.77")
-
-    def test_tailnet_ip_host_gets_the_tailnet_address(self) -> None:
-        self.assertEqual(self.pick("100.101.2.3:5555", self.OTHER), "100.100.1.1")
-
-    def test_ts_net_name_gets_the_tailnet_address(self) -> None:
-        self.assertEqual(self.pick("pixel.tail1234.ts.net", self.OTHER), "100.100.1.1")
-
-    def test_tailnet_range_edges(self) -> None:
-        self.assertTrue(box.is_tailnet_host("100.64.0.1"))
-        self.assertTrue(box.is_tailnet_host("100.127.255.254:1"))
-        self.assertFalse(box.is_tailnet_host("100.128.0.1"))
-        self.assertFalse(box.is_tailnet_host("100.63.0.1"))
-
-    def test_lan_host_gets_the_address_on_its_subnet(self) -> None:
-        self.assertEqual(self.pick("pixel.local", self.OTHER), "192.168.1.5")
-
-    def test_a_name_resolving_into_the_tailnet_gets_the_tailnet_address(self) -> None:
-        got = box.pick_server_address(
-            "p", self.OTHER, "100.100.1.1", lambda h: "100.90.0.1"
+    def test_a_tailnet_address_wins(self) -> None:
+        self.assertEqual(
+            box.pick_server_address("100.100.1.1", "192.168.1.5"), "100.100.1.1"
         )
-        self.assertEqual(got, "100.100.1.1")
 
-    def test_no_shared_subnet_is_an_error(self) -> None:
+    def test_without_a_tailnet_the_lan_address(self) -> None:
+        self.assertEqual(box.pick_server_address("", "192.168.1.5"), "192.168.1.5")
+
+    def test_neither_is_an_error(self) -> None:
         with self.assertRaises(box.BoxError):
-            self.pick("pixel.local", [box.ipaddress.IPv4Interface("10.0.0.2/24")])
-
-    def test_tailnet_host_without_a_tailnet_address_is_an_error(self) -> None:
-        with self.assertRaises(box.BoxError):
-            self.pick("100.101.2.3", self.LAN, tailnet="")
-
-    def test_parse_ip_and_ifconfig_output(self) -> None:
-        got = box.parse_interfaces(
-            "2: eth0    inet 192.168.1.5/24 brd 192.168.1.255 scope global eth0\n",
-            "\tinet 10.1.2.3 netmask 0xffffff00 broadcast 10.1.2.255\n",
-        )
-        self.assertEqual([str(i) for i in got], ["192.168.1.5/24", "10.1.2.3/24"])
+            box.pick_server_address("", "")
 
 
 class RestartPublic(unittest.TestCase):

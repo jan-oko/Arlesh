@@ -304,9 +304,7 @@ server therefore take the token from each other, and the one that lost is re-bou
   directory before it launches.
 - **Android.** A phone cannot reach loopback, so the server must listen publicly: a server that is up
   on loopback is restarted on `0.0.0.0` with a notice (the port, database and tokens are kept; every
-  request still needs a token). The URL is the one the phone can reach: this machine's tailnet
-  address when the device's host is a tailnet IP (100.64.0.0/10) or a `.ts.net` name, otherwise this
-  machine's address on the same subnet as the device's host. The URL and token are handed to the app
+  request still needs a token). The URL is this machine's tailnet address when it has one (`tailscale ip -4`; Tailscale routes over the LAN when it can), otherwise its LAN address. The URL and token are handed to the app
   with no PIN flow: `run` force-stops the app and starts it with
   `adb shell am start -n <pkg>/com.atai.arlesh.MainActivity --es arlesh_box_url … --es
   arlesh_box_token …`. `MainActivity` reads the extras **only when its applicationId starts with
