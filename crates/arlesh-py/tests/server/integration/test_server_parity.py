@@ -33,7 +33,7 @@ def test_every_route_the_app_calls_is_served(server: TestClient) -> None:
     }
     wanted = {
         (route.split(" ", 1)[0], _shape(route.split(" ", 1)[1]))
-        for routes in _contract()["routes"].values()
+        for routes in (*_contract()["routes"].values(), *_contract()["pairing"].values())
         for route in routes
     }
 

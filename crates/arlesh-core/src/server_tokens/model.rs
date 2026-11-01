@@ -10,4 +10,7 @@ pub struct IssuedToken {
     pub client: String,
     /// When it was issued: an ISO 8601 local date and time, as the caller recorded it.
     pub created_at: String,
+    /// When the client last used its token, as the server recorded it, or `None` before its
+    /// first use since the column existed (migration 0098).
+    pub last_seen_at: Option<String>,
 }
