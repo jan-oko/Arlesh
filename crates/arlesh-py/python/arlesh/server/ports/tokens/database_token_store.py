@@ -11,12 +11,13 @@ from __future__ import annotations
 import hashlib
 import json
 import secrets
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from arlesh import _native
-from arlesh.errors import from_native
+from arlesh.errors import ArleshError, from_native
 from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from arlesh.server.ports.tokens.token_store import (
     ClientAlreadyHasToken,
@@ -24,6 +25,9 @@ from arlesh.server.ports.tokens.token_store import (
     TokenStore,
     UnknownClient,
 )
+
+TOUCH_EVERY_SECONDS = 60.0
+"""How often a client's last-seen time is written: a request is not a database write."""
 
 
 def _hash(token: str) -> str:
@@ -38,6 +42,7 @@ class DatabaseTokenStore(TokenStore):
 
     def __init__(self, path: Path) -> None:
         self._path = path
+        self._touched: dict[str, float] = {}
 
     def add(self, client: str) -> str:
         token = secrets.token_urlsafe(32)
@@ -51,13 +56,34 @@ class DatabaseTokenStore(TokenStore):
 
     def issued(self) -> list[IssuedToken]:
         return [
-            IssuedToken(client=entry["client"], created=datetime.fromisoformat(entry["created_at"]))
+            IssuedToken(
+                client=entry["client"],
+                created=datetime.fromisoformat(entry["created_at"]),
+                last_seen=(
+                    datetime.fromisoformat(entry["last_seen_at"])
+                    if entry.get("last_seen_at")
+                    else None
+                ),
+            )
             for entry in self._call("issued")
         ]
 
     def client_for(self, token: str) -> str | None:
         client = self._call("client_for", sha256=_hash(token))
         return str(client) if client is not None else None
+
+    def touch(self, client: str) -> None:
+        """Records that ``client`` used its token, at most once a minute per client. A failed
+        write is dropped: knowing when a device was last seen is not worth refusing its request."""
+        now = time.monotonic()
+        last = self._touched.get(client)
+        if last is not None and now - last < TOUCH_EVERY_SECONDS:
+            return
+        self._touched[client] = now
+        try:
+            self._call("touch", client=client, seen_at=datetime.now().isoformat(timespec="seconds"))
+        except ArleshError:
+            self._touched.pop(client, None)
 
     def carry_over(self, old: FileTokenStore) -> list[str]:
         """Moves the tokens of an old ``<db>.tokens`` file into the table, and answers the clients

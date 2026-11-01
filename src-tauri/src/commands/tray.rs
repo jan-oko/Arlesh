@@ -481,7 +481,7 @@ fn menu_label(title: &str) -> String {
 ///
 /// The app's name as the config gives it, not any window's title — a window's title carries its
 /// number, and the tray holds the app rather than a window. A branch instance
-/// keeps the suffix `scripts/branch-instance.sh` puts in its config title, which is what tells
+/// keeps the suffix `scripts/box.py` puts in its config title, which is what tells
 /// several instances' icons apart.
 fn tray_tooltip(app: &AppHandle) -> String {
     windows::base_title(app)

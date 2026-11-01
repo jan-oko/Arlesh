@@ -18,7 +18,8 @@ from starlette.exceptions import HTTPException
 
 from arlesh import ArleshError
 from arlesh.models import WireErrorKind
-from arlesh.server.entrypoints.fastapi.exceptions import AuthenticationFailed
+from arlesh.server.business_logic.pairing import PairingRefused
+from arlesh.server.entrypoints.fastapi.exceptions import AuthenticationFailed, RateLimited
 from arlesh.server.entrypoints.fastapi.models import ErrorBody
 
 STATUS_BY_KIND: dict[WireErrorKind, int] = {
@@ -45,6 +46,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
         (404, "not_found"),
         (409, "containment_violated or status_changed"),
         (422, "needs_confirmation or needs_time_scope: send it again with more"),
+        (429, "not_permitted: too many pairing requests, or too many devices waiting"),
         (500, "database or internal"),
     )
 }
@@ -103,6 +105,42 @@ async def handle_authentication_failure(request: Request, exc: Exception) -> JSO
         str(exc),
         {"reason": reason},
         headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+_PAIRING_STATUS: dict[str, tuple[int, WireErrorKind]] = {
+    "unknown_pairing": (status.HTTP_404_NOT_FOUND, WireErrorKind.not_found),
+    "unknown_pin": (status.HTTP_404_NOT_FOUND, WireErrorKind.not_found),
+    "unknown_device": (status.HTTP_404_NOT_FOUND, WireErrorKind.not_found),
+    "wrong_pin": (status.HTTP_403_FORBIDDEN, WireErrorKind.not_permitted),
+    "pin_invalidated": (status.HTTP_403_FORBIDDEN, WireErrorKind.not_permitted),
+    "current_device": (status.HTTP_403_FORBIDDEN, WireErrorKind.not_permitted),
+    "too_many_pending": (status.HTTP_429_TOO_MANY_REQUESTS, WireErrorKind.not_permitted),
+    "name_taken": (status.HTTP_409_CONFLICT, WireErrorKind.status_changed),
+}
+"""Each pairing refusal's status and kind. The body's ``details.reason`` is the refusal's word."""
+
+
+async def handle_pairing_refusal(request: Request, exc: Exception) -> JSONResponse:
+    """A pairing rule refused: its reason in ``details``, at the status the reason names."""
+    if not isinstance(exc, PairingRefused):
+        return await handle_unknown_exception(request, exc)
+    code, kind = _PAIRING_STATUS.get(
+        exc.reason, (status.HTTP_400_BAD_REQUEST, WireErrorKind.invalid_request)
+    )
+    return _answer(request, code, kind, str(exc), {"reason": exc.reason, **exc.details})
+
+
+async def handle_rate_limit(request: Request, exc: Exception) -> JSONResponse:
+    """Too many requests from one address: 429 ``not_permitted``, saying when to retry."""
+    retry_after = exc.retry_after if isinstance(exc, RateLimited) else 60
+    return _answer(
+        request,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        WireErrorKind.not_permitted,
+        str(exc),
+        {"reason": "rate_limited", "retry_after": retry_after},
+        headers={"Retry-After": str(retry_after)},
     )
 
 

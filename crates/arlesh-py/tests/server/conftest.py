@@ -16,6 +16,7 @@ import pytest
 from arlesh.server.business_logic.board import Board
 from arlesh.server.entrypoints.cli.app import holder, opener
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
+from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 
 with warnings.catch_warnings():
@@ -69,6 +70,7 @@ def start(server_db: Path, tokens: DatabaseTokenStore) -> Start:
         return ArleshServer(
             board=Board(opener(database), holder(database), force=force),
             tokens=DatabaseTokenStore(database) if path is not None else tokens,
+            pairs=DatabasePairingStore(database),
             version="test",
         )
 

@@ -12,6 +12,7 @@ use model::IssuedToken;
 struct IssuedTokenRow {
     client: String,
     created_at: String,
+    last_seen_at: Option<String>,
 }
 
 impl From<IssuedTokenRow> for IssuedToken {
@@ -19,6 +20,7 @@ impl From<IssuedTokenRow> for IssuedToken {
         Self {
             client: row.client,
             created_at: row.created_at,
+            last_seen_at: row.last_seen_at,
         }
     }
 }
@@ -73,11 +75,24 @@ impl<'session> ServerTokenOperator<'session> {
     /// Every client holding a token, by name.
     #[tracing::instrument(skip(self))]
     pub async fn issued(&mut self) -> Result<Vec<IssuedToken>, sqlx::Error> {
-        let rows: Vec<IssuedTokenRow> =
-            sqlx::query_as("SELECT client, created_at FROM server_tokens ORDER BY client")
-                .fetch_all(&mut *self.connection)
-                .await?;
+        let rows: Vec<IssuedTokenRow> = sqlx::query_as(
+            "SELECT client, created_at, last_seen_at FROM server_tokens ORDER BY client",
+        )
+        .fetch_all(&mut *self.connection)
+        .await?;
         Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    /// Records that `client` used its token at `seen_at`. Answers `false` when it holds none.
+    #[tracing::instrument(skip(self))]
+    pub async fn touch(&mut self, client: &str, seen_at: &str) -> Result<bool, sqlx::Error> {
+        let touched = sqlx::query("UPDATE server_tokens SET last_seen_at = ? WHERE client = ?")
+            .bind(seen_at)
+            .bind(client)
+            .execute(&mut *self.connection)
+            .await?
+            .rows_affected();
+        Ok(touched == 1)
     }
 
     /// The client whose token has the digest `sha256`, if anyone's does.
@@ -89,3 +104,6 @@ impl<'session> ServerTokenOperator<'session> {
             .await
     }
 }
+
+#[cfg(test)]
+mod tests;

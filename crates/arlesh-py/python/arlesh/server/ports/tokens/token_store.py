@@ -13,6 +13,8 @@ class IssuedToken(BaseModel):
 
     client: str
     created: datetime
+    last_seen: datetime | None = None
+    """When the client last used its token, or ``None`` if it has not since this was recorded."""
 
 
 class ClientAlreadyHasToken(Exception):
@@ -52,3 +54,6 @@ class TokenStore(ABC):
     @abstractmethod
     def client_for(self, token: str) -> str | None:
         """The client ``token`` was issued to, or ``None`` for a token nobody holds."""
+
+    def touch(self, client: str) -> None:  # noqa: B027 - a store may keep no last-seen time
+        """Notes that ``client`` just used its token; a store with no last-seen time ignores it."""

@@ -1,8 +1,10 @@
 import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { connectToServer, keychainAvailable, testServer, runStandalone } from "@/api/client-mode";
+import { deviceName } from "@/api/devices";
 import type { ServerCheck } from "@/api/client-mode";
 import { getErrorMessage } from "@/api/errors";
+import { usePairing } from "@/hooks/use-pairing";
 import { useClientModeStore } from "@/stores/use-client-mode-store";
 import ServerStatusLine from "./ServerStatusLine";
 import styles from "./SettingsModal.module.css";
@@ -24,14 +26,23 @@ export default function ServerPage() {
   const [isBusy, setIsBusy] = useState(false);
   const [keychain, setKeychain] = useState(true);
   const [tokenInFile, setTokenInFile] = useState(false);
+  const [name, setName] = useState("");
   const urlId = useId();
+  const nameId = useId();
   const tokenId = useId();
+
+  useEffect(() => {
+    deviceName().then(setName).catch(() => setName(""));
+  }, []);
 
   useEffect(() => {
     keychainAvailable().then(setKeychain).catch(() => setKeychain(false));
   }, []);
 
+  const pairing = usePairing((newToken, serverUrl) => connectToServer(serverUrl, newToken, !keychain && tokenInFile));
   const isClient = status?.mode === "client";
+  const canPair = url.trim() !== "" && (keychain || tokenInFile);
+  const isPairing = pairing.state.phase === "starting" || pairing.state.phase === "waiting";
   const ready = url.trim() !== "" && token.trim() !== "" && (keychain || tokenInFile);
 
   async function run(action: () => Promise<void>): Promise<void> {
@@ -68,6 +79,39 @@ export default function ServerPage() {
           onChange={(e) => { setUrl(e.target.value); setCheck(null); }}
         />
       </div>
+      <div className={own.field}>
+        <label htmlFor={nameId}>{t("pair.name")}</label>
+        <input
+          id={nameId}
+          className={own.input}
+          type="text"
+          value={name}
+          disabled={isPairing}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      {pairing.state.phase === "waiting" ? (
+        <div className={own.pairing} role="status">
+          <p className={own.pin} aria-label={t("pair.pinLabel")}>{pairing.state.pin}</p>
+          <p className={styles.note}>{t("pair.waiting", { command: `arlesh-server pin approve ${pairing.state.pin}` })}</p>
+          <div className={own.actions}>
+            <button className={styles.button} type="button" onClick={pairing.cancel}>{t("pair.cancel")}</button>
+          </div>
+        </div>
+      ) : (
+        <div className={own.actions}>
+          <button
+            className={styles.button}
+            type="button"
+            disabled={!canPair || isPairing}
+            onClick={() => { void pairing.start(url.trim(), name.trim()); }}
+          >
+            {pairing.state.phase === "starting" ? t("pair.starting") : t("pair.start")}
+          </button>
+        </div>
+      )}
+      {pairing.state.phase === "failed" && <p className={styles.error} role="alert">{pairing.state.message}</p>}
+      <p className={styles.note}>{t("pair.orToken")}</p>
       <div className={own.field}>
         <label htmlFor={tokenId}>{t("page.token")}</label>
         <input

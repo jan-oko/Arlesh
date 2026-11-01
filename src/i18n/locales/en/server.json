@@ -30,7 +30,7 @@
     "clientHint": "Share one board between devices through an arlesh-server."
   },
   "page": {
-    "intro": "Run against an arlesh-server to share one board between devices. Each device needs its own token: run `arlesh-server token add <device>` on the server.",
+    "intro": "Run against an arlesh-server to share one board between devices. Each device has its own token: pair this one with a PIN, or paste a token.",
     "url": "Server URL",
     "token": "Token",
     "test": "Test",
@@ -42,6 +42,37 @@
     "noKeychain": "No keychain is available to keep the token in.",
     "tokenInFile": "Keep the token in a file only I can read",
     "localKept": "Your local board is kept as it is, and comes back if you switch back."
+  },
+  "pair": {
+    "name": "Device name",
+    "start": "Pair with a PIN",
+    "starting": "Asking the server…",
+    "pinLabel": "PIN",
+    "waiting": "Waiting for approval. Approve this PIN with `{{command}}` on the server, or in Settings → Devices on a device that is already connected. It works once, for ten minutes.",
+    "cancel": "Cancel",
+    "orToken": "Or paste a token made with `arlesh-server token add <device>`:"
+  },
+  "devices": {
+    "notClient": "Devices are managed on the server. Connect to a server first.",
+    "intro": "The devices that can reach this server, each with its own token.",
+    "approveHeading": "Approve a device",
+    "approveIntro": "Type the PIN another device is showing.",
+    "pin": "PIN",
+    "lookUp": "Look up",
+    "looking": "Looking…",
+    "suggestedName": "Name for the device",
+    "approve": "Approve",
+    "approved": "Approved as {{name}}. The device will connect on its next check.",
+    "listHeading": "Devices",
+    "none": "No devices.",
+    "thisDevice": "this device",
+    "lastSeen": "Last seen {{time}}",
+    "neverSeen": "Not seen yet",
+    "revoke": "Revoke {{name}}",
+    "revokeAsk": "Revoke {{name}}? Its token stops working at once and it is signed out.",
+    "revokeConfirm": "Revoke",
+    "revokeCancel": "Cancel",
+    "loading": "Loading…"
   },
   "notInClientMode": "Not available while connected to a server."
 }

@@ -94,6 +94,7 @@ use statement::{Replay, SqlValue, Statement};
 /// * `undo_context`, `undo_journal` — journalling the journal is a loop.
 /// * `server_tokens` — `arlesh-server`'s bearer tokens (migration 0097): issuing or revoking one
 ///   is not a board edit, and no Ctrl+Z may bring a revoked token back.
+/// * `pairing_pins` — the server's pending device pairings (migration 0098): the same reason.
 ///
 /// `sqlite_*` and `_sqlx_migrations` are infrastructure rather than board data and are excluded by
 /// name wherever tables are enumerated; they are not listed here because nothing about them is a
@@ -102,7 +103,12 @@ use statement::{Replay, SqlValue, Statement};
 /// `tests/undo_journal.rs` reads this list, enumerates the schema from `sqlite_master`, and fails
 /// when a table that is not on it has no triggers — so the exclusion list cannot quietly grow by
 /// omission. `scripts/generate-undo-triggers.sh` holds the same list, for the other direction.
-pub const EXCLUDED_TABLES: &[&str] = &["undo_context", "undo_journal", "server_tokens"];
+pub const EXCLUDED_TABLES: &[&str] = &[
+    "undo_context",
+    "undo_journal",
+    "server_tokens",
+    "pairing_pins",
+];
 
 /// How many Gestures the journal keeps before the oldest are dropped.
 ///

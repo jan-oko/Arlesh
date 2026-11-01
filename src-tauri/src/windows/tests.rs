@@ -306,7 +306,7 @@ fn with_several_windows_each_title_carries_its_number_in_brackets() {
 
 #[test]
 fn a_branch_instances_number_follows_its_branch() {
-    // `scripts/branch-instance.sh` titles a branch's windows `Arlesh — <branch>`.
+    // `scripts/box.py` titles a branch's windows `Arlesh — <branch>`.
     assert_eq!(window_title("Arlesh — fxo", 2, 2), "Arlesh — fxo [2]");
     assert_eq!(window_title("Arlesh — fxo", 1, 1), "Arlesh — fxo");
 }

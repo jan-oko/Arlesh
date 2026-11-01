@@ -20,3 +20,10 @@ coverage/
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# Per-branch Firebase config and build leftovers from scripts/box.py (Android builds)
+google-services.json
+*.box-orig
+
+__pycache__/
+*.pyc
