@@ -56,3 +56,18 @@
 .down {
   background: var(--danger);
 }
+
+.pairing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.pin {
+  margin: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 2.5rem;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  color: var(--text-primary);
+}
