@@ -13,6 +13,10 @@ import { ZEN_BINDINGS } from "@/utils/hotkeys/zen-bindings";
 import { FILTER_GESTURES } from "@/utils/hotkeys/filter-gestures";
 import { SCOPE_PICKER_KEYS } from "@/utils/hotkeys/scope-picker-keys";
 import { useInputCapture } from "@/hooks/use-input-capture";
+import { TOUCH_ONLY_QUERY, useMediaQuery } from "@/hooks/use-media-query";
+import { GESTURE_SCOPES, gesturesOf } from "@/utils/touch/gesture-list";
+import type { GestureScope } from "@/utils/touch/gesture-list";
+import type { TouchLabelKey } from "@/stores/use-command-surface-store";
 import styles from "./HotkeysModal.module.css";
 
 interface Props {
@@ -21,8 +25,11 @@ interface Props {
   view?: View | undefined;
 }
 
-/** A tab of the sheet: a binding section, or one of the two lists of keys that are not bindings. */
-type SheetKey = Section | "filters" | "scopePicker";
+/** A tab of the touch sheet: the gestures everywhere, or one view's. */
+type GestureKey = `gestures-${GestureScope}`;
+
+/** A tab of the sheet: a binding section, one of the two lists of keys that are not bindings, or a gesture list. */
+type SheetKey = Section | "filters" | "scopePicker" | GestureKey;
 
 const SECTIONS: ReadonlyArray<{ section: Section; titleKey: HotkeyLabelKey }> = [
   { section: "global", titleKey: "sectionGlobal" },
@@ -126,6 +133,20 @@ function scopePickerSection(translate: Translate): SheetSection {
   };
 }
 
+/**
+ * The touch sheet: the gestures, in place of the keyboard's shortcuts, on a device whose only
+ * pointer is a finger. The rows come from `GESTURES`, the one list `touch.md` mirrors.
+ */
+function gestureSections(translate: (key: TouchLabelKey) => string): SheetSection[] {
+  return GESTURE_SCOPES.map(({ scope, nameKey }) => {
+    const name = translate(nameKey);
+    const rows = gesturesOf(scope).map((gesture) => ({
+      key: gesture.id, chords: [translate(gesture.gestureKey)], description: translate(gesture.doesKey), group: null,
+    }));
+    return { key: `gestures-${scope}` as const, tab: name, title: name, rows };
+  });
+}
+
 /** Every section of the sheet, in the order its tabs are drawn. */
 function sheetSections(translate: Translate): SheetSection[] {
   return SECTIONS.flatMap(({ section, titleKey }) => {
@@ -215,15 +236,18 @@ function isArrowStep(event: KeyboardEvent): boolean {
 
 /**
  * Ctrl+Shift+/ cheat-sheet: every keyboard binding, one tab per surface, opening on the view it was
- * opened over. A search field narrows it to the rows whose description or keys hold what is typed,
- * across every tab at once.
+ * opened over. On a touch-only device it lists the gestures instead (`docs/spec/touch.md`).
+ * A search field narrows it to the rows whose description or keys hold what is typed, across every
+ * tab at once.
  */
 export default function HotkeysModal({ onClose, view }: Props) {
   useInputCapture();
-  const { t } = useTranslation(["hotkeys"]);
-  const hereKey: SheetKey | null = view === undefined ? null : VIEW_SECTION[view];
+  const { t } = useTranslation(["hotkeys", "touch"]);
+  // A finger is the only pointer: the sheet teaches the gestures, not keys nobody can press.
+  const touchMode = useMediaQuery(TOUCH_ONLY_QUERY);
+  const hereKey: SheetKey | null = view === undefined ? null : touchMode ? `gestures-${view}` : VIEW_SECTION[view];
   const [query, setQuery] = useState("");
-  const [selectedKey, setSelectedKey] = useState<SheetKey>(hereKey ?? "global");
+  const [selectedKey, setSelectedKey] = useState<SheetKey>(hereKey ?? (touchMode ? "gestures-all" : "global"));
   const searchRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef(new Map<SheetKey, HTMLButtonElement>());
@@ -231,7 +255,10 @@ export default function HotkeysModal({ onClose, view }: Props) {
   const tabId = (key: SheetKey) => `${idPrefix}-tab-${key}`;
   const panelId = `${idPrefix}-panel`;
 
-  const sections = useMemo(() => sheetSections((key) => t(`hotkeys:${key}`)), [t]);
+  const sections = useMemo(
+    () => (touchMode ? gestureSections((key) => t(`touch:${key}`)) : sheetSections((key) => t(`hotkeys:${key}`))),
+    [t, touchMode],
+  );
   const searching = query.trim() !== "";
   const shown = useMemo(() => searchSections(sections, query), [sections, query]);
   const selected = sections.find((section) => section.key === selectedKey);
@@ -289,18 +316,18 @@ export default function HotkeysModal({ onClose, view }: Props) {
 
   return (
     <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={t("hotkeys:title")}>
+      <div className={styles.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={touchMode ? t("touch:gesturesTitle") : t("hotkeys:title")}>
         {/* The header stays put; a wheel over it scrolls the body, since nothing up here scrolls. */}
         <div className={styles.header} onWheel={(e) => scrollBody(bodyRef.current, e.deltaY)}>
-          <h2 className={styles.title}>{t("hotkeys:title")}</h2>
+          <h2 className={styles.title}>{touchMode ? t("touch:gesturesTitle") : t("hotkeys:title")}</h2>
           <input
             ref={searchRef}
             type="search"
             className={styles.search}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("hotkeys:searchPlaceholder")}
-            aria-label={t("hotkeys:searchPlaceholder")}
+            placeholder={touchMode ? t("touch:gesturesSearchPlaceholder") : t("hotkeys:searchPlaceholder")}
+            aria-label={touchMode ? t("touch:gesturesSearchPlaceholder") : t("hotkeys:searchPlaceholder")}
           />
           <div role="tablist" aria-label={t("hotkeys:sectionTabsLabel")} className={styles.tabs}>
             {sections.map((section) => {

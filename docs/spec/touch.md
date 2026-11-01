@@ -192,7 +192,8 @@ Mindmap and the Plan View), and switching views turns it off.
 Whenever a touchscreen is present, at any width.
 
 - **Tap** selects. **Tapping the selected node again** deselects it.
-- **Long-press** on a node opens the command palette for that node.
+- **Long-press** on a node opens that node's **quick action menu** (not the command palette; the
+  palette is the [top bar square](#the-top-bar-square)'s long-press and the action bar's More).
 - A quick **flick up** on a node opens its editor. Scrolling wins when the move is slow or long.
 - **Tap a node's status icon** to step its status, exactly as the status-cycle key does (a
   Commitment's icon its verdict, a wait's its release). The tap does that and nothing else: it does
@@ -219,8 +220,10 @@ button, a tag pill, a collapse dot), is left to that control.
 
 *Decided in implementation, where the grill was silent:*
 
-- **A long-press opens the palette when the finger lifts**, with a short vibration at the moment the
-  hold registers. Opening on lift is what lets the Mindmap's hold-and-drag start from the same hold.
+- **A long-press selects the node when the finger lifts**, with a short vibration at the moment the
+  hold registers; the quick action menu is the webview's own `contextmenu` for that hold, handled
+  by the node. (An earlier build also opened the palette on lift, so one hold opened two things.)
+  Holding then moving is what lets the Mindmap's hold-and-drag start from the same hold.
 - **The tap that deselects waits out the double-tap window** (300 ms), so a double-tap on the
   selected node goes into it without deselecting it on the way. A tap on an unselected node selects
   at once.
@@ -246,6 +249,42 @@ button, a tag pill, a collapse dot), is left to that control.
   flick up, which is the editor's (or, in the planned pane, the parent scope's), so the swipe that
   moves a candidate is sideways. A candidate swiped left sets Started, as on any row; it does not
   step the scope.
+
+### The gesture list, and the cheat sheet
+
+On a device whose only pointer is touch (`(any-pointer: coarse)` and not `(any-pointer: fine)`), the
+cheat sheet (☰ menu → Gestures there, Keyboard shortcuts elsewhere) **shows the gestures instead of the keyboard shortcuts**:
+one tab for the gestures everywhere and one per view, opening on the view it was opened over. With a
+mouse or trackpad present it shows the shortcuts as ever. The list is one place in code,
+`utils/touch/gesture-list.ts`; **this table mirrors it row for row**, and `gesture-list.test.ts`
+fails when the two differ, so a gesture is added to both or to neither.
+
+| Where | Gesture | Does |
+| --- | --- | --- |
+| Everywhere | Tap | Selects the node; tapping the selected node again deselects it |
+| Everywhere | Tap a status icon | Steps the node's status, as Enter does |
+| Everywhere | Double-tap | Goes into the node; what that means is each view's, below |
+| Everywhere | Long-press | Opens the node's quick action menu |
+| Everywhere | Flick up | Opens the node's editor |
+| Everywhere | Swipe right | Advances the status: a Task's, a Commitment's verdict, a wait's release |
+| Everywhere | Swipe left | Sets Started |
+| Everywhere | Two-finger swipe | Left shows the next preset, right the previous |
+| Everywhere | Double-tap the top bar's square | Opens Open, the node search |
+| Everywhere | Long-press the top bar's square | Opens the command palette |
+| Mindmap | Double-tap a node | Enters its subtree |
+| Mindmap | Drag the canvas | Pans the map |
+| Mindmap | Hold a node, then drag | Moves it under another parent or reorders it |
+| Mindmap | Tap a collapse dot | Folds or unfolds the node's children |
+| Mindmap | Pinch | Zooms the map |
+| List | Double-tap a leaf | Enters it |
+| List | Double-tap a parent | Narrows the list to its subtree (Under) |
+| Plan | Swipe left or right on the planned pane | Steps to the next or the previous scope |
+| Plan | Swipe up on the planned pane | Goes up to the parent scope |
+| Plan | Swipe a to-plan item | Moves it into the planned scope |
+| Plan | Double-tap a card | Opens its subtree |
+| Steps | Double-tap a card | Steps into it |
+| Steps | Pinch | Zooms the steps |
+| Zen | Double-tap a card | Opens the node in the List View |
 
 ## One registry
 
