@@ -28,6 +28,7 @@ pub mod infos;
 pub mod knowledge_base;
 pub mod mindmap;
 pub mod node_gestures;
+pub mod revision;
 #[cfg(feature = "standalone")]
 pub mod sqlite;
 pub mod tasks;

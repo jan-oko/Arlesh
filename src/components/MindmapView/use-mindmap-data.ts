@@ -23,6 +23,7 @@ import { getErrorMessage } from "@/api/errors";
 import { loadMindmap } from "@/api/mindmap";
 import { withGesture } from "@/api/gesture";
 import { useBoardChanged } from "@/hooks/use-board-changed";
+import { useBoardRevisionStore } from "@/stores/board-revision-store";
 import type { MindmapLoad } from "@/api/mindmap";
 import {
   createFlow, updateFlow,
@@ -993,7 +994,15 @@ export function useMindmapData(): MindmapData {
       setError(null);
       try {
         const now = localNowIso();
-        const data = await loadMindmap(now);
+        useBoardRevisionStore.getState().loadStarted();
+        let data: MindmapLoad;
+        try {
+          data = await loadMindmap(now);
+        } catch (err) {
+          useBoardRevisionStore.getState().loadFailed();
+          throw err;
+        }
+        useBoardRevisionStore.getState().loadFinished(data.revision ?? null);
         // People are read only when a Task is delegated to one: their names are what a Person
         // delegate's badge and wait are labelled with, and nothing else on the board needs them.
         const personNames = data.tasks.some((task) => task.delegate_to != null)

@@ -1,0 +1,1 @@
+- **Faster writes against a server.** In Client mode a change no longer reloads the whole board twice, and a write crosses the app's internal bridge once instead of three times. The board a server sends is also compressed, so a status swipe on the phone settles sooner and uses far less data.
