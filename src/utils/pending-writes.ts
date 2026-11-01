@@ -90,6 +90,11 @@ export interface BoardStamp {
   revision: number | null;
 }
 
+/** Whether `id` is a temporary id, one a created node has until the server answers (decision 8). */
+export function isTemporaryId(id: string): boolean {
+  return id.startsWith("tmp:");
+}
+
 /** A write as a caller hands it over, before the lane gives it a place. */
 export type NewWrite = Pick<PendingWrite, "seq" | "nodeId" | "patch" | "label">;
 

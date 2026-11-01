@@ -7,7 +7,11 @@ import { GOAL_STATUS } from "@/utils/status-mapping";
 import { goalAnswerFields, taskAnswerFields, writtenWith } from "@/utils/answer-fields";
 import { statusAfter } from "@/utils/task-gestures";
 import type { MindmapNode } from "@/utils/tree-layout";
-import { rowIdOf } from "@/utils/node-identity";
+import { rowIdOf, NotRowBackedError } from "@/utils/node-identity";
+import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
+import { isTemporaryId } from "@/utils/pending-writes";
+import type { OwnFields } from "@/utils/pending-writes";
+import type { RowId } from "@/api/node-id";
 import { acknowledged, useOccurrenceCompletion } from "@/hooks/use-occurrence-completion";
 import type { OccurrencePrompt } from "@/hooks/use-occurrence-completion";
 import { useExpectationActions } from "@/hooks/use-expectation-actions";
@@ -25,6 +29,15 @@ const BACKLOG_CLEARED_MESSAGE: Record<BacklogCleared, "backlogClearedByStart" | 
   by_started: "backlogClearedByStarted",
 };
 
+
+/** The row `node` draws at the moment its write is sent: a node still being created has the row its create was answered with. */
+function rowIdAtSend(node: MindmapNode): RowId {
+  if (node.rowId !== undefined) return node.rowId;
+  const { resolveId, rowIdFor } = usePendingWritesStore.getState();
+  const row = rowIdFor(resolveId(node.id));
+  if (row === undefined) throw new NotRowBackedError(node.id);
+  return row;
+}
 
 interface Options {
   findNode: (id: string) => MindmapNode | undefined;
@@ -89,19 +102,23 @@ export function useStatusCycle({ findNode, showToast }: Options): StatusCycle {
   // Task out of the Backlog. Both are said out loud; neither is predicted.
   const stepStatus = useCallback(
     (node: MindmapNode, step: StatusStep) => {
-      if (node.taskStatus === undefined) return;
-      const prediction = statusAfter(step, node.taskStatus, node.compound === true);
-      if (prediction.outcome === "refused") {
+      // A Task still being created has no status to predict from: its model (ordinary or agentic)
+      // is the server's to say. The press is queued behind the create, shows only the cue, and is
+      // sent with the row the create was answered with (ADR 0012, decision 8).
+      const unpredicted = node.taskStatus === undefined;
+      if (unpredicted && !isTemporaryId(node.id)) return;
+      const prediction = node.taskStatus === undefined ? null : statusAfter(step, node.taskStatus, node.compound === true);
+      if (prediction?.outcome === "refused") {
         showToast({ nodeId: node.id, message: t(`warnings:${REFUSAL_MESSAGE[prediction.reason]}`) });
         return;
       }
-      const { status } = prediction;
+      const fields: OwnFields = prediction === null ? {} : { status: prediction.status.status, taskStatus: prediction.status };
       submit(node, {
         label: "status change",
-        patch: { kind: "fields", fields: { status: status.status, taskStatus: status } },
+        patch: { kind: "fields", fields },
         refuseReadOnly: refuseReadOnly(node.id),
         send: async (confirmed) => {
-          const outcome = await stepTaskStatus(rowIdOf(node), step, ...acknowledged(confirmed));
+          const outcome = await stepTaskStatus(rowIdAtSend(node), step, ...acknowledged(confirmed));
           if (outcome.outcome === "refused") {
             return { outcome: "refused", message: t(`warnings:${REFUSAL_MESSAGE[outcome.reason]}`) };
           }

@@ -7,6 +7,7 @@ import { runGesture } from "@/api/multi-node-gestures";
 import { recurrenceRequest } from "@/components/FlowEditorModal/recurrence-ui";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
+import { awaitLane } from "@/stores/use-pending-writes-store";
 import { findNode } from "@/utils/mindmap-tree";
 import { rowIdOfNodeId } from "@/utils/node-identity";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
@@ -89,6 +90,8 @@ export function useCreateEditors({ tree, createFlow, createCommitment, reload }:
   const onCreateFlow = useCallback(
     async (data: FlowSaveData) => {
       if (flowParent === null) return;
+      // A new Flow or Habit stays write-then-reload (ADR 0012, decision 16): behind a create in the lane.
+      await awaitLane();
       const parentDbId = storedId(rowIdOfNodeId(tree, flowParent.id));
       const request: CreateFlowRequest = {
         title: data.title,
