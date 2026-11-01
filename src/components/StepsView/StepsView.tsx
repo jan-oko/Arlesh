@@ -233,7 +233,7 @@ export default function StepsView() {
   usePublishSelection(selectedNode === null ? [] : [selectedNode.kind]);
 
   const { cycleStatus, toggleStarted, occurrencePrompt, confirmOccurrence, cancelOccurrence } = useStatusCycle({
-    findNode: (id) => findNode(tree, id), reload, showToast,
+    findNode: (id) => findNode(tree, id), showToast,
   });
   const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({
     findNode: (id) => findNode(tree, id), reload, showToast,
@@ -280,7 +280,7 @@ export default function StepsView() {
   // The Mindmap's creation and deletion actions, whole: the type rules, the parent rules, the
   // refusals and the undo Gestures all come with them.
   const actions = useNodeActions({
-    tree, clipboard, moveNode, duplicateNode, pasteNodes, insertParent, reload, renameNode, createNode, createChild, setClipboard,
+    tree, clipboard, moveNode, duplicateNode, pasteNodes, insertParent, renameNode, createNode, createChild, setClipboard,
     showToast, setEditingNodeId,
     onRequestDelete: (ids) => { const first = ids[0]; if (first !== undefined) requestDelete(first); },
     selectNode: selectCreated,

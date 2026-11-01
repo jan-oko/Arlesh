@@ -354,7 +354,7 @@ export default function MindmapView() {
   // The same hook the List View's tick and cross go through, so the canvas grows no second write
   // route: a real Commitment updates its row, a Habit iteration its Modification.
   const { markBroken, cycleVerdict } = useCommitmentVerdict({
-    findNode: findNodeById, reload, showToast,
+    findNode: findNodeById, showToast,
   });
   const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
   // `P`. Reads the drawn tree as a fallback so a selected fold of Habit history is refused by name
@@ -413,7 +413,7 @@ export default function MindmapView() {
     onStatusClick, onToggleStarted, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling, onInsertParent,
     onDelete, onPaste, occurrencePrompt, confirmOccurrence, cancelOccurrence,
   } = useNodeActions({
-    tree, clipboard, moveNode, duplicateNode, pasteNodes, insertParent, onRequestDelete: setDeleteTargets, reload, renameNode,
+    tree, clipboard, moveNode, duplicateNode, pasteNodes, insertParent, onRequestDelete: setDeleteTargets, renameNode,
     createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewHabit, onNewCommitment,
   });
 

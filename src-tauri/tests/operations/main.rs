@@ -32,5 +32,6 @@ mod multi_node_gestures;
 mod parenting_conformance;
 mod plan_triage_conformance;
 mod preset_conformance;
+mod task_gestures_conformance;
 mod task_status_conformance;
 mod zen_contents_conformance;
