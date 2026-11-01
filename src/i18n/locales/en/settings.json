@@ -12,7 +12,8 @@
     "expectations": "Expectations",
     "mcp": "Agents",
     "zen": "Zen",
-    "server": "Server"
+    "server": "Server",
+    "devices": "Devices"
   },
   "planCandidates": "Candidates pane",
   "planPlanned": "Planned pane",
