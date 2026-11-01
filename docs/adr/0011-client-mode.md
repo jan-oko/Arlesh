@@ -107,4 +107,4 @@ mode in the app.
 
 ## Not decided here
 
-Pairing codes and a Devices page, Postgres, offline writes, and the server's image are later Tasks.
+Postgres, offline writes, and the server's image are later Tasks. Pairing and the Devices page came after (Task 289; see `docs/spec/client-mode.md`).

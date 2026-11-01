@@ -33,6 +33,7 @@ class BearerTokenSecurityScheme:
             client = tokens.client_for(credentials.credentials)
             if client is None:
                 raise AuthenticationFailed("bad_token")
+            tokens.touch(client)
             client_context.set(client)
             return client
 

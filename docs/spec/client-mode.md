@@ -34,8 +34,73 @@ The chooser is asked only on a device with no mode saved and no local database. 
 before Client mode existed has a database and no setting: it is Standalone, and nobody is asked.
 Until the chooser is answered the app runs Standalone, which is its first answer.
 
-A device connects with a pasted URL and a token issued by `arlesh-server token add <device>`.
-Pairing codes and a Devices page are a separate, later feature.
+A device connects either by **pairing** (below) or with a pasted URL and a token issued by
+`arlesh-server token add <device>`.
+
+## Pairing a device
+
+*Task 289, settled with the user 2026-11-01.* The server runs on a LAN or a tailnet, so pairing is
+deliberately simple, not RFC 8628's device-code flow. A new device gets its own token without anyone
+copying one.
+
+1. **The connect screen** takes the server's URL and a **device name**. On Android that is the first
+   run (the *Connect to a server* step); on the desktop it is Settings → Server. The name defaults to
+   the host name, or the phone's model on Android, and can be edited.
+2. The device calls `POST /pair` (no token). The server answers a **six-digit PIN**, valid for ten
+   minutes and usable once, and a secret `id`. The device shows the PIN large and keeps the `id`.
+3. The device **polls** `POST /pair/poll` with the `id` and the PIN about every five seconds.
+   It answers `pending` until the PIN is approved.
+4. **Approval** is either the command line, `arlesh-server pin approve <pin> [--name <n>]` (with
+   `arlesh-server pin list` showing the PINs waiting), or a signed-in device in **Settings →
+   Devices → Approve a device**. Both show the name the device suggested and let the approver change
+   it.
+5. The next poll answers `approved` with the device's own long-lived token, **exactly once**. The
+   device keeps it as any token (the keychain on the desktop, a file on Android) and restarts in
+   Client mode, through the same path as *Connect and Restart*.
+
+**The poll carries the request's `id` as well as the PIN.** A six-digit PIN is guessable, and
+whoever polls with a PIN would take the token; the `id` is 256 random bits that only the asking
+device knows, so a PIN seen or guessed on the network claims nothing. (The user's wording was
+*polls with the PIN*; the `id` is added beside it.)
+
+**Names.** A device's name is its client name, which the undo journal records, so it follows the
+core's rule: ASCII letters, digits, `.`, `_` and `-`, at most 64. The server reduces any name given
+(runs of other characters become one `-`, so *Pixel 8* is `Pixel-8`; an empty result is `device`),
+both the one a device suggests and the one an approver types, and answers the result. **Names are
+unique**, compared without regard to case: a name already held by a token, or already approved for
+another waiting device, gets the next free `-2`, `-3` … suffix. The approval answers the final name.
+A name taken in the moment between approval and the poll is suffixed then.
+
+**Safeguards.**
+
+- `POST /pair` is **rate limited per address**: ten requests in ten minutes, then 429
+  (`not_permitted`, `details.reason = "rate_limited"`, with `Retry-After`). At most twenty requests
+  wait for approval at once (429, `too_many_pending`).
+- **An attempt** is a poll that names a known request `id` with a PIN other than that request's.
+  The fifth wrong PIN invalidates the request (`pin_invalidated`); before that each answers 403
+  `wrong_pin` with `details.remaining`. A right PIN does not reset the count. Approving or looking
+  up a PIN that no request holds answers 404 `unknown_pin` and counts for nothing: it needs a token
+  (or the command line), so it is no way in.
+- A request lasts **ten minutes from its creation**, approved or not. Expired, used and invalidated
+  requests are deleted: every call purges the lapsed ones first, so the table holds only live ones.
+  A request that is gone answers 404, `details.reason = "unknown_pairing"`, whichever way it went.
+- The PIN store is the server-only table `pairing_pins` (migration 0098, beside `server_tokens`):
+  not read by the desktop app, not journaled. The poll's `id` is kept as a SHA-256 digest. No token
+  is stored there: the token is made, and recorded in `server_tokens`, by the poll that claims it.
+
+### Settings → Devices
+
+Shown in Client mode. It lists the server's devices with their **name and when each was last seen**
+(the current device marked), and lets the user:
+
+- **Approve a device**: type the PIN the other device shows; the page fetches the name it suggested,
+  lets it be edited, and approves. The result names the device as it was saved.
+- **Revoke** any device **except the current one**, after a confirmation. A revoked token stops
+  working at once. The server refuses to revoke the asking device's token (403, `current_device`),
+  so a device cannot lock itself out.
+
+*Last seen* is the time of the device's last request, written at most once a minute per device
+(`server_tokens.last_seen_at`); a device not seen since the column existed has none.
 
 ## The Backend port
 
@@ -207,7 +272,16 @@ port, over a copy of the real database taken read-only (`sqlite3 -readonly … .
 and kept. `--server` mints the app instance a token and writes its `mode.json` and its token file,
 so the instance comes up connected; the token is never printed. `list` shows the servers too.
 
+More of the script, for trying pairing and the phone build:
+
+- `server start <name> --public` binds `0.0.0.0` (the server's `--host`) and prints the LAN and
+  tailnet URLs a phone can reach.
+- `server pin <name> approve <pin> [--name <d>]` and `server pin <name> list` run
+  `arlesh-server pin approve|list` against that server's database.
+- `apk <branch> [host[:port]]` builds a debug-signed APK that installs beside the real app as
+  `com.atai.arlesh.box.<branch>`; `apk clean` and `apk prune` remove the builds. `npm run box -- …`
+  runs the script.
+
 ## Not in phase 1
 
-Pairing codes and the Devices page, Postgres (later, through portable SQL), offline writes, and the
-server's container image.
+Postgres (later, through portable SQL), offline writes, and the server's container image.

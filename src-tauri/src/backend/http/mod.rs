@@ -41,6 +41,7 @@ mod infos;
 mod knowledge_base;
 mod mindmap;
 mod node_gestures;
+pub mod pairing;
 mod tasks;
 mod undo;
 
