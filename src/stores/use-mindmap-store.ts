@@ -80,6 +80,16 @@ export interface MindmapStore {
    * levels inside it still open.
    */
   collapseSubtree: (collapsedIdsToAdd: ReadonlySet<string>, habitGroupIdsToShut: ReadonlySet<string>) => void;
+  /**
+   * A created node got its real id (ADR 0012, decision 8): everything this tab keys by the
+   * temporary id is keyed by the real one from the same render on. A no-op for a tab that holds none.
+   */
+  renameNodeId: (from: string, to: string) => void;
+  /**
+   * Placeholders left the board unanswered (their create was refused or cancelled): the selection
+   * moves to `fallbackId`, where it was on one of them, and they are forgotten everywhere.
+   */
+  dropNodeIds: (ids: ReadonlySet<string>, fallbackId: string | null) => void;
   showToast: (toast: PendingToast) => void;
   clearToast: () => void;
   openSearch: () => void;
@@ -180,6 +190,33 @@ export function createMindmapStore(
         const expanded = new Set(state.expandedHabitGroupIds);
         for (const id of habitGroupIdsToShut) expanded.delete(id);
         return { collapsedNodeIds: collapsed, expandedHabitGroupIds: expanded };
+      }),
+
+    renameNodeId: (from, to) =>
+      set((state) => {
+        const swap = (ids: ReadonlySet<string>): ReadonlySet<string> =>
+          ids.has(from) ? new Set([...ids].map((id) => (id === from ? to : id))) : ids;
+        return {
+          selectedNodeId: state.selectedNodeId === from ? to : state.selectedNodeId,
+          selectedNodeIds: swap(state.selectedNodeIds),
+          collapsedNodeIds: swap(state.collapsedNodeIds),
+          expandedHabitGroupIds: swap(state.expandedHabitGroupIds),
+          subtreeRootId: state.subtreeRootId === from ? to : state.subtreeRootId,
+        };
+      }),
+
+    dropNodeIds: (ids, fallbackId) =>
+      set((state) => {
+        const without = (held: ReadonlySet<string>): ReadonlySet<string> =>
+          [...held].some((id) => ids.has(id)) ? new Set([...held].filter((id) => !ids.has(id))) : held;
+        const lostAnchor = state.selectedNodeId !== null && ids.has(state.selectedNodeId);
+        const selectedNodeIds = lostAnchor && fallbackId !== null ? new Set([fallbackId]) : without(state.selectedNodeIds);
+        return {
+          selectedNodeId: lostAnchor ? fallbackId : state.selectedNodeId,
+          selectedNodeIds,
+          collapsedNodeIds: without(state.collapsedNodeIds),
+          subtreeRootId: state.subtreeRootId !== null && ids.has(state.subtreeRootId) ? fallbackId : state.subtreeRootId,
+        };
       }),
 
     showToast: (toast) => set({ pendingToast: toast }),

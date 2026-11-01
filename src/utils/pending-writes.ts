@@ -1,3 +1,4 @@
+import type { RowId } from "@/api/node-id";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 
 /**
@@ -56,6 +57,8 @@ export interface WriteAnswer {
   fields: OwnFields | null;
   /** A create's real node id. */
   createdId: string | null;
+  /** A create's database row, so a write queued behind it can name the row (decision 8). */
+  createdRowId?: RowId;
 }
 
 /** One action the board shows before the server has answered it. */
@@ -85,6 +88,11 @@ export interface BoardStamp {
   read: number;
   epoch: string | null;
   revision: number | null;
+}
+
+/** Whether `id` is a temporary id, one a created node has until the server answers (decision 8). */
+export function isTemporaryId(id: string): boolean {
+  return id.startsWith("tmp:");
 }
 
 /** A write as a caller hands it over, before the lane gives it a place. */
