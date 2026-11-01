@@ -134,13 +134,76 @@ async fn a_write_to_a_newer_server_is_refused_naming_the_app() {
 async fn the_last_board_is_served_while_the_server_is_away() {
     let (backend, _) = nowhere();
     let board = MindmapLoad::default();
-    backend.update(|link| link.board = Some(board.clone()));
+    backend.update(|link| link.board = Some(BoardLoad::unversioned(board.clone())));
 
     let served = backend
         .load_board(Call::new(Method::GET, "/board".to_owned()))
         .await;
 
     assert!(served.is_ok());
+}
+
+/// A server that answers one request with `body` and `headers`, and hands back the request it got.
+fn serve_once(headers: &str, body: &str) -> (String, std::thread::JoinHandle<String>) {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    let url = format!("http://{}", listener.local_addr().expect("an address"));
+    let answer = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    let served = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("a request");
+        let mut request = Vec::new();
+        let mut chunk = [0u8; 1024];
+        while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+            let read = stream.read(&mut chunk).expect("reads the request");
+            request.extend_from_slice(&chunk[..read]);
+        }
+        stream.write_all(answer.as_bytes()).expect("answers");
+        String::from_utf8_lossy(&request).into_owned()
+    });
+    (url, served)
+}
+
+#[tokio::test]
+async fn the_board_is_loaded_with_the_revision_the_server_stamped_it_with() {
+    let (url, served) = serve_once("X-Arlesh-Revision: 5\r\nX-Arlesh-Epoch: run1\r\n", "{}");
+    let (notify, _) = counting();
+    let backend = HttpBackend::new(Connection::new(url, "token"), notify).expect("a client builds");
+
+    let board = backend
+        .load_board(Call::new(Method::GET, "/board".to_owned()))
+        .await
+        .expect("the board loads");
+
+    assert_eq!(
+        board.revision,
+        Some(BoardRevision {
+            epoch: "run1".to_owned(),
+            revision: 5
+        })
+    );
+    let request = served.join().expect("served").to_ascii_lowercase();
+    assert!(
+        request.contains("accept-encoding: gzip") || request.contains("accept-encoding:gzip"),
+        "the client asks for gzip: {request}"
+    );
+}
+
+#[tokio::test]
+async fn a_board_from_a_server_that_does_not_stamp_has_no_revision() {
+    let (url, served) = serve_once("", "{}");
+    let (notify, _) = counting();
+    let backend = HttpBackend::new(Connection::new(url, "token"), notify).expect("a client builds");
+
+    let board = backend
+        .load_board(Call::new(Method::GET, "/board".to_owned()))
+        .await
+        .expect("the board loads");
+
+    assert_eq!(board.revision, None);
+    served.join().expect("served");
 }
 
 #[tokio::test]

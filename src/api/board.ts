@@ -8,9 +8,11 @@ import { parsePersistedTab } from "@/stores/tab-persistence";
  * The two things windows say to each other.
  *
  * **The board changed** — emitted by the backend after a Gesture commits, to every window but the
- * one that made the change. It carries no payload: it is a signal to reload, not a diff, and the
- * reload it asks for is the same one that already runs after every local edit. See
- * `src-tauri/src/board.rs`.
+ * one that made the change. It is a signal to reload, not a diff, and the reload it asks for is
+ * the same one that already runs after every local edit. In Client mode there is no such
+ * exclusion: the server's change stream is the only announcement, so it reaches every window, the
+ * one that wrote included, and carries the revision the board reached so that window can tell it
+ * already holds it. See `src-tauri/src/board.rs`.
  *
  * **A tab arrived** — emitted by a window that is handing one of its tabs to another. This one
  * does carry a payload, because a tab is state rather than a signal; it is the same shape the tab
@@ -41,6 +43,24 @@ export interface TabClaim {
   into: string;
 }
 
+/**
+ * A point in the server's history of the board: how many writes it had committed, in one run of
+ * the server (the epoch). Client mode only: Standalone has no server and stamps nothing.
+ * See `src/stores/board-revision-store.ts` for what a window does with it.
+ */
+export interface BoardRevision {
+  epoch: string;
+  revision: number;
+}
+
+/** Whether `value` is a {@link BoardRevision}, as the backend sends it. */
+export function isBoardRevision(value: unknown): value is BoardRevision {
+  if (typeof value !== "object" || value === null) return false;
+  const epoch: unknown = Reflect.get(value, "epoch");
+  const revision: unknown = Reflect.get(value, "revision");
+  return typeof epoch === "string" && typeof revision === "number";
+}
+
 /** Unsubscribes nothing, for a webview with no event bus — a unit test's jsdom. */
 export function unsubscribed(): void {}
 
@@ -59,14 +79,18 @@ export function listenHere<T>(event: string, handler: (event: Event<T>) => void)
 }
 
 /**
- * Calls `onChanged` whenever another window commits a change to the board.
+ * Calls `onChanged` whenever another window commits a change to the board, or, in Client mode,
+ * whenever the server says it changed. In Client mode the event carries the revision the board
+ * reached, so a window can tell whether it is news; otherwise `null`, which is always news.
  *
  * Resolves to the unsubscribe. A webview with no Tauri host hears nothing and says so by resolving
  * to a no-op rather than rejecting: a view that cannot be told about other windows still works,
  * and there are no other windows to be told about.
  */
-export async function onBoardChanged(onChanged: () => void): Promise<UnlistenFn> {
-  return listenHere(BOARD_CHANGED, () => onChanged()).catch(() => unsubscribed);
+export async function onBoardChanged(onChanged: (change: BoardRevision | null) => void): Promise<UnlistenFn> {
+  return listenHere<unknown>(BOARD_CHANGED, (event) => {
+    onChanged(isBoardRevision(event.payload) ? event.payload : null);
+  }).catch(() => unsubscribed);
 }
 
 /** Hands `tab` to the window labelled `label`. */

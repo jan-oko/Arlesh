@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import uuid
 from collections.abc import AsyncIterator
 
 from fastapi import Header, Request
@@ -78,7 +77,6 @@ class EventsRouter(BoardRouter):
     """``/events``."""
 
     def _register_routes(self) -> None:
-        self._epoch = uuid.uuid4().hex
         self.get("", response_class=StreamingResponse)(self._stream)
 
     async def _stream(
@@ -88,7 +86,7 @@ class EventsRouter(BoardRouter):
     ) -> StreamingResponse:
         """``board-changed`` for each committed write, as Server-Sent Events. Send
         ``Last-Event-ID`` on a reconnect to hear at once about anything missed."""
-        changes = board_changes(self._reader, epoch=self._epoch, last_event_id=last_event_id)
+        changes = board_changes(self._reader, epoch=self._board.epoch, last_event_id=last_event_id)
         return StreamingResponse(
             _until_disconnected(request, changes),
             media_type="text/event-stream",

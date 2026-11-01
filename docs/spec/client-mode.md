@@ -150,8 +150,31 @@ and the server's `test_server_parity.py` fails when a listed route is not served
 
 The server streams changes over Server-Sent Events. `GET /events` sends `board-changed` with a
 **revision** for each committed write, and honours `Last-Event-ID`. `HttpBackend` relays it to the
-windows as the same Tauri `board-changed` event a Standalone write raises. After a reconnect it
-reloads if the revision jumped.
+windows as the same Tauri `board-changed` event a Standalone write raises, now carrying the event's
+`revision` and `epoch`. After a reconnect it reloads if the revision jumped.
+
+**What a write costs, and the revision.** The server stamps `/board` and every other answer with
+its revision and epoch ([Revision](http-api.md#revision-on-every-answer-and-gzip)). The Tauri
+`load_mindmap` returns the board with that stamp as `revision`, and each window keeps the stamp of
+the board it holds in one place, `src/stores/board-revision-store.ts`. Standalone has no server, so
+its loads carry none and its events carry none, and a window with none reloads on every event as it
+always has. The rules, in `src/hooks/use-board-changed.ts`:
+
+- An event whose revision is **at or below** the one the window holds is skipped. A device's own
+  write is announced to it too, and after its own reload it already holds that revision, so it
+  costs one board fetch, not two.
+- An event is judged after a short wait (150 ms), and, if a load is in flight, when that load ends:
+  the echo can beat the write's response across the Tauri bridge, before the write's own reload has
+  started.
+- **An epoch change always reloads**: the server restarted and its numbers start again.
+- An event carrying no revision always reloads.
+- **The reload after a write stays.** A write's response carries the node it wrote, not the board,
+  and the board derives more than that (rollups, what blocks what, inherited Plans), so applying it
+  locally would leave those stale. It is the echo that is skipped, never the reload. A later change
+  (optimistic UI, Task `288`) builds on the stored revision.
+
+A response over 1 KB is gzipped (the client asks for it, reqwest's `gzip`); the board shrinks
+several times over. `/events` is not.
 
 ## Undo
 
@@ -172,7 +195,9 @@ would take in everyone's. Instead:
   server-side as one request: one transaction, one Gesture, one undo step. The app calls the same
   operation in Standalone mode, so both modes run one implementation (`arlesh_core::nodes::gestures`).
 - `HttpBackend` keeps the frontend's `open_gesture` and `close_gesture` on the device, where they
-  only pair up; it sends nothing for them (`local` in the parity contract).
+  only pair up; it sends nothing for them (`local` in the parity contract). Since they pair up and
+  nothing else, a window that has read that it is a Client does not call them at all
+  (`setGestureBracketing`, `src/api/gesture.ts`), so a write is **one** Tauri call, not three.
 
 The gesture operations:
 

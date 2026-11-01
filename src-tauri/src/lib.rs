@@ -352,8 +352,8 @@ fn setup_client(
     let follower = backend::http::events::Follower::new(
         backend.clone(),
         std::sync::Arc::new({
-            let announce = commands::board::announcer(app.handle());
-            move || announce(None)
+            let app = app.handle().clone();
+            move |revision| commands::board::announce_revision(&app, revision)
         }),
     );
     follower.resume();

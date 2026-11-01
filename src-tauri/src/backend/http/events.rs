@@ -1,7 +1,8 @@
 //! Following the server's change stream (`GET /events`): live sync between devices.
 //!
 //! Each `board-changed` event the server sends is relayed through `announce` — the shell wires it
-//! to the same Tauri event a Standalone write raises — so every window reloads as it always has.
+//! to the same Tauri event a Standalone write raises — with the revision the event carries, so a
+//! window that already holds that revision does not reload for it.
 //! The stream is reconnected for as long as the app runs, with `Last-Event-ID`, and the server
 //! sends one event at once when this device missed anything while it was away.
 
@@ -9,6 +10,10 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use super::HttpBackend;
+use crate::backend::revision::BoardRevision;
+
+/// What the shell is told for each `board-changed`: the revision it carried, if it carried one.
+pub type Announce = Arc<dyn Fn(Option<BoardRevision>) + Send + Sync>;
 
 /// The longest wait between two reconnects.
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
@@ -18,17 +23,26 @@ const MAX_BACKOFF: Duration = Duration::from_secs(30);
 /// phone changed network) is dropped and made again rather than waited on for ever.
 const IDLE_LIMIT: Duration = Duration::from_secs(45);
 
-/// One parsed Server-Sent Event: its id and its name.
+/// One parsed Server-Sent Event: its id, its name and its data.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Event {
     /// The event's `id:` line, if it had one.
     pub id: Option<String>,
     /// The event's `event:` line, if it had one.
     pub name: Option<String>,
+    /// The event's `data:` lines, joined by newlines, if it had any.
+    pub data: Option<String>,
 }
 
-/// Splits a Server-Sent Events stream into events as its bytes arrive. Comments and `data:` lines
-/// are dropped: an event's name is all the app needs.
+impl Event {
+    /// The revision a `board-changed` event carries in its data, or `None` when it carries none
+    /// the app can read (an older server): the window then reloads, as it did before revisions.
+    pub fn revision(&self) -> Option<BoardRevision> {
+        serde_json::from_str(self.data.as_deref()?).ok()
+    }
+}
+
+/// Splits a Server-Sent Events stream into events as its bytes arrive. Comments are dropped.
 #[derive(Debug, Default)]
 pub struct EventParser {
     pending: String,
@@ -45,7 +59,7 @@ impl EventParser {
             let line = line.trim_end_matches(['\n', '\r']);
             if line.is_empty() {
                 let event = std::mem::take(&mut self.event);
-                if event.name.is_some() || event.id.is_some() {
+                if event.name.is_some() || event.id.is_some() || event.data.is_some() {
                     events.push(event);
                 }
                 continue;
@@ -54,6 +68,15 @@ impl EventParser {
                 self.event.id = Some(id.trim_start().to_owned());
             } else if let Some(name) = line.strip_prefix("event:") {
                 self.event.name = Some(name.trim_start().to_owned());
+            } else if let Some(data) = line.strip_prefix("data:") {
+                let data = data.strip_prefix(' ').unwrap_or(data);
+                match self.event.data.as_mut() {
+                    Some(joined) => {
+                        joined.push('\n');
+                        joined.push_str(data);
+                    }
+                    None => self.event.data = Some(data.to_owned()),
+                }
             }
         }
         events
@@ -69,13 +92,13 @@ impl EventParser {
 /// the start to the end of the run.
 pub struct Follower {
     backend: Arc<HttpBackend>,
-    announce: Arc<dyn Fn() + Send + Sync>,
+    announce: Announce,
     task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
 }
 
 impl Follower {
     /// A follower of `backend`'s stream, not yet following.
-    pub fn new(backend: Arc<HttpBackend>, announce: Arc<dyn Fn() + Send + Sync>) -> Self {
+    pub fn new(backend: Arc<HttpBackend>, announce: Announce) -> Self {
         Self {
             backend,
             announce,
@@ -118,7 +141,7 @@ impl Follower {
 /// [`MAX_BACKOFF`], and checks `/health` again on each reconnect. A dropped stream is a failed
 /// attempt, not yet an outage: the server is shown as unreachable only after
 /// [`super::FAILURES_BEFORE_UNREACHABLE`] in a row.
-pub async fn follow(backend: Arc<HttpBackend>, announce: Arc<dyn Fn() + Send + Sync>) {
+pub async fn follow(backend: Arc<HttpBackend>, announce: Announce) {
     let mut last_event_id: Option<String> = None;
     let mut backoff = Duration::from_secs(1);
     loop {
@@ -141,7 +164,7 @@ pub async fn follow(backend: Arc<HttpBackend>, announce: Arc<dyn Fn() + Send + S
 
 async fn stream_once(
     backend: &HttpBackend,
-    announce: &Arc<dyn Fn() + Send + Sync>,
+    announce: &Announce,
     last_event_id: &mut Option<String>,
     connected: &mut bool,
 ) -> Result<(), String> {
@@ -181,7 +204,7 @@ async fn stream_once(
                 last_event_id.clone_from(&event.id);
             }
             if event.name.as_deref() == Some(crate::board::BOARD_CHANGED) {
-                announce();
+                announce(event.revision());
             }
         }
     }
