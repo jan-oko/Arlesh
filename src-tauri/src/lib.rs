@@ -45,6 +45,10 @@ pub fn run() {
                 .expect("could not resolve app data dir");
             std::fs::create_dir_all(&app_dir).expect("could not create app data dir");
 
+            // A box build is handed its server and token by its launcher, before the mode is read.
+            #[cfg(target_os = "android")]
+            client_mode::provision::apply(&app_dir);
+
             // Standalone or Client: which backend every command calls through on this device.
             let saved = client_mode::settings::read(&app_dir);
             let startup = client_mode::settings::startup(

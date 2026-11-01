@@ -88,6 +88,10 @@ A name taken in the moment between approval and the poll is suffixed then.
   not read by the desktop app, not journaled. The poll's `id` is kept as a SHA-256 digest. No token
   is stored there: the token is made, and recorded in `server_tokens`, by the poll that claims it.
 
+**Box builds are pre-bound.** The PIN flow is for real devices, such as the release APK. A branch
+build started by `npm run box` (see *Trying it*) is handed its server and token by the launcher and
+comes up connected, so it never shows the connect screen or a PIN.
+
 ### Settings → Devices
 
 Shown in Client mode. It lists the server's devices with their **name and when each was last seen**
@@ -238,6 +242,8 @@ release key; there is no Play Store.
   windows reload.
 - **The soft keyboard** shrinks the page (the activity pads its content by the keyboard's inset),
   so sheets resize above it. Enter confirms in the editors, as on the desktop.
+- **Box builds** (`com.atai.arlesh.box.*`, from `npm run box`) are handed their server and token by
+  the launcher and start connected; the release app takes no such input (*Trying it*).
 - **The touch layout** is a separate Task (`201`); this one only builds and wires the platform.
 
 ## Versions
@@ -277,24 +283,54 @@ android|desktop [--host host[:port]]`; the registry is per user, in
 `$XDG_CONFIG_HOME/arlesh/box-devices.json`, never in the repo. Without a target, `run` reuses the last
 one. An Android host without a port is found in `adb mdns services`.
 
-On desktop, `run` uses the branch's own server and starts it if it is not up (the first start
-in a fresh worktree builds arlesh-py and says so); `--server <other>` picks another branch's server and
-`--standalone` uses none. A server runs its worktree's own code (its bindings built into that
-worktree's venv) on its own port, over a copy of the real database taken read-only
-(`sqlite3` backup API, opened `mode=ro`), seeded once and kept. The instance gets a token
-(client `branch-<app>`) and its `mode.json` and token file, so it comes up connected; the token is
-never printed. `list` shows the servers and targets too.
+**Every `run` comes up already connected**, on desktop and Android alike, to the branch's own server
+(started if it is not up; the first start in a fresh worktree builds arlesh-py and says so).
+`--server <other>` picks another branch's server and `--standalone` opts out: the desktop instance
+runs on the local board, the Android build opens unbound on its connect screen. A server runs its
+worktree's own code (its bindings built into that worktree's venv) on its own port, over a copy of
+the real database taken read-only (`sqlite3` backup API, opened `mode=ro`), seeded once and kept.
+`list` shows the servers and targets too.
+
+**The token's client name is the box device name**: the registry name (`pixel`), or `desktop` for
+this machine, reduced to the server's name alphabet. A client holds one token and its text is never
+stored, so a run re-mints (`token revoke`, then `token add`) unless the connection still holds: the
+instance was bound to this server at this URL, the server still lists the client, no other
+instance has taken that client's token since (box keeps who holds it in its state file) and the app
+has data on the device. `--force` always re-mints. Two branches sharing a device name on one
+server therefore take the token from each other, and the one that lost is re-bound on its next
+`run`. The token is never printed.
+
+- **Desktop.** The instance gets a `mode.json` and a `server-token` file (0600) in its own data
+  directory before it launches.
+- **Android.** A phone cannot reach loopback, so the server must listen publicly: a server that is up
+  on loopback is restarted on `0.0.0.0` with a notice (the port, database and tokens are kept; every
+  request still needs a token). The URL is the one the phone can reach: this machine's tailnet
+  address when the device's host is a tailnet IP (100.64.0.0/10) or a `.ts.net` name, otherwise this
+  machine's address on the same subnet as the device's host. The URL and token are handed to the app
+  with no PIN flow: `run` force-stops the app and starts it with
+  `adb shell am start -n <pkg>/com.atai.arlesh.MainActivity --es arlesh_box_url … --es
+  arlesh_box_token …`. `MainActivity` reads the extras **only when its applicationId starts with
+  `com.atai.arlesh.box.`**, so the release app ignores them and no intent can bind it to a server,
+  and leaves them in `box-provision.json` in the app's private data directory. Before the mode is
+  read, the Rust startup (`client_mode::provision`, Android only) validates the file (an `http(s)`
+  URL, a non-empty token), keeps the token as *Connect and Restart* does (the token file), saves
+  Client mode and deletes the file, so the first run is already connected and no restart is needed.
+  A bad file is deleted and ignored. When the app is already bound to that URL with a live token,
+  `run` only launches it. No JNI is involved, so R8 has nothing to strip.
+- A token in `adb shell` argv is visible to `ps` on the phone for an instant. That is acceptable
+  for a debug box build on the developer's own phone, and the reason the release app takes no extras.
 
 More of the tool, for trying pairing and the phone build:
 
 - `server start <name> --public` binds `0.0.0.0` (the server's `--host`) and prints the LAN and
   tailnet URLs a phone can reach.
 - `server pin <name> approve <pin> [--name <d>]` and `server pin <name> list` run
-  `arlesh-server pin approve|list` against that server's database.
+  `arlesh-server pin approve|list` against that server's database. They are for pairing real
+  (non-box) devices, such as the release APK; box builds are pre-bound.
 - An Android `run` builds a debug-signed APK that installs beside the real app as
   `com.atai.arlesh.box.<branch>`, labelled "Arlesh (<branch>)" (the two files that carry the name
   are patched for the build and restored). Firebase, per branch, when
-  `ARLESH_BOX_FIREBASE_PROJECT` is set (`--no-firebase` skips it). Server flags are desktop-only.
+  `ARLESH_BOX_FIREBASE_PROJECT` is set (`--no-firebase` skips it).
 - `clean <branch>` also removes that branch's Firebase app and uninstalls the package from the
   registered Android devices; `prune [<device>]` does so for every `com.atai.arlesh.box.*` whose
   worktree is gone.
