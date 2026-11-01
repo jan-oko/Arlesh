@@ -11,7 +11,7 @@ Fill every section. Delete one only when it truly does not apply, never to save 
 ````markdown
 Repo: `/home/atai/Green/CODE/Arlesh`. Your worktree: `.claude/worktrees/<short id>-<slug>`
 (branch `<short id>-<slug>`, off `origin/master` at `<sha>`); work only there. Keep the branch
-name — it is how the user tells instances apart in `scripts/branch-instance.sh`. Do NOT work in the main checkout or any other worktree under `.claude/worktrees/` —
+name — it is how the user tells instances apart in `npm run box`. Do NOT work in the main checkout or any other worktree under `.claude/worktrees/` —
 <n> other agents are live in them.
 
 ## Do not run local builds            <!-- when df -h / is 90%+ -->

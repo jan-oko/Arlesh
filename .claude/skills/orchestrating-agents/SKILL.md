@@ -69,7 +69,7 @@ are listed at the end.
    early brief lacked it and an agent went wrong.
 9. **Name the worktree and branch `<short id>-<slug>`**, both the same, e.g. `bd3-archive-domain`.
    User: *"make branch names indicative (short id + short description), so they are
-   distinguishable in branch_instances."* `scripts/branch-instance.sh` names each instance after
+   distinguishable in branch_instances."* `npm run box` names each instance after
    its worktree directory, so a random name (`agent-a89bbbce…`, which the Agent tool's
    `isolation: "worktree"` produces) tells the user nothing. Create it yourself —
    `git worktree add .claude/worktrees/<name> -b <name> origin/master` — and hand the agent the
