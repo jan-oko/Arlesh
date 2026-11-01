@@ -78,14 +78,14 @@ export function useListData(): ListData {
   const commitmentRows = useMemo(() => flattenCommitmentRows(listRoot), [listRoot]);
   const expectationRows = useMemo(() => flattenExpectationRows(listRoot), [listRoot]);
   const { toggleRelease } = useExpectationActions({
-    findNode: (id) => findNode(tree, id), reload, showToast,
+    findNode: (id) => findNode(tree, id), showToast,
   });
   // The Mindmap's and Steps View's own status gesture, so a row cycles exactly as its node does:
   // the same completion guard, the same Backlog toast, the same refusal out loud.
   const {
     cycleStatus: onCycleStatus, toggleStarted: onToggleStarted,
     occurrencePrompt, confirmOccurrence, cancelOccurrence,
-  } = useStatusCycle({ findNode: (id) => findNode(tree, id), reload, showToast });
+  } = useStatusCycle({ findNode: (id) => findNode(tree, id), showToast });
   const allTasksAndGoals = useMemo(() => {
     const acc: MindmapNode[] = [];
     collectTasksAndGoals(tree, acc);
