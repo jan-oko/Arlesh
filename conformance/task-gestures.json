@@ -1,0 +1,741 @@
+{
+  "about": [
+    "What a press on a Task or a Commitment writes, as data: the status step, `Alt+Enter`, the Compound",
+    "refusal and the verdict.",
+    "",
+    "Both evaluators replay it. `src-tauri/tests/operations/task_gestures_conformance.rs` runs every case",
+    "through `tasks::rules::gestures`; `src/utils/task-gestures-conformance.test.ts` runs the same cases",
+    "through `src/utils/task-gestures.ts`, which the board uses to show a press before the server has",
+    "answered it (ADR 0012, decision 13). Neither side generates this file: it is written by hand from",
+    "`docs/spec/resources.md`.",
+    "",
+    "`next_status`: one step of click/`Enter` in the model a Task holds. `alt_step`: `Alt+Enter`; refused",
+    "on Agentic work that is not Doing. `status_after`: a step on a Task that is or is not Compound; a",
+    "Compound Task has no status of its own to write, whatever the gesture. `verdict_after`: the cycle key",
+    "and the Kept and Broken controls, each of which clears the verdict it already reads.",
+    "",
+    "A result is `written` with the status it leaves, or `refused` with why nothing is written."
+  ],
+  "next_status": [
+    {
+      "current": {
+        "kind": "ordinary",
+        "status": "todo"
+      },
+      "next": {
+        "kind": "ordinary",
+        "status": "in_progress"
+      }
+    },
+    {
+      "current": {
+        "kind": "ordinary",
+        "status": "in_progress"
+      },
+      "next": {
+        "kind": "ordinary",
+        "status": "done"
+      }
+    },
+    {
+      "current": {
+        "kind": "ordinary",
+        "status": "started"
+      },
+      "next": {
+        "kind": "ordinary",
+        "status": "in_progress"
+      }
+    },
+    {
+      "current": {
+        "kind": "ordinary",
+        "status": "done"
+      },
+      "next": {
+        "kind": "ordinary",
+        "status": "todo"
+      }
+    },
+    {
+      "current": {
+        "kind": "agentic",
+        "status": "todo"
+      },
+      "next": {
+        "kind": "agentic",
+        "status": "doing"
+      }
+    },
+    {
+      "current": {
+        "kind": "agentic",
+        "status": "on_agent"
+      },
+      "next": {
+        "kind": "agentic",
+        "status": "doing"
+      }
+    },
+    {
+      "current": {
+        "kind": "agentic",
+        "status": "review"
+      },
+      "next": {
+        "kind": "agentic",
+        "status": "doing"
+      }
+    },
+    {
+      "current": {
+        "kind": "agentic",
+        "status": "doing"
+      },
+      "next": {
+        "kind": "agentic",
+        "status": "done"
+      }
+    },
+    {
+      "current": {
+        "kind": "agentic",
+        "status": "done"
+      },
+      "next": {
+        "kind": "agentic",
+        "status": "todo"
+      }
+    }
+  ],
+  "alt_step": [
+    {
+      "current": {
+        "kind": "ordinary",
+        "status": "todo"
+      },
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "ordinary",
+          "status": "started"
+        }
+      }
+    },
+    {
+      "current": {
+        "kind": "ordinary",
+        "status": "in_progress"
+      },
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "ordinary",
+          "status": "started"
+        }
+      }
+    },
+    {
+      "current": {
+        "kind": "ordinary",
+        "status": "started"
+      },
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "ordinary",
+          "status": "in_progress"
+        }
+      }
+    },
+    {
+      "current": {
+        "kind": "ordinary",
+        "status": "done"
+      },
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "ordinary",
+          "status": "started"
+        }
+      }
+    },
+    {
+      "current": {
+        "kind": "agentic",
+        "status": "todo"
+      },
+      "result": {
+        "outcome": "refused",
+        "reason": "alt_enter_agentic_not_doing"
+      }
+    },
+    {
+      "current": {
+        "kind": "agentic",
+        "status": "on_agent"
+      },
+      "result": {
+        "outcome": "refused",
+        "reason": "alt_enter_agentic_not_doing"
+      }
+    },
+    {
+      "current": {
+        "kind": "agentic",
+        "status": "review"
+      },
+      "result": {
+        "outcome": "refused",
+        "reason": "alt_enter_agentic_not_doing"
+      }
+    },
+    {
+      "current": {
+        "kind": "agentic",
+        "status": "doing"
+      },
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "agentic",
+          "status": "on_agent"
+        }
+      }
+    },
+    {
+      "current": {
+        "kind": "agentic",
+        "status": "done"
+      },
+      "result": {
+        "outcome": "refused",
+        "reason": "alt_enter_agentic_not_doing"
+      }
+    }
+  ],
+  "status_after": [
+    {
+      "step": "advance",
+      "current": {
+        "kind": "ordinary",
+        "status": "todo"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "ordinary",
+          "status": "in_progress"
+        }
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "ordinary",
+        "status": "in_progress"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "ordinary",
+          "status": "done"
+        }
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "ordinary",
+        "status": "started"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "ordinary",
+          "status": "in_progress"
+        }
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "ordinary",
+        "status": "done"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "ordinary",
+          "status": "todo"
+        }
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "agentic",
+        "status": "todo"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "agentic",
+          "status": "doing"
+        }
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "agentic",
+        "status": "on_agent"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "agentic",
+          "status": "doing"
+        }
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "agentic",
+        "status": "review"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "agentic",
+          "status": "doing"
+        }
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "agentic",
+        "status": "doing"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "agentic",
+          "status": "done"
+        }
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "agentic",
+        "status": "done"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "agentic",
+          "status": "todo"
+        }
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "ordinary",
+        "status": "todo"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "ordinary",
+          "status": "started"
+        }
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "ordinary",
+        "status": "in_progress"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "ordinary",
+          "status": "started"
+        }
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "ordinary",
+        "status": "started"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "ordinary",
+          "status": "in_progress"
+        }
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "ordinary",
+        "status": "done"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "ordinary",
+          "status": "started"
+        }
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "agentic",
+        "status": "todo"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "refused",
+        "reason": "alt_enter_agentic_not_doing"
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "agentic",
+        "status": "on_agent"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "refused",
+        "reason": "alt_enter_agentic_not_doing"
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "agentic",
+        "status": "review"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "refused",
+        "reason": "alt_enter_agentic_not_doing"
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "agentic",
+        "status": "doing"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "written",
+        "status": {
+          "kind": "agentic",
+          "status": "on_agent"
+        }
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "agentic",
+        "status": "done"
+      },
+      "compound": false,
+      "result": {
+        "outcome": "refused",
+        "reason": "alt_enter_agentic_not_doing"
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "ordinary",
+        "status": "todo"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "ordinary",
+        "status": "in_progress"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "ordinary",
+        "status": "started"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "ordinary",
+        "status": "done"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "agentic",
+        "status": "todo"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "agentic",
+        "status": "on_agent"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "agentic",
+        "status": "review"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "agentic",
+        "status": "doing"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "advance",
+      "current": {
+        "kind": "agentic",
+        "status": "done"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "ordinary",
+        "status": "todo"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "ordinary",
+        "status": "in_progress"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "ordinary",
+        "status": "started"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "ordinary",
+        "status": "done"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "agentic",
+        "status": "todo"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "agentic",
+        "status": "on_agent"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "agentic",
+        "status": "review"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "agentic",
+        "status": "doing"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    },
+    {
+      "step": "alt",
+      "current": {
+        "kind": "agentic",
+        "status": "done"
+      },
+      "compound": true,
+      "result": {
+        "outcome": "refused",
+        "reason": "compound"
+      }
+    }
+  ],
+  "verdict_after": [
+    {
+      "press": "cycle",
+      "current": "unresolved",
+      "verdict": "kept"
+    },
+    {
+      "press": "cycle",
+      "current": "kept",
+      "verdict": "broken"
+    },
+    {
+      "press": "cycle",
+      "current": "broken",
+      "verdict": "unresolved"
+    },
+    {
+      "press": "kept",
+      "current": "unresolved",
+      "verdict": "kept"
+    },
+    {
+      "press": "kept",
+      "current": "kept",
+      "verdict": "unresolved"
+    },
+    {
+      "press": "kept",
+      "current": "broken",
+      "verdict": "kept"
+    },
+    {
+      "press": "broken",
+      "current": "unresolved",
+      "verdict": "broken"
+    },
+    {
+      "press": "broken",
+      "current": "kept",
+      "verdict": "broken"
+    },
+    {
+      "press": "broken",
+      "current": "broken",
+      "verdict": "unresolved"
+    }
+  ]
+}

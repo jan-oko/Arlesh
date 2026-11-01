@@ -88,7 +88,6 @@ function renderPaste() {
         return [];
       },
       onRequestDelete: vi.fn(),
-      reload: () => Promise.resolve(),
       renameNode: vi.fn(() => Promise.resolve()),
       createNode: vi.fn(),
       createChild: vi.fn(),
