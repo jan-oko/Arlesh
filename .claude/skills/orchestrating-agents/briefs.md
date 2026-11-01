@@ -62,6 +62,15 @@ Ask the agent to tell you if it changes a shared API's shape.>
 - TypeScript: no `any`, no `as`, `@/` imports, named exports except React components.
 - **Migration numbers are assigned centrally** — if you need one, stop and ask.
 
+## Keep the token bill down
+
+- Find code by symbol before reading it: Serena `get_symbols_overview`, `find_symbol`,
+  `find_referencing_symbols`. Read only the lines you need (`Read` with `offset`/`limit`); never
+  read a large module whole to change a few lines.
+- Cap output: `| tail -40` on builds and tests, `gh run view <id> --log-failed` rather than full
+  logs, targeted test filters rather than whole suites.
+- Don't re-read files you already have, and don't paste large outputs into your report.
+
 ## Do NOT
 
 - **Do NOT create a Task** (`arlesh_tasks.create`) or set or change any Task's priority. Report
