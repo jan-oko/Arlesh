@@ -203,9 +203,8 @@ Whenever a touchscreen is present, at any width.
   cards have no status step to run, so their icon stays a picture.
 - **Double-tap** means "go into", everywhere: the Mindmap enters the node; the Steps View steps into
   it; the List View narrows to its subtree (Under); the Plan View opens its subtree; the Zen View
-  opens the node in the List View. A List row with **nothing beneath it** is entered through its
-  parent (Under the parent), which keeps it on screen among its siblings: narrowing Under a leaf
-  would empty the list. It never opens the editor.
+  opens the node in the List View. A List row with **nothing beneath it** has no subtree to narrow
+  to (Under it would empty the list), so its double-tap opens its editor instead.
 - **Swipe a row or a card right** to cycle its status: Done wraps back to To Do, a Commitment moves
   to its next verdict and a wait to released, exactly as the status-cycle key does. **Swipe it
   left** for the `Alt+Enter` alternative, setting Started. There is no swipe tray.
@@ -277,7 +276,7 @@ fails when the two differ, so a gesture is added to both or to neither.
 | Mindmap | Hold a node, then drag | Moves it under another parent or reorders it |
 | Mindmap | Tap a collapse dot | Folds or unfolds the node's children |
 | Mindmap | Pinch | Zooms the map |
-| List | Double-tap a row with nothing beneath it | Enters it through its parent, so it stays on screen among its siblings |
+| List | Double-tap a row with nothing beneath it | Opens its editor |
 | List | Double-tap a parent | Narrows the list to its subtree (Under) |
 | Plan | Swipe left or right on the planned pane | Steps to the next or the previous scope |
 | Plan | Swipe up on the planned pane | Goes up to the parent scope |

@@ -99,7 +99,7 @@
   "gestureMindmapEnter": "Double-tap a node",
   "gestureMindmapEnterDoes": "Enters its subtree",
   "gestureListLeaf": "Double-tap a row with nothing beneath it",
-  "gestureListLeafDoes": "Enters it through its parent, so it stays on screen among its siblings",
+  "gestureListLeafDoes": "Opens its editor",
   "gestureListParent": "Double-tap a parent",
   "gestureListParentDoes": "Narrows the list to its subtree (Under)",
   "gestureStepsEnter": "Double-tap a card",

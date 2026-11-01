@@ -23,6 +23,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@/hooks/use-list-data");
+const { openEditor } = vi.hoisted(() => ({ openEditor: vi.fn() }));
 vi.mock("@/components/MindmapView/use-node-editor", () => ({
   useNodeEditor: () => ({
     editorModal: null,
@@ -30,7 +31,7 @@ vi.mock("@/components/MindmapView/use-node-editor", () => ({
     allTags: [],
     domainNames: new Map(),
     availableForDep: [],
-    onDoubleClick: vi.fn(),
+    onDoubleClick: openEditor,
     onTaskSave: vi.fn(),
     onCommitmentSave: vi.fn(),
     checkScopeClamp: vi.fn(),
@@ -1885,15 +1886,16 @@ describe("ListView — double-tap on a touchscreen", () => {
     expect(antecedents()).toEqual(["task-1"]);
   });
 
-  it("enters a leaf through its parent rather than emptying the list, and opens no editor", () => {
+  it("opens a leaf's editor rather than entering it", () => {
     const aspect = n("aspect-1", "aspect");
     const goal = n("goal-1", "goal", { status: "active" });
     mockUseListData.mockReturnValue(listData({
       rows: [row({ node: n("task-3", "task", { status: "todo" }), ancestors: [aspect, goal] })],
     }));
     render(<ListViewInApp />);
+    openEditor.mockClear();
     doubleTap("task-3");
-    expect(antecedents()).toEqual(["goal-1"]);
-    expect(screen.queryByTestId("editor-modal")).not.toBeInTheDocument();
+    expect(openEditor).toHaveBeenCalledWith("task-3");
+    expect(antecedents()).toEqual([]);
   });
 });
