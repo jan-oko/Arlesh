@@ -18,6 +18,12 @@ name = "arlesh"
 path = "src/main.rs"
 test = false
 
+# Standalone mode — the local SQLite file — is on by default. Without it the app is a Client-mode
+# app only: it opens no local database and always runs against a server.
+[features]
+default = ["standalone"]
+standalone = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -35,6 +41,15 @@ thiserror = "2"
 anyhow = "1"
 # `Backend` is used as `dyn Backend` behind the managed `AppBackend`, so its async methods are boxed.
 async-trait = "0.1"
+# Client mode: `HttpBackend` calls `arlesh-server` (`src/backend/http/`). The version already in the
+# lock (through rmcp), with rustls for an HTTPS server. Its crypto is `ring`, installed as the
+# process default when the backend is built, rather than reqwest's default aws-lc, whose C build
+# needs cmake (and NASM on Windows) on every bundle runner.
+reqwest = { version = "0.13", default-features = false, features = ["json", "query", "http2", "rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# Client mode keeps the server token in the OS keychain: the macOS Keychain, the Windows Credential
+# Manager, or the Secret Service on Linux (through libdbus, which Tauri already links).
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { version = "0.4", features = ["serde"] }

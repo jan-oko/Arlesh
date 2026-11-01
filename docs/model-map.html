@@ -474,6 +474,11 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dl><dt>Why</dt><dd>One copy of the board, reachable from more than one device, with one writer.</dd>
       <dt>Without</dt><dd>The board lives only inside the running app on one machine.</dd>
       <dt>Lives</dt><dd class="where">crates/arlesh-py/python/arlesh/server · arlesh[server]</dd></dl></article>
+    <article class="card"><h3>Client mode</h3>
+      <p class="is">Each device runs Standalone (its own database file, as before) or as a Client of arlesh-server. Every Tauri command goes through one Backend port: SqliteBackend in-process, or HttpBackend calling the server's routes, one per method. The server's change stream reloads every device's windows, undo is per device, and an unreachable server leaves the last board read-only.</p>
+      <dl><dt>Why</dt><dd>One board shared by several devices, with the app itself unchanged above the port.</dd>
+      <dt>Without</dt><dd>A second app for the server, or every component taught about HTTP; devices that each hold a different board.</dd>
+      <dt>Lives</dt><dd class="where">src-tauri/src/backend/ (sqlite, http) · client_mode/ · conformance/client-mode.json · ADR 0011</dd></dl></article>
   </div>
 </section>
 

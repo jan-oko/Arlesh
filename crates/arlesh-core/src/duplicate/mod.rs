@@ -115,7 +115,7 @@ pub struct SubtreeCopy {
 }
 
 /// One row hung on a Habit occurrence that a copy left behind, titled so the paste can name it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema, serde::Deserialize)]
 pub struct LeftBehindChild {
     /// Which table the row lives in: `task`, `goal`, `commitment`, `expectation` or `info`.
     pub child_type: String,
@@ -126,7 +126,7 @@ pub struct LeftBehindChild {
 }
 
 /// A duplicate command's answer: the copy's root, and what the copy left behind.
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema, serde::Deserialize)]
 #[schemars(rename = "Duplicated{T}")]
 pub struct DuplicatedSubtree<T> {
     /// The copy's root, as its own table returns it.

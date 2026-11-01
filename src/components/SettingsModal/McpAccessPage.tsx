@@ -8,6 +8,7 @@ import HelpTip from "./HelpTip";
 import own from "./McpEndpointSection.module.css";
 import AgentCapacitySection from "./AgentCapacitySection";
 import styles from "./SettingsModal.module.css";
+import { isClientMode, useClientModeStore } from "@/stores/use-client-mode-store";
 
 const REMOVE_GLYPH = "×";
 
@@ -20,6 +21,7 @@ export default function McpAccessPage() {
   const { t } = useTranslation(["settings", "nodeKinds"]);
   const { roots, candidates, isLoading, error, addRoot, removeRoot } = useMcpRoots();
   const [searching, setSearching] = useState(false);
+  const isClient = useClientModeStore((s) => isClientMode(s.status));
 
   return (
     <div className={styles.page}>
@@ -68,7 +70,8 @@ export default function McpAccessPage() {
           onClose={() => setSearching(false)}
         />
       )}
-      <McpEndpointSection />
+      {/* In Client mode the app serves no MCP: agents use the server's `/mcp`. */}
+      {!isClient && <McpEndpointSection />}
       <AgentCapacitySection />
     </div>
   );

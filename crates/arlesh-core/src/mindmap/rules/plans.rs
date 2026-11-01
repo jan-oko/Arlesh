@@ -279,7 +279,7 @@ pub fn stamp_plan_timing(lifecycles: &mut [ItemLifecycle], audit: &PlanAudit, no
 }
 
 /// A Task a new Plan above it would leave outside, and what clamping would give it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema, serde::Deserialize)]
 pub struct PlanClampTarget {
     /// The Task.
     pub id: NodeId,

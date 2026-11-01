@@ -514,3 +514,22 @@ async fn the_load_carries_each_nodes_short_id() {
         assert!(short.chars().all(|character| character.is_ascii_hexdigit()));
     }
 }
+
+/// Client mode reads the board back from the server's JSON (`HttpBackend`), so the load must come
+/// back from its own wire form unchanged: a field the serialiser leaves out at its default has to
+/// be read back as that default, not refused.
+#[tokio::test]
+async fn the_load_reads_back_from_its_own_wire_form_unchanged() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    seed(&app, &pool).await;
+    let load = mindmap_commands::load_mindmap(app.state(), now())
+        .await
+        .unwrap();
+
+    let wire = serde_json::to_value(&load).expect("the load serialises");
+    let read: arlesh_lib::mindmap::model::MindmapLoad =
+        serde_json::from_value(wire.clone()).expect("the load reads back");
+
+    assert_eq!(serde_json::to_value(&read).expect("serialises again"), wire);
+}

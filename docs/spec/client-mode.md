@@ -15,8 +15,17 @@ behind the cargo feature `standalone`, which is on by default.
 
 - **The first-run chooser** asks *This device only* (Standalone) or *Connect to a server* (Client).
 - **Settings → Server** switches later. It asks for the server's URL and a token, tests them
-  against `/health` and the API version, and then switches, with no reinstall.
-- **The top bar** shows the mode and, in Client mode, whether the server is reachable.
+  against `/health` and the API version, and then switches, with no reinstall. A server this app
+  cannot write to is refused at the test, naming the side to update.
+- **Switching restarts the app.** The choice is saved in `mode.json` in the app's data directory,
+  and the app relaunches into it, so each run is wholly one mode: a Standalone run holds the
+  database and serves the MCP, a Client run does neither, and nothing is torn down in between.
+- **The top bar** shows the mode: *This device*, or *Server* with a dot for whether the server is
+  reachable and its URL on hover.
+
+The chooser is asked only on a device with no mode saved and no local database. An install from
+before Client mode existed has a database and no setting: it is Standalone, and nobody is asked.
+Until the chooser is answered the app runs Standalone, which is its first answer.
 
 A device connects with a pasted URL and a token issued by `arlesh-server token add <device>`.
 Pairing codes and a Devices page are a separate, later feature.
@@ -41,9 +50,11 @@ computations (`scope_containing`, `resolve_scope` and the rest), which need no b
 other windows that the board changed is the shell's as well: a backend reports *whether* a gesture
 wrote, and the command announces it.
 
-**`now` is the device's.** A command that needs the current time takes it from the device's clock in
-the device's time zone, in both modes. `HttpBackend` sends it to the server with the request, so a
-server in another time zone still answers for the user's day.
+**`now` is the device's for reads.** A read that derives the board at an instant (the board, the
+lists, the lifecycles, the dependency picker) is sent the device's clock in the device's time zone,
+so a server in another time zone still answers for the user's day. A write is stamped by the
+server's clock, as it would be by any other writer, so the server should run in the user's time
+zone (`TZ`).
 
 ## REST parity
 
@@ -52,7 +63,12 @@ fails if a port method has no route or has no `HttpBackend` implementation.
 
 **People and the knowledge base are out of Client scope.** That means people, events, threads and
 knowledge-base links. There are no routes for them, `HttpBackend` refuses those calls as not
-available in Client mode, and the UI hides them. Their code and tables stay as they are.
+available in Client mode (`not_permitted`, `details.reason = "not_in_client_mode"`), and the UI
+does not ask for them: a delegate Person is drawn unnamed. Their code and tables stay as they are.
+
+The mapping is `conformance/client-mode.json`, tested from both sides: the app's
+`backend/tests.rs` fails when a port method is in neither its `routes` nor its `standalone_only`,
+and the server's `test_server_parity.py` fails when a listed route is not served.
 
 ## Live sync
 
@@ -106,8 +122,10 @@ write already, and needs no operation of its own.
 ## Offline
 
 When the server cannot be reached, the app shows the last board it loaded, **read-only**, under a
-*Server unreachable* banner with the time of the last sync. A write is refused with a toast, and
-nothing is queued. Offline writes are a later feature.
+*Server unreachable* banner with the time of the last sync. A write is refused, writing nothing,
+with `not_permitted` and `details.reason = "server_unreachable"`, which the window shows as any
+refusal; nothing is queued. Offline writes are a later feature. Any call that gets through, or the
+change stream reconnecting, makes the board writable again.
 
 ## Shared and local state
 
@@ -116,25 +134,48 @@ nothing is queued. Offline writes are a later feature.
 
 ## MCP
 
-In Client mode the app serves **no** MCP endpoint. Agents talk to the server's `/mcp` directly, each
+In Client mode the app serves **no** MCP endpoint, and Settings → Agents shows no endpoint section;
+the MCP roots and the capacity lock there are the server's. Agents talk to the server's `/mcp` directly, each
 with its own token. This is the [HTTP Server](http-api.md)'s *the app serves none*.
 
 ## Tokens on the device
 
-The token is kept in the OS keychain through the `keyring` crate. If the keychain is not available,
-the app falls back to a file readable by its owner only (mode 0600), but only once the user agrees.
+The token is kept in the OS keychain through the `keyring` crate (the macOS Keychain, the Windows
+Credential Manager, the Secret Service on Linux), filed under the server's URL. If no keychain is
+available, Settings → Server says so and offers to keep the token in `server-token` in the app's
+data directory, readable by its owner only (mode 0600); it is not stored until the user ticks that.
 
 ## Versions
 
 `/health` reports `api_version`, an integer bumped only on a breaking change, and the build commit.
-On a mismatch the app goes read-only and says which side to update. When a newer app finds a route
-missing, it hides that feature rather than failing.
+On a mismatch the app goes read-only and says which side to update. `/health` is checked when the app
+starts following the server and on every reconnect of the change stream, so a server upgraded
+underneath a running app is noticed. A route the server lacks answers 404 with `details.reason =
+"unknown_route"`, which the window shows as a refusal of that one action rather than a failure of
+the board.
 
 ## Data
 
 There is no sync between a device's local database and a server. A device switched to Client keeps
 its local database untouched, and switching back finds it as it was. A server is seeded by copying
 `arlesh.db` into its volume.
+
+## Trying it: branch instances
+
+`scripts/branch-instance.sh` runs a branch's server as well as its app, so any app branch can be
+tried against any server branch — the version handshake included:
+
+```
+scripts/branch-instance.sh server start 9f0-client-mode              # arlesh-server from that worktree
+scripts/branch-instance.sh start 201-client-gaps --server 9f0-client-mode
+scripts/branch-instance.sh run some-app --standalone                 # back to the local board
+scripts/branch-instance.sh stop all                                  # apps and servers
+```
+
+A server runs its worktree's own code (its bindings built into that worktree's venv) on its own
+port, over a copy of the real database taken read-only (`sqlite3 -readonly … .backup`), seeded once
+and kept. `--server` mints the app instance a token and writes its `mode.json` and its token file,
+so the instance comes up connected; the token is never printed. `list` shows the servers too.
 
 ## Not in phase 1
 

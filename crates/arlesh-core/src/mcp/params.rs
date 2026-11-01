@@ -354,20 +354,40 @@ impl From<DelegateParam> for model::Delegate {
 pub struct BriefParam {
     /// Priority `"MW"`, `"A"`, `"B"` or `"C"`, most urgent first. Omit to leave it; `null` for
     /// none.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub priority: Option<Option<model::AgenticPriority>>,
     /// What to build. A Task that reads as Agentic cannot start without one. Omit to leave it;
     /// `null` clears it.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub spec: Option<Option<String>>,
     /// How to build it. Omit to leave it; `null` clears it.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub design: Option<Option<String>>,
     /// How to tell it is done. Omit to leave it; `null` clears it.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub acceptance: Option<Option<String>>,
     /// Anything else. Omit to leave it; `null` clears it.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub notes: Option<Option<String>>,
 }
 
@@ -473,7 +493,11 @@ pub enum TasksOperation {
         backlog: Option<bool>,
         /// New Time Scope; `null` clears it. A Habit occurrence's is its iteration's and cannot
         /// change.
-        #[serde(default, deserialize_with = "crate::wire::null_clears")]
+        #[serde(
+            default,
+            deserialize_with = "crate::wire::null_clears",
+            skip_serializing_if = "Option::is_none"
+        )]
         time_scope: Option<Option<TimeScope>>,
         /// What it does once its Time Scope passes unfinished. Not for a Habit occurrence, which
         /// its Habit decides.
@@ -481,11 +505,19 @@ pub enum TasksOperation {
         on_scope_exit: Option<OnScopeExitParam>,
         /// New Plan, within its Time Scope; `null` clears it. Planning a backlogged Task takes it
         /// out of the Backlog.
-        #[serde(default, deserialize_with = "crate::wire::null_clears")]
+        #[serde(
+            default,
+            deserialize_with = "crate::wire::null_clears",
+            skip_serializing_if = "Option::is_none"
+        )]
         plan: Option<Option<TimeScope>>,
         /// New explicit due, within its effective Time Scope; `null` clears it back to the
         /// default. On a Habit occurrence it wins over the due its Habit's clock derives.
-        #[serde(default, deserialize_with = "crate::wire::null_clears")]
+        #[serde(
+            default,
+            deserialize_with = "crate::wire::null_clears",
+            skip_serializing_if = "Option::is_none"
+        )]
         due_scope: Option<Option<TimeScope>>,
         /// `true` makes it Asynchronous, `false` not (dropping its wait template).
         #[serde(default)]
@@ -509,11 +541,19 @@ pub enum TasksOperation {
         #[serde(default)]
         remove_tags: Vec<NodeIdParam>,
         /// Its explicit block reasons, replacing the list; `null` clears it.
-        #[serde(default, deserialize_with = "crate::wire::null_clears")]
+        #[serde(
+            default,
+            deserialize_with = "crate::wire::null_clears",
+            skip_serializing_if = "Option::is_none"
+        )]
         block_reasons: Option<Option<Vec<String>>>,
         /// Who holds it: a Person, `{"kind": "person", "id": N}`; `null` takes the
         /// delegation back. A wait's check task cannot be delegated.
-        #[serde(default, deserialize_with = "crate::wire::null_clears")]
+        #[serde(
+            default,
+            deserialize_with = "crate::wire::null_clears",
+            skip_serializing_if = "Option::is_none"
+        )]
         delegate: Option<Option<DelegateParam>>,
     },
     /// Changes an Agentic Task's status **if it is still `expected`** — one compare-and-set step.

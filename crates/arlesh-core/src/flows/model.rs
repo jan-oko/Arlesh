@@ -234,7 +234,7 @@ pub struct FlowExpectation {
 }
 
 /// Request body for creating a flow.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateFlowRequest {
     /// Display title.
     pub title: String,
@@ -287,47 +287,95 @@ pub struct CreateFlowRequest {
 }
 
 /// Request body for updating a flow (fields left `None` are unchanged; `Some(None)` clears).
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateFlowRequest {
     /// New title.
     pub title: Option<String>,
     /// New instance type.
     pub instance_type: Option<InstanceType>,
     /// Target Node type (`Some(None)` clears it back to the derived parent default).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub target_type: Option<Option<String>>,
     /// Target Node id (`Some(None)` clears it back to the derived parent default).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub target_id: Option<Option<i64>>,
     /// Flow-scope duration count (Some(None) clears).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub flow_duration_n: Option<Option<i64>>,
     /// Flow Window kind (Some(None) clears).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub flow_duration_kind: Option<Option<String>>,
     /// Phase-`part` band (Some(None) clears).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub flow_window_part: Option<Option<String>>,
     /// Phase-`exact` window start time-of-day (Some(None) clears).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub flow_window_time_start: Option<Option<String>>,
     /// Phase-`exact` window end time-of-day (Some(None) clears).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub flow_window_time_end: Option<Option<String>>,
     /// Root Cycle Plan kind (Some(None) clears).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub root_plan_kind: Option<Option<String>>,
     /// Root Cycle Plan start offset (Some(None) clears).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub root_plan_start: Option<Option<i64>>,
     /// Root Cycle Plan end offset (Some(None) clears).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub root_plan_end: Option<Option<i64>>,
     /// Verdict Window count (`Some(None)` clears it, leaving iterations answerable indefinitely).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub verdict_window_n: Option<Option<i64>>,
     /// Verdict Window kind (`Some(None)` clears).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub verdict_window_kind: Option<Option<String>>,
     /// New parent type (with parent_id).
     pub parent_type: Option<String>,
@@ -343,7 +391,7 @@ pub struct UpdateFlowRequest {
 }
 
 /// Request body for creating a flow item (goal or task).
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateFlowItemRequest {
     /// Owning flow.
     pub flow_id: i64,
@@ -415,7 +463,7 @@ impl FlowItemType {
 }
 
 /// Request body for updating a flow item (fields left `None` are unchanged; `Some(None)` clears).
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateFlowItemRequest {
     /// New title.
     pub title: Option<String>,
@@ -428,14 +476,26 @@ pub struct UpdateFlowItemRequest {
     /// New private flag, if changing.
     pub is_private: Option<bool>,
     /// A Commitment item's Verdict Window to set (`Some(None)` clears it). Commitment items only.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub verdict_window: Option<Option<DurationSpec>>,
     /// A wait item's Check every to set (`Some(None)` clears it). Wait items only.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub check_every: Option<Option<DurationSpec>>,
     /// A wait item's first check to set (`Some(None)` clears it, back to its window's start).
     /// Wait items only.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub first_check: Option<Option<FirstCheck>>,
     /// Template fields to change, flattened into the request: its kind's columns and relations.
     #[serde(flatten)]
@@ -468,7 +528,7 @@ pub struct FlowItemCycle {
 }
 
 /// One (Cycle Scope, Cycle Plan) pair to persist for a flow item.
-#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct FlowCycleInput {
     /// Cycle-scope subkind (None = the whole flow scope).
     #[serde(default)]
@@ -488,7 +548,7 @@ pub struct FlowCycleInput {
 }
 
 /// Request body for starting a flow (materialising it under a target).
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct StartFlowRequest {
     /// Title of the materialised root node.
     pub title: String,
@@ -501,7 +561,7 @@ pub struct StartFlowRequest {
 }
 
 /// The outcome of starting a flow: the materialised root node.
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema, serde::Deserialize)]
 pub struct MaterializedFlow {
     /// Root node kind (`goal` or `task`).
     pub root_type: String,
@@ -520,7 +580,7 @@ pub struct TargetRef {
 }
 
 /// A materialised node's originating flow: which real node it is and the flow it was started from.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema, serde::Deserialize)]
 pub struct FlowOrigin {
     /// The real node's kind (`goal` / `task`).
     pub node_type: String,
@@ -617,7 +677,7 @@ impl MissPolicy {
 /// A Habit's Recurrence: Repetition (Start, optional Gap, optional end) plus its **clock**. Its
 /// presence marks the owning flow as a Habit. `miss_policy` is set exactly when the clock is
 /// `window`.
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema, serde::Deserialize)]
 pub struct FlowRecurrence {
     /// Owning flow (also the primary key — one recurrence per flow).
     pub flow_id: i64,
@@ -645,7 +705,7 @@ pub struct FlowRecurrence {
 }
 
 /// Request to set (create or replace) a flow's Recurrence, making it a Habit.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct SetRecurrenceRequest {
     /// The scope the recurrence starts on (of the flow's Duration kind).
     pub start_scope_id: ScopeKey,

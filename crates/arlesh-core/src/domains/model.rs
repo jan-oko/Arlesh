@@ -112,7 +112,7 @@ pub struct Domain {
 }
 
 /// Request body for creating a new domain.
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateDomainRequest {
     /// Display title.
     pub title: String,
@@ -129,7 +129,7 @@ pub struct CreateDomainRequest {
 }
 
 /// Request body for updating an existing domain.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateDomainRequest {
     /// New title (if provided).
     pub title: Option<String>,
