@@ -8,7 +8,6 @@ import type { TimeScope, DurationSpec } from "@/api/time-scope";
 import type { Verdict } from "@/api/verdict";
 import { VERDICT, VERDICT_VALUES } from "@/api/verdict";
 import { getErrorMessage } from "@/api/errors";
-import { withAtomicGesture } from "@/api/gesture";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import ArchivedField from "@/components/EditorModal/ArchivedField";
@@ -38,6 +37,8 @@ interface Props {
   /** Overrides the "Edit commitment" title — the create path opens the same fields on a blank node. */
   heading?: string;
   onSave: (data: CommitmentSaveData) => Promise<void>;
+  /** A Save the server refused: the editor opens again on what was typed, with the reason on its error line. */
+  reopened?: { draft: CommitmentSaveData; error: string } | undefined;
   onClose: () => void;
 }
 
@@ -50,19 +51,20 @@ interface Props {
  * is a **Verdict** — three equal choices rather than a cycle, so Broken is never one stray press
  * away from Kept — and a **Verdict Window**.
  */
-export default function CommitmentEditorModal({ node, allTags, domainNames, heading, onSave, onClose }: Props) {
+export default function CommitmentEditorModal({ node, allTags, domainNames, heading, onSave, reopened, onClose }: Props) {
   useInputCapture();
-  const { t } = useTranslation(["editor", "status", "undo"]);
-  const [title, setTitle] = useState(node.rowTitle ?? node.title);
-  const [verdict, setVerdict] = useState<Verdict>(node.verdict ?? VERDICT.UNRESOLVED);
-  const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
-  const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
-  const [verdictWindow, setVerdictWindow] = useState<DurationSpec | null>(node.verdictWindow ?? null);
-  const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
+  const { t } = useTranslation(["editor", "status"]);
+  const draft = reopened?.draft;
+  const [title, setTitle] = useState(draft?.title ?? node.rowTitle ?? node.title);
+  const [verdict, setVerdict] = useState<Verdict>(draft?.verdict ?? node.verdict ?? VERDICT.UNRESOLVED);
+  const [tagIds, setTagIds] = useState<number[]>(draft?.tagIds ?? node.tagIds);
+  const [timeScope, setTimeScope] = useState<TimeScope | null>(draft ? draft.timeScope : node.timeScope ?? null);
+  const [verdictWindow, setVerdictWindow] = useState<DurationSpec | null>(draft ? draft.verdictWindow : node.verdictWindow ?? null);
+  const [isPrivate, setIsPrivate] = useState(draft?.isPrivate ?? node.isPrivate ?? false);
   const takesArchive = canArchiveByHand(node);
-  const [isArchivedByHand, setIsArchivedByHand] = useState(node.archivedByHand === true);
+  const [isArchivedByHand, setIsArchivedByHand] = useState(draft?.archivedByHand ?? node.archivedByHand === true);
   const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(reopened?.error ?? null);
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
@@ -81,14 +83,11 @@ export default function CommitmentEditorModal({ node, allTags, domainNames, head
     setIsSaving(true);
     setSaveError(null);
     try {
-      // One Gesture, all or nothing: the update and the tags are several commands
-      // but one thing the user filled in, so they are one Ctrl+Z — and a refusal partway takes
-      // back the ones that landed rather than leaving a form half-applied.
-      await withAtomicGesture(t("undo:gestures.editCommitment"), async () => {
-        await onSave({
-          title: title.trim(), verdict, tagIds, timeScope, verdictWindow, isPrivate,
-          ...(takesArchive ? { archivedByHand: isArchivedByHand } : {}),
-        });
+      // The editor closes as the Save is handed on; the write runs as one all-or-nothing Gesture
+      // (see `useNodeEditor`), and a refusal opens this editor again with the reason.
+      await onSave({
+        title: title.trim(), verdict, tagIds, timeScope, verdictWindow, isPrivate,
+        ...(takesArchive ? { archivedByHand: isArchivedByHand } : {}),
       });
     } catch (err) {
       // A commitment that can never come due is not written — whether that is a new one saved

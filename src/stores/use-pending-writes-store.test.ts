@@ -187,6 +187,49 @@ describe("usePendingWritesStore", () => {
   });
 });
 
+describe("a write that asks to be told it was rolled back", () => {
+  it("is told the reason of its own refusal, and the toast is worded by the write", async () => {
+    const g = gate();
+    const showToast = vi.fn();
+    const onRolledBack = vi.fn();
+    store().enqueue(spec("a", g.send, {
+      showToast, onRolledBack, refusalToast: (reason) => `Couldn't save: ${reason}`,
+    }));
+    g.fail(new Error("no way"));
+    await flushPromises();
+    expect(showToast).toHaveBeenCalledWith({ nodeId: "a", message: "Couldn't save: no way" });
+    expect(onRolledBack).toHaveBeenCalledWith("no way");
+  });
+
+  it("is told too when a write ahead of it on the node was refused and it was never sent", async () => {
+    const g = gate();
+    const second = gate();
+    const onRolledBack = vi.fn();
+    store().enqueue(spec("a", g.send));
+    store().enqueue(spec("a", second.send, { onRolledBack }));
+    g.fail(new Error("no way"));
+    await flushPromises();
+    expect(second.send).not.toHaveBeenCalled();
+    expect(onRolledBack).toHaveBeenCalledWith("no way");
+  });
+
+  it("is told the unreachable notice when the lane is flushed, and not for a held confirmation", async () => {
+    const g = gate();
+    const onRolledBack = vi.fn();
+    store().enqueue(spec("a", g.send, { onRolledBack }));
+    g.fail({ kind: "not_permitted", message: "down", details: { reason: "server_unreachable" } });
+    await flushPromises();
+    expect(onRolledBack).toHaveBeenCalledWith("unreachable");
+
+    const h = gate();
+    const quiet = vi.fn();
+    store().enqueue(spec("b", h.send, { onRolledBack: quiet, onConfirmation: vi.fn() }));
+    h.fail({ kind: "needs_confirmation", message: "sure?" });
+    await flushPromises();
+    expect(quiet).not.toHaveBeenCalled();
+  });
+});
+
 describe("afterLane", () => {
   it("runs at once with the lane empty, and after it drains otherwise", async () => {
     const run = vi.fn(() => Promise.resolve("ok"));

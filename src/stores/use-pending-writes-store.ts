@@ -54,6 +54,11 @@ export interface WriteSpec {
   unreachableMessage: string;
   /** Called when the backend holds the write for a confirmation: it was rolled back without a toast. */
   onConfirmation?: () => void;
+  /** Words the toast a refusal gets around the backend's reason. Without it, the reason is the toast. */
+  refusalToast?: (reason: string) => string;
+  /** Called when the write is taken back unsent or refused, with the reason: an editor Save uses it
+   * to reopen the editor on what the user typed (decision 14). Not called for a confirmation. */
+  onRolledBack?: (reason: string) => void;
 }
 
 /** What `cancelTail` took back. */
@@ -171,21 +176,34 @@ export const usePendingWritesStore = create<PendingWritesStore>()((set, get) => 
    * `message` of `null` is a confirmation the backend holds, which gets none. */
   const rollBackFrom = (write: PendingWrite, entry: WriteSpec, message: string | null, then?: () => void): void => {
     const removal = refuse(get().writes, write.seq);
+    const rolledBack = rolledBackCallbacks(removal);
     release(removal);
     setLane(removal.lane, { rollbacks: get().rollbacks + 1 });
     // A create's placeholder is gone, so the notice goes to the node it was to hang under.
     const nodeId = write.patch.kind === "create" ? write.patch.parentId : write.nodeId;
-    if (message !== null) entry.showToast({ nodeId, message });
+    if (message !== null) {
+      entry.showToast({ nodeId, message: entry.refusalToast?.(message) ?? message });
+      rolledBack.forEach((reopen) => reopen(message));
+    }
     then?.();
   };
 
   /** The server cannot be reached: everything unanswered comes off, with one toast. */
   const rollBackEverything = (write: PendingWrite, entry: WriteSpec): void => {
     const removal = flush(get().writes);
+    const rolledBack = rolledBackCallbacks(removal);
     release(removal);
     setLane(removal.lane, { rollbacks: get().rollbacks + 1 });
     entry.showToast({ nodeId: write.nodeId, message: entry.unreachableMessage });
+    rolledBack.forEach((reopen) => reopen(entry.unreachableMessage));
   };
+
+  /** What the removed writes asked to be told, read before their entries are released. */
+  const rolledBackCallbacks = (removal: Removal): Array<(reason: string) => void> =>
+    removal.removed.flatMap((removed) => {
+      const callback = entries.get(removed.seq)?.onRolledBack;
+      return callback === undefined ? [] : [callback];
+    });
 
   return {
     writes: [],

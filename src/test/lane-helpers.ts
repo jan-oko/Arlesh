@@ -1,3 +1,4 @@
+import { act } from "@testing-library/react";
 import type { PendingWrite } from "@/utils/pending-writes";
 import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 
@@ -23,4 +24,11 @@ export function lane(): readonly PendingWrite[] {
 /** The fields each pending write is showing, oldest first. */
 export function patchedFields(): unknown[] {
   return lane().map((write) => (write.patch.kind === "fields" ? write.patch.fields : write.patch));
+}
+
+/** Lets every write in the window's lane go out and be answered, then flushes what that set going. */
+export async function settleLane(): Promise<void> {
+  await act(async () => {
+    await usePendingWritesStore.getState().whenDrained();
+  });
 }

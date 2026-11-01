@@ -6,6 +6,7 @@ import { findNode } from "@/utils/mindmap-tree";
 import { EXPECTATION_ARCHIVAL, EXPECTATION_STATUS } from "@/api/expectation-status";
 import type { ExpectationSaveData } from "@/components/ExpectationEditorModal/ExpectationEditorModal";
 import { withAtomicGesture } from "@/api/gesture";
+import { awaitLane } from "@/stores/use-pending-writes-store";
 import { runGesture } from "@/api/multi-node-gestures";
 import type { GestureStep } from "@/api/multi-node-gestures";
 
@@ -73,6 +74,8 @@ export function useWaitEditor(tree: MindmapNode, reload: () => Promise<void>) {
       for (const tag_id of data.tagIds) {
         steps.push({ op: "set_tag", kind: "expectation", id: { step: 0 }, tag_id, present: true });
       }
+      // A create stays write-then-reload (ADR 0012), behind whatever the window still has pending.
+      await awaitLane();
       await withAtomicGesture(gestureName, () => runGesture("save-wait", steps));
       setCreate(null);
       await reload();

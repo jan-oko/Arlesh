@@ -24,6 +24,11 @@ import { loadMindmap } from "@/api/mindmap";
 import { withGesture } from "@/api/gesture";
 import { useBoardChanged } from "@/hooks/use-board-changed";
 import { awaitLane, usePendingWritesStore } from "@/stores/use-pending-writes-store";
+import { useMindmapStore } from "@/stores/use-mindmap-store";
+import { usePendingWrite } from "@/hooks/use-pending-write";
+import { useReadOnlyNotice } from "@/hooks/use-read-only-notice";
+import { writtenWith } from "@/utils/answer-fields";
+import { shownTitle } from "@/utils/editor-save-fields";
 import { applyPendingWrites } from "@/utils/apply-pending-writes";
 import { isReflected } from "@/utils/pending-writes";
 import type { BoardStamp } from "@/utils/pending-writes";
@@ -958,7 +963,10 @@ interface LoadedBoard {
 const NOTHING_LOADED: LoadedBoard = { tree: VIRTUAL_ROOT, stamp: { read: 0, epoch: null, revision: null } };
 
 export function useMindmapData(): MindmapData {
-  const { t } = useTranslation(["undo", "expectation", "editor", "habits"]);
+  const { t } = useTranslation(["undo", "expectation", "editor", "habits", "warnings"]);
+  const showToast = useMindmapStore((s) => s.showToast);
+  const enqueueWrite = usePendingWrite({ showToast });
+  const readOnlyNotice = useReadOnlyNotice();
   // The board as the server last gave it, and the stamp of the read it came from. What the views
   // get is this with the window's pending writes drawn over it (ADR 0012, decision 3).
   const [loaded, setLoaded] = useState<LoadedBoard>(NOTHING_LOADED);
@@ -1284,29 +1292,42 @@ export function useMindmapData(): MindmapData {
     [createNode, defaultChildKind],
   );
 
+  // A rename shows at once and goes through the window's lane (ADR 0012): the title is the only
+  // field it writes, so there is no rule to pin. A Flow or a flow item stays write-then-reload
+  // (decision 16), behind whatever the lane still holds. Resolves once the rename is handed on.
   const renameNode = useCallback(
     async (id: string, kind: NodeKind, title: string): Promise<void> => {
-      const dbId = rowIdOfId(id);
-      if (kind === "goal") {
-        await updateGoal(dbId, { title });
-      } else if (kind === "task") {
-        await updateTask(dbId, { title });
-      } else if (kind === "commitment") {
-        await updateCommitment(dbId, { title });
-      } else if (kind === "expectation") {
-        await updateExpectation(dbId, { title });
-      } else if (kind === "info") {
-        await updateInfo(storedId(dbId), { body: title });
-      } else if (isFlowItemType(kind)) {
-        await updateFlowItem(kind, storedId(dbId), { title });
-      } else if (kind === "flow") {
-        await updateFlow(storedId(dbId), { title });
-      } else {
-        await import("@/api/domains").then(({ updateDomain }) => updateDomain(storedId(dbId), { title }));
+      if (kind === "flow" || isFlowItemType(kind)) {
+        await awaitLane();
+        const dbId = rowIdOfId(id);
+        if (kind === "flow") await updateFlow(storedId(dbId), { title });
+        else if (isFlowItemType(kind)) await updateFlowItem(kind, storedId(dbId), { title });
+        await load(false);
+        return;
       }
-      await load(false);
+      const node = findNodeInTree(currentTree(), id);
+      const shown = node === undefined ? title : shownTitle(node, title);
+      enqueueWrite({
+        nodeId: id,
+        label: "rename",
+        patch: { kind: "fields", fields: { title: shown } },
+        refuseReadOnly: () => {
+          showToast({ nodeId: id, message: t("warnings:renameFailed", { message: readOnlyNotice() }) });
+        },
+        refusalToast: (message) => t("warnings:renameFailed", { message }),
+        send: async () => {
+          const dbId = rowIdOfId(id);
+          if (kind === "goal") await updateGoal(dbId, { title });
+          else if (kind === "task") await updateTask(dbId, { title });
+          else if (kind === "commitment") await updateCommitment(dbId, { title });
+          else if (kind === "expectation") await updateExpectation(dbId, { title });
+          else if (kind === "info") await updateInfo(storedId(dbId), { body: title });
+          else await updateDomain(storedId(dbId), { title });
+          return writtenWith({ title: shown });
+        },
+      });
     },
-    [load, rowIdOfId],
+    [load, rowIdOfId, currentTree, enqueueWrite, showToast, readOnlyNotice, t],
   );
 
   const reorderNode = useCallback(
