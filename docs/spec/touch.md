@@ -115,7 +115,8 @@ arrow-key pan by dragging the canvas, the List View's `j`/`k` by scrolling); a b
 what is drawn, never what a key does.
 
 **Select** — a toggle in the palette — turns taps into building a multi-selection: while it is on,
-a tap adds a node to the selection or takes it out. *(Second PR of the stack.)*
+a tap adds a node to the selection or takes it out. It is offered where a view holds several (the
+Mindmap and the Plan View), and switching views turns it off.
 
 ## Gestures
 
@@ -133,6 +134,29 @@ Whenever a touchscreen is present, at any width.
 - A **two-finger swipe** left or right cycles the preset.
 - **Pinch** zooms in the Mindmap and the Steps View.
 - **Undo and redo are buttons**, not gestures.
+
+Each gesture acts by selecting the node and running the binding its key would run (`E`, `Enter`,
+`Alt+Enter`, `Enter` in the Plan View), through the same command surface as the action bar — the same
+guard and the same refusal. A touch that starts on a field, or on a control of its own (a status
+button, a tag pill, a collapse dot), is left to that control.
+
+*Decided in implementation, where the grill was silent:*
+
+- **A long-press opens the palette when the finger lifts**, with a short vibration at the moment the
+  hold registers. Opening on lift is what lets the Mindmap's hold-and-drag start from the same hold.
+- **The tap that deselects waits out the double-tap window** (300 ms), so a double-tap on the
+  selected node goes into it without deselecting it on the way. A tap on an unselected node selects
+  at once.
+- **The Zen View's "open in List"** switches to the List View narrowed Under the card, the List
+  View's own double-tap.
+- **The Plan View's scope swipe** turns like a page: **left** shows the **next** scope (`]`),
+  **right** the **previous** (`[`). A swipe up anywhere in the planned pane goes to the parent
+  scope, so a flick up on a planned card climbs rather than opening its editor (`E` and the palette
+  still do).
+- **The two-finger swipe** turns the same way: left to the next preset, right to the previous. In
+  the Plan and Zen Views, which lock their preset, it says why.
+- **The Mindmap's collapse dot** is drawn on every node with children on a touchscreen — filled
+  while folded, hollow while open — with a fingertip-sized hit area.
 
 ### Per view
 

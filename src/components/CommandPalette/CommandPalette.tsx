@@ -4,6 +4,8 @@ import BottomSheet from "@/components/BottomSheet/BottomSheet";
 import { allSurfaceCommands, useCommandSurfaceStore } from "@/stores/use-command-surface-store";
 import type { SurfaceCommand } from "@/stores/use-command-surface-store";
 import { usePaletteStore } from "@/stores/use-palette-store";
+import { useSelectModeStore } from "@/stores/use-select-mode-store";
+import { useSelectionSurfaceStore } from "@/stores/use-selection-surface-store";
 import { useCommandLabel } from "@/hooks/use-command-label";
 import { paletteEntries } from "@/utils/touch/palette";
 import { formatChord } from "@/utils/hotkeys/chord";
@@ -27,6 +29,10 @@ export default function CommandPalette({ showTabs }: Props) {
   const revision = useCommandSurfaceStore((s) => s.revision);
   const labelOf = useCommandLabel();
   const [query, setQuery] = useState("");
+  // The Select toggle, where the view can hold several: taps then build the selection.
+  const multiSelect = useSelectionSurfaceStore((s) => s.multiSelect);
+  const selecting = useSelectModeStore((s) => s.active);
+  const toggleSelecting = useSelectModeStore((s) => s.toggle);
 
   const entries = useMemo(
     () => paletteEntries(allSurfaceCommands(tables), { showTabs }),
@@ -54,6 +60,18 @@ export default function CommandPalette({ showTabs }: Props) {
         aria-label={t("paletteSearch")}
         onChange={(event) => setQuery(event.target.value)}
       />
+      {multiSelect && (
+        <button
+          type="button"
+          className={styles.toggle}
+          aria-pressed={selecting}
+          title={t("paletteSelectHint")}
+          onClick={() => { toggleSelecting(); close(); }}
+        >
+          <span>{t("paletteSelect")}</span>
+          <span className={styles.toggleHint}>{t("paletteSelectHint")}</span>
+        </button>
+      )}
       {shown.length === 0
         ? <p className={styles.empty}>{t("paletteEmpty")}</p>
         : <CommandList commands={shown} onRun={run} />}

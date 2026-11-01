@@ -49,6 +49,9 @@ import { isReview } from "@/utils/status-mapping";
 import { openQuestion } from "@/utils/open-question";
 import styles from "./ZenView.module.css";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
+import { useViewGestures } from "@/hooks/use-view-gestures";
+import { usePhoneLayout } from "@/hooks/use-media-query";
+import touchStyles from "@/styles/touch-surface.module.css";
 
 /** Where the toast saying the preset cannot change is anchored — no card, the view as a whole. */
 const PRESET_TOAST_ANCHOR = "zenView:preset";
@@ -125,7 +128,9 @@ export default function ZenView() {
     [rows, commitmentRows, expectationRows, sharedFilter, options, focusExemptId],
   );
 
-  const { ref: gridRef, layout } = useZenGrid(contents.tasks.rows.length);
+  // The phone layout stacks the cards in one scrolling column, sized to fit (docs/spec/touch.md).
+  const isPhone = usePhoneLayout();
+  const { ref: gridRef, layout } = useZenGrid(contents.tasks.rows.length, isPhone);
   const navigation: ZenNavigationModel = useMemo(() => ({
     commitments: contents.commitments.rows.map((row) => row.node.id),
     expectations: contents.expectations.rows.map((row) => row.node.id),
@@ -171,6 +176,20 @@ export default function ZenView() {
     neighbourAfterDelete: (id, deletedIds) => neighbourAfterDelete(drawnOrder, id, deletedIds),
     selectRow: setSelectedId,
     showToast,
+  });
+
+  // The touch gestures. Double-tap opens the card in the List View, narrowed Under it — the List
+  // View's own "go into".
+  const rootRef = useRef<HTMLDivElement>(null);
+  const setPillSide = useListFilterStore((s) => s.setPillSide);
+  const setView = useViewStore((s) => s.setView);
+  useViewGestures(rootRef, {
+    idAttribute: "data-row-id",
+    ready: !isLoading && error === null,
+    isSelected: (id) => id === activeId,
+    select: setSelectedId,
+    deselect: () => setSelectedId(null),
+    goInto: (id) => { setPillSide("antecedent", id, "include"); setView("list"); },
   });
 
   const selectedKind = activeId === null ? undefined : find(activeId)?.kind;
@@ -219,7 +238,7 @@ export default function ZenView() {
   const text = zenTextSize(layout.cardWidth, layout.cardHeight, showBadges);
 
   return (
-    <div className={styles.container}>
+    <div ref={rootRef} className={`${styles.container} ${touchStyles.surface}`}>
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
       {quickPlan.target !== null && (

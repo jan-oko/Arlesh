@@ -31,6 +31,8 @@ const MIN_SCALE = 0.2;
 const MAX_SCALE = 3.0;
 const WHEEL_SENSITIVITY = 0.001;
 const ZOOM_STEP = 1.2; // per Ctrl+= / Ctrl+-
+/** How far two fingers must spread or close before a pinch zooms. */
+const PINCH_DEAD_ZONE_PX = 16;
 /** Screen-px margin: a selected node closer than this to an edge is treated as off-screen. */
 const VISIBLE_MARGIN = 100;
 
@@ -143,6 +145,62 @@ export function usePanZoom(svgRef: React.RefObject<SVGSVGElement | null>): PanZo
     el.addEventListener("wheel", handleWheel, { passive: false });
     return () => el.removeEventListener("wheel", handleWheel);
   }, [svgRef, zoomTo]);
+
+  // Touch (docs/spec/touch.md): one finger on empty canvas pans, as the mouse's drag does, and two
+  // fingers pinch-zoom about the point between them. A pinch takes effect only once the fingers
+  // have spread or closed past a small dead zone, so two fingers swiped together — the preset
+  // cycle — do not jitter the zoom on the way.
+  useEffect(() => {
+    const el = svgRef.current;
+    if (el === null) return;
+    let pan: { x: number; y: number } | null = null;
+    let pinch: { spread: number; scale: number } | null = null;
+
+    const spreadOf = (a: Touch, b: Touch) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+
+    const handleTouchStart = (e: TouchEvent) => {
+      const [a, b] = [e.touches[0], e.touches[1]];
+      if (e.touches.length === 1 && a !== undefined && e.target === el) {
+        pan = { x: a.clientX, y: a.clientY };
+        pinch = null;
+        return;
+      }
+      pan = null;
+      pinch = e.touches.length === 2 && a !== undefined && b !== undefined
+        ? { spread: spreadOf(a, b), scale: transform.current.scale }
+        : null;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      const [a, b] = [e.touches[0], e.touches[1]];
+      if (pan !== null && a !== undefined && e.touches.length === 1) {
+        const next = { x: a.clientX, y: a.clientY };
+        applyTransform({ ...transform.current, x: transform.current.x + next.x - pan.x, y: transform.current.y + next.y - pan.y });
+        pan = next;
+        return;
+      }
+      if (pinch === null || a === undefined || b === undefined || pinch.spread === 0) return;
+      const spread = spreadOf(a, b);
+      if (Math.abs(spread - pinch.spread) < PINCH_DEAD_ZONE_PX) return;
+      zoomTo(pinch.scale * (spread / pinch.spread), (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2);
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0) { pan = null; pinch = null; }
+      if (e.touches.length < 2) pinch = null;
+    };
+
+    el.addEventListener("touchstart", handleTouchStart, { passive: true });
+    el.addEventListener("touchmove", handleTouchMove, { passive: true });
+    el.addEventListener("touchend", handleTouchEnd, { passive: true });
+    el.addEventListener("touchcancel", handleTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", handleTouchStart);
+      el.removeEventListener("touchmove", handleTouchMove);
+      el.removeEventListener("touchend", handleTouchEnd);
+      el.removeEventListener("touchcancel", handleTouchEnd);
+    };
+  }, [svgRef, applyTransform, zoomTo]);
 
   const centerOnPoint = useCallback(
     (lx: number, ly: number) => {

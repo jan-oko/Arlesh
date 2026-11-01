@@ -1,7 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
+import { usePhoneLayout } from "@/hooks/use-media-query";
+import { runAfterSelect, useViewGestures } from "@/hooks/use-view-gestures";
+import { usePublishSelection } from "@/hooks/use-publish-selection";
+import type { NodeKind } from "@/utils/tree-layout";
 import { usePlanScope } from "@/hooks/use-plan-scope";
 import { usePlanParents } from "@/hooks/use-plan-parents";
 import { upRefusalKey } from "@/utils/plan-scope";
@@ -48,6 +52,7 @@ import type { PaneOption } from "./PaneMenu";
 import type { SelectModifiers } from "./PlanTaskCard";
 import { useKeyboardPlanView } from "./use-keyboard-plan-view";
 import styles from "./PlanView.module.css";
+import touchStyles from "@/styles/touch-surface.module.css";
 
 /** What the Up refusal anchors to: the scope, not a node — so the toast takes the fixed spot. */
 const UP_TOAST_ANCHOR = "planView:up";
@@ -149,7 +154,10 @@ export default function PlanView() {
   const toggleGroupByPath = useDisplayStore((s) => s.togglePlanCandidatesPathGrouping);
   const parentOnly = useDisplayStore((s) => s.planCandidatesParentOnly);
   const toggleParentOnly = useDisplayStore((s) => s.togglePlanCandidatesParentOnly);
-  const subscopeSplit = useDisplayStore((s) => s.planSplitBySubscope);
+  // The phone layout's planned pane draws no subscope cells (docs/spec/touch.md): its scope is
+  // stepped with a swipe instead. The setting itself is left as it was for the desktop.
+  const isPhone = usePhoneLayout();
+  const subscopeSplit = useDisplayStore((s) => s.planSplitBySubscope) && !isPhone;
   const toggleSubscopeSplit = useDisplayStore((s) => s.togglePlanSplitBySubscope);
   const includePremorning = useDisplayStore((s) => s.planIncludePremorning);
   const toggleIncludePremorning = useDisplayStore((s) => s.togglePlanIncludePremorning);
@@ -472,16 +480,52 @@ export default function PlanView() {
     { id: "groupByPath", label: t("planView:optionGroupByPath"), checked: groupByPath, onToggle: toggleGroupByPath },
   ], [t, parentOnly, toggleParentOnly, parentApplies, groupByPath, toggleGroupByPath]);
 
-  const plannedOptions = useMemo<PaneOption[]>(() => [
+  const plannedOptions = useMemo<PaneOption[]>(() => (isPhone ? [] : [
     { id: "subscopeSplit", label: t("planView:optionSubscopeSplit"), checked: subscopeSplit, onToggle: toggleSubscopeSplit },
     { id: "premorning", label: t("planView:optionIncludePremorning"), checked: includePremorning, onToggle: toggleIncludePremorning },
-  ], [t, subscopeSplit, toggleSubscopeSplit, includePremorning, toggleIncludePremorning]);
+  ]), [t, isPhone, subscopeSplit, toggleSubscopeSplit, includePremorning, toggleIncludePremorning]);
+
+  // The touch gestures (docs/spec/touch.md). In the planned pane a swipe walks the scope — left to
+  // the next, as a page turns, right to the previous — and a swipe up climbs to the parent scope,
+  // wherever in the pane it starts. A candidate swiped right is planned into the scope shown.
+  // Double-tap opens the card's subtree.
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Every card here is a Task; the action bar reads the Plan View's own row whatever is selected,
+  // and the palette offers Select, since the view holds several.
+  usePublishSelection(selectedIds.map((): NodeKind => "task"), true);
+  const inPlannedPane = (target: Element) => target.closest("[data-plan-pane]")?.getAttribute("data-plan-pane") === "planned";
+  const paneOfCard = (id: string): PlanPaneSide =>
+    (plannedModel.rows.some((row) => row.node.id === id) ? "planned" : "candidates");
+  useViewGestures(rootRef, {
+    idAttribute: "data-plan-card-id",
+    ready: !isLoading && error === null,
+    isSelected: (id) => live.ids.has(id),
+    select: (id) => onSelect(paneOfCard(id), id, { shift: false, ctrl: false }),
+    deselect: () => setSelection(EMPTY_PLAN_SELECTION),
+    toggleInSelection: (id) => onSelect(paneOfCard(id), id, { shift: false, ctrl: true }),
+    goInto: enterSubtree,
+    onSwipe: (id, direction, target) => {
+      if (inPlannedPane(target)) {
+        scope.step(direction === "left" ? 1 : -1);
+        return true;
+      }
+      if (id === null || direction !== "right") return false;
+      if (!live.ids.has(id)) onSelect("candidates", id, { shift: false, ctrl: false });
+      runAfterSelect(["planView.moveAcross"]);
+      return true;
+    },
+    onFlickUp: (_id, target) => {
+      if (!inPlannedPane(target)) return false;
+      upScope();
+      return true;
+    },
+  });
 
   if (isLoading) return <div className={styles.centered}>{t("common:loading")}</div>;
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
 
   return (
-    <div className={styles.container}>
+    <div ref={rootRef} className={`${styles.container} ${touchStyles.surface}`}>
       <AnchoredToast toast={pendingToast} onDismiss={clearToast} />
 
       <PlanScopeBar

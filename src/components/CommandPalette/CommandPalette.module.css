@@ -64,3 +64,33 @@
   font-size: var(--text-base);
   text-align: center;
 }
+
+/* The Select toggle: lit while taps build a multi-selection. */
+.toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: calc(100% - 2 * var(--space-4));
+  margin: 0 var(--space-4) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--node-border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-base);
+  text-align: start;
+  cursor: pointer;
+}
+
+.toggle[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
+
+.toggleHint {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}

@@ -118,6 +118,22 @@ export function fitZenGrid(count: number, area: ZenArea | null): ZenGridLayout {
   };
 }
 
+/**
+ * The phone layout's Zen View (`docs/spec/touch.md`): one column of cards, each the area's width,
+ * sized to fit — the cards share the height between them, never taller than the 2.4 : 1 box the
+ * width allows, and at the minimum height the list scrolls.
+ */
+export function fitZenList(count: number, area: ZenArea | null): ZenGridLayout {
+  if (count <= 0) return EMPTY_LAYOUT;
+  const width = Math.floor(area?.width ?? ZEN_MIN_CARD_WIDTH_PX);
+  const scrolling: ZenGridLayout = { columns: 1, cardWidth: width, cardHeight: ZEN_MIN_CARD_HEIGHT_PX, scrolls: true };
+  if (area === null) return scrolling;
+  const share = Math.floor((area.height - (count - 1) * ZEN_GAP_PX) / count);
+  const height = Math.min(share, Math.floor(width / ZEN_CARD_ASPECT));
+  if (height < ZEN_MIN_CARD_HEIGHT_PX) return scrolling;
+  return { columns: 1, cardWidth: width, cardHeight: height, scrolls: false };
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }

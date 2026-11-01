@@ -4,7 +4,9 @@ import type { NodeKind } from "@/utils/tree-layout";
 interface SelectionSurfaceStore {
   /** The kind of each selected node, in no particular order; empty with nothing selected. */
   kinds: readonly NodeKind[];
-  setKinds: (kinds: readonly NodeKind[]) => void;
+  /** Whether the mounted view holds a selection of several — what the palette's Select toggle needs. */
+  multiSelect: boolean;
+  publish: (kinds: readonly NodeKind[], multiSelect: boolean) => void;
 }
 
 /**
@@ -14,5 +16,6 @@ interface SelectionSurfaceStore {
  */
 export const useSelectionSurfaceStore = create<SelectionSurfaceStore>()((set) => ({
   kinds: [],
-  setKinds: (kinds) => set({ kinds }),
+  multiSelect: false,
+  publish: (kinds, multiSelect) => set({ kinds, multiSelect }),
 }));

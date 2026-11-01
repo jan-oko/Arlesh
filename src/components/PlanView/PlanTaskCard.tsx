@@ -114,6 +114,7 @@ export default function PlanTaskCard({
         <button
           type="button"
           className={styles.move}
+        data-gesture-skip=""
           title={moveLabel}
           aria-label={moveLabel}
           onClick={(event) => { event.stopPropagation(); onMove(row); }}

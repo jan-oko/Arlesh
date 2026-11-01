@@ -66,12 +66,16 @@ import QuickPlanPicker from "@/components/QuickPlanPicker/QuickPlanPicker";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
+import { useViewGestures } from "@/hooks/use-view-gestures";
+import { useTouchCommand } from "@/hooks/use-touch-command";
+import { useHasTouch } from "@/hooks/use-media-query";
+import { canParentNewTask } from "@/utils/node-meta";
 
 /** Screen-px moved per arrow-key press when panning the canvas (nothing selected). */
 const KEYBOARD_PAN_STEP = 80;
 
 export default function MindmapView() {
-  const { t } = useTranslation(["common", "editor", "warnings", "nodeKinds", "undo"]);
+  const { t } = useTranslation(["common", "editor", "warnings", "nodeKinds", "undo", "touch"]);
   const { tree, isLoading, error, loadCondition, createNode, createChild, renameNode, reorderNode, moveNode, duplicateNode, pasteNodes, insertParent, removeNode, createCommitment, createFlow, reload } =
     useMindmapData();
   const {
@@ -104,7 +108,7 @@ export default function MindmapView() {
   usePublishSelection([...selectedNodeIds].flatMap((id) => {
     const node = findNodeById(id);
     return node === undefined ? [] : [node.kind];
-  }));
+  }), true);
   const allTasksAndGoals = useMemo(() => {
     const acc: MindmapNode[] = [];
     collectTasksAndGoals(tree, acc);
@@ -297,7 +301,7 @@ export default function MindmapView() {
     [confirmScopeClamp, reload, t, tree],
   );
 
-  const { dragSourceId, dragTargetId, ghostPos, onDragStart } = useDrag({ tree, moveNode: guardedMoveNode });
+  const { dragSourceId, dragTargetId, ghostPos, onDragStart, onDragMove, onDragEnd } = useDrag({ tree, moveNode: guardedMoveNode });
 
   const { effectiveCollapsedIds, positions, subtreeLayout, placeholderPos } = useCanvasLayout({
     displayRoot, tree, collapsedNodeIds: collapsedWithGroups, dragSourceId, dragTargetId, orientation: mindmapOrientation,
@@ -547,11 +551,61 @@ export default function MindmapView() {
   });
   const targetPos = dragTargetId !== null ? positions.get(dragTargetId) : undefined;
 
+  // The touch gestures (docs/spec/touch.md): a node's tap, double-tap (enter it), long-press
+  // (palette), flick (editor) and swipes, and a node held and then dragged moves it, as the mouse's
+  // drag does. Panning and pinching the canvas are the canvas's own (`usePanZoom`).
+  const rootRef = useRef<HTMLDivElement>(null);
+  const hasTouch = useHasTouch();
+  const ready = !isLoading && error === null;
+  useViewGestures(rootRef, {
+    idAttribute: "data-node-id",
+    ready,
+    isSelected: (id) => selectedNodeIds.has(id),
+    select: selectNode,
+    deselect: () => selectNode(null),
+    toggleInSelection: handleCtrlClick,
+    goInto: enterSubtree,
+    holdDrag: {
+      start: (id, x, y) => {
+        const node = findNodeById(id);
+        if (node !== undefined && node.kind !== "aspect" && node.virtual !== true) onDragStart(id, x, y);
+      },
+      move: onDragMove,
+      end: onDragEnd,
+    },
+  });
+  // A tap on a node's collapse dot folds or unfolds it. The dot is left out of the node's gestures,
+  // so its tap arrives as a click; it is taken here before the node's own click would select it.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!hasTouch || !ready || root === null) return;
+    function onClick(event: MouseEvent) {
+      const dot = event.target instanceof Element ? event.target.closest("[data-collapse-dot]") : null;
+      const id = dot?.getAttribute("data-collapse-dot");
+      if (id === undefined || id === null) return;
+      event.stopPropagation();
+      toggleCollapsedOrGroup(id);
+    }
+    root.addEventListener("click", onClick, { capture: true });
+    return () => root.removeEventListener("click", onClick, { capture: true });
+  }, [hasTouch, ready, toggleCollapsedOrGroup]);
+  // The action bar's New, with nothing selected: a Task under the subtree on screen, refused out
+  // loud at the board's root, which holds Aspects.
+  useTouchCommand({
+    id: "touch.newTask",
+    labelKey: "commandNewTask",
+    canRun: () => true,
+    run: () => {
+      if (canParentNewTask(displayRoot)) onCreateChild(displayRoot.id);
+      else showToast({ nodeId: displayRoot.id, message: t("touch:newTaskRefused") });
+    },
+  });
+
   if (isLoading) return <div className={styles.centered}>{t("common:loading")}</div>;
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
 
   return (
-    <div className={styles.container}>
+    <div ref={rootRef} className={styles.container}>
       {(visibleFailedFlows.length > 0 || visibleUnrenderableCommitmentFlows.length > 0) && (
         <HabitFailureBanner
           failedFlows={visibleFailedFlows}
