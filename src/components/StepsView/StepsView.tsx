@@ -112,7 +112,7 @@ function steppedZoom(zoom: StepsZoom, direction: 1 | -1): StepsZoom {
 export default function StepsView() {
   const { t } = useTranslation(["common", "stepsView", "warnings"]);
   const {
-    tree, isLoading, error, reload, createChild, createNode, renameNode, moveNode, duplicateNode, pasteNodes, insertParent, removeNode,
+    tree, isLoading, error, reload, createChild, settleCreated, createNode, renameNode, moveNode, duplicateNode, pasteNodes, insertParent, removeNode,
     createCommitment, createFlow,
   } = useMindmapData();
   const clipboard = useClipboardStore((s) => s.clipboard);
@@ -448,13 +448,15 @@ export default function StepsView() {
   /** The empty Step's offer: a first child, taken straight into its editor to be named. */
   const onCreateFirstChild = useCallback(() => {
     if (rawStepNode === null) return;
+    // The editor opens on the node the server made, not its placeholder: it needs the row.
     void createChild(rawStepNode.id, rawStepNode.kind, "")
-      .then((created) => setEditorModal({ nodeId: created.id, node: created }))
+      .then(settleCreated)
+      .then((created) => { if (created !== undefined) setEditorModal({ nodeId: created.id, node: created }); })
       .catch((err: unknown) => showToast({
         nodeId: rawStepNode.id,
         message: t("stepsView:createFailed", { title: rawStepNode.title, message: getErrorMessage(err) }),
       }));
-  }, [rawStepNode, createChild, setEditorModal, showToast, t]);
+  }, [rawStepNode, createChild, settleCreated, setEditorModal, showToast, t]);
 
   /** The board's own header card answers no gesture, and says so rather than doing nothing. */
   const refuseAtBoardRoot = useCallback(() => {

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { getErrorMessage, isWireError } from "@/api/errors";
+import type { RowId } from "@/api/node-id";
 import {
   cancelTail as cancelTailOf,
   enqueue as enqueueIn,
@@ -25,6 +26,8 @@ export interface WriteResponse {
   fields: OwnFields | null;
   /** A create's real node id. */
   createdId: string | null;
+  /** A create's database row, so a write queued behind it can name the row (decision 8). */
+  createdRowId?: RowId;
 }
 
 /** How a send ended without throwing: the server wrote it, or a gesture refused it. */
@@ -66,6 +69,12 @@ export interface CancelledWrite {
   label: string;
 }
 
+/** Told when a create is answered: the temporary id and the real node id it became. */
+export type ResolvedListener = (temporaryId: string, realId: string) => void;
+
+/** Told when creates leave the board unanswered (refused, flushed or cancelled), by temporary id. */
+export type RemovedListener = (removed: ReadonlyArray<{ id: string; parentId: string }>) => void;
+
 /** How a send that threw is handled (ADR 0012, decision 7). */
 type Failure = "unreachable" | "confirmation" | "refusal";
 
@@ -92,6 +101,14 @@ interface PendingWritesStore {
   nextTemporaryId: () => string;
   /** The real id behind `id`, or `id` itself. */
   resolveId: IdResolver;
+  /** Real node id to the temporary id it was created under, so a view keeps one React key. */
+  origins: ReadonlyMap<string, string>;
+  /** The database row a created node was answered with, by real node id. */
+  rowIdFor: (nodeId: string) => RowId | undefined;
+  /** Calls `listener` when a create is answered, in the same tick as the lane changes. */
+  subscribeResolved: (listener: ResolvedListener) => () => void;
+  /** Calls `listener` when creates are taken off the board without being answered. */
+  subscribeRemoved: (listener: RemovedListener) => () => void;
   /** Whether a write is queued or in flight. */
   isBusy: () => boolean;
   /** Resolves once no write is queued or in flight. Immediately when none is. */
@@ -113,18 +130,30 @@ export const usePendingWritesStore = create<PendingWritesStore>()((set, get) => 
   const entries = new Map<number, WriteSpec>();
   const boards = new Map<string, BoardStamp>();
   const waiters: Array<() => void> = [];
+  const rows = new Map<string, RowId>();
+  const resolvedListeners = new Set<ResolvedListener>();
+  const removedListeners = new Set<RemovedListener>();
   let nextSeq = 1;
   let nextTemp = 1;
 
   const resolveId: IdResolver = (id) => get().aliases.get(id) ?? id;
 
   /** Puts `lane` in place, forgetting what every reported board has caught up with. */
-  const setLane = (lane: Lane, more: Partial<Pick<PendingWritesStore, "aliases" | "rollbacks">> = {}): void => {
+  const setLane = (lane: Lane, more: Partial<Pick<PendingWritesStore, "aliases" | "origins" | "rollbacks">> = {}): void => {
     set({ writes: forgetReflected(lane, [...boards.values()]), ...more });
   };
 
   const release = (removal: Removal): void => {
     for (const write of removal.removed) entries.delete(write.seq);
+    announceRemoved(removal.removed);
+  };
+
+  /** Tells the views which placeholders just left the board, so their selection and editor move on. */
+  const announceRemoved = (removed: readonly PendingWrite[]): void => {
+    const gone = removed.flatMap((write) =>
+      write.patch.kind === "create" ? [{ id: write.patch.node.id, parentId: write.patch.parentId }] : [],
+    );
+    if (gone.length > 0) removedListeners.forEach((listener) => listener(gone));
   };
 
   /** Sends the next write if the lane is free to, and lets a waiter go when it has emptied. */
@@ -165,11 +194,18 @@ export const usePendingWritesStore = create<PendingWritesStore>()((set, get) => 
   const answer = (write: PendingWrite, response: WriteResponse): void => {
     let lane = markAnswered(get().writes, write.seq, { afterRead: get().reads, ...response });
     let aliases = get().aliases;
-    if (write.patch.kind === "create" && response.createdId !== null) {
-      aliases = new Map(aliases).set(write.nodeId, response.createdId);
-      lane = resolveTemporary(lane, write.seq, write.nodeId, response.createdId);
+    let origins = get().origins;
+    const { createdId } = response;
+    if (write.patch.kind === "create" && createdId !== null) {
+      aliases = new Map(aliases).set(write.nodeId, createdId);
+      origins = new Map(origins).set(createdId, write.nodeId);
+      if (response.createdRowId !== undefined) rows.set(createdId, response.createdRowId);
+      lane = resolveTemporary(lane, write.seq, write.nodeId, createdId);
     }
-    setLane(lane, { aliases });
+    setLane(lane, { aliases, origins });
+    if (write.patch.kind === "create" && createdId !== null) {
+      resolvedListeners.forEach((listener) => listener(write.nodeId, createdId));
+    }
   };
 
   /** A refusal (decision 7): the write and what depended on it come off, with one toast. A
@@ -208,8 +244,18 @@ export const usePendingWritesStore = create<PendingWritesStore>()((set, get) => 
   return {
     writes: [],
     aliases: new Map(),
+    origins: new Map(),
     reads: 0,
     rollbacks: 0,
+    rowIdFor: (nodeId) => rows.get(nodeId),
+    subscribeResolved: (listener) => {
+      resolvedListeners.add(listener);
+      return () => { resolvedListeners.delete(listener); };
+    },
+    subscribeRemoved: (listener) => {
+      removedListeners.add(listener);
+      return () => { removedListeners.delete(listener); };
+    },
     enqueue: (spec) => {
       const seq = nextSeq;
       nextSeq += 1;
@@ -231,6 +277,7 @@ export const usePendingWritesStore = create<PendingWritesStore>()((set, get) => 
       const { lane, cancelled } = cancelTailOf(get().writes);
       if (cancelled === null) return null;
       entries.delete(cancelled.seq);
+      announceRemoved([cancelled]);
       setLane(lane);
       pump();
       return { label: cancelled.label };
@@ -251,10 +298,11 @@ export const usePendingWritesStore = create<PendingWritesStore>()((set, get) => 
     reset: () => {
       entries.clear();
       boards.clear();
+      rows.clear();
       waiters.splice(0).forEach((wake) => wake());
       nextSeq = 1;
       nextTemp = 1;
-      set({ writes: [], aliases: new Map(), reads: 0, rollbacks: 0 });
+      set({ writes: [], aliases: new Map(), origins: new Map(), reads: 0, rollbacks: 0 });
     },
   };
 });
