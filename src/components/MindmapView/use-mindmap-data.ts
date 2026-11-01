@@ -1671,6 +1671,8 @@ export function useMindmapData(): MindmapData {
    */
   const createCommitmentNode = useCallback(
     async (parentId: string, parentKind: NodeKind, data: CommitmentSaveData): Promise<void> => {
+      // Stays write-then-reload (ADR 0012): behind a create still in the lane, whose row it may hang on.
+      await awaitLane();
       const commitmentId = await createCommitmentUnderNode(rowIdOfId(parentId), parentKind, data);
       for (const tagId of data.tagIds) await addTagToCommitment(commitmentId, tagId);
       await load(false);
@@ -1680,6 +1682,7 @@ export function useMindmapData(): MindmapData {
 
   const createFlowNode = useCallback(
     async (request: CreateFlowRequest): Promise<Flow> => {
+      await awaitLane();
       const flow = await createFlow(request);
       await load(false);
       return flow;

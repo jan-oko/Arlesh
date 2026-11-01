@@ -1,3 +1,4 @@
+import { useStableKeys, useTemporaryIds } from "@/hooks/use-temporary-ids";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
@@ -110,6 +111,7 @@ function steppedZoom(zoom: StepsZoom, direction: 1 | -1): StepsZoom {
  * tab rooted in a run survive a reload rather than being bounced to the true root.
  */
 export default function StepsView() {
+  const stableKey = useStableKeys();
   const { t } = useTranslation(["common", "stepsView", "warnings"]);
   const {
     tree, isLoading, error, reload, createChild, settleCreated, createNode, renameNode, moveNode, duplicateNode, pasteNodes, insertParent, removeNode,
@@ -141,6 +143,10 @@ export default function StepsView() {
   const [page, setPage] = useState(0);
   // The card whose title is open for naming — one just created, as on the other views.
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  useTemporaryIds({
+    onResolved: (temporaryId, realId) => { setEditingNodeId((id) => (id === temporaryId ? realId : id)); },
+    onRemoved: (removed) => { setEditingNodeId((id) => (removed.some((node) => node.id === id) ? null : id)); },
+  });
   // The card a creation gesture is making a child *of*, when that card is not the Step itself: the
   // new node is inside it, so it is shown by stepping in. Set as the gesture starts and read once,
   // by the selection the shared action makes on success — a refusal never selects, so never steps.
@@ -618,7 +624,7 @@ export default function StepsView() {
         >
           {pageChildren.map((child, index) => (
             <StepCard
-              key={child.id}
+              key={stableKey(child.id)}
               node={child}
               aspectColor={child.color ?? stepAspectColor}
               cardHeight={cardHeight}

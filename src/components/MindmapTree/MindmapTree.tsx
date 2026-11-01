@@ -1,3 +1,4 @@
+import { useStableKeys } from "@/hooks/use-temporary-ids";
 import type { MindmapNode, NodeKind, Orientation, Position } from "@/utils/tree-layout";
 import { computeLayout } from "@/utils/tree-layout";
 import { computeNodeDimensions } from "@/utils/node-meta";
@@ -29,6 +30,7 @@ interface Props {
 }
 
 export default function MindmapTree({ root, orientation, collapsedNodeIds, selectedNodeIds, focusExemptIds, editingNodeId, dragTargetId, dragSourceId, hasClipboard, onSelect, onCtrlClick, onShiftClick, onDoubleClick, onCommitEdit, onCancelEdit, onContextAction, onDragStart, onStatusClick }: Props) {
+  const stableKey = useStableKeys();
   const positions = computeLayout(root, collapsedNodeIds, orientation, measureMindmapNode);
 
   const edges: Array<{ from: Position; to: Position; fromHeight: number; toHeight: number; key: string }> = [];
@@ -71,7 +73,7 @@ export default function MindmapTree({ root, orientation, collapsedNodeIds, selec
         if (pos === undefined) return null;
         return (
           <MindmapNodeComponent
-            key={node.id}
+            key={stableKey(node.id)}
             node={node}
             parentKind={parentKindById.get(node.id) ?? null}
             position={pos}
