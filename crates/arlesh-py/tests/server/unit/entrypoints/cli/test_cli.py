@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from arlesh.server.business_logic.pairing import Pairing
 from arlesh.server.entrypoints.cli.app import app
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.entrypoints.fastapi.config import ServerConfig
+from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from typer.testing import CliRunner
@@ -158,3 +160,65 @@ def test_a_database_url_names_the_database(
 
     assert runner.invoke(app, []).exit_code == 0
     assert (tmp_path / "url.db").exists()
+
+
+def _waiting(database: Path, name: str = "pixel") -> str:
+    """A device showing a PIN, as it would after ``POST /pair``: answers the PIN."""
+    runner.invoke(app, ["token", "list", "--db", str(database)])  # migrates the database
+    pairing = Pairing(DatabasePairingStore(database), DatabaseTokenStore(database))
+    return pairing.start(name).pin
+
+
+def test_pin_list_shows_the_devices_waiting(tmp_path: Path) -> None:
+    database = tmp_path / "arlesh.db"
+    pin = _waiting(database)
+
+    listed = runner.invoke(app, ["pin", "list", "--db", str(database)])
+
+    assert listed.stdout.startswith(f"{pin}\tpixel\t")
+
+
+def test_pin_approve_names_the_device_as_given(tmp_path: Path) -> None:
+    database = tmp_path / "arlesh.db"
+    pin = _waiting(database)
+
+    approved = runner.invoke(
+        app, ["pin", "approve", pin, "--name", "jans-pixel", "--db", str(database)]
+    )
+
+    assert approved.exit_code == 0
+    assert "approved jans-pixel" in approved.output
+    assert runner.invoke(app, ["pin", "list", "--db", str(database)]).stdout == ""
+
+
+def test_pin_approve_uses_the_suggested_name_without_a_terminal(tmp_path: Path) -> None:
+    database = tmp_path / "arlesh.db"
+    pin = _waiting(database, "tablet")
+
+    approved = runner.invoke(app, ["pin", "approve", pin, "--db", str(database)])
+
+    assert "approved tablet" in approved.output
+
+
+def test_pin_approve_asks_for_the_name_on_a_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = tmp_path / "arlesh.db"
+    pin = _waiting(database)
+    monkeypatch.setattr("arlesh.server.entrypoints.cli.app._interactive", lambda: True)
+
+    approved = runner.invoke(
+        app, ["pin", "approve", pin, "--db", str(database)], input="kitchen-tablet\n"
+    )
+
+    assert "approved kitchen-tablet" in approved.output
+
+
+def test_pin_approve_of_an_unknown_pin_fails_plainly(tmp_path: Path) -> None:
+    database = tmp_path / "arlesh.db"
+    _waiting(database)
+
+    refused = runner.invoke(app, ["pin", "approve", "000000", "--db", str(database)])
+
+    assert refused.exit_code == 1
+    assert "no device is waiting" in refused.output

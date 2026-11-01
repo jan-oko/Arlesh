@@ -276,7 +276,9 @@ def test_a_pin_still_free_is_found_when_the_first_draw_collides(
     pairing: Pairing, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     draws = iter([5, 5, 7])
-    monkeypatch.setattr("arlesh.server.business_logic.pairing.secrets.randbelow", lambda _: next(draws))
+    monkeypatch.setattr(
+        "arlesh.server.business_logic.pairing.secrets.randbelow", lambda _: next(draws)
+    )
     first = pairing.start("a")
 
     second = pairing.start("b")

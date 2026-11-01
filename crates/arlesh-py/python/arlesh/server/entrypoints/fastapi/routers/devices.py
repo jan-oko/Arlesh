@@ -13,6 +13,7 @@ from arlesh.server.business_logic.pairing import Pairing, PairingRefused
 from arlesh.server.entrypoints.fastapi.exception_handling.exception_handlers import (
     ERROR_RESPONSES,
 )
+from arlesh.server.entrypoints.fastapi.routers.base import WireRoute
 from arlesh.server.ports.tokens.token_store import TokenStore, UnknownClient
 
 
@@ -56,7 +57,7 @@ class DevicesRouter(APIRouter):
     def __init__(
         self, tokens: TokenStore, pairing: Pairing, client_context: ContextVar[str]
     ) -> None:
-        super().__init__(tags=["devices"], responses=ERROR_RESPONSES)
+        super().__init__(tags=["devices"], responses=ERROR_RESPONSES, route_class=WireRoute)
         self._tokens = tokens
         self._pairing = pairing
         self._client = client_context

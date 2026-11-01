@@ -26,7 +26,6 @@ from arlesh.server.ports.tokens.token_store import (
     UnknownClient,
 )
 
-
 TOUCH_EVERY_SECONDS = 60.0
 """How often a client's last-seen time is written: a request is not a database write."""
 

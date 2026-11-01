@@ -14,6 +14,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 class FakeTokens(TokenStore):
     def __init__(self, holders: dict[str, str]) -> None:
         self._holders = holders
+        self.touched: list[str] = []
 
     def add(self, client: str) -> str:
         raise NotImplementedError
@@ -26,6 +27,9 @@ class FakeTokens(TokenStore):
 
     def client_for(self, token: str) -> str | None:
         return self._holders.get(token)
+
+    def touch(self, client: str) -> None:
+        self.touched.append(client)
 
 
 def _bearer(token: str) -> HTTPAuthorizationCredentials:
@@ -56,3 +60,12 @@ async def test_an_unknown_token_is_refused_as_bad() -> None:
         await scheme.validate_auth(_bearer("forged"))
 
     assert refusal.value.reason == "bad_token"
+
+
+async def test_a_known_token_notes_that_its_client_was_seen() -> None:
+    tokens = FakeTokens({"secret": "phone"})
+    scheme = BearerTokenSecurityScheme(tokens, ContextVar("client"))
+
+    await scheme.validate_auth(_bearer("secret"))
+
+    assert tokens.touched == ["phone"]

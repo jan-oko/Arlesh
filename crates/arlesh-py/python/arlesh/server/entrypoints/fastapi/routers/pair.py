@@ -14,6 +14,7 @@ from arlesh.server.entrypoints.fastapi.exception_handling.exception_handlers imp
     ERROR_RESPONSES,
 )
 from arlesh.server.entrypoints.fastapi.rate_limit import RateLimiter
+from arlesh.server.entrypoints.fastapi.routers.base import WireRoute
 
 PAIRS_PER_WINDOW = 10
 WINDOW_SECONDS = 600.0
@@ -60,10 +61,8 @@ class PairPolled(BaseModel):
 class PairRouter(APIRouter):
     """``/pair``."""
 
-    def __init__(
-        self, pairing: Pairing, limiter: RateLimiter | None = None
-    ) -> None:
-        super().__init__(tags=["pairing"], responses=ERROR_RESPONSES)
+    def __init__(self, pairing: Pairing, limiter: RateLimiter | None = None) -> None:
+        super().__init__(tags=["pairing"], responses=ERROR_RESPONSES, route_class=WireRoute)
         self._pairing = pairing
         self._limiter = limiter or RateLimiter(PAIRS_PER_WINDOW, WINDOW_SECONDS)
         self.post("", status_code=201)(self._start)

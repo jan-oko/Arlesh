@@ -56,4 +56,4 @@ class TokenStore(ABC):
         """The client ``token`` was issued to, or ``None`` for a token nobody holds."""
 
     def touch(self, client: str) -> None:  # noqa: B027 - a store may keep no last-seen time
-        """Notes that ``client`` just used its token. Stores that keep no last-seen time ignore it."""
+        """Notes that ``client`` just used its token; a store with no last-seen time ignores it."""
