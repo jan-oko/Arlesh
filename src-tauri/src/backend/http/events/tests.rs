@@ -33,3 +33,29 @@ fn comments_are_not_events() {
 
     assert!(parser.feed(": connected\n\n: keepalive\n\n").is_empty());
 }
+
+fn follower() -> Follower {
+    let backend = HttpBackend::new(
+        super::super::Connection::new("http://127.0.0.1:9", "token"),
+        Arc::new(|_| {}),
+    )
+    .expect("a backend");
+    Follower::new(Arc::new(backend), Arc::new(|| {}))
+}
+
+#[test]
+fn a_follower_follows_once_resumed_and_not_after_suspending() {
+    let follower = follower();
+    assert!(!follower.is_following());
+
+    follower.resume();
+    follower.resume();
+    assert!(follower.is_following());
+
+    follower.suspend();
+    assert!(!follower.is_following());
+
+    follower.resume();
+    assert!(follower.is_following());
+    follower.suspend();
+}

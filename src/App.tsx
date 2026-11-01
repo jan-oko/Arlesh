@@ -18,6 +18,7 @@ import { useTabsStore } from "@/stores/use-tabs-store";
 import { TabStoresContext } from "@/stores/tab-stores-context";
 import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useTabCommands } from "@/hooks/use-tab-commands";
+import { activeTabStores, useSystemBack } from "@/hooks/use-system-back";
 import { useCloseToTraySync } from "@/hooks/use-close-to-tray";
 import { useAgentCapacitySync } from "@/hooks/use-agent-capacity";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
@@ -44,10 +45,16 @@ export default function App() {
   useAgentCapacitySync();
   // Standalone or Client, and how the server is doing — for the top bar and the banner.
   useClientModeSync();
+  // Android's back button; a no-op elsewhere.
+  useSystemBack(activeTabStores);
   const firstRun = useClientModeStore((s) => s.status?.first_run === true);
   const answered = useClientModeStore((s) => s.answered);
   const toggleHotkeys = useHotkeysStore((s) => s.toggle);
-  const [serverSettings, setServerSettings] = useState(false);
+  // A build with no Standalone mode (the phone) has no question to ask: it goes straight to
+  // *Connect to a server*, and stays there until a server is chosen.
+  const standaloneAvailable = useClientModeStore((s) => s.status?.standalone_available !== false);
+  const [serverRequested, setServerSettings] = useState(false);
+  const serverSettings = serverRequested || (firstRun && !standaloneAvailable);
   // Every window is the same thing, so this is all it takes to be one of several: accept a tab
   // another window hands over, and — in the first window only — forget the tabs of windows that
   // are no longer open.
