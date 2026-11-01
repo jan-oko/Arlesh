@@ -27,7 +27,9 @@ class TasksRouter(BoardRouter):
     """``/tasks``."""
 
     def _register_routes(self) -> None:
+        self.get("")(self._list)
         self.get("/{id}")(self._get)
+        self.get("/{id}/dependency-candidates")(self._dependency_candidates)
         self.get("/{id}/dependencies")(self._dependencies)
         self.get("/{id}/done-at")(self._done_at)
         self.post("/{id}/plan-containment-conflicts")(self._plan_containment_conflicts)
@@ -142,3 +144,14 @@ class TasksRouter(BoardRouter):
     async def _reopen_check(self, id: int, due_at: datetime) -> None:
         """Reopens a spawned wait's check, due again at ``due_at``."""
         await (await self._writer()).reopen_spawned_wait_check(id, due_at)
+
+    async def _list(self, now: datetime | None = None) -> list[Task]:
+        """Every Task — stored rows and every Habit occurrence — derived at ``now`` (default: the
+        server's clock)."""
+        return await self._reader.list_tasks(now=now)
+
+    async def _dependency_candidates(
+        self, id: str, now: datetime | None = None
+    ) -> list[Dependency]:
+        """What the Task may be made to depend on: what the quick dependency picker offers."""
+        return await self._reader.dependency_candidates(node_id(id), now=now)

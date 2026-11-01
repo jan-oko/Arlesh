@@ -3,10 +3,11 @@ import type { RowId } from "@/api/node-id";
 import { dayStartInstant } from "@/utils/scope-calendar";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { findNode } from "@/utils/mindmap-tree";
-import { addTagToExpectation, createExpectation, updateExpectation } from "@/api/expectations";
 import { EXPECTATION_ARCHIVAL, EXPECTATION_STATUS } from "@/api/expectation-status";
 import type { ExpectationSaveData } from "@/components/ExpectationEditorModal/ExpectationEditorModal";
 import { withAtomicGesture } from "@/api/gesture";
+import { runGesture } from "@/api/multi-node-gestures";
+import type { GestureStep } from "@/api/multi-node-gestures";
 
 /** Where a new stored wait will hang — `Shift+E` in the List View. */
 export interface ExpectationCreate {
@@ -43,8 +44,11 @@ export function useWaitEditor(tree: MindmapNode, reload: () => Promise<void>) {
   const saveCreate = useCallback(
     async (gestureName: string, data: ExpectationSaveData) => {
       if (create === null) return;
-      await withAtomicGesture(gestureName, async () => {
-        const wait = await createExpectation({
+      // One gesture operation: the wait, then what its create request has no field for, written
+      // onto it — only when the editor says something other than the defaults — and its tags.
+      const steps: GestureStep[] = [{
+        op: "create_expectation",
+        request: {
           title: data.title,
           parent_type: create.parentType,
           parent_id: create.parentId,
@@ -54,18 +58,22 @@ export function useWaitEditor(tree: MindmapNode, reload: () => Promise<void>) {
           ...(data.timeScope !== null ? { time_scope: data.timeScope } : {}),
           ...(data.agentic ? { agentic: true } : {}),
           ...(data.agenticNote !== null ? { agentic_note: data.agenticNote } : {}),
-        });
-        // What the create request has no field for is written straight after, inside the same
-        // Gesture — only when the editor says something other than the defaults.
-        if (data.isPrivate || data.archived || data.status !== EXPECTATION_STATUS.PENDING) {
-          await updateExpectation(wait.id, {
+        },
+      }];
+      if (data.isPrivate || data.archived || data.status !== EXPECTATION_STATUS.PENDING) {
+        steps.push({
+          op: "update_expectation", id: { step: 0 },
+          request: {
             is_private: data.isPrivate,
             status: data.status,
             archival: data.archived ? EXPECTATION_ARCHIVAL.ARCHIVED : EXPECTATION_ARCHIVAL.LIVE,
-          });
-        }
-        for (const tagId of data.tagIds) await addTagToExpectation(wait.id, tagId);
-      });
+          },
+        });
+      }
+      for (const tag_id of data.tagIds) {
+        steps.push({ op: "set_tag", kind: "expectation", id: { step: 0 }, tag_id, present: true });
+      }
+      await withAtomicGesture(gestureName, () => runGesture("save-wait", steps));
       setCreate(null);
       await reload();
     },

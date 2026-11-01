@@ -1,0 +1,39 @@
+{
+  "mode": {
+    "standalone": "This device",
+    "client": "Server",
+    "reachable": "Connected to {{url}}",
+    "unreachable": "Cannot reach {{url}}"
+  },
+  "banner": {
+    "server_unreachable": "Server unreachable — showing the board as it was, read-only.",
+    "lastSync": "Last synced {{time}}.",
+    "neverSynced": "Not synced yet.",
+    "update_app": "The server is newer than this app. Update the app to edit — until then the board is read-only.",
+    "update_server": "The server is older than this app. Update the server to edit — until then the board is read-only."
+  },
+  "chooser": {
+    "title": "Where does your board live?",
+    "intro": "You can change this later in Settings → Server.",
+    "standalone": "This device only",
+    "standaloneHint": "Keep the board in a file on this computer, as Arlesh always has.",
+    "client": "Connect to a server",
+    "clientHint": "Share one board between devices through an arlesh-server."
+  },
+  "page": {
+    "intro": "Run against an arlesh-server to share one board between devices. Each device needs its own token: run `arlesh-server token add <device>` on the server.",
+    "current": "Now: {{mode}}",
+    "url": "Server URL",
+    "token": "Token",
+    "test": "Test",
+    "testing": "Testing…",
+    "ok": "Reached arlesh {{version}} (API {{api}}).",
+    "incompatible": "Reached the server, but this app cannot write to it: {{reason}}",
+    "connect": "Connect and restart",
+    "useStandalone": "Use this device only and restart",
+    "noKeychain": "No keychain is available to keep the token in.",
+    "tokenInFile": "Keep the token in a file only I can read",
+    "localKept": "Your local board is kept as it is, and comes back if you switch back."
+  },
+  "notInClientMode": "Not available while connected to a server."
+}

@@ -300,7 +300,7 @@ pub fn derive_item_state(
 }
 
 /// One item's fully-derived lifecycle state, keyed by node reference for the frontend.
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema, serde::Deserialize)]
 pub struct ItemLifecycle {
     /// `"task"`, `"goal"`, `"commitment"` or `"expectation"`; `"expectation_check"`,
     /// `"spawned_wait"` and `"spawned_check"` time a wait's next check and a spawned wait.
@@ -316,7 +316,7 @@ pub struct ItemLifecycle {
     /// The **Overdue** flag: unresolved, not effectively Archived, and past the end of its due
     /// (see [`derive_overdue`]). Always false for a Commitment. A Habit occurrence's due comes
     /// from its Habit's clock, or its own overlay. Sent only when set, as `resolution` is.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub overdue: bool,
     /// The recorded verdict, present only for a Commitment. Carried on the same wire type as a
     /// Task's Resolution rather than on a parallel one, because it occupies the same slot in the

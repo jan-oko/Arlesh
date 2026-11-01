@@ -21,7 +21,7 @@ use arlesh_lib::domains::model::{CreateDomainRequest, DomainSubtype, ProjectStat
 use arlesh_lib::mcp::params;
 use arlesh_lib::tasks::model::CreateTaskRequest;
 use arlesh_lib::undo::model::WriteSource;
-use arlesh_lib::undo::{self as engine, GestureClose};
+use arlesh_lib::undo::GestureClose;
 use helpers::StoredId;
 use rmcp::handler::server::wrapper::Parameters;
 use sqlx::SqlitePool;
@@ -37,12 +37,10 @@ async fn open(app: &App<MockRuntime>) {
 
 /// Closes one, straight off the engine, so the test can read both halves of the answer.
 async fn close(app: &App<MockRuntime>) -> GestureClose {
-    engine::close_gesture(
-        &app.state::<arlesh_lib::database::session::SessionFactory>(),
-        &app.state::<arlesh_lib::undo::stacks::UndoStacks>(),
-    )
-    .await
-    .expect("close gesture")
+    app.state::<arlesh_lib::backend::AppBackend>()
+        .close_gesture()
+        .await
+        .expect("close gesture")
 }
 
 /// A project to hang tasks off, created outside any Gesture.
@@ -267,12 +265,12 @@ async fn an_undo_announces_even_though_it_writes_no_journal() {
     // The replay runs with journalling suppressed, so the journal has nothing to report — which is
     // exactly why the command announces for itself. What the test can hold down without a second
     // real window is that the replay applied, which is the condition the announcement is on.
-    let applied = undo_commands::undo(helpers::window(&app), app.state(), app.state())
+    let applied = undo_commands::undo(helpers::window(&app), app.state())
         .await
         .expect("undo");
     assert!(applied.is_some(), "an undo that applied announces");
 
-    let nothing = undo_commands::undo(helpers::window(&app), app.state(), app.state())
+    let nothing = undo_commands::undo(helpers::window(&app), app.state())
         .await
         .expect("undo");
     assert!(nothing.is_none(), "an empty stack announces nothing");
@@ -297,12 +295,11 @@ async fn an_abort_that_took_everything_back_announces_nothing() {
 
     open(&app).await;
     create_task(&app, project_id, "Never mind").await;
-    let aborted = engine::abort_gesture(
-        &app.state::<arlesh_lib::database::session::SessionFactory>(),
-        &app.state::<arlesh_lib::undo::stacks::UndoStacks>(),
-    )
-    .await
-    .expect("abort gesture");
+    let aborted = app
+        .state::<arlesh_lib::backend::AppBackend>()
+        .abort_gesture()
+        .await
+        .expect("abort gesture");
 
     assert!(
         aborted.taken_back.is_some(),
@@ -344,12 +341,11 @@ async fn an_abort_still_announces_an_agents_write_it_could_not_take_back() {
         db.commit().await.expect("commit");
     }
 
-    let aborted = engine::abort_gesture(
-        &app.state::<arlesh_lib::database::session::SessionFactory>(),
-        &app.state::<arlesh_lib::undo::stacks::UndoStacks>(),
-    )
-    .await
-    .expect("abort gesture");
+    let aborted = app
+        .state::<arlesh_lib::backend::AppBackend>()
+        .abort_gesture()
+        .await
+        .expect("abort gesture");
 
     assert!(
         aborted.wrote,

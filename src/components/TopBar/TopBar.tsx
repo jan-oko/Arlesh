@@ -18,6 +18,7 @@ import { useDisplayStore } from "@/stores/use-display-store";
 import SettingsModal from "@/components/SettingsModal/SettingsModal";
 import SubtreeBreadcrumb from "./SubtreeBreadcrumb";
 import AgentStatus from "./AgentStatus";
+import ModeIndicator from "./ModeIndicator";
 import styles from "./TopBar.module.css";
 
 const GEAR_ICON = "⚙";
@@ -155,6 +156,8 @@ export default function TopBar() {
           {/* The agents' status: drawn only while something applies — the capacity lock, a pending
               agentic wait, or Agentic work In Progress. */}
           <AgentStatus />
+          {/* Where the board lives — this device or a server — and whether the server answers. */}
+          <ModeIndicator />
           <div className={styles.anchor}>
             {/* The dot says the menu holds a setting nothing outside it shows — a pill the chips
                 do not draw, or Archived / Backlog off "as the preset says". */}

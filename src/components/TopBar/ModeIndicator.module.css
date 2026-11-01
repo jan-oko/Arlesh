@@ -1,0 +1,24 @@
+.mode {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+.up,
+.down {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.up {
+  background: var(--mode-all);
+}
+
+.down {
+  background: var(--danger);
+}

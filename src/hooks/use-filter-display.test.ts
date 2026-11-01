@@ -14,7 +14,7 @@ function mindmapData(tree: MindmapNode) {
   return {
     tree, isLoading: false, error: null, loadCondition: { failedFlows: [], unrenderableCommitmentFlows: [] },
     createNode: vi.fn(), createChild: vi.fn(), renameNode: vi.fn(),
-    reorderNode: vi.fn(), moveNode: vi.fn(), duplicateNode: vi.fn(), removeNode: vi.fn(), createCommitment: vi.fn(), createFlow: vi.fn(),
+    reorderNode: vi.fn(), moveNode: vi.fn(), duplicateNode: vi.fn(), pasteNodes: vi.fn(), insertParent: vi.fn(), removeNode: vi.fn(), createCommitment: vi.fn(), createFlow: vi.fn(),
     updateFlow: vi.fn(), reload: vi.fn(),
   };
 }

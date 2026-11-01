@@ -43,6 +43,8 @@ function mockTree(children: MindmapNode[]): void {
     reorderNode: vi.fn(),
     moveNode: vi.fn(),
     duplicateNode: vi.fn(),
+    pasteNodes: vi.fn().mockResolvedValue([]),
+    insertParent: vi.fn().mockResolvedValue("domain-99"),
     removeNode: vi.fn(),
     createCommitment: vi.fn(),
     createFlow: vi.fn(),

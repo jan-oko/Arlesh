@@ -1,7 +1,7 @@
 //! Wire error type: the serialisable shape `AppError` is converted to before
 //! crossing the Tauri IPC boundary to the frontend.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     access::error::AccessError, domains::error::DomainError, error::AppError,
@@ -16,7 +16,7 @@ use crate::{
 /// human-readable `message`. Serialises in snake_case.
 ///
 /// Mirrored in src/api/errors.ts
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WireErrorKind {
     /// The requested resource does not exist.
@@ -68,7 +68,9 @@ pub enum WireErrorKind {
 ///
 /// Every command should convert its `Result<_, AppError>` into
 /// `Result<_, WireError>` via [`WireError::from_error`].
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+/// Deserializable too, so a client of `arlesh-server` reads the server's error body back as the
+/// core's own error (the body's extra `transaction_id` is ignored).
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct WireError {
     /// Stable, machine-readable classification of the error.
     kind: WireErrorKind,
@@ -77,11 +79,35 @@ pub struct WireError {
     /// Optional structured payload carrying extra context for the frontend.
     /// Unused until Phase 4 (e.g. confirmation prompts); omitted from the
     /// serialised form when absent.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     details: Option<serde_json::Value>,
 }
 
 impl WireError {
+    /// A [`WireError`] of `kind`, built directly: for a host that relays an error it did not raise,
+    /// such as the app's HTTP backend in Client mode.
+    pub fn new(
+        kind: WireErrorKind,
+        message: impl Into<String>,
+        details: Option<serde_json::Value>,
+    ) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+            details,
+        }
+    }
+
+    /// The error's classification.
+    pub fn kind(&self) -> WireErrorKind {
+        self.kind
+    }
+
+    /// The error's structured payload, if any.
+    pub fn details(&self) -> Option<&serde_json::Value> {
+        self.details.as_ref()
+    }
+
     /// Converts any error convertible to [`AppError`] into a [`WireError`],
     /// assigning it a stable `kind` and capturing its message.
     ///

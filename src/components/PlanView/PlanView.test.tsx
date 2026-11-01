@@ -124,6 +124,23 @@ vi.mock("@/api/scopes", async (importOriginal) => ({
 }));
 
 const updateTask = vi.fn((_id: number | string, _request: unknown) => Promise.resolve());
+// A gesture operation's writes reach the same spy, one `update_task` each, so the expectations
+// below read as the writes the plan makes.
+vi.mock("@/api/multi-node-gestures", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/multi-node-gestures")>()),
+  runGesture: async (_name: string, steps: Array<{ id: number | string; request: unknown }>) => {
+    const answers: unknown[] = [];
+    for (const step of steps) {
+      try {
+        await updateTask(step.id, step.request);
+        answers.push({ id: step.id });
+      } catch (error: unknown) {
+        answers.push({ refused: { kind: "invalid_request", message: error instanceof Error ? error.message : String(error) } });
+      }
+    }
+    return answers;
+  },
+}));
 vi.mock("@/api/tasks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/tasks")>()),
   updateTask: (id: number | string, request: unknown) => updateTask(id, request),

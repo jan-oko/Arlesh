@@ -4,6 +4,11 @@ import type { MindmapNode } from "@/utils/tree-layout";
 import { useWaitEditor } from "@/hooks/use-wait-editor";
 
 const createExpectation = vi.fn((_request: unknown) => Promise.resolve({ id: 42 }));
+// A gesture operation's writes are replayed onto the mocked api calls below, one call per write.
+vi.mock("@/api/multi-node-gestures", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/multi-node-gestures")>()),
+  runGesture: (await import("@/test/gesture-replay")).replayGesture,
+}));
 vi.mock("@/api/expectations", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/expectations")>()),
   createExpectation: (request: unknown) => createExpectation(request),

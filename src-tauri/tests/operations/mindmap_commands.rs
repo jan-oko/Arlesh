@@ -227,7 +227,7 @@ async fn the_envelope_carries_what_the_individual_commands_return() {
     let app = helpers::command_host(&pool);
     seed(&app, &pool).await;
 
-    let load = mindmap_commands::load_mindmap(app.state(), app.state(), now())
+    let load = mindmap_commands::load_mindmap(app.state(), now())
         .await
         .unwrap();
 
@@ -327,7 +327,7 @@ async fn loading_a_habit_that_needs_new_windows_writes_nothing() {
     // The test pool is one connection, so its change counter sees every row the load could write.
     let before = helpers::total_changes(&pool).await;
 
-    let load = mindmap_commands::load_mindmap(app.state(), app.state(), now())
+    let load = mindmap_commands::load_mindmap(app.state(), now())
         .await
         .unwrap();
 
@@ -399,7 +399,7 @@ async fn one_flow_failing_is_recorded_on_its_entry_and_the_rest_still_loads() {
     .await
     .unwrap();
 
-    let load = mindmap_commands::load_mindmap(app.state(), app.state(), now())
+    let load = mindmap_commands::load_mindmap(app.state(), now())
         .await
         .unwrap();
 
@@ -446,7 +446,7 @@ async fn a_flow_with_no_recurrence_loads_as_an_empty_habit_not_a_failure() {
         .await
         .unwrap();
 
-    let load = mindmap_commands::load_mindmap(app.state(), app.state(), now())
+    let load = mindmap_commands::load_mindmap(app.state(), now())
         .await
         .unwrap();
 
@@ -471,7 +471,7 @@ async fn an_empty_database_loads_an_empty_envelope() {
     let pool = helpers::test_pool().await;
     let app = helpers::command_host(&pool);
 
-    let load = mindmap_commands::load_mindmap(app.state(), app.state(), now())
+    let load = mindmap_commands::load_mindmap(app.state(), now())
         .await
         .unwrap();
 
@@ -500,7 +500,7 @@ async fn the_load_carries_each_nodes_short_id() {
     let app = helpers::command_host(&pool);
     seed(&app, &pool).await;
 
-    let load = mindmap_commands::load_mindmap(app.state(), app.state(), now())
+    let load = mindmap_commands::load_mindmap(app.state(), now())
         .await
         .unwrap();
 
@@ -513,4 +513,23 @@ async fn the_load_carries_each_nodes_short_id() {
         assert!(short.len() >= 3);
         assert!(short.chars().all(|character| character.is_ascii_hexdigit()));
     }
+}
+
+/// Client mode reads the board back from the server's JSON (`HttpBackend`), so the load must come
+/// back from its own wire form unchanged: a field the serialiser leaves out at its default has to
+/// be read back as that default, not refused.
+#[tokio::test]
+async fn the_load_reads_back_from_its_own_wire_form_unchanged() {
+    let pool = helpers::test_pool().await;
+    let app = helpers::command_host(&pool);
+    seed(&app, &pool).await;
+    let load = mindmap_commands::load_mindmap(app.state(), now())
+        .await
+        .unwrap();
+
+    let wire = serde_json::to_value(&load).expect("the load serialises");
+    let read: arlesh_lib::mindmap::model::MindmapLoad =
+        serde_json::from_value(wire.clone()).expect("the load reads back");
+
+    assert_eq!(serde_json::to_value(&read).expect("serialises again"), wire);
 }

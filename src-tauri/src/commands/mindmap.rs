@@ -2,10 +2,8 @@
 
 use tauri::State;
 
-use crate::{
-    capacity::AgentCapacity, database::session::SessionFactory, error::WireError, mindmap,
-    mindmap::model::MindmapLoad,
-};
+use crate::backend::AppBackend;
+use crate::{error::WireError, mindmap::model::MindmapLoad};
 
 /// Every payload one mindmap render needs, in a single round trip.
 ///
@@ -24,15 +22,8 @@ use crate::{
 /// 0009). It runs in a transaction only so that its many reads see one consistent board.
 #[tauri::command]
 pub async fn load_mindmap(
-    factory: State<'_, SessionFactory>,
-    capacity: State<'_, AgentCapacity>,
+    backend: State<'_, AppBackend>,
     now: chrono::NaiveDateTime,
 ) -> Result<MindmapLoad, WireError> {
-    let at_capacity = capacity.get().await.at_capacity;
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let load = mindmap::board(&mut db, now, at_capacity)
-        .await
-        .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(load)
+    backend.load_mindmap(now).await
 }

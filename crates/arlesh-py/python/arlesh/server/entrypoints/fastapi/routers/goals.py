@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from arlesh.models import CreateGoalRequest, DuplicatedGoal, Flow, Goal, UpdateGoalRequest
 from arlesh.server.entrypoints.fastapi.routers.base import BoardRouter, node_id
 
@@ -10,6 +12,7 @@ class GoalsRouter(BoardRouter):
     """``/goals``."""
 
     def _register_routes(self) -> None:
+        self.get("")(self._list)
         self.get("/{id}")(self._get)
         self.post("", status_code=201)(self._create)
         self.patch("/{id}")(self._update)
@@ -45,3 +48,7 @@ class GoalsRouter(BoardRouter):
         return await (await self._writer()).convert_to_flow(
             "goal", id, keep_dependencies=keep_dependencies, map_scopes=map_scopes
         )
+
+    async def _list(self, now: datetime | None = None) -> list[Goal]:
+        """Every Goal, derived at ``now`` (default: the server's clock)."""
+        return await self._reader.list_goals(now=now)

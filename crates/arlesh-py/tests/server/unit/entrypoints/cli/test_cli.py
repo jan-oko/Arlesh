@@ -10,6 +10,7 @@ import pytest
 from arlesh.server.entrypoints.cli.app import app
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.entrypoints.fastapi.config import ServerConfig
+from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from typer.testing import CliRunner
 
@@ -23,7 +24,13 @@ def _plain(output: str) -> str:
 
 @pytest.fixture(autouse=True)
 def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("ARLESH_DATABASE__PATH", "ARLESH_DATABASE__FORCE", "ARLESH_SERVER__HOST"):
+    for name in (
+        "ARLESH_DATABASE__PATH",
+        "ARLESH_DATABASE__FORCE",
+        "ARLESH_SERVER__HOST",
+        "ARLESH_DATABASE_URL",
+        "ARLESH_DATABASE_URL_FILE",
+    ):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -99,7 +106,7 @@ def test_token_add_prints_a_token_that_names_the_client(tmp_path: Path) -> None:
     result = runner.invoke(app, ["token", "add", "phone", "--db", str(database)])
 
     assert result.exit_code == 0, result.output
-    assert FileTokenStore.beside(database).client_for(result.stdout.strip()) == "phone"
+    assert DatabaseTokenStore(database).client_for(result.stdout.strip()) == "phone"
 
 
 def test_token_list_and_revoke(tmp_path: Path) -> None:
@@ -129,3 +136,25 @@ def test_a_second_token_or_an_unknown_revoke_fails_plainly(tmp_path: Path) -> No
 
 def test_token_without_a_database_is_a_usage_error() -> None:
     assert runner.invoke(app, ["token", "list"]).exit_code == 2
+
+
+def test_an_old_token_file_is_carried_into_the_database_once(tmp_path: Path) -> None:
+    database = tmp_path / "arlesh.db"
+    old = FileTokenStore.beside(database)
+    token = old.add("phone")
+
+    listed = runner.invoke(app, ["token", "list", "--db", str(database)])
+
+    assert listed.stdout.startswith("phone\t")
+    assert DatabaseTokenStore(database).client_for(token) == "phone"
+    assert not old.path.exists()
+    assert old.path.with_name("arlesh.db.tokens.imported").exists()
+
+
+def test_a_database_url_names_the_database(
+    tmp_path: Path, served: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ARLESH_DATABASE_URL", f"sqlite:///{tmp_path / 'url.db'}")
+
+    assert runner.invoke(app, []).exit_code == 0
+    assert (tmp_path / "url.db").exists()

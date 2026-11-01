@@ -44,6 +44,7 @@ use crate::infos::InfoOperator;
 use crate::knowledge_base::{EventOperator, PersonOperator, ThreadOperator};
 use crate::nodes::overlay::OverlayOperator;
 use crate::nodes::relations::RelationOperator;
+use crate::server_tokens::ServerTokenOperator;
 use crate::tasks::{CommitmentOperator, ExpectationOperator, GoalOperator, TaskOperator};
 use crate::undo::UndoOperator;
 
@@ -182,6 +183,11 @@ impl<M: SessionMode> Db<M> {
         BlockReasonOperator::new(self.connection())
     }
 
+    /// `arlesh-server`'s bearer tokens, kept as digests.
+    pub fn server_tokens(&mut self) -> ServerTokenOperator<'_> {
+        ServerTokenOperator::new(self.connection())
+    }
+
     /// Commitments — rules held over a window, kept or broken.
     pub fn commitments(&mut self) -> CommitmentOperator<'_> {
         CommitmentOperator::new(self.connection())
@@ -254,6 +260,32 @@ impl<M: SessionMode> Db<M> {
 }
 
 impl Db<Transactional> {
+    /// Runs `step` inside a savepoint: when it fails, everything it wrote is taken back and the
+    /// transaction carries on as it was before it. For a gesture that tolerates a refusal of one of
+    /// its writes — planning ten Tasks of which one cannot take the Plan — without letting that
+    /// write half-land.
+    pub async fn tolerating<T, E>(
+        &mut self,
+        step: impl AsyncFnOnce(&mut Self) -> Result<T, E>,
+    ) -> Result<Result<T, E>, sqlx::Error> {
+        sqlx::query("SAVEPOINT gesture_step")
+            .execute(&mut *self.handle)
+            .await?;
+        let outcome = step(self).await;
+        let statement = if outcome.is_ok() {
+            "RELEASE gesture_step"
+        } else {
+            "ROLLBACK TO gesture_step"
+        };
+        sqlx::query(statement).execute(&mut *self.handle).await?;
+        if outcome.is_err() {
+            sqlx::query("RELEASE gesture_step")
+                .execute(&mut *self.handle)
+                .await?;
+        }
+        Ok(outcome)
+    }
+
     /// Commits everything written through this session and releases its connection.
     ///
     /// Consumes the session, so nothing can be written after the commit. Dropping a

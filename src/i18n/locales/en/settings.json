@@ -11,7 +11,8 @@
     "windows": "Windows & tray",
     "expectations": "Expectations",
     "mcp": "Agents",
-    "zen": "Zen"
+    "zen": "Zen",
+    "server": "Server"
   },
   "planCandidates": "Candidates pane",
   "planPlanned": "Planned pane",

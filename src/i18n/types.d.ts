@@ -17,6 +17,7 @@ import type en_expectation from "./locales/en/expectation.json";
 import type en_stepsView from "./locales/en/stepsView.json";
 import type en_settings from "./locales/en/settings.json";
 import type en_zenView from "./locales/en/zenView.json";
+import type en_server from "./locales/en/server.json";
 
 declare module "i18next" {
   interface CustomTypeOptions {
@@ -41,6 +42,7 @@ declare module "i18next" {
       stepsView: typeof en_stepsView;
       settings: typeof en_settings;
       zenView: typeof en_zenView;
+      server: typeof en_server;
     };
   }
 }
