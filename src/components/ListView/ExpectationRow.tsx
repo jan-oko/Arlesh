@@ -55,7 +55,8 @@ export default function ExpectationRow({
         className={taskStyles.statusButton}
         data-gesture-skip=""
         aria-label={t("releaseToggle")}
-        onClick={(e) => { e.stopPropagation(); onSelect(node.id); onToggleRelease(node.id); }}
+        onClick={(e) => { e.stopPropagation(); onToggleRelease(node.id); }}
+        onDoubleClick={(e) => e.stopPropagation()}
       >
         <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`} aria-hidden="true">
           <ExpectationIcon

@@ -10,7 +10,8 @@ import TaskIcon from "@/components/NodeIcon/TaskIcon";
 export type ActionIconName =
   | "child" | "sibling" | "undo" | "redo" | "open" | "filter" | "status" | "plan" | "dependency"
   | "verdict" | "release" | "checkDone" | "edit" | "startFlow" | "archive" | "planInto" | "kind"
-  | "backlog" | "more";
+  | "backlog" | "more"
+  | "viewZen" | "viewList" | "viewPlan" | "viewSteps" | "viewMap";
 
 const STROKE = 1.8;
 
@@ -36,6 +37,13 @@ const DRAWINGS: Readonly<Record<Exclude<ActionIconName, "status">, ReactNode>> =
   planInto: <><path d="M4 12h11" /><path d="m11 7 5 5-5 5" /><path d="M20 4v16" /></>,
   kind: <><path d="m12 3 9 5-9 5-9-5z" /><path d="m3 13 9 5 9-5" /></>,
   backlog: <circle cx="12" cy="12" r="8" strokeDasharray="3.2 3.2" />,
+  // The bottom navigation's five views: a target (Zen), a list, a grid of panes (Plan), a
+  // staircase (Steps: one level at a time), and a fork (the Mindmap).
+  viewZen: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /></>,
+  viewList: <><path d="M9 7h11M9 12h11M9 17h11" /><circle cx="4.5" cy="7" r=".6" /><circle cx="4.5" cy="12" r=".6" /><circle cx="4.5" cy="17" r=".6" /></>,
+  viewPlan: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 12h16M12 4v16" /></>,
+  viewSteps: <path d="M3 20h5v-5h5v-5h5V5h3" />,
+  viewMap: <><circle cx="5" cy="12" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="19" cy="18" r="2" /><path d="M7 12h2c3 0 3-6 8-6M9 12c3 0 3 6 8 6" /></>,
   more: <><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>,
 };
 

@@ -201,7 +201,8 @@
 
   .panes {
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr;
+    /* The planned pane is a third of the height; the candidates have the other two. */
+    grid-template-rows: minmax(0, 2fr) minmax(0, 1fr);
     gap: var(--space-2);
   }
 

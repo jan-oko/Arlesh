@@ -112,3 +112,20 @@
   color: var(--text-secondary);
   font-family: var(--font-sans);
 }
+
+/* The phone layout (docs/spec/touch.md): the Step is one scrolling column, its cards as tall as
+   what they hold. There is no page to turn, so the area scrolls instead of clipping. */
+@media (max-width: 699.98px) {
+  .children {
+    display: flex;
+    overflow-x: hidden;
+    overflow-y: auto;
+    flex-direction: column;
+  }
+
+  .children > [data-step-card] {
+    width: auto;
+    height: auto;
+    flex: 0 0 auto;
+  }
+}

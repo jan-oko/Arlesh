@@ -60,6 +60,7 @@ import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
 import { useTouchCommand } from "@/hooks/use-touch-command";
+import { listEnterTarget } from "@/utils/list-enter";
 import { useViewGestures } from "@/hooks/use-view-gestures";
 import touchStyles from "@/styles/touch-surface.module.css";
 
@@ -351,14 +352,15 @@ export default function ListView() {
   const { containerRef, startScroll, scrollToEdge } = useListScroll(activeSelectedId);
 
   // The touch gestures (docs/spec/touch.md). Double-tap narrows the list to the row's subtree — the
-  // Under pill, as a path header's Ctrl-click files it.
+  // Under pill, as a path header's Ctrl-click files it. A leaf has no subtree to narrow to, so it
+  // is entered through its parent (`listEnterTarget`) rather than emptying the list.
   useViewGestures(containerRef, {
     idAttribute: "data-row-id",
     ready: !isLoading && error === null,
     isSelected: (id) => id === activeSelectedId,
     select: setSelectedRowId,
     deselect: () => setSelectedRowId(null),
-    goInto: (id) => setPillSide("antecedent", id, "include"),
+    goInto: (id) => setPillSide("antecedent", listEnterTarget(id, [...rows, ...commitmentRows, ...expectationRows]), "include"),
     slidesRows: true,
   });
 

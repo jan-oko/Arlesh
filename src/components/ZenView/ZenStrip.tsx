@@ -12,6 +12,10 @@ interface Props {
   exemptedIds: ReadonlySet<string>;
   onSelect: (nodeId: string) => void;
   onOpenEditor: (nodeId: string) => void;
+  /** A tap on a card's glyph. */
+  onStepGlyph: (nodeId: string) => void;
+  /** The glyph control's accessible name — "Cycle the verdict", "Release…". */
+  stepLabel: string;
 }
 
 /**
@@ -19,7 +23,7 @@ interface Props {
  * when it is longer than the window. With nothing in it, it is not drawn at all — the grid takes the
  * space. It carries no heading: the glyphs already say which kind it holds.
  */
-export default function ZenStrip({ label, nodes, renderGlyph, selectedId, exemptedIds, onSelect, onOpenEditor }: Props) {
+export default function ZenStrip({ label, nodes, renderGlyph, selectedId, exemptedIds, onSelect, onOpenEditor, onStepGlyph, stepLabel }: Props) {
   if (nodes.length === 0) return null;
   return (
     <section className={styles.strip} aria-label={label}>
@@ -32,6 +36,8 @@ export default function ZenStrip({ label, nodes, renderGlyph, selectedId, exempt
           isFocusExempt={exemptedIds.has(node.id)}
           onSelect={onSelect}
           onOpenEditor={onOpenEditor}
+          onStepGlyph={onStepGlyph}
+          stepLabel={stepLabel}
         />
       ))}
     </section>

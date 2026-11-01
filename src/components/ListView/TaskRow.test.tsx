@@ -51,6 +51,19 @@ function baseProps(overrides: Partial<ComponentProps<typeof TaskRow>> = {}) {
   };
 }
 
+describe("TaskRow — status icon", () => {
+  it("steps the status and neither selects the row nor opens its editor", () => {
+    const props = baseProps();
+    render(<TaskRow {...props} />);
+    const icon = screen.getByRole("button", { name: "cycleStatus" });
+    fireEvent.click(icon);
+    fireEvent.doubleClick(icon);
+    expect(props.onCycleStatus).toHaveBeenCalledWith("task-1");
+    expect(props.onSelect).not.toHaveBeenCalled();
+    expect(props.onOpenEditor).not.toHaveBeenCalled();
+  });
+});
+
 describe("TaskRow — Agentic badge", () => {
   it("badges an agentic task in the list, as the canvas does", () => {
     render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", agentic: true }) }) })} />);

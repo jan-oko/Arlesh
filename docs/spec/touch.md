@@ -60,10 +60,15 @@ Below 700 px:
     only one typed in its box.
 - **List rows take two lines**: the title on the first, the badges and meta on the second. Path
   headers stick to the top while their rows scroll beneath.
-- **The Plan View stacks its panes**: candidates on top, the planned pane at the **bottom**, and the
-  planned pane draws **no subscope cells** (stepping through them is the scope swipe, below).
-- **The Zen View** is a vertical, scrollable list of cards sized to fit, in place of the grid. The
-  cards mean what the grid's mean, and act the same.
+- **The Plan View stacks its panes**: candidates on top, the planned pane at the **bottom** and a
+  **third** of the height (the candidates take the other two), and the planned pane draws **no
+  subscope cells** (stepping through them is the scope swipe, below).
+- **The Zen View** is a vertical, scrollable list of cards in place of the grid, each **as tall as
+  its content**: the whole title, the path and the badges, never clamped to a share of the screen.
+  The cards mean what the grid's mean, and act the same.
+- **The Steps View** is one scrolling column in place of the paged grid, each card as tall as its
+  content (its Info notes up to a cap). There is no page to turn, and the zoom no longer sets the
+  card.
 - **No hover.** A tooltip's text moves into the editor or appears on a tap.
 - **Toasts** rise above the action bar rather than covering it.
 - **Tabs are not shown** in the phone layout: the tab strip is hidden and the active tab is the one
@@ -131,7 +136,8 @@ fills, `currentColor`: the drawing style of `StatusIcons` and `NodeIcon`. One ic
 same in the bar and in the palette's rows (the palette takes it from the bar slot that runs the same
 binding, `iconForCommand`). **Filter** is a funnel. **Status** is the Started Task's own glyph
 (`TaskIcon`, the ring with an unfilled centre), the state it moves a Task to. The Steps View's
-staircase in the bottom navigation is drawn in this style too.
+staircase in the bottom navigation is drawn in this style too: the bottom navigation takes all five
+of its view icons from the set (a target, a list, four panes, the staircase and a fork).
 
 Every slot **runs a binding of the [hotkey registry](#one-registry)** — the same guard, the same
 handler and the same refusal toast the key has — so a slot cannot do something the key does not.
@@ -188,9 +194,17 @@ Whenever a touchscreen is present, at any width.
 - **Tap** selects. **Tapping the selected node again** deselects it.
 - **Long-press** on a node opens the command palette for that node.
 - A quick **flick up** on a node opens its editor. Scrolling wins when the move is slow or long.
+- **Tap a node's status icon** to step its status, exactly as the status-cycle key does (a
+  Commitment's icon its verdict, a wait's its release). The tap does that and nothing else: it does
+  not select the node, and a second quick tap does not open its editor. The icon is a control of its
+  own on every card (the List's rows, the Zen and Steps cards, the Zen strips, the Mindmap's node);
+  on the phone the Zen card always draws it, so there is always something to tap. The Plan View's
+  cards have no status step to run, so their icon stays a picture.
 - **Double-tap** means "go into", everywhere: the Mindmap enters the node; the Steps View steps into
   it; the List View narrows to its subtree (Under); the Plan View opens its subtree; the Zen View
-  opens the node in the List View.
+  opens the node in the List View. A List row with **nothing beneath it** is entered through its
+  parent (Under the parent), which keeps it on screen among its siblings: narrowing Under a leaf
+  would empty the list. It never opens the editor.
 - **Swipe a row or a card right** to cycle its status: Done wraps back to To Do, a Commitment moves
   to its next verdict and a wait to released, exactly as the status-cycle key does. **Swipe it
   left** for the `Alt+Enter` alternative, setting Started. There is no swipe tray.
@@ -225,10 +239,13 @@ button, a tag pill, a collapse dot), is left to that control.
 
 - **Mindmap**: one finger on empty canvas pans. **Hold a node and drag it** to move it under another
   parent or reorder it. **Tap a collapse dot** to fold or unfold.
-- **Steps View**: a single tap selects.
+- **Steps View**: a single tap selects; a tap on a card's glyph steps its status.
 - **Plan View**, planned pane: a swipe left or right steps the scope (`[` and `]`), and a swipe
   **up** goes to the parent scope (`\`). **Swipe a candidate right** to plan it into the scope the
-  pane shows.
+  pane shows. The direction is right, as for a row's advance everywhere: a vertical swipe is the
+  flick up, which is the editor's (or, in the planned pane, the parent scope's), so the swipe that
+  moves a candidate is sideways. A candidate swiped left sets Started, as on any row; it does not
+  step the scope.
 
 ## One registry
 

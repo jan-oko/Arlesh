@@ -30,6 +30,6 @@
 }
 
 .glyph {
-  font-size: 18px;
-  line-height: 1;
+  display: flex;
+  line-height: 0;
 }
