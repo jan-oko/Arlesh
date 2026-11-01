@@ -10,6 +10,9 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
+- **More of the board over HTTP.** `arlesh-server` now serves everything the desktop app needs to run against it: every list and what-if the app reads, the shared agent capacity lock (`/capacity`), the MCP roots (`/mcp-access`), `/health` with the API version and build commit, and `/events`, a live stream that says `board-changed` after every write so other devices can reload.
+  The server can be pointed at its database with `ARLESH_DATABASE_URL` (`sqlite:///…`), or `ARLESH_DATABASE_URL_FILE` for a mounted secret; `--db` still works. Tokens now live in the database itself, so a copied database brings its devices with it; an existing `<db>.tokens` file is moved in automatically the first time the server or a `token` command runs.
+
 - **Archive a Domain.** A Domain you no longer need can be archived instead of deleted, so its history stays. Right-click it in the Mindmap and choose **Archive**, or turn on **Archived** under **Advanced** in its editor. Plan and Start then hide it and everything inside it, the same way they hide an Archived Project. Set the **Archived** pill to Include to see it again, and choose **Unarchive** (or turn the switch off) to bring it back as it was.
 
 - **Review pill in the Zen View.** The Zen View's Filter menu has a **Review** pill (key **R** in the menu) that shows the agentic tasks waiting on your answer. It is off by default, so Zen now leaves those tasks out until you turn it on. The setting is kept with the tab. Do, Start and the List View still show Review as before.
