@@ -297,7 +297,8 @@ undo) **waits for the lane to empty** before it is sent, so it never overtakes a
   confirmation.
 - **Unreachable.** Every pending write in the window is rolled back, with one toast, and the board
   goes read-only (*Offline*, above). A write that was in flight may have landed, and the next board
-  says whether it did. While the board is read-only no action is patched at all.
+  says whether it did. A write the server had already answered stays until a board reflects it. While the
+  board is read-only no action is patched at all.
 - **A new epoch** (the server restarted) reloads the board, as every epoch change does. Queued
   writes carry on to the restarted server.
 

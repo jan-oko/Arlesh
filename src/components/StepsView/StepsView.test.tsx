@@ -935,3 +935,16 @@ describe("an Overdue card", () => {
     expect(stepCard("task-1").className).toMatch(/selected/);
   });
 });
+
+describe("the pending-write cue", () => {
+  it("marks a card whose node has an unanswered write, and clears it on the answer", () => {
+    mockTree([n("task-1", "task", { pending: true }), n("task-2", "task")]);
+    const { rerender } = render(<StepsView />);
+    expect(document.querySelector('[data-step-card="task-1"]')).toHaveAttribute("data-pending");
+    expect(document.querySelector('[data-step-card="task-2"]')).not.toHaveAttribute("data-pending");
+
+    mockTree([n("task-1", "task"), n("task-2", "task")]);
+    rerender(<StepsView />);
+    expect(document.querySelector('[data-step-card="task-1"]')).not.toHaveAttribute("data-pending");
+  });
+});

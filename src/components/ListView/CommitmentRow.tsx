@@ -55,6 +55,7 @@ export default function CommitmentRow({
       // Same marker the task rows carry, so a selected Commitment is scrolled into view by the
       // same code.
       data-row-id={node.id}
+      data-pending={node.pending === true ? "" : undefined}
       style={cardStyle}
       onClick={() => onSelect(node.id)}
       onDoubleClick={() => onOpenEditor(node.id)}
