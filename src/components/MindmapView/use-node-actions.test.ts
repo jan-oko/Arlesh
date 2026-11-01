@@ -42,9 +42,15 @@ vi.mock("react-i18next", () => ({
 import { updateGoal } from "@/api/goals";
 import { stepTaskStatus } from "@/api/node-gestures";
 import { fixtureRowId } from "@/test/node-fixture";
+import { ordinary } from "@/utils/status-mapping";
+import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 
 function mkNode(id: string, kind: NodeKind, children: MindmapNode[] = [], extra: Partial<MindmapNode> = {}): MindmapNode {
-  return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children, ...extra };
+  // A stored Task always carries its typed status; the fixture derives it from the spelled one.
+  const typed = kind === "task" && extra.status !== undefined && extra.taskStatus === undefined
+    ? { taskStatus: ordinary(extra.status === "started" || extra.status === "in_progress" || extra.status === "done" ? extra.status : "todo") }
+    : {};
+  return { id, ...fixtureRowId(id), kind, title: id, position: 0, tagIds: [], children, ...typed, ...extra };
 }
 
 const TASK_NODE = mkNode("task-5", "task", [], { status: "todo" });
@@ -134,6 +140,7 @@ const WRITTEN = { id: 5, title: "task-5", parent_type: "project", parent_id: 3, 
 describe("useNodeActions — onStatusClick", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    usePendingWritesStore.getState().reset();
     vi.mocked(stepTaskStatus).mockResolvedValue({ outcome: "written", task: WRITTEN, backlog_cleared: null });
   });
 
@@ -235,6 +242,8 @@ describe("useNodeActions — onStatusClick", () => {
 });
 
 describe("useNodeActions — onStatusClick failures", () => {
+  beforeEach(() => { usePendingWritesStore.getState().reset(); });
+
   it("says so when the backend refuses a task's status cycle", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.mocked(stepTaskStatus).mockRejectedValueOnce(new Error("database is locked"));
@@ -243,7 +252,7 @@ describe("useNodeActions — onStatusClick failures", () => {
     act(() => { result.current.onStatusClick("task-5"); });
     await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
       nodeId: "task-5",
-      message: expect.stringContaining("statusChangeFailed"),
+      message: "database is locked",
     }));
     consoleError.mockRestore();
   });
@@ -256,7 +265,7 @@ describe("useNodeActions — onStatusClick failures", () => {
     act(() => { result.current.onStatusClick("goal-2"); });
     await vi.waitFor(() => expect(opts.showToast).toHaveBeenCalledWith({
       nodeId: "goal-2",
-      message: expect.stringContaining("statusChangeFailed"),
+      message: "database is locked",
     }));
     consoleError.mockRestore();
   });

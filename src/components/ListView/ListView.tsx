@@ -160,7 +160,6 @@ export default function ListView() {
   const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
   const { markBroken, cycleVerdict } = useCommitmentVerdict({
     findNode: (id) => findNode(tree, id),
-    reload,
     showToast,
   });
 

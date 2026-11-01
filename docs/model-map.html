@@ -450,10 +450,10 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dt>Without</dt><dd>Each view invents its own idea of "now".</dd>
       <dt>Lives</dt><dd class="where">filters/ (Rust) · src/utils/filter-tree.ts, list-filter.ts</dd></dl></article>
     <article class="card"><h3>The conformance pair</h3>
-      <p class="is">Every rule the views answer per keystroke is written twice, in a Rust rules module and as a TypeScript copy, and one shared case file per rule family runs against both.</p>
+      <p class="is">Every rule the views answer per keystroke or per press is written twice, in a Rust rules module and as a TypeScript copy, and one shared case file per rule family runs against both. The status step, Alt+Enter, the Compound refusal and the verdict are pinned this way (task-gestures.json), so a press shows at once.</p>
       <dl><dt>Why</dt><dd>The views filter instantly on every keystroke, without a round trip; the corpus keeps the two copies honest.</dd>
       <dt>Without</dt><dd>The agent's board and yours drift apart silently.</dd>
-      <dt>Lives</dt><dd class="where">conformance/ · *-conformance.test.ts · ADR 0010</dd></dl></article>
+      <dt>Lives</dt><dd class="where">conformance/ (incl. task-gestures.json) · *-conformance.test.ts · ADR 0010, ADR 0012</dd></dl></article>
     <article class="card"><h3>Pills and the focus exemption</h3>
       <p class="is">Filters combine as Any, All and Not. The selected node stays on screen, dimmed, even after your own edit stops it matching.</p>
       <dl><dt>Why</dt><dd>Completing a Task under Plan should not make it vanish from under the cursor.</dd>

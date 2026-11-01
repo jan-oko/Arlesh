@@ -105,7 +105,7 @@ export default function ZenView() {
   const quickPlan = useQuickPlan({ findNode: find, reload, showToast });
   const quickDependency = useQuickDependency({ tree, findNode: find, reload, showToast });
   const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
-  const { markBroken, cycleVerdict } = useCommitmentVerdict({ findNode: find, reload, showToast });
+  const { markBroken, cycleVerdict } = useCommitmentVerdict({ findNode: find, showToast });
   const { onUndo, onRedo } = useUndo({ reload, showToast });
   const searchableNodes = useSearchableNodes(tree);
 

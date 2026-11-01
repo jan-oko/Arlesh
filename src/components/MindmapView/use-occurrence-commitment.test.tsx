@@ -145,7 +145,7 @@ const SHIFT_C_LABEL = "shift+c";
 function Harness() {
   const {
     tree, isLoading, createNode, createChild, renameNode, moveNode, duplicateNode, pasteNodes, insertParent,
-    createCommitment, reload,
+    createCommitment,
   } = useMindmapData();
   const [parent, setParent] = useState<{ id: string; kind: NodeKind } | null>(null);
 
@@ -159,7 +159,7 @@ function Harness() {
   );
 
   const { onCreateTypedChild } = useNodeActions({
-    tree, clipboard: null, moveNode, duplicateNode, pasteNodes, insertParent, onRequestDelete: noop, reload, renameNode,
+    tree, clipboard: null, moveNode, duplicateNode, pasteNodes, insertParent, onRequestDelete: noop, renameNode,
     createNode, createChild, selectNode: noop, setClipboard: noop, setEditingNodeId: noop,
     showToast: noop, onNewFlow: noop, onNewHabit: noop, onNewCommitment,
   });

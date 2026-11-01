@@ -1,14 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useOccurrenceCompletion } from "./use-occurrence-completion";
+import type { GuardedAction } from "./use-occurrence-completion";
 import type { MindmapNode } from "@/utils/tree-layout";
+import type { WriteResult } from "@/stores/use-pending-writes-store";
 import { occurrenceRow } from "@/test/occurrence";
-
-vi.mock("@/api/flows", () => ({
-  unfinishedChildren: vi.fn(),
-}));
-
-import { unfinishedChildren } from "@/api/flows";
+import { lane } from "@/test/lane-helpers";
+import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 
 const OCCURRENCE: MindmapNode = {
   id: "habit-3-0",
@@ -20,77 +18,86 @@ const OCCURRENCE: MindmapNode = {
   ...occurrenceRow({ habitId: 3, itemType: "flow_root", itemId: 3 }),
 };
 
-const REFUSAL = { kind: "needs_confirmation", message: "still holds work" };
 const MILK = [{ child_type: "task" as const, child_id: 12, title: "buy milk" }];
+const HOLDING = { kind: "needs_confirmation", message: "still holds work", details: { children: MILK } };
+const WRITTEN: WriteResult = { outcome: "written", response: { epoch: null, revision: null, fields: null, createdId: null } };
+
+function action(send: GuardedAction["send"]): GuardedAction {
+  return {
+    label: "status change",
+    patch: { kind: "fields", fields: { status: "done" } },
+    send,
+    refuseReadOnly: vi.fn(),
+  };
+}
+
+function setup() {
+  const showToast = vi.fn();
+  return { ...renderHook(() => useOccurrenceCompletion({ showToast })), showToast };
+}
 
 beforeEach(() => {
-  vi.mocked(unfinishedChildren).mockReset().mockReturnValue(null);
+  usePendingWritesStore.getState().reset();
+  usePendingWritesStore.getState().reportBoard("test", { read: 0, epoch: null, revision: null });
 });
 
 describe("useOccurrenceCompletion", () => {
   it("writes straight through when the occurrence holds nothing unfinished", async () => {
-    const write = vi.fn((_confirmed: boolean) => Promise.resolve());
-    const onError = vi.fn();
-    const { result } = renderHook(() => useOccurrenceCompletion());
+    const send = vi.fn((_confirmed: boolean) => Promise.resolve(WRITTEN));
+    const { result, showToast } = setup();
 
-    act(() => { result.current.guard(OCCURRENCE, write, onError); });
+    act(() => { result.current.submit(OCCURRENCE, action(send)); });
 
-    await waitFor(() => { expect(write).toHaveBeenCalledWith(false); });
+    await waitFor(() => { expect(send).toHaveBeenCalledWith(false); });
     expect(result.current.prompt).toBeNull();
-    expect(onError).not.toHaveBeenCalled();
+    expect(showToast).not.toHaveBeenCalled();
   });
 
-  it("raises a prompt naming the unfinished children instead of failing", async () => {
-    const write = vi.fn((_confirmed: boolean) => Promise.reject(REFUSAL));
-    vi.mocked(unfinishedChildren).mockReturnValue(MILK);
-    const onError = vi.fn();
-    const { result } = renderHook(() => useOccurrenceCompletion());
+  it("rolls the patch back and raises a prompt naming the unfinished children, with no toast", async () => {
+    const send = vi.fn((_confirmed: boolean) => Promise.reject(HOLDING));
+    const { result, showToast } = setup();
 
-    act(() => { result.current.guard(OCCURRENCE, write, onError); });
+    act(() => { result.current.submit(OCCURRENCE, action(send)); });
 
     await waitFor(() => { expect(result.current.prompt).not.toBeNull(); });
     expect(result.current.prompt?.title).toBe("Groceries Mon");
     expect(result.current.prompt?.children).toEqual(MILK);
-    expect(onError).not.toHaveBeenCalled();
+    expect(lane()).toEqual([]);
+    expect(showToast).not.toHaveBeenCalled();
   });
 
-  it("confirming runs the same write again, acknowledged, and closes the prompt", async () => {
-    const write = vi.fn((confirmed: boolean) => (confirmed ? Promise.resolve() : Promise.reject(REFUSAL)));
-    vi.mocked(unfinishedChildren).mockReturnValue(MILK);
-    const { result } = renderHook(() => useOccurrenceCompletion());
-
-    act(() => { result.current.guard(OCCURRENCE, write, vi.fn()); });
+  it("confirming sends the same write again, acknowledged, patch and all, and closes the prompt", async () => {
+    const send = vi.fn((confirmed: boolean) => (confirmed ? new Promise<WriteResult>(() => undefined) : Promise.reject(HOLDING)));
+    const { result } = setup();
+    act(() => { result.current.submit(OCCURRENCE, action(send)); });
     await waitFor(() => { expect(result.current.prompt).not.toBeNull(); });
 
     act(() => { result.current.confirm(); });
 
-    await waitFor(() => { expect(result.current.prompt).toBeNull(); });
-    expect(write).toHaveBeenLastCalledWith(true);
+    expect(result.current.prompt).toBeNull();
+    expect(send).toHaveBeenLastCalledWith(true);
+    expect(lane().map((write) => write.patch)).toEqual([{ kind: "fields", fields: { status: "done" } }]);
   });
 
-  it("declining writes nothing at all, so there is nothing to take back", async () => {
-    const write = vi.fn((_confirmed: boolean) => Promise.reject(REFUSAL));
-    vi.mocked(unfinishedChildren).mockReturnValue(MILK);
-    const { result } = renderHook(() => useOccurrenceCompletion());
-
-    act(() => { result.current.guard(OCCURRENCE, write, vi.fn()); });
+  it("declining sends nothing more, so there is nothing to take back", async () => {
+    const send = vi.fn((_confirmed: boolean) => Promise.reject(HOLDING));
+    const { result } = setup();
+    act(() => { result.current.submit(OCCURRENCE, action(send)); });
     await waitFor(() => { expect(result.current.prompt).not.toBeNull(); });
 
     act(() => { result.current.cancel(); });
 
     expect(result.current.prompt).toBeNull();
-    expect(write).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(1);
   });
 
   it("does not turn a real failure into a question", async () => {
-    const failure = new Error("database is locked");
-    const write = vi.fn((_confirmed: boolean) => Promise.reject(failure));
-    const onError = vi.fn();
-    const { result } = renderHook(() => useOccurrenceCompletion());
+    const send = vi.fn((_confirmed: boolean) => Promise.reject({ kind: "database", message: "database is locked" }));
+    const { result, showToast } = setup();
 
-    act(() => { result.current.guard(OCCURRENCE, write, onError); });
+    act(() => { result.current.submit(OCCURRENCE, action(send)); });
 
-    await waitFor(() => { expect(onError).toHaveBeenCalledWith(failure); });
+    await waitFor(() => { expect(showToast).toHaveBeenCalledWith({ nodeId: OCCURRENCE.id, message: "database is locked" }); });
     expect(result.current.prompt).toBeNull();
   });
 });
