@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { isDerivedId, storedId } from "@/api/node-id";
+import type { RowId } from "@/api/node-id";
 import { dayStartInstant } from "@/utils/scope-calendar";
 import { useTranslation } from "react-i18next";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
@@ -8,40 +9,25 @@ import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal"
 import type { GoalSaveData } from "@/components/GoalEditorModal/GoalEditorModal";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { ExpectationSaveData } from "@/components/ExpectationEditorModal/ExpectationEditorModal";
-import { addTagToExpectation, removeTagFromExpectation, updateExpectation } from "@/api/expectations";
 import { EXPECTATION_ARCHIVAL } from "@/api/expectation-status";
 import type { ProjectSaveData } from "@/components/ProjectEditorModal/ProjectEditorModal";
 import type { InfoSaveData } from "@/components/InfoEditorModal/InfoEditorModal";
 import { updateInfo } from "@/api/infos";
-import { setBlockReasons } from "@/api/block-reasons";
 import type { FlowSaveData } from "@/components/FlowEditorModal/FlowEditorModal";
 import { recurrenceRequest } from "@/components/FlowEditorModal/recurrence-ui";
 import type { FlowItemSaveData } from "@/components/FlowItemEditorModal/FlowItemEditorModal";
-import {
-  updateFlow, updateFlowItem, setFlowItemCycles,
-  addFlowDependency, removeFlowDependency, flowOrigins,
-  setFlowRecurrence, deleteFlowRecurrence, forkFlow, clearHabitModifications,
-} from "@/api/flows";
-import type { FlowItemType, ForkedTemplate, UpdateFlowItemRequest, UpdateFlowRequest } from "@/api/flows";
+import { flowOrigins } from "@/api/flows";
+import type { FlowItemType, UpdateFlowItemRequest, UpdateFlowRequest } from "@/api/flows";
 import { withAtomicGesture } from "@/api/gesture";
-import { localNowIso } from "@/utils/local-now";
+import { runGesture } from "@/api/multi-node-gestures";
+import type { GestureStep, StepTarget } from "@/api/multi-node-gestures";
 import type { Domain } from "@/api/domains";
 import { listDomains, updateDomain } from "@/api/domains";
 import { domainArchiveStatus, isArchivedByHand } from "@/utils/hand-archive";
-import {
-  addTagToTask,
-  removeTagFromTask,
-  updateTask,
-  updateTaskSettlingPlans,
-  setTaskDoneAt,
-  addTaskDependency,
-  removeTaskDependency,
-  scopeContainmentConflicts,
-} from "@/api/tasks";
+import { scopeContainmentConflicts } from "@/api/tasks";
 import type { UpdateTaskRequest, ViolatingDescendant } from "@/api/tasks";
 import { TASK_ARCHIVAL } from "@/api/tasks";
-import { addTagToGoal, removeTagFromGoal, updateGoal } from "@/api/goals";
-import { addTagToCommitment, removeTagFromCommitment, updateCommitment, COMMITMENT_ARCHIVAL } from "@/api/commitments";
+import { COMMITMENT_ARCHIVAL } from "@/api/commitments";
 import type { TimeScope } from "@/api/time-scope";
 import { findNode } from "@/utils/mindmap-tree";
 import { rowIdOf } from "@/utils/node-identity";
@@ -50,18 +36,6 @@ import { isBegun, storedStatus } from "@/utils/status-mapping";
 import { useAnswerQuestion } from "@/hooks/use-answer-question";
 import { useScopeClampStore } from "@/stores/use-scope-clamp-store";
 
-/** A flow item's id on the fork an "Archive & new" save landed on — or its own, with no fork. */
-function forkedItemId(forked: ForkedTemplate | null, type: FlowItemType, id: number): number {
-  if (forked === null) return id;
-  const pairs = {
-    flow_goal: forked.goals,
-    flow_task: forked.tasks,
-    flow_commitment: forked.commitments,
-    flow_expectation: forked.expectations,
-  }[type];
-  return pairs.find(([old]) => old === id)?.[1] ?? id;
-}
-
 export interface EditorModalState {
   nodeId: string;
   node: MindmapNode;
@@ -69,18 +43,22 @@ export interface EditorModalState {
   focus?: "asyncTemplate";
 }
 
-/** Clamps every conflicting descendant's Time Scope to `window` before the parent narrows. */
-async function clampDescendants(
-  conflicts: ViolatingDescendant[],
-  window: TimeScope,
-): Promise<void> {
-  for (const conflict of conflicts) {
-    if (conflict.node_type === "goal") {
-      await updateGoal(conflict.node_id, { time_scope: window });
-    } else {
-      await updateTask(conflict.node_id, { time_scope: window });
-    }
-  }
+/** The writes that clamp every conflicting descendant's Time Scope to `window`, ahead of the
+ * parent's own narrowing in the same Save. */
+function clampSteps(conflicts: ViolatingDescendant[], window: TimeScope): GestureStep[] {
+  return conflicts.map((conflict) => ({
+    op: conflict.node_type === "goal" ? "update_goal" : "update_task",
+    id: conflict.node_id,
+    request: { time_scope: window },
+  }));
+}
+
+/** The writes that put on the tags in `after` and take off those only in `before`. */
+function tagSteps(kind: string, id: RowId, before: readonly number[], after: readonly number[]): GestureStep[] {
+  return [
+    ...after.filter((tag) => !before.includes(tag)).map((tag_id) => ({ op: "set_tag", kind, id, tag_id, present: true })),
+    ...before.filter((tag) => !after.includes(tag)).map((tag_id) => ({ op: "set_tag", kind, id, tag_id, present: false })),
+  ];
 }
 
 interface Options {
@@ -184,10 +162,13 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       if (editorModal === null) return;
       const { nodeId, node } = editorModal;
       const dbId = rowIdOf(node);
+      // The whole Save is one gesture operation: the clamps, the update and everything that hangs
+      // on the Task, in one request — one transaction and one undo step, all or nothing.
+      const steps: GestureStep[] = [];
       // An occurrence's window is its iteration's and does not change, so nothing is re-clamped.
       if (data.timeScope !== null && !isDerivedId(dbId)) {
         const conflicts = await scopeContainmentConflicts("task", dbId, data.timeScope);
-        await clampDescendants(conflicts, data.timeScope);
+        steps.push(...clampSteps(conflicts, data.timeScope));
       }
       // A task that consists of its sub-items and still does has no status to save: it is derived.
       const keepsDerived = node.compound === true && data.compound;
@@ -210,10 +191,16 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       };
       // Tasks below a new Plan are settled in the same write, as the clamp prompt was answered.
       const settle = data.descendantPlans ?? null;
-      if (settle === null) await updateTask(dbId, request);
-      else await updateTaskSettlingPlans(dbId, request, settle);
+      steps.push({ op: "update_task", id: dbId, request, ...(settle === null ? {} : { descendant_plans: settle }) });
       // After the update, which is what makes a task newly marked Done Done at all.
-      if (data.doneAt !== undefined) await setTaskDoneAt(dbId, data.doneAt);
+      if (data.doneAt !== undefined) steps.push({ op: "set_task_done_at", id: dbId, at: data.doneAt });
+      steps.push(
+        { op: "set_block_reasons", owner_type: "task", id: dbId, reasons: data.blockReasons },
+        ...tagSteps("task", dbId, node.tagIds, data.tagIds),
+        ...data.addedDeps.map((dependency) => ({ op: "set_task_dependency", task_id: dbId, dependency, present: true })),
+        ...data.removedDeps.map((dependency) => ({ op: "set_task_dependency", task_id: dbId, dependency, present: false })),
+      );
+      await runGesture("save-task", steps);
       // Scheduling a set-aside task puts it back in play, and so does starting one. The editor
       // already showed the switch go off, but the save is where it becomes true, so it is named
       // rather than left to be noticed.
@@ -225,13 +212,6 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
           showToast({ nodeId, message: t(started ? "backlogClearedByStarted" : "backlogClearedByStart") });
         }
       }
-      await setBlockReasons("task", dbId, data.blockReasons);
-      const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
-      const tagsRemoved = node.tagIds.filter((id) => !data.tagIds.includes(id));
-      for (const tagId of tagsAdded) await addTagToTask(dbId, tagId);
-      for (const tagId of tagsRemoved) await removeTagFromTask(dbId, tagId);
-      for (const dep of data.addedDeps) await addTaskDependency(dbId, dep);
-      for (const dep of data.removedDeps) await removeTaskDependency(dbId, dep);
       await reload();
       setEditorModal(null);
     },
@@ -249,22 +229,27 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       if (editorModal === null) return;
       const { node } = editorModal;
       const dbId = rowIdOf(node);
+      // One gesture operation: the clamps, the update, the block reasons and the tags.
+      const steps: GestureStep[] = [];
       if (data.timeScope !== null && !isDerivedId(dbId)) {
         const conflicts = await scopeContainmentConflicts("goal", dbId, data.timeScope);
-        await clampDescendants(conflicts, data.timeScope);
+        steps.push(...clampSteps(conflicts, data.timeScope));
       }
-      await updateGoal(dbId, {
-        title: data.title,
-        status: data.status,
-        time_scope: data.timeScope,
-        on_scope_exit: data.onScopeExit,
-        is_private: data.isPrivate,
-      });
-      await setBlockReasons("goal", dbId, data.blockReasons);
-      const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
-      const tagsRemoved = node.tagIds.filter((id) => !data.tagIds.includes(id));
-      for (const tagId of tagsAdded) await addTagToGoal(dbId, tagId);
-      for (const tagId of tagsRemoved) await removeTagFromGoal(dbId, tagId);
+      steps.push(
+        {
+          op: "update_goal", id: dbId,
+          request: {
+            title: data.title,
+            status: data.status,
+            time_scope: data.timeScope,
+            on_scope_exit: data.onScopeExit,
+            is_private: data.isPrivate,
+          },
+        },
+        { op: "set_block_reasons", owner_type: "goal", id: dbId, reasons: data.blockReasons },
+        ...tagSteps("goal", dbId, node.tagIds, data.tagIds),
+      );
+      await runGesture("save-goal", steps);
       await reload();
       setEditorModal(null);
     },
@@ -277,7 +262,8 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       // A stored wait's id, or a derived one's UUID (a spawned or delegation wait): the backend
       // writes a derived wait's fields into its overlay and its tags as differences, that wait only.
       const dbId = rowIdOf(editorModal.node);
-      await updateExpectation(dbId, {
+      // One gesture operation: the update and the tags.
+      const request = {
         title: data.title,
         status: data.status,
         check_every: data.checkEvery,
@@ -288,10 +274,11 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         agentic: data.agentic,
         agentic_note: data.agenticNote,
         answer: data.agenticAnswer,
-      });
-      const before = editorModal.node.tagIds;
-      for (const tagId of data.tagIds.filter((id) => !before.includes(id))) await addTagToExpectation(dbId, tagId);
-      for (const tagId of before.filter((id) => !data.tagIds.includes(id))) await removeTagFromExpectation(dbId, tagId);
+      };
+      await runGesture("save-wait", [
+        { op: "update_expectation", id: dbId, request },
+        ...tagSteps("expectation", dbId, editorModal.node.tagIds, data.tagIds),
+      ]);
       setEditorModal(null);
       await reload();
     },
@@ -305,7 +292,7 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       const dbId = rowIdOf(node);
       // Any refusal — most likely clearing the last window above the commitment — propagates to
       // the modal, which shows it rather than closing on a save that did not happen.
-      await updateCommitment(dbId, {
+      const request = {
         title: data.title,
         verdict: data.verdict,
         time_scope: data.timeScope,
@@ -314,11 +301,12 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         ...(data.archivedByHand !== undefined
           ? { archival: data.archivedByHand ? COMMITMENT_ARCHIVAL.ARCHIVED : COMMITMENT_ARCHIVAL.LIVE }
           : {}),
-      });
-      const tagsAdded = data.tagIds.filter((id) => !node.tagIds.includes(id));
-      const tagsRemoved = node.tagIds.filter((id) => !data.tagIds.includes(id));
-      for (const tagId of tagsAdded) await addTagToCommitment(dbId, tagId);
-      for (const tagId of tagsRemoved) await removeTagFromCommitment(dbId, tagId);
+      };
+      // One gesture operation: the update and the tags.
+      await runGesture("save-commitment", [
+        { op: "update_commitment", id: dbId, request },
+        ...tagSteps("commitment", dbId, node.tagIds, data.tagIds),
+      ]);
       await reload();
       setEditorModal(null);
     },
@@ -347,29 +335,28 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
         is_private: data.isPrivate,
         ...data.template,
       } satisfies UpdateFlowRequest;
-      // Persist the Recurrence for `targetId` after its flow row, so gap validation sees the new kind.
-      const persistRecurrence = async (targetId: number) => {
-        if (data.recurrence === undefined) return;
-        if (data.recurrence === null) {
-          await deleteFlowRecurrence(targetId);
-          return;
-        }
-        await setFlowRecurrence(targetId, recurrenceRequest(data.recurrence, data.durationKind));
+      // The Recurrence for `target` is written after its flow row, so gap validation sees the new kind.
+      const recurrenceSteps = (target: StepTarget): GestureStep[] => {
+        if (data.recurrence === undefined) return [];
+        if (data.recurrence === null) return [{ op: "delete_flow_recurrence", flow_id: target }];
+        return [{ op: "set_flow_recurrence", flow_id: target, request: recurrenceRequest(data.recurrence, data.durationKind) }];
       };
       if (data.reconcile === "fork") {
         // Archive & new: the backend clones the template and archives the original (it stops
-        // recurring, its history stays); the edit then lands on the clone. One Gesture, and an
-        // atomic one: a single Ctrl+Z takes the whole thing back, and a refusal part-way leaves
-        // neither a stray clone nor an archived original behind.
-        await withAtomicGesture(tUndo("gestures.archiveAndNew"), async () => {
-          const clone = await forkFlow(dbId, localNowIso());
-          await updateFlow(clone.id, flowFields);
-          await persistRecurrence(clone.id);
-        });
+        // recurring, its history stays); the edit then lands on the clone. One gesture operation,
+        // so all or nothing: a single Ctrl+Z takes the whole thing back, and a refusal part-way
+        // leaves neither a stray clone nor an archived original behind.
+        await withAtomicGesture(tUndo("gestures.archiveAndNew"), () => runGesture("save-flow", [
+          { op: "fork_flow", flow_id: dbId },
+          { op: "update_flow", id: { step: 0 }, request: flowFields },
+          ...recurrenceSteps({ step: 0 }),
+        ]));
       } else {
-        if (data.reconcile === "discard") await clearHabitModifications(dbId);
-        await updateFlow(dbId, flowFields);
-        await persistRecurrence(dbId);
+        await runGesture("save-flow", [
+          ...(data.reconcile === "discard" ? [{ op: "clear_habit_modifications", flow_id: dbId }] : []),
+          { op: "update_flow", id: dbId, request: flowFields },
+          ...recurrenceSteps(dbId),
+        ]);
       }
       await reload();
       setEditorModal(null);
@@ -388,34 +375,31 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
       // that would orphan what occurrences recorded asks the Habit editor's question — and an
       // "Archive & new" answer moves the rest of the save onto the fork, whose item ids the
       // backend hands back.
-      await withAtomicGesture(tUndo("gestures.editFlowItem"), async () => {
-        const forked = await setFlowItemCycles(
-          flowItem.flowId,
-          flowItem.itemType,
-          dbId,
-          data.cycles.map((c) => ({
+      // One gesture operation. Each later write names its node through the first one, which
+      // answers the Habit an *Archive & new* forked, if it forked one: its items' new ids.
+      const onto = (type: FlowItemType, id: number): StepTarget => ({ step: 0, forked: type, id });
+      const flowId: StepTarget = { step: 0, forked: "flow", id: flowItem.flowId };
+      const itemId = onto(flowItem.itemType, dbId);
+      const patch = {
+        title: data.title, is_private: data.isPrivate, ...data.template, ...data.itemFields,
+      } satisfies UpdateFlowItemRequest;
+      const dependency = (dep: { type: FlowItemType; id: number }, present: boolean): GestureStep => ({
+        op: "set_flow_dependency", flow_id: flowId, dependent_type: flowItem.itemType, dependent_id: itemId,
+        depends_on_type: dep.type, depends_on_id: onto(dep.type, dep.id), present,
+      });
+      await withAtomicGesture(tUndo("gestures.editFlowItem"), () => runGesture("save-flow-item", [
+        {
+          op: "set_flow_item_cycles", flow_id: flowItem.flowId, item_type: flowItem.itemType, item_id: dbId,
+          cycles: data.cycles.map((c) => ({
             scope_kind: c.scopeKind, scope_index: c.scopeIndex,
             plan_kind: c.planKind, plan_start: c.planStart, plan_end: c.planEnd,
           })),
-          data.reconcile,
-          // "Archive & new" archives the original as of now, which the backend is told rather
-          // than left to read its own clock.
-          data.reconcile === undefined ? undefined : localNowIso(),
-        );
-        const onto = (type: FlowItemType, id: number): number => forkedItemId(forked, type, id);
-        const flowId = forked?.flow_id ?? flowItem.flowId;
-        const itemId = onto(flowItem.itemType, dbId);
-        const patch = {
-          title: data.title, is_private: data.isPrivate, ...data.template, ...data.itemFields,
-        } satisfies UpdateFlowItemRequest;
-        await updateFlowItem(flowItem.itemType, itemId, patch);
-        for (const dep of data.addedDeps) {
-          await addFlowDependency(flowId, flowItem.itemType, itemId, dep.type, onto(dep.type, dep.id));
-        }
-        for (const dep of data.removedDeps) {
-          await removeFlowDependency(flowItem.itemType, itemId, dep.type, onto(dep.type, dep.id));
-        }
-      });
+          ...(data.reconcile === undefined ? {} : { reconcile: data.reconcile }),
+        },
+        { op: "update_flow_item", item_type: flowItem.itemType, id: itemId, request: patch },
+        ...data.addedDeps.map((dep) => dependency(dep, true)),
+        ...data.removedDeps.map((dep) => dependency(dep, false)),
+      ]));
       await reload();
       setEditorModal(null);
     },
@@ -444,12 +428,15 @@ export function useNodeEditor({ tree, allTasksAndGoals, reload }: Options): Node
     async (data: ProjectSaveData) => {
       if (editorModal === null) return;
       const dbId = storedId(rowIdOf(editorModal.node));
-      await updateDomain(dbId, {
-        title: data.title,
-        is_private: data.isPrivate,
-        ...(data.status !== "" ? { status: data.status } : {}),
-        ...(data.knowledgeBaseDirectory !== "" ? { knowledge_base_directory: data.knowledgeBaseDirectory } : {}),
-      });
+      await runGesture("save-project", [{
+        op: "update_domain", id: dbId,
+        request: {
+          title: data.title,
+          is_private: data.isPrivate,
+          ...(data.status !== "" ? { status: data.status } : {}),
+          ...(data.knowledgeBaseDirectory !== "" ? { knowledge_base_directory: data.knowledgeBaseDirectory } : {}),
+        },
+      }]);
       await reload();
       setEditorModal(null);
     },

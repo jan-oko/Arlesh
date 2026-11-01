@@ -10,6 +10,7 @@ class InfosRouter(BoardRouter):
     """``/infos``."""
 
     def _register_routes(self) -> None:
+        self.get("")(self._list)
         self.get("/{id}")(self._get)
         self.post("", status_code=201)(self._create)
         self.patch("/{id}")(self._update)
@@ -37,3 +38,7 @@ class InfosRouter(BoardRouter):
     ) -> DuplicatedInfo:
         """Copies an Info and its subtree under a new parent."""
         return await (await self._writer()).duplicate_info(id, target_type, target_id, position)
+
+    async def _list(self) -> list[Info]:
+        """Every Info."""
+        return await self._reader.list_infos()

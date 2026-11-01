@@ -14,6 +14,11 @@ import { testKey } from "@/test/scope-key";
 // `exactOptionalPropertyTypes` would make a conditionally-built request object omit it instead.
 // So the seam stubbed is Tauri's IPC entry point itself — the function `invoke` hands the command
 // to — with every hop above it (editor, hook, `src/api`) real.
+// A gesture operation's writes are replayed onto the mocked api calls below, one call per write.
+vi.mock("@/api/multi-node-gestures", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/multi-node-gestures")>()),
+  runGesture: (await import("@/test/gesture-replay")).replayGesture,
+}));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
 }));

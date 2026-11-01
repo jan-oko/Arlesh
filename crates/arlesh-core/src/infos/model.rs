@@ -39,7 +39,7 @@ pub struct Info {
 }
 
 /// Request body for creating an info node.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateInfoRequest {
     /// One-line text content.
     pub body: String,
@@ -55,12 +55,16 @@ pub struct CreateInfoRequest {
 }
 
 /// Request body for updating an info node.
-#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateInfoRequest {
     /// New one-line text content, if changing.
     pub body: Option<String>,
     /// New details, if changing (`Some(None)` clears).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub details: Option<Option<String>>,
     /// New display order, if changing.
     pub position: Option<i64>,

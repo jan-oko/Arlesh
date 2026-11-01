@@ -731,7 +731,7 @@ pub enum Dependency {
 }
 
 /// Request body for creating a task.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateTaskRequest {
     /// Display title.
     pub title: String,
@@ -787,7 +787,7 @@ pub enum DescendantPlans {
 }
 
 /// Request body for updating a task.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateTaskRequest {
     /// New title (if provided).
     pub title: Option<String>,
@@ -795,7 +795,11 @@ pub struct UpdateTaskRequest {
     /// model is refused, as is the derived Review.
     pub status: Option<Status>,
     /// Delegate to set — a Person (None leaves unchanged, Some(None) clears it).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub delegate_to: Option<Option<Delegate>>,
     /// Agentic state to set. `None` leaves the column unchanged; `Some(TaskAgentic::Inherit)`
     /// writes the NULL that puts the task back to inheriting. The three states are named rather
@@ -811,25 +815,49 @@ pub struct UpdateTaskRequest {
     pub compound: Option<bool>,
     /// The Expectation template to set (None leaves it unchanged, Some(None) removes it). Dropped
     /// when the task ends up not Asynchronous.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub async_template: Option<Option<AsyncTemplate>>,
     /// The agentic brief to set (None leaves it unchanged, Some(None) removes it). Kept whether or
     /// not the task reads as Agentic, since the flag can come and go with an ancestor's.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub agentic_brief: Option<Option<AgenticBrief>>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub time_scope: Option<Option<TimeScope>>,
     /// On-exit behavior to set (None leaves unchanged); forced NULL when the scope is cleared,
     /// defaulted to Keep Overdue when a scope is set without one.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub on_scope_exit: Option<Option<OnScopeExit>>,
     /// Plan window to set (None leaves unchanged, Some(None) clears it).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub plan: Option<Option<TimeScope>>,
     /// Explicit due scope to set (None leaves unchanged, Some(None) clears it back to the derived
     /// default). Must lie within the task's effective Time Scope as written.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub due_scope: Option<Option<TimeScope>>,
     /// Archival state to set (None leaves unchanged).
     ///
@@ -851,7 +879,7 @@ pub struct UpdateTaskRequest {
 }
 
 /// Request body for creating a goal.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateGoalRequest {
     /// Display title.
     pub title: String,
@@ -873,18 +901,26 @@ pub struct CreateGoalRequest {
 mod tests;
 
 /// Request body for updating a goal.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateGoalRequest {
     /// New title (if provided).
     pub title: Option<String>,
     /// New status (if provided).
     pub status: Option<GoalStatus>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub time_scope: Option<Option<TimeScope>>,
     /// On-exit behavior to set (None leaves unchanged); forced NULL when the scope is cleared,
     /// defaulted to Keep Overdue when a scope is set without one.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub on_scope_exit: Option<Option<OnScopeExit>>,
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
@@ -1041,7 +1077,7 @@ impl CommitmentArchival {
 }
 
 /// Request body for creating a commitment.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateCommitmentRequest {
     /// Display title.
     pub title: String,
@@ -1063,7 +1099,7 @@ pub struct CreateCommitmentRequest {
 }
 
 /// Request body for updating a commitment.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateCommitmentRequest {
     /// New title (if provided).
     pub title: Option<String>,
@@ -1071,10 +1107,18 @@ pub struct UpdateCommitmentRequest {
     pub verdict: Option<Verdict>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it — which is refused
     /// unless a scoped ancestor still supplies one).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub time_scope: Option<Option<TimeScope>>,
     /// Verdict Window to set (None leaves unchanged, Some(None) clears it back to inheriting).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub verdict_window: Option<Option<DurationSpec>>,
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
@@ -1218,7 +1262,7 @@ pub struct SpawnedWait {
 }
 
 /// Request body for changing a spawned wait: release it, take the release back, or archive it.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateSpawnedWaitRequest {
     /// New status (if provided).
     pub status: Option<ExpectationStatus>,
@@ -1381,7 +1425,7 @@ fn question_by_default() -> bool {
 }
 
 /// Request body for creating an expectation.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct CreateExpectationRequest {
     /// Display title.
     pub title: String,
@@ -1410,7 +1454,7 @@ pub struct CreateExpectationRequest {
 }
 
 /// Request body for updating an expectation.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema, serde::Serialize)]
 pub struct UpdateExpectationRequest {
     /// New title (if provided).
     pub title: Option<String>,
@@ -1419,14 +1463,22 @@ pub struct UpdateExpectationRequest {
     /// New archival (if provided).
     pub archival: Option<ExpectationArchival>,
     /// Check every to set (None leaves unchanged, Some(None) stops checking).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub check_every: Option<Option<DurationSpec>>,
     /// When the first check falls due (None leaves unchanged). Setting a Check every with no
     /// Starting of its own starts it now.
     #[serde(default)]
     pub check_starting: Option<NaiveDateTime>,
     /// Relevance window to set (None leaves unchanged, Some(None) clears it).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub time_scope: Option<Option<TimeScope>>,
     /// New parent entity type for re-parenting (must be set together with parent_id).
     pub parent_type: Option<String>,
@@ -1440,14 +1492,22 @@ pub struct UpdateExpectationRequest {
     /// ends up directly under a Task that reads as Agentic.
     pub agentic: Option<bool>,
     /// The agentic note to set (None leaves it unchanged, Some(None) clears it).
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub agentic_note: Option<Option<String>>,
     /// Whether the agentic wait is a question (None leaves it unchanged).
     #[serde(default)]
     pub question: Option<bool>,
     /// The answer to set (None leaves it unchanged, Some(None) clears it). Releasing a question
     /// wait needs one, given here or already stored.
-    #[serde(default, deserialize_with = "crate::wire::null_clears")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::null_clears",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub answer: Option<Option<String>>,
 }
 

@@ -224,11 +224,11 @@ async fn the_apps_load_is_blocked_by_the_lock_the_app_holds() {
     let agentic = task(&app, &pool, "Agent work", true).await;
     let now = chrono::Local::now().naive_local();
 
-    let before = load_mindmap(app.state(), app.state(), now).await.unwrap();
+    let before = load_mindmap(app.state(), now).await.unwrap();
     assert!(before.block_reasons.is_empty());
 
     app.state::<AgentCapacity>().set(true).await.unwrap();
-    let after = load_mindmap(app.state(), app.state(), now).await.unwrap();
+    let after = load_mindmap(app.state(), now).await.unwrap();
     assert_eq!(after.block_reasons.len(), 1);
     assert_eq!(after.block_reasons[0].owner_id, NodeId::from(agentic));
     assert!(after.block_reasons[0].derived.is_some());
@@ -281,14 +281,14 @@ async fn a_compound_whose_open_items_the_lock_blocks_is_blocked_too() {
             .collect::<Vec<_>>()
     };
 
-    let free = load_mindmap(app.state(), app.state(), now).await.unwrap();
+    let free = load_mindmap(app.state(), now).await.unwrap();
     assert!(
         derived_on(&free, compound).is_empty(),
         "its one open item is free"
     );
 
     app.state::<AgentCapacity>().set(true).await.unwrap();
-    let locked = load_mindmap(app.state(), app.state(), now).await.unwrap();
+    let locked = load_mindmap(app.state(), now).await.unwrap();
     assert_eq!(derived_on(&locked, step), vec![DerivedBlock::AgentCapacity]);
     assert_eq!(
         derived_on(&locked, compound),

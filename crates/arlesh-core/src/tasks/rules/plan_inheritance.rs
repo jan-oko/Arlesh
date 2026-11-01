@@ -73,7 +73,9 @@ impl<K> EffectivePlan<K> {
 }
 
 /// Which plan rule a node breaks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, schemars::JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, schemars::JsonSchema, serde::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum PlanConflict {
     /// Its own Plan is not inside the Plan it inherits.

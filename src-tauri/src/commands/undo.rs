@@ -15,26 +15,18 @@
 use tauri::{Manager, Runtime, State, WebviewWindow};
 
 use crate::{
+    backend::AppBackend,
     commands::board::announce,
-    database::session::SessionFactory,
     error::WireError,
-    undo::{
-        self as engine,
-        model::{GestureId, GestureSummary, UndoStatus},
-        stacks::UndoStacks,
-    },
+    undo::model::{GestureId, GestureSummary, UndoStatus},
 };
 
 /// Opens a Gesture, or joins the one already open, and returns the Gesture writes now belong to.
 ///
 /// Every call must be matched by a [`close_gesture`].
 #[tauri::command]
-pub async fn open_gesture(factory: State<'_, SessionFactory>) -> Result<GestureId, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.undo()
-        .open_gesture()
-        .await
-        .map_err(WireError::from_error)
+pub async fn open_gesture(backend: State<'_, AppBackend>) -> Result<GestureId, WireError> {
+    backend.open_gesture().await
 }
 
 /// Closes one [`open_gesture`]; the Gesture ends when the outermost open is closed.
@@ -58,12 +50,9 @@ pub async fn open_gesture(factory: State<'_, SessionFactory>) -> Result<GestureI
 #[tauri::command]
 pub async fn close_gesture<R: Runtime>(
     window: WebviewWindow<R>,
-    factory: State<'_, SessionFactory>,
-    stacks: State<'_, UndoStacks>,
+    backend: State<'_, AppBackend>,
 ) -> Result<Option<GestureSummary>, WireError> {
-    let closed = engine::close_gesture(&factory, &stacks)
-        .await
-        .map_err(WireError::from_error)?;
+    let closed = backend.close_gesture().await?;
     if closed.wrote {
         announce(window.app_handle(), Some(window.label()));
     }
@@ -89,10 +78,9 @@ pub async fn close_gesture<R: Runtime>(
 #[tauri::command]
 pub async fn abort_gesture<R: Runtime>(
     window: WebviewWindow<R>,
-    factory: State<'_, SessionFactory>,
-    stacks: State<'_, UndoStacks>,
+    backend: State<'_, AppBackend>,
 ) -> Result<Option<GestureSummary>, WireError> {
-    match engine::abort_gesture(&factory, &stacks).await {
+    match backend.abort_gesture().await {
         Ok(aborted) => {
             if aborted.wrote {
                 announce(window.app_handle(), Some(window.label()));
@@ -102,7 +90,7 @@ pub async fn abort_gesture<R: Runtime>(
         Err(error) => {
             // The reversal failed, so everything the Gesture wrote is still on the board.
             announce(window.app_handle(), Some(window.label()));
-            Err(WireError::from_error(error))
+            Err(error)
         }
     }
 }
@@ -116,12 +104,9 @@ pub async fn abort_gesture<R: Runtime>(
 #[tauri::command]
 pub async fn undo<R: Runtime>(
     window: WebviewWindow<R>,
-    factory: State<'_, SessionFactory>,
-    stacks: State<'_, UndoStacks>,
+    backend: State<'_, AppBackend>,
 ) -> Result<Option<GestureSummary>, WireError> {
-    let applied = engine::undo(&factory, &stacks)
-        .await
-        .map_err(WireError::from_error)?;
+    let applied = backend.undo().await?;
     announce_replay(&window, applied.as_ref());
     Ok(applied)
 }
@@ -132,12 +117,9 @@ pub async fn undo<R: Runtime>(
 #[tauri::command]
 pub async fn redo<R: Runtime>(
     window: WebviewWindow<R>,
-    factory: State<'_, SessionFactory>,
-    stacks: State<'_, UndoStacks>,
+    backend: State<'_, AppBackend>,
 ) -> Result<Option<GestureSummary>, WireError> {
-    let applied = engine::redo(&factory, &stacks)
-        .await
-        .map_err(WireError::from_error)?;
+    let applied = backend.redo().await?;
     announce_replay(&window, applied.as_ref());
     Ok(applied)
 }
@@ -158,6 +140,6 @@ fn announce_replay<R: Runtime>(window: &WebviewWindow<R>, applied: Option<&Gestu
 /// For labelling and disabling a control. It is not a precondition: [`undo`] and [`redo`] handle
 /// an empty stack themselves, so a caller that skips this loses nothing but the label.
 #[tauri::command]
-pub async fn undo_status(stacks: State<'_, UndoStacks>) -> Result<UndoStatus, WireError> {
-    Ok(stacks.status())
+pub async fn undo_status(backend: State<'_, AppBackend>) -> Result<UndoStatus, WireError> {
+    backend.undo_status().await
 }

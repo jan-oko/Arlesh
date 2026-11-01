@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { registerScopeUp } from "@/utils/scope-up-registry";
 import { scopeForRef } from "@/api/scopes";
 import type { Scope } from "@/api/scopes";
 import { getErrorMessage } from "@/api/errors";
@@ -133,6 +134,10 @@ export function usePlanScope(now: Date = new Date()): PlanScopeHandles {
     setPlanScopeKind(up.kind);
     setCursor(up);
   }, [up, setPlanScopeKind]);
+
+  // System back goes up a scope while there is one to go up to.
+  const canGoUp = up !== null;
+  useEffect(() => (canGoUp ? registerScopeUp(goUp) : undefined), [canGoUp, goUp]);
 
   // The scope's window is deliberately **not** derived here. `resolve_scope` is the authority on
   // what a scope spans, and `useScopeWindows` is what asks it — for this scope alongside every

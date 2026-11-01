@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { fetchAgentCapacity, onAgentCapacityChanged, setAgentCapacity } from "@/api/agent-capacity";
+import { onBoardChanged } from "@/api/board";
 import { getErrorMessage } from "@/api/errors";
 import { useAgentCapacityStore } from "@/stores/use-agent-capacity-store";
 
@@ -14,9 +15,20 @@ export function useAgentCapacitySync(): void {
     const { receive, fail } = useAgentCapacityStore.getState();
     let subscribed = true;
     let unlisten: UnlistenFn | null = null;
+    let unlistenBoard: UnlistenFn | null = null;
 
     void onAgentCapacityChanged((state) => receive(state.at_capacity)).then((stop) => {
       if (subscribed) unlisten = stop;
+      else stop();
+    });
+    // In Client mode the lock is the server's, and another device's change to it reaches this
+    // window only as a board change: read it again then.
+    void onBoardChanged(() => {
+      fetchAgentCapacity()
+        .then((state) => { if (subscribed) receive(state.at_capacity); })
+        .catch(() => undefined);
+    }).then((stop) => {
+      if (subscribed) unlistenBoard = stop;
       else stop();
     });
     // Subscribed before the read, so a change landing between the two is never missed; the read
@@ -28,6 +40,7 @@ export function useAgentCapacitySync(): void {
     return () => {
       subscribed = false;
       unlisten?.();
+      unlistenBoard?.();
     };
   }, []);
 }

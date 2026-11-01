@@ -12,6 +12,7 @@ class WaitsRouter(BoardRouter):
     """``/waits``."""
 
     def _register_routes(self) -> None:
+        self.get("")(self._list)
         self.post("", status_code=201)(self._create)
         self.patch("/{id}")(self._update)
         self.delete("/{id}", status_code=204)(self._delete)
@@ -37,3 +38,7 @@ class WaitsRouter(BoardRouter):
     async def _reopen_check(self, id: int, due_at: datetime) -> Expectation:
         """Reopens a stored wait's check, due again at ``due_at``."""
         return await (await self._writer()).reopen_wait_check(id, due_at)
+
+    async def _list(self, now: datetime | None = None) -> list[Expectation]:
+        """Every wait, derived at ``now`` (default: the server's clock)."""
+        return await self._reader.list_waits(now=now)

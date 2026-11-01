@@ -7,20 +7,16 @@
 //! never a public address — and only a database opened for writing serves it. An agent's writes
 //! are then journaled under that database's client.
 //!
-//! There are no windows to tell about a write, so the board-changed announcement is silent. The
-//! agent capacity lock is the same file the app keeps beside the database (`agent-capacity.json`
-//! in its directory), with no one to notify of a change.
+//! There are no windows to tell about a write, so the board-changed announcement bumps the
+//! database's revision instead ([`crate::shared`]), which `GET /events` streams to every device.
+//! The agent capacity lock is the same file the app keeps beside the database
+//! (`agent-capacity.json` in its directory), shared by every open of the file in this process.
 
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
-use std::sync::Arc;
 
 use arlesh_core::{
-    board,
-    capacity::{AgentCapacity, CAPACITY_FILE},
-    database::session::SessionFactory,
-    error::WireErrorKind,
-    mcp,
+    capacity::CAPACITY_FILE, database::session::SessionFactory, error::WireErrorKind, mcp,
 };
 use serde_json::json;
 use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle};
@@ -74,8 +70,10 @@ pub(crate) async fn serve(
         .map_err(|error| Failure::new(WireErrorKind::Internal, error.to_string()))?
         .port();
 
-    let capacity = AgentCapacity::open(capacity_file(database), Arc::new(|_| {}));
-    let app = mcp::router(factory, board::silent(), capacity);
+    // The lock and the change feed every open of this file shares, so an agent here is blocked by
+    // a lock set through any route, and its writes reach every device's `GET /events`.
+    let shared = crate::shared::for_database(database);
+    let app = mcp::router(factory, shared.changes.announcer(), shared.capacity.clone());
     let (stop, stopped) = oneshot::channel::<()>();
     let task = tokio::spawn(async move {
         let shutdown = async {

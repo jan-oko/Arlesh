@@ -116,3 +116,29 @@ def test_the_openapi_schema_takes_its_models_from_the_core(server: TestClient) -
     for name in ("Task", "CreateTaskRequest", "UpdateTaskRequest", "MindmapLoad"):
         assert set(published[name]["properties"]) == set(core[name]["properties"]), name
     assert published["ErrorBody"]["properties"]["kind"]["$ref"].endswith("WireErrorKind")
+
+
+def _nulls(value: Any, path: str = "") -> list[str]:
+    """Where in a JSON value a ``null`` sits."""
+    if value is None:
+        return [path]
+    if isinstance(value, dict):
+        return [found for key, item in value.items() for found in _nulls(item, f"{path}.{key}")]
+    if isinstance(value, list):
+        return [found for item in value for found in _nulls(item, f"{path}[]")]
+    return []
+
+
+def test_the_wire_leaves_an_absent_value_out_rather_than_sending_null(
+    server: TestClient, domain: int, new_task: Callable[..., int]
+) -> None:
+    """The core reads a missing field as its default but ``null`` for a ``bool`` as a failure, and
+    a real database has nulls a fixture does not: every route answers as the core writes it, a
+    value that is absent left out (the Desktop client broke on ``"expired": null``)."""
+    new_task(domain)
+
+    board = server.get("/board", params={"now": "2026-06-10T12:00:00"})
+
+    assert board.status_code == 200, board.text
+    assert _nulls(board.json()) == []
+    assert _nulls(server.get("/tasks").json()) == []

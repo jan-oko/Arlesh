@@ -22,13 +22,14 @@ from arlesh.server.entrypoints.fastapi.exception_handling.exception_handlers imp
     ERROR_RESPONSES,
 )
 from arlesh.server.entrypoints.fastapi.models import CommitmentStateQuestion, ItemStateQuestion
+from arlesh.server.entrypoints.fastapi.routers.base import WireRoute
 
 
 class ScopesRouter(APIRouter):
     """``/scopes``: resolving scope keys to windows."""
 
     def __init__(self) -> None:
-        super().__init__(tags=["scopes"], responses=ERROR_RESPONSES)
+        super().__init__(tags=["scopes"], responses=ERROR_RESPONSES, route_class=WireRoute)
         self.get("/containing")(self._containing)
         self.post("/resolve")(self._resolve)
 
@@ -46,7 +47,7 @@ class RulesRouter(APIRouter):
     """``/rules``: the derived lifecycles."""
 
     def __init__(self) -> None:
-        super().__init__(tags=["rules"], responses=ERROR_RESPONSES)
+        super().__init__(tags=["rules"], responses=ERROR_RESPONSES, route_class=WireRoute)
         self.post("/item-state")(self._item_state)
         self.post("/commitment-state")(self._commitment_state)
 

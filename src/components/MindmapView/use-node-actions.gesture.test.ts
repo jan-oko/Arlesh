@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useNodeActions } from "./use-node-actions";
-import { duplicateTask } from "@/api/tasks";
+import { runGesture } from "@/api/multi-node-gestures";
 import { CLIPBOARD_OP } from "@/stores/use-clipboard-store";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
@@ -77,13 +77,14 @@ function renderPaste() {
       // The real path from the hook to Tauri: `duplicateNode` is `use-mindmap-data`'s dispatch to
       // the api layer, which is where the Gesture wrapper sits.
       moveNode: vi.fn(() => Promise.resolve()),
-      duplicateNode: async (id, _kind, targetId, _targetKind, position) => {
-        await duplicateTask(
-          parseInt(id.split("-")[1] ?? "0", 10),
-          "domain",
-          parseInt(targetId.split("-")[1] ?? "0", 10),
-          position,
-        );
+      duplicateNode: vi.fn(() => Promise.resolve([])),
+      insertParent: vi.fn(() => Promise.resolve("task-9")),
+      // `use-mindmap-data`'s paste: one gesture operation through the api layer.
+      pasteNodes: async (items, targetId, targetKind, position, copy) => {
+        await runGesture("paste", items.map(({ id, kind }, index) => ({
+          op: copy ? "duplicate" : "move", kind, id: parseInt(id.split("-")[1] ?? "0", 10),
+          parent_kind: targetKind, parent_id: parseInt(targetId.split("-")[1] ?? "0", 10), position: position + index,
+        })));
         return [];
       },
       onRequestDelete: vi.fn(),
@@ -115,9 +116,9 @@ describe("pasting several nodes", () => {
 
     act(() => result.current.onPaste("domain-9"));
 
-    await waitFor(() => expect(journal.writes).toHaveLength(3));
-    expect(journal.writes.map((write) => write.command))
-      .toEqual(["duplicate_task", "duplicate_task", "duplicate_task"]);
+    // One command for the three copies: one request to a server, one transaction.
+    await waitFor(() => expect(journal.writes).toHaveLength(1));
+    expect(journal.writes.map((write) => write.command)).toEqual(["run_gesture"]);
     expect(journal.started).toBe(1);
     expect(new Set(journal.writes.map((write) => write.gesture))).toEqual(new Set(["gesture-1"]));
   });
@@ -128,7 +129,7 @@ describe("pasting several nodes", () => {
 
     act(() => result.current.onPaste("domain-9"));
 
-    await waitFor(() => expect(journal.writes).toHaveLength(3));
+    await waitFor(() => expect(journal.writes).toHaveLength(1));
     await waitFor(() => expect(journal.depth).toBe(0));
   });
 });

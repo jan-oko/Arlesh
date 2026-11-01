@@ -50,6 +50,15 @@ vi.mock("@/api/node-gestures", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/node-gestures")>()),
   stepTaskStatus: (id: number, step: string) => stepTaskStatus(id, step),
 }));
+// A gesture operation's Plan writes reach the same spy, one `update_task` each.
+vi.mock("@/api/multi-node-gestures", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/multi-node-gestures")>()),
+  runGesture: async (_name: string, steps: Array<{ id: number; request: unknown }>) => {
+    for (const step of steps) await updateTask(step.id, step.request);
+    return steps.map((step) => ({ id: step.id }));
+  },
+}));
+
 vi.mock("@/api/tasks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/tasks")>()),
   updateTask: (id: number, request: unknown) => updateTask(id, request),
@@ -86,6 +95,8 @@ function mockTree(children: MindmapNode[]): void {
     reorderNode: vi.fn(),
     moveNode: vi.fn(),
     duplicateNode: vi.fn(),
+    pasteNodes: vi.fn().mockResolvedValue([]),
+    insertParent: vi.fn().mockResolvedValue("domain-99"),
     removeNode,
     createCommitment: vi.fn(),
     createFlow: vi.fn(),

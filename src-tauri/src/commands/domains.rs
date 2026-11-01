@@ -2,10 +2,10 @@
 
 use tauri::State;
 
+use crate::backend::AppBackend;
 use crate::{
-    database::session::SessionFactory,
-    domains::model::{CreateDomainRequest, Domain, DomainId, DomainSubtype, UpdateDomainRequest},
-    duplicate::{duplicate_subtree, DuplicableKind, DuplicatedSubtree},
+    domains::model::{CreateDomainRequest, Domain, DomainSubtype, UpdateDomainRequest},
+    duplicate::DuplicatedSubtree,
     error::WireError,
 };
 
@@ -16,40 +16,25 @@ use crate::{
 /// whole creation back when the session drops.
 #[tauri::command]
 pub async fn create_domain(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     request: CreateDomainRequest,
 ) -> Result<Domain, WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let domain = db
-        .domains()
-        .create(request)
-        .await
-        .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(domain)
+    backend.create_domain(request).await
 }
 
 /// Fetches a domain by id.
 #[tauri::command]
-pub async fn get_domain(factory: State<'_, SessionFactory>, id: i64) -> Result<Domain, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.domains()
-        .get(DomainId(id))
-        .await
-        .map_err(WireError::from_error)
+pub async fn get_domain(backend: State<'_, AppBackend>, id: i64) -> Result<Domain, WireError> {
+    backend.get_domain(id).await
 }
 
 /// Lists all domains, optionally filtered by subtype.
 #[tauri::command]
 pub async fn list_domains(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     subtype: Option<DomainSubtype>,
 ) -> Result<Vec<Domain>, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.domains()
-        .list(subtype)
-        .await
-        .map_err(WireError::from_error)
+    backend.list_domains(subtype).await
 }
 
 /// Updates an existing domain.
@@ -58,15 +43,11 @@ pub async fn list_domains(
 /// session — SQLite gives the one write statement-level atomicity on its own.
 #[tauri::command]
 pub async fn update_domain(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     id: i64,
     request: UpdateDomainRequest,
 ) -> Result<Domain, WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.domains()
-        .update(DomainId(id), request)
-        .await
-        .map_err(WireError::from_error)
+    backend.update_domain(id, request).await
 }
 
 /// Deletes a domain by id.
@@ -74,12 +55,8 @@ pub async fn update_domain(
 /// A single-statement delete (once the read/validate work is done), so it runs on a pooled
 /// session.
 #[tauri::command]
-pub async fn delete_domain(factory: State<'_, SessionFactory>, id: i64) -> Result<(), WireError> {
-    let mut db = factory.connect().await.map_err(WireError::from_error)?;
-    db.domains()
-        .delete(DomainId(id))
-        .await
-        .map_err(WireError::from_error)
+pub async fn delete_domain(backend: State<'_, AppBackend>, id: i64) -> Result<(), WireError> {
+    backend.delete_domain(id).await
 }
 
 /// Deep-clones a Project, Domain or Tag and its whole subtree under `target_id`, putting the new
@@ -92,23 +69,10 @@ pub async fn delete_domain(factory: State<'_, SessionFactory>, id: i64) -> Resul
 /// the rows hung on Habit occurrences that it could not carry, for the paste to name.
 #[tauri::command]
 pub async fn duplicate_domain(
-    factory: State<'_, SessionFactory>,
+    backend: State<'_, AppBackend>,
     id: i64,
     target_id: i64,
     position: i64,
 ) -> Result<DuplicatedSubtree<Domain>, WireError> {
-    let mut db = factory.begin().await.map_err(WireError::from_error)?;
-    let subtree = duplicate_subtree(&mut db, DuplicableKind::Domain, id, "", target_id, position)
-        .await
-        .map_err(WireError::from_error)?;
-    let domain = db
-        .domains()
-        .get(DomainId(subtree.root_id))
-        .await
-        .map_err(WireError::from_error)?;
-    db.commit().await.map_err(WireError::from_error)?;
-    Ok(DuplicatedSubtree {
-        copy: domain,
-        left_behind: subtree.left_behind,
-    })
+    backend.duplicate_domain(id, target_id, position).await
 }

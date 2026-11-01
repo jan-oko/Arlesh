@@ -8,8 +8,10 @@ from arlesh.models import (
     CreateFlowItemRequest,
     FlowCommitment,
     FlowCycleInput,
+    FlowDependency,
     FlowExpectation,
     FlowGoal,
+    FlowItemCycle,
     FlowItemType,
     FlowTask,
     ForkedTemplate,
@@ -23,6 +25,10 @@ class FlowItemsRouter(BoardRouter):
     """``/flow-items``."""
 
     def _register_routes(self) -> None:
+        self.get("/flow_goal")(self._list_goals)
+        self.get("/flow_task")(self._list_tasks)
+        self.get("/cycles")(self._list_cycles)
+        self.get("/dependencies")(self._list_dependencies)
         self.post("/flow_goal", status_code=201)(self._create_goal)
         self.post("/flow_task", status_code=201)(self._create_task)
         self.post("/flow_commitment", status_code=201)(self._create_commitment)
@@ -108,3 +114,19 @@ class FlowItemsRouter(BoardRouter):
         return await (await self._writer()).duplicate_flow_item(
             item_type, id, parent_type, parent_id, position
         )
+
+    async def _list_goals(self) -> list[FlowGoal]:
+        """Every Flow's Goal items."""
+        return await self._reader.list_all_flow_goals()
+
+    async def _list_tasks(self) -> list[FlowTask]:
+        """Every Flow's Task items."""
+        return await self._reader.list_all_flow_tasks()
+
+    async def _list_cycles(self) -> list[FlowItemCycle]:
+        """Every Flow item's cycles."""
+        return await self._reader.list_all_flow_cycles()
+
+    async def _list_dependencies(self) -> list[FlowDependency]:
+        """Every dependency between Flow items."""
+        return await self._reader.list_all_flow_dependencies()
