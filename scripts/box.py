@@ -43,7 +43,11 @@ google-services.json; --no-firebase turns it off.
 Servers: `server start <branch>` runs arlesh-server from that worktree's own venv, on its own port,
 over a read-only `.backup` copy of the real database. `run` on desktop connects the instance to its
 own branch's server (started if it is not up) unless --server picks another or --standalone uses
-none. Server flags are desktop-only: a phone cannot reach a loopback server.
+none. An Android `run` does the same, over a server that listens publicly (restarted public, with a
+notice, if it was on loopback): the URL the phone can reach (tailnet or LAN) and a token are handed
+to the box app as intent extras, so it starts already connected, without the PIN flow. Either way
+the token's client name is the device's name (`desktop` for this machine). `server pin` is for
+pairing real (non-box) devices.
 """
 
 from __future__ import annotations
@@ -52,9 +56,11 @@ import argparse
 import base64
 import contextlib
 import hashlib
+import ipaddress
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import socket
@@ -76,6 +82,12 @@ DESKTOP = "desktop"
 ANDROID = "android"
 OSES = (ANDROID, DESKTOP)
 CMD = "npm run box --"
+LOOPBACK = "127.0.0.1"
+PUBLIC = "0.0.0.0"
+MAIN_ACTIVITY = "com.atai.arlesh.MainActivity"
+URL_EXTRA = "arlesh_box_url"
+TOKEN_EXTRA = "arlesh_box_token"
+TAILNET = ipaddress.ip_network("100.64.0.0/10")
 
 
 class BoxError(Exception):
@@ -378,7 +390,13 @@ def record_last_target(name: str) -> None:
 
 
 def empty_state() -> dict[str, Any]:
-    return {"built": {DESKTOP: {}, ANDROID: {}}, "installed": {}, "last_target": ""}
+    return {
+        "built": {DESKTOP: {}, ANDROID: {}},
+        "installed": {},
+        "last_target": "",
+        "tokens": {},
+        "provisioned": {},
+    }
 
 
 def load_state() -> dict[str, Any]:
@@ -394,9 +412,9 @@ def load_state() -> dict[str, Any]:
                 state["built"][os_name] = built
         if isinstance(raw.get("last_target"), str):
             state["last_target"] = raw["last_target"]
-        installed = raw.get("installed")
-        if isinstance(installed, dict):
-            state["installed"] = installed
+        for key in ("installed", "tokens", "provisioned"):
+            if isinstance(raw.get(key), dict):
+                state[key] = raw[key]
     return state
 
 
@@ -693,39 +711,49 @@ def standalone_instance(name: str) -> None:
     print(f"  {name:<28} Standalone")
 
 
-def connect_instance(app: str, server: str) -> None:
-    """Mint `app` a token on `server` straight into its 0600 token file; nothing is printed."""
+def connect_instance(app: str, server: str, device: str) -> None:
+    """Bind `app` to `server` as the device `device`: its mode.json and a 0600 token file.
+
+    The token's client name is the device name. Nothing is printed of the token. The instance's
+    existing token is kept when it is still the server's live one for that client.
+    """
     port = server_port_for(server)
+    url = f"http://127.0.0.1:{port}"
     appdir = app_data(app)
-    client = f"branch-{app}"
-    db = server_db(server)
-    wt = worktree_path(server)
-    base = ["uv", "run", "--no-sync", "arlesh-server", "token"]
-    cwd = wt / "crates" / "arlesh-py"
-    capture([*base, "revoke", client, "--db", str(db)], cwd=cwd)
-    added = capture([*base, "add", client, "--db", str(db)], cwd=cwd)
-    if added.returncode != 0:
-        raise die(f"Could not mint a token on server '{server}' for '{app}'.")
+    client = client_name(device)
+    holder = token_holder(device, app)
+    reason = provision_reason(
+        force=False,
+        record=load_state()["provisioned"].get(device, {}).get(app),
+        server=server,
+        url=url,
+        holder=holder,
+        holders=load_state()["tokens"].get(server, {}),
+        issued=issued_clients(server),
+        client=client,
+        has_local_data=(appdir / "server-token").is_file()
+        and (appdir / "mode.json").is_file(),
+    )
+    if reason is None:
+        print(f"  {app:<28} already connected to {server} as {client}")
+        return
+    token = mint_token(server, client, holder)
     tmp = appdir / "server-token.new"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
-        f.write(added.stdout)
+        f.write(token)
     os.replace(tmp, appdir / "server-token")
     (appdir / "mode.json").write_text(
-        json.dumps(
-            {
-                "mode": "client",
-                "url": f"http://127.0.0.1:{port}",
-                "token_in_file": True,
-            },
-            indent=2,
-        )
+        json.dumps({"mode": "client", "url": url, "token_in_file": True}, indent=2)
         + "\n"
     )
-    print(f"  {app:<28} Client mode against server {server} (port {port})")
+    record_provisioned(device, app, server, url)
+    print(
+        f"  {app:<28} Client mode against server {server} (port {port}) as {client} ({reason})"
+    )
 
 
-def run_desktop(name: str, wt: Path, args: argparse.Namespace) -> None:
+def run_desktop(name: str, wt: Path, target: Target, args: argparse.Namespace) -> None:
     stamp = worktree_stamp(wt)
     if is_stale(DESKTOP, name, stamp, desktop_binary(name), args.force):
         build_desktop(name, wt)
@@ -737,7 +765,7 @@ def run_desktop(name: str, wt: Path, args: argparse.Namespace) -> None:
     else:
         server = args.server or name
         server_start(server)
-        connect_instance(name, server)
+        connect_instance(name, server, target.name)
     start_vite(name, wt)
     launch_desktop(name)
     print(f"Stop it with: {CMD} stop {name}")
@@ -825,21 +853,50 @@ def seed_server(name: str) -> None:
         print(f"    seeded from {real_db()} (read-only)")
 
 
-def server_start(name: str, host: str = "127.0.0.1") -> None:
+def server_host(name: str) -> str:
+    """The address a running server was started on; loopback when it left no record."""
+    with contextlib.suppress(OSError):
+        return (server_dir(name) / "host").read_text().strip() or LOOPBACK
+    return LOOPBACK
+
+
+def needs_public_restart(running: bool, current: str, wanted: str) -> bool:
+    """Whether a running server must be restarted to listen where a phone can reach it.
+
+    Only loopback to public: a server that is public already serves loopback clients too.
+    """
+    return running and wanted == PUBLIC and current != PUBLIC
+
+
+def wait_exit(pid: int | None, seconds: int = 10) -> None:
+    for _ in range(seconds * 10):
+        if pid is None or not pid_alive(pid):
+            return
+        time.sleep(0.1)
+
+
+def server_start(name: str, host: str = LOOPBACK, widen: bool = False) -> None:
+    """Start `name`'s server. With `widen`, a running loopback server is restarted public."""
     sdir = server_dir(name)
     port = server_port_for(name)
     if server_running(name):
-        print(f"  server {name:<21} already up on {port}")
-        current = (
-            (sdir / "host").read_text().strip()
-            if (sdir / "host").exists()
-            else "127.0.0.1"
-        )
-        if current != host:
+        current = server_host(name)
+        if widen and needs_public_restart(True, current, host):
             note(
-                f"  (it listens on {current}, not {host}: stop it first to change that)"
+                f"  server {name} listens on {current}, which a phone cannot reach: "
+                f"restarting it on {host} (anyone on the network can reach the port, "
+                "but every request needs a token)"
             )
-        return
+            pid = read_pid(sdir / "server.pid")
+            kill_pidfile(sdir / "server.pid", "server", name)
+            wait_exit(pid)
+        else:
+            print(f"  server {name:<21} already up on {port}")
+            if current != host and not (current == PUBLIC and host == LOOPBACK):
+                note(
+                    f"  (it listens on {current}, not {host}: stop it first to change that)"
+                )
+            return
     build_server(name)
     seed_server(name)
     spawn_detached(
@@ -964,6 +1021,186 @@ def print_connection(name: str, public: bool) -> None:
         if ip := tailnet_ip():
             print(f"Tailnet: http://{ip}:{port}")
     print(f'Token: {added.stdout.strip()}   (client "cli")')
+
+
+# ---- Pre-bound clients: tokens named after the device, and a URL the device can reach ------------
+
+
+def client_name(device: str) -> str:
+    """The token's client name for a box device: the device's own name, in the server's alphabet."""
+    return re.sub(r"[^A-Za-z0-9._-]", "-", device)[:64] or "device"
+
+
+def token_holder(device: str, branch: str) -> str:
+    """Who holds the live token for a client name: one device may run several branches."""
+    return f"{device}/{branch}"
+
+
+def issued_clients(server: str) -> set[str]:
+    """The clients holding a token on `server` (empty when it cannot be listed)."""
+    res = capture(
+        ["uv", "run", "--no-sync", "arlesh-server", "token", "list",
+         "--db", str(server_db(server))],
+        cwd=py_dir(server),
+    )  # fmt: skip
+    if res.returncode != 0:
+        return set()
+    return {line.split("\t")[0] for line in res.stdout.splitlines() if line.strip()}
+
+
+def provision_reason(
+    *,
+    force: bool,
+    record: dict[str, Any] | None,
+    server: str,
+    url: str,
+    holder: str,
+    holders: dict[str, str],
+    issued: set[str],
+    client: str,
+    has_local_data: bool,
+) -> str | None:
+    """Why the app must be handed a fresh token, or None when its connection still holds.
+
+    The token text is never stored, so "still holds" is inferred: the app was bound to this
+    server at this URL, the server still lists the client, and no other holder has re-minted
+    that client's token since.
+    """
+    if force:
+        return "forced"
+    if not has_local_data:
+        return "no connection on the device yet"
+    if not record or record.get("server") != server or record.get("url") != url:
+        return "the server or its address changed"
+    if client not in issued:
+        return "the token is gone from the server"
+    if holders.get(client) != holder:
+        return "another instance has since taken this device name's token"
+    return None
+
+
+def mint_token(server: str, client: str, holder: str) -> str:
+    """A new token for `client` on `server`, replacing any (a client holds one). Never printed."""
+    base = ["uv", "run", "--no-sync", "arlesh-server", "token"]
+    db = str(server_db(server))
+    cwd = py_dir(server)
+    if client in issued_clients(server):
+        capture([*base, "revoke", client, "--db", db], cwd=cwd)
+    added = capture([*base, "add", client, "--db", db], cwd=cwd)
+    token = added.stdout.strip()
+    if added.returncode != 0 or not token:
+        raise die(f"Could not mint a token for '{client}' on server '{server}'.")
+    update_state(
+        lambda s: s["tokens"].setdefault(server, {}).__setitem__(client, holder)
+    )
+    return token
+
+
+def record_provisioned(device: str, branch: str, server: str, url: str) -> None:
+    update_state(
+        lambda s: (
+            s["provisioned"]
+            .setdefault(device, {})
+            .__setitem__(branch, {"server": server, "url": url})
+        )
+    )
+
+
+def is_tailnet_host(host: str) -> bool:
+    """Whether a device's host is a tailnet address: 100.64.0.0/10 or a *.ts.net name."""
+    name = host.partition(":")[0].lower()
+    try:
+        return ipaddress.ip_address(name) in TAILNET
+    except ValueError:
+        return name.endswith(".ts.net")
+
+
+def parse_interfaces(
+    ip_output: str, ifconfig_output: str = ""
+) -> list[ipaddress.IPv4Interface]:
+    """IPv4 addresses with their prefix, from `ip -o -4 addr` or (macOS) `ifconfig`."""
+    found: list[ipaddress.IPv4Interface] = []
+    for line in ip_output.splitlines():
+        parts = line.split()
+        if "inet" in parts and parts.index("inet") + 1 < len(parts):
+            with contextlib.suppress(ValueError):
+                found.append(ipaddress.IPv4Interface(parts[parts.index("inet") + 1]))
+    for line in ifconfig_output.splitlines():
+        parts = line.split()
+        if parts[:1] == ["inet"] and "netmask" in parts and len(parts) > 3:
+            mask = parts[parts.index("netmask") + 1]
+            with contextlib.suppress(ValueError):
+                if mask.startswith("0x"):
+                    mask = str(ipaddress.IPv4Address(int(mask, 16)))
+                found.append(ipaddress.IPv4Interface(f"{parts[1]}/{mask}"))
+    return found
+
+
+def local_interfaces() -> list[ipaddress.IPv4Interface]:
+    ip_out = (
+        capture(["ip", "-o", "-4", "addr", "show"]).stdout if shutil.which("ip") else ""
+    )
+    ifconfig_out = (
+        capture(["ifconfig"]).stdout if not ip_out and shutil.which("ifconfig") else ""
+    )
+    return parse_interfaces(ip_out, ifconfig_out)
+
+
+def resolve_host(host: str) -> str:
+    try:
+        return socket.gethostbyname(host)
+    except OSError as exc:
+        raise die(
+            f"Cannot resolve '{host}' to an address to pick this machine's matching network. "
+            f"Register the device by IP: {CMD} devices add <name> --os android --host <ip>[:port]"
+        ) from exc
+
+
+def pick_server_address(
+    device_host: str,
+    interfaces: Sequence[ipaddress.IPv4Interface],
+    tailnet: str,
+    resolve: Any = resolve_host,
+) -> str:
+    """The address of this machine the phone can reach.
+
+    The tailnet address when the device's host is a tailnet IP or a .ts.net name; otherwise the
+    address of this machine on the same subnet as the device's host.
+    """
+    host = device_host.partition(":")[0]
+    if is_tailnet_host(host):
+        if not tailnet:
+            raise die(
+                f"{host} is a tailnet host but this machine has no tailnet address (is tailscale up?)."
+            )
+        return tailnet
+    ip = ipaddress.ip_address(resolve(host))
+    if ip in TAILNET:
+        if not tailnet:
+            raise die(
+                f"{host} is on the tailnet but this machine has no tailnet address."
+            )
+        return tailnet
+    for iface in interfaces:
+        if ip in iface.network and iface.ip not in TAILNET:
+            return str(iface.ip)
+    raise die(
+        f"No address of this machine is on the same network as {host} ({ip}); "
+        "is this machine on the phone's Wi-Fi or tailnet?"
+    )
+
+
+def am_start_argv(serial: str, package: str, url: str, token: str) -> list[str]:
+    """`adb shell am start` handing a box build its server and token as intent extras.
+
+    The token is visible in argv to `ps` on the phone while the command runs: acceptable for a
+    debug box build. MainActivity ignores the extras unless it is a com.atai.arlesh.box.* build.
+    """
+    remote = shlex.join(
+        ["am", "start", "-n", f"{package}/{MAIN_ACTIVITY}",
+         "--es", URL_EXTRA, url, "--es", TOKEN_EXTRA, token]
+    )  # fmt: skip
+    return ["adb", "-s", serial, "shell", remote]
 
 
 # ---- Android: tooling and device ------------------------------------------------------------------
@@ -1325,17 +1562,54 @@ def install_android(name: str, serial: str) -> None:
     print(f"installed {box_package(name)} on {serial}")
 
 
-def launch_android(name: str, serial: str) -> None:
-    res = capture(["adb", "-s", serial, "shell", "monkey", "-p", box_package(name),
-                   "-c", "android.intent.category.LAUNCHER", "1"])  # fmt: skip
-    if res.returncode != 0:
-        raise die(f"Could not launch {box_package(name)} on {serial}.")
-    print(f"launched {box_package(name)}")
+def launch_android(
+    name: str, serial: str, bound: tuple[str, str] | None = None
+) -> None:
+    """Launch the box app; with `bound` (url, token), restart it handed that connection."""
+    package = box_package(name)
+    if bound:
+        # A running app has read its mode already: start it afresh so it reads the provision.
+        capture(["adb", "-s", serial, "shell", "am", "force-stop", package])
+        res = capture(am_start_argv(serial, package, *bound))
+        if res.returncode != 0 or "Error" in res.stdout:
+            raise die(f"Could not launch {package} on {serial}.")
+    else:
+        res = capture(["adb", "-s", serial, "shell", "monkey", "-p", package,
+                       "-c", "android.intent.category.LAUNCHER", "1"])  # fmt: skip
+        if res.returncode != 0:
+            raise die(f"Could not launch {package} on {serial}.")
+    print(f"launched {package}")
+
+
+def android_connection(
+    name: str, target: Target, server: str, force: bool, has_local_data: bool
+) -> tuple[str, str] | None:
+    """(url, token) for the box app on `target`, or None when it is already bound to `server`."""
+    server_start(server, PUBLIC, widen=True)
+    assert target.host
+    addr = pick_server_address(target.host, local_interfaces(), tailnet_ip())
+    url = f"http://{addr}:{server_port_for(server)}"
+    client = client_name(target.name)
+    holder = token_holder(target.name, name)
+    reason = provision_reason(
+        force=force,
+        record=load_state()["provisioned"].get(target.name, {}).get(name),
+        server=server,
+        url=url,
+        holder=holder,
+        holders=load_state()["tokens"].get(server, {}),
+        issued=issued_clients(server),
+        client=client,
+        has_local_data=has_local_data,
+    )
+    if reason is None:
+        print(f"{target.name} is already connected to {server} at {url} as {client}.")
+        return None
+    print(f"binding {target.name} to {server} at {url} as {client}: {reason}")
+    return url, mint_token(server, client, holder)
 
 
 def run_android(name: str, wt: Path, target: Target, args: argparse.Namespace) -> None:
-    if args.server or args.standalone:
-        raise UsageError("--server and --standalone apply to the desktop target only.")
     assert target.host  # registry guarantees it for android
     android_env()
     serial = resolve_device(
@@ -1347,6 +1621,7 @@ def run_android(name: str, wt: Path, target: Target, args: argparse.Namespace) -
         record_built(ANDROID, name, stamp)
     else:
         print(f"{name}: android build is current, not rebuilding.")
+    had_package = package_installed(serial, box_package(name))
     reason = (
         "forced" if args.force else install_reason(serial, target.name, name, stamp)
     )
@@ -1360,7 +1635,18 @@ def run_android(name: str, wt: Path, target: Target, args: argparse.Namespace) -
         )
     else:
         print(f"{target.name} already has this build installed.")
-    launch_android(name, serial)
+    bound = None
+    if args.standalone:
+        print(
+            "--standalone: not bound to a server; the app opens on its connect screen."
+        )
+    else:
+        bound = android_connection(
+            name, target, args.server or name, args.force, had_package
+        )
+    launch_android(name, serial, bound)
+    if bound:
+        record_provisioned(target.name, name, args.server or name, bound[0])
 
 
 def android_devices() -> list[Target]:
@@ -1437,7 +1723,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     if target.os == ANDROID:
         run_android(args.branch, wt, target, args)
     else:
-        run_desktop(args.branch, wt, args)
+        run_desktop(args.branch, wt, target, args)
     record_last_target(target.name)
 
 
@@ -1611,11 +1897,11 @@ def build_parser() -> argparse.ArgumentParser:
         "target", nargs="?", help="desktop, or a device from `devices list`"
     )
     group = run.add_mutually_exclusive_group()
+    group.add_argument("--server", metavar="BRANCH", help="use another branch's server")
     group.add_argument(
-        "--server", metavar="BRANCH", help="use another branch's server (desktop)"
-    )
-    group.add_argument(
-        "--standalone", action="store_true", help="use no server (desktop)"
+        "--standalone",
+        action="store_true",
+        help="use no server (the app opens unbound)",
     )
     run.add_argument(
         "--no-firebase", action="store_true", help="skip the Firebase app (android)"

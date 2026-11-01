@@ -10,6 +10,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import ClassVar
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parent.parent / "box.py"
 spec = importlib.util.spec_from_file_location("box", SCRIPT)
@@ -260,6 +262,226 @@ class Patching(unittest.TestCase):
             self.assertEqual(f.read_text(), "orig")
 
 
+class ClientNaming(unittest.TestCase):
+    def test_token_client_is_the_device_name(self) -> None:
+        self.assertEqual(box.client_name("pixel"), "pixel")
+        self.assertEqual(box.client_name("desktop"), "desktop")
+
+    def test_names_are_kept_inside_the_servers_alphabet_and_length(self) -> None:
+        self.assertEqual(box.client_name("my phone!"), "my-phone-")
+        self.assertEqual(len(box.client_name("a" * 100)), 64)
+        self.assertEqual(box.client_name(""), "device")
+
+
+class ServerAddress(unittest.TestCase):
+    LAN: ClassVar[list] = [box.ipaddress.IPv4Interface("192.168.1.5/24")]
+    OTHER: ClassVar[list] = [
+        box.ipaddress.IPv4Interface("10.0.0.2/24"),
+        box.ipaddress.IPv4Interface("192.168.1.5/24"),
+        box.ipaddress.IPv4Interface("100.100.1.1/32"),
+    ]
+
+    def pick(self, host: str, ifaces: list, tailnet: str = "100.100.1.1") -> str:
+        return box.pick_server_address(host, ifaces, tailnet, lambda h: "192.168.1.77")
+
+    def test_tailnet_ip_host_gets_the_tailnet_address(self) -> None:
+        self.assertEqual(self.pick("100.101.2.3:5555", self.OTHER), "100.100.1.1")
+
+    def test_ts_net_name_gets_the_tailnet_address(self) -> None:
+        self.assertEqual(self.pick("pixel.tail1234.ts.net", self.OTHER), "100.100.1.1")
+
+    def test_tailnet_range_edges(self) -> None:
+        self.assertTrue(box.is_tailnet_host("100.64.0.1"))
+        self.assertTrue(box.is_tailnet_host("100.127.255.254:1"))
+        self.assertFalse(box.is_tailnet_host("100.128.0.1"))
+        self.assertFalse(box.is_tailnet_host("100.63.0.1"))
+
+    def test_lan_host_gets_the_address_on_its_subnet(self) -> None:
+        self.assertEqual(self.pick("pixel.local", self.OTHER), "192.168.1.5")
+
+    def test_a_name_resolving_into_the_tailnet_gets_the_tailnet_address(self) -> None:
+        got = box.pick_server_address(
+            "p", self.OTHER, "100.100.1.1", lambda h: "100.90.0.1"
+        )
+        self.assertEqual(got, "100.100.1.1")
+
+    def test_no_shared_subnet_is_an_error(self) -> None:
+        with self.assertRaises(box.BoxError):
+            self.pick("pixel.local", [box.ipaddress.IPv4Interface("10.0.0.2/24")])
+
+    def test_tailnet_host_without_a_tailnet_address_is_an_error(self) -> None:
+        with self.assertRaises(box.BoxError):
+            self.pick("100.101.2.3", self.LAN, tailnet="")
+
+    def test_parse_ip_and_ifconfig_output(self) -> None:
+        got = box.parse_interfaces(
+            "2: eth0    inet 192.168.1.5/24 brd 192.168.1.255 scope global eth0\n",
+            "\tinet 10.1.2.3 netmask 0xffffff00 broadcast 10.1.2.255\n",
+        )
+        self.assertEqual([str(i) for i in got], ["192.168.1.5/24", "10.1.2.3/24"])
+
+
+class RestartPublic(unittest.TestCase):
+    def test_a_loopback_server_is_restarted_public(self) -> None:
+        self.assertTrue(box.needs_public_restart(True, "127.0.0.1", "0.0.0.0"))
+
+    def test_a_public_server_is_left_alone(self) -> None:
+        self.assertFalse(box.needs_public_restart(True, "0.0.0.0", "0.0.0.0"))
+
+    def test_a_stopped_server_is_just_started(self) -> None:
+        self.assertFalse(box.needs_public_restart(False, "127.0.0.1", "0.0.0.0"))
+
+    def test_loopback_wanted_never_restarts(self) -> None:
+        self.assertFalse(box.needs_public_restart(True, "0.0.0.0", "127.0.0.1"))
+        self.assertFalse(box.needs_public_restart(True, "127.0.0.1", "127.0.0.1"))
+
+
+class ProvisionDecision(unittest.TestCase):
+    URL = "http://192.168.1.5:14701"
+
+    def reason(self, **over: object) -> str | None:
+        args: dict = {
+            "force": False,
+            "record": {"server": "b", "url": self.URL},
+            "server": "b",
+            "url": self.URL,
+            "holder": "pixel/b",
+            "holders": {"pixel": "pixel/b"},
+            "issued": {"pixel"},
+            "client": "pixel",
+            "has_local_data": True,
+        }
+        args.update(over)
+        return box.provision_reason(**args)
+
+    def test_a_live_matching_connection_is_reused(self) -> None:
+        self.assertIsNone(self.reason())
+
+    def test_force_reprovisions(self) -> None:
+        self.assertEqual(self.reason(force=True), "forced")
+
+    def test_a_fresh_install_reprovisions(self) -> None:
+        self.assertIsNotNone(self.reason(has_local_data=False))
+
+    def test_a_changed_url_or_server_reprovisions(self) -> None:
+        self.assertIsNotNone(self.reason(url="http://100.64.0.9:14701"))
+        self.assertIsNotNone(self.reason(server="other"))
+        self.assertIsNotNone(self.reason(record=None))
+
+    def test_a_revoked_token_reprovisions(self) -> None:
+        self.assertIsNotNone(self.reason(issued=set()))
+
+    def test_a_token_re_minted_by_another_holder_reprovisions(self) -> None:
+        self.assertIsNotNone(self.reason(holders={"pixel": "pixel/other"}))
+
+
+class FakeProc:
+    def __init__(self, out: str = "", code: int = 0) -> None:
+        self.stdout, self.stderr, self.returncode = out, "", code
+
+
+class MintToken(IsolatedEnv):
+    def setUp(self) -> None:
+        super().setUp()
+        for name in ("py_dir", "server_db"):
+            patcher = mock.patch.object(box, name, lambda n: self.tmp / n)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_revokes_an_existing_client_then_adds_and_records_the_holder(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_capture(cmd, cwd=None):  # type: ignore[no-untyped-def]
+            calls.append(list(cmd))
+            if "list" in cmd:
+                return FakeProc("pixel\t2026-11-01 10:00\n")
+            return FakeProc("tok-123\n" if "add" in cmd else "")
+
+        with mock.patch.object(box, "capture", fake_capture):
+            token = box.mint_token("b", "pixel", "pixel/b")
+        self.assertEqual(token, "tok-123")
+        verbs = [c[c.index("token") + 1] for c in calls]
+        self.assertEqual(verbs, ["list", "revoke", "add"])
+        self.assertIn("pixel", calls[-1])
+        self.assertEqual(box.load_state()["tokens"]["b"]["pixel"], "pixel/b")
+
+    def test_skips_the_revoke_for_a_new_client(self) -> None:
+        verbs: list[str] = []
+
+        def fake_capture(cmd, cwd=None):  # type: ignore[no-untyped-def]
+            verbs.append(cmd[cmd.index("token") + 1])
+            return FakeProc("" if "list" in cmd else "t\n")
+
+        with mock.patch.object(box, "capture", fake_capture):
+            box.mint_token("b", "pixel", "pixel/b")
+        self.assertEqual(verbs, ["list", "add"])
+
+    def test_a_failed_add_is_an_error_that_does_not_echo_output(self) -> None:
+        with (
+            mock.patch.object(box, "capture", lambda cmd, cwd=None: FakeProc("", 1)),
+            self.assertRaises(box.BoxError),
+        ):
+            box.mint_token("b", "pixel", "pixel/b")
+
+
+class LaunchBound(unittest.TestCase):
+    def test_am_start_argv_carries_the_extras(self) -> None:
+        argv = box.am_start_argv(
+            "10.0.0.7:5555",
+            "com.atai.arlesh.box.b289_x",
+            "http://10.0.0.2:14701",
+            "tok_1-A",
+        )
+        self.assertEqual(argv[:4], ["adb", "-s", "10.0.0.7:5555", "shell"])
+        self.assertEqual(
+            argv[4],
+            "am start -n com.atai.arlesh.box.b289_x/com.atai.arlesh.MainActivity "
+            "--es arlesh_box_url http://10.0.0.2:14701 --es arlesh_box_token tok_1-A",
+        )
+
+    def test_a_token_with_shell_characters_is_quoted(self) -> None:
+        argv = box.am_start_argv("s", "p", "http://h:1", "a b;c")
+        self.assertIn("'a b;c'", argv[4])
+
+    def test_bound_launch_force_stops_then_starts_with_a_fake_adb(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_capture(cmd, cwd=None):  # type: ignore[no-untyped-def]
+            calls.append(list(cmd))
+            return FakeProc("Starting: Intent { cmp=... }\n")
+
+        with mock.patch.object(box, "capture", fake_capture):
+            box.launch_android("b", "s:1", ("http://h:1", "tok"))
+        self.assertEqual(calls[0][-3:], ["am", "force-stop", "com.atai.arlesh.box.b"])
+        self.assertIn("--es arlesh_box_token tok", calls[1][-1])
+
+    def test_unbound_launch_uses_the_launcher_intent(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_capture(cmd, cwd=None):  # type: ignore[no-untyped-def]
+            calls.append(list(cmd))
+            return FakeProc()
+
+        with mock.patch.object(box, "capture", fake_capture):
+            box.launch_android("b", "s:1")
+        self.assertEqual(len(calls), 1)
+        self.assertIn("monkey", calls[0])
+
+    def test_an_am_error_is_a_failure_without_the_token(self) -> None:
+        with (
+            mock.patch.object(
+                box,
+                "capture",
+                lambda cmd, cwd=None: FakeProc(
+                    "Error: Activity class does not exist.\n"
+                ),
+            ),
+            self.assertRaises(box.BoxError) as ctx,
+        ):
+            box.launch_android("b", "s:1", ("http://h:1", "SECRET"))
+        self.assertNotIn("SECRET", str(ctx.exception))
+
+
 class Arguments(unittest.TestCase):
     def test_run_takes_branch_and_positional_target(self) -> None:
         a = box.parse_args(["run", "201-x", "pixel", "--server", "9f0", "--force"])
@@ -274,6 +496,13 @@ class Arguments(unittest.TestCase):
     def test_no_target_flag(self) -> None:
         with self.assertRaises(box.UsageError):
             box.parse_args(["run", "b", "--target", "x"])
+
+    def test_android_run_accepts_server_and_standalone(self) -> None:
+        a = box.parse_args(["run", "b", "pixel", "--server", "x"])
+        self.assertEqual((a.server, a.standalone), ("x", False))
+        self.assertTrue(
+            box.parse_args(["run", "b", "pixel", "--standalone"]).standalone
+        )
 
     def test_server_and_standalone_are_exclusive(self) -> None:
         with self.assertRaises(box.UsageError):
