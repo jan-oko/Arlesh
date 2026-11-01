@@ -226,7 +226,95 @@ When the server cannot be reached, the app shows the last board it loaded, **rea
 *Server unreachable* banner with the time of the last sync. A write is refused, writing nothing,
 with `not_permitted` and `details.reason = "server_unreachable"`, which the window shows as any
 refusal; nothing is queued. Offline writes are a later feature. Any call that gets through, or the
-change stream reconnecting, makes the board writable again.
+change stream reconnecting, makes the board writable again. Writes already pending when the server
+drops are rolled back, not kept (see *Pending writes*, below).
+
+## Pending writes
+
+*Task `288`, [ADR 0012](../adr/0012-optimistic-own-field-rendering.md). This section describes both
+modes: Standalone runs the same path, only faster.*
+
+A few actions show their result **on the node at once**, before the write is answered, instead of
+waiting for the write and a reload. Until the answer comes, the board holds a **pending write**: the
+action's **patch**, a set of the node's own fields, drawn over the loaded board.
+
+### Which actions
+
+- **The status family:** the status step (a click on the glyph, `Enter`) on a Task or a Goal,
+  `Alt+Enter`, the Commitment verdict (Kept, Broken, the cycle key) and the wait release. A
+  Compound Task's step is refused locally, with today's toast and no write. *(How the Task step,
+  `Alt+Enter` and the verdict predict their value is ADR 0012's open question 1.)*
+- **Rename and the editors' Save:** the Task, Goal, Commitment, wait, Project, Domain, Tag and Info
+  editors. The editor closes as soon as its own prompts are answered. The Flow and flow-item
+  editors stay write-then-reload (ADR 0012's open question 4).
+- **Create a child or a sibling:** a placeholder node, for every kind whose create is one write
+  with no prompt.
+
+Move, reorder, archive, delete, Plan, paste, the Agentic key and every other write stay
+**write-then-reload**.
+
+### What a patch may change
+
+Only the touched node's **own** fields, the ones read straight off its stored row: its title,
+status, verdict, wait status, Agentic flag, Asynchronous flag, Time Scope, Plan, due, on scope exit,
+tags, block reasons, delegate, brief and notes. Nothing **derived** is patched: not an inherited
+Plan or Agentic reading, Timing, Overdue, Resolution, Expired, Archived, Review, a Compound Task's
+status, a rollup, Blocked, or a dependent's *met*. Those change when the server answers and the
+board reloads. A patch is worked out locally only from a rule already pinned by a corpus under
+`conformance/` (ADR 0012, decision 12). The views' per-render rules (the presets, the list
+sections, Zen's contents, the Habit fold) read the patched board as they read any board, so a Task
+marked Done leaves Start at once. The focus exemption still keeps the selected node on screen.
+
+### The cue
+
+A node with an unanswered write shows a **faint pulse**, or a **dotted outline** under reduced
+motion, on the Mindmap node, the List and Steps row, and the Zen card alike. It starts after a short
+delay, so a write answered within it never flickers, and it stops when the server answers.
+
+### Order
+
+The window's pending writes form one **lane**, in the order the user acted. Each action patches on
+top of the ones before it at once, so two quick presses show two steps. The writes go out **one at a
+time, in order**, the next when the last is answered. A write outside the lane (a move, an archive,
+undo) **waits for the lane to empty** before it is sent, so it never overtakes an earlier action.
+
+### When the server answers
+
+- **Written.** The node's cue stops. Where the response carries the written row, its own fields
+  replace the predicted ones, so the server's value shows even before the reload. The board then
+  reloads for the derived values, unless the board on screen already reflects the write.
+- **Reconcile: the server wins.** Each fresh board is drawn with the still-pending patches applied
+  over it. An answered write's patch is dropped once a board that reflects it is on screen: one whose
+  read began after the answer, or whose revision has reached the write's in the same epoch. Until
+  then it stays, so a reload that was skipped or still in flight never shows the old value.
+- **Refused.** That write's patch, and every later one on the **same node**, are rolled back. Those
+  later writes are never sent. **One toast**, at the node, names the backend's reason. Writes on
+  other nodes carry on. A refused editor Save is ADR 0012's open question 2.
+- **Asks first.** Marking a Habit occurrence done over unfinished children rolls back quietly and
+  opens the occurrence prompt. Confirming applies the patch again and sends the write with the
+  confirmation.
+- **Unreachable.** Every pending write in the window is rolled back, with one toast, and the board
+  goes read-only (*Offline*, above). A write that was in flight may have landed, and the next board
+  says whether it did. While the board is read-only no action is patched at all.
+- **A new epoch** (the server restarted) reloads the board, as every epoch change does. Queued
+  writes carry on to the restarted server.
+
+### New nodes
+
+A created node is drawn at once as a **placeholder** with a temporary id: the kind and title the
+user gave and nothing derived, placed where the gesture meant (after the sibling, or as the
+parent's last child). A kind the parent may not hold is refused before anything is drawn. Actions
+on the placeholder, a rename or a child of its own, queue behind its create. When the create is
+answered, they are rewritten to the real id and sent. The selection, the inline editor and any other
+place the temporary id was held move to the real node, and the server's position replaces the
+placeholder's when the board reloads. A refused create removes the placeholder and everything queued
+on it or under it, with one toast. Nothing about this reaches the server: it only ever sees real
+ids.
+
+### Undo
+
+See [Undo](undo.md), *Undo with writes pending*. In short, `Ctrl+Z` cancels the newest action
+locally while it is still queued, and otherwise waits for the lane and undoes on the server.
 
 ## Shared and local state
 

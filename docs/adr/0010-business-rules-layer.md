@@ -29,6 +29,9 @@ all. All folding is in 122 for now." Questions 1 to 7 are decided as recommended
 decided differently: the domain and database models are separated (decision 8). Phases 3 to 7 stay
 inside `122`, with no follow-up Tasks.
 
+Answer 2 (no optimistic updates) is reversed for a defined set of actions by
+[ADR 0012](0012-optimistic-own-field-rendering.md) (Task `288`).
+
 ## Context
 
 The backend already owns most of the model. The board load (`rs:mindmap/`) derives scope
