@@ -17,7 +17,14 @@ fn a_good_provision_parses_and_loses_the_trailing_slash() {
 
 #[test]
 fn a_non_http_url_is_refused() {
-    for url in ["ftp://box", "box:14701", "", "http://", "http:///x", "http://a b"] {
+    for url in [
+        "ftp://box",
+        "box:14701",
+        "",
+        "http://",
+        "http:///x",
+        "http://a b",
+    ] {
         let text = format!(r#"{{"url": "{url}", "token": "t"}}"#);
         assert_eq!(parse(&text), Err(ProvisionError::BadUrl), "{url}");
     }
