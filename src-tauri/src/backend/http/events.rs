@@ -5,7 +5,7 @@
 //! The stream is reconnected for as long as the app runs, with `Last-Event-ID`, and the server
 //! sends one event at once when this device missed anything while it was away.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use super::HttpBackend;
@@ -57,6 +57,59 @@ impl EventParser {
             }
         }
         events
+    }
+}
+
+/// The change stream, followed only while the app is in front.
+///
+/// A phone suspends the app when it goes to the background, and a connection held through that is
+/// one the system kills anyway. So the stream is dropped on [`suspend`](Self::suspend) and opened
+/// afresh on [`resume`](Self::resume), which checks `/health` again and reloads the windows, since
+/// the board may have changed while the app was away. A desktop never suspends, and so follows from
+/// the start to the end of the run.
+pub struct Follower {
+    backend: Arc<HttpBackend>,
+    announce: Arc<dyn Fn() + Send + Sync>,
+    task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+}
+
+impl Follower {
+    /// A follower of `backend`'s stream, not yet following.
+    pub fn new(backend: Arc<HttpBackend>, announce: Arc<dyn Fn() + Send + Sync>) -> Self {
+        Self {
+            backend,
+            announce,
+            task: Mutex::new(None),
+        }
+    }
+
+    /// Starts following, unless it already is.
+    pub fn resume(&self) {
+        let mut task = self.lock();
+        if task.is_some() {
+            return;
+        }
+        let backend = Arc::clone(&self.backend);
+        let announce = Arc::clone(&self.announce);
+        *task = Some(tauri::async_runtime::spawn(follow(backend, announce)));
+    }
+
+    /// Drops the connection and stops reconnecting, until [`resume`](Self::resume).
+    pub fn suspend(&self) {
+        if let Some(task) = self.lock().take() {
+            task.abort();
+        }
+    }
+
+    /// Whether the stream is being followed now.
+    pub fn is_following(&self) -> bool {
+        self.lock().is_some()
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Option<tauri::async_runtime::JoinHandle<()>>> {
+        self.task
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 
