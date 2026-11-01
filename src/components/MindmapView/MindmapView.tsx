@@ -65,6 +65,7 @@ import QuickDependencyPicker from "@/components/QuickDependencyPicker/QuickDepen
 import QuickPlanPicker from "@/components/QuickPlanPicker/QuickPlanPicker";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
+import { usePublishSelection } from "@/hooks/use-publish-selection";
 
 /** Screen-px moved per arrow-key press when panning the canvas (nothing selected). */
 const KEYBOARD_PAN_STEP = 80;
@@ -100,6 +101,10 @@ export default function MindmapView() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const findNodeById = useCallback((id: string): MindmapNode | undefined => findNode(tree, id), [tree]);
+  usePublishSelection([...selectedNodeIds].flatMap((id) => {
+    const node = findNodeById(id);
+    return node === undefined ? [] : [node.kind];
+  }));
   const allTasksAndGoals = useMemo(() => {
     const acc: MindmapNode[] = [];
     collectTasksAndGoals(tree, acc);

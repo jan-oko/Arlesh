@@ -57,9 +57,11 @@ import { useSubtreeNav } from "@/hooks/use-subtree-nav";
 import { useListScroll } from "@/hooks/use-list-scroll";
 import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useDisplayStore } from "@/stores/use-display-store";
+import { usePublishSelection } from "@/hooks/use-publish-selection";
+import { useTouchCommand } from "@/hooks/use-touch-command";
 
 export default function ListView() {
-  const { t } = useTranslation(["common", "listView", "editor", "expectation"]);
+  const { t } = useTranslation(["common", "listView", "editor", "expectation", "touch"]);
   const { tree, rows, commitmentRows, expectationRows, listRoot: flattenRoot, toggleRelease,
     allTasksAndGoals, isLoading, error, reload, onCycleStatus, onToggleStarted, renameNode,
     createTask, deleteTask, removeNode,
@@ -271,6 +273,18 @@ export default function ListView() {
     [tree, subtreeRootId],
   );
 
+  // The action bar's New, with nothing selected: a Task under the subtree you are in, refused out
+  // loud where a Task cannot hang (the board's root holds Aspects, not Tasks).
+  useTouchCommand({
+    id: "touch.newTask",
+    labelKey: "commandNewTask",
+    canRun: () => !isInputCaptured,
+    run: () => {
+      if (canParentNewTask(listRoot)) createTaskUnder(listRoot);
+      else showToast({ nodeId: listRoot.id, message: t("touch:newTaskRefused") });
+    },
+  });
+
   /** Shift+Enter: a sibling hangs from whatever the selected row hangs from, and carries over the
    * source's **own stored** Agentic flag — exactly as the Mindmap's Shift+Enter does, so the same
    * chord on the same Task cannot mean two things depending on which view you are in. */
@@ -327,6 +341,9 @@ export default function ListView() {
 
   // The viewport: it follows the selection, and j/k roam it without moving the selection.
   const { containerRef, startScroll, scrollToEdge } = useListScroll(activeSelectedId);
+
+  const selectedKind = activeSelectedId === null ? undefined : findNode(tree, activeSelectedId)?.kind;
+  usePublishSelection(selectedKind === undefined ? [] : [selectedKind]);
 
   useKeyboardListView({
     // The prompt swallows the row keys while it is open, as the editor modal already does.

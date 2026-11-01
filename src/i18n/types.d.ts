@@ -9,6 +9,7 @@ import type en_filter from "./locales/en/filter.json";
 import type en_statusIcons from "./locales/en/statusIcons.json";
 import type en_listView from "./locales/en/listView.json";
 import type en_hotkeys from "./locales/en/hotkeys.json";
+import type en_touch from "./locales/en/touch.json";
 import type en_undo from "./locales/en/undo.json";
 import type en_habits from "./locales/en/habits.json";
 import type en_planView from "./locales/en/planView.json";
@@ -33,6 +34,7 @@ declare module "i18next" {
       statusIcons: typeof en_statusIcons;
       listView: typeof en_listView;
       hotkeys: typeof en_hotkeys;
+      touch: typeof en_touch;
       undo: typeof en_undo;
       habits: typeof en_habits;
       planView: typeof en_planView;

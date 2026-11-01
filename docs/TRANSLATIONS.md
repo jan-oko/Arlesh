@@ -26,6 +26,7 @@ second locale — not because a translation is pending.
 | `planView`     | Plan View headings, scope stepper, refusals     |
 | `expectation`  | Expectation editor, gestures, refusals and prompts |
 | `hotkeys`      | Keyboard cheat-sheet action labels             |
+| `touch`        | Phone layout: bottom navigation, ☰ menu, preset sheet, action bar, command palette |
 | `settings`     | Settings modal pages, and the Agents page  |
 | `server`       | Client mode: the first-run chooser, Settings → Server, the top bar's mode, the offline banner |
 | `zenView`      | Zen View strips, empty state, preset refusal, its settings switch |

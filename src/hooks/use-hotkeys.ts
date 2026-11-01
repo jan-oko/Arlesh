@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { Binding } from "@/utils/hotkeys/chord";
 import { matchesChord } from "@/utils/hotkeys/chord";
+import { useCommandSurfaceStore } from "@/stores/use-command-surface-store";
 
 /** Whether a shortcut should be suppressed because the event came from somewhere the user types. */
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -48,9 +49,32 @@ export function useHotkeys<Ctx>(bindings: readonly Binding<Ctx>[], ctx: Ctx, ena
   // The context changes on nearly every render (fresh callbacks); a ref keeps the listener stable
   // instead of detaching and reattaching it each time.
   const ctxRef = useRef(ctx);
+  const enabledRef = useRef(enabled);
+  const token = useId();
+  const { publish, withdraw, refresh } = useCommandSurfaceStore.getState();
   useEffect(() => {
     ctxRef.current = ctx;
+    enabledRef.current = enabled;
+    // The selection may have moved: the action bar asks its slots again.
+    refresh();
   });
+
+  // The same table, published for the surfaces that are not a keyboard — the command palette and
+  // the action bar (docs/spec/touch.md). Each command reads the latest context through the ref, so
+  // it runs exactly what the key would, behind the same `enabled` gate and the same guard.
+  useEffect(() => {
+    publish(token, bindings.map((binding) => ({
+      id: binding.id,
+      chord: binding.chord,
+      label: { namespace: "hotkeys", key: binding.labelKey },
+      section: binding.section,
+      group: binding.group ?? null,
+      hidden: binding.hidden === true,
+      canRun: () => enabledRef.current && (binding.when === undefined || binding.when(ctxRef.current)),
+      run: () => binding.run(ctxRef.current),
+    })));
+    return () => withdraw(token);
+  }, [bindings, token, publish, withdraw]);
 
   useEffect(() => {
     if (!enabled) return;

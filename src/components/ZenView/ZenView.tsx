@@ -48,6 +48,7 @@ import ZenTaskCard from "./ZenTaskCard";
 import { isReview } from "@/utils/status-mapping";
 import { openQuestion } from "@/utils/open-question";
 import styles from "./ZenView.module.css";
+import { usePublishSelection } from "@/hooks/use-publish-selection";
 
 /** Where the toast saying the preset cannot change is anchored — no card, the view as a whole. */
 const PRESET_TOAST_ANCHOR = "zenView:preset";
@@ -171,6 +172,9 @@ export default function ZenView() {
     selectRow: setSelectedId,
     showToast,
   });
+
+  const selectedKind = activeId === null ? undefined : find(activeId)?.kind;
+  usePublishSelection(selectedKind === undefined ? [] : [selectedKind]);
 
   useKeyboardZenView({
     isInputActive: isInputCaptured || planPrompt !== null || occurrencePrompt !== null,

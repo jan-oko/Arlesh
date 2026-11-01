@@ -58,3 +58,10 @@
 .kind {
   composes: kind from "../NodeSearchModal/NodeSearchModal.module.css";
 }
+
+/* The phone layout (docs/spec/touch.md; the breakpoint is `PHONE_LAYOUT_QUERY`): the picker is a sheet (see QuickPlanPicker), full width. */
+@media (max-width: 699.98px) {
+  .popover {
+    width: auto;
+  }
+}

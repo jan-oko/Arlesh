@@ -12,6 +12,7 @@ import en_filter from "./locales/en/filter.json";
 import en_statusIcons from "./locales/en/statusIcons.json";
 import en_listView from "./locales/en/listView.json";
 import en_hotkeys from "./locales/en/hotkeys.json";
+import en_touch from "./locales/en/touch.json";
 import en_undo from "./locales/en/undo.json";
 import en_habits from "./locales/en/habits.json";
 import en_planView from "./locales/en/planView.json";
@@ -37,6 +38,7 @@ void i18n.use(initReactI18next).init({
       statusIcons: en_statusIcons,
       listView: en_listView,
       hotkeys: en_hotkeys,
+      touch: en_touch,
       undo: en_undo,
       habits: en_habits,
       planView: en_planView,
