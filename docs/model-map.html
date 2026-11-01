@@ -479,6 +479,11 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dl><dt>Why</dt><dd>One board shared by several devices, with the app itself unchanged above the port.</dd>
       <dt>Without</dt><dd>A second app for the server, or every component taught about HTTP; devices that each hold a different board.</dd>
       <dt>Lives</dt><dd class="where">src-tauri/src/backend/ (sqlite, http) · client_mode/ · conformance/client-mode.json · ADR 0011</dd></dl></article>
+    <article class="card"><h3>Pending writes</h3>
+      <p class="is">An action the board shows before the server answers it: a status step, Alt+Enter, a verdict, a wait release, a rename, an editor's Save, or a new child or sibling. Its patch sets only the node's own fields, never a derived one. The window's pending writes go out one at a time, in order. A pending node pulses faintly until the answer. Each fresh board is drawn with the unanswered patches over it, and a refusal rolls back that patch and every later one on the node, with one toast. A new node gets a temporary id until its create is answered.</p>
+      <dl><dt>Why</dt><dd>In Client mode every write is a round trip and a reload, and a press that shows nothing for that long feels broken.</dd>
+      <dt>Without</dt><dd>Every press waits on the network, or the board computes derived values the server never agreed to.</dd>
+      <dt>Lives</dt><dd class="where">src/utils/pending-writes.ts · apply-pending-writes.ts · src/stores/use-pending-writes-store.ts · ADR 0012</dd></dl></article>
   </div>
 </section>
 
@@ -506,7 +511,7 @@ footer{color:var(--muted);font-size:14px;border-top:1px solid var(--line);paddin
       <dt>Without</dt><dd>Upgrades that refuse to start, or quietly discard history.</dd>
       <dt>Lives</dt><dd class="where">crates/arlesh-core/migrations/</dd></dl></article>
     <article class="card"><h3>A truthful board</h3>
-      <p class="is">Nothing derived is stored, so nothing derived goes stale. Every window hears about every change. An agent whose next step is yours must say so with a question.</p>
+      <p class="is">Nothing derived is stored, so nothing derived goes stale. A pending write shows only its own node's own fields, and only until a board that reflects it arrives. Every window hears about every change. An agent whose next step is yours must say so with a question.</p>
       <dl><dt>Why</dt><dd>You act on what the board says; a board that lies costs more than none.</dd>
       <dt>Without</dt><dd>Stale copies, windows that disagree, and work that looks held when it is waiting on you.</dd>
       <dt>Lives</dt><dd class="where">board.rs (board-changed) · AGENTS.md</dd></dl></article>
