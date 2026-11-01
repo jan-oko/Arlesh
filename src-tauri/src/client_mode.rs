@@ -5,5 +5,6 @@
 //! session and the other preferences that stay local. The token is not in it: it is in the OS
 //! keychain ([`vault`]), or — only once the user agrees — in a file only they can read.
 
+pub mod provision;
 pub mod settings;
 pub mod vault;
