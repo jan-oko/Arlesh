@@ -1,4 +1,8 @@
-"""Tokens in a JSON file beside the database (``<db>.tokens``), stored hashed."""
+"""Tokens in a JSON file beside the database (``<db>.tokens``), stored hashed.
+
+The server's tokens used to live here. They live in the database now
+(:class:`~arlesh.server.ports.tokens.database_token_store.DatabaseTokenStore`), and this store is
+kept to read an old file once, to carry its tokens over."""
 
 from __future__ import annotations
 
@@ -74,6 +78,18 @@ class FileTokenStore(TokenStore):
             if secrets.compare_digest(entry.sha256, digest):
                 return client
         return None
+
+    def digests(self) -> list[tuple[str, str, datetime]]:
+        """Every client in the file with its token's SHA-256 digest and when it was issued."""
+        return [
+            (client, entry.sha256, entry.created)
+            for client, entry in sorted(self._read().clients.items())
+        ]
+
+    @property
+    def path(self) -> Path:
+        """The file."""
+        return self._path
 
     def _read(self) -> _File:
         if not self._path.exists():

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
+from typing import Any
 
 from fastapi import APIRouter
+from fastapi.routing import APIRoute
 
 import arlesh
 from arlesh.server.business_logic.board import Board
@@ -19,11 +21,23 @@ def node_id(raw: str) -> arlesh.NodeId:
     return int(raw) if raw.isdecimal() else raw
 
 
+class WireRoute(APIRoute):
+    """A route that answers as the core writes: a value that is absent is left out of the JSON.
+
+    The core reads a missing field as its default, but ``null`` for a ``bool`` or a ``Vec`` as a
+    failure; the generated models spell an absent value ``None``, and a real database has plenty.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        kwargs["response_model_exclude_none"] = True
+        super().__init__(*args, **kwargs)
+
+
 class BoardRouter(APIRouter):
     """A router whose routes are each one call on the ``arlesh`` bindings."""
 
     def __init__(self, board: Board, client_context: ContextVar[str], tag: str) -> None:
-        super().__init__(tags=[tag], responses=ERROR_RESPONSES)
+        super().__init__(tags=[tag], responses=ERROR_RESPONSES, route_class=WireRoute)
         self._board = board
         self._client_context = client_context
         self._register_routes()

@@ -10,6 +10,7 @@
     arlesh-server token add phone --db ~/arlesh.db      # prints phone's token, once
     arlesh-server token list --db ~/arlesh.db
     arlesh-server token revoke phone --db ~/arlesh.db
+    ARLESH_DATABASE_URL=sqlite:////data/arlesh.db arlesh-server   # the database as a URL
 
 Every flag can come from the environment instead (``ARLESH_DATABASE__PATH`` and so on; see
 :mod:`arlesh.server.config`); a flag given wins.
@@ -30,6 +31,7 @@ from arlesh.server.config import Config
 from arlesh.server.entrypoints.fastapi import run
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.logger import setup_logger
+from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from arlesh.server.ports.tokens.token_store import ClientAlreadyHasToken, UnknownClient
 
@@ -45,7 +47,10 @@ token_app = typer.Typer(help="Manage the bearer tokens, one per client.", no_arg
 app.add_typer(token_app, name="token")
 
 Db = Annotated[
-    Path | None, typer.Option("--db", help="The database file (or $ARLESH_DATABASE__PATH).")
+    Path | None,
+    typer.Option(
+        "--db", help="The database file (or $ARLESH_DATABASE__PATH, or $ARLESH_DATABASE_URL)."
+    ),
 ]
 
 
@@ -77,12 +82,16 @@ def serve(
         server={"host": host, "port": port, "tls_cert": tls_cert, "tls_key": tls_key},
     )
     setup_logger()
-    tokens = FileTokenStore.beside(config.database.path)
-    if not tokens.issued():
-        typer.echo(
-            f"{PROGRAM}: no tokens yet: add one with `{PROGRAM} token add <client>`", err=True
-        )
     path = config.database.path
+    tokens = DatabaseTokenStore(path)
+    # Reading the token table opens the database for writing, which would migrate it: only once
+    # it is known that this server will be its writer. A held database is refused at startup.
+    if config.database.force or _unheld(path):
+        tokens = prepare(path)
+        if not tokens.issued():
+            typer.echo(
+                f"{PROGRAM}: no tokens yet: add one with `{PROGRAM} token add <client>`", err=True
+            )
     board = Board(opener(path), holder(path), force=config.database.force)
     run.run(ArleshServer(board=board, tokens=tokens, version=version("arlesh")), config.server)
 
@@ -138,8 +147,26 @@ def holder(path: Path) -> TakeHold:
     return lambda: arlesh.hold(path)
 
 
-def _tokens(db: Path | None) -> FileTokenStore:
-    return FileTokenStore.beside(_config(database={"path": db}).database.path)
+def prepare(path: Path) -> DatabaseTokenStore:
+    """The token store in the database at ``path``, with the tokens of an old ``<db>.tokens``
+    file carried over into it. Its first call migrates the database if it is behind."""
+    tokens = DatabaseTokenStore(path)
+    for client in tokens.carry_over(FileTokenStore.beside(path)):
+        typer.echo(f"{PROGRAM}: moved {client}'s token into the database", err=True)
+    return tokens
+
+
+def _unheld(path: Path) -> bool:
+    """Whether nothing holds the database at ``path`` right now."""
+    try:
+        arlesh.hold(path).release()
+    except arlesh.NotPermitted:
+        return False
+    return True
+
+
+def _tokens(db: Path | None) -> DatabaseTokenStore:
+    return prepare(_config(database={"path": db}).database.path)
 
 
 def _config(**sections: dict[str, Any]) -> Config:
@@ -159,7 +186,9 @@ def _explain(error: ValidationError) -> str:
     first = error.errors()[0]
     location = ".".join(str(part) for part in first["loc"])
     if location == "database" or location.startswith("database.path"):
-        return "name the database with --db or ARLESH_DATABASE__PATH"
+        return "name the database with --db, ARLESH_DATABASE__PATH or ARLESH_DATABASE_URL"
+    if not location:
+        return str(first["msg"])
     return f"{location}: {first['msg']}"
 
 

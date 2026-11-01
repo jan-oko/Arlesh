@@ -67,6 +67,42 @@ Undo is **per device**. Each device's token is its own client, so its writes are
 own name (see [Undo](undo.md), *Clients, and a second writer*). `POST /undo` and `POST /redo` act on
 the calling client's stacks only, and today's conflict refusals still apply.
 
+**A Gesture never crosses a request** (ruled by the user, 2026-10-30: *REST should support an
+endpoint per gesture*). The ambient Gesture is one row the whole database shares, so one held open
+between requests would take in another device's writes, and one left open by a device that died
+would take in everyone's. Instead:
+
+- **Every write request is one Gesture** of the calling client: the server opens it, runs the write
+  in its own transaction, and closes it, under a per-file write lock so no other client's write
+  lands inside it. A lone command is one undo step, as on the desktop.
+- **Every gesture that issues several commands on the desktop is its own operation**, with its own
+  Backend method and its own route under `/gestures`. The operation runs the whole gesture
+  server-side as one request: one transaction, one Gesture, one undo step. The app calls the same
+  operation in Standalone mode, so both modes run one implementation (`arlesh_core::nodes::gestures`).
+- `HttpBackend` keeps the frontend's `open_gesture` and `close_gesture` on the device, where they
+  only pair up; it sends nothing for them (`local` in the parity contract).
+
+The gesture operations:
+
+- **Delete nodes** (`POST /gestures/delete-nodes`): a multi-selection or an expanded subtree.
+- **The listed-writes gestures**, each `POST /gestures/<name>` with the gesture's writes as its body:
+  `paste` (copies or moves), `insert-parent`, `move-node` (a drag, with the clamps it asked about),
+  `plan-tasks` (quick plan), `plan-move` (the Plan View), `save-task`, `save-goal`,
+  `save-commitment`, `save-project`, `save-wait` (the wait editor's Save and its Create),
+  `save-flow` (the Flow and Habit editor, its *Archive & new* included), `save-flow-item`, and
+  `new-flow` (a new Flow or Habit), and `archive-nodes` (a hand archive or unarchive of Tasks,
+  Commitments and Domains: it admits only their three updates). The writes run in order in one transaction; a later write names
+  the node an earlier one made as `{"step": n}`, or the node a Habit fork replaced as
+  `{"step": n, "forked": <kind>, "id": <old id>}`. Each gesture admits only the writes it makes,
+  and refuses any other before writing. A write marked `may_be_refused` is taken back alone
+  inside a savepoint and answered `{"refused": <error>}`: the two plan gestures mark every write,
+  so one Task that cannot take the Plan does not stop the others, as before. Every other refusal
+  refuses the whole gesture.
+
+The frontend's prompts (the clamp-or-cancel question, the Plan clamp, the reconcile question) are
+asked before the request, from reads, so the request carries the answers. Quick dependency is one
+write already, and needs no operation of its own.
+
 ## Offline
 
 When the server cannot be reached, the app shows the last board it loaded, **read-only**, under a

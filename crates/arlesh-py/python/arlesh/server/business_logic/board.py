@@ -72,6 +72,10 @@ class Board:
             self._hold = self._take_hold()
         try:
             self._reader = await self._open_as(SERVER_CLIENT)
+            # A Gesture a crash left open would swallow every later write, so the journal starts
+            # every run clear, as the desktop app's does. The undo stacks are in memory and start
+            # empty with it.
+            await self._reader.reset_undo()
         except BaseException:
             self._release()
             raise

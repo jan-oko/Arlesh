@@ -30,6 +30,13 @@ interface Options {
   moveNode: (id: string, kind: NodeKind, parentId: string, parentKind: NodeKind, position: number) => Promise<void>;
   /** Resolves with the rows hung on Habit occurrences that the copy could not carry. */
   duplicateNode: (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number) => Promise<readonly LeftBehindChild[]>;
+  /**
+   * Copies (`copy`) or moves `items` under `targetId`, from `position` on, as one gesture
+   * operation. Resolves with what the copies could not carry.
+   */
+  /** *Insert parent* as one gesture operation; resolves with the new parent's node id. */
+  insertParent: (nodeId: string, kind: NodeKind, parentId: string, parentKind: NodeKind) => Promise<string>;
+  pasteNodes: (items: ReadonlyArray<{ id: string; kind: NodeKind }>, targetId: string, targetKind: NodeKind, position: number, copy: boolean) => Promise<readonly LeftBehindChild[]>;
   onRequestDelete: (nodeIds: string[]) => void;
   reload: () => Promise<void>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
@@ -78,8 +85,8 @@ interface Result {
 }
 
 export function useNodeActions({
-  tree, clipboard, moveNode, duplicateNode, onRequestDelete, reload, renameNode,
-  createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewHabit, onNewCommitment,
+  tree, clipboard, pasteNodes, insertParent, onRequestDelete, reload, renameNode,
+  createNode, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewHabit, onNewCommitment,
 }: Options): Result {
   const { t } = useTranslation(["warnings", "nodeKinds", "undo"]);
   // Advancing a status is one definition, shared with every other surface that draws the gesture
@@ -353,19 +360,14 @@ export function useNodeActions({
       // A copy reports what it could not carry; a cut re-points one parent link and the whole
       // subtree follows, occurrence children included.
       const leftBehind: LeftBehindChild[] = [];
+      // One gesture operation: every copy or move in one request, so one transaction and one undo
+      // step here and against a server alike.
+      const items = topLevel.flatMap((nodeId) => {
+        const sourceNode = findNode(tree, nodeId);
+        return sourceNode === undefined ? [] : [{ id: nodeId, kind: sourceNode.kind }];
+      });
       void withGesture(label, async () => {
-        for (let i = 0; i < topLevel.length; i++) {
-          const nodeId = topLevel[i]!;
-          const sourceNode = findNode(tree, nodeId);
-          if (sourceNode === undefined) continue;
-          if (isCopy) {
-            leftBehind.push(
-              ...await duplicateNode(nodeId, sourceNode.kind, targetId, targetNode.kind, basePosition + i),
-            );
-          } else {
-            await moveNode(nodeId, sourceNode.kind, targetId, targetNode.kind, basePosition + i);
-          }
-        }
+        leftBehind.push(...await pasteNodes(items, targetId, targetNode.kind, basePosition, isCopy));
         if (!isCopy) setClipboard(null);
       }).then(() => {
         const skipped = sayRefusals(occurrenceChildrenLeftBehind(leftBehind));
@@ -383,7 +385,7 @@ export function useNodeActions({
         showToast({ nodeId: targetId, message: skipped === "" ? failure : `${skipped} ${failure}` });
       });
     },
-    [clipboard, tree, moveNode, duplicateNode, setClipboard, showToast, refusalSentence, t],
+    [clipboard, tree, pasteNodes, setClipboard, showToast, refusalSentence, t],
   );
 
   const onCreateSibling = useCallback(
@@ -438,19 +440,19 @@ export function useNodeActions({
       // back the move and leave an empty node behind.
       void (async () => {
         try {
-          await withGesture(t("undo:gestures.insertParent"), async () => {
-            const newNode = await createChild(parent.id, parent.kind, "");
-            await moveNode(nodeId, node.kind, newNode.id, newNode.kind, 0);
-            selectNode(newNode.id);
-            setEditingNodeId(newNode.id);
-          });
+          // One gesture operation: the new parent and the move under it in one request, so
+          // undoing it can never leave an empty node behind.
+          const newNodeId = await withGesture(t("undo:gestures.insertParent"), () =>
+            insertParent(nodeId, node.kind, parent.id, parent.kind));
+          selectNode(newNodeId);
+          setEditingNodeId(newNodeId);
         } catch (err) {
           console.error(`${LOG_PREFIX} insertParent failed:`, err);
           showToast({ nodeId, message: t("warnings:insertParentFailed", { message: getErrorMessage(err) }) });
         }
       })();
     },
-    [tree, createChild, moveNode, selectNode, setEditingNodeId, showToast, t],
+    [tree, insertParent, selectNode, setEditingNodeId, showToast, t],
   );
 
   return {

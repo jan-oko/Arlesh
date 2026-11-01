@@ -3,20 +3,21 @@ import { useDisplayStore } from "@/stores/use-display-store";
 import { useTranslation } from "react-i18next";
 import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
 import { agentActivityFrom } from "@/utils/agent-activity";
-import { createDomain, updateDomain, deleteDomain, duplicateDomain } from "@/api/domains";
-import { createTask, updateTask, deleteTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
-import { createCommitment, updateCommitment, deleteCommitment, addTagToCommitment, COMMITMENT_ARCHIVAL } from "@/api/commitments";
+import { createDomain, updateDomain, duplicateDomain } from "@/api/domains";
+import { createTask, updateTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
+import { createCommitment, updateCommitment, addTagToCommitment, COMMITMENT_ARCHIVAL } from "@/api/commitments";
 import type { CommitmentSaveData } from "@/components/CommitmentEditorModal/CommitmentEditorModal";
 import type { Commitment } from "@/api/commitments";
-import { createExpectation, updateExpectation, deleteExpectation } from "@/api/expectations";
+import { createExpectation, updateExpectation } from "@/api/expectations";
 import { EXPECTATION_ARCHIVAL } from "@/api/expectation-status";
 import type { Expectation } from "@/api/expectations";
 import { expectationNodeId } from "@/utils/node-uuid";
 import { VERDICT } from "@/api/verdict";
 import type { Delegate, TaskAgentic, TaskDependencyEdge } from "@/api/tasks";
 import type { BlockReason } from "@/api/block-reasons";
-import { createGoal, updateGoal, deleteGoal, duplicateGoal } from "@/api/goals";
-import { createInfo, updateInfo, deleteInfo, duplicateInfo } from "@/api/infos";
+import { createGoal, updateGoal, duplicateGoal } from "@/api/goals";
+import { createInfo, updateInfo, duplicateInfo } from "@/api/infos";
+import { leftBehindOf } from "@/api/duplicate";
 import type { LeftBehindChild } from "@/api/duplicate";
 import { getErrorMessage } from "@/api/errors";
 import { loadMindmap } from "@/api/mindmap";
@@ -24,13 +25,15 @@ import { withGesture } from "@/api/gesture";
 import { useBoardChanged } from "@/hooks/use-board-changed";
 import type { MindmapLoad } from "@/api/mindmap";
 import {
-  createFlow, updateFlow, deleteFlow,
-  createFlowItem, updateFlowItem, deleteFlowItem, isFlowItemType, flowItemNodeId,
+  createFlow, updateFlow,
+  createFlowItem, updateFlowItem, isFlowItemType, flowItemNodeId,
   duplicateFlow, duplicateFlowItem,
 } from "@/api/flows";
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
 import { listPeople } from "@/api/people";
+import { deleteNodes, runGesture } from "@/api/multi-node-gestures";
+import type { GestureStep } from "@/api/multi-node-gestures";
 import { useMcpAccessStore } from "@/stores/use-mcp-access-store";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
@@ -190,6 +193,10 @@ interface MindmapData {
   moveNode: (id: string, kind: NodeKind, newParentId: string, newParentKind: NodeKind, position: number) => Promise<void>;
   /** Resolves with the rows hung on Habit occurrences that the copy could not carry. */
   duplicateNode: (id: string, kind: NodeKind, targetId: string, targetKind: NodeKind, position: number) => Promise<readonly LeftBehindChild[]>;
+  /** *Insert parent* as one gesture operation; resolves with the new parent's node id. */
+  insertParent: (nodeId: string, kind: NodeKind, parentId: string, parentKind: NodeKind) => Promise<string>;
+  /** Copies or moves several nodes as one gesture operation; see `useNodeActions`'s `pasteNodes`. */
+  pasteNodes: (items: ReadonlyArray<{ id: string; kind: NodeKind }>, targetId: string, targetKind: NodeKind, position: number, copy: boolean) => Promise<readonly LeftBehindChild[]>;
   removeNode: (nodesToDelete: Array<{ id: string; kind: NodeKind }>) => Promise<void>;
   /** Writes a commitment configured in the new-commitment editor, window and all, under a parent. */
   createCommitment: (parentId: string, parentKind: NodeKind, data: CommitmentSaveData) => Promise<void>;
@@ -1033,6 +1040,34 @@ export function useMindmapData(): MindmapData {
     void load(false);
   }, [mcpRevision, load]);
 
+  /** The kind of node Tab makes under `parentId`, and *insert parent* makes above a node. */
+  const defaultChildKind = useCallback(
+    (parentId: string, parentKind: NodeKind): NodeKind => {
+      // A flow root spawns items of its Instance Type; a flow item spawns items of its own kind.
+      const flowRootChildKind = (): NodeKind =>
+        findNodeInTree(tree, parentId)?.flow?.instanceType === "goal" ? "flow_goal" : "flow_task";
+      return (
+        parentKind === "info" ? "info"
+        : parentKind === "project" ? "project"
+        : parentKind === "goal" ? "goal"
+        : parentKind === "task" ? "task"
+        // A commitment's default child is another commitment: the common shape is a month
+        // holding each day's instance, not a month holding a chore.
+        : parentKind === "commitment" ? "commitment"
+        : parentKind === "flow" ? flowRootChildKind()
+        : parentKind === "flow_goal" ? "flow_goal"
+        : parentKind === "flow_task" ? "flow_task"
+        // A Commitment item's default child is another, as a Commitment's is.
+        : parentKind === "flow_commitment" ? "flow_commitment"
+        // A Tag holds notes about itself and nothing else (Arlesh-71m taught `isValidDropTarget`
+        // that and left this table behind), so its default child is the only child it can take.
+        : parentKind === "tag" ? "info"
+        : "domain" // aspect, domain → domain
+      );
+    },
+    [tree],
+  );
+
   const createNode = useCallback(
     async (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string, agentic?: TaskAgentic): Promise<MindmapNode> => {
       // A Habit occurrence is a parent like any other: its row id is a UUID, and the backend hangs
@@ -1146,29 +1181,10 @@ export function useMindmapData(): MindmapData {
 
   const createChild = useCallback(
     async (parentId: string, parentKind: NodeKind, title: string): Promise<MindmapNode> => {
-      // A flow root spawns items of its Instance Type; a flow item spawns items of its own kind.
-      const flowRootChildKind = (): NodeKind =>
-        findNodeInTree(tree, parentId)?.flow?.instanceType === "goal" ? "flow_goal" : "flow_task";
-      const childKind: NodeKind =
-        parentKind === "info" ? "info"
-        : parentKind === "project" ? "project"
-        : parentKind === "goal" ? "goal"
-        : parentKind === "task" ? "task"
-        // A commitment's default child is another commitment: the common shape is a month
-        // holding each day's instance, not a month holding a chore.
-        : parentKind === "commitment" ? "commitment"
-        : parentKind === "flow" ? flowRootChildKind()
-        : parentKind === "flow_goal" ? "flow_goal"
-        : parentKind === "flow_task" ? "flow_task"
-        // A Commitment item's default child is another, as a Commitment's is.
-        : parentKind === "flow_commitment" ? "flow_commitment"
-        // A Tag holds notes about itself and nothing else (Arlesh-71m taught `isValidDropTarget`
-        // that and left this table behind), so its default child is the only child it can take.
-        : parentKind === "tag" ? "info"
-        : "domain"; // aspect, domain → domain
+      const childKind = defaultChildKind(parentId, parentKind);
       return createNode(parentId, parentKind, childKind, title);
     },
-    [createNode, tree],
+    [createNode, defaultChildKind],
   );
 
   const renameNode = useCallback(
@@ -1377,23 +1393,79 @@ export function useMindmapData(): MindmapData {
     [load, rowIdOfId],
   );
 
+  /**
+   * Copies (`copy`) or moves `items` under `(targetId, targetKind)` from `position` on, as **one**
+   * gesture operation (`paste`): one transaction and one undo step, here and against a server.
+   * Resolves with the rows hung on Habit occurrences that the copies could not carry.
+   */
+  /**
+   * *Insert parent*: makes a node of the default kind under `parentId`, then moves `nodeId` under
+   * it, as **one** gesture operation. Resolves with the new node's id.
+   */
+  const insertParent = useCallback(
+    async (nodeId: string, kind: NodeKind, parentId: string, parentKind: NodeKind): Promise<string> => {
+      const childKind = defaultChildKind(parentId, parentKind);
+      const parent = rowIdOfId(parentId);
+      const link = kindToParentType(parentKind);
+      const create = ((): GestureStep => {
+        switch (childKind) {
+          case "domain": case "project": case "tag":
+            return { op: "create_domain", request: { title: "", description: null, subtype: childKind, parent_id: storedId(parent), status: null, knowledge_base_directory: null } };
+          case "goal": return { op: "create_goal", request: { title: "", parent_type: link, parent_id: parent } };
+          case "task": return { op: "create_task", request: { title: "", parent_type: link, parent_id: parent } };
+          case "commitment": return { op: "create_commitment", request: { title: "", parent_type: link, parent_id: parent } };
+          case "info": return { op: "create_info", request: { body: "", parent_type: kindToInfoParentType(parentKind), parent_id: parent, position: 0 } };
+          case "flow_goal": case "flow_task": case "flow_commitment": case "flow_expectation": {
+            const node = findNodeInTree(tree, parentId);
+            const flowId = node?.kind === "flow" ? parent : node?.flowItem?.flowId;
+            if (flowId === undefined) throw new Error(`Cannot create a flow item under "${parentId}"`);
+            return { op: "create_flow_item", item_type: childKind, request: { flow_id: storedId(flowId), title: "", parent_type: parentKind, parent_id: storedId(parent) } };
+          }
+          default: throw new Error(`Cannot insert a parent of kind "${childKind}"`);
+        }
+      })();
+      const answers = await runGesture("insert-parent", [
+        create,
+        { op: "move", kind, id: rowIdOfId(nodeId), parent_kind: childKind, parent: { step: 0 }, position: 0 },
+      ]);
+      const made = answers[0];
+      const id: unknown = typeof made === "object" && made !== null ? Reflect.get(made, "id") : undefined;
+      if (typeof id !== "number") throw new Error("insert parent made no node");
+      await load(false);
+      if (childKind === "domain" || childKind === "project" || childKind === "tag") return `domain-${id}`;
+      if (isFlowItemType(childKind)) return flowItemNodeId(childKind, id);
+      return `${childKind}-${id}`;
+    },
+    [defaultChildKind, load, rowIdOfId, tree],
+  );
+
+  const pasteNodes = useCallback(
+    async (
+      items: ReadonlyArray<{ id: string; kind: NodeKind }>, targetId: string, targetKind: NodeKind,
+      position: number, copy: boolean,
+    ): Promise<readonly LeftBehindChild[]> => {
+      const target = rowIdOfId(targetId);
+      const steps: GestureStep[] = items.map(({ id, kind }, index) => copy
+        ? { op: "duplicate", kind, id: storedId(rowIdOfId(id)), parent_kind: targetKind, parent_id: storedId(target), position: position + index }
+        : { op: "move", kind, id: rowIdOfId(id), parent_kind: targetKind, parent: target, position: position + index });
+      const answers = await runGesture("paste", steps);
+      await load(false);
+      return answers.flatMap(leftBehindOf);
+    },
+    [load, rowIdOfId],
+  );
+
   const removeNode = useCallback(
     async (nodesToDelete: Array<{ id: string; kind: NodeKind }>): Promise<void> => {
-      // One delete per node, so one Gesture around the lot: a multi-selection, or the subtree the
-      // confirm dialog expanded into its nodes, has to come back in a single press.
-      await withGesture(t("gestures.delete", { count: nodesToDelete.length }), async () => {
-        for (const { id, kind } of nodesToDelete) {
-          const dbId = rowIdOfId(id);
-          if (kind === "goal") await deleteGoal(dbId);
-          else if (kind === "task") await deleteTask(dbId);
-          else if (kind === "commitment") await deleteCommitment(dbId);
-          else if (kind === "expectation") await deleteExpectation(dbId);
-          else if (kind === "info") await deleteInfo(storedId(dbId));
-          else if (kind === "flow") await deleteFlow(storedId(dbId));
-          else if (isFlowItemType(kind)) await deleteFlowItem(kind, storedId(dbId));
-          else if (kind !== "aspect") await deleteDomain(storedId(dbId));
-        }
-      });
+      // One gesture operation for the lot — a multi-selection, or the subtree the confirm dialog
+      // expanded into its nodes — so it comes back in a single press, and against a server it is
+      // one request. The Aspects are the board's fixed roots and are never deleted.
+      const nodes = nodesToDelete
+        .filter(({ kind }) => kind !== "aspect" && kind !== "habit_group")
+        .map(({ id, kind }) => ({ kind, id: rowIdOfId(id) }));
+      if (nodes.length > 0) {
+        await withGesture(t("gestures.delete", { count: nodesToDelete.length }), () => deleteNodes(nodes));
+      }
       await load(false);
     },
     [load, rowIdOfId, t],
@@ -1460,6 +1532,8 @@ export function useMindmapData(): MindmapData {
     reorderNode,
     moveNode,
     duplicateNode,
+    pasteNodes,
+    insertParent,
     removeNode,
     createCommitment: createCommitmentNode,
     createFlow: createFlowNode,
