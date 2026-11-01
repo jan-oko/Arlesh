@@ -327,3 +327,12 @@ describe("TaskRow — selected and Overdue", () => {
     expect(element?.className).toMatch(/cardSelected/);
   });
 });
+
+describe("TaskRow — pending write", () => {
+  it("carries data-pending while its write is unanswered, and loses it on the answer", () => {
+    const { container, rerender } = render(<TaskRow {...baseProps({ row: row({ node: n("task-1", "task", { status: "todo", pending: true }) }) })} />);
+    expect(container.querySelector("[data-row-id]")).toHaveAttribute("data-pending");
+    rerender(<TaskRow {...baseProps()} />);
+    expect(container.querySelector("[data-row-id]")).not.toHaveAttribute("data-pending");
+  });
+});

@@ -1,3 +1,4 @@
+import { afterLane } from "@/stores/use-pending-writes-store";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { InvokeArgs } from "@tauri-apps/api/core";
 
@@ -168,14 +169,18 @@ export async function invoke<T>(command: string, args?: InvokeArgs): Promise<T> 
  * The Gesture closes even when `run` throws, and `run`'s error propagates unchanged: a paste that
  * fails halfway through is still one thing that happened and still one thing to undo.
  */
-export async function withGesture<T>(name: string, run: () => Promise<T>): Promise<T> {
-  const gesture = await openGesture();
-  if (gesture !== null) rememberName(gesture, name);
-  try {
-    return await run();
-  } finally {
-    if (gesture !== null) await closeGesture();
-  }
+export function withGesture<T>(name: string, run: () => Promise<T>): Promise<T> {
+  // Behind the window's pending writes (ADR 0012, decision 4), and before the Gesture opens: a write
+  // from the lane that was sent while it was open would join it and be undone with it.
+  return afterLane(async () => {
+    const gesture = await openGesture();
+    if (gesture !== null) rememberName(gesture, name);
+    try {
+      return await run();
+    } finally {
+      if (gesture !== null) await closeGesture();
+    }
+  });
 }
 
 /**

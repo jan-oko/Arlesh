@@ -87,5 +87,6 @@
   "quickDependencyOneAtATime": "D adds a dependency to one Task at a time — select just one.",
   "quickDependencyLoadFailed": "Couldn't read the dependencies to search: {{message}}",
   "quickDependencyFailed": "Couldn't make “{{title}}” depend on “{{prerequisite}}”: {{message}}",
-  "altEnterAgenticNotDoing": "Started is not an Agentic status — Alt+Enter hands a task you are Doing back to its agent."
+  "altEnterAgenticNotDoing": "Started is not an Agentic status — Alt+Enter hands a task you are Doing back to its agent.",
+  "pendingWritesUnreachable": "The server can't be reached. Your pending changes were not saved."
 }
