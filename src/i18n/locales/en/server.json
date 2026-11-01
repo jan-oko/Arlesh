@@ -12,6 +12,15 @@
     "update_app": "The server is newer than this app. Update the app to edit — until then the board is read-only.",
     "update_server": "The server is older than this app. Update the server to edit — until then the board is read-only."
   },
+  "status": {
+    "label": "Server status",
+    "standalone": "Running on this device only.",
+    "mode": "Mode: {{mode}}",
+    "url": "Server: {{url}}",
+    "reachable": "Reachable",
+    "unreachable": "Cannot be reached",
+    "versionOk": "Version: server API {{server}}, this app API {{app}}: compatible."
+  },
   "chooser": {
     "title": "Where does your board live?",
     "intro": "You can change this later in Settings → Server.",
@@ -22,7 +31,6 @@
   },
   "page": {
     "intro": "Run against an arlesh-server to share one board between devices. Each device needs its own token: run `arlesh-server token add <device>` on the server.",
-    "current": "Now: {{mode}}",
     "url": "Server URL",
     "token": "Token",
     "test": "Test",

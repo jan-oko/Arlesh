@@ -20,8 +20,15 @@ behind the cargo feature `standalone`, which is on by default.
 - **Switching restarts the app.** The choice is saved in `mode.json` in the app's data directory,
   and the app relaunches into it, so each run is wholly one mode: a Standalone run holds the
   database and serves the MCP, a Client run does neither, and nothing is torn down in between.
+  On Android the restart is `MainActivity.restartApp` (a relaunch through `RestartActivity`), called
+  from Rust over JNI; a release build keeps that method by name (`proguard-rules.pro`), and when the
+  call fails the person gets an error naming the fix (close and reopen the app), not a silent
+  no-op. Switching the backend in place was weighed and not chosen: the database, the MCP
+  endpoint, the undo log and the change stream are all set up once at start-up.
 - **The top bar** shows the mode: *This device*, or *Server* with a dot for whether the server is
-  reachable and its URL on hover.
+  reachable and its URL on hover. The phone's top bar does not carry it ([Touch](touch.md)).
+- **Settings → Server has a status line**: the mode and, in Client mode, the server's URL, whether
+  it answers, when the board was last synced and whether the server's version suits this app.
 
 The chooser is asked only on a device with no mode saved and no local database. An install from
 before Client mode existed has a database and no setting: it is Standalone, and nobody is asked.

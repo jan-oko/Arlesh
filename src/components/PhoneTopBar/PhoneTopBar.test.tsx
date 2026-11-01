@@ -15,7 +15,6 @@ vi.mock("react-i18next", () => ({
 // The chips and the agents' status have suites of their own, and read stores this one does not set.
 vi.mock("@/components/FilterChips/FilterChips", () => ({ default: () => null }));
 vi.mock("@/components/TopBar/AgentStatus", () => ({ default: () => null }));
-vi.mock("@/components/TopBar/ModeIndicator", () => ({ default: () => <span data-testid="mode" /> }));
 vi.mock("@/components/FilterPopover/FilterPopover", () => ({ default: () => <div data-testid="filter-menu" /> }));
 
 beforeEach(() => {
@@ -30,11 +29,6 @@ describe("PhoneTopBar", () => {
   it("titles the bar with the view at the board's root", () => {
     render(<PhoneTopBar />);
     expect(screen.getByRole("heading", { name: "common:viewList" })).toBeInTheDocument();
-  });
-
-  it("shows where the board lives, as the desktop bar does", () => {
-    render(<PhoneTopBar />);
-    expect(screen.getByTestId("mode")).toBeInTheDocument();
   });
 
   it("chooses a preset from the chip's sheet, the List View's own options included", () => {

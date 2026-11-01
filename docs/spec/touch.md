@@ -32,9 +32,9 @@ Below 700 px:
 - **Bottom navigation** for the views, in this order: **Zen, List, Plan, Steps, Map**. It replaces
   the top bar's view selector. `Ctrl+M/L/P/S/J` still switch views from a keyboard.
 - **The top bar** holds, in order: a **☰ menu**, the **title**, the **preset chip** and the agents'
-  status and the **server status** (the desktop bar's mode indicator: *This device*, or the server and
-  whether it answers; [Client mode](client-mode.md)). The title is the view's name at the board's
-  root, and the breadcrumb inside a subtree.
+  status. The title is the view's name at the board's root, and the breadcrumb inside a subtree.
+  There is **no server indicator** on the phone's bar (feedback from a Pixel 10 Pro: it crowded the
+  bar); the server's status lives on **Settings → Server** ([Client mode](client-mode.md)).
   - **The preset chip** shows the preset the view reads under and opens the **preset sheet**: Plan,
     Start, Do, Backlog and All, plus the List View's Unblock and Expectations while the List View is
     showing. In the Plan View and the Zen View the chip shows their locked preset and the sheet says
