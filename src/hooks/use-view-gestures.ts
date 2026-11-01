@@ -3,7 +3,6 @@ import { useTouchGestures } from "@/hooks/use-touch-gestures";
 import type { TouchGestureHandlers } from "@/hooks/use-touch-gestures";
 import { useHasTouch } from "@/hooks/use-media-query";
 import { allSurfaceCommands, firstRunnable, useCommandSurfaceStore } from "@/stores/use-command-surface-store";
-import { usePaletteStore } from "@/stores/use-palette-store";
 import { useSelectModeStore } from "@/stores/use-select-mode-store";
 import { currentReadOnlyReason } from "@/hooks/use-board-read-only";
 import { gateWrites } from "@/utils/touch/writes";
@@ -57,14 +56,13 @@ export function runAfterSelect(ids: readonly string[]): void {
 
 /**
  * The gestures every view shares (`docs/spec/touch.md`), on whatever touchscreen is present: tap
- * selects and tapping the selection again deselects, double-tap goes into, long-press opens the
- * palette, a flick up opens the editor, and a swipe right advances while a swipe left sets Started.
+ * selects and tapping the selection again deselects, double-tap goes into, long-press selects the
+ * node for its quick action menu, a flick up opens the editor, and a swipe right advances while a swipe left sets Started.
  * Each acts by selecting the node and running the binding its key would — the same guard and the
  * same refusal — so a gesture can do nothing the keyboard cannot.
  */
 export function useViewGestures(containerRef: RefObject<HTMLElement | SVGElement | null>, options: ViewGestureOptions): void {
   const hasTouch = useHasTouch();
-  const openPalette = usePaletteStore((s) => s.open);
 
   function selectOnly(id: string | null): void {
     if (id !== null && !options.isSelected(id)) options.select(id);
@@ -82,10 +80,9 @@ export function useViewGestures(containerRef: RefObject<HTMLElement | SVGElement
       else options.select(id);
     },
     onDoubleTap: (id) => { if (id !== null) options.goInto(id); },
-    onLongPress: (id) => {
-      selectOnly(id);
-      openPalette();
-    },
+    // The node's own quick action menu is what the long-press opens (the webview's `contextmenu`,
+    // which the node handles); the palette is the top bar's free square, not a second answer here.
+    onLongPress: (id) => selectOnly(id),
     onFlickUp: (id, target) => {
       if (options.onFlickUp?.(id, target) === true || id === null) return;
       selectOnly(id);

@@ -45,10 +45,16 @@ Below 700 px:
 - **The filter chips** stay under the top bar and wrap.
 - **The context [action bar](#the-action-bar)** sits above the bottom navigation.
 - **Sheets instead of modals and popovers.** Every editor and every full dialog (the node editors,
-  the searches, Settings, the keyboard sheet) fills the screen; every popover and confirmation (the
-  quick pickers, the Filter menu, the context menus, the delete and warning prompts, the app's
-  dropdowns) rises from the bottom as a sheet. They keep their content and their keys; only where
-  they are drawn changes.
+  Settings, the keyboard sheet) fills the screen; every popover and confirmation (the quick pickers,
+  the Filter menu, the context menus, the delete and warning prompts, the app's dropdowns) rises from
+  the bottom as a sheet. They keep their content and their keys; only where they are drawn changes.
+  - **The two searches are not full screen.** *Open* (`Ctrl+O`) and the *Filter* search (`Ctrl+F`)
+    are a card under the top edge over a dimmed margin, so the board stays in view and the keyboard
+    does not hide the box. A phone has no Escape key, so each is escapable three ways: **Android's
+    back**, a **tap outside** the card and a **close button** (✕) beside the search box. The Filter
+    menu sheet has the same close button and the same back and outside tap. Back works because it is
+    delivered as an Escape to the top dialog, so a dialog must answer an Escape aimed at itself, not
+    only one typed in its box.
 - **List rows take two lines**: the title on the first, the badges and meta on the second. Path
   headers stick to the top while their rows scroll beneath.
 - **The Plan View stacks its panes**: candidates on top, the planned pane at the **bottom**, and the
@@ -119,7 +125,7 @@ only gives another one a second key (the numpad zoom, `F2`) is listed once, unde
 of opposites the cheat-sheet lists on one line (previous and next scope) gets a row each, worded
 for its direction.
 
-It is opened by the action bar's **More**, by the ☰ menu, and by a **long-press** on a node.
+It is opened by the action bar's **More**, by the ☰ menu, and by a **long-press on the top bar's free square** ([below](#the-top-bar-square)). A long-press on a node opens that node's quick action menu, not the palette.
 
 **No lost control.** `palette-coverage.test.ts` fails if any binding in the registry has neither a
 palette entry nor a gesture. A binding is in the palette unless it is listed in the palette's

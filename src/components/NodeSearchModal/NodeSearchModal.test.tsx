@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import NodeSearchModal from "./NodeSearchModal";
 import type { SearchableNode } from "@/utils/mindmap-tree";
+import { dismissTopSheet } from "@/utils/dismiss-sheet";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
@@ -16,6 +17,33 @@ const NODES: SearchableNode[] = [
 beforeEach(() => { vi.clearAllMocks(); });
 
 describe("NodeSearchModal", () => {
+
+  describe("ways out (the phone has no Escape key)", () => {
+    it("closes on the close button", () => {
+      const onClose = vi.fn();
+      render(<NodeSearchModal nodes={NODES} onSelect={vi.fn()} onClose={onClose} />);
+      fireEvent.click(screen.getByRole("button", { name: "sheetClose" }));
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("closes on a tap outside the panel, and not on a tap inside it", () => {
+      const onClose = vi.fn();
+      const { container } = render(<NodeSearchModal nodes={NODES} onSelect={vi.fn()} onClose={onClose} />);
+      fireEvent.click(screen.getByRole("dialog"));
+      expect(onClose).not.toHaveBeenCalled();
+      const overlay = container.firstElementChild;
+      if (overlay === null) throw new Error("no overlay");
+      fireEvent.click(overlay);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("closes once on Android's back, which Escapes the top dialog", () => {
+      const onClose = vi.fn();
+      render(<NodeSearchModal nodes={NODES} onSelect={vi.fn()} onClose={onClose} />);
+      expect(dismissTopSheet()).toBe(true);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
   it("shows nothing (no results, no empty message) until the user types", () => {
     render(<NodeSearchModal nodes={NODES} onSelect={vi.fn()} onClose={vi.fn()} />);
     expect(screen.queryByRole("listitem")).not.toBeInTheDocument();

@@ -553,7 +553,7 @@ export default function MindmapView() {
   const targetPos = dragTargetId !== null ? positions.get(dragTargetId) : undefined;
 
   // The touch gestures (docs/spec/touch.md): a node's tap, double-tap (enter it), long-press
-  // (palette), flick (editor) and swipes, and a node held and then dragged moves it, as the mouse's
+  // (quick action menu), flick (editor) and swipes, and a node held and then dragged moves it, as the mouse's
   // drag does. Panning and pinching the canvas are the canvas's own (`usePanZoom`).
   const rootRef = useRef<HTMLDivElement>(null);
   const hasTouch = useHasTouch();

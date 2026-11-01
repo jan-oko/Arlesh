@@ -16,6 +16,9 @@ import FixedValueRow from "./FixedValueRow";
 import InlineSearch from "./InlineSearch";
 import styles from "./FilterPopover.module.css";
 
+/** The close button's glyph; its accessible name is the translated "Close". */
+const CLOSE_GLYPH = "✕";
+
 /**
  * The Filter menu, opened from the top-bar Filter button or `Alt+F`: the switch block, then one
  * compact labelled row per dimension, in untitled groups split by a thin rule. An added value stays
@@ -25,10 +28,11 @@ import styles from "./FilterPopover.module.css";
  * when it opens, `Esc` closes it, and focus goes back where it was.
  */
 export default function FilterPopover() {
-  const { t } = useTranslation(["filter", "common"]);
+  const { t } = useTranslation(["filter", "common", "touch"]);
   const statusMode = useFilterStore((s) => s.filter.statusMode);
   const privateMode = useFilterStore((s) => s.filter.privateMode);
   const reset = useFilterStore((s) => s.reset);
+  const setFilterPopover = useFilterStore((s) => s.setFilterPopover);
   const listReset = useListFilterStore((s) => s.reset);
   const privatePills = useListFilterStore((s) => s.filter.pills.private);
   const removePill = useListFilterStore((s) => s.removePill);
@@ -69,6 +73,10 @@ export default function FilterPopover() {
       data-owns-keys={[...filterMenuCodesFor(rowKindsFor(view), flagsFor(view)), PRIVATE_MODE_TOKEN].join(" ")}
       onKeyDown={onKeyDown}
     >
+      {/* The phone layout's way out besides the backdrop and the system back; a keyboard has Esc. */}
+      <button type="button" className={styles.close} aria-label={t("touch:sheetClose")} onClick={() => setFilterPopover(false)}>
+        {CLOSE_GLYPH}
+      </button>
       <FilterSwitches view={view} statusMode={lockedStatusMode(view) ?? statusMode} />
       {filterMenuRows(view).map((group, index) => (
         <Fragment key={index}>

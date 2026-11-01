@@ -22,9 +22,21 @@
   flex-direction: column;
 }
 
-.input {
-  border: none;
+.head {
+  display: flex;
+  align-items: center;
   border-bottom: 1px solid var(--node-border);
+}
+
+/* Only the phone layout draws it: a keyboard has Escape. */
+.close {
+  display: none;
+}
+
+.input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
   background: transparent;
   color: var(--text-primary);
   font-family: var(--font-sans);
@@ -69,23 +81,38 @@
   font-family: var(--font-sans);
 }
 
-/* The phone layout (docs/spec/touch.md; the breakpoint is `PHONE_LAYOUT_QUERY`): the searches fill the screen. */
+/* The phone layout (docs/spec/touch.md; the breakpoint is `PHONE_LAYOUT_QUERY`): the searches are a
+   card under the top edge, not the whole screen — a tap on the dimmed margin, the close button and
+   the system back all dismiss it. */
 @media (max-width: 699.98px) {
   .overlay {
-    align-items: stretch;
-    padding: 0;
+    align-items: flex-start;
+    padding: max(var(--space-4), env(safe-area-inset-top)) var(--space-4) var(--space-4);
+    box-sizing: border-box;
   }
   .modal {
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
     max-width: none;
-    height: 100%;
+    max-height: 70dvh;
+  }
+  .results {
+    min-height: 0;
     max-height: none;
-    border-radius: 0;
-    border: none;
     overflow-y: auto;
-    padding-top: max(var(--space-4), env(safe-area-inset-top));
-    padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+    overscroll-behavior: contain;
+  }
+  .close {
+    display: block;
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--text-lg);
+    cursor: pointer;
+    touch-action: manipulation;
   }
 }
