@@ -942,3 +942,23 @@ describe("TaskEditorModal — short id", () => {
     expect(screen.queryByRole("button", { name: "copyShortId" })).not.toBeInTheDocument();
   });
 });
+
+describe("TaskEditorModal — reopened after a refused Save", () => {
+  it("holds what the user typed, saves it again, and shows the reason on its error line", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const draft = {
+      title: "Typed title", status: { kind: "ordinary", status: "in_progress" }, blockReasons: [], tagIds: [1],
+      addedDeps: [], removedDeps: [], timeScope: null, onScopeExit: null, plan: null, archival: "live",
+      agentic: "inherit", asynchronous: false, compound: false, asyncTemplate: null, agenticBrief: null, isPrivate: false,
+    } satisfies import("./TaskEditorModal").TaskSaveData;
+    render(<TaskEditorModal {...defaultProps} onSave={onSave} reopened={{ draft, error: "Plan is outside the window" }} />);
+
+    expect(screen.getByDisplayValue("Typed title")).toBeInTheDocument();
+    expect(screen.getByText("Plan is outside the window")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Typed title", tagIds: [1], status: { kind: "ordinary", status: "in_progress" },
+    })));
+  });
+});

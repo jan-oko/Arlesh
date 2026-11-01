@@ -17,18 +17,21 @@ export interface InfoSaveData {
 interface Props {
   node: MindmapNode;
   onSave: (data: InfoSaveData) => Promise<void>;
+  /** A Save the server refused: the editor opens again on what was typed, with the reason on its error line. */
+  reopened?: { draft: InfoSaveData; error: string } | undefined;
   onClose: () => void;
 }
 
 /** Edits an info node: its one-line body plus a separate multi-line details field (e.g. a traceback). */
-export default function InfoEditorModal({ node, onSave, onClose }: Props) {
+export default function InfoEditorModal({ node, onSave, reopened, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation("editor");
-  const [body, setBody] = useState(node.title);
-  const [details, setDetails] = useState(node.infoDetails ?? "");
-  const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
+  const draft = reopened?.draft;
+  const [body, setBody] = useState(draft?.body ?? node.title);
+  const [details, setDetails] = useState(draft ? draft.details ?? "" : node.infoDetails ?? "");
+  const [isPrivate, setIsPrivate] = useState(draft?.isPrivate ?? node.isPrivate ?? false);
   const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(reopened?.error ?? null);
   const bodyRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {

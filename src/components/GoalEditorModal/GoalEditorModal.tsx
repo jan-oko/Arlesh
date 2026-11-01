@@ -9,7 +9,6 @@ import type { Domain } from "@/api/domains";
 import type { TimeScope } from "@/api/time-scope";
 import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { getErrorMessage } from "@/api/errors";
-import { withAtomicGesture } from "@/api/gesture";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import TimeScopeField from "@/components/ScopePicker/TimeScopeField";
@@ -35,22 +34,25 @@ interface Props {
   allTags: Domain[];
   domainNames: Map<number, string>;
   onSave: (data: GoalSaveData) => Promise<void>;
+  /** A Save the server refused: the editor opens again on what was typed, with the reason on its error line. */
+  reopened?: { draft: GoalSaveData; error: string } | undefined;
   onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
   onClose: () => void;
 }
 
-export default function GoalEditorModal({ node, allTags, domainNames, onSave, onCheckScopeClamp, onClose }: Props) {
+export default function GoalEditorModal({ node, allTags, domainNames, onSave, reopened, onCheckScopeClamp, onClose }: Props) {
   useInputCapture();
-  const { t } = useTranslation(["editor", "status", "undo"]);
-  const [title, setTitle] = useState(node.rowTitle ?? node.title);
-  const [status, setStatus] = useState(node.status ?? GOAL_STATUS.ACTIVE);
-  const [blockReasons, setBlockReasons] = useState<string[]>(node.blockReasons ?? []);
-  const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
-  const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
-  const [onScopeExit, setOnScopeExit] = useState<OnScopeExit | null>(node.onScopeExit ?? null);
-  const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
+  const { t } = useTranslation(["editor", "status"]);
+  const draft = reopened?.draft;
+  const [title, setTitle] = useState(draft?.title ?? node.rowTitle ?? node.title);
+  const [status, setStatus] = useState(draft?.status ?? node.status ?? GOAL_STATUS.ACTIVE);
+  const [blockReasons, setBlockReasons] = useState<string[]>(draft?.blockReasons ?? node.blockReasons ?? []);
+  const [tagIds, setTagIds] = useState<number[]>(draft?.tagIds ?? node.tagIds);
+  const [timeScope, setTimeScope] = useState<TimeScope | null>(draft ? draft.timeScope : node.timeScope ?? null);
+  const [onScopeExit, setOnScopeExit] = useState<OnScopeExit | null>(draft ? draft.onScopeExit : node.onScopeExit ?? null);
+  const [isPrivate, setIsPrivate] = useState(draft?.isPrivate ?? node.isPrivate ?? false);
   const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(reopened?.error ?? null);
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
@@ -65,18 +67,16 @@ export default function GoalEditorModal({ node, allTags, domainNames, onSave, on
         setIsSaving(false);
         return;
       }
-      // One Gesture, all or nothing: the update, the block reasons and the tags are several commands but one thing the user filled in, so they are one Ctrl+Z — and a
-      // refusal partway takes back the ones that landed rather than leaving a form half-applied.
-      await withAtomicGesture(t("undo:gestures.editGoal"), async () => {
-        await onSave({
-          title: title.trim(),
-          status,
-          blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
-          tagIds,
-          timeScope,
-          onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
-          isPrivate,
-        });
+      // The editor closes as the Save is handed on; the write runs as one all-or-nothing Gesture
+      // (see `useNodeEditor`), and a refusal opens this editor again with the reason.
+      await onSave({
+        title: title.trim(),
+        status,
+        blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
+        tagIds,
+        timeScope,
+        onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
+        isPrivate,
       });
     } catch (err) {
       setSaveError(getErrorMessage(err));

@@ -16,7 +16,6 @@ import type { OnScopeExit } from "@/api/scope-lifecycle";
 import { fetchTaskDoneAt, listTaskDependencies } from "@/api/tasks";
 import { fromDoneDateInput, nowDoneDateInput, toDoneDateInput } from "@/utils/done-date";
 import { getErrorMessage } from "@/api/errors";
-import { withAtomicGesture } from "@/api/gesture";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import ArchivedField from "@/components/EditorModal/ArchivedField";
@@ -136,6 +135,8 @@ interface Props {
   domainNames: Map<number, string>;
   availableForDep: MindmapNode[];
   onSave: (data: TaskSaveData) => Promise<void>;
+  /** A Save the server refused: the editor opens again on what was typed, with the reason on its error line. */
+  reopened?: { draft: TaskSaveData; error: string } | undefined;
   onCheckScopeClamp?: (nodeType: "task" | "goal", dbId: number, timeScope: TimeScope) => Promise<boolean>;
   /** Answers the agent's open question, from the agentic section: stores the answer and releases
    * the wait. Omitted, the question is not drawn there. */
@@ -145,36 +146,38 @@ interface Props {
   onClose: () => void;
 }
 
-export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, onCheckScopeClamp, onAnswer, openAtTemplate = false, onClose }: Props) {
+export default function TaskEditorModal({ node, allTags, domainNames, availableForDep, onSave, reopened, onCheckScopeClamp, onAnswer, openAtTemplate = false, onClose }: Props) {
   useInputCapture();
-  const { t } = useTranslation(["editor", "status", "nodeKinds", "undo", "expectation"]);
-  const [title, setTitle] = useState(node.rowTitle ?? node.title);
-  const [status, setStatus] = useState<TaskStatus>(taskStatusOf(node));
-  const [blockReasons, setBlockReasons] = useState<string[]>(node.blockReasons ?? []);
-  const [tagIds, setTagIds] = useState<number[]>(node.tagIds);
-  const [timeScope, setTimeScope] = useState<TimeScope | null>(node.timeScope ?? null);
-  const [onScopeExit, setOnScopeExit] = useState<OnScopeExit | null>(node.onScopeExit ?? null);
-  const [plan, setPlan] = useState<TimeScope | null>(node.plan ?? null);
-  const [dueScope, setDueScope] = useState<TimeScope | null>(node.dueScope ?? null);
-  const [isBacklogged, setIsBacklogged] = useState(node.backlogged === true);
+  const { t } = useTranslation(["editor", "status", "nodeKinds", "expectation"]);
+  // A reopened editor (a Save the server refused) holds what the user had typed.
+  const draft = reopened?.draft;
+  const [title, setTitle] = useState(draft?.title ?? node.rowTitle ?? node.title);
+  const [status, setStatus] = useState<TaskStatus>(draft?.status ?? taskStatusOf(node));
+  const [blockReasons, setBlockReasons] = useState<string[]>(draft?.blockReasons ?? node.blockReasons ?? []);
+  const [tagIds, setTagIds] = useState<number[]>(draft?.tagIds ?? node.tagIds);
+  const [timeScope, setTimeScope] = useState<TimeScope | null>(draft ? draft.timeScope : node.timeScope ?? null);
+  const [onScopeExit, setOnScopeExit] = useState<OnScopeExit | null>(draft ? draft.onScopeExit : node.onScopeExit ?? null);
+  const [plan, setPlan] = useState<TimeScope | null>(draft ? draft.plan : node.plan ?? null);
+  const [dueScope, setDueScope] = useState<TimeScope | null>(draft ? draft.dueScope ?? null : node.dueScope ?? null);
+  const [isBacklogged, setIsBacklogged] = useState(draft ? draft.archival === TASK_ARCHIVAL.BACKLOG : node.backlogged === true);
   // The hand archive, offered on a stored task only (see `canArchiveByHand`).
   const takesArchive = canArchiveByHand(node);
-  const [isArchivedByHand, setIsArchivedByHand] = useState(node.archivedByHand === true);
-  const [agentic, setAgentic] = useState<TaskAgentic>(storedAgenticState(node.agentic));
-  const [isAsynchronous, setIsAsynchronous] = useState(node.asynchronous === true || openAtTemplate);
-  const [isCompound, setIsCompound] = useState(node.compound === true);
-  const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate>(node.asyncTemplate ?? EMPTY_ASYNC_TEMPLATE);
-  const [agenticBrief, setAgenticBrief] = useState<AgenticBrief>(node.agenticBrief ?? EMPTY_AGENTIC_BRIEF);
+  const [isArchivedByHand, setIsArchivedByHand] = useState(draft ? draft.archival === TASK_ARCHIVAL.ARCHIVED : node.archivedByHand === true);
+  const [agentic, setAgentic] = useState<TaskAgentic>(draft?.agentic ?? storedAgenticState(node.agentic));
+  const [isAsynchronous, setIsAsynchronous] = useState(draft?.asynchronous ?? (node.asynchronous === true || openAtTemplate));
+  const [isCompound, setIsCompound] = useState(draft?.compound ?? node.compound === true);
+  const [asyncTemplate, setAsyncTemplate] = useState<AsyncTemplate>(draft ? draft.asyncTemplate ?? EMPTY_ASYNC_TEMPLATE : node.asyncTemplate ?? EMPTY_ASYNC_TEMPLATE);
+  const [agenticBrief, setAgenticBrief] = useState<AgenticBrief>(draft ? draft.agenticBrief ?? EMPTY_AGENTIC_BRIEF : node.agenticBrief ?? EMPTY_AGENTIC_BRIEF);
   const templateRef = useRef<HTMLDivElement>(null);
-  const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
+  const [isPrivate, setIsPrivate] = useState(draft?.isPrivate ?? node.isPrivate ?? false);
   const [initialDeps, setInitialDeps] = useState<Dependency[]>([]);
   const [currentDeps, setCurrentDeps] = useState<Dependency[]>([]);
   const [depSearch, setDepSearch] = useState("");
   // The done date, as the Advanced field holds it, and as it was loaded — saved only when changed.
-  const [doneAt, setDoneAt] = useState("");
+  const [doneAt, setDoneAt] = useState(draft?.doneAt !== undefined ? toDoneDateInput(draft.doneAt) : "");
   const [loadedDoneAt, setLoadedDoneAt] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(reopened?.error ?? null);
   const titleRef = useRef<HTMLInputElement>(null);
   const dbId = rowIdOf(node);
   const askPlanClamp = usePlanClamp();
@@ -191,8 +194,15 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
   }, [openAtTemplate]);
 
   useEffect(() => {
-    void listTaskDependencies(dbId).then((deps) => { setInitialDeps(deps); setCurrentDeps(deps); });
-  }, [dbId]);
+    void listTaskDependencies(dbId).then((deps) => {
+      setInitialDeps(deps);
+      // A reopened editor shows the dependencies the user had made, not the stored ones.
+      setCurrentDeps(draft === undefined ? deps : [
+        ...deps.filter((d) => !draft.removedDeps.some((gone) => depEquals(gone, d))),
+        ...draft.addedDeps.filter((added) => !deps.some((d) => depEquals(added, d))),
+      ]);
+    });
+  }, [dbId, draft]);
 
   // A wait's check task has no done date of its own: its completion is the check it records.
   const hasDoneDate = checkOrigin(node.origin) === undefined;
@@ -203,11 +213,11 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
     let cancelled = false;
     void fetchTaskDoneAt(dbId).then((at) => {
       if (cancelled) return;
-      setDoneAt(toDoneDateInput(at));
+      if (draft?.doneAt === undefined) setDoneAt(toDoneDateInput(at));
       setLoadedDoneAt(toDoneDateInput(at));
     });
     return () => { cancelled = true; };
-  }, [dbId, hasDoneDate, savedDone]);
+  }, [dbId, hasDoneDate, savedDone, draft]);
 
 
   function removeDep(dep: Dependency) {
@@ -244,31 +254,29 @@ export default function TaskEditorModal({ node, allTags, domainNames, availableF
         setIsSaving(false);
         return;
       }
-      // One Gesture, all or nothing: the update, the block reasons, the tags and the dependencies
-      // are several commands but one thing the user filled in, so they are one
-      // Ctrl+Z — and a refusal partway takes back the ones that landed rather than leaving a form
-      // half-applied. The clamp prompt above is outside it, having written nothing yet.
-      await withAtomicGesture(t("undo:gestures.editTask"), async () => {
-        await onSave({
-          title: title.trim(), status: shownStatus ?? status, blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
-          tagIds, addedDeps, removedDeps, timeScope,
-          onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
-          plan,
-          descendantPlans: clamp.descendants,
-          ...(hasDueField ? { dueScope } : {}),
-          archival: savedArchival(isArchivedByHand, isBacklogged),
-          agentic,
-          asynchronous: isAsynchronous,
-          compound: isCompound,
-          // An empty section is no template; one with anything in it but a title takes the default.
-          asyncTemplate: asyncTemplateToSave(
-            asyncTemplate, isAsynchronous, t("expectation:templateDefaultTitle", { title: title.trim() }),
-          ),
-          agenticBrief: isEmptyBrief(agenticBrief) ? null : agenticBrief,
-          isPrivate,
-          ...(isDone(status) && doneAt !== "" && doneAt !== loadedDoneAt
-            ? { doneAt: fromDoneDateInput(doneAt) } : {}),
-        });
+      // The editor closes as the Save is handed on. The write runs as one all-or-nothing Gesture
+      // (see `useNodeEditor`): the update, the block reasons, the tags and the dependencies are one
+      // Ctrl+Z, and a refusal reopens this editor with the reason. The clamp prompts above are
+      // outside it, having written nothing yet.
+      await onSave({
+        title: title.trim(), status: shownStatus ?? status, blockReasons: blockReasons.map((r) => r.trim()).filter((r) => r !== ""),
+        tagIds, addedDeps, removedDeps, timeScope,
+        onScopeExit: timeScope !== null ? (onScopeExit ?? "keep") : null,
+        plan,
+        descendantPlans: clamp.descendants,
+        ...(hasDueField ? { dueScope } : {}),
+        archival: savedArchival(isArchivedByHand, isBacklogged),
+        agentic,
+        asynchronous: isAsynchronous,
+        compound: isCompound,
+        // An empty section is no template; one with anything in it but a title takes the default.
+        asyncTemplate: asyncTemplateToSave(
+          asyncTemplate, isAsynchronous, t("expectation:templateDefaultTitle", { title: title.trim() }),
+        ),
+        agenticBrief: isEmptyBrief(agenticBrief) ? null : agenticBrief,
+        isPrivate,
+        ...(isDone(status) && doneAt !== "" && doneAt !== loadedDoneAt
+          ? { doneAt: fromDoneDateInput(doneAt) } : {}),
       });
     } catch (err) {
       setSaveError(getErrorMessage(err));

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { getErrorMessage } from "@/api/errors";
-import { withAtomicGesture } from "@/api/gesture";
 import EditorModal from "@/components/EditorModal/EditorModal";
 import EditorAdvanced from "@/components/EditorModal/EditorAdvanced";
 import { useInputCapture } from "@/hooks/use-input-capture";
@@ -21,18 +20,21 @@ const PROJECT_STATUSES = Object.values(PROJECT_STATUS);
 interface Props {
   node: MindmapNode;
   onSave: (data: ProjectSaveData) => Promise<void>;
+  /** A Save the server refused: the editor opens again on what was typed, with the reason on its error line. */
+  reopened?: { draft: ProjectSaveData; error: string } | undefined;
   onClose: () => void;
 }
 
-export default function ProjectEditorModal({ node, onSave, onClose }: Props) {
+export default function ProjectEditorModal({ node, onSave, reopened, onClose }: Props) {
   useInputCapture();
-  const { t } = useTranslation(["editor", "status", "undo"]);
-  const [title, setTitle] = useState(node.title);
-  const [status, setStatus] = useState(node.status ?? PROJECT_STATUS.ACTIVE);
-  const [kbDir, setKbDir] = useState(node.knowledgeBaseDirectory ?? "");
-  const [isPrivate, setIsPrivate] = useState(node.isPrivate ?? false);
+  const { t } = useTranslation(["editor", "status"]);
+  const draft = reopened?.draft;
+  const [title, setTitle] = useState(draft?.title ?? node.title);
+  const [status, setStatus] = useState(draft?.status ?? node.status ?? PROJECT_STATUS.ACTIVE);
+  const [kbDir, setKbDir] = useState(draft?.knowledgeBaseDirectory ?? node.knowledgeBaseDirectory ?? "");
+  const [isPrivate, setIsPrivate] = useState(draft?.isPrivate ?? node.isPrivate ?? false);
   const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(reopened?.error ?? null);
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { titleRef.current?.focus(); titleRef.current?.select(); }, []);
@@ -42,10 +44,7 @@ export default function ProjectEditorModal({ node, onSave, onClose }: Props) {
     setIsSaving(true);
     setSaveError(null);
     try {
-      // One Gesture, so the save is one Ctrl+Z however many commands the update takes.
-      await withAtomicGesture(t("undo:gestures.editProject"), async () => {
-        await onSave({ title: title.trim(), status, knowledgeBaseDirectory: kbDir.trim(), isPrivate });
-      });
+      await onSave({ title: title.trim(), status, knowledgeBaseDirectory: kbDir.trim(), isPrivate });
     } catch (err) {
       setSaveError(getErrorMessage(err));
       setIsSaving(false);
