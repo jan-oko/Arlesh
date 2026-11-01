@@ -56,7 +56,6 @@ import argparse
 import base64
 import contextlib
 import hashlib
-import ipaddress
 import json
 import os
 import re
@@ -87,7 +86,6 @@ PUBLIC = "0.0.0.0"
 MAIN_ACTIVITY = "com.atai.arlesh.MainActivity"
 URL_EXTRA = "arlesh_box_url"
 TOKEN_EXTRA = "arlesh_box_token"
-TAILNET = ipaddress.ip_network("100.64.0.0/10")
 
 
 class BoxError(Exception):
@@ -1106,87 +1104,15 @@ def record_provisioned(device: str, branch: str, server: str, url: str) -> None:
     )
 
 
-def is_tailnet_host(host: str) -> bool:
-    """Whether a device's host is a tailnet address: 100.64.0.0/10 or a *.ts.net name."""
-    name = host.partition(":")[0].lower()
-    try:
-        return ipaddress.ip_address(name) in TAILNET
-    except ValueError:
-        return name.endswith(".ts.net")
-
-
-def parse_interfaces(
-    ip_output: str, ifconfig_output: str = ""
-) -> list[ipaddress.IPv4Interface]:
-    """IPv4 addresses with their prefix, from `ip -o -4 addr` or (macOS) `ifconfig`."""
-    found: list[ipaddress.IPv4Interface] = []
-    for line in ip_output.splitlines():
-        parts = line.split()
-        if "inet" in parts and parts.index("inet") + 1 < len(parts):
-            with contextlib.suppress(ValueError):
-                found.append(ipaddress.IPv4Interface(parts[parts.index("inet") + 1]))
-    for line in ifconfig_output.splitlines():
-        parts = line.split()
-        if parts[:1] == ["inet"] and "netmask" in parts and len(parts) > 3:
-            mask = parts[parts.index("netmask") + 1]
-            with contextlib.suppress(ValueError):
-                if mask.startswith("0x"):
-                    mask = str(ipaddress.IPv4Address(int(mask, 16)))
-                found.append(ipaddress.IPv4Interface(f"{parts[1]}/{mask}"))
-    return found
-
-
-def local_interfaces() -> list[ipaddress.IPv4Interface]:
-    ip_out = (
-        capture(["ip", "-o", "-4", "addr", "show"]).stdout if shutil.which("ip") else ""
-    )
-    ifconfig_out = (
-        capture(["ifconfig"]).stdout if not ip_out and shutil.which("ifconfig") else ""
-    )
-    return parse_interfaces(ip_out, ifconfig_out)
-
-
-def resolve_host(host: str) -> str:
-    try:
-        return socket.gethostbyname(host)
-    except OSError as exc:
-        raise die(
-            f"Cannot resolve '{host}' to an address to pick this machine's matching network. "
-            f"Register the device by IP: {CMD} devices add <name> --os android --host <ip>[:port]"
-        ) from exc
-
-
-def pick_server_address(
-    device_host: str,
-    interfaces: Sequence[ipaddress.IPv4Interface],
-    tailnet: str,
-    resolve: Any = resolve_host,
-) -> str:
-    """The address of this machine the phone can reach.
-
-    The tailnet address when the device's host is a tailnet IP or a .ts.net name; otherwise the
-    address of this machine on the same subnet as the device's host.
-    """
-    host = device_host.partition(":")[0]
-    if is_tailnet_host(host):
-        if not tailnet:
-            raise die(
-                f"{host} is a tailnet host but this machine has no tailnet address (is tailscale up?)."
-            )
+def pick_server_address(tailnet: str, lan: str) -> str:
+    """The address of this machine to hand the phone: the tailnet one when this machine has it
+    (Tailscale routes over the LAN when it can), otherwise the LAN one."""
+    if tailnet:
         return tailnet
-    ip = ipaddress.ip_address(resolve(host))
-    if ip in TAILNET:
-        if not tailnet:
-            raise die(
-                f"{host} is on the tailnet but this machine has no tailnet address."
-            )
-        return tailnet
-    for iface in interfaces:
-        if ip in iface.network and iface.ip not in TAILNET:
-            return str(iface.ip)
+    if lan:
+        return lan
     raise die(
-        f"No address of this machine is on the same network as {host} ({ip}); "
-        "is this machine on the phone's Wi-Fi or tailnet?"
+        "This machine has neither a tailnet nor a LAN address the phone could reach."
     )
 
 
@@ -1587,7 +1513,7 @@ def android_connection(
     """(url, token) for the box app on `target`, or None when it is already bound to `server`."""
     server_start(server, PUBLIC, widen=True)
     assert target.host
-    addr = pick_server_address(target.host, local_interfaces(), tailnet_ip())
+    addr = pick_server_address(tailnet_ip(), lan_ip())
     url = f"http://{addr}:{server_port_for(server)}"
     client = client_name(target.name)
     holder = token_holder(target.name, name)
