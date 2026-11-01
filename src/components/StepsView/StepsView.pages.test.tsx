@@ -38,7 +38,7 @@ function mockTree(children: MindmapNode[]): void {
     loadCondition: { failedFlows: [], unrenderableCommitmentFlows: [] },
     reload: vi.fn(() => Promise.resolve()),
     createNode: vi.fn(),
-    createChild: vi.fn(),
+    createChild: vi.fn(), settleCreated: vi.fn(),
     renameNode: vi.fn(),
     reorderNode: vi.fn(),
     moveNode: vi.fn(),
