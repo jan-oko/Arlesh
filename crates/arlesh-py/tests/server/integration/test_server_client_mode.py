@@ -244,3 +244,45 @@ def test_a_client_behind_hears_at_once_and_one_up_to_date_does_not() -> None:
     assert behind[0].startswith("id: e1:4\n")
     assert current[0] == ": connected\n\n"
     assert restarted[0].startswith("id: e1:4\n")
+
+
+def test_every_answer_carries_the_revision_and_epoch(
+    server: TestClient, domain: int, new_task: NewTask
+) -> None:
+    before = server.get("/board", params=NOW)
+    revision, epoch = int(before.headers["x-arlesh-revision"]), before.headers["x-arlesh-epoch"]
+
+    written = server.post(
+        "/tasks", json={"title": "Another", "parent_type": "domain", "parent_id": domain}
+    )
+    after = server.get("/board", params=NOW)
+
+    assert epoch != ""
+    assert written.headers["x-arlesh-epoch"] == epoch
+    assert int(written.headers["x-arlesh-revision"]) == revision + 1
+    assert int(after.headers["x-arlesh-revision"]) == revision + 1
+    assert server.get("/health").headers["x-arlesh-epoch"] == epoch
+
+
+def test_a_status_step_moves_the_revision_by_one(
+    server: TestClient, domain: int, new_task: NewTask
+) -> None:
+    task = new_task(domain)
+    before = int(server.get("/board", params=NOW).headers["x-arlesh-revision"])
+
+    stepped = server.post(f"/tasks/{task}/status", params={"step": "advance"})
+
+    assert stepped.status_code == 200, stepped.text
+    assert int(stepped.headers["x-arlesh-revision"]) == before + 1
+
+
+def test_the_board_is_gzipped_for_a_client_that_accepts_it(
+    server: TestClient, domain: int, new_task: NewTask
+) -> None:
+    for number in range(8):
+        new_task(domain, f"Task {number}")
+
+    response = server.get("/board", params=NOW, headers={"Accept-Encoding": "gzip"})
+
+    assert response.headers["content-encoding"] == "gzip"
+    assert len(response.json()["tasks"]) == 8

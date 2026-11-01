@@ -1,4 +1,5 @@
 import { invoke } from "./gesture";
+import type { BoardRevision } from "@/api/board";
 import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
 import type { Task, TaskDependencyEdge } from "@/api/tasks";
@@ -110,6 +111,8 @@ export interface FlowHabitEntry {
  * the backend's rules say about the board beside the rows.
  */
 export interface MindmapLoad {
+  /** The revision the server read the board at. Client mode only. */
+  revision?: BoardRevision;
   domains: Domain[];
   goals: Goal[];
   tasks: Task[];

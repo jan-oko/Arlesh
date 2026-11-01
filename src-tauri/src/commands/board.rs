@@ -6,17 +6,39 @@
 
 use tauri::{Emitter, Manager, Runtime};
 
+use crate::backend::revision::BoardRevision;
 use crate::board::{recipients, Announce, BOARD_CHANGED};
 
 /// Tells every window but `origin` that the board has changed.
+///
+/// The event carries no revision: a window that hears it reloads (a Standalone write has none to
+/// say). See [`announce_revision`] for Client mode's.
 ///
 /// Best-effort in one direction only: a window that cannot be reached is logged and the others
 /// still hear. A failure to announce must never turn into a failure of the write that caused it —
 /// the board has already changed, and the worst this can cost is a window that is briefly stale.
 pub fn announce<R: Runtime>(app: &tauri::AppHandle<R>, origin: Option<&str>) {
+    tell_windows(app, origin, None);
+}
+
+/// Tells every window that the server's board has changed, and the revision it reached.
+///
+/// Every window, the one that wrote included: in Client mode the server's change stream is the
+/// only announcement there is, so the window that made the change hears it too. It is the window
+/// that works out the event is not news when it already holds that revision
+/// (`src/stores/board-revision-store.ts`); it knows what it holds and the backend does not.
+pub fn announce_revision<R: Runtime>(app: &tauri::AppHandle<R>, revision: Option<BoardRevision>) {
+    tell_windows(app, None, revision.as_ref());
+}
+
+fn tell_windows<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    origin: Option<&str>,
+    revision: Option<&BoardRevision>,
+) {
     let open: Vec<String> = app.webview_windows().into_keys().collect();
     for label in recipients(&open, origin) {
-        if let Err(error) = app.emit_to(label, BOARD_CHANGED, ()) {
+        if let Err(error) = app.emit_to(label, BOARD_CHANGED, revision) {
             tracing::warn!(error = %error, label = %label, "could not tell a window the board changed");
         }
     }

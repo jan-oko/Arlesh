@@ -14,6 +14,7 @@ MCP endpoint is served from its own write-open too, so an agent's writes carry i
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections.abc import Awaitable, Callable
 
 from loguru import logger
@@ -56,6 +57,19 @@ class Board:
         self._writers: dict[str, arlesh.Database] = {}
         self._mcp_ports: dict[str, int] = {}
         self._lock = asyncio.Lock()
+        self._epoch = uuid.uuid4().hex
+
+    @property
+    def epoch(self) -> str:
+        """Names this run of the server. The board's revision starts again at 0 when the server
+        restarts, so a revision means something only beside the epoch it was read under."""
+        return self._epoch
+
+    @property
+    def revision(self) -> int:
+        """The board's revision as it stands: how many writes have been committed to it, through
+        any open of the file and any endpoint, this run."""
+        return self.reader.revision
 
     async def open(self) -> None:
         """Takes the hold and opens the database for writing: the startup guard.

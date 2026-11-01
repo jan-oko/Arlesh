@@ -25,6 +25,24 @@ import type { InvokeArgs } from "@tauri-apps/api/core";
 
 const LOG_PREFIX = "[arlesh]";
 
+/**
+ * Whether the backend needs the frontend to say where a Gesture begins and ends.
+ *
+ * Standalone does: the local engine holds one ambient Gesture open between the two calls. Client
+ * mode does not: the server makes every write request one Gesture and every multi-write gesture
+ * one request, so the device's opens and closes only pair up and send nothing
+ * (`docs/spec/client-mode.md`, *Undo*). They would still each cost a trip across the Tauri bridge,
+ * three for every write, so a window that knows it is a Client skips them
+ * ({@link setGestureBracketing}, called when the mode is read). Until it knows, it brackets,
+ * which is harmless.
+ */
+let bracketing = true;
+
+/** Tells the Gesture protocol whether the backend wants its brackets. `false` in Client mode. */
+export function setGestureBracketing(wanted: boolean): void {
+  bracketing = wanted;
+}
+
 /** What one Gesture on a stack amounts to. Counts and table names — the phrasing is ours. */
 export interface GestureSummary {
   /** Which Gesture is being described. */
@@ -68,6 +86,7 @@ function isGestureId(value: unknown): value is string {
  * could not open one, in which case the caller runs without one and its writes are not undoable.
  */
 async function openGesture(): Promise<string | null> {
+  if (!bracketing) return null;
   try {
     const gesture = await tauriInvoke<unknown>("open_gesture");
     if (isGestureId(gesture)) return gesture;

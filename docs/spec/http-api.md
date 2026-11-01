@@ -190,6 +190,20 @@ client reconnecting with `Last-Event-ID` is sent one event at once if it missed 
 revision moved past its own, or the server restarted. A comment goes out every 15 s of silence, so
 a proxy keeps the stream open.
 
+## Revision on every answer, and gzip
+
+Every answer carries two headers, `X-Arlesh-Revision` and `X-Arlesh-Epoch`: the same pair the
+stream sends, so a client holding a copy of the board can tell whether the next event is news. A
+**read** (`GET`) carries the revision as it stood when the request arrived, before the read ran, so
+a write landing mid-read can make the copy look older than it is and never newer: a client reloads
+once too often, never once too few. A **write** carries the revision after it committed. The
+headers are used rather than a body envelope so no response shape changes. The board's own body
+(`/board`) is unchanged.
+
+Answers over 1 KB are gzipped when the client sends `Accept-Encoding: gzip`. `/events` never is: a
+compressor holds a stream back until it has enough to compress, and an event must arrive as it
+happens.
+
 ## Errors
 
 Every response that is not a success has the same body: the core's `kind`, a `message` and

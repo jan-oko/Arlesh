@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { fetchModeStatus, onServerStatusChanged } from "@/api/client-mode";
-import { useClientModeStore } from "@/stores/use-client-mode-store";
+import { setGestureBracketing } from "@/api/gesture";
+import { isClientMode, useClientModeStore } from "@/stores/use-client-mode-store";
 
 /**
  * Keeps this window's copy of the mode and the server's status current: reads it once, then takes
@@ -18,7 +19,12 @@ export function useClientModeSync(): void {
       else stop();
     });
     fetchModeStatus()
-      .then((status) => { if (subscribed) receive(status); })
+      .then((status) => {
+        if (!subscribed) return;
+        receive(status);
+        // A Client's Gesture brackets send nothing, so they are not worth a trip each.
+        setGestureBracketing(!isClientMode(status));
+      })
       .catch((error: unknown) => { console.warn("[arlesh] could not read the mode:", error); });
 
     return () => {
