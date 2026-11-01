@@ -12,9 +12,9 @@ none, and every write reloads"). Everything outside that set still writes and th
 
 ## Status
 
-proposed (2026-11-01, Task `288`). Decisions 1 to 12 follow what the user settled. The questions
-under *Open questions* are the user's to answer; the delivery's second and third pull requests wait
-on them.
+proposed (2026-11-01, Task `288`). Decisions 1 to 12 follow what the user settled. Decisions 13 to
+16 record the user's rulings on the questions the design left open, decided with the user,
+2026-11-01.
 
 ## Context
 
@@ -157,7 +157,7 @@ What the user decided (2026-11-01), and this ADR does not reopen:
    coalesce: at most one in flight and one waiting. For these writes the reload is not skipped by
    Task 9298's post-write rule (*skip when the write's revision is the board's revision + 1*). That
    rule would leave the derived values stale, and the derived values are exactly what the answer is
-   waited for (see *Open questions*). A board read that returns after a newer one is discarded.
+   waited for (see decision 15). A board read that returns after a newer one is discarded.
 
 6. **The store forgets a write once every board has caught up.** Each mounted `useMindmapData`
    reports its stamp to the store, and an answered write that every reported board reflects is
@@ -168,7 +168,8 @@ What the user decided (2026-11-01), and this ADR does not reopen:
    - **A refusal** (the core's error, or a gesture's `refused` outcome) rolls back that write and
      every later write on the same node, and on any placeholder under it. Those later writes are
      cancelled unsent. One toast, anchored to the node (to its parent if the node was a placeholder
-     that is now gone), names the backend's own reason. Writes on other nodes go on.
+     that is now gone), names the backend's own reason. Writes on other nodes go on. A refused
+     **editor Save** also reopens the editor (decision 14).
    - **A confirmation the backend holds** (marking a Habit occurrence done over unfinished
      children) is a refusal without a toast: the patch rolls back and the occurrence prompt opens.
      Confirming enqueues the write again with `confirmed`, patch and all. *Why:* the occurrence
@@ -228,9 +229,9 @@ What the user decided (2026-11-01), and this ADR does not reopen:
     | --- | --- | --- |
     | Wait release | Pending ↔ Released, decided in `useExpectationActions` today | nothing needed: no rule |
     | Goal toggle (the status step on a Goal) | Active ↔ Achieved, decided in `useStatusCycle` today | nothing needed: no rule |
-    | Status step on a Task | `next_status`, the Compound refusal (`status_after`) | **none** (`task-status.json` pins only the model conversion) |
-    | Started (`Alt+Enter`) | `alt_step` and its Agentic refusal | **none** |
-    | Commitment verdict | `verdict_after` | **none** |
+    | Status step on a Task | `next_status`, the Compound refusal (`status_after`) | `task-gestures.json` (new, PR 2) |
+    | Started (`Alt+Enter`) | `alt_step` and its Agentic refusal | `task-gestures.json` (new, PR 2) |
+    | Commitment verdict | `verdict_after` | `task-gestures.json` (new, PR 2) |
     | Rename | none | - |
     | Editor save | the form's own values. When the Agentic flag changes, the status it leaves | `task-status.json` (`convertedStatus`, which the editor already shows) |
     | Create child or sibling | may this kind hold that one | `parenting.json` (`isValidDropTarget`) |
@@ -238,8 +239,37 @@ What the user decided (2026-11-01), and this ADR does not reopen:
     The other corpora (`preset-filters`, `list-sections`, `zen-contents`, `habit-fold`) are the
     per-render rules that read the patched tree. `scope-keys` already formats the Time Scope an
     editor patch shows. `plan-triage`, `flow-cycles`, `cooldown` and `client-mode` are not touched.
-    **The three status-family gestures have no pinned copy.** `tasks::rules::gestures` decides them
-    in Rust alone (ADR 0010 decision 6). How they patch is open question 1.
+    **The three status-family gestures had no pinned copy.** `tasks::rules::gestures` decided them
+    in Rust alone (ADR 0010 decision 6). Decision 13 pins them.
+
+13. **The status step, `Alt+Enter` and the verdict get a pinned TypeScript copy** (decided with the
+    user, 2026-11-01). `task-status.json` pins only the conversion between the two status models,
+    not the step, so a new corpus `conformance/task-gestures.json` pins `next_status`, `alt_step`,
+    the Compound refusal (`status_after`) and `verdict_after`, and a TypeScript copy
+    (`src/utils/task-gestures.ts`) predicts what each press writes. Both sides replay the corpus.
+    This is the "pinned optimistic copy" ADR 0010's answer 2 left room for. *Why:* the patch may
+    only come from a pinned rule (decision 12), and a cue with no value would leave these presses
+    feeling as slow as today.
+
+14. **A refused editor Save, once the editor has closed, reopens it** (decided with the user,
+    2026-11-01). The save rolls back every field it patched, a toast names the node, and the editor
+    opens again holding **the user's input** and the **backend's reason** on its save error line, as
+    it did before the editor closed on Save. *Why:* a toast and a rollback alone would lose what
+    the user typed.
+
+15. **Own writes reload unless the board already reflects the write** (decided with the user,
+    2026-11-01, keeping this design's position). Task 9298's post-write skip ("skip when the write's
+    revision is the board's revision + 1") would leave the derived values of a pending write stale,
+    unless the response carries them. A write in the lane therefore reloads on its answer unless a
+    board that reflects it is already on screen (decision 5). The 9298 implementation (branch
+    `9298-write-cost`) was briefed to keep the post-write reload when the write responses do not
+    carry enough to update the board, and to skip the change-stream echo of the write instead. This
+    ADR agrees with that: the echo skip (revision at most the board's) is untouched, and the
+    reload after an answer is this feature's own.
+
+16. **The Flow and flow-item editors stay write-then-reload in v1** (decided with the user,
+    2026-11-01). Their saves reshape the occurrences a Habit derives, so they have few own fields
+    worth showing early.
 
 ## Considered options
 
@@ -262,8 +292,8 @@ What the user decided (2026-11-01), and this ADR does not reopen:
 - **Every write outside the lane is ordered behind it.** A move can wait one round trip longer than
   before, and only while the lane is busy.
 - **Editor refusals change place.** A refused save used to keep the editor open with the reason on
-  its error line. With the editor already closed, it becomes a toast and a rollback (open question
-  2).
+  its error line. With the editor already closed, it becomes a toast and a rollback, and the editor
+  reopens with the user's input and the reason (decision 14).
 - **The answer, not the reload, ends the cue.** The derived values follow one reload later, as
   before.
 - **The write's own response is used.** Settling a patch from the returned row means a prediction
@@ -317,19 +347,22 @@ changelog fragment per pull request that changes behaviour, and no snapshot test
 
 ### PR 2: the status family
 
-- **Waits on open question 1.** The scope below assumes answer (a). Under (b) or (c) the brief
-  shrinks to what the answer allows.
 - **Scope.** The status step (click, `Enter`) on Tasks and Goals, `Alt+Enter`, the verdict
   (Kept, Broken, the cycle key) and the wait release go through the lane. A Compound Task's step and
   `Alt+Enter` on Agentic work that is not Doing are refused locally, with today's toasts and no
   write. The occurrence guard uses the confirmation path. The Backlog-cleared toast is read off the
   answer, as now.
 - **Files.** `src/hooks/use-status-cycle.ts`, `use-commitment-verdict.ts`,
-  `use-expectation-actions.ts`, `use-occurrence-completion.ts` and their tests; under answer (a),
-  a new pinned copy `src/utils/task-gestures.ts`, the corpus `conformance/task-gestures.json`, its
-  replay `src/utils/task-gestures-conformance.test.ts` and
-  `src-tauri/tests/operations/task_gestures_conformance.rs`; the model map's *conformance pair*
-  card; `docs/adr/0010-business-rules-layer.md` decision 6's note.
+  `use-expectation-actions.ts`, `use-occurrence-completion.ts` and their tests; the pinned copy (decision 13), wired like `task-status.json`: the corpus
+  `conformance/task-gestures.json`, which pins `next_status`, `alt_step`, the Compound refusal
+  (`status_after`) and `verdict_after` and is generated by neither side; the Rust replay
+  `src-tauri/tests/operations/task_gestures_conformance.rs` (registered in
+  `src-tauri/tests/operations/main.rs`), which runs every case through
+  `tasks::rules::gestures`; the TypeScript copy `src/utils/task-gestures.ts` and its replay
+  `src/utils/task-gestures-conformance.test.ts` (vitest, importing `@conformance/task-gestures.json`
+  with the helpers in `@/test/conformance-board`, as `task-status-conformance.test.ts` does); the
+  model map's *conformance pair* card and pinned-copies list; and ADR 0010's answer 2 and decision 6
+  note.
 - **Acceptance.**
   - A press shows the new status (or verdict, or release) before the write resolves, with the cue;
     two quick presses show two steps and send two writes in order.
@@ -339,17 +372,17 @@ changelog fragment per pull request that changes behaviour, and no snapshot test
   - Completing an occurrence over open children rolls back, opens the prompt, and on Confirm shows
     Done again and sends `confirmed`.
   - The status shown after the answer is the returned row's, even where the prediction differed.
-  - Under answer (a), the corpus is replayed green on both sides.
+  - The corpus is replayed green on both sides: the Rust test against the Rust rule and the vitest
+    against the TypeScript copy.
 
 ### PR 3: rename and editor saves
 
-- **Waits on open questions 2 and 4.**
 - **Scope.** The inline rename, and the Save of the Task, Goal, Commitment, wait, Project, simple
   (Domain and Tag) and Info editors. The editor closes as soon as its own prompts (the Plan clamp)
   are answered. The patch is the form's own fields (decision 2). The reads that build the request
   (the containment conflicts that become clamp steps) run in the write's closure at send time. A
   changed Agentic flag patches the status through `convertedStatus`. A Task that stays Compound gets
-  no status patch. The Flow and flow-item editors stay write-then-reload, pending question 4.
+  no status patch. The Flow and flow-item editors stay write-then-reload (decision 16).
 - **Files.** `src/components/MindmapView/use-node-editor.ts`, the `renameNode` path in
   `use-mindmap-data.ts` and its callers (`use-node-actions.ts`, `use-list-data.ts`), the editor
   modals' close-on-save, and tests.
@@ -358,7 +391,8 @@ changelog fragment per pull request that changes behaviour, and no snapshot test
     old title with one toast.
   - Save closes the editor before the write resolves; the node shows the saved own fields at once;
     derived fields (inherited Plan, Overdue, Blocked) change only after the reload.
-  - A refused save rolls back every field it patched, with the behaviour question 2 decides.
+  - A refused save rolls back every field it patched, shows one toast, and reopens the editor with
+    the user's input and the backend's reason on its error line (decision 14).
   - A save queued behind a pending status step on the same node is sent after it.
 
 ### PR 4: create with temporary ids
@@ -381,26 +415,3 @@ changelog fragment per pull request that changes behaviour, and no snapshot test
   - A refused parent create removes both placeholders and sends nothing more, with one toast.
   - `Ctrl+Z` on a still-queued create removes the placeholder and calls nothing.
   - A kind the parent may not hold is refused before any patch.
-
-## Open questions
-
-1. **The status-family gestures have no pinned copy.** `task-status.json` pins only the conversion
-   between the two status models, not the step. `next_status`, `alt_step`, the Compound refusal and
-   `verdict_after` exist in Rust alone (ADR 0010 decision 6), so under *no new rule copies* the
-   status step, `Alt+Enter` and the verdict cannot predict what they write. The options:
-   (a) pin them: a new corpus `conformance/task-gestures.json` and a TypeScript copy, which is the
-   "pinned optimistic copy" ADR 0010's answer 2 left room for; (b) the cue only: those three show
-   the pulse at once and the new value on the answer, and only the wait release and the Goal toggle,
-   which need no rule, patch a value; (c) leave the three write-then-reload. The recommendation is
-   (a).
-2. **A refused editor save, once the editor has closed.** Either a toast and a rollback only, which
-   loses what the user typed; or the same, plus the editor reopening with the user's input and the
-   backend's reason on its error line, as before. The recommendation is to reopen.
-3. **Task 9298's post-write skip.** As written ("skip a post-write reload when the write's revision
-   is the board's revision + 1"), it would leave a write's derived values (rollups, Blocked) stale
-   even without this feature, unless the write response carries them. This design opts its own
-   writes out and reloads unless the board already reflects the answer. Should 9298's rule be read
-   that way for every write?
-4. **The Flow and flow-item editors.** Their saves reshape the occurrences a Habit derives, so they
-   have few own fields worth showing early. The recommendation is to keep them write-then-reload in
-   v1.
