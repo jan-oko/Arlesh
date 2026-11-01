@@ -253,7 +253,8 @@ button, a tag pill, a collapse dot), is left to that control.
 ### The gesture list, and the cheat sheet
 
 On a device whose only pointer is touch (`(any-pointer: coarse)` and not `(any-pointer: fine)`), the
-cheat sheet (☰ menu → Gestures there, Keyboard shortcuts elsewhere) **shows the gestures instead of the keyboard shortcuts**:
+cheat sheet (☰ menu → Gestures there, Keyboard shortcuts elsewhere) **shows the gestures instead
+of the keyboard shortcuts**:
 one tab for the gestures everywhere and one per view, opening on the view it was opened over. With a
 mouse or trackpad present it shows the shortcuts as ever. The list is one place in code,
 `utils/touch/gesture-list.ts`; **this table mirrors it row for row**, and `gesture-list.test.ts`
@@ -262,7 +263,7 @@ fails when the two differ, so a gesture is added to both or to neither.
 | Where | Gesture | Does |
 | --- | --- | --- |
 | Everywhere | Tap | Selects the node; tapping the selected node again deselects it |
-| Everywhere | Tap a status icon | Steps the node's status, as Enter does |
+| Everywhere | Tap a status icon | Steps the node's status, as Enter does, and nothing else |
 | Everywhere | Double-tap | Goes into the node; what that means is each view's, below |
 | Everywhere | Long-press | Opens the node's quick action menu |
 | Everywhere | Flick up | Opens the node's editor |
@@ -276,11 +277,11 @@ fails when the two differ, so a gesture is added to both or to neither.
 | Mindmap | Hold a node, then drag | Moves it under another parent or reorders it |
 | Mindmap | Tap a collapse dot | Folds or unfolds the node's children |
 | Mindmap | Pinch | Zooms the map |
-| List | Double-tap a leaf | Enters it |
+| List | Double-tap a row with nothing beneath it | Enters it through its parent, so it stays on screen among its siblings |
 | List | Double-tap a parent | Narrows the list to its subtree (Under) |
 | Plan | Swipe left or right on the planned pane | Steps to the next or the previous scope |
 | Plan | Swipe up on the planned pane | Goes up to the parent scope |
-| Plan | Swipe a to-plan item | Moves it into the planned scope |
+| Plan | Swipe a to-plan item right | Moves it into the planned scope (left sets Started, as on any row) |
 | Plan | Double-tap a card | Opens its subtree |
 | Steps | Double-tap a card | Steps into it |
 | Steps | Pinch | Zooms the steps |
