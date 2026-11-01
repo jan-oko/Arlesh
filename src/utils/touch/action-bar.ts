@@ -1,6 +1,7 @@
 import type { View } from "@/stores/use-view-store";
 import type { NodeKind } from "@/utils/tree-layout";
 import type { TouchLabelKey } from "@/stores/use-command-surface-store";
+import type { ActionIconName } from "@/components/ActionIcon/ActionIcon";
 import { OPEN_EDITOR_IDS, everyView } from "./command-ids";
 
 /** Which row of the action bar's table applies (`docs/spec/touch.md`). */
@@ -15,69 +16,73 @@ export type ActionContext =
 export interface ActionSlot {
   key: string;
   labelKey: TouchLabelKey;
-  /** A one-character glyph drawn above the label. */
-  glyph: string;
+  /** The icon drawn above the label, from the touch chrome's one icon set. */
+  icon: ActionIconName;
   kind: "run" | "menu";
   commandIds: readonly string[];
 }
 
-function run(key: string, labelKey: TouchLabelKey, glyph: string, commandIds: readonly string[]): ActionSlot {
-  return { key, labelKey, glyph, kind: "run", commandIds };
+function run(key: string, labelKey: TouchLabelKey, icon: ActionIconName, commandIds: readonly string[]): ActionSlot {
+  return { key, labelKey, icon, kind: "run", commandIds };
 }
 
-const UNDO = run("undo", "actionUndo", "↶", everyView("undo"));
-const REDO = run("redo", "actionRedo", "↷", everyView("redo"));
-const SEARCH = run("search", "actionSearch", "⌕", ["global.openSearch"]);
-const FILTER = run("filter", "actionFilter", "⧩", ["global.openFilterSearch"]);
-/** `Open (Ctrl+O)`: the node search that re-roots the tab, as the chord is everywhere. */
-const OPEN = run("open", "actionOpen", "↗", ["global.openSearch"]);
-const CHILD = run("child", "actionChild", "＋", everyView("createChild"));
-const PLAN = run("plan", "actionPlan", "▦", everyView("quickPlan"));
-const EDIT = run("edit", "actionEdit", "✎", OPEN_EDITOR_IDS);
+const UNDO = run("undo", "actionUndo", "undo", everyView("undo"));
+const REDO = run("redo", "actionRedo", "redo", everyView("redo"));
+/** `Ctrl+F`: the filter search. The one name for the bar's filter, the palette and the cheat sheet. */
+const FILTER = run("filter", "actionFilter", "filter", ["global.openFilterSearch"]);
+/** `Ctrl+O`: the node search that re-roots the tab. "Search" names a text box, never this action. */
+const OPEN = run("open", "actionOpen", "open", ["global.openSearch"]);
+/** A new Task or item under the selection (a Flow's item is its child). */
+const CHILD = run("child", "actionChild", "child", everyView("createChild"));
+const PLAN = run("plan", "actionPlan", "plan", everyView("quickPlan"));
+/** Edit is on every view's bar: the editor is the one thing every node has. */
+const EDIT = run("edit", "actionEdit", "edit", OPEN_EDITOR_IDS);
 
 /** Plain Enter's cycle, in each view's own name for it (the Mindmap's is `mindmap.enter`). */
 const STATUS_CYCLE = ["mindmap.enter", ...everyView("cycleStatus")];
 
 /** The slots of each context, before Undo and Redo fill what room is left. */
 const CONTEXT_SLOTS: Readonly<Record<ActionContext, readonly ActionSlot[]>> = {
-  nothing: [run("new", "actionNew", "＋", ["touch.newTask"]), UNDO, REDO, SEARCH, FILTER],
+  // With nothing selected a Child is a Task under the subtree you are in.
+  nothing: [run("child", "actionChild", "child", ["touch.newTask"]), UNDO, REDO, OPEN, FILTER],
   task: [
-    run("status", "actionStatus", "✓", STATUS_CYCLE),
+    run("status", "actionStatus", "status", STATUS_CYCLE),
     CHILD,
     PLAN,
-    run("dependency", "actionDependency", "⇢", everyView("quickDependency")),
-    OPEN,
+    run("dependency", "actionDependency", "dependency", everyView("quickDependency")),
+    EDIT,
   ],
   commitment: [
-    run("verdict", "actionVerdict", "⚖", ["mindmap.enter", "listView.cycleVerdict", "zenView.cycleVerdict", "stepsView.cycleStatus"]),
+    run("verdict", "actionVerdict", "verdict", ["mindmap.enter", "listView.cycleVerdict", "zenView.cycleVerdict", "stepsView.cycleStatus"]),
     CHILD,
     PLAN,
-    OPEN,
+    EDIT,
   ],
   wait: [
-    run("release", "actionRelease", "✓", [
+    run("release", "actionRelease", "release", [
       "mindmap.enter", "listView.toggleReleaseEnter", "zenView.toggleReleaseEnter", "stepsView.cycleStatus",
     ]),
-    run("checkDone", "actionCheckDone", "☑", ["touch.checkDone"]),
+    run("checkDone", "actionCheckDone", "checkDone", ["touch.checkDone"]),
     CHILD,
-    OPEN,
+    EDIT,
   ],
-  container: [CHILD, run("sibling", "actionSibling", "⇣", everyView("createSibling")), EDIT, OPEN],
-  flow: [run("startFlow", "actionStartFlow", "▶", ["mindmap.startFlow"]), run("item", "actionItem", "＋", everyView("createChild")), EDIT, OPEN],
+  container: [CHILD, run("sibling", "actionSibling", "sibling", everyView("createSibling")), EDIT],
+  flow: [run("startFlow", "actionStartFlow", "startFlow", ["mindmap.startFlow"]), CHILD, EDIT],
   several: [
-    run("status", "actionStatus", "✓", STATUS_CYCLE),
+    run("status", "actionStatus", "status", STATUS_CYCLE),
     PLAN,
-    run("archive", "actionArchive", "▣", ["touch.archiveSelection"]),
+    run("archive", "actionArchive", "archive", ["touch.archiveSelection"]),
     UNDO,
   ],
   planView: [
-    run("planInto", "actionPlanInto", "⇥", ["planView.moveAcross"]),
+    run("planInto", "actionPlanInto", "planInto", ["planView.moveAcross"]),
     {
-      key: "kind", labelKey: "actionKind", glyph: "◫", kind: "menu",
+      key: "kind", labelKey: "actionKind", icon: "kind", kind: "menu",
       commandIds: ["planView.kind.season", "planView.kind.month", "planView.kind.week", "planView.kind.day", "planView.kind.part_of_day"],
     },
-    run("backlog", "actionBacklog", "◌", ["planView.toggleBacklogCandidates"]),
+    run("backlog", "actionBacklog", "backlog", ["planView.toggleBacklogCandidates"]),
     FILTER,
+    EDIT,
   ],
 };
 
@@ -122,4 +127,17 @@ export function actionSlotsFor(context: ActionContext): ActionSlot[] {
     if (!slots.some((slot) => slot.key === extra.key)) slots.push(extra);
   }
   return slots;
+}
+
+/** Every slot the bar can draw, once each — the palette reads its icons off them. */
+function allSlots(): ActionSlot[] {
+  return [...Object.values(CONTEXT_SLOTS).flat(), UNDO, REDO];
+}
+
+/**
+ * The icon of the bar slot that runs a binding, so the palette wears the bar's icons: one icon per
+ * action, wherever it is offered. A binding no slot runs has none.
+ */
+export function iconForCommand(commandId: string): ActionIconName | null {
+  return allSlots().find((slot) => slot.commandIds.includes(commandId))?.icon ?? null;
 }

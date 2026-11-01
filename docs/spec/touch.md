@@ -78,23 +78,55 @@ the [command palette](#the-command-palette).
 
 | Context | Slots (then More) |
 | --- | --- |
-| Nothing selected | New, Undo, Redo, Search/jump, Filter (`Ctrl+F`) |
-| A Task | Status cycle, Child, Plan (`P`), Dependency (`d`), Open (`Ctrl+O`) |
-| A Commitment | Verdict, Child, Plan, Open |
-| A wait | Release, Check done, Child, Open |
-| A Goal, Domain or Project | Child, Sibling, Edit, Open |
-| A Flow or Habit | Start Flow, Item, Edit, Open |
-| Several selected | Status, Plan, Archive, Undo |
-| The Plan View | Plan into the shown scope, Kind (S/M/W/D/P), Backlog candidates, Filter |
+| Nothing selected | Child, Undo, Redo, Open, Filter |
+| A Task | Status, Child, Plan (`P`), Dependency (`d`), Edit (`E`) |
+| A Commitment | Verdict, Child, Plan, Edit, then Undo |
+| A wait | Release, Check done, Child, Edit, then Undo |
+| A Goal, Domain or Project | Child, Sibling, Edit, then Undo and Redo |
+| A Flow or Habit | Start, Child, Edit, then Undo and Redo |
+| Several selected | Status, Plan, Archive, Undo, Redo |
+| The Plan View | Plan in (the shown scope), Kind (S/M/W/D/P), Backlog candidates, Filter, Edit |
 
-**Undo and Redo fill the free slots**: a context with fewer than five slots gains Undo, then Redo,
-before More. Where there is no room they are in the palette.
+**Edit is on the bar in every view**, wherever a node can be selected (drawn disabled while nothing
+is). **Undo and Redo fill the free slots**: a context with fewer than five slots gains Undo, then
+Redo, before More. Where there is no room they are in the palette.
+
+### One vocabulary, one icon set
+
+*Decided 2026-11-01 from the phone test, which found "New" beside "Child" and "Search" beside
+"Open" for what were the same things.* The bar, the palette and the cheat sheet use these words and
+no others for these actions:
+
+| Word | Means | Replaces |
+| --- | --- | --- |
+| **Child** | create a Task (or a Flow's item) under the selection; with nothing selected, under the subtree you are in | New, Item |
+| **Sibling** | create a node beside the selection | |
+| **Open** | `Ctrl+O`: search by title and go into the node | Search, Search/jump |
+| **Filter** | `Ctrl+F`: search the filters and add one | |
+| **Status** | cycle the selection's status (Verdict and Release are its names for a Commitment and a wait) | |
+| **Dependency** | the quick dependency picker | Depends |
+| **Edit** | open the editor | |
+
+*Rationale:* the desktop already says "child" and "sibling" (`createChild`, `createSibling`) and
+`Ctrl+O` is *Open*, so the touch words follow the desktop's and the two words that were doubled
+are dropped. "Search" is left to text boxes. The desktop's two search labels (`openSearch`,
+`openFilterSearch`) now read "Open a node: …" and "Filter: …".
+
+**Open is on the bar only with nothing selected**; with a node selected it is the top bar's free
+square (double-tap) and the palette, which frees the slot Edit needs.
+
+**The icon set** (`ActionIcon`) is outlined, 24 x 24, a 1.8 stroke with round caps and joins, no
+fills, `currentColor`: the drawing style of `StatusIcons` and `NodeIcon`. One icon per action, the
+same in the bar and in the palette's rows (the palette takes it from the bar slot that runs the same
+binding, `iconForCommand`). **Filter** is a funnel. **Status** is the Started Task's own glyph
+(`TaskIcon`, the ring with an unfilled centre), the state it moves a Task to. The Steps View's
+staircase in the bottom navigation is drawn in this style too.
 
 Every slot **runs a binding of the [hotkey registry](#one-registry)** — the same guard, the same
 handler and the same refusal toast the key has — so a slot cannot do something the key does not.
 A slot whose binding cannot act in the current state is drawn disabled, never hidden, so the bar
 does not jump about. Two slots have no key of their own and are touch commands a view registers
-beside its bindings: **New** (a Task under the subtree you are in, refused out loud where a Task
+beside its bindings: **Child with nothing selected** (a Task under the subtree you are in, refused out loud where a Task
 cannot hang) and **Kind**, which opens a sheet of the five scope kinds, each its own binding.
 Two more are touch commands for the same reason: **Check done** (on a wait, completes its
 earliest-due open check task) and **Archive** (on a selection, puts away every node that takes the
@@ -103,8 +135,6 @@ one is already archived). Archive is **one gesture**, one transaction and one un
 through the `archive-nodes` gesture operation of [Client mode](client-mode.md#undo), which admits
 the three updates it is made of. A selected node with no archive of its own is left as it was and
 a toast says how many.
-
-*Open (`Ctrl+O`)* is the node search that re-roots the tab, as the chord is everywhere.
 
 **A read-only board.** In Client mode, while the server is unreachable or speaks another API
 version, the board is read-only ([Client mode](client-mode.md#offline)). Every touch surface greys

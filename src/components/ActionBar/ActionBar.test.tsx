@@ -30,8 +30,30 @@ describe("ActionBar", () => {
     useSelectionSurfaceStore.setState({ kinds: ["task"], multiSelect: false });
     render(<ActionBar />);
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "✓actionStatus", "＋actionChild", "▦actionPlan", "⇢actionDependency", "↗actionOpen", "⋯actionMore",
+      "actionStatus", "actionChild", "actionPlan", "actionDependency", "actionEdit", "actionMore",
     ]);
+  });
+
+  it("draws the status action with the Started Task's icon and the filter with a filter icon", () => {
+    useSelectionSurfaceStore.setState({ kinds: ["task"], multiSelect: false });
+    const { container, rerender } = render(<ActionBar />);
+    const status = container.querySelector('[data-action-icon="status"]');
+    // TaskIcon's Started glyph: the ring and the unfilled inner circle.
+    expect(status?.querySelectorAll("circle")).toHaveLength(2);
+    expect(status?.querySelector("circle[fill='currentColor']")).toBeNull();
+    useSelectionSurfaceStore.setState({ kinds: [], multiSelect: false });
+    rerender(<ActionBar />);
+    expect(container.querySelector('[data-action-icon="filter"]')).not.toBeNull();
+  });
+
+  it("draws Edit in every view", () => {
+    useSelectionSurfaceStore.setState({ kinds: ["task"], multiSelect: false });
+    for (const view of ["mindmap", "list", "plan", "steps", "zen"] as const) {
+      useViewStore.setState({ view });
+      const { unmount } = render(<ActionBar />);
+      expect(screen.getByRole("button", { name: "actionEdit" })).toBeInTheDocument();
+      unmount();
+    }
   });
 
   it("runs the view's own binding for a slot — the List View's status cycle", () => {
@@ -76,8 +98,10 @@ describe("ActionBar", () => {
     });
     publish([surfaceCommand("listView.cycleStatus", "cycleRowStatus"), surfaceCommand("global.openSearch", "openSearch")]);
     useSelectionSurfaceStore.setState({ kinds: ["task"], multiSelect: false });
-    render(<ActionBar />);
+    const { rerender } = render(<ActionBar />);
     expect(screen.getByRole("button", { name: "actionStatus" })).toBeDisabled();
+    useSelectionSurfaceStore.setState({ kinds: [], multiSelect: false });
+    rerender(<ActionBar />);
     expect(screen.getByRole("button", { name: "actionOpen" })).toBeEnabled();
   });
 });
