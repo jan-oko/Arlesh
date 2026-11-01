@@ -4,6 +4,7 @@ import { useListData } from "@/hooks/use-list-data";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useHandArchive } from "@/hooks/use-hand-archive";
+import { useTouchBoardCommands } from "@/hooks/use-touch-board-commands";
 import { archiveOfferFor } from "@/utils/hand-archive";
 import RowContextMenu from "@/components/RowContextMenu/RowContextMenu";
 import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
@@ -59,6 +60,7 @@ import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
 import { useTouchCommand } from "@/hooks/use-touch-command";
+import { hasRowsBeneath } from "@/utils/list-rows-beneath";
 import { useViewGestures } from "@/hooks/use-view-gestures";
 import touchStyles from "@/styles/touch-surface.module.css";
 
@@ -275,6 +277,11 @@ export default function ListView() {
     [tree, subtreeRootId],
   );
 
+  useTouchBoardCommands({
+    selection: () => (activeSelectedId === null ? [] : [findNode(tree, activeSelectedId) ?? []].flat()),
+    reload,
+    showToast,
+  });
   // The action bar's New, with nothing selected: a Task under the subtree you are in, refused out
   // loud where a Task cannot hang (the board's root holds Aspects, not Tasks).
   useTouchCommand({
@@ -345,14 +352,18 @@ export default function ListView() {
   const { containerRef, startScroll, scrollToEdge } = useListScroll(activeSelectedId);
 
   // The touch gestures (docs/spec/touch.md). Double-tap narrows the list to the row's subtree — the
-  // Under pill, as a path header's Ctrl-click files it.
+  // Under pill, as a path header's Ctrl-click files it. A leaf has no subtree to narrow to, so
+  // it opens its editor instead.
   useViewGestures(containerRef, {
     idAttribute: "data-row-id",
     ready: !isLoading && error === null,
     isSelected: (id) => id === activeSelectedId,
     select: setSelectedRowId,
     deselect: () => setSelectedRowId(null),
-    goInto: (id) => setPillSide("antecedent", id, "include"),
+    goInto: (id) => {
+      if (hasRowsBeneath(id, [...rows, ...commitmentRows, ...expectationRows])) setPillSide("antecedent", id, "include");
+      else onDoubleClick(id);
+    },
     slidesRows: true,
   });
 

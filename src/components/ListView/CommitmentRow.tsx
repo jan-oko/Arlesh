@@ -67,7 +67,8 @@ export default function CommitmentRow({
         className={taskStyles.statusButton}
         data-gesture-skip=""
         aria-label={t("cycleVerdict")}
-        onClick={(e) => { e.stopPropagation(); onSelect(node.id); onCycleVerdict(node.id); }}
+        onClick={(e) => { e.stopPropagation(); onCycleVerdict(node.id); }}
+        onDoubleClick={(e) => e.stopPropagation()}
       >
         <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`} aria-hidden="true">
           <CommitmentIcon

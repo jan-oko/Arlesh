@@ -6,6 +6,7 @@ import { aspectWashStyle } from "@/utils/node-visuals";
 import type { ZenTextSize } from "@/utils/zen-grid";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import TaskRowBadges from "@/components/ListView/TaskRowBadges";
+import StatusStepButton from "@/components/StatusStepButton/StatusStepButton";
 import TaskIcon from "@/components/NodeIcon/TaskIcon";
 import { AGENTIC_STATUS, TASK_STATUS, isReview, taskStatusOf } from "@/utils/status-mapping";
 import type { MindmapNode } from "@/utils/tree-layout";
@@ -23,7 +24,8 @@ const ICON_BOX = 24;
 interface Props {
   row: TaskListRow;
   width: number;
-  height: number;
+  /** The card's height, or `null` when it is as tall as its content (the phone layout). */
+  height: number | null;
   text: ZenTextSize;
   showBadges: boolean;
   /** Whether an Overdue card draws its amber border — the Zen setting. Its description says Overdue
@@ -37,6 +39,8 @@ interface Props {
   onOpenEditor: (nodeId: string) => void;
   onCommitTitle: (nodeId: string, title: string) => void;
   onCancelTitleEdit: () => void;
+  /** A tap on the status icon steps the status, as the cycle key does. */
+  onCycleStatus: (nodeId: string) => void;
   /** On a **Review** card: the agent's open question, answered from the card. */
   question?: MindmapNode | undefined;
   onAnswer?: ((question: MindmapNode, answer: string) => Promise<boolean>) | undefined;
@@ -53,18 +57,18 @@ interface Props {
  * View's rule — because `›` is mirrored between two right-to-left titles otherwise. Centred, both
  * sit under the title whatever its direction.
  *
- * A click selects, a double click opens the editor; there is no status control (Enter is the
- * gesture). `R` swaps the title for an inline input, as a List row does. A **Review** card — an
+ * A click selects, a double click opens the editor; a tap on the status icon steps the status (the
+ * cycle key's action) and does neither. On the phone the card is as tall as its content. `R` swaps the title for an inline input, as a List row does. A **Review** card — an
  * Agentic Task whose agent has a question open — draws the question with a field to answer it in,
  * and its Review glyph whether or not badges are shown.
  */
 export default function ZenTaskCard({
   row, width, height, text, showBadges, showOverdueBorder, isSelected, isFocusExempt, isEditingTitle,
-  onSelect, onOpenEditor, onCommitTitle, onCancelTitleEdit, question, onAnswer,
+  onSelect, onOpenEditor, onCommitTitle, onCancelTitleEdit, onCycleStatus, question, onAnswer,
 }: Props) {
   useInputCapture(isEditingTitle);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { t } = useTranslation("status");
+  const { t } = useTranslation(["status", "listView"]);
   const overdueNoteId = useId();
   const { node } = row;
   const overdue = isOverdue(node);
@@ -74,7 +78,10 @@ export default function ZenTaskCard({
   // Done.
   const taskStatus = taskStatusOf(node);
   const status = taskStatus.status;
-  const showsStatusIcon = status !== TASK_STATUS.IN_PROGRESS && status !== AGENTIC_STATUS.DOING;
+  // On the phone the icon is always there: it is the tap target that steps the status, and a
+  // card with no icon would have nothing to tap.
+  const fitsContent = height === null;
+  const showsStatusIcon = fitsContent || (status !== TASK_STATUS.IN_PROGRESS && status !== AGENTIC_STATUS.DOING);
   const review = isReview(taskStatus);
   const statusLabel = taskStatus.kind === "agentic" ? t(`agentic.${taskStatus.status}`) : t(`task.${taskStatus.status}`);
 
@@ -87,12 +94,13 @@ export default function ZenTaskCard({
   const cardStyle: CSSProperties & Record<`--${string}`, string | number> = {
     ...aspectWashStyle(node.color),
     width,
-    height,
+    // As tall as the content when no height is given, with the title unclamped.
+    ...(height === null ? {} : { height }),
     "--zen-title-size": `${text.title}px`,
     "--zen-path-size": `${text.path}px`,
     "--zen-badge-size": `${text.badge}px`,
     "--zen-padding": `${text.padding}px`,
-    "--zen-title-lines": text.titleLines,
+    "--zen-title-lines": height === null ? "none" : text.titleLines,
   };
 
   return (
@@ -138,22 +146,24 @@ export default function ZenTaskCard({
       {review && question !== undefined && onAnswer !== undefined && (
         <AnswerField question={question} onSend={(answer) => onAnswer(question, answer)} compact />
       )}
-      {(showBadges || review) && (
+      {(showBadges || review || fitsContent) && (
         <span className={styles.badges}>
           {showsStatusIcon && (
-            <svg
-              className={styles.statusIcon}
-              data-zen-status-icon={status}
-              viewBox={`0 0 ${ICON_BOX} ${ICON_BOX}`}
-              role="img"
-              aria-label={statusLabel}
-            >
-              <TaskIcon
-                cx={ICON_BOX / 2} cy={ICON_BOX / 2} r={ICON_BOX * 0.45}
-                color="var(--card-text-strong)" opacity={1} status={status} isBlocked={false}
-                compound={node.compound === true}
-              />
-            </svg>
+            <StatusStepButton label={t("listView:cycleStatus")} onStep={() => onCycleStatus(node.id)}>
+              <svg
+                className={styles.statusIcon}
+                data-zen-status-icon={status}
+                viewBox={`0 0 ${ICON_BOX} ${ICON_BOX}`}
+                role="img"
+                aria-label={statusLabel}
+              >
+                <TaskIcon
+                  cx={ICON_BOX / 2} cy={ICON_BOX / 2} r={ICON_BOX * 0.45}
+                  color="var(--card-text-strong)" opacity={1} status={status} isBlocked={false}
+                  compound={node.compound === true}
+                />
+              </svg>
+            </StatusStepButton>
           )}
           {showBadges && <TaskRowBadges node={node} indicators={deriveStatusIndicators(node)} />}
         </span>

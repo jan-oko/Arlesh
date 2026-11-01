@@ -10,12 +10,12 @@ import { TOUCH_QUERY } from "./use-media-query";
 
 type Handlers = Omit<ViewGestureOptions, "idAttribute" | "ready">;
 
-function Surface({ handlers }: { handlers: Handlers }) {
+function Surface({ handlers, onQuickMenu }: { handlers: Handlers; onQuickMenu?: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useViewGestures(ref, { idAttribute: "data-row-id", ready: true, ...handlers });
   return (
     <div ref={ref} data-testid="surface">
-      <div data-row-id="task-1" data-testid="row">
+      <div data-row-id="task-1" data-testid="row" onContextMenu={onQuickMenu}>
         <button type="button" data-gesture-skip="" data-testid="status" />
       </div>
     </div>
@@ -87,15 +87,19 @@ describe("useViewGestures", () => {
     expect(options.deselect).not.toHaveBeenCalled();
   });
 
-  it("opens the palette when a held finger lifts", () => {
+  it("opens only the node's quick action menu on a long-press, never the palette", () => {
     const options = handlers();
-    const { getByTestId } = render(<Surface handlers={options} />);
+    const quickMenu = vi.fn();
+    const { getByTestId } = render(<Surface handlers={options} onQuickMenu={quickMenu} />);
     const row = getByTestId("row");
     fireEvent.touchStart(row, { touches: [touch(row, 10, 10)] });
     act(() => { vi.advanceTimersByTime(500); });
+    // The webview raises `contextmenu` while the finger is down; the node's own handler answers it.
+    fireEvent.contextMenu(row);
     fireEvent.touchEnd(row, { touches: [], changedTouches: [touch(row, 10, 10)] });
     expect(options.select).toHaveBeenCalledWith("task-1");
-    expect(usePaletteStore.getState().isOpen).toBe(true);
+    expect(quickMenu).toHaveBeenCalledTimes(1);
+    expect(usePaletteStore.getState().isOpen).toBe(false);
   });
 
   it("runs the status cycle's binding on a swipe right, as Enter would", () => {

@@ -61,8 +61,11 @@ import styles from "./StepsView.module.css";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
 import { runFirst, useViewGestures } from "@/hooks/use-view-gestures";
 import { usePinchSteps } from "@/hooks/use-pinch-steps";
-import { useHasTouch } from "@/hooks/use-media-query";
+import { useHasTouch, usePhoneLayout } from "@/hooks/use-media-query";
 import touchStyles from "@/styles/touch-surface.module.css";
+
+/** The height the phone's Info bullets are budgeted for: its cards grow, but not without end. */
+const PHONE_CARD_HEIGHT_PX = 320;
 
 /**
  * What the Steps View has picked, held as **the card's node id** rather than its place in the grid.
@@ -200,7 +203,12 @@ export default function StepsView() {
 
   const children = filteredRoot.children;
   const { ref: childAreaRef, grid: measuredGrid } = useStepGrid(zoom);
-  const grid = resolveGrid(measuredGrid, children.length);
+  // The phone lays the Step out as one scrolling column of cards, each as tall as its content, so
+  // there is no page to turn: the grid is one page holding everything (docs/spec/touch.md).
+  const isPhone = usePhoneLayout();
+  const grid = isPhone
+    ? { columns: 1, rows: Math.max(1, children.length), pageSize: Math.max(1, children.length) }
+    : resolveGrid(measuredGrid, children.length);
   const pages = pageCount(children.length, grid.pageSize);
   const selectedChildIndex = selectedChildId === null ? -1 : children.findIndex((child) => child.id === selectedChildId);
   const currentPage = shownPage(page, selectedChildIndex, children.length, grid.pageSize);
@@ -516,6 +524,8 @@ export default function StepsView() {
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
 
   const card = cardSizeForZoom(zoom);
+  // What decides how many Info bullets a card shows. A phone card grows to hold them, up to a cap.
+  const cardHeight = isPhone ? PHONE_CARD_HEIGHT_PX : card.height;
   // The aspect this Step sits under, which every card on it is coloured from. One walk for the
   // whole Step: a Step is one place on the board, so its cards share an aspect — except at the true
   // root, where each top-level card *is* an aspect and carries its own colour.
@@ -565,7 +575,7 @@ export default function StepsView() {
         <StepCard
           node={rawStepNode === null ? null : filteredRoot}
           aspectColor={stepAspectColor}
-          cardHeight={card.height}
+          cardHeight={cardHeight}
           isHeader
           isSelected={cursor?.cell === "header"}
           counts={headerCounts}
@@ -609,7 +619,8 @@ export default function StepsView() {
               key={child.id}
               node={child}
               aspectColor={child.color ?? stepAspectColor}
-              cardHeight={card.height}
+              cardHeight={cardHeight}
+              onStepStatus={unlessDrawing(unlessBlocked(cycleStatus))}
               isHeader={false}
               isSelected={cursor?.cell === "child" && cursor.index === index}
               counts={cardCounts(child)}

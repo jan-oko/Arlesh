@@ -12,12 +12,16 @@ import { isRtlText } from "@/utils/text-direction";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import NodeIcon from "@/components/NodeIcon/NodeIcon";
 import TaskRowBadges from "@/components/ListView/TaskRowBadges";
+import StatusStepButton from "@/components/StatusStepButton/StatusStepButton";
 import OverdueNote from "@/components/OverdueNote/OverdueNote";
 import { isOverdue } from "@/utils/overdue";
 import StepCardFields from "./StepCardFields";
 import styles from "./StepCard.module.css";
 
 const ICON_R = 9;
+
+/** The kinds whose glyph is a status the cycle steps; a Commitment's verdict has its own writer. */
+const STEPPABLE_KINDS: ReadonlySet<string> = new Set(["task", "goal", "expectation"]);
 
 interface Props {
   /** The node this card stands for, or `null` for the board's own header card at the true root. */
@@ -27,6 +31,8 @@ interface Props {
   aspectColor: string | undefined;
   /** The card's drawn height in pixels — what decides how many Info bullets fit under its fields. */
   cardHeight: number;
+  /** A tap on the glyph steps the node's status; absent, the glyph is only a picture. */
+  onStepStatus?: (nodeId: string) => void;
   /** Whether this is the card for the Step you are standing on, drawn above its children. */
   isHeader: boolean;
   isSelected: boolean;
@@ -65,10 +71,10 @@ interface Props {
  * lets the fill spend itself on where the node lives instead.
  */
 export default function StepCard({
-  node, aspectColor, cardHeight, isHeader, isSelected, counts, onSelect, onDescend, onOpenEditor,
+  node, aspectColor, cardHeight, onStepStatus, isHeader, isSelected, counts, onSelect, onDescend, onOpenEditor,
   isEditingTitle, onCommitTitle, onCancelTitleEdit,
 }: Props) {
-  const { t } = useTranslation(["stepsView", "nodeKinds"]);
+  const { t } = useTranslation(["stepsView", "nodeKinds", "listView"]);
   // The title input holds the keyboard while it is open, as the List View's and the Mindmap's do.
   useInputCapture(isEditingTitle);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -107,6 +113,21 @@ export default function StepCard({
     ...aspectWashStyle(aspectColor),
     opacity: node.archived === true ? DIMMED_OPACITY : 1,
   };
+  const steppable = onStepStatus !== undefined && STEPPABLE_KINDS.has(node.kind);
+
+  const glyph = (
+    <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`}>
+      <NodeIcon
+        kind={node.kind} status={node.status} verdict={node.verdict}
+        expired={node.expired === true}
+        isBlocked={isNodeBlocked(node)}
+        isHabit={node.flow?.isHabit === true} compound={node.compound === true}
+        // The card's muted colour, not the full text colour: a solid glyph at full strength
+        // was half of what made the top line read as a band over the card.
+        cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--card-text-muted)" opacity={1}
+      />
+    </svg>
+  );
 
   return (
     <div
@@ -126,21 +147,13 @@ export default function StepCard({
       {overdue && <OverdueNote id={overdueNoteId} />}
       <span className={styles.top}>
         {/* No slot for a kind with no glyph — an Aspect — or its title starts after an empty gap. */}
-        {cardDrawsGlyph(node.kind) && (
-          <span className={styles.glyph} aria-hidden="true">
-            <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`}>
-              <NodeIcon
-                kind={node.kind} status={node.status} verdict={node.verdict}
-                expired={node.expired === true}
-                isBlocked={isNodeBlocked(node)}
-                isHabit={node.flow?.isHabit === true} compound={node.compound === true}
-                // The card's muted colour, not the full text colour: a solid glyph at full strength
-                // was half of what made the top line read as a band over the card.
-                cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--card-text-muted)" opacity={1}
-              />
-            </svg>
-          </span>
-        )}
+        {cardDrawsGlyph(node.kind) && (steppable ? (
+          <StatusStepButton label={t("listView:cycleStatus")} onStep={() => onStepStatus?.(node.id)}>
+            {glyph}
+          </StatusStepButton>
+        ) : (
+          <span className={styles.glyph} aria-hidden="true">{glyph}</span>
+        ))}
         {isEditingTitle ? (
           <input
             ref={inputRef}

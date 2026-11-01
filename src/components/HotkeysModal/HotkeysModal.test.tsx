@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import HotkeysModal from "./HotkeysModal";
+import { TOUCH_ONLY_QUERY } from "@/hooks/use-media-query";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -345,5 +346,50 @@ describe("HotkeysModal — closing", () => {
     expect(overlay).not.toBeNull();
     if (overlay !== null) fireEvent.click(overlay);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("HotkeysModal — on a touch-only device", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  function touchOnly() {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === TOUCH_ONLY_QUERY,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+  }
+
+  it("shows the gestures, one tab for everywhere and one per view, instead of the shortcuts", () => {
+    touchOnly();
+    render(<HotkeysModal onClose={vi.fn()} />);
+    expect(screen.getAllByRole("tab").map((element) => element.textContent)).toEqual([
+      "touch:gestureScopeAll", "touch:gestureScopeMindmap", "touch:gestureScopeList",
+      "touch:gestureScopePlan", "touch:gestureScopeSteps", "touch:gestureScopeZen",
+    ]);
+    const panel = screen.getByRole("tabpanel");
+    expect(within(panel).getByText("touch:gestureStatusIcon")).toBeInTheDocument();
+    expect(within(panel).getByText("touch:gestureLongPress")).toBeInTheDocument();
+    expect(screen.queryByText("sectionGlobal")).not.toBeInTheDocument();
+    expect(within(panel).queryByText(/Ctrl/)).not.toBeInTheDocument();
+  });
+
+  it("opens on the view it was opened over, with that view's own gestures", () => {
+    touchOnly();
+    render(<HotkeysModal onClose={vi.fn()} view="plan" />);
+    const panel = screen.getByRole("tabpanel");
+    expect(within(panel).getByText("touch:gesturePlanScope")).toBeInTheDocument();
+    expect(within(panel).getByText("touch:gesturePlanUp")).toBeInTheDocument();
+    expect(within(panel).getByText("touch:gesturePlanMove")).toBeInTheDocument();
+    openTab("touch:gestureScopeList");
+    expect(within(screen.getByRole("tabpanel")).getByText("touch:gestureListLeaf")).toBeInTheDocument();
+  });
+
+  it("searches the gestures", () => {
+    touchOnly();
+    render(<HotkeysModal onClose={vi.fn()} />);
+    search("touch:gestureZenOpenDoes");
+    expect(screen.getByText("touch:gestureZenOpenDoes")).toBeInTheDocument();
+    expect(screen.queryByText("touch:gestureTapDoes")).not.toBeInTheDocument();
   });
 });

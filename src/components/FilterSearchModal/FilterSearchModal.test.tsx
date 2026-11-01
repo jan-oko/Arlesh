@@ -9,6 +9,7 @@ import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import { useFilterDisplay } from "@/hooks/use-filter-display";
 import { useGlobalHotkeys } from "@/hooks/use-global-hotkeys";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
+import { dismissTopSheet } from "@/utils/dismiss-sheet";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
@@ -57,6 +58,33 @@ const switchOption = (label: string, state: string) => {
 const headings = () => screen.getAllByRole("group").map((g) => g.getAttribute("aria-label"));
 
 describe("FilterSearchModal", () => {
+
+  describe("ways out (the phone has no Escape key)", () => {
+    it("closes on the close button", () => {
+      const onClose = vi.fn();
+      render(<FilterSearchModal onClose={onClose} />);
+      fireEvent.click(screen.getByRole("button", { name: "sheetClose" }));
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("closes on a tap outside the panel, and not on a tap inside it", () => {
+      const onClose = vi.fn();
+      const { container } = render(<FilterSearchModal onClose={onClose} />);
+      fireEvent.click(screen.getByRole("dialog"));
+      expect(onClose).not.toHaveBeenCalled();
+      const overlay = container.firstElementChild;
+      if (overlay === null) throw new Error("no overlay");
+      fireEvent.click(overlay);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("closes once on Android's back, which Escapes the top dialog", () => {
+      const onClose = vi.fn();
+      render(<FilterSearchModal onClose={onClose} />);
+      expect(dismissTopSheet()).toBe(true);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
   it("opens with the search focused", () => {
     render(<FilterSearchModal onClose={vi.fn()} />);
     expect(box()).toHaveFocus();

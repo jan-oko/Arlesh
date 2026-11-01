@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import ActionIcon from "@/components/ActionIcon/ActionIcon";
 import BottomSheet from "@/components/BottomSheet/BottomSheet";
 import CommandList from "@/components/CommandPalette/CommandList";
 import { allSurfaceCommands, firstRunnable, useCommandSurfaceStore } from "@/stores/use-command-surface-store";
@@ -7,12 +8,11 @@ import type { SurfaceCommand } from "@/stores/use-command-surface-store";
 import { usePaletteStore } from "@/stores/use-palette-store";
 import { useSelectionSurfaceStore } from "@/stores/use-selection-surface-store";
 import { useViewStore } from "@/stores/use-view-store";
+import { useBoardReadOnly } from "@/hooks/use-board-read-only";
+import { gateWrites } from "@/utils/touch/writes";
 import { actionContextFor, actionSlotsFor } from "@/utils/touch/action-bar";
 import type { ActionSlot } from "@/utils/touch/action-bar";
 import styles from "./ActionBar.module.css";
-
-/** The More slot's glyph: decoration, the label beside it says what it is. */
-const MORE_GLYPH = "⋯";
 
 /** A slot as drawn: what it runs (or the commands its sheet lists), or nothing when it cannot act. */
 interface DrawnSlot {
@@ -45,7 +45,8 @@ export default function ActionBar() {
   const openPalette = usePaletteStore((s) => s.open);
   const [openMenu, setOpenMenu] = useState<DrawnSlot | null>(null);
 
-  const commands = allSurfaceCommands(tables);
+  const readOnly = useBoardReadOnly() !== null;
+  const commands = gateWrites(allSurfaceCommands(tables), readOnly);
   const slots = actionSlotsFor(actionContextFor(view, kinds)).map((slot) => drawSlot(slot, commands));
 
   function press(drawn: DrawnSlot) {
@@ -67,12 +68,12 @@ export default function ActionBar() {
             disabled={drawn.slot.kind === "menu" ? drawn.menu.length === 0 : drawn.command === null}
             onClick={() => press(drawn)}
           >
-            <span className={styles.glyph} aria-hidden="true">{drawn.slot.glyph}</span>
+            <span className={styles.glyph}><ActionIcon name={drawn.slot.icon} /></span>
             {t(drawn.slot.labelKey)}
           </button>
         ))}
         <button type="button" className={styles.slot} onClick={openPalette}>
-          <span className={styles.glyph} aria-hidden="true">{MORE_GLYPH}</span>
+          <span className={styles.glyph}><ActionIcon name="more" /></span>
           {t("actionMore")}
         </button>
       </nav>

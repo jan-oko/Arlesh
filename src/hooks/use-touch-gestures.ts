@@ -8,7 +8,7 @@ import {
 export interface TouchGestureHandlers {
   onTap: (id: string | null) => void;
   onDoubleTap: (id: string | null) => void;
-  /** A finger held still on a node and lifted: the node's palette. */
+  /** A finger held still on a node and lifted: the node is selected; its quick action menu is the webview's `contextmenu`. */
   onLongPress: (id: string) => void;
   /** `target` is the element the finger went down on, for a view that asks where it was. */
   onFlickUp: (id: string | null, target: Element) => void;

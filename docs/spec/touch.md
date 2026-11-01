@@ -32,8 +32,12 @@ Below 700 px:
 - **Bottom navigation** for the views, in this order: **Zen, List, Plan, Steps, Map**. It replaces
   the top bar's view selector. `Ctrl+M/L/P/S/J` still switch views from a keyboard.
 - **The top bar** holds, in order: a **☰ menu**, the **title**, the **preset chip** and the agents'
-  status. The title is the view's name at the board's root, and the breadcrumb inside a subtree.
-  The server status joins it when Client mode lands (Task 9f0).
+  status, then a [free square](#the-top-bar-square). The title is the view's name at the board's
+  root, and the breadcrumb inside a subtree. **In portrait the breadcrumb is `‹ {current node}`**:
+  the chevron opens the full path as the `…` of the long form does (a menu of every level above, each
+  one exiting to it). Landscape keeps the whole chain.
+  There is **no server indicator** on the phone's bar (feedback from a Pixel 10 Pro: it crowded the
+  bar); the server's status lives on **Settings → Server** ([Client mode](client-mode.md)).
   - **The preset chip** shows the preset the view reads under and opens the **preset sheet**: Plan,
     Start, Do, Backlog and All, plus the List View's Unblock and Expectations while the List View is
     showing. In the Plan View and the Zen View the chip shows their locked preset and the sheet says
@@ -44,16 +48,27 @@ Below 700 px:
 - **The filter chips** stay under the top bar and wrap.
 - **The context [action bar](#the-action-bar)** sits above the bottom navigation.
 - **Sheets instead of modals and popovers.** Every editor and every full dialog (the node editors,
-  the searches, Settings, the keyboard sheet) fills the screen; every popover and confirmation (the
-  quick pickers, the Filter menu, the context menus, the delete and warning prompts, the app's
-  dropdowns) rises from the bottom as a sheet. They keep their content and their keys; only where
-  they are drawn changes.
+  Settings, the keyboard sheet) fills the screen; every popover and confirmation (the quick pickers,
+  the Filter menu, the context menus, the delete and warning prompts, the app's dropdowns) rises from
+  the bottom as a sheet. They keep their content and their keys; only where they are drawn changes.
+  - **The two searches are not full screen.** *Open* (`Ctrl+O`) and the *Filter* search (`Ctrl+F`)
+    are a card under the top edge over a dimmed margin, so the board stays in view and the keyboard
+    does not hide the box. A phone has no Escape key, so each is escapable three ways: **Android's
+    back**, a **tap outside** the card and a **close button** (✕) beside the search box. The Filter
+    menu sheet has the same close button and the same back and outside tap. Back works because it is
+    delivered as an Escape to the top dialog, so a dialog must answer an Escape aimed at itself, not
+    only one typed in its box.
 - **List rows take two lines**: the title on the first, the badges and meta on the second. Path
   headers stick to the top while their rows scroll beneath.
-- **The Plan View stacks its panes**: candidates on top, the planned pane at the **bottom**, and the
-  planned pane draws **no subscope cells** (stepping through them is the scope swipe, below).
-- **The Zen View** is a vertical, scrollable list of cards sized to fit, in place of the grid. The
-  cards mean what the grid's mean, and act the same.
+- **The Plan View stacks its panes**: candidates on top, the planned pane at the **bottom** and a
+  **third** of the height (the candidates take the other two), and the planned pane draws **no
+  subscope cells** (stepping through them is the scope swipe, below).
+- **The Zen View** is a vertical, scrollable list of cards in place of the grid, each **as tall as
+  its content**: the whole title, the path and the badges, never clamped to a share of the screen.
+  The cards mean what the grid's mean, and act the same.
+- **The Steps View** is one scrolling column in place of the paged grid, each card as tall as its
+  content (its Info notes up to a cap). There is no page to turn, and the zoom no longer sets the
+  card.
 - **No hover.** A tooltip's text moves into the editor or appears on a tap.
 - **Toasts** rise above the action bar rather than covering it.
 - **Tabs are not shown** in the phone layout: the tab strip is hidden and the active tab is the one
@@ -63,6 +78,14 @@ Below 700 px:
 - **Full screen** (`F11` / `F`) hides the top bar and the chips, as it does on the desktop; the
   bottom navigation and the action bar stay, since they are the only way back on a phone.
 
+### The top bar square
+
+The last cell of the top bar is left **free**: a 36 px dashed square with nothing in it. A
+**double-tap** on it opens **Open** (`Ctrl+O`'s node search), and a **long-press** (the hold, then
+the finger lifting, as on a node) opens the [command palette](#the-command-palette). A single tap
+does nothing. It is where a thumb rests, and it keeps Open off the action bar when a node is
+selected.
+
 ## The action bar
 
 A row of buttons above the bottom navigation, chosen by what is selected. It shows in the phone
@@ -71,27 +94,73 @@ the [command palette](#the-command-palette).
 
 | Context | Slots (then More) |
 | --- | --- |
-| Nothing selected | New, Undo, Redo, Search/jump, Filter (`Ctrl+F`) |
-| A Task | Status cycle, Child, Plan (`P`), Dependency (`d`), Open (`Ctrl+O`) |
-| A Commitment | Verdict, Child, Plan, Open |
-| A wait | Release, Check done, Child, Open |
-| A Goal, Domain or Project | Child, Sibling, Edit, Open |
-| A Flow or Habit | Start Flow, Item, Edit, Open |
-| Several selected | Status, Plan, Archive, Undo |
-| The Plan View | Plan into the shown scope, Kind (S/M/W/D/P), Backlog candidates, Filter |
+| Nothing selected | Child, Undo, Redo, Open, Filter |
+| A Task | Status, Child, Plan (`P`), Dependency (`d`), Edit (`E`) |
+| A Commitment | Verdict, Child, Plan, Edit, then Undo |
+| A wait | Release, Check done, Child, Edit, then Undo |
+| A Goal, Domain or Project | Child, Sibling, Edit, then Undo and Redo |
+| A Flow or Habit | Start, Child, Edit, then Undo and Redo |
+| Several selected | Status, Plan, Archive, Undo, Redo |
+| The Plan View | Plan in (the shown scope), Kind (S/M/W/D/P), Backlog candidates, Filter, Edit |
 
-**Undo and Redo fill the free slots**: a context with fewer than five slots gains Undo, then Redo,
-before More. Where there is no room they are in the palette.
+**Edit is on the bar in every view**, wherever a node can be selected (drawn disabled while nothing
+is). **Undo and Redo fill the free slots**: a context with fewer than five slots gains Undo, then
+Redo, before More. Where there is no room they are in the palette.
+
+### One vocabulary, one icon set
+
+*Decided 2026-11-01 from the phone test, which found "New" beside "Child" and "Search" beside
+"Open" for what were the same things.* The bar, the palette and the cheat sheet use these words and
+no others for these actions:
+
+| Word | Means | Replaces |
+| --- | --- | --- |
+| **Child** | create a Task (or a Flow's item) under the selection; with nothing selected, under the subtree you are in | New, Item |
+| **Sibling** | create a node beside the selection | |
+| **Open** | `Ctrl+O`: search by title and go into the node | Search, Search/jump |
+| **Filter** | `Ctrl+F`: search the filters and add one | |
+| **Status** | cycle the selection's status (Verdict and Release are its names for a Commitment and a wait) | |
+| **Dependency** | the quick dependency picker | Depends |
+| **Edit** | open the editor | |
+
+*Rationale:* the desktop already says "child" and "sibling" (`createChild`, `createSibling`) and
+`Ctrl+O` is *Open*, so the touch words follow the desktop's and the two words that were doubled
+are dropped. "Search" is left to text boxes. The desktop's two search labels (`openSearch`,
+`openFilterSearch`) now read "Open a node: …" and "Filter: …".
+
+**Open is on the bar only with nothing selected**; with a node selected it is the top bar's free
+square (double-tap) and the palette, which frees the slot Edit needs.
+
+**The icon set** (`ActionIcon`) is outlined, 24 x 24, a 1.8 stroke with round caps and joins, no
+fills, `currentColor`: the drawing style of `StatusIcons` and `NodeIcon`. One icon per action, the
+same in the bar and in the palette's rows (the palette takes it from the bar slot that runs the same
+binding, `iconForCommand`). **Filter** is a funnel. **Status** is the Started Task's own glyph
+(`TaskIcon`, the ring with an unfilled centre), the state it moves a Task to. The Steps View's
+staircase in the bottom navigation is drawn in this style too: the bottom navigation takes all five
+of its view icons from the set (a target, a list, four panes, the staircase and a fork).
 
 Every slot **runs a binding of the [hotkey registry](#one-registry)** — the same guard, the same
 handler and the same refusal toast the key has — so a slot cannot do something the key does not.
 A slot whose binding cannot act in the current state is drawn disabled, never hidden, so the bar
 does not jump about. Two slots have no key of their own and are touch commands a view registers
-beside its bindings: **New** (a Task under the subtree you are in, refused out loud where a Task
+beside its bindings: **Child with nothing selected** (a Task under the subtree you are in, refused out loud where a Task
 cannot hang) and **Kind**, which opens a sheet of the five scope kinds, each its own binding.
+Two more are touch commands for the same reason: **Check done** (on a wait, completes its
+earliest-due open check task) and **Archive** (on a selection, puts away every node that takes the
+hand archive — a stored Task or Commitment, or a Domain — and **brings them all back** when every
+one is already archived). Archive is **one gesture**, one transaction and one undo step, run
+through the `archive-nodes` gesture operation of [Client mode](client-mode.md#undo), which admits
+the three updates it is made of. A selected node with no archive of its own is left as it was and
+a toast says how many.
 
-*Open (`Ctrl+O`)* is the node search that re-roots the tab, as the chord is everywhere.
-*Archive* and *Check done* have no binding yet; until they do their slots are drawn disabled.
+**A read-only board.** In Client mode, while the server is unreachable or speaks another API
+version, the board is read-only ([Client mode](client-mode.md#offline)). Every touch surface greys
+out its writes instead of letting them fail: the action bar draws the write slots disabled, the
+palette lists the writes as unavailable, and the write gestures — a swipe's advance or Started, a
+Plan View swipe's move across, the Mindmap's hold-and-drag — do nothing. What only reads stays:
+moving the selection, the presets and filters, search, zoom, folding, the tab chords, opening an
+editor. `utils/touch/writes.ts` says which commands only read; anything it does not list is taken
+to write, so a new binding is greyed out until someone says it reads.
 
 ## The command palette
 
@@ -103,7 +172,7 @@ only gives another one a second key (the numpad zoom, `F2`) is listed once, unde
 of opposites the cheat-sheet lists on one line (previous and next scope) gets a row each, worded
 for its direction.
 
-It is opened by the action bar's **More**, by the ☰ menu, and by a **long-press** on a node.
+It is opened by the action bar's **More**, by the ☰ menu, and by a **long-press on the top bar's free square** ([below](#the-top-bar-square)). A long-press on a node opens that node's quick action menu, not the palette.
 
 **No lost control.** `palette-coverage.test.ts` fails if any binding in the registry has neither a
 palette entry nor a gesture. A binding is in the palette unless it is listed in the palette's
@@ -123,11 +192,19 @@ Mindmap and the Plan View), and switching views turns it off.
 Whenever a touchscreen is present, at any width.
 
 - **Tap** selects. **Tapping the selected node again** deselects it.
-- **Long-press** on a node opens the command palette for that node.
+- **Long-press** on a node opens that node's **quick action menu** (not the command palette; the
+  palette is the [top bar square](#the-top-bar-square)'s long-press and the action bar's More).
 - A quick **flick up** on a node opens its editor. Scrolling wins when the move is slow or long.
+- **Tap a node's status icon** to step its status, exactly as the status-cycle key does (a
+  Commitment's icon its verdict, a wait's its release). The tap does that and nothing else: it does
+  not select the node, and a second quick tap does not open its editor. The icon is a control of its
+  own on every card (the List's rows, the Zen and Steps cards, the Zen strips, the Mindmap's node);
+  on the phone the Zen card always draws it, so there is always something to tap. The Plan View's
+  cards have no status step to run, so their icon stays a picture.
 - **Double-tap** means "go into", everywhere: the Mindmap enters the node; the Steps View steps into
   it; the List View narrows to its subtree (Under); the Plan View opens its subtree; the Zen View
-  opens the node in the List View.
+  opens the node in the List View. A List row with **nothing beneath it** has no subtree to narrow
+  to (Under it would empty the list), so its double-tap opens its editor instead.
 - **Swipe a row or a card right** to cycle its status: Done wraps back to To Do, a Commitment moves
   to its next verdict and a wait to released, exactly as the status-cycle key does. **Swipe it
   left** for the `Alt+Enter` alternative, setting Started. There is no swipe tray.
@@ -142,8 +219,10 @@ button, a tag pill, a collapse dot), is left to that control.
 
 *Decided in implementation, where the grill was silent:*
 
-- **A long-press opens the palette when the finger lifts**, with a short vibration at the moment the
-  hold registers. Opening on lift is what lets the Mindmap's hold-and-drag start from the same hold.
+- **A long-press selects the node when the finger lifts**, with a short vibration at the moment the
+  hold registers; the quick action menu is the webview's own `contextmenu` for that hold, handled
+  by the node. (An earlier build also opened the palette on lift, so one hold opened two things.)
+  Holding then moving is what lets the Mindmap's hold-and-drag start from the same hold.
 - **The tap that deselects waits out the double-tap window** (300 ms), so a double-tap on the
   selected node goes into it without deselecting it on the way. A tap on an unselected node selects
   at once.
@@ -162,10 +241,50 @@ button, a tag pill, a collapse dot), is left to that control.
 
 - **Mindmap**: one finger on empty canvas pans. **Hold a node and drag it** to move it under another
   parent or reorder it. **Tap a collapse dot** to fold or unfold.
-- **Steps View**: a single tap selects.
+- **Steps View**: a single tap selects; a tap on a card's glyph steps its status.
 - **Plan View**, planned pane: a swipe left or right steps the scope (`[` and `]`), and a swipe
   **up** goes to the parent scope (`\`). **Swipe a candidate right** to plan it into the scope the
-  pane shows.
+  pane shows. The direction is right, as for a row's advance everywhere: a vertical swipe is the
+  flick up, which is the editor's (or, in the planned pane, the parent scope's), so the swipe that
+  moves a candidate is sideways. A candidate swiped left sets Started, as on any row; it does not
+  step the scope.
+
+### The gesture list, and the cheat sheet
+
+On a device whose only pointer is touch (`(any-pointer: coarse)` and not `(any-pointer: fine)`), the
+cheat sheet (☰ menu → Gestures there, Keyboard shortcuts elsewhere) **shows the gestures instead
+of the keyboard shortcuts**:
+one tab for the gestures everywhere and one per view, opening on the view it was opened over. With a
+mouse or trackpad present it shows the shortcuts as ever. The list is one place in code,
+`utils/touch/gesture-list.ts`; **this table mirrors it row for row**, and `gesture-list.test.ts`
+fails when the two differ, so a gesture is added to both or to neither.
+
+| Where | Gesture | Does |
+| --- | --- | --- |
+| Everywhere | Tap | Selects the node; tapping the selected node again deselects it |
+| Everywhere | Tap a status icon | Steps the node's status, as Enter does, and nothing else |
+| Everywhere | Double-tap | Goes into the node; what that means is each view's, below |
+| Everywhere | Long-press | Opens the node's quick action menu |
+| Everywhere | Flick up | Opens the node's editor |
+| Everywhere | Swipe right | Advances the status: a Task's, a Commitment's verdict, a wait's release |
+| Everywhere | Swipe left | Sets Started |
+| Everywhere | Two-finger swipe | Left shows the next preset, right the previous |
+| Everywhere | Double-tap the top bar's square | Opens Open, the node search |
+| Everywhere | Long-press the top bar's square | Opens the command palette |
+| Mindmap | Double-tap a node | Enters its subtree |
+| Mindmap | Drag the canvas | Pans the map |
+| Mindmap | Hold a node, then drag | Moves it under another parent or reorders it |
+| Mindmap | Tap a collapse dot | Folds or unfolds the node's children |
+| Mindmap | Pinch | Zooms the map |
+| List | Double-tap a row with nothing beneath it | Opens its editor |
+| List | Double-tap a parent | Narrows the list to its subtree (Under) |
+| Plan | Swipe left or right on the planned pane | Steps to the next or the previous scope |
+| Plan | Swipe up on the planned pane | Goes up to the parent scope |
+| Plan | Swipe a to-plan item right | Moves it into the planned scope (left sets Started, as on any row) |
+| Plan | Double-tap a card | Opens its subtree |
+| Steps | Double-tap a card | Steps into it |
+| Steps | Pinch | Zooms the steps |
+| Zen | Double-tap a card | Opens the node in the List View |
 
 ## One registry
 

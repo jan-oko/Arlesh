@@ -1,0 +1,9 @@
+- **Check done and Archive on the phone's action bar.** *Check done* completes a wait's earliest open check; *Archive* puts every selected node that can be archived away as one undo step. While the server is unreachable or on another version the action bar, the palette and the write gestures are greyed out instead of failing.
+- **Tapping a status icon steps the status on the phone.** On a List row, a Zen or Steps card, a Zen strip card and a Mindmap node, the icon is its own control: it advances the status (a Commitment's verdict, a wait's release) without selecting the node or opening its editor.
+- **The phone's Plan View gives the planned pane a third of the screen**, below the candidates, and the Zen and Steps Views size their cards to their content. The Steps View is one scrolling column on the phone, and its navigation icon is a staircase drawn like the rest of the icon set.
+- **Double-tapping a List row with nothing beneath it** opens its editor; a row with rows beneath it is entered as a subtree.
+- **A free square on the phone's top bar.** Double-tap it to open a node by searching (Open); long-press it for the command palette.
+- **Open and Filter searches you can leave.** On the phone they are a card, not the whole screen, and close with Android's back, a tap outside or a close button; the Filter menu has the same close button.
+- **One set of names and icons on the action bar.** "New" and "Item" are now Child, "Search" is Open, "Depends" is Dependency; the palette shows the bar's icons. Filter has a funnel icon, Status the Started icon, and Edit is on the bar in every view (Open moves to the top bar's square once a node is selected).
+- **The cheat sheet teaches the gestures on a touchscreen.** On a touch-only device it lists swipes, taps and long-presses, per view, instead of keyboard shortcuts.
+- **In portrait the path reads `‹ current node`.** The chevron opens the full path.

@@ -16,6 +16,7 @@ import { clearScopeRowCache } from "@/hooks/use-scope-rows";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { fixtureRowId } from "@/test/node-fixture";
+import { PHONE_LAYOUT_QUERY, TOUCH_QUERY } from "@/hooks/use-media-query";
 
 // The usual key-for-string stub, with one exception: a bucket's keyboard mnemonic is the initial
 // of its **rendered** name, so a stub that answered "planView:weekday.3" for Wednesday would give
@@ -891,5 +892,91 @@ describe("selecting more than one row", () => {
     await settle();
     expect(updateTask).toHaveBeenCalledTimes(2);
     expect(updateTask).toHaveBeenCalledWith(3, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+  });
+});
+
+/** A finger down at `from` and up at `to`, with nothing in between that takes time. */
+function stroke(element: Element, from: [number, number], to: [number, number]): void {
+  const at = (x: number, y: number) => ({ target: element, clientX: x, clientY: y });
+  fireEvent.touchStart(element, { touches: [at(...from)] });
+  fireEvent.touchMove(element, { touches: [at(...to)] });
+  fireEvent.touchEnd(element, { touches: [], changedTouches: [at(...to)] });
+}
+
+function cardElement(id: string): Element {
+  const card = document.querySelector(`[data-plan-card-id="${id}"]`);
+  if (card === null) throw new Error(`no card ${id}`);
+  return card;
+}
+
+/** A gesture runs its binding on the next tick, once the selection it made has reached the table. */
+async function nextTick(): Promise<void> {
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+}
+
+describe("on a phone", () => {
+  beforeEach(() => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === TOUCH_QUERY || query === PHONE_LAYOUT_QUERY,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const tasks = () => mockRows([
+    row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } })),
+    row(n("task-2", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } })),
+  ]);
+
+  it("stacks the candidates above the planned pane", async () => {
+    tasks();
+    await renderPlanView();
+    const candidates = document.querySelector('[data-plan-pane="candidates"]');
+    const planned = document.querySelector('[data-plan-pane="planned"]');
+    if (candidates === null || planned === null) throw new Error("a pane is missing");
+    expect(candidates.compareDocumentPosition(planned)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("steps the scope with a sideways swipe on the planned pane", async () => {
+    tasks();
+    await renderPlanView();
+    await act(async () => { stroke(cardElement("task-2"), [200, 10], [60, 12]); });
+    expect(scopeContaining).toHaveBeenCalledWith("week", "2026-09-27");
+  });
+
+  it("steps the scope from the empty part of the planned pane too", async () => {
+    tasks();
+    await renderPlanView();
+    const pane = document.querySelector('[data-plan-pane="planned"]');
+    if (pane === null) throw new Error("no planned pane");
+    await act(async () => { stroke(pane, [200, 10], [60, 12]); });
+    expect(scopeContaining).toHaveBeenCalledWith("week", "2026-09-27");
+  });
+
+  it("goes up to the parent scope with a flick up on the planned pane", async () => {
+    tasks();
+    await renderPlanView();
+    await act(async () => { stroke(cardElement("task-2"), [100, 100], [100, 60]); });
+    expect(scopeContaining).toHaveBeenCalledWith("month", expect.any(String));
+  });
+
+  it("leaves the scope alone when a candidate is swiped sideways", async () => {
+    tasks();
+    await renderPlanView();
+    await act(async () => { stroke(cardElement("task-1"), [200, 10], [60, 12]); });
+    await nextTick();
+    expect(scopeContaining).not.toHaveBeenCalledWith("week", "2026-09-27");
+  });
+
+  it("plans a candidate into the scope with a swipe right on it", async () => {
+    tasks();
+    await renderPlanView();
+    await act(async () => { stroke(cardElement("task-1"), [60, 10], [200, 12]); });
+    await nextTick();
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
   });
 });

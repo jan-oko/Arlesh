@@ -181,6 +181,19 @@ describe("what the Zen View draws", () => {
     expect(icons[0]?.getAttribute("data-zen-status-icon")).toBe("started");
   });
 
+  it("steps a card's status when its icon is tapped, without selecting or opening the card", () => {
+    mockBoard([n("task-2", "task", { status: "started" })]);
+    useDisplayStore.setState({ zenShowsStarted: true });
+    withArea(1200, 800);
+    render(<ZenViewInApp />);
+    const icon = screen.getByRole("button", { name: "listView:cycleStatus" });
+    fireEvent.click(icon);
+    fireEvent.doubleClick(icon);
+    expect(onCycleStatus).toHaveBeenCalledWith("task-2");
+    expect(selectedCard()).toBeNull();
+    expect(openEditor).not.toHaveBeenCalled();
+  });
+
   it("says so when nothing is in progress", () => {
     mockBoard([n("task-1", "task", { status: "todo" })]);
     render(<ZenViewInApp />);

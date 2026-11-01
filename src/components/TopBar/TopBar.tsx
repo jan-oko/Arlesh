@@ -1,14 +1,12 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useFilterStore } from "@/stores/use-filter-store";
-import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useViewStore, ALL_VIEWS, isView } from "@/stores/use-view-store";
 import type { View } from "@/stores/use-view-store";
 import { useHotkeysStore } from "@/stores/use-hotkeys-store";
+import { usePresetChoice } from "@/hooks/use-preset-choice";
 import { useFilterDot } from "@/hooks/use-filter-dot";
-import { LIST_PRESET_VALUES, isListOnlyPreset, isListPreset } from "@/utils/list-filter";
-import { lockedStatusMode } from "@/utils/view-preset";
-import type { ListPreset } from "@/utils/list-filter";
+import { isListPreset } from "@/utils/list-filter";
 import FilterPopover from "@/components/FilterPopover/FilterPopover";
 import FilterChips from "@/components/FilterChips/FilterChips";
 import FilterSearchModal from "@/components/FilterSearchModal/FilterSearchModal";
@@ -22,8 +20,6 @@ import ModeIndicator from "./ModeIndicator";
 import styles from "./TopBar.module.css";
 
 const GEAR_ICON = "⚙";
-/** Unblock only makes sense — and only appears as an option — while List View is active. */
-const MINDMAP_PRESETS: readonly ListPreset[] = LIST_PRESET_VALUES.filter((p) => !isListOnlyPreset(p));
 
 /** A small funnel (filter) glyph for the Filter button. */
 function FunnelIcon() {
@@ -36,8 +32,6 @@ function FunnelIcon() {
 
 export default function TopBar() {
   const { t } = useTranslation(["common", "listView", "planView", "zenView", "filter"]);
-  const statusMode = useFilterStore((s) => s.filter.statusMode);
-  const setStatusMode = useFilterStore((s) => s.setStatusMode);
   const planScope = useFilterStore((s) => s.filter.planScope);
   const setPlanScope = useFilterStore((s) => s.setPlanScope);
   const planScopeOverlapping = useDisplayStore((s) => s.planScopeOverlapping);
@@ -49,8 +43,6 @@ export default function TopBar() {
   const setFilterSearch = useFilterStore((s) => s.setFilterSearch);
   const view = useViewStore((s) => s.view);
   const setView = useViewStore((s) => s.setView);
-  const listPreset = useListFilterStore((s) => s.filter.preset);
-  const setListPreset = useListFilterStore((s) => s.setPreset);
   const toggleHotkeys = useHotkeysStore((s) => s.toggle);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const filterDot = useFilterDot();
@@ -65,30 +57,18 @@ export default function TopBar() {
     zen: t("common:viewZen"),
   };
 
-  // The Plan View always reads under Plan, and the Zen View under Do (see `lockedStatusMode`). Each
-  // *reads* as its preset rather than writing it into the tab's filter, so leaving it gives the tab
-  // back the preset it had.
-  const lockedPreset = lockedStatusMode(view);
-  const activePreset: ListPreset = lockedPreset
-    ?? (view === "list" && isListOnlyPreset(listPreset) ? listPreset : statusMode);
-  const presetOptions = view === "list" ? LIST_PRESET_VALUES : MINDMAP_PRESETS;
-  const presetLockedReason = view === "plan"
-    ? t("planView:presetLocked")
-    : view === "zen" ? t("zenView:presetLocked") : undefined;
+  // The preset control's rules — which presets the view offers, which it reads under, the Plan and
+  // Zen Views' locks and what choosing one writes — are `usePresetChoice`'s, shared with the phone
+  // layout's preset chip, so the two controls cannot disagree.
+  const presets = usePresetChoice();
+  const presetLockedReason = presets.lockedReason ?? undefined;
   // The Plan preset's scope sits beside the preset it belongs to, and only while it is the one
   // chosen. Never in a view with a preset of its own: the Plan View reads under Plan with a scope
   // of its own, and the Zen View never reads under Plan at all.
-  const showPlanScope = lockedPreset === null && activePreset === "plan";
+  const showPlanScope = presets.lockedReason === null && presets.active === "plan";
 
   function selectPreset(value: string) {
-    if (!isListPreset(value)) return;
-    if (lockedPreset !== null) return;
-    if (value === "unblock" || value === "expectations") {
-      setListPreset(value);
-      return;
-    }
-    setStatusMode(value);
-    setListPreset(value);
+    if (isListPreset(value)) presets.select(value);
   }
 
   return (
@@ -126,11 +106,11 @@ export default function TopBar() {
             ariaLabel={t("common:viewSelectorLabel")}
           />
           <Select
-            value={activePreset}
-            options={presetOptions.map((preset) => ({
+            value={presets.active}
+            options={presets.options.map((preset) => ({
               value: preset,
               label: t(`listView:preset.${preset}`),
-              ...(lockedPreset !== null && preset !== lockedPreset ? { disabled: true, title: presetLockedReason ?? "" } : {}),
+              ...(presetLockedReason !== undefined && preset !== presets.active ? { disabled: true, title: presetLockedReason } : {}),
             }))}
             onChange={selectPreset}
             ariaLabel={t("listView:statusPresetLabel")}

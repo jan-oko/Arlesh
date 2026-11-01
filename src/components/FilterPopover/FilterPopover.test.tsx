@@ -8,6 +8,7 @@ import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import { useFilterDisplay } from "@/hooks/use-filter-display";
+import { dismissTopSheet } from "@/utils/dismiss-sheet";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "ltr" } }),
@@ -48,6 +49,19 @@ function rowLabels(): string[] {
     .map((group) => group.getAttribute("aria-label") ?? "")
     .filter((label) => label.startsWith("rows."));
 }
+
+describe("FilterPopover — ways out on a phone", () => {
+  it("closes on its close button and on Android's back, which Escapes the dialog", () => {
+    useFilterStore.setState({ popoverOpen: true });
+    render(<FilterPopover />);
+    fireEvent.click(screen.getByRole("button", { name: "touch:sheetClose" }));
+    expect(useFilterStore.getState().popoverOpen).toBe(false);
+
+    useFilterStore.setState({ popoverOpen: true });
+    expect(dismissTopSheet()).toBe(true);
+    expect(useFilterStore.getState().popoverOpen).toBe(false);
+  });
+});
 
 describe("FilterPopover — switch block", () => {
   it("shows the include-flows subtoggle only in Plan/Start", () => {

@@ -6,6 +6,7 @@ import type { SurfaceCommand } from "@/stores/use-command-surface-store";
 import { useSelectionSurfaceStore } from "@/stores/use-selection-surface-store";
 import { usePaletteStore } from "@/stores/use-palette-store";
 import { useViewStore } from "@/stores/use-view-store";
+import { useClientModeStore } from "@/stores/use-client-mode-store";
 import { surfaceCommand } from "@/test/surface-command";
 
 vi.mock("react-i18next", () => ({
@@ -20,6 +21,7 @@ beforeEach(() => {
   useViewStore.setState({ view: "list" });
   useSelectionSurfaceStore.setState({ kinds: [], multiSelect: false });
   usePaletteStore.setState({ isOpen: false });
+  useClientModeStore.setState({ status: null });
   publish([]);
 });
 
@@ -28,8 +30,30 @@ describe("ActionBar", () => {
     useSelectionSurfaceStore.setState({ kinds: ["task"], multiSelect: false });
     render(<ActionBar />);
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "✓actionStatus", "＋actionChild", "▦actionPlan", "⇢actionDependency", "↗actionOpen", "⋯actionMore",
+      "actionStatus", "actionChild", "actionPlan", "actionDependency", "actionEdit", "actionMore",
     ]);
+  });
+
+  it("draws the status action with the Started Task's icon and the filter with a filter icon", () => {
+    useSelectionSurfaceStore.setState({ kinds: ["task"], multiSelect: false });
+    const { container, rerender } = render(<ActionBar />);
+    const status = container.querySelector('[data-action-icon="status"]');
+    // TaskIcon's Started glyph: the ring and the unfilled inner circle.
+    expect(status?.querySelectorAll("circle")).toHaveLength(2);
+    expect(status?.querySelector("circle[fill='currentColor']")).toBeNull();
+    useSelectionSurfaceStore.setState({ kinds: [], multiSelect: false });
+    rerender(<ActionBar />);
+    expect(container.querySelector('[data-action-icon="filter"]')).not.toBeNull();
+  });
+
+  it("draws Edit in every view", () => {
+    useSelectionSurfaceStore.setState({ kinds: ["task"], multiSelect: false });
+    for (const view of ["mindmap", "list", "plan", "steps", "zen"] as const) {
+      useViewStore.setState({ view });
+      const { unmount } = render(<ActionBar />);
+      expect(screen.getByRole("button", { name: "actionEdit" })).toBeInTheDocument();
+      unmount();
+    }
   });
 
   it("runs the view's own binding for a slot — the List View's status cycle", () => {
@@ -63,5 +87,21 @@ describe("ActionBar", () => {
     fireEvent.click(screen.getByRole("button", { name: /planKindWeek/ }));
     expect(week.run).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("draws the write slots disabled, and keeps the reads, while the server cannot be written", () => {
+    useClientModeStore.setState({
+      status: {
+        mode: "client", first_run: false, api_version: 1, standalone_available: true,
+        server: { url: "u", reachable: false, last_sync: null, read_only: "server_unreachable", server_api_version: null },
+      },
+    });
+    publish([surfaceCommand("listView.cycleStatus", "cycleRowStatus"), surfaceCommand("global.openSearch", "openSearch")]);
+    useSelectionSurfaceStore.setState({ kinds: ["task"], multiSelect: false });
+    const { rerender } = render(<ActionBar />);
+    expect(screen.getByRole("button", { name: "actionStatus" })).toBeDisabled();
+    useSelectionSurfaceStore.setState({ kinds: [], multiSelect: false });
+    rerender(<ActionBar />);
+    expect(screen.getByRole("button", { name: "actionOpen" })).toBeEnabled();
   });
 });

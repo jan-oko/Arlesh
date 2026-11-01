@@ -89,7 +89,8 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
   const handleDoubleClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); if (node.virtual === true) return; onDoubleClick(node.id); }, [node.id, node.virtual, onDoubleClick]);
   const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (node.virtual === true) return; setContextMenu({ x: e.clientX, y: e.clientY }); }, [node.virtual]);
   const handleMouseDown = useCallback((e: React.MouseEvent) => { if (e.button !== 0 || node.kind === "aspect" || node.virtual === true) return; onDragStart(node.id, e.clientX, e.clientY); }, [node.id, node.kind, node.virtual, onDragStart]);
-  const handleStatusIconClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); onSelect(node.id); onStatusClick?.(node.id); }, [node.id, onSelect, onStatusClick]);
+  // Steps the status and nothing else: the icon's tap neither selects the node nor opens it.
+  const handleStatusIconClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); onStatusClick?.(node.id); }, [node.id, onStatusClick]);
 
   return (
     <g

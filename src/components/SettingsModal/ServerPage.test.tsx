@@ -23,6 +23,25 @@ beforeEach(() => {
 });
 
 describe("ServerPage", () => {
+  it("shows the mode, URL, reachability, last sync and version state of a server", () => {
+    useClientModeStore.setState({
+      status: {
+        mode: "client",
+        first_run: false,
+        api_version: 1,
+        standalone_available: false,
+        server: { url: "http://box:4750", reachable: false, last_sync: null, read_only: "update_server", server_api_version: 0 },
+      },
+    });
+    render(<ServerPage />);
+    const line = screen.getByRole("status", { name: "Server status" });
+    expect(line).toHaveTextContent("Mode: Server");
+    expect(line).toHaveTextContent("Server: http://box:4750");
+    expect(line).toHaveTextContent("Cannot be reached");
+    expect(line).toHaveTextContent("Not synced yet.");
+    expect(line).toHaveTextContent("The server is older than this app.");
+  });
+
   it("connects only once the server has tested compatible", async () => {
     vi.mocked(testServer).mockResolvedValue({
       health: { api_version: 1, version: "0.3.0", commit: "abc" },

@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import BottomSheet from "@/components/BottomSheet/BottomSheet";
+import { useBoardReadOnly } from "@/hooks/use-board-read-only";
+import { gateWrites } from "@/utils/touch/writes";
 import { allSurfaceCommands, useCommandSurfaceStore } from "@/stores/use-command-surface-store";
 import type { SurfaceCommand } from "@/stores/use-command-surface-store";
 import { usePaletteStore } from "@/stores/use-palette-store";
@@ -27,6 +29,7 @@ export default function CommandPalette({ showTabs }: Props) {
   const close = usePaletteStore((s) => s.close);
   const tables = useCommandSurfaceStore((s) => s.tables);
   const revision = useCommandSurfaceStore((s) => s.revision);
+  const readOnly = useBoardReadOnly() !== null;
   const labelOf = useCommandLabel();
   const [query, setQuery] = useState("");
   // The Select toggle, where the view can hold several: taps then build the selection.
@@ -35,10 +38,10 @@ export default function CommandPalette({ showTabs }: Props) {
   const toggleSelecting = useSelectModeStore((s) => s.toggle);
 
   const entries = useMemo(
-    () => paletteEntries(allSurfaceCommands(tables), { showTabs }),
+    () => paletteEntries(gateWrites(allSurfaceCommands(tables), readOnly), { showTabs }),
     // `revision` is what says a guard may now read differently.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tables, revision, showTabs],
+    [tables, revision, showTabs, readOnly],
   );
   const needle = query.trim().toLowerCase();
   const shown = needle === "" ? entries : entries.filter((command) =>

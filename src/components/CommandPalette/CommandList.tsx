@@ -1,5 +1,7 @@
+import ActionIcon from "@/components/ActionIcon/ActionIcon";
 import type { SurfaceCommand } from "@/stores/use-command-surface-store";
 import { formatChord } from "@/utils/hotkeys/chord";
+import { iconForCommand } from "@/utils/touch/action-bar";
 import { useCommandLabel } from "@/hooks/use-command-label";
 import styles from "./CommandPalette.module.css";
 
@@ -14,14 +16,19 @@ export default function CommandList({ commands, onRun }: Props) {
   const labelOf = useCommandLabel();
   return (
     <ul className={styles.list}>
-      {commands.map((command) => (
+      {commands.map((command) => {
+        const icon = iconForCommand(command.id);
+        return (
         <li key={command.id}>
           <button type="button" className={styles.row} onClick={() => onRun(command)}>
+            {/* The action bar's own icon for this action, where the bar has one: one icon per action. */}
+            <span className={styles.icon}>{icon !== null && <ActionIcon name={icon} size={20} />}</span>
             <span className={styles.label}>{labelOf(command.label)}</span>
             {command.chord !== null && <kbd className={styles.chord}>{formatChord(command.chord)}</kbd>}
           </button>
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }

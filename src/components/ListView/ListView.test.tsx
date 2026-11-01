@@ -11,6 +11,7 @@ import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import type { ExpectationListRow, CommitmentListRow, TaskListRow } from "@/utils/list-filter";
 import { fixtureRowId } from "@/test/node-fixture";
+import { TOUCH_QUERY } from "@/hooks/use-media-query";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { Verdict } from "@/api/verdict";
 import { useListData } from "@/hooks/use-list-data";
@@ -22,6 +23,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@/hooks/use-list-data");
+const { openEditor } = vi.hoisted(() => ({ openEditor: vi.fn() }));
 vi.mock("@/components/MindmapView/use-node-editor", () => ({
   useNodeEditor: () => ({
     editorModal: null,
@@ -29,7 +31,7 @@ vi.mock("@/components/MindmapView/use-node-editor", () => ({
     allTags: [],
     domainNames: new Map(),
     availableForDep: [],
-    onDoubleClick: vi.fn(),
+    onDoubleClick: openEditor,
     onTaskSave: vi.fn(),
     onCommitmentSave: vi.fn(),
     checkScopeClamp: vi.fn(),
@@ -1776,6 +1778,12 @@ describe("ListView — expectations", () => {
     mockUseListData.mockReturnValue(listData({ expectationRows: [waitRow()], rows: [], toggleRelease }));
     render(<ListViewInApp />);
     fireEvent.click(screen.getByRole("button", { name: "releaseToggle" }));
+    // The status control releases the wait without selecting it, so Enter has nothing to act on.
+    fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
+    expect(toggleRelease.mock.calls).toEqual([["wait-1"]]);
+    const waitCard = document.querySelector('[data-row-id="wait-1"]');
+    if (waitCard === null) throw new Error("no wait row");
+    fireEvent.click(waitCard);
     fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
     fireEvent.keyDown(window, { key: "l", code: "KeyL" });
     expect(toggleRelease.mock.calls).toEqual([["wait-1"], ["wait-1"]]);
@@ -1837,5 +1845,57 @@ describe("ListView — row kinds", () => {
     act(() => { fireEvent.keyDown(window, { key: "T", code: "KeyT", altKey: true, shiftKey: true }); });
     expect(useListFilterStore.getState().filter.kinds).toEqual(["task", "commitment", "expectation"]);
     expect(kindsOnScreen()).toEqual(["task", "commitment", "expectation"]);
+  });
+});
+
+describe("ListView — double-tap on a touchscreen", () => {
+  beforeEach(() => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === TOUCH_QUERY,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function doubleTap(rowId: string): void {
+    const element = document.querySelector(`[data-row-id="${rowId}"]`);
+    if (element === null) throw new Error(`no row ${rowId}`);
+    const at = { target: element, clientX: 10, clientY: 10 };
+    for (let tap = 0; tap < 2; tap++) {
+      fireEvent.touchStart(element, { touches: [at] });
+      fireEvent.touchEnd(element, { touches: [], changedTouches: [at] });
+    }
+  }
+
+  const antecedents = () => useListFilterStore.getState().filter.pills.antecedent.map((pill) => pill.value);
+
+  it("narrows to a row's subtree when it has rows beneath it", () => {
+    const aspect = n("aspect-1", "aspect");
+    const parent = n("task-1", "task", { status: "todo" });
+    mockUseListData.mockReturnValue(listData({
+      rows: [
+        row({ node: parent, ancestors: [aspect] }),
+        row({ node: n("task-2", "task", { status: "todo" }), ancestors: [aspect, parent] }),
+      ],
+    }));
+    render(<ListViewInApp />);
+    doubleTap("task-1");
+    expect(antecedents()).toEqual(["task-1"]);
+  });
+
+  it("opens a leaf's editor rather than entering it", () => {
+    const aspect = n("aspect-1", "aspect");
+    const goal = n("goal-1", "goal", { status: "active" });
+    mockUseListData.mockReturnValue(listData({
+      rows: [row({ node: n("task-3", "task", { status: "todo" }), ancestors: [aspect, goal] })],
+    }));
+    render(<ListViewInApp />);
+    openEditor.mockClear();
+    doubleTap("task-3");
+    expect(openEditor).toHaveBeenCalledWith("task-3");
+    expect(antecedents()).toEqual([]);
   });
 });

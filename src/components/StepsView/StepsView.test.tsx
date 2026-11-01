@@ -392,6 +392,19 @@ describe("acting on the selected card", () => {
     expect(stepTaskStatus).toHaveBeenCalledWith(1, "advance");
   });
 
+  it("steps a Task's status when its glyph is tapped, without selecting or opening the card", () => {
+    mockTree([n("task-1", "task", { status: "todo" })]);
+    render(<StepsView />);
+
+    const glyph = screen.getByRole("button", { name: "listView:cycleStatus" });
+    fireEvent.click(glyph);
+    fireEvent.doubleClick(glyph);
+
+    expect(stepTaskStatus).toHaveBeenCalledWith(1, "advance");
+    expect(selectedCardId()).toBeNull();
+    expect(setEditorModal).not.toHaveBeenCalled();
+  });
+
   it("refuses Space on a blocked Task out loud, and writes nothing", () => {
     mockTree([n("task-1", "task", { status: "todo", virtualBlockers: ["Blocked by Spec"] })]);
     render(<StepsView />);

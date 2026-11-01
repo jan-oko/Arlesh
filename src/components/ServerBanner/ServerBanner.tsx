@@ -3,7 +3,7 @@ import { useClientModeStore } from "@/stores/use-client-mode-store";
 import styles from "./ServerBanner.module.css";
 
 /** A local date-time from the backend (`YYYY-MM-DDTHH:MM:SS…`) as this locale writes one. */
-function formatSync(lastSync: string): string {
+export function formatSync(lastSync: string): string {
   const at = new Date(lastSync);
   return Number.isNaN(at.getTime()) ? lastSync : at.toLocaleString();
 }
