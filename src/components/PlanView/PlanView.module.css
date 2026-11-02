@@ -210,8 +210,17 @@
   }
 
   .pane {
+    position: relative;
     padding: var(--space-2);
     touch-action: pan-y;
+  }
+
+  /* Stacked buckets: a heading stays at the top of the pane while its own bucket scrolls under it. */
+  .section > .sectionHeading {
+    position: sticky;
+    z-index: 1;
+    top: 0;
+    background: var(--canvas-bg);
   }
 }
 
@@ -244,4 +253,86 @@
   .sectionKeys {
     display: none;
   }
+}
+
+/* The row of bucket tabs over the phone's planned pane (decided with the user, 2026-11-02): label
+   only, every bucket (empty ones too), one shown at a time. Scrolls sideways rather than wrapping. */
+.tabs {
+  display: flex;
+  flex: 0 0 auto;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border-subtle);
+  gap: var(--space-1);
+}
+
+.tab {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.tabSelected {
+  border-bottom-color: var(--node-border-selected);
+  color: var(--text-primary);
+}
+
+.tabPartial {
+  margin-inline-start: var(--space-1);
+  opacity: 0.7;
+}
+
+/* The drop overlay: covers the planned pane and nothing else, one big tile per bucket. */
+.dropOverlay {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: flex;
+  box-sizing: border-box;
+  padding: var(--space-2);
+  border-radius: var(--node-radius);
+  background: var(--surface);
+  outline: none;
+}
+
+.tileGrid {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  grid-auto-rows: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.tile {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  border: 2px solid var(--border-subtle);
+  border-radius: var(--node-radius);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.tileOver {
+  border-color: var(--node-border-selected);
+  background: var(--node-bg-selected, var(--surface-raised));
+  outline: 2px dashed var(--node-border-selected);
+  outline-offset: 2px;
+}
+
+.tileDimmed {
+  opacity: 0.35;
 }

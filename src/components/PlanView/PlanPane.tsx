@@ -15,6 +15,9 @@ import PlanTaskCard from "./PlanTaskCard";
 import type { SelectModifiers } from "./PlanTaskCard";
 import styles from "./PlanView.module.css";
 
+/** What a partial bucket's tab carries, in place of the heading's dated text. */
+const PARTIAL_MARK = "\u25D0";
+
 /** How a bucket reads and how the keyboard reaches it — the view resolves both and hands them in. */
 export interface SectionInfo {
   label: string;
@@ -37,6 +40,13 @@ interface Props {
   nativeDrag: boolean;
   /** What a finger's drag is over in this pane: a bucket's key, `PLAN_WHOLE_PANE`, or `null`. */
   touchOver: string | null;
+  /**
+   * The phone's tabs mode for a split pane: one bucket's cards at a time under a row of tabs. The
+   * scope's key is what the chosen tab is kept for; `null` draws every bucket, stacked.
+   */
+  tabsFor: string | null;
+  /** Drawn over this whole pane — the phone's drop tiles. */
+  overlay: ReactNode;
   sectionInfo: ReadonlyMap<string, SectionInfo>;
   onFocus: () => void;
   onSelect: (id: string, modifiers: SelectModifiers) => void;
@@ -70,13 +80,23 @@ const WHOLE_PANE = PLAN_WHOLE_PANE;
  */
 export default function PlanPane({
   which, heading, options, model, focused, grouped, selectedIds,
-  direction, empty, nativeDrag, touchOver, sectionInfo, onFocus, onSelect, onMove, onOpenEditor, onEnterSubtree,
+  direction, empty, nativeDrag, touchOver, tabsFor, overlay, sectionInfo, onFocus, onSelect, onMove, onOpenEditor, onEnterSubtree,
   onFilterByAntecedent, onDragStart, onDrop,
 }: Props) {
   const { t } = useTranslation("planView");
   // A drop target that does not light up is one you have to aim at twice. `dragover` fires
   // continuously over the same element, so the write is guarded on the value actually changing.
   const [over, setOver] = useState<string | null>(null);
+  // The tab last chosen, kept only while the scope is the one it was chosen in: a different scope
+  // has different buckets, so it opens on its first (decided with the user, 2026-11-02).
+  const [chosen, setChosen] = useState<{ scope: string; key: string } | null>(null);
+  const tabbed = tabsFor !== null && model.sectioned;
+  const sectionBlocks = model.blocks.filter((block) => block.section !== null);
+  const activeKey = tabbed
+    ? (chosen !== null && chosen.scope === tabsFor && sectionBlocks.some((block) => block.key === chosen.key)
+      ? chosen.key
+      : sectionBlocks[0]?.key ?? null)
+    : null;
 
   function hover(event: DragEvent<HTMLElement>, key: string): void {
     if (!acceptDrag(event)) return;
@@ -86,6 +106,32 @@ export default function PlanPane({
   // With the split on, an empty pane still has buckets to show: an empty week is the answer to
   // "what is in this month" just as much as a full one.
   const showEmpty = model.rows.length === 0 && !model.sectioned;
+
+  function tabRow(): ReactNode {
+    return (
+      <div className={styles.tabs} role="tablist" aria-label={t("subscopeTabs")}>
+        {sectionBlocks.map((block) => {
+          const section = block.section;
+          if (section === null) return null;
+          const selected = block.key === activeKey;
+          const partial = t("subscopePartial", { start: section.range.startDate, end: section.range.endDate });
+          return (
+            <button
+              key={block.key}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              className={`${styles.tab}${selected ? ` ${styles.tabSelected}` : ""}`}
+              onClick={(event) => { event.stopPropagation(); setChosen({ scope: tabsFor ?? "", key: block.key }); }}
+            >
+              {sectionInfo.get(section.key)?.label ?? ""}
+              {section.partial && <span className={styles.tabPartial} title={partial} role="img" aria-label={partial}>{PARTIAL_MARK}</span>}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
 
   function sectionHeading(section: PlanSection): ReactNode {
     const info = sectionInfo.get(section.key);
@@ -117,9 +163,10 @@ export default function PlanPane({
 
   function cards(): ReactNode {
     return model.blocks.map((block) => {
+      if (tabbed && block.key !== activeKey) return null;
       const body = (
         <Fragment key={block.key}>
-          {block.section !== null && sectionHeading(block.section)}
+          {block.section !== null && !tabbed && sectionHeading(block.section)}
           {block.section !== null && block.entries.length === 0 && (
             <p className={styles.sectionEmpty}>{t("subscopeEmpty")}</p>
           )}
@@ -188,7 +235,9 @@ export default function PlanPane({
         <h2 className={styles.paneHeading}>{heading}</h2>
         <PaneMenu label={t("paneOptions", { pane: heading })} options={options} />
       </div>
-      {showEmpty ? empty : <div className={styles.cards} data-plan-scroll="">{cards()}</div>}
+      {tabbed && tabRow()}
+      {showEmpty ? empty : <div className={styles.cards} data-plan-scroll="" {...(tabbed ? { role: "tabpanel" } : {})}>{cards()}</div>}
+      {overlay}
     </section>
   );
 }

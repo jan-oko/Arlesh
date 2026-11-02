@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
-import { TOUCH_ONLY_QUERY, useMediaQuery } from "@/hooks/use-media-query";
+import { TOUCH_ONLY_QUERY, useMediaQuery, usePhoneLayout } from "@/hooks/use-media-query";
 import { usePlanTouchDrag } from "@/hooks/use-plan-touch-drag";
 import { flushSync } from "react-dom";
 import { runAfterSelect, useViewGestures } from "@/hooks/use-view-gestures";
@@ -50,6 +50,7 @@ import NodeSearchModal from "@/components/NodeSearchModal/NodeSearchModal";
 import TaskEditorModal from "@/components/TaskEditorModal/TaskEditorModal";
 import PlanScopeBar from "./PlanScopeBar";
 import PlanPane from "./PlanPane";
+import PlanDropOverlay from "./PlanDropOverlay";
 import type { SectionInfo } from "./PlanPane";
 import type { PaneOption } from "./PaneMenu";
 import type { SelectModifiers } from "./PlanTaskCard";
@@ -164,6 +165,9 @@ export default function PlanView() {
   const nativeDrag = !useMediaQuery(TOUCH_ONLY_QUERY);
   const subscopeSplit = useDisplayStore((s) => s.planSplitBySubscope);
   const toggleSubscopeSplit = useDisplayStore((s) => s.togglePlanSplitBySubscope);
+  const phoneTabs = useDisplayStore((s) => s.planPhoneTabs);
+  const togglePhoneTabs = useDisplayStore((s) => s.togglePlanPhoneTabs);
+  const isPhone = usePhoneLayout();
   const includePremorning = useDisplayStore((s) => s.planIncludePremorning);
   const toggleIncludePremorning = useDisplayStore((s) => s.togglePlanIncludePremorning);
   const setPillSide = useListFilterStore((s) => s.setPillSide);
@@ -455,6 +459,18 @@ export default function PlanView() {
   // The finger's drag (docs/spec/touch.md): hold a card, then move. It begins as the mouse's does
   // (an unselected card is selected first, a selected one carries the selection), is accepted where
   // the mouse's drop is (a split pane takes drops only in its buckets), and ends in `dropRows`.
+  // The phone's drop overlay (docs/spec/touch.md, decided with the user, 2026-11-02): with the
+  // planned pane split, its buckets are one large tile each over that pane while a card is dragged,
+  // or after a to-plan card is swiped (`pick`: tap a tile to place it, anywhere else cancels).
+  const tilesOn = isPhone && plannedModel.sectioned;
+  const [pick, setPick] = useState<{ ids: string[] } | null>(null);
+  // A pick waiting when the tiles go away (the split turned off) is dropped, not resurrected later.
+  if (!tilesOn && pick !== null) setPick(null);
+  const cancelPick = useCallback(() => setPick(null), []);
+  /** The bucket a card sits in, if it sits in one: where a drop would change nothing. */
+  const bucketOf = (id: string | null): string | null =>
+    (id === null ? null : split?.sections.find((section) => section.rows.some((row) => row.node.id === id))?.key ?? null);
+
   const touchDrag = usePlanTouchDrag({
     begin: (id) => {
       const which = plannedModel.rows.some((row) => row.node.id === id) ? "planned" : "candidates";
@@ -468,6 +484,8 @@ export default function PlanView() {
       return { pane: which, ids: batch.map((item) => item.node.id) };
     },
     accepts: (point, from) => {
+      // Dropping on the tile of the bucket the card already sits in cancels.
+      if (tilesOn && point.section !== null && point.section === bucketOf(touchDrag.sourceId)) return false;
       if (point.section !== null) return point.pane === "planned" && split?.sections.some((s) => s.key === point.section) === true;
       if (point.pane === from) return false;
       return !(point.pane === "planned" && plannedModel.sectioned);
@@ -526,7 +544,16 @@ export default function PlanView() {
   const plannedOptions = useMemo<PaneOption[]>(() => [
     { id: "subscopeSplit", label: t("planView:optionSubscopeSplit"), checked: subscopeSplit, onToggle: toggleSubscopeSplit },
     { id: "premorning", label: t("planView:optionIncludePremorning"), checked: includePremorning, onToggle: toggleIncludePremorning },
-  ], [t, subscopeSplit, toggleSubscopeSplit, includePremorning, toggleIncludePremorning]);
+    // The phone's two layouts of the split pane; the desktop's buckets are only ever stacked.
+    ...(isPhone ? [{
+      id: "phoneTabs",
+      label: t("planView:optionPhoneTabs"),
+      checked: phoneTabs,
+      onToggle: togglePhoneTabs,
+      disabled: !subscopeSplit,
+      inertReason: t("planView:phoneTabsInert"),
+    }] : []),
+  ], [t, subscopeSplit, toggleSubscopeSplit, includePremorning, toggleIncludePremorning, isPhone, phoneTabs, togglePhoneTabs]);
 
   // The touch gestures (docs/spec/touch.md). A card swiped EITHER way crosses to the other pane: a
   // to-plan card is planned into the scope shown, a planned card is taken out of it, back to the
@@ -545,6 +572,8 @@ export default function PlanView() {
    * on one (`moveAcross`'s toast) rather than the swipe turning into a status change.
    */
   const crosses = (id: string): boolean => (paneOfCard(id) === "planned" ? takeOutTo !== null : true);
+  /** A swipe on a to-plan card with the planned pane split opens the tiles instead of moving it. */
+  const picks = (id: string): boolean => tilesOn && paneOfCard(id) === "candidates";
   useViewGestures(rootRef, {
     idAttribute: "data-plan-card-id",
     ready: !isLoading && error === null,
@@ -555,9 +584,18 @@ export default function PlanView() {
     goInto: enterSubtree,
     isLeaf: (id) => (findNode(tree, id)?.children.length ?? 0) === 0,
     holdDrag: touchDrag.controls,
-    flysOut: (id) => crosses(id),
+    flysOut: (id) => crosses(id) && !picks(id),
     onSwipe: (id) => {
       if (id === null || !crosses(id)) return false;
+      if (picks(id)) {
+        const row = candidatesModel.rows.find((candidate) => candidate.node.id === id);
+        if (row === undefined) return false;
+        flushSync(() => {
+          if (!live.ids.has(id)) onSelect("candidates", id, { shift: false, ctrl: false });
+          setPick({ ids: batchFor(row, "candidates").map((item) => item.node.id) });
+        });
+        return true;
+      }
       // The swipe fires after the card has flown out, outside the touch event, so the selection is
       // committed here rather than left to the next frame: the move reads it straight after.
       if (!live.ids.has(id)) flushSync(() => onSelect(paneOfCard(id), id, { shift: false, ctrl: false }));
@@ -572,6 +610,29 @@ export default function PlanView() {
     if (over === null || over.pane !== which) return null;
     return over.section ?? PLAN_WHOLE_PANE;
   };
+
+  const dropTiles = useMemo(
+    () => (split?.sections ?? []).map((section) => ({ key: section.key, label: sectionInfo.get(section.key)?.label ?? "" })),
+    [split, sectionInfo],
+  );
+  const overlayShown = tilesOn && (pick !== null || touchDrag.sourceId !== null);
+  const overlayOrigin = bucketOf(pick === null ? touchDrag.sourceId : null);
+  const pickTile = (key: string): void => {
+    const section = split?.sections.find((candidate) => candidate.key === key);
+    const ids = pick?.ids ?? [];
+    setPick(null);
+    if (section !== undefined) dropRows("planned", section, { pane: "candidates", ids });
+  };
+  const overlay = overlayShown ? (
+    <PlanDropOverlay
+      tiles={dropTiles}
+      mode={pick === null ? "drag" : "pick"}
+      over={touchDrag.over?.pane === "planned" ? touchDrag.over.section : null}
+      dimmed={overlayOrigin}
+      onPick={pickTile}
+      onCancel={cancelPick}
+    />
+  ) : null;
 
   const touchDragTitle = touchDrag.sourceId === null ? "" : findNode(tree, touchDrag.sourceId)?.title ?? "";
 
@@ -624,6 +685,8 @@ export default function PlanView() {
             onFilterByAntecedent={(id, side) => setPillSide("antecedent", id, side)}
             nativeDrag={nativeDrag}
             touchOver={touchOverFor("candidates")}
+            tabsFor={null}
+            overlay={null}
             onDragStart={onDragStart("candidates")}
             onDrop={onDrop("candidates")}
           />
@@ -646,6 +709,8 @@ export default function PlanView() {
             onFilterByAntecedent={(id, side) => setPillSide("antecedent", id, side)}
             nativeDrag={nativeDrag}
             touchOver={touchOverFor("planned")}
+            tabsFor={isPhone && phoneTabs ? (targetScopeId === null ? "" : scopeKeyText(targetScopeId)) : null}
+            overlay={overlay}
             onDragStart={onDragStart("planned")}
             onDrop={onDrop("planned")}
           />

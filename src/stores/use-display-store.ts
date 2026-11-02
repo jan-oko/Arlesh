@@ -198,6 +198,14 @@ interface DisplayStore {
    */
   stepsFillScreen: boolean;
   toggleStepsFillScreen: () => void;
+  /**
+   * How the phone's split planned pane shows its buckets while nothing is dragged: **tabs** (on),
+   * one bucket's cards at a time under a row of bucket tabs, or **stacked** (off), every bucket
+   * under its heading in one scrolling column. **On by default** (decided with the user,
+   * 2026-11-02). The phone layout only; the desktop's buckets are always stacked. App-wide.
+   */
+  planPhoneTabs: boolean;
+  togglePlanPhoneTabs: () => void;
 }
 
 /** Keeps a stored or typed threshold inside the range the setting offers. */
@@ -281,6 +289,8 @@ export const useDisplayStore = create<DisplayStore>()(
         set((s) => ({ zenShowOverdueBorder: !s.zenShowOverdueBorder })),
       stepsFillScreen: true,
       toggleStepsFillScreen: () => set((s) => ({ stepsFillScreen: !s.stepsFillScreen })),
+      planPhoneTabs: true,
+      togglePlanPhoneTabs: () => set((s) => ({ planPhoneTabs: !s.planPhoneTabs })),
     }),
     { name: "arlesh-display" },
   ),

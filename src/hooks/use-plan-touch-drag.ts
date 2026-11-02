@@ -62,7 +62,10 @@ export function usePlanTouchDrag({ begin, accepts, drop }: Options): PlanTouchDr
   const scrollTick = useCallback(() => {
     const at = finger.current;
     if (at === null) return;
-    const list = document.elementFromPoint(at.x, at.y)?.closest("[data-plan-pane]")?.querySelector("[data-plan-scroll]");
+    const pane = document.elementFromPoint(at.x, at.y)?.closest("[data-plan-pane]");
+    // A pane covered by the phone's drop tiles has nothing to scroll to: the tiles are all in view.
+    if (pane === null || pane === undefined || pane.querySelector("[data-plan-overlay]") !== null) return;
+    const list = pane.querySelector("[data-plan-scroll]");
     if (!(list instanceof HTMLElement)) return;
     const box = list.getBoundingClientRect();
     if (at.y < box.top + EDGE_PX) list.scrollTop -= SCROLL_STEP_PX;

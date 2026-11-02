@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useDisplayStore } from "@/stores/use-display-store";
 import Switch from "@/components/Switch/Switch";
+import PlanPhoneTabsSetting from "./PlanPhoneTabsSetting";
 import styles from "./SettingsModal.module.css";
 
 /**
@@ -28,6 +29,7 @@ export default function PlanPage() {
       <Switch checked={groupByPath} onChange={toggleGroupByPath} label={t("planView:optionGroupByPath")} />
       <h3 className={styles.heading}>{t("settings:planPlanned")}</h3>
       <Switch checked={subscopeSplit} onChange={toggleSubscopeSplit} label={t("planView:optionSubscopeSplit")} />
+      <PlanPhoneTabsSetting />
       <Switch checked={includePremorning} onChange={toggleIncludePremorning} label={t("planView:optionIncludePremorning")} />
       <p className={styles.note}>{t("settings:planPaneMenus")}</p>
     </div>

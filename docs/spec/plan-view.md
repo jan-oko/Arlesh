@@ -453,6 +453,14 @@ Planning into a **straddling** bucket is allowed and says so: what lands there i
 the scope being filled, so it leaves the pane, and a toast names the bucket rather than leaving the
 move looking like a failure.
 
+**On the phone** (decided with the user, 2026-11-02; full detail in [touch.md](touch.md)) the same
+buckets are reached by a larger gesture set. Not dragging, the split pane shows either **tabs**, one
+bucket's cards at a time (the default, opening on the first bucket), or the stacked headings, by the
+app-wide `planPhoneTabs` setting. While a card is dragged, or after a to-plan card is swiped, **one
+large label-only tile per bucket** covers the planned pane and is the drop target; the bucket the
+card already sits in is dimmed and dropping on it cancels. These are the same destinations as the
+three ways above, so they plan the whole selection and write one Gesture.
+
 ## Keyboard
 
 - `↑` / `↓` — move the selection within the focused pane

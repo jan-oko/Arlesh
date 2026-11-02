@@ -75,11 +75,32 @@ Below 700 px:
   reverted in round 5). The planned pane can be **split by
   subscope** exactly as on the desktop (user, round 5: "support subscopes as well"): the same
   setting (`planSplitBySubscope`), switched in the same place, the **planned pane's ⋮ menu**. Its
-  buckets (a week's days, a month's weeks) stack down the pane's own scrolling list under their
-  headings, in portrait width; the keyboard hints on the headings are hidden. A card is
-  [dragged onto a bucket](#per-view). *(How the buckets are laid out in portrait is still being
-  designed with the user; they are plain stacked boxes for now, behind one seam, `PlanBucket`, so
-  the drag does not change when the layout does.)*
+  buckets (a week's days, a month's weeks) are laid out as below; the keyboard hints on the headings are
+  hidden. A card is [dragged onto a bucket](#per-view).
+
+  **Decided with the user, 2026-11-02.** The panes split 50/50. The split is the one app-wide
+  `planSplitBySubscope`, **on by default**, as on the desktop. Not dragging, the planned pane has two
+  modes, chosen by the app-wide setting `planPhoneTabs` (Settings → Plan, and the planned pane's ⋮
+  menu beside *Split by subscope*; the menu entry is inert while the split is off):
+  - **Tabs** (the default): a row of bucket tabs across the top of the pane, label only (Mon, W40,
+    Dec, Morning: the labels the desktop uses), showing **one bucket's cards at a time**. It always
+    opens on the first bucket. The chosen tab is kept while the user stays on the same scope and
+    reset to the first on a scope change. An empty bucket still gets a tab, and a partial bucket
+    carries the desktop's partial mark on its tab.
+  - **Stacked**: as on the desktop, one heading per bucket (an empty one as a heading line), all in
+    one scrolling column, the heading sticky while its bucket scrolls under it.
+
+  **The drop overlay.** When a drag starts, from either pane, with the split on, an overlay covers the
+  **planned pane only** (the bottom half) with **one large tile per bucket**, label only (no dates, no
+  counts), in calendar order, laid out as a grid that fills the half-pane: up to 3 in one row, 4 to 6
+  in two rows, 7 as 4 + 3. The tile under the finger lights up. **The bucket the dragged card already
+  sits in is dimmed, and dropping there cancels.** The to-plan pane stays visible above as the "take
+  it back out" target. Lifting anywhere else cancels. A multi-selection carries the whole selection.
+  The tiles carry `data-plan-section` and are the drop targets in this mode, in place of the buckets
+  underneath (`PlanDropOverlay`). **A swipe on a to-plan card with the split on opens the same overlay
+  in pick mode**: tap a tile to place the card there; a tap outside the tiles, Android's back or a tap
+  on the dimmed tile cancels. A swipe on a planned card still takes it out to to-plan; with the split
+  off, swipes transfer between the panes as before. The desktop is unchanged.
 - **The Zen View** is a vertical list of cards in place of the grid that **fills the screen**: the
   cards share the height between the strips and the action bar equally (three cards each take a
   third, one card takes it all), their content centred across and down, and the title scales with
@@ -315,13 +336,12 @@ button, a tag pill, a collapse dot), is left to that control.
   desktop's key), which lands it back in the to-plan pane. The card flies out in the direction it was
   swiped. In the Plan View a swipe is therefore never a row's advance or Started; a card that cannot
   cross (no take-out target) swipes as any row. With the planned pane split into buckets there is no
-  "the scope itself" to plan a to-plan card into, so its swipe says so (the same toast as the `Enter`
-  key) and points to the drag. A vertical swipe is the flick up, the editor's. The acting card is
+  "the scope itself" to plan a to-plan card into, so on the phone its swipe opens the drop overlay's
+  tiles in pick mode (see *The Plan View stacks its panes*) instead of moving it. A vertical swipe is the flick up, the editor's. The acting card is
   selected first, like every other per-node action. Both directions run the same
   `planView.moveAcross` command (`usePlanMove`); only the gesture mapping in `PlanView` changed.
   **Hold a card, then drag** it (the Mindmap's hold-and-drag, from `useTouchGestures`' `holdDrag`;
-  `usePlanTouchDrag`): onto the **other pane** to move it across, or onto a **bucket** of the split
-  planned pane to plan it into that subscope. A hold released without moving is the long-press, as
+  `usePlanTouchDrag`): onto the **other pane** to move it across, or, with the split planned pane, onto a **tile** of the drop overlay that covers it while the drag lasts, to plan it into that subscope. A hold released without moving is the long-press, as
   everywhere. The drag carries the selection when the card is selected, else selects the card first;
   a chip with the card's title follows the finger; the target under it is outlined as on the
   desktop (a split pane takes drops only on its buckets). The drop goes through the desktop's drop
@@ -371,9 +391,9 @@ fails when the two differ, so a gesture is added to both or to neither.
 | Mindmap | Pinch | Zooms the map |
 | List | Double-tap a row with nothing beneath it | Opens its editor |
 | List | Double-tap a parent | Enters its subtree; the breadcrumb leads back up |
-| Plan | Swipe a to-plan item either way | Slides it out the way you swiped and plans it into the scope |
+| Plan | Swipe a to-plan item either way | Slides it out the way you swiped and plans it into the scope; with the planned pane split by subscope, opens a tile for each subscope to tap |
 | Plan | Swipe a planned item either way | Slides it out the way you swiped and moves it back to the to-plan pane |
-| Plan | Hold a card, then drag | Carries it to the other pane, or onto a subscope bucket of the planned pane to plan it into that subscope |
+| Plan | Hold a card, then drag | Carries it to the other pane, or, with the planned pane split by subscope, onto one of the tiles that cover that pane while you drag, to plan it into that subscope |
 | Plan | Double-tap a card | Enters its subtree, or opens its editor when it has nothing beneath it |
 | Steps | Double-tap a card | Steps into it, or opens its editor when it has nothing beneath it |
 | Steps | Pinch | Zooms the steps |

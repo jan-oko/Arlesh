@@ -42,6 +42,12 @@
   "optionParentOnly": "Show only planned to parent scope",
   "optionGroupByPath": "Group by path",
   "optionSubscopeSplit": "Split by subscope",
+  "optionPhoneTabs": "Planned pane in tabs on the phone",
+  "optionPhoneTabsHelp": "On the phone, a pane split by subscope shows one subscope at a time under a row of tabs. Off, every subscope is stacked under its heading in one scrolling column.",
+  "optionPhoneTabsHelpLabel": "Help: Planned pane in tabs on the phone",
+  "phoneTabsInert": "Only applies while the pane is split by subscope.",
+  "subscopeTabs": "Subscopes",
+  "dropOverlay": "Plan into a subscope",
   "optionIncludePremorning": "Include premorning",
   "subscopeKeyHint": "Plan the selection into {{scope}} — press {{keys}}, or drop it here",
   "weekday": {

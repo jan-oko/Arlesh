@@ -227,6 +227,18 @@ describe("SettingsModal", () => {
     expect(useDisplayStore.getState().stepsFillScreen).toBe(false);
   });
 
+  it("offers the phone's planned-pane tabs switch under Plan, on by default, and stores the choice", () => {
+    useDisplayStore.setState({ planPhoneTabs: true });
+    open();
+    goTo("plan");
+
+    const tabs = screen.getByRole("checkbox", { name: "optionPhoneTabs" });
+    expect(tabs).toBeChecked();
+    fireEvent.click(tabs);
+    expect(useDisplayStore.getState().planPhoneTabs).toBe(false);
+    expect(JSON.parse(localStorage.getItem("arlesh-display") ?? "{}").state.planPhoneTabs).toBe(false);
+  });
+
   it("offers the Zen View's badge switch under Zen, on by default", () => {
     useDisplayStore.setState({ zenShowBadges: true });
     open();
