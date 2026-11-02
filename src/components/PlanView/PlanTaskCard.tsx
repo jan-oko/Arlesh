@@ -38,6 +38,8 @@ interface Props {
   onSelect: (nodeId: string, modifiers: SelectModifiers) => void;
   onMove: (row: TaskListRow) => void;
   onOpenEditor: (nodeId: string) => void;
+  /** Whether the browser may drag the card natively; a touch-only device drags with the finger. */
+  nativeDrag: boolean;
   onDragStart: (event: DragEvent<HTMLElement>, nodeId: string) => void;
 }
 
@@ -53,7 +55,7 @@ interface Props {
  * whole selection, so the pointer and the keyboard are always talking about the same rows.
  */
 export default function PlanTaskCard({
-  row, isSelected, direction, showPath, onSelect, onMove, onOpenEditor, onDragStart,
+  row, isSelected, direction, showPath, onSelect, onMove, onOpenEditor, nativeDrag, onDragStart,
 }: Props) {
   const { t } = useTranslation("planView");
   const { node } = row;
@@ -78,7 +80,7 @@ export default function PlanTaskCard({
       data-plan-card-id={node.id}
       aria-describedby={overdue ? overdueNoteId : undefined}
       style={cardStyle}
-      draggable
+      draggable={nativeDrag}
       onDragStart={(event) => onDragStart(event, node.id)}
       onClick={select}
       onDoubleClick={() => onOpenEditor(node.id)}

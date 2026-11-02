@@ -48,6 +48,7 @@ export const GESTURES: readonly GestureEntry[] = [
   { id: "listParent", scope: "list", gestureKey: "gestureListParent", doesKey: "gestureListParentDoes" },
   { id: "planMove", scope: "plan", gestureKey: "gesturePlanMove", doesKey: "gesturePlanMoveDoes" },
   { id: "planUnplan", scope: "plan", gestureKey: "gesturePlanUnplan", doesKey: "gesturePlanUnplanDoes" },
+  { id: "planDrag", scope: "plan", gestureKey: "gesturePlanDrag", doesKey: "gesturePlanDragDoes" },
   { id: "planEnter", scope: "plan", gestureKey: "gesturePlanEnter", doesKey: "gesturePlanEnterDoes" },
   { id: "stepsEnter", scope: "steps", gestureKey: "gestureStepsEnter", doesKey: "gestureStepsEnterDoes" },
   { id: "stepsPinch", scope: "steps", gestureKey: "gestureStepsPinch", doesKey: "gestureStepsPinchDoes" },

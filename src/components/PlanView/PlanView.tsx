@@ -2,7 +2,8 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
-import { usePhoneLayout } from "@/hooks/use-media-query";
+import { TOUCH_ONLY_QUERY, useMediaQuery } from "@/hooks/use-media-query";
+import { usePlanTouchDrag } from "@/hooks/use-plan-touch-drag";
 import { flushSync } from "react-dom";
 import { runAfterSelect, useViewGestures } from "@/hooks/use-view-gestures";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
@@ -37,7 +38,7 @@ import { buildPlanSections } from "@/utils/plan-sections";
 import type { PlanSection } from "@/utils/plan-sections";
 import { buildPaneModel } from "@/utils/plan-pane-model";
 import { assignSubscopeKeys } from "@/utils/plan-subscope-keys";
-import { readPlanDrag, writePlanDrag } from "@/utils/plan-drag";
+import { PLAN_WHOLE_PANE, readPlanDrag, writePlanDrag } from "@/utils/plan-drag";
 import {
   EMPTY_PLAN_SELECTION, navigateSelection, pruneSelection, selectOnly, selectRange, selectedInOrder,
   toggleSelected,
@@ -156,10 +157,12 @@ export default function PlanView() {
   const toggleGroupByPath = useDisplayStore((s) => s.togglePlanCandidatesPathGrouping);
   const parentOnly = useDisplayStore((s) => s.planCandidatesParentOnly);
   const toggleParentOnly = useDisplayStore((s) => s.togglePlanCandidatesParentOnly);
-  // The phone layout's planned pane draws no subscope cells (docs/spec/touch.md); its scope is
-  // stepped with the header's buttons. The setting itself is left as it was for the desktop.
-  const isPhone = usePhoneLayout();
-  const subscopeSplit = useDisplayStore((s) => s.planSplitBySubscope) && !isPhone;
+  // The same setting as the desktop's, on the phone too (docs/spec/touch.md): the planned pane's
+  // buckets stack in its column, and a card is held and dragged onto one.
+  // A touch-only device drags with the finger (below), not the browser's native drag, which a long
+  // press would otherwise start on a `draggable` card and steal the touch.
+  const nativeDrag = !useMediaQuery(TOUCH_ONLY_QUERY);
+  const subscopeSplit = useDisplayStore((s) => s.planSplitBySubscope);
   const toggleSubscopeSplit = useDisplayStore((s) => s.togglePlanSplitBySubscope);
   const includePremorning = useDisplayStore((s) => s.planIncludePremorning);
   const toggleIncludePremorning = useDisplayStore((s) => s.togglePlanIncludePremorning);
@@ -420,11 +423,12 @@ export default function PlanView() {
     [paneRowsOf, batchFor],
   );
 
-  const onDrop = useCallback(
-    (which: PlanPaneSide) => (event: DragEvent<HTMLElement>, section: PlanSection | null) => {
-      const payload = readPlanDrag(event.dataTransfer);
-      if (payload === null) return;
-      event.preventDefault();
+  /**
+   * Plans or moves what a drag carried, once it lands on `which` pane (in `section`, or `null` for
+   * the pane at large). The mouse's `drop` and the finger's drop both end here.
+   */
+  const dropRows = useCallback(
+    (which: PlanPaneSide, section: PlanSection | null, payload: { pane: PlanPaneSide; ids: readonly string[] }) => {
       const carried = new Set(payload.ids);
       const rows = paneRowsOf(payload.pane).filter((row) => carried.has(row.node.id));
       if (rows.length === 0) return;
@@ -437,6 +441,43 @@ export default function PlanView() {
     },
     [paneRowsOf, planSelectionInto, moveAcross],
   );
+
+  const onDrop = useCallback(
+    (which: PlanPaneSide) => (event: DragEvent<HTMLElement>, section: PlanSection | null) => {
+      const payload = readPlanDrag(event.dataTransfer);
+      if (payload === null) return;
+      event.preventDefault();
+      dropRows(which, section, payload);
+    },
+    [dropRows],
+  );
+
+  // The finger's drag (docs/spec/touch.md): hold a card, then move. It begins as the mouse's does
+  // (an unselected card is selected first, a selected one carries the selection), is accepted where
+  // the mouse's drop is (a split pane takes drops only in its buckets), and ends in `dropRows`.
+  const touchDrag = usePlanTouchDrag({
+    begin: (id) => {
+      const which = plannedModel.rows.some((row) => row.node.id === id) ? "planned" : "candidates";
+      const row = paneRowsOf(which).find((candidate) => candidate.node.id === id);
+      if (row === undefined) return null;
+      const batch = batchFor(row, which);
+      if (batch.length === 1) {
+        setPane(which);
+        setSelection(selectOnly(id));
+      }
+      return { pane: which, ids: batch.map((item) => item.node.id) };
+    },
+    accepts: (point, from) => {
+      if (point.section !== null) return point.pane === "planned" && split?.sections.some((s) => s.key === point.section) === true;
+      if (point.pane === from) return false;
+      return !(point.pane === "planned" && plannedModel.sectioned);
+    },
+    drop: (point, carried) => {
+      const section = point.section === null ? null : split?.sections.find((s) => s.key === point.section) ?? null;
+      if (point.section !== null && section === null) return;
+      dropRows(point.pane, section, carried);
+    },
+  });
 
   // The key does what the button does, and where the button is disabled the key says why rather
   // than doing nothing: a press with no visible effect reads as a key that is not bound.
@@ -482,15 +523,15 @@ export default function PlanView() {
     { id: "groupByPath", label: t("planView:optionGroupByPath"), checked: groupByPath, onToggle: toggleGroupByPath },
   ], [t, parentOnly, toggleParentOnly, parentApplies, groupByPath, toggleGroupByPath]);
 
-  const plannedOptions = useMemo<PaneOption[]>(() => (isPhone ? [] : [
+  const plannedOptions = useMemo<PaneOption[]>(() => [
     { id: "subscopeSplit", label: t("planView:optionSubscopeSplit"), checked: subscopeSplit, onToggle: toggleSubscopeSplit },
     { id: "premorning", label: t("planView:optionIncludePremorning"), checked: includePremorning, onToggle: toggleIncludePremorning },
-  ]), [t, isPhone, subscopeSplit, toggleSubscopeSplit, includePremorning, toggleIncludePremorning]);
+  ], [t, subscopeSplit, toggleSubscopeSplit, includePremorning, toggleIncludePremorning]);
 
   // The touch gestures (docs/spec/touch.md). A card swiped EITHER way crosses to the other pane: a
   // to-plan card is planned into the scope shown, a planned card is taken out of it, back to the
   // to-plan pane. It flies out under the finger in the swipe's direction. Where a card cannot cross
-  // (the planned pane split by subscope, or no take-out target) the swipe is any row's. Double-tap
+  // (no take-out target) the swipe is any row's. Double-tap
   // opens the card's subtree. The scope is stepped with the header's buttons, not a swipe.
   const rootRef = useRef<HTMLDivElement>(null);
   // Every card here is a Task; the action bar reads the Plan View's own row whatever is selected,
@@ -498,11 +539,12 @@ export default function PlanView() {
   usePublishSelection(selectedIds.map((): NodeKind => "task"), true);
   const paneOfCard = (id: string): PlanPaneSide =>
     (plannedModel.rows.some((row) => row.node.id === id) ? "planned" : "candidates");
-  /** Whether a sideways swipe, either way, moves this card across; `false` where it moves nowhere. */
-  const crosses = (id: string): boolean => {
-    if (paneOfCard(id) === "planned") return takeOutTo !== null;
-    return !plannedModel.sectioned;
-  };
+  /**
+   * Whether a sideways swipe, either way, moves this card across; `false` where it moves nowhere.
+   * A to-plan card always does: with the planned pane split into buckets the move says to drop it
+   * on one (`moveAcross`'s toast) rather than the swipe turning into a status change.
+   */
+  const crosses = (id: string): boolean => (paneOfCard(id) === "planned" ? takeOutTo !== null : true);
   useViewGestures(rootRef, {
     idAttribute: "data-plan-card-id",
     ready: !isLoading && error === null,
@@ -512,6 +554,7 @@ export default function PlanView() {
     toggleInSelection: (id) => onSelect(paneOfCard(id), id, { shift: false, ctrl: true }),
     goInto: enterSubtree,
     isLeaf: (id) => (findNode(tree, id)?.children.length ?? 0) === 0,
+    holdDrag: touchDrag.controls,
     flysOut: (id) => crosses(id),
     onSwipe: (id) => {
       if (id === null || !crosses(id)) return false;
@@ -522,6 +565,15 @@ export default function PlanView() {
       return true;
     },
   });
+
+  /** What the finger's drag lights in `which` pane: a bucket's key, the pane at large, or nothing. */
+  const touchOverFor = (which: PlanPaneSide): string | null => {
+    const over = touchDrag.over;
+    if (over === null || over.pane !== which) return null;
+    return over.section ?? PLAN_WHOLE_PANE;
+  };
+
+  const touchDragTitle = touchDrag.sourceId === null ? "" : findNode(tree, touchDrag.sourceId)?.title ?? "";
 
   if (isLoading) return <div className={styles.centered}>{t("common:loading")}</div>;
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
@@ -570,6 +622,8 @@ export default function PlanView() {
             onOpenEditor={onDoubleClick}
             onEnterSubtree={enterSubtree}
             onFilterByAntecedent={(id, side) => setPillSide("antecedent", id, side)}
+            nativeDrag={nativeDrag}
+            touchOver={touchOverFor("candidates")}
             onDragStart={onDragStart("candidates")}
             onDrop={onDrop("candidates")}
           />
@@ -590,9 +644,18 @@ export default function PlanView() {
             onOpenEditor={onDoubleClick}
             onEnterSubtree={enterSubtree}
             onFilterByAntecedent={(id, side) => setPillSide("antecedent", id, side)}
+            nativeDrag={nativeDrag}
+            touchOver={touchOverFor("planned")}
             onDragStart={onDragStart("planned")}
             onDrop={onDrop("planned")}
           />
+        </div>
+      )}
+
+      {touchDrag.sourceId !== null && touchDrag.ghost !== null && (
+        <div className={styles.dragGhost} style={{ left: touchDrag.ghost.x, top: touchDrag.ghost.y }} aria-hidden="true">
+          {touchDragTitle}
+          {touchDrag.count > 1 && <span className={styles.dragCount}>{touchDrag.count}</span>}
         </div>
       )}
 

@@ -6,7 +6,7 @@ import type { PlanPane as PlanPaneSide } from "@/utils/hotkeys/plan/selection";
 import type { PaneModel } from "@/utils/plan-pane-model";
 import type { PlanSection } from "@/utils/plan-sections";
 import type { SubscopeKeys } from "@/utils/plan-subscope-keys";
-import { isPlanDrag } from "@/utils/plan-drag";
+import { PLAN_WHOLE_PANE, isPlanDrag } from "@/utils/plan-drag";
 import PathHeaderRow from "@/components/ListView/PathHeaderRow";
 import PaneMenu from "./PaneMenu";
 import type { PaneOption } from "./PaneMenu";
@@ -32,6 +32,10 @@ interface Props {
   /** Which way a card in this pane moves, or `null` where no across-move is offered. */
   direction: "in" | "out" | null;
   empty: ReactNode;
+  /** Whether a card may be dragged by the browser's native drag (off on a touch-only device). */
+  nativeDrag: boolean;
+  /** What a finger's drag is over in this pane: a bucket's key, `PLAN_WHOLE_PANE`, or `null`. */
+  touchOver: string | null;
   sectionInfo: ReadonlyMap<string, SectionInfo>;
   onFocus: () => void;
   onSelect: (id: string, modifiers: SelectModifiers) => void;
@@ -53,7 +57,7 @@ function acceptDrag(event: DragEvent<HTMLElement>): boolean {
 }
 
 /** Which target the pointer is over while a drag is in flight — the pane at large, or one bucket. */
-const WHOLE_PANE = "pane";
+const WHOLE_PANE = PLAN_WHOLE_PANE;
 
 /**
  * One half of the triage: a heading, the menu of options for this half, and the rows.
@@ -65,7 +69,7 @@ const WHOLE_PANE = "pane";
  */
 export default function PlanPane({
   which, heading, options, model, focused, grouped, selectedIds,
-  direction, empty, sectionInfo, onFocus, onSelect, onMove, onOpenEditor, onEnterSubtree,
+  direction, empty, nativeDrag, touchOver, sectionInfo, onFocus, onSelect, onMove, onOpenEditor, onEnterSubtree,
   onFilterByAntecedent, onDragStart, onDrop,
 }: Props) {
   const { t } = useTranslation("planView");
@@ -142,6 +146,7 @@ export default function PlanPane({
                 onSelect={onSelect}
                 onMove={onMove}
                 onOpenEditor={onOpenEditor}
+                nativeDrag={nativeDrag}
                 onDragStart={onDragStart}
               />
             );
@@ -153,7 +158,7 @@ export default function PlanPane({
       return (
         <div
           key={block.key}
-          className={`${styles.section}${over === section.key ? ` ${styles.sectionOver}` : ""}`}
+          className={`${styles.section}${over === section.key || touchOver === section.key ? ` ${styles.sectionOver}` : ""}`}
           data-plan-section={section.key}
           onDragOver={(event) => hover(event, section.key)}
           onDragLeave={() => setOver(null)}
@@ -167,7 +172,7 @@ export default function PlanPane({
 
   return (
     <section
-      className={`${styles.pane}${focused ? ` ${styles.paneFocused}` : ""}${over === WHOLE_PANE ? ` ${styles.paneOver}` : ""}`}
+      className={`${styles.pane}${focused ? ` ${styles.paneFocused}` : ""}${over === WHOLE_PANE || touchOver === WHOLE_PANE ? ` ${styles.paneOver}` : ""}`}
       aria-label={heading}
       data-plan-pane={which}
       onClick={onFocus}
@@ -182,7 +187,7 @@ export default function PlanPane({
         <h2 className={styles.paneHeading}>{heading}</h2>
         <PaneMenu label={t("paneOptions", { pane: heading })} options={options} />
       </div>
-      {showEmpty ? empty : <div className={styles.cards}>{cards()}</div>}
+      {showEmpty ? empty : <div className={styles.cards} data-plan-scroll="">{cards()}</div>}
     </section>
   );
 }

@@ -115,6 +115,8 @@
   "gesturePlanMoveDoes": "Slides it out the way you swiped and plans it into the scope",
   "gesturePlanUnplan": "Swipe a planned item either way",
   "gesturePlanUnplanDoes": "Slides it out the way you swiped and moves it back to the to-plan pane",
+  "gesturePlanDrag": "Hold a card, then drag",
+  "gesturePlanDragDoes": "Carries it to the other pane, or onto a subscope bucket of the planned pane to plan it into that subscope",
   "gesturePlanEnter": "Double-tap a card",
   "gesturePlanEnterDoes": "Enters its subtree, or opens its editor when it has nothing beneath it",
   "gestureZenOpen": "Double-tap a card",

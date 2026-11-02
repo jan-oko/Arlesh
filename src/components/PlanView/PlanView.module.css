@@ -214,3 +214,34 @@
     touch-action: pan-y;
   }
 }
+
+/* The card a finger carries: a small chip that follows it, offset so the finger does not hide it. */
+.dragGhost {
+  position: fixed;
+  z-index: 200;
+  max-width: 70vw;
+  overflow: hidden;
+  padding: var(--space-1) var(--space-3);
+  transform: translate(-50%, -140%);
+  border: 1px solid var(--node-border-selected);
+  border-radius: var(--node-radius);
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm, 13px);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.dragCount {
+  margin-inline-start: var(--space-2);
+  font-weight: 600;
+}
+
+/* A bucket's key hint is for a keyboard; the phone's buckets are dropped on. */
+@media (max-width: 699.98px) {
+  .sectionKeys {
+    display: none;
+  }
+}

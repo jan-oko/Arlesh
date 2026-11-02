@@ -264,6 +264,9 @@ export function useTouchGestures(
       if (press.held && drag !== undefined && press.id !== null) {
         if (!press.dragging) drag.start(press.id, press.start.x, press.start.y);
         press.dragging = true;
+        // The hold has not moved until now, so the browser has not begun to scroll and this move
+        // can still be cancelled: the finger carries the node and the list stays put.
+        if (event.cancelable) event.preventDefault();
         drag.move(press.last.x, press.last.y);
         return;
       }
@@ -344,7 +347,8 @@ export function useTouchGestures(
 
     const listeners: ReadonlyArray<[string, (event: Event) => void, AddEventListenerOptions]> = [
       ["touchstart", forTouch(onTouchStart), { passive: true }],
-      ["touchmove", forTouch(onTouchMove), { passive: true }],
+      // Not passive: a hold-and-drag cancels the scroll its first move would start.
+      ["touchmove", forTouch(onTouchMove), { passive: false }],
       // Not passive: a recognised gesture cancels the touch's synthetic mouse events and click.
       ["touchend", forTouch(onTouchEnd), { passive: false }],
       ["touchcancel", onTouchCancel, {}],

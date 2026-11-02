@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import PlanView from "./PlanView";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
@@ -16,7 +16,7 @@ import { clearScopeRowCache } from "@/hooks/use-scope-rows";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { fixtureRowId } from "@/test/node-fixture";
-import { PHONE_LAYOUT_QUERY, TOUCH_QUERY } from "@/hooks/use-media-query";
+import { PHONE_LAYOUT_QUERY, TOUCH_ONLY_QUERY, TOUCH_QUERY } from "@/hooks/use-media-query";
 
 // The usual key-for-string stub, with one exception: a bucket's keyboard mnemonic is the initial
 // of its **rendered** name, so a stub that answered "planView:weekday.3" for Wednesday would give
@@ -1068,5 +1068,120 @@ describe("on a phone", () => {
     await nextTick();
     await settle();
     expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+  });
+
+  describe("the subscope split and the finger's drag", () => {
+    const HOLD_MS = 560;
+    const at = (element: Element, x: number, y: number) => ({ target: element, clientX: x, clientY: y });
+    const sleep = (ms: number) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
+
+    /** Holds `card`, moves to `to` (which `elementFromPoint` then reports) and lifts. */
+    async function holdAndDrag(card: Element, to: Element | null, lift = true): Promise<void> {
+      Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => to });
+      fireEvent.touchStart(card, { touches: [at(card, 100, 100)] });
+      await sleep(HOLD_MS);
+      fireEvent.touchMove(card, { touches: [at(card, 100, 140)] });
+      if (lift) fireEvent.touchEnd(card, { touches: [], changedTouches: [at(card, 100, 140)] });
+    }
+    afterEach(() => { Reflect.deleteProperty(document, "elementFromPoint"); });
+
+    it("offers the same split switch in the planned pane's menu, and splits it into buckets", async () => {
+      useDisplayStore.setState({ planSplitBySubscope: true });
+      mockRows([row(n("task-2", "task", { plan: { start_id: DAY_ID, end_id: DAY_ID } }))]);
+      await renderPlanView();
+      expect(headingsIn("planned")).toHaveLength(7);
+      const planned = document.querySelector('[data-plan-pane="planned"]');
+      if (!(planned instanceof HTMLElement)) throw new Error("no planned pane");
+      fireEvent.click(within(planned).getByRole("button", { name: /paneOptions/ }));
+      expect(within(planned).getByText("planView:optionSubscopeSplit")).toBeInTheDocument();
+    });
+
+    it("drags a to-plan card onto a bucket: it is planned into that day", async () => {
+      useDisplayStore.setState({ planSplitBySubscope: true });
+      mockRows([row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+      await renderPlanView();
+      const monday = document.querySelectorAll("[data-plan-section]")[1];
+      if (monday === undefined) throw new Error("no bucket");
+      await holdAndDrag(cardElement("task-5"), monday);
+      await settle();
+      expect(resolveScope).toHaveBeenCalledWith({ kind: "day", date: "2026-09-21" });
+      expect(updateTask).toHaveBeenCalled();
+    });
+
+    it("lights the bucket under the finger while it is held, and not the pane around it", async () => {
+      useDisplayStore.setState({ planSplitBySubscope: true });
+      mockRows([row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+      await renderPlanView();
+      const monday = document.querySelectorAll("[data-plan-section]")[1];
+      if (monday === undefined) throw new Error("no bucket");
+      await holdAndDrag(cardElement("task-5"), monday, false);
+      expect(monday.className).toContain("sectionOver");
+      const paneElement = document.querySelector('[data-plan-pane="planned"]');
+      expect(paneElement?.className).not.toContain("paneOver");
+    });
+
+    it("drags a to-plan card onto the planned pane when it is not split: it is planned into the scope", async () => {
+      tasks();
+      await renderPlanView();
+      const planned = document.querySelector('[data-plan-pane="planned"]');
+      if (planned === null) throw new Error("no planned pane");
+      await holdAndDrag(cardElement("task-1"), planned);
+      await settle();
+      expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+    });
+
+    it("drags a planned card onto the to-plan pane: it is taken out", async () => {
+      tasks();
+      await renderPlanView();
+      const candidates = document.querySelector('[data-plan-pane="candidates"]');
+      if (candidates === null) throw new Error("no candidates pane");
+      await holdAndDrag(cardElement("task-2"), candidates);
+      await settle();
+      expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+      expect(updateTask).not.toHaveBeenCalledWith(1, expect.anything());
+    });
+
+    it("drops nothing when the finger lifts over no target", async () => {
+      tasks();
+      await renderPlanView();
+      await holdAndDrag(cardElement("task-1"), null);
+      await settle();
+      expect(updateTask).not.toHaveBeenCalled();
+    });
+
+    it("does not drag when the hold is released without moving: that is the long-press", async () => {
+      tasks();
+      await renderPlanView();
+      const card = cardElement("task-1");
+      fireEvent.touchStart(card, { touches: [at(card, 100, 100)] });
+      await sleep(HOLD_MS);
+      fireEvent.touchEnd(card, { touches: [], changedTouches: [at(card, 100, 100)] });
+      await settle();
+      expect(updateTask).not.toHaveBeenCalled();
+      expect(card.className).toContain("cardSelected");
+    });
+
+    it("leaves a swipe as a move between the two panes, even with the pane split", async () => {
+      useDisplayStore.setState({ planSplitBySubscope: true });
+      mockRows([row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+      await renderPlanView();
+      await act(async () => { stroke(cardElement("task-5"), [60, 10], [200, 12]); });
+      await afterFlight();
+      await settle();
+      // The split has no "the scope itself" to plan into: it says so, and sets no status.
+      expect(screen.getByText("planView:noParentPlan")).toBeInTheDocument();
+      expect(updateTask).not.toHaveBeenCalled();
+    });
+
+    it("hands the card to the finger on a touch-only device instead of the browser's drag", async () => {
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        matches: query === TOUCH_ONLY_QUERY || query === TOUCH_QUERY || query === PHONE_LAYOUT_QUERY,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }));
+      tasks();
+      await renderPlanView();
+      expect(cardElement("task-1").getAttribute("draggable")).toBe("false");
+    });
   });
 });
