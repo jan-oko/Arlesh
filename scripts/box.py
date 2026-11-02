@@ -1588,6 +1588,19 @@ def android_project_files(wt: Path) -> tuple[Path, Path]:
     return gradle, strings
 
 
+def apply_android_patch(gradle: Path, strings: Path, package: str, label: str) -> None:
+    """Rewrite the applicationId and the app name in place; the caller restores or discards."""
+    text = gradle.read_text()
+    patched_id = f'applicationId = "{package}"'
+    if patched_id not in text:
+        if 'applicationId = "com.atai.arlesh"' not in text:
+            raise die("build.gradle.kts has no applicationId to patch.")
+        gradle.write_text(
+            text.replace('applicationId = "com.atai.arlesh"', patched_id)
+        )
+    strings.write_text(xml_string_file(label))
+
+
 def build_android(name: str, wt: Path, firebase: bool) -> None:
     package, label = box_package(name), box_label(name)
     android_env()
@@ -1635,15 +1648,7 @@ def build_android(name: str, wt: Path, firebase: bool) -> None:
 
     print(f"\n=== {name}: android apk {package} ({label}) ===", flush=True)
     with patched([gradle, strings]):
-        text = gradle.read_text()
-        if 'applicationId = "com.atai.arlesh"' not in text:
-            raise die("build.gradle.kts has no applicationId to patch.")
-        gradle.write_text(
-            text.replace(
-                'applicationId = "com.atai.arlesh"', f'applicationId = "{package}"'
-            )
-        )
-        strings.write_text(xml_string_file(label))
+        apply_android_patch(gradle, strings, package, label)
         # Rebuilt from scratch, so an older APK is never mistaken for this one.
         shutil.rmtree(app_dir / "build" / "outputs" / "apk", ignore_errors=True)
         run_cmd(
@@ -1864,6 +1869,14 @@ def resolve_branches(requested: Sequence[str]) -> list[str]:
     return [dir_name(b) for b in requested]
 
 
+def cmd_ci_patch(args: argparse.Namespace) -> None:
+    """Patch a checkout in place for a CI box APK; CI discards the tree, so nothing is backed up."""
+    gradle, strings = android_project_files(Path(args.root))
+    apply_android_patch(gradle, strings, box_package(args.branch), box_label(args.branch))
+    print(f"patched for {box_package(args.branch)} ({box_label(args.branch)})")
+    print(f"segment={box_segment(args.branch)}")
+
+
 def cmd_stop(args: argparse.Namespace) -> None:
     everything = not args.branches or list(args.branches) == ["all"]
     for name in resolve_branches(args.branches):
@@ -2045,6 +2058,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--force", action="store_true", help="rebuild and reinstall even if current"
     )
     run.set_defaults(fn=cmd_run)
+
+    ci = sub.add_parser(
+        "ci-patch",
+        help="patch a checkout in place for a CI box APK (no backup; CI discards the tree)",
+    )
+    ci.add_argument("branch")
+    ci.add_argument("--root", default=str(repo_root()), help="the checkout (default: this repo)")
+    ci.set_defaults(fn=cmd_ci_patch)
 
     stop = sub.add_parser(
         "stop", help="stop instances (servers too with no names or `all`)"
