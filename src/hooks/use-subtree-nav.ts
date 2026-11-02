@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import type { SubtreeCrumb, SubtreeNav } from "@/stores/use-mindmap-store";
 import { useFoldReading } from "@/hooks/use-fold-reading";
@@ -34,6 +35,7 @@ interface SubtreeNavHandles {
  * derives nothing of its own.
  */
 export function useSubtreeNav(tree: MindmapNode): SubtreeNavHandles {
+  const { t } = useTranslation("common");
   const subtreeRootId = useMindmapStore((s) => s.subtreeRootId);
   const setSubtreeNav = useMindmapStore((s) => s.setSubtreeNav);
   const publishedNav = useMindmapStore((s) => s.subtreeNav);
@@ -54,10 +56,15 @@ export function useSubtreeNav(tree: MindmapNode): SubtreeNavHandles {
   const currentTitle = current?.title ?? "";
 
   // The true root is nobody's subtree, so it is the one crumb that carries no id — clicking it
-  // leaves the subtree entirely rather than re-rooting at a node.
+  // leaves the subtree entirely rather than re-rooting at a node. It is always named for the app,
+  // never for the view you are in (user, round 5): the path starts at the board, and the board is
+  // "Arlesh" whichever view draws it.
+  const appName = t("appName");
   const ancestors = useMemo<readonly SubtreeCrumb[]>(
-    () => path.slice(0, -1).map((node) => ({ id: node.id === "root" ? null : node.id, title: node.title })),
-    [path],
+    () => path.slice(0, -1).map((node) => (
+      node.id === "root" ? { id: null, title: appName } : { id: node.id, title: node.title }
+    )),
+    [path, appName],
   );
   const parentSubtreeId = ancestors[ancestors.length - 1]?.id ?? null;
 

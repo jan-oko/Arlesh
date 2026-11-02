@@ -30,6 +30,8 @@
   "insideSubtree": "Inside subtree",
   "exitToLevel": "Back to this level",
   "foldedLevels": "Levels in between",
+  "fullPath": "Show the full path",
+  "appName": "Arlesh",
   "tabs": "Tabs",
   "newTab": "New tab",
   "closeTab": "Close tab",
@@ -58,5 +60,18 @@
     "menu": "Agents",
     "clear": "Clear",
     "show": "Show"
-  }
+  },
+  "systemBars": "System bars",
+  "systemBarsHelp": "How the app sits against the Android status and gesture bars. Standard: visible, opaque, the app below them. Edge-to-edge: visible but transparent, the app drawn under them with its controls kept clear. Immersive: hidden, swipe from the screen edge to show them briefly. Android only.",
+  "systemBarsHelpLabel": "Help: System bars",
+  "systemBarsFullscreen": "System bars in fullscreen",
+  "systemBarsFullscreenHelp": "The same choice while the app is in fullscreen; leaving fullscreen returns to the setting above. Android only.",
+  "systemBarsFullscreenHelpLabel": "Help: System bars in fullscreen",
+  "systemBarsMode": {
+    "standard": "Standard",
+    "edgeToEdge": "Edge-to-edge",
+    "immersive": "Immersive"
+  },
+  "quitHeading": "Quit Arlesh?",
+  "quit": "Quit"
 }

@@ -19,6 +19,8 @@ import { TabStoresContext } from "@/stores/tab-stores-context";
 import { useHotkeys } from "@/hooks/use-hotkeys";
 import { useTabCommands } from "@/hooks/use-tab-commands";
 import { activeTabStores, useSystemBack } from "@/hooks/use-system-back";
+import QuitConfirm from "@/components/QuitConfirm/QuitConfirm";
+import { useSystemBars } from "@/hooks/use-system-bars";
 import { useCloseToTraySync } from "@/hooks/use-close-to-tray";
 import { useAgentCapacitySync } from "@/hooks/use-agent-capacity";
 import { useIsInputCaptured } from "@/hooks/use-input-capture";
@@ -30,6 +32,7 @@ export default function App() {
   const theme = useThemeStore((s) => s.theme);
   const hotkeysOpen = useHotkeysStore((s) => s.isOpen);
   const isFullscreen = useFullscreenStore((s) => s.isFullscreen);
+  useSystemBars();
   const closeHotkeys = useHotkeysStore((s) => s.close);
   const tabs = useTabsStore((s) => s.tabs);
   const activeTabId = useTabsStore((s) => s.activeTabId);
@@ -99,6 +102,7 @@ export default function App() {
       {hotkeysOpen && <HotkeysModal onClose={closeHotkeys} view={active?.stores.view.getState().view} />}
       {/* Any view's editor, drag or Plan writer may ask these, so they hang above them all. */}
       <PlanClampPrompt />
+      <QuitConfirm />
       <ScopeClampPrompt />
       {firstRun && !serverSettings && (
         <FirstRunChooser

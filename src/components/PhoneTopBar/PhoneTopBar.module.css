@@ -5,7 +5,7 @@
   flex-shrink: 0;
   min-height: 48px;
   padding: 0 var(--space-2);
-  padding-top: env(safe-area-inset-top);
+  padding-top: var(--safe-top);
   background: var(--surface);
   border-bottom: 1px solid var(--node-border);
   font-family: var(--font-sans);
@@ -117,4 +117,35 @@
 
 .check {
   font-size: 10px;
+}
+
+/* The free square at the end of the bar: tap opens Open, long-press the palette. It is
+   drawn faintly so a finger can find it. */
+.square {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 36px;
+  height: 36px;
+  border: 1px dashed var(--node-border);
+  border-radius: 8px;
+  /* none, not manipulation: any pan the browser claims cancels the pointer mid-tap. */
+  touch-action: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  cursor: pointer;
+}
+
+/* Full screen's hot square: fixed in the bottom-right corner over the board, clear of the system
+   gesture bar. It is drawn fainter than in the bar, so it does not shout over content. */
+.squareCorner {
+  position: fixed;
+  inset-inline-end: calc(var(--space-2) + var(--safe-right));
+  bottom: calc(var(--space-2) + var(--safe-bottom));
+  z-index: 60;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  opacity: 0.7;
+}
+
+.square:active {
+  background: var(--node-bg-hover);
 }

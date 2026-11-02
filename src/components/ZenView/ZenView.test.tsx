@@ -13,6 +13,7 @@ import { flattenCommitmentRows, flattenExpectationRows, flattenTaskRows } from "
 import { fixtureRowId } from "@/test/node-fixture";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { useListData } from "@/hooks/use-list-data";
+import { TOUCH_QUERY } from "@/hooks/use-media-query";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -179,6 +180,19 @@ describe("what the Zen View draws", () => {
     const icons = [...document.querySelectorAll("[data-zen-status-icon]")];
     expect(icons.map((icon) => icon.closest("[data-row-id]")?.getAttribute("data-row-id"))).toEqual(["task-2"]);
     expect(icons[0]?.getAttribute("data-zen-status-icon")).toBe("started");
+  });
+
+  it("steps a card's status when its icon is tapped, selects the card, and does not open it", () => {
+    mockBoard([n("task-2", "task", { status: "started" })]);
+    useDisplayStore.setState({ zenShowsStarted: true });
+    withArea(1200, 800);
+    render(<ZenViewInApp />);
+    const icon = screen.getByRole("button", { name: "listView:cycleStatus" });
+    fireEvent.click(icon);
+    fireEvent.doubleClick(icon);
+    expect(onCycleStatus).toHaveBeenCalledWith("task-2");
+    expect(selectedCard()).not.toBeNull();
+    expect(openEditor).not.toHaveBeenCalled();
   });
 
   it("says so when nothing is in progress", () => {
@@ -390,5 +404,52 @@ describe("the overdue border", () => {
     expect(selectedCard()).toBe("task-5");
     expect(zenCard("task-5").className).toMatch(/cardOverdue/);
     expect(zenCard("task-5").className).toMatch(/cardSelected/);
+  });
+});
+
+describe("ZenView — double-tap on a touchscreen", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === TOUCH_QUERY,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  function doubleTap(rowId: string): void {
+    const element = document.querySelector(`[data-row-id="${rowId}"]`);
+    if (element === null) throw new Error(`no card ${rowId}`);
+    const at = { target: element, clientX: 10, clientY: 10 };
+    for (let tap = 0; tap < 2; tap++) {
+      fireEvent.touchStart(element, { touches: [at] });
+      fireEvent.touchEnd(element, { touches: [], changedTouches: [at] });
+    }
+    act(() => { vi.runAllTimers(); });
+  }
+
+  it("opens a leaf's editor rather than entering it", () => {
+    render(<ZenViewInApp />);
+    doubleTap("task-1");
+    expect(openEditor).toHaveBeenCalledWith("task-1");
+    expect(useMindmapStore.getState().subtreeRootId).toBeNull();
+    expect(useViewStore.getState().view).toBe("zen");
+  });
+
+  it("enters a card's subtree, shows it in the List View and adds no Under pill", () => {
+    mockBoard([n("goal-1", "goal", {
+      status: "active",
+      children: [n("task-1", "task", { status: "in_progress", children: [n("task-9", "task", { status: "todo" })] })],
+    })]);
+    render(<ZenViewInApp />);
+    doubleTap("task-1");
+    expect(useMindmapStore.getState().subtreeRootId).toBe("task-1");
+    expect(useViewStore.getState().view).toBe("list");
+    expect(useListFilterStore.getState().filter.pills.antecedent).toEqual([]);
+    expect(openEditor).not.toHaveBeenCalled();
   });
 });

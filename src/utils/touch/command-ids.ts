@@ -23,3 +23,6 @@ export const TOGGLE_STARTED_IDS: readonly string[] = everyView("toggleStarted");
 
 /** `E`: the selection's editor. */
 export const OPEN_EDITOR_IDS: readonly string[] = everyView("openEditor");
+
+/** `Shift+Escape`: up one level out of the entered subtree. Disabled at the top level. */
+export const UP_IDS: readonly string[] = ["global.exitSubtree"];

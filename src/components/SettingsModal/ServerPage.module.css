@@ -24,3 +24,35 @@
   display: flex;
   gap: var(--space-2);
 }
+
+.status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.status li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.up,
+.down {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.up {
+  background: var(--mode-all);
+}
+
+.down {
+  background: var(--danger);
+}

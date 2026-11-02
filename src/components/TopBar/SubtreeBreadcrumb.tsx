@@ -9,6 +9,14 @@ import styles from "./SubtreeBreadcrumb.module.css";
 
 const FOLD_ICON = "…";
 
+interface Props {
+  /**
+   * The phone's portrait form (`docs/spec/touch.md`): `‹ {current node}` in place of the chain. The
+   * chevron opens the same menu the `…` does, holding every level above — the full path.
+   */
+  compact?: boolean;
+}
+
 /**
  * Identifies the chain on screen, titles included: a rename changes how much room it needs.
  *
@@ -37,7 +45,7 @@ function chainIdentity(ancestors: readonly SubtreeCrumb[], currentTitle: string)
  * the root comes back in its place (`root › …`), and last of all the current title truncates on its
  * own. Two cut titles side by side say less than one whole one next to a `…`.
  */
-export default function SubtreeBreadcrumb() {
+export default function SubtreeBreadcrumb({ compact = false }: Props) {
   const { t } = useTranslation("common");
   const subtreeNav = useMindmapStore((s) => s.subtreeNav);
   const exitSubtree = useMindmapStore((s) => s.exitSubtree);
@@ -80,6 +88,39 @@ export default function SubtreeBreadcrumb() {
       return;
     }
     exitSubtree(crumb.id);
+  }
+
+  if (compact) {
+    return (
+      <nav className={styles.wrap} aria-label={t("insideSubtree")}>
+        <button
+          type="button"
+          className={`${styles.segment} ${styles.fold} ${styles.backChevron}`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          aria-label={t("fullPath")}
+          onClick={toggleMenu}
+        >
+          {/* Drawn rather than typeset: a font's `‹` has no fixed size, and this one is the height of
+              a capital letter of the title (`1cap`), centred on the text, inside the 40 px target. */}
+          <svg className={styles.backGlyph} viewBox="0 0 6 10" aria-hidden="true" focusable="false">
+            <polyline points="5,1 1,5 5,9" />
+          </svg>
+        </button>
+        {/* The name is a second way to the same menu: it is a far bigger target than the glyph. */}
+        <button
+          type="button"
+          className={`${styles.current} ${styles.currentShrinks} ${styles.currentButton}`}
+          dir="auto"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={toggleMenu}
+        >
+          {currentTitle}
+        </button>
+        {menuOpen && <FoldedCrumbsMenu crumbs={ancestors} offset={0} onSelect={goTo} onClose={() => setMenuOpen(false)} />}
+      </nav>
+    );
   }
 
   // The label names the landmark itself, which is what a screen reader announces on the way in — so

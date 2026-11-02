@@ -48,6 +48,12 @@ describe("CommandPalette", () => {
     expect(undo.run).toHaveBeenCalledTimes(1);
   });
 
+  it("opens with the search focused, and keeps it there, so the keyboard comes up", () => {
+    publish([]);
+    render(<CommandPalette showTabs />);
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+  });
+
   it("says so when nothing can act", () => {
     publish([]);
     render(<CommandPalette showTabs />);

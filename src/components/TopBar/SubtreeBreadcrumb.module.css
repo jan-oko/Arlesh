@@ -99,6 +99,44 @@
   min-width: 0;
 }
 
+/* The phone's portrait `‹`: a transparent touch target of at least 40 x 40 px around a glyph that
+   is only as tall as a capital letter of the title's font (`cap`, with 0.7em where the unit is
+   missing), centred on the title's line. */
+.backChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 40px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.backGlyph {
+  height: 0.7em;
+  height: 1cap;
+  width: auto;
+  aspect-ratio: 6 / 10;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The current node's name in the portrait form is a button that opens the same menu as the
+   chevron; it keeps the title's look and is as tall as the chevron. */
+.currentButton {
+  min-height: 40px;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+}
+
 .separator {
   flex: none;
   color: var(--text-secondary);

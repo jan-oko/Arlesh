@@ -49,6 +49,7 @@ export default function NodeContextMenu({ x, y, nodeKind, parentKind = null, isC
   return (
     <div ref={ref} className={styles.menu} style={{ left: x, top: y }}>
       {canEnter && item(t("enterSubtree"), "enter")}
+      {item(t("edit"), "edit")}
       {item(t("rename"), "rename")}
       <div className={styles.separator} />
       {item(t("cut"), "cut")}

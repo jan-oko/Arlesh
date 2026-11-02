@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useDisplayStore } from "@/stores/use-display-store";
 import Switch from "@/components/Switch/Switch";
+import SystemBarsSettings from "./SystemBarsSettings";
 import HabitCollapseSetting from "./HabitCollapseSetting";
 import styles from "./SettingsModal.module.css";
 
@@ -45,6 +46,7 @@ export default function GeneralPage({ onOpenHotkeys }: Props) {
         onChange={toggleSearchIncludesArchived}
         label={t("searchIncludesArchived")}
       />
+      <SystemBarsSettings />
       <HabitCollapseSetting />
       <div>
         <button className={styles.button} type="button" onClick={onOpenHotkeys}>

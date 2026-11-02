@@ -4,6 +4,7 @@ import { connectToServer, keychainAvailable, testServer, runStandalone } from "@
 import type { ServerCheck } from "@/api/client-mode";
 import { getErrorMessage } from "@/api/errors";
 import { useClientModeStore } from "@/stores/use-client-mode-store";
+import ServerStatusLine from "./ServerStatusLine";
 import styles from "./SettingsModal.module.css";
 import own from "./ServerPage.module.css";
 
@@ -55,7 +56,7 @@ export default function ServerPage() {
   return (
     <div className={styles.page}>
       <p className={styles.note}>{t("page.intro")}</p>
-      <p>{t("page.current", { mode: t(isClient ? "mode.client" : "mode.standalone") })}</p>
+      <ServerStatusLine />
       <div className={own.field}>
         <label htmlFor={urlId}>{t("page.url")}</label>
         <input

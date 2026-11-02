@@ -19,3 +19,18 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Rust calls MainActivity.restartApp() by name over JNI (src/commands/client_mode.rs). Nothing in
+# Kotlin refers to it, so a release build's R8 would strip or rename it and the call would find
+# no such method: the app would never restart after a server setting changed.
+-keepclassmembers class com.atai.arlesh.MainActivity {
+    public void restartApp();
+}
+-keep class com.atai.arlesh.RestartActivity
+
+# The page calls window.ArleshBars.setSystemBars(...) (SystemBarsBridge.kt) by name through the
+# WebView's JavaScript bridge; Kotlin never calls it, so R8 would strip or rename it, and the
+# system-bars setting would silently do nothing.
+-keepclassmembers class com.atai.arlesh.SystemBarsBridge {
+    @android.webkit.JavascriptInterface <methods>;
+}

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import PlanView from "./PlanView";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
@@ -16,6 +16,7 @@ import { clearScopeRowCache } from "@/hooks/use-scope-rows";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { fixtureRowId } from "@/test/node-fixture";
+import { PHONE_LAYOUT_QUERY, TOUCH_ONLY_QUERY, TOUCH_QUERY } from "@/hooks/use-media-query";
 
 // The usual key-for-string stub, with one exception: a bucket's keyboard mnemonic is the initial
 // of its **rendered** name, so a stub that answered "planView:weekday.3" for Wednesday would give
@@ -73,6 +74,7 @@ const WINDOWS: Record<string, { start: string; end: string }> = {
 /** The scope **rows** the sectioning reads — dates, never the datetimes, which stay null. */
 const SCOPE_ROWS: Record<string, unknown> = {
   [scopeKeyText(WEEK_ID)]: { id: WEEK_ID, kind: "week", label: "W39", start_date: "2026-09-20", end_date: "2026-09-26" },
+  [scopeKeyText(NEXT_WEEK_ID)]: { id: NEXT_WEEK_ID, kind: "week", label: "W40", start_date: "2026-09-27", end_date: "2026-10-03" },
   [scopeKeyText(DAY_ID)]: { id: DAY_ID, kind: "day", label: "D", start_date: "2026-09-22", end_date: "2026-09-22" },
   [scopeKeyText(LATER_DAY_ID)]: { id: LATER_DAY_ID, kind: "day", label: "D", start_date: "2026-09-24", end_date: "2026-09-24" },
 };
@@ -227,7 +229,7 @@ beforeEach(() => {
   // tests are about. The ones that are about it set the switches back.
   useDisplayStore.setState({
     planCandidatesPathGrouping: false, planCandidatesParentOnly: false,
-    planSplitBySubscope: false, planIncludePremorning: false,
+    planSplitBySubscope: false, planIncludePremorning: false, planPhoneTabs: true,
   });
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
   useMindmapStore.setState({ subtreeRootId: null, pendingToast: null });
@@ -891,5 +893,554 @@ describe("selecting more than one row", () => {
     await settle();
     expect(updateTask).toHaveBeenCalledTimes(2);
     expect(updateTask).toHaveBeenCalledWith(3, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+  });
+});
+
+/** A finger down at `from` and up at `to`, with nothing in between that takes time. */
+function stroke(element: Element, from: [number, number], to: [number, number]): void {
+  const at = (x: number, y: number) => ({ target: element, clientX: x, clientY: y });
+  fireEvent.touchStart(element, { touches: [at(...from)] });
+  fireEvent.touchMove(element, { touches: [at(...to)] });
+  fireEvent.touchEnd(element, { touches: [], changedTouches: [at(...to)] });
+}
+
+function cardElement(id: string): Element {
+  const card = document.querySelector(`[data-plan-card-id="${id}"]`);
+  if (card === null) throw new Error(`no card ${id}`);
+  return card;
+}
+
+/** A gesture runs its binding on the next tick, once the selection it made has reached the table. */
+async function nextTick(): Promise<void> {
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+}
+
+describe("on a phone", () => {
+  beforeEach(() => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === TOUCH_QUERY || query === PHONE_LAYOUT_QUERY,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const tasks = () => mockRows([
+    row(n("task-1", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } })),
+    row(n("task-2", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } })),
+  ]);
+
+  it("stacks the candidates above the planned pane", async () => {
+    tasks();
+    await renderPlanView();
+    const candidates = document.querySelector('[data-plan-pane="candidates"]');
+    const planned = document.querySelector('[data-plan-pane="planned"]');
+    if (candidates === null || planned === null) throw new Error("a pane is missing");
+    expect(candidates.compareDocumentPosition(planned)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  /** The time a card takes to fly out, plus a little. */
+  const flightMs = 260;
+  // Outside `act`: the gesture's own timers must run on the real clock, and a binding it fires
+  // reads the selection the swipe just made after React has committed it, which `act` would defer.
+  async function afterFlight(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, flightMs));
+  }
+
+  it("does not step or climb the scope with a swipe on the planned pane", async () => {
+    tasks();
+    await renderPlanView();
+    const pane = document.querySelector('[data-plan-pane="planned"]');
+    if (pane === null) throw new Error("no planned pane");
+    await act(async () => { stroke(pane, [60, 10], [200, 12]); });
+    await act(async () => { stroke(pane, [100, 100], [100, 60]); });
+    await act(async () => { stroke(cardElement("task-2"), [100, 100], [100, 60]); });
+    await afterFlight();
+    expect(scopeContaining).not.toHaveBeenCalledWith("week", "2026-09-27");
+    expect(scopeContaining).not.toHaveBeenCalledWith("week", "2026-09-13");
+    expect(scopeContaining).not.toHaveBeenCalledWith("month", expect.any(String));
+  });
+
+  it("moves a planned card back to the to-plan pane with a swipe left on it", async () => {
+    tasks();
+    await renderPlanView();
+    await act(async () => { stroke(cardElement("task-2"), [200, 10], [60, 12]); });
+    await afterFlight();
+    await nextTick();
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+    expect(updateTask).not.toHaveBeenCalledWith(1, expect.anything());
+  });
+
+  it("slides the card with the finger, flies it out past the threshold and fires after", async () => {
+    tasks();
+    await renderPlanView();
+    const card = cardElement("task-2");
+    if (!(card instanceof HTMLElement)) throw new Error("not an element");
+    const at = (x: number) => ({ target: card, clientX: x, clientY: 10 });
+    fireEvent.touchStart(card, { touches: [at(200)] });
+    fireEvent.touchMove(card, { touches: [at(150)] });
+    expect(card.style.transform).toBe("translateX(-50px)");
+    fireEvent.touchMove(card, { touches: [at(60)] });
+    expect(card.style.transform).toBe("translateX(-140px)");
+    fireEvent.touchEnd(card, { touches: [], changedTouches: [at(60)] });
+    expect(card.style.opacity).toBe("0");
+    expect(card.style.transform).not.toBe("translateX(-140px)");
+    expect(updateTask).not.toHaveBeenCalled();
+    await afterFlight();
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+  });
+
+  it("springs the card back, and does nothing, when the swipe stops short of the threshold", async () => {
+    tasks();
+    await renderPlanView();
+    const card = cardElement("task-2");
+    if (!(card instanceof HTMLElement)) throw new Error("not an element");
+    const at = (x: number) => ({ target: card, clientX: x, clientY: 10 });
+    fireEvent.touchStart(card, { touches: [at(200)] });
+    fireEvent.touchMove(card, { touches: [at(170)] });
+    expect(card.style.transform).toBe("translateX(-30px)");
+    fireEvent.touchEnd(card, { touches: [], changedTouches: [at(170)] });
+    expect(card.style.transform).toBe("");
+    await afterFlight();
+    expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it("neither slides nor waits when the system asks for reduced motion", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === TOUCH_QUERY || query === PHONE_LAYOUT_QUERY || query === "(prefers-reduced-motion: reduce)",
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    tasks();
+    await renderPlanView();
+    const card = cardElement("task-2");
+    if (!(card instanceof HTMLElement)) throw new Error("not an element");
+    const at = (x: number) => ({ target: card, clientX: x, clientY: 10 });
+    fireEvent.touchStart(card, { touches: [at(200)] });
+    fireEvent.touchMove(card, { touches: [at(60)] });
+    expect(card.style.transform).toBe("");
+    fireEvent.touchEnd(card, { touches: [], changedTouches: [at(60)] });
+    await nextTick();
+    await settle();
+    expect(card.style.opacity).toBe("");
+    expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+  });
+
+  it("plans a candidate into the scope with a swipe left too, not setting Started", async () => {
+    tasks();
+    await renderPlanView();
+    const card = cardElement("task-1");
+    if (!(card instanceof HTMLElement)) throw new Error("not an element");
+    const at = (x: number) => ({ target: card, clientX: x, clientY: 10 });
+    fireEvent.touchStart(card, { touches: [at(200)] });
+    fireEvent.touchMove(card, { touches: [at(60)] });
+    // It follows the finger and leaves in the swipe's direction.
+    expect(card.style.transform).toBe("translateX(-140px)");
+    fireEvent.touchEnd(card, { touches: [], changedTouches: [at(60)] });
+    expect(card.style.opacity).toBe("0");
+    await afterFlight();
+    await nextTick();
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+    expect(updateTask).not.toHaveBeenCalledWith(1, expect.objectContaining({ status: expect.anything() }));
+  });
+
+  it("takes a planned card out with a swipe right too, not advancing its status", async () => {
+    tasks();
+    await renderPlanView();
+    await act(async () => { stroke(cardElement("task-2"), [60, 10], [200, 12]); });
+    await afterFlight();
+    await nextTick();
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+    expect(updateTask).not.toHaveBeenCalledWith(2, expect.objectContaining({ status: expect.anything() }));
+    expect(updateTask).not.toHaveBeenCalledWith(1, expect.anything());
+  });
+
+  it("plans a candidate into the scope with a swipe right on it", async () => {
+    tasks();
+    await renderPlanView();
+    await act(async () => { stroke(cardElement("task-1"), [60, 10], [200, 12]); });
+    await afterFlight();
+    await nextTick();
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+  });
+
+  describe("the subscope split and the finger's drag", () => {
+    const HOLD_MS = 560;
+    const at = (element: Element, x: number, y: number) => ({ target: element, clientX: x, clientY: y });
+    const sleep = (ms: number) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
+
+    /** Holds `card`, moves to `to` (which `elementFromPoint` then reports) and lifts. */
+    async function holdAndDrag(card: Element, to: Element | null | (() => Element | null), lift = true): Promise<void> {
+      // A function is asked at each move, so a target that only exists once the drag has begun (the
+      // overlay's tiles) can be named.
+      Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => (typeof to === "function" ? to() : to) });
+      fireEvent.touchStart(card, { touches: [at(card, 100, 100)] });
+      await sleep(HOLD_MS);
+      fireEvent.touchMove(card, { touches: [at(card, 100, 140)] });
+      // The overlay is drawn after the drag begins, so the finger's next move is the first over it.
+      fireEvent.touchMove(card, { touches: [at(card, 100, 150)] });
+      if (lift) fireEvent.touchEnd(card, { touches: [], changedTouches: [at(card, 100, 150)] });
+    }
+    afterEach(() => { Reflect.deleteProperty(document, "elementFromPoint"); });
+    /** The overlay's tile for the day at `index` of the week (0 is Sunday). */
+    const tile = (index: number): Element | null => document.querySelectorAll("[data-plan-tile]")[index] ?? null;
+
+    it("offers the same split switch in the planned pane's menu, and splits it into buckets", async () => {
+      useDisplayStore.setState({ planSplitBySubscope: true, planPhoneTabs: false });
+      mockRows([row(n("task-2", "task", { plan: { start_id: DAY_ID, end_id: DAY_ID } }))]);
+      await renderPlanView();
+      expect(headingsIn("planned")).toHaveLength(7);
+      const planned = document.querySelector('[data-plan-pane="planned"]');
+      if (!(planned instanceof HTMLElement)) throw new Error("no planned pane");
+      fireEvent.click(within(planned).getByRole("button", { name: /paneOptions/ }));
+      expect(within(planned).getByText("planView:optionSubscopeSplit")).toBeInTheDocument();
+      expect(within(planned).getByText("planView:optionPhoneTabs")).toBeInTheDocument();
+    });
+
+    it("drags a to-plan card onto a bucket: it is planned into that day", async () => {
+      useDisplayStore.setState({ planSplitBySubscope: true });
+      mockRows([row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+      await renderPlanView();
+      await holdAndDrag(cardElement("task-5"), () => tile(1));
+      await settle();
+      expect(resolveScope).toHaveBeenCalledWith({ kind: "day", date: "2026-09-21" });
+      expect(updateTask).toHaveBeenCalled();
+    });
+
+    it("lights the bucket under the finger while it is held, and not the pane around it", async () => {
+      useDisplayStore.setState({ planSplitBySubscope: true });
+      mockRows([row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+      await renderPlanView();
+      await holdAndDrag(cardElement("task-5"), () => tile(1), false);
+      expect(tile(1)?.className).toContain("tileOver");
+      expect(tile(2)?.className).not.toContain("tileOver");
+      const paneElement = document.querySelector('[data-plan-pane="planned"]');
+      expect(paneElement?.className).not.toContain("paneOver");
+    });
+
+    it("drags a to-plan card onto the planned pane when it is not split: it is planned into the scope", async () => {
+      tasks();
+      await renderPlanView();
+      const planned = document.querySelector('[data-plan-pane="planned"]');
+      if (planned === null) throw new Error("no planned pane");
+      await holdAndDrag(cardElement("task-1"), planned);
+      await settle();
+      expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+    });
+
+    it("drags a planned card onto the to-plan pane: it is taken out", async () => {
+      tasks();
+      await renderPlanView();
+      const candidates = document.querySelector('[data-plan-pane="candidates"]');
+      if (candidates === null) throw new Error("no candidates pane");
+      await holdAndDrag(cardElement("task-2"), candidates);
+      await settle();
+      expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+      expect(updateTask).not.toHaveBeenCalledWith(1, expect.anything());
+    });
+
+    it("drops nothing when the finger lifts over no target", async () => {
+      tasks();
+      await renderPlanView();
+      await holdAndDrag(cardElement("task-1"), null);
+      await settle();
+      expect(updateTask).not.toHaveBeenCalled();
+    });
+
+    it("does not drag when the hold is released without moving: that is the long-press", async () => {
+      tasks();
+      await renderPlanView();
+      const card = cardElement("task-1");
+      fireEvent.touchStart(card, { touches: [at(card, 100, 100)] });
+      await sleep(HOLD_MS);
+      fireEvent.touchEnd(card, { touches: [], changedTouches: [at(card, 100, 100)] });
+      await settle();
+      expect(updateTask).not.toHaveBeenCalled();
+      expect(card.className).toContain("cardSelected");
+    });
+
+    it("hands the card to the finger on a touch-only device instead of the browser's drag", async () => {
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        matches: query === TOUCH_ONLY_QUERY || query === TOUCH_QUERY || query === PHONE_LAYOUT_QUERY,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }));
+      tasks();
+      await renderPlanView();
+      expect(cardElement("task-1").getAttribute("draggable")).toBe("false");
+    });
+  });
+});
+
+describe("the phone's split planned pane", () => {
+  const TUESDAY = { plan: { start_id: DAY_ID, end_id: DAY_ID } };
+  const THURSDAY = { plan: { start_id: LATER_DAY_ID, end_id: LATER_DAY_ID } };
+  const HOLD_MS = 560;
+  const FLIGHT_MS = 260;
+  const at = (element: Element, x: number, y: number) => ({ target: element, clientX: x, clientY: y });
+  const sleep = (ms: number) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
+
+  beforeEach(() => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === TOUCH_QUERY || query === PHONE_LAYOUT_QUERY,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    useDisplayStore.setState({ planSplitBySubscope: true });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(document, "elementFromPoint");
+  });
+
+  /** The tile and tab names start with the weekday; the rest is the bucket's own date. */
+  const labels = (elements: Element[]) => elements.map((element) => (element.textContent ?? "").split(" ")[0]);
+  const tiles = () => [...document.querySelectorAll<HTMLElement>("[data-plan-tile]")];
+  const tabs = () => screen.queryAllByRole("tab");
+
+  /** Holds `card`, moves to wherever `to` points and lifts (or not). */
+  async function holdAndDrag(card: Element, to: () => Element | null, lift = true): Promise<void> {
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => to() });
+    fireEvent.touchStart(card, { touches: [at(card, 100, 100)] });
+    await sleep(HOLD_MS);
+    fireEvent.touchMove(card, { touches: [at(card, 100, 140)] });
+    // The overlay is drawn after the drag begins, so the finger's next move is the first over it.
+    fireEvent.touchMove(card, { touches: [at(card, 100, 150)] });
+    if (lift) fireEvent.touchEnd(card, { touches: [], changedTouches: [at(card, 100, 150)] });
+  }
+
+  /** A card swiped sideways, left to fly out and fire. */
+  async function swipe(id: string): Promise<void> {
+    await act(async () => { stroke(cardElement(id), [200, 10], [60, 12]); });
+    await new Promise((resolve) => setTimeout(resolve, FLIGHT_MS));
+    await nextTick();
+    await settle();
+  }
+
+  describe("not dragging", () => {
+    it("opens on the first bucket's tab and shows only its cards, an empty bucket's tab included", async () => {
+      mockRows([row(n("task-2", "task", TUESDAY)), row(n("task-3", "task", THURSDAY))]);
+      await renderPlanView();
+      expect(labels(tabs())).toEqual([
+        "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+      ]);
+      expect(tabs()[0]).toHaveAttribute("aria-selected", "true");
+      expect(cardsIn("planned")).toEqual([]);
+      expect(headingsIn("planned")).toEqual([]);
+      expect(screen.getByText("subscopeEmpty")).toBeInTheDocument();
+    });
+
+    it("shows another bucket's cards on its tab, and keeps the tab while the scope stays", async () => {
+      mockRows([row(n("task-2", "task", TUESDAY)), row(n("task-3", "task", THURSDAY))]);
+      await renderPlanView();
+      fireEvent.click(screen.getByRole("tab", { name: /^Tuesday/ }));
+      expect(cardsIn("planned")).toEqual(["task-2"]);
+      fireEvent.click(screen.getByRole("tab", { name: /^Thursday/ }));
+      expect(cardsIn("planned")).toEqual(["task-3"]);
+      // A change that is not a scope change (a card leaving) keeps the tab.
+      mockRows([row(n("task-3", "task", THURSDAY))]);
+      fireEvent.click(screen.getByRole("tab", { name: /^Thursday/ }));
+      expect(screen.getByRole("tab", { name: /^Thursday/ })).toHaveAttribute("aria-selected", "true");
+    });
+
+    it("resets to the first bucket when the scope changes", async () => {
+      mockRows([row(n("task-3", "task", THURSDAY))]);
+      await renderPlanView();
+      fireEvent.click(screen.getByRole("tab", { name: /^Thursday/ }));
+      expect(screen.getByRole("tab", { name: /^Thursday/ })).toHaveAttribute("aria-selected", "true");
+      await act(async () => { fireEvent.click(screen.getByLabelText("nextScope")); });
+      await settle();
+      await settle();
+      expect(tabs()[0]).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByRole("tab", { name: /^Thursday/ })).toHaveAttribute("aria-selected", "false");
+    });
+
+    it("stacks every bucket under its heading when the tabs setting is off", async () => {
+      useDisplayStore.setState({ planPhoneTabs: false });
+      mockRows([row(n("task-2", "task", TUESDAY)), row(n("task-3", "task", THURSDAY))]);
+      await renderPlanView();
+      expect(tabs()).toEqual([]);
+      expect(headingsIn("planned")).toHaveLength(7);
+      expect(cardsIn("planned")).toEqual(["task-2", "task-3"]);
+    });
+
+    it("switches between the two from the planned pane's menu, and the choice is the stored setting", async () => {
+      mockRows([row(n("task-2", "task", TUESDAY))]);
+      await renderPlanView();
+      const planned = document.querySelector('[data-plan-pane="planned"]');
+      if (!(planned instanceof HTMLElement)) throw new Error("no planned pane");
+      fireEvent.click(within(planned).getByRole("button", { name: /paneOptions/ }));
+      fireEvent.click(within(planned).getByRole("checkbox", { name: "planView:optionPhoneTabs" }));
+      expect(useDisplayStore.getState().planPhoneTabs).toBe(false);
+      expect(tabs()).toEqual([]);
+      expect(headingsIn("planned")).toHaveLength(7);
+    });
+
+    it("draws the pane flat, with no tabs, while the split is off", async () => {
+      useDisplayStore.setState({ planSplitBySubscope: false });
+      mockRows([row(n("task-2", "task", TUESDAY))]);
+      await renderPlanView();
+      expect(tabs()).toEqual([]);
+      expect(cardsIn("planned")).toEqual(["task-2"]);
+    });
+  });
+
+  describe("the drop overlay while a card is dragged", () => {
+    const TASK = () => mockRows([
+      row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } })),
+      row(n("task-2", "task", TUESDAY)),
+    ]);
+
+    it("covers the planned pane only, with one label-only tile per bucket in calendar order", async () => {
+      TASK();
+      await renderPlanView();
+      expect(tiles()).toEqual([]);
+      await holdAndDrag(cardElement("task-5"), () => null, false);
+      expect(labels(tiles())).toEqual([
+        "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+      ]);
+      const overlays = document.querySelectorAll("[data-plan-overlay]");
+      expect(overlays).toHaveLength(1);
+      expect(overlays[0]?.closest("[data-plan-pane]")?.getAttribute("data-plan-pane")).toBe("planned");
+      // A week is seven tiles, as 4 + 3.
+      expect(overlays[0]?.querySelector<HTMLElement>("div")?.style.gridTemplateColumns).toBe("repeat(4, minmax(0, 1fr))");
+    });
+
+    it("lights the tile under the finger, and plans into it on lift", async () => {
+      TASK();
+      await renderPlanView();
+      await holdAndDrag(cardElement("task-5"), () => tiles()[1] ?? null, false);
+      expect(tiles()[1]?.className).toContain("tileOver");
+      expect(tiles()[2]?.className).not.toContain("tileOver");
+      fireEvent.touchEnd(cardElement("task-5"), { touches: [], changedTouches: [at(cardElement("task-5"), 100, 150)] });
+      await settle();
+      expect(resolveScope).toHaveBeenCalledWith({ kind: "day", date: "2026-09-21" });
+      expect(updateTask).toHaveBeenCalledWith(5, expect.anything());
+      expect(document.querySelector("[data-plan-overlay]")).toBeNull();
+    });
+
+    it("dims the tile of the bucket the card sits in, and dropping there cancels", async () => {
+      TASK();
+      await renderPlanView();
+      fireEvent.click(screen.getByRole("tab", { name: /^Tuesday/ }));
+      await holdAndDrag(cardElement("task-2"), () => tiles()[2] ?? null, false);
+      expect(tiles()[2]).toHaveAttribute("aria-disabled", "true");
+      expect(tiles()[1]).toHaveAttribute("aria-disabled", "false");
+      expect(tiles()[2]?.className).not.toContain("tileOver");
+      fireEvent.touchEnd(cardElement("task-2"), { touches: [], changedTouches: [at(cardElement("task-2"), 100, 150)] });
+      await settle();
+      expect(updateTask).not.toHaveBeenCalled();
+    });
+
+    it("cancels when the finger lifts anywhere else in the overlay", async () => {
+      TASK();
+      await renderPlanView();
+      await holdAndDrag(cardElement("task-5"), () => document.querySelector("[data-plan-overlay]"));
+      await settle();
+      expect(updateTask).not.toHaveBeenCalled();
+      expect(document.querySelector("[data-plan-overlay]")).toBeNull();
+    });
+
+    it("still takes a planned card out on the to-plan pane, which the overlay leaves uncovered", async () => {
+      TASK();
+      await renderPlanView();
+      fireEvent.click(screen.getByRole("tab", { name: /^Tuesday/ }));
+      await holdAndDrag(cardElement("task-2"), () => document.querySelector('[data-plan-pane="candidates"]'));
+      await settle();
+      expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+    });
+
+    it("carries the whole selection onto the tile", async () => {
+      mockRows([
+        row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } })),
+        row(n("task-6", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } })),
+      ]);
+      await renderPlanView();
+      fireEvent.click(cardElement("task-5"));
+      fireEvent.click(cardElement("task-6"), { ctrlKey: true });
+      await holdAndDrag(cardElement("task-5"), () => tiles()[3] ?? null);
+      await settle();
+      expect(updateTask).toHaveBeenCalledWith(5, expect.anything());
+      expect(updateTask).toHaveBeenCalledWith(6, expect.anything());
+    });
+
+    it("draws no overlay while the split is off", async () => {
+      useDisplayStore.setState({ planSplitBySubscope: false });
+      TASK();
+      await renderPlanView();
+      await holdAndDrag(cardElement("task-5"), () => null, false);
+      expect(document.querySelector("[data-plan-overlay]")).toBeNull();
+    });
+  });
+
+  describe("a swipe on a to-plan card with the pane split", () => {
+    const CANDIDATE = () => mockRows([row(n("task-5", "task", { plan: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+
+    it("opens the tiles instead of moving the card, and a tap on one plans it there", async () => {
+      CANDIDATE();
+      await renderPlanView();
+      await swipe("task-5");
+      expect(updateTask).not.toHaveBeenCalled();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(tiles()).toHaveLength(7);
+      expect(tiles().every((tile) => tile.getAttribute("aria-disabled") === "false")).toBe(true);
+      await act(async () => { fireEvent.click(tiles()[1] ?? document.body); });
+      await settle();
+      expect(resolveScope).toHaveBeenCalledWith({ kind: "day", date: "2026-09-21" });
+      expect(updateTask).toHaveBeenCalledWith(5, expect.anything());
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("cancels on a tap outside the tiles", async () => {
+      CANDIDATE();
+      await renderPlanView();
+      await swipe("task-5");
+      fireEvent.pointerDown(document.querySelector('[data-plan-pane="candidates"]') ?? document.body);
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(updateTask).not.toHaveBeenCalled();
+    });
+
+    it("does not cancel on a press that lands on a tile", async () => {
+      CANDIDATE();
+      await renderPlanView();
+      await swipe("task-5");
+      fireEvent.pointerDown(tiles()[1] ?? document.body);
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("cancels on Escape, which is what Android's back delivers to the topmost dialog", async () => {
+      CANDIDATE();
+      await renderPlanView();
+      await swipe("task-5");
+      const { dismissTopSheet } = await import("@/utils/dismiss-sheet");
+      act(() => { dismissTopSheet(); });
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(updateTask).not.toHaveBeenCalled();
+    });
+
+    it("still takes a planned card out with a swipe", async () => {
+      mockRows([row(n("task-2", "task", TUESDAY))]);
+      await renderPlanView();
+      fireEvent.click(screen.getByRole("tab", { name: /^Tuesday/ }));
+      await swipe("task-2");
+      expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("moves the card across as before when the split is off", async () => {
+      useDisplayStore.setState({ planSplitBySubscope: false });
+      mockRows([row(n("task-5", "task", { timeScope: { start_id: WEEK_ID, end_id: WEEK_ID } }))]);
+      await renderPlanView();
+      await swipe("task-5");
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(updateTask).toHaveBeenCalledWith(5, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+    });
   });
 });

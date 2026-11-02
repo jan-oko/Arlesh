@@ -3,9 +3,11 @@ import { useTouchGestures } from "@/hooks/use-touch-gestures";
 import type { TouchGestureHandlers } from "@/hooks/use-touch-gestures";
 import { useHasTouch } from "@/hooks/use-media-query";
 import { allSurfaceCommands, firstRunnable, useCommandSurfaceStore } from "@/stores/use-command-surface-store";
-import { usePaletteStore } from "@/stores/use-palette-store";
+import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useSelectModeStore } from "@/stores/use-select-mode-store";
-import { ADVANCE_IDS, OPEN_EDITOR_IDS, TOGGLE_STARTED_IDS } from "@/utils/touch/command-ids";
+import { currentReadOnlyReason } from "@/hooks/use-board-read-only";
+import { gateWrites } from "@/utils/touch/writes";
+import { ADVANCE_IDS, OPEN_EDITOR_IDS, TOGGLE_STARTED_IDS, UP_IDS } from "@/utils/touch/command-ids";
 
 /** What a view tells the shared gestures about its selection and its "go into". */
 export interface ViewGestureOptions {
@@ -16,8 +18,14 @@ export interface ViewGestureOptions {
   isSelected: (id: string) => boolean;
   select: (id: string) => void;
   deselect: () => void;
-  /** The double-tap: the view's own "go into" (enter, step into, narrow Under, open in List). */
+  /** The double-tap: the view's own "go into" (enter the subtree, step into, open in List). */
   goInto: (id: string) => void;
+  /**
+   * Whether this node has nothing beneath it. A double-tap on a leaf opens its editor instead of
+   * going into it (a leaf has no subtree to enter). Absent: every node is gone into — the Mindmap,
+   * where entering a leaf stays allowed.
+   */
+  isLeaf?: (id: string) => boolean;
   /** Adds a node to the selection or takes it out — the Select toggle. Absent: a single selection. */
   toggleInSelection?: (id: string) => void;
   /** A swipe the view answers itself; returns whether it did. Unanswered, a swipe advances or starts. */
@@ -26,12 +34,28 @@ export interface ViewGestureOptions {
   onFlickUp?: (id: string | null, target: Element) => boolean;
   /** Whether a sideways move slides the row under the finger. */
   slidesRows?: boolean;
+  /**
+   * Whether this swipe takes the card out of its place, so it flies out instead of nudging. A
+   * swipe that is a write does not fly on a read-only board: nothing would follow it.
+   */
+  flysOut?: (id: string, direction: "left" | "right") => boolean;
   holdDrag?: TouchGestureHandlers["holdDrag"];
+}
+
+/** A drag moves a node, which is a write: on a read-only board it does not start. */
+function gatedDrag(drag: NonNullable<TouchGestureHandlers["holdDrag"]>): NonNullable<TouchGestureHandlers["holdDrag"]> {
+  const writable = () => currentReadOnlyReason() === null;
+  return {
+    start: (id, x, y) => { if (writable()) drag.start(id, x, y); },
+    move: (x, y) => { if (writable()) drag.move(x, y); },
+    end: (x, y) => { if (writable()) drag.end(x, y); },
+  };
 }
 
 /** Runs the first of `ids` that can act now — a gesture with no selection to wait for. */
 export function runFirst(ids: readonly string[]): void {
-  firstRunnable(allSurfaceCommands(useCommandSurfaceStore.getState().tables), ids)?.run();
+  const commands = gateWrites(allSurfaceCommands(useCommandSurfaceStore.getState().tables), currentReadOnlyReason() !== null);
+  firstRunnable(commands, ids)?.run();
 }
 
 /**
@@ -44,14 +68,13 @@ export function runAfterSelect(ids: readonly string[]): void {
 
 /**
  * The gestures every view shares (`docs/spec/touch.md`), on whatever touchscreen is present: tap
- * selects and tapping the selection again deselects, double-tap goes into, long-press opens the
- * palette, a flick up opens the editor, and a swipe right advances while a swipe left sets Started.
+ * selects and tapping the selection again deselects, double-tap goes into a node with a subtree (and opens a leaf's editor, outside the Mindmap), long-press selects the
+ * node for its quick action menu, a flick up opens the editor, and a swipe right advances while a swipe left sets Started.
  * Each acts by selecting the node and running the binding its key would — the same guard and the
  * same refusal — so a gesture can do nothing the keyboard cannot.
  */
 export function useViewGestures(containerRef: RefObject<HTMLElement | SVGElement | null>, options: ViewGestureOptions): void {
   const hasTouch = useHasTouch();
-  const openPalette = usePaletteStore((s) => s.open);
 
   function selectOnly(id: string | null): void {
     if (id !== null && !options.isSelected(id)) options.select(id);
@@ -68,11 +91,18 @@ export function useViewGestures(containerRef: RefObject<HTMLElement | SVGElement
       if (options.isSelected(id)) options.deselect();
       else options.select(id);
     },
-    onDoubleTap: (id) => { if (id !== null) options.goInto(id); },
-    onLongPress: (id) => {
-      selectOnly(id);
-      openPalette();
+    onDoubleTap: (id) => {
+      if (id === null) return;
+      if (options.isLeaf?.(id) === true) {
+        selectOnly(id);
+        runAfterSelect(OPEN_EDITOR_IDS);
+        return;
+      }
+      options.goInto(id);
     },
+    // The node's own quick action menu is what the long-press opens (the webview's `contextmenu`,
+    // which the node handles); the palette is the top bar's free square, not a second answer here.
+    onLongPress: (id) => selectOnly(id),
     onFlickUp: (id, target) => {
       if (options.onFlickUp?.(id, target) === true || id === null) return;
       selectOnly(id);
@@ -85,7 +115,15 @@ export function useViewGestures(containerRef: RefObject<HTMLElement | SVGElement
     },
     // The selected node's tap waits: it may be the first half of a double-tap's "go into".
     defersTap: (id) => options.isSelected(id) && !useSelectModeStore.getState().active,
-    ...(options.holdDrag === undefined ? {} : { holdDrag: options.holdDrag }),
+    // Two fingers up is the Up action (the breadcrumb's parent step) and three fingers tapping is
+    // full screen. Both are read by `useTouchGestures` apart from the one-finger gestures, and a
+    // two-finger move that changes the fingers' spread is a pinch, not this.
+    onTwoFingerUp: () => runFirst(UP_IDS),
+    onThreeFingerTap: () => useFullscreenStore.getState().toggle(),
+    ...(options.flysOut === undefined ? {} : {
+      flysOut: (id, direction) => currentReadOnlyReason() === null && options.flysOut?.(id, direction) === true,
+    }),
+    ...(options.holdDrag === undefined ? {} : { holdDrag: gatedDrag(options.holdDrag) }),
   };
 
   useTouchGestures(containerRef, handlers, {

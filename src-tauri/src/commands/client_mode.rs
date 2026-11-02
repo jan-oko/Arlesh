@@ -131,21 +131,21 @@ pub async fn connect_to_server<R: Runtime>(
     vault::store(&state.app_dir, &url, &token, token_in_file)
         .map_err(|error| WireError::internal(error.to_string()))?;
     save(&state, &Mode::Client { url, token_in_file })?;
-    restart(&app)
+    restart(&app).await
 }
 
 /// Runs this device Standalone: the first-run chooser's *This device only*, or Settings → Server
 /// switching back. Restarts when the app is running as a Client; the local database was left
 /// untouched while it was.
 #[tauri::command]
-pub fn use_standalone<R: Runtime>(
+pub async fn use_standalone<R: Runtime>(
     app: tauri::AppHandle<R>,
     state: State<'_, ClientModeState>,
 ) -> Result<(), WireError> {
     save(&state, &Mode::Standalone)?;
     *state.first_run() = false;
     if matches!(state.mode, Mode::Client { .. }) {
-        restart(&app)?;
+        restart(&app).await?;
     }
     Ok(())
 }
@@ -154,28 +154,48 @@ pub fn use_standalone<R: Runtime>(
 /// on Android that only exits the app, so the activity is asked to start a new process (see
 /// `MainActivity.restartApp`).
 #[cfg(not(target_os = "android"))]
-fn restart<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), WireError> {
+async fn restart<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), WireError> {
     app.restart()
 }
 
 #[cfg(target_os = "android")]
-fn restart<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), WireError> {
+async fn restart<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), WireError> {
+    use std::time::Duration;
+
     let window = app
         .webview_windows()
         .into_values()
         .next()
         .ok_or_else(|| WireError::internal("no window to restart the app from"))?;
+    // `exec` only queues the closure for the main thread and returns, so the outcome comes back
+    // over a channel: a restart that did not happen is an error the person sees, not a log line.
+    // A restart that did happen kills this process, and the answer is never read.
+    let (sender, receiver) = tokio::sync::oneshot::channel::<Result<(), String>>();
     window
-        .with_webview(|webview| {
-            webview.jni_handle().exec(|env, activity, _| {
-                if let Err(error) = env.call_method(activity, "restartApp", "()V", &[]) {
-                    // Leave the exception pending and the next JNI call fails with it.
-                    let _ = env.exception_clear();
-                    tracing::error!(error = %error, "the app could not be restarted");
-                }
+        .with_webview(move |webview| {
+            webview.jni_handle().exec(move |env, activity, _| {
+                let outcome = match env.call_method(activity, "restartApp", "()V", &[]) {
+                    Ok(_) => Ok(()),
+                    Err(error) => {
+                        // Leave the exception pending and the next JNI call fails with it.
+                        let _ = env.exception_clear();
+                        tracing::error!(error = %error, "the app could not be restarted");
+                        Err(error.to_string())
+                    }
+                };
+                let _ = sender.send(outcome);
             });
         })
-        .map_err(|error| WireError::internal(format!("could not restart the app: {error}")))
+        .map_err(|error| WireError::internal(format!("could not restart the app: {error}")))?;
+    match tokio::time::timeout(Duration::from_secs(10), receiver).await {
+        Ok(Ok(Ok(()))) => Ok(()),
+        Ok(Ok(Err(error))) => Err(WireError::internal(format!(
+            "could not restart the app: {error}; close and reopen it to use the new setting"
+        ))),
+        Ok(Err(_)) | Err(_) => Err(WireError::internal(
+            "the app did not restart; close and reopen it to use the new setting",
+        )),
+    }
 }
 
 fn save(state: &ClientModeState, mode: &Mode) -> Result<(), WireError> {

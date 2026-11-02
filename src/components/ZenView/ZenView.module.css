@@ -48,3 +48,17 @@
   color: var(--text-secondary);
   font-family: var(--font-sans);
 }
+
+/* The phone's column: the cards share the area's height and fill it, none shorter than its content.
+   The area becomes a flex column and the list takes at least all of it (and grows past it, so the
+   area scrolls, when the cards at their content height do not fit). */
+.gridAreaStacked {
+  display: flex;
+  flex-direction: column;
+}
+
+.gridStacked {
+  flex: 1 0 auto;
+  flex-direction: column;
+  flex-wrap: nowrap;
+}

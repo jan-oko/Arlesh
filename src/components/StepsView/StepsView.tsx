@@ -35,7 +35,7 @@ import type { TypedChildKind } from "@/utils/node-meta";
 import { neighbourAfterDelete } from "@/utils/neighbour-after-delete";
 import {
   CARD_GAP, HEADER_CURSOR, STEPS_ZOOM_LEVELS, cardSizeForZoom, childCursor, clampPage, moveAcrossPages,
-  pageCount, pageSlice, resolveGrid, shownPage,
+  pageCount, pageSlice, phoneFillGrid, resolveGrid, shownPage,
 } from "@/utils/steps-grid";
 import type { StepCursor, StepDirection, StepsZoom } from "@/utils/steps-grid";
 import type { StepsTarget } from "@/utils/hotkeys/steps-bindings";
@@ -61,8 +61,12 @@ import styles from "./StepsView.module.css";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
 import { runFirst, useViewGestures } from "@/hooks/use-view-gestures";
 import { usePinchSteps } from "@/hooks/use-pinch-steps";
-import { useHasTouch } from "@/hooks/use-media-query";
+import { useDisplayStore } from "@/stores/use-display-store";
+import { useHasTouch, usePhoneLayout } from "@/hooks/use-media-query";
 import touchStyles from "@/styles/touch-surface.module.css";
+
+/** The height the phone's Info bullets are budgeted for: its cards grow, but not without end. */
+const PHONE_CARD_HEIGHT_PX = 320;
 
 /**
  * What the Steps View has picked, held as **the card's node id** rather than its place in the grid.
@@ -200,7 +204,18 @@ export default function StepsView() {
 
   const children = filteredRoot.children;
   const { ref: childAreaRef, grid: measuredGrid } = useStepGrid(zoom);
-  const grid = resolveGrid(measuredGrid, children.length);
+  // The phone lays the Step out as one scrolling column of cards, each as tall as its content, so
+  // there is no page to turn: the grid is one page holding everything (docs/spec/touch.md).
+  // Or, by the Settings → Steps switch, a column whose cards share the screen's height, none below
+  // the zoom's card height: past that the column scrolls. Neither pages.
+  const isPhone = usePhoneLayout();
+  const fillsScreen = useDisplayStore((s) => s.stepsFillScreen);
+  const phoneLayout = !isPhone ? undefined : fillsScreen ? "fill" : "scroll";
+  const grid = phoneLayout === "scroll"
+    ? { columns: 1, rows: Math.max(1, children.length), pageSize: Math.max(1, children.length) }
+    : phoneLayout === "fill"
+      ? phoneFillGrid(children.length)
+      : resolveGrid(measuredGrid, children.length);
   const pages = pageCount(children.length, grid.pageSize);
   const selectedChildIndex = selectedChildId === null ? -1 : children.findIndex((child) => child.id === selectedChildId);
   const currentPage = shownPage(page, selectedChildIndex, children.length, grid.pageSize);
@@ -505,6 +520,7 @@ export default function StepsView() {
     select: (id) => setSelection(id === headerCardId ? { cell: "header" } : { cell: "child", nodeId: id }),
     deselect: () => setSelection(null),
     goInto: (id) => (id === headerCardId ? refuseAtBoardRoot() : onDescend(id)),
+    isLeaf: (id) => id !== headerCardId && ((findNode(tree, id) ?? findNode(filteredRoot, id))?.children.length ?? 0) === 0,
   });
   usePinchSteps(rootRef, {
     enabled: hasTouch && !isLoading && error === null,
@@ -516,6 +532,8 @@ export default function StepsView() {
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
 
   const card = cardSizeForZoom(zoom);
+  // What decides how many Info bullets a card shows. A phone card grows to hold them, up to a cap.
+  const cardHeight = phoneLayout === "scroll" ? PHONE_CARD_HEIGHT_PX : card.height;
   // The aspect this Step sits under, which every card on it is coloured from. One walk for the
   // whole Step: a Step is one place on the board, so its cards share an aspect — except at the true
   // root, where each top-level card *is* an aspect and carries its own colour.
@@ -525,6 +543,7 @@ export default function StepsView() {
     "--step-card-height": `${card.height}px`,
     "--step-card-gap": `${CARD_GAP}px`,
     "--step-columns": grid.columns,
+    "--step-rows": grid.rows,
   };
   const headerCounts = rawStepNode === null ? stepChildCounts(unfoldedRoot, tree) : cardCounts(rawStepNode);
   const stepTitle = rawStepNode?.title ?? t("stepsView:boardTitle");
@@ -565,7 +584,7 @@ export default function StepsView() {
         <StepCard
           node={rawStepNode === null ? null : filteredRoot}
           aspectColor={stepAspectColor}
-          cardHeight={card.height}
+          cardHeight={cardHeight}
           isHeader
           isSelected={cursor?.cell === "header"}
           counts={headerCounts}
@@ -600,6 +619,7 @@ export default function StepsView() {
       ) : (
         <div
           className={styles.children}
+          data-phone-layout={phoneLayout}
           ref={childAreaRef}
           role="group"
           aria-label={t("stepsView:childrenLabel")}
@@ -609,7 +629,8 @@ export default function StepsView() {
               key={child.id}
               node={child}
               aspectColor={child.color ?? stepAspectColor}
-              cardHeight={card.height}
+              cardHeight={cardHeight}
+              onStepStatus={unlessDrawing(unlessBlocked(cycleStatus))}
               isHeader={false}
               isSelected={cursor?.cell === "child" && cursor.index === index}
               counts={cardCounts(child)}

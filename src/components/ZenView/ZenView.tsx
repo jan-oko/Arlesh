@@ -56,6 +56,9 @@ import touchStyles from "@/styles/touch-surface.module.css";
 /** Where the toast saying the preset cannot change is anchored — no card, the view as a whole. */
 const PRESET_TOAST_ANCHOR = "zenView:preset";
 
+/** The card the phone sizes its text from when the cards overflow the screen (they then sit at their content height). */
+const PHONE_REFERENCE_CARD_HEIGHT_PX = 96;
+
 /**
  * The **Zen View**: what is in progress, and nothing else — the List View's Task rows under **Do**,
  * as a grid of cards sized to fill the window, with the unresolved Commitments and the open
@@ -66,7 +69,7 @@ const PRESET_TOAST_ANCHOR = "zenView:preset";
  * hooks, on a selection of its own.
  */
 export default function ZenView() {
-  const { t } = useTranslation(["common", "zenView"]);
+  const { t } = useTranslation(["common", "zenView", "listView"]);
   const {
     tree, rows, commitmentRows, expectationRows, toggleRelease, allTasksAndGoals, isLoading, error, reload,
     onCycleStatus, onToggleStarted, renameNode, createTask, deleteTask, removeNode, occurrencePrompt, confirmOccurrence, cancelOccurrence,
@@ -128,7 +131,7 @@ export default function ZenView() {
     [rows, commitmentRows, expectationRows, sharedFilter, options, focusExemptId],
   );
 
-  // The phone layout stacks the cards in one scrolling column, sized to fit (docs/spec/touch.md).
+  // The phone layout stacks the cards in one scrolling column, filling the screen's height (docs/spec/touch.md).
   const isPhone = usePhoneLayout();
   const { ref: gridRef, layout } = useZenGrid(contents.tasks.rows.length, isPhone);
   const navigation: ZenNavigationModel = useMemo(() => ({
@@ -178,10 +181,9 @@ export default function ZenView() {
     showToast,
   });
 
-  // The touch gestures. Double-tap opens the card in the List View, narrowed Under it — the List
-  // View's own "go into".
+  // The touch gestures. Double-tap enters the card's subtree and shows it in the List View; a leaf
+  // has no subtree, so it opens its editor instead.
   const rootRef = useRef<HTMLDivElement>(null);
-  const setPillSide = useListFilterStore((s) => s.setPillSide);
   const setView = useViewStore((s) => s.setView);
   useViewGestures(rootRef, {
     idAttribute: "data-row-id",
@@ -189,7 +191,8 @@ export default function ZenView() {
     isSelected: (id) => id === activeId,
     select: setSelectedId,
     deselect: () => setSelectedId(null),
-    goInto: (id) => { setPillSide("antecedent", id, "include"); setView("list"); },
+    goInto: (id) => { enterSubtree(id); setView("list"); },
+    isLeaf: (id) => (find(id)?.children.length ?? 0) === 0,
   });
 
   const selectedKind = activeId === null ? undefined : find(activeId)?.kind;
@@ -234,8 +237,10 @@ export default function ZenView() {
   if (isLoading) return <div className={styles.centered}>{t("common:loading")}</div>;
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
 
-  const showBadges = zenCardShowsBadges(layout.cardHeight, badgesSetting);
-  const text = zenTextSize(layout.cardWidth, layout.cardHeight, showBadges);
+  // The phone's cards are as tall as their content: the badge setting decides the badges, not a
+  // card height, and the text is sized from a reference card since there is no fixed one.
+  const showBadges = isPhone ? badgesSetting : zenCardShowsBadges(layout.cardHeight, badgesSetting);
+  const text = zenTextSize(layout.cardWidth, isPhone && layout.scrolls ? PHONE_REFERENCE_CARD_HEIGHT_PX : layout.cardHeight, showBadges);
 
   return (
     <div ref={rootRef} className={`${styles.container} ${touchStyles.surface}`}>
@@ -272,6 +277,8 @@ export default function ZenView() {
           exemptedIds={contents.commitments.exemptedIds}
           onSelect={setSelectedId}
           onOpenEditor={openEditor}
+          onStepGlyph={cycleVerdict}
+          stepLabel={t("listView:cycleVerdict")}
         />
         <ZenStrip
           label={t("zenView:expectationsStrip")}
@@ -283,23 +290,25 @@ export default function ZenView() {
           exemptedIds={contents.expectations.exemptedIds}
           onSelect={setSelectedId}
           onOpenEditor={openEditor}
+          onStepGlyph={toggleRelease}
+          stepLabel={t("listView:releaseToggle")}
         />
       </div>
 
       <div
         ref={(element) => { gridRef(element); gridScrollRef.current = element; }}
-        className={styles.gridArea}
+        className={`${styles.gridArea}${isPhone ? ` ${styles.gridAreaStacked}` : ""}`}
       >
         {contents.tasks.rows.length === 0 ? (
           <div className={styles.centered}>{t("zenView:empty")}</div>
         ) : (
-          <div className={styles.grid} role="list" aria-label={t("zenView:gridLabel")} style={{ gap: ZEN_GAP_PX }}>
+          <div className={`${styles.grid}${isPhone ? ` ${styles.gridStacked}` : ""}`} role="list" aria-label={t("zenView:gridLabel")} style={{ gap: ZEN_GAP_PX }}>
             {contents.tasks.rows.map((row) => (
               <ZenTaskCard
                 key={row.node.id}
                 row={row}
                 width={layout.cardWidth}
-                height={layout.cardHeight}
+                height={isPhone ? null : layout.cardHeight}
                 text={text}
                 showBadges={showBadges}
                 showOverdueBorder={showOverdueBorder}
@@ -310,6 +319,7 @@ export default function ZenView() {
                 onOpenEditor={openEditor}
                 onCommitTitle={commitTitle}
                 onCancelTitleEdit={cancelTitleEdit}
+                onCycleStatus={onCycleStatus}
                 question={isReview(row.node.taskStatus) ? openQuestion(row.node) : undefined}
                 onAnswer={nodeEditor.onAnswer}
               />

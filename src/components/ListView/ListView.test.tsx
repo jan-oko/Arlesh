@@ -11,6 +11,7 @@ import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import { DEFAULT_LIST_FILTER } from "@/utils/list-filter";
 import type { ExpectationListRow, CommitmentListRow, TaskListRow } from "@/utils/list-filter";
 import { fixtureRowId } from "@/test/node-fixture";
+import { TOUCH_QUERY } from "@/hooks/use-media-query";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import type { Verdict } from "@/api/verdict";
 import { useListData } from "@/hooks/use-list-data";
@@ -22,6 +23,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@/hooks/use-list-data");
+const { openEditor } = vi.hoisted(() => ({ openEditor: vi.fn() }));
 vi.mock("@/components/MindmapView/use-node-editor", () => ({
   useNodeEditor: () => ({
     editorModal: null,
@@ -29,7 +31,7 @@ vi.mock("@/components/MindmapView/use-node-editor", () => ({
     allTags: [],
     domainNames: new Map(),
     availableForDep: [],
-    onDoubleClick: vi.fn(),
+    onDoubleClick: openEditor,
     onTaskSave: vi.fn(),
     onCommitmentSave: vi.fn(),
     checkScopeClamp: vi.fn(),
@@ -671,7 +673,7 @@ describe("ListView", () => {
     expect(useMindmapStore.getState().subtreeRootId).toBe("aspect-1");
     // The same descriptor a search-result entry publishes, so the top bar names where you landed.
     expect(useMindmapStore.getState().subtreeNav).toEqual({
-      ancestors: [{ id: null, title: "root" }],
+      ancestors: [{ id: null, title: "appName" }],
       currentTitle: "Growth",
     });
   });
@@ -874,14 +876,14 @@ describe("ListView", () => {
       fireEvent.mouseDown(screen.getByText("ARLESH"));
       // The Mindmap is unmounted here, so the List View has to be the one publishing this.
       expect(useMindmapStore.getState().subtreeNav).toEqual({
-        ancestors: [{ id: null, title: "root" }],
+        ancestors: [{ id: null, title: "appName" }],
         currentTitle: "ARLESH",
       });
 
       openSearch("deeper");
       fireEvent.mouseDown(screen.getByText("Deeper"));
       expect(useMindmapStore.getState().subtreeNav).toEqual({
-        ancestors: [{ id: null, title: "root" }, { id: "project-1", title: "ARLESH" }],
+        ancestors: [{ id: null, title: "appName" }, { id: "project-1", title: "ARLESH" }],
         currentTitle: "Deeper",
       });
     });
@@ -1776,6 +1778,8 @@ describe("ListView — expectations", () => {
     mockUseListData.mockReturnValue(listData({ expectationRows: [waitRow()], rows: [], toggleRelease }));
     render(<ListViewInApp />);
     fireEvent.click(screen.getByRole("button", { name: "releaseToggle" }));
+    // The status control releases the wait and selects it, so Enter acts on it next.
+    expect(toggleRelease.mock.calls).toEqual([["wait-1"]]);
     fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
     fireEvent.keyDown(window, { key: "l", code: "KeyL" });
     expect(toggleRelease.mock.calls).toEqual([["wait-1"], ["wait-1"]]);
@@ -1837,5 +1841,58 @@ describe("ListView — row kinds", () => {
     act(() => { fireEvent.keyDown(window, { key: "T", code: "KeyT", altKey: true, shiftKey: true }); });
     expect(useListFilterStore.getState().filter.kinds).toEqual(["task", "commitment", "expectation"]);
     expect(kindsOnScreen()).toEqual(["task", "commitment", "expectation"]);
+  });
+});
+
+describe("ListView — double-tap on a touchscreen", () => {
+  beforeEach(() => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === TOUCH_QUERY,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function doubleTap(rowId: string): void {
+    const element = document.querySelector(`[data-row-id="${rowId}"]`);
+    if (element === null) throw new Error(`no row ${rowId}`);
+    const at = { target: element, clientX: 10, clientY: 10 };
+    for (let tap = 0; tap < 2; tap++) {
+      fireEvent.touchStart(element, { touches: [at] });
+      fireEvent.touchEnd(element, { touches: [], changedTouches: [at] });
+    }
+  }
+
+  const antecedents = () => useListFilterStore.getState().filter.pills.antecedent.map((pill) => pill.value);
+
+  it("enters a row's subtree (not an Under pill) when it has rows beneath it", () => {
+    const aspect = n("aspect-1", "aspect");
+    const parent = n("task-1", "task", { status: "todo" });
+    mockUseListData.mockReturnValue(listData({
+      rows: [
+        row({ node: parent, ancestors: [aspect] }),
+        row({ node: n("task-2", "task", { status: "todo" }), ancestors: [aspect, parent] }),
+      ],
+    }));
+    render(<ListViewInApp />);
+    doubleTap("task-1");
+    expect(useMindmapStore.getState().subtreeRootId).toBe("task-1");
+    expect(antecedents()).toEqual([]);
+  });
+
+  it("opens a leaf's editor rather than entering it", () => {
+    const aspect = n("aspect-1", "aspect");
+    const goal = n("goal-1", "goal", { status: "active" });
+    mockUseListData.mockReturnValue(listData({
+      rows: [row({ node: n("task-3", "task", { status: "todo" }), ancestors: [aspect, goal] })],
+    }));
+    render(<ListViewInApp />);
+    openEditor.mockClear();
+    doubleTap("task-3");
+    expect(openEditor).toHaveBeenCalledWith("task-3");
+    expect(antecedents()).toEqual([]);
   });
 });

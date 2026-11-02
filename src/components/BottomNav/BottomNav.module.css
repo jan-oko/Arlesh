@@ -3,7 +3,7 @@
   flex-shrink: 0;
   background: var(--surface);
   border-top: 1px solid var(--node-border);
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--safe-bottom);
   font-family: var(--font-sans);
 }
 
@@ -30,6 +30,6 @@
 }
 
 .glyph {
-  font-size: 18px;
-  line-height: 1;
+  display: flex;
+  line-height: 0;
 }
