@@ -487,3 +487,8 @@ replaces it.
   the right: a box at inset d lies inside an arc of radius r when d >= r(1 - 1/sqrt 2) = 0.293 r,
   so 0.3 r is that bound, the safe inset covers the gesture bar, and 8 px is the margin. (412 px
   wide: radius 16 -> 12.8 px in; radius 48 with a 24 px bar -> 22.4 px right, 32 px up; radius 120 -> 44 px.)
+- **The Open and Filter search cards open lower.** On the phone the card sits a tenth of the screen's
+  height (`10dvh`) below the status bar instead of at it, and its height is what is left above that,
+  so it shrinks with the soft keyboard and the input stays above it. At 412 x 915 with a 24 px
+  status bar the card's top moved from 24 px to 115.5 px (input 25 -> 116.5 px); with the keyboard
+  up (a 549 px viewport) it opens at 78.9 px and ends at 463 px.
