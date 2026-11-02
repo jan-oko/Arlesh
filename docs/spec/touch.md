@@ -65,7 +65,9 @@ Below 700 px:
   subscope cells** (stepping through them is the scope swipe, below).
 - **The Zen View** is a vertical, scrollable list of cards in place of the grid, each **as tall as
   its content**: the whole title, the path and the badges, never clamped to a share of the screen.
-  The cards mean what the grid's mean, and act the same.
+  The cards mean what the grid's mean, and act the same. "Never clamped" holds for the path too,
+  and for the Commitment and Wait chips above the list: on the phone the path wraps and a chip's
+  title takes as many lines as it needs, rather than ending in an ellipsis.
 - **The Steps View** is one scrolling column in place of the paged grid, each card as tall as its
   content (its Info notes up to a cap). There is no page to turn, and the zoom no longer sets the
   card.

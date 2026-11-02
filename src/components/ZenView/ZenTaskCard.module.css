@@ -85,6 +85,15 @@
 
 /* The shared badge row, drawn at the card's scale: its icons are SVGs with a fixed viewBox, so
    sizing the element scales the glyph. */
+/* The phone's card is as tall as its content, and the path is part of the content: it wraps rather
+   than ending in an ellipsis, as the title does. (Measured at 412 px, a three-level path was cut
+   to 362 of 666 px.) */
+.cardFits .path {
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .badges {
   display: flex;
   align-items: center;

@@ -8,3 +8,4 @@
 - **The cheat sheet teaches the gestures on a touchscreen.** On a touch-only device it lists swipes, taps and long-presses, per view, instead of keyboard shortcuts.
 - **In portrait the path reads `‹ current node`.** The chevron opens the full path.
 - **Plan View swipes move cards with a real animation.** On the phone the card follows your finger; let go past the threshold and it slides out and moves across, let go short and it springs back (with reduced motion it just moves). Swipe a to-plan card right to plan it, swipe a planned card left to put it back in to-plan. The sideways and upward scope swipes on the planned pane are gone; the header's scope buttons stay.
+- **Nothing is cut short on the phone's Zen View.** A card's path and a Commitment or Wait chip's title wrap instead of ending in an ellipsis.
