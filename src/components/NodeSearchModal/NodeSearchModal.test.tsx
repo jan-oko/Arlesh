@@ -44,6 +44,11 @@ describe("NodeSearchModal", () => {
       expect(onClose).toHaveBeenCalledTimes(1);
     });
   });
+  it("opens with the search focused", () => {
+    render(<NodeSearchModal nodes={NODES} onSelect={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByRole("textbox")).toHaveFocus();
+  });
+
   it("shows nothing (no results, no empty message) until the user types", () => {
     render(<NodeSearchModal nodes={NODES} onSelect={vi.fn()} onClose={vi.fn()} />);
     expect(screen.queryByRole("listitem")).not.toBeInTheDocument();

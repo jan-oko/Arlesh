@@ -58,6 +58,13 @@ Below 700 px:
     menu sheet has the same close button and the same back and outside tap. Back works because it is
     delivered as an Escape to the top dialog, so a dialog must answer an Escape aimed at itself, not
     only one typed in its box.
+  - **The text prompt is focused as the modal opens.** *Open*, the *Filter* search and the command
+    palette each put the focus in their search box in the same render that draws them, inside the
+    gesture that opened them (`autoFocus`, never a timer): Android's webview raises the soft keyboard
+    for a focus made then, not after a delay. The sheet's own focus (for Escape) therefore stands
+    aside when a field inside already has it. The top bar's square also cancels the touch that
+    opened Open, so the click the browser synthesizes afterwards cannot land on the new overlay,
+    close it, or take the focus off the box.
 - **List rows take two lines**: the title on the first, the badges and meta on the second. Path
   headers stick to the top while their rows scroll beneath.
 - **The Plan View stacks its panes**: candidates on top, the planned pane at the **bottom** and a

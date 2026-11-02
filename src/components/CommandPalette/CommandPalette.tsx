@@ -56,6 +56,8 @@ export default function CommandPalette({ showTabs }: Props) {
   return (
     <BottomSheet title={t("paletteTitle")} onClose={close}>
       <input
+        // Focused as the sheet mounts, inside the gesture that opened it, so the soft keyboard rises.
+        autoFocus
         className={styles.search}
         type="search"
         value={query}

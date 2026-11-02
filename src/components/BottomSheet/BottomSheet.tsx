@@ -24,8 +24,11 @@ export default function BottomSheet({ title, onClose, children }: Props) {
   const sheetRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Into the sheet, so Escape reaches it; a field inside that wants the focus takes it after.
-    sheetRef.current?.focus();
+    // Into the sheet, so Escape reaches it — unless a field inside has already taken the focus
+    // (`autoFocus`, which React applies when it mounts, before this runs): moving it out would
+    // drop the field's focus and with it the phone's soft keyboard.
+    const sheet = sheetRef.current;
+    if (sheet !== null && !sheet.contains(document.activeElement)) sheet.focus();
   }, []);
 
   function handleKeyDown(event: KeyboardEvent) {

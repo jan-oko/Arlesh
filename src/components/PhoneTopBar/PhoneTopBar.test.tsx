@@ -173,6 +173,13 @@ describe("PhoneTopBar — the free square", () => {
     expect(open.run).toHaveBeenCalledTimes(2);
   });
 
+  it("cancels the touch's synthesized click, which would land on the overlay Open has just drawn", () => {
+    publishOpen();
+    render(<PhoneTopBar />);
+    const square = screen.getByRole("button", { name: "topBarSquare" });
+    expect(fireEvent.touchEnd(square)).toBe(false);
+  });
+
   it("ignores a lift that belongs to another pointer", () => {
     const open = publishOpen();
     render(<PhoneTopBar />);

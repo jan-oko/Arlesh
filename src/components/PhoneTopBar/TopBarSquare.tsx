@@ -86,6 +86,10 @@ export default function TopBarSquare() {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={endPress}
+      // The browser follows a tap with a synthesized mousedown and click at the same spot. By then
+      // Open's overlay is under the finger, and that click would close it again (or its mousedown
+      // take the focus off the search box, dropping the keyboard). Cancelling the touch stops them.
+      onTouchEnd={(event) => { if (event.cancelable) event.preventDefault(); }}
       onKeyDown={(event) => { if (event.key === "Enter") runFirst(OPEN_COMMAND_IDS); }}
       onContextMenu={(event) => event.preventDefault()}
     />
