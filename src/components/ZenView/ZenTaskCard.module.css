@@ -85,12 +85,13 @@
 
 /* The shared badge row, drawn at the card's scale: its icons are SVGs with a fixed viewBox, so
    sizing the element scales the glyph. */
-/* The phone's card is never shorter than its content (the path is part of it: it wraps rather than
+/* The phone's card is never shorter than its content (which is never less than the grid's
+   `ZEN_MIN_CARD_HEIGHT_PX`: a title line, a path line and the padding) (the path is part of it: it wraps rather than
    ending in an ellipsis, as the title does) and grows to share the column's height with the other
    cards, its content centred. (Measured at 412 px, a three-level path was cut to 362 of 666 px.) */
 .cardFits {
   flex: 1 1 0;
-  min-height: max(var(--zen-min-card-height, 0px), min-content);
+  min-height: min-content;
 }
 
 .cardFits .path {
