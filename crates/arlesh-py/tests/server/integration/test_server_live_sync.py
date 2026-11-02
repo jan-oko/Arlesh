@@ -8,7 +8,7 @@ import queue
 import socket
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import httpx
@@ -17,7 +17,8 @@ import uvicorn
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 
-from tests.server.conftest import ROOT_ASPECT, Start
+ROOT_ASPECT = 1
+Start = Callable[..., ArleshServer]
 
 
 @pytest.fixture
