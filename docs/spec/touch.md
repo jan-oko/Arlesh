@@ -73,11 +73,11 @@ Below 700 px:
   chip's title takes as many lines as it needs, rather than ending in an ellipsis.
 - **The Steps View** lays its cards out one of two ways, chosen under **Settings > Steps** ("Fill
   the screen on the phone", app-wide, phone layout only; the desktop grid is unaffected):
-  - **Fill the screen** (the default, as the Zen View does): one column, **paged** as the desktop
-    grid is. As many cards as fit at the zoom's card height make a page (the zoom's height is the
-    minimum: below it a card is not made smaller, the next card goes to the next page), and the
-    cards on a page share the area's height equally and fill their cells. A lone card fills the
-    area.
+  - **Fill the screen** (the default, as the Zen View does): one column of every card, **never
+    paged** (user, 2026-11-02: where the phone paginated, it scrolls). The cards share the area's
+    height equally and fill their cells, but none is shorter than the zoom's card height; when
+    they no longer fit at that height the column scrolls. A lone card fills the area. The desktop
+    grid still pages.
   - **Scroll**: one scrolling column in place of the paged grid, each card as tall as its content
     (its Info notes up to a cap). There is no page to turn, and the zoom no longer sets the card.
 - **No hover.** A tooltip's text moves into the editor or appears on a tap.

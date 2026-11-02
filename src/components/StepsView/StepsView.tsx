@@ -206,14 +206,15 @@ export default function StepsView() {
   const { ref: childAreaRef, grid: measuredGrid } = useStepGrid(zoom);
   // The phone lays the Step out as one scrolling column of cards, each as tall as its content, so
   // there is no page to turn: the grid is one page holding everything (docs/spec/touch.md).
-  // Or, by the Settings → Steps switch, a paged column whose cards share the screen's height.
+  // Or, by the Settings → Steps switch, a column whose cards share the screen's height, none below
+  // the zoom's card height: past that the column scrolls. Neither pages.
   const isPhone = usePhoneLayout();
   const fillsScreen = useDisplayStore((s) => s.stepsFillScreen);
   const phoneLayout = !isPhone ? undefined : fillsScreen ? "fill" : "scroll";
   const grid = phoneLayout === "scroll"
     ? { columns: 1, rows: Math.max(1, children.length), pageSize: Math.max(1, children.length) }
     : phoneLayout === "fill"
-      ? phoneFillGrid(measuredGrid, children.length)
+      ? phoneFillGrid(children.length)
       : resolveGrid(measuredGrid, children.length);
   const pages = pageCount(children.length, grid.pageSize);
   const selectedChildIndex = selectedChildId === null ? -1 : children.findIndex((child) => child.id === selectedChildId);

@@ -107,13 +107,14 @@ describe("on a phone", () => {
     vi.unstubAllGlobals();
   });
 
-  it("fills the screen in pages by default: a column of as many rows as fit, the rest on the next page", () => {
+  it("fills the screen by default with every card in one column and no pager: the column scrolls instead", () => {
     mockTree(8);
     render(<StepsView />);
     const area = childArea();
     expect(area?.getAttribute("data-phone-layout")).toBe("fill");
-    expect(area?.style.getPropertyValue("--step-rows") || area?.parentElement?.style.getPropertyValue("--step-rows")).toBe("3");
-    expect(drawnChildren()).toBe(3);
+    expect(area?.style.getPropertyValue("--step-rows") || area?.parentElement?.style.getPropertyValue("--step-rows")).toBe("8");
+    expect(drawnChildren()).toBe(8);
+    expect(document.querySelector("[class*='pager']")).toBeNull();
   });
 
   it("draws one scrolling column holding every card when the setting is off", () => {
