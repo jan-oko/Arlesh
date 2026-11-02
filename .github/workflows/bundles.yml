@@ -13,8 +13,9 @@ name: Bundles
 #                    The tag must equal tauri.conf.json's version, or the run
 #                    fails before building.
 #   dispatch + box   only the Android job runs, as scripts/box.py would build it locally: a
-#                    separate app beside the real one, signed with a throwaway debug key made in
-#                    the job. The release key's steps are skipped, so its secrets are never read.
+#                    separate app beside the real one, signed with the shared box key (the
+#                    ARLESH_BOX_KEYSTORE_B64 secret; a throwaway key and a warning without it).
+#                    The release key's steps are skipped, so its secrets are never read.
 #   dispatch         rolling, to the tag named by the `release_tag` input. It
 #                    exists for testing on a throwaway tag; `latest` itself is
 #                    only ever written from master. With `publish` off it builds
@@ -60,7 +61,7 @@ on:
         default: true
       box:
         description: >-
-          Build only a QA box APK of this branch (package com.atai.arlesh.box.<branch>, debug-signed,
+          Build only a QA box APK of this branch (package com.atai.arlesh.box.<branch>, signed with the box key,
           installs beside the real app); no desktop bundles, no release key, no publish
         type: boolean
         default: false
@@ -383,13 +384,16 @@ jobs:
           retention-days: 30
           compression-level: 0
 
-      # The box variant: signed with a debug key generated here, as box.py does with
-      # ~/.android/debug.keystore. No secret is referenced by this step or the upload after it.
-      - name: Sign with a debug key and stage as a box app
+      # The box variant: signed with the shared box keystore (`box.py keystore init` puts it in the
+      # ARLESH_BOX_KEYSTORE_B64 secret, so local and CI box builds update one another). Without the
+      # secret it falls back to a fresh debug key and warns. Only this step can read the secret,
+      # and it never prints it. The release key is not referenced here.
+      - name: Sign with the box key and stage as a box app
         id: box
         if: github.event_name == 'workflow_dispatch' && inputs.box
         env:
           BRANCH: ${{ github.ref_name }}
+          BOX_KEYSTORE_B64: ${{ secrets.ARLESH_BOX_KEYSTORE_B64 }}
         run: |
           set -euo pipefail
           segment=$(python3 scripts/box.py ci-patch "$BRANCH" | sed -n 's/^segment=//p')
@@ -397,16 +401,24 @@ jobs:
           echo "segment=$segment" >> "$GITHUB_OUTPUT"
           out="$RUNNER_TEMP/bundles"
           mkdir -p "$out"
-          keystore="$RUNNER_TEMP/debug.keystore"
-          keytool -genkeypair -keystore "$keystore" -storepass android -keypass android \
-            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
+          keystore="$RUNNER_TEMP/box.keystore"
+          # alias and password are fixed and public: see BOX_KEY_* in scripts/box.py
+          alias=arlesh-box
+          pass=arlesh-box
+          if [ -n "$BOX_KEYSTORE_B64" ]; then
+            printf '%s' "$BOX_KEYSTORE_B64" | base64 -d > "$keystore"
+          else
+            echo "::warning::ARLESH_BOX_KEYSTORE_B64 is not set: signing with a fresh key, so this APK will not update over a locally built box app. Run 'npm run box -- keystore init' once."
+            keytool -genkeypair -keystore "$keystore" -storepass "$pass" -keypass "$pass" \
+              -alias "$alias" -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Arlesh Box,O=Arlesh,C=US"
+          fi
           unsigned=$(find src-tauri/gen/android/app/build/outputs/apk -name '*-release-unsigned.apk' | head -1)
           [ -n "$unsigned" ] || { echo "::error::the build produced no unsigned release APK"; find src-tauri/gen/android/app/build/outputs; exit 1; }
           tools=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
           apk="$out/arlesh-box-$segment.apk"
-          "${tools}apksigner" sign --ks "$keystore" --ks-key-alias androiddebugkey \
-            --ks-pass pass:android --key-pass pass:android --out "$apk" "$unsigned"
+          "${tools}apksigner" sign --ks "$keystore" --ks-key-alias "$alias" \
+            --ks-pass "pass:$pass" --key-pass "pass:$pass" --out "$apk" "$unsigned"
           "${tools}apksigner" verify "$apk"
           "${tools}aapt2" dump badging "$apk" | grep -E "^(package|application-label):"
           rm -f "$keystore"

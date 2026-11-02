@@ -10,6 +10,8 @@
     box devices list
     box devices rm <name>
     box run <branch> [<target>] [--server <branch> | --standalone] [--no-firebase] [--force]
+            [--local | --ci] [--reinstall]
+    box keystore init [--force]
     box stop [branch ... | all]
     box clean [branch ... | all]
     box prune [<target>]
@@ -37,11 +39,29 @@ at a per-instance directory, which isolates the database, localStorage and persi
 
 Android: the package is com.atai.arlesh.box.<branch> and the label "Arlesh (<branch>)", so it
 installs beside the real app; build.gradle.kts and strings.xml are patched for the build and
-restored. The APK is signed with the debug keystore. Needs ANDROID_HOME, ANDROID_NDK_HOME and a JDK
+restored. Needs ANDROID_HOME, ANDROID_NDK_HOME and a JDK
 (ARLESH_BOX_JAVA_HOME wins over JAVA_HOME). Never pairs: pair once by hand with `adb pair`.
 Firebase, per branch: with ARLESH_BOX_FIREBASE_PROJECT set and gcloud application-default
 credentials, the package is registered as an Android app and its config written as a gitignored
 google-services.json; --no-firebase turns it off.
+
+CI builds: for an Android target whose worktree is clean, with HEAD pushed (equal to
+origin/<branch>) and a successful bundles.yml box run for exactly that commit, `run` downloads that
+run's APK (`gh run download`) instead of building, then installs, pre-binds and launches as usual.
+It is cached per commit in $XDG_STATE_HOME/arlesh/box/ci/. Otherwise, or with `--local`, it builds
+locally. `--ci` uses CI even when box would build: with no build for HEAD it triggers bundles.yml
+(box=true, publish=false) on the branch, waits with progress output, then downloads; on a dirty or
+unpushed tree it is an error. Without an authenticated gh, `run` builds locally with a notice
+(`--ci` fails). `run` says which source it used. Desktop targets always build locally.
+
+Signing: every box APK, local or CI, is signed with ONE box-only keystore, so they update one
+another. `keystore init` creates $XDG_CONFIG_HOME/arlesh/box.keystore (alias arlesh-box, password
+arlesh-box, 10000 days; a debug-grade key for com.atai.arlesh.box.* only) and uploads it base64 as
+the repo secret ARLESH_BOX_KEYSTORE_B64 with `gh secret set` (it refuses to replace an existing
+keystore without --force; rotating means reinstalling every box app). Local builds sign with it
+when it exists, else with ~/.android/debug.keystore and a notice. CI (bundles.yml box mode) signs
+with the secret when set, else with a fresh key and a warning. On INSTALL_FAILED_UPDATE_INCOMPATIBLE
+`run` stops and offers `--reinstall`, which uninstalls first (the token is re-provisioned).
 
 Servers: `server start <branch>` runs arlesh-server from that worktree's own venv, on its own port,
 over a read-only `.backup` copy of the real database. `run` on desktop connects the instance to its
@@ -69,6 +89,7 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -89,6 +110,12 @@ PUBLIC = "0.0.0.0"
 MAIN_ACTIVITY = "com.atai.arlesh.MainActivity"
 URL_EXTRA = "arlesh_box_url"
 TOKEN_EXTRA = "arlesh_box_token"
+BOX_KEY_ALIAS = "arlesh-box"
+BOX_KEY_PASSWORD = "arlesh-box"
+BOX_KEY_VALIDITY_DAYS = 10000
+BOX_KEYSTORE_SECRET = "ARLESH_BOX_KEYSTORE_B64"
+BUNDLES_WORKFLOW = "bundles.yml"
+AUTO, LOCAL, CI = "auto", "local", "ci"
 
 
 class BoxError(Exception):
@@ -1563,6 +1590,271 @@ class Firebase:
         print(f"firebase: removed {package} ({app_id})")
 
 
+# ---- Android: signing ------------------------------------------------------------------------------
+#
+# One box-only keystore signs every box APK, local or CI, so a CI build installs over a local one and
+# back. It lives at $XDG_CONFIG_HOME/arlesh/box.keystore and, base64, in the repo secret
+# ARLESH_BOX_KEYSTORE_B64 (made by `box keystore init`). Alias, password and validity are fixed:
+# it is a debug-grade key, good for com.atai.arlesh.box.* only, and carries no value.
+
+
+def box_keystore() -> Path:
+    return xdg("XDG_CONFIG_HOME", ".config") / "arlesh" / "box.keystore"
+
+
+@dataclass(frozen=True)
+class Signing:
+    keystore: Path
+    alias: str
+    password: str
+    shared: bool  # the box keystore, as opposed to the debug-keystore fallback
+
+
+def choose_signing() -> Signing:
+    """The shared box keystore when it exists, else the debug keystore (made if missing)."""
+    shared = box_keystore()
+    if shared.is_file():
+        return Signing(shared, BOX_KEY_ALIAS, BOX_KEY_PASSWORD, True)
+    ensure_debug_keystore()
+    note(
+        f"signing with {debug_keystore()}: CI and local builds are not update-compatible "
+        f"until you run `{CMD} keystore init`."
+    )
+    return Signing(debug_keystore(), "androiddebugkey", "android", False)
+
+
+def origin_repo(cwd: Path) -> str:
+    """`owner/name` of the origin remote."""
+    url = git_in(cwd, "remote", "get-url", "origin").stdout.strip()
+    found = re.search(r"([^/:]+/[^/:]+?)(?:\.git)?/?$", url)
+    if not found:
+        raise die(f"Cannot read a GitHub repository from the origin remote '{url}'.")
+    return found.group(1)
+
+
+def keystore_init(force: bool) -> None:
+    ks = box_keystore()
+    if ks.exists() and not force:
+        raise die(
+            f"{ks} exists. Keep it, or pass --force to replace it (every installed box app is "
+            "then signed with a new key and has to be reinstalled)."
+        )
+    need_cmd("keytool", "It ships with the JDK.")
+    need_cmd("gh", "Install the GitHub CLI and run `gh auth login`.")
+    if capture(["gh", "auth", "status"]).returncode != 0:
+        raise die("gh is not authenticated. Run `gh auth login`.")
+    repo = origin_repo(repo_root())
+    if ks.exists():
+        note(
+            "!! replacing the box keystore: every box app already installed (any device, local "
+            "or CI build) is signed with the old key and must be reinstalled (`run --reinstall`)."
+        )
+    ks.parent.mkdir(parents=True, exist_ok=True)
+    fresh = ks.with_name(ks.name + ".new")
+    fresh.unlink(missing_ok=True)
+    made = capture([
+        "keytool", "-genkeypair", "-keystore", str(fresh), "-storepass", BOX_KEY_PASSWORD,
+        "-keypass", BOX_KEY_PASSWORD, "-alias", BOX_KEY_ALIAS, "-keyalg", "RSA", "-keysize", "2048",
+        "-validity", str(BOX_KEY_VALIDITY_DAYS), "-dname", "CN=Arlesh Box,O=Arlesh,C=US",
+    ])  # fmt: skip
+    if made.returncode != 0 or not fresh.is_file():
+        raise die(f"keytool could not create the keystore: {made.stderr.strip()}")
+    # Upload before replacing the local file, so a failed upload leaves the old pair intact.
+    encoded = base64.b64encode(fresh.read_bytes()).decode()
+    sent = subprocess.run(
+        ["gh", "secret", "set", BOX_KEYSTORE_SECRET, "--repo", repo],
+        input=encoded, capture_output=True, text=True, check=False,
+    )  # fmt: skip
+    if sent.returncode != 0:
+        fresh.unlink(missing_ok=True)
+        raise die(f"gh secret set failed: {sent.stderr.strip()}")
+    fresh.chmod(0o600)
+    os.replace(fresh, ks)
+    print(f"created {ks} and set the secret {BOX_KEYSTORE_SECRET} on {repo}.")
+    print(
+        f"alias {BOX_KEY_ALIAS}, password {BOX_KEY_PASSWORD}: bundles.yml's box mode and local "
+        "builds now sign with the same key."
+    )
+
+
+# ---- Android: CI builds ----------------------------------------------------------------------------
+#
+# A clean, pushed tree whose HEAD has a successful bundles.yml box run needs no local build: its
+# APK is downloaded (once per commit; kept in the state dir) and goes through the usual install,
+# pre-bind and launch.
+
+
+def ci_cache_dir() -> Path:
+    return state_dir() / "ci"
+
+
+def ci_artifact(branch: str, sha: str) -> str:
+    return f"arlesh-box-{box_segment(branch)}-{sha[:7]}-android-apk"
+
+
+def ci_cached_apk(branch: str, sha: str) -> Path:
+    return ci_cache_dir() / f"{box_segment(branch)}-{sha[:7]}.apk"
+
+
+def gh_unavailable() -> str | None:
+    """Why the gh CLI cannot be used, or None."""
+    if shutil.which("gh") is None:
+        return "the gh CLI is not on PATH"
+    if capture(["gh", "auth", "status"]).returncode != 0:
+        return "gh is not authenticated (run `gh auth login`)"
+    return None
+
+
+def ci_blocker(wt: Path, branch: str) -> str | None:
+    """Why a CI build cannot stand for this tree (dirty, unpushed, detached), or None."""
+    if not branch:
+        return "HEAD is detached"
+    status = git_in(wt, "status", "--porcelain", "--untracked-files=normal").stdout
+    # The symlink to the main checkout's node_modules is box's own, not a change.
+    dirty = [ln for ln in status.splitlines() if ln[3:].rstrip("/") != "node_modules"]
+    if dirty:
+        return "the worktree has uncommitted or untracked changes"
+    head = git_in(wt, "rev-parse", "HEAD").stdout.strip()
+    remote = git_in(wt, "rev-parse", "--verify", "--quiet", f"origin/{branch}").stdout.strip()
+    if head != remote:
+        return f"HEAD is not pushed (not equal to origin/{branch})"
+    return None
+
+
+def gh_json(args: Sequence[str], cwd: Path) -> Any:
+    res = capture(["gh", *args], cwd=cwd)
+    if res.returncode != 0:
+        raise die(f"gh {' '.join(args[:2])} failed: {res.stderr.strip() or res.stdout.strip()}")
+    try:
+        return json.loads(res.stdout or "null")
+    except ValueError:
+        raise die(f"gh {' '.join(args[:2])} returned something that is not JSON.") from None
+
+
+def list_bundle_runs(wt: Path, branch: str) -> list[dict[str, Any]]:
+    runs = gh_json(
+        ["run", "list", "--workflow", BUNDLES_WORKFLOW, "--branch", branch, "--limit", "30",
+         "--json", "databaseId,headSha,status,conclusion,url,event"],
+        wt,
+    )  # fmt: skip
+    return [r for r in runs if isinstance(r, dict)] if isinstance(runs, list) else []
+
+
+def run_has_artifact(wt: Path, run_id: int, artifact: str) -> bool:
+    names = capture(
+        ["gh", "api", f"repos/{{owner}}/{{repo}}/actions/runs/{run_id}/artifacts",
+         "--jq", ".artifacts[] | select(.expired == false) | .name"],
+        cwd=wt,
+    )  # fmt: skip
+    return names.returncode == 0 and artifact in names.stdout.split()
+
+
+def find_ci_run(wt: Path, branch: str, sha: str) -> dict[str, Any] | None:
+    """A successful bundles.yml box run for exactly `sha` whose artifact is still there."""
+    artifact = ci_artifact(branch, sha)
+    for run in list_bundle_runs(wt, branch):
+        if (
+            run.get("headSha") == sha
+            and run.get("conclusion") == "success"
+            and run.get("event") == "workflow_dispatch"
+            and run_has_artifact(wt, int(run["databaseId"]), artifact)
+        ):
+            return run
+    return None
+
+
+def trigger_ci(wt: Path, branch: str, sha: str) -> dict[str, Any]:
+    """Dispatch a box build of `branch`, wait for it with progress output, return the finished run."""
+    known = {r.get("databaseId") for r in list_bundle_runs(wt, branch)}
+    fired = capture(
+        ["gh", "workflow", "run", BUNDLES_WORKFLOW, "--ref", branch, "-f", "box=true",
+         "-f", "publish=false"],
+        cwd=wt,
+    )  # fmt: skip
+    if fired.returncode != 0:
+        raise die(f"Could not trigger {BUNDLES_WORKFLOW}: {fired.stderr.strip()}")
+    print(f"triggered {BUNDLES_WORKFLOW} (box=true, publish=false) on {branch}; waiting for it.")
+    poll = env_int("ARLESH_BOX_POLL_SECONDS", 15)
+    deadline = time.monotonic() + env_int("ARLESH_BOX_CI_TIMEOUT_SECONDS", 3600)
+    last = ""
+    while True:
+        run = next(
+            (r for r in list_bundle_runs(wt, branch)
+             if r.get("headSha") == sha and r.get("databaseId") not in known),
+            None,
+        )  # fmt: skip
+        status = str(run.get("status")) if run else "waiting for the run to appear"
+        if status != last:
+            print(f"ci: {status}" + (f" {run.get('url')}" if run else ""), flush=True)
+            last = status
+        if run and run.get("status") == "completed":
+            if run.get("conclusion") != "success":
+                raise die(
+                    f"The CI box build failed ({run.get('conclusion')}): {run.get('url')}. "
+                    f"Build locally with --local."
+                )
+            return run
+        if time.monotonic() > deadline:
+            raise die("Gave up waiting for the CI box build.")
+        time.sleep(poll)
+
+
+def download_ci(wt: Path, branch: str, sha: str, run: dict[str, Any]) -> Path:
+    dest = ci_cached_apk(branch, sha)
+    ci_cache_dir().mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=ci_cache_dir()) as tmp:
+        got = capture(
+            ["gh", "run", "download", str(run["databaseId"]), "-n", ci_artifact(branch, sha), "-D", tmp],
+            cwd=wt,
+        )  # fmt: skip
+        apks = sorted(Path(tmp).rglob("*.apk"))
+        if got.returncode != 0 or not apks:
+            raise die(f"Could not download the CI build of run {run.get('url')}: {got.stderr.strip()}")
+        shutil.move(str(apks[0]), dest)
+    dest.with_name(dest.name + ".url").write_text(f"{run.get('url')}\n")
+    return dest
+
+
+def pick_ci_build(wt: Path, mode: str) -> Path | None:
+    """The CI APK to use for this tree, or None to build locally. `mode`: auto, local or ci."""
+    if mode == LOCAL:
+        print("building locally (--local).")
+        return None
+    branch = worktree_branch(wt)
+    blocker = ci_blocker(wt, branch)
+    if blocker:
+        if mode == CI:
+            raise die(f"--ci needs a clean, pushed tree: {blocker}. Commit and push, or drop --ci.")
+        print(f"building locally: {blocker}.")
+        return None
+    sha = git_in(wt, "rev-parse", "HEAD").stdout.strip()
+    cached = ci_cached_apk(branch, sha)
+    if cached.is_file():
+        url = cached.with_name(cached.name + ".url")
+        print(f"using CI build {url.read_text().strip() if url.is_file() else cached} (cached).")
+        return cached
+    unavailable = gh_unavailable()
+    if unavailable:
+        if mode == CI:
+            raise die(f"--ci needs gh: {unavailable}.")
+        note(f"building locally: {unavailable}.")
+        return None
+    try:
+        run = find_ci_run(wt, branch, sha)
+    except BoxError as exc:
+        if mode == CI:
+            raise
+        note(f"building locally: {exc}")
+        return None
+    if run is None:
+        if mode != CI:
+            print("building locally: no successful CI box build for this commit.")
+            return None
+        run = trigger_ci(wt, branch, sha)
+    print(f"using CI build {run.get('url')}.")
+    return download_ci(wt, branch, sha, run)
+
+
 # ---- Android: build, install, launch ----------------------------------------------------------
 
 
@@ -1607,7 +1899,7 @@ def build_android(name: str, wt: Path, firebase: bool) -> None:
     need_cmd("npx", "Install Node.")
     need_cmd("rustup", "Install Rust via rustup.")
     require_space()
-    ensure_debug_keystore()
+    signing = choose_signing()
     apksigner = build_tool("apksigner")
     capture(["rustup", "target", "add", "aarch64-linux-android"])
     ensure_node_modules(wt)
@@ -1666,15 +1958,19 @@ def build_android(name: str, wt: Path, firebase: bool) -> None:
     out = android_apk(name)
     out.parent.mkdir(parents=True, exist_ok=True)
     run_cmd(
-        [str(apksigner), "sign", "--ks", str(debug_keystore()), "--ks-key-alias", "androiddebugkey",
-         "--ks-pass", "pass:android", "--key-pass", "pass:android", "--out", str(out), str(unsigned)],
+        [str(apksigner), "sign", "--ks", str(signing.keystore), "--ks-key-alias", signing.alias,
+         "--ks-pass", f"pass:{signing.password}", "--key-pass", f"pass:{signing.password}",
+         "--out", str(out), str(unsigned)],
         what="apksigner",
     )  # fmt: skip
     print(f"=== {name}: built {out} ({out.stat().st_size / 1e6:.0f}M) ===")
 
 
-def install_android(name: str, serial: str) -> None:
+def install_android(name: str, serial: str, reinstall: bool = False) -> None:
     apk = android_apk(name)
+    if reinstall:
+        print(f"--reinstall: uninstalling {box_package(name)} first.")
+        capture(["adb", "-s", serial, "uninstall", box_package(name)])
     res = subprocess.run(
         ["adb", "-s", serial, "install", "-r", str(apk)],
         capture_output=True,
@@ -1685,7 +1981,10 @@ def install_android(name: str, serial: str) -> None:
         note(res.stdout + res.stderr)
         if "UPDATE_INCOMPATIBLE" in res.stdout + res.stderr:
             raise die(
-                f"The installed {box_package(name)} is signed with another key. Uninstall it ({CMD} clean {name}) and retry."
+                f"The installed {box_package(name)} is signed with a different key than this APK "
+                f"(a CI build, a local build and the debug fallback only update one another when "
+                f"signed with the same box keystore: `{CMD} keystore init`). Run again with "
+                f"--reinstall to uninstall it first; box hands the new app a fresh token."
             )
         raise die("adb install failed.")
     print(f"installed {box_package(name)} on {serial}")
@@ -1738,6 +2037,10 @@ def android_connection(
     return url, mint_token(server, client, holder)
 
 
+def ci_mode(args: argparse.Namespace) -> str:
+    return LOCAL if args.local else CI if args.ci else AUTO
+
+
 def run_android(name: str, wt: Path, target: Target, args: argparse.Namespace) -> None:
     assert target.host  # registry guarantees it for android
     android_env()
@@ -1745,18 +2048,31 @@ def run_android(name: str, wt: Path, target: Target, args: argparse.Namespace) -
         target
     )  # before a long build: fail early on a missing device
     stamp = worktree_stamp(wt)
-    if is_stale(ANDROID, name, stamp, android_apk(name), args.force):
+    ci_apk = pick_ci_build(wt, ci_mode(args))
+    if ci_apk:
+        stamp = f"ci:{stamp}"  # a CI build and a local one of the same commit are different APKs
+        if is_stale(ANDROID, name, stamp, android_apk(name), args.force):
+            android_apk(name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ci_apk, android_apk(name))
+            record_built(ANDROID, name, stamp)
+        else:
+            print(f"{name}: android build is current, not fetching again.")
+    elif is_stale(ANDROID, name, stamp, android_apk(name), args.force):
         build_android(name, wt, firebase=not args.no_firebase)
         record_built(ANDROID, name, stamp)
     else:
         print(f"{name}: android build is current, not rebuilding.")
-    had_package = package_installed(serial, box_package(name))
+    had_package = package_installed(serial, box_package(name)) and not args.reinstall
     reason = (
-        "forced" if args.force else install_reason(serial, target.name, name, stamp)
+        "--reinstall"
+        if args.reinstall
+        else "forced"
+        if args.force
+        else install_reason(serial, target.name, name, stamp)
     )
     if reason:
         print(f"installing on {target.name}: {reason}")
-        install_android(name, serial)
+        install_android(name, serial, args.reinstall)
         update_state(
             lambda s: (
                 s["installed"].setdefault(target.name, {}).__setitem__(name, stamp)
@@ -1856,6 +2172,8 @@ def cmd_run(args: argparse.Namespace) -> None:
     if args.server:
         ensure_worktree(args.server)
         args.server = dir_name(args.server)
+    if target.os != ANDROID and (args.ci or args.reinstall):
+        raise UsageError("--ci and --reinstall apply to Android targets only.")
     if target.os == ANDROID:
         run_android(name, wt, target, args)
     else:
@@ -1907,6 +2225,8 @@ def cmd_clean(args: argparse.Namespace) -> None:
         # Only the binary and APK go. An instance's database is state built up while testing.
         (instance_dir(name) / "arlesh").unlink(missing_ok=True)
         android_apk(name).unlink(missing_ok=True)
+        for cached in ci_cache_dir().glob(f"{box_segment(name)}-*.apk*"):
+            cached.unlink(missing_ok=True)
 
         def forget(s: dict[str, Any], n: str = name) -> None:
             for per_os in s["built"].values():
@@ -1980,6 +2300,10 @@ def cmd_devices(args: argparse.Namespace) -> None:
         device_rm(args.name)
     else:
         device_list()
+
+
+def cmd_keystore(args: argparse.Namespace) -> None:
+    keystore_init(args.force)
 
 
 def cmd_server(args: argparse.Namespace) -> None:
@@ -2057,7 +2381,29 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--force", action="store_true", help="rebuild and reinstall even if current"
     )
+    source = run.add_mutually_exclusive_group()
+    source.add_argument(
+        "--local", action="store_true", help="build locally even if a CI build matches (android)"
+    )
+    source.add_argument(
+        "--ci",
+        action="store_true",
+        help="use the CI build, triggering bundles.yml if there is none (android; needs a clean, pushed tree)",
+    )
+    run.add_argument(
+        "--reinstall",
+        action="store_true",
+        help="uninstall the app first (after a signature mismatch); box re-provisions the token (android)",
+    )
     run.set_defaults(fn=cmd_run)
+
+    ks = sub.add_parser("keystore", help="the shared box signing key")
+    ksub = ks.add_subparsers(dest="keystore_cmd", required=True, parser_class=Parser)
+    init = ksub.add_parser(
+        "init", help="create the box keystore and upload it as a repo secret for CI"
+    )
+    init.add_argument("--force", action="store_true", help="replace an existing keystore")
+    ks.set_defaults(fn=cmd_keystore)
 
     ci = sub.add_parser(
         "ci-patch",

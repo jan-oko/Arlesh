@@ -121,6 +121,11 @@ Agents configured via AGENTS.md and .claude/, with arlesh itself serving as an M
 beside your real app, on this machine (`desktop`) or on an Android phone registered with
 `npm run box -- devices add <name> --os android --host <host[:port]>`. It needs [uv](https://docs.astral.sh/uv/);
 a branch with no worktree gets one made from `origin/<branch>` (names with `/` work: `qa/2026-11-round`).
+For an Android phone, a clean pushed tree whose commit already has a successful `bundles.yml` box
+run installs that CI build instead of compiling (needs an authenticated `gh`); `--local` forces a
+local build and `--ci` triggers the CI build and waits for it. Run `npm run box -- keystore init`
+once so CI and local builds share a signing key and update one another (otherwise reinstall with
+`--reinstall`).
 The tool is `scripts/box.py`, see `docs/spec/client-mode.md` for the full reference.
 
 ## Stack
