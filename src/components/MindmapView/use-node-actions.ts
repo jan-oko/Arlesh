@@ -101,12 +101,12 @@ export function useNodeActions({
       if (title.trim() === "") { setEditingNodeId(null); return; }
       const node = findNode(tree, nodeId);
       if (node === undefined) return;
+      // A rename is handed to the window's lane and shows at once, so this resolves as it is handed
+      // on and a refusal puts the old title back with one toast (ADR 0012). A Flow's or a flow
+      // item's rename still waits for its answer, and stays open on the title that earned a refusal.
       void renameNode(nodeId, node.kind, title.trim())
         .then(() => setEditingNodeId(null))
         .catch((err: unknown) => {
-          // The rename stays open on the title that earned the refusal, rather than closing on a
-          // write that did not happen. Before this, a refused rename left the old title on the
-          // canvas and said nothing — indistinguishable from a rename that worked and was undone.
           console.error(`${LOG_PREFIX} rename failed:`, err);
           showToast({ nodeId, message: t("warnings:renameFailed", { message: getErrorMessage(err) }) });
         });

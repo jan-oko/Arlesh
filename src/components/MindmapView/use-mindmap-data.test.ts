@@ -16,6 +16,7 @@ import type { MindmapLoad } from "@/api/mindmap";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
+import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -898,6 +899,40 @@ describe("useMindmapData — mutations", () => {
       await act(async () => { await result.current.renameNode("domain-1", "aspect", "Renamed"); });
 
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_domain", { id: 1, request: { title: "Renamed" } });
+    });
+  });
+
+  describe("renameNode through the lane", () => {
+    it("shows the new title at once, with the cue, and settles on the answer", async () => {
+      let answer: (row: unknown) => void = () => undefined;
+      setupInvoke({ update_task: new Promise((resolve) => { answer = resolve; }) });
+      const { result } = await loadedHook();
+      usePendingWritesStore.getState().reset();
+
+      await act(async () => { await result.current.renameNode("task-1", "task", "Renamed"); });
+      const shown = result.current.tree.children[0]?.children[0]?.children.find((n) => n.id === "task-1");
+      expect(shown).toMatchObject({ title: "Renamed", pending: true });
+
+      await act(async () => { answer({ ...TASK, title: "Renamed" }); });
+      await waitFor(() => expect(usePendingWritesStore.getState().writes[0]?.state).not.toBe("sending"));
+    });
+
+    it("puts the old title back with one toast when the rename is refused", async () => {
+      const rejected = Promise.reject(new Error("title is taken"));
+      rejected.catch(() => undefined);
+      setupInvoke({ update_task: rejected });
+      const { result } = await loadedHook();
+      usePendingWritesStore.getState().reset();
+      useMindmapStore.getState().clearToast();
+
+      await act(async () => { await result.current.renameNode("task-1", "task", "Renamed"); });
+      await waitFor(() => expect(usePendingWritesStore.getState().writes).toHaveLength(0));
+
+      const task = result.current.tree.children[0]?.children[0]?.children.find((n) => n.id === "task-1");
+      expect(task?.title).toBe(TASK.title);
+      expect(useMindmapStore.getState().pendingToast).toMatchObject({
+        nodeId: "task-1", message: "warnings:renameFailed",
+      });
     });
   });
 

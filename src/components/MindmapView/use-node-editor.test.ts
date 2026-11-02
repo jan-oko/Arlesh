@@ -1,7 +1,9 @@
+import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { useScopeClampStore } from "@/stores/use-scope-clamp-store";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import { renderHook, act, waitFor } from "@testing-library/react";
+import { settleLane } from "@/test/lane-helpers";
 import { useNodeEditor } from "./use-node-editor";
 import type { MindmapNode } from "@/utils/tree-layout";
 import type { TaskSaveData } from "@/components/TaskEditorModal/TaskEditorModal";
@@ -75,7 +77,7 @@ const saveData: TaskSaveData = {
   onScopeExit: null, plan: null, archival: "live", agentic: "inherit", asynchronous: false, compound: false, asyncTemplate: null, agenticBrief: null, isPrivate: false,
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => { vi.clearAllMocks(); usePendingWritesStore.getState().reset(); });
 
 describe("useNodeEditor — double-click", () => {
   // A Habit occurrence is a row like any other (ADR 0008): it opens the same editor, and what it
@@ -96,6 +98,7 @@ describe("useNodeEditor — double-click", () => {
     );
     act(() => result.current.setEditorModal({ nodeId: virtualHabitItemNode.id, node: virtualHabitItemNode }));
     await act(async () => { await result.current.onTaskSave(saveData); });
+    await settleLane();
     expect(scopeContainmentConflicts).not.toHaveBeenCalled();
     expect(updateTask).toHaveBeenCalledWith(virtualHabitItemNode.rowId, expect.objectContaining({ title: "Task" }));
   });
@@ -110,6 +113,7 @@ describe("useNodeEditor — scope clamp", () => {
     const result = setup();
 
     await act(async () => { await result.current.onTaskSave(saveData); });
+    await settleLane();
 
     expect(updateTask).toHaveBeenCalledWith(9, { time_scope: { start_id: testKey(1), end_id: testKey(1) } });
     expect(updateGoal).toHaveBeenCalledWith(12, { time_scope: { start_id: testKey(1), end_id: testKey(1) } });
@@ -124,6 +128,7 @@ describe("useNodeEditor — scope clamp", () => {
     vi.mocked(scopeContainmentConflicts).mockResolvedValue([]);
     const result = setup();
     await act(async () => { await result.current.onTaskSave(saveData); });
+    await settleLane();
     // Only the parent update, no descendant clamps.
     expect(updateTask).toHaveBeenCalledTimes(1);
     expect(updateGoal).not.toHaveBeenCalled();
@@ -172,6 +177,7 @@ describe("useNodeEditor — delegation", () => {
     vi.mocked(scopeContainmentConflicts).mockResolvedValue([]);
     const result = setup();
     await act(async () => { await result.current.onTaskSave({ ...saveData, delegate: { kind: "person", id: 4 } }); });
+    await settleLane();
     expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ delegate_to: { kind: "person", id: 4 } }));
   });
 
@@ -179,6 +185,7 @@ describe("useNodeEditor — delegation", () => {
     vi.mocked(scopeContainmentConflicts).mockResolvedValue([]);
     const result = setup();
     await act(async () => { await result.current.onTaskSave({ ...saveData, delegate: null }); });
+    await settleLane();
     expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ delegate_to: null }));
   });
 
@@ -186,6 +193,7 @@ describe("useNodeEditor — delegation", () => {
     vi.mocked(scopeContainmentConflicts).mockResolvedValue([]);
     const result = setup();
     await act(async () => { await result.current.onTaskSave(saveData); });
+    await settleLane();
     expect(vi.mocked(updateTask).mock.calls[0]?.[1]).not.toHaveProperty("delegate_to");
   });
 });
@@ -197,6 +205,7 @@ describe("useNodeEditor — done date", () => {
     await act(async () => {
       await result.current.onTaskSave({ ...saveData, status: { kind: "ordinary", status: "done" }, doneAt: "2026-09-26T19:00:00" });
     });
+    await settleLane();
     expect(setTaskDoneAt).toHaveBeenCalledWith(5, "2026-09-26T19:00:00");
     const updated = vi.mocked(updateTask).mock.invocationCallOrder[0] ?? 0;
     const dated = vi.mocked(setTaskDoneAt).mock.invocationCallOrder[0] ?? 0;
@@ -208,6 +217,7 @@ describe("useNodeEditor — done date", () => {
     vi.mocked(setTaskDoneAt).mockClear();
     const result = setup();
     await act(async () => { await result.current.onTaskSave(saveData); });
+    await settleLane();
     expect(setTaskDoneAt).not.toHaveBeenCalled();
   });
 });
@@ -225,6 +235,7 @@ describe("useNodeEditor — Compound", () => {
   it("sends no status for a task that consists of its sub-items and still does", async () => {
     const result = setupWith({ ...taskNode, compound: true, status: "in_progress" });
     await act(async () => { await result.current.onTaskSave({ ...saveData, timeScope: null, compound: true }); });
+    await settleLane();
     const request = vi.mocked(updateTask).mock.calls[0]?.[1];
     expect(request).not.toHaveProperty("status");
     expect(request).not.toHaveProperty("compound");
@@ -235,12 +246,14 @@ describe("useNodeEditor — Compound", () => {
     await act(async () => {
       await result.current.onTaskSave({ ...saveData, timeScope: null, status: { kind: "ordinary", status: "started" }, compound: false });
     });
+    await settleLane();
     expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ status: { kind: "ordinary", status: "started" }, compound: false }));
   });
 
   it("switching it on sends the flag", async () => {
     const result = setupWith(taskNode);
     await act(async () => { await result.current.onTaskSave({ ...saveData, timeScope: null, compound: true }); });
+    await settleLane();
     expect(updateTask).toHaveBeenCalledWith(5, expect.objectContaining({ compound: true }));
   });
 });
@@ -320,18 +333,21 @@ describe("useNodeEditor — archiving a Domain from its editor", () => {
   it("writes the archive with the title and privacy, in one update", async () => {
     const result = openDomain(domainNode);
     await act(() => result.current.onSimpleSave("Old hobby", false, true));
+    await settleLane();
     expect(updateDomain).toHaveBeenCalledWith(8, { title: "Old hobby", is_private: false, status: "archived" });
   });
 
   it("unarchives back to Active", async () => {
     const result = openDomain({ ...domainNode, status: "archived" });
     await act(() => result.current.onSimpleSave("Old hobby", false, false));
+    await settleLane();
     expect(updateDomain).toHaveBeenCalledWith(8, { title: "Old hobby", is_private: false, status: "active" });
   });
 
   it("sends no status when the switch was left as it was", async () => {
     const result = openDomain(domainNode);
     await act(() => result.current.onSimpleSave("Renamed", false, false));
+    await settleLane();
     expect(updateDomain).toHaveBeenCalledWith(8, { title: "Renamed", is_private: false });
   });
 });

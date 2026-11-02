@@ -62,6 +62,7 @@
   "pasteOntoRepetitionRefused": "Nothing can be pasted onto a folded Habit history — it stands for many repetitions at once.",
   "pasteCopyOntoOccurrenceRefused": "A copy can't be pasted onto a Habit repetition — cut and paste to move something there, or create what it needs there.",
   "pasteFailed": "Couldn't paste it: {{message}}",
+  "saveFailed": "Couldn't save it: {{message}}",
   "renameFailed": "Couldn't rename it: {{message}}",
   "statusChangeFailed": "Couldn't change the status: {{message}}",
   "insertParentFailed": "Couldn't insert a parent: {{message}}",

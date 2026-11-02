@@ -212,3 +212,22 @@ describe("GoalEditorModal — focus on open", () => {
   });
 });
 
+
+describe("GoalEditorModal — reopened after a refused Save", () => {
+  it("holds what the user typed and shows the backend's reason on its error line", () => {
+    render(
+      <GoalEditorModal
+        {...defaultProps}
+        reopened={{
+          draft: {
+            title: "Typed title", status: "achieved", blockReasons: ["waiting"], tagIds: [1],
+            timeScope: null, onScopeExit: null, isPrivate: true,
+          },
+          error: "Goal title is taken",
+        }}
+      />,
+    );
+    expect(screen.getByDisplayValue("Typed title")).toBeInTheDocument();
+    expect(screen.getByText("Goal title is taken")).toBeInTheDocument();
+  });
+});
