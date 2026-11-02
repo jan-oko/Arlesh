@@ -136,11 +136,12 @@
 }
 
 /* Full screen's hot square: fixed in the bottom-right corner over the board, clear of the system
-   gesture bar. It is drawn fainter than in the bar, so it does not shout over content. */
+   gesture bar and of the phone's rounded corner. It is drawn fainter than in the bar, so it does not shout over content. */
 .squareCorner {
   position: fixed;
-  inset-inline-end: calc(var(--space-2) + var(--safe-right));
-  bottom: calc(var(--space-2) + var(--safe-bottom));
+  /* Whole box inside the display's rounded corner: max(0.3 x radius, safe inset) + the margin. */
+  inset-inline-end: calc(var(--space-2) + max(var(--corner-inset-br), var(--safe-right)));
+  bottom: calc(var(--space-2) + max(var(--corner-inset-br), var(--safe-bottom)));
   z-index: 60;
   background: color-mix(in srgb, var(--surface) 70%, transparent);
   opacity: 0.7;

@@ -480,3 +480,10 @@ replaces it.
   baseline; the chevron hangs to the left of the name, over the bar's gap, so the name starts where
   "Arlesh" does and toggling between root and subtree moves nothing (at 412 x 915: text box left
   56 px, baseline y 30 px, 16 px / 700 in both). The name beside it is the large tap target.
+- **Full screen's hot square clears the display's rounded corner.** `MainActivity` pushes the corner
+  radii (`WindowInsets.getRoundedCorner`, Android 12+) to `--corner-tl/-tr/-br/-bl` next to
+  `--sat`/`--sab`; where the radius is unknown (older Android, desktop, standard bars) the CSS
+  default is 16 px. The square sits `max(0.3 x radius, safe inset) + 8 px` in from the bottom and
+  the right: a box at inset d lies inside an arc of radius r when d >= r(1 - 1/sqrt 2) = 0.293 r,
+  so 0.3 r is that bound, the safe inset covers the gesture bar, and 8 px is the margin. (412 px
+  wide: radius 16 -> 12.8 px in; radius 48 with a 24 px bar -> 22.4 px right, 32 px up; radius 120 -> 44 px.)

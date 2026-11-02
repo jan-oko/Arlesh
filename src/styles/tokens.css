@@ -14,6 +14,16 @@ html, body, #root {
   --safe-left: max(env(safe-area-inset-left, 0px), var(--sal, 0px));
   --safe-right: max(env(safe-area-inset-right, 0px), var(--sar, 0px));
 
+  /* The display's rounded corners' radii. MainActivity pushes the real ones (Android 12+, as an
+     inline style that wins over these); 16px is the guess where the radius is unknown. */
+  --corner-tl: 16px;
+  --corner-tr: 16px;
+  --corner-br: 16px;
+  --corner-bl: 16px;
+  /* How far in from a corner a box must sit to lie wholly inside its arc: r * (1 - 1/sqrt 2) is
+     0.293 r, taken as 0.3 r. */
+  --corner-inset-br: calc(var(--corner-br) * 0.3);
+
   /* Aspect colors */
   --color-aspect-red: #e74c3c;
   --color-aspect-purple: #9b59b6;

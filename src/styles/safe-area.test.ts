@@ -16,11 +16,20 @@ describe("safe-area variables", () => {
 
   it("pads the phone top bar by the top inset, and keeps the bottom bars and corner square above the bottom one", () => {
     expect(phoneTopBar).toMatch(/padding-top:\s*var\(--safe-top\)/);
-    expect(phoneTopBar).toMatch(/bottom:\s*calc\(var\(--space-2\) \+ var\(--safe-bottom\)\)/);
+    expect(phoneTopBar).toMatch(/max\(var\(--corner-inset-br\), var\(--safe-bottom\)\)/);
     expect(bottomNav).toMatch(/padding-bottom:\s*var\(--safe-bottom\)/);
   });
 
   it("leaves no raw env() inset outside the token definitions", () => {
     for (const file of [phoneTopBar, bottomSheet, bottomNav]) expect(file).not.toContain("env(safe-area");
+  });
+});
+
+describe("the display's rounded corner", () => {
+  it("falls back to 16px, and the square sits at max(0.3 x radius, safe inset) + the margin", () => {
+    expect(tokens).toMatch(/--corner-br:\s*16px/);
+    expect(tokens).toMatch(/--corner-inset-br:\s*calc\(var\(--corner-br\) \* 0\.3\)/);
+    expect(phoneTopBar).toMatch(/bottom:\s*calc\(var\(--space-2\) \+ max\(var\(--corner-inset-br\), var\(--safe-bottom\)\)\)/);
+    expect(phoneTopBar).toMatch(/inset-inline-end:\s*calc\(var\(--space-2\) \+ max\(var\(--corner-inset-br\), var\(--safe-right\)\)\)/);
   });
 });
