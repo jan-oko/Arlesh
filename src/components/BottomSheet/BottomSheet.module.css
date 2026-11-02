@@ -18,7 +18,7 @@
   border: 1px solid var(--node-border);
   border-bottom: none;
   border-radius: 16px 16px 0 0;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--safe-bottom);
   outline: none;
   font-family: var(--font-sans);
   animation: rise 0.18s ease-out;

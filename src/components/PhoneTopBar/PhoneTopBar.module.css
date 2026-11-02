@@ -5,7 +5,7 @@
   flex-shrink: 0;
   min-height: 48px;
   padding: 0 var(--space-2);
-  padding-top: env(safe-area-inset-top);
+  padding-top: var(--safe-top);
   background: var(--surface);
   border-bottom: 1px solid var(--node-border);
   font-family: var(--font-sans);
@@ -139,8 +139,8 @@
    gesture bar. It is drawn fainter than in the bar, so it does not shout over content. */
 .squareCorner {
   position: fixed;
-  inset-inline-end: calc(var(--space-2) + env(safe-area-inset-right));
-  bottom: calc(var(--space-2) + env(safe-area-inset-bottom));
+  inset-inline-end: calc(var(--space-2) + var(--safe-right));
+  bottom: calc(var(--space-2) + var(--safe-bottom));
   z-index: 60;
   background: color-mix(in srgb, var(--surface) 70%, transparent);
   opacity: 0.7;

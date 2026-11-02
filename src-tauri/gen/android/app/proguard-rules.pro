@@ -27,3 +27,10 @@
     public void restartApp();
 }
 -keep class com.atai.arlesh.RestartActivity
+
+# The page calls window.ArleshBars.setSystemBars(...) (SystemBarsBridge.kt) by name through the
+# WebView's JavaScript bridge; Kotlin never calls it, so R8 would strip or rename it, and the
+# system-bars setting would silently do nothing.
+-keepclassmembers class com.atai.arlesh.SystemBarsBridge {
+    @android.webkit.JavascriptInterface <methods>;
+}

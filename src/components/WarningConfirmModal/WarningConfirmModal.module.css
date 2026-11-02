@@ -97,6 +97,6 @@
     overflow-y: auto;
     border-radius: 16px 16px 0 0;
     border-bottom: none;
-    padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+    padding-bottom: max(var(--space-4), var(--safe-bottom));
   }
 }

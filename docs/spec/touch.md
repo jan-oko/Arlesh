@@ -152,6 +152,39 @@ sets `touch-action: none` and captures its pointer: otherwise Android takes a th
 roll for a pan and cancels the pointer, and the tap is lost (user, 2026-11-02: it "doesn't work
 consistently").
 
+## System bars
+
+Decided with the user 2026-11-02: how the app sits against the Android system bars is a **three-way
+choice**, set separately for normal display and for fullscreen. Two selects under Settings >
+General (`systemBars`, `systemBarsFullscreen`), shown on Android or in the phone layout only; the
+desktop window is unaffected. **Defaults: Edge-to-edge in normal display, Immersive in fullscreen.**
+Fullscreen is the app's own chrome hiding (see [Full screen](#the-phone-layout)); leaving it
+restores the normal display's mode.
+
+| Mode | Bars | The app | Inset variables |
+| --- | --- | --- | --- |
+| Standard | visible, opaque | starts below the status bar; the activity pads the view | 0 |
+| Edge-to-edge | visible, transparent | drawn under them, padded by the page | the real insets (bars and cutout) |
+| Immersive | hidden; a swipe from the edge shows them for a moment | the whole screen; the content does not move when they peek | the cutout only |
+
+- **Insets.** `MainActivity` measures the real insets (`systemBars()` plus `displayCutout()`),
+  converts them to CSS pixels and writes them to the page's `--sat`, `--sab`, `--sal`, `--sar` on
+  every inset change; the page asks again whenever its mode changes or it loads. The CSS never
+  reads them directly: `tokens.css` defines `--safe-top` and its three siblings as
+  `max(env(safe-area-inset-*), var(--sat…))`, because Android's WebView does not report `env()`
+  reliably. The top bar pads its content by `--safe-top` while its background runs under the status
+  bar; the bottom bars, sheets and fullscreen's corner square sit above `--safe-bottom`. With the
+  soft keyboard up, the activity pads by the keyboard and the bottom inset is 0.
+- **Standard** is the classic layout. It is implemented by padding the view rather than by turning
+  the window's fitting back on, which Android 15 enforces off; the bars' colour is the view's
+  background (black-ish on the dark theme, white on the light one) showing through the padding.
+- **Immersive** hides the bars with `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`.
+- **The bridge.** The web side states the wanted mode and the theme (`useSystemBars`: the normal or
+  the fullscreen setting, by whether the app is in fullscreen) through
+  `window.ArleshBars.setSystemBars(mode, dark)`, a `@JavascriptInterface` (`SystemBarsBridge.kt`; R8
+  keep rule in `proguard-rules.pro`). A JS interface, not a Tauri command, because nothing in Rust
+  needs the call. The status and navigation bar icons are light on the dark theme.
+
 ## The action bar
 
 A row of buttons above the bottom navigation, chosen by what is selected. It shows in the phone

@@ -5,6 +5,7 @@ import { useViewStore } from "@/stores/use-view-store";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useCloseToTrayStore } from "@/stores/use-close-to-tray-store";
+import { isAndroid } from "@/utils/platform";
 import { useMcpRoots } from "@/hooks/use-mcp-roots";
 
 vi.mock("react-i18next", () => ({
@@ -12,6 +13,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@/hooks/use-mcp-roots");
+vi.mock("@/utils/platform", () => ({ isAndroid: vi.fn(() => false) }));
 // The endpoint section has its own test; here it only has to render quietly.
 vi.mock("@/hooks/use-mcp-endpoint", () => ({
   useMcpEndpoint: () => ({ status: null, isBusy: false, error: null, restart: vi.fn(), setPort: vi.fn() }),
@@ -237,6 +239,27 @@ describe("SettingsModal", () => {
     fireEvent.click(tabs);
     expect(useDisplayStore.getState().planPhoneTabs).toBe(false);
     expect(JSON.parse(localStorage.getItem("arlesh-display") ?? "{}").state.planPhoneTabs).toBe(false);
+  });
+
+  it("offers the two system-bars choices on Android, with their defaults, and stores each", () => {
+    vi.mocked(isAndroid).mockReturnValue(true);
+    useDisplayStore.setState({ systemBars: "edgeToEdge", systemBarsFullscreen: "immersive" });
+    open();
+
+    const normal = screen.getByRole("button", { name: "systemBars" });
+    const fullscreen = screen.getByRole("button", { name: "systemBarsFullscreen" });
+    expect(normal).toHaveTextContent("systemBarsMode.edgeToEdge");
+    expect(fullscreen).toHaveTextContent("systemBarsMode.immersive");
+    fireEvent.click(fullscreen);
+    fireEvent.click(screen.getByRole("option", { name: "systemBarsMode.standard" }));
+    expect(useDisplayStore.getState()).toMatchObject({ systemBars: "edgeToEdge", systemBarsFullscreen: "standard" });
+    expect(JSON.parse(localStorage.getItem("arlesh-display") ?? "{}").state.systemBarsFullscreen).toBe("standard");
+    vi.mocked(isAndroid).mockReturnValue(false);
+  });
+
+  it("hides the system-bars choices on the desktop", () => {
+    open();
+    expect(screen.queryByRole("button", { name: "systemBars" })).not.toBeInTheDocument();
   });
 
   it("offers the Zen View's badge switch under Zen, on by default", () => {

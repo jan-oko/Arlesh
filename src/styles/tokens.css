@@ -6,6 +6,14 @@ html, body, #root {
 }
 
 :root {
+  /* The system bars' real heights. Android's WebView does not report env(safe-area-inset-*)
+     reliably, so MainActivity pushes the measured insets into --sat/--sab/--sal/--sar (CSS px)
+     while the app draws edge to edge, and 0 otherwise. The larger of the two wins. */
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--sat, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--sab, 0px));
+  --safe-left: max(env(safe-area-inset-left, 0px), var(--sal, 0px));
+  --safe-right: max(env(safe-area-inset-right, 0px), var(--sar, 0px));
+
   /* Aspect colors */
   --color-aspect-red: #e74c3c;
   --color-aspect-purple: #9b59b6;

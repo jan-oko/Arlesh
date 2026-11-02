@@ -3,7 +3,7 @@
   flex-shrink: 0;
   background: var(--surface);
   border-top: 1px solid var(--node-border);
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--safe-bottom);
   font-family: var(--font-sans);
 }
 

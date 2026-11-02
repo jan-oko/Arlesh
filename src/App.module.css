@@ -3,5 +3,9 @@
   flex-direction: column;
   width: 100vw;
   height: 100vh;
+  box-sizing: border-box;
+  /* Landscape: keep clear of a display cutout or a side navigation bar. */
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
   overflow: hidden;
 }

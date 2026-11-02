@@ -87,7 +87,7 @@
 @media (max-width: 699.98px) {
   .overlay {
     align-items: flex-start;
-    padding: max(var(--space-4), env(safe-area-inset-top)) var(--space-4) var(--space-4);
+    padding: max(var(--space-4), var(--safe-top)) var(--space-4) var(--space-4);
     box-sizing: border-box;
   }
   .modal {

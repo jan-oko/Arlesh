@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { SystemBarsMode } from "@/utils/system-bars";
 import {
   DEFAULT_HABIT_COLLAPSE_THRESHOLD,
   MAX_HABIT_COLLAPSE_THRESHOLD,
@@ -206,6 +207,16 @@ interface DisplayStore {
    */
   planPhoneTabs: boolean;
   togglePlanPhoneTabs: () => void;
+  /**
+   * How the app sits against the Android system bars in normal display: `standard`, `edgeToEdge`
+   * or `immersive` (see `SystemBarsMode`). **Edge-to-edge by default** (decided with the user,
+   * 2026-11-02). Android only; the desktop window is unaffected. App-wide.
+   */
+  systemBars: SystemBarsMode;
+  setSystemBars: (mode: SystemBarsMode) => void;
+  /** The same choice while the app is in fullscreen. **Immersive by default.** */
+  systemBarsFullscreen: SystemBarsMode;
+  setSystemBarsFullscreen: (mode: SystemBarsMode) => void;
 }
 
 /** Keeps a stored or typed threshold inside the range the setting offers. */
@@ -291,6 +302,10 @@ export const useDisplayStore = create<DisplayStore>()(
       toggleStepsFillScreen: () => set((s) => ({ stepsFillScreen: !s.stepsFillScreen })),
       planPhoneTabs: true,
       togglePlanPhoneTabs: () => set((s) => ({ planPhoneTabs: !s.planPhoneTabs })),
+      systemBars: "edgeToEdge",
+      setSystemBars: (mode) => set({ systemBars: mode }),
+      systemBarsFullscreen: "immersive",
+      setSystemBarsFullscreen: (mode) => set({ systemBarsFullscreen: mode }),
     }),
     { name: "arlesh-display" },
   ),
