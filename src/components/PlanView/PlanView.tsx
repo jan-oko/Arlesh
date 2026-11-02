@@ -487,21 +487,21 @@ export default function PlanView() {
     { id: "premorning", label: t("planView:optionIncludePremorning"), checked: includePremorning, onToggle: toggleIncludePremorning },
   ]), [t, isPhone, subscopeSplit, toggleSubscopeSplit, includePremorning, toggleIncludePremorning]);
 
-  // The touch gestures (docs/spec/touch.md). A to-plan card swiped right is planned into the scope
-  // shown; a planned card swiped left is taken out of it, back to the to-plan pane — the mirror, so
-  // the card leaves the way it is going. Both fly out under the finger; any other swipe is a row's
-  // (right advances, left sets Started). Double-tap opens the card's subtree. The scope is stepped
-  // with the header's buttons, not a swipe.
+  // The touch gestures (docs/spec/touch.md). A card swiped EITHER way crosses to the other pane: a
+  // to-plan card is planned into the scope shown, a planned card is taken out of it, back to the
+  // to-plan pane. It flies out under the finger in the swipe's direction. Where a card cannot cross
+  // (the planned pane split by subscope, or no take-out target) the swipe is any row's. Double-tap
+  // opens the card's subtree. The scope is stepped with the header's buttons, not a swipe.
   const rootRef = useRef<HTMLDivElement>(null);
   // Every card here is a Task; the action bar reads the Plan View's own row whatever is selected,
   // and the palette offers Select, since the view holds several.
   usePublishSelection(selectedIds.map((): NodeKind => "task"), true);
   const paneOfCard = (id: string): PlanPaneSide =>
     (plannedModel.rows.some((row) => row.node.id === id) ? "planned" : "candidates");
-  /** The direction in which a swipe on this card moves it across, or `null` where it moves nowhere. */
-  const crossingDirection = (id: string): "left" | "right" | null => {
-    if (paneOfCard(id) === "planned") return takeOutTo === null ? null : "left";
-    return plannedModel.sectioned ? null : "right";
+  /** Whether a sideways swipe, either way, moves this card across; `false` where it moves nowhere. */
+  const crosses = (id: string): boolean => {
+    if (paneOfCard(id) === "planned") return takeOutTo !== null;
+    return !plannedModel.sectioned;
   };
   useViewGestures(rootRef, {
     idAttribute: "data-plan-card-id",
@@ -512,9 +512,9 @@ export default function PlanView() {
     toggleInSelection: (id) => onSelect(paneOfCard(id), id, { shift: false, ctrl: true }),
     goInto: enterSubtree,
     isLeaf: (id) => (findNode(tree, id)?.children.length ?? 0) === 0,
-    flysOut: (id, direction) => crossingDirection(id) === direction,
-    onSwipe: (id, direction) => {
-      if (id === null || crossingDirection(id) !== direction) return false;
+    flysOut: (id) => crosses(id),
+    onSwipe: (id) => {
+      if (id === null || !crosses(id)) return false;
       // The swipe fires after the card has flown out, outside the touch event, so the selection is
       // committed here rather than left to the next frame: the move reads it straight after.
       if (!live.ids.has(id)) flushSync(() => onSelect(paneOfCard(id), id, { shift: false, ctrl: false }));

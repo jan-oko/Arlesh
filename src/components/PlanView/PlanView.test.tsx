@@ -1029,12 +1029,35 @@ describe("on a phone", () => {
     expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
   });
 
-  it("leaves the to-plan pane's card where it is on a swipe left, which sets Started", async () => {
+  it("plans a candidate into the scope with a swipe left too, not setting Started", async () => {
     tasks();
     await renderPlanView();
-    await act(async () => { stroke(cardElement("task-1"), [200, 10], [60, 12]); });
+    const card = cardElement("task-1");
+    if (!(card instanceof HTMLElement)) throw new Error("not an element");
+    const at = (x: number) => ({ target: card, clientX: x, clientY: 10 });
+    fireEvent.touchStart(card, { touches: [at(200)] });
+    fireEvent.touchMove(card, { touches: [at(60)] });
+    // It follows the finger and leaves in the swipe's direction.
+    expect(card.style.transform).toBe("translateX(-140px)");
+    fireEvent.touchEnd(card, { touches: [], changedTouches: [at(60)] });
+    expect(card.style.opacity).toBe("0");
     await afterFlight();
-    expect(updateTask).not.toHaveBeenCalledWith(1, { plan: expect.anything() });
+    await nextTick();
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
+    expect(updateTask).not.toHaveBeenCalledWith(1, expect.objectContaining({ status: expect.anything() }));
+  });
+
+  it("takes a planned card out with a swipe right too, not advancing its status", async () => {
+    tasks();
+    await renderPlanView();
+    await act(async () => { stroke(cardElement("task-2"), [60, 10], [200, 12]); });
+    await afterFlight();
+    await nextTick();
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+    expect(updateTask).not.toHaveBeenCalledWith(2, expect.objectContaining({ status: expect.anything() }));
+    expect(updateTask).not.toHaveBeenCalledWith(1, expect.anything());
   });
 
   it("plans a candidate into the scope with a swipe right on it", async () => {

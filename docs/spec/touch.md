@@ -267,14 +267,15 @@ button, a tag pill, a collapse dot), is left to that control.
 - **Mindmap**: one finger on empty canvas pans. **Hold a node and drag it** to move it under another
   parent or reorder it. **Tap a collapse dot** to fold or unfold.
 - **Steps View**: a single tap selects; a tap on a card's glyph selects it and steps its status.
-- **Plan View**: a swipe moves a card across the panes. **Swipe a to-plan card right** to plan it
-  into the scope the pane shows; **swipe a planned card left** to take it out again (the pane's
-  take-out, the same move as its `←` button and the desktop's key), which lands it back in the
-  to-plan pane. Each is the mirror of the other, so a card leaves the way it is heading. In the
-  other direction a card's swipe is any row's: a planned card swiped right advances its status, a
-  to-plan card swiped left sets Started. A vertical swipe is the flick up, the editor's. With the
-  pane split by subscope (not on the phone) a card has no side to cross to, and swipes as any row.
-  The acting card is selected first, like every other per-node action.
+- **Plan View**: a swipe moves a card across the panes, **either way** (user, round 5). **Swipe a
+  to-plan card left or right** to plan it into the scope the pane shows; **swipe a planned card left
+  or right** to take it out again (the pane's take-out, the same move as its `←` button and the
+  desktop's key), which lands it back in the to-plan pane. The card flies out in the direction it was
+  swiped. In the Plan View a swipe is therefore never a row's advance or Started; a card that cannot
+  cross (the planned pane split by subscope, which the phone never shows, or no take-out target)
+  swipes as any row. A vertical swipe is the flick up, the editor's. The acting card is selected
+  first, like every other per-node action. Both directions run the same `planView.moveAcross`
+  command (`usePlanMove`); only the gesture mapping in `PlanView` changed.
 
 **The swipe follows the finger.** While a card that will cross is dragged sideways it moves with
 the finger (`translateX`). Letting go past 60 px (the swipe's own minimum) slides it the rest of the
@@ -314,8 +315,8 @@ fails when the two differ, so a gesture is added to both or to neither.
 | Mindmap | Pinch | Zooms the map |
 | List | Double-tap a row with nothing beneath it | Opens its editor |
 | List | Double-tap a parent | Enters its subtree; the breadcrumb leads back up |
-| Plan | Swipe a to-plan item right | Slides it out and plans it into the scope (left sets Started, as on any row) |
-| Plan | Swipe a planned item left | Slides it out and moves it back to the to-plan pane (right advances the status, as on any row) |
+| Plan | Swipe a to-plan item either way | Slides it out the way you swiped and plans it into the scope |
+| Plan | Swipe a planned item either way | Slides it out the way you swiped and moves it back to the to-plan pane |
 | Plan | Double-tap a card | Enters its subtree, or opens its editor when it has nothing beneath it |
 | Steps | Double-tap a card | Steps into it, or opens its editor when it has nothing beneath it |
 | Steps | Pinch | Zooms the steps |
