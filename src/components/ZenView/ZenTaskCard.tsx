@@ -4,6 +4,7 @@ import type { TaskListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import { aspectWashStyle } from "@/utils/node-visuals";
 import type { ZenTextSize } from "@/utils/zen-grid";
+import { ZEN_MIN_CARD_HEIGHT_PX } from "@/utils/zen-grid";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import TaskRowBadges from "@/components/ListView/TaskRowBadges";
 import StatusStepButton from "@/components/StatusStepButton/StatusStepButton";
@@ -96,6 +97,7 @@ export default function ZenTaskCard({
     width,
     // As tall as the content when no height is given, with the title unclamped.
     ...(height === null ? {} : { height }),
+    "--zen-min-card-height": `${ZEN_MIN_CARD_HEIGHT_PX}px`,
     "--zen-title-size": `${text.title}px`,
     "--zen-path-size": `${text.path}px`,
     "--zen-badge-size": `${text.badge}px`,

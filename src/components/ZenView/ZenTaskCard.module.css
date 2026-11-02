@@ -90,7 +90,7 @@
    cards, its content centred. (Measured at 412 px, a three-level path was cut to 362 of 666 px.) */
 .cardFits {
   flex: 1 1 0;
-  min-height: min-content;
+  min-height: max(var(--zen-min-card-height, 0px), min-content);
 }
 
 .cardFits .path {
