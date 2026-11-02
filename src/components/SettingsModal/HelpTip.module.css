@@ -31,14 +31,16 @@
   outline-offset: 1px;
 }
 
-/* Hidden until the mark is hovered or focused; never removed, so it still describes the mark. */
+/* Hidden until the mark is hovered, focused or tapped; never removed, so it still describes the
+   mark. Fixed to the viewport, and placed by HelpTip from the room around the mark, so it cannot
+   widen the page or run off an edge; the text wraps and a short viewport scrolls it. */
 .bubble {
-  position: absolute;
-  top: calc(100% + var(--space-1));
-  inset-inline-start: 0;
-  z-index: 10;
-  width: 280px;
-  max-width: 70vw;
+  position: fixed;
+  z-index: 100;
+  box-sizing: border-box;
+  max-width: calc(100vw - 16px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
   padding: var(--space-2);
   border-radius: 6px;
   border: 1px solid var(--node-border);
@@ -52,8 +54,7 @@
   pointer-events: none;
 }
 
-.mark:hover + .bubble,
-.mark:focus-visible + .bubble {
+.shown {
   visibility: visible;
   opacity: 1;
 }
