@@ -27,6 +27,15 @@ describe("NodeContextMenu — always-visible items", () => {
     expect(screen.getByRole("button", { name: "rename" })).toBeInTheDocument();
   });
 
+  it("renders Edit for every kind, since full screen hides the action bar's", () => {
+    for (const nodeKind of ["domain", "task", "commitment", "flow"] as const) {
+      const { unmount } = render(<NodeContextMenu {...defaultProps} nodeKind={nodeKind} />);
+      fireEvent.click(screen.getByRole("button", { name: "edit" }));
+      expect(defaultProps.onAction).toHaveBeenLastCalledWith("edit");
+      unmount();
+    }
+  });
+
   it("renders cut, copy, and delete buttons", () => {
     render(<NodeContextMenu {...defaultProps} />);
     expect(screen.getByRole("button", { name: "cut" })).toBeInTheDocument();

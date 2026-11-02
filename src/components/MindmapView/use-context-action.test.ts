@@ -27,6 +27,7 @@ function makeOpts(overrides: Partial<Parameters<typeof useContextAction>[0]> = {
     onConvertToFlow: vi.fn(),
     onStartFlow: vi.fn(),
     onToggleArchive: vi.fn(),
+    onEdit: vi.fn(),
     ...overrides,
   };
 }
@@ -37,6 +38,13 @@ describe("useContextAction", () => {
     const { result } = renderHook(() => useContextAction(opts));
     result.current.onContextAction("missing", CONTEXT_ACTION.ENTER);
     expect(opts.enterSubtree).not.toHaveBeenCalled();
+  });
+
+  it("EDIT opens the node's editor", () => {
+    const opts = makeOpts();
+    const { result } = renderHook(() => useContextAction(opts));
+    result.current.onContextAction("domain-1", CONTEXT_ACTION.EDIT);
+    expect(opts.onEdit).toHaveBeenCalledWith("domain-1");
   });
 
   it("ARCHIVE toggles the hand archive of the node", () => {

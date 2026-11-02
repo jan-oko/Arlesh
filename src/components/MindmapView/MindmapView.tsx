@@ -67,7 +67,8 @@ import QuickPlanPicker from "@/components/QuickPlanPicker/QuickPlanPicker";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
-import { useViewGestures } from "@/hooks/use-view-gestures";
+import { runAfterSelect, useViewGestures } from "@/hooks/use-view-gestures";
+import { OPEN_EDITOR_IDS } from "@/utils/touch/command-ids";
 import { useTouchCommand } from "@/hooks/use-touch-command";
 import { useHasTouch } from "@/hooks/use-media-query";
 import { canParentNewTask } from "@/utils/node-meta";
@@ -484,6 +485,8 @@ export default function MindmapView() {
     findNodeById, enterSubtree, setEditingNodeId,
     setClipboard, clipboard, onPaste, toggleCollapsed: toggleCollapsedOrGroup, onDelete, onNewFlow, onConvertToFlow, onStartFlow,
     onToggleArchive: toggleArchive,
+    // Selects the node, then runs the editor binding on it, as the action bar's Edit does.
+    onEdit: (id) => { selectNode(id); runAfterSelect(OPEN_EDITOR_IDS); },
   });
 
   const handleCtrlClick = useCallback((id: string) => { addToSelection(id); }, [addToSelection]);

@@ -233,6 +233,10 @@ Whenever a touchscreen is present, at any width.
 - **Tap** selects. **Tapping the selected node again** deselects it.
 - **Long-press** on a node opens that node's **quick action menu** (not the command palette; the
   palette is the [top bar square](#the-top-bar-square)'s long-press and the action bar's More).
+  The menu has **Edit** on every node, in the Mindmap's menu and the List View's row menu (user,
+  round 5): full screen hides the action bar's Edit, and one consistent menu is simpler than one
+  that changes with the mode. Edit selects the node and runs the editor binding. The List's row menu
+  now opens on every row (it used to open only where the archive applied).
 - A quick **flick up** on a node opens its editor. Scrolling wins when the move is slow or long.
 - **Tap a node's status icon** to step its status, exactly as the status-cycle key does (a
   Commitment's icon its verdict, a wait's its release). The tap **selects the node** and steps it,

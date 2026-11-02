@@ -6,6 +6,7 @@ import { useTaskAgentic } from "@/hooks/use-task-agentic";
 import { useHandArchive } from "@/hooks/use-hand-archive";
 import { useTouchBoardCommands } from "@/hooks/use-touch-board-commands";
 import { archiveOfferFor } from "@/utils/hand-archive";
+import type { ArchiveOffer } from "@/utils/hand-archive";
 import RowContextMenu from "@/components/RowContextMenu/RowContextMenu";
 import { useTaskAsynchronous } from "@/hooks/use-task-asynchronous";
 import { useTaskCompound } from "@/hooks/use-task-compound";
@@ -61,7 +62,8 @@ import { useDisplayStore } from "@/stores/use-display-store";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
 import { useTouchCommand } from "@/hooks/use-touch-command";
 import { hasRowsBeneath } from "@/utils/list-rows-beneath";
-import { useViewGestures } from "@/hooks/use-view-gestures";
+import { runAfterSelect, useViewGestures } from "@/hooks/use-view-gestures";
+import { OPEN_EDITOR_IDS } from "@/utils/touch/command-ids";
 import touchStyles from "@/styles/touch-surface.module.css";
 
 export default function ListView() {
@@ -127,11 +129,12 @@ export default function ListView() {
     showToast,
   });
   // The row context menu: the hand archive, on a row that takes one.
-  const [rowMenu, setRowMenu] = useState<{ nodeId: string; x: number; y: number; offer: "archive" | "unarchive" } | null>(null);
+  const [rowMenu, setRowMenu] = useState<{ nodeId: string; x: number; y: number; offer: ArchiveOffer } | null>(null);
   const openRowMenu = (nodeId: string, x: number, y: number) => {
     const node = findNode(tree, nodeId);
-    const offer = node === undefined ? null : archiveOfferFor(node);
-    if (offer === null) return;
+    if (node === undefined) return;
+    // Every row has Edit, so the menu always opens; the archive item is there only where it applies.
+    const offer = archiveOfferFor(node);
     setSelectedRowId(nodeId);
     setRowMenu({ nodeId, x, y, offer });
   };
@@ -427,6 +430,7 @@ export default function ListView() {
           y={rowMenu.y}
           archive={rowMenu.offer}
           onArchive={() => toggleArchive(rowMenu.nodeId)}
+          onEdit={() => runAfterSelect(OPEN_EDITOR_IDS)}
           onClose={() => setRowMenu(null)}
         />
       )}

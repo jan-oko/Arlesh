@@ -12,3 +12,4 @@
 - **A nested List row indents from the left whatever its title's script.** A Hebrew child under a Hebrew parent used to inset from the right and end short of its siblings.
 - **Up replaces Child on the action bar when nothing is selected, and a two-finger swipe up goes Up anywhere.** Up leaves the entered subtree one level (the breadcrumb's parent step) and is greyed at the top level. Child with nothing selected stays in the command palette.
 - **Full screen hides the phone's bottom bars too, and a three-finger tap toggles it.** Only the free square remains, in the bottom-right corner: tap it to open a node, long-press it for the command palette.
+- **The node's quick action menu has Edit.** In the Mindmap and the List, since full screen hides the action bar's Edit.
