@@ -392,3 +392,12 @@ describe("HotkeysModal — on a touch-only device", () => {
     expect(screen.queryByText("touch:gestureTapDoes")).not.toBeInTheDocument();
   });
 });
+
+describe("HotkeysModal close button", () => {
+  it("has a close button that closes the sheet", () => {
+    const onClose = vi.fn();
+    render(<HotkeysModal onClose={onClose} view="list" />);
+    fireEvent.click(screen.getByRole("button", { name: "touch:sheetClose" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});

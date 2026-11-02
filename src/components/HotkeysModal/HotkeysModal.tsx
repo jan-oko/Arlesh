@@ -215,6 +215,9 @@ function SectionRows({ rows }: { rows: readonly SheetRow[] }) {
   );
 }
 
+/** The close button's glyph; its accessible name is the translated "Close". */
+const CLOSE_GLYPH = "✕";
+
 function scrollBody(body: HTMLElement | null, by: number): void {
   if (body !== null) body.scrollTop += by;
 }
@@ -319,7 +322,12 @@ export default function HotkeysModal({ onClose, view }: Props) {
       <div className={styles.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={touchMode ? t("touch:gesturesTitle") : t("hotkeys:title")}>
         {/* The header stays put; a wheel over it scrolls the body, since nothing up here scrolls. */}
         <div className={styles.header} onWheel={(e) => scrollBody(bodyRef.current, e.deltaY)}>
-          <h2 className={styles.title}>{touchMode ? t("touch:gesturesTitle") : t("hotkeys:title")}</h2>
+          <div className={styles.titleRow}>
+            <h2 className={styles.title}>{touchMode ? t("touch:gesturesTitle") : t("hotkeys:title")}</h2>
+            <button type="button" className={styles.close} aria-label={t("touch:sheetClose")} onClick={onClose}>
+              {CLOSE_GLYPH}
+            </button>
+          </div>
           <input
             ref={searchRef}
             type="search"
