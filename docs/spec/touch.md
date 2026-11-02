@@ -34,8 +34,11 @@ Below 700 px:
 - **The top bar** holds, in order: a **☰ menu**, the **title**, the **preset chip** and the agents'
   status, then a [free square](#the-top-bar-square). The title is the view's name at the board's
   root, and the breadcrumb inside a subtree. **In portrait the breadcrumb is `‹ {current node}`**:
-  the chevron opens the full path as the `…` of the long form does (a menu of every level above, each
-  one exiting to it). Landscape keeps the whole chain.
+  the chevron **or the current node's name** opens the full path as the `…` of the long form does (a
+  menu of every level above, each one exiting to it). The chevron is a touch target of at least
+  40 x 40 px with a large glyph (user, round 5). Landscape keeps the whole chain. **The path's first
+  segment is always "Arlesh"** (the board), in both forms and in the full-path menu, never the name
+  of the view; the top bar's title at the board's root keeps the view's name.
   There is **no server indicator** on the phone's bar (feedback from a Pixel 10 Pro: it crowded the
   bar); the server's status lives on **Settings → Server** ([Client mode](client-mode.md)).
   - **The preset chip** shows the preset the view reads under and opens the **preset sheet**: Plan,
