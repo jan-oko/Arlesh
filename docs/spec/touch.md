@@ -97,6 +97,12 @@ the finger lifting, as on a node) opens the [command palette](#the-command-palet
 asked for a double-tap; on the device that read as a dead square, so one tap does it.) It is where
 a thumb rests, and it keeps Open off the action bar when a node is selected.
 
+A **tap** is a press and a lift on the square within a slop of 10 px (`TAP_SLOP_PX`) and under the
+long-press time. The slop is measured by distance, never by leaving the square, and the square
+sets `touch-action: none` and captures its pointer: otherwise Android takes a thumb's few px of
+roll for a pan and cancels the pointer, and the tap is lost (user, 2026-11-02: it "doesn't work
+consistently").
+
 ## The action bar
 
 A row of buttons above the bottom navigation, chosen by what is selected. It shows in the phone

@@ -1,25 +1,34 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type PointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { runFirst } from "@/hooks/use-view-gestures";
 import { usePaletteStore } from "@/stores/use-palette-store";
-import { LONG_PRESS_MS } from "@/utils/touch/gestures";
+import { LONG_PRESS_MS, TAP_SLOP_PX } from "@/utils/touch/gestures";
 import styles from "./PhoneTopBar.module.css";
 
 /** `Ctrl+O`, the node search that re-roots the tab. */
 const OPEN_COMMAND_IDS: readonly string[] = ["global.openSearch"];
 
+/** A coordinate, or 0 where the platform gave none. */
+function finite(value: number): number {
+  return Number.isFinite(value) ? value : 0;
+}
+
 /**
  * The free square at the end of the phone top bar (`docs/spec/touch.md`): a **tap** opens
  * Open (`Ctrl+O`'s node search) and a **long-press** opens the command palette, once the finger
- * lifts as a node's long-press does.
+ * lifts as a node's long-press does. A tap is a press and lift on the square within the tap slop
+ * and the long-press time; the square takes the pointer (and `touch-action: none`) so the browser
+ * never turns a jittery tap into a pan and cancels it.
  */
 export default function TopBarSquare() {
   const { t } = useTranslation("touch");
   const openPalette = usePaletteStore((s) => s.open);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const held = useRef(false);
-  // Whether a press is still on the square: sliding off cancels it, so the lift elsewhere is no tap.
-  const pressed = useRef(false);
+  // The press in progress: where it began and which pointer made it. Null when none is.
+  // A press that drifts further than the tap slop is cancelled by *distance*, not by leaving the
+  // square: a thumb rolls a few px while it lifts, and that must not cost the tap.
+  const press = useRef<{ pointerId: number; x: number; y: number } | null>(null);
 
   function clearHold() {
     if (holdTimer.current !== null) clearTimeout(holdTimer.current);
@@ -28,10 +37,19 @@ export default function TopBarSquare() {
 
   useEffect(() => clearHold, []);
 
-  function onPointerDown() {
-    pressed.current = true;
-    held.current = false;
+  function endPress() {
     clearHold();
+    press.current = null;
+    held.current = false;
+  }
+
+  function onPointerDown(event: PointerEvent<HTMLDivElement>) {
+    clearHold();
+    press.current = { pointerId: event.pointerId, x: finite(event.clientX), y: finite(event.clientY) };
+    held.current = false;
+    // Keep the rest of the gesture on the square, whatever the finger does, so the lift always
+    // reaches it. (Absent in jsdom.)
+    try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch { /* an inactive pointer */ }
     holdTimer.current = setTimeout(() => {
       holdTimer.current = null;
       held.current = true;
@@ -39,22 +57,22 @@ export default function TopBarSquare() {
     }, LONG_PRESS_MS);
   }
 
-  function onPointerUp() {
-    clearHold();
-    if (!pressed.current) return;
-    pressed.current = false;
-    if (held.current) {
-      held.current = false;
-      openPalette();
-      return;
-    }
-    runFirst(OPEN_COMMAND_IDS);
+  function onPointerMove(event: PointerEvent<HTMLDivElement>) {
+    const start = press.current;
+    if (start === null || start.pointerId !== event.pointerId) return;
+    const moved = Math.hypot(finite(event.clientX) - start.x, finite(event.clientY) - start.y);
+    if (moved > TAP_SLOP_PX) endPress();
   }
 
-  function onPointerCancel() {
-    clearHold();
-    pressed.current = false;
-    held.current = false;
+  function onPointerUp(event: PointerEvent<HTMLDivElement>) {
+    const start = press.current;
+    if (start === null || start.pointerId !== event.pointerId) return;
+    const moved = Math.hypot(finite(event.clientX) - start.x, finite(event.clientY) - start.y);
+    const wasHeld = held.current;
+    endPress();
+    if (moved > TAP_SLOP_PX) return;
+    if (wasHeld) openPalette();
+    else runFirst(OPEN_COMMAND_IDS);
   }
 
   return (
@@ -65,9 +83,9 @@ export default function TopBarSquare() {
       aria-label={t("topBarSquare")}
       title={t("topBarSquare")}
       onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel}
-      onPointerLeave={onPointerCancel}
+      onPointerCancel={endPress}
       onKeyDown={(event) => { if (event.key === "Enter") runFirst(OPEN_COMMAND_IDS); }}
       onContextMenu={(event) => event.preventDefault()}
     />

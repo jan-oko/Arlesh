@@ -119,8 +119,8 @@
   font-size: 10px;
 }
 
-/* The free square at the end of the bar: double-tap opens Open, long-press the palette. It is
-   drawn faintly so a finger can find it, and does nothing on a single tap. */
+/* The free square at the end of the bar: tap opens Open, long-press the palette. It is
+   drawn faintly so a finger can find it. */
 .square {
   flex-shrink: 0;
   box-sizing: border-box;
@@ -128,7 +128,8 @@
   height: 36px;
   border: 1px dashed var(--node-border);
   border-radius: 8px;
-  touch-action: manipulation;
+  /* none, not manipulation: any pan the browser claims cancels the pointer mid-tap. */
+  touch-action: none;
   user-select: none;
   -webkit-touch-callout: none;
   cursor: pointer;

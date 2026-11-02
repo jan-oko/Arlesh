@@ -6,6 +6,7 @@ import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useCommandSurfaceStore } from "@/stores/use-command-surface-store";
 import { surfaceCommand } from "@/test/surface-command";
+import { LONG_PRESS_MS } from "@/utils/touch/gestures";
 import { usePaletteStore } from "@/stores/use-palette-store";
 import { useViewStore } from "@/stores/use-view-store";
 import { DEFAULT_FILTER } from "@/utils/filter-tree";
@@ -130,15 +131,54 @@ describe("PhoneTopBar — the free square", () => {
     expect(open.run).not.toHaveBeenCalled();
   });
 
-  it("opens nothing when the finger slides off before the hold registers", () => {
+  it("opens nothing when the finger slides further than the tap slop", () => {
     const open = publishOpen();
     render(<PhoneTopBar />);
     const square = screen.getByRole("button", { name: "topBarSquare" });
-    fireEvent.pointerDown(square);
-    fireEvent.pointerLeave(square);
+    fireEvent.pointerDown(square, { pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(square, { pointerId: 1, clientX: 40, clientY: 10 });
     act(() => { vi.advanceTimersByTime(700); });
-    fireEvent.pointerUp(square);
+    fireEvent.pointerUp(square, { pointerId: 1, clientX: 40, clientY: 10 });
     expect(usePaletteStore.getState().isOpen).toBe(false);
+    expect(open.run).not.toHaveBeenCalled();
+  });
+
+  it("still opens Open when the tap drifts a few px, or the pointer is reported outside the square", () => {
+    const open = publishOpen();
+    render(<PhoneTopBar />);
+    const square = screen.getByRole("button", { name: "topBarSquare" });
+    fireEvent.pointerDown(square, { pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(square, { pointerId: 1, clientX: 16, clientY: 14 });
+    fireEvent.pointerLeave(square, { pointerId: 1 });
+    fireEvent.pointerUp(square, { pointerId: 1, clientX: 16, clientY: 14 });
+    expect(open.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens Open on a slow tap just under the long-press time, and on the next tap after a cancelled one", () => {
+    const open = publishOpen();
+    render(<PhoneTopBar />);
+    const square = screen.getByRole("button", { name: "topBarSquare" });
+    fireEvent.pointerDown(square, { pointerId: 1, clientX: 10, clientY: 10 });
+    act(() => { vi.advanceTimersByTime(LONG_PRESS_MS - 50); });
+    fireEvent.pointerUp(square, { pointerId: 1, clientX: 10, clientY: 10 });
+    expect(open.run).toHaveBeenCalledTimes(1);
+
+    fireEvent.pointerDown(square, { pointerId: 2, clientX: 10, clientY: 10 });
+    fireEvent.pointerCancel(square, { pointerId: 2 });
+    fireEvent.pointerUp(square, { pointerId: 2, clientX: 10, clientY: 10 });
+    expect(open.run).toHaveBeenCalledTimes(1);
+
+    fireEvent.pointerDown(square, { pointerId: 3, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(square, { pointerId: 3, clientX: 10, clientY: 10 });
+    expect(open.run).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores a lift that belongs to another pointer", () => {
+    const open = publishOpen();
+    render(<PhoneTopBar />);
+    const square = screen.getByRole("button", { name: "topBarSquare" });
+    fireEvent.pointerDown(square, { pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(square, { pointerId: 9, clientX: 10, clientY: 10 });
     expect(open.run).not.toHaveBeenCalled();
   });
 });
