@@ -1,0 +1,1 @@
+- **The window title is "Arlesh" again.** Builds since Client mode titled the window "Arlesh — 9f0-client-mode" and stopped giving it its desktop app id, so the launcher could not match it to Arlesh's icon.
