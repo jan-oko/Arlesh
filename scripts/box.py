@@ -18,6 +18,9 @@
     box server token <branch> <arlesh-server token args...>
     box server pin <branch> approve <pin> [--name <device>] | list
 
+A branch with no worktree gets `.claude/worktrees/<branch with / as ->` made from origin/<branch>
+(`run`, `server start|token|pin`); an existing one is used as-is.
+
 `run` builds only when the branch's worktree changed since the last successful build (a hash of
 HEAD plus the uncommitted diff, per branch and per OS), installs on an Android device only when
 that device does not hold this build, and always launches. The target is `desktop` (this machine, built in) or a device registered
@@ -192,10 +195,112 @@ def all_names() -> list[str]:
     return sorted(p.name for p in root.iterdir() if p.is_dir())
 
 
+def dir_name(branch: str) -> str:
+    """The worktree directory, instance and server name for a branch: `/` becomes `-`.
+
+    The one place that mapping lives; every name keyed by a branch goes through it.
+    """
+    return branch.replace("/", "-")
+
+
 def worktree_path(name: str) -> Path:
+    """An existing worktree by directory name, used as-is."""
     path = worktrees_dir() / name
     if not path.is_dir():
         raise die(f"No worktree '{name}'. Try: {CMD} list")
+    return path
+
+
+def git_in(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return capture(["git", "-C", str(cwd), *args])
+
+
+def worktree_branch(path: Path) -> str:
+    """The branch a worktree has checked out ('' when detached)."""
+    return git_in(path, "symbolic-ref", "--quiet", "--short", "HEAD").stdout.strip()
+
+
+def ref_exists(cwd: Path, ref: str) -> bool:
+    return git_in(cwd, "rev-parse", "--verify", "--quiet", ref).returncode == 0
+
+
+def commit_count(cwd: Path, revs: str) -> int:
+    out = git_in(cwd, "rev-list", "--count", revs).stdout.strip()
+    return int(out) if out.isdigit() else 0
+
+
+def report_divergence(cwd: Path, branch: str) -> None:
+    """Say if `branch` is behind (or has diverged from) origin; never touches the branch."""
+    remote = f"refs/remotes/origin/{branch}"
+    if not ref_exists(cwd, remote):
+        return
+    behind = commit_count(cwd, f"{branch}..{remote}")
+    ahead = commit_count(cwd, f"{remote}..{branch}")
+    if behind and ahead:
+        note(
+            f"{branch} has diverged from origin ({ahead} ahead, {behind} behind); not touching it"
+        )
+    elif behind:
+        note(f"{branch} is {behind} commits behind origin; pull to update")
+
+
+def ensure_worktree(branch: str) -> Path:
+    """The worktree for `branch`, created from origin/<branch> when it is missing.
+
+    An existing worktree is used as-is: never pulled or reset. A branch that exists neither
+    locally nor on origin is an error; a new branch is never made off master.
+    """
+    if (
+        not branch
+        or branch.startswith("-")
+        or git_in(main_checkout(), "check-ref-format", "--branch", branch).returncode
+        != 0
+    ):
+        raise UsageError(f"'{branch}' is not a usable branch name.")
+    name = dir_name(branch)
+    path = worktrees_dir() / name
+    root = main_checkout()
+    if path.is_dir():
+        held = worktree_branch(path)
+        if held != branch:
+            raise die(
+                f".claude/worktrees/{name} holds {held or 'a detached HEAD'}, not {branch}. "
+                f"Remove it ('git worktree remove') or pick another branch."
+            )
+        git_in(
+            root, "fetch", "--quiet", "origin", branch
+        )  # best effort: only to report
+        report_divergence(path, branch)
+        return path
+    fetched = git_in(root, "fetch", "--quiet", "origin", branch)
+    remote = f"refs/remotes/origin/{branch}"
+    on_origin = ref_exists(root, remote)
+    local = ref_exists(root, f"refs/heads/{branch}")
+    if not on_origin and not local:
+        why = "" if fetched.returncode == 0 else f" ({fetched.stderr.strip()})"
+        raise die(
+            f"Branch '{branch}' exists neither locally nor on origin{why}. "
+            f"Push it first; this tool never creates a branch."
+        )
+    rel = f".claude/worktrees/{name}"
+    sha = git_in(
+        root, "rev-parse", "--short", remote if on_origin else branch
+    ).stdout.strip()
+    where = f"origin/{branch} @ {sha}" if on_origin else f"local only @ {sha}"
+    print(f"creating worktree {rel} for {branch} ({where})")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if local:
+        added = git_in(root, "worktree", "add", str(path), branch)
+    else:
+        added = git_in(
+            root, "worktree", "add", "--track", "-b", branch, str(path), remote
+        )
+    if added.returncode != 0:
+        raise die(f"git worktree add failed: {added.stderr.strip()}")
+    if local and on_origin:
+        git_in(path, "branch", "--set-upstream-to", f"origin/{branch}", branch)
+        report_divergence(path, branch)
+    ensure_node_modules(path)
     return path
 
 
@@ -244,7 +349,7 @@ def capture(
 
 def box_segment(branch: str) -> str:
     """One Java package segment: lowercase, [a-z0-9_], never starting with a digit."""
-    seg = re.sub(r"[^a-z0-9_]", "_", branch.lower())
+    seg = re.sub(r"[^a-z0-9_]", "_", dir_name(branch).lower())
     if seg == "" or seg[0].isdigit():
         seg = "b" + seg
     return seg
@@ -962,7 +1067,7 @@ def server_names(requested: Sequence[str]) -> list[str]:
             if root.is_dir()
             else []
         )
-    return list(requested)
+    return [dir_name(b) for b in requested]
 
 
 def server_stop(requested: Sequence[str]) -> None:
@@ -1725,6 +1830,9 @@ def cmd_list(_args: argparse.Namespace) -> None:
             else "no"
         )
         port = port_file.read_text().strip() if port_file.exists() else "-"
+        branch = worktree_branch(worktrees_dir() / name)
+        if branch and branch != name:
+            name = f"{name} [{branch}]"
         print(f"{name:<28} {built_d:<8} {built_a:<8} {port:<7} {head[:50]}")
     names = server_names([])
     if names:
@@ -1738,18 +1846,22 @@ def cmd_list(_args: argparse.Namespace) -> None:
 
 def cmd_run(args: argparse.Namespace) -> None:
     target = resolve_target(args.target)
-    wt = worktree_path(args.branch)
+    wt = ensure_worktree(args.branch)
+    name = dir_name(args.branch)
+    if args.server:
+        ensure_worktree(args.server)
+        args.server = dir_name(args.server)
     if target.os == ANDROID:
-        run_android(args.branch, wt, target, args)
+        run_android(name, wt, target, args)
     else:
-        run_desktop(args.branch, wt, target, args)
+        run_desktop(name, wt, target, args)
     record_last_target(target.name)
 
 
 def resolve_branches(requested: Sequence[str]) -> list[str]:
     if not requested or list(requested) == ["all"]:
         return all_names()
-    return list(requested)
+    return [dir_name(b) for b in requested]
 
 
 def cmd_stop(args: argparse.Namespace) -> None:
@@ -1796,7 +1908,7 @@ def cmd_clean(args: argparse.Namespace) -> None:
     # Named branches only: `clean` and `clean all` never reach into Firebase or a phone.
     if named:
         serials = reachable_android_devices()
-        for name in args.branches:
+        for name in resolve_branches(args.branches):
             package = box_package(name)
             Firebase().remove_package(package)
             uninstall_everywhere(package, serials)
@@ -1860,8 +1972,10 @@ def cmd_devices(args: argparse.Namespace) -> None:
 def cmd_server(args: argparse.Namespace) -> None:
     sub = args.server_cmd
     if sub == "start":
-        server_start(args.branch, "0.0.0.0" if args.public else "127.0.0.1")
-        print_connection(args.branch, args.public)
+        ensure_worktree(args.branch)
+        name = dir_name(args.branch)
+        server_start(name, "0.0.0.0" if args.public else "127.0.0.1")
+        print_connection(name, args.public)
     elif sub == "stop":
         server_stop(args.branches)
     elif sub == "token":
@@ -1869,13 +1983,15 @@ def cmd_server(args: argparse.Namespace) -> None:
             raise UsageError(
                 f"Usage: {CMD} server token <branch> <arlesh-server token args...>"
             )
-        server_cli_checked(args.branch, "token", args.rest)
+        ensure_worktree(args.branch)
+        server_cli_checked(dir_name(args.branch), "token", args.rest)
     else:
         if not args.rest or args.rest[0] not in ("approve", "list"):
             raise UsageError(
                 f"Usage: {CMD} server pin <branch> {{approve <pin> [--name <device>] | list}}"
             )
-        server_cli_checked(args.branch, "pin", args.rest)
+        ensure_worktree(args.branch)
+        server_cli_checked(dir_name(args.branch), "pin", args.rest)
 
 
 # ---- Argument parsing -----------------------------------------------------------------------

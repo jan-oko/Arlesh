@@ -281,7 +281,27 @@ device only when that device lacks this build or the package, and always launche
 `desktop` (this machine, built in) or a name registered with `devices add <name> --os
 android|desktop [--host host[:port]]`; the registry is per user, in
 `$XDG_CONFIG_HOME/arlesh/box-devices.json`, never in the repo. Without a target, `run` reuses the last
-one. An Android host without a port is found in `adb mdns services`.
+one.
+
+**A branch needs no worktree made by hand.** `run`, `server start`, `server token` and `server pin`
+create `.claude/worktrees/<dir>` when it is missing: `git fetch origin <branch>`, then `git worktree
+add -b <branch> --track origin/<branch>` (a local branch of that name is used as it is, with a notice
+if it is behind or has diverged), with the usual `node_modules` symlink. A branch that exists neither
+locally nor on origin is an error; the tool never makes a branch off master. `<dir>` is the branch
+with `/` replaced by `-` (`qa/2026-11-round` is `qa-2026-11-round`), through one helper that also names
+the instance, the server and the Android package; a directory that holds another branch is an error.
+An existing worktree is used as-is, never pulled or reset; if it is behind origin, `run` prints
+`<branch> is N commits behind origin; pull to update`. `list` shows the branch beside the directory
+when they differ.
+
+**Finding an Android device.** The registered host (`miniseer`, a MagicDNS name, a LAN address) is
+resolved with `getaddrinfo` and matched, by any of its addresses, against `adb mdns services`
+(`_adb-tls-connect`), which lists the phone's LAN `ip:port` under an `adb-<serial>-…` service. The
+first time a device is seen its adb serial is stored in the registry, and later runs match the mdns
+entry by serial first, since tailnet and LAN addresses differ for one phone. If nothing matches and a
+port was registered, `adb connect host:port` is tried; otherwise the run fails and lists the mdns
+entries it saw. The server URL handed to the app is this machine's tailnet address (`tailscale ip -4`)
+or, without one, its LAN address.
 
 **Every `run` comes up already connected**, on desktop and Android alike, to the branch's own server
 (started if it is not up; the first start in a fresh worktree builds arlesh-py and says so).
@@ -327,7 +347,8 @@ More of the tool, for trying pairing and the phone build:
   (non-box) devices, such as the release APK; box builds are pre-bound.
 - An Android `run` builds a debug-signed APK that installs beside the real app as
   `com.atai.arlesh.box.<branch>`, labelled "Arlesh (<branch>)" (the two files that carry the name
-  are patched for the build and restored). Firebase, per branch, when
+  are patched for the build and restored; the backups live under `$XDG_STATE_HOME/arlesh/box/backups/`,
+  never beside the files, because the resource merger rejects a stray `strings.xml.box-orig`). Firebase, per branch, when
   `ARLESH_BOX_FIREBASE_PROJECT` is set (`--no-firebase` skips it).
 - `clean <branch>` also removes that branch's Firebase app and uninstalls the package from the
   registered Android devices; `prune [<device>]` does so for every `com.atai.arlesh.box.*` whose

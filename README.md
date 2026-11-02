@@ -120,7 +120,8 @@ Agents configured via AGENTS.md and .claude/, with arlesh itself serving as an M
 `npm run box -- run <branch> [<target>]` builds a branch's worktree (only when it changed) and launches it
 beside your real app, on this machine (`desktop`) or on an Android phone registered with
 `npm run box -- devices add <name> --os android --host <host[:port]>`. It needs [uv](https://docs.astral.sh/uv/);
-the tool is `scripts/box.py`, see `docs/spec/client-mode.md` for the full reference.
+a branch with no worktree gets one made from `origin/<branch>` (names with `/` work: `qa/2026-11-round`).
+The tool is `scripts/box.py`, see `docs/spec/client-mode.md` for the full reference.
 
 ## Stack
 
