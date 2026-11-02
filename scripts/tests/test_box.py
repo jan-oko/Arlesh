@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import importlib.util
+import json
 import os
 import stat
 import subprocess
@@ -654,6 +656,345 @@ class LaunchBound(unittest.TestCase):
         self.assertNotIn("SECRET", str(ctx.exception))
 
 
+FAKE_GH = """#!__PY__
+import json, os, sys
+d = os.environ["FAKE_GH_DIR"]
+state = json.load(open(d + "/state.json"))
+args = sys.argv[1:]
+open(d + "/calls.log", "a").write(" ".join(args) + "\\n")
+def save():
+    json.dump(state, open(d + "/state.json", "w"))
+if args[:2] == ["auth", "status"]:
+    sys.exit(0 if state.get("auth", True) else 1)
+if args[:2] == ["run", "list"]:
+    print(json.dumps(state["runs"]))
+elif args[:1] == ["api"]:
+    run_id = args[1].split("/")[-2]
+    print("\\n".join(state["artifacts"].get(run_id, [])))
+elif args[:2] == ["workflow", "run"]:
+    run = state.pop("on_trigger")
+    state["runs"].append(run)
+    state["artifacts"][str(run["databaseId"])] = state.pop("trigger_artifacts", [])
+    save()
+elif args[:2] == ["run", "download"]:
+    out = args[args.index("-D") + 1]
+    open(out + "/arlesh-box-x.apk", "w").write("apk-of-run-" + args[2])
+elif args[:2] == ["secret", "set"]:
+    open(d + "/secret.txt", "w").write(sys.stdin.read())
+    open(d + "/secret.args", "w").write(" ".join(args))
+    sys.exit(0 if state.get("secret_ok", True) else 1)
+"""
+
+FAKE_KEYTOOL = """#!__PY__
+import sys
+args = sys.argv[1:]
+open(args[args.index("-keystore") + 1], "w").write("KEYSTORE:" + " ".join(args))
+"""
+
+
+def write_exe(path: Path, text: str) -> None:
+    path.write_text(text.replace("__PY__", sys.executable))
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+class CiFixture(IsolatedEnv):
+    """A pushed git clone on branch `feat`, plus fake `gh`, `adb` and `keytool` first on PATH."""
+
+    def git(self, *args: str, cwd: Path | None = None) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=cwd or self.wt,
+            check=True,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+                 "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"},
+        ).stdout.strip()  # fmt: skip
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.wt = self.tmp / "wt"
+        origin = self.tmp / "origin.git"
+        self.git("init", "--bare", "-q", str(origin), cwd=self.tmp)
+        self.git("init", "-q", "-b", "feat", str(self.wt), cwd=self.tmp)
+        self.git("remote", "add", "origin", "git@github.com:jan-oko/Arlesh.git")
+        (self.wt / "f.txt").write_text("1")
+        self.git("add", ".")
+        self.git("commit", "-q", "-m", "one")
+        # Pushing is simulated: the remote-tracking ref is what box compares HEAD with.
+        self.git("update-ref", "refs/remotes/origin/feat", "HEAD")
+        self.sha = self.git("rev-parse", "HEAD")
+        self.artifact = f"arlesh-box-feat-{self.sha[:7]}-android-apk"
+
+        self.bin = self.tmp / "bin"
+        self.bin.mkdir()
+        self.gh_dir = self.tmp / "gh"
+        self.gh_dir.mkdir()
+        os.environ["FAKE_GH_DIR"] = str(self.gh_dir)
+        os.environ["ARLESH_BOX_POLL_SECONDS"] = "0"
+        write_exe(self.bin / "gh", FAKE_GH)
+        write_exe(self.bin / "keytool", FAKE_KEYTOOL)
+        os.environ["PATH"] = f"{self.bin}{os.pathsep}{os.environ['PATH']}"
+        self.gh_state()
+
+    def gh_state(self, **state: object) -> None:
+        base: dict[str, object] = {"auth": True, "runs": [], "artifacts": {}}
+        (self.gh_dir / "state.json").write_text(json.dumps({**base, **state}))
+
+    def run_entry(self, run_id: int = 7, **over: object) -> dict[str, object]:
+        return {"databaseId": run_id, "headSha": self.sha, "status": "completed",
+                "conclusion": "success", "event": "workflow_dispatch",
+                "url": f"https://github.com/jan-oko/Arlesh/actions/runs/{run_id}", **over}  # fmt: skip
+
+    def gh_calls(self) -> list[str]:
+        log = self.gh_dir / "calls.log"
+        return log.read_text().splitlines() if log.exists() else []
+
+    def matching_run(self) -> None:
+        self.gh_state(runs=[self.run_entry()], artifacts={"7": [self.artifact]})
+
+
+class CiDecision(CiFixture):
+    def test_clean_pushed_with_a_run_uses_ci(self) -> None:
+        self.matching_run()
+        apk = box.pick_ci_build(self.wt, box.AUTO)
+        assert apk is not None
+        self.assertEqual(apk.read_text(), "apk-of-run-7")
+        self.assertEqual(apk.parent, box.ci_cache_dir())
+        self.assertTrue(any(c.startswith("run download 7 -n " + self.artifact) for c in self.gh_calls()))
+
+    def test_dirty_tree_builds_locally_without_asking_gh(self) -> None:
+        self.matching_run()
+        (self.wt / "f.txt").write_text("changed")
+        self.assertIsNone(box.pick_ci_build(self.wt, box.AUTO))
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_untracked_file_counts_as_dirty_but_node_modules_does_not(self) -> None:
+        self.matching_run()
+        (self.wt / "node_modules").symlink_to(self.tmp)
+        self.assertIsNotNone(box.pick_ci_build(self.wt, box.AUTO))
+        (self.wt / "new.txt").write_text("x")
+        self.assertIsNone(box.pick_ci_build(self.wt, box.AUTO))
+
+    def test_unpushed_head_builds_locally(self) -> None:
+        self.matching_run()
+        (self.wt / "f.txt").write_text("2")
+        self.git("commit", "-q", "-am", "two")
+        self.assertIsNone(box.pick_ci_build(self.wt, box.AUTO))
+
+    def test_no_run_for_head_builds_locally(self) -> None:
+        self.gh_state(runs=[self.run_entry(headSha="0" * 40)], artifacts={"7": [self.artifact]})
+        self.assertIsNone(box.pick_ci_build(self.wt, box.AUTO))
+
+    def test_failed_run_or_missing_artifact_does_not_count(self) -> None:
+        self.gh_state(runs=[self.run_entry(conclusion="failure")], artifacts={"7": [self.artifact]})
+        self.assertIsNone(box.pick_ci_build(self.wt, box.AUTO))
+        self.gh_state(runs=[self.run_entry()], artifacts={"7": []})
+        self.assertIsNone(box.pick_ci_build(self.wt, box.AUTO))
+
+    def test_local_flag_wins(self) -> None:
+        self.matching_run()
+        self.assertIsNone(box.pick_ci_build(self.wt, box.LOCAL))
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_ci_flag_triggers_waits_and_downloads(self) -> None:
+        self.gh_state(
+            on_trigger=self.run_entry(run_id=42),
+            trigger_artifacts=[self.artifact],
+        )
+        apk = box.pick_ci_build(self.wt, box.CI)
+        assert apk is not None
+        self.assertEqual(apk.read_text(), "apk-of-run-42")
+        calls = self.gh_calls()
+        self.assertTrue(any(c.startswith("workflow run bundles.yml --ref feat -f box=true -f publish=false") for c in calls))
+
+    def test_ci_flag_waits_for_an_unfinished_run(self) -> None:
+        self.gh_state(
+            on_trigger=self.run_entry(run_id=43, status="in_progress", conclusion=None),
+            trigger_artifacts=[self.artifact],
+        )
+        calls = {"n": 0}
+        real = box.list_bundle_runs
+
+        def finishing(wt, branch):  # type: ignore[no-untyped-def]
+            runs = real(wt, branch)
+            calls["n"] += 1
+            if calls["n"] >= 4:  # finish after a few polls
+                for r in runs:
+                    r.update(status="completed", conclusion="success")
+            return runs
+
+        with mock.patch.object(box, "list_bundle_runs", finishing):
+            apk = box.pick_ci_build(self.wt, box.CI)
+        assert apk is not None
+        self.assertEqual(apk.read_text(), "apk-of-run-43")
+
+    def test_ci_flag_reports_a_failed_run(self) -> None:
+        self.gh_state(on_trigger=self.run_entry(run_id=44, conclusion="failure"))
+        with self.assertRaises(box.BoxError) as ctx:
+            box.pick_ci_build(self.wt, box.CI)
+        self.assertIn("failed", str(ctx.exception))
+
+    def test_ci_flag_with_a_dirty_or_unpushed_tree_is_an_error(self) -> None:
+        (self.wt / "f.txt").write_text("changed")
+        with self.assertRaises(box.BoxError) as ctx:
+            box.pick_ci_build(self.wt, box.CI)
+        self.assertIn("uncommitted", str(ctx.exception))
+        self.git("commit", "-q", "-am", "two")
+        with self.assertRaises(box.BoxError) as ctx:
+            box.pick_ci_build(self.wt, box.CI)
+        self.assertIn("not pushed", str(ctx.exception))
+
+    def test_cache_hit_downloads_nothing(self) -> None:
+        self.matching_run()
+        first = box.pick_ci_build(self.wt, box.AUTO)
+        before = len(self.gh_calls())
+        self.gh_state()  # even with no runs and no network, the cache answers
+        second = box.pick_ci_build(self.wt, box.AUTO)
+        self.assertEqual(first, second)
+        self.assertEqual(len(self.gh_calls()), before)
+
+    def test_cache_is_per_commit(self) -> None:
+        self.matching_run()
+        box.pick_ci_build(self.wt, box.AUTO)
+        (self.wt / "f.txt").write_text("2")
+        self.git("commit", "-q", "-am", "two")
+        self.git("update-ref", "refs/remotes/origin/feat", "HEAD")
+        self.gh_state()
+        self.assertIsNone(box.pick_ci_build(self.wt, box.AUTO))
+
+    def test_gh_missing_falls_back_to_local(self) -> None:
+        real = box.shutil.which
+        with mock.patch.object(
+            box.shutil, "which", lambda n: None if n == "gh" else real(n)
+        ):
+            self.assertIsNone(box.pick_ci_build(self.wt, box.AUTO))
+            with self.assertRaises(box.BoxError) as ctx:
+                box.pick_ci_build(self.wt, box.CI)
+        self.assertIn("gh", str(ctx.exception))
+
+    def test_gh_unauthenticated_falls_back_to_local(self) -> None:
+        self.gh_state(auth=False)
+        self.assertIsNone(box.pick_ci_build(self.wt, box.AUTO))
+        with self.assertRaises(box.BoxError):
+            box.pick_ci_build(self.wt, box.CI)
+
+    def test_ci_mode_from_flags(self) -> None:
+        def mode(*flags: str) -> str:
+            return box.ci_mode(box.parse_args(["run", "b", "pixel", *flags]))
+
+        self.assertEqual(mode(), box.AUTO)
+        self.assertEqual(mode("--local"), box.LOCAL)
+        self.assertEqual(mode("--ci"), box.CI)
+        with self.assertRaises(box.UsageError):
+            box.parse_args(["run", "b", "--ci", "--local"])
+
+
+class KeystoreInit(CiFixture):
+    def test_writes_the_file_and_sets_the_secret(self) -> None:
+        with mock.patch.object(box, "repo_root", lambda: self.wt):
+            box.keystore_init(force=False)
+        ks = box.box_keystore()
+        self.assertTrue(ks.is_file())
+        self.assertIn("-alias arlesh-box", ks.read_text())
+        self.assertEqual(oct(ks.stat().st_mode & 0o777), "0o600")
+        self.assertEqual(
+            (self.gh_dir / "secret.args").read_text(),
+            "secret set ARLESH_BOX_KEYSTORE_B64 --repo jan-oko/Arlesh",
+        )
+        self.assertEqual(
+            base64.b64decode((self.gh_dir / "secret.txt").read_text()), ks.read_bytes()
+        )
+
+    def test_refuses_to_overwrite_without_force(self) -> None:
+        ks = box.box_keystore()
+        ks.parent.mkdir(parents=True)
+        ks.write_text("old")
+        with mock.patch.object(box, "repo_root", lambda: self.wt):
+            with self.assertRaises(box.BoxError) as ctx:
+                box.keystore_init(force=False)
+            self.assertIn("--force", str(ctx.exception))
+            self.assertEqual(ks.read_text(), "old")
+            self.assertFalse((self.gh_dir / "secret.txt").exists())
+            box.keystore_init(force=True)
+        self.assertNotEqual(ks.read_text(), "old")
+
+    def test_a_failed_upload_keeps_the_old_keystore(self) -> None:
+        ks = box.box_keystore()
+        ks.parent.mkdir(parents=True)
+        ks.write_text("old")
+        self.gh_state(secret_ok=False)
+        with (
+            mock.patch.object(box, "repo_root", lambda: self.wt),
+            self.assertRaises(box.BoxError),
+        ):
+            box.keystore_init(force=True)
+        self.assertEqual(ks.read_text(), "old")
+
+    def test_origin_repo_forms(self) -> None:
+        for url in (
+            "git@github.com:jan-oko/Arlesh.git",
+            "https://github.com/jan-oko/Arlesh",
+            "https://github.com/jan-oko/Arlesh.git",
+        ):
+            self.git("remote", "set-url", "origin", url)
+            self.assertEqual(box.origin_repo(self.wt), "jan-oko/Arlesh")
+
+
+class SigningSelection(IsolatedEnv):
+    def test_shared_keystore_when_present(self) -> None:
+        ks = box.box_keystore()
+        ks.parent.mkdir(parents=True)
+        ks.write_text("k")
+        sign = box.choose_signing()
+        self.assertEqual((sign.keystore, sign.alias, sign.shared), (ks, "arlesh-box", True))
+
+    def test_debug_keystore_fallback_with_a_notice(self) -> None:
+        debug = box.home() / ".android" / "debug.keystore"
+        debug.parent.mkdir(parents=True)
+        debug.write_text("d")
+        with mock.patch.object(box, "note") as note:
+            sign = box.choose_signing()
+        self.assertEqual((sign.keystore, sign.alias, sign.shared), (debug, "androiddebugkey", False))
+        self.assertIn("keystore init", note.call_args.args[0])
+
+
+class InstallMismatch(IsolatedEnv):
+    def setUp(self) -> None:
+        super().setUp()
+        bindir = self.tmp / "bin"
+        bindir.mkdir()
+        self.log = self.tmp / "adb.log"
+        write_exe(
+            bindir / "adb",
+            "#!__PY__\nimport os, sys\n"
+            f"open({str(self.log)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+            f"gone = os.path.exists({str(self.tmp / 'uninstalled')!r})\n"
+            "if 'uninstall' in sys.argv:\n"
+            f"    open({str(self.tmp / 'uninstalled')!r}, 'w').write('x')\n"
+            "elif 'install' in sys.argv and not gone:\n"
+            "    print('Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match]')\n"
+            "    sys.exit(1)\n",
+        )
+        os.environ["PATH"] = f"{bindir}{os.pathsep}{os.environ['PATH']}"
+        apk = box.android_apk("b")
+        apk.parent.mkdir(parents=True)
+        apk.write_text("apk")
+
+    def test_mismatch_says_so_and_offers_reinstall_without_uninstalling(self) -> None:
+        with self.assertRaises(box.BoxError) as ctx:
+            box.install_android("b", "s:1")
+        self.assertIn("different key", str(ctx.exception))
+        self.assertIn("--reinstall", str(ctx.exception))
+        self.assertNotIn("uninstall", self.log.read_text())
+
+    def test_reinstall_uninstalls_first(self) -> None:
+        box.install_android("b", "s:1", reinstall=True)
+        lines = self.log.read_text().splitlines()
+        self.assertIn("uninstall com.atai.arlesh.box.b", lines[0])
+        self.assertIn("install -r", lines[1])
+
+
 class Arguments(unittest.TestCase):
     def test_run_takes_branch_and_positional_target(self) -> None:
         a = box.parse_args(["run", "201-x", "pixel", "--server", "9f0", "--force"])
@@ -703,6 +1044,14 @@ class Arguments(unittest.TestCase):
         a = box.parse_args(["server", "pin", "x", "approve", "123", "--name", "d"])
         self.assertEqual(a.rest, ["approve", "123", "--name", "d"])
         self.assertTrue(box.parse_args(["server", "start", "x", "--public"]).public)
+
+    def test_run_source_flags(self) -> None:
+        a = box.parse_args(["run", "b", "pixel", "--ci", "--reinstall"])
+        self.assertEqual((a.ci, a.local, a.reinstall), (True, False, True))
+
+    def test_keystore_init(self) -> None:
+        a = box.parse_args(["keystore", "init", "--force"])
+        self.assertEqual((a.fn, a.force), (box.cmd_keystore, True))
 
     def test_default_command_is_list(self) -> None:
         self.assertIs(box.parse_args([]).fn, box.cmd_list)
