@@ -473,6 +473,30 @@ def record_built(os_name: str, branch: str, stamp: str) -> None:
 # ---- Patching tracked files for the length of a build ------------------------------------
 
 
+def backups_dir() -> Path:
+    """Backups live outside the source tree: a stray file beside a resource breaks the Android build."""
+    return state_dir() / "backups"
+
+
+def backup_for(original: Path) -> Path:
+    """The backup of `original`, keyed by a hash of its absolute path; `<key>.path` records which."""
+    key = hashlib.sha256(str(original.resolve()).encode()).hexdigest()[:24]
+    return backups_dir() / f"{key}.orig"
+
+
+def restore_backup(original: Path, backup: Path) -> None:
+    if backup.exists():
+        os.replace(backup, original)
+    backup.with_suffix(".path").unlink(missing_ok=True)
+
+
+def restore_old_style(original: Path) -> None:
+    """Migration: earlier versions left `<name>.box-orig` beside the file; restore it once."""
+    legacy = original.with_name(original.name + ".box-orig")
+    if legacy.exists():
+        os.replace(legacy, original)
+
+
 @contextlib.contextmanager
 def patched(files: Sequence[Path]) -> Iterator[None]:
     """Back the files up, and restore them on exit: success, failure, SIGINT, SIGTERM or SIGHUP."""
@@ -483,18 +507,20 @@ def patched(files: Sequence[Path]) -> Iterator[None]:
 
     for sig in (signal.SIGTERM, signal.SIGHUP):
         old_handlers[sig] = signal.signal(sig, on_signal)
-    backups = [(f, f.with_name(f.name + ".box-orig")) for f in files]
+    backups = [(f, backup_for(f)) for f in files]
     try:
+        backups_dir().mkdir(parents=True, exist_ok=True)
         for original, backup in backups:
+            restore_old_style(original)
             if backup.exists():
                 # A killed earlier run left the true original here; the file itself is patched.
-                os.replace(backup, original)
+                restore_backup(original, backup)
             shutil.copy2(original, backup)
+            backup.with_suffix(".path").write_text(str(original.resolve()))
         yield
     finally:
         for original, backup in backups:
-            if backup.exists():
-                os.replace(backup, original)
+            restore_backup(original, backup)
         for sig, handler in old_handlers.items():
             signal.signal(sig, handler)
 
