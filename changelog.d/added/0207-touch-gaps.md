@@ -24,3 +24,4 @@
 - **The subtree's name on the phone's top bar is as large as "Arlesh" and in the same place.** Entering or leaving a subtree no longer shifts or shrinks the title; the `‹` sits to its left.
 - **Full screen's corner square is no longer cut off by the phone's rounded corner.** It sits clear of the display's corner radius as well as of the system bars.
 - **The Open and Filter searches open a little lower on the phone,** within thumb reach, and still above the keyboard.
+- **The quit dialog, and the other warning prompts, are centred on the phone** instead of rising from the bottom edge.

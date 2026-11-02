@@ -492,3 +492,7 @@ replaces it.
   so it shrinks with the soft keyboard and the input stays above it. At 412 x 915 with a 24 px
   status bar the card's top moved from 24 px to 115.5 px (input 25 -> 116.5 px); with the keyboard
   up (a 549 px viewport) it opens at 78.9 px and ends at 463 px.
+- **The quit dialog, and every warning prompt, is a centred modal on the phone** (decided with the
+  user, 2026-11-02), horizontally and vertically, not a bottom sheet. They are all one component
+  (`WarningConfirmModal`: Quit, backlog, delete, unfinished children, the scope and plan clamp
+  prompts), so one change centres them all, with a margin round them clear of the system bars.
