@@ -30,6 +30,7 @@ export default function ZenStripCard({ node, renderGlyph, isSelected, isFocusExe
     <div
       className={`${styles.card}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}`}
       data-row-id={node.id}
+      data-pending={node.pending === true ? "" : undefined}
       data-zen-card={node.kind}
       aria-current={isSelected ? "true" : undefined}
       style={style}
