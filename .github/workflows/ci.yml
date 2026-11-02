@@ -405,5 +405,12 @@ jobs:
       - name: mypy
         run: uv run --no-sync mypy
 
+      # The branch-instance tool (scripts/box.py): stdlib only, tests run without a device.
+      - name: box tool · ruff · unittest
+        working-directory: .
+        run: |
+          uvx ruff check scripts/box.py scripts/tests
+          python3 -m unittest scripts/tests/test_box.py
+
       - name: pytest · coverage
         run: uv run --no-sync pytest --cov=arlesh --cov-report=term-missing --cov-fail-under=95
