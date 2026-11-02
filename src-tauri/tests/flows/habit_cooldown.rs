@@ -110,6 +110,7 @@ async fn load(app: &App, instant: &str) -> MindmapLoad {
     mindmap_commands::load_mindmap(app.state(), at(instant))
         .await
         .unwrap()
+        .into_load()
 }
 
 /// Until when the board says `key`'s root is cooling down — its derived cooldown block — if it is.

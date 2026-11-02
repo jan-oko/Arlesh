@@ -24,6 +24,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{
+    backend::revision::{BoardLoad, BoardRevision},
     error::{WireError, WireErrorKind},
     mindmap::model::MindmapLoad,
 };
@@ -133,7 +134,7 @@ struct Link {
     reachable: bool,
     last_sync: Option<NaiveDateTime>,
     server_api_version: Option<u32>,
-    board: Option<MindmapLoad>,
+    board: Option<BoardLoad>,
 }
 
 /// The Backend port over `arlesh-server`.
@@ -229,9 +230,10 @@ impl HttpBackend {
 
     /// Loads the board, remembering it; when the server cannot be reached, answers the board last
     /// loaded instead, which the windows show read-only.
-    async fn load_board(&self, call: Call) -> Result<MindmapLoad, WireError> {
-        match self.send::<MindmapLoad>(call).await {
-            Ok(board) => {
+    async fn load_board(&self, call: Call) -> Result<BoardLoad, WireError> {
+        match self.send_stamped::<MindmapLoad>(call).await {
+            Ok((load, revision)) => {
+                let board = BoardLoad::at(load, revision);
                 let now = device_now();
                 self.update(|link| {
                     link.board = Some(board.clone());
@@ -249,6 +251,14 @@ impl HttpBackend {
 
     /// Sends `call` and reads its answer, keeping reachability up to date.
     async fn send<T: DeserializeOwned>(&self, call: Call) -> Result<T, WireError> {
+        Ok(self.send_stamped(call).await?.0)
+    }
+
+    /// Sends `call` and reads its answer with the revision the server stamped it with, if it did.
+    async fn send_stamped<T: DeserializeOwned>(
+        &self,
+        call: Call,
+    ) -> Result<(T, Option<BoardRevision>), WireError> {
         let url = format!("{}{}", self.connection.url, call.path);
         let mut request = self
             .http
@@ -269,6 +279,7 @@ impl HttpBackend {
         };
         self.set_reachable(true);
         let status = response.status();
+        let revision = BoardRevision::from_headers(response.headers());
         let bytes = response.bytes().await.map_err(|error| {
             WireError::internal(format!("could not read the server's answer: {error}"))
         })?;
@@ -280,9 +291,10 @@ impl HttpBackend {
             );
         }
         let text: &[u8] = if bytes.is_empty() { b"null" } else { &bytes };
-        serde_json::from_slice(text).map_err(|error| {
+        let answer = serde_json::from_slice(text).map_err(|error| {
             WireError::internal(format!("could not read the server's answer: {error}"))
-        })
+        })?;
+        Ok((answer, revision))
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Link> {
