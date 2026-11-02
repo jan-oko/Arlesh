@@ -158,7 +158,7 @@ definition it loads.
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
 | `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?, delegate?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, compound?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?, delegate?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`, `unarchive(id)`. See *Writing tasks* below |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
-| `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`. See *Agentic waits* below |
+| `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`. See *Agentic waits* below, and *Channels* for being told instead of polling (designed, not built) |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
 | `arlesh_capacity` | `get`, `set(at_capacity)` — the agent capacity lock, app-wide and on no node. See *Agent capacity* below |
 
@@ -566,6 +566,192 @@ reads `on_agent` again; the app refuses a release without an answer, from every 
 agent reads the answer with `get`, or off the snapshot's `expectations`, which carry `question` and
 `answer`. Agentic waits are not drawn in the Zen View's Expectations strip. A wait blocks nothing
 unless a Task depends on it.
+
+## Channels: being told a wait resolved
+
+*Designed 2026-11-02 and not built yet. See [ADR 0013](../adr/0013-mcp-channels-for-waits.md). The
+user still has to answer the open questions below, and every passage marked **(OQ n)** depends on
+one.*
+
+An agent that raised a wait can be **told** when it resolves, instead of polling `get`. The message
+arrives in its running Claude Code session as a **channel** event. Channels are a Claude Code
+research preview: a server declares the experimental capability `claude/channel` and sends
+`notifications/claude/channel` (`content`, plus string `meta` that becomes attributes of the
+`<channel>` tag the model reads).
+
+**The constraint.** A channel must be a **stdio** server that Claude Code spawns. During the preview
+a custom one runs only under `claude --dangerously-load-development-channels server:<name>`, in an
+**interactive** session: the flag is ignored under `-p` and through the Agent SDK. Claude Code never
+acknowledges an event and drops it silently when the session has not loaded the server as a
+channel. Arlesh's endpoint is HTTP, so it cannot be a channel itself. The ADR records the full
+protocol and its sources.
+
+**The bridge.** `arlesh-channel` is a small binary. It is a stdio MCP server towards Claude Code and
+an HTTP MCP client of Arlesh's endpoint, the app's in Standalone or `arlesh-server`'s `/mcp` with a
+device token in Client mode. It forwards every `arlesh_*` tool unchanged, passes on the endpoint's
+instructions with a paragraph about channels added, and declares `claude/channel`. Its `initialize`
+answers with an MCP revision earlier than **2026-07-28**, which is the revision Claude Code refuses
+to register as a channel. It is registered *instead of* the HTTP entry, under the same name:
+
+```
+claude mcp add Arlesh -- arlesh-channel --url http://127.0.0.1:4747/mcp
+claude --dangerously-load-development-channels server:Arlesh
+```
+
+Without the second flag the bridge is an ordinary stdio MCP server: every tool works and no event
+arrives.
+
+**Subscribing.** The bridge adds one tool of its own, `arlesh_channel`, with two operations:
+
+- `subscribe(id)` takes a wait id, full or short, that the MCP can see, as `arlesh_waits.get`
+  needs. Subscribing to a wait that has already resolved sends its event at once.
+- `unsubscribe(id)`.
+
+A wait the agent raises **through the bridge** with `arlesh_waits.ask` or `raise` is subscribed
+**implicitly**, and the tool's answer says so (`"subscribed": true`). **(OQ 2: implicit, explicit
+or both.)** A subscription belongs to the bridge process, so it lasts as long as the Claude Code
+session. It is held in memory and survives an app or server restart (see *Delivery*), but not the
+end of the session. A resumed session (`claude --resume`) starts a new bridge with none.
+**(OQ 3: durability.)** Access is visibility: anything `get` may read can be subscribed to,
+including a wait the user or another agent raised. **(OQ 4: own waits only?)**
+
+**Resolution.** A subscribed wait produces one event per transition:
+
+| `resolution` | When | Ends the subscription |
+| --- | --- | --- |
+| `answered` | A question wait went pending → released. It carries the answer. | yes |
+| `released` | A non-question wait went pending → released. | yes |
+| `archived` | It was archived while still pending. | yes |
+| `gone` | It can no longer be read: deleted, its Task deleted, out of the roots, or private. These are indistinguishable by design, as `not_permitted` is. | yes |
+| `reopened` | released → pending, because the release was taken back or undone. **(OQ 5)** | no |
+
+A lapsed Time Scope makes a wait Overdue, which is not a resolution. Waits do not expire.
+
+**The event.** `content` is one readable paragraph: what the wait was, under which Task, how it
+resolved and, for `answered`, the answer in full. `meta` is for routing, with every key an
+identifier as the channel contract requires (other keys are dropped silently):
+
+```
+<channel source="Arlesh" event_id="wait:7c0e…:answered:2026-11-02T14:03:11Z"
+         resolution="answered" wait_id="7c0e…" wait_short_id="7c0" task_id="512"
+         task_short_id="9a1" released_at="2026-11-02T14:03:11Z" released_by="desktop">
+Wait 7c0 "PR #165 is green: review and merge?" under task 9a1 "MCP channels for waits" was
+answered by the user: "Merged. Next, the bridge's packaging."
+</channel>
+```
+
+`released_by` is the journal source of the release: `desktop`, a Client-mode device's name, or
+`mcp`. The instructions tell the agent that an answer released by `mcp` came from **an agent, not
+the user**, since an agent with write access to a Task can release a question with any answer. A
+long answer is sent whole up to 4,000 characters. Past that the content ends with a pointer to
+`arlesh_waits.get`.
+
+**Delivery.** The bridge finds resolutions by **re-reading**. On each wake it reads every subscribed
+wait in one call (`arlesh_waits.get_many`) and passes each wait's previous and current state through
+a pure rule, which answers the event, if any. It wakes every **10 s**. In Client mode it also wakes
+on each `board-changed` from the server's `GET /events`, with the same token. Reading the board
+catches every path a wait resolves by: the app, another agent, a REST route, undo, and archive or
+delete cascades. Nothing has to be added to the write paths, and a path added later is covered
+too.
+
+- **Bridge to session: at most once.** An `event_id` is sent once per bridge process. Whether the
+  model saw it cannot be known (the contract has no acknowledgement). Events that arrive while it is
+  busy are delivered together on its next turn.
+- **Arlesh to bridge: nothing visible is missed.** When the upstream session is lost (an app or
+  server restart, or the session expires), the bridge initializes a new one and re-reads every
+  subscription at once. A resolution that happened while it was away is sent then. A wait that
+  resolved and was reopened while the bridge was away sends nothing: the bridge compares states,
+  not histories.
+- **The board stays the truth.** `get` and the snapshot answer exactly as before. The bridge's
+  instructions tell the agent to call `get` whenever it is unsure, and whenever a long silence
+  looks wrong.
+
+**Touchpoint: revisions.** Task 9298 (PR #158, not merged) adds a board revision. Once the desktop
+has one that every writer bumps, the bridge's wake source can move from the timer to it, or the
+core can push resolutions itself (ADR 0013, option B). The event does not change. Nothing here
+depends on that PR.
+
+**What the core gains.** These are the only core changes:
+
+- `arlesh_waits.get_many(ids)` answers each id as `get` would, or with its error kind (`not_found`
+  folds into `not_permitted` as always). This makes one read per wake rather than one per wait.
+- Every wait answer carries `released_at` (already stored, as a completion instant; see
+  [Resources](resources.md)) and `released_by` (the source of the gesture that set it, read from
+  the journal; `null` when pending, or when it was released before journaling began).
+
+**Clients without channels** poll `arlesh_waits.get`, unchanged. That covers any HTTP client, the
+bridge without the flag, `-p`, the Agent SDK and cloud sessions.
+
+### Channels: delivery
+
+Six pull requests, each green on its own, landed in order. PR 1 decides whether the rest stand as
+written.
+
+1. **Spike: confirm the transport and registration (docs only).** On a real Claude Code, check:
+   (a) does an HTTP server that declares `claude/channel` register under
+   `--dangerously-load-development-channels server:<name>`? (b) Does a 30-line rmcp stdio server
+   register, and at which `protocolVersion`? (c) What does the client send in `initialize` when it
+   loads a server as a channel? If (c) tells channel-on from channel-off, the bridge can report it
+   in `subscribe`'s answer. Write the results into ADR 0013 and this section. *Acceptance:* each
+   answer is recorded with the Claude Code version. If (a) is yes, PRs 3 and 4 become a core change
+   instead (ADR option A).
+2. **Core: `get_many`, `released_at` and `released_by` on wait answers.** Files:
+   `crates/arlesh-core/src/mcp/waits.rs`, `params.rs`, `schema.rs`, the lookup that builds a wait
+   answer, and a journal read for `released_by` beside the undo module. Tests:
+   `src-tauri/tests/operations/mcp_writes.rs` and the core's sibling `tests.rs`. Spec: the
+   *Agentic waits* list and the tools table here. *Acceptance:* `get_many` answers mixed
+   visible, hidden and missing ids in order. `released_by` is `desktop` for an app release, `mcp`
+   for an agent's, and the device name through `arlesh-server`. A changelog fragment under `added`.
+3. **Bridge crate: the stdio proxy, no channel yet.** A new crate `crates/arlesh-channel` (a binary;
+   workspace member) on rmcp: a stdio server, a streamable-HTTP client, `--url` and `--token`
+   (also `ARLESH_MCP_URL` and `ARLESH_MCP_TOKEN`), forwarding `tools/list` and `tools/call`, and
+   instructions from upstream. Re-initializes on a lost upstream session. *Acceptance:* an
+   integration test runs `arlesh_core::mcp::router` on an ephemeral port and drives the bridge over
+   an in-memory duplex: every tool answers as it does directly; a restarted router is reconnected
+   to transparently.
+4. **Bridge: subscriptions and the channel.** Declares `claude/channel` and pins the revision. Adds
+   `arlesh_channel.subscribe` and `unsubscribe`, the implicit subscription on `ask` and `raise`
+   (per OQ 2), the 10 s wake, and a pure rule `crates/arlesh-channel/src/rules/resolution.rs`:
+   `(previous, current) -> Option<Event>`, with the dedup set. *Acceptance:* unit tests for every
+   row of the resolution table and for dedup. The integration test releases a wait through the
+   core (as the app does, not through the bridge) and sees exactly one
+   `notifications/claude/channel` with the meta above; a router restart between the release and the
+   wake still gives exactly one; meta keys are all identifiers.
+5. **Bridge: wake on `/events` in Client mode.** When `--token` is given, also follow
+   `GET /events` with `Last-Event-ID`, waking on each `board-changed`. *Acceptance:* a test against
+   a stub SSE stream wakes once per event and falls back to the timer when the stream drops.
+6. **Packaging and docs.** Ship the binary (per OQ 6), the connection instructions in this file's
+   *Connecting*, a Claude Code plugin manifest if OQ 1 chooses one, and the agent-facing paragraph
+   in `AGENTS.md`'s board section. *Acceptance:* the user, by hand: start
+   `claude --dangerously-load-development-channels server:Arlesh`, `ask` a question, answer it in the
+   app, and see the event start a turn.
+
+### Channels: open questions
+
+For the user. Each one marked **(OQ n)** above waits on its answer.
+
+1. **Is it worth building under the preview's limits?** It works only in interactive sessions
+   launched with the development flag and its warning dialog. It does not work under `-p`, the
+   Agent SDK or cloud sessions, which includes the orchestrator's sub-agents. Build now, or wait for
+   the allowlist (an Anthropic listing, or a Team/Enterprise `allowedChannelPlugins` entry for an
+   Arlesh plugin)?
+2. **Implicit, explicit, or both?** Subscribe automatically to every wait the agent raises through
+   the bridge, offer only `subscribe`, or both (recommended)? And should a non-question wait (CI)
+   be subscribed implicitly too, given that the agent usually releases those itself?
+3. **Durable or in memory?** Recommended: in the bridge's memory, for the life of the session. The
+   cost is that `claude --resume` starts with no subscriptions, and the agent must re-subscribe (the
+   instructions would say so). The alternative is a table of subscriptions keyed by something that
+   survives a resume, which Arlesh has no identity for today.
+4. **Any visible wait, or only the agent's own?** Recommended: anything `get` can read. The other
+   choices are only waits raised through this bridge, or only waits under Agentic Tasks.
+5. **Tell the agent when an answer is taken back?** If the user undoes an answer the agent has
+   already acted on, should a `reopened` event follow (recommended), or do events end at the first
+   resolution?
+6. **Where does the binary come from?** A Tauri sidecar shipped with the desktop app (it is on
+   every machine that runs Arlesh), `cargo install`, the Python package (`pip install arlesh`
+   already ships `arlesh-server`), or a Claude Code plugin in a marketplace of the user's own?
+7. **Answers written by agents.** Should the event only flag a question released by an agent
+   (`released_by: mcp`), as designed, or should the bridge not deliver those answers at all?
 
 ## Notes
 
