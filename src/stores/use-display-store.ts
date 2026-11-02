@@ -190,6 +190,14 @@ interface DisplayStore {
    */
   zenShowsCompound: boolean;
   toggleZenShowsCompound: () => void;
+  /**
+   * How the phone's Steps View lays its cards out: **filling the screen** in pages (on), or one
+   * scrolling column of cards as tall as their content (off). **On by default** (ruled by the user,
+   * 2026-11-02), as the Zen View's cards fill the screen. The phone layout only; the desktop grid is
+   * unaffected. App-wide.
+   */
+  stepsFillScreen: boolean;
+  toggleStepsFillScreen: () => void;
 }
 
 /** Keeps a stored or typed threshold inside the range the setting offers. */
@@ -271,6 +279,8 @@ export const useDisplayStore = create<DisplayStore>()(
       zenShowOverdueBorder: true,
       toggleZenShowOverdueBorder: () =>
         set((s) => ({ zenShowOverdueBorder: !s.zenShowOverdueBorder })),
+      stepsFillScreen: true,
+      toggleStepsFillScreen: () => set((s) => ({ stepsFillScreen: !s.stepsFillScreen })),
     }),
     { name: "arlesh-display" },
   ),

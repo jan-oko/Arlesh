@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   shownPage,
   CARD_GAP, DEFAULT_STEPS_ZOOM, HEADER_CURSOR, cardSizeForZoom, childCursor, clampPage, isStepsZoom,
-  moveAcrossPages, moveCursor, pageCount, pageSlice, resolveGrid, stepGrid,
+  moveAcrossPages, moveCursor, pageCount, pageSlice, phoneFillGrid, resolveGrid, stepGrid,
 } from "./steps-grid";
 
 describe("a stored zoom level", () => {
@@ -59,6 +59,21 @@ describe("the grid before the area has been laid out", () => {
   it("defers to the measurement the moment there is one", () => {
     const measured = { columns: 3, rows: 2, pageSize: 6 };
     expect(resolveGrid(measured, 40)).toBe(measured);
+  });
+});
+
+describe("the phone's fill-the-screen grid", () => {
+  it("is one column with as many rows as the measurement fits, the rest paged", () => {
+    expect(phoneFillGrid({ columns: 2, rows: 4, pageSize: 8 }, 20)).toEqual({ columns: 1, rows: 4, pageSize: 4 });
+  });
+
+  it("takes no more rows than there are cards, so a lone card fills the area", () => {
+    expect(phoneFillGrid({ columns: 2, rows: 4, pageSize: 8 }, 1)).toEqual({ columns: 1, rows: 1, pageSize: 1 });
+  });
+
+  it("holds the whole level on one page before the area is measured", () => {
+    expect(phoneFillGrid(null, 5)).toEqual({ columns: 1, rows: 5, pageSize: 5 });
+    expect(phoneFillGrid(null, 0)).toEqual({ columns: 1, rows: 1, pageSize: 1 });
   });
 });
 

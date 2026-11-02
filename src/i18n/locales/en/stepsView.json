@@ -26,6 +26,9 @@
   "previousPage": "Previous page",
   "nextPage": "Next page",
   "zoomLabel": "Card size",
+  "fillScreen": "Fill the screen on the phone",
+  "fillScreenHelp": "On the phone, the cards share the screen's height and you turn pages. Off, the Step is one scrolling column of cards, each as tall as its content. The card size sets how many cards a page holds.",
+  "fillScreenHelpLabel": "Help: Fill the screen on the phone",
   "stepLabel": "Step",
   "childrenLabel": "Inside this Step",
   "field": {

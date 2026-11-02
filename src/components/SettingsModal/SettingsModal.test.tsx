@@ -216,6 +216,17 @@ describe("SettingsModal", () => {
     expect(screen.getByLabelText("zoomLabel")).toBeInTheDocument();
   });
 
+  it("offers the phone's fill-the-screen switch under Steps, on by default", () => {
+    useDisplayStore.setState({ stepsFillScreen: true });
+    open();
+    goTo("steps");
+
+    const fill = screen.getByRole("checkbox", { name: "fillScreen" });
+    expect(fill).toBeChecked();
+    fireEvent.click(fill);
+    expect(useDisplayStore.getState().stepsFillScreen).toBe(false);
+  });
+
   it("offers the Zen View's badge switch under Zen, on by default", () => {
     useDisplayStore.setState({ zenShowBadges: true });
     open();

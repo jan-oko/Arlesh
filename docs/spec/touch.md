@@ -71,9 +71,15 @@ Below 700 px:
   scrolls. The cards mean what the grid's mean, and act the same. "Never clamped" holds for the
   path too, and for the Commitment and Wait chips above the list: on the phone the path wraps and a
   chip's title takes as many lines as it needs, rather than ending in an ellipsis.
-- **The Steps View** is one scrolling column in place of the paged grid, each card as tall as its
-  content (its Info notes up to a cap). There is no page to turn, and the zoom no longer sets the
-  card.
+- **The Steps View** lays its cards out one of two ways, chosen under **Settings > Steps** ("Fill
+  the screen on the phone", app-wide, phone layout only; the desktop grid is unaffected):
+  - **Fill the screen** (the default, as the Zen View does): one column, **paged** as the desktop
+    grid is. As many cards as fit at the zoom's card height make a page (the zoom's height is the
+    minimum: below it a card is not made smaller, the next card goes to the next page), and the
+    cards on a page share the area's height equally and fill their cells. A lone card fills the
+    area.
+  - **Scroll**: one scrolling column in place of the paged grid, each card as tall as its content
+    (its Info notes up to a cap). There is no page to turn, and the zoom no longer sets the card.
 - **No hover.** A tooltip's text moves into the editor or appears on a tap.
 - **Toasts** rise above the action bar rather than covering it.
 - **Tabs are not shown** in the phone layout: the tab strip is hidden and the active tab is the one
