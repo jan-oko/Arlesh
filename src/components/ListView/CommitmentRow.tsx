@@ -4,7 +4,6 @@ import type { CommitmentListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import { aspectWashStyle } from "@/utils/node-visuals";
 import { commitmentGlyphState } from "@/utils/commitment-glyph";
-import { isRtlText } from "@/utils/text-direction";
 import { useTagNames } from "@/hooks/use-tag-names";
 import CommitmentIcon from "@/components/NodeIcon/CommitmentIcon";
 import TaskRowBadges from "./TaskRowBadges";
@@ -49,11 +48,10 @@ export default function CommitmentRow({
     "--row-depth": visibleDepth,
   };
 
-  const indentClass = isRtlText(node.title) ? taskStyles.indentRtl : taskStyles.indentLtr;
 
   return (
     <div
-      className={`${taskStyles.card} ${indentClass}${isSelected ? ` ${taskStyles.cardSelected}` : ""}${isFocusExempt ? ` ${taskStyles.cardFocusExempt}` : ""}`}
+      className={`${taskStyles.card}${isSelected ? ` ${taskStyles.cardSelected}` : ""}${isFocusExempt ? ` ${taskStyles.cardFocusExempt}` : ""}`}
       // Same marker the task rows carry, so a selected Commitment is scrolled into view by the
       // same code.
       data-row-id={node.id}

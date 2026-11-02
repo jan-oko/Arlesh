@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import type { TaskListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import { aspectWashStyle } from "@/utils/node-visuals";
-import { isRtlText } from "@/utils/text-direction";
 import { useTagNames } from "@/hooks/use-tag-names";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import TaskIcon from "@/components/NodeIcon/TaskIcon";
@@ -69,9 +68,6 @@ export default function TaskRow({
     ...aspectWashStyle(node.color),
     "--row-depth": visibleDepth,
   };
-  // The indent follows the title's own direction, the same way a Mindmap node's layout does: a Hebrew
-  // task in an otherwise left-to-right list steps in from the edge its text starts at.
-  const indentClass = isRtlText(node.title) ? styles.indentRtl : styles.indentLtr;
 
   useEffect(() => {
     if (!isEditingTitle) return;
@@ -81,7 +77,7 @@ export default function TaskRow({
 
   return (
     <div
-      className={`${styles.card} ${indentClass}${overdue && showOverdueBorder ? ` ${styles.cardOverdue}` : ""}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}`}
+      className={`${styles.card}${overdue && showOverdueBorder ? ` ${styles.cardOverdue}` : ""}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}`}
       // How the list's scroller finds this row to bring it into view when it becomes the selection.
       data-row-id={node.id}
       aria-describedby={overdue ? overdueNoteId : undefined}

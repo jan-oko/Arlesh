@@ -9,3 +9,4 @@
 - **In portrait the path reads `‹ current node`.** The chevron opens the full path.
 - **Plan View swipes move cards with a real animation.** On the phone the card follows your finger; let go past the threshold and it slides out and moves across, let go short and it springs back (with reduced motion it just moves). Swipe a to-plan card right to plan it, swipe a planned card left to put it back in to-plan. The sideways and upward scope swipes on the planned pane are gone; the header's scope buttons stay.
 - **Nothing is cut short on the phone's Zen View.** A card's path and a Commitment or Wait chip's title wrap instead of ending in an ellipsis.
+- **A nested List row indents from the left whatever its title's script.** A Hebrew child under a Hebrew parent used to inset from the right and end short of its siblings.

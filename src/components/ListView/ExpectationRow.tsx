@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import type { ExpectationListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import { aspectWashStyle } from "@/utils/node-visuals";
-import { isRtlText } from "@/utils/text-direction";
 import ExpectationIcon from "@/components/NodeIcon/ExpectationIcon";
 import TaskRowBadges from "./TaskRowBadges";
 import taskStyles from "./TaskRow.module.css";
@@ -40,11 +39,10 @@ export default function ExpectationRow({
     "--row-depth": visibleDepth,
   };
 
-  const indentClass = isRtlText(node.title) ? taskStyles.indentRtl : taskStyles.indentLtr;
 
   return (
     <div
-      className={`${taskStyles.card} ${indentClass}${isSelected ? ` ${taskStyles.cardSelected}` : ""}${isFocusExempt ? ` ${taskStyles.cardFocusExempt}` : ""}`}
+      className={`${taskStyles.card}${isSelected ? ` ${taskStyles.cardSelected}` : ""}${isFocusExempt ? ` ${taskStyles.cardFocusExempt}` : ""}`}
       data-row-id={node.id}
       style={cardStyle}
       onClick={() => onSelect(node.id)}

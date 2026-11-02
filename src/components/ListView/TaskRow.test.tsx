@@ -170,16 +170,12 @@ describe("TaskRow", () => {
       expect(indented.querySelector("[class*='statusButton']")).not.toBeNull();
     });
 
-    it("indents a left-to-right title from the start edge", () => {
-      const { container } = render(<TaskRow {...baseProps({ visibleDepth: 1 })} />);
-      expect(card(container).className).toMatch(/indentLtr/);
-    });
-
-    it("indents a right-to-left title from the other edge, so a Hebrew task steps in from where its text starts", () => {
+    it("indents the same way whatever the title's script: one class, never a side chosen by the text", () => {
       const hebrew = row({ node: n("task-1", "task", { status: "todo", title: "\u05DE\u05E9\u05D9\u05DE\u05D4" }) });
-      const { container } = render(<TaskRow {...baseProps({ row: hebrew, visibleDepth: 1 })} />);
-      expect(card(container).className).toMatch(/indentRtl/);
-      expect(card(container).className).not.toMatch(/indentLtr/);
+      const latin = render(<TaskRow {...baseProps({ visibleDepth: 1 })} />);
+      const rtl = render(<TaskRow {...baseProps({ row: hebrew, visibleDepth: 1 })} />);
+      expect(card(rtl.container).className).toBe(card(latin.container).className);
+      expect(card(rtl.container).className).not.toMatch(/indent/);
     });
   });
 
