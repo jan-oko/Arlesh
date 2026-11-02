@@ -136,6 +136,22 @@ Below 700 px:
   Edit. The square is drawn faint (70% opacity, a translucent fill) over the board's corner and is
   fixed above content, clear of the system gesture bar.
 
+### Back at the root, and small phone fixes
+
+- **Back at the root asks "Quit Arlesh?"** (user, 2026-11-02). Android's back closes a sheet, leaves
+  a stepped-into node or goes up a scope first, as before; only when none applies (`stepBack`'s
+  `exit`) it opens a confirm dialog with **Quit** and **Cancel** instead of leaving at once. Back
+  again, or Cancel, stays; Quit calls the same `quitApp` as `Ctrl+Q`. The dialog is a
+  `role="dialog"` (the shared `WarningConfirmModal`, which now answers Escape), which is why the
+  next back reaches it through `dismissTopSheet` like any sheet.
+- **The cheat sheet has a ✕ close button** on the phone, in its title row, as the Open and Filter
+  sheets have.
+- **Settings help tips stay inside the screen.** `HelpTip`'s bubble is fixed to the viewport and
+  placed from the room around its mark (`bubblePlacement`): at most 280 px wide and never wider than
+  the viewport minus an 8 px gutter each side, shifted left or right to fit, under the mark or above
+  it where the room below is the smaller; the text wraps. A tap on the mark shows and hides it, as
+  hover and focus do on a desktop.
+
 ### The top bar square
 
 The last cell of the top bar is left **free**: a 36 px dashed square with nothing in it. A

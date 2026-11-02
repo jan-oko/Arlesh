@@ -23,11 +23,21 @@ export default function WarningConfirmModal({ heading, consequences, actions, on
   const { t } = useTranslation("common");
   return (
     <div className={styles.overlay} onClick={onCancel}>
-      <div className={styles.modal} onClick={(e) => { e.stopPropagation(); }}>
+      {/* A dialog, so system back (which sends a sheet Escape) cancels it like any other. */}
+      <div
+        className={styles.modal}
+        role="dialog"
+        aria-modal="true"
+        aria-label={heading}
+        onClick={(e) => { e.stopPropagation(); }}
+        onKeyDown={(e) => { if (e.key === "Escape") onCancel(); }}
+      >
         <h2 className={styles.heading}>{heading}</h2>
-        <ul className={styles.consequences}>
-          {consequences.map((c, i) => <li key={i}>{c}</li>)}
-        </ul>
+        {consequences.length > 0 && (
+          <ul className={styles.consequences}>
+            {consequences.map((c, i) => <li key={i}>{c}</li>)}
+          </ul>
+        )}
         <div className={styles.actions}>
           <button autoFocus className={styles.cancelBtn} onClick={onCancel}>{t("cancel")}</button>
           {actions.map((action, i) => (

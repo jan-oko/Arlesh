@@ -71,5 +71,7 @@
     "standard": "Standard",
     "edgeToEdge": "Edge-to-edge",
     "immersive": "Immersive"
-  }
+  },
+  "quitHeading": "Quit Arlesh?",
+  "quit": "Quit"
 }

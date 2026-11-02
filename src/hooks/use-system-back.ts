@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { onBackButtonPress } from "@tauri-apps/api/app";
-import { quitApp } from "@/api/tray";
+import { useQuitConfirmStore } from "@/stores/use-quit-confirm-store";
 import { useTabsStore } from "@/stores/use-tabs-store";
 import { stepBack } from "@/utils/back-navigation";
 import { dismissTopSheet } from "@/utils/dismiss-sheet";
@@ -23,8 +23,8 @@ function leaveSubtree(stores: TabStores | undefined): boolean {
 }
 
 /**
- * Android's system back: closes a sheet, leaves a stepped-into node or goes up a scope, and leaves
- * the app only at the root. Registering a listener is what stops the system leaving on its own, so
+ * Android's system back: closes a sheet, leaves a stepped-into node or goes up a scope, and asks
+ * "Quit Arlesh?" only at the root (a second back, or Cancel, stays). Registering a listener is what stops the system leaving on its own, so
  * nothing but this decides. Does nothing off Android.
  */
 export function useSystemBack(activeStores: () => TabStores | undefined): void {
@@ -37,7 +37,7 @@ export function useSystemBack(activeStores: () => TabStores | undefined): void {
         dismissSheet: dismissTopSheet,
         leaveSubtree: () => leaveSubtree(activeStores()),
         upScope: goUpScope,
-        exit: () => { void quitApp(); },
+        exit: () => useQuitConfirmStore.getState().show(),
       });
     }).then((listener) => {
       if (stopped) void listener.unregister();
