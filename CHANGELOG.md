@@ -231,6 +231,8 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 - **The delete confirmation opens with Delete focused**, so deleting is Delete, then Enter. **Tab** / **Shift+Tab** move between Delete and Cancel without leaving the dialog, and **Escape** or a click outside still cancels. The warning prompts that list what you would lose still open on Cancel.
 
 ### Fixed
+- **The window title is "Arlesh" again.** Builds since Client mode titled the window "Arlesh — 9f0-client-mode" and stopped giving it its desktop app id, so the launcher could not match it to Arlesh's icon.
+
 - **The Android app restarts when you switch server settings, and has the Arlesh logo as its icon.** "Connect and restart" used to do nothing in the release APK until you closed and reopened the app by hand, and if a restart fails now you see an error saying so. The phone's top bar no longer shows the server; **Settings → Server** has a status line with the mode, URL, whether the server answers, when it last synced and whether its version suits the app. The launcher icon is the desktop logo, as an adaptive icon.
 
 - **List View hides what is inside an archived Project when Archived is on Exclude.** With the **Archived** pill on Exclude, the List View still listed the Tasks inside an Archived Project, though the Mindmap hid them. It now hides them too, and the same goes for an archived Domain.
