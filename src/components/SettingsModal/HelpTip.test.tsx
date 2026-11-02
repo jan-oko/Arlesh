@@ -46,8 +46,16 @@ describe("HelpTip placement", () => {
   it("shows on a tap and hides on a second one", () => {
     const bubble = showAt(20);
     expect(bubble.className).toContain("shown");
-    fireEvent.click(screen.getByRole("button", { name: "About this" }));
+    const mark = screen.getByRole("button", { name: "About this" });
+    fireEvent.touchStart(mark);
+    fireEvent.click(mark);
     expect(bubble.className).not.toContain("shown");
+  });
+
+  it("keeps the bubble shown when a mouse clicks the mark it just hovered", () => {
+    const bubble = showAt(20);
+    fireEvent.click(screen.getByRole("button", { name: "About this" }));
+    expect(bubble.className).toContain("shown");
   });
 
   it("flips above the mark near the bottom of the viewport", () => {

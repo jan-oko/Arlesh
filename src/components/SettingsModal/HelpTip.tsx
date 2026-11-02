@@ -22,6 +22,9 @@ export default function HelpTip({ text, label }: Props) {
   const id = useId();
   const markRef = useRef<HTMLButtonElement>(null);
   const [shown, setShown] = useState(false);
+  // A touch has no hover to show the bubble, so its tap toggles; a mouse already showed it on the
+  // way in, and its click must not hide it again.
+  const touched = useRef(false);
   const [placement, setPlacement] = useState<CSSProperties>({});
 
   useLayoutEffect(() => {
@@ -40,7 +43,12 @@ export default function HelpTip({ text, label }: Props) {
         aria-describedby={id}
         onFocus={() => setShown(true)}
         onBlur={() => setShown(false)}
-        onClick={() => setShown((open) => !open)}
+        onTouchStart={() => { touched.current = true; }}
+        onClick={() => {
+          const byTouch = touched.current;
+          touched.current = false;
+          setShown((open) => (byTouch ? !open : true));
+        }}
         onKeyDown={(e) => { if (e.key === "Escape") setShown(false); }}
       >
         ?
