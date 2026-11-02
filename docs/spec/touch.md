@@ -475,3 +475,8 @@ replaces it.
   any view sees it, so no one-finger tap, press or click is read from its fingers. A device whose
   own three-finger gesture (a screenshot, in some vendors' settings) takes the touch cancels it
   before the page sees it; switch that gesture off in the phone's system settings.
+- **The subtree name matches the root title.** In a subtree the phone's top bar reads `‹ {current}`
+  with the name in the root "Arlesh" title's size (`--text-lg`) and weight (700), on the same
+  baseline; the chevron hangs to the left of the name, over the bar's gap, so the name starts where
+  "Arlesh" does and toggling between root and subtree moves nothing (at 412 x 915: text box left
+  56 px, baseline y 30 px, 16 px / 700 in both). The name beside it is the large tap target.
