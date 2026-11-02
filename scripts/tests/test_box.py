@@ -237,28 +237,49 @@ class InstallStale(IsolatedEnv):
         self.assertIsNotNone(box.install_reason("h:1", "pixel", "b", "s1"))
 
 
-class Patching(unittest.TestCase):
+class Patching(IsolatedEnv):
+    def setUp(self) -> None:
+        super().setUp()
+        self.repo = self.tmp / "repo"
+        self.repo.mkdir()
+        self.f = self.repo / "f.txt"
+        self.f.write_text("orig")
+
     def test_restored_on_success_and_on_error(self) -> None:
-        with tempfile.TemporaryDirectory() as t:
-            f = Path(t) / "f.txt"
-            f.write_text("orig")
-            with box.patched([f]):
-                f.write_text("patched")
-            self.assertEqual(f.read_text(), "orig")
-            with self.assertRaises(RuntimeError), box.patched([f]):
-                f.write_text("patched")
-                raise RuntimeError
-            self.assertEqual(f.read_text(), "orig")
-            self.assertFalse((Path(t) / "f.txt.box-orig").exists())
+        with box.patched([self.f]):
+            self.f.write_text("patched")
+        self.assertEqual(self.f.read_text(), "orig")
+        with self.assertRaises(RuntimeError), box.patched([self.f]):
+            self.f.write_text("patched")
+            raise RuntimeError
+        self.assertEqual(self.f.read_text(), "orig")
+        self.assertEqual([p.name for p in self.repo.iterdir()], ["f.txt"])
+
+    def test_backup_is_never_inside_the_repo(self) -> None:
+        with box.patched([self.f]):
+            backup = box.backup_for(self.f)
+            self.assertTrue(backup.exists())
+            self.assertFalse(backup.is_relative_to(self.repo))
+            self.assertTrue(backup.is_relative_to(box.state_dir() / "backups"))
+            self.assertEqual([p.name for p in self.repo.iterdir()], ["f.txt"])
 
     def test_leftover_backup_from_a_killed_run_wins(self) -> None:
-        with tempfile.TemporaryDirectory() as t:
-            f = Path(t) / "f.txt"
-            f.write_text("patched")
-            (Path(t) / "f.txt.box-orig").write_text("orig")
-            with box.patched([f]):
-                pass
-            self.assertEqual(f.read_text(), "orig")
+        killed = box.patched([self.f])
+        killed.__enter__()  # never exited: the run was killed
+        self.f.write_text("patched")
+        with box.patched([self.f]):
+            self.assertEqual(self.f.read_text(), "orig")
+        self.assertEqual(self.f.read_text(), "orig")
+        self.assertEqual(list(box.backups_dir().iterdir()), [])
+
+    def test_old_style_leftover_beside_the_file_is_restored(self) -> None:
+        self.f.write_text("patched")
+        legacy = self.repo / "f.txt.box-orig"
+        legacy.write_text("orig")
+        with box.patched([self.f]):
+            self.assertEqual(self.f.read_text(), "orig")
+        self.assertEqual(self.f.read_text(), "orig")
+        self.assertFalse(legacy.exists())
 
 
 class ClientNaming(unittest.TestCase):
