@@ -2,8 +2,8 @@ import { useTranslation } from "react-i18next";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { usePhoneLayout } from "@/hooks/use-media-query";
 import { isAndroid } from "@/utils/platform";
-import { SYSTEM_BARS_MODES, isSystemBarsMode } from "@/utils/system-bars";
-import Select from "@/components/Select/Select";
+import { SYSTEM_BARS_MODES } from "@/utils/system-bars";
+import SegmentedControl from "@/components/SegmentedControl/SegmentedControl";
 import HelpTip from "./HelpTip";
 import styles from "./SystemBarsSettings.module.css";
 
@@ -24,20 +24,19 @@ export default function SystemBarsSettings() {
   const options = SYSTEM_BARS_MODES.map((mode) => ({ value: mode, label: t(`systemBarsMode.${mode}`) }));
   return (
     <>
-      <div className={styles.row}>
-        <span>{t("systemBars")}</span>
-        <Select value={normal} options={options} onChange={(v) => { if (isSystemBarsMode(v)) setNormal(v); }} ariaLabel={t("systemBars")} />
-        <HelpTip text={t("systemBarsHelp")} label={t("systemBarsHelpLabel")} />
+      <div className={styles.field}>
+        <div className={styles.label}>
+          <span>{t("systemBars")}</span>
+          <HelpTip text={t("systemBarsHelp")} label={t("systemBarsHelpLabel")} />
+        </div>
+        <SegmentedControl value={normal} options={options} onChange={setNormal} ariaLabel={t("systemBars")} />
       </div>
-      <div className={styles.row}>
-        <span>{t("systemBarsFullscreen")}</span>
-        <Select
-          value={fullscreen}
-          options={options}
-          onChange={(v) => { if (isSystemBarsMode(v)) setFullscreen(v); }}
-          ariaLabel={t("systemBarsFullscreen")}
-        />
-        <HelpTip text={t("systemBarsFullscreenHelp")} label={t("systemBarsFullscreenHelpLabel")} />
+      <div className={styles.field}>
+        <div className={styles.label}>
+          <span>{t("systemBarsFullscreen")}</span>
+          <HelpTip text={t("systemBarsFullscreenHelp")} label={t("systemBarsFullscreenHelpLabel")} />
+        </div>
+        <SegmentedControl value={fullscreen} options={options} onChange={setFullscreen} ariaLabel={t("systemBarsFullscreen")} />
       </div>
     </>
   );

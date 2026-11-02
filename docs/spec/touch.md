@@ -496,3 +496,8 @@ replaces it.
   user, 2026-11-02), horizontally and vertically, not a bottom sheet. They are all one component
   (`WarningConfirmModal`: Quit, backlog, delete, unfinished children, the scope and plan clamp
   prompts), so one change centres them all, with a margin round them clear of the system bars.
+- **The system-bar choices are large segmented controls** (decided with the user, 2026-11-02): under
+  Settings > General each setting (normal display, fullscreen) is a full-width row of three buttons,
+  Standard / Edge-to-edge / Immersive, each at least 44 px tall with the selected one filled, instead
+  of a dropdown. At 412 px the three labels fit (about 126 px each), so no stacked rows are needed.
+  `SegmentedControl` is a `radiogroup` of `radio` buttons; there was no earlier one to reuse.

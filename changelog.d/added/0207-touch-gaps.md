@@ -25,3 +25,4 @@
 - **Full screen's corner square is no longer cut off by the phone's rounded corner.** It sits clear of the display's corner radius as well as of the system bars.
 - **The Open and Filter searches open a little lower on the phone,** within thumb reach, and still above the keyboard.
 - **The quit dialog, and the other warning prompts, are centred on the phone** instead of rising from the bottom edge.
+- **The system-bar settings are big buttons.** Under Settings > General, Standard, Edge-to-edge and Immersive are three full-width buttons with the chosen one highlighted, instead of two small dropdowns.
