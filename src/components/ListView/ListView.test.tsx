@@ -673,7 +673,7 @@ describe("ListView", () => {
     expect(useMindmapStore.getState().subtreeRootId).toBe("aspect-1");
     // The same descriptor a search-result entry publishes, so the top bar names where you landed.
     expect(useMindmapStore.getState().subtreeNav).toEqual({
-      ancestors: [{ id: null, title: "root" }],
+      ancestors: [{ id: null, title: "appName" }],
       currentTitle: "Growth",
     });
   });
@@ -876,14 +876,14 @@ describe("ListView", () => {
       fireEvent.mouseDown(screen.getByText("ARLESH"));
       // The Mindmap is unmounted here, so the List View has to be the one publishing this.
       expect(useMindmapStore.getState().subtreeNav).toEqual({
-        ancestors: [{ id: null, title: "root" }],
+        ancestors: [{ id: null, title: "appName" }],
         currentTitle: "ARLESH",
       });
 
       openSearch("deeper");
       fireEvent.mouseDown(screen.getByText("Deeper"));
       expect(useMindmapStore.getState().subtreeNav).toEqual({
-        ancestors: [{ id: null, title: "root" }, { id: "project-1", title: "ARLESH" }],
+        ancestors: [{ id: null, title: "appName" }, { id: "project-1", title: "ARLESH" }],
         currentTitle: "Deeper",
       });
     });

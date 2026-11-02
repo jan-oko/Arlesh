@@ -130,6 +130,23 @@ describe("SubtreeBreadcrumb", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
+  it("compact form: tapping the current node's name opens the same full-path menu as the chevron", () => {
+    enterDeepSubtree();
+    render(<SubtreeBreadcrumb compact />);
+    fireEvent.click(screen.getByRole("button", { name: "Deep" }));
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Arlesh", "A-one", "B-two", "C-three"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "A-one" }));
+    expect(useMindmapStore.getState().subtreeRootId).toBe("a-1");
+  });
+
+  it("compact form: the chevron is a large target", () => {
+    enterDeepSubtree();
+    render(<SubtreeBreadcrumb compact />);
+    // jsdom loads no CSS Modules rules, so the class is what can be held: the sheet gives it
+    // min-width and min-height of 40px and a 28px glyph.
+    expect(screen.getByRole("button", { name: "fullPath" }).className).toContain("backChevron");
+  });
+
   it("runs from the true root to where you are", () => {
     giveChainRoom(1000);
     enterDeepSubtree();

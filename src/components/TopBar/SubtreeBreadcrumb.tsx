@@ -97,7 +97,7 @@ export default function SubtreeBreadcrumb({ compact = false }: Props) {
       <nav className={styles.wrap} aria-label={t("insideSubtree")}>
         <button
           type="button"
-          className={`${styles.segment} ${styles.fold}`}
+          className={`${styles.segment} ${styles.fold} ${styles.backChevron}`}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           aria-label={t("fullPath")}
@@ -105,7 +105,17 @@ export default function SubtreeBreadcrumb({ compact = false }: Props) {
         >
           {BACK_CHEVRON}
         </button>
-        <span className={`${styles.current} ${styles.currentShrinks}`} dir="auto">{currentTitle}</span>
+        {/* The name is a second way to the same menu: it is a far bigger target than the glyph. */}
+        <button
+          type="button"
+          className={`${styles.current} ${styles.currentShrinks} ${styles.currentButton}`}
+          dir="auto"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={toggleMenu}
+        >
+          {currentTitle}
+        </button>
         {menuOpen && <FoldedCrumbsMenu crumbs={ancestors} offset={0} onSelect={goTo} onClose={() => setMenuOpen(false)} />}
       </nav>
     );

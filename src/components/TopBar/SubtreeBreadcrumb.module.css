@@ -99,6 +99,32 @@
   min-width: 0;
 }
 
+/* The phone's portrait `‹`: a comfortable touch target (at least 40 x 40 px) with a glyph drawn
+   large enough to read as the way back. */
+.backChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 40px;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+/* The current node's name in the portrait form is a button that opens the same menu as the
+   chevron; it keeps the title's look and is as tall as the chevron. */
+.currentButton {
+  min-height: 40px;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+}
+
 .separator {
   flex: none;
   color: var(--text-secondary);
