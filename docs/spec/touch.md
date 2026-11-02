@@ -41,7 +41,7 @@ Below 700 px:
   centred on the text (decided with the user, 2026-11-02; round 5 had made it 28 px). Landscape keeps the whole chain. **The path's first
   segment is always "Arlesh"** (the board), in both forms and in the full-path menu, never the name
   of the view.
-  There is **no server indicator** on the phone's bar (feedback from a Pixel 10 Pro: it crowded the
+  There is **no server indicator** on the phone's bar, nor, since round 6 (decided with the user, 2026-11-02), on the desktop's (feedback from a Pixel 10 Pro: it crowded the
   bar); the server's status lives on **Settings → Server** ([Client mode](client-mode.md)).
   - **The preset chip** shows the preset the view reads under and opens the **preset sheet**: Plan,
     Start, Do, Backlog and All, plus the List View's Unblock and Expectations while the List View is
@@ -501,3 +501,6 @@ replaces it.
   Standard / Edge-to-edge / Immersive, each at least 44 px tall with the selected one filled, instead
   of a dropdown. At 412 px the three labels fit (about 126 px each), so no stacked rows are needed.
   `SegmentedControl` is a `radiogroup` of `radio` buttons; there was no earlier one to reuse.
+- **The desktop top bar's server indicator is gone** (decided with the user, 2026-11-02), as the
+  phone's was in round 1. Settings > Server's status line has the mode, URL, reachability, last
+  sync and version; an unreachable or mismatched server still shows the `ServerBanner`.

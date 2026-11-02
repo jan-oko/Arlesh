@@ -25,8 +25,11 @@ behind the cargo feature `standalone`, which is on by default.
   call fails the person gets an error naming the fix (close and reopen the app), not a silent
   no-op. Switching the backend in place was weighed and not chosen: the database, the MCP
   endpoint, the undo log and the change stream are all set up once at start-up.
-- **The top bar** shows the mode: *This device*, or *Server* with a dot for whether the server is
-  reachable and its URL on hover. The phone's top bar does not carry it ([Touch](touch.md)).
+- **The top bar carries no mode indicator** (decided with the user, 2026-11-02: it had been *This
+  device*, or *Server* with a dot for whether the server is reachable and its URL on hover, and
+  the phone's bar already dropped it, [Touch](touch.md)). Where the server cannot be reached, or
+  speaks another API version, the *Server unreachable* / version banner (`ServerBanner`, below the
+  bar) says so and why the board is read-only; the rest lives on Settings → Server.
 - **Settings → Server has a status line**: the mode and, in Client mode, the server's URL, whether
   it answers, when the board was last synced and whether the server's version suits this app.
 
