@@ -216,7 +216,7 @@ restores the normal display's mode.
   clear of the bar and, scrolled, its rows use the whole screen and pass under the top edge: no
   permanent band. The phone's sticky path headers stick at `top: 0`, which is the content edge, so at
   the inset; only while stuck (`@container scroll-state(stuck: top)`) an opaque strip as high as
-  `--peek-pad-top` hangs above the header, so nothing shows above a stuck header. The Mindmap stays full-bleed: the canvas can be panned. Outside full screen the top bar and bottom
+  `--peek-pad-top` hangs above the header, so nothing shows above a stuck header. Every bottom sheet (the shared `BottomSheet`) pads its bottom by `max(safe inset, peek pad, 0.3 x the larger bottom corner radius)` plus a small gap, in every mode, so its last item and the sheet clear the rounded corners and the gesture bar. The Mindmap stays full-bleed: the canvas can be panned. Outside full screen the top bar and bottom
   navigation already pad by the visible insets.
 - **The fullscreen hot square** sits at `max(0.3 x radius + 12px, safe inset + 12px, 20px)` from the
   right edge, and from the bottom `max(0.3 x radius + 12px, safe inset + 12px, peek pad + 12px,

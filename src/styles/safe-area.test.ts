@@ -68,6 +68,16 @@ describe("Full screen's padding for the system bars", () => {
   });
 });
 
+describe("The shared bottom sheet", () => {
+  const sheet = read("src/components/BottomSheet/BottomSheet.module.css");
+
+  it("clears the safe inset, the gesture peek and the rounded corners, plus a gap, in every mode", () => {
+    expect(sheet).toMatch(
+      /\.sheet \{[^}]*padding-bottom: calc\(\s*max\(var\(--safe-bottom\), var\(--peek-pad-bottom, 0px\), calc\(max\(var\(--corner-bl\), var\(--corner-br\)\) \* 0\.3\)\) \+\s*var\(--space-2\)\s*\);/,
+    );
+  });
+});
+
 describe("The List's sticky headers in full screen", () => {
   const list = read("src/components/ListView/ListView.module.css");
   const pathHeader = read("src/components/ListView/PathHeaderRow.module.css");
