@@ -73,7 +73,7 @@ describe("The shared bottom sheet", () => {
 
   it("clears the safe inset, the gesture peek and the rounded corners, plus a gap, in every mode", () => {
     expect(sheet).toMatch(
-      /\.sheet \{[^}]*padding-bottom: calc\(\s*max\(var\(--safe-bottom\), var\(--peek-pad-bottom, 0px\), calc\(max\(var\(--corner-bl\), var\(--corner-br\)\) \* 0\.3\)\) \+\s*var\(--space-2\)\s*\);/,
+      /\.sheet \{[^}]*padding-bottom: calc\(\s*max\(var\(--safe-bottom\), var\(--peek-pad-bottom, 0px\), calc\(max\(var\(--corner-bl\), var\(--corner-br\)\) \* 0\.3\)\) \+\s*var\(--space-6\)\s*\);/,
     );
   });
 });
@@ -95,6 +95,12 @@ describe("The List's sticky headers in full screen", () => {
         /:global\(:root\[data-fs-bars\]\) \.container \{\s*padding-top: var\(--peek-pad-top\);/,
       );
     }
+  });
+
+  it("adds the phone's small top gap on the first section outside full screen only", () => {
+    expect(list).toMatch(
+      /:global\(:root:not\(\[data-fs-bars\]\)\) \.container > :first-child \{\s*padding-top: var\(--space-2\);/,
+    );
   });
 
   it("sticks the path header at the content edge, and covers the inset above it only while stuck", () => {

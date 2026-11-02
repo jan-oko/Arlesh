@@ -84,4 +84,12 @@
   .rows {
     gap: var(--space-2);
   }
+
+  /* Outside full screen the first section rests a small gap below the top bar, as the Plan View does
+     (decided with the user, 2026-11-02). The gap is the first section's own padding rather than the
+     scroller's, so a stuck path header still sticks flush under the bar with no row showing above
+     it. In full screen the inset alone applies (above), so nothing is added there. */
+  :global(:root:not([data-fs-bars])) .container > :first-child {
+    padding-top: var(--space-2);
+  }
 }

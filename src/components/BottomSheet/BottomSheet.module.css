@@ -22,7 +22,7 @@
      rounded bottom corners (0.3 x the larger radius), in every mode, plus a small gap. */
   padding-bottom: calc(
     max(var(--safe-bottom), var(--peek-pad-bottom, 0px), calc(max(var(--corner-bl), var(--corner-br)) * 0.3)) +
-      var(--space-2)
+      var(--space-6)
   );
   outline: none;
   font-family: var(--font-sans);
