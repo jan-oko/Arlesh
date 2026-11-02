@@ -211,13 +211,16 @@ restores the normal display's mode.
   (fallbacks 28 px and 24 px). `useSystemBars` marks the root `data-fs-bars="edgeToEdge"|"immersive"`
   in full screen (never for Standard, which the activity pads, nor without the bridge), and
   `tokens.css` turns that into `--peek-pad-top`, `--peek-pad-bottom` and `--peek-gap` (all 0 otherwise).
-  The List's padding is on its scroller, so rows scroll under the top edge but rest clear of it. The
-  Mindmap stays full-bleed: the canvas can be panned. Outside full screen the top bar and bottom
+  The List has no top padding of its own (a sticky box sticks at the content edge, which a padding
+  would push down): an opaque sticky `::before` mask as high as `--peek-pad-top` sits over the scroll,
+  and the phone's sticky path headers stick at `top: var(--peek-pad-top)`, flush under it, so nothing
+  scrolls visibly above a stuck header and a peeking status bar covers only the mask. The Mindmap stays full-bleed: the canvas can be panned. Outside full screen the top bar and bottom
   navigation already pad by the visible insets.
 - **The fullscreen hot square** sits at `max(0.3 x radius + 12px, safe inset + 12px, 20px)` from the
   right edge, and from the bottom `max(0.3 x radius + 12px, safe inset + 12px, peek pad + 12px,
   20px)`: at least 20 px clear of both edges, the gesture bar's peek included (decided with the user,
-  2026-11-02).
+  2026-11-02). It is semi-transparent and may overlap content; no padding is reserved for it (decided
+  with the user, 2026-11-02).
 - **The bridge.** The web side states the wanted mode and the theme (`useSystemBars`: the normal or
   the fullscreen setting, by whether the app is in fullscreen) through
   `window.ArleshBars.setSystemBars(mode, dark)`, a `@JavascriptInterface` (`SystemBarsBridge.kt`; R8

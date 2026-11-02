@@ -83,7 +83,8 @@
 @media (max-width: 699.98px) {
   .header {
     position: sticky;
-    top: 0;
+    /* Flush under the list's top mask (the status-bar band), so nothing shows between the two. */
+    top: var(--peek-pad-top);
     z-index: 1;
     padding-bottom: var(--space-1);
     background: var(--canvas-bg);

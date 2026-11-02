@@ -59,11 +59,31 @@ describe("Full screen's padding for the system bars", () => {
       expect(css).toContain("var(--peek-pad-bottom)");
     }
     expect(views[0]).toContain(
-      "padding: calc(var(--peek-pad-top) + var(--peek-gap)) var(--space-2) calc(var(--space-3) + var(--peek-pad-bottom));",
+      "padding: 0 var(--space-2) calc(var(--space-3) + var(--peek-pad-bottom));",
     );
     expect(views[1]).toContain(
       "padding: calc(var(--space-2) + var(--peek-pad-top)) var(--space-2) calc(var(--space-2) + var(--peek-pad-bottom));",
     );
     expect(mindmap).not.toContain("--peek-");
+  });
+});
+
+describe("The List's sticky headers in full screen", () => {
+  const list = read("src/components/ListView/ListView.module.css");
+  const pathHeader = read("src/components/ListView/PathHeaderRow.module.css");
+
+  it("has no top padding (a sticky box sticks at the content edge) and an opaque, sticky mask as high as the status-bar pad", () => {
+    expect(list).toMatch(/\.container \{[^}]*padding: 0 var\(--space-4\)/);
+    expect(list).toMatch(
+      /\.container::before \{[^}]*position: sticky;[^}]*top: 0;[^}]*z-index: 2;[^}]*height: var\(--peek-pad-top\);[^}]*background: var\(--canvas-bg\);/,
+    );
+  });
+
+  it("sticks the path header flush under the mask, below it in z-order", () => {
+    expect(pathHeader).toMatch(/position: sticky;[^}]*top: var\(--peek-pad-top\);[^}]*z-index: 1;/);
+  });
+
+  it("reserves no bottom padding for the semi-transparent hot square", () => {
+    expect(tokens).not.toContain("--peek-clear-bottom");
   });
 });
