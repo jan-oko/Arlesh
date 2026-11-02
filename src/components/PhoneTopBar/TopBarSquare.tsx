@@ -13,6 +13,14 @@ function finite(value: number): number {
   return Number.isFinite(value) ? value : 0;
 }
 
+interface Props {
+  /**
+   * Draws the square fixed in the bottom-right corner instead of in the top bar: full screen's one
+   * remaining control, with the same taps (tap = Open, long-press = the palette).
+   */
+  corner?: boolean;
+}
+
 /**
  * The free square at the end of the phone top bar (`docs/spec/touch.md`): a **tap** opens
  * Open (`Ctrl+O`'s node search) and a **long-press** opens the command palette the moment the
@@ -20,7 +28,7 @@ function finite(value: number): number {
  * and the long-press time; the square takes the pointer (and `touch-action: none`) so the browser
  * never turns a jittery tap into a pan and cancels it.
  */
-export default function TopBarSquare() {
+export default function TopBarSquare({ corner = false }: Props) {
   const { t } = useTranslation("touch");
   const openPalette = usePaletteStore((s) => s.open);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -84,7 +92,7 @@ export default function TopBarSquare() {
     <div
       role="button"
       tabIndex={0}
-      className={styles.square}
+      className={corner ? `${styles.square} ${styles.squareCorner}` : styles.square}
       aria-label={t("topBarSquare")}
       title={t("topBarSquare")}
       onPointerDown={onPointerDown}

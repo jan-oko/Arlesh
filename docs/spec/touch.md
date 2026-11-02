@@ -96,8 +96,15 @@ Below 700 px:
   shown. The tab chords still work from a keyboard. *(Decided in implementation: the grill excluded
   tabs on Android and did not say what a narrow desktop window does with them; hiding the strip is
   the reversible choice.)*
-- **Full screen** (`F11` / `F`) hides the top bar and the chips, as it does on the desktop; the
-  bottom navigation and the action bar stay, since they are the only way back on a phone.
+- **Full screen** (`F11` / `F`, or a **three-finger tap** anywhere in a view) hides the top bar and
+  the chips, as it does on the desktop, **and the action bar and bottom navigation too** (user,
+  round 5; they used to stay as the way back). All that remains is the [hot
+  square](#the-top-bar-square) fixed in the **bottom-right corner** (`ActiveTab` draws
+  `TopBarSquare corner`, the very component of the top bar, so it behaves the same: tap opens
+  Open, long-press opens the palette, whose Full screen command, like the three-finger tap, is the
+  way out). Because the action bar's Edit is gone with it, the [quick action menu](#gestures) has
+  Edit. The square is drawn faint (70% opacity, a translucent fill) over the board's corner and is
+  fixed above content, clear of the system gesture bar.
 
 ### The top bar square
 

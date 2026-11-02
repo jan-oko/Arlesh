@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import TopBar from "@/components/TopBar/TopBar";
 import PhoneTopBar from "@/components/PhoneTopBar/PhoneTopBar";
+import TopBarSquare from "@/components/PhoneTopBar/TopBarSquare";
 import BottomChrome from "@/components/BottomChrome/BottomChrome";
 import CommandPalette from "@/components/CommandPalette/CommandPalette";
 import MindmapView from "@/components/MindmapView/MindmapView";
@@ -47,8 +48,11 @@ export default function ActiveTab() {
       {view === "plan" && <PlanView />}
       {view === "steps" && <StepsView />}
       {view === "zen" && <ZenView />}
-      {/* Full screen keeps these: on a phone they are the only way back out of it. */}
-      {(showsActionBar || isPhone) && <BottomChrome showActionBar={showsActionBar} showNav={isPhone} />}
+      {/* Full screen hides these too, leaving only the hot square in the bottom-right corner (tap:
+          Open, long-press: the palette) and the three-finger tap, which toggles it back off. */}
+      {(showsActionBar || isPhone) && (isFullscreen
+        ? <TopBarSquare corner />
+        : <BottomChrome showActionBar={showsActionBar} showNav={isPhone} />)}
       {paletteOpen && <CommandPalette showTabs={!isPhone} />}
     </>
   );
