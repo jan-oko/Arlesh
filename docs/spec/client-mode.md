@@ -250,8 +250,15 @@ action's **patch**, a set of the node's own fields, drawn over the loaded board.
   editors stay write-then-reload in v1 (ADR 0012, decision 16).
 - **Create a child or a sibling:** a placeholder node, for every kind whose create is one write
   with no prompt.
+- **Planning in the Plan View:** planning an item into the scope being filled, or into one of its
+  parts, and taking it out (a swipe on the phone, the move-across key, a drag between the panes).
+  Only the row's own Plan is patched; which pane it sits in is read from it by the pinned triage
+  rule. A batch is still one gesture and one undo step, and a step the backend refuses puts that
+  row back with a toast. When the Plan would leave Tasks below outside it, the row goes back and
+  the clamp-or-cancel prompt opens, as for a completion that needs a confirmation (ADR 0012,
+  decision 17). The quick plan picker and the editor's Plan field are as before.
 
-Move, reorder, archive, delete, Plan, paste, the Agentic key and every other write stay
+Move, reorder, archive, delete, Plan elsewhere, paste, the Agentic key and every other write stay
 **write-then-reload**.
 
 ### What a patch may change

@@ -150,7 +150,7 @@ export default function PlanView() {
   );
 
   const { planInto, planIntoSubscope, takeOut } = usePlanMove({
-    targetScopeId, targetWindow, targetLabel: scope.label, windows, reload, showToast,
+    targetScopeId, targetWindow, targetLabel: scope.label, windows, showToast,
   });
 
   // The four kebab switches, app-wide like the List View's own (see `use-display-store`).
