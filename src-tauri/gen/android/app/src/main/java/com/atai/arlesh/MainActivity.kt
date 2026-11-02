@@ -112,6 +112,12 @@ class MainActivity : TauriActivity() {
     // What standard's bars look like behind the app: black-ish on the dark theme, white on light.
     const val STANDARD_DARK = 0xFF121212.toInt()
     const val STANDARD_LIGHT = 0xFFFFFFFF.toInt()
+
+    const val BOX_PACKAGE_PREFIX = "com.atai.arlesh.box."
+    const val BOX_URL_EXTRA = "arlesh_box_url"
+    const val BOX_TOKEN_EXTRA = "arlesh_box_token"
+    // Must match `PROVISION_FILE` in src-tauri/src/client_mode/provision.rs.
+    const val BOX_PROVISION_FILE = "box-provision.json"
   }
 
   /**
@@ -142,13 +148,5 @@ class MainActivity : TauriActivity() {
     if (url.isNullOrBlank() || token.isNullOrBlank()) return
     val body = JSONObject().put("url", url).put("token", token).toString()
     File(dataDir, BOX_PROVISION_FILE).writeText(body)
-  }
-
-  private companion object {
-    const val BOX_PACKAGE_PREFIX = "com.atai.arlesh.box."
-    const val BOX_URL_EXTRA = "arlesh_box_url"
-    const val BOX_TOKEN_EXTRA = "arlesh_box_token"
-    // Must match `PROVISION_FILE` in src-tauri/src/client_mode/provision.rs.
-    const val BOX_PROVISION_FILE = "box-provision.json"
   }
 }
