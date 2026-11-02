@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { occurrenceRow } from "@/test/occurrence";
 import { render, screen, fireEvent, act, within } from "@testing-library/react";
+import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
+import { settleLane } from "@/test/lane-helpers";
 import PlanView from "./PlanView";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
@@ -196,6 +198,7 @@ function mockRows(rows: TaskListRow[]): void {
 /** Lets the promise chain behind a write — open the Gesture, write, reload — settle. */
 async function settle(): Promise<void> {
   for (let turn = 0; turn < 4; turn++) await act(async () => { await Promise.resolve(); });
+  await settleLane();
 }
 
 /** Renders and lets the scope materialize and resolve before anything is asserted. */
@@ -224,6 +227,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   clearScopeWindowCache();
   clearScopeRowCache();
+  usePendingWritesStore.getState().reset();
   // The kebab switches are set explicitly rather than left at their defaults: a pass opens on
   // *what still needs placing*, which is a different left-hand pane from the one most of these
   // tests are about. The ones that are about it set the switches back.
@@ -275,7 +279,8 @@ describe("moving a task across", () => {
     });
     await settle();
     expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
-    expect(reload).toHaveBeenCalled();
+    // The board reloads on the lane's answer (ADR 0012, decision 15), not from this view.
+    expect(usePendingWritesStore.getState().writes[0]?.answer).not.toBeNull();
   });
 
   it("plans it to the parent scope on the way back", async () => {

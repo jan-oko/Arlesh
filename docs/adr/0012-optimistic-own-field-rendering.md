@@ -14,7 +14,7 @@ none, and every write reloads"). Everything outside that set still writes and th
 
 proposed (2026-11-01, Task `288`). Decisions 1 to 12 follow what the user settled. Decisions 13 to
 16 record the user's rulings on the questions the design left open, decided with the user,
-2026-11-01.
+2026-11-01. Decision 17 was added on 2026-11-02, at the user's request.
 
 ## Context
 
@@ -271,6 +271,40 @@ What the user decided (2026-11-01), and this ADR does not reopen:
     2026-11-01). Their saves reshape the occurrences a Habit derives, so they have few own fields
     worth showing early.
 
+17. **Plan View planning is optimistic, decided with the user 2026-11-02.** "Plan" was in the
+    write-then-reload set; for the Plan View's own moves it leaves it. Planning an item into the
+    shown scope (to-plan to planned: a swipe right, `planView.moveAcross`, the drop on a pane, the
+    subscope plan) and taking it out (planned to to-plan: a swipe left, `moveAcross` to `takeOut`)
+    patch the row's own `plan` through the lane and show with the cue. All of them go through
+    `usePlanMove`'s one write, so there is one path. The quick plan picker (`use-quick-plan.ts`)
+    and the editor's Plan field (decision 3's editor patch already covers the latter) are
+    unchanged by this decision.
+
+    - **Only the own field is patched, and no rule is copied.** Which pane a row sits in is
+      `effectivePlan` (`plan ?? inheritedPlan`) and the containment check in
+      `plan-triage.ts`, both pinned by `conformance/plan-triage.json`. The patch sets `plan`, the
+      pane assignment reads it. A child's inherited Plan, `backlogged` and the straddle toast's
+      truth wait for the reload.
+    - **A batch stays one gesture, as one lane write per row.** The first write to go out runs the
+      `plan-move` gesture, the others read their own step's answer from the same run, so five rows
+      are still one request and one `Ctrl+Z`. A step the backend refuses rolls back that row
+      alone, with one toast naming it. The gesture runs under `withAtomicGesture`, not
+      `withGesture`: the latter waits for the lane to empty and so cannot run from inside it. The
+      steps are `may_be_refused`, so a refusal still does not abort the rest.
+    - **The clamp prompt follows decision 7's confirmation path.** The containment read that asks
+      "would Tasks below be left outside?" runs in the write's closure, so the patch shows at
+      once. When it finds some, the batch is rolled back without a toast, the prompt opens, and on
+      Clamp or Clear the same batch is enqueued again, acknowledged; Cancel leaves the board as it
+      was. The local `planRefusal` check (own Time Scope, parent Plan) still runs before any
+      patch and refuses with its toast, as before.
+    - **The swipe fly-out is unchanged.** The card already flies out; the patch now puts it in the
+      other pane at once, so there is no spring-back to wait out. A refusal brings it back with the
+      toast.
+    - **The view's cursor** advances over the rows that were put in the lane (the call's result),
+      so a later refusal leaves the selection where the move had already taken it.
+    - The Plan View no longer reloads after a plan: the board reloads on the lane's answer
+      (decision 15).
+
 ## Considered options
 
 - **The lane inside `useMindmapData`.** It is closer to the state it patches, with no store.
@@ -301,8 +335,8 @@ What the user decided (2026-11-01), and this ADR does not reopen:
 
 ## Delivery
 
-Four pull requests, stacked, each green on its own, landed bottom-up. Each one's scope, files and
-acceptance criteria are below, written to be pasted into a brief. All four follow `AGENTS.md` and
+Five pull requests, stacked, each green on its own, landed bottom-up. Each one's scope, files and
+acceptance criteria are below, written to be pasted into a brief. All five follow `AGENTS.md` and
 `.claude/rules/`: Zustand for the store, a pure module for the logic, hooks in `src/hooks/`, `@/`
 imports, no `any` and no `as`, every new string through i18n (the `translating-ui` skill), one
 changelog fragment per pull request that changes behaviour, and no snapshot tests.
@@ -415,3 +449,21 @@ changelog fragment per pull request that changes behaviour, and no snapshot test
   - A refused parent create removes both placeholders and sends nothing more, with one toast.
   - `Ctrl+Z` on a still-queued create removes the placeholder and calls nothing.
   - A kind the parent may not hold is refused before any patch.
+
+### PR 5: planning in the Plan View
+
+- **Scope.** Decision 17. `usePlanMove`'s one write enqueues a `plan` patch per row; the
+  containment read and the `plan-move` gesture run in the write's closure; the clamp prompt takes
+  the confirmation path; `reload` is no longer passed in.
+- **Files.** `src/hooks/use-plan-move.ts`, `src/components/PlanView/PlanView.tsx` (the call only),
+  `docs/spec/client-mode.md`, and tests: `src/hooks/use-plan-move.test.ts` (new) and
+  `PlanView.test.tsx`.
+- **Acceptance.**
+  - Planning a row shows its `plan` and the cue before the write resolves, and the answer's own
+    fields replace the prediction.
+  - Taking a row out shows its new `plan` (or none) the same way.
+  - A refused step rolls back that row with one toast and keeps the rest of its batch; a refused
+    call rolls everything back with one toast.
+  - Two quick swipes show two patches and send in order.
+  - A containment conflict rolls back without a toast, opens the clamp prompt, and on an answer
+    writes again with `descendant_plans`; Cancel writes nothing.
