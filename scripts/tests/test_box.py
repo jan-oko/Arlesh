@@ -303,6 +303,99 @@ class DeviceResolution(IsolatedEnv):
         self.assertEqual(e.hardware_serial, "R5CT123ABC")
 
 
+class Worktrees(IsolatedEnv):
+    """A temp main checkout cloned from a bare "origin" holding master, qa/2026-11-round, feature."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.origin = self.tmp / "origin.git"
+        seed = self.tmp / "seed"
+        main = self.tmp / "main"
+        subprocess.run(
+            ["git", "init", "-q", "--bare", "-b", "master", str(self.origin)],
+            check=True,
+        )
+        seed.mkdir()
+        git(seed, "init", "-q", "-b", "master")
+        git(seed, "remote", "add", "origin", str(self.origin))
+        (seed / "a.txt").write_text("one\n")
+        git(seed, "add", ".")
+        git(seed, "commit", "-qm", "init")
+        for branch in ("qa/2026-11-round", "feature"):
+            git(seed, "checkout", "-q", "-b", branch, "master")
+            git(seed, "commit", "-q", "--allow-empty", "-m", branch)
+        git(seed, "push", "-q", "origin", "--all")
+        self.seed = seed
+        subprocess.run(["git", "clone", "-q", str(self.origin), str(main)], check=True)
+        self.main = main
+        patcher = mock.patch.object(box, "main_checkout", return_value=main)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def push_to_origin(self, branch: str) -> None:
+        git(self.seed, "checkout", "-q", branch)
+        git(self.seed, "commit", "-q", "--allow-empty", "-m", "more")
+        git(self.seed, "push", "-q", "origin", branch)
+
+    def test_slash_maps_to_dash_everywhere(self) -> None:
+        self.assertEqual(box.dir_name("qa/2026-11-round"), "qa-2026-11-round")
+        self.assertEqual(
+            box.box_package("qa/2026-11-round"), box.box_package("qa-2026-11-round")
+        )
+        path = box.ensure_worktree("qa/2026-11-round")
+        self.assertEqual(path, self.main / ".claude/worktrees/qa-2026-11-round")
+        self.assertEqual(box.all_names(), ["qa-2026-11-round"])
+        self.assertEqual(
+            box.box_owners(box.box_package("qa/2026-11-round")), ["qa-2026-11-round"]
+        )
+        self.assertEqual(
+            box.resolve_branches(["qa/2026-11-round"]), ["qa-2026-11-round"]
+        )
+
+    def test_creates_from_origin_with_tracking_and_node_modules(self) -> None:
+        path = box.ensure_worktree("feature")
+        self.assertEqual(box.worktree_branch(path), "feature")
+        up = box.git_in(path, "rev-parse", "--abbrev-ref", "feature@{u}").stdout.strip()
+        self.assertEqual(up, "origin/feature")
+        self.assertTrue((path / "node_modules").is_symlink())
+
+    def test_existing_local_branch_is_reused(self) -> None:
+        git(self.main, "branch", "feature", "origin/feature")
+        path = box.ensure_worktree("feature")
+        self.assertEqual(box.worktree_branch(path), "feature")
+
+    def test_missing_branch_is_an_error_and_makes_nothing(self) -> None:
+        with self.assertRaises(box.BoxError) as ctx:
+            box.ensure_worktree("nope")
+        self.assertIn("neither locally nor on origin", str(ctx.exception))
+        self.assertEqual(box.all_names(), [])
+        self.assertFalse(box.ref_exists(self.main, "refs/heads/nope"))
+
+    def test_dir_holding_another_branch_fails(self) -> None:
+        box.ensure_worktree("qa/2026-11-round")
+        git(self.main, "branch", "qa-2026-11-round", "origin/feature")
+        with self.assertRaises(box.BoxError) as ctx:
+            box.ensure_worktree("qa-2026-11-round")
+        self.assertIn("holds qa/2026-11-round", str(ctx.exception))
+
+    def test_behind_origin_is_reported_and_nothing_is_pulled(self) -> None:
+        path = box.ensure_worktree("feature")
+        before = box.git_in(path, "rev-parse", "HEAD").stdout
+        self.push_to_origin("feature")
+        with mock.patch.object(box, "note") as note:
+            self.assertEqual(box.ensure_worktree("feature"), path)
+        note.assert_called_once_with(
+            "feature is 1 commits behind origin; pull to update"
+        )
+        self.assertEqual(box.git_in(path, "rev-parse", "HEAD").stdout, before)
+
+    def test_up_to_date_is_silent(self) -> None:
+        box.ensure_worktree("feature")
+        with mock.patch.object(box, "note") as note:
+            box.ensure_worktree("feature")
+        note.assert_not_called()
+
+
 class Patching(IsolatedEnv):
     def setUp(self) -> None:
         super().setUp()
