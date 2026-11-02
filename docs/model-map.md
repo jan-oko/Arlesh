@@ -350,7 +350,7 @@ How the presets read them:
 - **Spec:** [Filtering Logic](spec/filtering-logic.md), [Mindmap § status preset](spec/mindmap-view.md).
 
 ### The conformance pair
-- **Is:** every rule the frontend must answer per render or per pointer move is written twice — in a Rust `rules` module, which is the definition, and as a TypeScript copy — and one shared case file under `conformance/` runs against both ([ADR 0010](adr/0010-business-rules-layer.md)). The pinned copies are the presets, the Archived, Backlog and Delegated pills and the List View's pills (`preset-filters.json`), the list sections (`list-sections.json`), the Zen View's contents and locked presets (`zen-contents.json`), the parenting table (`parenting.json`), the status models' conversion (`task-status.json`), the Habit fold (`habit-fold.json`), the cooldown options (`cooldown.json`), the cycle grid (`flow-cycles.json`), the Plan View's triage, refusal and sections (`plan-triage.json`), and scope keys, windows, labels and the day boundary (`scope-keys.json`).
+- **Is:** every rule the frontend must answer per render or per pointer move is written twice — in a Rust `rules` module, which is the definition, and as a TypeScript copy — and one shared case file under `conformance/` runs against both ([ADR 0010](adr/0010-business-rules-layer.md)). The pinned copies are the presets, the Archived, Backlog and Delegated pills and the List View's pills (`preset-filters.json`), the list sections (`list-sections.json`), the Zen View's contents and locked presets (`zen-contents.json`), the parenting table (`parenting.json`), the status models' conversion (`task-status.json`), the status step, `Alt+Enter`, the Compound refusal and the verdict (`task-gestures.json`, added by [ADR 0012](adr/0012-optimistic-own-field-rendering.md)), the Habit fold (`habit-fold.json`), the cooldown options (`cooldown.json`), the cycle grid (`flow-cycles.json`), the Plan View's triage, refusal and sections (`plan-triage.json`), and scope keys, windows, labels and the day boundary (`scope-keys.json`).
 - **Why:** the views filter and draw on every keystroke without a round trip, and the corpora keep the copies honest; everything else the frontend reads from the backend instead.
 - **Without:** the agent's board and yours drift apart silently.
 - **Lives:** `conformance/`, run by the `*-conformance.test.ts` files beside each TypeScript copy and by the Rust tests under `src-tauri/tests/`.
@@ -411,6 +411,23 @@ How the presets read them:
 - **Lives:** `src-tauri/src/backend/` (`sqlite/`, `http/`), `src-tauri/src/client_mode/`, `conformance/client-mode.json`; ADR 0011.
 - **Spec:** [Client Mode](spec/client-mode.md).
 
+### Pending writes
+- **Is:** an action the board shows before the server has answered it: a status step, `Alt+Enter`, a verdict, a wait release, a rename, an editor's Save, or a new child or sibling.
+  - Its **patch** sets only the node's own fields. Nothing derived is patched; derived values follow the answer's reload.
+  - The window's pending writes are one **lane**, sent one at a time in order. Every other write waits for the lane to empty.
+  - A pending node pulses faintly (a dotted outline under reduced motion) until the server answers.
+  - The server wins: each fresh board is drawn with the unanswered patches over it, and a patch is dropped once a board that reflects its write is on screen.
+  - A refusal rolls back that patch and every later one on the same node, with one toast. An unreachable server rolls back the lane.
+  - A new node is a placeholder with a temporary id, and writes queued on it are rewritten to the real id before they are sent.
+  - `Ctrl+Z` cancels a still-queued action locally, and otherwise waits for the lane and undoes on the server.
+- **Why:** in Client mode every write is a round trip plus a whole-board reload, and a press that shows nothing for that long feels broken.
+- **Without:** every press waits on the network. Or, with patches drawn some other way, a board that computes derived values the server never agreed to, or flashes the old value between the answer and the reload.
+- **Lives:**
+  - `ts:utils/pending-writes.ts` (the lane's reducer), `ts:utils/apply-pending-writes.ts` (the patch over the built tree), `ts:stores/use-pending-writes-store.ts` (the lane and its sender), `ts:hooks/use-pending-write.ts`.
+  - `ts:components/MindmapView/use-mindmap-data.ts` returns the patched tree.
+  - [ADR 0012](adr/0012-optimistic-own-field-rendering.md) covers it; it reverses ADR 0010's answer 2 for these actions only.
+- **Spec:** [Client Mode](spec/client-mode.md), *Pending writes*; [Undo](spec/undo.md), *Undo with writes pending*.
+
 ## 8. Keeping it honest
 
 ### The undo journal
@@ -446,6 +463,7 @@ How the presets read them:
 ### A truthful board
 - **Is:** three habits keep the board true:
   - Nothing derived is stored, so nothing derived goes stale.
+  - A pending write shows only its own node's own fields, and only until a board that reflects it arrives.
   - Every window hears about every change.
   - An agent whose next step is yours must say so with a question.
 - **Why:** you act on what the board says, and a board that lies costs more than none.
