@@ -42,6 +42,7 @@ function mockTree(count: number): void {
     reload: vi.fn(() => Promise.resolve()),
     createNode: vi.fn(),
     createChild: vi.fn(),
+    settleCreated: vi.fn((created: MindmapNode) => Promise.resolve(created)),
     renameNode: vi.fn(),
     reorderNode: vi.fn(),
     moveNode: vi.fn(),

@@ -57,6 +57,9 @@ function applyOne(tree: MindmapNode, write: PendingWrite, resolve: (id: string) 
   return mapNode(tree, resolve(patch.parentId), (parent) => {
     const at = afterId === null ? -1 : parent.children.findIndex((child) => child.id === afterId);
     const index = at < 0 ? parent.children.length : at + 1;
+    // Once the server has answered, the placeholder is the real node as far as the response said:
+    // its row, so a write queued behind the create can name it, and its own fields.
+    const rowId = write.answer?.createdRowId;
     const placeholder: MindmapNode = {
       id,
       kind: patch.node.kind,
@@ -64,6 +67,8 @@ function applyOne(tree: MindmapNode, write: PendingWrite, resolve: (id: string) 
       position: index,
       tagIds: [],
       children: [],
+      ...(rowId === undefined ? {} : { rowId }),
+      ...(write.answer?.fields ?? {}),
       ...mark,
     };
     return { ...parent, children: [...parent.children.slice(0, index), placeholder, ...parent.children.slice(index)] };
