@@ -30,10 +30,14 @@ beforeEach(() => {
 });
 
 describe("PhoneTopBar", () => {
-  it("titles the bar with the view at the board's root", () => {
-    render(<PhoneTopBar />);
-    expect(screen.getByRole("heading", { name: "common:viewList" })).toBeInTheDocument();
-  });
+  it.each(["mindmap", "list", "plan", "steps", "zen"] as const)(
+    "titles the bar with the app's name at the board's root, in the %s view",
+    (view) => {
+      useViewStore.setState({ view });
+      render(<PhoneTopBar />);
+      expect(screen.getByRole("heading", { name: "common:appName" })).toBeInTheDocument();
+    },
+  );
 
   it("chooses a preset from the chip's sheet, the List View's own options included", () => {
     render(<PhoneTopBar />);

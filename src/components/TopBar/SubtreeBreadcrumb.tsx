@@ -8,8 +8,6 @@ import FoldedCrumbsMenu from "./FoldedCrumbsMenu";
 import styles from "./SubtreeBreadcrumb.module.css";
 
 const FOLD_ICON = "…";
-/** The compact form's chevron: it points back up the way you came. */
-const BACK_CHEVRON = "‹";
 
 interface Props {
   /**
@@ -103,7 +101,11 @@ export default function SubtreeBreadcrumb({ compact = false }: Props) {
           aria-label={t("fullPath")}
           onClick={toggleMenu}
         >
-          {BACK_CHEVRON}
+          {/* Drawn rather than typeset: a font's `‹` has no fixed size, and this one is the height of
+              a capital letter of the title (`1cap`), centred on the text, inside the 40 px target. */}
+          <svg className={styles.backGlyph} viewBox="0 0 6 10" aria-hidden="true" focusable="false">
+            <polyline points="5,1 1,5 5,9" />
+          </svg>
         </button>
         {/* The name is a second way to the same menu: it is a far bigger target than the glyph. */}
         <button
