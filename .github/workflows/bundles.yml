@@ -12,6 +12,9 @@ name: Bundles
 #   push tag vX.Y.Z  a normal release for that tag, with versioned asset names.
 #                    The tag must equal tauri.conf.json's version, or the run
 #                    fails before building.
+#   dispatch + box   only the Android job runs, as scripts/box.py would build it locally: a
+#                    separate app beside the real one, signed with a throwaway debug key made in
+#                    the job. The release key's steps are skipped, so its secrets are never read.
 #   dispatch         rolling, to the tag named by the `release_tag` input. It
 #                    exists for testing on a throwaway tag; `latest` itself is
 #                    only ever written from master. With `publish` off it builds
@@ -55,6 +58,12 @@ on:
         description: Publish to the release (off builds the artifacts only)
         type: boolean
         default: true
+      box:
+        description: >-
+          Build only a QA box APK of this branch (package com.atai.arlesh.box.<branch>, debug-signed,
+          installs beside the real app); no desktop bundles, no release key, no publish
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -88,6 +97,7 @@ jobs:
   build:
     name: tauri build · linux bundles
     needs: meta
+    if: github.event_name != 'workflow_dispatch' || !inputs.box
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
@@ -179,6 +189,7 @@ jobs:
   build-windows:
     name: tauri build · windows installers
     needs: meta
+    if: github.event_name != 'workflow_dispatch' || !inputs.box
     runs-on: windows-latest
     timeout-minutes: 90
     defaults:
@@ -293,6 +304,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # A box build only: rename the app the way `box.py run` does, through the same code.
+      - name: Patch the project into a box app
+        if: github.event_name == 'workflow_dispatch' && inputs.box
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: python3 scripts/box.py ci-patch "$BRANCH"
+
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
@@ -331,6 +349,7 @@ jobs:
       # Signs with the key from the secrets, and nothing before this step could read them. The
       # passwords go through files, never the command line.
       - name: Sign and stage under the stable name
+        if: github.event_name != 'workflow_dispatch' || !inputs.box
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -356,8 +375,47 @@ jobs:
           ls -la "$out"
 
       - uses: actions/upload-artifact@v4
+        if: github.event_name != 'workflow_dispatch' || !inputs.box
         with:
           name: arlesh-${{ needs.meta.outputs.version }}-${{ needs.meta.outputs.sha }}-android-apk
+          path: ${{ runner.temp }}/bundles/*.apk
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      # The box variant: signed with a debug key generated here, as box.py does with
+      # ~/.android/debug.keystore. No secret is referenced by this step or the upload after it.
+      - name: Sign with a debug key and stage as a box app
+        id: box
+        if: github.event_name == 'workflow_dispatch' && inputs.box
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          segment=$(python3 scripts/box.py ci-patch "$BRANCH" | sed -n 's/^segment=//p')
+          [ -n "$segment" ] || { echo "::error::could not work out the box segment"; exit 1; }
+          echo "segment=$segment" >> "$GITHUB_OUTPUT"
+          out="$RUNNER_TEMP/bundles"
+          mkdir -p "$out"
+          keystore="$RUNNER_TEMP/debug.keystore"
+          keytool -genkeypair -keystore "$keystore" -storepass android -keypass android \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+          unsigned=$(find src-tauri/gen/android/app/build/outputs/apk -name '*-release-unsigned.apk' | head -1)
+          [ -n "$unsigned" ] || { echo "::error::the build produced no unsigned release APK"; find src-tauri/gen/android/app/build/outputs; exit 1; }
+          tools=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
+          apk="$out/arlesh-box-$segment.apk"
+          "${tools}apksigner" sign --ks "$keystore" --ks-key-alias androiddebugkey \
+            --ks-pass pass:android --key-pass pass:android --out "$apk" "$unsigned"
+          "${tools}apksigner" verify "$apk"
+          "${tools}aapt2" dump badging "$apk" | grep -E "^(package|application-label):"
+          rm -f "$keystore"
+          ls -la "$out"
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.box
+        with:
+          name: arlesh-box-${{ steps.box.outputs.segment }}-${{ needs.meta.outputs.sha }}-android-apk
           path: ${{ runner.temp }}/bundles/*.apk
           if-no-files-found: error
           retention-days: 30
@@ -367,7 +425,7 @@ jobs:
     name: publish · github release
     needs: [meta, build, build-windows, build-android]
     # A dispatch with `publish` off stops at the artifacts.
-    if: github.event_name != 'workflow_dispatch' || inputs.publish
+    if: github.event_name != 'workflow_dispatch' || (inputs.publish && !inputs.box)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

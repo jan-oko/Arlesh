@@ -350,6 +350,13 @@ More of the tool, for trying pairing and the phone build:
   are patched for the build and restored; the backups live under `$XDG_STATE_HOME/arlesh/box/backups/`,
   never beside the files, because the resource merger rejects a stray `strings.xml.box-orig`). Firebase, per branch, when
   `ARLESH_BOX_FIREBASE_PROJECT` is set (`--no-firebase` skips it).
+- **A CI box APK** (`bundles.yml`, dispatched with `box` on, from the branch to test) is the same
+  app built by GitHub Actions for a machine that cannot build Android: `box.py ci-patch <branch>`
+  applies the same patch, it is signed with a debug key generated in the job (never the release
+  key), and the artifact is `arlesh-box-<segment>-<sha>-android-apk`. It is **not pre-bound**: no
+  `am start` extras are sent, so it opens on the connect screen. Pair it with a PIN
+  (`server pin <name> approve <pin>`). `box run` has no install-only or provision-only mode, so
+  binding an installed app to a server the box way means building it locally.
 - `clean <branch>` also removes that branch's Firebase app and uninstalls the package from the
   registered Android devices; `prune [<device>]` does so for every `com.atai.arlesh.box.*` whose
   worktree is gone.

@@ -55,6 +55,33 @@ class PackageNames(unittest.TestCase):
         self.assertEqual(box.box_label("x"), "Arlesh (x)")
 
 
+class CiPatch(unittest.TestCase):
+    def make_tree(self, root: Path) -> tuple[Path, Path]:
+        app = root / "src-tauri/gen/android/app"
+        (app / "src/main/res/values").mkdir(parents=True)
+        gradle, strings = app / "build.gradle.kts", app / "src/main/res/values/strings.xml"
+        gradle.write_text('android {\n  applicationId = "com.atai.arlesh"\n}\n')
+        strings.write_text('<resources><string name="app_name">Arlesh</string></resources>')
+        return gradle, strings
+
+    def test_patches_both_files_idempotently_with_the_run_names(self) -> None:
+        branch = "289-pairing"
+        with tempfile.TemporaryDirectory() as tmp:
+            gradle, strings = self.make_tree(Path(tmp))
+            args = ["ci-patch", branch, "--root", tmp]
+            self.assertEqual(box.main(args), 0)
+            first = (gradle.read_text(), strings.read_text())
+            self.assertIn(f'applicationId = "{box.box_package(branch)}"', first[0])
+            self.assertIn("Arlesh (289-pairing)", first[1])
+            self.assertEqual(box.box_package(branch), "com.atai.arlesh.box.b289_pairing")
+            self.assertEqual(box.main(args), 0)
+            self.assertEqual((gradle.read_text(), strings.read_text()), first)
+
+    def test_missing_project_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(box.main(["ci-patch", "x", "--root", tmp]), 1)
+
+
 def git(cwd: Path, *args: str) -> None:
     subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
