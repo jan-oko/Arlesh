@@ -237,6 +237,72 @@ class InstallStale(IsolatedEnv):
         self.assertIsNotNone(box.install_reason("h:1", "pixel", "b", "s1"))
 
 
+MDNS_LINE = "adb-R5CT123ABC-xYz1Qw _adb-tls-connect._tcp. 192.168.68.111:33691"
+
+
+class DeviceResolution(IsolatedEnv):
+    """A fake adb that lists $FAKE_MDNS, answers connect/get-state, and reports its serial."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        bindir = self.tmp / "bin"
+        bindir.mkdir()
+        adb = bindir / "adb"
+        adb.write_text(
+            "#!/bin/sh\n"
+            'case "$*" in\n'
+            '  "mdns services") echo "List of discovered mdns services"; '
+            'printf "%s\\n" "$FAKE_MDNS" ;;\n'
+            "  *get-state*) echo device ;;\n"
+            "  *get-serialno*) echo R5CT123ABC ;;\n"
+            "esac\n"
+        )
+        adb.chmod(adb.stat().st_mode | stat.S_IXUSR)
+        os.environ["PATH"] = f"{bindir}{os.pathsep}{os.environ['PATH']}"
+        os.environ["FAKE_MDNS"] = MDNS_LINE
+
+    def resolve(
+        self, host: str, adb_serial: str | None = None, ip: str | None = None
+    ) -> str:
+        box.device_add("miniseer", "android", host)
+        if adb_serial:
+            box.save_devices(
+                {"miniseer": box.Target("miniseer", "android", host, adb_serial)}
+            )
+        info = [(2, 1, 6, "", (ip, 0))] if ip else []
+        with mock.patch.object(box.socket, "getaddrinfo", return_value=info):
+            return box.resolve_device(box.load_devices()["miniseer"])
+
+    def test_registered_name_resolving_to_the_mdns_ip(self) -> None:
+        self.assertEqual(
+            self.resolve("miniseer", ip="192.168.68.111"), "192.168.68.111:33691"
+        )
+
+    def test_serial_is_stored_after_first_sight(self) -> None:
+        self.resolve("miniseer", ip="192.168.68.111")
+        self.assertEqual(box.load_devices()["miniseer"].adb_serial, "R5CT123ABC")
+
+    def test_serial_matches_when_the_ip_differs(self) -> None:
+        self.assertEqual(
+            self.resolve("100.64.0.9", adb_serial="R5CT123ABC", ip="100.64.0.9"),
+            "192.168.68.111:33691",
+        )
+
+    def test_nothing_matches_lists_the_mdns_entries(self) -> None:
+        with self.assertRaises(box.BoxError) as ctx:
+            self.resolve("other", ip="10.0.0.5")
+        self.assertIn("adb-R5CT123ABC-xYz1Qw", str(ctx.exception))
+        self.assertIn("192.168.68.111:33691", str(ctx.exception))
+
+    def test_registered_port_is_tried_when_not_advertised(self) -> None:
+        os.environ["FAKE_MDNS"] = ""
+        self.assertEqual(self.resolve("10.0.0.5:5555", ip="10.0.0.5"), "10.0.0.5:5555")
+
+    def test_serial_parsed_from_the_service_name(self) -> None:
+        e = box.MdnsEntry("adb-R5CT123ABC-xYz1Qw", "1.2.3.4", "1")
+        self.assertEqual(e.hardware_serial, "R5CT123ABC")
+
+
 class Patching(IsolatedEnv):
     def setUp(self) -> None:
         super().setUp()

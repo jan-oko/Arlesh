@@ -70,7 +70,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -271,6 +271,7 @@ class Target:
     name: str
     os: str
     host: str | None = None
+    adb_serial: str | None = None  # learned the first time the device is seen
 
 
 def load_devices() -> dict[str, Target]:
@@ -285,8 +286,12 @@ def load_devices() -> dict[str, Target]:
     for name, entry in (raw.get("devices") or {}).items():
         if isinstance(entry, dict) and entry.get("os") in OSES:
             host = entry.get("host")
+            hw = entry.get("adb_serial")
             found[name] = Target(
-                name, entry["os"], host if isinstance(host, str) else None
+                name,
+                entry["os"],
+                host if isinstance(host, str) else None,
+                hw if isinstance(hw, str) and hw else None,
             )
     return found
 
@@ -296,7 +301,11 @@ def save_devices(devices: dict[str, Target]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     body = {
         "devices": {
-            n: {"os": t.os, **({"host": t.host} if t.host else {})}
+            n: {
+                "os": t.os,
+                **({"host": t.host} if t.host else {}),
+                **({"adb_serial": t.adb_serial} if t.adb_serial else {}),
+            }
             for n, t in sorted(devices.items())
         }
     }
@@ -1214,41 +1223,99 @@ def ensure_debug_keystore() -> None:
     note(f"created {ks}")
 
 
-def mdns_port(host: str) -> str:
-    out = capture(["adb", "mdns", "services"]).stdout
-    for line in out.splitlines():
+@dataclass(frozen=True)
+class MdnsEntry:
+    service: str
+    host: str
+    port: str
+
+    @property
+    def hardware_serial(self) -> str | None:
+        """The adb serial in an `adb-<serial>-<suffix>` service name."""
+        m = re.fullmatch(r"adb-(.+)-[^-]+", self.service)
+        return m.group(1) if m else None
+
+    @property
+    def address(self) -> str:
+        return f"{self.host}:{self.port}"
+
+
+def mdns_entries() -> list[MdnsEntry]:
+    """The wireless-debugging endpoints `adb mdns services` lists (_adb-tls-connect)."""
+    found: list[MdnsEntry] = []
+    for line in capture(["adb", "mdns", "services"]).stdout.splitlines():
         parts = line.split()
         if len(parts) >= 3 and "_adb-tls-connect" in parts[1] and ":" in parts[2]:
             h, _, p = parts[2].rpartition(":")
-            if h == host:
-                return p
-    return ""
+            found.append(MdnsEntry(parts[0], h, p))
+    return found
 
 
-def resolve_device(spec: str) -> str:
-    """The adb serial (host:port) for `host[:port]`, connected. Never pairs."""
+def host_addresses(host: str) -> set[str]:
+    """`host` itself plus every address it resolves to (a MagicDNS or .local name)."""
+    addrs = {host}
+    with contextlib.suppress(OSError):
+        for info in socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP):
+            addrs.add(str(info[4][0]))
+    return addrs
+
+
+def match_mdns(
+    entries: Sequence[MdnsEntry], host: str, adb_serial: str | None
+) -> MdnsEntry | None:
+    """By adb serial first (tailnet and LAN addresses differ for one phone), then by address."""
+    if adb_serial:
+        for e in entries:
+            if e.hardware_serial == adb_serial:
+                return e
+    addrs = host_addresses(host)
+    return next((e for e in entries if e.host in addrs), None)
+
+
+def remember_adb_serial(target: Target, addr: str, entry: MdnsEntry | None) -> None:
+    """Store the device's adb serial in the registry the first time it is seen."""
+    found = entry.hardware_serial if entry else None
+    if not found:
+        out = capture(["adb", "-s", addr, "get-serialno"])
+        found = out.stdout.strip() if out.returncode == 0 else None
+    if not found or found == "unknown" or found == target.adb_serial:
+        return
+    devices = load_devices()
+    if target.name in devices:
+        devices[target.name] = replace(devices[target.name], adb_serial=found)
+        save_devices(devices)
+
+
+def resolve_device(target: Target) -> str:
+    """The adb address (host:port) for the device, connected. Never pairs."""
     need_cmd("adb", "Install platform-tools and put it on PATH (or set ANDROID_HOME).")
-    host, _, port = spec.partition(":")
-    if not port:
-        port = mdns_port(host)
-        if not port:
-            with contextlib.suppress(OSError):
-                ip = socket.gethostbyname(host)
-                if ip != host:
-                    port = mdns_port(ip)
-        if not port:
-            raise die(
-                f"{host} does not show up in 'adb mdns services' (_adb-tls-connect). Turn on Wireless "
-                f"debugging on the device, or register it as host:port. If it was never paired: "
-                f"adb pair {host}:<pairing port>. This tool does not pair."
-            )
-    serial = f"{host}:{port}"
-    capture(["adb", "connect", serial])
-    if capture(["adb", "-s", serial, "get-state"]).stdout.strip() != "device":
-        raise die(
-            f"Could not reach {serial} over adb. If it is not paired yet, run: adb pair {host}:<pairing port>"
+    host, _, port = (target.host or "").partition(":")
+    entries = mdns_entries()
+    entry = match_mdns(entries, host, target.adb_serial)
+    if entry:
+        addr = entry.address
+    elif port:
+        addr = (
+            f"{host}:{port}"  # registered with a port and not advertised: try it as is
         )
-    return serial
+    else:
+        seen = (
+            "\n".join(f"  {e.service}  {e.address}" for e in entries)
+            or "  (none: is Wireless debugging on?)"
+        )
+        raise die(
+            f"{target.name} ({host}) does not show up in 'adb mdns services' (_adb-tls-connect), "
+            f"by address or by adb serial. Seen:\n{seen}\nTurn on Wireless debugging on the device, "
+            f"or register it as host:port. If it was never paired: adb pair {host}:<pairing port>. "
+            f"This tool does not pair."
+        )
+    capture(["adb", "connect", addr])
+    if capture(["adb", "-s", addr, "get-state"]).stdout.strip() != "device":
+        raise die(
+            f"Could not reach {addr} over adb. If it is not paired yet, run: adb pair {host}:<pairing port>"
+        )
+    remember_adb_serial(target, addr, entry)
+    return addr
 
 
 def package_installed(serial: str, package: str) -> bool:
@@ -1565,7 +1632,7 @@ def run_android(name: str, wt: Path, target: Target, args: argparse.Namespace) -
     assert target.host  # registry guarantees it for android
     android_env()
     serial = resolve_device(
-        target.host
+        target
     )  # before a long build: fail early on a missing device
     stamp = worktree_stamp(wt)
     if is_stale(ANDROID, name, stamp, android_apk(name), args.force):
@@ -1627,7 +1694,7 @@ def reachable_android_devices() -> dict[str, str]:
         return found
     for t in devices:
         try:
-            found[t.name] = resolve_device(t.host or "")
+            found[t.name] = resolve_device(t)
         except BoxError as exc:
             note(f"{t.name}: {exc}")
     return found
@@ -1750,7 +1817,7 @@ def cmd_prune(args: argparse.Namespace) -> None:
         if target.os != ANDROID or not target.host:
             raise UsageError(f"'{args.target}' is not an android device.")
         android_env()
-        serials = {target.name: resolve_device(target.host)}
+        serials = {target.name: resolve_device(target)}
     else:
         serials = reachable_android_devices()
     for serial in serials.values():
