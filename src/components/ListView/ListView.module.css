@@ -18,8 +18,7 @@
 /* Full screen's status-bar band: an opaque strip pinned to the top of the scroll, in the list's own
    height (it is the top padding), so rows and sticky headings scroll behind it and never show above
    a stuck header. The container has no top padding of its own: a sticky box sticks at the content
-   edge, so any padding would leave a strip above the mask. The first child's offset is the flex gap
-   after the mask. 0 high outside full screen. */
+   edge, so any padding would leave a strip above the mask. 0 high outside full screen. */
 .container::before {
   content: "";
   position: sticky;
@@ -85,15 +84,15 @@
 /* The phone layout (docs/spec/touch.md): tighter margins, so a row has the width. */
 @media (max-width: 699.98px) {
   .container {
-    /* The status-bar band is the ::before mask, not padding; the gap keeps the first heading off it
-       (0 outside full screen). */
+    /* The status-bar band is the ::before mask, not padding. */
     padding: 0 var(--space-2) calc(var(--space-3) + var(--peek-pad-bottom));
     gap: var(--space-2);
   }
 
   .container::before {
-    /* The first heading's offset below the mask: the peek gap, in place of the flex gap. */
-    margin-bottom: calc(var(--peek-gap) - var(--space-2));
+    /* The first heading follows the mask with no gap: the inset only (decided with the user,
+       2026-11-02). Cancels the flex gap. */
+    margin-bottom: calc(-1 * var(--space-2));
   }
 
   .rows {

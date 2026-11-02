@@ -32,7 +32,6 @@ html, body, #root {
      them: it is panned, and stays full-bleed. */
   --peek-pad-top: 0px;
   --peek-pad-bottom: 0px;
-  --peek-gap: 0px;
 
   /* Aspect colors */
   --color-aspect-red: #e74c3c;
@@ -129,13 +128,11 @@ html, body, #root {
 :root[data-fs-bars="edgeToEdge"] {
   --peek-pad-top: var(--safe-top);
   --peek-pad-bottom: var(--safe-bottom);
-  --peek-gap: var(--space-2);
 }
 
 :root[data-fs-bars="immersive"] {
   --peek-pad-top: max(var(--peek-top, 28px), var(--safe-top));
   --peek-pad-bottom: max(var(--peek-bottom, 24px), var(--safe-bottom));
-  --peek-gap: var(--space-2);
 }
 
 :root[data-theme="light"] {

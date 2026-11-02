@@ -9,7 +9,7 @@
   flex: 1 1 0;
   flex-direction: column;
   box-sizing: border-box;
-  padding: calc(var(--space-4) + var(--peek-pad-top)) var(--space-4) calc(var(--space-4) + var(--peek-pad-bottom));
+  padding: var(--peek-pad-top) var(--space-4) calc(var(--space-4) + var(--peek-pad-bottom));
   background: var(--canvas-bg);
   gap: var(--space-3);
 }

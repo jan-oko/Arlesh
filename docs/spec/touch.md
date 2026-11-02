@@ -205,12 +205,12 @@ restores the normal display's mode.
 - **Full screen pads the views for the bars** (decided with the user, 2026-11-02, from phone screenshots:
   the List's first heading and the Plan header sat under the status bar). Full screen removes the top
   bar and the bottom bars, so every view but the Mindmap pads its content box: at the top by the status
-  bar plus a small gap (8 px), at the bottom by the gesture bar. Edge-to-edge uses the visible insets
+  bar only, with no extra gap above the first content (decided with the user, 2026-11-02), at the bottom by the gesture bar. Edge-to-edge uses the visible insets
   (`--safe-top`, `--safe-bottom`); Immersive uses where the hidden bars peek, `--peek-top` and
   `--peek-bottom`, which `MainActivity` pushes from `getInsetsIgnoringVisibility(systemBars())`
   (fallbacks 28 px and 24 px). `useSystemBars` marks the root `data-fs-bars="edgeToEdge"|"immersive"`
   in full screen (never for Standard, which the activity pads, nor without the bridge), and
-  `tokens.css` turns that into `--peek-pad-top`, `--peek-pad-bottom` and `--peek-gap` (all 0 otherwise).
+  `tokens.css` turns that into `--peek-pad-top` and `--peek-pad-bottom` (both 0 otherwise).
   The List has no top padding of its own (a sticky box sticks at the content edge, which a padding
   would push down): an opaque sticky `::before` mask as high as `--peek-pad-top` sits over the scroll,
   and the phone's sticky path headers stick at `top: var(--peek-pad-top)`, flush under it, so nothing

@@ -62,7 +62,7 @@ describe("Full screen's padding for the system bars", () => {
       "padding: 0 var(--space-2) calc(var(--space-3) + var(--peek-pad-bottom));",
     );
     expect(views[1]).toContain(
-      "padding: calc(var(--space-2) + var(--peek-pad-top)) var(--space-2) calc(var(--space-2) + var(--peek-pad-bottom));",
+      "padding: var(--peek-pad-top) var(--space-2) calc(var(--space-2) + var(--peek-pad-bottom));",
     );
     expect(mindmap).not.toContain("--peek-");
   });
