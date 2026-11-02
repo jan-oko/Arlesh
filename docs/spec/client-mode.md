@@ -156,7 +156,9 @@ windows as the same Tauri `board-changed` event a Standalone write raises, now c
 **What a write costs, and the revision.** The server stamps `/board` and every other answer with
 its revision and epoch ([Revision](http-api.md#revision-on-every-answer-and-gzip)). The Tauri
 `load_mindmap` returns the board with that stamp as `revision`, and each window keeps the stamp of
-the board it holds in one place, `src/stores/board-revision-store.ts`. Standalone has no server, so
+the board it holds in `src/stores/board-revision-store.ts`: one tracker **per view** (the list, the
+filter display and the Mindmap each load their own copy of the board), never one per window, or the
+first view to reload would make every other judge the event already held and stay stale. Standalone has no server, so
 its loads carry none and its events carry none, and a window with none reloads on every event as it
 always has. The rules, in `src/hooks/use-board-changed.ts`:
 

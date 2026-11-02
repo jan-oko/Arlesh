@@ -1,9 +1,15 @@
-import { create } from "zustand";
+import { createStore } from "zustand/vanilla";
+import type { StoreApi } from "zustand/vanilla";
 import type { BoardRevision } from "@/api/board";
 
 /**
- * Which revision of the server's board this window holds: the one place the revision and epoch
- * live (Client mode; Standalone never sets one).
+ * Which revision of the server's board one view holds (Client mode; Standalone never sets one).
+ *
+ * It is one per **view**, not one per window. A window can hold several copies of the board (the
+ * list, the filter display, the Mindmap each load their own), and a revision one of them has
+ * reached says nothing of the others: with a single shared revision, the first view to reload for
+ * another device's change made every other view judge the same event "already held" and skip it,
+ * and they stayed stale until a write of their own reloaded them.
  *
  * The server counts every committed write and stamps `/board` and each `board-changed` event with
  * the count and with the epoch, the run of the server it counts in. A window that holds revision
@@ -20,7 +26,7 @@ import type { BoardRevision } from "@/api/board";
  * node it wrote, and the board derives more than that (rollups, what blocks what, inherited
  * Plans), so the reload after a write stays; it is the echo that is skipped.
  */
-interface BoardRevisionStore {
+export interface BoardRevisionStore {
   held: BoardRevision | null;
   inFlight: number;
   /** A load of the board has begun. */
@@ -31,17 +37,22 @@ interface BoardRevisionStore {
   loadFailed: () => void;
 }
 
-export const useBoardRevisionStore = create<BoardRevisionStore>()((set) => ({
-  held: null,
-  inFlight: 0,
-  loadStarted: () => set((state) => ({ inFlight: state.inFlight + 1 })),
-  loadFinished: (revision) =>
-    set((state) => ({
-      inFlight: Math.max(0, state.inFlight - 1),
-      held: newerOf(state.held, revision),
-    })),
-  loadFailed: () => set((state) => ({ inFlight: Math.max(0, state.inFlight - 1) })),
-}));
+export type BoardRevisionTracker = StoreApi<BoardRevisionStore>;
+
+/** A fresh tracker for one view's copy of the board. */
+export function createBoardRevisionTracker(): BoardRevisionTracker {
+  return createStore<BoardRevisionStore>()((set) => ({
+    held: null,
+    inFlight: 0,
+    loadStarted: () => set((state) => ({ inFlight: state.inFlight + 1 })),
+    loadFinished: (revision) =>
+      set((state) => ({
+        inFlight: Math.max(0, state.inFlight - 1),
+        held: newerOf(state.held, revision),
+      })),
+    loadFailed: () => set((state) => ({ inFlight: Math.max(0, state.inFlight - 1) })),
+  }));
+}
 
 /**
  * The revision a window holds once a load read at `loaded` finishes. Loads can end out of order,

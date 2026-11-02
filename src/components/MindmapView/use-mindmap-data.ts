@@ -33,7 +33,7 @@ import { shownTitle } from "@/utils/editor-save-fields";
 import { applyPendingWrites } from "@/utils/apply-pending-writes";
 import { isReflected } from "@/utils/pending-writes";
 import type { BoardStamp } from "@/utils/pending-writes";
-import { useBoardRevisionStore } from "@/stores/board-revision-store";
+import { createBoardRevisionTracker } from "@/stores/board-revision-store";
 import type { MindmapLoad } from "@/api/mindmap";
 import {
   createFlow, updateFlow,
@@ -1037,6 +1037,8 @@ export function useMindmapData(): MindmapData {
   });
   // The newest read this hook has started, and the newest it has put on screen: a read that returns
   // after a newer one has been drawn is discarded.
+  // The revision this view's copy of the board is at; see `use-board-changed`.
+  const [revisionTracker] = useState(createBoardRevisionTracker);
   const startedRead = useRef(0);
   const drawnRead = useRef(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -1059,15 +1061,15 @@ export function useMindmapData(): MindmapData {
         const now = localNowIso();
         const read = usePendingWritesStore.getState().beginRead();
         startedRead.current = read;
-        useBoardRevisionStore.getState().loadStarted();
+        revisionTracker.getState().loadStarted();
         let data: MindmapLoad;
         try {
           data = await loadMindmap(now);
         } catch (err) {
-          useBoardRevisionStore.getState().loadFailed();
+          revisionTracker.getState().loadFailed();
           throw err;
         }
-        useBoardRevisionStore.getState().loadFinished(data.revision ?? null);
+        revisionTracker.getState().loadFinished(data.revision ?? null);
         if (read < drawnRead.current) return;
         // People are read only when a Task is delegated to one: their names are what a Person
         // delegate's badge and wait are labelled with, and nothing else on the board needs them.
@@ -1104,7 +1106,7 @@ export function useMindmapData(): MindmapData {
         if (showSpinner) setIsLoading(false);
       }
     },
-    [scopeLabels, checkPrefix],
+    [scopeLabels, checkPrefix, revisionTracker],
   );
 
   useEffect(() => {
@@ -1708,7 +1710,7 @@ export function useMindmapData(): MindmapData {
   // An edit in another window ends in exactly this reload. Two views of one board that silently
   // disagree are worse than one view, and the cheapest way to have none is to reuse the refresh
   // every local mutation already ends in. See `use-board-changed`.
-  useBoardChanged(reload);
+  useBoardChanged(reload, revisionTracker);
 
   return {
     tree,

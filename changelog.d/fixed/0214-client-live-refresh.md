@@ -1,0 +1,1 @@
+- **Another device's changes now show up on their own in Client mode.** With the desktop and the phone on one server, a change made on the phone only appeared on the desktop after the desktop made a change of its own. Every view of the board in a window (the list, the filters, the Mindmap) now reloads when another device changes the board.

@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { onBoardChanged } from "@/api/board";
 import type { BoardRevision } from "@/api/board";
-import { isNews, latestOf, useBoardRevisionStore } from "@/stores/board-revision-store";
+import type { BoardRevisionTracker } from "@/stores/board-revision-store";
+import { isNews, latestOf } from "@/stores/board-revision-store";
 
 /**
  * How long an announced change waits before the window decides whether it is news.
@@ -31,11 +32,14 @@ export const SETTLE_MS = 150;
  * rather than reloaded for (`src/stores/board-revision-store.ts`). An event that carries none, or
  * from a server that has restarted since the board was loaded, always reloads.
  *
+ * `tracker` is the revision of **this view's** copy of the board, not the window's: every view
+ * that loads the board listens, and each must judge the event against what it holds itself.
+ *
  * `reload` is held in a ref rather than named as a dependency: it is rebuilt whenever the data hook
  * rebuilds it, and resubscribing on each of those would tear the listener down and put it back up
  * in a gap an event could fall through.
  */
-export function useBoardChanged(reload: () => Promise<void>): void {
+export function useBoardChanged(reload: () => Promise<void>, tracker: BoardRevisionTracker): void {
   const latest = useRef(reload);
 
   useEffect(() => {
@@ -53,14 +57,14 @@ export function useBoardChanged(reload: () => Promise<void>): void {
     const settle = (): void => {
       timer = null;
       if (target === null) return;
-      const { held, inFlight } = useBoardRevisionStore.getState();
+      const { held, inFlight } = tracker.getState();
       if (!isNews(held, target)) {
         target = null;
         return;
       }
       if (inFlight > 0) {
         // A load is under way: it may be the one that brings the change. Judge it when it ends.
-        stopWaiting ??= useBoardRevisionStore.subscribe((state) => {
+        stopWaiting ??= tracker.subscribe((state) => {
           if (state.inFlight > 0) return;
           stopWaiting?.();
           stopWaiting = null;
@@ -78,7 +82,7 @@ export function useBoardChanged(reload: () => Promise<void>): void {
         void latest.current();
         return;
       }
-      if (!isNews(useBoardRevisionStore.getState().held, change)) return;
+      if (!isNews(tracker.getState().held, change)) return;
       target = latestOf(target, change);
       timer ??= setTimeout(settle, SETTLE_MS);
     }).then((stop) => {
@@ -94,5 +98,5 @@ export function useBoardChanged(reload: () => Promise<void>): void {
       if (timer !== null) clearTimeout(timer);
       stopWaiting?.();
     };
-  }, []);
+  }, [tracker]);
 }

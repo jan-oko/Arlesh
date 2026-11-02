@@ -5,7 +5,6 @@ import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
 import type { MindmapLoad } from "@/api/mindmap";
 import type { Task } from "@/api/tasks";
-import { useBoardRevisionStore } from "@/stores/board-revision-store";
 import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { useMindmapData } from "./use-mindmap-data";
@@ -104,7 +103,6 @@ let served: () => MindmapLoad;
 beforeEach(() => {
   vi.clearAllMocks();
   store().reset();
-  useBoardRevisionStore.setState({ held: null, inFlight: 0 });
   fetches = 0;
   served = () => board("Write code", 5);
   vi.mocked(invoke).mockImplementation((command: string) => {

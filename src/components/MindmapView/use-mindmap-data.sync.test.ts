@@ -7,18 +7,21 @@ import type { Goal } from "@/api/goals";
 import type { MindmapLoad } from "@/api/mindmap";
 import type { Task } from "@/api/tasks";
 import { SETTLE_MS } from "@/hooks/use-board-changed";
-import { useBoardRevisionStore } from "@/stores/board-revision-store";
 import { useMindmapData } from "./use-mindmap-data";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 // The change stream, held by the test: `emit` is the server's `board-changed` as the shell relays it.
-let emit: (change: BoardRevision | null) => void = () => undefined;
+// Every view of the window listens, so the event reaches each of them.
+const listeners = new Set<(change: BoardRevision | null) => void>();
+function emit(change: BoardRevision | null): void {
+  for (const listener of [...listeners]) listener(change);
+}
 vi.mock("@/api/board", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/board")>()),
   onBoardChanged: vi.fn((handler: (change: BoardRevision | null) => void) => {
-    emit = handler;
-    return Promise.resolve(() => undefined);
+    listeners.add(handler);
+    return Promise.resolve(() => { listeners.delete(handler); });
   }),
 }));
 
@@ -101,14 +104,13 @@ describe("a write and the server's echo of it", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    useBoardRevisionStore.setState({ held: null, inFlight: 0 });
+    listeners.clear();
   });
   afterEach(() => { vi.useRealTimers(); });
 
-  async function mounted(revision = 0) {
+  async function mounted() {
     const hook = renderHook(() => useMindmapData());
     await waitFor(() => expect(hook.result.current.isLoading).toBe(false));
-    await waitFor(() => expect(useBoardRevisionStore.getState().held?.revision).toBe(revision));
     return hook;
   }
 
@@ -154,7 +156,7 @@ describe("a write and the server's echo of it", () => {
   it("does not reload for a revision the board it holds already has", async () => {
     const server = fakeServer();
     server.revision = 4;
-    await mounted(4);
+    await mounted();
     const before = server.boardFetches;
 
     emit({ epoch: EPOCH, revision: 3 });
@@ -167,7 +169,7 @@ describe("a write and the server's echo of it", () => {
   it("always reloads when the server has restarted, whatever its revision says", async () => {
     const server = fakeServer();
     server.revision = 9;
-    await mounted(9);
+    await mounted();
     const before = server.boardFetches;
 
     server.epoch = "run2";
@@ -185,5 +187,30 @@ describe("a write and the server's echo of it", () => {
 
     emit(null);
     await waitFor(() => expect(server.boardFetches).toBe(2));
+  });
+
+  it("reloads every view of the window for a change another device made, not only the first", async () => {
+    // The window's views (the list, the filter display, the mindmap) each hold their own copy of
+    // the board, and share the one revision the window has seen.
+    const server = fakeServer();
+    const first = renderHook(() => useMindmapData());
+    const second = renderHook(() => useMindmapData());
+    await waitFor(() => expect(first.result.current.isLoading).toBe(false));
+    await waitFor(() => expect(second.result.current.isLoading).toBe(false));
+    await waitFor(() => expect(listeners.size).toBe(2));
+    server.revision = 1;
+    server.boardFetches = 0;
+    vi.mocked(invoke).mockImplementation((command: string) => {
+      if (command === "load_mindmap") {
+        server.boardFetches += 1;
+        return Promise.resolve(emptyBoard({ epoch: EPOCH, revision: server.revision }));
+      }
+      return Promise.resolve(null);
+    });
+
+    emit({ epoch: EPOCH, revision: 1 });
+    await settle();
+
+    expect(server.boardFetches).toBe(2);
   });
 });
