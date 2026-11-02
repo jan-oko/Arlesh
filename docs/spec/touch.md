@@ -202,6 +202,22 @@ restores the normal display's mode.
   the window's fitting back on, which Android 15 enforces off; the bars' colour is the view's
   background (black-ish on the dark theme, white on the light one) showing through the padding.
 - **Immersive** hides the bars with `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`.
+- **Full screen pads the views for the bars** (decided with the user, 2026-11-02, from phone screenshots:
+  the List's first heading and the Plan header sat under the status bar). Full screen removes the top
+  bar and the bottom bars, so every view but the Mindmap pads its content box: at the top by the status
+  bar plus a small gap (8 px), at the bottom by the gesture bar. Edge-to-edge uses the visible insets
+  (`--safe-top`, `--safe-bottom`); Immersive uses where the hidden bars peek, `--peek-top` and
+  `--peek-bottom`, which `MainActivity` pushes from `getInsetsIgnoringVisibility(systemBars())`
+  (fallbacks 28 px and 24 px). `useSystemBars` marks the root `data-fs-bars="edgeToEdge"|"immersive"`
+  in full screen (never for Standard, which the activity pads, nor without the bridge), and
+  `tokens.css` turns that into `--peek-pad-top`, `--peek-pad-bottom` and `--peek-gap` (all 0 otherwise).
+  The List's padding is on its scroller, so rows scroll under the top edge but rest clear of it. The
+  Mindmap stays full-bleed: the canvas can be panned. Outside full screen the top bar and bottom
+  navigation already pad by the visible insets.
+- **The fullscreen hot square** sits at `max(0.3 x radius + 12px, safe inset + 12px, 20px)` from the
+  right edge, and from the bottom `max(0.3 x radius + 12px, safe inset + 12px, peek pad + 12px,
+  20px)`: at least 20 px clear of both edges, the gesture bar's peek included (decided with the user,
+  2026-11-02).
 - **The bridge.** The web side states the wanted mode and the theme (`useSystemBars`: the normal or
   the fullscreen setting, by whether the app is in fullscreen) through
   `window.ArleshBars.setSystemBars(mode, dark)`, a `@JavascriptInterface` (`SystemBarsBridge.kt`; R8

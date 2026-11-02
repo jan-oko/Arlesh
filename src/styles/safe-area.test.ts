@@ -16,7 +16,7 @@ describe("safe-area variables", () => {
 
   it("pads the phone top bar by the top inset, and keeps the bottom bars and corner square above the bottom one", () => {
     expect(phoneTopBar).toMatch(/padding-top:\s*var\(--safe-top\)/);
-    expect(phoneTopBar).toMatch(/max\(var\(--corner-inset-br\), var\(--safe-bottom\)\)/);
+    expect(phoneTopBar).toContain("calc(var(--safe-bottom) + 12px)");
     expect(bottomNav).toMatch(/padding-bottom:\s*var\(--safe-bottom\)/);
   });
 
@@ -26,10 +26,44 @@ describe("safe-area variables", () => {
 });
 
 describe("the display's rounded corner", () => {
-  it("falls back to 16px, and the square sits at max(0.3 x radius, safe inset) + the margin", () => {
+  it("falls back to 16px, and the square sits at max(0.3 x radius, safe or peek inset) + 12px, never under 20px", () => {
     expect(tokens).toMatch(/--corner-br:\s*16px/);
     expect(tokens).toMatch(/--corner-inset-br:\s*calc\(var\(--corner-br\) \* 0\.3\)/);
-    expect(phoneTopBar).toMatch(/bottom:\s*calc\(var\(--space-2\) \+ max\(var\(--corner-inset-br\), var\(--safe-bottom\)\)\)/);
-    expect(phoneTopBar).toMatch(/inset-inline-end:\s*calc\(var\(--space-2\) \+ max\(var\(--corner-inset-br\), var\(--safe-right\)\)\)/);
+    expect(phoneTopBar).toContain(
+      "inset-inline-end: max(calc(var(--corner-inset-br) + 12px), calc(var(--safe-right) + 12px), 20px);",
+    );
+    expect(phoneTopBar).toContain(
+      "bottom: max(calc(var(--corner-inset-br) + 12px), calc(var(--safe-bottom) + 12px), calc(var(--peek-pad-bottom) + 12px), 20px);",
+    );
+  });
+});
+
+describe("Full screen's padding for the system bars", () => {
+  const views = ["ListView", "PlanView", "StepsView", "ZenView"].map((v) => read(`src/components/${v}/${v}.module.css`));
+  const mindmap = read("src/components/MindmapView/MindmapView.module.css");
+
+  it("is 0 by default, the visible insets in full-screen Edge-to-edge, and the peek sizes (28px and 24px unknown) in full-screen Immersive", () => {
+    expect(tokens).toMatch(/--peek-pad-top:\s*0px/);
+    expect(tokens).toMatch(/--peek-pad-bottom:\s*0px/);
+    expect(tokens).toMatch(
+      /:root\[data-fs-bars="edgeToEdge"\]\s*\{\s*--peek-pad-top:\s*var\(--safe-top\);\s*--peek-pad-bottom:\s*var\(--safe-bottom\);/,
+    );
+    expect(tokens).toMatch(
+      /:root\[data-fs-bars="immersive"\]\s*\{\s*--peek-pad-top:\s*max\(var\(--peek-top, 28px\), var\(--safe-top\)\);\s*--peek-pad-bottom:\s*max\(var\(--peek-bottom, 24px\), var\(--safe-bottom\)\);/,
+    );
+  });
+
+  it("is added to the content box of every view but the Mindmap, phone overrides included", () => {
+    for (const css of views) {
+      expect(css).toContain("var(--peek-pad-top)");
+      expect(css).toContain("var(--peek-pad-bottom)");
+    }
+    expect(views[0]).toContain(
+      "padding: calc(var(--peek-pad-top) + var(--peek-gap)) var(--space-2) calc(var(--space-3) + var(--peek-pad-bottom));",
+    );
+    expect(views[1]).toContain(
+      "padding: calc(var(--space-2) + var(--peek-pad-top)) var(--space-2) calc(var(--space-2) + var(--peek-pad-bottom));",
+    );
+    expect(mindmap).not.toContain("--peek-");
   });
 });

@@ -139,9 +139,10 @@
    gesture bar and of the phone's rounded corner. It is drawn fainter than in the bar, so it does not shout over content. */
 .squareCorner {
   position: fixed;
-  /* Whole box inside the display's rounded corner: max(0.3 x radius, safe inset) + the margin. */
-  inset-inline-end: calc(var(--space-2) + max(var(--corner-inset-br), var(--safe-right)));
-  bottom: calc(var(--space-2) + max(var(--corner-inset-br), var(--safe-bottom)));
+  /* A comfortable margin (12px) beyond whichever is largest: the rounded corner's 0.3 x radius, the
+     safe inset (and, at the bottom, the gesture bar and its peek in full screen); never under 20px. */
+  inset-inline-end: max(calc(var(--corner-inset-br) + 12px), calc(var(--safe-right) + 12px), 20px);
+  bottom: max(calc(var(--corner-inset-br) + 12px), calc(var(--safe-bottom) + 12px), calc(var(--peek-pad-bottom) + 12px), 20px);
   z-index: 60;
   background: color-mix(in srgb, var(--surface) 70%, transparent);
   opacity: 0.7;

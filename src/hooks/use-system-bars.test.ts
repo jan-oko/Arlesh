@@ -15,6 +15,7 @@ beforeEach(() => {
   useThemeStore.setState({ theme: "dark" });
 });
 afterEach(() => {
+  delete document.documentElement.dataset.fsBars;
   Reflect.deleteProperty(window, "ArleshBars");
 });
 
@@ -35,6 +36,26 @@ describe("useSystemBars", () => {
     expect(setSystemBars).toHaveBeenLastCalledWith("immersive", true);
     act(() => useFullscreenStore.setState({ isFullscreen: false }));
     expect(setSystemBars).toHaveBeenLastCalledWith("edgeToEdge", true);
+  });
+
+  it("marks the root with the mode only in full screen, never for Standard, and only with a bridge", () => {
+    const { unmount } = renderHook(() => useSystemBars());
+    expect(document.documentElement.dataset.fsBars).toBeUndefined();
+    act(() => useFullscreenStore.setState({ isFullscreen: true }));
+    expect(document.documentElement.dataset.fsBars).toBe("immersive");
+    act(() => useDisplayStore.getState().setSystemBarsFullscreen("edgeToEdge"));
+    expect(document.documentElement.dataset.fsBars).toBe("edgeToEdge");
+    act(() => useDisplayStore.getState().setSystemBarsFullscreen("standard"));
+    expect(document.documentElement.dataset.fsBars).toBeUndefined();
+    act(() => useDisplayStore.getState().setSystemBarsFullscreen("immersive"));
+    act(() => useFullscreenStore.setState({ isFullscreen: false }));
+    expect(document.documentElement.dataset.fsBars).toBeUndefined();
+    unmount();
+
+    Reflect.deleteProperty(window, "ArleshBars");
+    useFullscreenStore.setState({ isFullscreen: true });
+    renderHook(() => useSystemBars());
+    expect(document.documentElement.dataset.fsBars).toBeUndefined();
   });
 
   it("applies a changed setting live", () => {

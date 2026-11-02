@@ -46,19 +46,21 @@ class MainActivity : TauriActivity() {
       // With the keyboard up the gesture bar is behind it: pad by the keyboard, and the page's
       // bottom inset is 0 so it is not counted twice.
       val keyboard = ime.bottom > bars.bottom
+      // The bars' sizes even while hidden (Immersive), for the page to pad by where they peek.
+      val peek = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars())
       val corners = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) cornersOf(insets) else null
       when (mode) {
         BarsMode.STANDARD -> {
           view.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
-          pushInsets(0, 0, 0, 0, NO_CORNERS)
+          pushInsets(0, 0, 0, 0, NO_CORNERS, peek.top, peek.bottom)
         }
         BarsMode.EDGE_TO_EDGE -> {
           view.setPadding(0, 0, 0, if (keyboard) ime.bottom else 0)
-          pushInsets(bars.top, if (keyboard) 0 else bars.bottom, bars.left, bars.right, corners)
+          pushInsets(bars.top, if (keyboard) 0 else bars.bottom, bars.left, bars.right, corners, peek.top, peek.bottom)
         }
         BarsMode.IMMERSIVE -> {
           view.setPadding(0, 0, 0, ime.bottom)
-          pushInsets(cutout.top, if (ime.bottom > 0) 0 else cutout.bottom, cutout.left, cutout.right, corners)
+          pushInsets(cutout.top, if (ime.bottom > 0) 0 else cutout.bottom, cutout.left, cutout.right, corners, peek.top, peek.bottom)
         }
       }
       WindowInsetsCompat.CONSUMED
@@ -118,16 +120,17 @@ class MainActivity : TauriActivity() {
   }
 
   /**
-   * Writes the insets, in CSS pixels, to the page's `--sat`, `--sab`, `--sal` and `--sar`, and the
+   * Writes the insets, in CSS pixels, to the page's `--sat`, `--sab`, `--sal` and `--sar`, the bars' own sizes (hidden or not) to `--peek-top` and `--peek-bottom`, and the
    * display's corner radii to `--corner-tl`, `--corner-tr`, `--corner-br` and `--corner-bl`. With
    * no corners (an older Android) the page keeps its own fallback for them.
    */
-  private fun pushInsets(top: Int, bottom: Int, left: Int, right: Int, corners: Corners?) {
+  private fun pushInsets(top: Int, bottom: Int, left: Int, right: Int, corners: Corners?, peekTop: Int, peekBottom: Int) {
     val density = resources.displayMetrics.density
     fun css(px: Int) = "${px / density}px"
     var script = "(function(s){s.setProperty('--sat','${css(top)}');" +
       "s.setProperty('--sab','${css(bottom)}');s.setProperty('--sal','${css(left)}');" +
-      "s.setProperty('--sar','${css(right)}');"
+      "s.setProperty('--sar','${css(right)}');" +
+      "s.setProperty('--peek-top','${css(peekTop)}');s.setProperty('--peek-bottom','${css(peekBottom)}');"
     if (corners != null) {
       script += "s.setProperty('--corner-tl','${css(corners.topLeft)}');" +
         "s.setProperty('--corner-tr','${css(corners.topRight)}');" +

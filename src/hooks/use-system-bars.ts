@@ -18,6 +18,12 @@ export function useSystemBars(): void {
   const mode = systemBarsFor(isFullscreen, { systemBars, systemBarsFullscreen });
 
   useEffect(() => {
-    setSystemBars(mode, dark);
-  }, [mode, dark]);
+    const bridged = setSystemBars(mode, dark);
+    // Full screen hides the top and bottom bars, so the views pad for the system bars themselves:
+    // by the visible insets (Edge-to-edge) or where the hidden ones peek (Immersive). Standard
+    // pads in the activity, and with no bridge there are no bars.
+    const root = document.documentElement;
+    if (bridged && isFullscreen && mode !== "standard") root.dataset.fsBars = mode;
+    else delete root.dataset.fsBars;
+  }, [mode, dark, isFullscreen]);
 }
