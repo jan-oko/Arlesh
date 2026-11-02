@@ -10,6 +10,7 @@ import { PLAN_WHOLE_PANE, isPlanDrag } from "@/utils/plan-drag";
 import PathHeaderRow from "@/components/ListView/PathHeaderRow";
 import PaneMenu from "./PaneMenu";
 import type { PaneOption } from "./PaneMenu";
+import PlanBucket from "./PlanBucket";
 import PlanTaskCard from "./PlanTaskCard";
 import type { SelectModifiers } from "./PlanTaskCard";
 import styles from "./PlanView.module.css";
@@ -156,16 +157,16 @@ export default function PlanPane({
       if (block.section === null) return body;
       const section = block.section;
       return (
-        <div
+        <PlanBucket
           key={block.key}
-          className={`${styles.section}${over === section.key || touchOver === section.key ? ` ${styles.sectionOver}` : ""}`}
-          data-plan-section={section.key}
+          section={section}
+          highlighted={over === section.key || touchOver === section.key}
           onDragOver={(event) => hover(event, section.key)}
           onDragLeave={() => setOver(null)}
           onDrop={(event) => { event.stopPropagation(); setOver(null); onDrop(event, section); }}
         >
           {body}
-        </div>
+        </PlanBucket>
       );
     });
   }

@@ -77,7 +77,9 @@ Below 700 px:
   setting (`planSplitBySubscope`), switched in the same place, the **planned pane's ⋮ menu**. Its
   buckets (a week's days, a month's weeks) stack down the pane's own scrolling list under their
   headings, in portrait width; the keyboard hints on the headings are hidden. A card is
-  [dragged onto a bucket](#per-view).
+  [dragged onto a bucket](#per-view). *(How the buckets are laid out in portrait is still being
+  designed with the user; they are plain stacked boxes for now, behind one seam, `PlanBucket`, so
+  the drag does not change when the layout does.)*
 - **The Zen View** is a vertical list of cards in place of the grid that **fills the screen**: the
   cards share the height between the strips and the action bar equally (three cards each take a
   third, one card takes it all), their content centred across and down, and the title scales with
