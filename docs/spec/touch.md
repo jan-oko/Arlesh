@@ -63,11 +63,14 @@ Below 700 px:
 - **The Plan View stacks its panes**: candidates on top, the planned pane at the **bottom** and a
   **third** of the height (the candidates take the other two), and the planned pane draws **no
   subscope cells** (stepping through them is the scope swipe, below).
-- **The Zen View** is a vertical, scrollable list of cards in place of the grid, each **as tall as
-  its content**: the whole title, the path and the badges, never clamped to a share of the screen.
-  The cards mean what the grid's mean, and act the same. "Never clamped" holds for the path too,
-  and for the Commitment and Wait chips above the list: on the phone the path wraps and a chip's
-  title takes as many lines as it needs, rather than ending in an ellipsis.
+- **The Zen View** is a vertical list of cards in place of the grid that **fills the screen**: the
+  cards share the height between the strips and the action bar equally (three cards each take a
+  third, one card takes it all), their content centred across and down, and the title scales with
+  the card as on the desktop. A card is **never shorter than its content** (the whole title, the
+  path and the badges, never clamped): when the cards at that minimum do not fit, the column
+  scrolls. The cards mean what the grid's mean, and act the same. "Never clamped" holds for the
+  path too, and for the Commitment and Wait chips above the list: on the phone the path wraps and a
+  chip's title takes as many lines as it needs, rather than ending in an ellipsis.
 - **The Steps View** is one scrolling column in place of the paged grid, each card as tall as its
   content (its Info notes up to a cap). There is no page to turn, and the zoom no longer sets the
   card.

@@ -56,7 +56,7 @@ import touchStyles from "@/styles/touch-surface.module.css";
 /** Where the toast saying the preset cannot change is anchored — no card, the view as a whole. */
 const PRESET_TOAST_ANCHOR = "zenView:preset";
 
-/** The card the phone sizes its text from: its cards have no fixed height, so this stands for one. */
+/** The card the phone sizes its text from when the cards overflow the screen (they then sit at their content height). */
 const PHONE_REFERENCE_CARD_HEIGHT_PX = 96;
 
 /**
@@ -131,7 +131,7 @@ export default function ZenView() {
     [rows, commitmentRows, expectationRows, sharedFilter, options, focusExemptId],
   );
 
-  // The phone layout stacks the cards in one scrolling column, sized to fit (docs/spec/touch.md).
+  // The phone layout stacks the cards in one scrolling column, filling the screen's height (docs/spec/touch.md).
   const isPhone = usePhoneLayout();
   const { ref: gridRef, layout } = useZenGrid(contents.tasks.rows.length, isPhone);
   const navigation: ZenNavigationModel = useMemo(() => ({
@@ -240,7 +240,7 @@ export default function ZenView() {
   // The phone's cards are as tall as their content: the badge setting decides the badges, not a
   // card height, and the text is sized from a reference card since there is no fixed one.
   const showBadges = isPhone ? badgesSetting : zenCardShowsBadges(layout.cardHeight, badgesSetting);
-  const text = zenTextSize(layout.cardWidth, isPhone ? PHONE_REFERENCE_CARD_HEIGHT_PX : layout.cardHeight, showBadges);
+  const text = zenTextSize(layout.cardWidth, isPhone && layout.scrolls ? PHONE_REFERENCE_CARD_HEIGHT_PX : layout.cardHeight, showBadges);
 
   return (
     <div ref={rootRef} className={`${styles.container} ${touchStyles.surface}`}>
@@ -297,12 +297,12 @@ export default function ZenView() {
 
       <div
         ref={(element) => { gridRef(element); gridScrollRef.current = element; }}
-        className={styles.gridArea}
+        className={`${styles.gridArea}${isPhone ? ` ${styles.gridAreaStacked}` : ""}`}
       >
         {contents.tasks.rows.length === 0 ? (
           <div className={styles.centered}>{t("zenView:empty")}</div>
         ) : (
-          <div className={styles.grid} role="list" aria-label={t("zenView:gridLabel")} style={{ gap: ZEN_GAP_PX }}>
+          <div className={`${styles.grid}${isPhone ? ` ${styles.gridStacked}` : ""}`} role="list" aria-label={t("zenView:gridLabel")} style={{ gap: ZEN_GAP_PX }}>
             {contents.tasks.rows.map((row) => (
               <ZenTaskCard
                 key={row.node.id}

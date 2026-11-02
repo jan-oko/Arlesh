@@ -9,4 +9,4 @@
   a sideways swipe and climbs with a swipe up, and a candidate swiped right is planned into the
   scope shown. The palette's **Select several** builds a multi-selection by tapping.
 - **Phone layout: Plan and Zen.** Below 700 px the Plan View stacks its panes, candidates above the
-  planned pane, and the Zen View shows its cards as one scrolling column sized to fit.
+  planned pane, and the Zen View shows its cards as one column of cards that fill the screen.
