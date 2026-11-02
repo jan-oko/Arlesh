@@ -32,13 +32,13 @@ Below 700 px:
 - **Bottom navigation** for the views, in this order: **Zen, List, Plan, Steps, Map**. It replaces
   the top bar's view selector. `Ctrl+M/L/P/S/J` still switch views from a keyboard.
 - **The top bar** holds, in order: a **☰ menu**, the **title**, the **preset chip** and the agents'
-  status, then a [free square](#the-top-bar-square). The title is **"Arlesh" at the board's
-  root** (the view's name is not repeated: the bottom navigation's highlighted tab says which view
-  this is; user, 2026-11-02), and the breadcrumb inside a subtree. **In portrait the breadcrumb is `‹ {current node}`**:
+  status, then the [hot square](#the-top-bar-square). The title is **"Arlesh" at the board's
+  root** (decided with the user, 2026-11-02: the view's name is not repeated, the bottom
+  navigation's highlighted tab says which view this is), and the breadcrumb inside a subtree. **In portrait the breadcrumb is `‹ {current node}`**:
   the chevron **or the current node's name** opens the full path as the `…` of the long form does (a
   menu of every level above, each one exiting to it). The chevron is a transparent touch target of
   at least 40 x 40 px around a glyph the height of a capital letter of the title's font (`1cap`),
-  centred on the text (user, 2026-11-02; round 5 had made it 28 px). Landscape keeps the whole chain. **The path's first
+  centred on the text (decided with the user, 2026-11-02; round 5 had made it 28 px). Landscape keeps the whole chain. **The path's first
   segment is always "Arlesh"** (the board), in both forms and in the full-path menu, never the name
   of the view.
   There is **no server indicator** on the phone's bar (feedback from a Pixel 10 Pro: it crowded the
@@ -67,7 +67,7 @@ Below 700 px:
     palette each put the focus in their search box in the same render that draws them, inside the
     gesture that opened them (`autoFocus`, never a timer): Android's webview raises the soft keyboard
     for a focus made then, not after a delay. The sheet's own focus (for Escape) therefore stands
-    aside when a field inside already has it. The top bar's square also cancels the touch that
+    aside when a field inside already has it. The hot square also cancels the touch that
     opened Open, so the click the browser synthesizes afterwards cannot land on the new overlay,
     close it, or take the focus off the box.
 - **List rows take two lines**: the title on the first, the badges and meta on the second. Path
@@ -138,21 +138,26 @@ Below 700 px:
 
 ### Back at the root, and small phone fixes
 
-- **Back at the root asks "Quit Arlesh?"** (user, 2026-11-02). Android's back closes a sheet, leaves
+All decided with the user, 2026-11-02.
+
+- **Back at the root asks "Quit Arlesh?"** (decided with the user, 2026-11-02). Android's back closes a sheet, leaves
   a stepped-into node or goes up a scope first, as before; only when none applies (`stepBack`'s
   `exit`) it opens a confirm dialog with **Quit** and **Cancel** instead of leaving at once. Back
   again, or Cancel, stays; Quit calls the same `quitApp` as `Ctrl+Q`. The dialog is a
   `role="dialog"` (the shared `WarningConfirmModal`, which now answers Escape), which is why the
   next back reaches it through `dismissTopSheet` like any sheet.
-- **The cheat sheet has a ✕ close button** on the phone, in its title row, as the Open and Filter
+- **The cheat sheet has a ✕ close button** (decided with the user, 2026-11-02) on the phone, in its title row, as the Open and Filter
   sheets have.
-- **Settings help tips stay inside the screen.** `HelpTip`'s bubble is fixed to the viewport and
+- **Settings help tips stay inside the screen** (decided with the user, 2026-11-02). `HelpTip`'s bubble is fixed to the viewport and
   placed from the room around its mark (`bubblePlacement`): at most 280 px wide and never wider than
   the viewport minus an 8 px gutter each side, shifted left or right to fit, under the mark or above
   it where the room below is the smaller; the text wraps. A tap on the mark shows and hides it, as
   hover and focus do on a desktop.
 
 ### The top bar square
+
+**The hot square** (the user's name for it) is the free square on the top bar and, in fullscreen,
+the one in the bottom-right corner; both behave the same.
 
 The last cell of the top bar is left **free**: a 36 px dashed square with nothing in it. A
 **tap** on it opens **Open** (`Ctrl+O`'s node search), and a **long-press** opens the
@@ -172,7 +177,7 @@ consistently").
 
 ## System bars
 
-Decided with the user 2026-11-02: how the app sits against the Android system bars is a **three-way
+Decided with the user, 2026-11-02: how the app sits against the Android system bars is a **three-way
 choice**, set separately for normal display and for fullscreen. Two selects under Settings >
 General (`systemBars`, `systemBarsFullscreen`), shown on Android or in the phone layout only; the
 desktop window is unaffected. **Defaults: Edge-to-edge in normal display, Immersive in fullscreen.**
@@ -191,7 +196,7 @@ restores the normal display's mode.
   reads them directly: `tokens.css` defines `--safe-top` and its three siblings as
   `max(env(safe-area-inset-*), var(--sat…))`, because Android's WebView does not report `env()`
   reliably. The top bar pads its content by `--safe-top` while its background runs under the status
-  bar; the bottom bars, sheets and fullscreen's corner square sit above `--safe-bottom`. With the
+  bar; the bottom bars, sheets and fullscreen's hot square sit above `--safe-bottom`. With the
   soft keyboard up, the activity pads by the keyboard and the bottom inset is 0.
 - **Standard** is the classic layout. It is implemented by padding the view rather than by turning
   the window's fitting back on, which Android 15 enforces off; the bars' colour is the view's
@@ -297,7 +302,7 @@ only gives another one a second key (the numpad zoom, `F2`) is listed once, unde
 of opposites the cheat-sheet lists on one line (previous and next scope) gets a row each, worded
 for its direction.
 
-It is opened by the action bar's **More**, by the ☰ menu, and by a **long-press on the top bar's free square** ([below](#the-top-bar-square)). A long-press on a node opens that node's quick action menu, not the palette.
+It is opened by the action bar's **More**, by the ☰ menu, and by a **long-press on the hot square** ([below](#the-top-bar-square)). A long-press on a node opens that node's quick action menu, not the palette.
 
 **No lost control.** `palette-coverage.test.ts` fails if any binding in the registry has neither a
 palette entry nor a gesture. A binding is in the palette unless it is listed in the palette's
@@ -318,7 +323,7 @@ Whenever a touchscreen is present, at any width.
 
 - **Tap** selects. **Tapping the selected node again** deselects it.
 - **Long-press** on a node opens that node's **quick action menu** (not the command palette; the
-  palette is the [top bar square](#the-top-bar-square)'s long-press and the action bar's More).
+  palette is the [hot square](#the-top-bar-square)'s long-press and the action bar's More).
   The menu has **Edit** on every node, in the Mindmap's menu and the List View's row menu (user,
   round 5): full screen hides the action bar's Edit, and one consistent menu is simpler than one
   that changes with the mode. Edit selects the node and runs the editor binding. The List's row menu
@@ -433,8 +438,8 @@ fails when the two differ, so a gesture is added to both or to neither.
 | Everywhere | Two-finger swipe up | Goes up one level out of the entered subtree, as Up does |
 | Everywhere | Three-finger tap | Turns full screen on or off |
 | Everywhere | Long-press Child on the action bar | Picks the kind of the new child: Task, Goal, Commitment, Info and so on |
-| Everywhere | Tap the top bar's square | Opens Open, the node search |
-| Everywhere | Long-press the top bar's square | Opens the command palette |
+| Everywhere | Tap the hot square | Opens Open, the node search |
+| Everywhere | Long-press the hot square | Opens the command palette |
 | Mindmap | Double-tap a node | Enters its subtree |
 | Mindmap | Drag the canvas | Pans the map |
 | Mindmap | Hold a node, then drag | Moves it under another parent or reorders it |
