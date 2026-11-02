@@ -3,6 +3,7 @@ import {
   DOUBLE_TAP_MS, LONG_PRESS_MS, classifyRelease, isSecondTap, isStill,
   type TouchSample,
 } from "@/utils/touch/gestures";
+import { FLY_OUT_MS, RETURN_AFTER_MS, slideOffset, slideOutcome } from "@/utils/touch/swipe-slide";
 
 /** What a view does with each gesture on one of its nodes (`id`), or on empty space (`null`). */
 export interface TouchGestureHandlers {
@@ -18,6 +19,12 @@ export interface TouchGestureHandlers {
    * the selected node must not fire when it turns out to be the first half of "go into".
    */
   defersTap: (id: string) => boolean;
+  /**
+   * Whether swiping `id` in `direction` moves its element out of its place (a Plan card crossing
+   * to the other pane). Such an element follows the finger all the way and, past the threshold,
+   * flies out in the swipe's direction before `onSwipe` fires; any other only nudges. Absent, none do.
+   */
+  flysOut?: (id: string, direction: "left" | "right") => boolean;
   /**
    * A finger held on a node and then moved: the Mindmap's drag. Absent, holding and moving is
    * nothing. `start` is told where the finger went down; `move` and `end` where it is.
@@ -41,8 +48,10 @@ interface Options {
 /** A touch on one of these is the control's own, and never a gesture of the surface around it. */
 const OWN_TOUCH = "input, textarea, select, [contenteditable], [data-gesture-skip]";
 
-/** How far a row slides with a sideways finger, at most. */
-const MAX_SLIDE_PX = 96;
+/** Whether the person asked the system for less motion: then a card neither slides nor flies. */
+function prefersReducedMotion(): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 interface Press {
   start: TouchSample;
@@ -52,6 +61,8 @@ interface Press {
   target: Element;
   held: boolean;
   dragging: boolean;
+  /** Whether the swipe in the direction the finger is going would fly this element out. */
+  leaves: boolean;
 }
 
 /** Narrows a listener's event without a cast — an SVG and an HTML container share one listener. */
@@ -97,17 +108,43 @@ export function useTouchGestures(
     let tapTimer: ReturnType<typeof setTimeout> | null = null;
     let lastTap: (TouchSample & { id: string | null }) | null = null;
     let lastTouchAt = -Infinity;
+    let flyTimer: ReturnType<typeof setTimeout> | null = null;
+    let returnTimer: ReturnType<typeof setTimeout> | null = null;
 
     function clearHold() {
       if (holdTimer !== null) clearTimeout(holdTimer);
       holdTimer = null;
     }
 
-    function slide(element: HTMLElement | null, dx: number) {
-      if (!slidesRows || element === null) return;
-      const clamped = Math.max(-MAX_SLIDE_PX, Math.min(MAX_SLIDE_PX, dx));
-      element.style.transform = dx === 0 ? "" : `translateX(${clamped}px)`;
+    function slide(element: HTMLElement | null, dx: number, leaves: boolean) {
+      if ((!slidesRows && !leaves) || element === null || prefersReducedMotion()) return;
+      element.style.transform = dx === 0 ? "" : `translateX(${slideOffset(dx, leaves)}px)`;
       element.style.transition = dx === 0 ? "transform 0.15s ease" : "none";
+    }
+
+    /** Springs an element back to its place, whether it was dragged or flown out. */
+    function settle(element: HTMLElement) {
+      element.style.transition = "transform 0.15s ease, opacity 0.15s ease";
+      element.style.transform = "";
+      element.style.opacity = "";
+    }
+
+    /**
+     * Slides a committed element out the way it was swiped, then runs `done`. If the action leaves
+     * the element in place (a refused move), it springs back a moment later. With reduced motion
+     * there is no slide at all: `done` runs at once.
+     */
+    function flyOut(element: HTMLElement | null, direction: "left" | "right", done: () => void) {
+      if (element === null || prefersReducedMotion()) { done(); return; }
+      const distance = (element.offsetWidth || window.innerWidth) * (direction === "right" ? 1 : -1);
+      element.style.transition = `transform ${FLY_OUT_MS}ms ease-in, opacity ${FLY_OUT_MS}ms ease-in`;
+      element.style.transform = `translateX(${distance}px)`;
+      element.style.opacity = "0";
+      flyTimer = setTimeout(() => {
+        flyTimer = null;
+        done();
+        returnTimer = setTimeout(() => { returnTimer = null; settle(element); }, RETURN_AFTER_MS);
+      }, FLY_OUT_MS);
     }
 
     function onTouchStart(event: TouchEvent) {
@@ -115,7 +152,7 @@ export function useTouchGestures(
       if (event.touches.length !== 1) {
         // A second finger: this is a pinch or a two-finger swipe, never a node gesture.
         clearHold();
-        if (press !== null) slide(press.element, 0);
+        if (press !== null) slide(press.element, 0, press.leaves);
         press = null;
         return;
       }
@@ -134,7 +171,7 @@ export function useTouchGestures(
         start, last: start, id,
         element: nodeElement instanceof HTMLElement ? nodeElement : null,
         target,
-        held: false, dragging: false,
+        held: false, dragging: false, leaves: false,
       };
       clearHold();
       if (id === null) return;
@@ -160,7 +197,11 @@ export function useTouchGestures(
         return;
       }
       const dx = press.last.x - press.start.x;
-      if (Math.abs(dx) > 2 * Math.abs(press.last.y - press.start.y)) slide(press.element, dx);
+      if (Math.abs(dx) > 2 * Math.abs(press.last.y - press.start.y)) {
+        const direction = dx > 0 ? "right" : "left";
+        press.leaves = press.id !== null && latest.current.flysOut?.(press.id, direction) === true;
+        slide(press.element, dx, press.leaves);
+      }
     }
 
     function onTouchEnd(event: TouchEvent) {
@@ -168,10 +209,13 @@ export function useTouchGestures(
       const current = press;
       press = null;
       if (current === null || event.touches.length > 0) return;
-      slide(current.element, 0);
       const touch = event.changedTouches[0];
       const end = touch === undefined ? current.last : sample(touch, event.timeStamp);
       const on = latest.current;
+      const gesture = classifyRelease(current.start, end);
+      const commits = gesture.kind === "swipe" && current.leaves && slideOutcome(end.x - current.start.x) === "commit";
+      // A committed swipe keeps the element where the finger left it until it has flown out.
+      if (!commits) slide(current.element, 0, current.leaves);
 
       if (current.dragging) {
         event.preventDefault();
@@ -184,13 +228,18 @@ export function useTouchGestures(
         return;
       }
 
-      const gesture = classifyRelease(current.start, end);
       if (gesture.kind === "none") return;
       // A tap on no node is the control's under it — a path header's segment, a pane's button.
       if (gesture.kind === "tap" && current.id === null) return;
       event.preventDefault();
       if (gesture.kind === "flickUp") { on.onFlickUp(current.id, current.target); return; }
-      if (gesture.kind === "swipe") { on.onSwipe(current.id, gesture.direction, current.target); return; }
+      if (gesture.kind === "swipe") {
+        const { id, target } = current;
+        const direction = gesture.direction;
+        if (commits) flyOut(current.element, direction, () => latest.current.onSwipe(id, direction, target));
+        else on.onSwipe(id, direction, target);
+        return;
+      }
 
       if (lastTap !== null && lastTap.id === current.id && isSecondTap(lastTap, end)) {
         if (tapTimer !== null) clearTimeout(tapTimer);
@@ -210,7 +259,7 @@ export function useTouchGestures(
 
     function onTouchCancel() {
       clearHold();
-      if (press !== null) slide(press.element, 0);
+      if (press !== null) slide(press.element, 0, press.leaves);
       if (press?.dragging === true) latest.current.holdDrag?.end(press.last.x, press.last.y);
       press = null;
     }
@@ -232,6 +281,8 @@ export function useTouchGestures(
     return () => {
       clearHold();
       if (tapTimer !== null) clearTimeout(tapTimer);
+      if (flyTimer !== null) clearTimeout(flyTimer);
+      if (returnTimer !== null) clearTimeout(returnTimer);
       for (const [type, listener, options] of listeners) container.removeEventListener(type, listener, options);
     };
   }, [containerRef, enabled, idAttribute, slidesRows]);

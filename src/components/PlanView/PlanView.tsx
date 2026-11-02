@@ -3,6 +3,7 @@ import type { DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useListData } from "@/hooks/use-list-data";
 import { usePhoneLayout } from "@/hooks/use-media-query";
+import { flushSync } from "react-dom";
 import { runAfterSelect, useViewGestures } from "@/hooks/use-view-gestures";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
 import type { NodeKind } from "@/utils/tree-layout";
@@ -154,8 +155,8 @@ export default function PlanView() {
   const toggleGroupByPath = useDisplayStore((s) => s.togglePlanCandidatesPathGrouping);
   const parentOnly = useDisplayStore((s) => s.planCandidatesParentOnly);
   const toggleParentOnly = useDisplayStore((s) => s.togglePlanCandidatesParentOnly);
-  // The phone layout's planned pane draws no subscope cells (docs/spec/touch.md): its scope is
-  // stepped with a swipe instead. The setting itself is left as it was for the desktop.
+  // The phone layout's planned pane draws no subscope cells (docs/spec/touch.md); its scope is
+  // stepped with the header's buttons. The setting itself is left as it was for the desktop.
   const isPhone = usePhoneLayout();
   const subscopeSplit = useDisplayStore((s) => s.planSplitBySubscope) && !isPhone;
   const toggleSubscopeSplit = useDisplayStore((s) => s.togglePlanSplitBySubscope);
@@ -485,17 +486,22 @@ export default function PlanView() {
     { id: "premorning", label: t("planView:optionIncludePremorning"), checked: includePremorning, onToggle: toggleIncludePremorning },
   ]), [t, isPhone, subscopeSplit, toggleSubscopeSplit, includePremorning, toggleIncludePremorning]);
 
-  // The touch gestures (docs/spec/touch.md). In the planned pane a swipe walks the scope — left to
-  // the next, as a page turns, right to the previous — and a swipe up climbs to the parent scope,
-  // wherever in the pane it starts. A candidate swiped right is planned into the scope shown.
-  // Double-tap opens the card's subtree.
+  // The touch gestures (docs/spec/touch.md). A to-plan card swiped right is planned into the scope
+  // shown; a planned card swiped left is taken out of it, back to the to-plan pane — the mirror, so
+  // the card leaves the way it is going. Both fly out under the finger; any other swipe is a row's
+  // (right advances, left sets Started). Double-tap opens the card's subtree. The scope is stepped
+  // with the header's buttons, not a swipe.
   const rootRef = useRef<HTMLDivElement>(null);
   // Every card here is a Task; the action bar reads the Plan View's own row whatever is selected,
   // and the palette offers Select, since the view holds several.
   usePublishSelection(selectedIds.map((): NodeKind => "task"), true);
-  const inPlannedPane = (target: Element) => target.closest("[data-plan-pane]")?.getAttribute("data-plan-pane") === "planned";
   const paneOfCard = (id: string): PlanPaneSide =>
     (plannedModel.rows.some((row) => row.node.id === id) ? "planned" : "candidates");
+  /** The direction in which a swipe on this card moves it across, or `null` where it moves nowhere. */
+  const crossingDirection = (id: string): "left" | "right" | null => {
+    if (paneOfCard(id) === "planned") return takeOutTo === null ? null : "left";
+    return plannedModel.sectioned ? null : "right";
+  };
   useViewGestures(rootRef, {
     idAttribute: "data-plan-card-id",
     ready: !isLoading && error === null,
@@ -504,19 +510,13 @@ export default function PlanView() {
     deselect: () => setSelection(EMPTY_PLAN_SELECTION),
     toggleInSelection: (id) => onSelect(paneOfCard(id), id, { shift: false, ctrl: true }),
     goInto: enterSubtree,
-    onSwipe: (id, direction, target) => {
-      if (inPlannedPane(target)) {
-        scope.step(direction === "left" ? 1 : -1);
-        return true;
-      }
-      if (id === null || direction !== "right") return false;
-      if (!live.ids.has(id)) onSelect("candidates", id, { shift: false, ctrl: false });
+    flysOut: (id, direction) => crossingDirection(id) === direction,
+    onSwipe: (id, direction) => {
+      if (id === null || crossingDirection(id) !== direction) return false;
+      // The swipe fires after the card has flown out, outside the touch event, so the selection is
+      // committed here rather than left to the next frame: the move reads it straight after.
+      if (!live.ids.has(id)) flushSync(() => onSelect(paneOfCard(id), id, { shift: false, ctrl: false }));
       runAfterSelect(["planView.moveAcross"]);
-      return true;
-    },
-    onFlickUp: (_id, target) => {
-      if (!inPlannedPane(target)) return false;
-      upScope();
       return true;
     },
   });

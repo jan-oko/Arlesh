@@ -378,8 +378,7 @@ describe("HotkeysModal — on a touch-only device", () => {
     touchOnly();
     render(<HotkeysModal onClose={vi.fn()} view="plan" />);
     const panel = screen.getByRole("tabpanel");
-    expect(within(panel).getByText("touch:gesturePlanScope")).toBeInTheDocument();
-    expect(within(panel).getByText("touch:gesturePlanUp")).toBeInTheDocument();
+    expect(within(panel).getByText("touch:gesturePlanUnplan")).toBeInTheDocument();
     expect(within(panel).getByText("touch:gesturePlanMove")).toBeInTheDocument();
     openTab("touch:gestureScopeList");
     expect(within(screen.getByRole("tabpanel")).getByText("touch:gestureListLeaf")).toBeInTheDocument();

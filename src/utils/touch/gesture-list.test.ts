@@ -31,6 +31,6 @@ describe("the gesture list", () => {
 
   it("lists the gestures the views agent changed", () => {
     const ids = GESTURES.map((gesture) => gesture.id);
-    expect(ids).toEqual(expect.arrayContaining(["statusIcon", "listLeaf", "planScope", "planUp", "planMove"]));
+    expect(ids).toEqual(expect.arrayContaining(["statusIcon", "listLeaf", "planMove", "planUnplan"]));
   });
 });

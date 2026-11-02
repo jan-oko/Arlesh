@@ -157,7 +157,7 @@ a toast says how many.
 version, the board is read-only ([Client mode](client-mode.md#offline)). Every touch surface greys
 out its writes instead of letting them fail: the action bar draws the write slots disabled, the
 palette lists the writes as unavailable, and the write gestures — a swipe's advance or Started, a
-Plan View swipe's move across, the Mindmap's hold-and-drag — do nothing. What only reads stays:
+Plan View swipe's move across or back, the Mindmap's hold-and-drag — do nothing. What only reads stays:
 moving the selection, the presets and filters, search, zoom, folding, the tab chords, opening an
 editor. `utils/touch/writes.ts` says which commands only read; anything it does not list is taken
 to write, so a new binding is greyed out until someone says it reads.
@@ -228,10 +228,9 @@ button, a tag pill, a collapse dot), is left to that control.
   at once.
 - **The Zen View's "open in List"** switches to the List View narrowed Under the card, the List
   View's own double-tap.
-- **The Plan View's scope swipe** turns like a page: **left** shows the **next** scope (`]`),
-  **right** the **previous** (`[`). A swipe up anywhere in the planned pane goes to the parent
-  scope, so a flick up on a planned card climbs rather than opening its editor (`E` and the palette
-  still do).
+- **The Plan View has no scope swipe.** An earlier build stepped the scope with a sideways swipe on
+  the planned pane and climbed to the parent with a swipe up; the header's buttons do that now, and a
+  flick up on a planned card opens its editor like any other.
 - **The two-finger swipe** turns the same way: left to the next preset, right to the previous. In
   the Plan and Zen Views, which lock their preset, it says why.
 - **The Mindmap's collapse dot** is drawn on every node with children on a touchscreen — filled
@@ -242,12 +241,23 @@ button, a tag pill, a collapse dot), is left to that control.
 - **Mindmap**: one finger on empty canvas pans. **Hold a node and drag it** to move it under another
   parent or reorder it. **Tap a collapse dot** to fold or unfold.
 - **Steps View**: a single tap selects; a tap on a card's glyph selects it and steps its status.
-- **Plan View**, planned pane: a swipe left or right steps the scope (`[` and `]`), and a swipe
-  **up** goes to the parent scope (`\`). **Swipe a candidate right** to plan it into the scope the
-  pane shows. The direction is right, as for a row's advance everywhere: a vertical swipe is the
-  flick up, which is the editor's (or, in the planned pane, the parent scope's), so the swipe that
-  moves a candidate is sideways. A candidate swiped left sets Started, as on any row; it does not
-  step the scope.
+- **Plan View**: a swipe moves a card across the panes. **Swipe a to-plan card right** to plan it
+  into the scope the pane shows; **swipe a planned card left** to take it out again (the pane's
+  take-out, the same move as its `←` button and the desktop's key), which lands it back in the
+  to-plan pane. Each is the mirror of the other, so a card leaves the way it is heading. In the
+  other direction a card's swipe is any row's: a planned card swiped right advances its status, a
+  to-plan card swiped left sets Started. A vertical swipe is the flick up, the editor's. With the
+  pane split by subscope (not on the phone) a card has no side to cross to, and swipes as any row.
+  The acting card is selected first, like every other per-node action.
+
+**The swipe follows the finger.** While a card that will cross is dragged sideways it moves with
+the finger (`translateX`). Letting go past 60 px (the swipe's own minimum) slides it the rest of the
+way out in the swipe's direction over 180 ms, and then the move fires; letting go short springs it
+back and nothing happens. A card whose swipe leaves it in place (a row's advance, Started) only
+nudges, at most 96 px. With `prefers-reduced-motion` nothing slides: the move fires on release, or
+is cancelled. If the move leaves the card where it was (refused), it springs back after 600 ms.
+This is `useTouchGestures`' `flysOut` handler and `utils/touch/swipe-slide.ts`; any view whose swipe
+moves a card can adopt it.
 
 ### The gesture list, and the cheat sheet
 
@@ -278,9 +288,8 @@ fails when the two differ, so a gesture is added to both or to neither.
 | Mindmap | Pinch | Zooms the map |
 | List | Double-tap a row with nothing beneath it | Opens its editor |
 | List | Double-tap a parent | Narrows the list to its subtree (Under) |
-| Plan | Swipe left or right on the planned pane | Steps to the next or the previous scope |
-| Plan | Swipe up on the planned pane | Goes up to the parent scope |
-| Plan | Swipe a to-plan item right | Moves it into the planned scope (left sets Started, as on any row) |
+| Plan | Swipe a to-plan item right | Slides it out and plans it into the scope (left sets Started, as on any row) |
+| Plan | Swipe a planned item left | Slides it out and moves it back to the to-plan pane (right advances the status, as on any row) |
 | Plan | Double-tap a card | Opens its subtree |
 | Steps | Double-tap a card | Steps into it |
 | Steps | Pinch | Zooms the steps |

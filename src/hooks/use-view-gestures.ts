@@ -27,6 +27,11 @@ export interface ViewGestureOptions {
   onFlickUp?: (id: string | null, target: Element) => boolean;
   /** Whether a sideways move slides the row under the finger. */
   slidesRows?: boolean;
+  /**
+   * Whether this swipe takes the card out of its place, so it flies out instead of nudging. A
+   * swipe that is a write does not fly on a read-only board: nothing would follow it.
+   */
+  flysOut?: (id: string, direction: "left" | "right") => boolean;
   holdDrag?: TouchGestureHandlers["holdDrag"];
 }
 
@@ -95,6 +100,9 @@ export function useViewGestures(containerRef: RefObject<HTMLElement | SVGElement
     },
     // The selected node's tap waits: it may be the first half of a double-tap's "go into".
     defersTap: (id) => options.isSelected(id) && !useSelectModeStore.getState().active,
+    ...(options.flysOut === undefined ? {} : {
+      flysOut: (id, direction) => currentReadOnlyReason() === null && options.flysOut?.(id, direction) === true,
+    }),
     ...(options.holdDrag === undefined ? {} : { holdDrag: gatedDrag(options.holdDrag) }),
   };
 

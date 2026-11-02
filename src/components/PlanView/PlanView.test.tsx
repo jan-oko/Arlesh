@@ -940,41 +940,108 @@ describe("on a phone", () => {
     expect(candidates.compareDocumentPosition(planned)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  it("steps the scope with a sideways swipe on the planned pane", async () => {
-    tasks();
-    await renderPlanView();
-    await act(async () => { stroke(cardElement("task-2"), [200, 10], [60, 12]); });
-    expect(scopeContaining).toHaveBeenCalledWith("week", "2026-09-27");
-  });
+  /** The time a card takes to fly out, plus a little. */
+  const flightMs = 260;
+  // Outside `act`: the gesture's own timers must run on the real clock, and a binding it fires
+  // reads the selection the swipe just made after React has committed it, which `act` would defer.
+  async function afterFlight(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, flightMs));
+  }
 
-  it("steps the scope from the empty part of the planned pane too", async () => {
+  it("does not step or climb the scope with a swipe on the planned pane", async () => {
     tasks();
     await renderPlanView();
     const pane = document.querySelector('[data-plan-pane="planned"]');
     if (pane === null) throw new Error("no planned pane");
-    await act(async () => { stroke(pane, [200, 10], [60, 12]); });
-    expect(scopeContaining).toHaveBeenCalledWith("week", "2026-09-27");
+    await act(async () => { stroke(pane, [60, 10], [200, 12]); });
+    await act(async () => { stroke(pane, [100, 100], [100, 60]); });
+    await act(async () => { stroke(cardElement("task-2"), [100, 100], [100, 60]); });
+    await afterFlight();
+    expect(scopeContaining).not.toHaveBeenCalledWith("week", "2026-09-27");
+    expect(scopeContaining).not.toHaveBeenCalledWith("week", "2026-09-13");
+    expect(scopeContaining).not.toHaveBeenCalledWith("month", expect.any(String));
   });
 
-  it("goes up to the parent scope with a flick up on the planned pane", async () => {
+  it("moves a planned card back to the to-plan pane with a swipe left on it", async () => {
     tasks();
     await renderPlanView();
-    await act(async () => { stroke(cardElement("task-2"), [100, 100], [100, 60]); });
-    expect(scopeContaining).toHaveBeenCalledWith("month", expect.any(String));
+    await act(async () => { stroke(cardElement("task-2"), [200, 10], [60, 12]); });
+    await afterFlight();
+    await nextTick();
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+    expect(updateTask).not.toHaveBeenCalledWith(1, expect.anything());
   });
 
-  it("leaves the scope alone when a candidate is swiped sideways", async () => {
+  it("slides the card with the finger, flies it out past the threshold and fires after", async () => {
+    tasks();
+    await renderPlanView();
+    const card = cardElement("task-2");
+    if (!(card instanceof HTMLElement)) throw new Error("not an element");
+    const at = (x: number) => ({ target: card, clientX: x, clientY: 10 });
+    fireEvent.touchStart(card, { touches: [at(200)] });
+    fireEvent.touchMove(card, { touches: [at(150)] });
+    expect(card.style.transform).toBe("translateX(-50px)");
+    fireEvent.touchMove(card, { touches: [at(60)] });
+    expect(card.style.transform).toBe("translateX(-140px)");
+    fireEvent.touchEnd(card, { touches: [], changedTouches: [at(60)] });
+    expect(card.style.opacity).toBe("0");
+    expect(card.style.transform).not.toBe("translateX(-140px)");
+    expect(updateTask).not.toHaveBeenCalled();
+    await afterFlight();
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+  });
+
+  it("springs the card back, and does nothing, when the swipe stops short of the threshold", async () => {
+    tasks();
+    await renderPlanView();
+    const card = cardElement("task-2");
+    if (!(card instanceof HTMLElement)) throw new Error("not an element");
+    const at = (x: number) => ({ target: card, clientX: x, clientY: 10 });
+    fireEvent.touchStart(card, { touches: [at(200)] });
+    fireEvent.touchMove(card, { touches: [at(170)] });
+    expect(card.style.transform).toBe("translateX(-30px)");
+    fireEvent.touchEnd(card, { touches: [], changedTouches: [at(170)] });
+    expect(card.style.transform).toBe("");
+    await afterFlight();
+    expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it("neither slides nor waits when the system asks for reduced motion", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === TOUCH_QUERY || query === PHONE_LAYOUT_QUERY || query === "(prefers-reduced-motion: reduce)",
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    tasks();
+    await renderPlanView();
+    const card = cardElement("task-2");
+    if (!(card instanceof HTMLElement)) throw new Error("not an element");
+    const at = (x: number) => ({ target: card, clientX: x, clientY: 10 });
+    fireEvent.touchStart(card, { touches: [at(200)] });
+    fireEvent.touchMove(card, { touches: [at(60)] });
+    expect(card.style.transform).toBe("");
+    fireEvent.touchEnd(card, { touches: [], changedTouches: [at(60)] });
+    await nextTick();
+    await settle();
+    expect(card.style.opacity).toBe("");
+    expect(updateTask).toHaveBeenCalledWith(2, expect.anything());
+  });
+
+  it("leaves the to-plan pane's card where it is on a swipe left, which sets Started", async () => {
     tasks();
     await renderPlanView();
     await act(async () => { stroke(cardElement("task-1"), [200, 10], [60, 12]); });
-    await nextTick();
-    expect(scopeContaining).not.toHaveBeenCalledWith("week", "2026-09-27");
+    await afterFlight();
+    expect(updateTask).not.toHaveBeenCalledWith(1, { plan: expect.anything() });
   });
 
   it("plans a candidate into the scope with a swipe right on it", async () => {
     tasks();
     await renderPlanView();
     await act(async () => { stroke(cardElement("task-1"), [60, 10], [200, 12]); });
+    await afterFlight();
     await nextTick();
     await settle();
     expect(updateTask).toHaveBeenCalledWith(1, { plan: { start_id: WEEK_ID, end_id: WEEK_ID } });
