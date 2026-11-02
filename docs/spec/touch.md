@@ -70,8 +70,9 @@ Below 700 px:
     close it, or take the focus off the box.
 - **List rows take two lines**: the title on the first, the badges and meta on the second. Path
   headers stick to the top while their rows scroll beneath.
-- **The Plan View stacks its panes**: candidates on top, the planned pane at the **bottom** and a
-  **third** of the height (the candidates take the other two). The planned pane can be **split by
+- **The Plan View stacks its panes**: candidates on top, the planned pane at the **bottom**, the two
+  **sharing the height equally** (50/50; round 1 had given the planned pane a third, which the user
+  reverted in round 5). The planned pane can be **split by
   subscope** exactly as on the desktop (user, round 5: "support subscopes as well"): the same
   setting (`planSplitBySubscope`), switched in the same place, the **planned pane's ⋮ menu**. Its
   buckets (a week's days, a month's weeks) stack down the pane's own scrolling list under their
