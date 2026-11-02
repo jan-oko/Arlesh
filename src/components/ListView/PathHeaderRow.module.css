@@ -83,10 +83,29 @@
 @media (max-width: 699.98px) {
   .header {
     position: sticky;
-    /* Flush under the list's top mask (the status-bar band), so nothing shows between the two. */
-    top: var(--peek-pad-top);
+    /* A sticky box sticks at the scroller's content edge, so in full screen it stops at the status-bar
+       inset (the list's top padding), not at the very top. */
+    top: 0;
     z-index: 1;
     padding-bottom: var(--space-1);
     background: var(--canvas-bg);
+    /* `clip`, not `hidden`, so the cover below may hang above the box by the status-bar inset. */
+    overflow: clip;
+    overflow-clip-margin: var(--peek-pad-top);
+    container-type: scroll-state;
+  }
+
+  /* Only while stuck: an opaque strip over the status-bar inset above the header, so no row shows
+     above it. At rest nothing is drawn, so the rows before it keep the whole screen (and the strip
+     never covers them). */
+  @container scroll-state(stuck: top) {
+    .header::before {
+      content: "";
+      position: absolute;
+      inset-inline: 0;
+      bottom: 100%;
+      height: var(--peek-pad-top);
+      background: var(--canvas-bg);
+    }
   }
 }

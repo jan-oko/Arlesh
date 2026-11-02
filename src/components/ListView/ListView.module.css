@@ -9,24 +9,17 @@
      so the height never depends on the content inside it. */
   min-height: 0;
   flex: 1 1 0;
-  padding: 0 var(--space-4) calc(var(--space-4) + var(--peek-pad-bottom));
+  padding: var(--space-4) var(--space-4) calc(var(--space-4) + var(--peek-pad-bottom));
   box-sizing: border-box;
   overflow-y: auto;
   background: var(--canvas-bg);
 }
 
-/* Full screen's status-bar band: an opaque strip pinned to the top of the scroll, in the list's own
-   height (it is the top padding), so rows and sticky headings scroll behind it and never show above
-   a stuck header. The container has no top padding of its own: a sticky box sticks at the content
-   edge, so any padding would leave a strip above the mask. 0 high outside full screen. */
-.container::before {
-  content: "";
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  flex-shrink: 0;
-  height: var(--peek-pad-top);
-  background: var(--canvas-bg);
+/* Full screen only (the root carries data-fs-bars): the status-bar inset is the scroller's own top
+   padding, so the list rests clear of the bar and, scrolled, its rows use the whole screen and pass
+   under the top edge. Elsewhere the padding is the plain one above. */
+:global(:root[data-fs-bars]) .container {
+  padding-top: var(--peek-pad-top);
 }
 
 .rows {
@@ -84,15 +77,8 @@
 /* The phone layout (docs/spec/touch.md): tighter margins, so a row has the width. */
 @media (max-width: 699.98px) {
   .container {
-    /* The status-bar band is the ::before mask, not padding. */
     padding: 0 var(--space-2) calc(var(--space-3) + var(--peek-pad-bottom));
     gap: var(--space-2);
-  }
-
-  .container::before {
-    /* The first heading follows the mask with no gap: the inset only (decided with the user,
-       2026-11-02). Cancels the flex gap. */
-    margin-bottom: calc(-1 * var(--space-2));
   }
 
   .rows {

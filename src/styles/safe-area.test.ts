@@ -62,7 +62,7 @@ describe("Full screen's padding for the system bars", () => {
       "padding: 0 var(--space-2) calc(var(--space-3) + var(--peek-pad-bottom));",
     );
     expect(views[1]).toContain(
-      "padding: var(--peek-pad-top) var(--space-2) calc(var(--space-2) + var(--peek-pad-bottom));",
+      "padding: var(--space-2) var(--space-2) calc(var(--space-2) + var(--peek-pad-bottom));",
     );
     expect(mindmap).not.toContain("--peek-");
   });
@@ -72,15 +72,27 @@ describe("The List's sticky headers in full screen", () => {
   const list = read("src/components/ListView/ListView.module.css");
   const pathHeader = read("src/components/ListView/PathHeaderRow.module.css");
 
-  it("has no top padding (a sticky box sticks at the content edge) and an opaque, sticky mask as high as the status-bar pad", () => {
-    expect(list).toMatch(/\.container \{[^}]*padding: 0 var\(--space-4\)/);
+  it("keeps the plain top padding outside full screen and swaps in the inset only under data-fs-bars", () => {
+    expect(list).toMatch(/\.container \{[^}]*padding: var\(--space-4\) var\(--space-4\)/);
     expect(list).toMatch(
-      /\.container::before \{[^}]*position: sticky;[^}]*top: 0;[^}]*z-index: 2;[^}]*height: var\(--peek-pad-top\);[^}]*background: var\(--canvas-bg\);/,
+      /:global\(:root\[data-fs-bars\]\) \.container \{\s*padding-top: var\(--peek-pad-top\);/,
     );
+    expect(list).not.toContain("::before");
+    for (const name of ["Zen", "Steps", "Plan"]) {
+      const css = read(`src/components/${name}View/${name}View.module.css`);
+      expect(css).toMatch(/\.container \{[^}]*padding: var\(--space-[24]\) var\(--space-[24]\)/);
+      expect(css).toMatch(
+        /:global\(:root\[data-fs-bars\]\) \.container \{\s*padding-top: var\(--peek-pad-top\);/,
+      );
+    }
   });
 
-  it("sticks the path header flush under the mask, below it in z-order", () => {
-    expect(pathHeader).toMatch(/position: sticky;[^}]*top: var\(--peek-pad-top\);[^}]*z-index: 1;/);
+  it("sticks the path header at the content edge, and covers the inset above it only while stuck", () => {
+    expect(pathHeader).toMatch(/position: sticky;[^}]*top: 0;[^}]*z-index: 1;/);
+    expect(pathHeader).toMatch(/container-type: scroll-state;/);
+    expect(pathHeader).toMatch(
+      /@container scroll-state\(stuck: top\) \{\s*\.header::before \{[^}]*bottom: 100%;[^}]*height: var\(--peek-pad-top\);[^}]*background: var\(--canvas-bg\);/,
+    );
   });
 
   it("reserves no bottom padding for the semi-transparent hot square", () => {

@@ -211,10 +211,12 @@ restores the normal display's mode.
   (fallbacks 28 px and 24 px). `useSystemBars` marks the root `data-fs-bars="edgeToEdge"|"immersive"`
   in full screen (never for Standard, which the activity pads, nor without the bridge), and
   `tokens.css` turns that into `--peek-pad-top` and `--peek-pad-bottom` (both 0 otherwise).
-  The List has no top padding of its own (a sticky box sticks at the content edge, which a padding
-  would push down): an opaque sticky `::before` mask as high as `--peek-pad-top` sits over the scroll,
-  and the phone's sticky path headers stick at `top: var(--peek-pad-top)`, flush under it, so nothing
-  scrolls visibly above a stuck header and a peeking status bar covers only the mask. The Mindmap stays full-bleed: the canvas can be panned. Outside full screen the top bar and bottom
+  Outside full screen each view keeps its own plain top padding. Under `data-fs-bars` the top padding is the
+  inset alone (`padding-top: var(--peek-pad-top)`, no extra gap), the scroller's own, so the List rests
+  clear of the bar and, scrolled, its rows use the whole screen and pass under the top edge: no
+  permanent band. The phone's sticky path headers stick at `top: 0`, which is the content edge, so at
+  the inset; only while stuck (`@container scroll-state(stuck: top)`) an opaque strip as high as
+  `--peek-pad-top` hangs above the header, so nothing shows above a stuck header. The Mindmap stays full-bleed: the canvas can be panned. Outside full screen the top bar and bottom
   navigation already pad by the visible insets.
 - **The fullscreen hot square** sits at `max(0.3 x radius + 12px, safe inset + 12px, 20px)` from the
   right edge, and from the bottom `max(0.3 x radius + 12px, safe inset + 12px, peek pad + 12px,
