@@ -172,6 +172,13 @@ no others for these actions:
 are dropped. "Search" is left to text boxes. The desktop's two search labels (`openSearch`,
 `openFilterSearch`) now read "Open a node: …" and "Filter: …".
 
+**A long-press on Child** opens a sheet to pick the new child's **kind** (user, round 5); a tap stays
+a Task. The sheet lists the kinds the selected node can parent, by the rule creating and re-parenting
+share (`childKindsFor`, over `isValidDropTarget`), and a pick runs the desktop's typed-child chord for
+it (`mindmap.createTypedChild.<kind>`, with `Tab` for a Task), so every refusal is the chord's. Only
+the Mindmap publishes the typed chords; in the List and Steps Views, which create Tasks and nothing
+else, the sheet offers Task alone.
+
 **Open is on the bar only with nothing selected**; with a node selected it is the top bar's free
 square (tap) and the palette, which frees the slot Edit needs.
 
@@ -352,6 +359,7 @@ fails when the two differ, so a gesture is added to both or to neither.
 | Everywhere | Two-finger swipe | Left shows the next preset, right the previous |
 | Everywhere | Two-finger swipe up | Goes up one level out of the entered subtree, as Up does |
 | Everywhere | Three-finger tap | Turns full screen on or off |
+| Everywhere | Long-press Child on the action bar | Picks the kind of the new child: Task, Goal, Commitment, Info and so on |
 | Everywhere | Tap the top bar's square | Opens Open, the node search |
 | Everywhere | Long-press the top bar's square | Opens the command palette |
 | Mindmap | Double-tap a node | Enters its subtree |

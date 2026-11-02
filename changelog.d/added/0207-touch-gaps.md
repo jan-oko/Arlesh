@@ -14,3 +14,4 @@
 - **Full screen hides the phone's bottom bars too, and a three-finger tap toggles it.** Only the free square remains, in the bottom-right corner: tap it to open a node, long-press it for the command palette.
 - **The node's quick action menu has Edit.** In the Mindmap and the List, since full screen hides the action bar's Edit.
 - **Subscopes in the phone's Plan View, and dragging.** The planned pane can be split by subscope (a week into its days) from its ⋮ menu, as on the desktop. Hold a card and drag it onto the other pane, or onto a subscope to plan it there; a pane scrolls while your finger is at its edge. Swiping still moves a card between the two panes.
+- **Long-press Child to choose the new child's kind.** A tap still adds a Task; holding Child opens a sheet of the kinds the selected node can hold (Task, Goal, Commitment, Info and so on). The List and Steps Views create Tasks only.

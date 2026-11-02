@@ -37,6 +37,7 @@ export const GESTURES: readonly GestureEntry[] = [
   { id: "twoFingerSwipe", scope: "all", gestureKey: "gestureTwoFingerSwipe", doesKey: "gestureTwoFingerSwipeDoes" },
   { id: "twoFingerUp", scope: "all", gestureKey: "gestureTwoFingerUp", doesKey: "gestureTwoFingerUpDoes" },
   { id: "threeFingerTap", scope: "all", gestureKey: "gestureThreeFingerTap", doesKey: "gestureThreeFingerTapDoes" },
+  { id: "childHold", scope: "all", gestureKey: "gestureChildHold", doesKey: "gestureChildHoldDoes" },
   { id: "squareTap", scope: "all", gestureKey: "gestureSquareTap", doesKey: "gestureSquareTapDoes" },
   { id: "squareLongPress", scope: "all", gestureKey: "gestureSquareLongPress", doesKey: "gestureSquareLongPressDoes" },
   { id: "mindmapEnter", scope: "mindmap", gestureKey: "gestureMindmapEnter", doesKey: "gestureMindmapEnterDoes" },
