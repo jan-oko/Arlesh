@@ -102,8 +102,12 @@ Below 700 px:
 ### The top bar square
 
 The last cell of the top bar is left **free**: a 36 px dashed square with nothing in it. A
-**tap** on it opens **Open** (`Ctrl+O`'s node search), and a **long-press** (the hold, then
-the finger lifting, as on a node) opens the [command palette](#the-command-palette). (A first build
+**tap** on it opens **Open** (`Ctrl+O`'s node search), and a **long-press** opens the
+[command palette](#the-command-palette) **the moment the long-press time (500 ms) is reached, while
+the finger is still down** (user, round 5; it used to wait for the lift). The lift that follows does
+nothing: it is no tap, its synthesized click is cancelled, and it does not close the palette. The
+palette's input takes the focus as it mounts, inside the hold's timer callback, so the keyboard
+rises. (A first build
 asked for a double-tap; on the device that read as a dead square, so one tap does it.) It is where
 a thumb rests, and it keeps Open off the action bar when a node is selected.
 

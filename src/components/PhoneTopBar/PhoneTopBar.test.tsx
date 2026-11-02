@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import PhoneTopBar from "./PhoneTopBar";
+import CommandPalette from "@/components/CommandPalette/CommandPalette";
 import { useFilterStore } from "@/stores/use-filter-store";
 import { useListFilterStore } from "@/stores/use-list-filter-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
@@ -120,15 +121,34 @@ describe("PhoneTopBar — the free square", () => {
     expect(usePaletteStore.getState().isOpen).toBe(false);
   });
 
-  it("opens the command palette on a long-press, when the finger lifts", () => {
+  it("opens the command palette the moment the long-press time is reached, before the finger lifts", () => {
     const open = publishOpen();
     render(<PhoneTopBar />);
     const square = screen.getByRole("button", { name: "topBarSquare" });
     fireEvent.pointerDown(square);
-    act(() => { vi.advanceTimersByTime(700); });
+    act(() => { vi.advanceTimersByTime(LONG_PRESS_MS - 1); });
+    expect(usePaletteStore.getState().isOpen).toBe(false);
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(usePaletteStore.getState().isOpen).toBe(true);
+    // The lift that follows is no tap, and does not close the palette.
     fireEvent.pointerUp(square);
     expect(usePaletteStore.getState().isOpen).toBe(true);
     expect(open.run).not.toHaveBeenCalled();
+  });
+
+  it("focuses the palette's input within the long-press timer's callback", () => {
+    publishOpen();
+    function WithPalette() {
+      const isOpen = usePaletteStore((s) => s.isOpen);
+      return <><PhoneTopBar />{isOpen && <CommandPalette showTabs={false} />}</>;
+    }
+    render(<WithPalette />);
+    const square = screen.getByRole("button", { name: "topBarSquare" });
+    fireEvent.pointerDown(square);
+    act(() => { vi.advanceTimersByTime(LONG_PRESS_MS); });
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+    fireEvent.pointerUp(square);
+    expect(screen.getByRole("searchbox")).toHaveFocus();
   });
 
   it("opens nothing when the finger slides further than the tap slop", () => {

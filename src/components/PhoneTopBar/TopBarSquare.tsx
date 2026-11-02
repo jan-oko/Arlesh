@@ -15,8 +15,8 @@ function finite(value: number): number {
 
 /**
  * The free square at the end of the phone top bar (`docs/spec/touch.md`): a **tap** opens
- * Open (`Ctrl+O`'s node search) and a **long-press** opens the command palette, once the finger
- * lifts as a node's long-press does. A tap is a press and lift on the square within the tap slop
+ * Open (`Ctrl+O`'s node search) and a **long-press** opens the command palette the moment the
+ * long-press time is reached, before the finger lifts; the lift then does nothing. A tap is a press and lift on the square within the tap slop
  * and the long-press time; the square takes the pointer (and `touch-action: none`) so the browser
  * never turns a jittery tap into a pan and cancels it.
  */
@@ -54,6 +54,10 @@ export default function TopBarSquare() {
       holdTimer.current = null;
       held.current = true;
       if (typeof navigator.vibrate === "function") navigator.vibrate(10);
+      // Opened here, the moment the hold registers, not on lift (user, round 5). The palette's
+      // input takes the focus as it mounts (`autoFocus`), and Android raises the keyboard only for
+      // a focus made inside the gesture, so nothing is deferred past this callback.
+      openPalette();
     }, LONG_PRESS_MS);
   }
 
@@ -70,9 +74,10 @@ export default function TopBarSquare() {
     const moved = Math.hypot(finite(event.clientX) - start.x, finite(event.clientY) - start.y);
     const wasHeld = held.current;
     endPress();
-    if (moved > TAP_SLOP_PX) return;
-    if (wasHeld) openPalette();
-    else runFirst(OPEN_COMMAND_IDS);
+    // The lift after a hold is nothing: the palette is already open, and the lift must neither
+    // count as a tap nor reach anything beneath it.
+    if (moved > TAP_SLOP_PX || wasHeld) return;
+    runFirst(OPEN_COMMAND_IDS);
   }
 
   return (
