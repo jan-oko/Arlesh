@@ -181,7 +181,7 @@ describe("what the Zen View draws", () => {
     expect(icons[0]?.getAttribute("data-zen-status-icon")).toBe("started");
   });
 
-  it("steps a card's status when its icon is tapped, without selecting or opening the card", () => {
+  it("steps a card's status when its icon is tapped, selects the card, and does not open it", () => {
     mockBoard([n("task-2", "task", { status: "started" })]);
     useDisplayStore.setState({ zenShowsStarted: true });
     withArea(1200, 800);
@@ -190,7 +190,7 @@ describe("what the Zen View draws", () => {
     fireEvent.click(icon);
     fireEvent.doubleClick(icon);
     expect(onCycleStatus).toHaveBeenCalledWith("task-2");
-    expect(selectedCard()).toBeNull();
+    expect(selectedCard()).not.toBeNull();
     expect(openEditor).not.toHaveBeenCalled();
   });
 

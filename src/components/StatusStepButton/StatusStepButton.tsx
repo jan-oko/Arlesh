@@ -10,10 +10,10 @@ interface Props {
 }
 
 /**
- * A card's status glyph as a control (docs/spec/touch.md): a tap steps the status cycle and
- * nothing else. It marks itself `data-gesture-skip`, so the view's touch gestures leave it to the
- * click, and it stops that click and a second quick one from reaching the card, so the node is
- * neither selected nor opened. The hit area is a fingertip wide whatever the glyph's own size.
+ * A card's status glyph as a control (docs/spec/touch.md): a tap steps the status cycle (the
+ * caller selects the node first) and does not open the card. It marks itself `data-gesture-skip`,
+ * so the view's touch gestures leave it to the click, and it stops that click and a second quick one from reaching the card, so a double tap
+ * is not read as the card's own. The hit area is a fingertip wide whatever the glyph's own size.
  */
 export default function StatusStepButton({ label, onStep, children }: Props) {
   return (

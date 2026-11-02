@@ -392,7 +392,7 @@ describe("acting on the selected card", () => {
     expect(stepTaskStatus).toHaveBeenCalledWith(1, "advance");
   });
 
-  it("steps a Task's status when its glyph is tapped, without selecting or opening the card", () => {
+  it("steps a Task's status when its glyph is tapped, selects the card, and does not open it", () => {
     mockTree([n("task-1", "task", { status: "todo" })]);
     render(<StepsView />);
 
@@ -401,7 +401,7 @@ describe("acting on the selected card", () => {
     fireEvent.doubleClick(glyph);
 
     expect(stepTaskStatus).toHaveBeenCalledWith(1, "advance");
-    expect(selectedCardId()).toBeNull();
+    expect(selectedCardId()).toBe("task-1");
     expect(setEditorModal).not.toHaveBeenCalled();
   });
 

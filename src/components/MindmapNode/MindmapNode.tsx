@@ -87,10 +87,10 @@ export default function MindmapNode({ node, parentKind, position, isSelected, is
   // A virtual node (a folded run, a wait's check task) is read-only: no edit, drag, or context
   // menu. A Habit occurrence is a row, and takes all three like any other.
   const handleDoubleClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); if (node.virtual === true) return; onDoubleClick(node.id); }, [node.id, node.virtual, onDoubleClick]);
-  const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (node.virtual === true) return; setContextMenu({ x: e.clientX, y: e.clientY }); }, [node.virtual]);
+  const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (node.virtual === true) return; onSelect(node.id); setContextMenu({ x: e.clientX, y: e.clientY }); }, [node.id, node.virtual, onSelect]);
   const handleMouseDown = useCallback((e: React.MouseEvent) => { if (e.button !== 0 || node.kind === "aspect" || node.virtual === true) return; onDragStart(node.id, e.clientX, e.clientY); }, [node.id, node.kind, node.virtual, onDragStart]);
-  // Steps the status and nothing else: the icon's tap neither selects the node nor opens it.
-  const handleStatusIconClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); onStatusClick?.(node.id); }, [node.id, onStatusClick]);
+  // Selects the node and steps its status; the tap does not open the node (a second quick tap too).
+  const handleStatusIconClick = useCallback((e: React.MouseEvent) => { e.stopPropagation(); onSelect(node.id); onStatusClick?.(node.id); }, [node.id, onSelect, onStatusClick]);
 
   return (
     <g

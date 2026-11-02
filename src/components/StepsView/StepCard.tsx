@@ -148,7 +148,7 @@ export default function StepCard({
       <span className={styles.top}>
         {/* No slot for a kind with no glyph — an Aspect — or its title starts after an empty gap. */}
         {cardDrawsGlyph(node.kind) && (steppable ? (
-          <StatusStepButton label={t("listView:cycleStatus")} onStep={() => onStepStatus?.(node.id)}>
+          <StatusStepButton label={t("listView:cycleStatus")} onStep={() => { onSelect(); onStepStatus?.(node.id); }}>
             {glyph}
           </StatusStepButton>
         ) : (

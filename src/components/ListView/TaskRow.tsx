@@ -97,9 +97,9 @@ export default function TaskRow({
         data-gesture-skip=""
         disabled={!canClickStatus}
         aria-label={t("cycleStatus")}
-        // A tap on the icon steps the status and nothing else: it neither selects the row nor, on a
-        // second quick tap, opens the editor (docs/spec/touch.md).
-        onClick={(e) => { e.stopPropagation(); onCycleStatus(node.id); }}
+        // A tap on the icon selects the row and steps its status; a second quick tap does not open
+        // the editor (docs/spec/touch.md).
+        onClick={(e) => { e.stopPropagation(); onSelect(node.id); onCycleStatus(node.id); }}
         onDoubleClick={(e) => e.stopPropagation()}
       >
         <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`} aria-hidden="true">

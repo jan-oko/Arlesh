@@ -1778,12 +1778,8 @@ describe("ListView — expectations", () => {
     mockUseListData.mockReturnValue(listData({ expectationRows: [waitRow()], rows: [], toggleRelease }));
     render(<ListViewInApp />);
     fireEvent.click(screen.getByRole("button", { name: "releaseToggle" }));
-    // The status control releases the wait without selecting it, so Enter has nothing to act on.
-    fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
+    // The status control releases the wait and selects it, so Enter acts on it next.
     expect(toggleRelease.mock.calls).toEqual([["wait-1"]]);
-    const waitCard = document.querySelector('[data-row-id="wait-1"]');
-    if (waitCard === null) throw new Error("no wait row");
-    fireEvent.click(waitCard);
     fireEvent.keyDown(window, { key: "Enter", code: "Enter" });
     fireEvent.keyDown(window, { key: "l", code: "KeyL" });
     expect(toggleRelease.mock.calls).toEqual([["wait-1"], ["wait-1"]]);

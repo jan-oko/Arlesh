@@ -149,7 +149,7 @@ export default function ZenTaskCard({
       {(showBadges || review || fitsContent) && (
         <span className={styles.badges}>
           {showsStatusIcon && (
-            <StatusStepButton label={t("listView:cycleStatus")} onStep={() => onCycleStatus(node.id)}>
+            <StatusStepButton label={t("listView:cycleStatus")} onStep={() => { onSelect(node.id); onCycleStatus(node.id); }}>
               <svg
                 className={styles.statusIcon}
                 data-zen-status-icon={status}

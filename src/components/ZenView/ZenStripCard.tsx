@@ -37,7 +37,7 @@ export default function ZenStripCard({ node, renderGlyph, isSelected, isFocusExe
       onClick={() => onSelect(node.id)}
       onDoubleClick={() => onOpenEditor(node.id)}
     >
-      <StatusStepButton label={stepLabel} onStep={() => onStepGlyph(node.id)}>
+      <StatusStepButton label={stepLabel} onStep={() => { onSelect(node.id); onStepGlyph(node.id); }}>
         <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`} aria-hidden="true">
           {renderGlyph(ICON_R)}
         </svg>

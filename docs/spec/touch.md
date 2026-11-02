@@ -81,10 +81,10 @@ Below 700 px:
 ### The top bar square
 
 The last cell of the top bar is left **free**: a 36 px dashed square with nothing in it. A
-**double-tap** on it opens **Open** (`Ctrl+O`'s node search), and a **long-press** (the hold, then
-the finger lifting, as on a node) opens the [command palette](#the-command-palette). A single tap
-does nothing. It is where a thumb rests, and it keeps Open off the action bar when a node is
-selected.
+**tap** on it opens **Open** (`Ctrl+O`'s node search), and a **long-press** (the hold, then
+the finger lifting, as on a node) opens the [command palette](#the-command-palette). (A first build
+asked for a double-tap; on the device that read as a dead square, so one tap does it.) It is where
+a thumb rests, and it keeps Open off the action bar when a node is selected.
 
 ## The action bar
 
@@ -129,7 +129,7 @@ are dropped. "Search" is left to text boxes. The desktop's two search labels (`o
 `openFilterSearch`) now read "Open a node: …" and "Filter: …".
 
 **Open is on the bar only with nothing selected**; with a node selected it is the top bar's free
-square (double-tap) and the palette, which frees the slot Edit needs.
+square (tap) and the palette, which frees the slot Edit needs.
 
 **The icon set** (`ActionIcon`) is outlined, 24 x 24, a 1.8 stroke with round caps and joins, no
 fills, `currentColor`: the drawing style of `StatusIcons` and `NodeIcon`. One icon per action, the
@@ -196,8 +196,8 @@ Whenever a touchscreen is present, at any width.
   palette is the [top bar square](#the-top-bar-square)'s long-press and the action bar's More).
 - A quick **flick up** on a node opens its editor. Scrolling wins when the move is slow or long.
 - **Tap a node's status icon** to step its status, exactly as the status-cycle key does (a
-  Commitment's icon its verdict, a wait's its release). The tap does that and nothing else: it does
-  not select the node, and a second quick tap does not open its editor. The icon is a control of its
+  Commitment's icon its verdict, a wait's its release). The tap **selects the node** and steps it,
+  and a second quick tap does not open its editor. The icon is a control of its
   own on every card (the List's rows, the Zen and Steps cards, the Zen strips, the Mindmap's node);
   on the phone the Zen card always draws it, so there is always something to tap. The Plan View's
   cards have no status step to run, so their icon stays a picture.
@@ -241,7 +241,7 @@ button, a tag pill, a collapse dot), is left to that control.
 
 - **Mindmap**: one finger on empty canvas pans. **Hold a node and drag it** to move it under another
   parent or reorder it. **Tap a collapse dot** to fold or unfold.
-- **Steps View**: a single tap selects; a tap on a card's glyph steps its status.
+- **Steps View**: a single tap selects; a tap on a card's glyph selects it and steps its status.
 - **Plan View**, planned pane: a swipe left or right steps the scope (`[` and `]`), and a swipe
   **up** goes to the parent scope (`\`). **Swipe a candidate right** to plan it into the scope the
   pane shows. The direction is right, as for a row's advance everywhere: a vertical swipe is the
@@ -262,14 +262,14 @@ fails when the two differ, so a gesture is added to both or to neither.
 | Where | Gesture | Does |
 | --- | --- | --- |
 | Everywhere | Tap | Selects the node; tapping the selected node again deselects it |
-| Everywhere | Tap a status icon | Steps the node's status, as Enter does, and nothing else |
+| Everywhere | Tap a status icon | Selects the node and steps its status, as Enter does |
 | Everywhere | Double-tap | Goes into the node; what that means is each view's, below |
 | Everywhere | Long-press | Opens the node's quick action menu |
 | Everywhere | Flick up | Opens the node's editor |
 | Everywhere | Swipe right | Advances the status: a Task's, a Commitment's verdict, a wait's release |
 | Everywhere | Swipe left | Sets Started |
 | Everywhere | Two-finger swipe | Left shows the next preset, right the previous |
-| Everywhere | Double-tap the top bar's square | Opens Open, the node search |
+| Everywhere | Tap the top bar's square | Opens Open, the node search |
 | Everywhere | Long-press the top bar's square | Opens the command palette |
 | Mindmap | Double-tap a node | Enters its subtree |
 | Mindmap | Drag the canvas | Pans the map |

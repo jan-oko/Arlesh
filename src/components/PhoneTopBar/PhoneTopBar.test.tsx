@@ -109,29 +109,13 @@ describe("PhoneTopBar — the free square", () => {
     return open;
   }
 
-  it("opens Open on a double-tap", () => {
+  it("opens Open on a single tap", () => {
     const open = publishOpen();
     render(<PhoneTopBar />);
     const square = screen.getByRole("button", { name: "topBarSquare" });
-    fireEvent.pointerDown(square);
-    fireEvent.pointerUp(square);
-    act(() => { vi.advanceTimersByTime(120); });
     fireEvent.pointerDown(square);
     fireEvent.pointerUp(square);
     expect(open.run).toHaveBeenCalledTimes(1);
-    expect(usePaletteStore.getState().isOpen).toBe(false);
-  });
-
-  it("does nothing on a single tap, or on two taps too far apart", () => {
-    const open = publishOpen();
-    render(<PhoneTopBar />);
-    const square = screen.getByRole("button", { name: "topBarSquare" });
-    fireEvent.pointerDown(square);
-    fireEvent.pointerUp(square);
-    act(() => { vi.advanceTimersByTime(600); });
-    fireEvent.pointerDown(square);
-    fireEvent.pointerUp(square);
-    expect(open.run).not.toHaveBeenCalled();
     expect(usePaletteStore.getState().isOpen).toBe(false);
   });
 
@@ -147,6 +131,7 @@ describe("PhoneTopBar — the free square", () => {
   });
 
   it("opens nothing when the finger slides off before the hold registers", () => {
+    const open = publishOpen();
     render(<PhoneTopBar />);
     const square = screen.getByRole("button", { name: "topBarSquare" });
     fireEvent.pointerDown(square);
@@ -154,5 +139,6 @@ describe("PhoneTopBar — the free square", () => {
     act(() => { vi.advanceTimersByTime(700); });
     fireEvent.pointerUp(square);
     expect(usePaletteStore.getState().isOpen).toBe(false);
+    expect(open.run).not.toHaveBeenCalled();
   });
 });

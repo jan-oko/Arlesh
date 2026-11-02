@@ -2,23 +2,24 @@ import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { runFirst } from "@/hooks/use-view-gestures";
 import { usePaletteStore } from "@/stores/use-palette-store";
-import { DOUBLE_TAP_MS, LONG_PRESS_MS } from "@/utils/touch/gestures";
+import { LONG_PRESS_MS } from "@/utils/touch/gestures";
 import styles from "./PhoneTopBar.module.css";
 
 /** `Ctrl+O`, the node search that re-roots the tab. */
 const OPEN_COMMAND_IDS: readonly string[] = ["global.openSearch"];
 
 /**
- * The free square at the end of the phone top bar (`docs/spec/touch.md`): a **double-tap** opens
+ * The free square at the end of the phone top bar (`docs/spec/touch.md`): a **tap** opens
  * Open (`Ctrl+O`'s node search) and a **long-press** opens the command palette, once the finger
- * lifts as a node's long-press does. A single tap does nothing, so a stray touch is harmless.
+ * lifts as a node's long-press does.
  */
 export default function TopBarSquare() {
   const { t } = useTranslation("touch");
   const openPalette = usePaletteStore((s) => s.open);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const held = useRef(false);
-  const lastTapAt = useRef<number | null>(null);
+  // Whether a press is still on the square: sliding off cancels it, so the lift elsewhere is no tap.
+  const pressed = useRef(false);
 
   function clearHold() {
     if (holdTimer.current !== null) clearTimeout(holdTimer.current);
@@ -28,6 +29,7 @@ export default function TopBarSquare() {
   useEffect(() => clearHold, []);
 
   function onPointerDown() {
+    pressed.current = true;
     held.current = false;
     clearHold();
     holdTimer.current = setTimeout(() => {
@@ -37,25 +39,21 @@ export default function TopBarSquare() {
     }, LONG_PRESS_MS);
   }
 
-  function onPointerUp(event: { timeStamp: number }) {
+  function onPointerUp() {
     clearHold();
+    if (!pressed.current) return;
+    pressed.current = false;
     if (held.current) {
       held.current = false;
-      lastTapAt.current = null;
       openPalette();
       return;
     }
-    const previous = lastTapAt.current;
-    if (previous !== null && event.timeStamp - previous <= DOUBLE_TAP_MS) {
-      lastTapAt.current = null;
-      runFirst(OPEN_COMMAND_IDS);
-      return;
-    }
-    lastTapAt.current = event.timeStamp;
+    runFirst(OPEN_COMMAND_IDS);
   }
 
   function onPointerCancel() {
     clearHold();
+    pressed.current = false;
     held.current = false;
   }
 

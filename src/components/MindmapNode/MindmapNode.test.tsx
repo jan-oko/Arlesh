@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import MindmapNode from "./MindmapNode";
 import type { MindmapNode as MindmapNodeData } from "@/utils/tree-layout";
 
@@ -11,7 +11,7 @@ function node(extra: Partial<MindmapNodeData> = {}): MindmapNodeData {
   return { id: "task-1", rowId: 1, kind: "task", title: "Late work", status: "todo", position: 0, tagIds: [], children: [], ...extra };
 }
 
-function draw(data: MindmapNodeData, isSelected = false) {
+function draw(data: MindmapNodeData, isSelected = false, handlers: { onSelect?: (id: string) => void; onStatusClick?: (id: string) => void } = {}) {
   return render(
     <svg>
       <MindmapNode
@@ -24,7 +24,8 @@ function draw(data: MindmapNodeData, isSelected = false) {
         isDragTarget={false}
         hasClipboard={false}
         isEditing={false}
-        onSelect={vi.fn()}
+        onSelect={handlers.onSelect ?? vi.fn()}
+        {...(handlers.onStatusClick === undefined ? {} : { onStatusClick: handlers.onStatusClick })}
         onDoubleClick={vi.fn()}
         onCommitEdit={vi.fn()}
         onCancelEdit={vi.fn()}
@@ -55,5 +56,25 @@ describe("MindmapNode — Overdue", () => {
     const { container, getByRole } = draw(node(), true);
     expect(outline(container)).toBe("var(--node-border-selected)");
     expect(getByRole("treeitem")).not.toHaveAttribute("aria-describedby");
+  });
+});
+
+describe("MindmapNode — status icon", () => {
+  it("selects the node and steps its status on a tap", () => {
+    const onSelect = vi.fn();
+    const onStatusClick = vi.fn();
+    const { container } = draw(node(), false, { onSelect, onStatusClick });
+    const hit = container.querySelector("rect[data-gesture-skip]");
+    if (hit === null) throw new Error("no status hit area");
+    fireEvent.click(hit);
+    expect(onSelect).toHaveBeenCalledWith("task-1");
+    expect(onStatusClick).toHaveBeenCalledWith("task-1");
+  });
+
+  it("selects the node its quick action menu is opened on", () => {
+    const onSelect = vi.fn();
+    const { getByRole } = draw(node(), false, { onSelect });
+    fireEvent.contextMenu(getByRole("treeitem"));
+    expect(onSelect).toHaveBeenCalledWith("task-1");
   });
 });
