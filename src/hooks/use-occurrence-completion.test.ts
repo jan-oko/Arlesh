@@ -38,7 +38,7 @@ function setup() {
 
 beforeEach(() => {
   usePendingWritesStore.getState().reset();
-  usePendingWritesStore.getState().reportBoard("test", { read: 0, epoch: null, revision: null });
+  usePendingWritesStore.getState().reportBoard({ read: 0, epoch: null, revision: null });
 });
 
 describe("useOccurrenceCompletion", () => {

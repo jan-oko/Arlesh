@@ -169,17 +169,17 @@ describe("useMindmapData with pending writes", () => {
     expect(find(result.current.tree, "task-1")?.title).toBe("Two");
   });
 
-  it("discards an older read that returns after a newer one", async () => {
+  it("never lets an older read land after a newer one: a reload asked during a read waits for it", async () => {
     const { result } = await mounted();
     let release: (load: MindmapLoad) => void = () => undefined;
     const slow = new Promise<MindmapLoad>((resolve) => { release = resolve; });
     vi.mocked(invoke).mockImplementationOnce(() => slow);
     let older: Promise<void> = Promise.resolve();
+    let newer: Promise<void> = Promise.resolve();
     act(() => { older = result.current.reload(); });
     served = () => board("Newer", 7);
-    await act(() => result.current.reload());
-    expect(find(result.current.tree, "task-1")?.title).toBe("Newer");
-    await act(async () => { release(board("Older", 6)); await older; });
+    act(() => { newer = result.current.reload(); });
+    await act(async () => { release(board("Older", 6)); await Promise.all([older, newer]); });
     expect(find(result.current.tree, "task-1")?.title).toBe("Newer");
   });
 });

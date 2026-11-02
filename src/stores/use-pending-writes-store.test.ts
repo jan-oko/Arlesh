@@ -47,7 +47,7 @@ describe("usePendingWritesStore", () => {
   it("records the answer with the read counter when it arrived", async () => {
     const g = gate();
     store().beginRead();
-    store().reportBoard("lagging", { read: 0, epoch: null, revision: null });
+    store().reportBoard({ read: 0, epoch: null, revision: null });
     store().enqueue(spec("a", g.send));
     g.settle(written({ fields: { title: "server" } }));
     await flushPromises();
@@ -126,28 +126,24 @@ describe("usePendingWritesStore", () => {
     expect(store().isBusy()).toBe(false);
   });
 
-  it("forgets an answered write once every reported board reflects it", async () => {
+  it("forgets an answered write once the board reflects it", async () => {
     const g = gate();
-    store().reportBoard("one", { read: 0, epoch: null, revision: null });
-    store().reportBoard("two", { read: 0, epoch: null, revision: null });
+    store().reportBoard({ read: 0, epoch: null, revision: null });
     store().enqueue(spec("a", g.send));
     g.settle(written({ epoch: null, revision: null }));
     await flushPromises();
     expect(store().writes).toHaveLength(1);
-    const read = store().beginRead();
-    store().reportBoard("one", { read, epoch: null, revision: null });
-    expect(store().writes).toHaveLength(1);
-    store().reportBoard("two", { read, epoch: null, revision: null });
+    store().reportBoard({ read: store().beginRead(), epoch: null, revision: null });
     expect(store().writes).toHaveLength(0);
   });
 
-  it("lets go of a write when the one board that lagged behind it is gone", async () => {
+  it("lets go of a write when the board that lagged behind it is gone", async () => {
     const g = gate();
-    store().reportBoard("one", { read: 0, epoch: null, revision: null });
+    store().reportBoard({ read: 0, epoch: null, revision: null });
     store().enqueue(spec("a", g.send));
     g.settle(written({ epoch: null, revision: null }));
     await flushPromises();
-    store().forgetBoard("one");
+    store().reportBoard(null);
     expect(store().writes).toHaveLength(0);
   });
 
@@ -164,7 +160,7 @@ describe("usePendingWritesStore", () => {
   it("rewrites a temporary id after the create is answered and remembers the alias", async () => {
     const create = gate();
     const rename = gate();
-    store().reportBoard("lagging", { read: 0, epoch: null, revision: null });
+    store().reportBoard({ read: 0, epoch: null, revision: null });
     const tempId = store().nextTemporaryId();
     store().enqueue({
       ...spec(tempId, create.send),

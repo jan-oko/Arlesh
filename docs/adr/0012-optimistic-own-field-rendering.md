@@ -152,17 +152,20 @@ What the user decided (2026-11-01), and this ADR does not reopen:
    answer, before a board has caught up, would flash the old value for one reload. Keeping a
    predicted value after the server said otherwise would be the board disagreeing with the writer.
 
-   **After an answer the board reloads, unless it already reflects it.** Each `useMindmapData`
-   watches the store. When an answered write is not reflected by its board, it reloads. Reloads
-   coalesce: at most one in flight and one waiting. For these writes the reload is not skipped by
+   **After an answer the board reloads, unless it already reflects it.** The window's shared board
+   (`src/stores/use-board-store.ts`) watches the lane. When an answered write is not reflected by
+   the board it holds, it reloads. Reloads coalesce: at most one in flight and one waiting. For these writes the reload is not skipped by
    Task 9298's post-write rule (*skip when the write's revision is the board's revision + 1*). That
    rule would leave the derived values stale, and the derived values are exactly what the answer is
-   waited for (see decision 15). A board read that returns after a newer one is discarded.
+   waited for (see decision 15). Reads are serial, so a read never returns after a newer one.
 
-6. **The store forgets a write once every board has caught up.** Each mounted `useMindmapData`
-   reports its stamp to the store, and an answered write that every reported board reflects is
-   removed. *Why:* the drop in decision 5 is per board. A write removed from the store while a
-   second tab's board still lacks it would make that board show the old value.
+6. **The store forgets a write once the board has caught up.** The window holds **one** copy of the
+   board (the shared board store; every `useMindmapData` is a view over it, and the views draw the
+   patches over their own trees). The shared board reports its stamp to the lane when a read lands,
+   and `null` when the last view leaves, and an answered write that the reported board reflects is
+   removed. *Why:* the drop in decision 5 is per board. Before the shared board each view held its
+   own copy and reported its own stamp, so a write was kept until every copy had it; with one copy
+   there is one stamp to wait for, and a write removed while a view still lacks it cannot happen.
 
 7. **Refusals.** Four kinds, each handled once, in the store:
    - **A refusal** (the core's error, or a gesture's `refused` outcome) rolls back that write and
@@ -351,9 +354,9 @@ changelog fragment per pull request that changes behaviour, and no snapshot test
   `src/utils/apply-pending-writes.ts` and its test; `src/stores/use-pending-writes-store.ts`
   (state, `enqueue`, the sender, `whenDrained`, `cancelTail`, `reportBoard`, the alias map) and its
   test; `src/hooks/use-pending-write.ts` (the hook actions use to enqueue, with the toast wiring)
-  and its test. Changed: `use-mindmap-data.ts` (keeps the loaded tree and its stamp, returns the
-  patched tree, `latestTree` patched, reloads on an unreflected answer, coalesced, and reports its
-  stamp); `use-undo.ts` (cancel the queued tail; wait; spend a press on a refused write); the
+  and its test. Changed: `use-mindmap-data.ts` (derives its tree from the shared board, returns the
+  patched tree, `latestTree` patched); `use-board-store.ts` (reloads on an unreflected answer,
+  coalesced, and reports the board's stamp); `use-undo.ts` (cancel the queued tail; wait; spend a press on a refused write); the
   write-then-reload paths (`use-node-actions.ts`, `use-plan-move.ts`, `use-hand-archive.ts`,
   `use-list-delete.ts`, `multi-node-gestures.ts`'s callers, paste) await `whenDrained()`; the node,
   row and card components and their CSS Modules (`data-pending`); `src/styles/tokens.css` (cue

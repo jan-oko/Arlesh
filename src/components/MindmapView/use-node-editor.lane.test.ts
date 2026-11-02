@@ -69,7 +69,7 @@ function setup(node: MindmapNode) {
 beforeEach(() => {
   vi.clearAllMocks();
   usePendingWritesStore.getState().reset();
-  usePendingWritesStore.getState().reportBoard("test", { read: 0, epoch: null, revision: null });
+  usePendingWritesStore.getState().reportBoard({ read: 0, epoch: null, revision: null });
   useMindmapStore.getState().clearToast();
   useClientModeStore.setState({ status: null });
 });
