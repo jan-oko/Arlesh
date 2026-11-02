@@ -10,6 +10,9 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
+- **Pair a device with a PIN.** On a new phone or computer, enter the server's address and a name for the device and tap Connect: it shows a six-digit PIN. Approve the PIN with `arlesh-server pin approve <pin>` on the server, or in Settings → Devices → Approve a device on a device that is already connected, and the new device receives its own token and restarts connected. Names are unique (a clash gets a `-2` suffix), a PIN works once for ten minutes, and five wrong guesses cancel it.
+- **Devices page.** Settings → Devices lists the devices on the server with when each was last seen, and revokes any of them except the one you are using.
+
 - **Check done and Archive on the phone's action bar.** *Check done* completes a wait's earliest open check; *Archive* puts every selected node that can be archived away as one undo step. While the server is unreachable or on another version the action bar, the palette and the write gestures are greyed out instead of failing.
 - **Tapping a status icon steps the status on the phone.** On a List row, a Zen or Steps card, a Zen strip card and a Mindmap node, the icon is its own control: it advances the status (a Commitment's verdict, a wait's release) and selects the node, without opening its editor. Every other per-node touch action (a swipe, the quick action menu) selects the node it acts on too.
 - **The phone's Plan View gives the two panes an even half of the screen each**, candidates above, and the Zen View's cards fill the screen between the strips and the action bar, sharing its height (none shorter than its content; the column scrolls when they do not fit). The phone's Steps View fills the screen by default, its cards sharing the height but none shorter than the zoom's card height, so the column scrolls instead of paging when they do not fit (a new switch under Settings > Steps turns this off for one scrolling column of cards as tall as their content), and its navigation icon is a staircase drawn like the rest of the icon set.
@@ -182,6 +185,15 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
   **The board alone:** **F11**, or **F** with nothing selected, hides the tab strip and the top bar; press it again to bring them back. Arlesh always reopens with them shown.
 
 ### Changed
+- **A new node shows at once.** Creating a child or a sibling (`Tab`, `Enter`, the Child button) puts the node on screen the moment you ask, with the same faint pulse until the server answers, so you can type its title, set its status or add a child under it straight away; those go out in order once it exists. If the server refuses the create, the node and anything you added under it go away, with one note saying why. Undoing a create that has not been sent takes it back without a trip to the server. New Flows and Habits still wait for the server.
+- **Planning in the Plan View shows at once.** Planning an item into the scope (a swipe right, or the move-across key) puts it in the planned pane the moment you ask, and taking it out puts it back in the candidates, each with the same faint pulse until the server answers. If the server refuses, the item goes back with one note saying why. When the new Plan would leave Tasks below it outside, the prompt still opens first.
+
+- **A rename and an editor Save show at once.** Renaming a node, and saving a Task, Goal, Commitment, wait, Project, Domain, Tag or Info in its editor, now put the new values on screen the moment you confirm, with the same faint pulse until the server answers; the editor closes straight away. If the server refuses, the values go back, a note says why, and the editor opens again with what you typed and the reason under it. Flow and flow-item editors still wait for the server.
+
+- **A status change shows at once.** Stepping a Task or Goal, `Alt+Enter`, marking a commitment Kept or Broken, and releasing a wait now change on screen the moment you press, with a faint pulse on the item until the server confirms. If the server refuses, the change is taken back with a note saying why; against a slow server, quick presses stack up in order instead of waiting on each other.
+
+- **Faster writes against a server.** In Client mode a change no longer reloads the whole board twice, and a write crosses the app's internal bridge once instead of three times. The board a server sends is also compressed, so a status swipe on the phone settles sooner and uses far less data.
+
 - **Start shows what you can begin now.** Under the Start preset, in every view and over MCP:
   - Overdue Tasks, Goals and waits stay instead of dropping out; Missed items still drop out.
   - Work whose Time Scope or Plan has not begun yet is hidden, along with sub-steps that have no window or Plan of their own that has begun.
