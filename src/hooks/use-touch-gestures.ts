@@ -1,6 +1,6 @@
 import { useEffect, useRef, type RefObject } from "react";
 import {
-  DOUBLE_TAP_MS, LONG_PRESS_MS, classifyRelease, isSecondTap, isStill, isThreeFingerTap, isTwoFingerSwipeUp,
+  DOUBLE_TAP_MS, LONG_PRESS_MS, classifyRelease, isSecondTap, isStill, isTwoFingerSwipeUp,
   type TouchSample, type TwoFingers,
 } from "@/utils/touch/gestures";
 import { FLY_OUT_MS, RETURN_AFTER_MS, slideOffset, slideOutcome } from "@/utils/touch/swipe-slide";
@@ -36,8 +36,6 @@ export interface TouchGestureHandlers {
   };
   /** Two fingers swiped up together, anywhere in the container. Never also a one-finger gesture. */
   onTwoFingerUp?: () => void;
-  /** Three fingers tapped together, anywhere in the container. */
-  onThreeFingerTap?: () => void;
 }
 
 interface Options {
@@ -199,16 +197,12 @@ export function useTouchGestures(
       if (event.touches.length === 2) multi.firstTwoLast = firstTwo(event.touches, event.timeStamp);
     }
 
-    /** Ends a multi-finger touch once the last finger is up: a tap of three, or a swipe of two. */
-    function finishMulti(event: TouchEvent) {
+    /** Ends a multi-finger touch once the last finger is up: a swipe of two (the tap of three is `useThreeFingerTap`'s). */
+    function finishMulti() {
       const finished = multi;
       multi = null;
       if (finished === null) return;
       const on = latest.current;
-      if (isThreeFingerTap(finished.fingers, finished.farthest, event.timeStamp - finished.startedAt)) {
-        on.onThreeFingerTap?.();
-        return;
-      }
       const { firstTwoStart: from, firstTwoLast: to } = finished;
       if (finished.fingers === 2 && from !== null && to !== null && isTwoFingerSwipeUp(from, to)) on.onTwoFingerUp?.();
     }
@@ -216,7 +210,7 @@ export function useTouchGestures(
     function onTouchStart(event: TouchEvent) {
       lastTouchAt = event.timeStamp;
       if (event.touches.length !== 1) {
-        // A second finger: this is a pinch, a two-finger swipe or a multi-finger tap, never a node
+        // A second finger: this is a pinch or a two-finger swipe, never a node
         // gesture: whatever the first finger had begun is cancelled, and the rest of this touch is
         // read only by `finishMulti`.
         clearHold();
@@ -280,7 +274,7 @@ export function useTouchGestures(
 
     function onTouchEnd(event: TouchEvent) {
       clearHold();
-      if (multi !== null && event.touches.length === 0) finishMulti(event);
+      if (multi !== null && event.touches.length === 0) finishMulti();
       const current = press;
       press = null;
       if (current === null || event.touches.length > 0) return;

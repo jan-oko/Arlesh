@@ -20,3 +20,4 @@
 - **Back at the main view asks "Quit Arlesh?"** instead of leaving at once. Back again, or Cancel, stays; Quit leaves. Sheets, menus, the palette and a stepped-into node still take back first.
 - **The keyboard and gesture cheat sheet has a ✕ close button** on the phone.
 - **Settings help tips no longer run off the screen.** The hint bubble stays inside the visible pane, wraps its text, and shows on a tap.
+- **The three-finger tap toggles full screen reliably.** Fingers that land or lift a few milliseconds apart, a little movement, and fingers over the bars or a sheet all still count, and a view reads no tap from them. If your phone has its own three-finger gesture (a screenshot), switch it off in the system settings.

@@ -347,8 +347,10 @@ Whenever a touchscreen is present, at any width.
 - A **two-finger swipe** left or right cycles the preset.
 - A **two-finger swipe up** does **Up** (below): out of the entered subtree one level, as the
   breadcrumb's parent step; at the top level it does nothing. A **three-finger tap** toggles
-  [full screen](#the-phone-layout). Both live in the shared gesture layer (`useTouchGestures`,
-  armed by `useViewGestures`), so they work in every view. **Multi-finger touches never fire a
+  [full screen](#the-phone-layout). The two-finger swipe lives in the shared gesture layer
+  (`useTouchGestures`, armed by `useViewGestures`); the three-finger tap is read on the whole
+  document (`useThreeFingerTap`, armed in `App`), so both work in every view, and the tap over the
+  bars and over a sheet or menu too. **Multi-finger touches never fire a
   one-finger gesture**: the second finger cancels whatever the first began (no tap, hold, swipe or
   drag), and the touch is read only when the last finger lifts. **Against pinch-zoom** (the Mindmap's
   and the Steps View's) the two-finger swipe up needs the fingers to keep their spread (within 40 px)
@@ -463,3 +465,13 @@ the **command surface** (`use-command-surface-store.ts`); the palette lists what
 and runs it through the binding's own `run`. Adding a binding therefore adds a palette entry with
 no further work, and a binding that should not be in the palette has to name the gesture that
 replaces it.
+
+## Round 6 (decided with the user, 2026-11-02)
+
+- **The three-finger tap is robust against staggered fingers.** Fingers never land together, so
+  the touch is judged as a whole, only once the last finger is up: the most fingers down together
+  is three, the third landed within 150 ms of the first, no finger strayed further than 20 px, and
+  first-down to last-up took at most 500 ms. The last lift of a recognised tap is stopped before
+  any view sees it, so no one-finger tap, press or click is read from its fingers. A device whose
+  own three-finger gesture (a screenshot, in some vendors' settings) takes the touch cancels it
+  before the page sees it; switch that gesture off in the phone's system settings.
