@@ -213,9 +213,11 @@ Whenever a touchscreen is present, at any width.
   on the phone the Zen card always draws it, so there is always something to tap. The Plan View's
   cards have no status step to run, so their icon stays a picture.
 - **Double-tap** means "go into", everywhere: the Mindmap enters the node; the Steps View steps into
-  it; the List View narrows to its subtree (Under); the Plan View opens its subtree; the Zen View
-  opens the node in the List View. A List row with **nothing beneath it** has no subtree to narrow
-  to (Under it would empty the list), so its double-tap opens its editor instead.
+  it; the List View and the Plan View **enter its subtree**; the Zen View enters it and shows it in
+  the List View. **Entering is entering the subtree** — the tab's subtree root, named in the
+  breadcrumb, which leads back up — never a filter: no Under pill is added (user, 2026-11-02). In
+  every view **except the Mindmap**, a node with **nothing beneath it** has no subtree to enter, so
+  its double-tap opens its editor instead; the Mindmap may still enter a leaf.
 - **Swipe a row or a card right** to cycle its status: Done wraps back to To Do, a Commitment moves
   to its next verdict and a wait to released, exactly as the status-cycle key does. **Swipe it
   left** for the `Alt+Enter` alternative, setting Started. There is no swipe tray.
@@ -284,7 +286,7 @@ fails when the two differ, so a gesture is added to both or to neither.
 | --- | --- | --- |
 | Everywhere | Tap | Selects the node; tapping the selected node again deselects it |
 | Everywhere | Tap a status icon | Selects the node and steps its status, as Enter does |
-| Everywhere | Double-tap | Goes into the node; what that means is each view's, below |
+| Everywhere | Double-tap | Goes into the node (the Mindmap enters a leaf too; elsewhere a node with nothing beneath it opens its editor); what that means is each view's, below |
 | Everywhere | Long-press | Opens the node's quick action menu |
 | Everywhere | Flick up | Opens the node's editor |
 | Everywhere | Swipe right | Advances the status: a Task's, a Commitment's verdict, a wait's release |
@@ -298,13 +300,13 @@ fails when the two differ, so a gesture is added to both or to neither.
 | Mindmap | Tap a collapse dot | Folds or unfolds the node's children |
 | Mindmap | Pinch | Zooms the map |
 | List | Double-tap a row with nothing beneath it | Opens its editor |
-| List | Double-tap a parent | Narrows the list to its subtree (Under) |
+| List | Double-tap a parent | Enters its subtree; the breadcrumb leads back up |
 | Plan | Swipe a to-plan item right | Slides it out and plans it into the scope (left sets Started, as on any row) |
 | Plan | Swipe a planned item left | Slides it out and moves it back to the to-plan pane (right advances the status, as on any row) |
-| Plan | Double-tap a card | Opens its subtree |
-| Steps | Double-tap a card | Steps into it |
+| Plan | Double-tap a card | Enters its subtree, or opens its editor when it has nothing beneath it |
+| Steps | Double-tap a card | Steps into it, or opens its editor when it has nothing beneath it |
 | Steps | Pinch | Zooms the steps |
-| Zen | Double-tap a card | Opens the node in the List View |
+| Zen | Double-tap a card | Enters its subtree in the List View, or opens its editor when it has nothing beneath it |
 
 ## One registry
 

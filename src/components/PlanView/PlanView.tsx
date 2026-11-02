@@ -7,6 +7,7 @@ import { flushSync } from "react-dom";
 import { runAfterSelect, useViewGestures } from "@/hooks/use-view-gestures";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
 import type { NodeKind } from "@/utils/tree-layout";
+import { findNode } from "@/utils/mindmap-tree";
 import { usePlanScope } from "@/hooks/use-plan-scope";
 import { usePlanParents } from "@/hooks/use-plan-parents";
 import { upRefusalKey } from "@/utils/plan-scope";
@@ -510,6 +511,7 @@ export default function PlanView() {
     deselect: () => setSelection(EMPTY_PLAN_SELECTION),
     toggleInSelection: (id) => onSelect(paneOfCard(id), id, { shift: false, ctrl: true }),
     goInto: enterSubtree,
+    isLeaf: (id) => (findNode(tree, id)?.children.length ?? 0) === 0,
     flysOut: (id, direction) => crossingDirection(id) === direction,
     onSwipe: (id, direction) => {
       if (id === null || crossingDirection(id) !== direction) return false;

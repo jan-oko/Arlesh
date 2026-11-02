@@ -87,6 +87,36 @@ describe("useViewGestures", () => {
     expect(options.deselect).not.toHaveBeenCalled();
   });
 
+  it("opens a leaf's editor on a double-tap instead of going into it, when the view says it is a leaf", () => {
+    const editor = surfaceCommand("listView.openEditor", "openEditor");
+    useCommandSurfaceStore.setState({ tables: new Map([["list", [editor]]]), revision: 1 });
+    const options = handlers({ isLeaf: () => true });
+    const { getByTestId } = render(<Surface handlers={options} />);
+    stroke(getByTestId("row"), [10, 10], [10, 10]);
+    stroke(getByTestId("row"), [11, 10], [11, 10]);
+    act(() => { vi.runAllTimers(); });
+    expect(options.goInto).not.toHaveBeenCalled();
+    expect(options.select).toHaveBeenCalledWith("task-1");
+    expect(editor.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("goes into a node that is not a leaf, and into any node when the view names no leaves (the Mindmap)", () => {
+    const parent = handlers({ isLeaf: () => false });
+    const first = render(<Surface handlers={parent} />);
+    stroke(first.getByTestId("row"), [10, 10], [10, 10]);
+    stroke(first.getByTestId("row"), [11, 10], [11, 10]);
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(parent.goInto).toHaveBeenCalledWith("task-1");
+    first.unmount();
+
+    const mindmap = handlers();
+    const second = render(<Surface handlers={mindmap} />);
+    stroke(second.getByTestId("row"), [10, 10], [10, 10]);
+    stroke(second.getByTestId("row"), [11, 10], [11, 10]);
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(mindmap.goInto).toHaveBeenCalledWith("task-1");
+  });
+
   it("opens only the node's quick action menu on a long-press, never the palette", () => {
     const options = handlers();
     const quickMenu = vi.fn();

@@ -351,9 +351,8 @@ export default function ListView() {
   // The viewport: it follows the selection, and j/k roam it without moving the selection.
   const { containerRef, startScroll, scrollToEdge } = useListScroll(activeSelectedId);
 
-  // The touch gestures (docs/spec/touch.md). Double-tap narrows the list to the row's subtree — the
-  // Under pill, as a path header's Ctrl-click files it. A leaf has no subtree to narrow to, so
-  // it opens its editor instead.
+  // The touch gestures (docs/spec/touch.md). Double-tap enters the row's subtree (the subtree root the
+  // breadcrumb shows, as the Mindmap enters). A leaf has no subtree, so it opens its editor.
   useViewGestures(containerRef, {
     idAttribute: "data-row-id",
     ready: !isLoading && error === null,
@@ -361,7 +360,7 @@ export default function ListView() {
     select: setSelectedRowId,
     deselect: () => setSelectedRowId(null),
     goInto: (id) => {
-      if (hasRowsBeneath(id, [...rows, ...commitmentRows, ...expectationRows])) setPillSide("antecedent", id, "include");
+      if (hasRowsBeneath(id, [...rows, ...commitmentRows, ...expectationRows])) enterSubtree(id);
       else onDoubleClick(id);
     },
     slidesRows: true,

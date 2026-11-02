@@ -181,10 +181,9 @@ export default function ZenView() {
     showToast,
   });
 
-  // The touch gestures. Double-tap opens the card in the List View, narrowed Under it — the List
-  // View's own "go into".
+  // The touch gestures. Double-tap enters the card's subtree and shows it in the List View; a leaf
+  // has no subtree, so it opens its editor instead.
   const rootRef = useRef<HTMLDivElement>(null);
-  const setPillSide = useListFilterStore((s) => s.setPillSide);
   const setView = useViewStore((s) => s.setView);
   useViewGestures(rootRef, {
     idAttribute: "data-row-id",
@@ -192,7 +191,8 @@ export default function ZenView() {
     isSelected: (id) => id === activeId,
     select: setSelectedId,
     deselect: () => setSelectedId(null),
-    goInto: (id) => { setPillSide("antecedent", id, "include"); setView("list"); },
+    goInto: (id) => { enterSubtree(id); setView("list"); },
+    isLeaf: (id) => (find(id)?.children.length ?? 0) === 0,
   });
 
   const selectedKind = activeId === null ? undefined : find(activeId)?.kind;

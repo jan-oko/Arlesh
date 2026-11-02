@@ -17,8 +17,14 @@ export interface ViewGestureOptions {
   isSelected: (id: string) => boolean;
   select: (id: string) => void;
   deselect: () => void;
-  /** The double-tap: the view's own "go into" (enter, step into, narrow Under, open in List). */
+  /** The double-tap: the view's own "go into" (enter the subtree, step into, open in List). */
   goInto: (id: string) => void;
+  /**
+   * Whether this node has nothing beneath it. A double-tap on a leaf opens its editor instead of
+   * going into it (a leaf has no subtree to enter). Absent: every node is gone into — the Mindmap,
+   * where entering a leaf stays allowed.
+   */
+  isLeaf?: (id: string) => boolean;
   /** Adds a node to the selection or takes it out — the Select toggle. Absent: a single selection. */
   toggleInSelection?: (id: string) => void;
   /** A swipe the view answers itself; returns whether it did. Unanswered, a swipe advances or starts. */
@@ -61,7 +67,7 @@ export function runAfterSelect(ids: readonly string[]): void {
 
 /**
  * The gestures every view shares (`docs/spec/touch.md`), on whatever touchscreen is present: tap
- * selects and tapping the selection again deselects, double-tap goes into, long-press selects the
+ * selects and tapping the selection again deselects, double-tap goes into a node with a subtree (and opens a leaf's editor, outside the Mindmap), long-press selects the
  * node for its quick action menu, a flick up opens the editor, and a swipe right advances while a swipe left sets Started.
  * Each acts by selecting the node and running the binding its key would — the same guard and the
  * same refusal — so a gesture can do nothing the keyboard cannot.
@@ -84,7 +90,15 @@ export function useViewGestures(containerRef: RefObject<HTMLElement | SVGElement
       if (options.isSelected(id)) options.deselect();
       else options.select(id);
     },
-    onDoubleTap: (id) => { if (id !== null) options.goInto(id); },
+    onDoubleTap: (id) => {
+      if (id === null) return;
+      if (options.isLeaf?.(id) === true) {
+        selectOnly(id);
+        runAfterSelect(OPEN_EDITOR_IDS);
+        return;
+      }
+      options.goInto(id);
+    },
     // The node's own quick action menu is what the long-press opens (the webview's `contextmenu`,
     // which the node handles); the palette is the top bar's free square, not a second answer here.
     onLongPress: (id) => selectOnly(id),

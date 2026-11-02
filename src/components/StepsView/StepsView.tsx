@@ -519,6 +519,7 @@ export default function StepsView() {
     select: (id) => setSelection(id === headerCardId ? { cell: "header" } : { cell: "child", nodeId: id }),
     deselect: () => setSelection(null),
     goInto: (id) => (id === headerCardId ? refuseAtBoardRoot() : onDescend(id)),
+    isLeaf: (id) => id !== headerCardId && ((findNode(tree, id) ?? findNode(filteredRoot, id))?.children.length ?? 0) === 0,
   });
   usePinchSteps(rootRef, {
     enabled: hasTouch && !isLoading && error === null,

@@ -1868,7 +1868,7 @@ describe("ListView — double-tap on a touchscreen", () => {
 
   const antecedents = () => useListFilterStore.getState().filter.pills.antecedent.map((pill) => pill.value);
 
-  it("narrows to a row's subtree when it has rows beneath it", () => {
+  it("enters a row's subtree (not an Under pill) when it has rows beneath it", () => {
     const aspect = n("aspect-1", "aspect");
     const parent = n("task-1", "task", { status: "todo" });
     mockUseListData.mockReturnValue(listData({
@@ -1879,7 +1879,8 @@ describe("ListView — double-tap on a touchscreen", () => {
     }));
     render(<ListViewInApp />);
     doubleTap("task-1");
-    expect(antecedents()).toEqual(["task-1"]);
+    expect(useMindmapStore.getState().subtreeRootId).toBe("task-1");
+    expect(antecedents()).toEqual([]);
   });
 
   it("opens a leaf's editor rather than entering it", () => {

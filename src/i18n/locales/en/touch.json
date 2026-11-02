@@ -73,7 +73,7 @@
   "gestureStatusIcon": "Tap a status icon",
   "gestureStatusIconDoes": "Selects the node and steps its status, as Enter does",
   "gestureDoubleTap": "Double-tap",
-  "gestureDoubleTapDoes": "Goes into the node; what that means is each view's, below",
+  "gestureDoubleTapDoes": "Goes into the node (the Mindmap enters a leaf too; elsewhere a node with nothing beneath it opens its editor); what that means is each view's, below",
   "gestureLongPress": "Long-press",
   "gestureLongPressDoes": "Opens the node's quick action menu",
   "gestureFlickUp": "Flick up",
@@ -101,9 +101,9 @@
   "gestureListLeaf": "Double-tap a row with nothing beneath it",
   "gestureListLeafDoes": "Opens its editor",
   "gestureListParent": "Double-tap a parent",
-  "gestureListParentDoes": "Narrows the list to its subtree (Under)",
+  "gestureListParentDoes": "Enters its subtree; the breadcrumb leads back up",
   "gestureStepsEnter": "Double-tap a card",
-  "gestureStepsEnterDoes": "Steps into it",
+  "gestureStepsEnterDoes": "Steps into it, or opens its editor when it has nothing beneath it",
   "gestureStepsPinch": "Pinch",
   "gestureStepsPinchDoes": "Zooms the steps",
   "gesturePlanMove": "Swipe a to-plan item right",
@@ -111,7 +111,7 @@
   "gesturePlanUnplan": "Swipe a planned item left",
   "gesturePlanUnplanDoes": "Slides it out and moves it back to the to-plan pane (right advances the status, as on any row)",
   "gesturePlanEnter": "Double-tap a card",
-  "gesturePlanEnterDoes": "Opens its subtree",
+  "gesturePlanEnterDoes": "Enters its subtree, or opens its editor when it has nothing beneath it",
   "gestureZenOpen": "Double-tap a card",
-  "gestureZenOpenDoes": "Opens the node in the List View"
+  "gestureZenOpenDoes": "Enters its subtree in the List View, or opens its editor when it has nothing beneath it"
 }
