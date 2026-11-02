@@ -1,7 +1,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 import {
-  DOUBLE_TAP_MS, LONG_PRESS_MS, classifyRelease, isSecondTap, isStill,
-  type TouchSample,
+  DOUBLE_TAP_MS, LONG_PRESS_MS, classifyRelease, isSecondTap, isStill, isThreeFingerTap, isTwoFingerSwipeUp,
+  type TouchSample, type TwoFingers,
 } from "@/utils/touch/gestures";
 import { FLY_OUT_MS, RETURN_AFTER_MS, slideOffset, slideOutcome } from "@/utils/touch/swipe-slide";
 
@@ -34,6 +34,10 @@ export interface TouchGestureHandlers {
     move: (x: number, y: number) => void;
     end: (x: number, y: number) => void;
   };
+  /** Two fingers swiped up together, anywhere in the container. Never also a one-finger gesture. */
+  onTwoFingerUp?: () => void;
+  /** Three fingers tapped together, anywhere in the container. */
+  onThreeFingerTap?: () => void;
 }
 
 interface Options {
@@ -63,6 +67,20 @@ interface Press {
   dragging: boolean;
   /** Whether the swipe in the direction the finger is going would fly this element out. */
   leaves: boolean;
+}
+
+/** A touch with two or more fingers in progress: a pinch, a two-finger swipe or a multi-finger tap. */
+interface MultiTouch {
+  startedAt: number;
+  /** The most fingers that were down together. */
+  fingers: number;
+  /** Where each finger (by position in `touches`) first went down. */
+  origins: TouchSample[];
+  /** The first two fingers' latest positions, for the two-finger swipe. */
+  firstTwoStart: TwoFingers | null;
+  firstTwoLast: TwoFingers | null;
+  /** The farthest any finger has strayed from where it went down. */
+  farthest: number;
 }
 
 /** Narrows a listener's event without a cast — an SVG and an HTML container share one listener. */
@@ -147,15 +165,67 @@ export function useTouchGestures(
       }, FLY_OUT_MS);
     }
 
+    let multi: MultiTouch | null = null;
+
+    function firstTwo(touches: TouchList, time: number): TwoFingers | null {
+      const [a, b] = [touches[0], touches[1]];
+      return a === undefined || b === undefined ? null : [sample(a, time), sample(b, time)];
+    }
+
+    function trackMulti(event: TouchEvent) {
+      const count = event.touches.length;
+      if (multi === null) {
+        multi = { startedAt: event.timeStamp, fingers: count, origins: [], firstTwoStart: null, firstTwoLast: null, farthest: 0 };
+      }
+      multi.fingers = Math.max(multi.fingers, count);
+      for (let index = 0; index < count; index += 1) {
+        const touch = event.touches[index];
+        if (touch !== undefined && multi.origins[index] === undefined) multi.origins[index] = sample(touch, event.timeStamp);
+      }
+      // The swipe is judged from the moment the second finger landed (a third finger voids it).
+      if (count === 2 && multi.firstTwoStart === null) multi.firstTwoStart = firstTwo(event.touches, event.timeStamp);
+      multi.firstTwoLast = firstTwo(event.touches, event.timeStamp);
+    }
+
+    function trackMultiMove(event: TouchEvent) {
+      if (multi === null) return;
+      for (let index = 0; index < event.touches.length; index += 1) {
+        const touch = event.touches[index];
+        const origin = multi.origins[index];
+        if (touch !== undefined && origin !== undefined) {
+          multi.farthest = Math.max(multi.farthest, Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y));
+        }
+      }
+      if (event.touches.length === 2) multi.firstTwoLast = firstTwo(event.touches, event.timeStamp);
+    }
+
+    /** Ends a multi-finger touch once the last finger is up: a tap of three, or a swipe of two. */
+    function finishMulti(event: TouchEvent) {
+      const finished = multi;
+      multi = null;
+      if (finished === null) return;
+      const on = latest.current;
+      if (isThreeFingerTap(finished.fingers, finished.farthest, event.timeStamp - finished.startedAt)) {
+        on.onThreeFingerTap?.();
+        return;
+      }
+      const { firstTwoStart: from, firstTwoLast: to } = finished;
+      if (finished.fingers === 2 && from !== null && to !== null && isTwoFingerSwipeUp(from, to)) on.onTwoFingerUp?.();
+    }
+
     function onTouchStart(event: TouchEvent) {
       lastTouchAt = event.timeStamp;
       if (event.touches.length !== 1) {
-        // A second finger: this is a pinch or a two-finger swipe, never a node gesture.
+        // A second finger: this is a pinch, a two-finger swipe or a multi-finger tap, never a node
+        // gesture: whatever the first finger had begun is cancelled, and the rest of this touch is
+        // read only by `finishMulti`.
         clearHold();
         if (press !== null) slide(press.element, 0, press.leaves);
         press = null;
+        trackMulti(event);
         return;
       }
+      multi = null;
       const touch = event.touches[0];
       const target = event.target;
       if (touch === undefined || !(target instanceof Element) || target.closest(OWN_TOUCH) !== null) {
@@ -184,6 +254,7 @@ export function useTouchGestures(
     }
 
     function onTouchMove(event: TouchEvent) {
+      trackMultiMove(event);
       const touch = event.touches[0];
       if (press === null || touch === undefined || event.touches.length !== 1) return;
       press.last = sample(touch, event.timeStamp);
@@ -206,6 +277,7 @@ export function useTouchGestures(
 
     function onTouchEnd(event: TouchEvent) {
       clearHold();
+      if (multi !== null && event.touches.length === 0) finishMulti(event);
       const current = press;
       press = null;
       if (current === null || event.touches.length > 0) return;
@@ -259,6 +331,7 @@ export function useTouchGestures(
 
     function onTouchCancel() {
       clearHold();
+      multi = null;
       if (press !== null) slide(press.element, 0, press.leaves);
       if (press?.dragging === true) latest.current.holdDrag?.end(press.last.x, press.last.y);
       press = null;

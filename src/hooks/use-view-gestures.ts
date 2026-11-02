@@ -3,10 +3,11 @@ import { useTouchGestures } from "@/hooks/use-touch-gestures";
 import type { TouchGestureHandlers } from "@/hooks/use-touch-gestures";
 import { useHasTouch } from "@/hooks/use-media-query";
 import { allSurfaceCommands, firstRunnable, useCommandSurfaceStore } from "@/stores/use-command-surface-store";
+import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { useSelectModeStore } from "@/stores/use-select-mode-store";
 import { currentReadOnlyReason } from "@/hooks/use-board-read-only";
 import { gateWrites } from "@/utils/touch/writes";
-import { ADVANCE_IDS, OPEN_EDITOR_IDS, TOGGLE_STARTED_IDS } from "@/utils/touch/command-ids";
+import { ADVANCE_IDS, OPEN_EDITOR_IDS, TOGGLE_STARTED_IDS, UP_IDS } from "@/utils/touch/command-ids";
 
 /** What a view tells the shared gestures about its selection and its "go into". */
 export interface ViewGestureOptions {
@@ -114,6 +115,11 @@ export function useViewGestures(containerRef: RefObject<HTMLElement | SVGElement
     },
     // The selected node's tap waits: it may be the first half of a double-tap's "go into".
     defersTap: (id) => options.isSelected(id) && !useSelectModeStore.getState().active,
+    // Two fingers up is the Up action (the breadcrumb's parent step) and three fingers tapping is
+    // full screen. Both are read by `useTouchGestures` apart from the one-finger gestures, and a
+    // two-finger move that changes the fingers' spread is a pinch, not this.
+    onTwoFingerUp: () => runFirst(UP_IDS),
+    onThreeFingerTap: () => useFullscreenStore.getState().toggle(),
     ...(options.flysOut === undefined ? {} : {
       flysOut: (id, direction) => currentReadOnlyReason() === null && options.flysOut?.(id, direction) === true,
     }),

@@ -2,7 +2,7 @@ import type { View } from "@/stores/use-view-store";
 import type { NodeKind } from "@/utils/tree-layout";
 import type { TouchLabelKey } from "@/stores/use-command-surface-store";
 import type { ActionIconName } from "@/components/ActionIcon/ActionIcon";
-import { OPEN_EDITOR_IDS, everyView } from "./command-ids";
+import { OPEN_EDITOR_IDS, UP_IDS, everyView } from "./command-ids";
 
 /** Which row of the action bar's table applies (`docs/spec/touch.md`). */
 export type ActionContext =
@@ -43,8 +43,9 @@ const STATUS_CYCLE = ["mindmap.enter", ...everyView("cycleStatus")];
 
 /** The slots of each context, before Undo and Redo fill what room is left. */
 const CONTEXT_SLOTS: Readonly<Record<ActionContext, readonly ActionSlot[]>> = {
-  // With nothing selected a Child is a Task under the subtree you are in.
-  nothing: [run("child", "actionChild", "child", ["touch.newTask"]), UNDO, REDO, OPEN, FILTER],
+  // With nothing selected the bar goes up: Up leaves the subtree one level, as the breadcrumb's
+  // parent step does, and is greyed at the top level. (It replaced Child here, round 5.)
+  nothing: [run("up", "actionUp", "up", UP_IDS), UNDO, REDO, OPEN, FILTER],
   task: [
     run("status", "actionStatus", "status", STATUS_CYCLE),
     CHILD,

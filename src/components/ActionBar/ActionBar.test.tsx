@@ -46,6 +46,22 @@ describe("ActionBar", () => {
     expect(container.querySelector('[data-action-icon="filter"]')).not.toBeNull();
   });
 
+  it("draws Up, not Child, with nothing selected; it runs the subtree exit and is greyed when it cannot", () => {
+    const exit = surfaceCommand("global.exitSubtree", "exitSubtree");
+    publish([exit]);
+    const { container } = render(<ActionBar />);
+    expect(screen.queryByRole("button", { name: "actionChild" })).not.toBeInTheDocument();
+    expect(container.querySelector('[data-action-icon="up"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "actionUp" }));
+    expect(exit.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("greys Up at the top level, where no subtree is entered to leave", () => {
+    publish([]);
+    render(<ActionBar />);
+    expect(screen.getByRole("button", { name: "actionUp" })).toBeDisabled();
+  });
+
   it("draws Edit in every view", () => {
     useSelectionSurfaceStore.setState({ kinds: ["task"], multiSelect: false });
     for (const view of ["mindmap", "list", "plan", "steps", "zen"] as const) {

@@ -40,7 +40,7 @@ describe("actionSlotsFor", () => {
     for (const context of ["task", "commitment", "wait", "container", "flow", "several", "planView"] as const) {
       expect(actionSlotsFor(context).map((slot) => slot.key)).not.toContain("open");
     }
-    expect(actionSlotsFor("nothing").map((slot) => slot.key)).toEqual(["child", "undo", "redo", "open", "filter"]);
+    expect(actionSlotsFor("nothing").map((slot) => slot.key)).toEqual(["up", "undo", "redo", "open", "filter"]);
   });
 
   it("names each action once: Child and Sibling create, Open jumps, Filter filters", () => {

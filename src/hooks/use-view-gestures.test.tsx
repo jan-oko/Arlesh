@@ -6,6 +6,7 @@ import { useCommandSurfaceStore } from "@/stores/use-command-surface-store";
 import { usePaletteStore } from "@/stores/use-palette-store";
 import { useSelectModeStore } from "@/stores/use-select-mode-store";
 import { surfaceCommand } from "@/test/surface-command";
+import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { TOUCH_QUERY } from "./use-media-query";
 
 type Handlers = Omit<ViewGestureOptions, "idAttribute" | "ready">;
@@ -175,5 +176,63 @@ describe("useViewGestures", () => {
     const { getByTestId } = render(<Surface handlers={options} />);
     stroke(getByTestId("row"), [10, 10], [10, 10]);
     expect(options.select).not.toHaveBeenCalled();
+  });
+
+  describe("with several fingers", () => {
+    /** Fingers down together at `starts`, then moved to `ends`, then all lifted, `ms` later. */
+    function fingers(element: Element, starts: Array<[number, number]>, ends: Array<[number, number]>, ms = 100) {
+      const down = starts.map(([x, y]) => touch(element, x, y));
+      const up = ends.map(([x, y]) => touch(element, x, y));
+      fireEvent.touchStart(element, { touches: [down[0]] });
+      for (let count = 2; count <= down.length; count += 1) fireEvent.touchStart(element, { touches: down.slice(0, count) });
+      act(() => { vi.advanceTimersByTime(ms); });
+      fireEvent.touchMove(element, { touches: up });
+      fireEvent.touchEnd(element, { touches: [], changedTouches: up });
+    }
+
+    it("goes Up on a two-finger swipe up, and fires no one-finger gesture", () => {
+      const up = surfaceCommand("global.exitSubtree", "exitSubtree");
+      useCommandSurfaceStore.setState({ tables: new Map([["global", [up]]]), revision: 1 });
+      const options = handlers({ onSwipe: vi.fn(() => true), onFlickUp: vi.fn(() => true) });
+      const { getByTestId } = render(<Surface handlers={options} />);
+      fingers(getByTestId("row"), [[100, 300], [160, 300]], [[100, 150], [160, 150]]);
+      expect(up.run).toHaveBeenCalledTimes(1);
+      expect(options.select).not.toHaveBeenCalled();
+      expect(options.onSwipe).not.toHaveBeenCalled();
+      expect(options.onFlickUp).not.toHaveBeenCalled();
+    });
+
+    it("does nothing on a two-finger swipe down, or sideways, or a pinch", () => {
+      const up = surfaceCommand("global.exitSubtree", "exitSubtree");
+      useCommandSurfaceStore.setState({ tables: new Map([["global", [up]]]), revision: 1 });
+      const { getByTestId } = render(<Surface handlers={handlers()} />);
+      const row = getByTestId("row");
+      fingers(row, [[100, 150], [160, 150]], [[100, 300], [160, 300]]);
+      fingers(row, [[100, 300], [160, 300]], [[200, 300], [260, 300]]);
+      // Apart as they rise: the Mindmap's and Steps' pinch, not Up.
+      fingers(row, [[130, 300], [150, 300]], [[40, 150], [240, 150]]);
+      expect(up.run).not.toHaveBeenCalled();
+    });
+
+    it("toggles full screen on a three-finger tap", () => {
+      useFullscreenStore.setState({ isFullscreen: false });
+      const options = handlers();
+      const { getByTestId } = render(<Surface handlers={options} />);
+      const spots: Array<[number, number]> = [[50, 100], [100, 100], [150, 100]];
+      fingers(getByTestId("row"), spots, spots, 80);
+      expect(useFullscreenStore.getState().isFullscreen).toBe(true);
+      fingers(getByTestId("row"), spots, spots, 80);
+      expect(useFullscreenStore.getState().isFullscreen).toBe(false);
+      expect(options.select).not.toHaveBeenCalled();
+    });
+
+    it("does not toggle full screen when the three fingers are held or dragged", () => {
+      useFullscreenStore.setState({ isFullscreen: false });
+      const { getByTestId } = render(<Surface handlers={handlers()} />);
+      const spots: Array<[number, number]> = [[50, 100], [100, 100], [150, 100]];
+      fingers(getByTestId("row"), spots, spots, 800);
+      fingers(getByTestId("row"), spots, [[50, 200], [100, 200], [150, 200]], 80);
+      expect(useFullscreenStore.getState().isFullscreen).toBe(false);
+    });
   });
 });

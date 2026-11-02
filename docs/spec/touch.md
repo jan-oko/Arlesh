@@ -125,7 +125,7 @@ the [command palette](#the-command-palette).
 
 | Context | Slots (then More) |
 | --- | --- |
-| Nothing selected | Child, Undo, Redo, Open, Filter |
+| Nothing selected | Up, Undo, Redo, Open, Filter |
 | A Task | Status, Child, Plan (`P`), Dependency (`d`), Edit (`E`) |
 | A Commitment | Verdict, Child, Plan, Edit, then Undo |
 | A wait | Release, Check done, Child, Edit, then Undo |
@@ -153,6 +153,7 @@ no others for these actions:
 | **Status** | cycle the selection's status (Verdict and Release are its names for a Commitment and a wait) | |
 | **Dependency** | the quick dependency picker | Depends |
 | **Edit** | open the editor | |
+| **Up** | `Shift+Escape`: leave the entered subtree one level (the breadcrumb's parent step); greyed at the top level. Shown with nothing selected, where it replaced Child (user, round 5); the two-finger swipe up does it too | |
 
 *Rationale:* the desktop already says "child" and "sibling" (`createChild`, `createSibling`) and
 `Ctrl+O` is *Open*, so the touch words follow the desktop's and the two words that were doubled
@@ -175,7 +176,7 @@ handler and the same refusal toast the key has — so a slot cannot do something
 A slot whose binding cannot act in the current state is drawn disabled, never hidden, so the bar
 does not jump about. Two slots have no key of their own and are touch commands a view registers
 beside its bindings: **Child with nothing selected** (a Task under the subtree you are in, refused out loud where a Task
-cannot hang) and **Kind**, which opens a sheet of the five scope kinds, each its own binding.
+cannot hang; it is in the palette, no longer on the bar) and **Kind**, which opens a sheet of the five scope kinds, each its own binding.
 Two more are touch commands for the same reason: **Check done** (on a wait, completes its
 earliest-due open check task) and **Archive** (on a selection, puts away every node that takes the
 hand archive — a stored Task or Commitment, or a Domain — and **brings them all back** when every
@@ -242,6 +243,15 @@ Whenever a touchscreen is present, at any width.
   to its next verdict and a wait to released, exactly as the status-cycle key does. **Swipe it
   left** for the `Alt+Enter` alternative, setting Started. There is no swipe tray.
 - A **two-finger swipe** left or right cycles the preset.
+- A **two-finger swipe up** does **Up** (below): out of the entered subtree one level, as the
+  breadcrumb's parent step; at the top level it does nothing. A **three-finger tap** toggles
+  [full screen](#the-phone-layout). Both live in the shared gesture layer (`useTouchGestures`,
+  armed by `useViewGestures`), so they work in every view. **Multi-finger touches never fire a
+  one-finger gesture**: the second finger cancels whatever the first began (no tap, hold, swipe or
+  drag), and the touch is read only when the last finger lifts. **Against pinch-zoom** (the Mindmap's
+  and the Steps View's) the two-finger swipe up needs the fingers to keep their spread (within 40 px)
+  while moving at least 80 px, mostly vertically; a pinch changes the spread and is not an Up, and a
+  swipe that is also a slight pinch zooms by that slight amount at most.
 - **Pinch** zooms in the Mindmap and the Steps View.
 - **Undo and redo are buttons**, not gestures.
 
@@ -313,6 +323,8 @@ fails when the two differ, so a gesture is added to both or to neither.
 | Everywhere | Swipe right | Advances the status: a Task's, a Commitment's verdict, a wait's release |
 | Everywhere | Swipe left | Sets Started |
 | Everywhere | Two-finger swipe | Left shows the next preset, right the previous |
+| Everywhere | Two-finger swipe up | Goes up one level out of the entered subtree, as Up does |
+| Everywhere | Three-finger tap | Turns full screen on or off |
 | Everywhere | Tap the top bar's square | Opens Open, the node search |
 | Everywhere | Long-press the top bar's square | Opens the command palette |
 | Mindmap | Double-tap a node | Enters its subtree |
