@@ -35,6 +35,14 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 - **Back at the main view asks "Quit Arlesh?"** instead of leaving at once. Back again, or Cancel, stays; Quit leaves. Sheets, menus, the palette and a stepped-into node still take back first.
 - **The keyboard and gesture cheat sheet has a ✕ close button** on the phone.
 - **Settings help tips no longer run off the screen.** The hint bubble stays inside the visible pane, wraps its text, and shows on a tap.
+- **The three-finger tap toggles full screen reliably.** Fingers that land or lift a few milliseconds apart, a little movement, and fingers over the bars or a sheet all still count, and a view reads no tap from them. If your phone has its own three-finger gesture (a screenshot), switch it off in the system settings.
+- **The subtree's name on the phone's top bar is as large as "Arlesh" and in the same place.** Entering or leaving a subtree no longer shifts or shrinks the title; the `‹` sits to its left.
+- **Full screen's corner square is no longer cut off by the phone's rounded corner.** It sits clear of the display's corner radius as well as of the system bars.
+- **The Open and Filter searches open a little lower on the phone,** within thumb reach, and still above the keyboard.
+- **The quit dialog, and the other warning prompts, are centred on the phone** instead of rising from the bottom edge.
+- **The system-bar settings are big buttons.** Under Settings > General, Standard, Edge-to-edge and Immersive are three full-width buttons with the chosen one highlighted, instead of two small dropdowns.
+- **Full screen leaves room for the system bars.** In full screen (Edge-to-edge or Immersive) the List, Zen, Plan and Steps views pad their content by the status bar at the top (the inset only, no extra gap) and the gesture bar at the bottom, so the first heading and the Plan's header controls are no longer under the status bar or where it peeks; the Mindmap stays full-bleed. The fullscreen corner square sits at least 20 px from the right and bottom edges, and above the gesture bar's peek. In the List only the resting position is inset; scrolled, rows use the whole screen, and a stuck sticky heading covers the status-bar zone so no row shows above it.
+- **A little more room around the phone's List and sheets.** Outside full screen the List's first heading rests a small gap below the top bar, and every bottom sheet (the quick action menu included) leaves a larger gap under its last item.
 
 - **Touch gestures.** On any touchscreen, a tap selects and a second tap deselects; a double-tap
   goes into the node (enters it in the Mindmap, steps into it in the Steps View, narrows the List
@@ -280,6 +288,8 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 - **Shortcuts no longer fire with extra modifiers held.** A shortcut needs exactly the modifiers it names: **Ctrl+E** no longer opens the editor, **Ctrl+Shift+C/X/V** no longer cut, copy or paste, and **Shift+Tab** no longer creates a child.
 
 ### Removed
+- **The server indicator on the desktop top bar.** The mode (This device or Server, with a dot for reachability) is no longer drawn there; Settings > Server shows it, and the banner still appears when the server cannot be reached.
+
 - **The red exclamation badge for Overdue items.** The amber border alone marks them.
 
 - **Changing a node's type.** A node keeps the kind it was created as: **Ctrl+↑** / **Ctrl+↓** no longer cycle its type, and the context menu's **Set type** submenu is gone, as is converting a Flow's goal and task items into each other. To change a kind, create the new node and move or delete the old one.
