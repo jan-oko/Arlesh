@@ -410,12 +410,14 @@ class Worktrees(OriginFixture):
         self.assertEqual(box.all_names(), [])
         self.assertFalse(box.ref_exists(self.main, "refs/heads/nope"))
 
-    def test_dir_holding_another_branch_fails(self) -> None:
-        box.ensure_worktree("qa/2026-11-round")
-        git(self.main, "branch", "qa-2026-11-round", "origin/feature")
+    def test_dir_holding_an_unrelated_branch_names_the_expected_one(self) -> None:
+        git(self.main, "branch", "feature", "origin/feature")
+        folder = box.worktrees_dir() / "qa-2026-11-round"
+        git(self.main, "worktree", "add", str(folder), "feature")
         with self.assertRaises(box.BoxError) as ctx:
             box.ensure_worktree("qa-2026-11-round")
-        self.assertIn("holds qa/2026-11-round", str(ctx.exception))
+        self.assertIn("holds feature", str(ctx.exception))
+        self.assertIn("run feature", str(ctx.exception))
 
     def test_behind_origin_is_reported_and_nothing_is_pulled(self) -> None:
         path = box.ensure_worktree("feature")
@@ -1316,6 +1318,28 @@ class SyncWorktree(OriginFixture):
             box.cmd_run(box.parse_args(["run", "feature", "desktop"]))
         want = box.git_in(self.main, "rev-parse", "origin/feature").stdout
         self.assertEqual(box.git_in(self.wt, "rev-parse", "HEAD").stdout, want)
+
+
+class FolderNames(OriginFixture):
+    def test_the_folder_name_maps_to_its_branch(self) -> None:
+        box.ensure_worktree("qa/2026-11-round")
+        self.assertEqual(box.canonical_branch("qa-2026-11-round"), "qa/2026-11-round")
+        self.assertEqual(box.canonical_branch("qa/2026-11-round"), "qa/2026-11-round")
+        path = box.ensure_worktree("qa-2026-11-round")
+        self.assertEqual(box.worktree_branch(path), "qa/2026-11-round")
+
+    def test_an_unknown_folder_name_is_left_alone(self) -> None:
+        self.assertEqual(box.canonical_branch("feature"), "feature")
+        self.assertEqual(box.canonical_branch("qa-2026-11-round"), "qa-2026-11-round")
+
+    def test_run_accepts_the_folder_name(self) -> None:
+        box.ensure_worktree("qa/2026-11-round")
+        with (
+            mock.patch.object(box, "run_desktop") as run,
+            mock.patch.object(box, "record_last_target"),
+        ):
+            box.cmd_run(box.parse_args(["run", "qa-2026-11-round", "desktop"]))
+        self.assertEqual(run.call_args.args[0], "qa-2026-11-round")
 
 
 if __name__ == "__main__":

@@ -272,6 +272,20 @@ def report_divergence(cwd: Path, branch: str) -> None:
         note(f"{branch} is {behind} commits behind origin; pull to update")
 
 
+def canonical_branch(given: str) -> str:
+    """The branch `given` names: itself, or the branch checked out in the worktree folder of that name.
+
+    `qa/2026-11-round` lives in the folder `qa-2026-11-round`, and either spelling is accepted. A
+    folder holding some other branch is not mapped (ensure_worktree reports it).
+    """
+    path = worktrees_dir() / given
+    if "/" not in given and path.is_dir():
+        held = worktree_branch(path)
+        if held and held != given and dir_name(held) == given:
+            return held
+    return given
+
+
 def ensure_worktree(branch: str, report: bool = True) -> Path:
     """The worktree for `branch`, created from origin/<branch> when it is missing.
 
@@ -285,6 +299,7 @@ def ensure_worktree(branch: str, report: bool = True) -> Path:
         != 0
     ):
         raise UsageError(f"'{branch}' is not a usable branch name.")
+    branch = canonical_branch(branch)
     name = dir_name(branch)
     path = worktrees_dir() / name
     root = main_checkout()
@@ -293,7 +308,12 @@ def ensure_worktree(branch: str, report: bool = True) -> Path:
         if held != branch:
             raise die(
                 f".claude/worktrees/{name} holds {held or 'a detached HEAD'}, not {branch}. "
-                f"Remove it ('git worktree remove') or pick another branch."
+                + (
+                    f"The branch for that folder is {held}: {CMD} run {held}. "
+                    if held
+                    else ""
+                )
+                + "Or remove it ('git worktree remove') and pick another branch."
             )
         git_in(
             root, "fetch", "--quiet", "origin", branch
@@ -2331,9 +2351,10 @@ def cmd_list(_args: argparse.Namespace) -> None:
 
 def cmd_run(args: argparse.Namespace) -> None:
     target = resolve_target(args.target)
-    wt = ensure_worktree(args.branch, report=False)
-    sync_worktree(wt, args.branch, args.stale_ok)
-    name = dir_name(args.branch)
+    branch = canonical_branch(args.branch)
+    wt = ensure_worktree(branch, report=False)
+    sync_worktree(wt, branch, args.stale_ok)
+    name = dir_name(branch)
     if args.server:
         ensure_worktree(args.server)
         args.server = dir_name(args.server)
