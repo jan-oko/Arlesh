@@ -125,7 +125,11 @@ For an Android phone, a clean pushed tree whose commit already has a successful 
 run installs that CI build instead of compiling (needs an authenticated `gh`); `--local` forces a
 local build and `--ci` triggers the CI build and waits for it. Run `npm run box -- keystore init`
 once so CI and local builds share a signing key and update one another (otherwise reinstall with
-`--reinstall`).
+`--reinstall`). `run` fast-forwards a clean worktree that is behind `origin/<branch>` (`--stale-ok`
+builds a dirty or diverged one anyway), and a worktree folder name (`qa-2026-11-round`) works for its
+branch. A phone is found among already-connected adb transports, then by `adb mdns`/`avahi-browse`;
+`devices add --serial <hardware serial>` matches a tailnet-named phone by serial, and `--ssh
+<host>[:port]` (Termux sshd) installs over `scp` + `termux-open` when adb cannot reach it.
 The tool is `scripts/box.py`, see `docs/spec/client-mode.md` for the full reference.
 
 ## Stack

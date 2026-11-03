@@ -1516,5 +1516,88 @@ class WirelessDevices(IsolatedEnv):
             box.device_add("x", "android", "h", serial="10.0.0.5:5555")
 
 
+class SshFallback(IsolatedEnv):
+    """Fake scp and ssh that log their argv, as a Termux sshd on port 8022 would be reached."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.log = self.tmp / "calls.log"
+        fake = 'echo "$0 $*" >> "$FAKE_LOG"; exit ${FAKE_EXIT:-0}'
+        bindir = fake_bin(self.tmp, "scp", fake)
+        fake_bin(self.tmp, "ssh", fake)
+        os.environ.update(
+            PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}", FAKE_LOG=str(self.log)
+        )
+        self.target = box.Target("miniseer", "android", "miniseer", ssh="miniseer:8022")
+        apk = box.android_apk("b")
+        apk.parent.mkdir(parents=True)
+        apk.write_text("apk")
+
+    def calls(self) -> list[str]:
+        return [
+            c.replace(f"{self.tmp}/bin/", "") for c in self.log.read_text().splitlines()
+        ]
+
+    def test_scp_then_termux_open_with_batchmode_and_the_port(self) -> None:
+        with mock.patch.object(box, "note") as note:
+            box.install_over_ssh("b", self.target, "no route")
+        scp, ssh = self.calls()
+        self.assertTrue(
+            scp.startswith("scp -o BatchMode=yes -o ConnectTimeout=10 -P 8022 ")
+        )
+        self.assertTrue(scp.endswith("miniseer:storage/downloads/arlesh-b.apk"))
+        self.assertTrue(
+            ssh.startswith("ssh -o BatchMode=yes -o ConnectTimeout=10 -p 8022 miniseer")
+        )
+        self.assertTrue(ssh.endswith("termux-open ~/storage/downloads/arlesh-b.apk"))
+        said = " ".join(c.args[0] for c in note.call_args_list)
+        self.assertIn("not pre-bound", said)
+        self.assertIn("adb pair", said)
+
+    def test_a_user_and_no_port(self) -> None:
+        prefix, dest = box.ssh_argv("ssh", "u0_a1@miniseer")
+        self.assertEqual((prefix[-1], dest), ("ConnectTimeout=10", "u0_a1@miniseer"))
+
+    def test_a_failed_scp_says_how_to_fix_termux(self) -> None:
+        os.environ["FAKE_EXIT"] = "1"
+        with mock.patch.object(box, "note"), self.assertRaises(box.BoxError) as ctx:
+            box.install_over_ssh("b", self.target, "no route")
+        self.assertIn("termux-setup-storage", str(ctx.exception))
+        self.assertEqual(len(self.calls()), 1)
+
+    def test_run_android_falls_back_only_when_ssh_is_registered(self) -> None:
+        args = box.parse_args(["run", "b", "miniseer"])
+        boom = box.BoxError("Could not reach miniseer\nmore")
+        with (
+            mock.patch.object(box, "android_env"),
+            mock.patch.object(box, "resolve_device", side_effect=boom),
+            mock.patch.object(box, "prepare_apk", return_value="s"),
+            mock.patch.object(box, "install_over_ssh") as over,
+            mock.patch.object(box, "package_installed") as installed,
+        ):
+            box.run_android("b", self.tmp, self.target, args)
+            over.assert_called_once()
+            installed.assert_not_called()
+            with self.assertRaises(box.BoxError):
+                box.run_android("b", self.tmp, replace(self.target, ssh=None), args)
+
+    def test_devices_add_takes_ssh(self) -> None:
+        a = box.parse_args(
+            [
+                "devices",
+                "add",
+                "miniseer",
+                "--os",
+                "android",
+                "--host",
+                "miniseer",
+                "--ssh",
+                "miniseer:8022",
+            ]
+        )
+        box.cmd_devices(a)
+        self.assertEqual(box.load_devices()["miniseer"].ssh, "miniseer:8022")
+
+
 if __name__ == "__main__":
     unittest.main()

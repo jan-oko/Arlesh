@@ -402,7 +402,7 @@ npm run box -- stop all                                     # apps and servers
 uncommitted diff, per branch and OS, kept in `$XDG_STATE_HOME/arlesh/box/`), installs on an Android
 device only when that device lacks this build or the package, and always launches. The target is
 `desktop` (this machine, built in) or a name registered with `devices add <name> --os
-android|desktop [--host host[:port]]`; the registry is per user, in
+android|desktop [--host host[:port]] [--serial S] [--ssh [user@]host[:port]]`; the registry is per user, in
 `$XDG_CONFIG_HOME/arlesh/box-devices.json`, never in the repo. Without a target, `run` reuses the last
 one.
 
@@ -442,19 +442,61 @@ add -b <branch> --track origin/<branch>` (a local branch of that name is used as
 if it is behind or has diverged), with the usual `node_modules` symlink. A branch that exists neither
 locally nor on origin is an error; the tool never makes a branch off master. `<dir>` is the branch
 with `/` replaced by `-` (`qa/2026-11-round` is `qa-2026-11-round`), through one helper that also names
-the instance, the server and the Android package; a directory that holds another branch is an error.
-An existing worktree is used as-is, never pulled or reset; if it is behind origin, `run` prints
-`<branch> is N commits behind origin; pull to update`. `list` shows the branch beside the directory
-when they differ.
+the instance, the server and the Android package. Either spelling is accepted: `qa-2026-11-round` is
+mapped to `qa/2026-11-round` when that folder holds it, and a folder holding an unrelated branch is an
+error that names the branch to use. `list` shows the branch beside the directory when they differ.
 
-**Finding an Android device.** The registered host (`miniseer`, a MagicDNS name, a LAN address) is
-resolved with `getaddrinfo` and matched, by any of its addresses, against `adb mdns services`
-(`_adb-tls-connect`), which lists the phone's LAN `ip:port` under an `adb-<serial>-…` service. The
-first time a device is seen its adb serial is stored in the registry, and later runs match the mdns
-entry by serial first, since tailnet and LAN addresses differ for one phone. If nothing matches and a
-port was registered, `adb connect host:port` is tried; otherwise the run fails and lists the mdns
-entries it saw. The server URL handed to the app is this machine's tailnet address (`tailscale ip -4`)
-or, without one, its LAN address.
+**`run` never builds a stale commit.** Before choosing between a CI and a local build it fetches
+`origin/<branch>`. A worktree that is behind and clean is fast-forwarded (`git merge --ff-only`) and
+`run` says so; one that is behind and dirty, or has diverged, is refused with the reason and the
+fix, unless `--stale-ok` builds the current `HEAD` anyway. A worktree that is ahead (unpushed)
+builds locally as before. `--server <branch>`'s worktree is never touched.
+
+**Finding an Android device.** The first look is `adb devices -l`, for a transport that is already
+connected: an `adb-<serial>-…._adb-tls-connect._tcp` (mDNS auto-connect) transport by serial, an
+`ip:port` transport by any address the registered host resolves to (`miniseer.local` matches by its LAN
+address), and, with a serial known and nothing else matching, each transport's
+`adb shell getprop ro.serialno`. A matched transport is used as it is. Otherwise the phone is
+discovered: `adb mdns services`, then, when that is empty (adb's mdns shares port 5353 with avahi,
+systemd-resolved and Chromium) or missing, `avahi-browse -rpt _adb-tls-connect._tcp` (the IPv4 `=`
+lines, with the TXT `serial=`). Discovery matches by serial first, then by address. The wireless
+debugging port changes on every toggle, so the port is always the discovered one.
+
+The hardware serial is stored in the registry the first time a device is connected, read with
+`adb shell getprop ro.serialno` (over Wi-Fi `get-serialno` answers with the transport name); an address
+or transport name is never stored. `devices add <name> --os android --serial <serial>` registers it up
+front, so a tailnet name can be matched by serial alone.
+
+*Off the LAN / tailnet hosts.* adbd listens on every interface, so when the host resolves to a tailnet
+address (100.64.0.0/10) and discovery gives a port, box connects to `<tailnet-ip>:<port>` first, then
+to the LAN address. On the first run with no serial known, nothing can match the LAN listing, so box
+tries `adb connect <tailnet-ip>:<port>` for each discovered port (at most three, each bounded to 8 s): a
+connect that answers proves it is the same phone, and its serial and port (`last_port`) are stored.
+With no discovery at all (off the LAN there is no mDNS), box tries the registered `host:port`, then
+`host:<last_port>`. When all of that fails the error says to run `adb tcpip 5555` once over USB (or
+from Termux) and register `host:5555`, which does not change. Box never pairs.
+
+*Termux/SSH fallback (opt-in).* `devices add <name> --os android --host … --ssh [user@]host[:port]`
+(Termux sshd listens on 8022). When adb cannot reach the device and `--ssh` is set, `run` builds or
+fetches the APK as usual, `scp`s it to `~/storage/downloads/arlesh-<branch>.apk` and runs
+`ssh … termux-open` on it, which opens Android's installer for the person to confirm. It needs sshd
+with the key authorised, `termux-setup-storage` run once, and Termux:API. `ssh` and `scp` run with
+`BatchMode=yes` and never prompt. Over this path the app cannot be pre-bound to a server (that needs
+the `am start` extras, which need adb), nothing is recorded as installed, and box says so, and how to
+pair adb (`adb pair <host>:<pairing port>`).
+
+The server URL handed to the app is this machine's tailnet address (`tailscale ip -4`) or, without one,
+its LAN address.
+
+**Server lifecycle.** `server start` records `server.pid` only once the server answers, so a failed
+start (the database held by another writer, say) leaves the previous record alone and prints the pid
+that holds `data/arlesh.db.lock` (from `lsof`, else `fuser`), with `box server stop <branch>` or
+`kill <pid>`. `server stop` SIGTERMs the server's process group (it starts in its own session), waits
+up to 10 s, SIGKILLs the group, then does the same to anything still holding the lock, and checks the
+port and the lock are free. arlesh-server itself bounds uvicorn's graceful shutdown
+(`timeout_graceful_shutdown`, 5 s) and ends `/events` streams as soon as shutdown begins, so a
+connected desktop no longer keeps a stopped server alive. Children started inside a worktree's project
+run without `uv run --script`'s `VIRTUAL_ENV`, which made uv warn on every start.
 
 **Every `run` comes up already connected**, on desktop and Android alike, to the branch's own server
 (started if it is not up; the first start in a fresh worktree builds arlesh-py and says so).

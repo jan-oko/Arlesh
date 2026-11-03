@@ -6,7 +6,7 @@
 """Build and run isolated Arlesh instances per branch worktree: `npm run box -- <command>`.
 
     box list
-    box devices add <name> --os android|desktop [--host host[:port]]
+    box devices add <name> --os android|desktop [--host host[:port]] [--serial S] [--ssh [user@]host[:port]]
     box devices list
     box devices rm <name>
     box run <branch> [<target>] [--server <branch> | --standalone] [--no-firebase] [--force] [--stale-ok]
@@ -2439,11 +2439,8 @@ def ci_mode(args: argparse.Namespace) -> str:
     return LOCAL if args.local else CI if args.ci else AUTO
 
 
-def run_android(name: str, wt: Path, target: Target, args: argparse.Namespace) -> None:
-    android_env()
-    serial = resolve_device(
-        target
-    )  # before a long build: fail early on a missing device
+def prepare_apk(name: str, wt: Path, args: argparse.Namespace) -> str:
+    """The branch's APK at `android_apk(name)`, from CI or built locally; its build stamp."""
     stamp = worktree_stamp(wt)
     ci_apk = pick_ci_build(wt, ci_mode(args))
     if ci_apk:
@@ -2459,6 +2456,82 @@ def run_android(name: str, wt: Path, target: Target, args: argparse.Namespace) -
         record_built(ANDROID, name, stamp)
     else:
         print(f"{name}: android build is current, not rebuilding.")
+    return stamp
+
+
+SSH_APK_DIR = "storage/downloads"  # under the Termux home: Android's Downloads, via termux-setup-storage
+
+
+def ssh_argv(tool: str, spec: str) -> tuple[list[str], str]:
+    """`ssh`/`scp` argv prefix and the `[user@]host` for a `[user@]host[:port]` spec.
+
+    BatchMode=yes: a missing key or an unknown host key is an error, never a prompt.
+    """
+    host, _, port = (
+        spec.rpartition(":") if re.search(r":\d+$", spec) else (spec, "", "")
+    )
+    flag = "-P" if tool == "scp" else "-p"
+    base = [tool, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
+    return (base + ([flag, port] if port else []), host)
+
+
+def ssh_run(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        list(argv), capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False, timeout=300
+    )  # fmt: skip
+
+
+def install_over_ssh(name: str, target: Target, why: str) -> None:
+    """Hand the APK to a Termux sshd: scp it to Downloads and open Android's installer.
+
+    The fallback for a device adb cannot reach. It cannot pre-bind the app to a server (no
+    `am start` extras), and the person confirms the install on the phone.
+    """
+    assert target.ssh
+    note(
+        f"adb cannot reach {target.name} ({why.splitlines()[0]}); falling back to ssh ({target.ssh})."
+    )
+    remote = f"{SSH_APK_DIR}/arlesh-{name}.apk"
+    prefix, dest = ssh_argv("scp", target.ssh)
+    sent = ssh_run([*prefix, str(android_apk(name)), f"{dest}:{remote}"])
+    if sent.returncode != 0:
+        raise die(
+            f"scp to {target.ssh} failed: {sent.stderr.strip()}\nTermux needs sshd running with "
+            f"your key authorised, and `termux-setup-storage` run once for ~/{SSH_APK_DIR}."
+        )
+    prefix, dest = ssh_argv("ssh", target.ssh)
+    opened = ssh_run([*prefix, dest, "termux-open", f"~/{remote}"])
+    if opened.returncode != 0:
+        raise die(
+            f"termux-open failed on {target.ssh}: {opened.stderr.strip()}\nIt needs the Termux:API "
+            f"app and `pkg install termux-api`. The APK is at ~/{remote} on the phone: open it "
+            f"from a file manager."
+        )
+    print(f"sent ~/{remote} to {target.name}; confirm the install on the phone.")
+    note(
+        "Over ssh the app is not pre-bound to a server (that needs `am start` extras through adb), "
+        "so it opens on its connect screen, and nothing is recorded as installed. To get the "
+        "full flow, pair adb once: on the phone, Developer options > Wireless debugging > Pair "
+        f"device with pairing code, then `adb pair <host>:<pairing port>`, and run {CMD} run again."
+    )
+
+
+def run_android(name: str, wt: Path, target: Target, args: argparse.Namespace) -> None:
+    android_env()
+    serial: str | None
+    adb_error = ""
+    try:
+        serial = resolve_device(
+            target
+        )  # before a long build: fail early on a missing device
+    except BoxError as exc:
+        if not target.ssh:
+            raise
+        serial, adb_error = None, str(exc)
+    stamp = prepare_apk(name, wt, args)
+    if serial is None:
+        install_over_ssh(name, target, adb_error)
+        return
     had_package = package_installed(serial, box_package(name)) and not args.reinstall
     reason = (
         "--reinstall"
