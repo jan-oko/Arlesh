@@ -10,6 +10,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -61,9 +62,14 @@ class CiPatch(unittest.TestCase):
     def make_tree(self, root: Path) -> tuple[Path, Path]:
         app = root / "src-tauri/gen/android/app"
         (app / "src/main/res/values").mkdir(parents=True)
-        gradle, strings = app / "build.gradle.kts", app / "src/main/res/values/strings.xml"
+        gradle, strings = (
+            app / "build.gradle.kts",
+            app / "src/main/res/values/strings.xml",
+        )
         gradle.write_text('android {\n  applicationId = "com.atai.arlesh"\n}\n')
-        strings.write_text('<resources><string name="app_name">Arlesh</string></resources>')
+        strings.write_text(
+            '<resources><string name="app_name">Arlesh</string></resources>'
+        )
         return gradle, strings
 
     def test_patches_both_files_idempotently_with_the_run_names(self) -> None:
@@ -75,7 +81,9 @@ class CiPatch(unittest.TestCase):
             first = (gradle.read_text(), strings.read_text())
             self.assertIn(f'applicationId = "{box.box_package(branch)}"', first[0])
             self.assertIn("Arlesh (289-pairing)", first[1])
-            self.assertEqual(box.box_package(branch), "com.atai.arlesh.box.b289_pairing")
+            self.assertEqual(
+                box.box_package(branch), "com.atai.arlesh.box.b289_pairing"
+            )
             self.assertEqual(box.main(args), 0)
             self.assertEqual((gradle.read_text(), strings.read_text()), first)
 
@@ -761,7 +769,12 @@ class CiDecision(CiFixture):
         assert apk is not None
         self.assertEqual(apk.read_text(), "apk-of-run-7")
         self.assertEqual(apk.parent, box.ci_cache_dir())
-        self.assertTrue(any(c.startswith("run download 7 -n " + self.artifact) for c in self.gh_calls()))
+        self.assertTrue(
+            any(
+                c.startswith("run download 7 -n " + self.artifact)
+                for c in self.gh_calls()
+            )
+        )
 
     def test_dirty_tree_builds_locally_without_asking_gh(self) -> None:
         self.matching_run()
@@ -783,11 +796,16 @@ class CiDecision(CiFixture):
         self.assertIsNone(box.pick_ci_build(self.wt, box.AUTO))
 
     def test_no_run_for_head_builds_locally(self) -> None:
-        self.gh_state(runs=[self.run_entry(headSha="0" * 40)], artifacts={"7": [self.artifact]})
+        self.gh_state(
+            runs=[self.run_entry(headSha="0" * 40)], artifacts={"7": [self.artifact]}
+        )
         self.assertIsNone(box.pick_ci_build(self.wt, box.AUTO))
 
     def test_failed_run_or_missing_artifact_does_not_count(self) -> None:
-        self.gh_state(runs=[self.run_entry(conclusion="failure")], artifacts={"7": [self.artifact]})
+        self.gh_state(
+            runs=[self.run_entry(conclusion="failure")],
+            artifacts={"7": [self.artifact]},
+        )
         self.assertIsNone(box.pick_ci_build(self.wt, box.AUTO))
         self.gh_state(runs=[self.run_entry()], artifacts={"7": []})
         self.assertIsNone(box.pick_ci_build(self.wt, box.AUTO))
@@ -806,7 +824,14 @@ class CiDecision(CiFixture):
         assert apk is not None
         self.assertEqual(apk.read_text(), "apk-of-run-42")
         calls = self.gh_calls()
-        self.assertTrue(any(c.startswith("workflow run bundles.yml --ref feat -f box=true -f publish=false") for c in calls))
+        self.assertTrue(
+            any(
+                c.startswith(
+                    "workflow run bundles.yml --ref feat -f box=true -f publish=false"
+                )
+                for c in calls
+            )
+        )
 
     def test_ci_flag_waits_for_an_unfinished_run(self) -> None:
         self.gh_state(
@@ -947,7 +972,9 @@ class SigningSelection(IsolatedEnv):
         ks.parent.mkdir(parents=True)
         ks.write_text("k")
         sign = box.choose_signing()
-        self.assertEqual((sign.keystore, sign.alias, sign.shared), (ks, "arlesh-box", True))
+        self.assertEqual(
+            (sign.keystore, sign.alias, sign.shared), (ks, "arlesh-box", True)
+        )
 
     def test_debug_keystore_fallback_with_a_notice(self) -> None:
         debug = box.home() / ".android" / "debug.keystore"
@@ -955,7 +982,9 @@ class SigningSelection(IsolatedEnv):
         debug.write_text("d")
         with mock.patch.object(box, "note") as note:
             sign = box.choose_signing()
-        self.assertEqual((sign.keystore, sign.alias, sign.shared), (debug, "androiddebugkey", False))
+        self.assertEqual(
+            (sign.keystore, sign.alias, sign.shared), (debug, "androiddebugkey", False)
+        )
         self.assertIn("keystore init", note.call_args.args[0])
 
 
@@ -1055,6 +1084,170 @@ class Arguments(unittest.TestCase):
 
     def test_default_command_is_list(self) -> None:
         self.assertIs(box.parse_args([]).fn, box.cmd_list)
+
+
+def fake_bin(root: Path, name: str, script: str) -> Path:
+    """An executable `name` in `root/bin`, for a test that puts that directory first on PATH."""
+    bindir = root / "bin"
+    bindir.mkdir(exist_ok=True)
+    path = bindir / name
+    path.write_text("#!/bin/sh\n" + script + "\n")
+    path.chmod(0o755)
+    return bindir
+
+
+class ProjectEnv(unittest.TestCase):
+    def test_the_scripts_virtualenv_is_not_leaked_into_children(self) -> None:
+        leaked = {
+            "VIRTUAL_ENV": "/x/uv/environments-v2/box-1",
+            "UV_RUN_RECURSION_DEPTH": "1",
+            "UV_INTERNAL__PARENT_INTERPRETER": "/x/python",
+            "KEEP": "1",
+        }
+        with mock.patch.dict(os.environ, leaked):
+            env = box.project_env({"EXTRA": "2"})
+        self.assertEqual((env["KEEP"], env["EXTRA"]), ("1", "2"))
+        for gone in (
+            "VIRTUAL_ENV",
+            "UV_RUN_RECURSION_DEPTH",
+            "UV_INTERNAL__PARENT_INTERPRETER",
+        ):
+            self.assertNotIn(gone, env)
+
+    def test_spawn_detached_passes_the_clean_env_and_can_skip_the_pidfile(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.dict(os.environ, {"VIRTUAL_ENV": "/leak"}),
+            mock.patch.object(box.subprocess, "Popen") as popen,
+        ):
+            popen.return_value.pid = 4242
+            pidfile = Path(tmp) / "x.pid"
+            self.assertEqual(
+                box.spawn_detached(["true"], None, Path(tmp) / "x.log", None), 4242
+            )
+            self.assertFalse(pidfile.exists())
+            self.assertNotIn("VIRTUAL_ENV", popen.call_args.kwargs["env"])
+            self.assertTrue(popen.call_args.kwargs["start_new_session"])
+
+
+class StopServer(IsolatedEnv):
+    def test_a_process_that_ignores_sigterm_is_killed_with_its_group(self) -> None:
+        proc = subprocess.Popen(
+            ["sh", "-c", "trap '' TERM; sleep 30 & wait"], start_new_session=True
+        )
+        self.addCleanup(proc.kill)
+        time.sleep(0.3)  # let the shell install its trap
+        with mock.patch.object(box, "note"):
+            self.assertTrue(box.stop_pid(proc.pid, grace=0.5))
+        self.assertIsNotNone(proc.poll())
+        self.assertFalse(box.pid_alive(proc.pid))
+
+    def test_stop_pid_on_a_dead_pid_is_a_no_op(self) -> None:
+        proc = subprocess.Popen(["true"])
+        proc.wait()
+        self.assertFalse(box.stop_pid(proc.pid))
+
+    def test_lock_holders_reads_lsof_and_falls_back_to_fuser(self) -> None:
+        db = self.tmp / "data" / "arlesh.db"
+        db.parent.mkdir(parents=True)
+        db.with_name("arlesh.db.lock").write_text("")
+        both = fake_bin(self.tmp, "lsof", "echo 2843941")
+        with mock.patch.dict(os.environ, {"PATH": f"{both}:/usr/bin:/bin"}):
+            self.assertEqual(box.lock_holders(db), [2843941])
+        fuser_only = self.tmp / "only"
+        fuser_only.mkdir()
+        bindir = fake_bin(fuser_only, "fuser", "echo '  77 78'")
+        with (
+            mock.patch.object(
+                box.shutil, "which", lambda n: f"{bindir}/{n}" if n == "fuser" else None
+            ),
+            mock.patch.object(box, "capture") as cap,
+        ):
+            cap.return_value = subprocess.CompletedProcess([], 0, "  77 78\n", "")
+            self.assertEqual(box.lock_holders(db), [77, 78])
+
+    def test_no_lock_file_means_no_holder(self) -> None:
+        self.assertEqual(box.lock_holders(self.tmp / "none.db"), [])
+
+    def test_stop_server_takes_the_recorded_group_then_the_real_holder(self) -> None:
+        sdir = box.server_dir("b")
+        sdir.mkdir(parents=True)
+        (sdir / "server.pid").write_text("100")
+        stopped: list[int] = []
+        holders = [[200], []]  # held before the second look, free after
+
+        def fake_stop(pid: int, grace: float = 10.0) -> bool:
+            stopped.append(pid)
+            return True
+
+        with (
+            mock.patch.object(box, "stop_pid", fake_stop),
+            mock.patch.object(box, "read_pid", return_value=100),
+            mock.patch.object(
+                box,
+                "lock_holders",
+                side_effect=lambda _db: holders.pop(0) if holders else [],
+            ),
+            mock.patch.object(box, "port_open", return_value=False),
+        ):
+            box.stop_server("b")
+        self.assertEqual(stopped, [100, 200])
+        self.assertFalse((sdir / "server.pid").exists())
+
+
+class StartServer(IsolatedEnv):
+    def setUp(self) -> None:
+        super().setUp()
+        self.sdir = box.server_dir("b")
+        self.sdir.mkdir(parents=True)
+        (self.sdir / "port").write_text("14700")
+        (self.sdir / "server.pid").write_text("2843938")
+        (self.sdir / "host").write_text("0.0.0.0")
+
+    def start(self, *, up: bool, log: str = "") -> None:
+        def spawn(cmd, pidfile, logfile, cwd, env=None):  # type: ignore[no-untyped-def]
+            self.assertIsNone(pidfile)
+            logfile.write_text(log)
+            return 555
+
+        with (
+            mock.patch.object(box, "server_running", return_value=False),
+            mock.patch.object(box, "build_server"),
+            mock.patch.object(box, "seed_server"),
+            mock.patch.object(box, "py_dir", return_value=self.tmp),
+            mock.patch.object(box, "spawn_detached", spawn),
+            mock.patch.object(box, "http_up", return_value=up),
+            mock.patch.object(box, "wait_gone", return_value=True),
+            mock.patch.object(box, "stop_pid") as stop,
+            mock.patch.object(box, "lock_holders", return_value=[2843941]),
+            mock.patch.object(box.time, "sleep"),
+        ):
+            self.stopped = stop
+            box.server_start("b", "127.0.0.1")
+
+    def test_the_pid_is_written_only_after_the_server_answers(self) -> None:
+        self.start(up=True)
+        self.assertEqual((self.sdir / "server.pid").read_text(), "555")
+        self.assertEqual((self.sdir / "host").read_text(), "127.0.0.1")
+
+    def test_a_failed_start_keeps_the_previous_pid_and_names_the_lock_holder(
+        self,
+    ) -> None:
+        log = "NotPermitted: arlesh.db is held by another writer"
+        with self.assertRaises(box.BoxError) as caught:
+            self.start(up=False, log=log)
+        self.assertEqual((self.sdir / "server.pid").read_text(), "2843938")
+        self.assertEqual((self.sdir / "host").read_text(), "0.0.0.0")
+        self.stopped.assert_called_once()
+        message = str(caught.exception)
+        self.assertIn("pid 2843941", message)
+        self.assertIn("server stop b", message)
+        self.assertIn("kill 2843941", message)
+
+    def test_another_failure_does_not_blame_the_database(self) -> None:
+        with self.assertRaises(box.BoxError) as caught:
+            self.start(up=False, log="Traceback: boom")
+        self.assertNotIn("held by", str(caught.exception))
 
 
 if __name__ == "__main__":

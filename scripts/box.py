@@ -107,6 +107,7 @@ OSES = (ANDROID, DESKTOP)
 CMD = "npm run box --"
 LOOPBACK = "127.0.0.1"
 PUBLIC = "0.0.0.0"
+STOP_GRACE_SECONDS = 10.0  # SIGTERM, then this long, then SIGKILL
 MAIN_ACTIVITY = "com.atai.arlesh.MainActivity"
 URL_EXTRA = "arlesh_box_url"
 TOKEN_EXTRA = "arlesh_box_token"
@@ -349,6 +350,22 @@ def need_cmd(name: str, hint: str) -> None:
         raise die(f"'{name}' is not on PATH. {hint}")
 
 
+def project_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    """This process's environment, minus what `uv run --script` leaks into a project's own `uv run`.
+
+    `VIRTUAL_ENV` points at the script's environment, so a child `uv run` inside a worktree
+    warns that it "does not match the project environment" and ignores it, on every start.
+    """
+    kept = {
+        k: v
+        for k, v in os.environ.items()
+        if k != "VIRTUAL_ENV"
+        and not k.startswith("UV_INTERNAL")
+        and k != "UV_RUN_RECURSION_DEPTH"
+    }
+    return {**kept, **(extra or {})}
+
+
 def run_cmd(
     cmd: Sequence[str],
     *,
@@ -357,8 +374,7 @@ def run_cmd(
     what: str | None = None,
 ) -> None:
     """Run with inherited stdio; a non-zero exit is a BoxError."""
-    merged = {**os.environ, **env} if env else None
-    result = subprocess.run(list(cmd), cwd=cwd, env=merged, check=False)
+    result = subprocess.run(list(cmd), cwd=cwd, env=project_env(env), check=False)
     if result.returncode != 0:
         raise die(f"{what or cmd[0]} failed (exit {result.returncode}).")
 
@@ -686,27 +702,77 @@ def read_pid(pidfile: Path) -> int | None:
         return None
 
 
+def signal_target(pid: int, sig: int) -> None:
+    """Signal `pid`'s whole group, but only when it is a session leader: a recycled or plain-child
+    pid must not have a signal fired into some unrelated process group."""
+    try:
+        leader = os.getsid(pid) == pid
+    except OSError:
+        leader = False
+    with contextlib.suppress(OSError):
+        if leader:
+            os.killpg(pid, sig)
+        else:
+            os.kill(pid, sig)
+
+
+def stop_pid(pid: int, grace: float = STOP_GRACE_SECONDS) -> bool:
+    """SIGTERM `pid` (its group when it leads one), wait up to `grace`, then SIGKILL.
+
+    True when it was alive to begin with.
+    """
+    if not pid_alive(pid):
+        return False
+    signal_target(pid, signal.SIGTERM)
+    if not wait_gone(pid, grace):
+        note(f"  pid {pid} ignored SIGTERM for {grace:g}s: sending SIGKILL")
+        signal_target(pid, signal.SIGKILL)
+        wait_gone(pid, 3)
+    return True
+
+
 def kill_pidfile(pidfile: Path, what: str, name: str) -> None:
     pid = read_pid(pidfile)
-    if pid is None:
-        pidfile.unlink(missing_ok=True)
-        return
-    if pid_alive(pid):
-        # Take the whole group, but only when the pid is a session leader: a recycled or plain-child
-        # pid must not have a signal fired into some unrelated process group.
-        try:
-            leader = os.getsid(pid) == pid
-        except OSError:
-            leader = False
-        try:
-            if leader:
-                os.killpg(pid, signal.SIGTERM)
-            else:
-                os.kill(pid, signal.SIGTERM)
-        except OSError:
-            pass
+    if pid is not None and stop_pid(pid):
         print(f"stopped {name} {what} (pid {pid})")
     pidfile.unlink(missing_ok=True)
+
+
+def wait_gone(pid: int, seconds: float) -> bool:
+    """Wait for `pid` to exit; a child of ours is reaped so that a zombie does not count as alive."""
+    deadline = time.monotonic() + seconds
+    while True:
+        with contextlib.suppress(ChildProcessError, OSError):
+            os.waitpid(pid, os.WNOHANG)
+        if not pid_alive(pid):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.1)
+
+
+def lock_holders(db: Path) -> list[int]:
+    """Pids holding `<db>.lock` open, from `lsof` or else `fuser`; empty when none or unknowable.
+
+    The lock file records no pid of its own: the lock is the operating system's, not the contents.
+    """
+    lock = db.with_name(db.name + ".lock")
+    if not lock.exists():
+        return []
+    for cmd in (["lsof", "-t", "--", str(lock)], ["fuser", str(lock)]):
+        if shutil.which(cmd[0]) is None:
+            continue
+        pids = [int(t) for t in re.findall(r"\d+", capture(cmd).stdout)]
+        pids = [p for p in pids if p != os.getpid()]
+        if pids:
+            return pids
+    return []
+
+
+def port_open(port: int, host: str = LOOPBACK) -> bool:
+    with socket.socket() as sock:
+        sock.settimeout(1)
+        return sock.connect_ex((host, port)) == 0
 
 
 def http_up(url: str) -> bool:
@@ -719,13 +785,16 @@ def http_up(url: str) -> bool:
 
 def spawn_detached(
     cmd: Sequence[str],
-    pidfile: Path,
+    pidfile: Path | None,
     log: Path,
     cwd: Path | None,
     env: dict[str, str] | None = None,
 ) -> int:
-    """Start in a new session (so it outlives this shell); the pid recorded is the session leader."""
-    merged = {**os.environ, **env} if env else None
+    """Start in a new session (so it outlives this shell); the pid recorded is the session leader.
+
+    With no `pidfile` nothing is recorded: the caller writes it once the process proves itself.
+    """
+    merged = project_env(env)
     with open(log, "wb") as out:
         proc = subprocess.Popen(
             list(cmd),
@@ -736,7 +805,8 @@ def spawn_detached(
             stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
-    pidfile.write_text(str(proc.pid))
+    if pidfile is not None:
+        pidfile.write_text(str(proc.pid))
     return proc.pid
 
 
@@ -1033,13 +1103,6 @@ def needs_public_restart(running: bool, current: str, wanted: str) -> bool:
     return running and wanted == PUBLIC and current != PUBLIC
 
 
-def wait_exit(pid: int | None, seconds: int = 10) -> None:
-    for _ in range(seconds * 10):
-        if pid is None or not pid_alive(pid):
-            return
-        time.sleep(0.1)
-
-
 def server_start(name: str, host: str = LOOPBACK, widen: bool = False) -> None:
     """Start `name`'s server. With `widen`, a running loopback server is restarted public."""
     sdir = server_dir(name)
@@ -1052,9 +1115,7 @@ def server_start(name: str, host: str = LOOPBACK, widen: bool = False) -> None:
                 f"restarting it on {host} (anyone on the network can reach the port, "
                 "but every request needs a token)"
             )
-            pid = read_pid(sdir / "server.pid")
-            kill_pidfile(sdir / "server.pid", "server", name)
-            wait_exit(pid)
+            stop_server(name)
         else:
             print(f"  server {name:<21} already up on {port}")
             if current != host and not (current == PUBLIC and host == LOOPBACK):
@@ -1064,25 +1125,48 @@ def server_start(name: str, host: str = LOOPBACK, widen: bool = False) -> None:
             return
     build_server(name)
     seed_server(name)
-    spawn_detached(
+    log = sdir / "server.log"
+    pid = spawn_detached(
         ["uv", "run", "--no-sync", "arlesh-server", "--db", str(server_db(name)),
          "--host", host, "--port", str(port)],
-        sdir / "server.pid",
-        sdir / "server.log",
+        None,
+        log,
         py_dir(name),
     )  # fmt: skip
-    (sdir / "host").write_text(host)
+    # The pid is recorded only once the server answers: a start that fails (the database held by
+    # another writer, say) must not displace the record of the server that is really holding it.
     for _ in range(60):
         if http_up(f"http://127.0.0.1:{port}/openapi.json"):
-            print(
-                f"  server {name:<21} up on {port}, db {server_db(name)}, logs {sdir / 'server.log'}"
-            )
+            (sdir / "server.pid").write_text(str(pid))
+            (sdir / "host").write_text(host)
+            print(f"  server {name:<21} up on {port}, db {server_db(name)}, logs {log}")
             return
-        if not server_running(name):
+        if wait_gone(pid, 0):
             break
         time.sleep(1)
-    raise die(
-        f"arlesh-server '{name}' never came up on port {port} — see {sdir / 'server.log'}"
+    stop_pid(pid, 3)
+    raise die(failed_start_message(name, port, log))
+
+
+def failed_start_message(name: str, port: int, log: Path) -> str:
+    """Why a start failed, naming the process holding the database when that was the reason."""
+    text = f"arlesh-server '{name}' never came up on port {port}: see {log}"
+    try:
+        held = "held by another writer" in log.read_text(errors="replace")
+    except OSError:
+        held = False
+    if not held:
+        return text
+    holders = lock_holders(server_db(name))
+    who = f"pid {', '.join(map(str, holders))}" if holders else "a process"
+    kill = (
+        f"kill {holders[0]}"
+        if holders
+        else "find it with: lsof " + str(server_db(name)) + ".lock"
+    )
+    return (
+        f"{text}\nThe database is held by {who} (not this start). "
+        f"Stop it with: {CMD} server stop {name}  (or: {kill}; add -9 if it ignores that)"
     )
 
 
@@ -1097,9 +1181,31 @@ def server_names(requested: Sequence[str]) -> list[str]:
     return [dir_name(b) for b in requested]
 
 
+def stop_server(name: str) -> None:
+    """Stop `name`'s server for good: its process group, then whoever still holds its database.
+
+    SIGTERM, ~10 s, SIGKILL, for the recorded pid's group and again for any other process holding
+    `data/arlesh.db.lock` (a server left half-dead by an earlier stop, its pid file already lost).
+    Then checks that the port and the lock are really free, and says so when they are not.
+    """
+    sdir = server_dir(name)
+    kill_pidfile(sdir / "server.pid", "server", name)
+    for holder in lock_holders(server_db(name)):
+        if stop_pid(holder):
+            print(f"stopped {name} server holder of the database (pid {holder})")
+    left = lock_holders(server_db(name))
+    if left:
+        note(
+            f"  {name}: the database lock is still held by pid {left[0]}; try: kill -9 {left[0]}"
+        )
+    port_file = sdir / "port"
+    if port_file.is_file() and port_open(server_port_for(name)):
+        note(f"  {name}: port {server_port_for(name)} is still in use")
+
+
 def server_stop(requested: Sequence[str]) -> None:
     for name in server_names(requested):
-        kill_pidfile(server_dir(name) / "server.pid", "server", name)
+        stop_server(name)
 
 
 def server_cli(
@@ -1125,6 +1231,7 @@ def server_cli(
             str(server_db(name)),
         ],
         cwd=pydir,
+        env=project_env(),
         capture_output=False,
         text=True,
         check=False,
@@ -1715,7 +1822,9 @@ def ci_blocker(wt: Path, branch: str) -> str | None:
     if dirty:
         return "the worktree has uncommitted or untracked changes"
     head = git_in(wt, "rev-parse", "HEAD").stdout.strip()
-    remote = git_in(wt, "rev-parse", "--verify", "--quiet", f"origin/{branch}").stdout.strip()
+    remote = git_in(
+        wt, "rev-parse", "--verify", "--quiet", f"origin/{branch}"
+    ).stdout.strip()
     if head != remote:
         return f"HEAD is not pushed (not equal to origin/{branch})"
     return None
@@ -1724,11 +1833,15 @@ def ci_blocker(wt: Path, branch: str) -> str | None:
 def gh_json(args: Sequence[str], cwd: Path) -> Any:
     res = capture(["gh", *args], cwd=cwd)
     if res.returncode != 0:
-        raise die(f"gh {' '.join(args[:2])} failed: {res.stderr.strip() or res.stdout.strip()}")
+        raise die(
+            f"gh {' '.join(args[:2])} failed: {res.stderr.strip() or res.stdout.strip()}"
+        )
     try:
         return json.loads(res.stdout or "null")
     except ValueError:
-        raise die(f"gh {' '.join(args[:2])} returned something that is not JSON.") from None
+        raise die(
+            f"gh {' '.join(args[:2])} returned something that is not JSON."
+        ) from None
 
 
 def list_bundle_runs(wt: Path, branch: str) -> list[dict[str, Any]]:
@@ -1773,7 +1886,9 @@ def trigger_ci(wt: Path, branch: str, sha: str) -> dict[str, Any]:
     )  # fmt: skip
     if fired.returncode != 0:
         raise die(f"Could not trigger {BUNDLES_WORKFLOW}: {fired.stderr.strip()}")
-    print(f"triggered {BUNDLES_WORKFLOW} (box=true, publish=false) on {branch}; waiting for it.")
+    print(
+        f"triggered {BUNDLES_WORKFLOW} (box=true, publish=false) on {branch}; waiting for it."
+    )
     poll = env_int("ARLESH_BOX_POLL_SECONDS", 15)
     deadline = time.monotonic() + env_int("ARLESH_BOX_CI_TIMEOUT_SECONDS", 3600)
     last = ""
@@ -1809,7 +1924,9 @@ def download_ci(wt: Path, branch: str, sha: str, run: dict[str, Any]) -> Path:
         )  # fmt: skip
         apks = sorted(Path(tmp).rglob("*.apk"))
         if got.returncode != 0 or not apks:
-            raise die(f"Could not download the CI build of run {run.get('url')}: {got.stderr.strip()}")
+            raise die(
+                f"Could not download the CI build of run {run.get('url')}: {got.stderr.strip()}"
+            )
         shutil.move(str(apks[0]), dest)
     dest.with_name(dest.name + ".url").write_text(f"{run.get('url')}\n")
     return dest
@@ -1824,14 +1941,18 @@ def pick_ci_build(wt: Path, mode: str) -> Path | None:
     blocker = ci_blocker(wt, branch)
     if blocker:
         if mode == CI:
-            raise die(f"--ci needs a clean, pushed tree: {blocker}. Commit and push, or drop --ci.")
+            raise die(
+                f"--ci needs a clean, pushed tree: {blocker}. Commit and push, or drop --ci."
+            )
         print(f"building locally: {blocker}.")
         return None
     sha = git_in(wt, "rev-parse", "HEAD").stdout.strip()
     cached = ci_cached_apk(branch, sha)
     if cached.is_file():
         url = cached.with_name(cached.name + ".url")
-        print(f"using CI build {url.read_text().strip() if url.is_file() else cached} (cached).")
+        print(
+            f"using CI build {url.read_text().strip() if url.is_file() else cached} (cached)."
+        )
         return cached
     unavailable = gh_unavailable()
     if unavailable:
@@ -1887,9 +2008,7 @@ def apply_android_patch(gradle: Path, strings: Path, package: str, label: str) -
     if patched_id not in text:
         if 'applicationId = "com.atai.arlesh"' not in text:
             raise die("build.gradle.kts has no applicationId to patch.")
-        gradle.write_text(
-            text.replace('applicationId = "com.atai.arlesh"', patched_id)
-        )
+        gradle.write_text(text.replace('applicationId = "com.atai.arlesh"', patched_id))
     strings.write_text(xml_string_file(label))
 
 
@@ -2190,7 +2309,9 @@ def resolve_branches(requested: Sequence[str]) -> list[str]:
 def cmd_ci_patch(args: argparse.Namespace) -> None:
     """Patch a checkout in place for a CI box APK; CI discards the tree, so nothing is backed up."""
     gradle, strings = android_project_files(Path(args.root))
-    apply_android_patch(gradle, strings, box_package(args.branch), box_label(args.branch))
+    apply_android_patch(
+        gradle, strings, box_package(args.branch), box_label(args.branch)
+    )
     print(f"patched for {box_package(args.branch)} ({box_label(args.branch)})")
     print(f"segment={box_segment(args.branch)}")
 
@@ -2383,7 +2504,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     source = run.add_mutually_exclusive_group()
     source.add_argument(
-        "--local", action="store_true", help="build locally even if a CI build matches (android)"
+        "--local",
+        action="store_true",
+        help="build locally even if a CI build matches (android)",
     )
     source.add_argument(
         "--ci",
@@ -2402,7 +2525,9 @@ def build_parser() -> argparse.ArgumentParser:
     init = ksub.add_parser(
         "init", help="create the box keystore and upload it as a repo secret for CI"
     )
-    init.add_argument("--force", action="store_true", help="replace an existing keystore")
+    init.add_argument(
+        "--force", action="store_true", help="replace an existing keystore"
+    )
     ks.set_defaults(fn=cmd_keystore)
 
     ci = sub.add_parser(
@@ -2410,7 +2535,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="patch a checkout in place for a CI box APK (no backup; CI discards the tree)",
     )
     ci.add_argument("branch")
-    ci.add_argument("--root", default=str(repo_root()), help="the checkout (default: this repo)")
+    ci.add_argument(
+        "--root", default=str(repo_root()), help="the checkout (default: this repo)"
+    )
     ci.set_defaults(fn=cmd_ci_patch)
 
     stop = sub.add_parser(
