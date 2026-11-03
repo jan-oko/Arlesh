@@ -79,6 +79,7 @@ import argparse
 import base64
 import contextlib
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -484,7 +485,13 @@ class Target:
     name: str
     os: str
     host: str | None = None
-    adb_serial: str | None = None  # learned the first time the device is seen
+    adb_serial: str | None = (
+        None  # the hardware serial: learned on first sight, or `--serial`
+    )
+    last_port: str | None = (
+        None  # the wireless-debugging port that last worked (it changes)
+    )
+    ssh: str | None = None  # [user@]host[:port] of a Termux sshd: the install fallback
 
 
 def load_devices() -> dict[str, Target]:
@@ -499,12 +506,18 @@ def load_devices() -> dict[str, Target]:
     for name, entry in (raw.get("devices") or {}).items():
         if isinstance(entry, dict) and entry.get("os") in OSES:
             host = entry.get("host")
-            hw = entry.get("adb_serial")
+
+            def text(key: str, entry: dict[str, Any] = entry) -> str | None:
+                value = entry.get(key)
+                return value if isinstance(value, str) and value else None
+
             found[name] = Target(
                 name,
                 entry["os"],
                 host if isinstance(host, str) else None,
-                hw if isinstance(hw, str) and hw else None,
+                text("adb_serial"),
+                text("last_port"),
+                text("ssh"),
             )
     return found
 
@@ -518,6 +531,8 @@ def save_devices(devices: dict[str, Target]) -> None:
                 "os": t.os,
                 **({"host": t.host} if t.host else {}),
                 **({"adb_serial": t.adb_serial} if t.adb_serial else {}),
+                **({"last_port": t.last_port} if t.last_port else {}),
+                **({"ssh": t.ssh} if t.ssh else {}),
             }
             for n, t in sorted(devices.items())
         }
@@ -534,23 +549,45 @@ def atomic_write(path: Path, text: str, mode: int | None = None) -> None:
     os.replace(tmp, path)
 
 
-def device_add(name: str, os_name: str, host: str | None) -> None:
+def device_add(
+    name: str,
+    os_name: str,
+    host: str | None,
+    serial: str | None = None,
+    ssh: str | None = None,
+) -> None:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
         raise UsageError(
             f"'{name}' is not a usable device name (letters, digits, . _ -)."
         )
     if name == DESKTOP:
         raise UsageError("'desktop' is built in: this machine is always a target.")
-    if os_name == ANDROID and not host:
-        raise UsageError("An android device needs --host host[:port].")
-    if os_name == DESKTOP and host:
+    if os_name == ANDROID and not (host or serial or ssh):
         raise UsageError(
-            "A desktop target runs on this machine: --host does not apply."
+            "An android device needs --host host[:port] (or --serial <hardware serial>, "
+            "or --ssh for the Termux fallback)."
+        )
+    if os_name == DESKTOP and (host or serial or ssh):
+        raise UsageError(
+            "A desktop target runs on this machine: --host, --serial and --ssh do not apply."
+        )
+    if serial and not plausible_serial(serial):
+        raise UsageError(
+            f"'{serial}' does not look like a hardware serial (see: adb shell getprop ro.serialno)."
         )
     devices = load_devices()
-    devices[name] = Target(name, os_name, host)
+    devices[name] = Target(name, os_name, host, serial, None, ssh)
     save_devices(devices)
-    print(f"registered {name} ({os_name}{', ' + host if host else ''})")
+    extras = [
+        x
+        for x in (
+            host,
+            f"serial {serial}" if serial else "",
+            f"ssh {ssh}" if ssh else "",
+        )
+        if x
+    ]
+    print(f"registered {name} ({os_name}{', ' + ', '.join(extras) if extras else ''})")
 
 
 def device_rm(name: str) -> None:
@@ -572,7 +609,16 @@ def device_list() -> None:
     print(f"{'NAME':<20} {'OS':<8} HOST")
     print(f"{DESKTOP:<20} {DESKTOP:<8} (this machine, built in)")
     for t in devices.values():
-        print(f"{t.name:<20} {t.os:<8} {t.host or '-'}")
+        more = "".join(
+            f"  [{k} {v}]"
+            for k, v in (
+                ("serial", t.adb_serial),
+                ("ssh", t.ssh),
+                ("last port", t.last_port),
+            )
+            if v
+        )
+        print(f"{t.name:<20} {t.os:<8} {t.host or '-'}{more}")
     print(f"\nstored in {config_file()}")
 
 
@@ -1527,15 +1573,27 @@ def ensure_debug_keystore() -> None:
     note(f"created {ks}")
 
 
+ADB_TLS = "_adb-tls-connect._tcp"
+ADB_TIMEOUT = (
+    8  # seconds for one `adb connect` / `get-state` on a device that may be unreachable
+)
+MAX_PORT_GUESSES = 3  # discovered ports tried against a tailnet address
+
+
 @dataclass(frozen=True)
 class MdnsEntry:
     service: str
     host: str
     port: str
+    txt_serial: str | None = (
+        None  # the TXT `serial=` avahi shows; adb's own list has none
+    )
 
     @property
     def hardware_serial(self) -> str | None:
-        """The adb serial in an `adb-<serial>-<suffix>` service name."""
+        """The hardware serial: the TXT `serial=`, else the one in an `adb-<serial>-<suffix>` name."""
+        if self.txt_serial:
+            return self.txt_serial
         m = re.fullmatch(r"adb-(.+)-[^-]+", self.service)
         return m.group(1) if m else None
 
@@ -1555,6 +1613,34 @@ def mdns_entries() -> list[MdnsEntry]:
     return found
 
 
+def avahi_entries() -> list[MdnsEntry]:
+    """`avahi-browse -rpt` for wireless debugging: adb's own mdns shares port 5353 with avahi,
+    systemd-resolved and Chromium, so on Linux its list is often empty while avahi sees the phone.
+
+    The `=` lines are `;`-separated: `=;iface;proto;name;type;domain;host;address;port;txt`.
+    """
+    if shutil.which("avahi-browse") is None:
+        return []
+    out = capture(["avahi-browse", "-rpt", ADB_TLS])
+    found: dict[tuple[str, str, str], MdnsEntry] = {}
+    for line in out.stdout.splitlines():
+        f = line.split(";")
+        if len(f) < 9 or f[0] != "=" or f[2] != "IPv4":
+            continue
+        name = re.sub(r"\\(\d{3})", lambda m: chr(int(m.group(1))), f[3])
+        serial = re.search(r'"serial=([^"]*)"', f[9] if len(f) > 9 else "")
+        found.setdefault(
+            (name, f[7], f[8]),
+            MdnsEntry(name, f[7], f[8], serial.group(1) if serial else None),
+        )
+    return list(found.values())
+
+
+def discover() -> list[MdnsEntry]:
+    """Wireless-debugging endpoints on the LAN: adb's list, else avahi's."""
+    return mdns_entries() or avahi_entries()
+
+
 def host_addresses(host: str) -> set[str]:
     """`host` itself plus every address it resolves to (a MagicDNS or .local name)."""
     addrs = {host}
@@ -1562,6 +1648,18 @@ def host_addresses(host: str) -> set[str]:
         for info in socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP):
             addrs.add(str(info[4][0]))
     return addrs
+
+
+TAILNET = ipaddress.ip_network("100.64.0.0/10")
+
+
+def tailnet_address(addrs: set[str]) -> str | None:
+    """A Tailscale address (100.64.0.0/10) among `addrs`, if any."""
+    for a in sorted(addrs):
+        with contextlib.suppress(ValueError):
+            if ipaddress.ip_address(a) in TAILNET:
+                return a
+    return None
 
 
 def match_mdns(
@@ -1576,50 +1674,166 @@ def match_mdns(
     return next((e for e in entries if e.host in addrs), None)
 
 
+def plausible_serial(value: str) -> bool:
+    """Whether `value` can be a hardware serial: not an address, a transport name or a placeholder."""
+    return not (
+        not value
+        or value == "unknown"
+        or value.startswith("adb-")
+        or "_adb" in value
+        or ":" in value
+        or re.search(r"\s", value)
+        or re.fullmatch(r"\d+\.\d+\.\d+\.\d+", value)
+    )
+
+
+def device_serial(transport: str) -> str | None:
+    """The hardware serial read off the device: over Wi-Fi `get-serialno` returns the transport
+    name, so ask the device itself."""
+    out = capture(["adb", "-s", transport, "shell", "getprop", "ro.serialno"])
+    value = out.stdout.strip() if out.returncode == 0 else ""
+    return value if plausible_serial(value) else None
+
+
+def transport_serial(transport: str) -> str | None:
+    """The serial in an mDNS auto-connect transport name, `adb-<serial>-<suffix>._adb-tls-connect._tcp`."""
+    m = re.fullmatch(r"adb-(.+)-[^-.]+\._adb-tls-connect\._tcp\.?", transport)
+    return m.group(1) if m else None
+
+
+def connected_transports() -> list[str]:
+    """Names of the transports `adb devices -l` lists in state `device`."""
+    names: list[str] = []
+    for line in capture(["adb", "devices", "-l"]).stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] == "device":
+            names.append(parts[0])
+    return names
+
+
+def find_connected(
+    target: Target, addrs: set[str], port: str, transports: Sequence[str]
+) -> str | None:
+    """The already-connected transport that is this device, so nothing needs discovering.
+
+    By serial (an mDNS transport's name, or a USB serial), then by an `ip:port` transport whose
+    address is one the host resolves to, then by asking each transport for `ro.serialno`.
+    """
+    serial = target.adb_serial
+    if serial:
+        for t in transports:
+            if t == serial or transport_serial(t) == serial:
+                return t
+    by_address = [t for t in transports if t.rpartition(":")[0] in addrs]
+    if by_address:
+        return next(
+            (t for t in by_address if port and t.endswith(f":{port}")), by_address[0]
+        )
+    if serial:
+        for t in transports:
+            if device_serial(t) == serial:
+                return t
+    return None
+
+
 def remember_adb_serial(target: Target, addr: str, entry: MdnsEntry | None) -> None:
-    """Store the device's adb serial in the registry the first time it is seen."""
-    found = entry.hardware_serial if entry else None
-    if not found:
-        out = capture(["adb", "-s", addr, "get-serialno"])
-        found = out.stdout.strip() if out.returncode == 0 else None
-    if not found or found == "unknown" or found == target.adb_serial:
-        return
+    """Store the device's adb serial, and the port that worked, in the registry."""
+    found = (entry.hardware_serial if entry else None) or transport_serial(addr)
+    if not found or not plausible_serial(found):
+        found = device_serial(addr)
+    port = addr.rpartition(":")[2] if re.fullmatch(r".+:\d+", addr) else None
     devices = load_devices()
-    if target.name in devices:
-        devices[target.name] = replace(devices[target.name], adb_serial=found)
+    current = devices.get(target.name)
+    if current is None:
+        return
+    changed = replace(
+        current,
+        adb_serial=found or current.adb_serial,
+        last_port=port or current.last_port,
+    )
+    if changed != current:
+        devices[target.name] = changed
         save_devices(devices)
 
 
+def adb_connected(addr: str) -> bool:
+    """`adb connect` then `get-state`, each bounded: a dead address must not stall the run."""
+    try:
+        subprocess.run(
+            ["adb", "connect", addr],
+            capture_output=True, text=True, check=False, timeout=ADB_TIMEOUT,
+        )  # fmt: skip
+        state = subprocess.run(
+            ["adb", "-s", addr, "get-state"],
+            capture_output=True, text=True, check=False, timeout=ADB_TIMEOUT,
+        )  # fmt: skip
+    except subprocess.TimeoutExpired:
+        return False
+    return state.stdout.strip() == "device"
+
+
+def connect_candidates(
+    target: Target,
+    host: str,
+    port: str,
+    entries: Sequence[MdnsEntry],
+    entry: MdnsEntry | None,
+    tail: str | None,
+) -> list[tuple[str, MdnsEntry | None]]:
+    """Addresses to try, best first, each with the discovery entry that suggested it."""
+    out: list[tuple[str, MdnsEntry | None]] = []
+    if entry:
+        # adbd listens on every interface: a tailnet host is reached on the discovered port.
+        if tail:
+            out.append((f"{tail}:{entry.port}", entry))
+        out.append((entry.address, entry))
+    elif tail and entries and not target.adb_serial:
+        # First run, tailnet name only: neither address nor serial can match the LAN listing.
+        # A connect that answers on the tailnet address proves it is the same phone.
+        ports = list(dict.fromkeys(e.port for e in entries))[:MAX_PORT_GUESSES]
+        out += [(f"{tail}:{p}", next(e for e in entries if e.port == p)) for p in ports]
+    for p in (port, target.last_port or ""):
+        if host and p:
+            out.append((f"{host}:{p}", None))
+    return list(dict(out).items())
+
+
 def resolve_device(target: Target) -> str:
-    """The adb address (host:port) for the device, connected. Never pairs."""
+    """The adb transport (serial or host:port) for the device, connected. Never pairs."""
     need_cmd("adb", "Install platform-tools and put it on PATH (or set ANDROID_HOME).")
     host, _, port = (target.host or "").partition(":")
-    entries = mdns_entries()
-    entry = match_mdns(entries, host, target.adb_serial)
-    if entry:
-        addr = entry.address
-    elif port:
-        addr = (
-            f"{host}:{port}"  # registered with a port and not advertised: try it as is
-        )
-    else:
-        seen = (
-            "\n".join(f"  {e.service}  {e.address}" for e in entries)
-            or "  (none: is Wireless debugging on?)"
-        )
-        raise die(
-            f"{target.name} ({host}) does not show up in 'adb mdns services' (_adb-tls-connect), "
-            f"by address or by adb serial. Seen:\n{seen}\nTurn on Wireless debugging on the device, "
-            f"or register it as host:port. If it was never paired: adb pair {host}:<pairing port>. "
-            f"This tool does not pair."
-        )
-    capture(["adb", "connect", addr])
-    if capture(["adb", "-s", addr, "get-state"]).stdout.strip() != "device":
-        raise die(
-            f"Could not reach {addr} over adb. If it is not paired yet, run: adb pair {host}:<pairing port>"
-        )
-    remember_adb_serial(target, addr, entry)
-    return addr
+    addrs = host_addresses(host) if host else set()
+    found = find_connected(target, addrs, port, connected_transports())
+    if found:
+        print(f"{target.name}: already connected as {found}")
+        remember_adb_serial(target, found, None)
+        return found
+    entries = discover()
+    entry = (
+        match_mdns(entries, host, target.adb_serial)
+        if host or target.adb_serial
+        else None
+    )
+    tail = tailnet_address(addrs)
+    candidates = connect_candidates(target, host, port, entries, entry, tail)
+    for addr, hint in candidates:
+        if adb_connected(addr):
+            remember_adb_serial(target, addr, hint)
+            return addr
+    seen = (
+        "\n".join(f"  {e.service}  {e.address}" for e in entries)
+        or "  (nothing found by adb mdns or avahi-browse)"
+    )
+    tried = ", ".join(a for a, _ in candidates) or "nothing (no port known)"
+    label = host or target.adb_serial or target.name
+    raise die(
+        f"Could not reach {target.name} ({label}) over adb. Tried: {tried}. Discovered:\n{seen}\n"
+        f"Turn on Wireless debugging on the device; if it was never paired: "
+        f"adb pair {host or '<host>'}:<pairing port> (this tool does not pair). Off the LAN, "
+        f"mDNS does not reach you and the wireless-debugging port changes on every toggle: run "
+        f"`adb tcpip 5555` once over USB (or Termux) and register the device as "
+        f"`{CMD} devices add {target.name} --os android --host {host or '<host>'}:5555`."
+    )
 
 
 def package_installed(serial: str, package: str) -> bool:
@@ -2226,7 +2440,6 @@ def ci_mode(args: argparse.Namespace) -> str:
 
 
 def run_android(name: str, wt: Path, target: Target, args: argparse.Namespace) -> None:
-    assert target.host  # registry guarantees it for android
     android_env()
     serial = resolve_device(
         target
@@ -2483,7 +2696,7 @@ def cmd_prune(args: argparse.Namespace) -> None:
 
 def cmd_devices(args: argparse.Namespace) -> None:
     if args.devices_cmd == "add":
-        device_add(args.name, args.os, args.host)
+        device_add(args.name, args.os, args.host, args.serial, args.ssh)
     elif args.devices_cmd == "rm":
         device_rm(args.name)
     else:
@@ -2545,6 +2758,15 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument(
         "--host",
         help="host[:port]; an Android host without a port is found by adb mdns",
+    )
+    add.add_argument(
+        "--serial",
+        help="the device's hardware serial (adb shell getprop ro.serialno): matches it by serial "
+        "alone, so a tailnet name works",
+    )
+    add.add_argument(
+        "--ssh",
+        help="[user@]host[:port] of a Termux sshd: install over scp + termux-open when adb cannot reach it",
     )
     rm = dsub.add_parser("rm", help="forget a target")
     rm.add_argument("name")

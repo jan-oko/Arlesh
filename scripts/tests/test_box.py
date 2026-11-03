@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -322,7 +323,7 @@ class DeviceResolution(IsolatedEnv):
     def test_serial_matches_when_the_ip_differs(self) -> None:
         self.assertEqual(
             self.resolve("100.64.0.9", adb_serial="R5CT123ABC", ip="100.64.0.9"),
-            "192.168.68.111:33691",
+            "100.64.0.9:33691",  # adbd listens on every interface: the tailnet address, LAN port
         )
 
     def test_nothing_matches_lists_the_mdns_entries(self) -> None:
@@ -1340,6 +1341,179 @@ class FolderNames(OriginFixture):
         ):
             box.cmd_run(box.parse_args(["run", "qa-2026-11-round", "desktop"]))
         self.assertEqual(run.call_args.args[0], "qa-2026-11-round")
+
+
+DEVICES_L = (
+    "192.168.68.111:46175   device product:tokay model:Pixel_9 device:tokay transport_id:1\n"
+    "adb-5C190DLCH0015M-tFcyKY._adb-tls-connect._tcp device product:tokay model:Pixel_9 "
+    "device:tokay transport_id:2"
+)
+AVAHI = (
+    "+;wlan0;IPv4;adb-5C190DLCH0015M-tFcyKY;_adb-tls-connect._tcp;local\n"
+    "=;wlan0;IPv6;adb-5C190DLCH0015M-tFcyKY;_adb-tls-connect._tcp;local;Android_LALRN9NC.local;"
+    'fe80::1;46175;"serial=5C190DLCH0015M"\n'
+    "=;wlan0;IPv4;adb-5C190DLCH0015M-tFcyKY;_adb-tls-connect._tcp;local;Android_LALRN9NC.local;"
+    '192.168.68.111;46175;"serial=5C190DLCH0015M"'
+)
+TAILNET_IP, LAN_IP = "100.76.177.38", "192.168.68.111"
+
+
+class WirelessDevices(IsolatedEnv):
+    """Fake adb and avahi-browse reproducing a real Linux machine: adb 1.0.41 with an empty
+    `adb mdns services`, avahi seeing the phone, a mDNS auto-connect transport beside ip:port."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        bindir = fake_bin(
+            self.tmp,
+            "adb",
+            'echo "$*" >> "$FAKE_LOG"\n'
+            'case "$*" in\n'
+            '  "devices -l") echo "List of devices attached"; printf "%s\\n" "$FAKE_DEVICES" ;;\n'
+            '  "mdns services") echo "List of discovered mdns services"; printf "%s\\n" "$FAKE_MDNS" ;;\n'
+            '  "connect "*) echo "connected to $2" ;;\n'
+            '  "-s "*" get-state") case " $FAKE_UP " in *" $2 "*) echo device ;; '
+            "*) echo 'error: device not found' >&2; exit 1 ;; esac ;;\n"
+            '  "-s "*" shell getprop ro.serialno") echo 5C190DLCH0015M ;;\n'
+            '  "-s "*" get-serialno") echo "$2" ;;\n'
+            "esac",
+        )
+        fake_bin(self.tmp, "avahi-browse", 'printf "%s\\n" "$FAKE_AVAHI"')
+        self.log = self.tmp / "adb.log"
+        self.log.write_text("")
+        os.environ.update(
+            PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}",
+            FAKE_LOG=str(self.log),
+            FAKE_DEVICES="",
+            FAKE_MDNS="",
+            FAKE_AVAHI=AVAHI,
+            FAKE_UP="",
+        )
+
+    def resolve(
+        self, host: str | None, ip: str | None, serial: str | None = None, **more: str
+    ) -> str:
+        box.device_add("miniseer", "android", host, serial)
+        if more:
+            box.save_devices(
+                {"miniseer": replace(box.load_devices()["miniseer"], **more)}
+            )
+        info = [(2, 1, 6, "", (ip, 0))] if ip else []
+        with mock.patch.object(box.socket, "getaddrinfo", return_value=info):
+            return box.resolve_device(box.load_devices()["miniseer"])
+
+    def adb_calls(self) -> list[str]:
+        return self.log.read_text().splitlines()
+
+    def test_the_avahi_listing_parses_to_one_ipv4_entry_with_its_serial(self) -> None:
+        self.assertEqual(
+            box.discover(),
+            [
+                box.MdnsEntry(
+                    "adb-5C190DLCH0015M-tFcyKY", LAN_IP, "46175", "5C190DLCH0015M"
+                )
+            ],
+        )
+
+    def test_an_adb_listing_wins_over_avahi(self) -> None:
+        os.environ["FAKE_MDNS"] = MDNS_LINE
+        self.assertEqual([e.port for e in box.discover()], ["33691"])
+
+    def test_a_known_serial_uses_the_connected_mdns_transport_without_connecting(
+        self,
+    ) -> None:
+        os.environ["FAKE_DEVICES"] = DEVICES_L
+        got = self.resolve("miniseer", TAILNET_IP, serial="5C190DLCH0015M")
+        self.assertEqual(got, "adb-5C190DLCH0015M-tFcyKY._adb-tls-connect._tcp")
+        self.assertFalse([c for c in self.adb_calls() if c.startswith("connect")])
+
+    def test_miniseer_local_matches_the_connected_ip_transport_by_address(self) -> None:
+        os.environ["FAKE_DEVICES"] = DEVICES_L.splitlines()[0]
+        self.assertEqual(self.resolve("miniseer.local", LAN_IP), f"{LAN_IP}:46175")
+        self.assertEqual(box.load_devices()["miniseer"].adb_serial, "5C190DLCH0015M")
+
+    def test_a_connected_transport_is_found_by_asking_it_for_the_serial(self) -> None:
+        os.environ["FAKE_DEVICES"] = f"{LAN_IP}:46175 device product:tokay"
+        self.assertEqual(
+            self.resolve("miniseer", TAILNET_IP, serial="5C190DLCH0015M"),
+            f"{LAN_IP}:46175",
+        )
+
+    def test_a_tailnet_name_with_a_known_serial_connects_on_the_tailnet_ip_and_found_port(
+        self,
+    ) -> None:
+        os.environ["FAKE_UP"] = f"{TAILNET_IP}:46175"
+        got = self.resolve("miniseer", TAILNET_IP, serial="5C190DLCH0015M")
+        self.assertEqual(got, f"{TAILNET_IP}:46175")
+        self.assertEqual(box.load_devices()["miniseer"].last_port, "46175")
+
+    def test_first_run_with_a_tailnet_name_and_no_serial_proves_it_by_connecting(
+        self,
+    ) -> None:
+        os.environ["FAKE_UP"] = f"{TAILNET_IP}:46175"
+        got = self.resolve("miniseer", TAILNET_IP)
+        self.assertEqual(got, f"{TAILNET_IP}:46175")
+        stored = box.load_devices()["miniseer"]
+        self.assertEqual(
+            (stored.adb_serial, stored.last_port), ("5C190DLCH0015M", "46175")
+        )
+
+    def test_the_serial_is_read_from_the_device_never_from_the_transport_name(
+        self,
+    ) -> None:
+        os.environ["FAKE_UP"] = "10.0.0.5:5555"
+        self.assertEqual(self.resolve("10.0.0.5:5555", "10.0.0.5"), "10.0.0.5:5555")
+        self.assertEqual(box.load_devices()["miniseer"].adb_serial, "5C190DLCH0015M")
+        self.assertNotIn("get-serialno", self.log.read_text())
+
+    def test_nothing_discovered_falls_back_to_the_last_port_that_worked(self) -> None:
+        os.environ.update(FAKE_AVAHI="", FAKE_UP="miniseer:40001")
+        self.assertEqual(
+            self.resolve("miniseer", TAILNET_IP, last_port="40001"),
+            "miniseer:40001",
+        )
+
+    def test_a_registered_port_is_tried_before_the_last_one(self) -> None:
+        os.environ.update(FAKE_AVAHI="", FAKE_UP="miniseer:5555 miniseer:40001")
+        self.assertEqual(
+            self.resolve("miniseer:5555", TAILNET_IP, last_port="40001"),
+            "miniseer:5555",
+        )
+
+    def test_when_everything_fails_the_error_offers_tcpip_5555(self) -> None:
+        os.environ["FAKE_AVAHI"] = ""
+        with self.assertRaises(box.BoxError) as ctx:
+            self.resolve("miniseer", TAILNET_IP)
+        self.assertIn("adb tcpip 5555", str(ctx.exception))
+        self.assertIn("miniseer:5555", str(ctx.exception))
+
+    def test_serial_alone_registers_and_matches(self) -> None:
+        a = box.parse_args(
+            ["devices", "add", "p", "--os", "android", "--serial", "5C190DLCH0015M"]
+        )
+        self.assertEqual((a.host, a.serial), (None, "5C190DLCH0015M"))
+        box.cmd_devices(a)
+        self.assertEqual(box.load_devices()["p"].adb_serial, "5C190DLCH0015M")
+        os.environ["FAKE_DEVICES"] = DEVICES_L
+        with mock.patch.object(box.socket, "getaddrinfo", return_value=[]):
+            self.assertEqual(
+                box.resolve_device(box.load_devices()["p"]),
+                "adb-5C190DLCH0015M-tFcyKY._adb-tls-connect._tcp",
+            )
+
+    def test_addresses_and_transport_names_are_not_serials(self) -> None:
+        for bad in (
+            "192.168.68.111:46175",
+            "10.0.0.5",
+            "adb-5C190DLCH0015M-tFcyKY._adb-tls-connect._tcp",
+            "adb-5C190DLCH0015M-tFcyKY",
+            "unknown",
+            "",
+        ):
+            self.assertFalse(box.plausible_serial(bad), bad)
+        self.assertTrue(box.plausible_serial("5C190DLCH0015M"))
+        with self.assertRaises(box.UsageError):
+            box.device_add("x", "android", "h", serial="10.0.0.5:5555")
 
 
 if __name__ == "__main__":
