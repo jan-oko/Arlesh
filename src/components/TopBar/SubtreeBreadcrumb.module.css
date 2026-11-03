@@ -106,7 +106,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 40px;
+  /* Hangs to the left of the title, over the bar's gap and the ☰ button's empty margin, so the
+     name starts where the root's "Arlesh" does and switching between them moves nothing. The name
+     beside it is the large target; this one is only as wide as the room there is. */
+  position: relative;
+  z-index: 1;
+  width: 20px;
+  min-width: 20px;
+  margin-inline-start: -20px;
   min-height: 40px;
   line-height: 1;
   letter-spacing: 0;
@@ -132,7 +139,9 @@
   border: none;
   padding: 0;
   font: inherit;
-  font-weight: 600;
+  /* The root title's size and weight (`PhoneTopBar` `.viewName`). */
+  font-size: var(--text-lg);
+  font-weight: 700;
   text-align: start;
   cursor: pointer;
 }

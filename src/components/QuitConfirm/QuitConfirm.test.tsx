@@ -1,61 +1,34 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import QuitConfirm from "./QuitConfirm";
-import { dismissTopSheet } from "@/utils/dismiss-sheet";
-import { stepBack } from "@/utils/back-navigation";
 import { useQuitConfirmStore } from "@/stores/use-quit-confirm-store";
 
 const quit = vi.fn();
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/hooks/use-close-to-tray", () => ({ useQuit: () => quit }));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 
 beforeEach(() => {
-  quit.mockClear();
+  quit.mockReset();
   useQuitConfirmStore.setState({ isOpen: false });
 });
 
 describe("QuitConfirm", () => {
-  it("is not drawn until back asks for it", () => {
+  it("opens as a modal dialog, cancels back to the board and quits on Quit", () => {
+    useQuitConfirmStore.setState({ isOpen: true });
     render(<QuitConfirm />);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
-
-  it("asks at the root instead of leaving, and Quit quits", () => {
-    render(<QuitConfirm />);
-    act(() => {
-      stepBack({
-        dismissSheet: dismissTopSheet,
-        leaveSubtree: () => false,
-        upScope: () => false,
-        exit: () => useQuitConfirmStore.getState().show(),
-      });
-    });
-    expect(screen.getByRole("dialog", { name: "quitHeading" })).toBeInTheDocument();
-    expect(quit).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "quitHeading" })).toHaveAttribute("aria-modal", "true");
     fireEvent.click(screen.getByRole("button", { name: "quit" }));
     expect(quit).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(useQuitConfirmStore.getState().isOpen).toBe(false);
   });
 
-  it("cancels on Cancel, and on back while it is open", () => {
-    render(<QuitConfirm />);
-    act(() => useQuitConfirmStore.getState().show());
-    fireEvent.click(screen.getByRole("button", { name: "cancel" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-
-    act(() => useQuitConfirmStore.getState().show());
-    act(() => {
-      expect(dismissTopSheet()).toBe(true);
-    });
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(quit).not.toHaveBeenCalled();
-  });
-
-  it("lets a sheet, the subtree or the scope take back first", () => {
-    const exit = vi.fn();
-    stepBack({ dismissSheet: () => true, leaveSubtree: () => false, upScope: () => false, exit });
-    stepBack({ dismissSheet: () => false, leaveSubtree: () => true, upScope: () => false, exit });
-    stepBack({ dismissSheet: () => false, leaveSubtree: () => false, upScope: () => true, exit });
-    expect(exit).not.toHaveBeenCalled();
+  it("is centred on the phone as on the desktop, never a sheet at the bottom edge", () => {
+    // Read as a file: a CSS module imported into a test comes back as a class-name proxy.
+    const css = readFileSync("src/components/WarningConfirmModal/WarningConfirmModal.module.css", "utf8");
+    expect(css).toMatch(/align-items:\s*center/);
+    expect(css).toMatch(/justify-content:\s*center/);
+    expect(css).not.toMatch(/align-items:\s*flex-end/);
+    expect(css).not.toMatch(/border-radius:\s*16px 16px 0 0/);
   });
 });

@@ -6,7 +6,6 @@ import { useCommandSurfaceStore } from "@/stores/use-command-surface-store";
 import { usePaletteStore } from "@/stores/use-palette-store";
 import { useSelectModeStore } from "@/stores/use-select-mode-store";
 import { surfaceCommand } from "@/test/surface-command";
-import { useFullscreenStore } from "@/stores/use-fullscreen-store";
 import { TOUCH_QUERY } from "./use-media-query";
 
 type Handlers = Omit<ViewGestureOptions, "idAttribute" | "ready">;
@@ -212,27 +211,6 @@ describe("useViewGestures", () => {
       // Apart as they rise: the Mindmap's and Steps' pinch, not Up.
       fingers(row, [[130, 300], [150, 300]], [[40, 150], [240, 150]]);
       expect(up.run).not.toHaveBeenCalled();
-    });
-
-    it("toggles full screen on a three-finger tap", () => {
-      useFullscreenStore.setState({ isFullscreen: false });
-      const options = handlers();
-      const { getByTestId } = render(<Surface handlers={options} />);
-      const spots: Array<[number, number]> = [[50, 100], [100, 100], [150, 100]];
-      fingers(getByTestId("row"), spots, spots, 80);
-      expect(useFullscreenStore.getState().isFullscreen).toBe(true);
-      fingers(getByTestId("row"), spots, spots, 80);
-      expect(useFullscreenStore.getState().isFullscreen).toBe(false);
-      expect(options.select).not.toHaveBeenCalled();
-    });
-
-    it("does not toggle full screen when the three fingers are held or dragged", () => {
-      useFullscreenStore.setState({ isFullscreen: false });
-      const { getByTestId } = render(<Surface handlers={handlers()} />);
-      const spots: Array<[number, number]> = [[50, 100], [100, 100], [150, 100]];
-      fingers(getByTestId("row"), spots, spots, 800);
-      fingers(getByTestId("row"), spots, [[50, 200], [100, 200], [150, 200]], 80);
-      expect(useFullscreenStore.getState().isFullscreen).toBe(false);
     });
   });
 });

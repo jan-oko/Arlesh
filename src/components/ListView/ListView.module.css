@@ -9,10 +9,17 @@
      so the height never depends on the content inside it. */
   min-height: 0;
   flex: 1 1 0;
-  padding: var(--space-4);
+  padding: var(--space-4) var(--space-4) calc(var(--space-4) + var(--peek-pad-bottom));
   box-sizing: border-box;
   overflow-y: auto;
   background: var(--canvas-bg);
+}
+
+/* Full screen only (the root carries data-fs-bars): the status-bar inset is the scroller's own top
+   padding, so the list rests clear of the bar and, scrolled, its rows use the whole screen and pass
+   under the top edge. Elsewhere the padding is the plain one above. */
+:global(:root[data-fs-bars]) .container {
+  padding-top: var(--peek-pad-top);
 }
 
 .rows {
@@ -70,11 +77,19 @@
 /* The phone layout (docs/spec/touch.md): tighter margins, so a row has the width. */
 @media (max-width: 699.98px) {
   .container {
-    padding: 0 var(--space-2) var(--space-3);
+    padding: 0 var(--space-2) calc(var(--space-3) + var(--peek-pad-bottom));
     gap: var(--space-2);
   }
 
   .rows {
     gap: var(--space-2);
+  }
+
+  /* Outside full screen the first section rests a small gap below the top bar, as the Plan View does
+     (decided with the user, 2026-11-02). The gap is the first section's own padding rather than the
+     scroller's, so a stuck path header still sticks flush under the bar with no row showing above
+     it. In full screen the inset alone applies (above), so nothing is added there. */
+  :global(:root:not([data-fs-bars])) .container > :first-child {
+    padding-top: var(--space-2);
   }
 }

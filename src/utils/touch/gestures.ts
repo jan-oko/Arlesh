@@ -113,15 +113,20 @@ export function isTwoFingerSwipeUp(start: TwoFingers, end: TwoFingers): boolean 
   return -dy >= TWO_FINGER_SWIPE_MIN_PX && -dy >= AXIS_RATIO * Math.abs(dx);
 }
 
-/** A three-finger tap: three fingers down and up within this long... */
-export const THREE_FINGER_TAP_MS = 400;
+/** A three-finger tap: from the first finger down to the last up within this long... */
+export const THREE_FINGER_TAP_MS = 500;
+
+/** ...with the third finger landing within this long of the first (fingers never land together). */
+export const THREE_FINGER_STAGGER_MS = 150;
 
 /**
  * Whether a touch that had `fingers` fingers down at most, none of which moved further than
- * `farthestPx`, and which lasted `durationMs`, was a three-finger tap.
+ * `farthestPx`, which lasted `durationMs` from the first finger down to the last up, and whose
+ * third finger landed `staggerMs` after the first, was a three-finger tap.
  */
-export function isThreeFingerTap(fingers: number, farthestPx: number, durationMs: number): boolean {
-  return fingers === 3 && farthestPx <= 2 * TAP_SLOP_PX && durationMs <= THREE_FINGER_TAP_MS;
+export function isThreeFingerTap(fingers: number, farthestPx: number, durationMs: number, staggerMs: number): boolean {
+  return fingers === 3 && farthestPx <= 2 * TAP_SLOP_PX && durationMs <= THREE_FINGER_TAP_MS
+    && staggerMs <= THREE_FINGER_STAGGER_MS;
 }
 
 /** The factor two fingers have spread by since they touched: above 1 they moved apart. */

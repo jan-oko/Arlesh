@@ -41,7 +41,7 @@ Below 700 px:
   centred on the text (decided with the user, 2026-11-02; round 5 had made it 28 px). Landscape keeps the whole chain. **The path's first
   segment is always "Arlesh"** (the board), in both forms and in the full-path menu, never the name
   of the view.
-  There is **no server indicator** on the phone's bar (feedback from a Pixel 10 Pro: it crowded the
+  There is **no server indicator** on the phone's bar, nor, since round 6 (decided with the user, 2026-11-02), on the desktop's (feedback from a Pixel 10 Pro: it crowded the
   bar); the server's status lives on **Settings → Server** ([Client mode](client-mode.md)).
   - **The preset chip** shows the preset the view reads under and opens the **preset sheet**: Plan,
     Start, Do, Backlog and All, plus the List View's Unblock and Expectations while the List View is
@@ -202,6 +202,27 @@ restores the normal display's mode.
   the window's fitting back on, which Android 15 enforces off; the bars' colour is the view's
   background (black-ish on the dark theme, white on the light one) showing through the padding.
 - **Immersive** hides the bars with `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`.
+- **Full screen pads the views for the bars** (decided with the user, 2026-11-02, from phone screenshots:
+  the List's first heading and the Plan header sat under the status bar). Full screen removes the top
+  bar and the bottom bars, so every view but the Mindmap pads its content box: at the top by the status
+  bar only, with no extra gap above the first content (decided with the user, 2026-11-02), at the bottom by the gesture bar. Edge-to-edge uses the visible insets
+  (`--safe-top`, `--safe-bottom`); Immersive uses where the hidden bars peek, `--peek-top` and
+  `--peek-bottom`, which `MainActivity` pushes from `getInsetsIgnoringVisibility(systemBars())`
+  (fallbacks 28 px and 24 px). `useSystemBars` marks the root `data-fs-bars="edgeToEdge"|"immersive"`
+  in full screen (never for Standard, which the activity pads, nor without the bridge), and
+  `tokens.css` turns that into `--peek-pad-top` and `--peek-pad-bottom` (both 0 otherwise).
+  Outside full screen each view keeps its own plain top padding; the phone's List adds a `--space-2` gap as the padding of its first section (decided with the user, 2026-11-02), not of the scroller, so a stuck header still sticks flush under the top bar. Under `data-fs-bars` the top padding is the
+  inset alone (`padding-top: var(--peek-pad-top)`, no extra gap), the scroller's own, so the List rests
+  clear of the bar and, scrolled, its rows use the whole screen and pass under the top edge: no
+  permanent band. The phone's sticky path headers stick at `top: 0`, which is the content edge, so at
+  the inset; only while stuck (`@container scroll-state(stuck: top)`) an opaque strip as high as
+  `--peek-pad-top` hangs above the header, so nothing shows above a stuck header. Every bottom sheet (the shared `BottomSheet`) pads its bottom by `max(safe inset, peek pad, 0.3 x the larger bottom corner radius)` plus a gap of `--space-6` (24 px; decided with the user, 2026-11-02, up from 8 px), in every mode, so its last item and the sheet clear the rounded corners and the gesture bar. The Mindmap stays full-bleed: the canvas can be panned. Outside full screen the top bar and bottom
+  navigation already pad by the visible insets.
+- **The fullscreen hot square** sits at `max(0.3 x radius + 12px, safe inset + 12px, 20px)` from the
+  right edge, and from the bottom `max(0.3 x radius + 12px, safe inset + 12px, peek pad + 12px,
+  20px)`: at least 20 px clear of both edges, the gesture bar's peek included (decided with the user,
+  2026-11-02). It is semi-transparent and may overlap content; no padding is reserved for it (decided
+  with the user, 2026-11-02).
 - **The bridge.** The web side states the wanted mode and the theme (`useSystemBars`: the normal or
   the fullscreen setting, by whether the app is in fullscreen) through
   `window.ArleshBars.setSystemBars(mode, dark)`, a `@JavascriptInterface` (`SystemBarsBridge.kt`; R8
@@ -347,8 +368,10 @@ Whenever a touchscreen is present, at any width.
 - A **two-finger swipe** left or right cycles the preset.
 - A **two-finger swipe up** does **Up** (below): out of the entered subtree one level, as the
   breadcrumb's parent step; at the top level it does nothing. A **three-finger tap** toggles
-  [full screen](#the-phone-layout). Both live in the shared gesture layer (`useTouchGestures`,
-  armed by `useViewGestures`), so they work in every view. **Multi-finger touches never fire a
+  [full screen](#the-phone-layout). The two-finger swipe lives in the shared gesture layer
+  (`useTouchGestures`, armed by `useViewGestures`); the three-finger tap is read on the whole
+  document (`useThreeFingerTap`, armed in `App`), so both work in every view, and the tap over the
+  bars and over a sheet or menu too. **Multi-finger touches never fire a
   one-finger gesture**: the second finger cancels whatever the first began (no tap, hold, swipe or
   drag), and the touch is read only when the last finger lifts. **Against pinch-zoom** (the Mindmap's
   and the Steps View's) the two-finger swipe up needs the fingers to keep their spread (within 40 px)
@@ -463,3 +486,42 @@ the **command surface** (`use-command-surface-store.ts`); the palette lists what
 and runs it through the binding's own `run`. Adding a binding therefore adds a palette entry with
 no further work, and a binding that should not be in the palette has to name the gesture that
 replaces it.
+
+## Round 6 (decided with the user, 2026-11-02)
+
+- **The three-finger tap is robust against staggered fingers.** Fingers never land together, so
+  the touch is judged as a whole, only once the last finger is up: the most fingers down together
+  is three, the third landed within 150 ms of the first, no finger strayed further than 20 px, and
+  first-down to last-up took at most 500 ms. The last lift of a recognised tap is stopped before
+  any view sees it, so no one-finger tap, press or click is read from its fingers. A device whose
+  own three-finger gesture (a screenshot, in some vendors' settings) takes the touch cancels it
+  before the page sees it; switch that gesture off in the phone's system settings.
+- **The subtree name matches the root title.** In a subtree the phone's top bar reads `‹ {current}`
+  with the name in the root "Arlesh" title's size (`--text-lg`) and weight (700), on the same
+  baseline; the chevron hangs to the left of the name, over the bar's gap, so the name starts where
+  "Arlesh" does and toggling between root and subtree moves nothing (at 412 x 915: text box left
+  56 px, baseline y 30 px, 16 px / 700 in both). The name beside it is the large tap target.
+- **Full screen's hot square clears the display's rounded corner.** `MainActivity` pushes the corner
+  radii (`WindowInsets.getRoundedCorner`, Android 12+) to `--corner-tl/-tr/-br/-bl` next to
+  `--sat`/`--sab`; where the radius is unknown (older Android, desktop, standard bars) the CSS
+  default is 16 px. The square sits `max(0.3 x radius, safe inset) + 8 px` in from the bottom and
+  the right: a box at inset d lies inside an arc of radius r when d >= r(1 - 1/sqrt 2) = 0.293 r,
+  so 0.3 r is that bound, the safe inset covers the gesture bar, and 8 px is the margin. (412 px
+  wide: radius 16 -> 12.8 px in; radius 48 with a 24 px bar -> 22.4 px right, 32 px up; radius 120 -> 44 px.)
+- **The Open and Filter search cards open lower.** On the phone the card sits a tenth of the screen's
+  height (`10dvh`) below the status bar instead of at it, and its height is what is left above that,
+  so it shrinks with the soft keyboard and the input stays above it. At 412 x 915 with a 24 px
+  status bar the card's top moved from 24 px to 115.5 px (input 25 -> 116.5 px); with the keyboard
+  up (a 549 px viewport) it opens at 78.9 px and ends at 463 px.
+- **The quit dialog, and every warning prompt, is a centred modal on the phone** (decided with the
+  user, 2026-11-02), horizontally and vertically, not a bottom sheet. They are all one component
+  (`WarningConfirmModal`: Quit, backlog, delete, unfinished children, the scope and plan clamp
+  prompts), so one change centres them all, with a margin round them clear of the system bars.
+- **The system-bar choices are large segmented controls** (decided with the user, 2026-11-02): under
+  Settings > General each setting (normal display, fullscreen) is a full-width row of three buttons,
+  Standard / Edge-to-edge / Immersive, each at least 44 px tall with the selected one filled, instead
+  of a dropdown. At 412 px the three labels fit (about 126 px each), so no stacked rows are needed.
+  `SegmentedControl` is a `radiogroup` of `radio` buttons; there was no earlier one to reuse.
+- **The desktop top bar's server indicator is gone** (decided with the user, 2026-11-02), as the
+  phone's was in round 1. Settings > Server's status line has the mode, URL, reachability, last
+  sync and version; an unreachable or mismatched server still shows the `ServerBanner`.

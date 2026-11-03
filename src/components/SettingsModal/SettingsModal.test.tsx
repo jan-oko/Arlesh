@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import SettingsModal from "./SettingsModal";
 import { useViewStore } from "@/stores/use-view-store";
 import { useDisplayStore } from "@/stores/use-display-store";
@@ -246,12 +246,13 @@ describe("SettingsModal", () => {
     useDisplayStore.setState({ systemBars: "edgeToEdge", systemBarsFullscreen: "immersive" });
     open();
 
-    const normal = screen.getByRole("button", { name: "systemBars" });
-    const fullscreen = screen.getByRole("button", { name: "systemBarsFullscreen" });
-    expect(normal).toHaveTextContent("systemBarsMode.edgeToEdge");
-    expect(fullscreen).toHaveTextContent("systemBarsMode.immersive");
-    fireEvent.click(fullscreen);
-    fireEvent.click(screen.getByRole("option", { name: "systemBarsMode.standard" }));
+    const normal = screen.getByRole("radiogroup", { name: "systemBars" });
+    const fullscreen = screen.getByRole("radiogroup", { name: "systemBarsFullscreen" });
+    expect(within(normal).getAllByRole("radio")).toHaveLength(3);
+    expect(within(normal).getByRole("radio", { name: "systemBarsMode.edgeToEdge" })).toBeChecked();
+    expect(within(fullscreen).getByRole("radio", { name: "systemBarsMode.immersive" })).toBeChecked();
+    fireEvent.click(within(fullscreen).getByRole("radio", { name: "systemBarsMode.standard" }));
+    expect(within(fullscreen).getByRole("radio", { name: "systemBarsMode.standard" })).toBeChecked();
     expect(useDisplayStore.getState()).toMatchObject({ systemBars: "edgeToEdge", systemBarsFullscreen: "standard" });
     expect(JSON.parse(localStorage.getItem("arlesh-display") ?? "{}").state.systemBarsFullscreen).toBe("standard");
     vi.mocked(isAndroid).mockReturnValue(false);
@@ -259,7 +260,7 @@ describe("SettingsModal", () => {
 
   it("hides the system-bars choices on the desktop", () => {
     open();
-    expect(screen.queryByRole("button", { name: "systemBars" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "systemBars" })).not.toBeInTheDocument();
   });
 
   it("offers the Zen View's badge switch under Zen, on by default", () => {
