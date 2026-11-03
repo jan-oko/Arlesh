@@ -9,7 +9,7 @@
     box devices add <name> --os android|desktop [--host host[:port]]
     box devices list
     box devices rm <name>
-    box run <branch> [<target>] [--server <branch> | --standalone] [--no-firebase] [--force]
+    box run <branch> [<target>] [--server <branch> | --standalone] [--no-firebase] [--force] [--stale-ok]
             [--local | --ci] [--reinstall]
     box keystore init [--force]
     box stop [branch ... | all]
@@ -272,7 +272,7 @@ def report_divergence(cwd: Path, branch: str) -> None:
         note(f"{branch} is {behind} commits behind origin; pull to update")
 
 
-def ensure_worktree(branch: str) -> Path:
+def ensure_worktree(branch: str, report: bool = True) -> Path:
     """The worktree for `branch`, created from origin/<branch> when it is missing.
 
     An existing worktree is used as-is: never pulled or reset. A branch that exists neither
@@ -298,7 +298,8 @@ def ensure_worktree(branch: str) -> Path:
         git_in(
             root, "fetch", "--quiet", "origin", branch
         )  # best effort: only to report
-        report_divergence(path, branch)
+        if report:
+            report_divergence(path, branch)
         return path
     fetched = git_in(root, "fetch", "--quiet", "origin", branch)
     remote = f"refs/remotes/origin/{branch}"
@@ -330,6 +331,50 @@ def ensure_worktree(branch: str) -> Path:
         report_divergence(path, branch)
     ensure_node_modules(path)
     return path
+
+
+def sync_worktree(wt: Path, branch: str, stale_ok: bool = False) -> None:
+    """Never build a stale commit: fast-forward a clean worktree that is behind origin/<branch>.
+
+    Ahead (unpushed) is fine and silent: it builds locally. Behind and dirty, or diverged, is
+    refused unless `stale_ok`, which builds the current HEAD anyway.
+    """
+    remote = f"refs/remotes/origin/{branch}"
+    if not ref_exists(wt, remote):
+        return
+    behind = commit_count(wt, f"{branch}..{remote}")
+    if not behind:
+        return
+    ahead = commit_count(wt, f"{remote}..{branch}")
+    dirty = bool(
+        git_in(wt, "status", "--porcelain", "--untracked-files=no").stdout.strip()
+    )
+    if ahead or dirty:
+        state = (
+            f"has diverged from origin ({ahead} ahead, {behind} behind)"
+            if ahead
+            else f"is {behind} commits behind origin and has uncommitted changes"
+        )
+        if stale_ok:
+            note(f"{branch} {state}; building the current HEAD (--stale-ok)")
+            return
+        fix = (
+            f"rebase or merge origin/{branch} in {wt}"
+            if ahead
+            else f"commit or discard the changes in {wt} so it can fast-forward"
+        )
+        raise die(
+            f"{branch} {state}, so this would build a stale commit. {fix}, "
+            f"or pass --stale-ok to build the current HEAD anyway."
+        )
+    merged = git_in(wt, "merge", "--ff-only", "--quiet", remote)
+    if merged.returncode != 0:
+        raise die(
+            f"{branch} is {behind} commits behind origin but cannot fast-forward: "
+            f"{merged.stderr.strip()} (--stale-ok builds the current HEAD anyway)"
+        )
+    sha = git_in(wt, "rev-parse", "--short", "HEAD").stdout.strip()
+    print(f"fast-forwarded {branch} by {behind} commits to origin/{branch} @ {sha}")
 
 
 def free_gb() -> int:
@@ -2286,7 +2331,8 @@ def cmd_list(_args: argparse.Namespace) -> None:
 
 def cmd_run(args: argparse.Namespace) -> None:
     target = resolve_target(args.target)
-    wt = ensure_worktree(args.branch)
+    wt = ensure_worktree(args.branch, report=False)
+    sync_worktree(wt, args.branch, args.stale_ok)
     name = dir_name(args.branch)
     if args.server:
         ensure_worktree(args.server)
@@ -2501,6 +2547,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument(
         "--force", action="store_true", help="rebuild and reinstall even if current"
+    )
+    run.add_argument(
+        "--stale-ok",
+        action="store_true",
+        help="build the current HEAD even when it is behind origin and cannot be fast-forwarded",
     )
     source = run.add_mutually_exclusive_group()
     source.add_argument(

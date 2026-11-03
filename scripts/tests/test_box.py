@@ -340,7 +340,7 @@ class DeviceResolution(IsolatedEnv):
         self.assertEqual(e.hardware_serial, "R5CT123ABC")
 
 
-class Worktrees(IsolatedEnv):
+class OriginFixture(IsolatedEnv):
     """A temp main checkout cloned from a bare "origin" holding master, qa/2026-11-round, feature."""
 
     def setUp(self) -> None:
@@ -374,6 +374,8 @@ class Worktrees(IsolatedEnv):
         git(self.seed, "commit", "-q", "--allow-empty", "-m", "more")
         git(self.seed, "push", "-q", "origin", branch)
 
+
+class Worktrees(OriginFixture):
     def test_slash_maps_to_dash_everywhere(self) -> None:
         self.assertEqual(box.dir_name("qa/2026-11-round"), "qa-2026-11-round")
         self.assertEqual(
@@ -1248,6 +1250,72 @@ class StartServer(IsolatedEnv):
         with self.assertRaises(box.BoxError) as caught:
             self.start(up=False, log="Traceback: boom")
         self.assertNotIn("held by", str(caught.exception))
+
+
+class SyncWorktree(OriginFixture):
+    def setUp(self) -> None:
+        super().setUp()
+        self.wt = box.ensure_worktree("feature")
+        self.head = box.git_in(self.wt, "rev-parse", "HEAD").stdout
+
+    def refetch(self) -> None:
+        box.git_in(self.main, "fetch", "--quiet", "origin", "feature")
+
+    def test_up_to_date_is_silent_and_untouched(self) -> None:
+        box.sync_worktree(self.wt, "feature")
+        self.assertEqual(box.git_in(self.wt, "rev-parse", "HEAD").stdout, self.head)
+
+    def test_behind_and_clean_fast_forwards_and_says_so(self) -> None:
+        self.push_to_origin("feature")
+        self.refetch()
+        with mock.patch("builtins.print") as out:
+            box.sync_worktree(self.wt, "feature")
+        self.assertIn("fast-forwarded feature by 1 commits", out.call_args.args[0])
+        want = box.git_in(self.main, "rev-parse", "origin/feature").stdout
+        self.assertEqual(box.git_in(self.wt, "rev-parse", "HEAD").stdout, want)
+
+    def test_behind_and_dirty_is_refused_unless_stale_ok(self) -> None:
+        self.push_to_origin("feature")
+        self.refetch()
+        (self.wt / "a.txt").write_text("edited\n")
+        with self.assertRaises(box.BoxError) as ctx:
+            box.sync_worktree(self.wt, "feature")
+        self.assertIn("uncommitted changes", str(ctx.exception))
+        self.assertIn("--stale-ok", str(ctx.exception))
+        with mock.patch.object(box, "note") as note:
+            box.sync_worktree(self.wt, "feature", stale_ok=True)
+        self.assertIn("--stale-ok", note.call_args.args[0])
+        self.assertEqual(box.git_in(self.wt, "rev-parse", "HEAD").stdout, self.head)
+
+    def test_diverged_is_refused(self) -> None:
+        git(self.wt, "commit", "-q", "--allow-empty", "-m", "local")
+        self.push_to_origin("feature")
+        self.refetch()
+        with self.assertRaises(box.BoxError) as ctx:
+            box.sync_worktree(self.wt, "feature")
+        self.assertIn("diverged from origin (1 ahead, 1 behind)", str(ctx.exception))
+
+    def test_ahead_builds_locally_without_a_word(self) -> None:
+        git(self.wt, "commit", "-q", "--allow-empty", "-m", "local")
+        with (
+            mock.patch.object(box, "note") as note,
+            mock.patch("builtins.print") as out,
+        ):
+            box.sync_worktree(self.wt, "feature")
+        note.assert_not_called()
+        out.assert_not_called()
+
+    def test_run_syncs_before_building(self) -> None:
+        self.push_to_origin("feature")
+        args = box.parse_args(["run", "feature", "desktop", "--stale-ok"])
+        self.assertTrue(args.stale_ok)
+        with (
+            mock.patch.object(box, "run_desktop"),
+            mock.patch.object(box, "record_last_target"),
+        ):
+            box.cmd_run(box.parse_args(["run", "feature", "desktop"]))
+        want = box.git_in(self.main, "rev-parse", "origin/feature").stdout
+        self.assertEqual(box.git_in(self.wt, "rev-parse", "HEAD").stdout, want)
 
 
 if __name__ == "__main__":
