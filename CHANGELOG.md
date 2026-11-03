@@ -239,6 +239,8 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 - **The delete confirmation opens with Delete focused**, so deleting is Delete, then Enter. **Tab** / **Shift+Tab** move between Delete and Cancel without leaving the dialog, and **Escape** or a click outside still cancels. The warning prompts that list what you would lose still open on Cancel.
 
 ### Fixed
+- **Another device's changes now show up on their own in Client mode, and every view refreshes from one fetch.** With the desktop and the phone on one server, a change made on the phone only appeared on the desktop after the desktop made a change of its own. Every view of the board in a window (the list, the filters, the Mindmap) now updates when another device changes the board. A window loads the board once and shares it between its views, so a refresh, an edit or opening several views at once no longer fetches the whole board once per view: it is faster and lighter on the connection.
+
 - **The window title is "Arlesh" again.** Builds since Client mode titled the window "Arlesh — 9f0-client-mode" and stopped giving it its desktop app id, so the launcher could not match it to Arlesh's icon.
 
 - **The Android app restarts when you switch server settings, and has the Arlesh logo as its icon.** "Connect and restart" used to do nothing in the release APK until you closed and reopened the app by hand, and if a restart fails now you see an error saying so. The phone's top bar no longer shows the server; **Settings → Server** has a status line with the mode, URL, whether the server answers, when it last synced and whether its version suits the app. The launcher icon is the desktop logo, as an adaptive icon.
