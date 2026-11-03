@@ -17,10 +17,12 @@ function isBridge(value: unknown): value is SystemBarsBridge {
 /**
  * Tells the Android activity how to sit against the system bars, and whether the app is dark (the
  * status-bar icons are light on dark). The activity answers by pushing the real insets into the
- * page's `--sat`/`--sab`/`--sal`/`--sar`. Does nothing where there is no bridge: the desktop, a
- * browser, a test.
+ * page's `--sat`/`--sab`/`--sal`/`--sar`. Does nothing, and returns false, where there is no
+ * bridge: the desktop, a browser, a test.
  */
-export function setSystemBars(mode: SystemBarsMode, darkTheme: boolean): void {
+export function setSystemBars(mode: SystemBarsMode, darkTheme: boolean): boolean {
   const bridge: unknown = Reflect.get(window, "ArleshBars");
-  if (isBridge(bridge)) bridge.setSystemBars(mode, darkTheme);
+  if (!isBridge(bridge)) return false;
+  bridge.setSystemBars(mode, darkTheme);
+  return true;
 }

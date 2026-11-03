@@ -25,8 +25,11 @@ behind the cargo feature `standalone`, which is on by default.
   call fails the person gets an error naming the fix (close and reopen the app), not a silent
   no-op. Switching the backend in place was weighed and not chosen: the database, the MCP
   endpoint, the undo log and the change stream are all set up once at start-up.
-- **The top bar** shows the mode: *This device*, or *Server* with a dot for whether the server is
-  reachable and its URL on hover. The phone's top bar does not carry it ([Touch](touch.md)).
+- **The top bar carries no mode indicator** (decided with the user, 2026-11-02: it had been *This
+  device*, or *Server* with a dot for whether the server is reachable and its URL on hover, and
+  the phone's bar already dropped it, [Touch](touch.md)). Where the server cannot be reached, or
+  speaks another API version, the *Server unreachable* / version banner (`ServerBanner`, below the
+  bar) says so and why the board is read-only; the rest lives on Settings → Server.
 - **Settings → Server has a status line**: the mode and, in Client mode, the server's URL, whether
   it answers, when the board was last synced and whether the server's version suits this app.
 
@@ -156,9 +159,17 @@ windows as the same Tauri `board-changed` event a Standalone write raises, now c
 **What a write costs, and the revision.** The server stamps `/board` and every other answer with
 its revision and epoch ([Revision](http-api.md#revision-on-every-answer-and-gzip)). The Tauri
 `load_mindmap` returns the board with that stamp as `revision`, and each window keeps the stamp of
-the board it holds in one place, `src/stores/board-revision-store.ts`. Standalone has no server, so
+the board it holds in `src/stores/board-revision-store.ts`.
+
+**One load per window.** The window holds one copy of the board, in `src/stores/use-board-store.ts`,
+with one tracker, one listener for `board-changed` and a single-flight `load()`. The views (the
+list, the filter display, the Mindmap, Steps) are views over that copy: each derives its own tree
+from it, and none loads or listens. So four views mounted together cost one fetch, and one event
+from another device costs one fetch for all of them, each of which then shows it. A reload asked
+while a fetch is in flight (a write's own reload, an event) waits for it and shares one follow-up,
+since the fetch under way may have been read before the news. Standalone takes the same path, with no revision to compare. Standalone has no server, so
 its loads carry none and its events carry none, and a window with none reloads on every event as it
-always has. The rules, in `src/hooks/use-board-changed.ts`:
+always has. The rules, in `src/stores/watch-board-changes.ts`:
 
 - An event whose revision is **at or below** the one the window holds is skipped. A device's own
   write is announced to it too, and after its own reload it already holds that revision, so it

@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useTranslation } from "react-i18next";
-import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
-import { agentActivityFrom } from "@/utils/agent-activity";
 import { createDomain, updateDomain, duplicateDomain } from "@/api/domains";
 import { createTask, updateTask, duplicateTask, TASK_ARCHIVAL } from "@/api/tasks";
 import { createCommitment, updateCommitment, addTagToCommitment, COMMITMENT_ARCHIVAL } from "@/api/commitments";
@@ -19,11 +17,10 @@ import { createGoal, updateGoal, duplicateGoal } from "@/api/goals";
 import { createInfo, updateInfo, duplicateInfo } from "@/api/infos";
 import { leftBehindOf } from "@/api/duplicate";
 import type { LeftBehindChild } from "@/api/duplicate";
-import { getErrorMessage } from "@/api/errors";
-import { loadMindmap } from "@/api/mindmap";
 import { withGesture } from "@/api/gesture";
-import { useBoardChanged } from "@/hooks/use-board-changed";
 import { awaitLane, usePendingWritesStore } from "@/stores/use-pending-writes-store";
+import { useBoardStore } from "@/stores/use-board-store";
+import type { SharedBoard } from "@/stores/use-board-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { usePendingWrite } from "@/hooks/use-pending-write";
 import { useTemporaryIds } from "@/hooks/use-temporary-ids";
@@ -31,9 +28,7 @@ import { useReadOnlyNotice } from "@/hooks/use-read-only-notice";
 import { createdWrite, writtenWith } from "@/utils/answer-fields";
 import { shownTitle } from "@/utils/editor-save-fields";
 import { applyPendingWrites } from "@/utils/apply-pending-writes";
-import { isReflected } from "@/utils/pending-writes";
 import type { BoardStamp } from "@/utils/pending-writes";
-import { useBoardRevisionStore } from "@/stores/board-revision-store";
 import type { MindmapLoad } from "@/api/mindmap";
 import {
   createFlow, updateFlow,
@@ -43,11 +38,8 @@ import {
 import { rowIdOf, rowIdOfNodeId } from "@/utils/node-identity";
 import { canParentNewChild, validParentKinds } from "@/utils/node-meta";
 import { TASK_STATUS, GOAL_STATUS } from "@/utils/status-mapping";
-import { listPeople } from "@/api/people";
-import { isClientMode, useClientModeStore } from "@/stores/use-client-mode-store";
 import { deleteNodes, runGesture } from "@/api/multi-node-gestures";
 import type { GestureStep } from "@/api/multi-node-gestures";
-import { useMcpAccessStore } from "@/stores/use-mcp-access-store";
 import type { Domain } from "@/api/domains";
 import type { Task } from "@/api/tasks";
 import { formatCooldownUntil } from "@/utils/cooldown-until";
@@ -67,7 +59,6 @@ import type { ScopeLabelFns } from "@/hooks/use-scope-labels";
 import { useScopeLabels } from "@/hooks/use-scope-labels";
 import type { CanonicalKind } from "@/utils/scope-ref";
 import type { DurationSpec, TimeScope } from "@/api/time-scope";
-import { localNowIso } from "@/utils/local-now";
 import { checkOrigin, habitOrigin, storedId } from "@/api/node-id";
 import type { RowId } from "@/api/node-id";
 
@@ -944,81 +935,114 @@ async function createCommitmentUnderNode(
   return commitment.id;
 }
 
-/** Every Person's name, by id. A failed read draws a Person delegate unnamed rather than failing
- * the board, as a failed MCP read draws no antenna. */
-async function loadPersonNames(): Promise<Map<number, string>> {
-  // People are Standalone-only: a server has none to name (docs/spec/client-mode.md).
-  if (isClientMode(useClientModeStore.getState().status)) return new Map();
-  try {
-    const people = await listPeople();
-    return new Map((people ?? []).map((person) => [person.id, person.name]));
-  } catch (error: unknown) {
-    console.warn("[arlesh] could not read people's names:", error);
-    return new Map();
-  }
+/** What a view needs beyond the shared board to turn it into a tree: words and labels in the active language. */
+interface TreeInputs {
+  scopeLabels: ScopeLabelFns;
+  /** A check task is titled `{prefix}{wait title}`, the prefix a display setting. */
+  checkPrefix: string;
+  delegationWaitTitle: (title: string, delegateName: string | null) => string;
+  capacityReason: string;
+  carriesMissed: CarriesMissedTitle;
+  compoundReason: string;
+  cooldownReason: (until: string) => string;
 }
 
-/** A board as the server gave it, with the stamp of the read it came from. */
-interface LoadedBoard {
-  tree: MindmapNode;
-  stamp: BoardStamp;
+const NOTHING_STAMP: BoardStamp = { read: 0, epoch: null, revision: null };
+
+const builtTrees = new WeakMap<SharedBoard, WeakMap<TreeInputs, MindmapNode>>();
+
+/**
+ * The tree one view draws from the window's board. Memoised on the pair, so the render and a
+ * mutation reading the latest tree in the same tick get the same object, and a view whose inputs
+ * did not change does not build again when another view's reload leaves the board as it was.
+ */
+function treeOfBoard(board: SharedBoard, inputs: TreeInputs): MindmapNode {
+  const forBoard = builtTrees.get(board) ?? new WeakMap<TreeInputs, MindmapNode>();
+  builtTrees.set(board, forBoard);
+  const cached = forBoard.get(inputs);
+  if (cached !== undefined) return cached;
+  const data = board.load;
+  const built = buildTree(
+    data.domains, data.goals, data.tasks, data.infos, data.commitments, data.flows,
+    data.flow_goals, data.flow_tasks, data.flow_cycles, data.flow_dependencies,
+    data.block_reasons, data.task_dependencies, data.flow_instance_nodes,
+    data.expectations, inputs.delegationWaitTitle,
+    (title) => `${inputs.checkPrefix}${title}`, inputs.compoundReason, inputs.capacityReason,
+    inputs.cooldownReason, data.short_ids ?? {}, board.personNames, data.facts ?? {},
+    data.flow_commitments ?? [], data.flow_expectations ?? [],
+  );
+  applyLifecycles(built, lifecycleMap(data.lifecycles));
+  // A Habit's occurrences are ordinary rows, already built into the tree above. A flow whose
+  // derivation failed has none, and says so as a load condition — it is not silently
+  // indistinguishable from a flow that simply has no iterations.
+  decorateIterationRoots(built, data.flows, inputs.scopeLabels, board.now, inputs.carriesMissed);
+  forBoard.set(inputs, built);
+  return built;
 }
 
-const NOTHING_LOADED: LoadedBoard = { tree: VIRTUAL_ROOT, stamp: { read: 0, epoch: null, revision: null } };
-
+/**
+ * A view of the window's board.
+ *
+ * The board itself is loaded once per window, by `useBoardStore`: any number of views mounted at
+ * once share one fetch, one copy and one revision. What a view owns is only what it derives from
+ * that copy: its tree (words in the active language, the pending writes drawn over it) and the
+ * mutations, which write and then ask the shared store to reload.
+ */
 export function useMindmapData(): MindmapData {
   const { t } = useTranslation(["undo", "expectation", "editor", "habits", "warnings", "nodeKinds"]);
   const showToast = useMindmapStore((s) => s.showToast);
   const enqueueWrite = usePendingWrite({ showToast });
   const readOnlyNotice = useReadOnlyNotice();
-  // The board as the server last gave it, and the stamp of the read it came from. What the views
-  // get is this with the window's pending writes drawn over it (ADR 0012, decision 3).
-  const [loaded, setLoaded] = useState<LoadedBoard>(NOTHING_LOADED);
-  const boardId = useId();
-  const pendingWrites = usePendingWritesStore((s) => s.writes);
-  const pendingAliases = usePendingWritesStore((s) => s.aliases);
-  const tree = useMemo(
-    () => applyPendingWrites(loaded.tree, loaded.stamp, pendingWrites, pendingAliases),
-    [loaded, pendingWrites, pendingAliases],
-  );
-  // Read through a ref, set in an effect, so `load` does not change identity with `t` — which
-  // would re-run the mount effect and reload for nothing. Declared before that effect, so the
-  // first load already has it.
-  const delegationWaitTitle = useRef((title: string, _delegateName: string | null) => title);
-  const capacityReason = useRef("Agents at capacity");
-  const carriesMissedTitle = useRef<CarriesMissedTitle>(({ title, scope }) => `${title} ${scope}`);
-  const compoundReason = useRef("All open sub-items are blocked");
-  const cooldownReason = useRef((until: string) => `Cooling down until ${until}`);
-  useEffect(() => {
-    delegationWaitTitle.current = (title: string, delegateName: string | null) => t("expectation:delegationWaitTitle", {
-      title,
-      delegate: delegateName ?? t("expectation:delegatePersonUnnamed"),
-    });
-    capacityReason.current = t("editor:agentsAtCapacity");
-    carriesMissedTitle.current = (parts) => t("habits:carriesMissed", parts);
-    compoundReason.current = t("editor:compoundBlocked");
-    cooldownReason.current = (until: string) => t("editor:cooldownBlocked", { when: formatCooldownUntil(until) });
-  }, [t]);
-  // A check task is titled `{prefix}{wait title}`, the prefix a display setting. Unlike the
-  // translation above it is a dependency of `load`: changing it redraws the board with the new
-  // titles rather than leaving them stale until the next edit.
+  const board = useBoardStore((s) => s.board);
+  const isLoading = useBoardStore((s) => s.isLoading);
+  const error = useBoardStore((s) => s.error);
+  const scopeLabels = useScopeLabels();
+  // A check task is titled `{prefix}{wait title}`, the prefix a display setting. Changing it
+  // redraws the board with the new titles rather than leaving them stale until the next edit.
   const storedCheckPrefix = useDisplayStore((s) => s.checkTaskPrefix);
   const checkPrefix = storedCheckPrefix ?? t("expectation:checkTaskPrefixDefault");
+  const inputs = useMemo((): TreeInputs => ({
+    scopeLabels,
+    checkPrefix,
+    delegationWaitTitle: (title, delegateName) => t("expectation:delegationWaitTitle", {
+      title,
+      delegate: delegateName ?? t("expectation:delegatePersonUnnamed"),
+    }),
+    capacityReason: t("editor:agentsAtCapacity"),
+    carriesMissed: (parts) => t("habits:carriesMissed", parts),
+    compoundReason: t("editor:compoundBlocked"),
+    cooldownReason: (until) => t("editor:cooldownBlocked", { when: formatCooldownUntil(until) }),
+  }), [scopeLabels, checkPrefix, t]);
+  const pendingWrites = usePendingWritesStore((s) => s.writes);
+  const pendingAliases = usePendingWritesStore((s) => s.aliases);
+  // What the views get is the board's tree with the window's pending writes drawn over it
+  // (ADR 0012, decision 3).
+  const boardTree = useMemo(() => (board === null ? VIRTUAL_ROOT : treeOfBoard(board, inputs)), [board, inputs]);
+  const stamp = board?.stamp ?? NOTHING_STAMP;
+  const tree = useMemo(
+    () => applyPendingWrites(boardTree, stamp, pendingWrites, pendingAliases),
+    [boardTree, stamp, pendingWrites, pendingAliases],
+  );
+  const loadCondition = useMemo(() => (board === null ? NO_CONDITIONS : collectLoadConditions(board.load)), [board]);
   // The tree as of the latest load, read synchronously by the mutations to resolve a node id to
-  // its row. A ref rather than the `tree` closure: a caller that creates a node and acts on it in
-  // the same gesture holds a callback from before the reload that drew it.
-  // It holds the **patched** tree, so a second press predicts from the first, and is worked out on
-  // demand from the store rather than set by an effect, which would lag a gesture's second call.
-  const latestLoaded = useRef<LoadedBoard>(NOTHING_LOADED);
-  const latestPatched = useRef<{ loaded: LoadedBoard; writes: unknown; aliases: unknown; tree: MindmapNode } | null>(null);
+  // its row. Read from the store rather than from the `tree` closure: a caller that creates a node
+  // and acts on it in the same gesture holds a callback from before the reload that drew it.
+  // It is the **patched** tree, so a second press predicts from the first, and is worked out on
+  // demand from the stores rather than set by an effect, which would lag a gesture's second call.
+  const latestInputs = useRef(inputs);
+  useEffect(() => { latestInputs.current = inputs; }, [inputs]);
+  const latestPatched = useRef<{ base: MindmapNode; stamp: BoardStamp; writes: unknown; aliases: unknown; tree: MindmapNode } | null>(null);
   const currentTree = useCallback((): MindmapNode => {
     const { writes, aliases } = usePendingWritesStore.getState();
+    const held = useBoardStore.getState().board;
+    const base = held === null ? VIRTUAL_ROOT : treeOfBoard(held, latestInputs.current);
+    const heldStamp = held?.stamp ?? NOTHING_STAMP;
     const cached = latestPatched.current;
-    if (cached !== null && cached.loaded === latestLoaded.current && cached.writes === writes && cached.aliases === aliases) {
+    if (cached !== null && cached.base === base && cached.stamp === heldStamp && cached.writes === writes && cached.aliases === aliases) {
       return cached.tree;
     }
-    const patched = applyPendingWrites(latestLoaded.current.tree, latestLoaded.current.stamp, writes, aliases);
-    latestPatched.current = { loaded: latestLoaded.current, writes, aliases, tree: patched };
+    const patched = applyPendingWrites(base, heldStamp, writes, aliases);
+    latestPatched.current = { base, stamp: heldStamp, writes, aliases, tree: patched };
     return patched;
   }, []);
   // A temporary id (a node still being created) is looked up under the real one once it has one.
@@ -1035,128 +1059,16 @@ export function useMindmapData(): MindmapData {
       useMindmapStore.getState().dropNodeIds(new Set(removed.map((node) => node.id)), parent);
     },
   });
-  // The newest read this hook has started, and the newest it has put on screen: a read that returns
-  // after a newer one has been drawn is discarded.
-  const startedRead = useRef(0);
-  const drawnRead = useRef(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [loadCondition, setLoadCondition] = useState<LoadCondition>(NO_CONDITIONS);
-  const scopeLabels = useScopeLabels();
 
-  /**
-   * Loads the whole mindmap and rebuilds the tree.
-   *
-   * `showSpinner` is the only thing separating the initial load from the refresh every mutation
-   * ends with: a mutation keeps the canvas mounted so pan/zoom survives. The fetch is one round
-   * trip either way — `load_mindmap` resolves the per-flow Habit wave backend-side.
-   */
-  const load = useCallback(
-    async (showSpinner: boolean) => {
-      if (showSpinner) setIsLoading(true);
-      setError(null);
-      try {
-        const now = localNowIso();
-        const read = usePendingWritesStore.getState().beginRead();
-        startedRead.current = read;
-        useBoardRevisionStore.getState().loadStarted();
-        let data: MindmapLoad;
-        try {
-          data = await loadMindmap(now);
-        } catch (err) {
-          useBoardRevisionStore.getState().loadFailed();
-          throw err;
-        }
-        useBoardRevisionStore.getState().loadFinished(data.revision ?? null);
-        if (read < drawnRead.current) return;
-        // People are read only when a Task is delegated to one: their names are what a Person
-        // delegate's badge and wait are labelled with, and nothing else on the board needs them.
-        const personNames = data.tasks.some((task) => task.delegate_to != null)
-          ? await loadPersonNames()
-          : new Map<number, string>();
-        const built = buildTree(
-          data.domains, data.goals, data.tasks, data.infos, data.commitments, data.flows,
-          data.flow_goals, data.flow_tasks, data.flow_cycles, data.flow_dependencies,
-          data.block_reasons, data.task_dependencies, data.flow_instance_nodes,
-          data.expectations, (title, delegateName) => delegationWaitTitle.current(title, delegateName),
-          (title) => `${checkPrefix}${title}`, compoundReason.current, capacityReason.current,
-          (until) => cooldownReason.current(until), data.short_ids ?? {}, personNames, data.facts ?? {},
-          data.flow_commitments ?? [], data.flow_expectations ?? [],
-        );
-        applyLifecycles(built, lifecycleMap(data.lifecycles));
-        // A Habit's occurrences are ordinary rows, already built into the tree above. A flow whose
-        // derivation failed has none, and says so as a load condition below — it is not silently
-        // indistinguishable from a flow that simply has no iterations.
-        decorateIterationRoots(built, data.flows, scopeLabels, now, (parts) => carriesMissedTitle.current(parts));
-        drawnRead.current = read;
-        const next: LoadedBoard = {
-          tree: built,
-          stamp: { read, epoch: data.revision?.epoch ?? null, revision: data.revision?.revision ?? null },
-        };
-        latestLoaded.current = next;
-        setLoaded(next);
-        // The whole board, before any view narrows it to a subtree: the top bar's agent status.
-        useAgentActivityStore.getState().receive(agentActivityFrom(data.agent_activity));
-        setLoadCondition(collectLoadConditions(data));
-      } catch (err) {
-        setError(getErrorMessage(err));
-      } finally {
-        if (showSpinner) setIsLoading(false);
-      }
-    },
-    [scopeLabels, checkPrefix],
-  );
+  // Mounting a view asks for the window's board; the first of them starts its one load and its
+  // listeners (changes elsewhere, answered writes, the MCP roots), the rest share them.
+  useEffect(() => useBoardStore.getState().acquire(), []);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load(true);
-  }, [load]);
-
-  // The window's store retires a pending write once every board has caught up with it, so it has
-  // to hear which board this is.
-  useEffect(() => {
-    usePendingWritesStore.getState().reportBoard(boardId, loaded.stamp);
-  }, [boardId, loaded.stamp]);
-  useEffect(() => () => usePendingWritesStore.getState().forgetBoard(boardId), [boardId]);
-
-  // After an answer the board reloads, unless it already reflects the write (decision 5). Reloads
-  // coalesce: one in flight and one waiting.
-  const reloading = useRef(false);
-  const reloadAgain = useRef(false);
-  const reloadForAnswers = useCallback(async () => {
-    if (reloading.current) {
-      reloadAgain.current = true;
-      return;
-    }
-    reloading.current = true;
-    try {
-      do {
-        reloadAgain.current = false;
-        await load(false);
-      } while (reloadAgain.current);
-    } finally {
-      reloading.current = false;
-    }
-  }, [load]);
-  useEffect(() => {
-    // An answer needs a read only if no read has begun since it arrived: a read in flight will
-    // carry it, and its landing is judged by the stamp.
-    const unreflected = pendingWrites.some(
-      ({ answer }) => answer !== null && answer.afterRead >= startedRead.current && !isReflected(answer, loaded.stamp),
-    );
-    if (unreflected) void reloadForAnswers();
-  }, [pendingWrites, loaded.stamp, reloadForAnswers]);
-
-  // A change to the MCP roots made in this window redraws the "visible to the MCP" badges. Not a
-  // dependency of `load`, which would raise the full-screen spinner for it; the initial load
-  // already read the roots, so only a later change reloads.
-  const mcpRevision = useMcpAccessStore((s) => s.revision);
-  const seenMcpRevision = useRef(mcpRevision);
-  useEffect(() => {
-    if (seenMcpRevision.current === mcpRevision) return;
-    seenMcpRevision.current = mcpRevision;
-    void load(false);
-  }, [mcpRevision, load]);
+  // Refreshes the board in place, WITHOUT the spinner: every caller is a post-mutation refresh
+  // (status toggles, edits, deletes, conversions). `MindmapView` early-returns a full-screen
+  // "Loading…" whenever `isLoading` is true, which unmounts the canvas and takes pan, zoom and
+  // focus with it. Only the initial mount shows it. The store coalesces concurrent calls.
+  const reload = useCallback(() => useBoardStore.getState().load(), []);
 
   /** The kind of node Tab makes under `parentId`, and *insert parent* makes above a node. */
   const defaultChildKind = useCallback(
@@ -1340,10 +1252,10 @@ export function useMindmapData(): MindmapData {
   const settleCreated = useCallback(
     async (placeholder: MindmapNode): Promise<MindmapNode | undefined> => {
       await usePendingWritesStore.getState().whenDrained();
-      await load(false);
+      await reload();
       return findNodeInTree(currentTree(), usePendingWritesStore.getState().resolveId(placeholder.id));
     },
-    [load, currentTree],
+    [reload, currentTree],
   );
 
   const createChild = useCallback(
@@ -1364,7 +1276,7 @@ export function useMindmapData(): MindmapData {
         const dbId = rowIdOfId(id);
         if (kind === "flow") await updateFlow(storedId(dbId), { title });
         else if (isFlowItemType(kind)) await updateFlowItem(kind, storedId(dbId), { title });
-        await load(false);
+        await reload();
         return;
       }
       const node = findNodeInTree(currentTree(), id);
@@ -1389,7 +1301,7 @@ export function useMindmapData(): MindmapData {
         },
       });
     },
-    [load, rowIdOfId, currentTree, enqueueWrite, showToast, readOnlyNotice, t],
+    [reload, rowIdOfId, currentTree, enqueueWrite, showToast, readOnlyNotice, t],
   );
 
   const reorderNode = useCallback(
@@ -1428,9 +1340,9 @@ export function useMindmapData(): MindmapData {
         setPos(nodeDbId, node.kind, neighborPos),
         setPos(neighborDbId, neighbor.kind, nodePos),
       ]);
-      await load(false);
+      await reload();
     },
-    [load, tree],
+    [reload, tree],
   );
 
   const moveNode = useCallback(
@@ -1499,9 +1411,9 @@ export function useMindmapData(): MindmapData {
           throw new Error(`moveNode has no branch for node kind "${String(unhandled)}"`);
         }
       }
-      await load(false);
+      await reload();
     },
-    [load, rowIdOfId],
+    [reload, rowIdOfId],
   );
 
   /**
@@ -1570,10 +1482,10 @@ export function useMindmapData(): MindmapData {
           throw new Error(`duplicateNode has no branch for node kind "${String(unhandled)}"`);
         }
       }
-      await load(false);
+      await reload();
       return leftBehind;
     },
-    [load, rowIdOfId],
+    [reload, rowIdOfId],
   );
 
   /**
@@ -1615,12 +1527,12 @@ export function useMindmapData(): MindmapData {
       const made = answers[0];
       const id: unknown = typeof made === "object" && made !== null ? Reflect.get(made, "id") : undefined;
       if (typeof id !== "number") throw new Error("insert parent made no node");
-      await load(false);
+      await reload();
       if (childKind === "domain" || childKind === "project" || childKind === "tag") return `domain-${id}`;
       if (isFlowItemType(childKind)) return flowItemNodeId(childKind, id);
       return `${childKind}-${id}`;
     },
-    [defaultChildKind, load, rowIdOfId, tree],
+    [defaultChildKind, reload, rowIdOfId, tree],
   );
 
   const pasteNodes = useCallback(
@@ -1634,10 +1546,10 @@ export function useMindmapData(): MindmapData {
         ? { op: "duplicate", kind, id: storedId(rowIdOfId(id)), parent_kind: targetKind, parent_id: storedId(target), position: position + index }
         : { op: "move", kind, id: rowIdOfId(id), parent_kind: targetKind, parent: target, position: position + index });
       const answers = await runGesture("paste", steps);
-      await load(false);
+      await reload();
       return answers.flatMap(leftBehindOf);
     },
-    [load, rowIdOfId],
+    [reload, rowIdOfId],
   );
 
   const removeNode = useCallback(
@@ -1652,9 +1564,9 @@ export function useMindmapData(): MindmapData {
       if (nodes.length > 0) {
         await withGesture(t("gestures.delete", { count: nodesToDelete.length }), () => deleteNodes(nodes));
       }
-      await load(false);
+      await reload();
     },
-    [load, rowIdOfId, t],
+    [reload, rowIdOfId, t],
   );
 
   /**
@@ -1675,40 +1587,28 @@ export function useMindmapData(): MindmapData {
       await awaitLane();
       const commitmentId = await createCommitmentUnderNode(rowIdOfId(parentId), parentKind, data);
       for (const tagId of data.tagIds) await addTagToCommitment(commitmentId, tagId);
-      await load(false);
+      await reload();
     },
-    [load, rowIdOfId],
+    [reload, rowIdOfId],
   );
 
   const createFlowNode = useCallback(
     async (request: CreateFlowRequest): Promise<Flow> => {
       await awaitLane();
       const flow = await createFlow(request);
-      await load(false);
+      await reload();
       return flow;
     },
-    [load],
+    [reload],
   );
 
   const updateFlowNode = useCallback(
     async (id: number, request: UpdateFlowRequest): Promise<void> => {
       await updateFlow(id, request);
-      await load(false);
+      await reload();
     },
-    [load],
+    [reload],
   );
-
-  // Refreshes the tree in place, WITHOUT the spinner — every caller is a post-mutation refresh
-  // (status toggles, edits, deletes, conversions). `MindmapView` early-returns a full-screen
-  // "Loading…" whenever `isLoading` is true, which unmounts the canvas and takes pan, zoom and
-  // focus with it, so raising the spinner here makes every mutation flash the whole view.
-  // Only the initial mount passes `true`.
-  const reload = useCallback(() => load(false), [load]);
-
-  // An edit in another window ends in exactly this reload. Two views of one board that silently
-  // disagree are worse than one view, and the cheapest way to have none is to reuse the refresh
-  // every local mutation already ends in. See `use-board-changed`.
-  useBoardChanged(reload);
 
   return {
     tree,
@@ -1728,6 +1628,6 @@ export function useMindmapData(): MindmapData {
     createCommitment: createCommitmentNode,
     createFlow: createFlowNode,
     updateFlow: updateFlowNode,
-    reload: reload,
+    reload,
   };
 }

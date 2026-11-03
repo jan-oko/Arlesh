@@ -14,6 +14,25 @@ html, body, #root {
   --safe-left: max(env(safe-area-inset-left, 0px), var(--sal, 0px));
   --safe-right: max(env(safe-area-inset-right, 0px), var(--sar, 0px));
 
+  /* The display's rounded corners' radii. MainActivity pushes the real ones (Android 12+, as an
+     inline style that wins over these); 16px is the guess where the radius is unknown. */
+  --corner-tl: 16px;
+  --corner-tr: 16px;
+  --corner-br: 16px;
+  --corner-bl: 16px;
+  /* How far in from a corner a box must sit to lie wholly inside its arc: r * (1 - 1/sqrt 2) is
+     0.293 r, taken as 0.3 r. */
+  --corner-inset-br: calc(var(--corner-br) * 0.3);
+
+  /* In full screen the views must clear the system bars. Immersive hides them, but a swipe from the edge peeks them over the app. The
+     activity pushes their real sizes into --peek-top/--peek-bottom (Android reports them while
+     hidden); 28px and 24px are the guess. Only in full screen (the root carries data-fs-bars, set by useSystemBars where there
+     is a bridge) do the views pad their content box, by the visible insets in Edge-to-edge and by
+     these in Immersive, so nothing important rests under a bar or a peek; otherwise both are 0. The Mindmap canvas ignores
+     them: it is panned, and stays full-bleed. */
+  --peek-pad-top: 0px;
+  --peek-pad-bottom: 0px;
+
   /* Aspect colors */
   --color-aspect-red: #e74c3c;
   --color-aspect-purple: #9b59b6;
@@ -102,6 +121,18 @@ html, body, #root {
   --text-sm: 12px;
   --text-base: 14px;
   --text-lg: 16px;
+}
+
+/* Full screen only (the top bar and bottom bars are gone); the views and the corner square read these.
+   Edge-to-edge: the visible bars' insets. Immersive: where the hidden bars peek. */
+:root[data-fs-bars="edgeToEdge"] {
+  --peek-pad-top: var(--safe-top);
+  --peek-pad-bottom: var(--safe-bottom);
+}
+
+:root[data-fs-bars="immersive"] {
+  --peek-pad-top: max(var(--peek-top, 28px), var(--safe-top));
+  --peek-pad-bottom: max(var(--peek-bottom, 24px), var(--safe-bottom));
 }
 
 :root[data-theme="light"] {

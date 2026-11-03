@@ -68,7 +68,7 @@ beforeEach(() => {
   usePendingWritesStore.getState().reset();
   useClientModeStore.setState({ status: null });
   // A board drawn before any write, so an answered write stays until a newer one arrives.
-  usePendingWritesStore.getState().reportBoard("test", { read: 0, epoch: null, revision: null });
+  usePendingWritesStore.getState().reportBoard({ read: 0, epoch: null, revision: null });
 });
 
 describe("useStatusCycle: a press is shown at once and sent through the lane", () => {

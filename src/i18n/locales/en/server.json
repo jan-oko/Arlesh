@@ -1,9 +1,6 @@
 {
   "mode": {
-    "standalone": "This device",
-    "client": "Server",
-    "reachable": "Connected to {{url}}",
-    "unreachable": "Cannot reach {{url}}"
+    "client": "Server"
   },
   "banner": {
     "server_unreachable": "Server unreachable — showing the board as it was, read-only.",

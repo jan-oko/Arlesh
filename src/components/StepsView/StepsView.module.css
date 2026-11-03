@@ -9,9 +9,14 @@
   flex: 1 1 0;
   flex-direction: column;
   box-sizing: border-box;
-  padding: var(--space-4);
+  padding: var(--space-4) var(--space-4) calc(var(--space-4) + var(--peek-pad-bottom));
   background: var(--canvas-bg);
   gap: var(--space-3);
+}
+
+/* Full screen only: the status-bar inset alone, no extra gap above it. */
+:global(:root[data-fs-bars]) .container {
+  padding-top: var(--peek-pad-top);
 }
 
 /* The header card and the Step's "+" beside it. The card takes the width; the "+" stretches to its

@@ -5,9 +5,11 @@ import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
+import android.view.RoundedCorner
 import android.view.View
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
+import androidx.annotation.RequiresApi
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -44,18 +46,21 @@ class MainActivity : TauriActivity() {
       // With the keyboard up the gesture bar is behind it: pad by the keyboard, and the page's
       // bottom inset is 0 so it is not counted twice.
       val keyboard = ime.bottom > bars.bottom
+      // The bars' sizes even while hidden (Immersive), for the page to pad by where they peek.
+      val peek = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars())
+      val corners = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) cornersOf(insets) else null
       when (mode) {
         BarsMode.STANDARD -> {
           view.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
-          pushInsets(0, 0, 0, 0)
+          pushInsets(0, 0, 0, 0, NO_CORNERS, peek.top, peek.bottom)
         }
         BarsMode.EDGE_TO_EDGE -> {
           view.setPadding(0, 0, 0, if (keyboard) ime.bottom else 0)
-          pushInsets(bars.top, if (keyboard) 0 else bars.bottom, bars.left, bars.right)
+          pushInsets(bars.top, if (keyboard) 0 else bars.bottom, bars.left, bars.right, corners, peek.top, peek.bottom)
         }
         BarsMode.IMMERSIVE -> {
           view.setPadding(0, 0, 0, ime.bottom)
-          pushInsets(cutout.top, if (ime.bottom > 0) 0 else cutout.bottom, cutout.left, cutout.right)
+          pushInsets(cutout.top, if (ime.bottom > 0) 0 else cutout.bottom, cutout.left, cutout.right, corners, peek.top, peek.bottom)
         }
       }
       WindowInsetsCompat.CONSUMED
@@ -98,13 +103,41 @@ class MainActivity : TauriActivity() {
     ViewCompat.requestApplyInsets(findViewById(android.R.id.content))
   }
 
-  /** Writes the insets, in CSS pixels, to the page's `--sat`, `--sab`, `--sal` and `--sar`. */
-  private fun pushInsets(top: Int, bottom: Int, left: Int, right: Int) {
+  /**
+   * The display's corner radii, which the system reports from Android 12 (API 31); a corner it
+   * does not report is 0. Read from the window's insets, so it is right for a folded or rotated screen.
+   */
+  @RequiresApi(Build.VERSION_CODES.S)
+  private fun cornersOf(insets: WindowInsetsCompat): Corners? {
+    val windowInsets = insets.toWindowInsets() ?: return null
+    fun radius(position: Int) = windowInsets.getRoundedCorner(position)?.radius ?: 0
+    return Corners(
+      radius(RoundedCorner.POSITION_TOP_LEFT),
+      radius(RoundedCorner.POSITION_TOP_RIGHT),
+      radius(RoundedCorner.POSITION_BOTTOM_RIGHT),
+      radius(RoundedCorner.POSITION_BOTTOM_LEFT),
+    )
+  }
+
+  /**
+   * Writes the insets, in CSS pixels, to the page's `--sat`, `--sab`, `--sal` and `--sar`, the bars' own sizes (hidden or not) to `--peek-top` and `--peek-bottom`, and the
+   * display's corner radii to `--corner-tl`, `--corner-tr`, `--corner-br` and `--corner-bl`. With
+   * no corners (an older Android) the page keeps its own fallback for them.
+   */
+  private fun pushInsets(top: Int, bottom: Int, left: Int, right: Int, corners: Corners?, peekTop: Int, peekBottom: Int) {
     val density = resources.displayMetrics.density
     fun css(px: Int) = "${px / density}px"
-    val script = "(function(s){s.setProperty('--sat','${css(top)}');" +
+    var script = "(function(s){s.setProperty('--sat','${css(top)}');" +
       "s.setProperty('--sab','${css(bottom)}');s.setProperty('--sal','${css(left)}');" +
-      "s.setProperty('--sar','${css(right)}');})(document.documentElement.style)"
+      "s.setProperty('--sar','${css(right)}');" +
+      "s.setProperty('--peek-top','${css(peekTop)}');s.setProperty('--peek-bottom','${css(peekBottom)}');"
+    if (corners != null) {
+      script += "s.setProperty('--corner-tl','${css(corners.topLeft)}');" +
+        "s.setProperty('--corner-tr','${css(corners.topRight)}');" +
+        "s.setProperty('--corner-br','${css(corners.bottomRight)}');" +
+        "s.setProperty('--corner-bl','${css(corners.bottomLeft)}');"
+    }
+    script += "})(document.documentElement.style)"
     webView?.evaluateJavascript(script, null)
   }
 
@@ -150,3 +183,9 @@ class MainActivity : TauriActivity() {
     File(dataDir, BOX_PROVISION_FILE).writeText(body)
   }
 }
+
+/** The display's corner radii in px. */
+private data class Corners(val topLeft: Int, val topRight: Int, val bottomRight: Int, val bottomLeft: Int)
+
+/** Standard keeps the app inside the bars, clear of the corners. */
+private val NO_CORNERS = Corners(0, 0, 0, 0)

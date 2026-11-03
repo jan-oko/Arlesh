@@ -87,7 +87,10 @@
 @media (max-width: 699.98px) {
   .overlay {
     align-items: flex-start;
-    padding: max(var(--space-4), var(--safe-top)) var(--space-4) var(--space-4);
+    /* Lower than the top edge, so the card is within thumb reach: a tenth of the screen's height
+       below the status bar. The card's own height is what is left above the soft keyboard (the
+       viewport shrinks by it), so the input never goes under it. */
+    padding: calc(max(var(--space-4), var(--safe-top)) + 10dvh) var(--space-4) var(--space-4);
     box-sizing: border-box;
   }
   .modal {
@@ -95,7 +98,7 @@
     width: 100%;
     min-width: 0;
     max-width: none;
-    max-height: 70dvh;
+    max-height: min(70dvh, calc(100dvh - 10dvh - max(var(--space-4), var(--safe-top)) - var(--space-4)));
   }
   .results {
     min-height: 0;
