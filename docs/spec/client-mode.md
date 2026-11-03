@@ -159,9 +159,17 @@ windows as the same Tauri `board-changed` event a Standalone write raises, now c
 **What a write costs, and the revision.** The server stamps `/board` and every other answer with
 its revision and epoch ([Revision](http-api.md#revision-on-every-answer-and-gzip)). The Tauri
 `load_mindmap` returns the board with that stamp as `revision`, and each window keeps the stamp of
-the board it holds in one place, `src/stores/board-revision-store.ts`. Standalone has no server, so
+the board it holds in `src/stores/board-revision-store.ts`.
+
+**One load per window.** The window holds one copy of the board, in `src/stores/use-board-store.ts`,
+with one tracker, one listener for `board-changed` and a single-flight `load()`. The views (the
+list, the filter display, the Mindmap, Steps) are views over that copy: each derives its own tree
+from it, and none loads or listens. So four views mounted together cost one fetch, and one event
+from another device costs one fetch for all of them, each of which then shows it. A reload asked
+while a fetch is in flight (a write's own reload, an event) waits for it and shares one follow-up,
+since the fetch under way may have been read before the news. Standalone takes the same path, with no revision to compare. Standalone has no server, so
 its loads carry none and its events carry none, and a window with none reloads on every event as it
-always has. The rules, in `src/hooks/use-board-changed.ts`:
+always has. The rules, in `src/stores/watch-board-changes.ts`:
 
 - An event whose revision is **at or below** the one the window holds is skipped. A device's own
   write is announced to it too, and after its own reload it already holds that revision, so it

@@ -5,7 +5,6 @@ import type { Domain } from "@/api/domains";
 import type { Goal } from "@/api/goals";
 import type { MindmapLoad } from "@/api/mindmap";
 import type { Task } from "@/api/tasks";
-import { useBoardRevisionStore } from "@/stores/board-revision-store";
 import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
 import { useStatusCycle } from "@/hooks/use-status-cycle";
@@ -94,7 +93,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   store().reset();
   useMindmapStore.setState({ selectedNodeId: null, selectedNodeIds: new Set(), collapsedNodeIds: new Set(), pendingToast: null });
-  useBoardRevisionStore.setState({ held: null, inFlight: 0 });
   serverTasks = [];
   calls = [];
   refuseCreate = null;

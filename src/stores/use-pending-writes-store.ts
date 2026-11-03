@@ -117,10 +117,8 @@ interface PendingWritesStore {
   cancelTail: () => CancelledWrite | null;
   /** A board read is about to begin: returns its number. */
   beginRead: () => number;
-  /** A board drawn at `stamp` is on screen. */
-  reportBoard: (boardId: string, stamp: BoardStamp) => void;
-  /** That board is gone. */
-  forgetBoard: (boardId: string) => void;
+  /** The window's one board, drawn at `stamp`, is on screen; `null` when it is gone. */
+  reportBoard: (stamp: BoardStamp | null) => void;
   /** Empties everything. For a test, and a window that starts over. */
   reset: () => void;
 }
@@ -128,7 +126,8 @@ interface PendingWritesStore {
 export const usePendingWritesStore = create<PendingWritesStore>()((set, get) => {
   // The send closures sit beside the list, keyed by seq, and never inside it (decision 2).
   const entries = new Map<number, WriteSpec>();
-  const boards = new Map<string, BoardStamp>();
+  // The window holds one copy of the board (`use-board-store.ts`), so there is one stamp to catch up with.
+  let board: BoardStamp | null = null;
   const waiters: Array<() => void> = [];
   const rows = new Map<string, RowId>();
   const resolvedListeners = new Set<ResolvedListener>();
@@ -138,9 +137,9 @@ export const usePendingWritesStore = create<PendingWritesStore>()((set, get) => 
 
   const resolveId: IdResolver = (id) => get().aliases.get(id) ?? id;
 
-  /** Puts `lane` in place, forgetting what every reported board has caught up with. */
+  /** Puts `lane` in place, forgetting what the reported board has caught up with. */
   const setLane = (lane: Lane, more: Partial<Pick<PendingWritesStore, "aliases" | "origins" | "rollbacks">> = {}): void => {
-    set({ writes: forgetReflected(lane, [...boards.values()]), ...more });
+    set({ writes: forgetReflected(lane, board === null ? [] : [board]), ...more });
   };
 
   const release = (removal: Removal): void => {
@@ -287,17 +286,13 @@ export const usePendingWritesStore = create<PendingWritesStore>()((set, get) => 
       set({ reads });
       return reads;
     },
-    reportBoard: (boardId, stamp) => {
-      boards.set(boardId, stamp);
-      setLane(get().writes);
-    },
-    forgetBoard: (boardId) => {
-      boards.delete(boardId);
+    reportBoard: (stamp) => {
+      board = stamp;
       setLane(get().writes);
     },
     reset: () => {
       entries.clear();
-      boards.clear();
+      board = null;
       rows.clear();
       waiters.splice(0).forEach((wake) => wake());
       nextSeq = 1;
