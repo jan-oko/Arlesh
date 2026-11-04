@@ -31,3 +31,6 @@ __pycache__/
 # wasm build output (crates/arlesh-rules-wasm via scripts/build-rules-wasm.sh)
 /src/wasm/pkg/
 /spike/rules-wasm/pkg/
+
+# Stray wheels
+*.whl
