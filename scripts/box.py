@@ -110,6 +110,9 @@ instance, replaces their databases (the old ones stay as `<db>.prev`), and start
 running; it asks `Proceed? [y/N]` (`-y` skips). A snapshot whose newest applied migration is above
 the branch's newest file in crates/arlesh-core/migrations/ gets a warning: the branch is older than
 the server, and its app will refuse that database. Box only ever GETs from the server.
+A seed carries no credentials: on the seed copy only (never the source), before anything uses it,
+box empties the tables holding the server's device tokens and pairing PINs (server_tokens,
+pairing_pins), in a fresh seed and in `reseed`. Box issues its own tokens for the apps it binds.
 
 Servers: `server start <branch>` runs arlesh-server from that worktree's own venv, on its own port,
 over a seed database (see Seeding). `run` on desktop connects the instance to its
@@ -1059,6 +1062,9 @@ SEED_URL_ENV = "ARLESH_BOX_SEED_URL"
 SEED_TOKEN_ENV = "ARLESH_BACKUP_TOKEN"
 SQLITE_MAGIC = b"SQLite format 3\x00"
 PREV_SUFFIXES = ("", "-wal", "-shm")
+# Every table holding a login credential (migrations 0097 and 0098): the device/server token hashes
+# and the pairing PINs with their approval state. A seed carries none of them.
+CREDENTIAL_TABLES = ("server_tokens", "pairing_pins")
 
 
 def seed_url_file() -> Path:
@@ -1240,6 +1246,30 @@ def warn_if_older(snapshot: Path, wt: Path, name: str) -> None:
         note(message)
 
 
+def scrub_credentials(db: Path) -> list[str]:
+    """Empty every credential table in the seed copy `db` (never the source), then vacuum with
+    secure_delete so the removed rows are not left in free pages. Returns the tables it cleared;
+    a table the seed's schema predates is skipped."""
+    con = sqlite3.connect(db)
+    try:
+        con.execute("PRAGMA journal_mode = DELETE")
+        con.execute("PRAGMA secure_delete = ON")
+        present = {
+            name
+            for (name,) in con.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        cleared = [t for t in CREDENTIAL_TABLES if t in present]
+        for table in cleared:
+            con.execute(f"DELETE FROM {table}")
+        con.commit()
+        con.execute("VACUUM")
+    finally:
+        con.close()
+    return cleared
+
+
 def copy_local_db(dest: Path) -> None:
     """A consistent copy of the local database through a read-only connection."""
     src = sqlite3.connect(f"file:{real_db()}?mode=ro", uri=True)
@@ -1259,15 +1289,21 @@ def seed_database(dest: Path, wt: Path, name: str) -> None:
     if snapshot is not None:
         part = dest.with_name(dest.name + ".seed")
         shutil.copyfile(snapshot, part)
+        scrub_credentials(part)
         os.replace(part, dest)
-        print(f"    seeded from the server snapshot ({seed_url()[0]})")
+        print(
+            f"    seeded from the server snapshot ({seed_url()[0]}), credentials removed"
+        )
         warn_if_older(snapshot, wt, name)
     elif real_db().is_file():
         note(
             f"    seed is local ({real_db()}); `{CMD} seed set <url>` seeds from the server"
         )
-        copy_local_db(dest)
-        print(f"    seeded from {real_db()} (read-only)")
+        part = dest.with_name(dest.name + ".seed")
+        copy_local_db(part)
+        scrub_credentials(part)
+        os.replace(part, dest)
+        print(f"    seeded from {real_db()} (read-only), credentials removed")
     else:
         note(f"    no seed: no server configured and no local database at {real_db()}")
 
@@ -1285,7 +1321,10 @@ def keep_previous(db: Path) -> None:
 
 def replace_with_snapshot(db: Path, snapshot: Path) -> None:
     keep_previous(db)
-    shutil.copyfile(snapshot, db)
+    part = db.with_name(db.name + ".seed")
+    shutil.copyfile(snapshot, part)
+    scrub_credentials(part)
+    os.replace(part, db)
 
 
 def instance_db(name: str) -> Path:

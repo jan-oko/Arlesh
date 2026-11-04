@@ -2348,6 +2348,76 @@ class SeedFallbacks(SeedCase):
         self.assertEqual(self.local.read_bytes(), before)
 
 
+def add_credentials(path: Path) -> None:
+    con = sqlite3.connect(path)
+    con.execute(
+        "CREATE TABLE server_tokens (client TEXT PRIMARY KEY, sha256 TEXT, created_at TEXT)"
+    )
+    con.execute("INSERT INTO server_tokens VALUES ('phone', 'abc', 'now')")
+    con.execute("CREATE TABLE pairing_pins (id_sha256 TEXT PRIMARY KEY, pin TEXT)")
+    con.execute("INSERT INTO pairing_pins VALUES ('id', '123456')")
+    con.commit()
+    con.close()
+
+
+def count(path: Path, table: str) -> int:
+    con = sqlite3.connect(path)
+    try:
+        return int(con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+    finally:
+        con.close()
+
+
+class Scrub(SeedCase):
+    def setUp(self) -> None:
+        super().setUp()
+        add_credentials(self.snap)
+        add_credentials(self.local)
+
+    def test_a_server_seed_has_no_tokens_or_pins_but_keeps_data(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            dest = self.seed()
+
+        self.assertEqual(count(dest, "server_tokens"), 0)
+        self.assertEqual(count(dest, "pairing_pins"), 0)
+        self.assertEqual(titles(dest), ["from the server"])
+        self.assertNotIn(b"abc", dest.read_bytes())
+        self.assertFalse(dest.with_name(dest.name + ".seed").exists())
+
+    def test_a_local_seed_is_scrubbed_and_the_source_is_untouched(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()):
+            dest = self.seed()
+
+        self.assertEqual(count(dest, "server_tokens"), 0)
+        self.assertEqual(count(dest, "pairing_pins"), 0)
+        self.assertEqual(titles(dest), ["from the desktop"])
+        self.assertEqual(count(self.local, "server_tokens"), 1)
+        self.assertEqual(count(self.local, "pairing_pins"), 1)
+
+    def test_a_schema_without_the_tables_is_fine(self) -> None:
+        self.assertEqual(box.scrub_credentials(self.make_plain()), [])
+
+    def make_plain(self) -> Path:
+        plain = self.tmp / "plain.db"
+        make_db(plain, ["x"])
+        return plain
+
+    def test_it_reports_the_tables_it_cleared(self) -> None:
+        self.assertEqual(
+            box.scrub_credentials(self.snap), ["server_tokens", "pairing_pins"]
+        )
+
+    def test_the_cached_snapshot_itself_is_not_the_seed_that_gets_used(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+            self.seed()
+
+        self.assertEqual(titles(self.snap), ["from the server"])
+        self.assertEqual(count(self.snap, "server_tokens"), 1)
+
+
 class SchemaCheck(SeedCase):
     def migrations(self, *numbers: int) -> None:
         for n in numbers:
@@ -2428,6 +2498,17 @@ class Reseed(SeedCase):
         self.assertEqual(
             titles(self.db.with_name("arlesh.db.prev")), ["old branch data"]
         )
+
+    def test_the_reseeded_database_has_no_credentials(self) -> None:
+        add_credentials(self.snap)
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            self.reseed("-y")
+
+        self.assertEqual(count(self.db, "server_tokens"), 0)
+        self.assertEqual(count(self.db, "pairing_pins"), 0)
+        self.assertEqual(titles(self.db), ["from the server"])
 
     def test_it_restarts_a_server_that_was_running(self) -> None:
         with FakeServer(self.snap.read_bytes()) as server:

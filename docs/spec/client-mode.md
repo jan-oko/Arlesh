@@ -616,6 +616,14 @@ only ever reads from.
   replaced), puts the snapshot in its place and starts again what was running. The server's tokens
   were in the old database, so a restarted desktop instance bound to that server is given a new one;
   other apps and phones connected to it need `run` again.
+- **A seed carries no credentials.** Production's login tokens must not live in a branch's databases,
+  so box empties, on the seed copy only (never the source, and before any instance or server opens
+  it), every table that holds a credential: `server_tokens` (the device/server token hashes) and
+  `pairing_pins` (pairing PINs and their approval state). It does so for a server snapshot, for the
+  local-copy fallback and in `reseed`, then vacuums with `secure_delete` so no row lingers in free
+  pages. A seed whose schema predates a table skips it. Box issues its own tokens for the apps it
+  binds (`token add` on the branch's server), so a seeded server starts with none and provisioning
+  works as for a fresh one.
 - **Schema check.** If the snapshot's newest applied migration (`_sqlx_migrations`) is above the
   branch's newest file in `crates/arlesh-core/migrations/`, box warns that the branch is older than the
   server and that its app will refuse the database.
