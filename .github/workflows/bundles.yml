@@ -1,10 +1,12 @@
 name: Bundles
 
 # Installable builds published to GitHub Releases: for Linux an AppImage and a
-# tarball of the bare release binary (no .deb or .rpm, by choice), and for
-# Windows the NSIS setup .exe and the .msi.
+# tarball of the bare release binary (no .deb or .rpm, by choice), for
+# Windows the NSIS setup .exe and the .msi, the release-signed Android APK, and the
+# arlesh-server Python wheels (linux x86_64 and aarch64, manylinux). The server's container
+# image is its own workflow, server-image.yml, on the same triggers.
 #
-#   push to master   rolling pre-release, tag `latest`: the tag is moved to the
+#   push to master   (the dev -> master release merge) rolling pre-release, tag `latest`: the tag is moved to the
 #                    pushed commit and the assets replaced, so
 #                    https://github.com/jan-oko/Arlesh/releases/tag/latest is
 #                    always the newest master build, and its asset names carry
@@ -433,9 +435,50 @@ jobs:
           retention-days: 30
           compression-level: 0
 
+  # The server's Python wheels (the package `arlesh`, installed as `arlesh[server]`, command
+  # `arlesh-server`): abi3 for Python 3.11+, so one wheel per architecture. maturin-action builds
+  # in a manylinux container, and cross-compiles the aarch64 one on this x86_64 runner. The wheel
+  # keeps the name maturin gives it, which carries the version, so a tagged release needs no
+  # renaming (the release job's sed matches only the `-linux-`, `-windows-`, `-android-` assets).
+  build-wheels:
+    name: maturin · wheel · ${{ matrix.arch }}
+    needs: meta
+    if: github.event_name != 'workflow_dispatch' || !inputs.box
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: PyO3/maturin-action@v1
+        with:
+          working-directory: crates/arlesh-py
+          target: ${{ matrix.arch }}
+          manylinux: auto
+          args: --release --locked --out dist
+
+      # The wheel installs, with its server extra, and the command starts. Only where it can run.
+      - name: Smoke test · install and run
+        if: matrix.arch == 'x86_64'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install "$(ls crates/arlesh-py/dist/*.whl)[server]"
+          "$RUNNER_TEMP/venv/bin/arlesh-server" --help
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arlesh-${{ needs.meta.outputs.version }}-${{ needs.meta.outputs.sha }}-wheel-${{ matrix.arch }}
+          path: crates/arlesh-py/dist/*.whl
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
   release:
     name: publish · github release
-    needs: [meta, build, build-windows, build-android]
+    needs: [meta, build, build-windows, build-android, build-wheels]
     # A dispatch with `publish` off stops at the artifacts.
     if: github.event_name != 'workflow_dispatch' || (inputs.publish && !inputs.box)
     runs-on: ubuntu-latest
@@ -516,3 +559,9 @@ jobs:
             gh release create "$TAG" --verify-tag --prerelease --latest=false --title "$title" --notes "$notes"
           fi
           gh release upload "$TAG" --clobber *
+
+          # A wheel's name carries the version, so after a version bump the old wheels would
+          # linger beside the new: remove the ones this build did not just upload.
+          gh release view "$TAG" --json assets --jq '.assets[].name' | { grep -E '\.whl$' || true; } | while read -r name; do
+            [ -e "$name" ] || gh release delete-asset "$TAG" "$name" --yes
+          done
