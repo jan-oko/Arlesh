@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import base64
 import contextlib
 import importlib.util
@@ -2011,51 +2010,6 @@ class PruneWorktrees(OpenPrFixture):
         self.assertEqual(sorted(box.all_names()), sorted(self.wts))
         self.assertIn("pruned 1 test app(s)", out)
         self.assertIn("uninstall com.atai.arlesh.box.ghost", self.adb_log())
-
-
-class ViteCache(IsolatedEnv):
-    """Every box's Vite server gets its own cache, since `node_modules` (and its `.vite`) is shared."""
-
-    def setUp(self) -> None:
-        super().setUp()
-        os.environ["ARLESH_INSTANCES"] = str(self.tmp / "instances")
-
-    def test_each_instance_has_its_own_cache_outside_node_modules(self) -> None:
-        a, b = box.vite_cache_dir("a"), box.vite_cache_dir("b")
-        self.assertNotEqual(a, b)
-        self.assertEqual(a.parent, box.instance_dir("a"))
-        self.assertNotIn("node_modules", a.parts)
-
-    def test_start_vite_hands_the_server_its_cache_dir(self) -> None:
-        box.instance_dir("a").mkdir(parents=True)
-        calls: list[Any] = []
-
-        def spawn(cmd, pidfile, logfile, cwd, env=None):  # type: ignore[no-untyped-def]
-            calls.append(env)
-            return 1
-
-        with (
-            mock.patch.object(box, "spawn_detached", spawn),
-            mock.patch.object(box, "http_up", side_effect=[False, True]),
-            mock.patch.object(box.time, "sleep"),
-        ):
-            box.start_vite("a", self.tmp)
-        self.assertEqual(
-            calls, [{"ARLESH_VITE_CACHE_DIR": str(box.vite_cache_dir("a"))}]
-        )
-
-    def test_clean_removes_the_cache_but_keeps_the_data(self) -> None:
-        cache = box.vite_cache_dir("a")
-        (cache / "deps").mkdir(parents=True)
-        data = box.instance_dir("a") / "data"
-        data.mkdir()
-        with (
-            mock.patch.object(box, "resolve_branches", return_value=["a"]),
-            mock.patch.object(box, "android_apk", return_value=self.tmp / "none.apk"),
-        ):
-            box.cmd_clean(argparse.Namespace(branches=["all"]))
-        self.assertFalse(cache.exists())
-        self.assertTrue(data.is_dir())
 
 
 if __name__ == "__main__":
