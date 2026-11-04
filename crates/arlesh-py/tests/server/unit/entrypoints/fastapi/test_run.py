@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import uvicorn
 from arlesh.server.entrypoints.fastapi import run
 from arlesh.server.entrypoints.fastapi.config import ServerConfig
+from arlesh.server.entrypoints.fastapi.shutdown import GRACEFUL_SHUTDOWN_SECONDS
 from fastapi import FastAPI
 from loguru import logger
 
@@ -18,10 +20,22 @@ from loguru import logger
 def served(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     options: dict[str, Any] = {}
 
-    def serve(_app: object, **given: Any) -> None:
-        options.update(given)
+    class Recorder:
+        """Stands in for ``GracefulServer``: records the config, and never listens."""
 
-    monkeypatch.setattr("uvicorn.run", serve)
+        def __init__(self, config: uvicorn.Config) -> None:
+            options.update(
+                host=config.host,
+                port=config.port,
+                ssl_certfile=config.ssl_certfile,
+                ssl_keyfile=config.ssl_keyfile,
+                timeout_graceful_shutdown=config.timeout_graceful_shutdown,
+            )
+
+        def run(self) -> None:
+            options["ran"] = True
+
+    monkeypatch.setattr(run, "GracefulServer", Recorder)
     return options
 
 
@@ -37,6 +51,13 @@ def test_it_serves_where_the_config_says(served: dict[str, Any]) -> None:
     run.run(FastAPI(), ServerConfig(port=9000))
 
     assert (served["host"], served["port"], served["ssl_certfile"]) == ("127.0.0.1", 9000, None)
+
+
+def test_it_bounds_the_graceful_shutdown(served: dict[str, Any]) -> None:
+    run.run(FastAPI(), ServerConfig())
+
+    assert served["ran"] is True
+    assert served["timeout_graceful_shutdown"] == GRACEFUL_SHUTDOWN_SECONDS
 
 
 def test_it_serves_https_with_the_certificate_given(served: dict[str, Any]) -> None:

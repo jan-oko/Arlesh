@@ -1,10 +1,12 @@
 name: Bundles
 
 # Installable builds published to GitHub Releases: for Linux an AppImage and a
-# tarball of the bare release binary (no .deb or .rpm, by choice), and for
-# Windows the NSIS setup .exe and the .msi.
+# tarball of the bare release binary (no .deb or .rpm, by choice), for
+# Windows the NSIS setup .exe and the .msi, the release-signed Android APK, and the
+# arlesh-server Python wheels (linux x86_64 and aarch64, manylinux). The server's container
+# image is its own workflow, server-image.yml, on the same triggers.
 #
-#   push to master   rolling pre-release, tag `latest`: the tag is moved to the
+#   push to master   (the dev -> master release merge) rolling pre-release, tag `latest`: the tag is moved to the
 #                    pushed commit and the assets replaced, so
 #                    https://github.com/jan-oko/Arlesh/releases/tag/latest is
 #                    always the newest master build, and its asset names carry
@@ -14,7 +16,8 @@ name: Bundles
 #                    fails before building.
 #   dispatch + box   only the Android job runs, as scripts/box.py would build it locally: a
 #                    separate app beside the real one, signed with the shared box key (the
-#                    ARLESH_BOX_KEYSTORE_B64 secret; a throwaway key and a warning without it).
+#                    ARLESH_BOX_KEYSTORE_B64 and ARLESH_BOX_KEYSTORE_PASSWORD secrets; a throwaway key with a random
+#                    password, and a warning, without them).
 #                    The release key's steps are skipped, so its secrets are never read.
 #   dispatch         rolling, to the tag named by the `release_tag` input. It
 #                    exists for testing on a throwaway tag; `latest` itself is
@@ -386,14 +389,16 @@ jobs:
 
       # The box variant: signed with the shared box keystore (`box.py keystore init` puts it in the
       # ARLESH_BOX_KEYSTORE_B64 secret, so local and CI box builds update one another). Without the
-      # secret it falls back to a fresh debug key and warns. Only this step can read the secret,
-      # and it never prints it. The release key is not referenced here.
+      # secret it falls back to a fresh debug key (random password made here) and warns. Only this step
+      # can read the secrets, and it never prints them; the password goes through a file, never the
+      # command line. The release key is not referenced here.
       - name: Sign with the box key and stage as a box app
         id: box
         if: github.event_name == 'workflow_dispatch' && inputs.box
         env:
           BRANCH: ${{ github.ref_name }}
           BOX_KEYSTORE_B64: ${{ secrets.ARLESH_BOX_KEYSTORE_B64 }}
+          BOX_KEYSTORE_PASSWORD: ${{ secrets.ARLESH_BOX_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
           segment=$(python3 scripts/box.py ci-patch "$BRANCH" | sed -n 's/^segment=//p')
@@ -402,14 +407,19 @@ jobs:
           out="$RUNNER_TEMP/bundles"
           mkdir -p "$out"
           keystore="$RUNNER_TEMP/box.keystore"
-          # alias and password are fixed and public: see BOX_KEY_* in scripts/box.py
+          # alias: see BOX_KEY_ALIAS in scripts/box.py. The password never touches a command line.
           alias=arlesh-box
-          pass=arlesh-box
+          secrets="$RUNNER_TEMP/box-signing"
+          mkdir -m 700 "$secrets"
+          passfile="$secrets/password"
           if [ -n "$BOX_KEYSTORE_B64" ]; then
+            [ -n "$BOX_KEYSTORE_PASSWORD" ] || { echo "::error::ARLESH_BOX_KEYSTORE_B64 is set but ARLESH_BOX_KEYSTORE_PASSWORD is not. Run 'npm run box -- keystore rotate-password' (or 'keystore init') once."; exit 1; }
             printf '%s' "$BOX_KEYSTORE_B64" | base64 -d > "$keystore"
+            printf '%s\n' "$BOX_KEYSTORE_PASSWORD" > "$passfile"
           else
             echo "::warning::ARLESH_BOX_KEYSTORE_B64 is not set: signing with a fresh key, so this APK will not update over a locally built box app. Run 'npm run box -- keystore init' once."
-            keytool -genkeypair -keystore "$keystore" -storepass "$pass" -keypass "$pass" \
+            python3 -c 'import secrets; print(secrets.token_urlsafe(24))' > "$passfile"
+            keytool -genkeypair -keystore "$keystore" -storepass:file "$passfile" -keypass:file "$passfile" \
               -alias "$alias" -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Arlesh Box,O=Arlesh,C=US"
           fi
@@ -418,10 +428,10 @@ jobs:
           tools=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
           apk="$out/arlesh-box-$segment.apk"
           "${tools}apksigner" sign --ks "$keystore" --ks-key-alias "$alias" \
-            --ks-pass "pass:$pass" --key-pass "pass:$pass" --out "$apk" "$unsigned"
+            --ks-pass "file:$passfile" --key-pass "file:$passfile" --out "$apk" "$unsigned"
           "${tools}apksigner" verify "$apk"
           "${tools}aapt2" dump badging "$apk" | grep -E "^(package|application-label):"
-          rm -f "$keystore"
+          rm -rf "$keystore" "$secrets"
           ls -la "$out"
 
       - uses: actions/upload-artifact@v4
@@ -433,9 +443,50 @@ jobs:
           retention-days: 30
           compression-level: 0
 
+  # The server's Python wheels (the package `arlesh`, installed as `arlesh[server]`, command
+  # `arlesh-server`): abi3 for Python 3.11+, so one wheel per architecture. maturin-action builds
+  # in a manylinux container, and cross-compiles the aarch64 one on this x86_64 runner. The wheel
+  # keeps the name maturin gives it, which carries the version, so a tagged release needs no
+  # renaming (the release job's sed matches only the `-linux-`, `-windows-`, `-android-` assets).
+  build-wheels:
+    name: maturin · wheel · ${{ matrix.arch }}
+    needs: meta
+    if: github.event_name != 'workflow_dispatch' || !inputs.box
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: PyO3/maturin-action@v1
+        with:
+          working-directory: crates/arlesh-py
+          target: ${{ matrix.arch }}
+          manylinux: auto
+          args: --release --locked --out dist
+
+      # The wheel installs, with its server extra, and the command starts. Only where it can run.
+      - name: Smoke test · install and run
+        if: matrix.arch == 'x86_64'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install "$(ls crates/arlesh-py/dist/*.whl)[server]"
+          "$RUNNER_TEMP/venv/bin/arlesh-server" --help
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arlesh-${{ needs.meta.outputs.version }}-${{ needs.meta.outputs.sha }}-wheel-${{ matrix.arch }}
+          path: crates/arlesh-py/dist/*.whl
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
   release:
     name: publish · github release
-    needs: [meta, build, build-windows, build-android]
+    needs: [meta, build, build-windows, build-android, build-wheels]
     # A dispatch with `publish` off stops at the artifacts.
     if: github.event_name != 'workflow_dispatch' || (inputs.publish && !inputs.box)
     runs-on: ubuntu-latest
@@ -516,3 +567,9 @@ jobs:
             gh release create "$TAG" --verify-tag --prerelease --latest=false --title "$title" --notes "$notes"
           fi
           gh release upload "$TAG" --clobber *
+
+          # A wheel's name carries the version, so after a version bump the old wheels would
+          # linger beside the new: remove the ones this build did not just upload.
+          gh release view "$TAG" --json assets --jq '.assets[].name' | { grep -E '\.whl$' || true; } | while read -r name; do
+            [ -e "$name" ] || gh release delete-asset "$TAG" "$name" --yes
+          done

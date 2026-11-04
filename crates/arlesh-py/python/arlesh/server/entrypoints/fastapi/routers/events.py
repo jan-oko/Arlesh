@@ -22,12 +22,16 @@ from fastapi.responses import StreamingResponse
 
 import arlesh
 from arlesh.server.entrypoints.fastapi.routers.base import BoardRouter
+from arlesh.server.entrypoints.fastapi.shutdown import going_down
 
 BOARD_CHANGED = "board-changed"
 """The event's name: the same as the app's Tauri event a window reloads on."""
 
 KEEPALIVE_SECONDS = 15.0
 """How long the stream stays silent before it sends a comment, so a proxy keeps it open."""
+
+SHUTDOWN_POLL_SECONDS = 0.5
+"""How often a quiet stream looks up to see whether the server is going down."""
 
 
 def _event(epoch: str, revision: int) -> str:
@@ -63,9 +67,15 @@ async def board_changes(
     while True:
         waiting = asyncio.ensure_future(database.next_change(current))
         try:
+            quiet = 0.0
             while not waiting.done():
-                done, _ = await asyncio.wait({waiting}, timeout=keepalive)
-                if not done:
+                if going_down():
+                    return
+                pause = min(keepalive, SHUTDOWN_POLL_SECONDS)
+                done, _ = await asyncio.wait({waiting}, timeout=pause)
+                quiet = 0.0 if done else quiet + pause
+                if not done and quiet >= keepalive:
+                    quiet = 0.0
                     yield ": keepalive\n\n"
             current = waiting.result()
         finally:

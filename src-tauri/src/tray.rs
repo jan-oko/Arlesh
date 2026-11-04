@@ -19,7 +19,10 @@
 //! This module is the decision and nothing else. The tray icon, the menu and the window event that
 //! consult it live in [`crate::commands::tray`], which is Tauri's side of the same feature.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 #[cfg(test)]
 mod tests;
@@ -95,7 +98,34 @@ pub fn activate_action(visible: Option<bool>) -> ActivateAction {
 pub struct ClosePreference {
     close_to_tray: AtomicBool,
     quit_requested: AtomicBool,
-    tray_available: AtomicBool,
+    tray_available: TrayAvailability,
+}
+
+/// Whether there is a tray to hide into **right now**, shareable with whatever learns it.
+///
+/// A clone is a second handle on the same flag. On Linux the StatusNotifierWatcher can appear after
+/// Arlesh starts, vanish when the shell restarts and return, so the answer changes for the life of
+/// the process and is reported by the tray service's own task ([`crate::commands::tray`]) rather
+/// than once by [`install`](crate::commands::tray::install). It starts unavailable: with no
+/// watcher heard from, closing quits.
+#[derive(Debug, Clone, Default)]
+pub struct TrayAvailability(Arc<AtomicBool>);
+
+impl TrayAvailability {
+    /// A tray host is there: closing the last window may hide it.
+    pub fn online(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+
+    /// No tray host: closing the last window quits, as it did before there was a tray.
+    pub fn offline(&self) {
+        self.0.store(false, Ordering::Relaxed);
+    }
+
+    /// Whether a tray host is there now.
+    pub fn is_online(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
 }
 
 impl Default for ClosePreference {
@@ -116,18 +146,28 @@ impl ClosePreference {
             // Nothing to hide into until a tray actually goes up. A desktop with no tray host is
             // an ordinary condition, and hiding a window into a tray that never appeared is the
             // one outcome this feature must never produce.
-            tray_available: AtomicBool::new(false),
+            tray_available: TrayAvailability::default(),
         }
     }
 
     /// Records that the tray icon went up, which is what makes hiding to it possible.
     pub fn mark_tray_available(&self) {
-        self.tray_available.store(true, Ordering::Relaxed);
+        self.tray_available.online();
+    }
+
+    /// Records that the tray is gone, so closing quits again until it returns.
+    pub fn mark_tray_unavailable(&self) {
+        self.tray_available.offline();
+    }
+
+    /// A handle on the availability flag, for the code that hears the tray come and go.
+    pub fn tray_availability(&self) -> TrayAvailability {
+        self.tray_available.clone()
     }
 
     /// Whether there is a tray to close to.
     pub fn tray_available(&self) -> bool {
-        self.tray_available.load(Ordering::Relaxed)
+        self.tray_available.is_online()
     }
 
     /// Records the user's choice, as the frontend's persisted setting has it.

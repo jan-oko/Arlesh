@@ -70,7 +70,7 @@ use tauri::{AppHandle, Manager, Runtime, State, Window, WindowEvent};
 use crate::{
     commands::windows,
     icon,
-    tray::{activate_action, ActivateAction, CloseAction, ClosePreference},
+    tray::{activate_action, ActivateAction, CloseAction, ClosePreference, TrayAvailability},
 };
 
 /// The tray icon's own id, which is a different namespace from the window's label.
@@ -113,16 +113,14 @@ const QUIT_ITEM: &str = "quit";
 /// reads as off, so closing goes on meaning quit, which is where Arlesh started.
 pub fn install(app: &AppHandle) {
     let preference = ClosePreference::default();
+    let availability = preference.tray_availability();
 
-    if let Err(error) = build_tray(app) {
+    // The tray reports its own availability from here on: Linux's host can arrive late or restart.
+    if let Err(error) = build_tray(app, &availability) {
+        availability.offline();
         tracing::error!(error = %error, "no tray icon; the close button keeps quitting");
-        app.manage(preference);
-        return;
     }
-
-    preference.mark_tray_available();
     app.manage(preference);
-    tracing::info!("tray icon ready; closing the last window hides it by default");
 }
 
 /// Every window's close button, and the moment a closed window stops existing.
@@ -231,8 +229,10 @@ pub fn refresh_menu<R: Runtime>(app: &AppHandle<R>) {
 }
 
 /// Puts the icon and its menu in the tray, through Tauri's own tray.
+///
+/// A built tray is an available one: nothing here can disappear later.
 #[cfg(not(target_os = "linux"))]
-fn build_tray(app: &AppHandle) -> anyhow::Result<()> {
+fn build_tray(app: &AppHandle, availability: &TrayAvailability) -> anyhow::Result<()> {
     let show = MenuItem::with_id(app, SHOW_ITEM, SHOW_LABEL, true, None::<&str>)?;
     let quit = MenuItem::with_id(app, QUIT_ITEM, QUIT_LABEL, true, None::<&str>)?;
     let menu = window_menu(app, &show, &quit)?;
@@ -252,6 +252,8 @@ fn build_tray(app: &AppHandle) -> anyhow::Result<()> {
         .on_tray_icon_event(|tray, event| on_tray_icon_event(tray.app_handle(), event))
         .build(app)?;
 
+    availability.online();
+    tracing::info!("tray icon ready; closing the last window hides it by default");
     Ok(())
 }
 
@@ -302,15 +304,24 @@ fn refresh_icon<R: Runtime>(_app: &AppHandle<R>) {}
 
 /// Puts the icon and its two-item menu on the bar, as a StatusNotifierItem Arlesh exports itself.
 ///
-/// See this module's header for why Linux does not use the tray Tauri builds. Registering is
-/// awaited rather than left to run on: [`install`] only takes over the close button once the tray
-/// is up, and a close that hid the window into a tray that never appeared would be a trap.
+/// See this module's header for why Linux does not use the tray Tauri builds. The service is built
+/// with `assume_sni_available(true)`: a missing StatusNotifierWatcher is then not an error but a
+/// call to [`ksni::Tray::watcher_offline`], and ksni registers the item by itself when the watcher
+/// takes the bus name (it watches `NameOwnerChanged`), including after a shell restart. Arlesh
+/// autostarts before a shell such as DankMaterialShell has its watcher up, so giving up at spawn
+/// would leave that session with no icon for good.
+///
+/// Availability is optimistic before the spawn and corrected by the callbacks: ksni calls
+/// `watcher_online` only after an offline, so a watcher present at spawn is never announced.
+/// `spawn` itself resolves once the first registration attempt has been made, so by the time it
+/// returns the flag already reflects a missing watcher.
 #[cfg(target_os = "linux")]
-fn build_tray(app: &AppHandle) -> anyhow::Result<()> {
+fn build_tray(app: &AppHandle, availability: &TrayAvailability) -> anyhow::Result<()> {
     use ksni::TrayMethods;
 
-    let tray = SystemTray::new(app)?;
-    let handle = tauri::async_runtime::block_on(tray.spawn())
+    let tray = SystemTray::new(app, availability.clone())?;
+    availability.online();
+    let handle = tauri::async_runtime::block_on(tray.assume_sni_available(true).spawn())
         .map_err(|error| anyhow::anyhow!("registering the tray item: {error}"))?;
 
     // Held for the life of the app. The service owns itself once spawned, so this is belt and
@@ -336,12 +347,14 @@ struct SystemTray {
     /// a round trip to the main thread taken under a lock that the refresh is already holding —
     /// so the list is computed by [`refresh_menu`], outside it, and handed in.
     windows: Vec<crate::windows::ListedWindow>,
+    /// Told whether a StatusNotifierWatcher is there, which is what the close button follows.
+    availability: TrayAvailability,
 }
 
 #[cfg(target_os = "linux")]
 impl SystemTray {
     /// Reads the icon and the window title once, at build time, since neither changes after.
-    fn new(app: &AppHandle) -> anyhow::Result<Self> {
+    fn new(app: &AppHandle, availability: TrayAvailability) -> anyhow::Result<Self> {
         let (size, data) = icon::tray_argb32()?;
         let side = i32::try_from(size)?;
 
@@ -349,6 +362,7 @@ impl SystemTray {
             app: app.clone(),
             title: tray_tooltip(app),
             windows: windows::open_windows(app),
+            availability,
             icon: ksni::Icon {
                 width: side,
                 height: side,
@@ -379,6 +393,24 @@ impl ksni::Tray for SystemTray {
             title: self.title.clone(),
             ..Default::default()
         }
+    }
+
+    /// The watcher is back after being gone: ksni has re-registered the item, so close may hide.
+    fn watcher_online(&self) {
+        tracing::info!("StatusNotifierWatcher is online; closing the last window hides it");
+        self.availability.online();
+    }
+
+    /// No watcher (not up yet, or the shell is restarting): close quits until it returns.
+    ///
+    /// Returns `true` so the service keeps running and registers when the watcher appears.
+    fn watcher_offline(&self, reason: ksni::OfflineReason) -> bool {
+        tracing::warn!(
+            ?reason,
+            "StatusNotifierWatcher is offline; the close button quits"
+        );
+        self.availability.offline();
+        true
     }
 
     /// A plain left click. The whole reason this item exists rather than Tauri's.
