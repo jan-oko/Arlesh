@@ -128,8 +128,7 @@ jobs:
 
       # The deploy/ compose file, with the image just built, a seeded database and a port other than
       # the default: the server migrates the copied database, /health answers, a token minted with
-      # `docker exec` opens an authenticated route. The seed is the repository's baseline schema
-      # (what a fresh app database is), copied in as a user would copy their arlesh.db.
+      # `docker exec` opens an authenticated route. The seed is a database the same image created.
       - name: Smoke test · compose, seeded database, token
         if: steps.meta.outputs.platforms == 'linux/amd64'
         working-directory: deploy
@@ -138,8 +137,13 @@ jobs:
           ARLESH_PORT: '4760'
         run: |
           set -euo pipefail
-          mkdir data
-          python3 -c "import sqlite3,sys; c=sqlite3.connect('data/arlesh.db'); c.executescript(open('../crates/arlesh-core/baseline/schema.sql').read()); c.commit()"
+          # A real arlesh.db made by the image itself (the baseline schema alone is not a database
+          # the server accepts: the app records the applied migrations when it creates one), with a
+          # token in it, then copied into the compose volume as a user would copy theirs.
+          mkdir seed data
+          sudo chown 10001:10001 seed
+          docker run --rm -v "$PWD/seed:/data" "$ARLESH_IMAGE" token add seeded
+          sudo cp seed/arlesh.db data/arlesh.db
           sudo chown -R 10001:10001 data
           docker compose up -d
           code=000
@@ -150,6 +154,7 @@ jobs:
           done
           docker compose logs
           [ "$code" = 401 ] || { echo "::error::/health answered $code without a token (expected 401)"; exit 1; }
+          docker compose exec -T arlesh-server arlesh-server token list | grep -q '^seeded'
           token=$(docker compose exec -T arlesh-server arlesh-server token add smoke | tail -1)
           curl -fsS -H "Authorization: Bearer $token" "http://127.0.0.1:$ARLESH_PORT/health"; echo
           curl -fsS -o /dev/null -H "Authorization: Bearer $token" "http://127.0.0.1:$ARLESH_PORT/board"
