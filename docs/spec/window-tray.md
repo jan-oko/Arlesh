@@ -221,6 +221,17 @@ what Arlesh does. It costs a dependency and buys back the plainest gesture the f
 the hover tooltip libappindicator drops. Windows and macOS keep the tray Tauri builds, whose click
 events work.
 
+**On Linux the tray host may come late, go, and return.** The StatusNotifierWatcher belongs to the
+panel or shell, and a session can start Arlesh several seconds before it exists (autostart at login
+under Hyprland with DankMaterialShell, for one). Arlesh asks ksni to treat a missing watcher as a
+soft error (`assume_sni_available(true)`), so the service keeps running; ksni watches the bus for
+`org.kde.StatusNotifierWatcher` changing owner and registers the item when it appears, and again
+whenever it comes back after the shell restarts. Whether close hides is driven by ksni's
+`watcher_online` / `watcher_offline` callbacks, not by the start-up result: while a watcher is
+there, closing the last window hides it to the tray; while none is, closing quits, so a window is
+never hidden into a tray that is not showing. Windows and macOS build their tray once and are
+unaffected.
+
 **On Windows the tray is Tauri's, in the notification area.** It is the icon `tray-icon` puts there
 through `Shell_NotifyIcon`, and its events reach the app with nothing in between. A left click is
 acted on at its **release** (`WM_LBUTTONUP`), the press ignored, and toggles the windows as above. A
