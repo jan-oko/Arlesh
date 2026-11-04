@@ -1,0 +1,1 @@
+- **Archived Commitments no longer appear under Plan.** A Commitment that was archived, put away by hand or Expired (its Verdict Window ran out unanswered) still showed under the Plan preset in the List View and on the Mindmap. Plan now hides it as Start and Do already did; the Archived pill's Include still brings it back.

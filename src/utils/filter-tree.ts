@@ -563,7 +563,7 @@ export function passesDoStatus(node: MindmapNode, f: FilterState): boolean {
  * Whether a Commitment shows under the given preset.
  *
  * Its own rule, not a translation of a Task's, because the two kinds resolve the opposite way
- * round. Three presets — Plan, Start and Do — show what is **unresolved**: what you have yet to
+ * round. Three presets — Plan, Start and Do — show what is **unresolved** and not archived: what you have yet to
  * judge is what is still live, and a recorded verdict, Kept or Broken alike, is answered the way a
  * done Task is. All shows everything, including past verdicts, because looking back over what you
  * kept and broke is the point of keeping the record. (Plan once kept a Broken commitment on screen
@@ -577,11 +577,11 @@ export function passesCommitmentPreset(node: MindmapNode, f: FilterState): boole
     case "all":
       return true;
     case "plan":
-      return verdict === VERDICT.UNRESOLVED;
     case "start":
     case "do":
-      // An archived Commitment is not live now, whatever its verdict (ruled 2026-10-04); the
-      // Archived pill's Include brings it back through the caller's override.
+      // An archived Commitment — by hand, beneath a hand archive, or Expired — is not live,
+      // whatever its verdict (ruled 2026-10-04; Plan joined Start and Do after it kept showing
+      // one); the Archived pill's Include brings it back through the caller's override.
       return verdict === VERDICT.UNRESOLVED && !isArchived(node);
     case "backlog":
       return false;
