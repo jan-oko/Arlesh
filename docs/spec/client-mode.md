@@ -470,7 +470,7 @@ installed on its next run. `prune` removes the folder with the worktree (it is g
 **A branch needs no worktree made by hand.** `run`, `server start`, `server token` and `server pin`
 create `.claude/worktrees/<dir>` when it is missing: `git fetch origin <branch>`, then `git worktree
 add -b <branch> --track origin/<branch>` (a local branch of that name is used as it is, with a notice
-if it is behind or has diverged), with its own `node_modules` (see below). A branch that exists neither
+if it is behind or has diverged), with its own `node_modules` (above). A branch that exists neither
 locally nor on origin is an error; the tool never makes a branch off master. `<dir>` is the branch
 with `/` replaced by `-` (`qa/2026-11-round` is `qa-2026-11-round`), through one helper that also names
 the instance, the server and the Android package. Either spelling is accepted: `qa-2026-11-round` is
