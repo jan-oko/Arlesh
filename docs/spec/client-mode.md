@@ -137,8 +137,9 @@ zone (`TZ`).
 
 ## The Backend crate and Python
 
-*[ADR 0016](../adr/0016-shared-backend-crate-and-python-backends.md). The crate is built; the
-Python half follows it.*
+*[ADR 0016](../adr/0016-shared-backend-crate-and-python-backends.md). Built: the crate, and
+`HttpBackend` from Python. Python's `SqliteBackend` is the existing `arlesh.open` path, not yet the
+shared Rust one.*
 
 **The port and both backends live in their own crate, `arlesh-backend`** (`crates/arlesh-backend`),
 which the app and the Python package both depend on. It has two cargo features, `sqlite` and `http`,
@@ -177,13 +178,15 @@ async with arlesh.Arlesh(backend=arlesh.SqliteBackend("arlesh.db", client="noteb
 - `board.changes()` is an async iterator over the board's changes: the server's `/events` stream
   over HTTP, the process's own write counter over SQLite. It yields the newest revision only, never a
   backlog, and holds a connection only while someone is iterating.
+- Two reads the port lacks are answered by the Python layer: `get_info` from the list of infos, and
+  `board(at_capacity=…)` is refused over HTTP.
 - Operations only a local file has (`serve_mcp`, `stop_mcp`, `reset_undo`, `arlesh.hold`) are
   refused over HTTP with `not_permitted`, `details.reason = "not_in_client_mode"`.
 - `await arlesh.pairing.start(url, name)` asks for a PIN to show, and `await
   arlesh.pairing.wait(url, started)` returns the token once a signed-in device approves it. The
   package stores no token.
 
-`arlesh-server` runs on the shared `SqliteBackend` and never on an `HttpBackend`: a server over a
+`arlesh-server` runs on SQLite only, never on an `HttpBackend`: a server over a
 server is a relay, which could loop back on itself and would write every device's change as its own
 client (see the ADR, decision 8).
 

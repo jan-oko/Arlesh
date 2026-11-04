@@ -129,6 +129,7 @@ dependencies = [
 name = "arlesh-py"
 version = "0.3.0"
 dependencies = [
+ "arlesh-backend",
  "arlesh-core",
  "axum",
  "chrono",
