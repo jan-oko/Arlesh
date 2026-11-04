@@ -124,7 +124,7 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 | Path | What |
 | --- | --- |
 | `GET /health` | `api_version`, the package `version` and the build `commit` (`ARLESH_COMMIT`): the app's handshake. Behind the token, so checking it checks the token |
-| `GET /events` | The change stream (below) |
+| `GET /events/changes` | The change stream (below). `GET /events/expectations` is the wait stream: see [MCP](mcp-server.md), *Being told a wait resolved* |
 | `GET /board?now=&at_capacity=` | The whole board: every node with its lifecycle, short id and facts |
 | `/board` | `GET /lifecycles?now=`, `/task-dependencies?now=`, `/block-reasons`: the board's parts on their own |
 | `GET /tasks`, `/goals`, `/commitments`, `/waits` `?now=` | Every node of the kind, derived at `now`, as the board has them |
@@ -178,9 +178,9 @@ between requests: a gesture the app makes over several nodes is one of the `/ges
 instead (see [Client Mode](client-mode.md), *Undo*). The stacks are in memory, one pair per client,
 and start empty with the server, which also clears the journal at startup as the app does.
 
-## Live sync: `/events`
+## Live sync: `/events/changes`
 
-`GET /events` is a Server-Sent Events stream. Every committed write bumps the board's **revision**:
+`GET /events/changes` is a Server-Sent Events stream. Every committed write bumps the board's **revision**:
 a write through any route as any client, the capacity lock, and an agent's write through `/mcp`.
 The revision is one per database file, shared by every open of it in the process, and it starts at
 0 when the server starts. The stream sends `event: board-changed` with `data: {"revision": n,
@@ -200,7 +200,7 @@ once too often, never once too few. A **write** carries the revision after it co
 headers are used rather than a body envelope so no response shape changes. The board's own body
 (`/board`) is unchanged.
 
-Answers over 1 KB are gzipped when the client sends `Accept-Encoding: gzip`. `/events` never is: a
+Answers over 1 KB are gzipped when the client sends `Accept-Encoding: gzip`. The event streams never are: a
 compressor holds a stream back until it has enough to compress, and an event must arrive as it
 happens.
 

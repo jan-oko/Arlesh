@@ -5,6 +5,8 @@
     "`routes` maps every method of the app's Backend port (`src-tauri/src/backend/`) to the REST",
     "route(s) `HttpBackend` calls for it. `standalone_only` lists the methods with no route: People",
     "and the knowledge base, which HttpBackend refuses as not available in Client mode.",
+    "`streams` names the Server-Sent Event streams: `changes` is the one the app follows for live",
+    "sync (`src-tauri/src/backend/http/events.rs`); `expectations` is the agents' (`arlesh-notify`).",
     "`api_version` is the integer `/health` answers, bumped only on a breaking change.",
     "",
     "Both sides replay it. `src-tauri/src/backend/tests.rs` fails when a port method is in neither",
@@ -23,6 +25,10 @@
     "the `routes`."
   ],
   "api_version": 1,
+  "streams": {
+    "changes": "GET /events/changes",
+    "expectations": "GET /events/expectations"
+  },
   "standalone_only": [
     "create_person",
     "get_person",

@@ -1,4 +1,4 @@
-"""``/events``: the board's changes as Server-Sent Events, for live sync between devices.
+"""``/events/changes``: the board's changes as Server-Sent Events, for live sync between devices.
 
 Every committed write — through any route, any client, or an agent through ``/mcp`` — bumps the
 board's **revision**. The stream sends one ``board-changed`` event when the revision moves past the
@@ -74,7 +74,7 @@ async def board_changes(
 
 
 class EventsRouter(BoardRouter):
-    """``/events``."""
+    """``/events/changes``."""
 
     def _register_routes(self) -> None:
         self.get("", response_class=StreamingResponse)(self._stream)

@@ -25,8 +25,8 @@ fn board(waits: &[WaitState]) -> BTreeMap<String, WaitState> {
         .collect()
 }
 
-fn kinds(before: &[WaitState], after: &[WaitState]) -> Vec<Change> {
-    changes(&board(before), &board(after))
+fn kinds(before: Vec<WaitState>, after: Vec<WaitState>) -> Vec<Change> {
+    changes(&board(&before), &board(&after))
         .into_iter()
         .map(|event| event.change)
         .collect()
@@ -36,7 +36,7 @@ fn kinds(before: &[WaitState], after: &[WaitState]) -> Vec<Change> {
 fn a_wait_that_did_not_move_is_no_event() {
     let one = wait("aaa111", ExpectationStatus::Pending, false);
 
-    assert!(kinds(&[one.clone()], &[one]).is_empty());
+    assert!(kinds(vec![one.clone()], vec![one]).is_empty());
 }
 
 #[test]
@@ -45,10 +45,10 @@ fn a_released_wait_is_released_and_a_reopened_one_is_reopened() {
     let released = wait("aaa111", ExpectationStatus::Released, false);
 
     assert_eq!(
-        kinds(&[pending.clone()], &[released.clone()]),
+        kinds(vec![pending.clone()], vec![released.clone()]),
         [Change::Released]
     );
-    assert_eq!(kinds(&[released], &[pending]), [Change::Reopened]);
+    assert_eq!(kinds(vec![released], vec![pending]), [Change::Reopened]);
 }
 
 #[test]
@@ -58,12 +58,15 @@ fn archiving_and_unarchiving_are_events_and_status_comes_before_archival() {
     let released_and_archived = wait("aaa111", ExpectationStatus::Released, true);
 
     assert_eq!(
-        kinds(&[live.clone()], &[archived.clone()]),
+        kinds(vec![live.clone()], vec![archived.clone()]),
         [Change::Archived]
     );
-    assert_eq!(kinds(&[archived], &[live.clone()]), [Change::Unarchived]);
     assert_eq!(
-        kinds(&[live], &[released_and_archived]),
+        kinds(vec![archived], vec![live.clone()]),
+        [Change::Unarchived]
+    );
+    assert_eq!(
+        kinds(vec![live], vec![released_and_archived]),
         [Change::Released, Change::Archived]
     );
 }
@@ -72,7 +75,7 @@ fn archiving_and_unarchiving_are_events_and_status_comes_before_archival() {
 fn a_wait_that_vanishes_is_deleted_carrying_its_last_state() {
     let one = wait("aaa111", ExpectationStatus::Pending, false);
 
-    let events = changes(&board(&[one.clone()]), &board(&[]));
+    let events = changes(&board(std::slice::from_ref(&one)), &board(&[]));
 
     assert_eq!(events.len(), 1);
     assert!(events[0].deleted());
@@ -83,7 +86,7 @@ fn a_wait_that_vanishes_is_deleted_carrying_its_last_state() {
 fn a_wait_that_appears_is_created() {
     let one = wait("aaa111", ExpectationStatus::Pending, false);
 
-    assert_eq!(kinds(&[], &[one]), [Change::Created]);
+    assert_eq!(kinds(vec![], vec![one]), [Change::Created]);
 }
 
 #[test]

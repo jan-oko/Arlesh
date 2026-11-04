@@ -151,7 +151,7 @@ and the server's `test_server_parity.py` fails when a listed route is not served
 
 ## Live sync
 
-The server streams changes over Server-Sent Events. `GET /events` sends `board-changed` with a
+The server streams changes over Server-Sent Events. `GET /events/changes` sends `board-changed` with a
 **revision** for each committed write, and honours `Last-Event-ID`. `HttpBackend` relays it to the
 windows as the same Tauri `board-changed` event a Standalone write raises, now carrying the event's
 `revision` and `epoch`. After a reconnect it reloads if the revision jumped.
@@ -185,7 +185,7 @@ always has. The rules, in `src/stores/watch-board-changes.ts`:
   (optimistic UI, Task `288`) builds on the stored revision.
 
 A response over 1 KB is gzipped (the client asks for it, reqwest's `gzip`); the board shrinks
-several times over. `/events` is not.
+several times over. The event streams are not.
 
 ## Undo
 

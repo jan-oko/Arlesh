@@ -79,7 +79,7 @@ gtk = "0.18"
 winreg = "0.55"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { version = "1", features = ["rt", "macros", "io-util"] }
 # `test` brings `tauri::test::mock_app`, the only way to obtain a real `tauri::State` — it is a
 # newtype over a borrow with no public constructor, so without this a Tauri command cannot be
 # called from a test at all. See `tests/helpers.rs::command_host`.

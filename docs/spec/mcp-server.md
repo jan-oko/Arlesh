@@ -158,7 +158,7 @@ definition it loads.
 | `arlesh_kb` | `list_people`, `get_person(id)`, `list_events`, `list_threads` |
 | `arlesh_tasks` | reads: `get(id)`, `containment_conflicts(node, time_scope)`; writes: `create(parent_type, parent_id, title, brief?, time_scope?, plan?, on_scope_exit?, asynchronous?, dependencies?, tags?, block_reasons?, delegate?)`, `update(id, title?, brief?, backlog?, time_scope?, plan?, on_scope_exit?, asynchronous?, compound?, add_dependencies?, remove_dependencies?, add_tags?, remove_tags?, block_reasons?, delegate?)`, `set_status(id, expected, status)`, `move(id, parent_type, parent_id)`, `archive(id)`, `unarchive(id)`. See *Writing tasks* below |
 | `arlesh_flows` | `get(id)`, `recurrence(flow_id)`, `completion_count(flow_id)`, `origins(nodes)` |
-| `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`. See *Agentic waits* below, and *Being told a wait resolved* for `await` instead of polling (designed, not built) |
+| `arlesh_waits` | `raise(task_id, title, note?, question?)`, `ask(task_id, title, note?)`, `release(id, answer?)`, `get(id)` — agentic waits under an Agentic Task the MCP can write: a question for the user or a wait on something else, released by the agent (a question only with its answer) and polled with `get`; `watch(ids)` and `get_many(ids)` for being notified instead. See *Agentic waits* below, and *Being told a wait resolved* |
 | `arlesh_infos` | `create(task_id, body, details?)` — a write: an Info (a note) under an Agentic Task the MCP can write. See *Notes* below |
 | `arlesh_capacity` | `get`, `set(at_capacity)` — the agent capacity lock, app-wide and on no node. See *Agent capacity* below |
 
@@ -569,218 +569,43 @@ unless a Task depends on it.
 
 ## Being told a wait resolved
 
-*Designed 2026-11-02 and not built yet. See
-[ADR 0013](../adr/0013-notifying-agents-when-a-wait-resolves.md), which compares every avenue
-Claude Code documents (background commands, MCP tasks, hooks, mods, channels, cloud messaging) and
-cites them. The user still has to answer the open questions below, and every passage marked
-**(OQ n)** depends on one.*
+An agent that raised a wait is **told** when it changes, instead of polling `get`. The decision and
+its reasons are in [ADR 0013](../adr/0013-notifying-agents-when-a-wait-resolves.md); this is the
+server's side. The notifier itself is the `arlesh-notify` Claude Code mod (`plugins/arlesh-notify/`),
+which an agent's session may or may not have.
 
-An agent that raised a wait can be **told** when it resolves, instead of polling `get`. There is one
-mechanism in the core, a **waiter**, and three ways to reach it. Each suits different kinds of
-Claude Code session:
+**Two event streams**, Server-Sent Events, on the MCP endpoint's own origin (beside `/mcp` in
+Standalone; behind the client's bearer token in Client mode, by the same proxy), under the same
+rules: a loopback `Host` only, and any request carrying an `Origin` refused.
 
-| Surface | Reaches | Needs |
-| --- | --- | --- |
-| **Background long-poll**: `GET /waits/await` run as a background command | interactive sessions on every surface, `-p`, the Agent SDK, background sub-agents | nothing; `curl` |
-| **MCP task**: `arlesh_waits.await` | the terminal CLI's main conversation, and Agent SDK sessions | Claude Code v2.1.304 or later; the endpoint on revision 2026-07-28 **(OQ 2)** |
-| **Plugin hook**: wakes the session on every `ask` and `raise` without being asked | interactive sessions and the Agent SDK | installing the Arlesh plugin **(OQ 3)** |
+- `GET /events/changes`: `board-changed` with the board's revision after every committed write.
+  Today's live-sync stream under its new name (see [HTTP API](http-api.md), *Live sync*).
+- `GET /events/expectations[?agentic=true]`: `wait-changed` for each change to a wait the MCP can
+  see; `agentic=true` keeps only the agentic ones. The data is
+  `{"change", "wait_id", "short_id", "task_id", "task_short_id", "status", "archived", "question",
+  "deleted", "revision", "epoch"}`. `change` is `created`, `released`, `reopened`, `archived`,
+  `unarchived` or `deleted` (deleted, or no longer inside the roots: indistinguishable by design,
+  as `not_permitted` is). A status change comes before an archival change. **An edit to a pending
+  wait's title or note is no event.** The server keeps no history: the first read is made before
+  the response starts, so a change after the client has the response is always an event, and a
+  client that reconnects reads the waits it follows once (`get_many`) to catch up.
 
-Polling `get` keeps working everywhere, unchanged. Cloud sessions cannot reach Arlesh at all yet; see
-*Cloud sessions* below.
+The app reads the waits again every 2 seconds as well as on each agent write, since a window's own
+writes do not announce to the endpoint; `arlesh-server` hears of every write and does not poll.
 
-### The waiter
+**Two operations on `arlesh_waits`:**
 
-`await(ids, timeout)` takes up to 50 wait ids, full or short, that the MCP can see (as `get` needs),
-and the state the caller last saw for each, *pending* by default. It answers as soon as **any** of
-them has **resolved** relative to that state, with every resolution found, or answers `pending`
-at the timeout. It reads the named waits once a second, one indexed read, and moves to the board
-revision when Task 9298 lands it (PR #158); the answers do not change.
+- **`watch(ids)`** starts watching waits: it checks that each id names an agentic wait the MCP can
+  see and answers each one's current state (`wait_id`, `short_id`, `task_id`, `task_short_id`,
+  `status`, `archived`, `question`). It writes nothing. An id that names no visible wait, or a wait
+  that is not agentic, is refused. Whether anyone is *notified* depends on the session, not the
+  server: the instructions say so, and the mod picks the ids off the result.
+- **`get_many(ids)`** reads several waits at once. An id that no visible wait answers to comes back
+  `gone: true` instead of failing.
 
-It holds no subscription. A waiter lost to an app restart, a time limit, the end of a session or a
-`--resume` is started again, and a resolution that happened meanwhile is answered at once, because
-the board, not the waiter, is compared. A wait that resolved and was reopened while nobody was
-waiting answers nothing, since the waiter compares states, not histories.
-
-**Resolution.** A pure rule turns `(seen, current)` into zero or one resolution:
-
-| `resolution` | When |
-| --- | --- |
-| `answered` | A question wait went pending → released. It carries the answer. |
-| `released` | A non-question wait went pending → released. |
-| `archived` | It was archived while still pending. |
-| `gone` | It can no longer be read: deleted, its Task deleted, out of the roots, or private. These are indistinguishable by design, as `not_permitted` is. |
-| `reopened` | released → pending, because the release was taken back or undone. Seen only by a caller that passes `seen=released`. **(OQ 4)** |
-
-A lapsed Time Scope makes a wait Overdue, which is not a resolution. Waits do not expire.
-
-**The event.** Every surface carries the same object:
-
-```json
-{"wait_id": "7c0e…", "wait_short_id": "7c0", "task_id": "512…", "task_short_id": "9a1",
- "resolution": "answered", "answer": "Merged. Start on the packaging.",
- "released_at": "2026-11-02T14:03:11Z", "released_by": "desktop",
- "text": "Wait 7c0 \"PR #165 is green: review and merge?\" under task 9a1 was answered by the user: \"Merged. Start on the packaging.\""}
-```
-
-`released_by` is the journal source of the release: `desktop`, a Client-mode device's name, or
-`mcp`. The instructions tell the agent that an answer released by `mcp` came from **an agent, not
-the user**, since an agent with write access to a Task can release a question with any answer.
-**(OQ 5)**
-
-### Background long-poll
-
-```
-GET /waits/await?ids=7c0,9a1&timeout=1800[&seen=released][&format=text]
-```
-
-It is served on the same listener as `/mcp`, so beside `http://127.0.0.1:4747/mcp` in Standalone,
-with the same rules: a loopback `Host` only, and any request carrying an `Origin` refused, so no
-browser page can reach it. In Client mode `arlesh-server` serves it behind the client's bearer
-token, by the same proxy as `/mcp`, and applies that client's roots. `timeout` is in seconds, at
-most 7200. The answer is `200` with `{"resolved": [event…], "pending": [ids…]}`, or with
-`format=text` one `text` line per resolution and nothing at all on timeout. An id that cannot be
-read resolves as `gone`, so a wrong id ends the wait instead of hanging it.
-
-The MCP instructions tell an agent, right after it raises a wait it will wait on, to run:
-
-```
-curl -sS "http://127.0.0.1:4747/waits/await?ids=7c0&timeout=1800&format=text"
-```
-
-as a **background** command (`run_in_background: true`), or under the Monitor tool, and to start it
-again if it ends with no output or is stopped at a time limit. The host is the one in the agent's
-`Arlesh` MCP entry, since the router cannot know the address a client reached it by. In Client mode
-the command adds `-H "Authorization: Bearer $ARLESH_TOKEN"`, from an environment variable the user
-sets beside the MCP entry's header. Claude Code starts a turn when the
-command exits, in each kind of session:
-
-- **Interactive** (terminal, desktop app, VS Code): background commands have no time limit there.
-- **`-p` and the Agent SDK**: the run stays open for a background command the main conversation
-  started, then takes one more turn with the outcome. A background command there is stopped after
-  30 min by default, or after the `timeout` Claude passes, up to 2 h, and Claude is told.
-- **Background sub-agents**: Claude Code sends the sub-agent a notification when the command
-  ends. A **foreground** sub-agent's background commands stop when its run ends, so it runs the
-  same command in the foreground and blocks on it.
-
-### MCP task
-
-`arlesh_waits.await(ids)` is the waiter as a tool. When the request declares the MCP tasks extension
-(`io.modelcontextprotocol/tasks`), it answers with a **task** (`resultType: "task"`,
-`pollIntervalMs: 5000`). Claude Code then polls `tasks/get` itself, at no cost to the model, and
-`tasks/get` answers from the waiter: `working` until a resolution, then `completed` with the event
-as the tool result. If Claude is idle when it completes, Claude starts on it unprompted. The task
-id is derived from the sorted wait ids and their `seen` states, under 128 characters, so it stays
-answerable on a new connection, and a session resumed with
-`claude --resume` follows it again. `tasks/cancel` ends it and writes nothing.
-
-Claude Code turns a call into a task only from the **main conversation** of a **terminal CLI** or
-**Agent SDK** session (the SDK also needs `CLAUDE_AUTO_BACKGROUND_TASKS=1`), not from a sub-agent,
-the desktop app or VS Code. For every other request the tool **does not block**. It answers at
-once with each wait's current state and the background command above, so the agent can start it.
-
-`ask` and `raise` stay immediate: the agent needs the wait's id, and the Task must read Review at
-once.
-
-### The Arlesh plugin (optional)
-
-A Claude Code plugin, from a marketplace of the user's own **(OQ 3)**, carries:
-
-- a `PostToolUse` hook on `mcp__Arlesh__arlesh_waits` with `asyncRewake: true`. After each `ask` or
-  `raise` it reads the new wait's id from the tool's result, long-polls it, and exits 2 with the
-  event's `text` on stderr. That wakes the session even when it is idle, whether or not the agent
-  started a waiter. Its `timeout` is set to 24 h.
-- a skill that says when to wait and how.
-
-It needs no launch flag and no allowlist. Async hooks are killed when a `-p` run ends, so under `-p`
-the background command is still the way.
-
-### Cloud sessions
-
-A cloud session's `127.0.0.1` is its own VM, and it gets MCP servers only from claude.ai connectors,
-so **it cannot reach Arlesh today**: it can neither raise a wait nor read one. Until that changes:
-
-- **Run the thread that waits on Arlesh on the user's computer** (a Project's "Work locally", or
-  Remote Control). It is then a local session, and everything above applies.
-- **(OQ 6)** Making Arlesh reachable from the cloud means serving `arlesh-server` on the internet
-  as a claude.ai custom connector. If that is done, the documented push into a cloud session is
-  `claude -p "<event text>" --cloud <session-id>`, run on the user's machine when a wait that
-  names the session resolves. It needs the user's claude.ai login there.
-
-### What the core gains
-
-- `arlesh_waits.get_many(ids)` answers each id as `get` would, or with its error kind (`not_found`
-  folds into `not_permitted` as always).
-- Every wait answer carries `released_at` (already stored, as a completion instant; see
-  [Resources](resources.md)) and `released_by` (the source of the gesture that set it, read from
-  the journal; `null` when pending, or when it was released before journaling began).
-- The resolution rule, a pure function in a `rules` module (ADR 0010), and the waiter.
-- `GET /waits/await` on `arlesh_core::mcp::router`, and `arlesh_waits.await` with task support.
-
-### Being told: delivery
-
-Six pull requests, each green on its own, landed in order. PR 1 decides whether PRs 4 and 5 stand
-as written.
-
-1. **Spike: confirm the wakes (docs only).** On a real Claude Code, record the version and check:
-   (a) a background `curl` that exits starts a turn in an idle interactive session (terminal and
-   desktop app), in `-p`, in an Agent SDK session, and in a background sub-agent; (b) whether
-   Claude Code declares the tasks extension to Arlesh's endpoint, on which revision rmcp 3.4
-   negotiates with it, and whether a completed task wakes an idle session and survives `--resume`;
-   (c) an `asyncRewake` `PostToolUse` hook wakes an idle main session, and where the wake lands when
-   the matched call was a sub-agent's; (d) whether `claude -p --cloud` reaches a cloud session whose
-   VM was reclaimed. Write the results into ADR 0013 and this section. *Acceptance:* each answer is
-   recorded with the Claude Code version.
-2. **Core: `get_many`, `released_at`, `released_by`, and the resolution rule.** Files:
-   `crates/arlesh-core/src/mcp/waits.rs`, `params.rs`, `schema.rs`, the lookup that builds a wait
-   answer, a journal read for `released_by` beside the undo module, and the rule in a `rules`
-   module (ADR 0010). Tests: `src-tauri/tests/operations/mcp_writes.rs`, the core's sibling `tests.rs`,
-   and one unit test per row of the resolution table. Spec: the *Agentic waits* list and the tools
-   table. *Acceptance:* `get_many` answers mixed visible, hidden and missing ids in order;
-   `released_by` is `desktop` for an app release, `mcp` for an agent's, and the device name through
-   `arlesh-server`. A changelog fragment under `added`.
-3. **The waiter and `GET /waits/await`.** The waiter in the core (one read a second, a 7200 s cap,
-   at most 50 ids), the route on `arlesh_core::mcp::router` with the loopback and Origin rules, and
-   the route in `arlesh-server` behind the token. *Acceptance:* an integration test releases a wait
-   through the core, as the app does, while a request is waiting, and gets exactly one event; a
-   request for a wait that already resolved answers at once; an unreadable id answers `gone`; a
-   request with an `Origin` is refused; the server refuses one without a token. Amend the fragment.
-4. **`arlesh_waits.await` and MCP tasks.** The tool, its task answer, `tasks/get` and `tasks/cancel`
-   on rmcp's tasks support, and the immediate answer for clients without tasks. If PR 1 shows the
-   endpoint must move to revision 2026-07-28, that change lands here (OQ 2). The instructions gain
-   the waiting paragraph. *Acceptance:* a test client that declares the extension gets a task and
-   then `completed` with the event after a release; one that does not gets the immediate answer.
-5. **The Arlesh plugin.** The marketplace and plugin (per OQ 3), its hook script and skill, the
-   *Connecting* text in this file, and the agent-facing paragraph in `AGENTS.md`'s board section.
-   *Acceptance:* the user, by hand: install the plugin, `ask` a question, let the session go idle,
-   answer it in the app, and see a turn start.
-6. **Cloud (deferred to OQ 6).** Nothing is built until the user decides whether Arlesh should be
-   reachable from the cloud.
-
-### Being told: open questions
-
-For the user. Each one marked **(OQ n)** above waits on its answer.
-
-1. **Is this layered design the direction?** The background long-poll as the universal way, MCP
-   tasks where the CLI supports them, an optional plugin for waking without the agent's help, and
-   **no channel for now** (ADR 0013, decision 8). Or do you still want the channel bridge, for
-   example as an experiment under the development flag?
-2. **May the endpoint move to MCP revision 2026-07-28?** MCP tasks need it. It is the revision
-   Claude Code's newer client prefers anyway, and it rules out ever being a channel on the same
-   connection. rmcp 3.4 supports it; the spike says what it negotiates today.
-3. **Ship the plugin, and from where?** A marketplace in this repository, a separate repository, or
-   not at all (the agent starts the waiter itself, as the instructions say)?
-4. **Tell the agent when an answer is taken back?** If you undo an answer the agent has already
-   acted on, should a waiter that passes `seen=released` be told (`reopened`, recommended), or do
-   events end at the first resolution?
-5. **Answers written by agents.** Should the event only flag a question released by an agent
-   (`released_by: mcp`), as designed, or should such answers not be delivered at all?
-6. **Cloud sessions.** Is running waiting threads on your computer enough for now, or should
-   `arlesh-server` be reachable from the cloud as a claude.ai connector, with the `--cloud` push
-   after it? The second changes the Access model, which has had no authentication on the
-   Standalone endpoint because it never leaves loopback.
-7. **Your account.** Is it in a Team or Enterprise organization? If it is, an Owner could add an
-   Arlesh channel plugin to `allowedChannelPlugins`, which removes the development flag and makes a
-   channel work under `-p` too. That would reopen OQ 1.
+**What the instructions tell an agent** is protocol only, and says nothing about whether a mod is
+present: what `watch` does, and "if your session says Arlesh notifications are on, rely on them;
+otherwise don't wait on a wait". Whether they are on is the mod's own line at SessionStart.
 
 ## Notes
 

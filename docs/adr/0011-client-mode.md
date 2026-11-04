@@ -49,7 +49,7 @@ able to send those same operations to a server instead.
    and the UI hides them. Their code and tables are unchanged. *Why:* the user scoped phase 1 to the
    board; leaving them out keeps the server's API to what Client mode actually needs.
 
-5. **Live sync over Server-Sent Events.** `GET /events` sends `board-changed` with a revision for
+5. **Live sync over Server-Sent Events.** `GET /events/changes` sends `board-changed` with a revision for
    each committed write, and supports `Last-Event-ID`. `HttpBackend` relays it as today's Tauri
    `board-changed` event, and reloads after a reconnect if the revision jumped. *Why:* the windows
    already reload on that event, so a write from another device needs no new path in the frontend.

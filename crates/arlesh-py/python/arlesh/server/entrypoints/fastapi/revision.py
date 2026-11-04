@@ -1,8 +1,8 @@
 """Every answer says which board it saw: the **revision** and the **epoch** headers, and gzip.
 
 A device that holds a copy of the board needs to know whether the next change it hears about is
-news. ``GET /events`` sends the revision each change reached; this puts the same pair on every
-other answer, so a device can compare them (``docs/spec/http-api.md``, *Revision*):
+news. ``GET /events/changes`` sends the revision each change reached; this puts the same pair on
+every other answer, so a device can compare them (``docs/spec/http-api.md``, *Revision*):
 
 * ``X-Arlesh-Revision``: how many writes the board has committed this run.
 * ``X-Arlesh-Epoch``: names this run. The revision starts again at 0 when the server restarts, so
@@ -12,7 +12,7 @@ A **read** carries the revision as it stood when the request *arrived*, before t
 write landing mid-read makes the copy look older than it is and never newer: the device reloads
 once too often, never once too few. A **write** carries the revision after it committed.
 
-These are pure ASGI middleware, not ``BaseHTTPMiddleware``, so ``/events`` streams straight
+These are pure ASGI middleware, not ``BaseHTTPMiddleware``, so the event streams straight
 through them.
 """
 
@@ -29,8 +29,8 @@ from arlesh.server.business_logic.board import BoardNotOpen
 REVISION_HEADER = "X-Arlesh-Revision"
 EPOCH_HEADER = "X-Arlesh-Epoch"
 
-EVENTS_PATH = "/events"
-"""The change stream: never compressed, since gzip buffers a stream until it has enough to
+EVENTS_PATHS = ("/events/changes", "/events/expectations")
+"""The event streams: never compressed, since gzip buffers a stream until it has enough to
 compress, and an event must reach the device as it happens."""
 
 GZIP_MINIMUM_BYTES = 1024
@@ -80,7 +80,7 @@ class GzipExceptEventsMiddleware:
         self._compressed = GZipMiddleware(app, minimum_size=GZIP_MINIMUM_BYTES)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http" and scope["path"].endswith(EVENTS_PATH):
+        if scope["type"] == "http" and scope["path"].endswith(EVENTS_PATHS):
             await self._app(scope, receive, send)
         else:
             await self._compressed(scope, receive, send)

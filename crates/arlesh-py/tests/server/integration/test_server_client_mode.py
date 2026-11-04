@@ -1,5 +1,6 @@
 """The routes the desktop app's Client mode needs beyond the writes: the board's lists and
-what-ifs, the Flow reads, the shared capacity lock and MCP roots, ``/health`` and ``/events``."""
+what-ifs, the Flow reads, the shared capacity lock and MCP roots, ``/health`` and
+``/events/changes``."""
 
 from __future__ import annotations
 
