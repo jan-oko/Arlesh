@@ -485,7 +485,7 @@ builds locally as before. `--server <branch>`'s worktree is never touched.
 
 **Finding an Android device.** The first look is `adb devices -l`, for a transport that is already
 connected: an `adb-<serial>-…._adb-tls-connect._tcp` (mDNS auto-connect) transport by serial, an
-`ip:port` transport by any address the registered host resolves to (`miniseer.local` matches by its LAN
+`ip:port` transport by any address the registered host resolves to (`phone.local` matches by its LAN
 address), and, with a serial known and nothing else matching, each transport's
 `adb shell getprop ro.serialno`. A matched transport is used as it is. Otherwise the phone is
 discovered: `adb mdns services`, then, when that is empty (adb's mdns shares port 5353 with avahi,
