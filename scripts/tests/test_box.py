@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import stat
@@ -14,6 +16,7 @@ import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parent.parent / "box.py"
@@ -693,14 +696,23 @@ elif args[:2] == ["run", "download"]:
     out = args[args.index("-D") + 1]
     open(out + "/arlesh-box-x.apk", "w").write("apk-of-run-" + args[2])
 elif args[:2] == ["secret", "set"]:
-    open(d + "/secret.txt", "w").write(sys.stdin.read())
-    open(d + "/secret.args", "w").write(" ".join(args))
+    body = sys.stdin.read()
+    open(d + "/secret." + args[2] + ".txt", "w").write(body)
+    open(d + "/secret.txt", "w").write(body)
+    open(d + "/secret.args", "a").write(" ".join(args) + "\\n")
     sys.exit(0 if state.get("secret_ok", True) else 1)
 """
 
 FAKE_KEYTOOL = """#!__PY__
-import sys
+import json, os, sys
 args = sys.argv[1:]
+# Record the argv, and what each `-opt:file PATH` argument points at, as keytool would read it.
+files = {}
+for i, a in enumerate(args):
+    if a.endswith(":file"):
+        files[args[i + 1]] = open(args[i + 1]).read().strip()
+with open(os.environ["FAKE_GH_DIR"] + "/keytool.log", "a") as log:
+    log.write(json.dumps({"argv": args, "files": files}) + "\\n")
 open(args[args.index("-keystore") + 1], "w").write("KEYSTORE:" + " ".join(args))
 """
 
@@ -758,6 +770,14 @@ class CiFixture(IsolatedEnv):
         return {"databaseId": run_id, "headSha": self.sha, "status": "completed",
                 "conclusion": "success", "event": "workflow_dispatch",
                 "url": f"https://github.com/jan-oko/Arlesh/actions/runs/{run_id}", **over}  # fmt: skip
+
+    def keytool_calls(self) -> list[dict[str, Any]]:
+        log = self.gh_dir / "keytool.log"
+        return (
+            [json.loads(line) for line in log.read_text().splitlines()]
+            if log.exists()
+            else []
+        )
 
     def gh_calls(self) -> list[str]:
         log = self.gh_dir / "calls.log"
@@ -921,20 +941,51 @@ class CiDecision(CiFixture):
 
 
 class KeystoreInit(CiFixture):
-    def test_writes_the_file_and_sets_the_secret(self) -> None:
+    def secret(self, name: str) -> str:
+        return (self.gh_dir / f"secret.{name}.txt").read_text()
+
+    def test_writes_the_files_and_sets_both_secrets(self) -> None:
         with mock.patch.object(box, "repo_root", lambda: self.wt):
             box.keystore_init(force=False)
         ks = box.box_keystore()
+        pwfile = box.box_password_file()
+        self.assertEqual(pwfile, ks.with_name("box.keystore.password"))
         self.assertTrue(ks.is_file())
         self.assertIn("-alias arlesh-box", ks.read_text())
         self.assertEqual(oct(ks.stat().st_mode & 0o777), "0o600")
+        self.assertEqual(oct(pwfile.stat().st_mode & 0o777), "0o600")
+        password = pwfile.read_text().strip()
+        self.assertGreaterEqual(len(password), 32)
         self.assertEqual(
-            (self.gh_dir / "secret.args").read_text(),
-            "secret set ARLESH_BOX_KEYSTORE_B64 --repo jan-oko/Arlesh",
+            (self.gh_dir / "secret.args").read_text().splitlines(),
+            [
+                "secret set ARLESH_BOX_KEYSTORE_B64 --repo jan-oko/Arlesh",
+                "secret set ARLESH_BOX_KEYSTORE_PASSWORD --repo jan-oko/Arlesh",
+            ],
         )
         self.assertEqual(
-            base64.b64decode((self.gh_dir / "secret.txt").read_text()), ks.read_bytes()
+            base64.b64decode(self.secret("ARLESH_BOX_KEYSTORE_B64")), ks.read_bytes()
         )
+        self.assertEqual(self.secret("ARLESH_BOX_KEYSTORE_PASSWORD"), password)
+        self.assertFalse(list(ks.parent.glob("*.new")))
+
+    def test_the_password_is_in_no_argv_and_never_printed(self) -> None:
+        out = io.StringIO()
+        with (
+            mock.patch.object(box, "repo_root", lambda: self.wt),
+            contextlib.redirect_stdout(out),
+            contextlib.redirect_stderr(out),
+        ):
+            box.keystore_init(force=False)
+        password = box.box_password_file().read_text().strip()
+        (call,) = self.keytool_calls()
+        self.assertNotIn(password, " ".join(call["argv"]))
+        self.assertIn("-storepass:file", call["argv"])
+        self.assertIn("-keypass:file", call["argv"])
+        self.assertEqual(list(call["files"].values()), [password])
+        self.assertNotIn(password, out.getvalue())
+        for line in self.gh_calls():
+            self.assertNotIn(password, line)
 
     def test_refuses_to_overwrite_without_force(self) -> None:
         ks = box.box_keystore()
@@ -960,6 +1011,8 @@ class KeystoreInit(CiFixture):
         ):
             box.keystore_init(force=True)
         self.assertEqual(ks.read_text(), "old")
+        self.assertFalse(box.box_password_file().exists())
+        self.assertFalse(list(ks.parent.glob("*.new")))
 
     def test_origin_repo_forms(self) -> None:
         for url in (
@@ -971,14 +1024,109 @@ class KeystoreInit(CiFixture):
             self.assertEqual(box.origin_repo(self.wt), "jan-oko/Arlesh")
 
 
+class KeystoreRotate(CiFixture):
+    def make_legacy(self) -> Path:
+        ks = box.box_keystore()
+        ks.parent.mkdir(parents=True)
+        ks.write_text("legacy")
+        return ks
+
+    def rotate(self) -> None:
+        with mock.patch.object(box, "repo_root", lambda: self.wt):
+            box.keystore_rotate_password()
+
+    def test_changes_both_passwords_with_files_and_sets_both_secrets(self) -> None:
+        ks = self.make_legacy()
+        self.rotate()
+        pwfile = box.box_password_file()
+        password = pwfile.read_text().strip()
+        self.assertEqual(oct(pwfile.stat().st_mode & 0o777), "0o600")
+        store, key = self.keytool_calls()
+        self.assertEqual(store["argv"][0], "-storepasswd")
+        self.assertEqual(key["argv"][0], "-keypasswd")
+        self.assertIn("-alias", key["argv"])
+        for call in (store, key):
+            argv = call["argv"]
+            self.assertIn("-new:file", argv)
+            self.assertNotIn(password, " ".join(argv))
+            for plain in ("-storepass", "-keypass", "-new"):
+                self.assertNotIn(plain, argv)  # only the :file forms
+            self.assertIn(password, call["files"].values())
+        self.assertIn(box.legacy_box_password(), store["files"].values())
+        self.assertIn(box.legacy_box_password(), key["files"].values())
+        self.assertEqual(
+            base64.b64decode(
+                (self.gh_dir / "secret.ARLESH_BOX_KEYSTORE_B64.txt").read_text()
+            ),
+            ks.read_bytes(),
+        )
+        self.assertEqual(
+            (self.gh_dir / "secret.ARLESH_BOX_KEYSTORE_PASSWORD.txt").read_text(),
+            password,
+        )
+        self.assertEqual(len((self.gh_dir / "secret.args").read_text().splitlines()), 2)
+
+    def test_a_failed_upload_changes_nothing_locally(self) -> None:
+        ks = self.make_legacy()
+        self.gh_state(secret_ok=False)
+        with self.assertRaises(box.BoxError):
+            self.rotate()
+        self.assertEqual(ks.read_text(), "legacy")
+        self.assertFalse(box.box_password_file().exists())
+        self.assertFalse(list(ks.parent.glob("*.new")))
+
+    def test_refuses_when_already_rotated_or_without_a_keystore(self) -> None:
+        with self.assertRaises(box.BoxError) as ctx:
+            self.rotate()
+        self.assertIn("keystore init", str(ctx.exception))
+        self.make_legacy()
+        box.box_password_file().write_text("x")
+        with self.assertRaises(box.BoxError):
+            self.rotate()
+        self.assertEqual(self.keytool_calls(), [])
+
+    def test_parse(self) -> None:
+        a = box.parse_args(["keystore", "rotate-password"])
+        self.assertEqual((a.fn, a.keystore_cmd), (box.cmd_keystore, "rotate-password"))
+
+
 class SigningSelection(IsolatedEnv):
-    def test_shared_keystore_when_present(self) -> None:
+    def test_shared_keystore_reads_the_password_file(self) -> None:
         ks = box.box_keystore()
         ks.parent.mkdir(parents=True)
         ks.write_text("k")
+        box.box_password_file().write_text("pw")
         sign = box.choose_signing()
         self.assertEqual(
             (sign.keystore, sign.alias, sign.shared), (ks, "arlesh-box", True)
+        )
+        self.assertEqual(sign.password, ("file", str(box.box_password_file())))
+        self.assertEqual(
+            box.apksigner_pass(sign.password), f"file:{box.box_password_file()}"
+        )
+
+    def test_a_missing_password_file_says_how_to_fix_it_and_never_falls_back(
+        self,
+    ) -> None:
+        ks = box.box_keystore()
+        ks.parent.mkdir(parents=True)
+        ks.write_text("k")
+        with self.assertRaises(box.BoxError) as ctx:
+            box.choose_signing()
+        self.assertIn("keystore rotate-password", str(ctx.exception))
+        self.assertIn("keystore init", str(ctx.exception))
+
+    def test_the_debug_fallback_passes_its_password_by_environment(self) -> None:
+        debug = box.home() / ".android" / "debug.keystore"
+        debug.parent.mkdir(parents=True)
+        debug.write_text("d")
+        with mock.patch.object(box, "note"):
+            sign = box.choose_signing()
+        self.assertEqual(sign.password[0], "env")
+        self.assertEqual(box.apksigner_pass(sign.password), f"env:{sign.password[1]}")
+        self.assertIn(sign.password[1], sign.env)
+        self.assertEqual(
+            box.keytool_pass("-storepass", sign.password)[0], "-storepass:env"
         )
 
     def test_debug_keystore_fallback_with_a_notice(self) -> None:

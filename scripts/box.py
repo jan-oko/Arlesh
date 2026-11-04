@@ -12,6 +12,7 @@
     box run <branch> [<target>] [--server <branch> | --standalone] [--no-firebase] [--force] [--stale-ok]
             [--local | --ci] [--reinstall]
     box keystore init [--force]
+    box keystore rotate-password
     box stop [branch ... | all]
     box clean [branch ... | all]
     box prune [<target>]
@@ -55,10 +56,12 @@ unpushed tree it is an error. Without an authenticated gh, `run` builds locally 
 (`--ci` fails). `run` says which source it used. Desktop targets always build locally.
 
 Signing: every box APK, local or CI, is signed with ONE box-only keystore, so they update one
-another. `keystore init` creates $XDG_CONFIG_HOME/arlesh/box.keystore (alias arlesh-box, password
-arlesh-box, 10000 days; a debug-grade key for com.atai.arlesh.box.* only) and uploads it base64 as
-the repo secret ARLESH_BOX_KEYSTORE_B64 with `gh secret set` (it refuses to replace an existing
-keystore without --force; rotating means reinstalling every box app). Local builds sign with it
+another. `keystore init` creates $XDG_CONFIG_HOME/arlesh/box.keystore (alias arlesh-box, 10000 days; a
+debug-grade key for com.atai.arlesh.box.* only) under a random password kept beside it in
+box.keystore.password (mode 600), and uploads both as repo secrets with `gh secret set`:
+ARLESH_BOX_KEYSTORE_B64 and ARLESH_BOX_KEYSTORE_PASSWORD (it refuses to replace an existing
+keystore without --force; replacing means reinstalling every box app). `keystore rotate-password`
+moves a keystore made with the old fixed password onto a random one, keeping the same key. Local builds sign with it
 when it exists, else with ~/.android/debug.keystore and a notice. CI (bundles.yml box mode) signs
 with the secret when set, else with a fresh key and a warning. On INSTALL_FAILED_UPDATE_INCOMPATIBLE
 `run` stops and offers `--reinstall`, which uninstalls first (the token is re-provisioned).
@@ -83,6 +86,7 @@ import ipaddress
 import json
 import os
 import re
+import secrets
 import shlex
 import shutil
 import signal
@@ -94,8 +98,8 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Iterator, Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Iterator, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -113,9 +117,13 @@ MAIN_ACTIVITY = "com.atai.arlesh.MainActivity"
 URL_EXTRA = "arlesh_box_url"
 TOKEN_EXTRA = "arlesh_box_token"
 BOX_KEY_ALIAS = "arlesh-box"
-BOX_KEY_PASSWORD = "arlesh-box"
 BOX_KEY_VALIDITY_DAYS = 10000
 BOX_KEYSTORE_SECRET = "ARLESH_BOX_KEYSTORE_B64"
+BOX_PASSWORD_SECRET = "ARLESH_BOX_KEYSTORE_PASSWORD"
+DEBUG_KEY_ALIAS = "androiddebugkey"
+# The Android SDK's documented convention: the debug keystore's passwords are the alias without
+# its "debugkey" suffix. Handed to keytool and apksigner through the environment, never argv.
+ANDROID_DEBUG_STOREPASS_ENV = "ARLESH_BOX_DEBUG_STOREPASS"
 BUNDLES_WORKFLOW = "bundles.yml"
 AUTO, LOCAL, CI = "auto", "local", "ci"
 
@@ -446,10 +454,15 @@ def run_cmd(
 
 
 def capture(
-    cmd: Sequence[str], *, cwd: Path | None = None
+    cmd: Sequence[str], *, cwd: Path | None = None, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        list(cmd), cwd=cwd, capture_output=True, text=True, check=False
+        list(cmd),
+        cwd=cwd,
+        env={**os.environ, **env} if env else None,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -1563,11 +1576,16 @@ def ensure_debug_keystore() -> None:
         return
     need_cmd("keytool", "It ships with the JDK.")
     ks.parent.mkdir(parents=True, exist_ok=True)
-    made = capture([
-        "keytool", "-genkeypair", "-keystore", str(ks), "-storepass", "android", "-keypass", "android",
-        "-alias", "androiddebugkey", "-keyalg", "RSA", "-keysize", "2048", "-validity", "10000",
-        "-dname", "CN=Android Debug,O=Android,C=US",
-    ])  # fmt: skip
+    made = capture(
+        [
+            "keytool", "-genkeypair", "-keystore", str(ks),
+            *keytool_pass("-storepass", DEBUG_PASS_SOURCE),
+            *keytool_pass("-keypass", DEBUG_PASS_SOURCE),
+            "-alias", DEBUG_KEY_ALIAS, "-keyalg", "RSA", "-keysize", "2048", "-validity", "10000",
+            "-dname", "CN=Android Debug,O=Android,C=US",
+        ],
+        env=DEBUG_PASS_ENV,
+    )  # fmt: skip
     if made.returncode != 0:
         raise die(f"Could not create {ks}.")
     note(f"created {ks}")
@@ -1980,33 +1998,67 @@ class Firebase:
 #
 # One box-only keystore signs every box APK, local or CI, so a CI build installs over a local one and
 # back. It lives at $XDG_CONFIG_HOME/arlesh/box.keystore and, base64, in the repo secret
-# ARLESH_BOX_KEYSTORE_B64 (made by `box keystore init`). Alias, password and validity are fixed:
-# it is a debug-grade key, good for com.atai.arlesh.box.* only, and carries no value.
+# ARLESH_BOX_KEYSTORE_B64 (made by `box keystore init`). Its random password sits beside it in
+# box.keystore.password (mode 600) and in ARLESH_BOX_KEYSTORE_PASSWORD. It is a debug-grade key, good
+# for com.atai.arlesh.box.* only, but a password in the repo is still a leak, so none is written
+# here: keytool and apksigner read the password from a file or the environment, never from argv.
+
+PassSource = tuple[str, str]  # ("file", path) or ("env", variable name)
 
 
 def box_keystore() -> Path:
     return xdg("XDG_CONFIG_HOME", ".config") / "arlesh" / "box.keystore"
 
 
+def box_password_file() -> Path:
+    return box_keystore().with_name(box_keystore().name + ".password")
+
+
+DEBUG_PASS_SOURCE: PassSource = ("env", ANDROID_DEBUG_STOREPASS_ENV)
+DEBUG_PASS_ENV = {ANDROID_DEBUG_STOREPASS_ENV: DEBUG_KEY_ALIAS.removesuffix("debugkey")}
+
+
+def keytool_pass(option: str, source: PassSource) -> list[str]:
+    """`-storepass:file PATH` / `-storepass:env NAME`: keytool's argv-safe forms."""
+    return [f"{option}:{source[0]}", source[1]]
+
+
+def apksigner_pass(source: PassSource) -> str:
+    """`file:PATH` / `env:NAME`: apksigner's argv-safe forms."""
+    return f"{source[0]}:{source[1]}"
+
+
 @dataclass(frozen=True)
 class Signing:
     keystore: Path
     alias: str
-    password: str
+    password: PassSource
     shared: bool  # the box keystore, as opposed to the debug-keystore fallback
+    env: Mapping[str, str] = field(
+        default_factory=dict
+    )  # what `password` reads, if env
 
 
 def choose_signing() -> Signing:
     """The shared box keystore when it exists, else the debug keystore (made if missing)."""
     shared = box_keystore()
     if shared.is_file():
-        return Signing(shared, BOX_KEY_ALIAS, BOX_KEY_PASSWORD, True)
+        pwfile = box_password_file()
+        if not pwfile.is_file():
+            raise die(
+                f"{shared} has no password file ({pwfile}). Run `{CMD} keystore rotate-password` "
+                f"if it was made before passwords were random, or `{CMD} keystore init --force` "
+                "to make a new one (every installed box app then has to be reinstalled)."
+            )
+        return Signing(shared, BOX_KEY_ALIAS, ("file", str(pwfile)), True)
     ensure_debug_keystore()
     note(
         f"signing with {debug_keystore()}: CI and local builds are not update-compatible "
         f"until you run `{CMD} keystore init`."
     )
-    return Signing(debug_keystore(), "androiddebugkey", "android", False)
+    return Signing(
+        debug_keystore(), DEBUG_KEY_ALIAS, DEBUG_PASS_SOURCE, False, DEBUG_PASS_ENV
+    )
 
 
 def origin_repo(cwd: Path) -> str:
@@ -2018,6 +2070,47 @@ def origin_repo(cwd: Path) -> str:
     return found.group(1)
 
 
+def write_secret_file(path: Path, text: str) -> None:
+    """Write `text` to `path`, created with mode 600 so it is never readable by others."""
+    path.unlink(missing_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+
+
+def set_secret(repo: str, name: str, value: str) -> None:
+    """`gh secret set NAME`, the value on stdin so no process list shows it."""
+    sent = subprocess.run(
+        ["gh", "secret", "set", name, "--repo", repo],
+        input=value, capture_output=True, text=True, check=False,
+    )  # fmt: skip
+    if sent.returncode != 0:
+        raise die(f"gh secret set {name} failed: {sent.stderr.strip()}")
+
+
+def publish_keystore(repo: str, keystore: Path, password: str) -> None:
+    """Upload both repo secrets CI signs with; the keystore first, then its password."""
+    set_secret(
+        repo, BOX_KEYSTORE_SECRET, base64.b64encode(keystore.read_bytes()).decode()
+    )
+    set_secret(repo, BOX_PASSWORD_SECRET, password)
+
+
+def require_gh_and_keytool() -> str:
+    need_cmd("keytool", "It ships with the JDK.")
+    need_cmd("gh", "Install the GitHub CLI and run `gh auth login`.")
+    if capture(["gh", "auth", "status"]).returncode != 0:
+        raise die("gh is not authenticated. Run `gh auth login`.")
+    return origin_repo(repo_root())
+
+
+def install_keystore(fresh: Path, fresh_pw: Path) -> None:
+    """Move a finished keystore and its password file into place."""
+    fresh.chmod(0o600)
+    os.replace(fresh_pw, box_password_file())
+    os.replace(fresh, box_keystore())
+
+
 def keystore_init(force: bool) -> None:
     ks = box_keystore()
     if ks.exists() and not force:
@@ -2025,11 +2118,7 @@ def keystore_init(force: bool) -> None:
             f"{ks} exists. Keep it, or pass --force to replace it (every installed box app is "
             "then signed with a new key and has to be reinstalled)."
         )
-    need_cmd("keytool", "It ships with the JDK.")
-    need_cmd("gh", "Install the GitHub CLI and run `gh auth login`.")
-    if capture(["gh", "auth", "status"]).returncode != 0:
-        raise die("gh is not authenticated. Run `gh auth login`.")
-    repo = origin_repo(repo_root())
+    repo = require_gh_and_keytool()
     if ks.exists():
         note(
             "!! replacing the box keystore: every box app already installed (any device, local "
@@ -2037,30 +2126,93 @@ def keystore_init(force: bool) -> None:
         )
     ks.parent.mkdir(parents=True, exist_ok=True)
     fresh = ks.with_name(ks.name + ".new")
+    fresh_pw = box_password_file().with_name(box_password_file().name + ".new")
     fresh.unlink(missing_ok=True)
-    made = capture([
-        "keytool", "-genkeypair", "-keystore", str(fresh), "-storepass", BOX_KEY_PASSWORD,
-        "-keypass", BOX_KEY_PASSWORD, "-alias", BOX_KEY_ALIAS, "-keyalg", "RSA", "-keysize", "2048",
-        "-validity", str(BOX_KEY_VALIDITY_DAYS), "-dname", "CN=Arlesh Box,O=Arlesh,C=US",
-    ])  # fmt: skip
-    if made.returncode != 0 or not fresh.is_file():
-        raise die(f"keytool could not create the keystore: {made.stderr.strip()}")
-    # Upload before replacing the local file, so a failed upload leaves the old pair intact.
-    encoded = base64.b64encode(fresh.read_bytes()).decode()
-    sent = subprocess.run(
-        ["gh", "secret", "set", BOX_KEYSTORE_SECRET, "--repo", repo],
-        input=encoded, capture_output=True, text=True, check=False,
-    )  # fmt: skip
-    if sent.returncode != 0:
+    password = secrets.token_urlsafe(24)
+    write_secret_file(fresh_pw, password)
+    try:
+        source: PassSource = ("file", str(fresh_pw))
+        made = capture([
+            "keytool", "-genkeypair", "-keystore", str(fresh),
+            *keytool_pass("-storepass", source), *keytool_pass("-keypass", source),
+            "-alias", BOX_KEY_ALIAS, "-keyalg", "RSA", "-keysize", "2048",
+            "-validity", str(BOX_KEY_VALIDITY_DAYS), "-dname", "CN=Arlesh Box,O=Arlesh,C=US",
+        ])  # fmt: skip
+        if made.returncode != 0 or not fresh.is_file():
+            raise die(f"keytool could not create the keystore: {made.stderr.strip()}")
+        # Upload before replacing the local files, so a failed upload leaves the old set intact.
+        publish_keystore(repo, fresh, password)
+    except BoxError:
         fresh.unlink(missing_ok=True)
-        raise die(f"gh secret set failed: {sent.stderr.strip()}")
-    fresh.chmod(0o600)
-    os.replace(fresh, ks)
-    print(f"created {ks} and set the secret {BOX_KEYSTORE_SECRET} on {repo}.")
+        fresh_pw.unlink(missing_ok=True)
+        raise
+    install_keystore(fresh, fresh_pw)
+    print(f"created {ks} and its password file, and set the secrets {BOX_KEYSTORE_SECRET} and "
+          f"{BOX_PASSWORD_SECRET} on {repo}.")  # fmt: skip
     print(
-        f"alias {BOX_KEY_ALIAS}, password {BOX_KEY_PASSWORD}: bundles.yml's box mode and local "
-        "builds now sign with the same key."
+        f"alias {BOX_KEY_ALIAS}: bundles.yml's box mode and local builds now sign with the same key."
     )
+
+
+def legacy_box_password() -> str:
+    """The fixed password keystores had before they got random ones: the alias itself.
+
+    Only `keystore rotate-password` may use it, to move such a keystore off it. Signing never does.
+    """
+    return BOX_KEY_ALIAS
+
+
+def rotate_keystore_password(copy: Path, old: PassSource, new: PassSource) -> None:
+    """Change the store and key password of `copy` (same key), from `old` to `new`."""
+    steps = (
+        ["-storepasswd", "-keystore", str(copy), *keytool_pass("-storepass", old),
+         *keytool_pass("-new", new)],
+        ["-keypasswd", "-keystore", str(copy), "-alias", BOX_KEY_ALIAS,
+         *keytool_pass("-storepass", new), *keytool_pass("-keypass", old),
+         *keytool_pass("-new", new)],
+    )  # fmt: skip
+    for step in steps:
+        done = capture(["keytool", *step])
+        if done.returncode != 0:
+            raise die(
+                f"keytool {step[0]} failed: {done.stderr.strip() or done.stdout.strip()}. "
+                "Nothing was changed."
+            )
+
+
+def keystore_rotate_password() -> None:
+    """Move a keystore made with the old fixed password onto a random one, keeping its key."""
+    ks = box_keystore()
+    pwfile = box_password_file()
+    if not ks.is_file():
+        raise die(f"There is no box keystore at {ks}. Run `{CMD} keystore init`.")
+    if pwfile.exists():
+        raise die(f"{pwfile} exists: the box keystore already has its own password.")
+    repo = require_gh_and_keytool()
+    fresh = ks.with_name(ks.name + ".new")
+    fresh_pw = pwfile.with_name(pwfile.name + ".new")
+    fresh.unlink(missing_ok=True)
+    password = secrets.token_urlsafe(24)
+    write_secret_file(fresh_pw, password)
+    shutil.copyfile(ks, fresh)
+    try:
+        with tempfile.TemporaryDirectory(prefix="box-ks-") as tmp:
+            old_file = Path(tmp) / "old"
+            write_secret_file(old_file, legacy_box_password())
+            rotate_keystore_password(
+                fresh, ("file", str(old_file)), ("file", str(fresh_pw))
+            )
+        publish_keystore(repo, fresh, password)
+    except BoxError:
+        fresh.unlink(missing_ok=True)
+        fresh_pw.unlink(missing_ok=True)
+        raise
+    install_keystore(fresh, fresh_pw)
+    print(
+        f"changed the store and key password of {ks} (same key, so installed box apps still update)."
+    )
+    print(f"wrote the new password to {pwfile} (mode 600) and set the secrets "
+          f"{BOX_KEYSTORE_SECRET} and {BOX_PASSWORD_SECRET} on {repo}.")  # fmt: skip
 
 
 # ---- Android: CI builds ----------------------------------------------------------------------------
@@ -2357,8 +2509,10 @@ def build_android(name: str, wt: Path, firebase: bool) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     run_cmd(
         [str(apksigner), "sign", "--ks", str(signing.keystore), "--ks-key-alias", signing.alias,
-         "--ks-pass", f"pass:{signing.password}", "--key-pass", f"pass:{signing.password}",
+         "--ks-pass", apksigner_pass(signing.password),
+         "--key-pass", apksigner_pass(signing.password),
          "--out", str(out), str(unsigned)],
+        env=dict(signing.env),
         what="apksigner",
     )  # fmt: skip
     print(f"=== {name}: built {out} ({out.stat().st_size / 1e6:.0f}M) ===")
@@ -2777,7 +2931,10 @@ def cmd_devices(args: argparse.Namespace) -> None:
 
 
 def cmd_keystore(args: argparse.Namespace) -> None:
-    keystore_init(args.force)
+    if args.keystore_cmd == "rotate-password":
+        keystore_rotate_password()
+    else:
+        keystore_init(args.force)
 
 
 def cmd_server(args: argparse.Namespace) -> None:
@@ -2894,6 +3051,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init.add_argument(
         "--force", action="store_true", help="replace an existing keystore"
+    )
+    ksub.add_parser(
+        "rotate-password",
+        help="move a keystore made with the old fixed password onto a random one (same key)",
     )
     ks.set_defaults(fn=cmd_keystore)
 

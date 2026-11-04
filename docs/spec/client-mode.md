@@ -434,15 +434,26 @@ key** (decided with the user, 2026-11-02):
   are never taken for each other. `run` prints which source it used. Desktop targets always build
   locally (`--ci` there is an error).
 - *Signing.* `keystore init` generates a box-only keystore at `$XDG_CONFIG_HOME/arlesh/box.keystore`
-  (alias `arlesh-box`, store and key password `arlesh-box`, 10000 days; a debug-grade key for
-  `com.atai.arlesh.box.*`, not a secret worth guarding) and uploads it, base64, with `gh secret set
-  ARLESH_BOX_KEYSTORE_B64`. It refuses to replace an existing keystore without `--force`, and warns
-  that rotating the key means every installed box app has to be reinstalled. GitHub secrets cannot
-  be read back, so CI can sign with it but no one can fetch it from there: the local file is the
-  copy of record. Local builds sign with that keystore when it exists, else with
-  `~/.android/debug.keystore` and a notice that CI and local builds are not update-compatible until
-  `keystore init`. `bundles.yml` in box mode signs with the secret when set (only the signing step
-  reads it, nothing echoes it), else with a fresh `keytool` key and a `::warning::`.
+  (alias `arlesh-box`, 10000 days; a debug-grade key for `com.atai.arlesh.box.*`) under a random
+  password (`secrets.token_urlsafe(24)`). No password is written in the repo: it is stored locally
+  beside the keystore, in `box.keystore.password` (mode 600), and the command uploads two repo
+  secrets with `gh secret set`, values on stdin: `ARLESH_BOX_KEYSTORE_B64` (the keystore, base64)
+  and `ARLESH_BOX_KEYSTORE_PASSWORD`. keytool and apksigner receive the password only as
+  `-storepass:file` / `--ks-pass file:` (or `env:`), so it appears in no process list, and the
+  command never prints it. It refuses to replace an existing keystore without `--force`, and warns
+  that replacing the key means every installed box app has to be reinstalled. GitHub secrets cannot
+  be read back, so CI can sign with them but no one can fetch them from there: the local files are
+  the copy of record. A keystore made before passwords were random has a fixed one; `keystore
+  rotate-password` moves it onto a random one with `keytool -storepasswd` and `-keypasswd` (the same
+  key, so installed box apps stay update-compatible), writes the password file and re-uploads both
+  secrets. Only that command knows the old value; normal signing never falls back to it, and with
+  the keystore but no password file it stops and says to run `rotate-password` (or `init`). Local
+  builds sign with the keystore when it exists, else with `~/.android/debug.keystore` (its password
+  is the SDK's documented one, passed by environment variable) and a notice that CI and local
+  builds are not update-compatible until `keystore init`. `bundles.yml` in box mode signs with the
+  secrets when set (only the signing step reads them, through a file, nothing echoes them); the
+  keystore secret without the password secret fails with a message naming the fix; with neither,
+  it uses a fresh `keytool` key under a password generated in the job, and a `::warning::`.
 - *Mismatch.* `adb install` failing with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` stops `run` with a
   message that names the cause and offers `--reinstall`, which uninstalls the box app first (box
   re-provisions the token anyway). Nothing is uninstalled without the flag.

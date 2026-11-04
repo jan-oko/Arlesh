@@ -14,7 +14,8 @@ name: Bundles
 #                    fails before building.
 #   dispatch + box   only the Android job runs, as scripts/box.py would build it locally: a
 #                    separate app beside the real one, signed with the shared box key (the
-#                    ARLESH_BOX_KEYSTORE_B64 secret; a throwaway key and a warning without it).
+#                    ARLESH_BOX_KEYSTORE_B64 and ARLESH_BOX_KEYSTORE_PASSWORD secrets; a throwaway key with a random
+#                    password, and a warning, without them).
 #                    The release key's steps are skipped, so its secrets are never read.
 #   dispatch         rolling, to the tag named by the `release_tag` input. It
 #                    exists for testing on a throwaway tag; `latest` itself is
@@ -386,14 +387,16 @@ jobs:
 
       # The box variant: signed with the shared box keystore (`box.py keystore init` puts it in the
       # ARLESH_BOX_KEYSTORE_B64 secret, so local and CI box builds update one another). Without the
-      # secret it falls back to a fresh debug key and warns. Only this step can read the secret,
-      # and it never prints it. The release key is not referenced here.
+      # secret it falls back to a fresh debug key (random password made here) and warns. Only this step
+      # can read the secrets, and it never prints them; the password goes through a file, never the
+      # command line. The release key is not referenced here.
       - name: Sign with the box key and stage as a box app
         id: box
         if: github.event_name == 'workflow_dispatch' && inputs.box
         env:
           BRANCH: ${{ github.ref_name }}
           BOX_KEYSTORE_B64: ${{ secrets.ARLESH_BOX_KEYSTORE_B64 }}
+          BOX_KEYSTORE_PASSWORD: ${{ secrets.ARLESH_BOX_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
           segment=$(python3 scripts/box.py ci-patch "$BRANCH" | sed -n 's/^segment=//p')
@@ -402,14 +405,19 @@ jobs:
           out="$RUNNER_TEMP/bundles"
           mkdir -p "$out"
           keystore="$RUNNER_TEMP/box.keystore"
-          # alias and password are fixed and public: see BOX_KEY_* in scripts/box.py
+          # alias: see BOX_KEY_ALIAS in scripts/box.py. The password never touches a command line.
           alias=arlesh-box
-          pass=arlesh-box
+          secrets="$RUNNER_TEMP/box-signing"
+          mkdir -m 700 "$secrets"
+          passfile="$secrets/password"
           if [ -n "$BOX_KEYSTORE_B64" ]; then
+            [ -n "$BOX_KEYSTORE_PASSWORD" ] || { echo "::error::ARLESH_BOX_KEYSTORE_B64 is set but ARLESH_BOX_KEYSTORE_PASSWORD is not. Run 'npm run box -- keystore rotate-password' (or 'keystore init') once."; exit 1; }
             printf '%s' "$BOX_KEYSTORE_B64" | base64 -d > "$keystore"
+            printf '%s\n' "$BOX_KEYSTORE_PASSWORD" > "$passfile"
           else
             echo "::warning::ARLESH_BOX_KEYSTORE_B64 is not set: signing with a fresh key, so this APK will not update over a locally built box app. Run 'npm run box -- keystore init' once."
-            keytool -genkeypair -keystore "$keystore" -storepass "$pass" -keypass "$pass" \
+            python3 -c 'import secrets; print(secrets.token_urlsafe(24))' > "$passfile"
+            keytool -genkeypair -keystore "$keystore" -storepass:file "$passfile" -keypass:file "$passfile" \
               -alias "$alias" -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Arlesh Box,O=Arlesh,C=US"
           fi
@@ -418,10 +426,10 @@ jobs:
           tools=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
           apk="$out/arlesh-box-$segment.apk"
           "${tools}apksigner" sign --ks "$keystore" --ks-key-alias "$alias" \
-            --ks-pass "pass:$pass" --key-pass "pass:$pass" --out "$apk" "$unsigned"
+            --ks-pass "file:$passfile" --key-pass "file:$passfile" --out "$apk" "$unsigned"
           "${tools}apksigner" verify "$apk"
           "${tools}aapt2" dump badging "$apk" | grep -E "^(package|application-label):"
-          rm -f "$keystore"
+          rm -rf "$keystore" "$secrets"
           ls -la "$out"
 
       - uses: actions/upload-artifact@v4
