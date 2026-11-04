@@ -1,0 +1,39 @@
+# SPIKE (ADR 0015) — not a workspace member and not part of any default build.
+#
+# Compiles a slice of the real rules layer (arlesh-core's `tasks::rules::{gestures, plan}` and the
+# models they read) to wasm32 by mounting the real source files with `#[path]`, so the numbers in
+# ADR 0015 come from the real code rather than a copy. The empty `[workspace]` table keeps the root
+# workspace (and CI's `cargo` runs) from seeing it. Build with `spike/rules-wasm/build.sh`.
+[package]
+name = "arlesh-rules-wasm-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Both exports and both boundaries by default; the others exist to measure what each costs.
+default = ["plan", "json"]
+plan = []
+json = []
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+chrono = { version = "0.4", default-features = false, features = ["serde", "alloc", "std"] }
+schemars = { version = "1.2.2", features = ["chrono04"] }
+wasm-bindgen = "=0.2.130"
+serde-wasm-bindgen = "0.6.5"
+tsify = { version = "0.5.8", default-features = false, features = ["js"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = false

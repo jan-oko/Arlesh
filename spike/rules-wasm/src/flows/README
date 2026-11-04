@@ -1,0 +1,1 @@
+Empty on purpose: #[path] in an inline module resolves through this directory.
