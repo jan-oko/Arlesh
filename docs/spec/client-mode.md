@@ -111,7 +111,7 @@ Shown in Client mode. It lists the server's devices with their **name and when e
 
 ## The Backend port
 
-The seam is a Rust **Backend port** (`src-tauri/src/backend/`). Every Tauri command that reads or
+The seam is a Rust **Backend port** (`crates/arlesh-backend/src/`). Every Tauri command that reads or
 writes the board is a thin adapter that calls the `Backend` the app manages. There are two
 implementations:
 
@@ -135,6 +135,61 @@ so a server in another time zone still answers for the user's day. A write is st
 server's clock, as it would be by any other writer, so the server should run in the user's time
 zone (`TZ`).
 
+## The Backend crate and Python
+
+*[ADR 0016](../adr/0016-shared-backend-crate-and-python-backends.md). Built: the crate, and
+`HttpBackend` from Python. Python's `SqliteBackend` is the existing `arlesh.open` path, not yet the
+shared Rust one.*
+
+**The port and both backends live in their own crate, `arlesh-backend`** (`crates/arlesh-backend`),
+which the app and the Python package both depend on. It has two cargo features, `sqlite` and `http`,
+both on by default. The app's `standalone` feature turns on `sqlite`, so a Client-only build (Android,
+`--no-default-features`) compiles no `SqliteBackend`. The crate knows nothing of Tauri: it reports a
+change of the server's status and a change of the board through callbacks, and the app's callbacks
+tell the windows. The change-stream follower runs on a tokio runtime handle its host gives it. What
+stays in the app is everything that knows what a window is: `AppBackend`, the commands, `mode.json`,
+the token vault, suspend and resume, the local MCP endpoint, windows, tabs and the tray.
+
+**A Python script picks a backend the way the app does.**
+
+```python
+import arlesh
+
+async with arlesh.Arlesh(backend=arlesh.HttpBackend(url, token=token)) as board:
+    load = await board.board()
+    async for change in board.changes():
+        load = await board.board()
+
+async with arlesh.Arlesh(backend=arlesh.SqliteBackend("arlesh.db", client="notebook")) as board:
+    ...
+```
+
+- `arlesh.SqliteBackend(path, *, client=None, force=False)` and `arlesh.HttpBackend(url, *,
+  token)` describe a backend and do no I/O. `Arlesh` opens it on `async with` or `await
+  ….open()`: the file is opened as `arlesh.open` always has (read-only without a `client`), and a
+  server is asked `/health`.
+- `Arlesh` implements the existing `arlesh.Database` port, with the same method names, every one a
+  coroutine, answering the same pydantic models and raising the same `arlesh.errors`.
+  `arlesh.open(path, client=…, force=…)` is a shortcut for an `Arlesh` over a `SqliteBackend`, and
+  `arlesh.SqliteDatabase` is another name for `Arlesh`, so existing scripts do not change.
+- Over HTTP a script gets what Client mode gets: the revision headers (`board.board_revision`),
+  gzip, the version handshake, and the board last loaded, read-only, while the server cannot be
+  reached (`board.server_status` says so; a write is refused with `server_unreachable`).
+- `board.changes()` is an async iterator over the board's changes: the server's `/events` stream
+  over HTTP, the process's own write counter over SQLite. It yields the newest revision only, never a
+  backlog, and holds a connection only while someone is iterating.
+- Two reads the port lacks are answered by the Python layer: `get_info` from the list of infos, and
+  `board(at_capacity=…)` is refused over HTTP.
+- Operations only a local file has (`serve_mcp`, `stop_mcp`, `reset_undo`, `arlesh.hold`) are
+  refused over HTTP with `not_permitted`, `details.reason = "not_in_client_mode"`.
+- `await arlesh.pairing.start(url, name)` asks for a PIN to show, and `await
+  arlesh.pairing.wait(url, started)` returns the token once a signed-in device approves it. The
+  package stores no token.
+
+`arlesh-server` runs on SQLite only, never on an `HttpBackend`: a server over a
+server is a relay, which could loop back on itself and would write every device's change as its own
+client (see the ADR, decision 8).
+
 ## REST parity
 
 Every `Backend` method maps to one REST route in the [existing style](http-api.md#routes). A test
@@ -146,7 +201,7 @@ available in Client mode (`not_permitted`, `details.reason = "not_in_client_mode
 does not ask for them: a delegate Person is drawn unnamed. Their code and tables stay as they are.
 
 The mapping is `conformance/client-mode.json`, tested from both sides: the app's
-`backend/tests.rs` fails when a port method is in neither its `routes` nor its `standalone_only`,
+`crates/arlesh-backend/src/tests.rs` fails when a port method is in neither its `routes` nor its `standalone_only`,
 and the server's `test_server_parity.py` fails when a listed route is not served.
 
 ## Live sync

@@ -14,6 +14,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 arlesh-core = { path = "../arlesh-core" }
+# The app's own Backend, shared: `HttpBackend` is Client mode for a script. Only the `http` feature;
+# SQLite stays on `request.rs` (ADR 0016).
+arlesh-backend = { path = "../arlesh-backend", default-features = false, features = ["http"] }
 pyo3 = { version = "0.29", features = ["abi3-py311"] }
 pyo3-async-runtimes = { version = "0.29", features = ["tokio-runtime"] }
 serde = { version = "1", features = ["derive"] }

@@ -408,7 +408,7 @@ How the presets read them:
   - People and the knowledge base stay Standalone-only.
 - **Why:** one board shared by several devices, with the app above the port unchanged.
 - **Without:** a second app for the server, or every component taught about HTTP; devices that each hold a different board.
-- **Lives:** `src-tauri/src/backend/` (`sqlite/`, `http/`), `src-tauri/src/client_mode/`, `conformance/client-mode.json`; ADR 0011.
+- **Lives:** `crates/arlesh-backend/` (`sqlite/`, `http/`), `src-tauri/src/client_mode/`, `conformance/client-mode.json`; ADR 0011.
 - **Spec:** [Client Mode](spec/client-mode.md).
 
 ### Pending writes
