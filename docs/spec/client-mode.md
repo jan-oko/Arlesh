@@ -458,6 +458,13 @@ key** (decided with the user, 2026-11-02):
   message that names the cause and offers `--reinstall`, which uninstalls the box app first (box
   re-provisions the token anyway). Nothing is uninstalled without the flag.
 
+**Each instance's Vite server has its own dep cache.** Worktrees share the main checkout's
+`node_modules`, whose default `.vite` cache would then be one directory for every box server: one
+re-optimizing replaces it and the others answer 504 "Outdated Optimize Dep" (white screen). `box`
+starts Vite with `ARLESH_VITE_CACHE_DIR=<instance>/vite-cache`, which `vite.config.ts` reads as
+`cacheDir` (unset, Vite's default applies, so plain `npm run dev` is unchanged). `clean` and `prune`
+remove it with the builds.
+
 **A branch needs no worktree made by hand.** `run`, `server start`, `server token` and `server pin`
 create `.claude/worktrees/<dir>` when it is missing: `git fetch origin <branch>`, then `git worktree
 add -b <branch> --track origin/<branch>` (a local branch of that name is used as it is, with a notice

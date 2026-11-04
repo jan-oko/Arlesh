@@ -960,6 +960,13 @@ def instance_dir(name: str) -> Path:
     return instances_dir() / name
 
 
+def vite_cache_dir(name: str) -> Path:
+    """The instance's own Vite dep-optimizer cache. Worktrees share one `node_modules`, so Vite's
+    default `node_modules/.vite` would be one cache for every box server: one re-optimizing replaces
+    it and the others answer 504 "Outdated Optimize Dep" until restarted."""
+    return instance_dir(name) / "vite-cache"
+
+
 def port_for(name: str) -> int:
     """Assigned once and kept, so a rebuilt instance keeps the port its binary was compiled for."""
     return allocate_port(
@@ -1048,6 +1055,7 @@ def start_vite(name: str, wt: Path) -> None:
         inst / "vite.pid",
         inst / "vite.log",
         wt,
+        {"ARLESH_VITE_CACHE_DIR": str(vite_cache_dir(name))},
     )
     for _ in range(60):
         if http_up(url):
@@ -3038,6 +3046,7 @@ def cmd_clean(args: argparse.Namespace) -> None:
         # Only the binary and APK go. An instance's database is state built up while testing.
         (instance_dir(name) / "arlesh").unlink(missing_ok=True)
         android_apk(name).unlink(missing_ok=True)
+        shutil.rmtree(vite_cache_dir(name), ignore_errors=True)
         for cached in ci_cache_dir().glob(f"{box_segment(name)}-*.apk*"):
             cached.unlink(missing_ok=True)
 
