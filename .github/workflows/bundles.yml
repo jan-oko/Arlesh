@@ -343,6 +343,21 @@ jobs:
           workspaces: ". -> src-tauri/target"
           shared-key: release-bundles-android-arm64
 
+      # Push notifications: the release app's Firebase configuration comes from a secret, never the
+      # repository. Absent (a fork, or the secret not set), the build skips FCM and the app simply
+      # cannot receive push. A box build has its own package, which this file does not match, so it
+      # takes none.
+      - name: Write google-services.json
+        if: github.event_name != 'workflow_dispatch' || !inputs.box
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" | base64 -d > src-tauri/gen/android/app/google-services.json
+          else
+            echo "::notice::GOOGLE_SERVICES_JSON is not set: the APK is built without FCM."
+          fi
+
       # The Android build is Client-only: no SQLite core, no local MCP endpoint.
       - name: tauri build
         run: npx tauri android build --apk --target aarch64 --ci -- --no-default-features

@@ -54,6 +54,7 @@ describe("SettingsModal", () => {
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "page.general", "page.mindmap", "page.list", "page.steps", "page.plan", "page.zen", "page.windows",
       "page.expectations", "page.mcp", "page.server", "page.devices",
+      "page.notifications",
     ]);
   });
 
@@ -75,7 +76,7 @@ describe("SettingsModal", () => {
 
     fireEvent.keyDown(screen.getByRole("tab", { name: "page.mindmap" }), { key: "ArrowUp" });
     fireEvent.keyDown(screen.getByRole("tab", { name: "page.general" }), { key: "ArrowUp" });
-    expect(screen.getByRole("tab", { name: "page.devices" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "page.notifications" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("closes on Escape", () => {

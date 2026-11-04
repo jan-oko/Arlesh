@@ -28,6 +28,8 @@ class MainActivity : TauriActivity() {
     enableEdgeToEdge()
     // Before super.onCreate: the Rust side reads what this leaves while it starts up.
     leaveBoxProvision(intent)
+    PushBridge.remember(intent)
+    PushChannels.ensure(this)
     super.onCreate(savedInstanceState)
 
     // The window always extends under the bars (that is what lets the setting switch at runtime
@@ -70,6 +72,20 @@ class MainActivity : TauriActivity() {
   override fun onWebViewCreate(webView: WebView) {
     this.webView = webView
     webView.addJavascriptInterface(SystemBarsBridge(this), "ArleshBars")
+    webView.addJavascriptInterface(PushBridge(this), "ArleshPush")
+    PushBridge.listenForTokens { token -> dispatchToPage("arlesh-push-token", token) }
+  }
+
+  /** The app is already running and a notification was tapped: tell the page which Task to open. */
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    if (PushBridge.remember(intent)) dispatchToPage("arlesh-open-task", "")
+  }
+
+  /** Dispatches a window event with a string `detail` in the page, from any thread. */
+  fun dispatchToPage(event: String, detail: String) {
+    runOnUiThread { webView?.evaluateJavascript(PushBridge.script(event, detail), null) }
   }
 
   /**
