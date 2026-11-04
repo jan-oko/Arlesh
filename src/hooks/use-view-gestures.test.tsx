@@ -10,12 +10,12 @@ import { TOUCH_QUERY } from "./use-media-query";
 
 type Handlers = Omit<ViewGestureOptions, "idAttribute" | "ready">;
 
-function Surface({ handlers }: { handlers: Handlers }) {
+function Surface({ handlers, onQuickMenu }: { handlers: Handlers; onQuickMenu?: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useViewGestures(ref, { idAttribute: "data-row-id", ready: true, ...handlers });
   return (
     <div ref={ref} data-testid="surface">
-      <div data-row-id="task-1" data-testid="row">
+      <div data-row-id="task-1" data-testid="row" onContextMenu={onQuickMenu}>
         <button type="button" data-gesture-skip="" data-testid="status" />
       </div>
     </div>
@@ -87,15 +87,49 @@ describe("useViewGestures", () => {
     expect(options.deselect).not.toHaveBeenCalled();
   });
 
-  it("opens the palette when a held finger lifts", () => {
-    const options = handlers();
+  it("opens a leaf's editor on a double-tap instead of going into it, when the view says it is a leaf", () => {
+    const editor = surfaceCommand("listView.openEditor", "openEditor");
+    useCommandSurfaceStore.setState({ tables: new Map([["list", [editor]]]), revision: 1 });
+    const options = handlers({ isLeaf: () => true });
     const { getByTestId } = render(<Surface handlers={options} />);
+    stroke(getByTestId("row"), [10, 10], [10, 10]);
+    stroke(getByTestId("row"), [11, 10], [11, 10]);
+    act(() => { vi.runAllTimers(); });
+    expect(options.goInto).not.toHaveBeenCalled();
+    expect(options.select).toHaveBeenCalledWith("task-1");
+    expect(editor.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("goes into a node that is not a leaf, and into any node when the view names no leaves (the Mindmap)", () => {
+    const parent = handlers({ isLeaf: () => false });
+    const first = render(<Surface handlers={parent} />);
+    stroke(first.getByTestId("row"), [10, 10], [10, 10]);
+    stroke(first.getByTestId("row"), [11, 10], [11, 10]);
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(parent.goInto).toHaveBeenCalledWith("task-1");
+    first.unmount();
+
+    const mindmap = handlers();
+    const second = render(<Surface handlers={mindmap} />);
+    stroke(second.getByTestId("row"), [10, 10], [10, 10]);
+    stroke(second.getByTestId("row"), [11, 10], [11, 10]);
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(mindmap.goInto).toHaveBeenCalledWith("task-1");
+  });
+
+  it("opens only the node's quick action menu on a long-press, never the palette", () => {
+    const options = handlers();
+    const quickMenu = vi.fn();
+    const { getByTestId } = render(<Surface handlers={options} onQuickMenu={quickMenu} />);
     const row = getByTestId("row");
     fireEvent.touchStart(row, { touches: [touch(row, 10, 10)] });
     act(() => { vi.advanceTimersByTime(500); });
+    // The webview raises `contextmenu` while the finger is down; the node's own handler answers it.
+    fireEvent.contextMenu(row);
     fireEvent.touchEnd(row, { touches: [], changedTouches: [touch(row, 10, 10)] });
     expect(options.select).toHaveBeenCalledWith("task-1");
-    expect(usePaletteStore.getState().isOpen).toBe(true);
+    expect(quickMenu).toHaveBeenCalledTimes(1);
+    expect(usePaletteStore.getState().isOpen).toBe(false);
   });
 
   it("runs the status cycle's binding on a swipe right, as Enter would", () => {
@@ -141,5 +175,42 @@ describe("useViewGestures", () => {
     const { getByTestId } = render(<Surface handlers={options} />);
     stroke(getByTestId("row"), [10, 10], [10, 10]);
     expect(options.select).not.toHaveBeenCalled();
+  });
+
+  describe("with several fingers", () => {
+    /** Fingers down together at `starts`, then moved to `ends`, then all lifted, `ms` later. */
+    function fingers(element: Element, starts: Array<[number, number]>, ends: Array<[number, number]>, ms = 100) {
+      const down = starts.map(([x, y]) => touch(element, x, y));
+      const up = ends.map(([x, y]) => touch(element, x, y));
+      fireEvent.touchStart(element, { touches: [down[0]] });
+      for (let count = 2; count <= down.length; count += 1) fireEvent.touchStart(element, { touches: down.slice(0, count) });
+      act(() => { vi.advanceTimersByTime(ms); });
+      fireEvent.touchMove(element, { touches: up });
+      fireEvent.touchEnd(element, { touches: [], changedTouches: up });
+    }
+
+    it("goes Up on a two-finger swipe up, and fires no one-finger gesture", () => {
+      const up = surfaceCommand("global.exitSubtree", "exitSubtree");
+      useCommandSurfaceStore.setState({ tables: new Map([["global", [up]]]), revision: 1 });
+      const options = handlers({ onSwipe: vi.fn(() => true), onFlickUp: vi.fn(() => true) });
+      const { getByTestId } = render(<Surface handlers={options} />);
+      fingers(getByTestId("row"), [[100, 300], [160, 300]], [[100, 150], [160, 150]]);
+      expect(up.run).toHaveBeenCalledTimes(1);
+      expect(options.select).not.toHaveBeenCalled();
+      expect(options.onSwipe).not.toHaveBeenCalled();
+      expect(options.onFlickUp).not.toHaveBeenCalled();
+    });
+
+    it("does nothing on a two-finger swipe down, or sideways, or a pinch", () => {
+      const up = surfaceCommand("global.exitSubtree", "exitSubtree");
+      useCommandSurfaceStore.setState({ tables: new Map([["global", [up]]]), revision: 1 });
+      const { getByTestId } = render(<Surface handlers={handlers()} />);
+      const row = getByTestId("row");
+      fingers(row, [[100, 150], [160, 150]], [[100, 300], [160, 300]]);
+      fingers(row, [[100, 300], [160, 300]], [[200, 300], [260, 300]]);
+      // Apart as they rise: the Mindmap's and Steps' pinch, not Up.
+      fingers(row, [[130, 300], [150, 300]], [[40, 150], [240, 150]]);
+      expect(up.run).not.toHaveBeenCalled();
+    });
   });
 });

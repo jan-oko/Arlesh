@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import type { TaskListRow } from "@/utils/list-filter";
 import { deriveStatusIndicators } from "@/utils/node-status-indicators";
 import { aspectWashStyle } from "@/utils/node-visuals";
-import { isRtlText } from "@/utils/text-direction";
 import { useTagNames } from "@/hooks/use-tag-names";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import TaskIcon from "@/components/NodeIcon/TaskIcon";
@@ -69,9 +68,6 @@ export default function TaskRow({
     ...aspectWashStyle(node.color),
     "--row-depth": visibleDepth,
   };
-  // The indent follows the title's own direction, the same way a Mindmap node's layout does: a Hebrew
-  // task in an otherwise left-to-right list steps in from the edge its text starts at.
-  const indentClass = isRtlText(node.title) ? styles.indentRtl : styles.indentLtr;
 
   useEffect(() => {
     if (!isEditingTitle) return;
@@ -81,9 +77,10 @@ export default function TaskRow({
 
   return (
     <div
-      className={`${styles.card} ${indentClass}${overdue && showOverdueBorder ? ` ${styles.cardOverdue}` : ""}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}`}
+      className={`${styles.card}${overdue && showOverdueBorder ? ` ${styles.cardOverdue}` : ""}${isSelected ? ` ${styles.cardSelected}` : ""}${isFocusExempt ? ` ${styles.cardFocusExempt}` : ""}`}
       // How the list's scroller finds this row to bring it into view when it becomes the selection.
       data-row-id={node.id}
+      data-pending={node.pending === true ? "" : undefined}
       aria-describedby={overdue ? overdueNoteId : undefined}
       style={cardStyle}
       onClick={() => onSelect(node.id)}
@@ -97,7 +94,10 @@ export default function TaskRow({
         data-gesture-skip=""
         disabled={!canClickStatus}
         aria-label={t("cycleStatus")}
-        onClick={() => onCycleStatus(node.id)}
+        // A tap on the icon selects the row and steps its status; a second quick tap does not open
+        // the editor (docs/spec/touch.md).
+        onClick={(e) => { e.stopPropagation(); onSelect(node.id); onCycleStatus(node.id); }}
+        onDoubleClick={(e) => e.stopPropagation()}
       >
         <svg width={ICON_R * 2} height={ICON_R * 2} viewBox={`0 0 ${ICON_R * 2} ${ICON_R * 2}`} aria-hidden="true">
           <TaskIcon cx={ICON_R} cy={ICON_R} r={ICON_R * 0.9} color="var(--text-primary)" opacity={1} status={node.status} isBlocked={row.isBlocked} compound={node.compound === true} />

@@ -6,6 +6,9 @@
   /* One step per ancestor that is itself a row above this one. Capped, so a deep chain still leaves
      the titles room; zero at depth 0, so a list with nothing nested is exactly as wide as before. */
   --row-indent: calc(min(var(--row-depth, 0), 6) * var(--space-6));
+  /* The app's start side, whatever the title's script: a Hebrew title in a left-to-right list still
+     steps in from the left, so a child's edges line up with the other children's (user, 2026-11-02). */
+  margin-inline-start: var(--row-indent);
   display: flex;
   align-items: flex-start;
   gap: var(--space-4);
@@ -13,16 +16,6 @@
   border: 1px solid var(--node-border);
   border-radius: 10px;
   transition: border-color 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
-}
-
-/* Physical sides rather than `margin-inline-start`: the indent follows the row title's own direction,
-   not the document's, so a Hebrew task indents from the right even in a left-to-right list. */
-.indentLtr {
-  margin-left: var(--row-indent);
-}
-
-.indentRtl {
-  margin-right: var(--row-indent);
 }
 
 .card:hover {
@@ -154,5 +147,27 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     overflow: hidden;
+  }
+}
+
+/* A write on this node the server has not answered (ADR 0012, decision 10): a faint pulse, or a
+   dotted outline under reduced motion. It starts after a delay, so an answer within it never shows. */
+@keyframes pendingPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: var(--pending-cue-low-opacity); }
+}
+
+@keyframes pendingDotted {
+  from { outline: 0 dotted transparent; }
+  to { outline: 2px dotted var(--pending-cue-color); outline-offset: 2px; }
+}
+
+.card[data-pending] {
+  animation: pendingPulse var(--pending-cue-duration) ease-in-out var(--pending-cue-delay) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card[data-pending] {
+    animation: pendingDotted 1ms linear var(--pending-cue-delay) both;
   }
 }

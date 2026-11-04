@@ -44,6 +44,7 @@ use crate::infos::InfoOperator;
 use crate::knowledge_base::{EventOperator, PersonOperator, ThreadOperator};
 use crate::nodes::overlay::OverlayOperator;
 use crate::nodes::relations::RelationOperator;
+use crate::server_pairing::PairingPinOperator;
 use crate::server_tokens::ServerTokenOperator;
 use crate::tasks::{CommitmentOperator, ExpectationOperator, GoalOperator, TaskOperator};
 use crate::undo::UndoOperator;
@@ -186,6 +187,11 @@ impl<M: SessionMode> Db<M> {
     /// `arlesh-server`'s bearer tokens, kept as digests.
     pub fn server_tokens(&mut self) -> ServerTokenOperator<'_> {
         ServerTokenOperator::new(self.connection())
+    }
+
+    /// `arlesh-server`'s pending device pairings.
+    pub fn pairing_pins(&mut self) -> PairingPinOperator<'_> {
+        PairingPinOperator::new(self.connection())
     }
 
     /// Commitments — rules held over a window, kept or broken.

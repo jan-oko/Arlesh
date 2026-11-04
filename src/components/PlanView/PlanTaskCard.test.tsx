@@ -41,6 +41,7 @@ function props(taskRow: TaskListRow): ComponentProps<typeof PlanTaskCard> {
     onSelect: vi.fn(),
     onMove: vi.fn(),
     onOpenEditor: vi.fn(),
+    nativeDrag: true,
     onDragStart: vi.fn(),
   };
 }

@@ -7,6 +7,7 @@ pub mod board;
 pub mod capacity;
 pub mod client_mode;
 pub mod commitments;
+pub mod devices;
 pub mod domains;
 pub mod expectations;
 pub mod flows;

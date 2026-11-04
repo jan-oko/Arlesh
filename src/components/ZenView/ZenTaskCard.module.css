@@ -85,6 +85,21 @@
 
 /* The shared badge row, drawn at the card's scale: its icons are SVGs with a fixed viewBox, so
    sizing the element scales the glyph. */
+/* The phone's card is never shorter than its content (the path is part of it: it wraps rather than
+   ending in an ellipsis, as the title does), which is never less than the grid's
+   `ZEN_MIN_CARD_HEIGHT_PX` (a title line, a path line and the padding); it grows to share the column's height with the other
+   cards, its content centred. (Measured at 412 px, a three-level path was cut to 362 of 666 px.) */
+.cardFits {
+  flex: 1 1 0;
+  min-height: min-content;
+}
+
+.cardFits .path {
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .badges {
   display: flex;
   align-items: center;
@@ -99,4 +114,26 @@
 .badges svg {
   width: var(--zen-badge-size, 12px);
   height: var(--zen-badge-size, 12px);
+}
+
+/* A write on this node the server has not answered (ADR 0012, decision 10): a faint pulse, or a
+   dotted outline under reduced motion. It starts after a delay, so an answer within it never shows. */
+@keyframes pendingPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: var(--pending-cue-low-opacity); }
+}
+
+@keyframes pendingDotted {
+  from { outline: 0 dotted transparent; }
+  to { outline: 2px dotted var(--pending-cue-color); outline-offset: 2px; }
+}
+
+.card[data-pending] {
+  animation: pendingPulse var(--pending-cue-duration) ease-in-out var(--pending-cue-delay) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card[data-pending] {
+    animation: pendingDotted 1ms linear var(--pending-cue-delay) both;
+  }
 }

@@ -7,6 +7,13 @@ import ArchivedField from "@/components/EditorModal/ArchivedField";
 import { useInputCapture } from "@/hooks/use-input-capture";
 import styles from "@/components/EditorModal/EditorModal.module.css";
 
+/** What the Domain and Tag editor saves. */
+export interface SimpleSaveData {
+  title: string;
+  isPrivate: boolean;
+  archived: boolean | undefined;
+}
+
 interface Props {
   heading: string;
   title: string;
@@ -15,17 +22,20 @@ interface Props {
    * Archived switch and saves `undefined` in its place. */
   archived?: boolean;
   onSave: (title: string, isPrivate: boolean, archived: boolean | undefined) => Promise<void>;
+  /** A Save the server refused: the editor opens again on what was typed, with the reason on its error line. */
+  reopened?: { draft: SimpleSaveData; error: string } | undefined;
   onClose: () => void;
 }
 
-export default function TitleEditorModal({ heading, title: initialTitle, isPrivate: initialIsPrivate, archived: initialArchived, onSave, onClose }: Props) {
+export default function TitleEditorModal({ heading, title: initialTitle, isPrivate: initialIsPrivate, archived: initialArchived, onSave, reopened, onClose }: Props) {
   useInputCapture();
   const { t } = useTranslation("editor");
-  const [title, setTitle] = useState(initialTitle);
-  const [isPrivate, setIsPrivate] = useState(initialIsPrivate ?? false);
-  const [archived, setArchived] = useState(initialArchived);
+  const draft = reopened?.draft;
+  const [title, setTitle] = useState(draft?.title ?? initialTitle);
+  const [isPrivate, setIsPrivate] = useState(draft?.isPrivate ?? initialIsPrivate ?? false);
+  const [archived, setArchived] = useState(draft ? draft.archived : initialArchived);
   const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(reopened?.error ?? null);
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {

@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import SettingsModal from "./SettingsModal";
 import { useViewStore } from "@/stores/use-view-store";
 import { useDisplayStore } from "@/stores/use-display-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useCloseToTrayStore } from "@/stores/use-close-to-tray-store";
+import { isAndroid } from "@/utils/platform";
 import { useMcpRoots } from "@/hooks/use-mcp-roots";
 
 vi.mock("react-i18next", () => ({
@@ -12,6 +13,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@/hooks/use-mcp-roots");
+vi.mock("@/utils/platform", () => ({ isAndroid: vi.fn(() => false) }));
 // The endpoint section has its own test; here it only has to render quietly.
 vi.mock("@/hooks/use-mcp-endpoint", () => ({
   useMcpEndpoint: () => ({ status: null, isBusy: false, error: null, restart: vi.fn(), setPort: vi.fn() }),
@@ -51,7 +53,7 @@ describe("SettingsModal", () => {
 
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "page.general", "page.mindmap", "page.list", "page.steps", "page.plan", "page.zen", "page.windows",
-      "page.expectations", "page.mcp", "page.server",
+      "page.expectations", "page.mcp", "page.server", "page.devices",
     ]);
   });
 
@@ -73,7 +75,7 @@ describe("SettingsModal", () => {
 
     fireEvent.keyDown(screen.getByRole("tab", { name: "page.mindmap" }), { key: "ArrowUp" });
     fireEvent.keyDown(screen.getByRole("tab", { name: "page.general" }), { key: "ArrowUp" });
-    expect(screen.getByRole("tab", { name: "page.server" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "page.devices" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("closes on Escape", () => {
@@ -214,6 +216,51 @@ describe("SettingsModal", () => {
     goTo("steps");
 
     expect(screen.getByLabelText("zoomLabel")).toBeInTheDocument();
+  });
+
+  it("offers the phone's fill-the-screen switch under Steps, on by default", () => {
+    useDisplayStore.setState({ stepsFillScreen: true });
+    open();
+    goTo("steps");
+
+    const fill = screen.getByRole("checkbox", { name: "fillScreen" });
+    expect(fill).toBeChecked();
+    fireEvent.click(fill);
+    expect(useDisplayStore.getState().stepsFillScreen).toBe(false);
+  });
+
+  it("offers the phone's planned-pane tabs switch under Plan, on by default, and stores the choice", () => {
+    useDisplayStore.setState({ planPhoneTabs: true });
+    open();
+    goTo("plan");
+
+    const tabs = screen.getByRole("checkbox", { name: "optionPhoneTabs" });
+    expect(tabs).toBeChecked();
+    fireEvent.click(tabs);
+    expect(useDisplayStore.getState().planPhoneTabs).toBe(false);
+    expect(JSON.parse(localStorage.getItem("arlesh-display") ?? "{}").state.planPhoneTabs).toBe(false);
+  });
+
+  it("offers the two system-bars choices on Android, with their defaults, and stores each", () => {
+    vi.mocked(isAndroid).mockReturnValue(true);
+    useDisplayStore.setState({ systemBars: "edgeToEdge", systemBarsFullscreen: "immersive" });
+    open();
+
+    const normal = screen.getByRole("radiogroup", { name: "systemBars" });
+    const fullscreen = screen.getByRole("radiogroup", { name: "systemBarsFullscreen" });
+    expect(within(normal).getAllByRole("radio")).toHaveLength(3);
+    expect(within(normal).getByRole("radio", { name: "systemBarsMode.edgeToEdge" })).toBeChecked();
+    expect(within(fullscreen).getByRole("radio", { name: "systemBarsMode.immersive" })).toBeChecked();
+    fireEvent.click(within(fullscreen).getByRole("radio", { name: "systemBarsMode.standard" }));
+    expect(within(fullscreen).getByRole("radio", { name: "systemBarsMode.standard" })).toBeChecked();
+    expect(useDisplayStore.getState()).toMatchObject({ systemBars: "edgeToEdge", systemBarsFullscreen: "standard" });
+    expect(JSON.parse(localStorage.getItem("arlesh-display") ?? "{}").state.systemBarsFullscreen).toBe("standard");
+    vi.mocked(isAndroid).mockReturnValue(false);
+  });
+
+  it("hides the system-bars choices on the desktop", () => {
+    open();
+    expect(screen.queryByRole("radiogroup", { name: "systemBars" })).not.toBeInTheDocument();
   });
 
   it("offers the Zen View's badge switch under Zen, on by default", () => {

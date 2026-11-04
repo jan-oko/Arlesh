@@ -1,3 +1,4 @@
+import { useStableKeys, useTemporaryIds } from "@/hooks/use-temporary-ids";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
@@ -35,7 +36,7 @@ import type { TypedChildKind } from "@/utils/node-meta";
 import { neighbourAfterDelete } from "@/utils/neighbour-after-delete";
 import {
   CARD_GAP, HEADER_CURSOR, STEPS_ZOOM_LEVELS, cardSizeForZoom, childCursor, clampPage, moveAcrossPages,
-  pageCount, pageSlice, resolveGrid, shownPage,
+  pageCount, pageSlice, phoneFillGrid, resolveGrid, shownPage,
 } from "@/utils/steps-grid";
 import type { StepCursor, StepDirection, StepsZoom } from "@/utils/steps-grid";
 import type { StepsTarget } from "@/utils/hotkeys/steps-bindings";
@@ -61,8 +62,12 @@ import styles from "./StepsView.module.css";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
 import { runFirst, useViewGestures } from "@/hooks/use-view-gestures";
 import { usePinchSteps } from "@/hooks/use-pinch-steps";
-import { useHasTouch } from "@/hooks/use-media-query";
+import { useDisplayStore } from "@/stores/use-display-store";
+import { useHasTouch, usePhoneLayout } from "@/hooks/use-media-query";
 import touchStyles from "@/styles/touch-surface.module.css";
+
+/** The height the phone's Info bullets are budgeted for: its cards grow, but not without end. */
+const PHONE_CARD_HEIGHT_PX = 320;
 
 /**
  * What the Steps View has picked, held as **the card's node id** rather than its place in the grid.
@@ -107,9 +112,10 @@ function steppedZoom(zoom: StepsZoom, direction: 1 | -1): StepsZoom {
  * tab rooted in a run survive a reload rather than being bounced to the true root.
  */
 export default function StepsView() {
+  const stableKey = useStableKeys();
   const { t } = useTranslation(["common", "stepsView", "warnings"]);
   const {
-    tree, isLoading, error, reload, createChild, createNode, renameNode, moveNode, duplicateNode, pasteNodes, insertParent, removeNode,
+    tree, isLoading, error, reload, createChild, settleCreated, createNode, renameNode, moveNode, duplicateNode, pasteNodes, insertParent, removeNode,
     createCommitment, createFlow,
   } = useMindmapData();
   const clipboard = useClipboardStore((s) => s.clipboard);
@@ -138,6 +144,10 @@ export default function StepsView() {
   const [page, setPage] = useState(0);
   // The card whose title is open for naming — one just created, as on the other views.
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  useTemporaryIds({
+    onResolved: (temporaryId, realId) => { setEditingNodeId((id) => (id === temporaryId ? realId : id)); },
+    onRemoved: (removed) => { setEditingNodeId((id) => (removed.some((node) => node.id === id) ? null : id)); },
+  });
   // The card a creation gesture is making a child *of*, when that card is not the Step itself: the
   // new node is inside it, so it is shown by stepping in. Set as the gesture starts and read once,
   // by the selection the shared action makes on success — a refusal never selects, so never steps.
@@ -200,7 +210,18 @@ export default function StepsView() {
 
   const children = filteredRoot.children;
   const { ref: childAreaRef, grid: measuredGrid } = useStepGrid(zoom);
-  const grid = resolveGrid(measuredGrid, children.length);
+  // The phone lays the Step out as one scrolling column of cards, each as tall as its content, so
+  // there is no page to turn: the grid is one page holding everything (docs/spec/touch.md).
+  // Or, by the Settings → Steps switch, a column whose cards share the screen's height, none below
+  // the zoom's card height: past that the column scrolls. Neither pages.
+  const isPhone = usePhoneLayout();
+  const fillsScreen = useDisplayStore((s) => s.stepsFillScreen);
+  const phoneLayout = !isPhone ? undefined : fillsScreen ? "fill" : "scroll";
+  const grid = phoneLayout === "scroll"
+    ? { columns: 1, rows: Math.max(1, children.length), pageSize: Math.max(1, children.length) }
+    : phoneLayout === "fill"
+      ? phoneFillGrid(children.length)
+      : resolveGrid(measuredGrid, children.length);
   const pages = pageCount(children.length, grid.pageSize);
   const selectedChildIndex = selectedChildId === null ? -1 : children.findIndex((child) => child.id === selectedChildId);
   const currentPage = shownPage(page, selectedChildIndex, children.length, grid.pageSize);
@@ -225,7 +246,7 @@ export default function StepsView() {
   usePublishSelection(selectedNode === null ? [] : [selectedNode.kind]);
 
   const { cycleStatus, toggleStarted, occurrencePrompt, confirmOccurrence, cancelOccurrence } = useStatusCycle({
-    findNode: (id) => findNode(tree, id), reload, showToast,
+    findNode: (id) => findNode(tree, id), showToast,
   });
   const { toggleBacklog, planPrompt, confirmClearPlan, cancelPlanPrompt } = useTaskBacklog({
     findNode: (id) => findNode(tree, id), reload, showToast,
@@ -272,7 +293,7 @@ export default function StepsView() {
   // The Mindmap's creation and deletion actions, whole: the type rules, the parent rules, the
   // refusals and the undo Gestures all come with them.
   const actions = useNodeActions({
-    tree, clipboard, moveNode, duplicateNode, pasteNodes, insertParent, reload, renameNode, createNode, createChild, setClipboard,
+    tree, clipboard, moveNode, duplicateNode, pasteNodes, insertParent, renameNode, createNode, createChild, setClipboard,
     showToast, setEditingNodeId,
     onRequestDelete: (ids) => { const first = ids[0]; if (first !== undefined) requestDelete(first); },
     selectNode: selectCreated,
@@ -440,13 +461,15 @@ export default function StepsView() {
   /** The empty Step's offer: a first child, taken straight into its editor to be named. */
   const onCreateFirstChild = useCallback(() => {
     if (rawStepNode === null) return;
+    // The editor opens on the node the server made, not its placeholder: it needs the row.
     void createChild(rawStepNode.id, rawStepNode.kind, "")
-      .then((created) => setEditorModal({ nodeId: created.id, node: created }))
+      .then(settleCreated)
+      .then((created) => { if (created !== undefined) setEditorModal({ nodeId: created.id, node: created }); })
       .catch((err: unknown) => showToast({
         nodeId: rawStepNode.id,
         message: t("stepsView:createFailed", { title: rawStepNode.title, message: getErrorMessage(err) }),
       }));
-  }, [rawStepNode, createChild, setEditorModal, showToast, t]);
+  }, [rawStepNode, createChild, settleCreated, setEditorModal, showToast, t]);
 
   /** The board's own header card answers no gesture, and says so rather than doing nothing. */
   const refuseAtBoardRoot = useCallback(() => {
@@ -505,6 +528,7 @@ export default function StepsView() {
     select: (id) => setSelection(id === headerCardId ? { cell: "header" } : { cell: "child", nodeId: id }),
     deselect: () => setSelection(null),
     goInto: (id) => (id === headerCardId ? refuseAtBoardRoot() : onDescend(id)),
+    isLeaf: (id) => id !== headerCardId && ((findNode(tree, id) ?? findNode(filteredRoot, id))?.children.length ?? 0) === 0,
   });
   usePinchSteps(rootRef, {
     enabled: hasTouch && !isLoading && error === null,
@@ -516,6 +540,8 @@ export default function StepsView() {
   if (error !== null) return <div className={styles.centered}>{t("common:error", { message: error })}</div>;
 
   const card = cardSizeForZoom(zoom);
+  // What decides how many Info bullets a card shows. A phone card grows to hold them, up to a cap.
+  const cardHeight = phoneLayout === "scroll" ? PHONE_CARD_HEIGHT_PX : card.height;
   // The aspect this Step sits under, which every card on it is coloured from. One walk for the
   // whole Step: a Step is one place on the board, so its cards share an aspect — except at the true
   // root, where each top-level card *is* an aspect and carries its own colour.
@@ -525,6 +551,7 @@ export default function StepsView() {
     "--step-card-height": `${card.height}px`,
     "--step-card-gap": `${CARD_GAP}px`,
     "--step-columns": grid.columns,
+    "--step-rows": grid.rows,
   };
   const headerCounts = rawStepNode === null ? stepChildCounts(unfoldedRoot, tree) : cardCounts(rawStepNode);
   const stepTitle = rawStepNode?.title ?? t("stepsView:boardTitle");
@@ -565,7 +592,7 @@ export default function StepsView() {
         <StepCard
           node={rawStepNode === null ? null : filteredRoot}
           aspectColor={stepAspectColor}
-          cardHeight={card.height}
+          cardHeight={cardHeight}
           isHeader
           isSelected={cursor?.cell === "header"}
           counts={headerCounts}
@@ -600,16 +627,18 @@ export default function StepsView() {
       ) : (
         <div
           className={styles.children}
+          data-phone-layout={phoneLayout}
           ref={childAreaRef}
           role="group"
           aria-label={t("stepsView:childrenLabel")}
         >
           {pageChildren.map((child, index) => (
             <StepCard
-              key={child.id}
+              key={stableKey(child.id)}
               node={child}
               aspectColor={child.color ?? stepAspectColor}
-              cardHeight={card.height}
+              cardHeight={cardHeight}
+              onStepStatus={unlessDrawing(unlessBlocked(cycleStatus))}
               isHeader={false}
               isSelected={cursor?.cell === "child" && cursor.index === index}
               counts={cardCounts(child)}

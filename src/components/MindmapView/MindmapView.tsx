@@ -1,3 +1,4 @@
+import { useTemporaryIds } from "@/hooks/use-temporary-ids";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { storedId } from "@/api/node-id";
 import { useTranslation } from "react-i18next";
@@ -54,6 +55,7 @@ import UnfinishedChildrenModal from "@/components/UnfinishedChildrenModal/Unfini
 import BacklogConfirmModal from "@/components/BacklogConfirmModal/BacklogConfirmModal";
 import { useTaskBacklog } from "@/hooks/use-task-backlog";
 import { useHandArchive } from "@/hooks/use-hand-archive";
+import { useTouchBoardCommands } from "@/hooks/use-touch-board-commands";
 import { useCommitmentVerdict } from "@/hooks/use-commitment-verdict";
 import { useOpenAsyncTemplate } from "@/hooks/use-open-async-template";
 import { useTaskAgentic } from "@/hooks/use-task-agentic";
@@ -66,7 +68,8 @@ import QuickPlanPicker from "@/components/QuickPlanPicker/QuickPlanPicker";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal/DeleteConfirmModal";
 import styles from "./MindmapView.module.css";
 import { usePublishSelection } from "@/hooks/use-publish-selection";
-import { useViewGestures } from "@/hooks/use-view-gestures";
+import { runAfterSelect, useViewGestures } from "@/hooks/use-view-gestures";
+import { OPEN_EDITOR_IDS } from "@/utils/touch/command-ids";
 import { useTouchCommand } from "@/hooks/use-touch-command";
 import { useHasTouch } from "@/hooks/use-media-query";
 import { canParentNewTask } from "@/utils/node-meta";
@@ -96,6 +99,11 @@ export default function MindmapView() {
   const searchableNodes = useSearchableNodes(tree);
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  // The inline editor follows a created node to its real id, and closes on a placeholder that is gone.
+  useTemporaryIds({
+    onResolved: (temporaryId, realId) => { setEditingNodeId((id) => (id === temporaryId ? realId : id)); },
+    onRemoved: (removed) => { setEditingNodeId((id) => (removed.some((node) => node.id === id) ? null : id)); },
+  });
   const { visibleFailedFlows, visibleUnrenderableCommitmentFlows, dismiss: dismissHabitBanner } =
     useDismissableLoadCondition(loadCondition);
   const [startFlowNode, setStartFlowNode] = useState<MindmapNode | null>(null);
@@ -353,7 +361,7 @@ export default function MindmapView() {
   // The same hook the List View's tick and cross go through, so the canvas grows no second write
   // route: a real Commitment updates its row, a Habit iteration its Modification.
   const { markBroken, cycleVerdict } = useCommitmentVerdict({
-    findNode: findNodeById, reload, showToast,
+    findNode: findNodeById, showToast,
   });
   const openAsyncTemplate = useOpenAsyncTemplate(tree, setEditorModal);
   // `P`. Reads the drawn tree as a fallback so a selected fold of Habit history is refused by name
@@ -412,7 +420,7 @@ export default function MindmapView() {
     onStatusClick, onToggleStarted, onCommitEdit, onCreateChild, onCreateTypedChild, onCreateSibling, onInsertParent,
     onDelete, onPaste, occurrencePrompt, confirmOccurrence, cancelOccurrence,
   } = useNodeActions({
-    tree, clipboard, moveNode, duplicateNode, pasteNodes, insertParent, onRequestDelete: setDeleteTargets, reload, renameNode,
+    tree, clipboard, moveNode, duplicateNode, pasteNodes, insertParent, onRequestDelete: setDeleteTargets, renameNode,
     createNode, createChild, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewHabit, onNewCommitment,
   });
 
@@ -483,6 +491,8 @@ export default function MindmapView() {
     findNodeById, enterSubtree, setEditingNodeId,
     setClipboard, clipboard, onPaste, toggleCollapsed: toggleCollapsedOrGroup, onDelete, onNewFlow, onConvertToFlow, onStartFlow,
     onToggleArchive: toggleArchive,
+    // Selects the node, then runs the editor binding on it, as the action bar's Edit does.
+    onEdit: (id) => { selectNode(id); runAfterSelect(OPEN_EDITOR_IDS); },
   });
 
   const handleCtrlClick = useCallback((id: string) => { addToSelection(id); }, [addToSelection]);
@@ -552,7 +562,7 @@ export default function MindmapView() {
   const targetPos = dragTargetId !== null ? positions.get(dragTargetId) : undefined;
 
   // The touch gestures (docs/spec/touch.md): a node's tap, double-tap (enter it), long-press
-  // (palette), flick (editor) and swipes, and a node held and then dragged moves it, as the mouse's
+  // (quick action menu), flick (editor) and swipes, and a node held and then dragged moves it, as the mouse's
   // drag does. Panning and pinching the canvas are the canvas's own (`usePanZoom`).
   const rootRef = useRef<HTMLDivElement>(null);
   const hasTouch = useHasTouch();
@@ -589,6 +599,11 @@ export default function MindmapView() {
     root.addEventListener("click", onClick, { capture: true });
     return () => root.removeEventListener("click", onClick, { capture: true });
   }, [hasTouch, ready, toggleCollapsedOrGroup]);
+  useTouchBoardCommands({
+    selection: () => [...selectedNodeIds].flatMap((id) => findNodeById(id) ?? []),
+    reload,
+    showToast,
+  });
   // The action bar's New, with nothing selected: a Task under the subtree on screen, refused out
   // loud at the board's root, which holds Aspects.
   useTouchCommand({

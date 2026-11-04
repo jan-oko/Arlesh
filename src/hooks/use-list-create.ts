@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { canParentNewTask, validParentKinds } from "@/utils/node-meta";
 import type { TaskAgentic } from "@/api/tasks";
+import { useTemporaryIds } from "@/hooks/use-temporary-ids";
 import { getErrorMessage } from "@/api/errors";
 
 const LOG_PREFIX = "[arlesh]";
@@ -52,6 +53,20 @@ export function useListCreate({
   const { t } = useTranslation(["warnings", "nodeKinds"]);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [unnamedTaskId, setUnnamedTaskId] = useState<string | null>(null);
+
+  // The row being named follows a created Task to its real id, and closes if its create is taken back.
+  useTemporaryIds({
+    onResolved: (temporaryId, realId) => {
+      const swap = (id: string | null): string | null => (id === temporaryId ? realId : id);
+      setEditingTaskId(swap);
+      setUnnamedTaskId(swap);
+    },
+    onRemoved: (removed) => {
+      const gone = (id: string | null): string | null => (removed.some((node) => node.id === id) ? null : id);
+      setEditingTaskId(gone);
+      setUnnamedTaskId(gone);
+    },
+  });
 
   const discard = useCallback(
     (id: string) => {

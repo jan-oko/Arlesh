@@ -1,3 +1,4 @@
+import { isTemporaryId } from "@/utils/pending-writes";
 import type { MindmapNode, NodeKind } from "./tree-layout";
 import { isOccurrence } from "@/utils/node-identity";
 import { ALL_NODE_KINDS } from "./tree-layout";
@@ -288,7 +289,9 @@ function parentCapacity(node: MindmapNode): ParentCapacity {
   if (node.habitGroup !== undefined) return "drawing";
   if (isOccurrence(node)) return "occurrence";
   // The synthetic root and any other virtual node: nothing a parent link could point at.
-  if (node.rowId === undefined) return "drawing";
+  // A node still being created has no row yet and is about to: it holds children like the row it
+  // will be (ADR 0012, decision 8).
+  if (node.rowId === undefined && !isTemporaryId(node.id)) return "drawing";
   return "row";
 }
 

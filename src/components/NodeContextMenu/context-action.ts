@@ -1,5 +1,7 @@
 export const CONTEXT_ACTION = {
   ENTER: "enter",
+  /** Opens the node's editor: the action bar's Edit, which full screen hides. */
+  EDIT: "edit",
   RENAME: "rename",
   CUT: "cut",
   COPY: "copy",

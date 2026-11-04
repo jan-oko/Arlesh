@@ -88,6 +88,16 @@ export function stepGrid(width: number, height: number, zoom: StepsZoom): StepGr
 }
 
 /**
+ * The phone's **fill the screen** grid: one column of every card, never paged. The area's height is
+ * shared between the cards while each still gets at least the zoom's card height; beyond that the
+ * column scrolls (the CSS draws the rows as `minmax(card height, 1fr)`).
+ */
+export function phoneFillGrid(childCount: number): StepGrid {
+  const all = Math.max(1, childCount);
+  return { columns: 1, rows: all, pageSize: all };
+}
+
+/**
  * The grid to draw with: the measured one, or — before the area has been laid out — **one page
  * holding everything**.
  *

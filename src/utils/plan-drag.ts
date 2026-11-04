@@ -51,3 +51,27 @@ export function readPlanDrag(transfer: DataTransfer | null): PlanDragPayload | n
     return null;
   }
 }
+
+/** The `touchOver` key of a pane taken as a whole (a section is keyed by its own `key`). */
+export const PLAN_WHOLE_PANE = "pane";
+
+/** Where a finger's drag is hovering: a pane, and the bucket in it, if any. */
+export interface PlanDropPoint {
+  pane: PlanPane;
+  /** The bucket's `key`, or `null` for the pane at large. */
+  section: string | null;
+}
+
+/**
+ * The drop target under a point, read from the panes' own data attributes — the touch drag's
+ * answer to the mouse's `dragover`. A bucket wins over the pane around it.
+ */
+export function planDropPointAt(x: number, y: number): PlanDropPoint | null {
+  const element = document.elementFromPoint(x, y);
+  if (element === null) return null;
+  const paneElement = element.closest("[data-plan-pane]");
+  const side = paneElement?.getAttribute("data-plan-pane");
+  if (side !== "candidates" && side !== "planned") return null;
+  const section = element.closest("[data-plan-section]")?.getAttribute("data-plan-section") ?? null;
+  return { pane: side, section };
+}

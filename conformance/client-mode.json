@@ -14,7 +14,13 @@
     "",
     "`local` lists the Gesture boundary: on a server every write is already one Gesture of its",
     "client, and a gesture over several nodes is one gesture operation with its own route, so",
-    "`HttpBackend` keeps the frontend's open and close on the device and sends nothing."
+    "`HttpBackend` keeps the frontend's open and close on the device and sends nothing.",
+    "",
+    "`pairing` lists the routes that are not the board's, so not Backend methods (Task 289): a",
+    "device with no token asks `POST /pair` for a PIN and polls `POST /pair/poll`; a signed-in",
+    "device lists devices, approves a PIN and revokes a device. `src-tauri/src/backend/http/",
+    "pairing.rs` calls each by the name it is listed under. The server's test replays them with",
+    "the `routes`."
   ],
   "api_version": 1,
   "standalone_only": [
@@ -377,6 +383,26 @@
       "POST /gestures/save-flow-item",
       "POST /gestures/new-flow",
       "POST /gestures/archive-nodes"
+    ]
+  },
+  "pairing": {
+    "pair_start": [
+      "POST /pair"
+    ],
+    "pair_poll": [
+      "POST /pair/poll"
+    ],
+    "list_devices": [
+      "GET /devices"
+    ],
+    "waiting_device": [
+      "GET /pairings/{pin}"
+    ],
+    "approve_device": [
+      "POST /pairings/{pin}/approve"
+    ],
+    "revoke_device": [
+      "DELETE /devices/{name}"
     ]
   }
 }

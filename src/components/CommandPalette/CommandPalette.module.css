@@ -44,7 +44,15 @@
   background: var(--node-bg-hover);
 }
 
+.icon {
+  display: flex;
+  flex-shrink: 0;
+  width: 20px;
+  color: var(--text-secondary);
+}
+
 .label {
+  flex: 1 1 auto;
   min-width: 0;
 }
 

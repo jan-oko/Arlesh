@@ -20,15 +20,94 @@ behind the cargo feature `standalone`, which is on by default.
 - **Switching restarts the app.** The choice is saved in `mode.json` in the app's data directory,
   and the app relaunches into it, so each run is wholly one mode: a Standalone run holds the
   database and serves the MCP, a Client run does neither, and nothing is torn down in between.
-- **The top bar** shows the mode: *This device*, or *Server* with a dot for whether the server is
-  reachable and its URL on hover.
+  On Android the restart is `MainActivity.restartApp` (a relaunch through `RestartActivity`), called
+  from Rust over JNI; a release build keeps that method by name (`proguard-rules.pro`), and when the
+  call fails the person gets an error naming the fix (close and reopen the app), not a silent
+  no-op. Switching the backend in place was weighed and not chosen: the database, the MCP
+  endpoint, the undo log and the change stream are all set up once at start-up.
+- **The top bar carries no mode indicator** (decided with the user, 2026-11-02: it had been *This
+  device*, or *Server* with a dot for whether the server is reachable and its URL on hover, and
+  the phone's bar already dropped it, [Touch](touch.md)). Where the server cannot be reached, or
+  speaks another API version, the *Server unreachable* / version banner (`ServerBanner`, below the
+  bar) says so and why the board is read-only; the rest lives on Settings → Server.
+- **Settings → Server has a status line**: the mode and, in Client mode, the server's URL, whether
+  it answers, when the board was last synced and whether the server's version suits this app.
 
 The chooser is asked only on a device with no mode saved and no local database. An install from
 before Client mode existed has a database and no setting: it is Standalone, and nobody is asked.
 Until the chooser is answered the app runs Standalone, which is its first answer.
 
-A device connects with a pasted URL and a token issued by `arlesh-server token add <device>`.
-Pairing codes and a Devices page are a separate, later feature.
+A device connects either by **pairing** (below) or with a pasted URL and a token issued by
+`arlesh-server token add <device>`.
+
+## Pairing a device
+
+*Task 289, settled with the user 2026-11-01.* The server runs on a LAN or a tailnet, so pairing is
+deliberately simple, not RFC 8628's device-code flow. A new device gets its own token without anyone
+copying one.
+
+1. **The connect screen** takes the server's URL and a **device name**. On Android that is the first
+   run (the *Connect to a server* step); on the desktop it is Settings → Server. The name defaults to
+   the host name, or the phone's model on Android, and can be edited.
+2. The device calls `POST /pair` (no token). The server answers a **six-digit PIN**, valid for ten
+   minutes and usable once, and a secret `id`. The device shows the PIN large and keeps the `id`.
+3. The device **polls** `POST /pair/poll` with the `id` and the PIN about every five seconds.
+   It answers `pending` until the PIN is approved.
+4. **Approval** is either the command line, `arlesh-server pin approve <pin> [--name <n>]` (with
+   `arlesh-server pin list` showing the PINs waiting), or a signed-in device in **Settings →
+   Devices → Approve a device**. Both show the name the device suggested and let the approver change
+   it.
+5. The next poll answers `approved` with the device's own long-lived token, **exactly once**. The
+   device keeps it as any token (the keychain on the desktop, a file on Android) and restarts in
+   Client mode, through the same path as *Connect and Restart*.
+
+**The poll carries the request's `id` as well as the PIN.** A six-digit PIN is guessable, and
+whoever polls with a PIN would take the token; the `id` is 256 random bits that only the asking
+device knows, so a PIN seen or guessed on the network claims nothing. (The user's wording was
+*polls with the PIN*; the `id` is added beside it.)
+
+**Names.** A device's name is its client name, which the undo journal records, so it follows the
+core's rule: ASCII letters, digits, `.`, `_` and `-`, at most 64. The server reduces any name given
+(runs of other characters become one `-`, so *Pixel 8* is `Pixel-8`; an empty result is `device`),
+both the one a device suggests and the one an approver types, and answers the result. **Names are
+unique**, compared without regard to case: a name already held by a token, or already approved for
+another waiting device, gets the next free `-2`, `-3` … suffix. The approval answers the final name.
+A name taken in the moment between approval and the poll is suffixed then.
+
+**Safeguards.**
+
+- `POST /pair` is **rate limited per address**: ten requests in ten minutes, then 429
+  (`not_permitted`, `details.reason = "rate_limited"`, with `Retry-After`). At most twenty requests
+  wait for approval at once (429, `too_many_pending`).
+- **An attempt** is a poll that names a known request `id` with a PIN other than that request's.
+  The fifth wrong PIN invalidates the request (`pin_invalidated`); before that each answers 403
+  `wrong_pin` with `details.remaining`. A right PIN does not reset the count. Approving or looking
+  up a PIN that no request holds answers 404 `unknown_pin` and counts for nothing: it needs a token
+  (or the command line), so it is no way in.
+- A request lasts **ten minutes from its creation**, approved or not. Expired, used and invalidated
+  requests are deleted: every call purges the lapsed ones first, so the table holds only live ones.
+  A request that is gone answers 404, `details.reason = "unknown_pairing"`, whichever way it went.
+- The PIN store is the server-only table `pairing_pins` (migration 0098, beside `server_tokens`):
+  not read by the desktop app, not journaled. The poll's `id` is kept as a SHA-256 digest. No token
+  is stored there: the token is made, and recorded in `server_tokens`, by the poll that claims it.
+
+**Box builds are pre-bound.** The PIN flow is for real devices, such as the release APK. A branch
+build started by `npm run box` (see *Trying it*) is handed its server and token by the launcher and
+comes up connected, so it never shows the connect screen or a PIN.
+
+### Settings → Devices
+
+Shown in Client mode. It lists the server's devices with their **name and when each was last seen**
+(the current device marked), and lets the user:
+
+- **Approve a device**: type the PIN the other device shows; the page fetches the name it suggested,
+  lets it be edited, and approves. The result names the device as it was saved.
+- **Revoke** any device **except the current one**, after a confirmation. A revoked token stops
+  working at once. The server refuses to revoke the asking device's token (403, `current_device`),
+  so a device cannot lock itself out.
+
+*Last seen* is the time of the device's last request, written at most once a minute per device
+(`server_tokens.last_seen_at`); a device not seen since the column existed has none.
 
 ## The Backend port
 
@@ -74,8 +153,39 @@ and the server's `test_server_parity.py` fails when a listed route is not served
 
 The server streams changes over Server-Sent Events. `GET /events` sends `board-changed` with a
 **revision** for each committed write, and honours `Last-Event-ID`. `HttpBackend` relays it to the
-windows as the same Tauri `board-changed` event a Standalone write raises. After a reconnect it
-reloads if the revision jumped.
+windows as the same Tauri `board-changed` event a Standalone write raises, now carrying the event's
+`revision` and `epoch`. After a reconnect it reloads if the revision jumped.
+
+**What a write costs, and the revision.** The server stamps `/board` and every other answer with
+its revision and epoch ([Revision](http-api.md#revision-on-every-answer-and-gzip)). The Tauri
+`load_mindmap` returns the board with that stamp as `revision`, and each window keeps the stamp of
+the board it holds in `src/stores/board-revision-store.ts`.
+
+**One load per window.** The window holds one copy of the board, in `src/stores/use-board-store.ts`,
+with one tracker, one listener for `board-changed` and a single-flight `load()`. The views (the
+list, the filter display, the Mindmap, Steps) are views over that copy: each derives its own tree
+from it, and none loads or listens. So four views mounted together cost one fetch, and one event
+from another device costs one fetch for all of them, each of which then shows it. A reload asked
+while a fetch is in flight (a write's own reload, an event) waits for it and shares one follow-up,
+since the fetch under way may have been read before the news. Standalone takes the same path, with no revision to compare. Standalone has no server, so
+its loads carry none and its events carry none, and a window with none reloads on every event as it
+always has. The rules, in `src/stores/watch-board-changes.ts`:
+
+- An event whose revision is **at or below** the one the window holds is skipped. A device's own
+  write is announced to it too, and after its own reload it already holds that revision, so it
+  costs one board fetch, not two.
+- An event is judged after a short wait (150 ms), and, if a load is in flight, when that load ends:
+  the echo can beat the write's response across the Tauri bridge, before the write's own reload has
+  started.
+- **An epoch change always reloads**: the server restarted and its numbers start again.
+- An event carrying no revision always reloads.
+- **The reload after a write stays.** A write's response carries the node it wrote, not the board,
+  and the board derives more than that (rollups, what blocks what, inherited Plans), so applying it
+  locally would leave those stale. It is the echo that is skipped, never the reload. A later change
+  (optimistic UI, Task `288`) builds on the stored revision.
+
+A response over 1 KB is gzipped (the client asks for it, reqwest's `gzip`); the board shrinks
+several times over. `/events` is not.
 
 ## Undo
 
@@ -96,7 +206,9 @@ would take in everyone's. Instead:
   server-side as one request: one transaction, one Gesture, one undo step. The app calls the same
   operation in Standalone mode, so both modes run one implementation (`arlesh_core::nodes::gestures`).
 - `HttpBackend` keeps the frontend's `open_gesture` and `close_gesture` on the device, where they
-  only pair up; it sends nothing for them (`local` in the parity contract).
+  only pair up; it sends nothing for them (`local` in the parity contract). Since they pair up and
+  nothing else, a window that has read that it is a Client does not call them at all
+  (`setGestureBracketing`, `src/api/gesture.ts`), so a write is **one** Tauri call, not three.
 
 The gesture operations:
 
@@ -125,7 +237,105 @@ When the server cannot be reached, the app shows the last board it loaded, **rea
 *Server unreachable* banner with the time of the last sync. A write is refused, writing nothing,
 with `not_permitted` and `details.reason = "server_unreachable"`, which the window shows as any
 refusal; nothing is queued. Offline writes are a later feature. Any call that gets through, or the
-change stream reconnecting, makes the board writable again.
+change stream reconnecting, makes the board writable again. Writes already pending when the server
+drops are rolled back, not kept (see *Pending writes*, below).
+
+## Pending writes
+
+*Task `288`, [ADR 0012](../adr/0012-optimistic-own-field-rendering.md). This section describes both
+modes: Standalone runs the same path, only faster.*
+
+A few actions show their result **on the node at once**, before the write is answered, instead of
+waiting for the write and a reload. Until the answer comes, the board holds a **pending write**: the
+action's **patch**, a set of the node's own fields, drawn over the loaded board.
+
+### Which actions
+
+- **The status family:** the status step (a click on the glyph, `Enter`) on a Task or a Goal,
+  `Alt+Enter`, the Commitment verdict (Kept, Broken, the cycle key) and the wait release. A
+  Compound Task's step is refused locally, with today's toast and no write. The step, `Alt+Enter`,
+  the Compound refusal and the verdict are predicted by a TypeScript copy pinned to the Rust rules
+  by `conformance/task-gestures.json` (ADR 0012, decision 13).
+- **Rename and the editors' Save:** the Task, Goal, Commitment, wait, Project, Domain, Tag and Info
+  editors. The editor closes as soon as its own prompts are answered. The Flow and flow-item
+  editors stay write-then-reload in v1 (ADR 0012, decision 16).
+- **Create a child or a sibling:** a placeholder node, for every kind whose create is one write
+  with no prompt.
+- **Planning in the Plan View:** planning an item into the scope being filled, or into one of its
+  parts, and taking it out (a swipe on the phone, the move-across key, a drag between the panes).
+  Only the row's own Plan is patched; which pane it sits in is read from it by the pinned triage
+  rule. A batch is still one gesture and one undo step, and a step the backend refuses puts that
+  row back with a toast. When the Plan would leave Tasks below outside it, the row goes back and
+  the clamp-or-cancel prompt opens, as for a completion that needs a confirmation (ADR 0012,
+  decision 17). The quick plan picker and the editor's Plan field are as before.
+
+Move, reorder, archive, delete, Plan elsewhere, paste, the Agentic key and every other write stay
+**write-then-reload**.
+
+### What a patch may change
+
+Only the touched node's **own** fields, the ones read straight off its stored row: its title,
+status, verdict, wait status, Agentic flag, Asynchronous flag, Time Scope, Plan, due, on scope exit,
+tags, block reasons, delegate, brief and notes. Nothing **derived** is patched: not an inherited
+Plan or Agentic reading, Timing, Overdue, Resolution, Expired, Archived, Review, a Compound Task's
+status, a rollup, Blocked, or a dependent's *met*. Those change when the server answers and the
+board reloads. A patch is worked out locally only from a rule already pinned by a corpus under
+`conformance/` (ADR 0012, decision 12). The views' per-render rules (the presets, the list
+sections, Zen's contents, the Habit fold) read the patched board as they read any board, so a Task
+marked Done leaves Start at once. The focus exemption still keeps the selected node on screen.
+
+### The cue
+
+A node with an unanswered write shows a **faint pulse**, or a **dotted outline** under reduced
+motion, on the Mindmap node, the List and Steps row, and the Zen card alike. It starts after a short
+delay, so a write answered within it never flickers, and it stops when the server answers.
+
+### Order
+
+The window's pending writes form one **lane**, in the order the user acted. Each action patches on
+top of the ones before it at once, so two quick presses show two steps. The writes go out **one at a
+time, in order**, the next when the last is answered. A write outside the lane (a move, an archive,
+undo) **waits for the lane to empty** before it is sent, so it never overtakes an earlier action.
+
+### When the server answers
+
+- **Written.** The node's cue stops. Where the response carries the written row, its own fields
+  replace the predicted ones, so the server's value shows even before the reload. The board then
+  reloads for the derived values, unless the board on screen already reflects the write.
+- **Reconcile: the server wins.** Each fresh board is drawn with the still-pending patches applied
+  over it. An answered write's patch is dropped once a board that reflects it is on screen: one whose
+  read began after the answer, or whose revision has reached the write's in the same epoch. Until
+  then it stays, so a reload that was skipped or still in flight never shows the old value.
+- **Refused.** That write's patch, and every later one on the **same node**, are rolled back. Those
+  later writes are never sent. **One toast**, at the node, names the backend's reason. Writes on
+  other nodes carry on. A refused editor **Save** also reopens the editor with what the user typed and the backend's
+  reason on its error line (ADR 0012, decision 14).
+- **Asks first.** Marking a Habit occurrence done over unfinished children rolls back quietly and
+  opens the occurrence prompt. Confirming applies the patch again and sends the write with the
+  confirmation.
+- **Unreachable.** Every pending write in the window is rolled back, with one toast, and the board
+  goes read-only (*Offline*, above). A write that was in flight may have landed, and the next board
+  says whether it did. A write the server had already answered stays until a board reflects it. While the
+  board is read-only no action is patched at all.
+- **A new epoch** (the server restarted) reloads the board, as every epoch change does. Queued
+  writes carry on to the restarted server.
+
+### New nodes
+
+A created node is drawn at once as a **placeholder** with a temporary id: the kind and title the
+user gave and nothing derived, placed where the gesture meant (after the sibling, or as the
+parent's last child). A kind the parent may not hold is refused before anything is drawn. Actions
+on the placeholder, a rename or a child of its own, queue behind its create. When the create is
+answered, they are rewritten to the real id and sent. The selection, the inline editor and any other
+place the temporary id was held move to the real node, and the server's position replaces the
+placeholder's when the board reloads. A refused create removes the placeholder and everything queued
+on it or under it, with one toast. Nothing about this reaches the server: it only ever sees real
+ids.
+
+### Undo
+
+See [Undo](undo.md), *Undo with writes pending*. In short, `Ctrl+Z` cancels the newest action
+locally while it is still queued, and otherwise waits for the lane and undoes on the server.
 
 ## Shared and local state
 
@@ -166,6 +376,8 @@ release key; there is no Play Store.
   windows reload.
 - **The soft keyboard** shrinks the page (the activity pads its content by the keyboard's inset),
   so sheets resize above it. Enter confirms in the editors, as on the desktop.
+- **Box builds** (`com.atai.arlesh.box.*`, from `npm run box`) are handed their server and token by
+  the launcher and start connected; the release app takes no such input (*Trying it*).
 - **The touch layout** is a separate Task (`201`); this one only builds and wires the platform.
 
 ## Versions
@@ -185,22 +397,134 @@ its local database untouched, and switching back finds it as it was. A server is
 
 ## Trying it: branch instances
 
-`scripts/branch-instance.sh` runs a branch's server as well as its app, so any app branch can be
-tried against any server branch — the version handshake included:
+`npm run box -- …` (the single-file Python tool `scripts/box.py`, run with `uv run --script`, stdlib
+only) runs a branch's server as well as its app, so any app branch can be tried against any server
+branch — the version handshake included:
 
 ```
-scripts/branch-instance.sh server start 9f0-client-mode              # arlesh-server from that worktree
-scripts/branch-instance.sh start 201-client-gaps --server 9f0-client-mode
-scripts/branch-instance.sh run some-app --standalone                 # back to the local board
-scripts/branch-instance.sh stop all                                  # apps and servers
+npm run box -- server start 9f0-client-mode                 # arlesh-server from that worktree
+npm run box -- run 201-client-gaps desktop --server 9f0-client-mode
+npm run box -- run some-app desktop --standalone            # the local board, no server
+npm run box -- run 201-client-gaps pixel                    # the Android build on a registered phone
+npm run box -- stop all                                     # apps and servers
 ```
 
-A server runs its worktree's own code (its bindings built into that worktree's venv) on its own
-port, over a copy of the real database taken read-only (`sqlite3 -readonly … .backup`), seeded once
-and kept. `--server` mints the app instance a token and writes its `mode.json` and its token file,
-so the instance comes up connected; the token is never printed. `list` shows the servers too.
+`run <branch> [<target>]` builds only when the worktree changed (a hash of `HEAD` plus the
+uncommitted diff, per branch and OS, kept in `$XDG_STATE_HOME/arlesh/box/`), installs on an Android
+device only when that device lacks this build or the package, and always launches. The target is
+`desktop` (this machine, built in) or a name registered with `devices add <name> --os
+android|desktop [--host host[:port]]`; the registry is per user, in
+`$XDG_CONFIG_HOME/arlesh/box-devices.json`, never in the repo. Without a target, `run` reuses the last
+one.
+
+**An Android `run` uses the CI build when one matches, and every box APK is signed with one shared
+key** (decided with the user, 2026-11-02):
+
+- *Source.* For an Android target, if the worktree is clean (no uncommitted or untracked,
+  non-ignored changes), `HEAD` equals `origin/<branch>`, and a successful `bundles.yml` run (box
+  mode, `workflow_dispatch`) exists for exactly that commit with its artifact
+  `arlesh-box-<segment>-<sha7>-android-apk`, `run` downloads that APK (`gh run download`) instead of
+  building, then installs, pre-binds and launches as usual. Otherwise it builds locally. `--local`
+  forces the local build. `--ci` uses CI regardless: with no build for `HEAD` it triggers
+  `bundles.yml` with `box=true, publish=false` on the branch, waits with progress output, then
+  downloads; on a dirty or unpushed tree it is an error that says why. Without `gh` on `PATH` or
+  authenticated, `run` builds locally with a one-line notice and `--ci` fails. The download is cached
+  per commit in `$XDG_STATE_HOME/arlesh/box/ci/`, so a rerun does not fetch again; `clean <branch>`
+  removes it. The built stamp of a CI APK is `ci:<stamp>`, so a local and a CI build of one commit
+  are never taken for each other. `run` prints which source it used. Desktop targets always build
+  locally (`--ci` there is an error).
+- *Signing.* `keystore init` generates a box-only keystore at `$XDG_CONFIG_HOME/arlesh/box.keystore`
+  (alias `arlesh-box`, store and key password `arlesh-box`, 10000 days; a debug-grade key for
+  `com.atai.arlesh.box.*`, not a secret worth guarding) and uploads it, base64, with `gh secret set
+  ARLESH_BOX_KEYSTORE_B64`. It refuses to replace an existing keystore without `--force`, and warns
+  that rotating the key means every installed box app has to be reinstalled. GitHub secrets cannot
+  be read back, so CI can sign with it but no one can fetch it from there: the local file is the
+  copy of record. Local builds sign with that keystore when it exists, else with
+  `~/.android/debug.keystore` and a notice that CI and local builds are not update-compatible until
+  `keystore init`. `bundles.yml` in box mode signs with the secret when set (only the signing step
+  reads it, nothing echoes it), else with a fresh `keytool` key and a `::warning::`.
+- *Mismatch.* `adb install` failing with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` stops `run` with a
+  message that names the cause and offers `--reinstall`, which uninstalls the box app first (box
+  re-provisions the token anyway). Nothing is uninstalled without the flag.
+
+**A branch needs no worktree made by hand.** `run`, `server start`, `server token` and `server pin`
+create `.claude/worktrees/<dir>` when it is missing: `git fetch origin <branch>`, then `git worktree
+add -b <branch> --track origin/<branch>` (a local branch of that name is used as it is, with a notice
+if it is behind or has diverged), with the usual `node_modules` symlink. A branch that exists neither
+locally nor on origin is an error; the tool never makes a branch off master. `<dir>` is the branch
+with `/` replaced by `-` (`qa/2026-11-round` is `qa-2026-11-round`), through one helper that also names
+the instance, the server and the Android package; a directory that holds another branch is an error.
+An existing worktree is used as-is, never pulled or reset; if it is behind origin, `run` prints
+`<branch> is N commits behind origin; pull to update`. `list` shows the branch beside the directory
+when they differ.
+
+**Finding an Android device.** The registered host (`miniseer`, a MagicDNS name, a LAN address) is
+resolved with `getaddrinfo` and matched, by any of its addresses, against `adb mdns services`
+(`_adb-tls-connect`), which lists the phone's LAN `ip:port` under an `adb-<serial>-…` service. The
+first time a device is seen its adb serial is stored in the registry, and later runs match the mdns
+entry by serial first, since tailnet and LAN addresses differ for one phone. If nothing matches and a
+port was registered, `adb connect host:port` is tried; otherwise the run fails and lists the mdns
+entries it saw. The server URL handed to the app is this machine's tailnet address (`tailscale ip -4`)
+or, without one, its LAN address.
+
+**Every `run` comes up already connected**, on desktop and Android alike, to the branch's own server
+(started if it is not up; the first start in a fresh worktree builds arlesh-py and says so).
+`--server <other>` picks another branch's server and `--standalone` opts out: the desktop instance
+runs on the local board, the Android build opens unbound on its connect screen. A server runs its
+worktree's own code (its bindings built into that worktree's venv) on its own port, over a copy of
+the real database taken read-only (`sqlite3` backup API, opened `mode=ro`), seeded once and kept.
+`list` shows the servers and targets too.
+
+**The token's client name is the box device name**: the registry name (`pixel`), or `desktop` for
+this machine, reduced to the server's name alphabet. A client holds one token and its text is never
+stored, so a run re-mints (`token revoke`, then `token add`) unless the connection still holds: the
+instance was bound to this server at this URL, the server still lists the client, no other
+instance has taken that client's token since (box keeps who holds it in its state file) and the app
+has data on the device. `--force` always re-mints. Two branches sharing a device name on one
+server therefore take the token from each other, and the one that lost is re-bound on its next
+`run`. The token is never printed.
+
+- **Desktop.** The instance gets a `mode.json` and a `server-token` file (0600) in its own data
+  directory before it launches.
+- **Android.** A phone cannot reach loopback, so the server must listen publicly: a server that is up
+  on loopback is restarted on `0.0.0.0` with a notice (the port, database and tokens are kept; every
+  request still needs a token). The URL is this machine's tailnet address when it has one (`tailscale ip -4`; Tailscale routes over the LAN when it can), otherwise its LAN address. The URL and token are handed to the app
+  with no PIN flow: `run` force-stops the app and starts it with
+  `adb shell am start -n <pkg>/com.atai.arlesh.MainActivity --es arlesh_box_url … --es
+  arlesh_box_token …`. `MainActivity` reads the extras **only when its applicationId starts with
+  `com.atai.arlesh.box.`**, so the release app ignores them and no intent can bind it to a server,
+  and leaves them in `box-provision.json` in the app's private data directory. Before the mode is
+  read, the Rust startup (`client_mode::provision`, Android only) validates the file (an `http(s)`
+  URL, a non-empty token), keeps the token as *Connect and Restart* does (the token file), saves
+  Client mode and deletes the file, so the first run is already connected and no restart is needed.
+  A bad file is deleted and ignored. When the app is already bound to that URL with a live token,
+  `run` only launches it. No JNI is involved, so R8 has nothing to strip.
+- A token in `adb shell` argv is visible to `ps` on the phone for an instant. That is acceptable
+  for a debug box build on the developer's own phone, and the reason the release app takes no extras.
+
+More of the tool, for trying pairing and the phone build:
+
+- `server start <name> --public` binds `0.0.0.0` (the server's `--host`) and prints the LAN and
+  tailnet URLs a phone can reach.
+- `server pin <name> approve <pin> [--name <d>]` and `server pin <name> list` run
+  `arlesh-server pin approve|list` against that server's database. They are for pairing real
+  (non-box) devices, such as the release APK; box builds are pre-bound.
+- An Android `run` builds a debug-signed APK that installs beside the real app as
+  `com.atai.arlesh.box.<branch>`, labelled "Arlesh (<branch>)" (the two files that carry the name
+  are patched for the build and restored; the backups live under `$XDG_STATE_HOME/arlesh/box/backups/`,
+  never beside the files, because the resource merger rejects a stray `strings.xml.box-orig`). Firebase, per branch, when
+  `ARLESH_BOX_FIREBASE_PROJECT` is set (`--no-firebase` skips it).
+- **A CI box APK** (`bundles.yml`, dispatched with `box` on, from the branch to test) is the same
+  app built by GitHub Actions for a machine that cannot build Android: `box.py ci-patch <branch>`
+  applies the same patch, it is signed with a debug key generated in the job (never the release
+  key), and the artifact is `arlesh-box-<segment>-<sha>-android-apk`. It is **not pre-bound**: no
+  `am start` extras are sent, so it opens on the connect screen. Pair it with a PIN
+  (`server pin <name> approve <pin>`). `box run` has no install-only or provision-only mode, so
+  binding an installed app to a server the box way means building it locally.
+- `clean <branch>` also removes that branch's Firebase app and uninstalls the package from the
+  registered Android devices; `prune [<device>]` does so for every `com.atai.arlesh.box.*` whose
+  worktree is gone.
 
 ## Not in phase 1
 
-Pairing codes and the Devices page, Postgres (later, through portable SQL), offline writes, and the
-server's container image.
+Postgres (later, through portable SQL), offline writes, and the server's container image.

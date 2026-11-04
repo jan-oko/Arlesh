@@ -11,8 +11,52 @@ fn an_event_ends_at_a_blank_line() {
         vec![Event {
             id: Some("e1:3".to_owned()),
             name: Some("board-changed".to_owned()),
+            data: Some("{}".to_owned()),
         }]
     );
+}
+
+#[test]
+fn an_event_carries_the_revision_its_data_names() {
+    let mut parser = EventParser::default();
+
+    let events = parser
+        .feed("id: run1:3\nevent: board-changed\ndata: {\"revision\": 3, \"epoch\": \"run1\"}\n\n");
+
+    assert_eq!(
+        events[0].revision(),
+        Some(BoardRevision {
+            epoch: "run1".to_owned(),
+            revision: 3
+        })
+    );
+}
+
+#[test]
+fn data_split_over_lines_and_chunks_is_joined() {
+    let mut parser = EventParser::default();
+
+    assert!(parser
+        .feed("event: board-changed\ndata: {\"revision\":")
+        .is_empty());
+    let events = parser.feed(" 4,\ndata: \"epoch\": \"run1\"}\n\n");
+
+    assert_eq!(
+        events[0].data.as_deref(),
+        Some("{\"revision\": 4,\n\"epoch\": \"run1\"}")
+    );
+    assert_eq!(events[0].revision().map(|r| r.revision), Some(4));
+}
+
+#[test]
+fn an_event_whose_data_is_not_a_revision_has_none() {
+    let mut parser = EventParser::default();
+
+    let bare = parser.feed("event: board-changed\n\n");
+    let odd = parser.feed("event: board-changed\ndata: soon\n\n");
+
+    assert_eq!(bare[0].revision(), None);
+    assert_eq!(odd[0].revision(), None);
 }
 
 #[test]
@@ -40,7 +84,7 @@ fn follower() -> Follower {
         Arc::new(|_| {}),
     )
     .expect("a backend");
-    Follower::new(Arc::new(backend), Arc::new(|| {}))
+    Follower::new(Arc::new(backend), Arc::new(|_| {}))
 }
 
 #[test]

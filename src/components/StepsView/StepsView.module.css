@@ -9,9 +9,14 @@
   flex: 1 1 0;
   flex-direction: column;
   box-sizing: border-box;
-  padding: var(--space-4);
+  padding: var(--space-4) var(--space-4) calc(var(--space-4) + var(--peek-pad-bottom));
   background: var(--canvas-bg);
   gap: var(--space-3);
+}
+
+/* Full screen only: the status-bar inset alone, no extra gap above it. */
+:global(:root[data-fs-bars]) .container {
+  padding-top: var(--peek-pad-top);
 }
 
 /* The header card and the Step's "+" beside it. The card takes the width; the "+" stretches to its
@@ -111,4 +116,36 @@
   justify-content: center;
   color: var(--text-secondary);
   font-family: var(--font-sans);
+}
+
+/* The phone layout (docs/spec/touch.md), chosen by Settings → Steps and named on the area as
+   `data-phone-layout`. "scroll": the Step is one scrolling column, its cards as tall as what they
+   hold; there is no page to turn, so the area scrolls instead of clipping. "fill": one column of every
+   card, its rows sharing the area's height equally but none shorter than the zoom's card height, so
+   when they no longer fit the column scrolls (it never pages). */
+@media (max-width: 699.98px) {
+  .children[data-phone-layout="scroll"] {
+    display: flex;
+    overflow-x: hidden;
+    overflow-y: auto;
+    flex-direction: column;
+  }
+
+  .children[data-phone-layout="scroll"] > [data-step-card] {
+    width: auto;
+    height: auto;
+    flex: 0 0 auto;
+  }
+
+  .children[data-phone-layout="fill"] {
+    overflow-x: hidden;
+    overflow-y: auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(var(--step-rows), minmax(var(--step-card-height), 1fr));
+  }
+
+  .children[data-phone-layout="fill"] > [data-step-card] {
+    width: auto;
+    height: auto;
+  }
 }

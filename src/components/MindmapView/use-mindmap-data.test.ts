@@ -16,6 +16,7 @@ import type { MindmapLoad } from "@/api/mindmap";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { isNodeBlocked } from "@/utils/tree-layout";
 import { useMindmapStore } from "@/stores/use-mindmap-store";
+import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { useAgentActivityStore } from "@/stores/use-agent-activity-store";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -779,8 +780,11 @@ describe("useMindmapData — mutations", () => {
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_domain", {
         request: { title: "Ops", description: null, subtype: "project", parent_id: 1, status: null, knowledge_base_directory: null },
       });
-      expect(returned?.id).toBe("domain-10");
+      // The placeholder comes back at once; the server's id replaces it when the create is answered.
+      expect(returned?.id).toMatch(/^tmp:/);
       expect(returned?.kind).toBe("project");
+      await act(async () => { await usePendingWritesStore.getState().whenDrained(); });
+      expect(usePendingWritesStore.getState().aliases.get(returned?.id ?? "")).toBe("domain-10");
     });
 
     it("goal child kind: calls create_goal with kindToParentType of the parent", async () => {
@@ -848,7 +852,8 @@ describe("useMindmapData — mutations", () => {
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("create_task", {
         request: expect.objectContaining({ title: "buy milk", parent_type: "task", parent_id: occurrence.id }),
       });
-      expect(returned?.id).toBe("task-42");
+      await act(async () => { await usePendingWritesStore.getState().whenDrained(); });
+      expect(usePendingWritesStore.getState().aliases.get(returned?.id ?? "")).toBe("task-42");
     });
 
     it("throws for an invalid child kind", async () => {
@@ -898,6 +903,40 @@ describe("useMindmapData — mutations", () => {
       await act(async () => { await result.current.renameNode("domain-1", "aspect", "Renamed"); });
 
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("update_domain", { id: 1, request: { title: "Renamed" } });
+    });
+  });
+
+  describe("renameNode through the lane", () => {
+    it("shows the new title at once, with the cue, and settles on the answer", async () => {
+      let answer: (row: unknown) => void = () => undefined;
+      setupInvoke({ update_task: new Promise((resolve) => { answer = resolve; }) });
+      const { result } = await loadedHook();
+      usePendingWritesStore.getState().reset();
+
+      await act(async () => { await result.current.renameNode("task-1", "task", "Renamed"); });
+      const shown = result.current.tree.children[0]?.children[0]?.children.find((n) => n.id === "task-1");
+      expect(shown).toMatchObject({ title: "Renamed", pending: true });
+
+      await act(async () => { answer({ ...TASK, title: "Renamed" }); });
+      await waitFor(() => expect(usePendingWritesStore.getState().writes[0]?.state).not.toBe("sending"));
+    });
+
+    it("puts the old title back with one toast when the rename is refused", async () => {
+      const rejected = Promise.reject(new Error("title is taken"));
+      rejected.catch(() => undefined);
+      setupInvoke({ update_task: rejected });
+      const { result } = await loadedHook();
+      usePendingWritesStore.getState().reset();
+      useMindmapStore.getState().clearToast();
+
+      await act(async () => { await result.current.renameNode("task-1", "task", "Renamed"); });
+      await waitFor(() => expect(usePendingWritesStore.getState().writes).toHaveLength(0));
+
+      const task = result.current.tree.children[0]?.children[0]?.children.find((n) => n.id === "task-1");
+      expect(task?.title).toBe(TASK.title);
+      expect(useMindmapStore.getState().pendingToast).toMatchObject({
+        nodeId: "task-1", message: "warnings:renameFailed",
+      });
     });
   });
 

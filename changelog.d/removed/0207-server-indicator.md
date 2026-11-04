@@ -1,0 +1,1 @@
+- **The server indicator on the desktop top bar.** The mode (This device or Server, with a dot for reachability) is no longer drawn there; Settings > Server shows it, and the banner still appears when the server cannot be reached.

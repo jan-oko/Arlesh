@@ -4,7 +4,8 @@
   display: flex;
   align-items: stretch;
   gap: var(--space-1);
-  padding: 0 var(--space-2);
+  padding: var(--safe-top) var(--space-2) 0;
+  box-sizing: content-box;
   height: 30px;
   flex-shrink: 0;
   background: var(--canvas-bg);

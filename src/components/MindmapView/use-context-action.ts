@@ -23,6 +23,8 @@ interface Options {
   onStartFlow: (flowId: string) => void;
   /** Archives the node by hand, or unarchives it. */
   onToggleArchive: (nodeId: string) => void;
+  /** Opens the node's editor. */
+  onEdit: (nodeId: string) => void;
 }
 
 interface Result {
@@ -31,13 +33,14 @@ interface Result {
 
 export function useContextAction({
   findNodeById, enterSubtree, setEditingNodeId,
-  setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow, onToggleArchive,
+  setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow, onToggleArchive, onEdit,
 }: Options): Result {
   const onContextAction = useCallback(
     (nodeId: string, action: ContextMenuAction) => {
       if (findNodeById(nodeId) === undefined) return;
       switch (action) {
         case CONTEXT_ACTION.ENTER: enterSubtree(nodeId); break;
+        case CONTEXT_ACTION.EDIT: onEdit(nodeId); break;
         case CONTEXT_ACTION.RENAME: setEditingNodeId(nodeId); break;
         case CONTEXT_ACTION.CUT: setClipboard({ operation: CLIPBOARD_OP.CUT, nodeIds: [nodeId] }); break;
         case CONTEXT_ACTION.COPY: setClipboard({ operation: CLIPBOARD_OP.COPY, nodeIds: [nodeId] }); break;
@@ -50,7 +53,7 @@ export function useContextAction({
         case CONTEXT_ACTION.DELETE: onDelete([nodeId]); break;
       }
     },
-    [findNodeById, enterSubtree, setEditingNodeId, setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow, onToggleArchive],
+    [findNodeById, enterSubtree, setEditingNodeId, setClipboard, clipboard, onPaste, toggleCollapsed, onDelete, onNewFlow, onConvertToFlow, onStartFlow, onToggleArchive, onEdit],
   );
 
   return { onContextAction };

@@ -45,12 +45,12 @@ async-trait = "0.1"
 # lock (through rmcp), with rustls for an HTTPS server. Its crypto is `ring`, installed as the
 # process default when the backend is built, rather than reqwest's default aws-lc, whose C build
 # needs cmake (and NASM on Windows) on every bundle runner.
-reqwest = { version = "0.13", default-features = false, features = ["json", "query", "http2", "rustls-no-provider"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "query", "http2", "gzip", "rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { version = "0.4", features = ["serde"] }
-tokio = { version = "1", features = ["net", "rt", "sync"] }
+tokio = { version = "1", features = ["net", "rt", "sync", "time"] }
 png = "0.17"
 rmcp = { version = "3.4.0", features = ["server", "macros", "transport-streamable-http-server", "transport-streamable-http-server-session"] }
 axum = "0.8.9"

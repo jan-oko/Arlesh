@@ -82,21 +82,21 @@
   cursor: pointer;
 }
 
-/* The phone layout (docs/spec/touch.md; the breakpoint is `PHONE_LAYOUT_QUERY`): the prompt rises from the bottom as a sheet. */
+/* The phone layout (docs/spec/touch.md; the breakpoint is `PHONE_LAYOUT_QUERY`): the prompt stays
+   what it is on the desktop, a modal centred on the screen both ways (decided with the user,
+   2026-11-02), only narrowed to fit with a margin all round and clear of the system bars. */
 @media (max-width: 699.98px) {
   .overlay {
-    align-items: flex-end;
-    padding: 0;
+    box-sizing: border-box;
+    padding: max(var(--space-4), var(--safe-top)) max(var(--space-4), var(--safe-right))
+      max(var(--space-4), var(--safe-bottom)) max(var(--space-4), var(--safe-left));
   }
   .modal {
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
-    max-width: none;
-    max-height: 85vh;
+    max-width: 480px;
+    max-height: 100%;
     overflow-y: auto;
-    border-radius: 16px 16px 0 0;
-    border-bottom: none;
-    padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
   }
 }

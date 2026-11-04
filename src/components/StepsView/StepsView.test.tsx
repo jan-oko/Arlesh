@@ -9,6 +9,8 @@ import { DEFAULT_FILTER } from "@/utils/filter-tree";
 import type { MindmapNode, NodeKind } from "@/utils/tree-layout";
 import { useMindmapData } from "@/components/MindmapView/use-mindmap-data";
 import { fixtureRowId } from "@/test/node-fixture";
+import { ordinary } from "@/utils/status-mapping";
+import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -72,7 +74,11 @@ vi.mock("@/api/tasks", async (importOriginal) => ({
 /** A fixture node; it draws the row its id names (`task-12` is row 12), unless it is virtual. */
 function n(id: string, kind: NodeKind, extra: Partial<MindmapNode> = {}): MindmapNode {
   const rowId = extra.virtual === true ? {} : fixtureRowId(id);
-  return { id, ...rowId, kind, title: id, position: 0, tagIds: [], children: [], ...extra };
+  // A stored Task always carries its typed status; the fixture derives it from the spelled one.
+  const typed = kind === "task" && extra.status !== undefined && extra.taskStatus === undefined
+    ? { taskStatus: ordinary(extra.status === "started" || extra.status === "in_progress" || extra.status === "done" ? extra.status : "todo") }
+    : {};
+  return { id, ...rowId, kind, title: id, position: 0, tagIds: [], children: [], ...typed, ...extra };
 }
 
 const reload = vi.fn(() => Promise.resolve());
@@ -91,6 +97,7 @@ function mockTree(children: MindmapNode[]): void {
     reload,
     createNode,
     createChild,
+    settleCreated: vi.fn((created: MindmapNode) => Promise.resolve(created)),
     renameNode: vi.fn(),
     reorderNode: vi.fn(),
     moveNode: vi.fn(),
@@ -121,6 +128,7 @@ function press(code: string): void {
 }
 
 beforeEach(() => {
+  usePendingWritesStore.getState().reset();
   vi.clearAllMocks();
   useFilterStore.setState({ filter: { ...DEFAULT_FILTER } });
   useMindmapStore.setState({
@@ -392,6 +400,19 @@ describe("acting on the selected card", () => {
     expect(stepTaskStatus).toHaveBeenCalledWith(1, "advance");
   });
 
+  it("steps a Task's status when its glyph is tapped, selects the card, and does not open it", () => {
+    mockTree([n("task-1", "task", { status: "todo" })]);
+    render(<StepsView />);
+
+    const glyph = screen.getByRole("button", { name: "listView:cycleStatus" });
+    fireEvent.click(glyph);
+    fireEvent.doubleClick(glyph);
+
+    expect(stepTaskStatus).toHaveBeenCalledWith(1, "advance");
+    expect(selectedCardId()).toBe("task-1");
+    expect(setEditorModal).not.toHaveBeenCalled();
+  });
+
   it("refuses Space on a blocked Task out loud, and writes nothing", () => {
     mockTree([n("task-1", "task", { status: "todo", virtualBlockers: ["Blocked by Spec"] })]);
     render(<StepsView />);
@@ -414,7 +435,7 @@ describe("acting on the selected card", () => {
     expect(useMindmapStore.getState().pendingToast?.message).toBe("stepsView:refusedBlocked");
   });
 
-  it("sends Alt+Enter on a Task, Started or not", () => {
+  it("sends Alt+Enter on a Task, Started or not", async () => {
     mockTree([n("task-1", "task", { status: "in_progress" }), n("task-2", "task", { status: "started" })]);
     render(<StepsView />);
 
@@ -424,7 +445,8 @@ describe("acting on the selected card", () => {
 
     press("ArrowRight");
     act(() => { fireEvent.keyDown(window, { code: "Enter", altKey: true }); });
-    expect(stepTaskStatus).toHaveBeenCalledWith(2, "alt");
+    // The second press goes out once the first is answered: the lane sends in order.
+    await waitFor(() => expect(stepTaskStatus).toHaveBeenCalledWith(2, "alt"));
   });
 
   it("refuses Alt+Enter on a blocked Task", () => {
@@ -920,5 +942,18 @@ describe("an Overdue card", () => {
     expect(selectedCardId()).toBe("task-1");
     expect(stepCard("task-1").className).toMatch(/overdue/);
     expect(stepCard("task-1").className).toMatch(/selected/);
+  });
+});
+
+describe("the pending-write cue", () => {
+  it("marks a card whose node has an unanswered write, and clears it on the answer", () => {
+    mockTree([n("task-1", "task", { pending: true }), n("task-2", "task")]);
+    const { rerender } = render(<StepsView />);
+    expect(document.querySelector('[data-step-card="task-1"]')).toHaveAttribute("data-pending");
+    expect(document.querySelector('[data-step-card="task-2"]')).not.toHaveAttribute("data-pending");
+
+    mockTree([n("task-1", "task"), n("task-2", "task")]);
+    rerender(<StepsView />);
+    expect(document.querySelector('[data-step-card="task-1"]')).not.toHaveAttribute("data-pending");
   });
 });

@@ -10,10 +10,44 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
+- **Pair a device with a PIN.** On a new phone or computer, enter the server's address and a name for the device and tap Connect: it shows a six-digit PIN. Approve the PIN with `arlesh-server pin approve <pin>` on the server, or in Settings → Devices → Approve a device on a device that is already connected, and the new device receives its own token and restarts connected. Names are unique (a clash gets a `-2` suffix), a PIN works once for ten minutes, and five wrong guesses cancel it.
+- **Devices page.** Settings → Devices lists the devices on the server with when each was last seen, and revokes any of them except the one you are using.
+
+- **Check done and Archive on the phone's action bar.** *Check done* completes a wait's earliest open check; *Archive* puts every selected node that can be archived away as one undo step. While the server is unreachable or on another version the action bar, the palette and the write gestures are greyed out instead of failing.
+- **Tapping a status icon steps the status on the phone.** On a List row, a Zen or Steps card, a Zen strip card and a Mindmap node, the icon is its own control: it advances the status (a Commitment's verdict, a wait's release) and selects the node, without opening its editor. Every other per-node touch action (a swipe, the quick action menu) selects the node it acts on too.
+- **The phone's Plan View gives the two panes an even half of the screen each**, candidates above, and the Zen View's cards fill the screen between the strips and the action bar, sharing its height (none shorter than its content; the column scrolls when they do not fit). The phone's Steps View fills the screen by default, its cards sharing the height but none shorter than the zoom's card height, so the column scrolls instead of paging when they do not fit (a new switch under Settings > Steps turns this off for one scrolling column of cards as tall as their content), and its navigation icon is a staircase drawn like the rest of the icon set.
+- **Double-tap enters the subtree, or opens the editor.** In every view but the Mindmap, double-tapping a node with nothing beneath it opens its editor; one with nodes beneath it is entered as a subtree (the breadcrumb leads back up), never added as a filter.
+- **A free square on the phone's top bar.** Tap it to open a node by searching (Open); long-press it for the command palette, which opens as soon as the hold registers, before you lift.
+- **Open and Filter searches you can leave.** On the phone they are a card, not the whole screen, and close with Android's back, a tap outside or a close button; the Filter menu has the same close button. Open, the Filter search and the command palette focus their text box as they open, so the keyboard rises.
+- **One set of names and icons on the action bar.** "New" and "Item" are now Child, "Search" is Open, "Depends" is Dependency; the palette shows the bar's icons. Filter has a funnel icon, Status the Started icon, and Edit is on the bar in every view (Open moves to the top bar's square once a node is selected).
+- **The cheat sheet teaches the gestures on a touchscreen.** On a touch-only device it lists swipes, taps and long-presses, per view, instead of keyboard shortcuts.
+- **In portrait the path reads `‹ current node`.** The chevron (a larger, 40 px touch target) or the node's name opens the full path, whose first segment is always "Arlesh".
+- **Plan View swipes move cards with a real animation.** On the phone the card follows your finger; let go past the threshold and it slides out and moves across, let go short and it springs back (with reduced motion it just moves). Swipe a to-plan card either way to plan it, swipe a planned card either way to put it back in to-plan; the card leaves the way you swiped. The sideways and upward scope swipes on the planned pane are gone; the header's scope buttons stay.
+- **Nothing is cut short on the phone's Zen View.** A card's path and a Commitment or Wait chip's title wrap instead of ending in an ellipsis.
+- **A nested List row indents from the left whatever its title's script.** A Hebrew child under a Hebrew parent used to inset from the right and end short of its siblings.
+- **Up replaces Child on the action bar when nothing is selected, and a two-finger swipe up goes Up anywhere.** Up leaves the entered subtree one level (the breadcrumb's parent step) and is greyed at the top level. Child with nothing selected stays in the command palette.
+- **Full screen hides the phone's bottom bars too, and a three-finger tap toggles it.** Only the free square remains, in the bottom-right corner: tap it to open a node, long-press it for the command palette.
+- **The node's quick action menu has Edit.** In the Mindmap and the List, since full screen hides the action bar's Edit.
+- **Subscopes in the phone's Plan View, and dragging.** The planned pane can be split by subscope (a week into its days) from its ⋮ menu, as on the desktop. Not dragging, a split pane shows a row of tabs, one subscope's cards at a time (opening on the first), or every subscope stacked under its heading; a new switch under Settings > Plan and in the pane's menu chooses. Hold a card and drag, or swipe a to-plan card: one large tile per subscope covers the planned pane. Drop on a tile (or tap one after a swipe) to plan the card there; the subscope the card already sits in is dimmed and cancels, as does lifting anywhere else or tapping outside. Drop on the to-plan pane to take a card back out. A swipe on a planned card still takes it out.
+- **Long-press Child to choose the new child's kind.** A tap still adds a Task; holding Child opens a sheet of the kinds the selected node can hold (Task, Goal, Commitment, Info and so on). The List and Steps Views create Tasks only.
+- **System bars on Android: Standard, Edge-to-edge or Immersive, for normal display and for fullscreen.** Two new choices under Settings > General. Standard keeps the bars visible and opaque with the app below the status bar; Edge-to-edge (the default) draws the app under transparent bars and keeps its top bar, bottom bars and the fullscreen corner square clear of them; Immersive (the default in fullscreen) hides the bars, and a swipe from the screen edge shows them for a moment. Leaving fullscreen returns to the normal display's choice.
+- **The phone's top bar reads "Arlesh" at the root, in every view,** instead of the view's name; the bottom navigation already shows which view this is. Inside a subtree it still shows `‹ {current}`, and the chevron is now the size of a capital letter of the title, centred on the text, with the same 40 px tap area.
+- **Back at the main view asks "Quit Arlesh?"** instead of leaving at once. Back again, or Cancel, stays; Quit leaves. Sheets, menus, the palette and a stepped-into node still take back first.
+- **The keyboard and gesture cheat sheet has a ✕ close button** on the phone.
+- **Settings help tips no longer run off the screen.** The hint bubble stays inside the visible pane, wraps its text, and shows on a tap.
+- **The three-finger tap toggles full screen reliably.** Fingers that land or lift a few milliseconds apart, a little movement, and fingers over the bars or a sheet all still count, and a view reads no tap from them. If your phone has its own three-finger gesture (a screenshot), switch it off in the system settings.
+- **The subtree's name on the phone's top bar is as large as "Arlesh" and in the same place.** Entering or leaving a subtree no longer shifts or shrinks the title; the `‹` sits to its left.
+- **Full screen's corner square is no longer cut off by the phone's rounded corner.** It sits clear of the display's corner radius as well as of the system bars.
+- **The Open and Filter searches open a little lower on the phone,** within thumb reach, and still above the keyboard.
+- **The quit dialog, and the other warning prompts, are centred on the phone** instead of rising from the bottom edge.
+- **The system-bar settings are big buttons.** Under Settings > General, Standard, Edge-to-edge and Immersive are three full-width buttons with the chosen one highlighted, instead of two small dropdowns.
+- **Full screen leaves room for the system bars.** In full screen (Edge-to-edge or Immersive) the List, Zen, Plan and Steps views pad their content by the status bar at the top (the inset only, no extra gap) and the gesture bar at the bottom, so the first heading and the Plan's header controls are no longer under the status bar or where it peeks; the Mindmap stays full-bleed. The fullscreen corner square sits at least 20 px from the right and bottom edges, and above the gesture bar's peek. In the List only the resting position is inset; scrolled, rows use the whole screen, and a stuck sticky heading covers the status-bar zone so no row shows above it.
+- **A little more room around the phone's List and sheets.** Outside full screen the List's first heading rests a small gap below the top bar, and every bottom sheet (the quick action menu included) leaves a larger gap under its last item.
+
 - **Touch gestures.** On any touchscreen, a tap selects and a second tap deselects; a double-tap
   goes into the node (enters it in the Mindmap, steps into it in the Steps View, narrows the List
   View to its subtree, opens its subtree in the Plan View, opens it in the List View from Zen); a
-  long-press opens the command palette for it; and a quick flick up opens its editor. Swipe a row or
+  long-press opens its quick action menu; and a quick flick up opens its editor. Swipe a row or
   card right to cycle its status — or a Commitment's verdict, or release a wait — and left to set it
   Started. Two fingers swiped sideways change the preset, and a pinch zooms the Mindmap and the
   Steps View. In the Mindmap one finger pans the canvas, a held node can be dragged to a new parent,
@@ -21,7 +55,7 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
   a sideways swipe and climbs with a swipe up, and a candidate swiped right is planned into the
   scope shown. The palette's **Select several** builds a multi-selection by tapping.
 - **Phone layout: Plan and Zen.** Below 700 px the Plan View stacks its panes, candidates above the
-  planned pane, and the Zen View shows its cards as one scrolling column sized to fit.
+  planned pane, and the Zen View shows its cards as one column of cards that fill the screen.
 
 - **Phone layout.** Below 700 px wide — a narrow window, or a phone — Arlesh lays itself out for a
   small screen: the views move to a bottom bar (Zen, List, Plan, Steps, Map), the preset becomes a
@@ -159,6 +193,15 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
   **The board alone:** **F11**, or **F** with nothing selected, hides the tab strip and the top bar; press it again to bring them back. Arlesh always reopens with them shown.
 
 ### Changed
+- **A new node shows at once.** Creating a child or a sibling (`Tab`, `Enter`, the Child button) puts the node on screen the moment you ask, with the same faint pulse until the server answers, so you can type its title, set its status or add a child under it straight away; those go out in order once it exists. If the server refuses the create, the node and anything you added under it go away, with one note saying why. Undoing a create that has not been sent takes it back without a trip to the server. New Flows and Habits still wait for the server.
+- **Planning in the Plan View shows at once.** Planning an item into the scope (a swipe right, or the move-across key) puts it in the planned pane the moment you ask, and taking it out puts it back in the candidates, each with the same faint pulse until the server answers. If the server refuses, the item goes back with one note saying why. When the new Plan would leave Tasks below it outside, the prompt still opens first.
+
+- **A rename and an editor Save show at once.** Renaming a node, and saving a Task, Goal, Commitment, wait, Project, Domain, Tag or Info in its editor, now put the new values on screen the moment you confirm, with the same faint pulse until the server answers; the editor closes straight away. If the server refuses, the values go back, a note says why, and the editor opens again with what you typed and the reason under it. Flow and flow-item editors still wait for the server.
+
+- **A status change shows at once.** Stepping a Task or Goal, `Alt+Enter`, marking a commitment Kept or Broken, and releasing a wait now change on screen the moment you press, with a faint pulse on the item until the server confirms. If the server refuses, the change is taken back with a note saying why; against a slow server, quick presses stack up in order instead of waiting on each other.
+
+- **Faster writes against a server.** In Client mode a change no longer reloads the whole board twice, and a write crosses the app's internal bridge once instead of three times. The board a server sends is also compressed, so a status swipe on the phone settles sooner and uses far less data.
+
 - **Start shows what you can begin now.** Under the Start preset, in every view and over MCP:
   - Overdue Tasks, Goals and waits stay instead of dropping out; Missed items still drop out.
   - Work whose Time Scope or Plan has not begun yet is hidden, along with sub-steps that have no window or Plan of their own that has begun.
@@ -196,6 +239,12 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 - **The delete confirmation opens with Delete focused**, so deleting is Delete, then Enter. **Tab** / **Shift+Tab** move between Delete and Cancel without leaving the dialog, and **Escape** or a click outside still cancels. The warning prompts that list what you would lose still open on Cancel.
 
 ### Fixed
+- **Another device's changes now show up on their own in Client mode, and every view refreshes from one fetch.** With the desktop and the phone on one server, a change made on the phone only appeared on the desktop after the desktop made a change of its own. Every view of the board in a window (the list, the filters, the Mindmap) now updates when another device changes the board. A window loads the board once and shares it between its views, so a refresh, an edit or opening several views at once no longer fetches the whole board once per view: it is faster and lighter on the connection.
+
+- **The window title is "Arlesh" again.** Builds since Client mode titled the window "Arlesh — 9f0-client-mode" and stopped giving it its desktop app id, so the launcher could not match it to Arlesh's icon.
+
+- **The Android app restarts when you switch server settings, and has the Arlesh logo as its icon.** "Connect and restart" used to do nothing in the release APK until you closed and reopened the app by hand, and if a restart fails now you see an error saying so. The phone's top bar no longer shows the server; **Settings → Server** has a status line with the mode, URL, whether the server answers, when it last synced and whether its version suits the app. The launcher icon is the desktop logo, as an adaptive icon.
+
 - **List View hides what is inside an archived Project when Archived is on Exclude.** With the **Archived** pill on Exclude, the List View still listed the Tasks inside an Archived Project, though the Mindmap hid them. It now hides them too, and the same goes for an archived Domain.
 
 - **Narrowing a Time Scope from the List View no longer hangs.** The prompt to clamp nested items or cancel appeared only on the Mindmap; it now appears in every view.
@@ -241,6 +290,8 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 - **Shortcuts no longer fire with extra modifiers held.** A shortcut needs exactly the modifiers it names: **Ctrl+E** no longer opens the editor, **Ctrl+Shift+C/X/V** no longer cut, copy or paste, and **Shift+Tab** no longer creates a child.
 
 ### Removed
+- **The server indicator on the desktop top bar.** The mode (This device or Server, with a dot for reachability) is no longer drawn there; Settings > Server shows it, and the banner still appears when the server cannot be reached.
+
 - **The red exclamation badge for Overdue items.** The amber border alone marks them.
 
 - **Changing a node's type.** A node keeps the kind it was created as: **Ctrl+↑** / **Ctrl+↓** no longer cycle its type, and the context menu's **Set type** submenu is gone, as is converting a Flow's goal and task items into each other. To change a kind, create the new node and move or delete the old one.

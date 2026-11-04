@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { SystemBarsMode } from "@/utils/system-bars";
 import {
   DEFAULT_HABIT_COLLAPSE_THRESHOLD,
   MAX_HABIT_COLLAPSE_THRESHOLD,
@@ -190,6 +191,32 @@ interface DisplayStore {
    */
   zenShowsCompound: boolean;
   toggleZenShowsCompound: () => void;
+  /**
+   * How the phone's Steps View lays its cards out: **filling the screen** in pages (on), or one
+   * scrolling column of cards as tall as their content (off). **On by default** (ruled by the user,
+   * 2026-11-02), as the Zen View's cards fill the screen. The phone layout only; the desktop grid is
+   * unaffected. App-wide.
+   */
+  stepsFillScreen: boolean;
+  toggleStepsFillScreen: () => void;
+  /**
+   * How the phone's split planned pane shows its buckets while nothing is dragged: **tabs** (on),
+   * one bucket's cards at a time under a row of bucket tabs, or **stacked** (off), every bucket
+   * under its heading in one scrolling column. **On by default** (decided with the user,
+   * 2026-11-02). The phone layout only; the desktop's buckets are always stacked. App-wide.
+   */
+  planPhoneTabs: boolean;
+  togglePlanPhoneTabs: () => void;
+  /**
+   * How the app sits against the Android system bars in normal display: `standard`, `edgeToEdge`
+   * or `immersive` (see `SystemBarsMode`). **Edge-to-edge by default** (decided with the user,
+   * 2026-11-02). Android only; the desktop window is unaffected. App-wide.
+   */
+  systemBars: SystemBarsMode;
+  setSystemBars: (mode: SystemBarsMode) => void;
+  /** The same choice while the app is in fullscreen. **Immersive by default.** */
+  systemBarsFullscreen: SystemBarsMode;
+  setSystemBarsFullscreen: (mode: SystemBarsMode) => void;
 }
 
 /** Keeps a stored or typed threshold inside the range the setting offers. */
@@ -271,6 +298,14 @@ export const useDisplayStore = create<DisplayStore>()(
       zenShowOverdueBorder: true,
       toggleZenShowOverdueBorder: () =>
         set((s) => ({ zenShowOverdueBorder: !s.zenShowOverdueBorder })),
+      stepsFillScreen: true,
+      toggleStepsFillScreen: () => set((s) => ({ stepsFillScreen: !s.stepsFillScreen })),
+      planPhoneTabs: true,
+      togglePlanPhoneTabs: () => set((s) => ({ planPhoneTabs: !s.planPhoneTabs })),
+      systemBars: "edgeToEdge",
+      setSystemBars: (mode) => set({ systemBars: mode }),
+      systemBarsFullscreen: "immersive",
+      setSystemBarsFullscreen: (mode) => set({ systemBarsFullscreen: mode }),
     }),
     { name: "arlesh-display" },
   ),

@@ -3,7 +3,7 @@
 use tauri::State;
 
 use crate::backend::AppBackend;
-use crate::{error::WireError, mindmap::model::MindmapLoad};
+use crate::{backend::revision::BoardLoad, error::WireError};
 
 /// Every payload one mindmap render needs, in a single round trip.
 ///
@@ -18,12 +18,15 @@ use crate::{error::WireError, mindmap::model::MindmapLoad};
 /// The agent capacity lock's block is derived onto it here (see [`crate::capacity::blocks`]), so
 /// the board a window draws is blocked exactly as the MCP's is.
 ///
+/// In Client mode it carries the `revision` the server read the board at, which the window keeps
+/// to tell which `board-changed` events are news (`src/stores/board-revision-store.ts`).
+///
 /// A read: it writes nothing, since every iteration window is derived from its value key (ADR
 /// 0009). It runs in a transaction only so that its many reads see one consistent board.
 #[tauri::command]
 pub async fn load_mindmap(
     backend: State<'_, AppBackend>,
     now: chrono::NaiveDateTime,
-) -> Result<MindmapLoad, WireError> {
+) -> Result<BoardLoad, WireError> {
     backend.load_mindmap(now).await
 }

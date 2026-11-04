@@ -38,7 +38,6 @@ interface Options {
   insertParent: (nodeId: string, kind: NodeKind, parentId: string, parentKind: NodeKind) => Promise<string>;
   pasteNodes: (items: ReadonlyArray<{ id: string; kind: NodeKind }>, targetId: string, targetKind: NodeKind, position: number, copy: boolean) => Promise<readonly LeftBehindChild[]>;
   onRequestDelete: (nodeIds: string[]) => void;
-  reload: () => Promise<void>;
   renameNode: (id: string, kind: NodeKind, title: string) => Promise<void>;
   /** `agentic` seeds a new Task's own flag; omitted, it starts in Inherit. */
   createNode: (parentId: string, parentKind: NodeKind, childKind: NodeKind, title: string, agentic?: TaskAgentic) => Promise<MindmapNode>;
@@ -85,14 +84,14 @@ interface Result {
 }
 
 export function useNodeActions({
-  tree, clipboard, pasteNodes, insertParent, onRequestDelete, reload, renameNode,
+  tree, clipboard, pasteNodes, insertParent, onRequestDelete, renameNode,
   createNode, selectNode, setClipboard, setEditingNodeId, showToast, onNewFlow, onNewHabit, onNewCommitment,
 }: Options): Result {
   const { t } = useTranslation(["warnings", "nodeKinds", "undo"]);
   // Advancing a status is one definition, shared with every other surface that draws the gesture
   // — the occurrence completion guard and the Backlog clearing travel with it.
   const { cycleStatus, toggleStarted, occurrencePrompt, confirmOccurrence, cancelOccurrence } = useStatusCycle({
-    findNode: (id) => findNode(tree, id), reload, showToast,
+    findNode: (id) => findNode(tree, id), showToast,
   });
 
   const onStatusClick = cycleStatus;
@@ -102,12 +101,12 @@ export function useNodeActions({
       if (title.trim() === "") { setEditingNodeId(null); return; }
       const node = findNode(tree, nodeId);
       if (node === undefined) return;
+      // A rename is handed to the window's lane and shows at once, so this resolves as it is handed
+      // on and a refusal puts the old title back with one toast (ADR 0012). A Flow's or a flow
+      // item's rename still waits for its answer, and stays open on the title that earned a refusal.
       void renameNode(nodeId, node.kind, title.trim())
         .then(() => setEditingNodeId(null))
         .catch((err: unknown) => {
-          // The rename stays open on the title that earned the refusal, rather than closing on a
-          // write that did not happen. Before this, a refused rename left the old title on the
-          // canvas and said nothing — indistinguishable from a rename that worked and was undone.
           console.error(`${LOG_PREFIX} rename failed:`, err);
           showToast({ nodeId, message: t("warnings:renameFailed", { message: getErrorMessage(err) }) });
         });
