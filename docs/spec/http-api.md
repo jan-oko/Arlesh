@@ -265,6 +265,12 @@ installs the `arlesh-server` command. Its layout follows the user's Librarian pr
   abstract class listing every operation. `arlesh.SqliteDatabase` is its implementation, the
   Rust core over the SQLite file, which `arlesh.open` returns. The server depends on the port
   only. Its composition root injects the implementation, and its unit tests inject a fake.
+  *Planned ([ADR 0016](../adr/0016-shared-backend-crate-and-python-backends.md)):* the
+  implementation becomes `arlesh.Arlesh` over the app's own `SqliteBackend`, shared from the
+  `arlesh-backend` crate, and `arlesh.open` returns that. The server moves with it and changes
+  nothing else. It runs on a `SqliteBackend` only: `Board.open` refuses an `HttpBackend`, because
+  a server over a server is a relay that could loop back on itself and would stamp every device's
+  writes as its own client. See [Client Mode](client-mode.md#the-backend-crate-and-python).
 - **`business_logic/board.py`**: the `Board` holds which open database a request reads and writes
   through. It takes the hold, keeps one write-open per client, and serves each client's MCP
   endpoint from that client's write-open. It is handed an `open_as(client)` answering the
