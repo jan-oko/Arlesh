@@ -102,6 +102,7 @@ dependencies = [
  "anyhow",
  "axum",
  "chrono",
+ "futures-util",
  "rmcp",
  "schemars 1.2.2",
  "serde",

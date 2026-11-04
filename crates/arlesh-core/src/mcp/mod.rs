@@ -43,6 +43,7 @@ mod agentic;
 mod capacity;
 mod delegation;
 pub mod endpoint;
+pub mod events;
 mod flows;
 pub mod ids;
 mod infos;
@@ -264,12 +265,24 @@ pub fn router(
     factory: SessionFactory,
     announce: Announce,
     capacity: AgentCapacity,
+    streams: events::EventStreams,
 ) -> axum::Router {
     // `allowed_hosts` already defaults to loopback only. `allowed_origins` defaults to empty,
     // which *disables* Origin validation rather than enforcing it — so a page in the user's
     // browser could POST here. `enforce_origin_validation` rejects any request that carries an
     // Origin at all, which a browser always does and an MCP client never does.
     let config = StreamableHttpServerConfig::default().enforce_origin_validation();
+
+    // An agent's write is a change to the board: the host's own announcement, then the streams'.
+    let feed = streams.feed.clone();
+    let announce: Announce = {
+        let announce = announce.clone();
+        Arc::new(move |origin: Option<&str>| {
+            announce(origin);
+            feed.bump();
+        })
+    };
+    let served = events::routes(factory.clone(), streams);
 
     let service = StreamableHttpService::new(
         move || {
@@ -281,5 +294,5 @@ pub fn router(
         config,
     );
 
-    axum::Router::new().nest_service("/mcp", service)
+    served.nest_service("/mcp", service)
 }

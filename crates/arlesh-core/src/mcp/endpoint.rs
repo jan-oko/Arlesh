@@ -20,8 +20,15 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tokio::{net::TcpListener, sync::Mutex, task::JoinHandle};
 
-use super::{router, DEFAULT_PORT, PORT_ENV_VAR};
+use super::{
+    events::{ChangeFeed, EventStreams},
+    router, DEFAULT_PORT, PORT_ENV_VAR,
+};
 use crate::{board::Announce, capacity::AgentCapacity, database::session::SessionFactory};
+
+/// How often the wait stream reads the waits again in the app, which hears of an agent's writes
+/// but not of the windows'.
+const WAIT_POLL: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// The file in the app's data directory that holds the MCP port setting.
 pub const SETTINGS_FILE: &str = "mcp.json";
@@ -132,6 +139,8 @@ struct Inner {
     factory: SessionFactory,
     announce: Announce,
     capacity: AgentCapacity,
+    /// The event streams beside `/mcp`; one feed for the app's life, whatever the listener does.
+    streams: EventStreams,
     settings: PathBuf,
     env_override: Option<u16>,
     running: Mutex<Running>,
@@ -162,6 +171,11 @@ impl McpEndpoint {
                 factory,
                 announce,
                 capacity,
+                streams: EventStreams {
+                    feed: ChangeFeed::new(),
+                    // The app's windows write without announcing here, so the waits are re-read.
+                    poll: Some(WAIT_POLL),
+                },
                 settings,
                 env_override,
                 running: Mutex::new(Running {
@@ -217,6 +231,7 @@ impl McpEndpoint {
                     self.inner.factory.clone(),
                     self.inner.announce.clone(),
                     self.inner.capacity.clone(),
+                    self.inner.streams.clone(),
                 );
                 running.server = Some(tokio::spawn(async move {
                     if let Err(error) = axum::serve(listener, app).await {

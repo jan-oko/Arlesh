@@ -677,6 +677,21 @@ pub enum WaitsOperation {
         /// The wait: a row id or a short id.
         id: NodeIdParam,
     },
+    /// Starts watching waits: checks that each id names an agentic wait you can see, and answers
+    /// each one's current state. It changes nothing on the board. If your session says Arlesh
+    /// notifications are on, you are then notified when a watched wait is released, reopened,
+    /// archived or deleted; waits you ask or raise are watched already. Otherwise it only
+    /// validates the ids.
+    Watch {
+        /// The waits: row ids or short ids.
+        ids: Vec<NodeIdParam>,
+    },
+    /// Several waits' current states in one read: for each id, its status, archived flag and ids,
+    /// or `gone` when no visible wait has that id any more (deleted, or outside what you can see).
+    GetMany {
+        /// The waits: row ids or full or short ids.
+        ids: Vec<NodeIdParam>,
+    },
 }
 
 fn question_by_default() -> bool {

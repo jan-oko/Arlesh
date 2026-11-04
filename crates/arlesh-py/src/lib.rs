@@ -70,7 +70,7 @@ impl NativeDatabase {
         shared::for_database(&self.path).changes.revision()
     }
 
-    /// Waits until the board's revision is past `after`, and answers it: what `GET /events`
+    /// Waits until the board's revision is past `after`, and answers it: what `GET /events/changes`
     /// streams.
     fn next_change<'py>(&self, py: Python<'py>, after: u64) -> PyResult<Bound<'py, PyAny>> {
         let shared = shared::for_database(&self.path);
