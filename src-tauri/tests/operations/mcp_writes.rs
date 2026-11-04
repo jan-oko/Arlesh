@@ -1179,7 +1179,9 @@ mod agent_waits {
             assert_eq!(state["archived"], false);
             assert_eq!(state["question"], true);
             assert_eq!(state["wait_id"], full.as_str());
-            assert!(state["task_short_id"].as_str().is_some_and(|short| short.len() >= 3));
+            assert!(state["task_short_id"]
+                .as_str()
+                .is_some_and(|short| short.len() >= 3));
         }
 
         sqlx::query("DELETE FROM expectations WHERE id = ?")
@@ -1245,9 +1247,7 @@ mod agent_waits {
         tokio::spawn(async move { axum::serve(listener, routes).await });
         let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
         stream
-            .write_all(
-                b"GET /events/expectations?agentic=true HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
-            )
+            .write_all(b"GET /events/expectations?agentic=true HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
             .await
             .unwrap();
         read_until(&mut stream, ": connected").await;
