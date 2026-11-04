@@ -2815,6 +2815,24 @@
       ]
     },
     {
+      "name": "plan drops an archived or expired commitment, as start and do do",
+      "spec": "filtering-logic.md — an archived Task or Commitment — by hand, beneath a hand archive, or derived (Expired) — drops out of Plan, Start and Do (Plan joined for Commitments 2026-11-04).",
+      "filter": {
+        "preset": "plan"
+      },
+      "board": "archived-now",
+      "mindmap": [
+        "domain-a",
+        "task-live-doing",
+        "task-live-todo"
+      ],
+      "list": [
+        "task-live-doing",
+        "task-live-todo"
+      ],
+      "commitments": []
+    },
+    {
       "name": "start drops a task archived by hand, one beneath a hand archive, and an archived commitment",
       "spec": "filtering-logic.md — an archived Task or Commitment — archived by hand, beneath a hand archive, or derived — drops out of Start and Do, window or none (ruled 2026-10-04). Before hand archives every archived Task had a lapsed window, which Start already dropped.",
       "filter": {

@@ -92,3 +92,15 @@ def test_the_fcm_credentials_file_is_optional_and_comes_from_the_environment(
     monkeypatch.setenv("ARLESH_FCM_CREDENTIALS_FILE", "/run/secrets/arlesh-fcm.json")
 
     assert Config().fcm_credentials_file == Path("/run/secrets/arlesh-fcm.json")
+
+
+def test_an_empty_url_is_unset_so_a_url_file_can_replace_an_image_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    secret = tmp_path / "database-url"
+    secret.write_text("sqlite:////a.db")
+    monkeypatch.delenv("ARLESH_DATABASE__PATH", raising=False)
+    monkeypatch.setenv("ARLESH_DATABASE_URL", "")
+    monkeypatch.setenv("ARLESH_DATABASE_URL_FILE", str(secret))
+
+    assert Config().database.path == Path("/a.db")

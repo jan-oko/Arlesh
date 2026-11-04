@@ -320,6 +320,21 @@ fn plan_start_and_do_hide_a_broken_commitment_even_while_its_window_is_open() {
     ));
 }
 
+#[test]
+fn plan_hides_an_archived_or_expired_commitment_unless_the_archived_pill_includes_it() {
+    // An Expired Commitment is archived and still unresolved: Plan used to keep it on screen.
+    let mut archived = commitment(Verdict::Unresolved, Timing::Active);
+    archived.archived = true;
+    let live = commitment(Verdict::Unresolved, Timing::Active);
+    let plan = BoardFilter::preset(Preset::Plan);
+    assert!(passes_commitment_preset(&live, &plan));
+    assert!(!passes_commitment_preset(&archived, &plan));
+    assert!(passes_commitment_preset(
+        &archived,
+        &BoardFilter::preset(Preset::All)
+    ));
+}
+
 fn expectation(status: &str) -> NodeFacts {
     let mut node = NodeFacts::new("expectation-1", NodeKind::Expectation);
     node.status = Some(status.to_string());

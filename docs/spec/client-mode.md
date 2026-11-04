@@ -380,6 +380,53 @@ release key; there is no Play Store.
   the launcher and start connected; the release app takes no such input (*Trying it*).
 - **The touch layout** is a separate Task (`201`); this one only builds and wires the platform.
 
+## Running the server
+
+*Decided with the user 2026-11-04.* Every release (a `dev` → `master` merge, or a `vX.Y.Z` tag)
+ships the server two ways, both on the GitHub release or in ghcr.io:
+
+- **The container image** `ghcr.io/jan-oko/arlesh-server`, for linux/amd64 and linux/arm64, tagged
+  `latest`, the version and `sha-<short>`. It runs as a non-root user, keeps the database on the
+  volume `/data` (`ARLESH_DATABASE_URL=sqlite:////data/arlesh.db`), listens on `0.0.0.0:4750`
+  inside the container, and has a `HEALTHCHECK` on `/health`. Built from `docker/server.Dockerfile`.
+- **Python wheels** for linux x86_64 and aarch64 (manylinux), on the release page:
+  `pip install "arlesh-<version>-…whl[server]"`, then `arlesh-server --db ~/arlesh.db`.
+
+```sh
+docker run -d --name arlesh-server -p 4750:4750 -v arlesh-data:/data \
+  ghcr.io/jan-oko/arlesh-server:latest
+
+# the first token, printed once (or pair a device, below)
+docker exec arlesh-server arlesh-server token add phone
+```
+
+```yaml
+# compose.yaml
+services:
+  arlesh-server:
+    image: ghcr.io/jan-oko/arlesh-server:latest
+    restart: unless-stopped
+    ports:
+      - "4750:4750"
+    volumes:
+      - arlesh-data:/data
+volumes:
+  arlesh-data:
+```
+
+The server reads `ARLESH_DATABASE_URL` (default `sqlite:////data/arlesh.db`) and `ARLESH_SERVER__PORT`
+(default 4750, the port inside the container); `ARLESH_DATABASE_URL_FILE` takes the URL from a file
+(a Docker secret) instead. The `/data` folder must be writable by uid 10001.
+
+Then `docker compose exec arlesh-server arlesh-server token add phone`, and paste the URL and the
+token into Settings → Server. To **pair** instead, enter only the URL on the new device, which shows
+a PIN, and run `docker exec arlesh-server arlesh-server pin approve <pin> --name phone`
+(`pin list` shows those waiting). An existing `arlesh.db` is seeded by copying it into the volume
+(*Data*, below). The image speaks plain HTTP and binds every interface: put it behind a tailnet, a
+LAN you trust or a TLS proxy, or pass `--tls-cert` and `--tls-key` (mount them and add the flags
+after the image name). The image is private until the package is made public in GitHub's package
+settings; `docker login ghcr.io` with a token that can read packages until then.
+
 ## Versions
 
 `/health` reports `api_version`, an integer bumped only on a breaking change, and the build commit.
@@ -413,9 +460,18 @@ npm run box -- stop all                                     # apps and servers
 uncommitted diff, per branch and OS, kept in `$XDG_STATE_HOME/arlesh/box/`), installs on an Android
 device only when that device lacks this build or the package, and always launches. The target is
 `desktop` (this machine, built in) or a name registered with `devices add <name> --os
-android|desktop [--host host[:port]]`; the registry is per user, in
+android|desktop [--host host[:port]] [--serial S] [--ssh [user@]host[:port]]`; the registry is per user, in
 `$XDG_CONFIG_HOME/arlesh/box-devices.json`, never in the repo. Without a target, `run` reuses the last
 one.
+
+**Settings file.** `box` reads `$XDG_CONFIG_HOME/arlesh/box.env` (beside `box-devices.json`, never in
+the repo) before any subcommand, so the Firebase step and every `box server` it starts inherit it. A
+missing file does nothing. The format is `KEY=value` per line; blank lines and `#` comments are
+ignored; an `export ` prefix and surrounding single or double quotes are accepted; `$HOME`, `${HOME}`
+and a leading `~` in a value are expanded. A variable already set in the real environment wins over
+the file. A malformed line stops box with its line number, never its value, and values are never
+logged. Keys it is for: `ARLESH_BOX_FIREBASE_PROJECT`, `ARLESH_FCM_CREDENTIALS_FILE`, and where they
+apply `ARLESH_BACKUP_TOKEN` and `ARLESH_BOX_SEED_URL`.
 
 **An Android `run` uses the CI build when one matches, and every box APK is signed with one shared
 key** (decided with the user, 2026-11-02):
@@ -434,38 +490,100 @@ key** (decided with the user, 2026-11-02):
   are never taken for each other. `run` prints which source it used. Desktop targets always build
   locally (`--ci` there is an error).
 - *Signing.* `keystore init` generates a box-only keystore at `$XDG_CONFIG_HOME/arlesh/box.keystore`
-  (alias `arlesh-box`, store and key password `arlesh-box`, 10000 days; a debug-grade key for
-  `com.atai.arlesh.box.*`, not a secret worth guarding) and uploads it, base64, with `gh secret set
-  ARLESH_BOX_KEYSTORE_B64`. It refuses to replace an existing keystore without `--force`, and warns
-  that rotating the key means every installed box app has to be reinstalled. GitHub secrets cannot
-  be read back, so CI can sign with it but no one can fetch it from there: the local file is the
-  copy of record. Local builds sign with that keystore when it exists, else with
-  `~/.android/debug.keystore` and a notice that CI and local builds are not update-compatible until
-  `keystore init`. `bundles.yml` in box mode signs with the secret when set (only the signing step
-  reads it, nothing echoes it), else with a fresh `keytool` key and a `::warning::`.
+  (alias `arlesh-box`, 10000 days; a debug-grade key for `com.atai.arlesh.box.*`) under a random
+  password (`secrets.token_urlsafe(24)`). No password is written in the repo: it is stored locally
+  beside the keystore, in `box.keystore.password` (mode 600), and the command uploads two repo
+  secrets with `gh secret set`, values on stdin: `ARLESH_BOX_KEYSTORE_B64` (the keystore, base64)
+  and `ARLESH_BOX_KEYSTORE_PASSWORD`. keytool and apksigner receive the password only as
+  `-storepass:file` / `--ks-pass file:` (or `env:`), so it appears in no process list, and the
+  command never prints it. It refuses to replace an existing keystore without `--force`, and warns
+  that replacing the key means every installed box app has to be reinstalled. GitHub secrets cannot
+  be read back, so CI can sign with them but no one can fetch them from there: the local files are
+  the copy of record. A keystore made before passwords were random has a fixed one; `keystore
+  rotate-password` moves it onto a random one with `keytool -storepasswd` and `-keypasswd` (the same
+  key, so installed box apps stay update-compatible), writes the password file and re-uploads both
+  secrets. Only that command knows the old value; normal signing never falls back to it, and with
+  the keystore but no password file it stops and says to run `rotate-password` (or `init`). Local
+  builds sign with the keystore when it exists, else with `~/.android/debug.keystore` (its password
+  is the SDK's documented one, passed by environment variable) and a notice that CI and local
+  builds are not update-compatible until `keystore init`. `bundles.yml` in box mode signs with the
+  secrets when set (only the signing step reads them, through a file, nothing echoes them); the
+  keystore secret without the password secret fails with a message naming the fix; with neither,
+  it uses a fresh `keytool` key under a password generated in the job, and a `::warning::`.
 - *Mismatch.* `adb install` failing with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` stops `run` with a
   message that names the cause and offers `--reinstall`, which uninstalls the box app first (box
   re-provisions the token anyway). Nothing is uninstalled without the flag.
 
+**Every worktree has its own `node_modules`.** Box runs `npm ci` in a worktree when its `node_modules`
+is missing or its `package-lock.json` differs from the one it was installed from (the lockfile's hash
+is kept in `node_modules/.arlesh-lock-stamp`, so deleting the folder also forces a reinstall). It is
+checked before every desktop or Android build and when a worktree is created. Nothing is shared with
+the main checkout: an `npm ci` there cannot pull dependencies (or Vite's `.vite` cache) out from under
+another box's running dev server, and a branch that adds a devDependency gets it. A worktree made by
+an older box, whose `node_modules` is a symlink to the main checkout's, has the link removed and is
+installed on its next run. `prune` removes the folder with the worktree (it is git-ignored).
+
 **A branch needs no worktree made by hand.** `run`, `server start`, `server token` and `server pin`
 create `.claude/worktrees/<dir>` when it is missing: `git fetch origin <branch>`, then `git worktree
 add -b <branch> --track origin/<branch>` (a local branch of that name is used as it is, with a notice
-if it is behind or has diverged), with the usual `node_modules` symlink. A branch that exists neither
+if it is behind or has diverged), with its own `node_modules` (above). A branch that exists neither
 locally nor on origin is an error; the tool never makes a branch off master. `<dir>` is the branch
 with `/` replaced by `-` (`qa/2026-11-round` is `qa-2026-11-round`), through one helper that also names
-the instance, the server and the Android package; a directory that holds another branch is an error.
-An existing worktree is used as-is, never pulled or reset; if it is behind origin, `run` prints
-`<branch> is N commits behind origin; pull to update`. `list` shows the branch beside the directory
-when they differ.
+the instance, the server and the Android package. Either spelling is accepted: `qa-2026-11-round` is
+mapped to `qa/2026-11-round` when that folder holds it, and a folder holding an unrelated branch is an
+error that names the branch to use. `list` shows the branch beside the directory when they differ.
 
-**Finding an Android device.** The registered host (`miniseer`, a MagicDNS name, a LAN address) is
-resolved with `getaddrinfo` and matched, by any of its addresses, against `adb mdns services`
-(`_adb-tls-connect`), which lists the phone's LAN `ip:port` under an `adb-<serial>-…` service. The
-first time a device is seen its adb serial is stored in the registry, and later runs match the mdns
-entry by serial first, since tailnet and LAN addresses differ for one phone. If nothing matches and a
-port was registered, `adb connect host:port` is tried; otherwise the run fails and lists the mdns
-entries it saw. The server URL handed to the app is this machine's tailnet address (`tailscale ip -4`)
-or, without one, its LAN address.
+**`run` never builds a stale commit.** Before choosing between a CI and a local build it fetches
+`origin/<branch>`. A worktree that is behind and clean is fast-forwarded (`git merge --ff-only`) and
+`run` says so; one that is behind and dirty, or has diverged, is refused with the reason and the
+fix, unless `--stale-ok` builds the current `HEAD` anyway. A worktree that is ahead (unpushed)
+builds locally as before. `--server <branch>`'s worktree is never touched.
+
+**Finding an Android device.** The first look is `adb devices -l`, for a transport that is already
+connected: an `adb-<serial>-…._adb-tls-connect._tcp` (mDNS auto-connect) transport by serial, an
+`ip:port` transport by any address the registered host resolves to (`phone.local` matches by its LAN
+address), and, with a serial known and nothing else matching, each transport's
+`adb shell getprop ro.serialno`. A matched transport is used as it is. Otherwise the phone is
+discovered: `adb mdns services`, then, when that is empty (adb's mdns shares port 5353 with avahi,
+systemd-resolved and Chromium) or missing, `avahi-browse -rpt _adb-tls-connect._tcp` (the IPv4 `=`
+lines, with the TXT `serial=`). Discovery matches by serial first, then by address. The wireless
+debugging port changes on every toggle, so the port is always the discovered one.
+
+The hardware serial is stored in the registry the first time a device is connected, read with
+`adb shell getprop ro.serialno` (over Wi-Fi `get-serialno` answers with the transport name); an address
+or transport name is never stored. `devices add <name> --os android --serial <serial>` registers it up
+front, so a tailnet name can be matched by serial alone.
+
+*Off the LAN / tailnet hosts.* adbd listens on every interface, so when the host resolves to a tailnet
+address (100.64.0.0/10) and discovery gives a port, box connects to `<tailnet-ip>:<port>` first, then
+to the LAN address. On the first run with no serial known, nothing can match the LAN listing, so box
+tries `adb connect <tailnet-ip>:<port>` for each discovered port (at most three, each bounded to 8 s): a
+connect that answers proves it is the same phone, and its serial and port (`last_port`) are stored.
+With no discovery at all (off the LAN there is no mDNS), box tries the registered `host:port`, then
+`host:<last_port>`. When all of that fails the error says to run `adb tcpip 5555` once over USB (or
+from Termux) and register `host:5555`, which does not change. Box never pairs.
+
+*Termux/SSH fallback (opt-in).* `devices add <name> --os android --host … --ssh [user@]host[:port]`
+(Termux sshd listens on 8022). When adb cannot reach the device and `--ssh` is set, `run` builds or
+fetches the APK as usual, `scp`s it to `~/storage/downloads/arlesh-<branch>.apk` and runs
+`ssh … termux-open` on it, which opens Android's installer for the person to confirm. It needs sshd
+with the key authorised, `termux-setup-storage` run once, and Termux:API. `ssh` and `scp` run with
+`BatchMode=yes` and never prompt. Over this path the app cannot be pre-bound to a server (that needs
+the `am start` extras, which need adb), nothing is recorded as installed, and box says so, and how to
+pair adb (`adb pair <host>:<pairing port>`).
+
+The server URL handed to the app is this machine's tailnet address (`tailscale ip -4`) or, without one,
+its LAN address.
+
+**Server lifecycle.** `server start` records `server.pid` only once the server answers, so a failed
+start (the database held by another writer, say) leaves the previous record alone and prints the pid
+that holds `data/arlesh.db.lock` (from `lsof`, else `fuser`), with `box server stop <branch>` or
+`kill <pid>`. `server stop` SIGTERMs the server's process group (it starts in its own session), waits
+up to 10 s, SIGKILLs the group, then does the same to anything still holding the lock, and checks the
+port and the lock are free. arlesh-server itself bounds uvicorn's graceful shutdown
+(`timeout_graceful_shutdown`, 5 s) and ends `/events` streams as soon as shutdown begins, so a
+connected desktop no longer keeps a stopped server alive. Children started inside a worktree's project
+run without `uv run --script`'s `VIRTUAL_ENV`, which made uv warn on every start.
 
 **Every `run` comes up already connected**, on desktop and Android alike, to the branch's own server
 (started if it is not up; the first start in a fresh worktree builds arlesh-py and says so).
@@ -522,8 +640,29 @@ More of the tool, for trying pairing and the phone build:
   (`server pin <name> approve <pin>`). `box run` has no install-only or provision-only mode, so
   binding an installed app to a server the box way means building it locally.
 - `clean <branch>` also removes that branch's Firebase app and uninstalls the package from the
-  registered Android devices; `prune [<device>]` does so for every `com.atai.arlesh.box.*` whose
-  worktree is gone.
+  registered Android devices.
+- **`list` is driven by open PRs, `prune` by their absence.** `list` asks `gh pr list --state open`
+  on origin's repository and prints one row per open-PR branch: PR number, title, base and draft
+  flag; the worktree (if any) and whether it is ahead of or behind origin; the desktop and Android
+  build (`fresh` when the recorded stamp equals the worktree's current one, `stale` when not, `-`
+  when never built); each device's installed build (`fresh` or `stale`); the server (port) and
+  whether an app instance is running. After a separator come `dev`, `master` and every worktree with
+  no open PR, marked "no open PR (prunable)". `--json` prints the same rows. Without an
+  authenticated `gh`, `list` says so in one line and shows the plain worktree table.
+- `prune [<device>] [-y | --dry-run]` prints its plan, then asks `Proceed? [y/N]`; anything but `y`/`yes`
+  aborts with nothing changed. `-y`/`--yes` applies without asking; `--dry-run` only prints. With no
+  terminal on stdin and no `-y`, it prints the plan and exits non-zero ("re-run with -y to apply"),
+  never blocking on input. It plans
+  every worktree whose branch has no open PR except: the main checkout, `dev`, `master`, the
+  current directory's worktree, a detached one, and any with uncommitted changes ("kept: dirty") or
+  unpushed commits ("kept: N unpushed commits"; no `origin/<branch>` counts every commit that is
+  on no remote). For each it stops the branch's server and app, runs the `clean <branch>` cleanup
+  (Firebase app, device installs, cached CI APK and state), then `git worktree remove` (never
+  `--force`). The local branch is deleted only when it is merged into `origin/dev` or `origin/master`,
+  or `gh pr list --state merged --head <branch>` finds a PR; otherwise it is kept and the output says
+  so. Remote branches are never deleted. Box apps in Firebase or on a device whose worktree is
+  gone are listed in the plan and pruned too. Without `gh`, box cannot know which PRs are open,
+  so it skips the worktree part and prunes only those apps.
 
 ## Not in phase 1
 
