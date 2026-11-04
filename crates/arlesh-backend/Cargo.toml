@@ -1,0 +1,36 @@
+[package]
+name = "arlesh-backend"
+version = "0.3.0"
+description = "Arlesh's Backend port and its two implementations: the in-process SQLite core and the HTTP client"
+edition = "2021"
+
+# The Backend port (`Backend` and one trait per domain) with the two backends that serve it, shared by
+# every host: the desktop app and the Python bindings. It depends on `arlesh-core` and never on
+# `tauri`, directly or through another crate; CI asserts it with `cargo tree` (see
+# .github/workflows/ci.yml). A host that wants to tell its windows or its callers about a change does
+# it through the callbacks `StatusNotify` and `Announce`, which it supplies.
+[features]
+default = ["sqlite", "http"]
+# `SqliteBackend`: the core in-process over a local database file (Standalone mode).
+sqlite = []
+# `HttpBackend` and the change stream: Client mode, calling `arlesh-server`.
+http = ["dep:reqwest", "dep:rustls"]
+
+[dependencies]
+arlesh-core = { path = "../arlesh-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# `Backend` is used as `dyn Backend`, so its async methods are boxed.
+async-trait = "0.1"
+tracing = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { version = "1", features = ["net", "rt", "sync", "time"] }
+# Client mode: `HttpBackend` calls `arlesh-server` (`src/http/`). The version already in the lock
+# (through rmcp), with rustls for an HTTPS server. Its crypto is `ring`, installed as the process
+# default when the backend is built, rather than reqwest's default aws-lc, whose C build needs cmake
+# (and NASM on Windows) on every bundle runner.
+reqwest = { version = "0.13", optional = true, default-features = false, features = ["json", "query", "http2", "gzip", "rustls-no-provider"] }
+rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std", "tls12"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }

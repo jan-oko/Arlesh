@@ -15,8 +15,10 @@
 //! A failure crosses as [`NativeError`] carrying a serialised `WireError` — its `kind`, `message`
 //! and `details` — which the Python half raises as the exception class for that kind.
 
+mod backend_calls;
 mod errors;
 mod hold;
+mod http_backend;
 mod mcp;
 mod opening;
 mod request;
@@ -219,7 +221,11 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3_async_runtimes::tokio::init(runtime);
     module.add_class::<NativeDatabase>()?;
     module.add_class::<hold::NativeHold>()?;
+    module.add_class::<http_backend::NativeHttpBackend>()?;
     module.add_function(wrap_pyfunction!(open, module)?)?;
+    module.add_function(wrap_pyfunction!(http_backend::connect, module)?)?;
+    module.add_function(wrap_pyfunction!(http_backend::pair_start, module)?)?;
+    module.add_function(wrap_pyfunction!(http_backend::pair_poll, module)?)?;
     module.add_function(wrap_pyfunction!(hold::hold, module)?)?;
     module.add_function(wrap_pyfunction!(rule, module)?)?;
     module.add_function(wrap_pyfunction!(token_call, module)?)?;

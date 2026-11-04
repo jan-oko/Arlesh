@@ -69,8 +69,8 @@ name = "arlesh"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "arlesh-backend",
  "arlesh-core",
- "async-trait",
  "axum",
  "chrono",
  "gtk",
@@ -78,9 +78,7 @@ dependencies = [
  "ksni",
  "libsqlite3-sys",
  "png 0.17.16",
- "reqwest",
  "rmcp",
- "rustls",
  "schemars 1.2.2",
  "serde",
  "serde_json",
@@ -93,6 +91,21 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "winreg",
+]
+
+[[package]]
+name = "arlesh-backend"
+version = "0.3.0"
+dependencies = [
+ "arlesh-core",
+ "async-trait",
+ "chrono",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -117,6 +130,7 @@ dependencies = [
 name = "arlesh-py"
 version = "0.3.0"
 dependencies = [
+ "arlesh-backend",
  "arlesh-core",
  "axum",
  "chrono",
