@@ -3,15 +3,23 @@
 version = 4
 
 [[package]]
-name = "arlesh-rules-wasm-spike"
-version = "0.0.0"
+name = "arlesh-rules"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "schemars",
  "serde",
- "serde-wasm-bindgen",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "arlesh-rules-wasm"
+version = "0.3.0"
+dependencies = [
+ "arlesh-rules",
+ "serde",
+ "serde-wasm-bindgen",
  "tsify",
  "wasm-bindgen",
 ]

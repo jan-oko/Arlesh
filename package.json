@@ -4,8 +4,8 @@
   "version": "0.3.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "npm run wasm -- --check && vite",
+    "build": "npm run wasm && tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint src && node scripts/check-source-text.mjs",
     "changelog": "node scripts/assemble-changelog.mjs",
@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri",
-    "box": "uv run --script scripts/box.py"
+    "box": "uv run --script scripts/box.py",
+    "wasm": "bash scripts/build-rules-wasm.sh"
   },
   "dependencies": {
     "@react-spring/web": "^10.1.1",
@@ -40,6 +41,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
+    "binaryen": "^124.0.0",
     "eslint": "^10.5.0",
     "eslint-plugin-i18next": "^6.1.4",
     "eslint-plugin-react-hooks": "^7.1.1",
