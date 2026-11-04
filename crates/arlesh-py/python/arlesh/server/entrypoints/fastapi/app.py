@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
+from pathlib import Path
+from typing import NamedTuple
 
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -28,6 +30,7 @@ from arlesh.server.entrypoints.fastapi.revision import (
     RevisionHeadersMiddleware,
 )
 from arlesh.server.entrypoints.fastapi.routers.access import McpAccessRouter
+from arlesh.server.entrypoints.fastapi.routers.backup import BackupRouter
 from arlesh.server.entrypoints.fastapi.routers.board import BoardsRouter
 from arlesh.server.entrypoints.fastapi.routers.capacity import CapacityRouter
 from arlesh.server.entrypoints.fastapi.routers.commitments import CommitmentsRouter
@@ -70,9 +73,18 @@ Arlesh's board over HTTP, run by Arlesh's own Rust core through the `arlesh` bin
 * **Every answer** carries `X-Arlesh-Revision` and `X-Arlesh-Epoch`: the board's revision (the
   one `/events` sends) and the run of the server it counts in. Answers over 1 KB are gzipped when
   the client accepts it; `/events` never is.
+* **`GET /backup`** exists only when the server has `ARLESH_BACKUP_TOKEN`: a consistent SQLite
+  snapshot, for the administrator, behind that secret (a device's token does not open it).
 * **`/mcp`** is Arlesh's MCP endpoint, behind the same token: an agent's writes there are
   journaled under the token's client.
 """
+
+
+class Backup(NamedTuple):
+    """``GET /backup``'s settings: the database to snapshot and the admin secret that guards it."""
+
+    database: Path
+    token: str
 
 
 class AppRouter(APIRouter):
@@ -121,7 +133,13 @@ class ArleshServer(FastAPI):
     """
 
     def __init__(
-        self, *, board: Board, tokens: TokenStore, pairs: PairingStore, version: str
+        self,
+        *,
+        board: Board,
+        tokens: TokenStore,
+        pairs: PairingStore,
+        version: str,
+        backup: Backup | None = None,
     ) -> None:
         client_context: ContextVar[str] = ContextVar("arlesh_client")
         mcp_router = McpProxyRouter(board, client_context)
@@ -134,6 +152,9 @@ class ArleshServer(FastAPI):
         pairing = Pairing(pairs, tokens)
         # The one route open without a token: how a device without one gets one.
         self.include_router(PairRouter(pairing), prefix="/pair")
+        # Open without a device token, behind its own secret; absent without one.
+        if backup is not None:
+            self.include_router(BackupRouter(backup.database, backup.token), prefix="/backup")
         self.include_router(
             AppRouter(
                 board=board,

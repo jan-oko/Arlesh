@@ -533,9 +533,36 @@ run without `uv run --script`'s `VIRTUAL_ENV`, which made uv warn on every start
 (started if it is not up; the first start in a fresh worktree builds arlesh-py and says so).
 `--server <other>` picks another branch's server and `--standalone` opts out: the desktop instance
 runs on the local board, the Android build opens unbound on its connect screen. A server runs its
-worktree's own code (its bindings built into that worktree's venv) on its own port, over a copy of
-the real database taken read-only (`sqlite3` backup API, opened `mode=ro`), seeded once and kept.
-`list` shows the servers and targets too.
+worktree's own code (its bindings built into that worktree's venv) on its own port, over a seed
+database, seeded once and kept (*Seeding from the server*, below). `list` shows the servers and
+targets too.
+
+**Seeding from the server.** The production database lives on the arlesh-server, so a local desktop
+copy goes stale and box seeds from the server instead, through `GET /backup`
+([HTTP Server](http-api.md), *Backup*): an admin-only route behind `ARLESH_BACKUP_TOKEN`, which box
+only ever reads from.
+
+- `box seed set <url>` stores the server's URL in `$XDG_CONFIG_HOME/arlesh/box-seed-url` and reads the
+  backup token from stdin (or a hidden prompt on a terminal, never an argument) into
+  `box-seed.token`, mode 0600 like the keystore password file. `ARLESH_BOX_SEED_URL` and
+  `ARLESH_BACKUP_TOKEN` override both files. `box seed show` says what is set and where from, and never
+  prints the token.
+- When both are set, the first seeding of an invocation downloads the snapshot into
+  `$XDG_STATE_HOME/arlesh/box/seed/` (mode 0600, removed when box exits) and both seeds, the server's
+  database and the desktop instance's, copy from it. A download that fails (unreachable, 401 for a
+  wrong token, 404 for a server with no `/backup`, an answer that is not SQLite) stops with that
+  reason and changes nothing; a redirect is not followed, so the token goes only where the URL says.
+  `--local-seed` (on `run` and `server start`) uses the local desktop copy instead. With nothing
+  configured the local copy is used, with a one-line note that the seed is local.
+- `box reseed <branch> [-y]` downloads a fresh snapshot first, then (after `Proceed? [y/N]`; `-y`
+  skips it, and with no terminal and no `-y` it refuses) stops that branch's server and desktop
+  instance, moves each database aside as `<db>.prev` (with its WAL files; an earlier `.prev` is
+  replaced), puts the snapshot in its place and starts again what was running. The server's tokens
+  were in the old database, so a restarted desktop instance bound to that server is given a new one;
+  other apps and phones connected to it need `run` again.
+- **Schema check.** If the snapshot's newest applied migration (`_sqlx_migrations`) is above the
+  branch's newest file in `crates/arlesh-core/migrations/`, box warns that the branch is older than the
+  server and that its app will refuse the database.
 
 **The token's client name is the box device name**: the registry name (`pixel`), or `desktop` for
 this machine, reduced to the server's name alphabet. A client holds one token and its text is never

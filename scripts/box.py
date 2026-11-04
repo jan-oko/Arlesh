@@ -10,16 +10,19 @@
     box devices list
     box devices rm <name>
     box run <branch> [<target>] [--server <branch> | --standalone] [--no-firebase] [--force] [--stale-ok]
-            [--local | --ci] [--reinstall]
+            [--local | --ci] [--reinstall] [--local-seed]
     box keystore init [--force]
     box keystore rotate-password
     box stop [branch ... | all]
     box clean [branch ... | all]
     box prune [<target>] [-y | --dry-run]
-    box server start <branch> [--public]
+    box server start <branch> [--public] [--local-seed]
     box server stop [branch ... | all]
     box server token <branch> <arlesh-server token args...>
     box server pin <branch> approve <pin> [--name <device>] | list
+    box seed set <url>            (the backup token is read from stdin or a prompt, never argv)
+    box seed show
+    box reseed <branch> [-y]
 
 `list` is driven by the open PRs (`gh pr list` on origin's repo): one row per open-PR branch with its
 worktree, sync with origin, builds and installs, server and app; below a separator, `dev`, `master`
@@ -77,8 +80,22 @@ when it exists, else with ~/.android/debug.keystore and a notice. CI (bundles.ym
 with the secret when set, else with a fresh key and a warning. On INSTALL_FAILED_UPDATE_INCOMPATIBLE
 `run` stops and offers `--reinstall`, which uninstalls first (the token is re-provisioned).
 
+Seeding: a new branch database (the server's, and the desktop instance's) starts as a copy of the
+production database, which lives on the arlesh-server. `seed set <url>` keeps the server's URL in
+$XDG_CONFIG_HOME/arlesh/box-seed-url and the admin backup token (the server's ARLESH_BACKUP_TOKEN)
+in box-seed.token (mode 600); ARLESH_BOX_SEED_URL and ARLESH_BACKUP_TOKEN override them, and
+`seed show` says what is set without printing the token. When both are set, a seeding downloads
+`GET <url>/backup` once per box invocation (cached in $XDG_STATE_HOME/arlesh/box/seed/, removed at
+exit) and uses it for both seeds; a failed download stops with the reason, and `--local-seed` (on
+`run` and `server start`) uses the local desktop copy instead. Unconfigured, the local copy is used,
+with a note. `reseed <branch>` downloads a fresh snapshot, stops that branch's server and
+instance, replaces their databases (the old ones stay as `<db>.prev`), and starts again what was
+running; it asks `Proceed? [y/N]` (`-y` skips). A snapshot whose newest applied migration is above
+the branch's newest file in crates/arlesh-core/migrations/ gets a warning: the branch is older than
+the server, and its app will refuse that database. Box only ever GETs from the server.
+
 Servers: `server start <branch>` runs arlesh-server from that worktree's own venv, on its own port,
-over a read-only `.backup` copy of the real database. `run` on desktop connects the instance to its
+over a seed database (see Seeding). `run` on desktop connects the instance to its
 own branch's server (started if it is not up) unless --server picks another or --standalone uses
 none. An Android `run` does the same, over a server that listens publicly (restarted public, with a
 notice, if it was on loopback): the URL the phone can reach (tailnet or LAN) and a token are handed
@@ -90,8 +107,10 @@ pairing real (non-box) devices.
 from __future__ import annotations
 
 import argparse
+import atexit
 import base64
 import contextlib
+import getpass
 import hashlib
 import ipaddress
 import json
@@ -122,6 +141,7 @@ DESKTOP = "desktop"
 ANDROID = "android"
 OSES = (ANDROID, DESKTOP)
 CMD = "npm run box --"
+LOCAL_SEED_HELP = "seed from the local desktop database, not the server"
 LOOPBACK = "127.0.0.1"
 PUBLIC = "0.0.0.0"
 STOP_GRACE_SECONDS = 10.0  # SIGTERM, then this long, then SIGKILL
@@ -978,6 +998,364 @@ def ensure_node_modules(wt: Path) -> None:
     stamp_file.write_text(want)
 
 
+# ---- Seeding ----------------------------------------------------------------------------------
+
+SEED_URL_ENV = "ARLESH_BOX_SEED_URL"
+SEED_TOKEN_ENV = "ARLESH_BACKUP_TOKEN"
+SQLITE_MAGIC = b"SQLite format 3\x00"
+PREV_SUFFIXES = ("", "-wal", "-shm")
+
+
+def seed_url_file() -> Path:
+    return xdg("XDG_CONFIG_HOME", ".config") / "arlesh" / "box-seed-url"
+
+
+def seed_token_file() -> Path:
+    return xdg("XDG_CONFIG_HOME", ".config") / "arlesh" / "box-seed.token"
+
+
+def seed_dir() -> Path:
+    return state_dir() / "seed"
+
+
+@dataclass
+class SeedState:
+    """What this invocation decided about seeding: forced local, and the snapshot once fetched."""
+
+    local: bool = False
+    snapshot: Path | None = None
+
+
+SEED = SeedState()
+
+
+@dataclass(frozen=True)
+class SeedSource:
+    url: str
+    token: str = field(repr=False)
+
+
+def read_text(path: Path) -> str | None:
+    try:
+        return path.read_text().strip() or None
+    except OSError:
+        return None
+
+
+def seed_url() -> tuple[str | None, str]:
+    """The configured server URL and where it came from (`env`, `file`, or `unset`)."""
+    env = os.environ.get(SEED_URL_ENV, "").strip()
+    if env:
+        return env.rstrip("/"), "env"
+    stored = read_text(seed_url_file())
+    return (stored.rstrip("/"), "file") if stored else (None, "unset")
+
+
+def seed_token() -> tuple[str | None, str]:
+    env = os.environ.get(SEED_TOKEN_ENV, "").strip()
+    if env:
+        return env, "env"
+    stored = read_text(seed_token_file())
+    return (stored, "file") if stored else (None, "unset")
+
+
+def seed_source() -> SeedSource | None:
+    """The server to seed from; None when none is configured (the local copy is used)."""
+    url, _ = seed_url()
+    token, _ = seed_token()
+    if url is None and token is None:
+        return None
+    if url is None or token is None:
+        missing = "URL" if url is None else "backup token"
+        raise die(
+            f"The seed server's {missing} is not set. Run `{CMD} seed set <url>` "
+            f"(or set {SEED_URL_ENV} and {SEED_TOKEN_ENV}), or pass --local-seed."
+        )
+    return SeedSource(url, token)
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow a redirect: the backup token must go only where the URL says."""
+
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
+def download_snapshot(source: SeedSource, dest: Path) -> None:
+    """GET `<url>/backup` into `dest` (mode 600), checking it is a SQLite file. The only request
+    box makes to the server; it never writes there."""
+    request = urllib.request.Request(
+        f"{source.url}/backup",
+        headers={"Authorization": f"Bearer {source.token}"},
+        method="GET",
+    )
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    part = dest.with_name(dest.name + ".part")
+    try:
+        with urllib.request.build_opener(_NoRedirect).open(
+            request, timeout=120
+        ) as response:
+            part.unlink(missing_ok=True)
+            fd = os.open(part, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as out:
+                shutil.copyfileobj(response, out, 1 << 20)
+        with part.open("rb") as f:
+            if f.read(len(SQLITE_MAGIC)) != SQLITE_MAGIC:
+                raise die(f"{source.url}/backup did not answer a SQLite database.")
+        os.replace(part, dest)
+    except urllib.error.HTTPError as exc:
+        raise die(seed_http_message(source.url, exc.code)) from None
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        reason = getattr(exc, "reason", exc)
+        raise die(
+            f"Cannot download the seed from {source.url}/backup: {reason}. "
+            "Fix it, or pass --local-seed to use the local copy."
+        ) from None
+    finally:
+        part.unlink(missing_ok=True)
+
+
+def seed_http_message(url: str, code: int) -> str:
+    why = {
+        401: "the backup token was refused (it is the server's ARLESH_BACKUP_TOKEN, not a device token)",
+        404: "the server has no /backup (ARLESH_BACKUP_TOKEN is not set on it, or it is too old)",
+        429: "too many attempts; try again later",
+    }.get(code, f"HTTP {code}")
+    return (
+        f"Cannot download the seed from {url}/backup: {why}. "
+        "Fix it, or pass --local-seed to use the local copy."
+    )
+
+
+def seed_snapshot() -> Path | None:
+    """The server snapshot to seed from, downloaded once per invocation; None means the local copy."""
+    if SEED.local:
+        return None
+    if SEED.snapshot is not None:
+        return SEED.snapshot
+    source = seed_source()
+    if source is None:
+        return None
+    path = seed_dir() / f"snapshot-{os.getpid()}.db"
+    print(f"    downloading the seed from {source.url} …", flush=True)
+    download_snapshot(source, path)
+    atexit.register(path.unlink, missing_ok=True)
+    SEED.snapshot = path
+    return path
+
+
+def newest_applied_migration(db: Path) -> int | None:
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        try:
+            row = con.execute(
+                "SELECT MAX(version) FROM _sqlx_migrations WHERE success = 1"
+            ).fetchone()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return None
+    return int(row[0]) if row and row[0] is not None else None
+
+
+def newest_branch_migration(wt: Path) -> int | None:
+    found = [
+        int(m.group(1))
+        for f in (wt / "crates" / "arlesh-core" / "migrations").glob("*.sql")
+        if (m := re.match(r"(\d+)_", f.name))
+    ]
+    return max(found) if found else None
+
+
+def schema_warning(name: str, applied: int | None, branch: int | None) -> str | None:
+    if applied is None or branch is None or applied <= branch:
+        return None
+    return (
+        f"!! {name}: the seed is at migration {applied:04d} but this branch's newest is "
+        f"{branch:04d}: this branch is older than the server, and the app will refuse "
+        "the database. Rebase the branch (or use --local-seed)."
+    )
+
+
+def warn_if_older(snapshot: Path, wt: Path, name: str) -> None:
+    message = schema_warning(
+        name, newest_applied_migration(snapshot), newest_branch_migration(wt)
+    )
+    if message:
+        note(message)
+
+
+def copy_local_db(dest: Path) -> None:
+    """A consistent copy of the local database through a read-only connection."""
+    src = sqlite3.connect(f"file:{real_db()}?mode=ro", uri=True)
+    try:
+        dst = sqlite3.connect(dest)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+
+
+def seed_database(dest: Path, wt: Path, name: str) -> None:
+    """Create `dest` from the server snapshot, else (unconfigured or --local-seed) the local copy."""
+    snapshot = seed_snapshot()
+    if snapshot is not None:
+        part = dest.with_name(dest.name + ".seed")
+        shutil.copyfile(snapshot, part)
+        os.replace(part, dest)
+        print(f"    seeded from the server snapshot ({seed_url()[0]})")
+        warn_if_older(snapshot, wt, name)
+    elif real_db().is_file():
+        note(
+            f"    seed is local ({real_db()}); `{CMD} seed set <url>` seeds from the server"
+        )
+        copy_local_db(dest)
+        print(f"    seeded from {real_db()} (read-only)")
+    else:
+        note(f"    no seed: no server configured and no local database at {real_db()}")
+
+
+def keep_previous(db: Path) -> None:
+    """Move `db` and its WAL files aside as `<file>.prev`, replacing an earlier `.prev`."""
+    for suffix in PREV_SUFFIXES:
+        old = db.with_name(db.name + suffix)
+        prev = db.with_name(db.name + suffix + ".prev")
+        if old.exists():
+            os.replace(old, prev)
+        else:
+            prev.unlink(missing_ok=True)
+
+
+def replace_with_snapshot(db: Path, snapshot: Path) -> None:
+    keep_previous(db)
+    shutil.copyfile(snapshot, db)
+
+
+def instance_db(name: str) -> Path:
+    return instance_dir(name) / "data" / "com.atai.arlesh" / "arlesh.db"
+
+
+def instance_bound_to(name: str, server: str) -> bool:
+    """Whether the instance's mode.json points at `server`'s URL."""
+    try:
+        mode = json.loads(
+            (instance_dir(name) / "data" / "com.atai.arlesh" / "mode.json").read_text()
+        )
+    except (OSError, ValueError):
+        return False
+    return (
+        isinstance(mode, dict)
+        and mode.get("mode") == "client"
+        and mode.get("url") == f"http://127.0.0.1:{server_port_for(server)}"
+    )
+
+
+def pidfile_alive(pidfile: Path) -> bool:
+    pid = read_pid(pidfile)
+    return pid is not None and pid_alive(pid)
+
+
+def cmd_reseed(args: argparse.Namespace) -> None:
+    """Replace a branch's databases with a fresh server snapshot, restarting what was running."""
+    name = dir_name(args.branch)
+    wt = worktree_path(name)
+    candidates = {"server": server_db(name), "desktop instance": instance_db(name)}
+    targets = {label: db for label, db in candidates.items() if db.is_file()}
+    if not targets:
+        raise die(
+            f"'{name}' has no database to reseed yet; `{CMD} run {args.branch}` seeds it."
+        )
+    SEED.local = False
+    if seed_source() is None:
+        raise die(
+            f"Nothing to reseed from: run `{CMD} seed set <url>` first "
+            f"(or set {SEED_URL_ENV} and {SEED_TOKEN_ENV})."
+        )
+    snapshot = (
+        seed_snapshot()
+    )  # before anything is stopped: a failed download changes nothing
+    if snapshot is None:
+        raise die("No seed snapshot.")
+    has_app = "desktop instance" in targets
+    server_was = "server" in targets and server_running(name)
+    host = server_host(name)
+    app_was = has_app and pidfile_alive(instance_dir(name) / "run.pid")
+    vite_was = has_app and pidfile_alive(instance_dir(name) / "vite.pid")
+    print(f"reseed {name} from {seed_url()[0]}:")
+    for label, db in targets.items():
+        print(
+            f"  replace the {label} database {db} (the old one stays as {db.name}.prev)"
+        )
+    if server_was:
+        print("  the server is stopped and started again")
+    if app_was:
+        print("  the app is stopped and started again")
+    if not args.yes:
+        if not interactive():
+            raise die("Not reseeding without a terminal: re-run with -y.")
+        if ask("Proceed? [y/N] ").strip().lower() not in ("y", "yes"):
+            print("aborted; nothing changed.")
+            return
+    if has_app:
+        stop_instance(name)
+    if "server" in targets:
+        stop_server(name)
+    for db in targets.values():
+        replace_with_snapshot(db, snapshot)
+        print(f"  replaced {db}")
+    warn_if_older(snapshot, wt, name)
+    if "server" in targets:
+        note(
+            f"  tokens issued by '{name}' server are gone with its old database: instances "
+            f"and phones connected to it need `{CMD} run` again to get new ones."
+        )
+    if server_was:
+        server_start(name, host)
+    if has_app and (app_was or vite_was):
+        if server_was and instance_bound_to(name, name):
+            connect_instance(name, name, "desktop")
+        start_vite(name, wt)
+        if app_was:
+            launch_desktop(name)
+
+
+def cmd_seed(args: argparse.Namespace) -> None:
+    if args.seed_cmd == "set":
+        seed_set(args.url)
+    else:
+        seed_show()
+
+
+def seed_set(url: str) -> None:
+    if not re.match(r"https?://[^/\s]+", url):
+        raise UsageError(f"{url!r} is not an http(s) URL.")
+    if sys.stdin.isatty():
+        token = getpass.getpass("Backup token (the server's ARLESH_BACKUP_TOKEN): ")
+    else:
+        token = sys.stdin.read()
+    token = token.strip()
+    if not token and read_text(seed_token_file()) is None:
+        raise die("No token given and none stored: nothing saved.")
+    seed_url_file().parent.mkdir(parents=True, exist_ok=True)
+    seed_url_file().write_text(url.rstrip("/") + "\n")
+    if token:
+        write_secret_file(seed_token_file(), token + "\n")
+    print(f"seed server: {url.rstrip('/')} (token in {seed_token_file()}, mode 600)")
+
+
+def seed_show() -> None:
+    url, url_from = seed_url()
+    token, token_from = seed_token()
+    print(f"url:   {f'{url}  [{url_from}]' if url else '(not set)'}")
+    print(f"token: {f'set  [{token_from}]' if token else '(not set)'}")
+    if url and token:
+        print("seeding from the server (--local-seed uses the local copy instead)")
+    else:
+        print(f"seeding from the local copy {real_db()}")
+
+
 # ---- Desktop instances ----------------------------------------------------------------------------
 
 
@@ -1053,9 +1431,8 @@ def build_desktop(name: str, wt: Path) -> None:
     shutil.copy2(binary, inst / "arlesh.new")
     os.replace(inst / "arlesh.new", inst / "arlesh")
     db = inst / "data" / "com.atai.arlesh" / "arlesh.db"
-    if not db.exists() and real_db().is_file():
-        shutil.copy2(real_db(), db)
-        print(f"    seeded from {real_db()}")
+    if not db.exists():
+        seed_database(db, wt, name)
     size = (inst / "arlesh").stat().st_size / 1e6
     print(f"=== {name}: ready ({size:.0f}M, port {port}, {free_gb()}G free) ===")
 
@@ -1231,22 +1608,12 @@ def build_server(name: str) -> None:
 
 
 def seed_server(name: str) -> None:
-    """A read-only snapshot of the real database, once: the real file is never written."""
+    """The server's database, once: the server snapshot, or a read-only copy of the local one."""
     db = server_db(name)
     if db.exists():
         return
     db.parent.mkdir(parents=True, exist_ok=True)
-    if real_db().is_file():
-        src = sqlite3.connect(f"file:{real_db()}?mode=ro", uri=True)
-        try:
-            dst = sqlite3.connect(db)
-            try:
-                src.backup(dst)
-            finally:
-                dst.close()
-        finally:
-            src.close()
-        print(f"    seeded from {real_db()} (read-only)")
+    seed_database(db, worktree_path(name), name)
 
 
 def server_host(name: str) -> str:
@@ -3385,6 +3752,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="uninstall the app first (after a signature mismatch); box re-provisions the token (android)",
     )
+    run.add_argument("--local-seed", action="store_true", help=LOCAL_SEED_HELP)
     run.set_defaults(fn=cmd_run)
 
     ks = sub.add_parser("keystore", help="the shared box signing key")
@@ -3443,6 +3811,7 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument(
         "--public", action="store_true", help="listen on 0.0.0.0 (LAN and tailnet URLs)"
     )
+    start.add_argument("--local-seed", action="store_true", help=LOCAL_SEED_HELP)
     stp = ssub.add_parser("stop")
     stp.add_argument("branches", nargs="*")
     for cmd in ("token", "pin"):
@@ -3450,6 +3819,22 @@ def build_parser() -> argparse.ArgumentParser:
         c.add_argument("branch")
         c.add_argument("rest", nargs=argparse.REMAINDER)
     srv.set_defaults(fn=cmd_server)
+
+    seed = sub.add_parser("seed", help="where new branch databases are seeded from")
+    seedsub = seed.add_subparsers(dest="seed_cmd", required=True, parser_class=Parser)
+    sset = seedsub.add_parser(
+        "set", help="set the server URL; the backup token comes from stdin or a prompt"
+    )
+    sset.add_argument("url")
+    seedsub.add_parser("show", help="what is configured (never prints the token)")
+    seed.set_defaults(fn=cmd_seed)
+
+    reseed = sub.add_parser(
+        "reseed", help="replace a branch's databases with a fresh server snapshot"
+    )
+    reseed.add_argument("branch")
+    reseed.add_argument("-y", "--yes", action="store_true", help="do not ask first")
+    reseed.set_defaults(fn=cmd_reseed)
     return p
 
 
@@ -3463,6 +3848,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     try:
         args = parse_args(sys.argv[1:] if argv is None else argv)
+        SEED.local = bool(getattr(args, "local_seed", False))
         args.fn(args)
     except UsageError as exc:
         note(str(exc))

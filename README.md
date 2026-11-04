@@ -138,6 +138,10 @@ without an open PR it would remove (never `dev`, `master`, the current one, or a
 unpushed work) and asks before removing them with their test apps (`-y` skips the question, `--dry-run`
 only prints); a local branch is deleted only
 once it is merged, and remote branches never.
+A branch's databases are seeded from the production server, not the stale local copy: run
+`npm run box -- seed set <server url>` once (it reads the server's `ARLESH_BACKUP_TOKEN` from stdin
+or a prompt), `--local-seed` falls back to the local copy, and `npm run box -- reseed <branch>`
+swaps a branch's databases for a fresh snapshot (the old ones stay as `.prev`).
 The tool is `scripts/box.py`, see `docs/spec/client-mode.md` for the full reference.
 
 ## Stack

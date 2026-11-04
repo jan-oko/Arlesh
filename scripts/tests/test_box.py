@@ -4,20 +4,23 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import http.server
 import importlib.util
 import io
 import json
 import os
 import shutil
+import sqlite3
 import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parent.parent / "box.py"
@@ -2079,6 +2082,423 @@ class NodeModules(IsolatedEnv):
         ):
             box.ensure_node_modules(self.wt)
         self.assertFalse((self.wt / "node_modules" / ".arlesh-lock-stamp").exists())
+
+
+SECRET = "admin-secret-0123456789"
+
+
+def make_db(path: Path, titles: list[str], migration: int | None = None) -> None:
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE nodes (id INTEGER PRIMARY KEY, title TEXT)")
+    con.executemany("INSERT INTO nodes (title) VALUES (?)", [(t,) for t in titles])
+    if migration is not None:
+        con.execute("CREATE TABLE _sqlx_migrations (version BIGINT, success BOOLEAN)")
+        con.execute("INSERT INTO _sqlx_migrations VALUES (?, 1)", (migration,))
+    con.commit()
+    con.close()
+
+
+def titles(path: Path) -> list[str]:
+    con = sqlite3.connect(path)
+    try:
+        return [t for (t,) in con.execute("SELECT title FROM nodes ORDER BY id")]
+    finally:
+        con.close()
+
+
+class FakeServer:
+    """A local HTTP server answering GET /backup like arlesh-server does (and recording it)."""
+
+    def __init__(self, snapshot: bytes, token: str = SECRET) -> None:
+        outer = self
+        self.requests: list[tuple[str, str, str | None]] = []
+        self.status_override: int | None = None
+        self.body = snapshot
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                auth = self.headers.get("Authorization")
+                outer.requests.append((self.command, self.path, auth))
+                if outer.status_override is not None:
+                    self.send_response(outer.status_override)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                elif self.path == "/redirect":
+                    self.send_response(302)
+                    self.send_header("Location", "/backup")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                elif self.path != "/backup":
+                    self.send_response(404)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                elif auth != f"Bearer {token}":
+                    self.send_response(401)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                else:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/vnd.sqlite3")
+                    self.send_header("Content-Length", str(len(outer.body)))
+                    self.end_headers()
+                    self.wfile.write(outer.body)
+
+            def log_message(self, *args: Any) -> None:
+                pass
+
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.httpd.server_port}"
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+
+    def __enter__(self) -> Self:
+        self.thread.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+class SeedCase(IsolatedEnv):
+    def setUp(self) -> None:
+        super().setUp()
+        for var in (box.SEED_URL_ENV, box.SEED_TOKEN_ENV, "ARLESH_REAL_DB"):
+            os.environ.pop(var, None)
+        box.SEED.local = False
+        box.SEED.snapshot = None
+        self.addCleanup(setattr, box.SEED, "snapshot", None)
+        self.addCleanup(setattr, box.SEED, "local", False)
+        self.snap = self.tmp / "server.db"
+        make_db(self.snap, ["from the server"], migration=105)
+        self.local = self.tmp / "local.db"
+        make_db(self.local, ["from the desktop"])
+        os.environ["ARLESH_REAL_DB"] = str(self.local)
+        self.wt = self.tmp / "wt"
+        (self.wt / "crates" / "arlesh-core" / "migrations").mkdir(parents=True)
+
+    def configure(self, server: FakeServer) -> None:
+        os.environ[box.SEED_URL_ENV] = server.url
+        os.environ[box.SEED_TOKEN_ENV] = SECRET
+
+    def seed(self, name: str = "b") -> Path:
+        dest = self.tmp / f"{name}.db"
+        with contextlib.redirect_stdout(io.StringIO()):
+            box.seed_database(dest, self.wt, name)
+        return dest
+
+
+class SeedConfig(SeedCase):
+    def run_seed(self, *argv: str, stdin: str = "") -> str:
+        out = io.StringIO()
+        with (
+            mock.patch.object(sys, "stdin", io.StringIO(stdin)),
+            contextlib.redirect_stdout(out),
+        ):
+            box.cmd_seed(box.parse_args(["seed", *argv]))
+        return out.getvalue()
+
+    def test_set_keeps_the_token_in_a_0600_file_and_show_never_prints_it(self) -> None:
+        said = self.run_seed("set", "https://nas.example:4750/", stdin=SECRET + "\n")
+
+        token_file = box.seed_token_file()
+        self.assertEqual(stat.S_IMODE(token_file.stat().st_mode), 0o600)
+        self.assertEqual(token_file.read_text().strip(), SECRET)
+        self.assertEqual(
+            box.seed_url_file().read_text().strip(), "https://nas.example:4750"
+        )
+        shown = self.run_seed("show")
+        self.assertIn("https://nas.example:4750", shown)
+        self.assertIn("[file]", shown)
+        self.assertNotIn(SECRET, shown + said)
+
+    def test_the_token_is_never_an_argument(self) -> None:
+        with self.assertRaises(box.UsageError):
+            box.parse_args(["seed", "set", "https://x", SECRET])
+
+    def test_environment_overrides_the_files(self) -> None:
+        self.run_seed("set", "https://file.example", stdin="file-token")
+        os.environ[box.SEED_URL_ENV] = "https://env.example/"
+        os.environ[box.SEED_TOKEN_ENV] = "env-token"
+
+        source = box.seed_source()
+
+        self.assertEqual(source, box.SeedSource("https://env.example", "env-token"))
+        self.assertIn("[env]", self.run_seed("show"))
+        self.assertNotIn("env-token", repr(source))
+
+    def test_an_empty_token_keeps_the_stored_one(self) -> None:
+        self.run_seed("set", "https://a.example", stdin=SECRET)
+        self.run_seed("set", "https://b.example", stdin="")
+
+        self.assertEqual(box.seed_token(), (SECRET, "file"))
+        self.assertEqual(box.seed_url(), ("https://b.example", "file"))
+
+    def test_a_url_without_a_token_is_refused_when_seeding(self) -> None:
+        os.environ[box.SEED_URL_ENV] = "https://a.example"
+
+        with self.assertRaises(box.BoxError):
+            box.seed_source()
+
+    def test_a_bad_url_is_a_usage_error(self) -> None:
+        with self.assertRaises(box.UsageError):
+            self.run_seed("set", "nas.example", stdin="x")
+
+
+class SeedDownload(SeedCase):
+    def test_it_seeds_from_the_server_with_the_bearer_token(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            dest = self.seed()
+
+        self.assertEqual(titles(dest), ["from the server"])
+        self.assertEqual(server.requests, [("GET", "/backup", f"Bearer {SECRET}")])
+
+    def test_both_seeds_of_one_invocation_share_one_download(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            first, second = self.seed("one"), self.seed("two")
+
+        self.assertEqual(len(server.requests), 1)
+        self.assertEqual(titles(first), titles(second))
+
+    def test_the_snapshot_is_cached_in_the_state_dir_and_removed_at_exit(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+            with mock.patch.object(box.atexit, "register") as register:
+                self.seed()
+
+        cached = box.SEED.snapshot
+        assert cached is not None
+        self.assertEqual(cached.parent, box.state_dir() / "seed")
+        self.assertEqual(stat.S_IMODE(cached.stat().st_mode), 0o600)
+        register.assert_called_once_with(cached.unlink, missing_ok=True)
+
+    def test_a_wrong_token_dies_with_a_clear_message(self) -> None:
+        with FakeServer(self.snap.read_bytes(), token="other") as server:
+            self.configure(server)
+
+            with self.assertRaises(box.BoxError) as caught:
+                self.seed()
+
+        self.assertIn("token was refused", str(caught.exception))
+        self.assertNotIn(SECRET, str(caught.exception))
+        self.assertFalse((self.tmp / "b.db").exists())
+
+    def test_a_server_without_backup_says_so(self) -> None:
+        with FakeServer(b"") as server:
+            server.status_override = 404
+            self.configure(server)
+
+            with self.assertRaises(box.BoxError) as caught:
+                self.seed()
+
+        self.assertIn("no /backup", str(caught.exception))
+
+    def test_an_unreachable_server_dies_naming_the_way_out(self) -> None:
+        os.environ[box.SEED_URL_ENV] = "http://127.0.0.1:9"
+        os.environ[box.SEED_TOKEN_ENV] = SECRET
+
+        with self.assertRaises(box.BoxError) as caught:
+            self.seed()
+
+        self.assertIn("--local-seed", str(caught.exception))
+
+    def test_an_answer_that_is_not_sqlite_is_refused(self) -> None:
+        with FakeServer(b"<html>not a database</html>") as server:
+            self.configure(server)
+
+            with self.assertRaises(box.BoxError):
+                self.seed()
+
+        self.assertEqual(list((box.state_dir() / "seed").glob("*.part")), [])
+
+    def test_a_redirect_is_not_followed_with_the_token(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            request = box.urllib.request.Request(
+                f"{server.url}/redirect", headers={"Authorization": f"Bearer {SECRET}"}
+            )
+            with self.assertRaises(box.urllib.error.HTTPError):
+                box.urllib.request.build_opener(box._NoRedirect).open(request)
+
+        self.assertEqual([r[1] for r in server.requests], ["/redirect"])
+
+
+class SeedFallbacks(SeedCase):
+    def test_unconfigured_uses_the_local_copy_with_a_note(self) -> None:
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            dest = self.seed()
+
+        self.assertEqual(titles(dest), ["from the desktop"])
+        self.assertEqual(err.getvalue().count("seed is local"), 1)
+
+    def test_local_seed_forces_the_local_copy_even_when_configured(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+            box.SEED.local = True
+
+            dest = self.seed()
+
+        self.assertEqual(titles(dest), ["from the desktop"])
+        self.assertEqual(server.requests, [])
+
+    def test_the_flag_is_on_run_and_server_start(self) -> None:
+        self.assertTrue(box.parse_args(["run", "b", "--local-seed"]).local_seed)
+        self.assertTrue(
+            box.parse_args(["server", "start", "b", "--local-seed"]).local_seed
+        )
+
+    def test_the_local_database_is_never_written(self) -> None:
+        before = self.local.read_bytes()
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.seed()
+
+        self.assertEqual(self.local.read_bytes(), before)
+
+
+class SchemaCheck(SeedCase):
+    def migrations(self, *numbers: int) -> None:
+        for n in numbers:
+            (
+                self.wt / "crates" / "arlesh-core" / "migrations" / f"{n:04d}_x.sql"
+            ).write_text("")
+
+    def test_a_snapshot_ahead_of_the_branch_warns_plainly(self) -> None:
+        self.migrations(98, 99)
+        err = io.StringIO()
+        with (
+            FakeServer(self.snap.read_bytes()) as server,
+            contextlib.redirect_stderr(err),
+        ):
+            self.configure(server)
+            self.seed()
+
+        self.assertIn("older than the server", err.getvalue())
+        self.assertIn("0105", err.getvalue())
+        self.assertIn("0099", err.getvalue())
+        self.assertIn("refuse", err.getvalue())
+
+    def test_a_branch_at_or_ahead_of_the_snapshot_is_quiet(self) -> None:
+        self.migrations(105, 106)
+        err = io.StringIO()
+        with (
+            FakeServer(self.snap.read_bytes()) as server,
+            contextlib.redirect_stderr(err),
+        ):
+            self.configure(server)
+            self.seed()
+
+        self.assertEqual(err.getvalue(), "")
+
+    def test_versions_are_read_from_the_snapshot_and_the_branch(self) -> None:
+        self.migrations(3, 12)
+
+        self.assertEqual(box.newest_applied_migration(self.snap), 105)
+        self.assertEqual(box.newest_branch_migration(self.wt), 12)
+        self.assertIsNone(box.newest_applied_migration(self.local))
+
+
+class Reseed(SeedCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.db = self.tmp / "servers" / "b" / "data" / "arlesh.db"
+        self.db.parent.mkdir(parents=True)
+        make_db(self.db, ["old branch data"])
+
+    def reseed(
+        self, *extra: str, running: bool = False, answer: str | None = None
+    ) -> None:
+        args = box.parse_args(["reseed", "b", *extra])
+        patches = [
+            mock.patch.object(box, "worktree_path", return_value=self.wt),
+            mock.patch.object(box, "server_db", return_value=self.db),
+            mock.patch.object(box, "instance_db", return_value=self.tmp / "none.db"),
+            mock.patch.object(box, "server_running", return_value=running),
+            mock.patch.object(box, "stop_server"),
+            mock.patch.object(box, "server_start"),
+            mock.patch.object(box, "stop_instance"),
+            mock.patch.object(box, "interactive", return_value=answer is not None),
+            mock.patch.object(box, "ask", return_value=answer or ""),
+        ]
+        with contextlib.ExitStack() as stack:
+            self.mocks = [stack.enter_context(p) for p in patches]
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+            box.cmd_reseed(args)
+
+    def test_it_replaces_the_database_and_keeps_the_old_one_as_prev(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            self.reseed("-y")
+
+        self.assertEqual(titles(self.db), ["from the server"])
+        self.assertEqual(
+            titles(self.db.with_name("arlesh.db.prev")), ["old branch data"]
+        )
+
+    def test_it_restarts_a_server_that_was_running(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            self.reseed("-y", running=True)
+
+        stop_server, server_start = self.mocks[4], self.mocks[5]
+        stop_server.assert_called_once_with("b")
+        server_start.assert_called_once()
+
+    def test_it_leaves_a_stopped_server_stopped(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            self.reseed("-y")
+
+        self.mocks[5].assert_not_called()
+
+    def test_without_y_it_asks_and_no_changes_nothing(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            self.reseed(answer="n")
+
+        self.assertEqual(titles(self.db), ["old branch data"])
+        self.mocks[4].assert_not_called()
+
+    def test_yes_at_the_prompt_proceeds(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            self.reseed(answer="y")
+
+        self.assertEqual(titles(self.db), ["from the server"])
+
+    def test_without_a_terminal_and_without_y_it_refuses(self) -> None:
+        with FakeServer(self.snap.read_bytes()) as server:
+            self.configure(server)
+
+            with self.assertRaises(box.BoxError):
+                self.reseed()
+
+        self.assertEqual(titles(self.db), ["old branch data"])
+
+    def test_a_failed_download_stops_nothing_and_replaces_nothing(self) -> None:
+        with FakeServer(b"") as server:
+            server.status_override = 401
+            self.configure(server)
+
+            with self.assertRaises(box.BoxError):
+                self.reseed("-y", running=True)
+
+        self.assertEqual(titles(self.db), ["old branch data"])
+        self.mocks[4].assert_not_called()
+
+    def test_unconfigured_it_says_what_to_run(self) -> None:
+        with self.assertRaises(box.BoxError) as caught:
+            self.reseed("-y")
+
+        self.assertIn("seed set", str(caught.exception))
 
 
 if __name__ == "__main__":

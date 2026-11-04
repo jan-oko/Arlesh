@@ -80,3 +80,18 @@ def test_a_url_and_a_url_file_together_are_refused(
 
     with pytest.raises(ValidationError, match="not both"):
         Config()
+
+
+def test_the_backup_token_comes_from_its_variable_and_is_off_without_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ARLESH_DATABASE__PATH", "/data/arlesh.db")
+    monkeypatch.delenv("ARLESH_BACKUP_TOKEN", raising=False)
+    assert Config().backup_token is None
+
+    monkeypatch.setenv("ARLESH_BACKUP_TOKEN", "admin-secret")
+
+    token = Config().backup_token
+    assert token is not None
+    assert token.get_secret_value() == "admin-secret"
+    assert "admin-secret" not in repr(Config())
