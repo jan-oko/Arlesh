@@ -414,6 +414,9 @@ volumes:
   arlesh-data:
 ```
 
+A step-by-step guide for a Synology NAS (Container Manager, Docker 24, Tailscale, seeding a database)
+and a compose file with a configurable port and a secret-file variant are in `deploy/`.
+
 Then `docker compose exec arlesh-server arlesh-server token add phone`, and paste the URL and the
 token into Settings → Server. To **pair** instead, enter only the URL on the new device, which shows
 a PIN, and run `docker exec arlesh-server arlesh-server pin approve <pin> --name phone`
