@@ -25,6 +25,7 @@ on:
     branches: [dev, master]
     paths:
       - docker/**
+      - deploy/**
       - .dockerignore
       - Cargo.toml
       - Cargo.lock
@@ -112,6 +113,8 @@ jobs:
           platforms: ${{ steps.meta.outputs.platforms }}
           push: ${{ steps.meta.outputs.push == 'true' }}
           # A single-platform build that is not pushed is loaded, for the smoke test below.
+          # Plain manifests, no provenance index: older Docker (24.x on a NAS) pulls them cleanly.
+          provenance: false
           load: ${{ steps.meta.outputs.platforms == 'linux/amd64' }}
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
@@ -123,20 +126,38 @@ jobs:
           cache-from: type=gha,scope=server-image
           cache-to: type=gha,scope=server-image,mode=max
 
-      # Starts the image that was just built and requires /health to answer, as HEALTHCHECK does:
-      # 401 (no token yet) or 200 both prove the server is up.
-      - name: Smoke test · starts and answers
+      # The deploy/ compose file, with the image just built, a seeded database and a port other than
+      # the default: the server migrates the copied database, /health answers, a token minted with
+      # `docker exec` opens an authenticated route. The seed is the repository's baseline schema
+      # (what a fresh app database is), copied in as a user would copy their arlesh.db.
+      - name: Smoke test · compose, seeded database, token
         if: steps.meta.outputs.platforms == 'linux/amd64'
+        working-directory: deploy
+        env:
+          ARLESH_IMAGE: ${{ env.IMAGE }}:latest
+          ARLESH_PORT: '4760'
         run: |
           set -euo pipefail
-          docker run -d --name srv -p 4750:4750 "$IMAGE:latest"
+          mkdir data
+          python3 -c "import sqlite3,sys; c=sqlite3.connect('data/arlesh.db'); c.executescript(open('../crates/arlesh-core/baseline/schema.sql').read()); c.commit()"
+          sudo chown -R 10001:10001 data
+          docker compose up -d
           code=000
-          for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4750/health || true)
-            if [ "$code" = 401 ] || [ "$code" = 200 ]; then break; fi
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$ARLESH_PORT/health" || true)
+            if [ "$code" = 401 ]; then break; fi
             sleep 1
           done
-          docker logs srv
-          if [ "$code" != 401 ] && [ "$code" != 200 ]; then echo "::error::/health answered $code"; exit 1; fi
-          docker exec srv arlesh-server token add smoke
-          docker exec srv ls -l /data
+          docker compose logs
+          [ "$code" = 401 ] || { echo "::error::/health answered $code without a token (expected 401)"; exit 1; }
+          token=$(docker compose exec -T arlesh-server arlesh-server token add smoke | tail -1)
+          curl -fsS -H "Authorization: Bearer $token" "http://127.0.0.1:$ARLESH_PORT/health"; echo
+          curl -fsS -o /dev/null -H "Authorization: Bearer $token" "http://127.0.0.1:$ARLESH_PORT/board"
+          for i in $(seq 1 12); do
+            state=$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q arlesh-server)")
+            [ "$state" = healthy ] && break
+            sleep 5
+          done
+          echo "container health: $state"
+          [ "$state" = healthy ]
+          docker compose down

@@ -1,0 +1,33 @@
+# arlesh-server on a NAS or any Docker host. Compose v2 syntax, nothing newer than Docker 24
+# (Synology Container Manager on DSM 7.2 ships 24.0.2). See deploy/README.md.
+#
+#   docker compose up -d
+#   docker compose exec arlesh-server arlesh-server token add phone
+#
+# ARLESH_IMAGE and ARLESH_PORT may be set in the environment or a .env file beside this one.
+services:
+  arlesh-server:
+    image: ${ARLESH_IMAGE:-ghcr.io/jan-oko/arlesh-server:latest}
+    container_name: arlesh-server
+    restart: unless-stopped
+    environment:
+      # The database. Defaults to this value. To keep the URL in a Docker secret instead, see below.
+      ARLESH_DATABASE_URL: sqlite:////data/arlesh.db
+      # The port inside the container (it listens on 0.0.0.0). Published on the same number.
+      ARLESH_SERVER__PORT: ${ARLESH_PORT:-4750}
+    ports:
+      - "${ARLESH_PORT:-4750}:${ARLESH_PORT:-4750}"
+    volumes:
+      # Where arlesh.db lives. A bind mount makes seeding a copy of an existing arlesh.db a
+      # file copy; the folder must be owned by uid 10001 (chown -R 10001:10001 ./data).
+      - ./data:/data
+    # --- The database URL from a Docker secret (ARLESH_DATABASE_URL_FILE) ---
+    # Blank ARLESH_DATABASE_URL (the image sets a default, an empty value unsets it), then uncomment:
+    # environment:
+    #   ARLESH_DATABASE_URL: ""
+    #   ARLESH_DATABASE_URL_FILE: /run/secrets/arlesh_database_url
+    # secrets:
+    #   - arlesh_database_url
+# secrets:
+#   arlesh_database_url:
+#     file: ./database-url.txt   # one line: sqlite:////data/arlesh.db
