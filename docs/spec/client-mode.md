@@ -111,7 +111,7 @@ Shown in Client mode. It lists the server's devices with their **name and when e
 
 ## The Backend port
 
-The seam is a Rust **Backend port** (`src-tauri/src/backend/`). Every Tauri command that reads or
+The seam is a Rust **Backend port** (`crates/arlesh-backend/src/`). Every Tauri command that reads or
 writes the board is a thin adapter that calls the `Backend` the app manages. There are two
 implementations:
 
@@ -137,8 +137,8 @@ zone (`TZ`).
 
 ## The Backend crate and Python
 
-*Planned, [ADR 0016](../adr/0016-shared-backend-crate-and-python-backends.md); not implemented
-yet.*
+*[ADR 0016](../adr/0016-shared-backend-crate-and-python-backends.md). The crate is built; the
+Python half follows it.*
 
 **The port and both backends live in their own crate, `arlesh-backend`** (`crates/arlesh-backend`),
 which the app and the Python package both depend on. It has two cargo features, `sqlite` and `http`,
@@ -198,7 +198,7 @@ available in Client mode (`not_permitted`, `details.reason = "not_in_client_mode
 does not ask for them: a delegate Person is drawn unnamed. Their code and tables stay as they are.
 
 The mapping is `conformance/client-mode.json`, tested from both sides: the app's
-`backend/tests.rs` fails when a port method is in neither its `routes` nor its `standalone_only`,
+`crates/arlesh-backend/src/tests.rs` fails when a port method is in neither its `routes` nor its `standalone_only`,
 and the server's `test_server_parity.py` fails when a listed route is not served.
 
 ## Live sync
