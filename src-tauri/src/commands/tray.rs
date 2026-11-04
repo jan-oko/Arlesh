@@ -405,7 +405,10 @@ impl ksni::Tray for SystemTray {
     ///
     /// Returns `true` so the service keeps running and registers when the watcher appears.
     fn watcher_offline(&self, reason: ksni::OfflineReason) -> bool {
-        tracing::warn!(?reason, "StatusNotifierWatcher is offline; the close button quits");
+        tracing::warn!(
+            ?reason,
+            "StatusNotifierWatcher is offline; the close button quits"
+        );
         self.availability.offline();
         true
     }
