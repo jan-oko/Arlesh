@@ -414,8 +414,9 @@ volumes:
   arlesh-data:
 ```
 
-A step-by-step guide for a Synology NAS (Container Manager, Docker 24, Tailscale, seeding a database)
-and a compose file with a configurable port and a secret-file variant are in `deploy/`.
+The server reads `ARLESH_DATABASE_URL` (default `sqlite:////data/arlesh.db`) and `ARLESH_SERVER__PORT`
+(default 4750, the port inside the container); `ARLESH_DATABASE_URL_FILE` takes the URL from a file
+(a Docker secret) instead. The `/data` folder must be writable by uid 10001.
 
 Then `docker compose exec arlesh-server arlesh-server token add phone`, and paste the URL and the
 token into Settings → Server. To **pair** instead, enter only the URL on the new device, which shows

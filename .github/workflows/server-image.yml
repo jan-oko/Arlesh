@@ -25,7 +25,6 @@ on:
     branches: [dev, master]
     paths:
       - docker/**
-      - deploy/**
       - .dockerignore
       - Cargo.toml
       - Cargo.lock
@@ -113,7 +112,7 @@ jobs:
           platforms: ${{ steps.meta.outputs.platforms }}
           push: ${{ steps.meta.outputs.push == 'true' }}
           # A single-platform build that is not pushed is loaded, for the smoke test below.
-          # Plain manifests, no provenance index: older Docker (24.x on a NAS) pulls them cleanly.
+          # Plain manifests, no provenance index: older Docker engines pull them cleanly.
           provenance: false
           load: ${{ steps.meta.outputs.platforms == 'linux/amd64' }}
           tags: ${{ steps.meta.outputs.tags }}
@@ -126,12 +125,11 @@ jobs:
           cache-from: type=gha,scope=server-image
           cache-to: type=gha,scope=server-image,mode=max
 
-      # The deploy/ compose file, with the image just built, a seeded database and a port other than
-      # the default: the server migrates the copied database, /health answers, a token minted with
-      # `docker exec` opens an authenticated route. The seed is a database the same image created.
-      - name: Smoke test · compose, seeded database, token
+      # The image just built, with a seeded database and a port other than the default: the server
+      # migrates the copied database, /health answers, a token minted with `docker exec` opens an
+      # authenticated route. The seed is a database the same image created.
+      - name: Smoke test · seeded database, token
         if: steps.meta.outputs.platforms == 'linux/amd64'
-        working-directory: deploy
         env:
           ARLESH_IMAGE: ${{ env.IMAGE }}:latest
           ARLESH_PORT: '4760'
@@ -139,30 +137,31 @@ jobs:
           set -euo pipefail
           # A real arlesh.db made by the image itself (the baseline schema alone is not a database
           # the server accepts: the app records the applied migrations when it creates one), with a
-          # token in it, then copied into the compose volume as a user would copy theirs (with its -wal and -shm files, if any).
+          # token in it, then copied into the data folder as a user would copy theirs (with its -wal and -shm files, if any).
           mkdir seed data
           sudo chown 10001:10001 seed
           docker run --rm -v "$PWD/seed:/data" "$ARLESH_IMAGE" token add seeded
           sudo cp seed/arlesh.db* data/
           sudo chown -R 10001:10001 data
-          docker compose up -d
+          docker run -d --name arlesh-server -p "$ARLESH_PORT:$ARLESH_PORT" \
+            -e ARLESH_SERVER__PORT="$ARLESH_PORT" -v "$PWD/data:/data" "$ARLESH_IMAGE"
           code=000
           for i in $(seq 1 40); do
             code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$ARLESH_PORT/health" || true)
             if [ "$code" = 401 ]; then break; fi
             sleep 1
           done
-          docker compose logs
+          docker logs arlesh-server
           [ "$code" = 401 ] || { echo "::error::/health answered $code without a token (expected 401)"; exit 1; }
-          docker compose exec -T arlesh-server arlesh-server token list | grep -q '^seeded'
-          token=$(docker compose exec -T arlesh-server arlesh-server token add smoke | tail -1)
+          docker exec arlesh-server arlesh-server token list | grep -q '^seeded'
+          token=$(docker exec arlesh-server arlesh-server token add smoke | tail -1)
           curl -fsS -H "Authorization: Bearer $token" "http://127.0.0.1:$ARLESH_PORT/health"; echo
           curl -fsS -o /dev/null -H "Authorization: Bearer $token" "http://127.0.0.1:$ARLESH_PORT/board"
           for i in $(seq 1 12); do
-            state=$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q arlesh-server)")
+            state=$(docker inspect -f '{{.State.Health.Status}}' arlesh-server)
             [ "$state" = healthy ] && break
             sleep 5
           done
           echo "container health: $state"
           [ "$state" = healthy ]
-          docker compose down
+          docker rm -f arlesh-server
