@@ -2,12 +2,33 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import signal
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from types import FrameType
 
 import arlesh
 import pytest
 from arlesh.models import CreateDomainRequest, DomainSubtype
+
+TEST_TIMEOUT_SECONDS = 120
+
+
+@pytest.fixture(autouse=True)
+def no_test_waits_forever() -> Iterator[None]:
+    """Fails a test that runs past ``TEST_TIMEOUT_SECONDS``, so a stuck server or stream is a red
+    test and not a CI job that sits until it is cancelled."""
+
+    def give_up(signum: int, frame: FrameType | None) -> None:
+        pytest.fail(f"the test ran for more than {TEST_TIMEOUT_SECONDS}s", pytrace=False)
+
+    previous = signal.signal(signal.SIGALRM, give_up)
+    signal.alarm(TEST_TIMEOUT_SECONDS)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 @pytest.fixture
