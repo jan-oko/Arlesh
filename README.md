@@ -134,7 +134,8 @@ branch. A phone is found among already-connected adb transports, then by `adb md
 `npm run box -- list` shows every open PR's branch with its worktree, builds, installs and server (needs
 an authenticated `gh`; otherwise it lists the worktrees). `npm run box -- prune` prints which worktrees
 without an open PR it would remove (never `dev`, `master`, the current one, or any with uncommitted or
-unpushed work), and `prune --yes` removes them, with their test apps; a local branch is deleted only
+unpushed work) and asks before removing them with their test apps (`-y` skips the question, `--dry-run`
+only prints); a local branch is deleted only
 once it is merged, and remote branches never.
 The tool is `scripts/box.py`, see `docs/spec/client-mode.md` for the full reference.
 

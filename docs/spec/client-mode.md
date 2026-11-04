@@ -584,7 +584,10 @@ More of the tool, for trying pairing and the phone build:
   whether an app instance is running. After a separator come `dev`, `master` and every worktree with
   no open PR, marked "no open PR (prunable)". `--json` prints the same rows. Without an
   authenticated `gh`, `list` says so in one line and shows the plain worktree table.
-- `prune [<device>] [--yes]` is a **dry run** that prints its plan; `--yes` carries it out. It plans
+- `prune [<device>] [-y | --dry-run]` prints its plan, then asks `Proceed? [y/N]`; anything but `y`/`yes`
+  aborts with nothing changed. `-y`/`--yes` applies without asking; `--dry-run` only prints. With no
+  terminal on stdin and no `-y`, it prints the plan and exits non-zero ("re-run with -y to apply"),
+  never blocking on input. It plans
   every worktree whose branch has no open PR except: the main checkout, `dev`, `master`, the
   current directory's worktree, a detached one, and any with uncommitted changes ("kept: dirty") or
   unpushed commits ("kept: N unpushed commits"; no `origin/<branch>` counts every commit that is
@@ -593,7 +596,7 @@ More of the tool, for trying pairing and the phone build:
   `--force`). The local branch is deleted only when it is merged into `origin/dev` or `origin/master`,
   or `gh pr list --state merged --head <branch>` finds a PR; otherwise it is kept and the output says
   so. Remote branches are never deleted. Box apps in Firebase or on a device whose worktree is
-  gone are pruned too (also only with `--yes`). Without `gh`, box cannot know which PRs are open,
+  gone are listed in the plan and pruned too. Without `gh`, box cannot know which PRs are open,
   so it skips the worktree part and prunes only those apps.
 
 ## Not in phase 1

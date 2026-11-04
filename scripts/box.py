@@ -15,7 +15,7 @@
     box keystore rotate-password
     box stop [branch ... | all]
     box clean [branch ... | all]
-    box prune [<target>] [--yes]
+    box prune [<target>] [-y | --dry-run]
     box server start <branch> [--public]
     box server stop [branch ... | all]
     box server token <branch> <arlesh-server token args...>
@@ -24,7 +24,8 @@
 `list` is driven by the open PRs (`gh pr list` on origin's repo): one row per open-PR branch with its
 worktree, sync with origin, builds and installs, server and app; below a separator, `dev`, `master`
 and any worktree with no open PR ("prunable"). Without an authenticated gh it shows the worktrees.
-`prune` is a dry run that prints its plan; `--yes` does it. It removes each worktree whose branch has
+`prune` prints its plan, then asks `Proceed? [y/N]`; `-y` applies without asking, `--dry-run` only
+prints, and with no terminal and no `-y` it exits non-zero rather than wait. It removes each worktree whose branch has
 no open PR, never the main checkout, `dev`, `master`, the current directory's worktree, or one with
 uncommitted or unpushed work: it stops that branch's server and app, drops its Firebase app and
 device installs, runs `git worktree remove` (no --force), and deletes the local branch only when it
@@ -3198,8 +3199,19 @@ def prune_packages(args: argparse.Namespace, execute: bool) -> None:
     print(f"{verb} {len(orphans)} test app(s) whose worktree is gone.")
 
 
+def interactive() -> bool:
+    return sys.stdin.isatty()
+
+
+def ask(prompt: str) -> str:
+    try:
+        return input(prompt)
+    except EOFError:
+        return ""
+
+
 def cmd_prune(args: argparse.Namespace) -> None:
-    """Plan (or with --yes, do) the removal of worktrees with no open PR and of orphaned test apps."""
+    """Print the plan; apply it after a y/N prompt, or at once with -y. `--dry-run` never applies."""
     blocker = gh_unavailable()
     plan: PrunePlan | None = None
     if blocker is None:
@@ -3207,12 +3219,22 @@ def cmd_prune(args: argparse.Namespace) -> None:
         print_prune_plan(plan)
     else:
         note(f"Not pruning worktrees: open PRs unavailable ({blocker}).")
-    if args.yes and plan:
+    prune_packages(args, False)
+    if args.dry_run:
+        print("dry run: nothing changed.")
+        return
+    if not args.yes:
+        if not interactive():
+            raise die(
+                "Not applying the plan without a terminal: re-run with -y to apply."
+            )
+        if ask("Proceed? [y/N] ").strip().lower() not in ("y", "yes"):
+            print("aborted; nothing changed.")
+            return
+    if plan:
         for name, branch, fate in plan.remove:
             remove_worktree(name, branch, fate)
-    prune_packages(args, args.yes)
-    if not args.yes:
-        print("dry run: nothing changed. Re-run with --yes to do it.")
+    prune_packages(args, True)
 
 
 def cmd_devices(args: argparse.Namespace) -> None:
@@ -3378,10 +3400,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     prune = sub.add_parser(
         "prune",
-        help="plan removing worktrees without an open PR and orphaned test apps; --yes does it",
+        help="remove worktrees without an open PR and orphaned test apps, after a prompt (-y skips it)",
     )
+    prune.add_argument("-y", "--yes", action="store_true", help="apply without asking")
     prune.add_argument(
-        "--yes", action="store_true", help="do it (default: print the plan)"
+        "--dry-run", action="store_true", help="print the plan only, never ask"
     )
     prune.add_argument(
         "target", nargs="?", help="one android device (default: every registered one)"

@@ -1902,7 +1902,7 @@ class ListOpenPrs(OpenPrFixture):
 
 class PruneWorktrees(OpenPrFixture):
     def test_dry_run_plans_exactly_the_clean_no_pr_worktrees(self) -> None:
-        code, out, _ = self.run_box("prune")
+        code, out, _ = self.run_box("prune", "--dry-run")
         self.assertEqual(code, 0)
         planned = {
             ln.split()[2] for ln in out.splitlines() if ln.startswith("remove worktree")
@@ -1918,9 +1918,52 @@ class PruneWorktrees(OpenPrFixture):
         self.assertEqual(sorted(box.all_names()), sorted(self.wts))
         self.assertEqual(self.adb_log().count("uninstall"), 0)
 
+    def prompt(self, tty: bool, answer: str = "") -> tuple[int, str, str, list[str]]:
+        asked: list[str] = []
+
+        def fake_ask(text: str) -> str:
+            asked.append(text)
+            return answer
+
+        with (
+            mock.patch.object(box, "interactive", return_value=tty),
+            mock.patch.object(box, "ask", fake_ask),
+        ):
+            code, out, err = self.run_box("prune")
+        return code, out, err, asked
+
+    def test_prompt_yes_applies(self) -> None:
+        code, out, _, asked = self.prompt(True, "YES")
+        self.assertEqual((code, asked), (0, ["Proceed? [y/N] "]))
+        self.assertIn("removed worktree merged-ff", out)
+        self.assertNotIn("merged-ff", box.all_names())
+
+    def test_prompt_no_or_empty_changes_nothing(self) -> None:
+        for answer in ("n", "", "maybe"):
+            code, out, _, asked = self.prompt(True, answer)
+            self.assertEqual((code, len(asked)), (0, 1))
+            self.assertIn("aborted; nothing changed", out)
+            self.assertEqual(sorted(box.all_names()), sorted(self.wts))
+        self.assertEqual(self.adb_log().count("uninstall"), 0)
+
+    def test_without_a_terminal_it_prints_the_plan_and_fails_without_asking(
+        self,
+    ) -> None:
+        code, out, err, asked = self.prompt(False)
+        self.assertEqual((code, asked), (1, []))
+        self.assertIn("remove worktree merged-ff", out)
+        self.assertIn("re-run with -y", err)
+        self.assertEqual(sorted(box.all_names()), sorted(self.wts))
+
+    def test_dash_y_never_asks(self) -> None:
+        with mock.patch.object(box, "ask", side_effect=AssertionError("asked")):
+            code, _, _ = self.run_box("prune", "-y")
+        self.assertEqual(code, 0)
+        self.assertNotIn("merged-ff", box.all_names())
+
     def test_current_directory_is_kept(self) -> None:
         os.chdir(self.wts["unmerged"] / ".")
-        _, out, _ = self.run_box("prune")
+        _, out, _ = self.run_box("prune", "--dry-run")
         self.assertIn("kept: unmerged: current directory", out)
         self.assertNotIn("remove worktree unmerged", out)
 
