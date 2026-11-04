@@ -417,6 +417,15 @@ android|desktop [--host host[:port]] [--serial S] [--ssh [user@]host[:port]]`; t
 `$XDG_CONFIG_HOME/arlesh/box-devices.json`, never in the repo. Without a target, `run` reuses the last
 one.
 
+**Settings file.** `box` reads `$XDG_CONFIG_HOME/arlesh/box.env` (beside `box-devices.json`, never in
+the repo) before any subcommand, so the Firebase step and every `box server` it starts inherit it. A
+missing file does nothing. The format is `KEY=value` per line; blank lines and `#` comments are
+ignored; an `export ` prefix and surrounding single or double quotes are accepted; `$HOME`, `${HOME}`
+and a leading `~` in a value are expanded. A variable already set in the real environment wins over
+the file. A malformed line stops box with its line number, never its value, and values are never
+logged. Keys it is for: `ARLESH_BOX_FIREBASE_PROJECT`, `ARLESH_FCM_CREDENTIALS_FILE`, and where they
+apply `ARLESH_BACKUP_TOKEN` and `ARLESH_BOX_SEED_URL`.
+
 **An Android `run` uses the CI build when one matches, and every box APK is signed with one shared
 key** (decided with the user, 2026-11-02):
 

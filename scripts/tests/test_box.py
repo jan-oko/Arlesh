@@ -2071,5 +2071,78 @@ class NodeModules(IsolatedEnv):
         self.assertFalse((self.wt / "node_modules" / ".arlesh-lock-stamp").exists())
 
 
+class EnvFileTests(IsolatedEnv):
+    KEYS = ("BOXENV_A", "BOXENV_B", "BOXENV_C")
+
+    def setUp(self) -> None:
+        super().setUp()
+        for key in self.KEYS:
+            os.environ.pop(key, None)
+        self.path = box.env_file()
+        self.path.parent.mkdir(parents=True)
+
+    def test_path_is_beside_the_devices_file(self) -> None:
+        self.assertEqual(self.path.parent, box.config_file().parent)
+        self.assertEqual(self.path.name, "box.env")
+
+    def test_missing_file_does_nothing(self) -> None:
+        box.load_env_file()
+        self.assertNotIn("BOXENV_A", os.environ)
+
+    def test_comments_and_blank_lines(self) -> None:
+        self.path.write_text("# note\n\n  \nBOXENV_A=1\n  # more\n", encoding="utf-8")
+        box.load_env_file()
+        self.assertEqual(os.environ["BOXENV_A"], "1")
+
+    def test_export_and_quotes(self) -> None:
+        self.path.write_text(
+            "export BOXENV_A='one two'\nBOXENV_B=\"x=y\"\nBOXENV_C = plain\n",
+            encoding="utf-8",
+        )
+        box.load_env_file()
+        self.assertEqual(os.environ["BOXENV_A"], "one two")
+        self.assertEqual(os.environ["BOXENV_B"], "x=y")
+        self.assertEqual(os.environ["BOXENV_C"], "plain")
+
+    def test_home_and_tilde_expand(self) -> None:
+        self.path.write_text(
+            "BOXENV_A=$HOME/a\nBOXENV_B=${HOME}/b\nBOXENV_C=~/c\n", encoding="utf-8"
+        )
+        box.load_env_file()
+        home = os.environ["HOME"]
+        self.assertEqual(os.environ["BOXENV_A"], f"{home}/a")
+        self.assertEqual(os.environ["BOXENV_B"], f"{home}/b")
+        self.assertEqual(os.environ["BOXENV_C"], f"{home}/c")
+
+    def test_real_environment_wins(self) -> None:
+        os.environ["BOXENV_A"] = "real"
+        self.path.write_text("BOXENV_A=file\nBOXENV_B=file\n", encoding="utf-8")
+        box.load_env_file()
+        self.assertEqual(os.environ["BOXENV_A"], "real")
+        self.assertEqual(os.environ["BOXENV_B"], "file")
+
+    def test_malformed_line_names_the_line_not_the_value(self) -> None:
+        self.path.write_text("BOXENV_A=1\nsecret-token-value\n", encoding="utf-8")
+        with self.assertRaises(box.BoxError) as ctx:
+            box.load_env_file()
+        self.assertIn("line 2", str(ctx.exception))
+        self.assertNotIn("secret-token-value", str(ctx.exception))
+
+    def test_unterminated_quote_hides_the_value(self) -> None:
+        self.path.write_text('BOXENV_A="hunter2\n', encoding="utf-8")
+        with self.assertRaises(box.BoxError) as ctx:
+            box.load_env_file()
+        self.assertIn("line 1", str(ctx.exception))
+        self.assertNotIn("hunter2", str(ctx.exception))
+
+    def test_main_loads_it_before_dispatch(self) -> None:
+        self.path.write_text("BOXENV_A=from-file\n", encoding="utf-8")
+        seen: list[str | None] = []
+        fake = mock.Mock(fn=lambda _a: seen.append(os.environ.get("BOXENV_A")))
+        with mock.patch.object(box, "parse_args", return_value=fake):
+            self.assertEqual(box.main(["list"]), 0)
+        self.assertEqual(seen, ["from-file"])
+
+
 if __name__ == "__main__":
     unittest.main()
