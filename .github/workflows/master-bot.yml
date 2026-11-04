@@ -1,6 +1,9 @@
 name: Master bot
 
-# Keeps two derived files on master in step with what produces them, and commits the result:
+# (The file keeps its name; the bot now works on `dev`. Master receives its output through the
+# release merge, dev -> master.)
+#
+# Keeps two derived files on dev in step with what produces them, and commits the result:
 #
 #   1. The fresh-database baseline (crates/arlesh-core/baseline/): re-cut to the newest migration
 #      whenever one lands, so a new database never replays migrations on top of a stale baseline.
@@ -21,8 +24,8 @@ name: Master bot
 # over what they contain.
 #
 # Racing a human push is not the hazard it looks like. Both steps are pure functions of the tree,
-# so overlapping writers converge rather than fight: the job re-reads origin/master immediately
-# before it writes and redoes the work if master moved under it.
+# so overlapping writers converge rather than fight: the job re-reads origin/dev immediately
+# before it writes and redoes the work if dev moved under it.
 #
 # It has to stay cheap, because the repo is private and every minute is billed. The Rust toolchain
 # is installed and the baseline regenerated only when migrations/** changed in the push, or the
@@ -32,9 +35,9 @@ name: Master bot
 
 on:
   push:
-    branches: [master]
-  # For repairing master by hand, and for checking the bot after it changes: dispatched on a
-  # master that is in step, it must end with no commit.
+    branches: [dev]
+  # For repairing dev by hand, and for checking the bot after it changes: dispatched on a
+  # dev that is in step, it must end with no commit.
   workflow_dispatch:
 
 # Serialize rather than supersede: the run that waits is the run that sees every merge.
@@ -56,12 +59,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: master
+          ref: dev
           # The whole history, so the push's own range (`before..HEAD`) can be read.
           fetch-depth: 0
-          # The push below must get past master's required checks (`lint · tsc · vitest` and
+          # The push below must get past dev's required checks (`lint · tsc · vitest` and
           # `cargo llvm-cov · tests + coverage`), which the default GITHUB_TOKEN cannot: its push is
-          # rejected with GH006 ("Changes must be made through a pull request"), and
+          # rejected with GH006 ("Changes must be made through a pull request") where dev is protected, and
           # `enforce_admins: false` does not rescue it because the token is not an administrator's.
           # BOT_COMMIT_ACCESS_TOKEN is a fine-grained PAT with contents:write belonging to an
           # administrator, which lands. A push made with a PAT starts workflows like a person's, so
@@ -125,7 +128,7 @@ jobs:
           # real tip and redoes both steps against it, so a merge that landed mid-run is folded
           # in rather than clobbered.
           for attempt in 1 2 3; do
-            git fetch --quiet origin master
+            git fetch --quiet origin dev
             git reset --hard --quiet FETCH_HEAD
 
             if [ "$BASELINE_NEEDED" = true ]; then
@@ -141,12 +144,12 @@ jobs:
             latest=$(ls crates/arlesh-core/migrations | sed -nE 's/^0*([0-9]+)_.*\.sql$/\1/p' | sort -n | tail -1)
             git add CHANGELOG.md crates/arlesh-core/baseline
             git commit --quiet -m "Re-cut baseline to ${latest}; assemble CHANGELOG.md"
-            if git push origin HEAD:master; then
+            if git push origin HEAD:dev; then
               echo "Pushed."
               exit 0
             fi
-            echo "::notice::master moved while this ran; redoing against the new tip (attempt ${attempt} of 3)."
+            echo "::notice::dev moved while this ran; redoing against the new tip (attempt ${attempt} of 3)."
           done
 
-          echo "::error::Could not push. If the log above says GH006, master's protection rejected the credential: BOT_COMMIT_ACCESS_TOKEN must belong to a repository administrator and carry contents:write."
+          echo "::error::Could not push. If the log above says GH006, dev's protection rejected the credential: BOT_COMMIT_ACCESS_TOKEN must belong to a repository administrator and carry contents:write."
           exit 1

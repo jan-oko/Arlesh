@@ -653,6 +653,13 @@ describe("filterTree — commitments", () => {
     }
   });
 
+  it("Plan, Start and Do drop an archived or expired (unresolved) commitment, while All keeps it", () => {
+    for (const mode of ["plan", "start", "do"] as const) {
+      expect(shows({ verdict: "unresolved", timing: "active", archived: true }, mode)).toBe(false);
+    }
+    expect(shows({ verdict: "unresolved", timing: "lapsed", archived: true }, "all")).toBe(true);
+  });
+
   it("a kept commitment drops out of Plan, Start and Do — it is settled", () => {
     for (const mode of ["plan", "start", "do"] as const) {
       expect(shows({ verdict: "kept", timing: "active" }, mode)).toBe(false);
