@@ -8,6 +8,7 @@ import importlib.util
 import io
 import json
 import os
+import secrets
 import shutil
 import stat
 import subprocess
@@ -708,13 +709,13 @@ elif args[:2] == ["secret", "set"]:
 FAKE_KEYTOOL = """#!__PY__
 import json, os, sys
 args = sys.argv[1:]
-# Record the argv, and what each `-opt:file PATH` argument points at, as keytool would read it.
-files = {}
+# Record the argv, and what each `-opt:env NAME` argument points at, as keytool would read it.
+envs = {}
 for i, a in enumerate(args):
-    if a.endswith(":file"):
-        files[args[i + 1]] = open(args[i + 1]).read().strip()
+    if a.endswith(":env"):
+        envs[args[i + 1]] = os.environ.get(args[i + 1], "")
 with open(os.environ["FAKE_GH_DIR"] + "/keytool.log", "a") as log:
-    log.write(json.dumps({"argv": args, "files": files}) + "\\n")
+    log.write(json.dumps({"argv": args, "envs": envs}) + "\\n")
 open(args[args.index("-keystore") + 1], "w").write("KEYSTORE:" + " ".join(args))
 """
 
@@ -946,18 +947,20 @@ class KeystoreInit(CiFixture):
     def secret(self, name: str) -> str:
         return (self.gh_dir / f"secret.{name}.txt").read_text()
 
-    def test_writes_the_files_and_sets_both_secrets(self) -> None:
+    def init(self, force: bool = False) -> None:
         with mock.patch.object(box, "repo_root", lambda: self.wt):
-            box.keystore_init(force=False)
+            box.keystore_init(force=force)
+
+    def test_writes_the_keystore_and_env_line_and_sets_both_secrets(self) -> None:
+        self.init()
         ks = box.box_keystore()
-        pwfile = box.box_password_file()
-        self.assertEqual(pwfile, ks.with_name("box.keystore.password"))
         self.assertTrue(ks.is_file())
         self.assertIn("-alias arlesh-box", ks.read_text())
         self.assertEqual(oct(ks.stat().st_mode & 0o777), "0o600")
-        self.assertEqual(oct(pwfile.stat().st_mode & 0o777), "0o600")
-        password = pwfile.read_text().strip()
-        self.assertGreaterEqual(len(password), 32)
+        env = box.env_file()
+        self.assertEqual(oct(env.stat().st_mode & 0o777), "0o600")
+        pw = box.parse_env_file(env.read_text())[box.BOX_PASSWORD_ENV]
+        self.assertGreaterEqual(len(pw), 32)
         self.assertEqual(
             (self.gh_dir / "secret.args").read_text().splitlines(),
             [
@@ -968,53 +971,77 @@ class KeystoreInit(CiFixture):
         self.assertEqual(
             base64.b64decode(self.secret("ARLESH_BOX_KEYSTORE_B64")), ks.read_bytes()
         )
-        self.assertEqual(self.secret("ARLESH_BOX_KEYSTORE_PASSWORD"), password)
+        self.assertEqual(self.secret("ARLESH_BOX_KEYSTORE_PASSWORD"), pw)
+        self.assertEqual(list(ks.parent.glob("box.keystore.password")), [])
         self.assertFalse(list(ks.parent.glob("*.new")))
 
-    def test_the_password_is_in_no_argv_and_never_printed(self) -> None:
+    def test_the_value_is_in_no_argv_and_never_printed(self) -> None:
         out = io.StringIO()
-        with (
-            mock.patch.object(box, "repo_root", lambda: self.wt),
-            contextlib.redirect_stdout(out),
-            contextlib.redirect_stderr(out),
-        ):
-            box.keystore_init(force=False)
-        password = box.box_password_file().read_text().strip()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            self.init()
+        pw = box.parse_env_file(box.env_file().read_text())[box.BOX_PASSWORD_ENV]
         (call,) = self.keytool_calls()
-        self.assertNotIn(password, " ".join(call["argv"]))
-        self.assertIn("-storepass:file", call["argv"])
-        self.assertIn("-keypass:file", call["argv"])
-        self.assertEqual(list(call["files"].values()), [password])
-        self.assertNotIn(password, out.getvalue())
+        self.assertNotIn(pw, " ".join(call["argv"]))
+        self.assertIn("-storepass:env", call["argv"])
+        self.assertIn("-keypass:env", call["argv"])
+        self.assertEqual(call["envs"], {box.BOX_PASSWORD_ENV: pw})
+        self.assertNotIn(pw, out.getvalue())
         for line in self.gh_calls():
-            self.assertNotIn(password, line)
+            self.assertNotIn(pw, line)
+
+    def test_updates_an_existing_line_in_place_and_keeps_the_rest(self) -> None:
+        env = box.env_file()
+        env.parent.mkdir(parents=True)
+        before = f"{box.BOX_PASSWORD_ENV}={secrets.token_urlsafe(18)}"
+        env.write_text(f"FIRST=1\n{before}\nLAST=2\n")
+        env.chmod(0o644)
+        self.init()
+        lines = env.read_text().splitlines()
+        self.assertEqual((lines[0], lines[2]), ("FIRST=1", "LAST=2"))
+        self.assertEqual(len(lines), 3)
+        self.assertTrue(lines[1].startswith(box.BOX_PASSWORD_ENV + "="))
+        self.assertNotEqual(lines[1], before)
+        self.assertEqual(oct(env.stat().st_mode & 0o777), "0o600")
+
+    def test_appends_when_the_variable_is_absent(self) -> None:
+        env = box.env_file()
+        env.parent.mkdir(parents=True)
+        env.write_text("FIRST=1")
+        self.init()
+        lines = env.read_text().splitlines()
+        self.assertEqual(lines[0], "FIRST=1")
+        self.assertTrue(lines[1].startswith(box.BOX_PASSWORD_ENV + "="))
 
     def test_refuses_to_overwrite_without_force(self) -> None:
         ks = box.box_keystore()
         ks.parent.mkdir(parents=True)
         ks.write_text("old")
-        with mock.patch.object(box, "repo_root", lambda: self.wt):
-            with self.assertRaises(box.BoxError) as ctx:
-                box.keystore_init(force=False)
-            self.assertIn("--force", str(ctx.exception))
-            self.assertEqual(ks.read_text(), "old")
-            self.assertFalse((self.gh_dir / "secret.txt").exists())
-            box.keystore_init(force=True)
+        with self.assertRaises(box.BoxError) as ctx:
+            self.init()
+        self.assertIn("--force", str(ctx.exception))
+        self.assertEqual(ks.read_text(), "old")
+        self.assertFalse((self.gh_dir / "secret.txt").exists())
+        self.init(force=True)
         self.assertNotEqual(ks.read_text(), "old")
 
-    def test_a_failed_upload_keeps_the_old_keystore(self) -> None:
+    def test_a_failed_upload_keeps_the_old_keystore_and_env(self) -> None:
         ks = box.box_keystore()
         ks.parent.mkdir(parents=True)
         ks.write_text("old")
         self.gh_state(secret_ok=False)
-        with (
-            mock.patch.object(box, "repo_root", lambda: self.wt),
-            self.assertRaises(box.BoxError),
-        ):
-            box.keystore_init(force=True)
+        with self.assertRaises(box.BoxError):
+            self.init(force=True)
         self.assertEqual(ks.read_text(), "old")
-        self.assertFalse(box.box_password_file().exists())
+        self.assertFalse(box.env_file().exists())
         self.assertFalse(list(ks.parent.glob("*.new")))
+
+    def test_replacing_removes_the_old_password_file(self) -> None:
+        ks = box.box_keystore()
+        ks.parent.mkdir(parents=True)
+        ks.write_text("old")
+        box.legacy_password_file().write_text("x")
+        self.init(force=True)
+        self.assertFalse(box.legacy_password_file().exists())
 
     def test_origin_repo_forms(self) -> None:
         for url in (
@@ -1027,35 +1054,37 @@ class KeystoreInit(CiFixture):
 
 
 class KeystoreRotate(CiFixture):
-    def make_legacy(self) -> Path:
+    def make_keystore(self) -> tuple[Path, str]:
         ks = box.box_keystore()
         ks.parent.mkdir(parents=True)
-        ks.write_text("legacy")
-        return ks
+        ks.write_text("existing")
+        old = secrets.token_urlsafe(18)
+        os.environ[box.BOX_PASSWORD_ENV] = old
+        return ks, old
 
     def rotate(self) -> None:
         with mock.patch.object(box, "repo_root", lambda: self.wt):
             box.keystore_rotate_password()
 
-    def test_changes_both_passwords_with_files_and_sets_both_secrets(self) -> None:
-        ks = self.make_legacy()
+    def test_changes_both_passwords_by_env_and_sets_both_secrets(self) -> None:
+        ks, old = self.make_keystore()
         self.rotate()
-        pwfile = box.box_password_file()
-        password = pwfile.read_text().strip()
-        self.assertEqual(oct(pwfile.stat().st_mode & 0o777), "0o600")
+        pw = box.parse_env_file(box.env_file().read_text())[box.BOX_PASSWORD_ENV]
+        self.assertNotEqual(pw, old)
         store, key = self.keytool_calls()
         self.assertEqual(store["argv"][0], "-storepasswd")
         self.assertEqual(key["argv"][0], "-keypasswd")
         self.assertIn("-alias", key["argv"])
         for call in (store, key):
             argv = call["argv"]
-            self.assertIn("-new:file", argv)
-            self.assertNotIn(password, " ".join(argv))
+            self.assertIn("-new:env", argv)
+            for value in (old, pw):
+                self.assertNotIn(value, " ".join(argv))
             for plain in ("-storepass", "-keypass", "-new"):
-                self.assertNotIn(plain, argv)  # only the :file forms
-            self.assertIn(password, call["files"].values())
-        self.assertIn(box.legacy_box_password(), store["files"].values())
-        self.assertIn(box.legacy_box_password(), key["files"].values())
+                self.assertNotIn(plain, argv)  # only the :env forms
+            self.assertEqual(call["envs"][box.NEW_PASSWORD_ENV], pw)
+        self.assertEqual(store["envs"][box.BOX_PASSWORD_ENV], old)
+        self.assertEqual(key["envs"][box.BOX_PASSWORD_ENV], old)
         self.assertEqual(
             base64.b64decode(
                 (self.gh_dir / "secret.ARLESH_BOX_KEYSTORE_B64.txt").read_text()
@@ -1063,28 +1092,28 @@ class KeystoreRotate(CiFixture):
             ks.read_bytes(),
         )
         self.assertEqual(
-            (self.gh_dir / "secret.ARLESH_BOX_KEYSTORE_PASSWORD.txt").read_text(),
-            password,
+            (self.gh_dir / "secret.ARLESH_BOX_KEYSTORE_PASSWORD.txt").read_text(), pw
         )
         self.assertEqual(len((self.gh_dir / "secret.args").read_text().splitlines()), 2)
 
     def test_a_failed_upload_changes_nothing_locally(self) -> None:
-        ks = self.make_legacy()
+        ks, _ = self.make_keystore()
         self.gh_state(secret_ok=False)
         with self.assertRaises(box.BoxError):
             self.rotate()
-        self.assertEqual(ks.read_text(), "legacy")
-        self.assertFalse(box.box_password_file().exists())
+        self.assertEqual(ks.read_text(), "existing")
+        self.assertFalse(box.env_file().exists())
         self.assertFalse(list(ks.parent.glob("*.new")))
 
-    def test_refuses_when_already_rotated_or_without_a_keystore(self) -> None:
+    def test_needs_a_keystore_and_the_old_value_in_the_environment(self) -> None:
         with self.assertRaises(box.BoxError) as ctx:
             self.rotate()
         self.assertIn("keystore init", str(ctx.exception))
-        self.make_legacy()
-        box.box_password_file().write_text("x")
-        with self.assertRaises(box.BoxError):
+        self.make_keystore()
+        del os.environ[box.BOX_PASSWORD_ENV]
+        with self.assertRaises(box.BoxError) as ctx:
             self.rotate()
+        self.assertIn(box.BOX_PASSWORD_ENV, str(ctx.exception))
         self.assertEqual(self.keytool_calls(), [])
 
     def test_parse(self) -> None:
@@ -1092,55 +1121,96 @@ class KeystoreRotate(CiFixture):
         self.assertEqual((a.fn, a.keystore_cmd), (box.cmd_keystore, "rotate-password"))
 
 
+class KeystoreMigrate(IsolatedEnv):
+    def setUp(self) -> None:
+        super().setUp()
+        os.environ.pop(box.BOX_PASSWORD_ENV, None)
+        self.legacy = box.legacy_password_file()
+        self.legacy.parent.mkdir(parents=True)
+        self.value = secrets.token_urlsafe(18)
+        self.legacy.write_text(self.value + "\n")
+
+    def test_moves_the_value_into_box_env_and_deletes_the_file(self) -> None:
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            box.keystore_migrate(yes=True)
+        values = box.parse_env_file(box.env_file().read_text())
+        self.assertEqual(values[box.BOX_PASSWORD_ENV], self.value)
+        self.assertEqual(oct(box.env_file().stat().st_mode & 0o777), "0o600")
+        self.assertFalse(self.legacy.exists())
+        self.assertNotIn(self.value, out.getvalue())
+
+    def test_asks_first_and_a_no_changes_nothing(self) -> None:
+        with (
+            mock.patch.object(box, "interactive", lambda: True),
+            mock.patch.object(box, "ask", lambda prompt: "n"),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            box.keystore_migrate(yes=False)
+        self.assertTrue(self.legacy.exists())
+        self.assertFalse(box.env_file().exists())
+
+    def test_without_a_terminal_it_needs_yes(self) -> None:
+        with (
+            mock.patch.object(box, "interactive", lambda: False),
+            self.assertRaises(box.BoxError),
+        ):
+            box.keystore_migrate(yes=False)
+        self.assertTrue(self.legacy.exists())
+
+    def test_a_different_value_already_in_the_environment_is_not_replaced(self) -> None:
+        os.environ[box.BOX_PASSWORD_ENV] = secrets.token_urlsafe(18)
+        with self.assertRaises(box.BoxError):
+            box.keystore_migrate(yes=True)
+        self.assertTrue(self.legacy.exists())
+
+    def test_parse(self) -> None:
+        a = box.parse_args(["keystore", "migrate", "-y"])
+        self.assertEqual(
+            (a.fn, a.keystore_cmd, a.yes), (box.cmd_keystore, "migrate", True)
+        )
+
+
 class SigningSelection(IsolatedEnv):
-    def test_shared_keystore_reads_the_password_file(self) -> None:
+    def setUp(self) -> None:
+        super().setUp()
+        os.environ.pop(box.BOX_PASSWORD_ENV, None)
+
+    def test_the_box_keystore_with_the_variable_set(self) -> None:
         ks = box.box_keystore()
         ks.parent.mkdir(parents=True)
         ks.write_text("k")
-        box.box_password_file().write_text("pw")
+        os.environ[box.BOX_PASSWORD_ENV] = secrets.token_urlsafe(18)
         sign = box.choose_signing()
-        self.assertEqual(
-            (sign.keystore, sign.alias, sign.shared), (ks, "arlesh-box", True)
-        )
-        self.assertEqual(sign.password, ("file", str(box.box_password_file())))
-        self.assertEqual(
-            box.apksigner_pass(sign.password), f"file:{box.box_password_file()}"
-        )
+        self.assertEqual((sign.keystore, sign.alias), (ks, "arlesh-box"))
 
-    def test_a_missing_password_file_says_how_to_fix_it_and_never_falls_back(
-        self,
-    ) -> None:
+    def test_a_missing_variable_says_how_to_fix_it(self) -> None:
         ks = box.box_keystore()
         ks.parent.mkdir(parents=True)
         ks.write_text("k")
         with self.assertRaises(box.BoxError) as ctx:
             box.choose_signing()
-        self.assertIn("keystore rotate-password", str(ctx.exception))
+        message = str(ctx.exception)
+        self.assertIn(box.BOX_PASSWORD_ENV, message)
+        self.assertIn("box.env", message)
+        self.assertIn("keystore init", message)
+
+    def test_a_leftover_password_file_is_pointed_at_migrate(self) -> None:
+        ks = box.box_keystore()
+        ks.parent.mkdir(parents=True)
+        ks.write_text("k")
+        box.legacy_password_file().write_text("x")
+        with self.assertRaises(box.BoxError) as ctx:
+            box.choose_signing()
+        self.assertIn("keystore migrate", str(ctx.exception))
+
+    def test_no_keystore_never_falls_back_to_a_debug_one(self) -> None:
+        debug = box.home() / ".android" / "debug.keystore"
+        debug.parent.mkdir(parents=True)
+        debug.write_text("d")
+        os.environ[box.BOX_PASSWORD_ENV] = secrets.token_urlsafe(18)
+        with self.assertRaises(box.BoxError) as ctx:
+            box.choose_signing()
         self.assertIn("keystore init", str(ctx.exception))
-
-    def test_the_debug_fallback_passes_its_password_by_environment(self) -> None:
-        debug = box.home() / ".android" / "debug.keystore"
-        debug.parent.mkdir(parents=True)
-        debug.write_text("d")
-        with mock.patch.object(box, "note"):
-            sign = box.choose_signing()
-        self.assertEqual(sign.password[0], "env")
-        self.assertEqual(box.apksigner_pass(sign.password), f"env:{sign.password[1]}")
-        self.assertIn(sign.password[1], sign.env)
-        self.assertEqual(
-            box.keytool_pass("-storepass", sign.password)[0], "-storepass:env"
-        )
-
-    def test_debug_keystore_fallback_with_a_notice(self) -> None:
-        debug = box.home() / ".android" / "debug.keystore"
-        debug.parent.mkdir(parents=True)
-        debug.write_text("d")
-        with mock.patch.object(box, "note") as note:
-            sign = box.choose_signing()
-        self.assertEqual(
-            (sign.keystore, sign.alias, sign.shared), (debug, "androiddebugkey", False)
-        )
-        self.assertIn("keystore init", note.call_args.args[0])
 
 
 class InstallMismatch(IsolatedEnv):

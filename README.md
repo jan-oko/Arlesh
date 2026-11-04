@@ -125,9 +125,11 @@ and each worktree gets its own `node_modules` via `npm ci`, redone when its `pac
 For an Android phone, a clean pushed tree whose commit already has a successful `bundles.yml` box
 run installs that CI build instead of compiling (needs an authenticated `gh`); `--local` forces a
 local build and `--ci` triggers the CI build and waits for it. Run `npm run box -- keystore init`
-once so CI and local builds share a signing key and update one another (otherwise reinstall with
-`--reinstall`); it keeps a random password beside the keystore and uploads it as a repo secret. A
-keystore made before that: `npm run box -- keystore rotate-password` once. `run` fast-forwards a clean worktree that is behind `origin/<branch>` (`--stale-ok`
+once before the first Android build: it makes the signing key, keeps its random password in
+`~/.config/arlesh/box.env` as `ARLESH_BOX_KEYSTORE_PASSWORD`, and sets the repo secrets, so CI and
+local builds share a key and update one another (otherwise reinstall with `--reinstall`). An
+older setup that kept the password in a file beside the keystore: `npm run box -- keystore migrate`
+once. `run` fast-forwards a clean worktree that is behind `origin/<branch>` (`--stale-ok`
 builds a dirty or diverged one anyway), and a worktree folder name (`qa-2026-11-round`) works for its
 branch. A phone is found among already-connected adb transports, then by `adb mdns`/`avahi-browse`;
 `devices add --serial <hardware serial>` matches a tailnet-named phone by serial, and `--ssh
