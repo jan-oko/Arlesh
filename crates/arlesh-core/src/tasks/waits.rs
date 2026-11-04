@@ -38,8 +38,8 @@ pub use super::rules::waits::{
 
 /// How an instant is spelled in a TEXT column: ISO-8601 to the second, no zone.
 pub(crate) use arlesh_rules::tasks::waits::instant_column;
-pub use arlesh_rules::tasks::waits::{WaitKind, WaitRef};
 use arlesh_rules::tasks::waits::INSTANT_FORMAT;
+pub use arlesh_rules::tasks::waits::{WaitKind, WaitRef};
 
 /// Reads an instant from a TEXT column. A value that does not parse reads as absent — the answer
 /// that asks for a check rather than hiding one.

@@ -2,9 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::tasks::model::{
-    AgenticBrief, AsyncTemplate, Delegate, TaskAgentic, TaskArchival,
-};
+use crate::tasks::model::{AgenticBrief, AsyncTemplate, Delegate, TaskAgentic, TaskArchival};
 
 /// A template row's own columns and relations, as its occurrences inherit them.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]

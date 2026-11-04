@@ -7,4 +7,3 @@
 
 pub mod db;
 pub use arlesh_rules::scopes::{error, key, model, resolve};
-

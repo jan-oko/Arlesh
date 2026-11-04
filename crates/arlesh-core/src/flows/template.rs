@@ -13,11 +13,8 @@
 
 use std::collections::HashMap;
 
-
 use super::error::FlowError;
-use crate::tasks::model::{
-    AgenticBrief, AsyncTemplate, Delegate, DurationSpec, TaskArchival,
-};
+use crate::tasks::model::{AgenticBrief, AsyncTemplate, Delegate, DurationSpec, TaskArchival};
 
 /// Which template table a row lives in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
