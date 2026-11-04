@@ -19,7 +19,7 @@ pub mod error;
 pub mod expectations;
 pub mod gestures;
 pub use rules::lifecycle;
-pub mod model;
+pub use arlesh_rules::tasks::model;
 pub use rules::review;
 pub mod rules;
 mod scope_rules;

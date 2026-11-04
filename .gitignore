@@ -27,3 +27,7 @@ google-services.json
 
 __pycache__/
 *.pyc
+
+# wasm build output (crates/arlesh-rules-wasm via scripts/build-rules-wasm.sh)
+/src/wasm/pkg/
+/spike/rules-wasm/pkg/

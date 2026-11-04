@@ -19,7 +19,7 @@ pub mod cycles;
 pub mod done_date;
 pub mod error;
 pub use rules::habits;
-pub mod model;
+pub use arlesh_rules::flows::model;
 pub mod occurrence_edit;
 pub mod occurrences;
 mod render;

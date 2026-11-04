@@ -1,0 +1,20 @@
+[package]
+name = "arlesh-rules"
+version = "0.3.0"
+description = "Arlesh's pure rules layer and the domain models it reads, with no database, runtime or host"
+edition = "2021"
+
+# The rules layer as a crate of its own (ADR 0010, ADR 0015): values in, values out. It depends on
+# nothing that cannot compile to wasm32, so `arlesh-rules-wasm` can hand the same rules to the
+# frontend. `scripts/check-rules-purity.sh` keeps it free of `sqlx`, `tokio`, `tauri`, `axum` and
+# `rmcp`; `arlesh-core` depends on this crate and re-exports its modules at their old paths.
+[features]
+# Test helpers `arlesh-core`'s own unit tests share (`scopes::key::test_key`).
+test-support = []
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["serde", "alloc", "std"] }
+schemars = { version = "1.2.2", features = ["chrono04"] }
+thiserror = "2"

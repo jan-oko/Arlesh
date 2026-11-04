@@ -100,6 +100,7 @@ name = "arlesh-core"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "arlesh-rules",
  "axum",
  "chrono",
  "rmcp",
@@ -126,6 +127,17 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "arlesh-rules"
+version = "0.3.0"
+dependencies = [
+ "chrono",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
