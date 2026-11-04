@@ -56,6 +56,12 @@ Android: the package is com.atai.arlesh.box.<branch> and the label "Arlesh (<bra
 installs beside the real app; build.gradle.kts and strings.xml are patched for the build and
 restored. Needs ANDROID_HOME, ANDROID_NDK_HOME and a JDK
 (ARLESH_BOX_JAVA_HOME wins over JAVA_HOME). Never pairs: pair once by hand with `adb pair`.
+Settings file: $XDG_CONFIG_HOME/arlesh/box.env, beside box-devices.json, is read at startup; a missing
+file does nothing. One `KEY=value` per line; blank lines and `#` comments are skipped; an `export `
+prefix and a pair of single or double quotes around the value are accepted; `$HOME`, `${HOME}` and a
+leading `~` in the value are expanded. A variable already set in the real environment wins over the
+file. A malformed line stops box and names its line number, never its value. Typical keys:
+ARLESH_BOX_FIREBASE_PROJECT, ARLESH_FCM_CREDENTIALS_FILE, ARLESH_BACKUP_TOKEN, ARLESH_BOX_SEED_URL.
 Firebase, per branch: with ARLESH_BOX_FIREBASE_PROJECT set and gcloud application-default
 credentials, the package is registered as an Android app and its config written as a gitignored
 google-services.json; --no-firebase turns it off.
@@ -186,6 +192,44 @@ def home() -> Path:
 def xdg(var: str, fallback: str) -> Path:
     value = os.environ.get(var)
     return Path(value) if value else home() / fallback
+
+
+def env_file() -> Path:
+    return xdg("XDG_CONFIG_HOME", ".config") / "arlesh" / "box.env"
+
+
+_ENV_LINE = re.compile(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$")
+
+
+def parse_env_file(text: str) -> dict[str, str]:
+    """Parse `KEY=value` lines. A malformed line is an error naming its number, never its value."""
+    values: dict[str, str] = {}
+    for number, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = _ENV_LINE.match(line)
+        if not match:
+            raise die(f"{env_file()}: line {number} is not KEY=value")
+        key, value = match.group(1), match.group(2).strip()
+        if value[:1] in ("'", '"'):
+            if len(value) < 2 or value[-1] != value[0]:
+                raise die(f"{env_file()}: line {number} has an unterminated quote")
+            value = value[1:-1]
+        values[key] = os.path.expanduser(os.path.expandvars(value))
+    return values
+
+
+def load_env_file() -> None:
+    """Put box.env's values into os.environ, never replacing a variable already set."""
+    try:
+        text = env_file().read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise die(f"cannot read {env_file()}: {exc.strerror}") from exc
+    for key, value in parse_env_file(text).items():
+        os.environ.setdefault(key, value)
 
 
 def config_file() -> Path:
@@ -3847,6 +3891,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     try:
+        load_env_file()
         args = parse_args(sys.argv[1:] if argv is None else argv)
         SEED.local = bool(getattr(args, "local_seed", False))
         args.fn(args)
