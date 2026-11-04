@@ -882,12 +882,12 @@ async fn transaction<T: Serialize>(
 }
 
 /// The local wall clock, as every write the app makes reads it.
-fn now() -> NaiveDateTime {
+pub(crate) fn now() -> NaiveDateTime {
     chrono::Local::now().naive_local()
 }
 
 /// Whether the agent capacity lock beside the database at `path` is on.
-async fn at_capacity(path: &Path) -> bool {
+pub(crate) async fn at_capacity(path: &Path) -> bool {
     crate::shared::for_database(path)
         .capacity
         .get()

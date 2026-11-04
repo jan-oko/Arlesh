@@ -142,9 +142,10 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 | `/mcp-access` | The MCP roots: `GET` (what the MCP can see), `GET /catalogue`, `PUT` and `DELETE /roots/{node_kind}/{node_id}` |
 | `/scopes` | `GET /containing?kind=&date=`, `POST /resolve?now=` (the body is a scope key) |
 | `/rules` | `POST /item-state`, `POST /commitment-state`: the derived lifecycles |
+| `/push`, `/devices/current/push` | `GET /push` (`enabled`, `project_id`: whether the server has FCM credentials), `PUT /devices/current/push` (body `{"fcm_token"}`: the asking device registers for phone notifications) and `DELETE`. See [Notifications](notifications.md) |
 | `/mcp` | Arlesh's MCP endpoint (below) |
 | `POST /pair`, `POST /pair/poll` | **Open without a token.** A new device asks for a PIN (body `{"name"}`, answers `id`, `pin`, `name`, `expires_at`; rate limited per address) and polls with `{"id", "pin"}` (answers `pending`, or `approved` with the device's `name` and `token`, once). See *Pairing* below |
-| `/devices`, `/pairings` | `GET /devices` (name, `created_at`, `last_seen_at`, `current`), `DELETE /devices/{name}` (not the asking device's own), `GET /pairings/{pin}` (the name a waiting device suggests) and `POST /pairings/{pin}/approve` (body `{"name"}`, optional; answers the name as saved) |
+| `/devices`, `/pairings` | `GET /devices` (name, `created_at`, `last_seen_at`, `current`, `push`), `DELETE /devices/{name}` (not the asking device's own), `GET /pairings/{pin}` (the name a waiting device suggests) and `POST /pairings/{pin}/approve` (body `{"name"}`, optional; answers the name as saved) |
 
 ## Pairing
 

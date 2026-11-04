@@ -80,3 +80,15 @@ def test_a_url_and_a_url_file_together_are_refused(
 
     with pytest.raises(ValidationError, match="not both"):
         Config()
+
+
+def test_the_fcm_credentials_file_is_optional_and_comes_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ARLESH_DATABASE__PATH", "/data/arlesh.db")
+    monkeypatch.delenv("ARLESH_FCM_CREDENTIALS_FILE", raising=False)
+    assert Config().fcm_credentials_file is None
+
+    monkeypatch.setenv("ARLESH_FCM_CREDENTIALS_FILE", "/run/secrets/arlesh-fcm.json")
+
+    assert Config().fcm_credentials_file == Path("/run/secrets/arlesh-fcm.json")
