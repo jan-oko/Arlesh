@@ -1140,7 +1140,9 @@ async fn every_tools_input_schema_is_one_object_naming_every_operation_and_param
         (
             "arlesh_waits",
             &["ask", "raise", "release", "get", "watch", "get_many"],
-            &["task_id", "title", "note", "question", "id", "answer", "ids"],
+            &[
+                "task_id", "title", "note", "question", "id", "answer", "ids",
+            ],
         ),
         ("arlesh_infos", &["create"], &["task_id", "body", "details"]),
         ("arlesh_capacity", &["get", "set"], &["at_capacity"]),
