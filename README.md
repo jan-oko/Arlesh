@@ -131,6 +131,11 @@ builds a dirty or diverged one anyway), and a worktree folder name (`qa-2026-11-
 branch. A phone is found among already-connected adb transports, then by `adb mdns`/`avahi-browse`;
 `devices add --serial <hardware serial>` matches a tailnet-named phone by serial, and `--ssh
 <host>[:port]` (Termux sshd) installs over `scp` + `termux-open` when adb cannot reach it.
+`npm run box -- list` shows every open PR's branch with its worktree, builds, installs and server (needs
+an authenticated `gh`; otherwise it lists the worktrees). `npm run box -- prune` prints which worktrees
+without an open PR it would remove (never `dev`, `master`, the current one, or any with uncommitted or
+unpushed work), and `prune --yes` removes them, with their test apps; a local branch is deleted only
+once it is merged, and remote branches never.
 The tool is `scripts/box.py`, see `docs/spec/client-mode.md` for the full reference.
 
 ## Stack

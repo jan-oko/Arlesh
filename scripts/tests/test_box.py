@@ -1747,5 +1747,227 @@ class SshFallback(IsolatedEnv):
         self.assertEqual(box.load_devices()["miniseer"].ssh, "miniseer:8022")
 
 
+FAKE_PR_GH = """#!__PY__
+import json, os, sys
+d = os.environ["FAKE_GH_DIR"]
+a = sys.argv[1:]
+if a[:2] == ["auth", "status"]:
+    sys.exit(0 if os.path.exists(d + "/authed") else 1)
+if a[:2] == ["pr", "list"]:
+    state = a[a.index("--state") + 1]
+    data = json.load(open(d + "/" + state + ".json"))
+    if "--head" in a:
+        data = [x for x in data if x["headRefName"] == a[a.index("--head") + 1]]
+    print(json.dumps(data))
+    sys.exit(0)
+sys.exit(1)
+"""
+
+FAKE_PR_ADB = """#!/bin/sh
+echo "$*" >> "$FAKE_GH_DIR/adb.log"
+case "$*" in
+  *"pm list packages"*) echo "package:com.atai.arlesh.box.ghost" ;;
+  *uninstall*) echo Success ;;
+esac
+"""
+
+
+class OpenPrFixture(OriginFixture):
+    """Origin with dev/master and branches in every pruning situation, a fake `gh` and `adb`."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        seed = self.seed
+        git(seed, "checkout", "-q", "-b", "dev", "master")
+        git(seed, "commit", "-q", "--allow-empty", "-m", "dev work")
+        git(seed, "push", "-q", "origin", "dev")
+        for b in (
+            "pr-with-wt",
+            "pr-no-wt",
+            "merged-ff",
+            "unmerged",
+            "dirty",
+            "unpushed",
+            "squashed",
+        ):
+            git(seed, "checkout", "-q", "-b", b, "dev")
+            if b in ("unmerged", "squashed", "pr-with-wt", "pr-no-wt"):
+                git(seed, "commit", "-q", "--allow-empty", "-m", b)
+            git(seed, "push", "-q", "origin", b)
+        git(self.main, "fetch", "-q", "origin")
+        self.wts = {
+            b: box.ensure_worktree(b, report=False)
+            for b in (
+                "pr-with-wt",
+                "merged-ff",
+                "unmerged",
+                "dirty",
+                "unpushed",
+                "squashed",
+                "dev",
+            )
+        }
+        (self.wts["dirty"] / "scratch.txt").write_text("wip")
+        git(self.wts["unpushed"], "commit", "-q", "--allow-empty", "-m", "local only")
+        self.gh_dir = self.tmp / "gh"
+        self.gh_dir.mkdir()
+        os.environ["FAKE_GH_DIR"] = str(self.gh_dir)
+        write_exe(fake_bin(self.tmp, "gh", "") / "gh", FAKE_PR_GH)
+        write_exe(fake_bin(self.tmp, "adb", "") / "adb", FAKE_PR_ADB)
+        os.environ["PATH"] = f"{self.tmp / 'bin'}{os.pathsep}{os.environ['PATH']}"
+        (self.gh_dir / "authed").write_text("")
+        self.set_prs(open=["pr-with-wt", "pr-no-wt"], merged=["squashed"])
+        cwd = os.getcwd()
+        self.addCleanup(os.chdir, cwd)
+        os.chdir(self.tmp)
+        patcher = mock.patch.object(
+            box, "reachable_android_devices", return_value={"pixel": "S1"}
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def set_prs(self, open: list[str], merged: list[str]) -> None:
+        def entry(b: str, n: int) -> dict[str, Any]:
+            return {"number": n, "title": f"Title of {b}", "headRefName": b,
+                    "baseRefName": "dev", "isDraft": b == "pr-no-wt", "url": f"u/{n}"}  # fmt: skip
+
+        (self.gh_dir / "open.json").write_text(
+            json.dumps([entry(b, 100 + i) for i, b in enumerate(open)])
+        )
+        (self.gh_dir / "merged.json").write_text(
+            json.dumps([entry(b, 50 + i) for i, b in enumerate(merged)])
+        )
+
+    def run_box(self, *argv: str) -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = box.main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def adb_log(self) -> str:
+        log = self.gh_dir / "adb.log"
+        return log.read_text() if log.exists() else ""
+
+
+class ListOpenPrs(OpenPrFixture):
+    def test_rows_for_open_prs_then_long_lived_and_prunable(self) -> None:
+        code, out, _ = self.run_box("list")
+        self.assertEqual(code, 0)
+        lines = out.splitlines()
+        rows = {
+            ln.split()[1]: ln for ln in lines if ln[:1] in "#-" and len(ln.split()) > 2
+        }
+        self.assertIn("#100", rows["pr-with-wt"])
+        self.assertIn("pr-with-wt", rows["pr-with-wt"])
+        self.assertIn("synced", rows["pr-with-wt"])
+        self.assertIn("draft", rows["pr-no-wt"])
+        self.assertIn("(none)", rows["pr-no-wt"])
+        sep = lines.index("-" * 8)
+        self.assertLess(lines.index(rows["pr-no-wt"]), sep)
+        self.assertIn("long-lived", rows["dev"])
+        self.assertIn("long-lived", rows["master"])
+        self.assertIn("(main checkout)", rows["master"])
+        self.assertIn("ahead 1", rows["unpushed"])
+        for b in ("merged-ff", "unmerged", "dirty", "unpushed", "squashed"):
+            self.assertIn("no open PR (prunable)", rows[b])
+            self.assertGreater(lines.index(rows[b]), sep)
+
+    def test_build_and_install_state(self) -> None:
+        wt = self.wts["pr-with-wt"]
+        stamp = box.worktree_stamp(wt)
+        box.update_state(lambda s: (
+            s["built"][box.DESKTOP].__setitem__("pr-with-wt", stamp),
+            s["installed"].setdefault("pixel", {}).__setitem__("pr-with-wt", "old"),
+        ))  # fmt: skip
+        box.desktop_binary("pr-with-wt").parent.mkdir(parents=True, exist_ok=True)
+        box.desktop_binary("pr-with-wt").write_text("x")
+        _, out, _ = self.run_box("list", "--json")
+        row = next(
+            r for r in json.loads(out)["pull_requests"] if r["branch"] == "pr-with-wt"
+        )
+        self.assertEqual(row["desktop"], "fresh")
+        self.assertEqual(row["installed"], {"pixel": "stale"})
+        self.assertEqual(row["pr"]["number"], 100)
+
+    def test_without_gh_falls_back_to_the_worktrees(self) -> None:
+        (self.gh_dir / "authed").unlink()
+        code, out, err = self.run_box("list")
+        self.assertEqual(code, 0)
+        self.assertIn("Open PRs unavailable", err)
+        self.assertIn("gh is not authenticated", err)
+        self.assertIn("DESKTOP", out)
+        self.assertIn("unmerged", out)
+        self.assertNotIn("prunable", out)
+
+
+class PruneWorktrees(OpenPrFixture):
+    def test_dry_run_plans_exactly_the_clean_no_pr_worktrees(self) -> None:
+        code, out, _ = self.run_box("prune")
+        self.assertEqual(code, 0)
+        planned = {
+            ln.split()[2] for ln in out.splitlines() if ln.startswith("remove worktree")
+        }
+        self.assertEqual(planned, {"merged-ff", "unmerged", "squashed"})
+        self.assertIn("kept: dirty: dirty", out)
+        self.assertIn("kept: unpushed: 1 unpushed commits", out)
+        self.assertIn("kept: dev: long-lived branch", out)
+        self.assertIn("dry run", out)
+        self.assertIn("local branch: delete (merged into origin/dev)", out)
+        self.assertIn("local branch: delete (its PR was merged)", out)
+        self.assertIn("local branch: keep (not merged)", out)
+        self.assertEqual(sorted(box.all_names()), sorted(self.wts))
+        self.assertEqual(self.adb_log().count("uninstall"), 0)
+
+    def test_current_directory_is_kept(self) -> None:
+        os.chdir(self.wts["unmerged"] / ".")
+        _, out, _ = self.run_box("prune")
+        self.assertIn("kept: unmerged: current directory", out)
+        self.assertNotIn("remove worktree unmerged", out)
+
+    def test_yes_removes_worktrees_and_deletes_only_merged_branches(self) -> None:
+        code, out, _ = self.run_box("prune", "--yes")
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            sorted(box.all_names()), ["dev", "dirty", "pr-with-wt", "unpushed"]
+        )
+        branches = box.git_in(
+            self.main, "branch", "--format=%(refname:short)"
+        ).stdout.split()
+        self.assertNotIn("merged-ff", branches)
+        self.assertNotIn("squashed", branches)
+        self.assertIn("unmerged", branches)
+        self.assertIn("kept local branch unmerged: not merged", out)
+        self.assertTrue(box.ref_exists(self.main, "refs/remotes/origin/merged-ff"))
+        remote = box.git_in(self.main, "ls-remote", "--heads", "origin").stdout
+        for b in ("merged-ff", "unmerged", "squashed"):
+            self.assertIn(f"refs/heads/{b}", remote)
+        self.assertIn("uninstall com.atai.arlesh.box.merged_ff", self.adb_log())
+        self.assertIn("uninstall com.atai.arlesh.box.ghost", self.adb_log())
+
+    def test_yes_stops_the_branch_server_and_app_first(self) -> None:
+        order: list[str] = []
+        with (
+            mock.patch.object(
+                box, "stop_instance", lambda n: order.append(f"stop {n}")
+            ),
+            mock.patch.object(
+                box, "stop_server", lambda n: order.append(f"server {n}")
+            ),
+        ):
+            box.server_dir("merged-ff").mkdir(parents=True)
+            self.run_box("prune", "--yes")
+        self.assertLess(order.index("stop merged-ff"), order.index("server merged-ff"))
+        self.assertNotIn("server unmerged", order)
+
+    def test_without_gh_only_apps_are_pruned(self) -> None:
+        (self.gh_dir / "authed").unlink()
+        code, out, err = self.run_box("prune", "--yes")
+        self.assertEqual(code, 0)
+        self.assertIn("Not pruning worktrees", err)
+        self.assertEqual(sorted(box.all_names()), sorted(self.wts))
+        self.assertIn("pruned 1 test app(s)", out)
+        self.assertIn("uninstall com.atai.arlesh.box.ghost", self.adb_log())
+
+
 if __name__ == "__main__":
     unittest.main()

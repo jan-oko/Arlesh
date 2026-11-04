@@ -5,7 +5,7 @@
 # ///
 """Build and run isolated Arlesh instances per branch worktree: `npm run box -- <command>`.
 
-    box list
+    box list [--json]
     box devices add <name> --os android|desktop [--host host[:port]] [--serial S] [--ssh [user@]host[:port]]
     box devices list
     box devices rm <name>
@@ -15,11 +15,21 @@
     box keystore rotate-password
     box stop [branch ... | all]
     box clean [branch ... | all]
-    box prune [<target>]
+    box prune [<target>] [--yes]
     box server start <branch> [--public]
     box server stop [branch ... | all]
     box server token <branch> <arlesh-server token args...>
     box server pin <branch> approve <pin> [--name <device>] | list
+
+`list` is driven by the open PRs (`gh pr list` on origin's repo): one row per open-PR branch with its
+worktree, sync with origin, builds and installs, server and app; below a separator, `dev`, `master`
+and any worktree with no open PR ("prunable"). Without an authenticated gh it shows the worktrees.
+`prune` is a dry run that prints its plan; `--yes` does it. It removes each worktree whose branch has
+no open PR, never the main checkout, `dev`, `master`, the current directory's worktree, or one with
+uncommitted or unpushed work: it stops that branch's server and app, drops its Firebase app and
+device installs, runs `git worktree remove` (no --force), and deletes the local branch only when it
+is merged into origin/dev or origin/master or its PR was merged. Remote branches are never touched.
+Orphaned box apps are pruned as before. Without gh, only the apps are pruned.
 
 A branch with no worktree gets `.claude/worktrees/<branch with / as ->` made from origin/<branch>
 (`run`, `server start|token|pin`); an existing one is used as-is.
@@ -105,6 +115,7 @@ from pathlib import Path
 from typing import Any
 
 BOX_PACKAGE_PREFIX = "com.atai.arlesh.box"
+LONG_LIVED = ("dev", "master")  # never pruned, always listed
 FIREBASE_API = "https://firebase.googleapis.com/v1beta1"
 DESKTOP = "desktop"
 ANDROID = "android"
@@ -2753,7 +2764,8 @@ def reachable_android_devices() -> dict[str, str]:
 # ---- Commands -------------------------------------------------------------------------------
 
 
-def cmd_list(_args: argparse.Namespace) -> None:
+def list_worktrees_only() -> None:
+    """The plain worktree table, for when the open PRs cannot be had."""
     state = load_state()
     print(f"{'BRANCH':<28} {'DESKTOP':<8} {'ANDROID':<8} {'PORT':<7} HEAD")
     for name in all_names():
@@ -2786,6 +2798,173 @@ def cmd_list(_args: argparse.Namespace) -> None:
             pf = server_dir(s) / "port"
             print(f"{s:<28} {'yes' if server_running(s) else 'no':<8} "
                   f"{pf.read_text().strip() if pf.exists() else '-':<7} {server_db(s)}")  # fmt: skip
+
+
+def gh_pr_list(state: str, fields: str, *extra: str) -> list[dict[str, Any]]:
+    cwd = main_checkout()
+    data = gh_json(
+        ["pr", "list", "--repo", origin_repo(cwd), "--state", state, "--limit", "200",
+         "--json", fields, *extra],
+        cwd,
+    )  # fmt: skip
+    return [d for d in data if isinstance(d, dict)] if isinstance(data, list) else []
+
+
+def open_prs() -> list[dict[str, Any]]:
+    """Every open PR (number, title, headRefName, baseRefName, isDraft, url)."""
+    return gh_pr_list("open", "number,title,headRefName,baseRefName,isDraft,url")
+
+
+def pr_merged(branch: str) -> bool:
+    return bool(gh_pr_list("merged", "number", "--head", branch))
+
+
+def worktree_branches() -> dict[str, str]:
+    """Directory name -> checked-out branch ('' when detached) of every box worktree."""
+    return {n: worktree_branch(worktrees_dir() / n) for n in all_names()}
+
+
+def sync_label(wt: Path, branch: str) -> str:
+    """How the worktree's branch stands against origin: synced, ahead N, behind N, no upstream."""
+    remote = f"refs/remotes/origin/{branch}"
+    if not branch:
+        return "detached"
+    if not ref_exists(wt, remote):
+        return "no upstream"
+    behind = commit_count(wt, f"{branch}..{remote}")
+    ahead = commit_count(wt, f"{remote}..{branch}")
+    parts = [f"ahead {ahead}" if ahead else "", f"behind {behind}" if behind else ""]
+    return " ".join(p for p in parts if p) or "synced"
+
+
+def build_label(
+    state: dict[str, Any], os_name: str, name: str, stamp: str, artifact: Path
+) -> str:
+    recorded = state["built"][os_name].get(name)
+    if recorded is None or not artifact.exists():
+        return "-"
+    return "fresh" if recorded == stamp else "stale"
+
+
+def branch_row(name: str, branch: str, state: dict[str, Any]) -> dict[str, Any]:
+    """What box knows about one worktree: sync, builds, installs, server and app."""
+    wt = worktrees_dir() / name
+    stamp = worktree_stamp(wt)
+    installed = {
+        dev: ("fresh" if per.get(name) == stamp else "stale")
+        for dev, per in sorted(state["installed"].items())
+        if name in per
+    }
+    port_file = server_dir(name) / "port"
+    app = read_pid(instance_dir(name) / "run.pid")
+    return {
+        "worktree": name,
+        "sync": sync_label(wt, branch),
+        "desktop": build_label(state, DESKTOP, name, stamp, desktop_binary(name)),
+        "android": build_label(state, ANDROID, name, stamp, android_apk(name)),
+        "installed": installed,
+        "server": {
+            "running": server_running(name),
+            "port": port_file.read_text().strip() if port_file.exists() else None,
+        },
+        "app": bool(app and pid_alive(app)),
+    }
+
+
+def list_rows(
+    prs: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """(rows for open-PR branches, rows for long-lived branches and worktrees with no open PR)."""
+    state = load_state()
+    held = {b: n for n, b in worktree_branches().items() if b}
+    pr_branches = {str(pr.get("headRefName")) for pr in prs}
+
+    def row(branch: str, pr: dict[str, Any] | None, note_text: str) -> dict[str, Any]:
+        name = held.get(branch)
+        data = branch_row(name, branch, state) if name else {"worktree": None}
+        if name is None and branch == worktree_branch(main_checkout()):
+            data = {"worktree": "(main checkout)"}
+        return {"branch": branch, "pr": pr, "note": note_text, **data}
+
+    with_pr = [row(str(pr.get("headRefName")), pr, "") for pr in prs]
+    others = [
+        row(b, None, "long-lived")
+        for b in LONG_LIVED
+        if b in held or ref_exists(main_checkout(), f"refs/remotes/origin/{b}")
+    ]
+    others += [
+        row(b, None, "no open PR (prunable)")
+        for b in sorted(held)
+        if b not in pr_branches and b not in LONG_LIVED
+    ]
+    return with_pr, others
+
+
+def format_row(r: dict[str, Any]) -> str:
+    pr = r["pr"]
+    if pr:
+        draft = " draft" if pr.get("isDraft") else ""
+        what = f"#{pr.get('number')}"
+        title = f"{str(pr.get('title'))[:34]} -> {pr.get('baseRefName')}{draft}"
+    else:
+        what, title = "-", r["note"]
+    if r["worktree"] is None:
+        cols = ["(none)", "", "", "", "", "", ""]
+    elif "sync" not in r:
+        cols = [r["worktree"], "", "", "", "", "", ""]
+    else:
+        inst = ",".join(f"{d}:{v}" for d, v in r["installed"].items()) or "-"
+        srv = r["server"]
+        server = f"up:{srv['port']}" if srv["running"] else "-"
+        cols = [r["worktree"], r["sync"], r["desktop"], r["android"], inst, server, "running" if r["app"] else "-"]  # fmt: skip
+    head = f"{what:<6} {r['branch'][:28]:<28} {title:<46}"
+    return (
+        head
+        + f" {cols[0]:<24} {cols[1]:<12} {cols[2]:<8} {cols[3]:<8} {cols[4]:<18} {cols[5]:<9} {cols[6]}"
+    )
+
+
+LIST_HEADER = (
+    f"{'PR':<6} {'BRANCH':<28} {'TITLE -> BASE':<46} {'WORKTREE':<24} {'SYNC':<12} "
+    f"{'DESKTOP':<8} {'ANDROID':<8} {'INSTALLED':<18} {'SERVER':<9} APP"
+)
+
+
+def cmd_list(args: argparse.Namespace) -> None:
+    blocker = gh_unavailable()
+    prs: list[dict[str, Any]] | None = None
+    if blocker is None:
+        try:
+            prs = open_prs()
+        except BoxError as exc:
+            blocker = str(exc)
+    if prs is None:
+        if getattr(args, "json", False):
+            print(json.dumps({"gh": False, "reason": blocker,
+                              "worktrees": worktree_branches()}, indent=2))  # fmt: skip
+            return
+        note(f"Open PRs unavailable ({blocker}); showing the worktrees instead.")
+        list_worktrees_only()
+    else:
+        with_pr, others = list_rows(prs)
+        if getattr(args, "json", False):
+            print(json.dumps({"gh": True, "pull_requests": with_pr, "other": others}, indent=2))  # fmt: skip
+            return
+        print(LIST_HEADER)
+        for r in with_pr:
+            print(format_row(r))
+        if others:
+            print("-" * 8)
+            for r in others:
+                print(format_row(r))
+        shown = {r["worktree"] for r in with_pr + others}
+        extra = [n for n in server_names([]) if n not in shown]
+        if extra:
+            print(f"\n{'SERVER':<28} {'RUNNING':<8} {'PORT':<7} DATABASE")
+            for sname in extra:
+                pf = server_dir(sname) / "port"
+                print(f"{sname:<28} {'yes' if server_running(sname) else 'no':<8} "
+                      f"{pf.read_text().strip() if pf.exists() else '-':<7} {server_db(sname)}")  # fmt: skip
     print(f"\ntargets: {target_names()}\n{free_gb()}G free on /")
 
 
@@ -2823,26 +3002,31 @@ def cmd_ci_patch(args: argparse.Namespace) -> None:
     print(f"segment={box_segment(args.branch)}")
 
 
+def stop_instance(name: str) -> None:
+    """Stop `name`'s app and its Vite dev server, and say if something still serves its port."""
+    inst = instance_dir(name)
+    kill_pidfile(inst / "run.pid", "app", name)
+    kill_pidfile(inst / "vite.pid", "vite", name)
+    pf = inst / "port"
+    if not pf.exists():
+        return
+    port = pf.read_text().strip()
+    still = False
+    for _ in range(3):  # SIGTERM to node is not instant; a false alarm is noise
+        still = http_up(f"http://localhost:{port}")
+        if not still:
+            break
+        time.sleep(1)
+    if still:
+        note(
+            f'!! {name}: something is still serving port {port}. Find it with: ss -lptn "sport = :{port}"'
+        )
+
+
 def cmd_stop(args: argparse.Namespace) -> None:
     everything = not args.branches or list(args.branches) == ["all"]
     for name in resolve_branches(args.branches):
-        inst = instance_dir(name)
-        kill_pidfile(inst / "run.pid", "app", name)
-        kill_pidfile(inst / "vite.pid", "vite", name)
-        pf = inst / "port"
-        if not pf.exists():
-            continue
-        port = pf.read_text().strip()
-        still = False
-        for _ in range(3):  # SIGTERM to node is not instant; a false alarm is noise
-            still = http_up(f"http://localhost:{port}")
-            if not still:
-                break
-            time.sleep(1)
-        if still:
-            note(
-                f'!! {name}: something is still serving port {port}. Find it with: ss -lptn "sport = :{port}"'
-            )
+        stop_instance(name)
     if everything:
         server_stop([])
 
@@ -2876,7 +3060,108 @@ def cmd_clean(args: argparse.Namespace) -> None:
     print(f"{free_gb()}G free.")
 
 
-def cmd_prune(args: argparse.Namespace) -> None:
+@dataclass
+class PrunePlan:
+    """What `prune` would do with the worktrees: the ones to remove and the ones it keeps."""
+
+    remove: list[tuple[str, str, str]] = field(
+        default_factory=list
+    )  # (dir, branch, fate)
+    kept: list[tuple[str, str]] = field(default_factory=list)  # (dir, reason)
+
+
+def kept_reason(name: str, branch: str) -> str | None:
+    """Why a worktree without an open PR must stay, or None when it may go."""
+    wt = (worktrees_dir() / name).resolve()
+    if not branch:
+        return "detached HEAD"
+    if branch in LONG_LIVED:
+        return "long-lived branch"
+    if wt == main_checkout().resolve():
+        return "main checkout"
+    cwd = Path.cwd().resolve()
+    if cwd == wt or wt in cwd.parents:
+        return "current directory"
+    status = git_in(wt, "status", "--porcelain", "--untracked-files=normal").stdout
+    if [ln for ln in status.splitlines() if ln[3:].rstrip("/") != "node_modules"]:
+        return "dirty"
+    remote = f"refs/remotes/origin/{branch}"
+    unpushed = (
+        commit_count(wt, f"{remote}..{branch}")
+        if ref_exists(wt, remote)
+        else commit_count(wt, f"{branch} --not --remotes=origin")
+    )
+    if unpushed:
+        return f"{unpushed} unpushed commits"
+    return None
+
+
+def branch_fate(branch: str) -> str | None:
+    """Why the local branch may be deleted after its worktree goes (None: keep it)."""
+    main = main_checkout()
+    for base in LONG_LIVED:
+        ref = f"refs/remotes/origin/{base}"
+        if (
+            ref_exists(main, ref)
+            and git_in(main, "merge-base", "--is-ancestor", branch, ref).returncode == 0
+        ):
+            return f"merged into origin/{base}"
+    return "its PR was merged" if pr_merged(branch) else None
+
+
+def plan_prune(prs: list[dict[str, Any]]) -> PrunePlan:
+    plan = PrunePlan()
+    open_branches = {str(pr.get("headRefName")) for pr in prs}
+    for name, branch in worktree_branches().items():
+        if branch in open_branches:
+            continue
+        reason = kept_reason(name, branch)
+        if reason:
+            plan.kept.append((name, reason))
+        else:
+            fate = branch_fate(branch)
+            plan.remove.append((name, branch, fate or ""))
+    return plan
+
+
+def print_prune_plan(plan: PrunePlan) -> None:
+    for name, branch, fate in plan.remove:
+        print(f"remove worktree {name} ({branch}): no open PR")
+        print(
+            "  stop its server and app, drop its Firebase app and device installs, git worktree remove"
+        )
+        print(f"  local branch: {'delete (' + fate + ')' if fate else 'keep (not merged)'}")  # fmt: skip
+    for name, reason in plan.kept:
+        print(f"kept: {name}: {reason}")
+    if not plan.remove and not plan.kept:
+        print("no worktrees without an open PR.")
+
+
+def remove_worktree(name: str, branch: str, fate: str) -> None:
+    """Stop `name`, clean its apps, remove the worktree, delete the branch only when `fate` says so."""
+    stop_instance(name)
+    if server_dir(name).is_dir():
+        stop_server(name)
+    cmd_clean(argparse.Namespace(branches=[name]))
+    link = worktrees_dir() / name / "node_modules"
+    if (
+        link.is_symlink()
+    ):  # box's own link to the main checkout's; git would call it untracked
+        link.unlink()
+    done = git_in(main_checkout(), "worktree", "remove", str(worktrees_dir() / name))
+    if done.returncode != 0:
+        note(f"kept {name}: git worktree remove failed: {done.stderr.strip()}")
+        return
+    print(f"removed worktree {name}")
+    if not fate:
+        print(f"kept local branch {branch}: not merged")
+    elif git_in(main_checkout(), "branch", "-D", branch).returncode == 0:
+        print(f"deleted local branch {branch} ({fate})")
+    else:
+        note(f"could not delete local branch {branch}")
+
+
+def prune_packages(args: argparse.Namespace, execute: bool) -> None:
     """Remove every com.atai.arlesh.box.* app in Firebase or on a device whose worktree is gone."""
     packages: list[str] = []
     fb = Firebase()
@@ -2895,30 +3180,39 @@ def cmd_prune(args: argparse.Namespace) -> None:
         serials = reachable_android_devices()
     for serial in serials.values():
         listed = capture(
-            [
-                "adb",
-                "-s",
-                serial,
-                "shell",
-                "pm",
-                "list",
-                "packages",
-                BOX_PACKAGE_PREFIX + ".",
-            ]
-        ).stdout
+            ["adb", "-s", serial, "shell", "pm", "list", "packages", BOX_PACKAGE_PREFIX + "."]
+        ).stdout  # fmt: skip
         packages += [
             ln.strip().removeprefix("package:")
             for ln in listed.replace("\r", "").splitlines()
             if ln.strip()
         ]
-    removed = 0
-    for package in dict.fromkeys(packages):
-        if box_owners(package):
-            continue
-        fb.remove_package(package)
-        uninstall_everywhere(package, serials)
-        removed += 1
-    print(f"pruned {removed} test app(s) whose worktree is gone.")
+    orphans = [p for p in dict.fromkeys(packages) if not box_owners(p)]
+    for package in orphans:
+        if execute:
+            fb.remove_package(package)
+            uninstall_everywhere(package, serials)
+        else:
+            print(f"remove test app {package} (its worktree is gone)")
+    verb = "pruned" if execute else "would prune"
+    print(f"{verb} {len(orphans)} test app(s) whose worktree is gone.")
+
+
+def cmd_prune(args: argparse.Namespace) -> None:
+    """Plan (or with --yes, do) the removal of worktrees with no open PR and of orphaned test apps."""
+    blocker = gh_unavailable()
+    plan: PrunePlan | None = None
+    if blocker is None:
+        plan = plan_prune(open_prs())
+        print_prune_plan(plan)
+    else:
+        note(f"Not pruning worktrees: open PRs unavailable ({blocker}).")
+    if args.yes and plan:
+        for name, branch, fate in plan.remove:
+            remove_worktree(name, branch, fate)
+    prune_packages(args, args.yes)
+    if not args.yes:
+        print("dry run: nothing changed. Re-run with --yes to do it.")
 
 
 def cmd_devices(args: argparse.Namespace) -> None:
@@ -2976,9 +3270,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="Isolated per-branch Arlesh instances (desktop and Android).",
     )
     sub = p.add_subparsers(dest="cmd", parser_class=Parser)
-    sub.add_parser("list", help="worktrees, builds, servers and targets").set_defaults(
-        fn=cmd_list
+    ls = sub.add_parser(
+        "list", help="open-PR branches with their worktrees, builds and servers"
     )
+    ls.add_argument("--json", action="store_true", help="machine-readable output")
+    ls.set_defaults(fn=cmd_list)
 
     dev = sub.add_parser("devices", help="the named target registry")
     dsub = dev.add_subparsers(dest="devices_cmd", required=True, parser_class=Parser)
@@ -3080,7 +3376,13 @@ def build_parser() -> argparse.ArgumentParser:
     clean.add_argument("branches", nargs="*")
     clean.set_defaults(fn=cmd_clean)
 
-    prune = sub.add_parser("prune", help="remove test apps whose worktree is gone")
+    prune = sub.add_parser(
+        "prune",
+        help="plan removing worktrees without an open PR and orphaned test apps; --yes does it",
+    )
+    prune.add_argument(
+        "--yes", action="store_true", help="do it (default: print the plan)"
+    )
     prune.add_argument(
         "target", nargs="?", help="one android device (default: every registered one)"
     )

@@ -575,8 +575,26 @@ More of the tool, for trying pairing and the phone build:
   (`server pin <name> approve <pin>`). `box run` has no install-only or provision-only mode, so
   binding an installed app to a server the box way means building it locally.
 - `clean <branch>` also removes that branch's Firebase app and uninstalls the package from the
-  registered Android devices; `prune [<device>]` does so for every `com.atai.arlesh.box.*` whose
-  worktree is gone.
+  registered Android devices.
+- **`list` is driven by open PRs, `prune` by their absence.** `list` asks `gh pr list --state open`
+  on origin's repository and prints one row per open-PR branch: PR number, title, base and draft
+  flag; the worktree (if any) and whether it is ahead of or behind origin; the desktop and Android
+  build (`fresh` when the recorded stamp equals the worktree's current one, `stale` when not, `-`
+  when never built); each device's installed build (`fresh` or `stale`); the server (port) and
+  whether an app instance is running. After a separator come `dev`, `master` and every worktree with
+  no open PR, marked "no open PR (prunable)". `--json` prints the same rows. Without an
+  authenticated `gh`, `list` says so in one line and shows the plain worktree table.
+- `prune [<device>] [--yes]` is a **dry run** that prints its plan; `--yes` carries it out. It plans
+  every worktree whose branch has no open PR except: the main checkout, `dev`, `master`, the
+  current directory's worktree, a detached one, and any with uncommitted changes ("kept: dirty") or
+  unpushed commits ("kept: N unpushed commits"; no `origin/<branch>` counts every commit that is
+  on no remote). For each it stops the branch's server and app, runs the `clean <branch>` cleanup
+  (Firebase app, device installs, cached CI APK and state), then `git worktree remove` (never
+  `--force`). The local branch is deleted only when it is merged into `origin/dev` or `origin/master`,
+  or `gh pr list --state merged --head <branch>` finds a PR; otherwise it is kept and the output says
+  so. Remote branches are never deleted. Box apps in Firebase or on a device whose worktree is
+  gone are pruned too (also only with `--yes`). Without `gh`, box cannot know which PRs are open,
+  so it skips the worktree part and prunes only those apps.
 
 ## Not in phase 1
 
