@@ -380,6 +380,53 @@ release key; there is no Play Store.
   the launcher and start connected; the release app takes no such input (*Trying it*).
 - **The touch layout** is a separate Task (`201`); this one only builds and wires the platform.
 
+## Running the server
+
+*Decided with the user 2026-11-04.* Every release (a `dev` → `master` merge, or a `vX.Y.Z` tag)
+ships the server two ways, both on the GitHub release or in ghcr.io:
+
+- **The container image** `ghcr.io/jan-oko/arlesh-server`, for linux/amd64 and linux/arm64, tagged
+  `latest`, the version and `sha-<short>`. It runs as a non-root user, keeps the database on the
+  volume `/data` (`ARLESH_DATABASE_URL=sqlite:////data/arlesh.db`), listens on `0.0.0.0:4750`
+  inside the container, and has a `HEALTHCHECK` on `/health`. Built from `docker/server.Dockerfile`.
+- **Python wheels** for linux x86_64 and aarch64 (manylinux), on the release page:
+  `pip install "arlesh-<version>-…whl[server]"`, then `arlesh-server --db ~/arlesh.db`.
+
+```sh
+docker run -d --name arlesh-server -p 4750:4750 -v arlesh-data:/data \
+  ghcr.io/jan-oko/arlesh-server:latest
+
+# the first token, printed once (or pair a device, below)
+docker exec arlesh-server arlesh-server token add phone
+```
+
+```yaml
+# compose.yaml
+services:
+  arlesh-server:
+    image: ghcr.io/jan-oko/arlesh-server:latest
+    restart: unless-stopped
+    ports:
+      - "4750:4750"
+    volumes:
+      - arlesh-data:/data
+volumes:
+  arlesh-data:
+```
+
+The server reads `ARLESH_DATABASE_URL` (default `sqlite:////data/arlesh.db`) and `ARLESH_SERVER__PORT`
+(default 4750, the port inside the container); `ARLESH_DATABASE_URL_FILE` takes the URL from a file
+(a Docker secret) instead. The `/data` folder must be writable by uid 10001.
+
+Then `docker compose exec arlesh-server arlesh-server token add phone`, and paste the URL and the
+token into Settings → Server. To **pair** instead, enter only the URL on the new device, which shows
+a PIN, and run `docker exec arlesh-server arlesh-server pin approve <pin> --name phone`
+(`pin list` shows those waiting). An existing `arlesh.db` is seeded by copying it into the volume
+(*Data*, below). The image speaks plain HTTP and binds every interface: put it behind a tailnet, a
+LAN you trust or a TLS proxy, or pass `--tls-cert` and `--tls-key` (mount them and add the flags
+after the image name). The image is private until the package is made public in GitHub's package
+settings; `docker login ghcr.io` with a token that can read packages until then.
+
 ## Versions
 
 `/health` reports `api_version`, an integer bumped only on a breaking change, and the build commit.

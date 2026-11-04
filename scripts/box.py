@@ -35,6 +35,17 @@ device installs, runs `git worktree remove` (no --force), and deletes the local 
 is merged into origin/dev or origin/master or its PR was merged. Remote branches are never touched.
 Orphaned box apps are pruned as before. Without gh, only the apps are pruned.
 
+`list` is driven by the open PRs (`gh pr list` on origin's repo): one row per open-PR branch with its
+worktree, sync with origin, builds and installs, server and app; below a separator, `dev`, `master`
+and any worktree with no open PR ("prunable"). Without an authenticated gh it shows the worktrees.
+`prune` prints its plan, then asks `Proceed? [y/N]`; `-y` applies without asking, `--dry-run` only
+prints, and with no terminal and no `-y` it exits non-zero rather than wait. It removes each worktree whose branch has
+no open PR, never the main checkout, `dev`, `master`, the current directory's worktree, or one with
+uncommitted or unpushed work: it stops that branch's server and app, drops its Firebase app and
+device installs, runs `git worktree remove` (no --force), and deletes the local branch only when it
+is merged into origin/dev or origin/master or its PR was merged. Remote branches are never touched.
+Orphaned box apps are pruned as before. Without gh, only the apps are pruned.
+
 A branch with no worktree gets `.claude/worktrees/<branch with / as ->` made from origin/<branch>
 (`run`, `server start|token|pin`); an existing one is used as-is.
 

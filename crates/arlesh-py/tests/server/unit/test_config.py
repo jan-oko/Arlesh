@@ -95,3 +95,15 @@ def test_the_backup_token_comes_from_its_variable_and_is_off_without_it(
     assert token is not None
     assert token.get_secret_value() == "admin-secret"
     assert "admin-secret" not in repr(Config())
+
+
+def test_an_empty_url_is_unset_so_a_url_file_can_replace_an_image_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    secret = tmp_path / "database-url"
+    secret.write_text("sqlite:////a.db")
+    monkeypatch.delenv("ARLESH_DATABASE__PATH", raising=False)
+    monkeypatch.setenv("ARLESH_DATABASE_URL", "")
+    monkeypatch.setenv("ARLESH_DATABASE_URL_FILE", str(secret))
+
+    assert Config().database.path == Path("/a.db")
