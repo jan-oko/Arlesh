@@ -202,7 +202,7 @@ In this order:
 4. **An agent stopped by the user cannot be resumed** — the harness treats that as permanent,
    even across a restart where it looks available. Fallback: a fresh agent in the *same*
    worktree, handed the predecessor's transcript path
-   (`~/.claude/projects/-home-atai-Green-CODE-Arlesh/<session-id>/subagents/agent-<id>.jsonl`),
+   (`~/.claude/projects/<encoded-repo-path>/<session-id>/subagents/agent-<id>.jsonl`),
    told to **commit and push the uncommitted files first**, even as WIP, then to extract the
    brief, review items and corrections from the transcript with a small script. Example 3 in
    `briefs.md` is this brief.
