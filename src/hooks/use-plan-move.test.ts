@@ -4,7 +4,6 @@ import { deferred, lane, patchedFields, settleLane } from "@/test/lane-helpers";
 import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
 import { usePlanClampStore } from "@/stores/use-plan-clamp-store";
 import { applyPendingWrites } from "@/utils/apply-pending-writes";
-import { scopeKeyText } from "@/utils/scope-key";
 import { fixtureRowId } from "@/test/node-fixture";
 import type { ScopeKey } from "@/api/scopes";
 import type { TaskListRow } from "@/utils/list-filter";
@@ -49,7 +48,7 @@ function setup() {
   const rendered = renderHook(() =>
     usePlanMove({
       targetScopeId: WEEK, targetWindow: WINDOW, targetLabel: "W39",
-      windows: new Map([[scopeKeyText(WEEK), WINDOW]]), showToast,
+      showToast,
     }),
   );
   return { ...rendered, showToast };

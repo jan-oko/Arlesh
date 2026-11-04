@@ -1,16 +1,18 @@
-// The Plan View's whole decision, as pure functions: which Tasks are candidates for the scope
-// being filled, which are already in it, and which bound a move would break. Nothing here reaches
-// for the network — scope windows arrive already resolved (see `use-scope-windows`), so the two
-// panes re-derive synchronously as the scope is walked.
+// The Plan View's whole decision: which Tasks are candidates for the scope being filled, which are
+// already in it, and which bound a move would break. There is no TypeScript copy of the rule: the
+// triage and the refusal are `tasks::rules::plan` compiled to wasm (`src/wasm/rules.ts`), which
+// resolves the scope's window itself, so nothing here reaches for the network and the two panes
+// re-derive synchronously as the scope is walked. This file reads rows into the rule's shape.
 
 import type { ScopeKey } from "@/api/scopes";
-import { sameScopeKey, scopeKeyText, type ScopeKeyText } from "@/utils/scope-key";
+import { scopeKeyText, type ScopeKeyText } from "@/utils/scope-key";
 import type { TimeScope } from "@/api/time-scope";
 import type { TaskListRow } from "@/utils/list-filter";
-import type { MindmapNode } from "@/utils/tree-layout";
 import type { ScopeInterval } from "@/utils/scope-interval";
-import { intervalContains, intervalsOverlap } from "@/utils/scope-interval";
+
 import { isOverdue } from "@/utils/overdue";
+import { planRefusal as wasmPlanRefusal, planTriage } from "@/wasm/rules";
+import type { PlanRowInput } from "@/wasm/rules";
 
 /** Every scope id resolved to its window, keyed by the key's canonical text. */
 export type ScopeWindows = ReadonlyMap<ScopeKeyText, ScopeInterval>;
@@ -48,6 +50,22 @@ function inheritsNothing(row: TaskListRow): boolean {
   return row.node.planConflict === "empty" && row.node.plan == null;
 }
 
+/** The row, in the shape the rule reads. A node that draws no row (`virtual`) has nowhere to write a
+ * Plan and the rule leaves it out. */
+function planRowOf(row: TaskListRow): PlanRowInput {
+  const { node } = row;
+  return {
+    id: node.id,
+    virtual: node.virtual === true,
+    timeScope: node.timeScope ?? null,
+    plan: node.plan ?? null,
+    inheritedPlan: node.inheritedPlan ?? null,
+    emptyPlan: inheritsNothing(row),
+    overdue: isOverdue(node),
+    ancestors: row.ancestors.map((ancestor) => ({ timeScope: ancestor.timeScope ?? null })),
+  };
+}
+
 /**
  * A Time Scope's combined window — the start of its start boundary through the end of its end
  * boundary — or `null` when either endpoint has not been resolved yet.
@@ -80,22 +98,6 @@ export function referencedScopeIds(rows: readonly TaskListRow[]): ScopeKey[] {
   return [...ids.values()];
 }
 
-/**
- * Whether the Plan View triages a row. A Habit **occurrence** is a row (ADR 0008) and is triaged
- * exactly like a Task, by its Plan — the Cycle Plan its Habit (or its item) gives it unless the
- * occurrence was planned on its own. With none it is **unplanned**, and a candidate wherever its
- * window is relevant; its window is not read as a plan.
- *
- * An iteration **root** is triaged too, by the root Cycle Plan unless it was planned on its own. It
- * is an ordinary row, and for a Habit with no items it is the only occurrence there is. A root and
- * its item occurrences each appear, as a Task and its subtasks do — each is one row in one heap.
- *
- * Left out: a node that draws no row, which has nowhere to write a Plan.
- */
-function isTriageable(node: MindmapNode): boolean {
-  return node.virtual !== true;
-}
-
 /** What one triage pass makes of the board, in three heaps. */
 export interface PlanPanes {
   /** Unplanned Tasks whose effective Time Scope reaches into the scope being filled. */
@@ -118,94 +120,34 @@ export interface PlanPanes {
 }
 
 /**
- * Splits the rows into the heaps for `target`, whose parent scopes are `parentIds` — none for a
- * Season, one everywhere else — for a week at a month's edge, the month holding its first day.
+ * Splits the rows into the heaps for `target`, whose parent scope is `parent` — none for a Season.
  *
- * **Unplanned** is the work that is relevant *now*: a Task that reads no Plan — none of its own and
- * nothing above it planned either — whose effective Time Scope overlaps the scope. A Task that
- * inherits a Plan is placed by it, in its slot with its parent. An **Unscoped** task is always relevant and so is always here — the
- * model says an unscoped item is always active, and a planning pass is exactly where unscoped work
- * should be offered.
- *
- * **Planned** is containment, not equality: a Task pinned to Tuesday is part of what this week
- * holds, and a week being filled has to show it or the right-hand pane would under-report the load
- * it exists to report.
- *
- * **Parent-planned** is a Plan that **is** a parent scope — one boundary, and that boundary a parent.
- * Compared by id rather than by window: a week at a month's edge is not contained by either of its
- * months, so "contains the scope" would find nothing there, and the question was never about
- * containment in the first place.
- *
- * A Task planned somewhere else entirely is in **none** of them. It is not unscheduled, it is not
- * in this scope, and it is not at the rung above it.
+ * **Unplanned** is the work that is relevant *now*: a Task that reads no Plan whose effective Time
+ * Scope overlaps the scope (an Unscoped task is always relevant). **Planned** is containment, not
+ * equality. **Parent-planned** is a Plan that *is* the parent scope, compared by id. A Task planned
+ * somewhere else entirely is in none of them. A Habit occurrence is triaged like a Task, by its
+ * Plan. See `tasks::rules::plan::triage`, which this asks.
  */
-export function partitionForScope(
-  rows: readonly TaskListRow[],
-  target: ScopeInterval,
-  windows: ScopeWindows,
-  parentIds: ReadonlySet<ScopeKeyText>,
-): PlanPanes {
-  const unplanned: TaskListRow[] = [];
-  const planned: TaskListRow[] = [];
-  const parentPlanned: TaskListRow[] = [];
-  for (const row of rows) {
-    if (!isTriageable(row.node)) continue;
-    // Placed by the Plan it reads: its own, or the one it inherits, in its slot with its parent.
-    const plan = effectivePlan(row);
-    if (plan !== null) {
-      if (sameScopeKey(plan.start_id, plan.end_id) && parentIds.has(scopeKeyText(plan.start_id))) {
-        parentPlanned.push(row);
-        continue;
-      }
-      const planWindow = timeScopeWindow(plan, windows);
-      if (planWindow !== null && intervalContains(target, planWindow)) planned.push(row);
-      continue;
-    }
-    // Something above it is planned: it is not unplanned work, and the board flags it.
-    if (inheritsNothing(row)) continue;
-    const relevance = effectiveTimeScope(row);
-    if (relevance === null) {
-      unplanned.push(row);
-      continue;
-    }
-    const window = timeScopeWindow(relevance, windows);
-    if (window !== null && intervalsOverlap(window, target)) unplanned.push(row);
-  }
-  return { unplanned, planned, parentPlanned };
+export function partitionForScope(rows: readonly TaskListRow[], target: ScopeKey, parent: ScopeKey | null): PlanPanes {
+  const ids = planTriage({ target, parent, rows: rows.map(planRowOf) });
+  const byId = new Map(rows.map((row) => [row.node.id, row]));
+  const pick = (wanted: readonly string[]): TaskListRow[] =>
+    wanted.flatMap((id) => {
+      const row = byId.get(id);
+      return row === undefined ? [] : [row];
+    });
+  return { unplanned: pick(ids.unplanned), planned: pick(ids.planned), parentPlanned: pick(ids.parentPlanned) };
 }
 
 /**
- * Which bound planning `row` into `target` would break, or `null` when the move is allowed.
- *
- * The two rules are the write-time ones, read in the order the backend reads them, so the view's
- * refusal and the backend's cannot disagree about *which* bound a doomed move breaks:
- *
- * - `Plan ⊆ TimeScope`, against the task's **own** window only. An inherited window constrains the
- *   window a task may take, not the Plan it may hold — that is the model's rule, and widening the
- *   task's own window on the user's behalf is an editor decision, not a triage one. Lifted for an
- *   **Overdue** task (see `isOverdue`), whose window has already passed: rescheduling it is the
- *   point, and its window stays as it is.
- * - `child.Plan ⊆ parent.Plan`, against the Plan it inherits as the board serves it — overdue or
- *   not. A row whose inherited Plan came to nothing inside its window can hold none.
- *
- * A bound whose window has not resolved refuses nothing here: the backend still checks, and a
- * refusal the view cannot explain is better raised by the writer than guessed at.
+ * Which bound planning `row` into `target` would break, or `null` when the move is allowed: the
+ * write-time rules, in the order the writer reads them, so the view's refusal and the writer's
+ * cannot disagree about *which* bound a doomed move breaks (`tasks::rules::plan`).
  */
-export function planRefusal(
-  row: TaskListRow,
-  target: ScopeInterval,
-  windows: ScopeWindows,
-): PlanRefusal | null {
-  const own = row.node.timeScope;
-  if (own != null && !isOverdue(row.node)) {
-    const ownWindow = timeScopeWindow(own, windows);
-    if (ownWindow !== null && !intervalContains(ownWindow, target)) return "ownTimeScope";
+export function planRefusal(row: TaskListRow, target: ScopeKey): PlanRefusal | null {
+  switch (wasmPlanRefusal({ row: planRowOf(row), target })) {
+    case "own_time_scope": return "ownTimeScope";
+    case "parent_plan": return "parentPlan";
+    case null: return null;
   }
-  if (inheritsNothing(row)) return "parentPlan";
-  const inherited = row.node.inheritedPlan;
-  if (inherited !== undefined) {
-    const inheritedWindow = timeScopeWindow(inherited, windows);
-    if (inheritedWindow !== null && !intervalContains(inheritedWindow, target)) return "parentPlan";
-  }
-  return null;
 }
