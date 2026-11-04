@@ -21,7 +21,7 @@ SECRET = "admin-secret-0123456789"
 
 def _titles(path: Path) -> list[str]:
     with sqlite3.connect(path) as connection:
-        rows = connection.execute("SELECT title FROM nodes ORDER BY id").fetchall()
+        rows = connection.execute("SELECT title FROM domains ORDER BY id").fetchall()
     return [title for (title,) in rows]
 
 
