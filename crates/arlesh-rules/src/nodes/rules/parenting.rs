@@ -5,7 +5,7 @@
 //! move; `conformance/parenting.json` writes the whole kind × kind matrix down, and both sides
 //! replay it.
 
-use crate::filters::model::NodeKind;
+use crate::nodes::kind::NodeKind;
 
 /// The kind a stored `parent_type` spells, or `None` for a spelling no node kind has.
 pub fn kind_of(parent_type: &str) -> Option<NodeKind> {

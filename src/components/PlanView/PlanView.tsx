@@ -145,12 +145,12 @@ export default function PlanView() {
   const targetWindow = targetScopeId === null ? null : windows.get(scopeKeyText(targetScopeId)) ?? null;
 
   const panes = useMemo(
-    () => (targetWindow === null ? NO_PANES : partitionForScope(visibleRows, targetWindow, windows, parents.ids)),
-    [visibleRows, targetWindow, windows, parents.ids],
+    () => (targetScopeId === null ? NO_PANES : partitionForScope(visibleRows, targetScopeId, parents.parent?.key ?? null)),
+    [visibleRows, targetScopeId, parents.parent],
   );
 
   const { planInto, planIntoSubscope, takeOut } = usePlanMove({
-    targetScopeId, targetWindow, targetLabel: scope.label, windows, showToast,
+    targetScopeId, targetWindow, targetLabel: scope.label, showToast,
   });
 
   // The four kebab switches, app-wide like the List View's own (see `use-display-store`).

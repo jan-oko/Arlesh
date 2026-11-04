@@ -26,4 +26,4 @@ pub mod server_pairing;
 pub mod server_tokens;
 pub mod tasks;
 pub mod undo;
-pub mod wire;
+pub use arlesh_rules::wire;

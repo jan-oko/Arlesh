@@ -6,7 +6,6 @@ import { usePlanClampStore } from "@/stores/use-plan-clamp-store";
 import { planContainmentConflicts } from "@/api/tasks";
 import type { DescendantPlans, PlanClampTarget } from "@/api/tasks";
 import { writtenWith } from "@/utils/answer-fields";
-import { resolveScope } from "@/api/scopes";
 import type { ScopeKey } from "@/api/scopes";
 import { keyForRef } from "@/utils/scope-key";
 import { getErrorMessage } from "@/api/errors";
@@ -17,7 +16,6 @@ import type { PendingToast } from "@/stores/use-mindmap-store";
 import type { TaskListRow } from "@/utils/list-filter";
 import type { ScopeInterval } from "@/utils/scope-interval";
 import type { ScopeRef } from "@/utils/scope-ref";
-import type { ScopeWindows } from "@/utils/plan-triage";
 import { planRefusal } from "@/utils/plan-triage";
 import type { TakeOutTarget } from "@/utils/plan-take-out";
 
@@ -35,8 +33,6 @@ interface PlanMoveOptions {
   targetWindow: ScopeInterval | null;
   /** The scope in words, for the refusal messages. */
   targetLabel: string;
-  /** Every window the containment check reads. */
-  windows: ScopeWindows;
   showToast: (toast: PendingToast) => void;
 }
 
@@ -108,7 +104,7 @@ function emptyOutcome(): BatchOutcome {
  * straddling subscope that carried its rows outside the scope you are filling and so off the pane.
  */
 export function usePlanMove({
-  targetScopeId, targetWindow, targetLabel, windows, showToast,
+  targetScopeId, targetWindow, targetLabel, showToast,
 }: PlanMoveOptions): PlanMoveHandles {
   const { t } = useTranslation(["planView", "undo"]);
   const askPlanClamp = usePlanClampStore((state) => state.ask);
@@ -264,7 +260,7 @@ export function usePlanMove({
   /** Splits a batch on the two containment rules, then writes the half that passed. */
   const planIntoWindow = useCallback(
     async (
-      rows: readonly TaskListRow[], scopeId: ScopeKey, window: ScopeInterval, label: string, leftPane: boolean,
+      rows: readonly TaskListRow[], scopeId: ScopeKey, label: string, leftPane: boolean,
       gesture: PlanGestureKey = "undo:gestures.plan",
     ): Promise<string[]> => {
       // A Habit occurrence is a row (ADR 0008) and is planned like any Task: into its overlay,
@@ -272,18 +268,18 @@ export function usePlanMove({
       const allowed: TaskListRow[] = [];
       const refused: BatchOutcome["refused"] = [];
       for (const row of rows) {
-        const bound = planRefusal(row, window, windows);
+        const bound = planRefusal(row, scopeId);
         if (bound === null) allowed.push(row); else refused.push({ row, bound });
       }
       return write(allowed, { start_id: scopeId, end_id: scopeId }, gesture, refused, label, leftPane);
     },
-    [windows, write],
+    [write],
   );
 
   const planInto = useCallback(
     async (rows: readonly TaskListRow[]): Promise<string[]> => {
       if (targetScopeId === null || targetWindow === null) return [];
-      return planIntoWindow(rows, targetScopeId, targetWindow, targetLabel, false);
+      return planIntoWindow(rows, targetScopeId, targetLabel, false);
     },
     [targetScopeId, targetWindow, targetLabel, planIntoWindow],
   );
@@ -291,11 +287,10 @@ export function usePlanMove({
   const planIntoSubscope = useCallback(
     async (rows: readonly TaskListRow[], ref: ScopeRef, label: string, partial: boolean): Promise<string[]> => {
       if (rows.length === 0) return [];
-      let cell: { id: ScopeKey; window: ScopeInterval };
+      let cell: { id: ScopeKey };
       try {
         const id = keyForRef(ref);
-        const resolved = await resolveScope(id);
-        cell = { id, window: { start: resolved.start, end: resolved.end } };
+        cell = { id };
       } catch (error: unknown) {
         const head = rows[0];
         if (head !== undefined) {
@@ -306,7 +301,7 @@ export function usePlanMove({
       // A straddling bucket reaches outside the scope being filled, so what lands in it is no
       // longer *in* this scope and leaves the pane. That is the triage's own rule, and the toast is
       // what keeps it from looking like the move failed.
-      return planIntoWindow(rows, cell.id, cell.window, label, partial);
+      return planIntoWindow(rows, cell.id, label, partial);
     },
     [planIntoWindow, showToast, t],
   );
@@ -320,7 +315,7 @@ export function usePlanMove({
       // backend, which compares the Plan written with the one its template gives it.
       const { id, window, label } = target.scope;
       if (window === null) return [];
-      return planIntoWindow(rows, id, window, label, false, "undo:gestures.unplan");
+      return planIntoWindow(rows, id, label, false, "undo:gestures.unplan");
     },
     [write, targetLabel, planIntoWindow],
   );

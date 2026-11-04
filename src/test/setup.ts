@@ -1,4 +1,10 @@
+import { readFileSync } from "node:fs";
 import "@testing-library/jest-dom";
+import { initRulesSync } from "@/wasm/rules";
+
+// The Rust rules layer as wasm (`src/wasm/rules.ts`), instantiated from disk before any suite runs.
+// `npm run wasm` builds it; CI and `npm run build` do so first.
+initRulesSync(readFileSync("src/wasm/pkg/arlesh_rules_wasm_bg.wasm"));
 
 // The app always boots with a tab strip, and every per-tab store is read through the active tab.
 // Loading the strip here gives each suite the same single default tab a fresh launch has, so a

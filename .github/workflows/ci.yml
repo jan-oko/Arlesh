@@ -88,6 +88,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The frontend imports the Rust rules as wasm (src/wasm/rules.ts), so tsc and vitest need the
+      # module built. scripts/build-rules-wasm.sh adds the wasm32 target and installs the
+      # wasm-bindgen-cli matching the crate's pinned wasm-bindgen; the cache keeps both.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "crates/arlesh-rules-wasm -> src-tauri/target"
+          shared-key: rules-wasm
+
+      - name: Build the rules wasm
+        run: npm run wasm
+
       - name: npm run lint
         run: npm run lint
 
