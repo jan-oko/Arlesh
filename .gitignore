@@ -27,3 +27,6 @@ google-services.json
 
 __pycache__/
 *.pyc
+
+# Stray wheels
+*.whl
