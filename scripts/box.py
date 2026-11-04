@@ -735,7 +735,7 @@ def worktree_stamp(wt: Path) -> str:
     )
     for raw in sorted(p for p in untracked.stdout.split(b"\0") if p):
         rel = raw.decode(errors="replace")
-        # The symlink to the main checkout's node_modules is box's own, not a change.
+        # Box's old symlink to the main checkout's node_modules (git-ignored now it is a folder).
         if rel == "node_modules" or rel.startswith("node_modules/"):
             continue
         path = wt / rel
@@ -946,11 +946,36 @@ def spawn_detached(
     return proc.pid
 
 
+def lockfile_stamp(wt: Path) -> str:
+    """What the worktree's dependencies were installed from: the hash of its `package-lock.json`."""
+    lock = wt / "package-lock.json"
+    return hashlib.sha256(lock.read_bytes()).hexdigest() if lock.is_file() else ""
+
+
 def ensure_node_modules(wt: Path) -> None:
-    # A symlink to the main checkout's costs nothing; npm install must never run in a worktree.
-    link = wt / "node_modules"
-    if not link.exists() and not link.is_symlink():
-        link.symlink_to(main_checkout() / "node_modules")
+    """Give the worktree its own `node_modules`, `npm ci`'d when missing or the lockfile changed.
+
+    Never shared: `npm ci` in one checkout must not pull dependencies out from under another's
+    running Vite server, and a branch may add devDependencies the others lack. The stamp lives
+    inside `node_modules`, so deleting that folder makes the next run reinstall.
+    """
+    modules = wt / "node_modules"
+    if modules.is_symlink():  # box's old shared link to the main checkout's
+        modules.unlink()
+    stamp_file = modules / ".arlesh-lock-stamp"
+    want = lockfile_stamp(wt)
+    if (
+        modules.is_dir()
+        and stamp_file.is_file()
+        and stamp_file.read_text().strip() == want
+    ):
+        return
+    need_cmd("npm", "Install Node.js.")
+    print(f"  installing dependencies in {wt.name} (npm ci)")
+    done = capture(["npm", "ci", "--no-audit", "--no-fund"], cwd=wt)
+    if done.returncode != 0:
+        raise die(f"npm ci failed in {wt}: {done.stderr.strip()[-600:]}")
+    stamp_file.write_text(want)
 
 
 # ---- Desktop instances ----------------------------------------------------------------------------
@@ -2260,7 +2285,7 @@ def ci_blocker(wt: Path, branch: str) -> str | None:
     if not branch:
         return "HEAD is detached"
     status = git_in(wt, "status", "--porcelain", "--untracked-files=normal").stdout
-    # The symlink to the main checkout's node_modules is box's own, not a change.
+    # Box's old symlink to the main checkout's node_modules (git-ignored now it is a folder).
     dirty = [ln for ln in status.splitlines() if ln[3:].rstrip("/") != "node_modules"]
     if dirty:
         return "the worktree has uncommitted or untracked changes"

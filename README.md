@@ -120,7 +120,8 @@ Agents configured via AGENTS.md and .claude/, with arlesh itself serving as an M
 `npm run box -- run <branch> [<target>]` builds a branch's worktree (only when it changed) and launches it
 beside your real app, on this machine (`desktop`) or on an Android phone registered with
 `npm run box -- devices add <name> --os android --host <host[:port]>`. It needs [uv](https://docs.astral.sh/uv/);
-a branch with no worktree gets one made from `origin/<branch>` (names with `/` work: `qa/2026-11-round`).
+a branch with no worktree gets one made from `origin/<branch>` (names with `/` work: `qa/2026-11-round`),
+and each worktree gets its own `node_modules` via `npm ci`, redone when its `package-lock.json` changes.
 For an Android phone, a clean pushed tree whose commit already has a successful `bundles.yml` box
 run installs that CI build instead of compiling (needs an authenticated `gh`); `--local` forces a
 local build and `--ci` triggers the CI build and waits for it. Run `npm run box -- keystore init`

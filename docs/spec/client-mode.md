@@ -458,10 +458,19 @@ key** (decided with the user, 2026-11-02):
   message that names the cause and offers `--reinstall`, which uninstalls the box app first (box
   re-provisions the token anyway). Nothing is uninstalled without the flag.
 
+**Every worktree has its own `node_modules`.** Box runs `npm ci` in a worktree when its `node_modules`
+is missing or its `package-lock.json` differs from the one it was installed from (the lockfile's hash
+is kept in `node_modules/.arlesh-lock-stamp`, so deleting the folder also forces a reinstall). It is
+checked before every desktop or Android build and when a worktree is created. Nothing is shared with
+the main checkout: an `npm ci` there cannot pull dependencies (or Vite's `.vite` cache) out from under
+another box's running dev server, and a branch that adds a devDependency gets it. A worktree made by
+an older box, whose `node_modules` is a symlink to the main checkout's, has the link removed and is
+installed on its next run. `prune` removes the folder with the worktree (it is git-ignored).
+
 **A branch needs no worktree made by hand.** `run`, `server start`, `server token` and `server pin`
 create `.claude/worktrees/<dir>` when it is missing: `git fetch origin <branch>`, then `git worktree
 add -b <branch> --track origin/<branch>` (a local branch of that name is used as it is, with a notice
-if it is behind or has diverged), with the usual `node_modules` symlink. A branch that exists neither
+if it is behind or has diverged), with its own `node_modules` (see below). A branch that exists neither
 locally nor on origin is an error; the tool never makes a branch off master. `<dir>` is the branch
 with `/` replaced by `-` (`qa/2026-11-round` is `qa-2026-11-round`), through one helper that also names
 the instance, the server and the Android package. Either spelling is accepted: `qa-2026-11-round` is

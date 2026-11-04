@@ -8,6 +8,7 @@ import importlib.util
 import io
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -349,6 +350,9 @@ class OriginFixture(IsolatedEnv):
 
     def setUp(self) -> None:
         super().setUp()
+        # The fixture repo has no package-lock.json to install from.
+        self.ensure_node_modules = mock.patch.object(box, "ensure_node_modules").start()
+        self.addCleanup(mock.patch.stopall)
         self.origin = self.tmp / "origin.git"
         seed = self.tmp / "seed"
         main = self.tmp / "main"
@@ -395,12 +399,12 @@ class Worktrees(OriginFixture):
             box.resolve_branches(["qa/2026-11-round"]), ["qa-2026-11-round"]
         )
 
-    def test_creates_from_origin_with_tracking_and_node_modules(self) -> None:
+    def test_creates_from_origin_with_tracking_and_installs_dependencies(self) -> None:
         path = box.ensure_worktree("feature")
         self.assertEqual(box.worktree_branch(path), "feature")
         up = box.git_in(path, "rev-parse", "--abbrev-ref", "feature@{u}").stdout.strip()
         self.assertEqual(up, "origin/feature")
-        self.assertTrue((path / "node_modules").is_symlink())
+        self.ensure_node_modules.assert_called_once_with(path)
 
     def test_existing_local_branch_is_reused(self) -> None:
         git(self.main, "branch", "feature", "origin/feature")
@@ -2010,6 +2014,71 @@ class PruneWorktrees(OpenPrFixture):
         self.assertEqual(sorted(box.all_names()), sorted(self.wts))
         self.assertIn("pruned 1 test app(s)", out)
         self.assertIn("uninstall com.atai.arlesh.box.ghost", self.adb_log())
+
+
+class NodeModules(IsolatedEnv):
+    """Each worktree installs its own `node_modules`; nothing is shared with the main checkout."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.wt = self.tmp / "wt"
+        self.wt.mkdir()
+        (self.wt / "package-lock.json").write_text("v1")
+
+    def ensure(self) -> list[Any]:
+        calls: list[Any] = []
+
+        def fake_ci(cmd, **kw):  # type: ignore[no-untyped-def]
+            calls.append((cmd, kw["cwd"]))
+            (self.wt / "node_modules").mkdir(exist_ok=True)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with (
+            mock.patch.object(box, "need_cmd"),
+            mock.patch.object(box, "capture", fake_ci),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            box.ensure_node_modules(self.wt)
+        return calls
+
+    def test_installs_when_missing_and_not_again_when_the_lockfile_is_unchanged(
+        self,
+    ) -> None:
+        first = self.ensure()
+        self.assertEqual([c[0][:2] for c in first], [["npm", "ci"]])
+        self.assertEqual(first[0][1], self.wt)
+        self.assertEqual(self.ensure(), [])
+
+    def test_reinstalls_when_the_lockfile_changed(self) -> None:
+        self.ensure()
+        (self.wt / "package-lock.json").write_text("v2")
+        self.assertEqual(len(self.ensure()), 1)
+        self.assertEqual(self.ensure(), [])
+
+    def test_reinstalls_when_node_modules_was_deleted(self) -> None:
+        self.ensure()
+        shutil.rmtree(self.wt / "node_modules")
+        self.assertEqual(len(self.ensure()), 1)
+
+    def test_the_old_shared_symlink_is_replaced_by_a_real_install(self) -> None:
+        shared = self.tmp / "main-node_modules"
+        shared.mkdir()
+        (self.wt / "node_modules").symlink_to(shared)
+        self.assertEqual(len(self.ensure()), 1)
+        self.assertFalse((self.wt / "node_modules").is_symlink())
+        self.assertTrue(shared.is_dir())  # the main checkout's is left alone
+
+    def test_a_failed_install_stops_and_leaves_no_stamp(self) -> None:
+        (self.wt / "node_modules").mkdir()
+        bad = subprocess.CompletedProcess([], 1, "", "boom")
+        with (
+            mock.patch.object(box, "need_cmd"),
+            mock.patch.object(box, "capture", return_value=bad),
+            contextlib.redirect_stdout(io.StringIO()),
+            self.assertRaises(box.BoxError),
+        ):
+            box.ensure_node_modules(self.wt)
+        self.assertFalse((self.wt / "node_modules" / ".arlesh-lock-stamp").exists())
 
 
 if __name__ == "__main__":
