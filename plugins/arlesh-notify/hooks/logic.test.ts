@@ -75,14 +75,14 @@ test('the server is the Arlesh entry, found by its name in any case, with its he
   const found = pickServer([
     undefined,
     { other: { url: 'http://x/mcp' } },
-    { arlesh: { type: 'http', url: 'https://box.example/mcp', headers: { Authorization: 'Bearer t' } } },
+    { arlesh: { type: 'http', url: 'https://box.example/mcp', headers: { Authorization: 'Bearer <token>' } } },
     { Arlesh: { url: 'http://127.0.0.1:4747/mcp' } },
   ])
 
   expect(found).toEqual({
     name: 'arlesh',
     url: 'https://box.example/mcp',
-    headers: { Authorization: 'Bearer t' },
+    headers: { Authorization: 'Bearer <token>' },
   })
   expect(pickServer([{ Arlesh: { command: 'npx' } }])).toBeUndefined()
 })
@@ -97,19 +97,19 @@ test('the wait stream is on the origin of /mcp', () => {
 })
 
 test('variables expand as .mcp.json expands them', async () => {
-  const lookup = async (name: string) => (name === 'TOKEN' ? 'abc' : undefined)
+  const lookup = async (name: string) => (name === 'TOKEN' ? '<token>' : undefined)
 
-  expect(await expandVariables('Bearer ${TOKEN}', lookup)).toBe('Bearer abc')
+  expect(await expandVariables('Bearer ${TOKEN}', lookup)).toBe('Bearer <token>')
   expect(await expandVariables('${NOPE:-fallback}/x', lookup)).toBe('fallback/x')
   expect(await expandVariables('plain', lookup)).toBe('plain')
 })
 
 test('the curl config escapes values and keeps the token off the command line', () => {
-  const config = curlConfig('http://h/e', { Authorization: 'Bearer "t"\\' })
+  const config = curlConfig('http://h/e', { Authorization: 'Bearer "<token>"\\' })
 
   expect(config).toContain('url = "http://h/e"')
   expect(config).toContain('header = "Accept: text/event-stream"')
-  expect(config).toContain('header = "Authorization: Bearer \\"t\\"\\\\"')
+  expect(config).toContain('header = "Authorization: Bearer \\"<token>\\"\\\\"')
 })
 
 test('the stream is parsed across pieces, with comments and CRLF', () => {

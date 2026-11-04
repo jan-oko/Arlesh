@@ -139,6 +139,12 @@ impl From<i64> for NodeIdParam {
     }
 }
 
+impl From<String> for NodeIdParam {
+    fn from(id: String) -> Self {
+        Self::Short(id)
+    }
+}
+
 /// A reference to a node in the tree, by kind and id.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct NodeRef {
