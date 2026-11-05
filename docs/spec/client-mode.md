@@ -597,10 +597,11 @@ copy goes stale and box seeds from the server instead, through `GET /backup`
 ([HTTP Server](http-api.md), *Backup*): an admin-only route behind `ARLESH_BACKUP_TOKEN`, which box
 only ever reads from.
 
-- `box seed set <url>` stores the server's URL in `$XDG_CONFIG_HOME/arlesh/box-seed-url` and reads the
-  backup token from stdin (or a hidden prompt on a terminal, never an argument) into
-  `box-seed.token`, mode 0600 like the keystore password file. `ARLESH_BOX_SEED_URL` and
-  `ARLESH_BACKUP_TOKEN` override both files. `box seed show` says what is set and where from, and never
+- `box seed set <url>` reads the backup token from stdin (or a hidden prompt on a terminal, never an
+  argument) and writes it and the URL into `box.env` as `ARLESH_BACKUP_TOKEN` and
+  `ARLESH_BOX_SEED_URL`, like the keystore password: the local environment box loads at startup, where
+  a variable already set in the shell wins. The files an earlier box kept (`box-seed-url`,
+  `box-seed.token`) are still read and are removed by the next `seed set`. `box seed show` says what is set and where from, and never
   prints the token.
 - When both are set, the first seeding of an invocation downloads the snapshot into
   `$XDG_STATE_HOME/arlesh/box/seed/` (mode 0600, removed when box exits) and both seeds, the server's

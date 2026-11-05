@@ -2168,7 +2168,9 @@ class NodeModules(IsolatedEnv):
         self.assertFalse((self.wt / "node_modules" / ".arlesh-lock-stamp").exists())
 
 
-SECRET = "admin-secret-0123456789"
+SECRET = secrets.token_urlsafe(
+    18
+)  # made per run: no credential-shaped literal in the repo
 
 
 def make_db(path: Path, titles: list[str], migration: int | None = None) -> None:
@@ -2281,41 +2283,54 @@ class SeedConfig(SeedCase):
             box.cmd_seed(box.parse_args(["seed", *argv]))
         return out.getvalue()
 
-    def test_set_keeps_the_token_in_a_0600_file_and_show_never_prints_it(self) -> None:
+    def test_set_puts_both_in_box_env_and_show_never_prints_the_token(self) -> None:
         said = self.run_seed("set", "https://nas.example:4750/", stdin=SECRET + "\n")
 
-        token_file = box.seed_token_file()
-        self.assertEqual(stat.S_IMODE(token_file.stat().st_mode), 0o600)
-        self.assertEqual(token_file.read_text().strip(), SECRET)
-        self.assertEqual(
-            box.seed_url_file().read_text().strip(), "https://nas.example:4750"
-        )
+        env = box.env_file()
+        self.assertEqual(stat.S_IMODE(env.stat().st_mode), 0o600)
+        values = box.parse_env_file(env.read_text())
+        self.assertEqual(values[box.SEED_TOKEN_ENV], SECRET)
+        self.assertEqual(values[box.SEED_URL_ENV], "https://nas.example:4750")
         shown = self.run_seed("show")
         self.assertIn("https://nas.example:4750", shown)
-        self.assertIn("[file]", shown)
         self.assertNotIn(SECRET, shown + said)
 
     def test_the_token_is_never_an_argument(self) -> None:
         with self.assertRaises(box.UsageError):
             box.parse_args(["seed", "set", "https://x", SECRET])
 
-    def test_environment_overrides_the_files(self) -> None:
-        self.run_seed("set", "https://file.example", stdin="file-token")
-        os.environ[box.SEED_URL_ENV] = "https://env.example/"
-        os.environ[box.SEED_TOKEN_ENV] = "env-token"
+    def test_set_replaces_an_earlier_box_files(self) -> None:
+        older = secrets.token_urlsafe(12)
+        box.seed_url_file().parent.mkdir(parents=True, exist_ok=True)
+        box.seed_url_file().write_text("https://old.example\n")
+        box.seed_token_file().write_text(older + "\n")
+        self.assertEqual(box.seed_token(), (older, "file"))
 
-        source = box.seed_source()
+        self.run_seed("set", "https://new.example", stdin=SECRET)
 
-        self.assertEqual(source, box.SeedSource("https://env.example", "env-token"))
-        self.assertIn("[env]", self.run_seed("show"))
-        self.assertNotIn("env-token", repr(source))
+        self.assertFalse(box.seed_url_file().exists())
+        self.assertFalse(box.seed_token_file().exists())
+        self.assertEqual(
+            box.seed_source(), box.SeedSource("https://new.example", SECRET)
+        )
 
     def test_an_empty_token_keeps_the_stored_one(self) -> None:
         self.run_seed("set", "https://a.example", stdin=SECRET)
         self.run_seed("set", "https://b.example", stdin="")
 
-        self.assertEqual(box.seed_token(), (SECRET, "file"))
-        self.assertEqual(box.seed_url(), ("https://b.example", "file"))
+        self.assertEqual(box.seed_token(), (SECRET, "env"))
+        self.assertEqual(box.seed_url(), ("https://b.example", "env"))
+        values = box.parse_env_file(box.env_file().read_text())
+        self.assertEqual(values[box.SEED_TOKEN_ENV], SECRET)
+
+    def test_the_source_never_shows_the_token(self) -> None:
+        os.environ[box.SEED_URL_ENV] = "https://env.example/"
+        os.environ[box.SEED_TOKEN_ENV] = SECRET
+
+        source = box.seed_source()
+
+        self.assertEqual(source, box.SeedSource("https://env.example", SECRET))
+        self.assertNotIn(SECRET, repr(source))
 
     def test_a_url_without_a_token_is_refused_when_seeding(self) -> None:
         os.environ[box.SEED_URL_ENV] = "https://a.example"

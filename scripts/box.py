@@ -104,9 +104,9 @@ INSTALL_FAILED_UPDATE_INCOMPATIBLE `run` stops and offers `--reinstall`, which u
 token is re-provisioned).
 
 Seeding: a new branch database (the server's, and the desktop instance's) starts as a copy of the
-production database, which lives on the arlesh-server. `seed set <url>` keeps the server's URL in
-$XDG_CONFIG_HOME/arlesh/box-seed-url and the admin backup token (the server's ARLESH_BACKUP_TOKEN)
-in box-seed.token (mode 600); ARLESH_BOX_SEED_URL and ARLESH_BACKUP_TOKEN override them, and
+production database, which lives on the arlesh-server. `seed set <url>` writes the server's URL
+and the admin backup token (the server's ARLESH_BACKUP_TOKEN) into box.env as ARLESH_BOX_SEED_URL
+and ARLESH_BACKUP_TOKEN (a variable already set in the shell wins), and
 `seed show` says what is set without printing the token. When both are set, a seeding downloads
 `GET <url>/backup` once per box invocation (cached in $XDG_STATE_HOME/arlesh/box/seed/, removed at
 exit) and uses it for both seeds; a failed download stops with the reason, and `--local-seed` (on
@@ -1071,10 +1071,12 @@ CREDENTIAL_TABLES = ("server_tokens", "pairing_pins")
 
 
 def seed_url_file() -> Path:
+    """Where an earlier box kept the URL; read as a fallback, removed by `seed set`."""
     return xdg("XDG_CONFIG_HOME", ".config") / "arlesh" / "box-seed-url"
 
 
 def seed_token_file() -> Path:
+    """Where an earlier box kept the token; read as a fallback, removed by `seed set`."""
     return xdg("XDG_CONFIG_HOME", ".config") / "arlesh" / "box-seed.token"
 
 
@@ -1432,14 +1434,18 @@ def seed_set(url: str) -> None:
         token = getpass.getpass("Backup token (the server's ARLESH_BACKUP_TOKEN): ")
     else:
         token = sys.stdin.read()
-    token = token.strip()
-    if not token and read_text(seed_token_file()) is None:
+    token = token.strip() or (seed_token()[0] or "")
+    if not token:
         raise die("No token given and none stored: nothing saved.")
-    seed_url_file().parent.mkdir(parents=True, exist_ok=True)
-    seed_url_file().write_text(url.rstrip("/") + "\n")
-    if token:
-        write_secret_file(seed_token_file(), token + "\n")
-    print(f"seed server: {url.rstrip('/')} (token in {seed_token_file()}, mode 600)")
+    # Both live in box.env, the local environment box loads at startup (mode 600).
+    for key, value in ((SEED_URL_ENV, url.rstrip("/")), (SEED_TOKEN_ENV, token)):
+        set_env_value(key, value)
+        os.environ[key] = value
+    seed_url_file().unlink(missing_ok=True)
+    seed_token_file().unlink(missing_ok=True)
+    print(
+        f"seed server: {url.rstrip('/')} ({SEED_URL_ENV} and {SEED_TOKEN_ENV} in {env_file()})"
+    )
 
 
 def seed_show() -> None:
