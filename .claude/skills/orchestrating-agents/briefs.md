@@ -9,7 +9,7 @@ what else was in flight, and who decides the merge. The late ones went wrong far
 Fill every section. Delete one only when it truly does not apply, never to save space.
 
 ````markdown
-Repo: `/home/atai/Green/CODE/Arlesh`. Your worktree: `.claude/worktrees/<short id>-<slug>`
+Repo: the repo root (`git rev-parse --show-toplevel`). Your worktree: `.claude/worktrees/<short id>-<slug>`
 (branch `<short id>-<slug>`, off `origin/master` at `<sha>`); work only there. Keep the branch
 name — it is how the user tells instances apart in `npm run box`. Do NOT work in the main checkout or any other worktree under `.claude/worktrees/` —
 <n> other agents are live in them.
@@ -140,7 +140,7 @@ to the Arlesh board: where they say `bd show`, `bd create` or "bead", read `arle
 ### Example 1 — `Arlesh-8xc`, make an editor save one Gesture (feature)
 
 ~~~~markdown
-Repo: `/home/atai/Green/CODE/Arlesh`. Create your own git worktree off `origin/master` (currently `e77f560`). Do NOT work in the main checkout or any existing worktree under `.claude/worktrees/` — five other agents are live in them.
+Repo: the repo root (`git rev-parse --show-toplevel`). Create your own git worktree off `origin/master` (currently `e77f560`). Do NOT work in the main checkout or any existing worktree under `.claude/worktrees/` — five other agents are live in them.
 
 ## Do not run local builds
 
@@ -226,7 +226,7 @@ Report: PR number and passing run, which abort route you chose and why, the four
 ### Example 2 — review the rustfmt sweep PR #57 (review only)
 
 ~~~~markdown
-Repo: `/home/atai/Green/CODE/Arlesh`. **This is a review task — read and verify only. Do not change any code, do not push, do not merge, do not comment on the PR.** Report back to me and I will act.
+Repo: the repo root (`git rev-parse --show-toplevel`). **This is a review task — read and verify only. Do not change any code, do not push, do not merge, do not comment on the PR.** Report back to me and I will act.
 
 Review **PR #57 — "Adopt rustfmt: sweep the tree, then gate it (Arlesh-vqf)"**, branch `rustfmt-sweep` (head `b1fe4429`). Both required CI lanes are already green; your job is not to re-run CI.
 
@@ -281,9 +281,9 @@ Be direct about uncertainty. If you cannot establish the semantics-free property
 ### Example 3 — take over PR #69 from a stopped agent (takeover)
 
 ~~~~markdown
-You are taking over PR #69 (bead Arlesh-lnm, "Make the Plan View usable") from a previous agent that was stopped mid-work by a session restart. Your worktree: `/home/atai/Green/CODE/Arlesh/.claude/worktrees/lnm-plan-usable` (branch `lnm-plan-usable`). Work only there.
+You are taking over PR #69 (bead Arlesh-lnm, "Make the Plan View usable") from a previous agent that was stopped mid-work by a session restart. Your worktree: `<repo>/.claude/worktrees/lnm-plan-usable` (branch `lnm-plan-usable`). Work only there.
 
-**Your predecessor's full transcript** is at `/home/atai/.claude/projects/-home-atai-Green-CODE-Arlesh/1b129e98-b069-4da0-9240-81ac45506a91/subagents/agent-a61c8608e93700cba.jsonl` (JSONL; the user/orchestrator messages and its own text are the useful parts — extract them with a small python script rather than reading raw). Read it enough to understand the whole round: the original brief, the user's review items, and the corrections. Also read `progress.md` in the worktree and the PR description (`gh pr view 69`).
+**Your predecessor's full transcript** is at `~/.claude/projects/<encoded-repo-path>/1b129e98-b069-4da0-9240-81ac45506a91/subagents/agent-a61c8608e93700cba.jsonl` (JSONL; the user/orchestrator messages and its own text are the useful parts — extract them with a small python script rather than reading raw). Read it enough to understand the whole round: the original brief, the user's review items, and the corrections. Also read `progress.md` in the worktree and the PR description (`gh pr view 69`).
 
 ## Where it stopped
 

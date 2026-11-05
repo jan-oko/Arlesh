@@ -19,9 +19,7 @@
 pub mod board;
 pub mod composite;
 pub mod gestures;
-pub mod id;
-pub mod key;
-pub mod origin;
+pub use arlesh_rules::nodes::{id, key, kind, origin};
 pub mod overlay;
 pub mod registry;
 pub mod relations;

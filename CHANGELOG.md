@@ -10,6 +10,10 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ## [Unreleased]
 
 ### Added
+- **The server ships as a container image and as wheels.** Every release now publishes `ghcr.io/jan-oko/arlesh-server` (linux/amd64 and linux/arm64, running as a non-root user with its database on a `/data` volume) and Python wheels for linux x86_64 and aarch64, beside the desktop and Android builds. See Running the server in the Client mode spec for a `docker run` and a compose file.
+
+- **Python: `Arlesh(backend=…)` works against a server.** A script can pick the app's own backend: `arlesh.Arlesh(backend=arlesh.HttpBackend(url, token=token))` talks to an `arlesh-server` as the app's Client mode does (revision stamps, gzip, TLS, the version check, and the last board read-only while the server is away), and `arlesh.SqliteBackend(path, client=…)` opens a local file as before. `async for change in board.changes()` follows the board, and `arlesh.pairing` turns a PIN into a token. `arlesh.open` and `arlesh-server` are unchanged.
+
 - **Pair a device with a PIN.** On a new phone or computer, enter the server's address and a name for the device and tap Connect: it shows a six-digit PIN. Approve the PIN with `arlesh-server pin approve <pin>` on the server, or in Settings → Devices → Approve a device on a device that is already connected, and the new device receives its own token and restarts connected. Names are unique (a clash gets a `-2` suffix), a PIN works once for ten minutes, and five wrong guesses cancel it.
 - **Devices page.** Settings → Devices lists the devices on the server with when each was last seen, and revokes any of them except the one you are using.
 
@@ -239,6 +243,10 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 - **The delete confirmation opens with Delete focused**, so deleting is Delete, then Enter. **Tab** / **Shift+Tab** move between Delete and Cancel without leaving the dialog, and **Escape** or a click outside still cancels. The warning prompts that list what you would lose still open on Cancel.
 
 ### Fixed
+- **The Linux tray icon appears when the panel starts after Arlesh.** Started at login before the shell's tray host (such as DankMaterialShell) was up, Arlesh gave up on its tray icon for the whole session and closing the window quit. It now waits for the tray host, shows the icon when the host appears, and brings it back after the shell restarts. While a host is there, closing the window hides it to the tray; while none is, closing quits.
+
+- **Archived Commitments no longer appear under Plan.** A Commitment that was archived, put away by hand or Expired (its Verdict Window ran out unanswered) still showed under the Plan preset in the List View and on the Mindmap. Plan now hides it as Start and Do already did; the Archived pill's Include still brings it back.
+
 - **Another device's changes now show up on their own in Client mode, and every view refreshes from one fetch.** With the desktop and the phone on one server, a change made on the phone only appeared on the desktop after the desktop made a change of its own. Every view of the board in a window (the list, the filters, the Mindmap) now updates when another device changes the board. A window loads the board once and shares it between its views, so a refresh, an edit or opening several views at once no longer fetches the whole board once per view: it is faster and lighter on the connection.
 
 - **The window title is "Arlesh" again.** Builds since Client mode titled the window "Arlesh — 9f0-client-mode" and stopped giving it its desktop app id, so the launcher could not match it to Arlesh's icon.

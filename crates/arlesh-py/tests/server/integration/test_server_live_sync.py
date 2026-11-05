@@ -5,39 +5,16 @@ from __future__ import annotations
 
 import json
 import queue
-import socket
 import threading
-import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from typing import Any
 
 import httpx
-import pytest
-import uvicorn
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
 
 ROOT_ASPECT = 1
 Start = Callable[..., ArleshServer]
-
-
-@pytest.fixture
-def live(start: Start) -> Iterator[str]:
-    """The server, listening on a loopback port; its base URL."""
-    app: ArleshServer = start()
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    deadline = time.monotonic() + 20
-    while not server.started:
-        assert time.monotonic() < deadline, "the server did not start"
-        time.sleep(0.05)
-    yield f"http://127.0.0.1:{port}"
-    server.should_exit = True
-    thread.join(timeout=20)
 
 
 def _subscribe(base: str, token: str) -> tuple[queue.Queue[dict[str, Any]], threading.Event]:

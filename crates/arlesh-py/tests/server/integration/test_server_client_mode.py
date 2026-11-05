@@ -11,6 +11,7 @@ from typing import Any
 
 import arlesh
 import pytest
+from arlesh.server.entrypoints.fastapi import shutdown
 from arlesh.server.entrypoints.fastapi.routers.events import board_changes
 from fastapi.testclient import TestClient
 
@@ -235,6 +236,21 @@ def test_a_change_is_an_event_with_its_revision_as_its_id() -> None:
 
     assert chunks[0] == ": connected\n\n"
     assert chunks[1].startswith("id: e1:7\nevent: board-changed\n")
+
+
+def test_a_quiet_stream_ends_when_the_server_goes_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(shutdown, "_going_down", True)
+
+    async def run() -> list[str]:
+        stream = board_changes(
+            _Changes(4),  # type: ignore[arg-type]
+            epoch="e1",
+            last_event_id=None,
+            keepalive=60,
+        )
+        return [chunk async for chunk in stream]
+
+    assert asyncio.run(asyncio.wait_for(run(), timeout=5)) == [": connected\n\n"]
 
 
 def test_a_client_behind_hears_at_once_and_one_up_to_date_does_not() -> None:

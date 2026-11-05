@@ -22,13 +22,17 @@ test = false
 # app only: it opens no local database and always runs against a server.
 [features]
 default = ["standalone"]
-standalone = []
+standalone = ["arlesh-backend/sqlite"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
 arlesh-core = { path = "../crates/arlesh-core" }
+# The Backend port and its backends. `http` is Client mode, always built; `sqlite` is Standalone mode,
+# behind this crate's `standalone` feature, so the Android build (`--no-default-features`) carries no
+# `SqliteBackend`.
+arlesh-backend = { path = "../crates/arlesh-backend", default-features = false, features = ["http"] }
 # `tray-icon` is what puts Arlesh in the system tray, so closing the window can hide it there
 # and leave the MCP endpoint answering. On Linux it needs libappindicator and libxdo at build
 # time; CI installs them.
@@ -39,14 +43,6 @@ serde_json = "1"
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
 thiserror = "2"
 anyhow = "1"
-# `Backend` is used as `dyn Backend` behind the managed `AppBackend`, so its async methods are boxed.
-async-trait = "0.1"
-# Client mode: `HttpBackend` calls `arlesh-server` (`src/backend/http/`). The version already in the
-# lock (through rmcp), with rustls for an HTTPS server. Its crypto is `ring`, installed as the
-# process default when the backend is built, rather than reqwest's default aws-lc, whose C build
-# needs cmake (and NASM on Windows) on every bundle runner.
-reqwest = { version = "0.13", default-features = false, features = ["json", "query", "http2", "gzip", "rustls-no-provider"] }
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { version = "0.4", features = ["serde"] }

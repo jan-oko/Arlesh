@@ -69,8 +69,8 @@ name = "arlesh"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "arlesh-backend",
  "arlesh-core",
- "async-trait",
  "axum",
  "chrono",
  "gtk",
@@ -78,9 +78,7 @@ dependencies = [
  "ksni",
  "libsqlite3-sys",
  "png 0.17.16",
- "reqwest",
  "rmcp",
- "rustls",
  "schemars 1.2.2",
  "serde",
  "serde_json",
@@ -96,10 +94,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlesh-backend"
+version = "0.3.0"
+dependencies = [
+ "arlesh-core",
+ "async-trait",
+ "chrono",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "arlesh-core"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "arlesh-rules",
  "axum",
  "chrono",
  "futures-util",
@@ -117,6 +131,7 @@ dependencies = [
 name = "arlesh-py"
 version = "0.3.0"
 dependencies = [
+ "arlesh-backend",
  "arlesh-core",
  "axum",
  "chrono",
@@ -127,6 +142,17 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "arlesh-rules"
+version = "0.3.0"
+dependencies = [
+ "chrono",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

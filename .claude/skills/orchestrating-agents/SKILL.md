@@ -22,7 +22,7 @@ are listed at the end.
   default is to edit `CHANGELOG.md`.
 - **Branch protection: required checks yes, "require branches to be up to date" off**
   (`strict: false`, set 2026-09-22). A stale base does not block a merge, so agents need
-  not re-merge master every time something lands. Merge queue is unavailable (private
+  not re-merge `dev` every time something lands. Feature PRs target `dev`; a release is a `dev` → `master` merge (from 2026-11-04). Merge queue is unavailable (private
   repo on a personal account).
 - **Disk is the binding constraint.** Check `df -h /` before dispatching. At 90%+ no agent
   runs local builds (see the ladder below). Concurrency has a cost curve: nine agents
@@ -72,7 +72,7 @@ are listed at the end.
    distinguishable in branch_instances."* `npm run box` names each instance after
    its worktree directory, so a random name (`agent-a89bbbce…`, which the Agent tool's
    `isolation: "worktree"` produces) tells the user nothing. Create it yourself —
-   `git worktree add .claude/worktrees/<name> -b <name> origin/master` — and hand the agent the
+   `git worktree add .claude/worktrees/<name> -b <name> origin/dev` — and hand the agent the
    path, instead of using `isolation: "worktree"`. A bundle of Tasks takes the first one's short id.
 10. **Record the dispatch** (agent id, Task, worktree, branch) somewhere that survives
    compaction — the Task's brief notes (`arlesh_tasks.update`) or your own checklist. User on
@@ -127,14 +127,14 @@ about an hour."*
   where X is — *"Don't make UI changes based on my mistakes plus a guess."*
 - **Warn across PRs in a way someone must act on.** Two PRs with no textual overlap can still
   collide (#50/#52: one pinned a bug in a conformance corpus the other fixed). A comment on
-  both PRs was not enough — master broke. State the required merge order and fix-up in your
+  both PRs was not enough — `dev` broke. State the required merge order and fix-up in your
   ready report to the user, and put the fix-up in the brief of whichever agent lands second.
 - **No unrequested sweeps.** User: *"no audits or sweeps without approval"*. That includes
   cross-PR conflict sweeps on your own initiative; ask first.
 - **Status on request is a table, terse.** User: *"Please break down what each subagent is
   working on. Don't elaborate"*.
 - **Housekeeping between rounds:** remove finished worktrees (check `/proc/*/cwd` for a live
-  agent first) and their launcher entries; keep local `master` at `origin/master`.
+  agent first) and their launcher entries; keep local `dev` at `origin/dev`.
 
 ## Waits and notifications
 
@@ -170,11 +170,11 @@ instructions never do.
   with byte-exact reproduction by stock rustfmt plus a token comparison. Before prescribing a
   check, ask what a *correct* change would make it output.
 - **Squash merges: check content, not commits.** A merged branch's commits are never
-  ancestors of master, so `git branch --merged` lies. Grep `origin/master` for the symbol or
+  ancestors of `dev`, so `git branch --merged` lies. Grep `origin/dev` for the symbol or
   diff the path. A large squash landing means every branch that merged its pre-squash commits
   needs a full manual resolution (two branches each hit 23-file conflicts from #56).
-- **Stacked PRs: land bottom-up and confirm the content reached master.** Lesson: #8 merged
-  into its base eighteen seconds after that base merged to master; the PR read `MERGED` and
+- **Stacked PRs: land bottom-up and confirm the content reached `dev`.** Lesson: #8 merged
+  into its base eighteen seconds after that base merged to `dev`; the PR read `MERGED` and
   23 files went nowhere.
 
 **The verification ladder.**
@@ -222,7 +222,7 @@ In this order:
 4. **An agent stopped by the user cannot be resumed** — the harness treats that as permanent,
    even across a restart where it looks available. Fallback: a fresh agent in the *same*
    worktree, handed the predecessor's transcript path
-   (`~/.claude/projects/-home-atai-Green-CODE-Arlesh/<session-id>/subagents/agent-<id>.jsonl`),
+   (`~/.claude/projects/<encoded-repo-path>/<session-id>/subagents/agent-<id>.jsonl`),
    told to **commit and push the uncommitted files first**, even as WIP, then to extract the
    brief, review items and corrections from the transcript with a small script. Example 3 in
    `briefs.md` is this brief.

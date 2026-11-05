@@ -39,9 +39,13 @@ name: CI
 # The repo is private, so every minute in here is billed. Keep it that way:
 # nothing expensive, and nothing that runs on a branch push nobody asked about.
 
+# Branch model: feature PRs target `dev`, and a release is a `dev` -> `master` merge, so the
+# required checks run on pull requests to both. Pushes are checked on master only: a push to
+# `dev` is a merged PR that already passed, and the master bot's follow-up commit there
+# (CHANGELOG.md, the baseline) is derived files, covered by the release PR's run.
 on:
   pull_request:
-    branches: [master]
+    branches: [dev, master]
   push:
     branches: [master]
   workflow_dispatch:
@@ -83,6 +87,17 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # The frontend imports the Rust rules as wasm (src/wasm/rules.ts), so tsc and vitest need the
+      # module built. scripts/build-rules-wasm.sh adds the wasm32 target and installs the
+      # wasm-bindgen-cli matching the crate's pinned wasm-bindgen; the cache keeps both.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "crates/arlesh-rules-wasm -> src-tauri/target"
+          shared-key: rules-wasm
+
+      - name: Build the rules wasm
+        run: npm run wasm
 
       - name: npm run lint
         run: npm run lint
@@ -168,18 +183,20 @@ jobs:
       # must never depend on Tauri, directly or through anything it pulls in. Before the workspace
       # split that was a convention; this makes it a check. `cargo tree` resolves the lockfile and
       # needs no build, so it costs seconds and sits with the other cheap guards.
-      - name: arlesh-core does not depend on tauri
+      - name: arlesh-core and arlesh-backend do not depend on tauri
         run: |
-          deps=$(cargo tree --locked -p arlesh-core -e normal,build --prefix none --format '{p}' | sed 's/ .*//' | sort -u)
-          tauri=$(echo "$deps" | grep -E '^(tauri|wry|tao|webkit2gtk)' || true)
-          if [ -n "$tauri" ]; then
-            echo "arlesh-core depends on the desktop shell:"
-            echo "$tauri"
-            echo
-            echo "The core is host-agnostic. Tauri belongs to src-tauri, beside commands/."
-            exit 1
-          fi
-          echo "arlesh-core is Tauri-free ($(echo "$deps" | wc -l) crates in its tree)."
+          for crate in arlesh-core arlesh-backend; do
+            deps=$(cargo tree --locked -p "$crate" -e normal,build --prefix none --format '{p}' | sed 's/ .*//' | sort -u)
+            tauri=$(echo "$deps" | grep -E '^(tauri|wry|tao|webkit2gtk)' || true)
+            if [ -n "$tauri" ]; then
+              echo "$crate depends on the desktop shell:"
+              echo "$tauri"
+              echo
+              echo "$crate is host-agnostic. Tauri belongs to src-tauri, beside commands/."
+              exit 1
+            fi
+            echo "$crate is Tauri-free ($(echo "$deps" | wc -l) crates in its tree)."
+          done
 
       # Second, for the same reason the guard above is first: this needs no apt
       # packages, no cache and no build — just the toolchain — so it costs seconds
@@ -328,7 +345,7 @@ jobs:
           cargo test --locked --workspace --exclude arlesh-py
           cargo llvm-cov report \
             --summary-only \
-            --ignore-filename-regex '(^|/)src/commands/|(^|/)src/backend/|(^|/)src-tauri/src/lib\.rs$|(^|/)crates/arlesh-py/|(^|/)examples/' \
+            --ignore-filename-regex '(^|/)src/commands/|(^|/)crates/arlesh-backend/|(^|/)src-tauri/src/lib\.rs$|(^|/)crates/arlesh-py/|(^|/)examples/' \
             --fail-under-lines 94 \
             2>&1 | tee "$RUNNER_TEMP/coverage.log"
 
@@ -336,8 +353,9 @@ jobs:
       # database or connects to a server, and wires windows and the tray. Nothing in it runs
       # without a real window runtime, so it was always 0% here; Client mode's startup (Task 9f0)
       # grew it, and an untestable file growing is not coverage dropping.
-      # `src/backend/` is the Tauri commands' former bodies, moved behind the Backend port (Task
-      # 9f0) unchanged; they were out of this report as `src/commands/` and stay out of it.
+      # `crates/arlesh-backend/` is the Tauri commands' former bodies, moved behind the Backend port
+      # (Task 9f0) unchanged, and then into their own crate; they were out of this report as
+      # `src/commands/` and stay out of it.
 
       # The Python bindings are gated by the `python` lane instead: their Rust is an operation
       # table whose every arm is exercised from pytest, and `cargo test` cannot load a module

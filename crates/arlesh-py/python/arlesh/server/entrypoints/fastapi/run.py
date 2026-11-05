@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from loguru import logger
 
 from arlesh.server.entrypoints.fastapi.config import ServerConfig
+from arlesh.server.entrypoints.fastapi.shutdown import GRACEFUL_SHUTDOWN_SECONDS, GracefulServer
 
 
 def run(app: FastAPI, config: ServerConfig) -> None:
@@ -19,12 +20,15 @@ def run(app: FastAPI, config: ServerConfig) -> None:
         )
     scheme = "https" if config.tls else "http"
     logger.info("Serving", url=f"{scheme}://{config.host}:{config.port}")
-    uvicorn.run(
-        app,
-        host=config.host,
-        port=config.port,
-        ssl_certfile=config.tls_cert,
-        ssl_keyfile=config.tls_key,
-        log_config=None,
-        log_level="warning",
-    )
+    GracefulServer(
+        uvicorn.Config(
+            app,
+            host=config.host,
+            port=config.port,
+            ssl_certfile=config.tls_cert,
+            ssl_keyfile=config.tls_key,
+            log_config=None,
+            log_level="warning",
+            timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
+        )
+    ).run()

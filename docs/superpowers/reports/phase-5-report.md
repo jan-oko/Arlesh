@@ -25,7 +25,7 @@ was nothing to revert.
 
 ## 2. Baseline (established before any work, and still the tree's state)
 
-From `/home/atai/Green/CODE/Arlesh/.claude/worktrees/architecture-review/src-tauri`:
+From `<repo>/.claude/worktrees/architecture-review/src-tauri`:
 
 ```
 $ CARGO_INCREMENTAL=0 cargo test

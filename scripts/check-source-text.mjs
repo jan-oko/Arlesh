@@ -23,13 +23,16 @@ import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const ROOTS = ["src", "src-tauri/src", "crates/arlesh-core/src", "scripts"];
+const ROOTS = ["src", "src-tauri/src", "crates/arlesh-core/src", "crates/arlesh-rules/src", "crates/arlesh-rules-wasm/src", "scripts"];
+/** Generated build output, gitignored and binary by nature (the wasm module `scripts/build-rules-wasm.sh` makes). */
+const GENERATED = "src/wasm/pkg";
 
 /** Every file under `dir`, recursively, as absolute paths. */
 function filesUnder(dir) {
   const found = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
+    if (relative(ROOT, path) === GENERATED) continue;
     if (entry.isDirectory()) found.push(...filesUnder(path));
     else if (entry.isFile()) found.push(path);
   }

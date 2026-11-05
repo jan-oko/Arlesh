@@ -12,8 +12,11 @@ types. An update request distinguishes a field left out (unchanged) from a field
 
 from __future__ import annotations
 
+import json
 import os
+import uuid
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 from datetime import date, datetime
 from types import TracebackType
 from typing import Any, Self, TypeVar
@@ -22,6 +25,7 @@ from pydantic import BaseModel, TypeAdapter
 from pydantic_core import to_json
 
 from arlesh import _native
+from arlesh.backends import Backend, BoardRevision, NativeHandle, ServerStatus, SqliteBackend
 from arlesh.errors import from_native
 from arlesh.models import (
     BlockReason,
@@ -138,11 +142,7 @@ async def open(
     writing**, migrating it if needed. A write-open is refused with :class:`NotPermitted` while
     the desktop app has the database open, unless ``force=True``.
     """
-    try:
-        native = await _native.open(path, client, force)
-    except _native.NativeError as error:
-        raise from_native(error) from None
-    return SqliteDatabase(native)
+    return await Arlesh(backend=SqliteBackend(path, client=client, force=force)).open()
 
 
 class Database(ABC):
@@ -758,19 +758,82 @@ class Database(ABC):
         """Waits until the board's revision is past ``after``, and answers it."""
 
 
-class SqliteDatabase(Database):
-    """The :class:`Database` port's implementation: Arlesh's Rust core over the SQLite file,
-    as :func:`open` returns it. Each operation runs in one transaction of the core."""
+class Arlesh(Database):
+    """The :class:`Database` port over a backend you choose: ``Arlesh(backend=SqliteBackend(…))``
+    is the core over a local file, ``Arlesh(backend=HttpBackend(…))`` a client of an
+    ``arlesh-server``. Open it with ``async with`` or ``await arlesh.open()``; :func:`open` is the
+    one-step shortcut for SQLite. Each operation is what the desktop app's command runs."""
 
-    def __init__(self, native: _native.NativeDatabase) -> None:
-        self._native = native
+    def __init__(self, *, backend: Backend) -> None:
+        self._backend = backend
+        self._handle: NativeHandle | None = None
+
+    async def open(self) -> Self:
+        """Opens the backend (the file, or the connection to the server) and answers ``self``."""
+        if self._handle is None:
+            self._handle = await self._backend.connect()
+        return self
+
+    async def __aenter__(self) -> Self:
+        return await self.open()
+
+    @property
+    def _native(self) -> NativeHandle:
+        if self._handle is None:
+            raise RuntimeError("this Arlesh is not open: use `async with` or `await open()`")
+        return self._handle
 
     @property
     def client(self) -> str | None:
         return self._native.client
 
+    @property
+    def server_status(self) -> ServerStatus | None:
+        """Over HTTP, what is known of the server (reachable, last sync, why read-only); else
+        ``None``."""
+        native = self._native
+        if isinstance(native, _native.NativeHttpBackend):
+            return ServerStatus.model_validate_json(native.server_status())
+        return None
+
+    @property
+    def board_revision(self) -> BoardRevision | None:
+        """Over HTTP, the stamp of the newest board load or event; ``None`` on SQLite, as in the
+        app's Standalone mode."""
+        native = self._native
+        if isinstance(native, _native.NativeHttpBackend):
+            raw = native.board_revision()
+            return None if raw is None else BoardRevision.model_validate_json(raw)
+        return None
+
+    async def changes(self) -> AsyncGenerator[BoardRevision | None, None]:
+        """Yields whenever the board changes: ``async for change in board.changes()``.
+
+        Latest-wins: a slow reader sees the newest change, never a backlog. Over HTTP the first
+        iterator opens the server's change stream and the last one to close drops it. On SQLite it
+        follows the in-process counter, under one epoch per process.
+        """
+        native = self._native
+        if isinstance(native, _native.NativeHttpBackend):
+            native.follow()
+            try:
+                seq = native.change_seq
+                while True:
+                    heard = json.loads(await native.wait_change(seq))
+                    seq = int(heard["seq"])
+                    stamp = heard["revision"]
+                    yield None if stamp is None else BoardRevision.model_validate(stamp)
+            finally:
+                native.unfollow()
+        else:
+            after = native.revision
+            while True:
+                after = await native.next_change(after)
+                yield BoardRevision(epoch=_PROCESS_EPOCH, revision=after)
+
     async def close(self) -> None:
-        await self._native.close()
+        if self._handle is not None:
+            await self._handle.close()
 
     async def serve_mcp(self, *, host: str = "127.0.0.1", port: int = 0) -> int:
         try:
@@ -779,7 +842,10 @@ class SqliteDatabase(Database):
             raise from_native(error) from None
 
     async def stop_mcp(self) -> None:
-        await self._native.stop_mcp()
+        try:
+            await self._native.stop_mcp()
+        except _native.NativeError as error:
+            raise from_native(error) from None
 
     async def _call(self, answer: TypeAdapter[T], op: str, **arguments: Any) -> T:
         """Runs the operation ``op`` and reads its answer as ``answer`` describes."""
@@ -1303,8 +1369,22 @@ class SqliteDatabase(Database):
         return self._native.revision
 
     async def next_change(self, after: int) -> int:
-        return await self._native.next_change(after)
+        native = self._native
+        if isinstance(native, _native.NativeHttpBackend):
+            if native.revision <= after:
+                native.follow()
+                try:
+                    await native.wait_change(native.change_seq)
+                finally:
+                    native.unfollow()
+            return native.revision
+        return await native.next_change(after)
 
+
+SqliteDatabase = Arlesh
+"""The name scripts used before backends: an :class:`Arlesh` over a :class:`SqliteBackend`."""
+
+_PROCESS_EPOCH = uuid.uuid4().hex
 
 _BOARD = TypeAdapter(MindmapLoad)
 _TASK = TypeAdapter(Task)

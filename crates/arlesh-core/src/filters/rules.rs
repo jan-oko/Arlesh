@@ -383,7 +383,7 @@ pub fn type_hard_hidden(node: &NodeFacts, filter: &BoardFilter) -> bool {
 /// Whether a Commitment shows under the active preset.
 ///
 /// Its own rule, not a translation of a Task's, because the two kinds resolve the opposite way
-/// round. Plan, Start and Do show what is **unresolved**: what you have yet to judge is what is
+/// round. Plan, Start and Do show what is **unresolved** and not archived: what you have yet to judge is what is
 /// still live, and a recorded verdict — Kept or Broken alike — is resolved, the way a done Task
 /// is. All shows everything, past verdicts included, because looking back over what you kept and
 /// broke is the point of keeping the record.
@@ -396,11 +396,13 @@ pub fn passes_commitment_preset(node: &NodeFacts, filter: &BoardFilter) -> bool 
     let verdict = node.verdict.unwrap_or(Verdict::Unresolved);
     match filter.preset {
         Preset::All => true,
-        Preset::Plan => verdict == Verdict::Unresolved,
-        // Start and Do ask what is live now, and an archived Commitment — by hand, beneath a hand
-        // archive, or Expired — is not, whatever its verdict (ruled 2026-10-04). The Archived
-        // pill's Include still brings it back, through the caller's override.
-        Preset::Start | Preset::Do => verdict == Verdict::Unresolved && !is_archived(node),
+        // Plan, Start and Do ask what is live, and an archived Commitment — by hand, beneath a hand
+        // archive, or Expired — is not, whatever its verdict (ruled 2026-10-04; Plan joined them
+        // after it kept showing one). The Archived pill's Include still brings it back, through the
+        // caller's override.
+        Preset::Plan | Preset::Start | Preset::Do => {
+            verdict == Verdict::Unresolved && !is_archived(node)
+        }
         Preset::Backlog => false,
     }
 }

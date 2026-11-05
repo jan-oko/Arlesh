@@ -6,4 +6,6 @@
  */
 declare module "node:fs" {
   export function readFileSync(path: string, encoding: "utf8"): string;
+  /** Without an encoding it returns the bytes (the wasm module is read this way). */
+  export function readFileSync(path: string): Uint8Array;
 }

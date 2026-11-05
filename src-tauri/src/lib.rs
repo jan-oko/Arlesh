@@ -355,6 +355,7 @@ fn setup_client(
             let app = app.handle().clone();
             move |revision| commands::board::announce_revision(&app, revision)
         }),
+        tauri::async_runtime::handle().inner().clone(),
     );
     follower.resume();
     app.manage(follower);
