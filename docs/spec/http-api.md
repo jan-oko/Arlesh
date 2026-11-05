@@ -124,7 +124,7 @@ are row ids, or a Habit occurrence's UUID where the core takes either.
 | Path | What |
 | --- | --- |
 | `GET /health` | `api_version`, the package `version` and the build `commit` (`ARLESH_COMMIT`): the app's handshake. Behind the token, so checking it checks the token |
-| `GET /events/changes` | The change stream (below). `GET /events/expectations` is the wait stream: see [MCP](mcp-server.md), *Being told a wait resolved* |
+| `GET /events/changes` | The change stream (below). `GET /events/expectations` is the wait stream, and with `after`/`wait` a long poll answering JSON: see [MCP](mcp-server.md), *Being told a wait resolved* |
 | `GET /board?now=&at_capacity=` | The whole board: every node with its lifecycle, short id and facts |
 | `/board` | `GET /lifecycles?now=`, `/task-dependencies?now=`, `/block-reasons`: the board's parts on their own |
 | `GET /tasks`, `/goals`, `/commitments`, `/waits` `?now=` | Every node of the kind, derived at `now`, as the board has them |

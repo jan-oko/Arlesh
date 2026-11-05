@@ -1240,6 +1240,7 @@ mod agent_waits {
             EventStreams {
                 feed: ChangeFeed::new(),
                 poll: Some(std::time::Duration::from_millis(100)),
+                ..EventStreams::default()
             },
         );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

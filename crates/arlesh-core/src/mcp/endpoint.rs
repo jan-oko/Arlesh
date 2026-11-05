@@ -175,6 +175,7 @@ impl McpEndpoint {
                     feed: ChangeFeed::new(),
                     // The app's windows write without announcing here, so the waits are re-read.
                     poll: Some(WAIT_POLL),
+                    ..EventStreams::default()
                 },
                 settings,
                 env_override,

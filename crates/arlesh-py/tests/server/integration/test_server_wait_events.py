@@ -245,3 +245,84 @@ def test_watch_refuses_an_id_that_names_no_wait(agent_board: dict[str, Any]) -> 
     refusal = agent.refused("arlesh_waits", operation="watch", ids=["ffffffff"])
 
     assert refusal["kind"] == "not_permitted"
+
+
+def _poll(live: str, agent_board: dict[str, Any], query: str) -> dict[str, Any]:
+    response = httpx.get(
+        f"{live}/events/expectations?{query}",
+        headers={"Authorization": f"Bearer {agent_board['token']}"},
+        timeout=60,
+    )
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("application/json")
+    answer: dict[str, Any] = response.json()
+    return answer
+
+
+def test_a_poll_with_no_cursor_is_told_to_read_afresh(
+    live: str, agent_board: dict[str, Any]
+) -> None:
+    first = _poll(live, agent_board, "wait=0&agentic=true")
+    foreign = _poll(live, agent_board, f"after={first['revision']}&epoch=other&wait=0")
+
+    assert first["reset"] is True and first["changes"] == [] and first["epoch"]
+    assert foreign["reset"] is True and foreign["epoch"] == first["epoch"]
+
+
+def test_a_poll_answers_at_once_when_a_wait_changed_after_its_cursor(
+    live: str, agent_board: dict[str, Any]
+) -> None:
+    agent: Agent = agent_board["agent"]
+    cursor = _poll(live, agent_board, "wait=0&agentic=true")
+    asked = agent.call(
+        "arlesh_waits", operation="ask", task_id=agent_board["task"]["full_id"], title="Which?"
+    )
+
+    started = time.monotonic()
+    created = _poll(
+        live,
+        agent_board,
+        f"after={cursor['revision']}&epoch={cursor['epoch']}&wait=20&agentic=true",
+    )
+    quiet = _poll(
+        live,
+        agent_board,
+        f"after={created['revision']}&epoch={created['epoch']}&wait=1&agentic=true",
+    )
+
+    assert time.monotonic() - started < 15
+    assert "reset" not in created
+    assert [(c["change"], c["wait_id"]) for c in created["changes"]] == [
+        ("created", asked["full_id"])
+    ]
+    assert created["revision"] >= created["changes"][0]["revision"] > cursor["revision"]
+    assert quiet["changes"] == [] and "reset" not in quiet
+
+
+def test_a_poll_waits_for_a_release_and_hears_it(live: str, agent_board: dict[str, Any]) -> None:
+    agent: Agent = agent_board["agent"]
+    asked = agent.call(
+        "arlesh_waits", operation="ask", task_id=agent_board["task"]["full_id"], title="Which?"
+    )
+    cursor = _poll(live, agent_board, "wait=0&agentic=true")
+    heard: queue.Queue[dict[str, Any]] = queue.Queue()
+    query = f"after={cursor['revision']}&epoch={cursor['epoch']}&wait=20&agentic=true"
+    threading.Thread(target=lambda: heard.put(_poll(live, agent_board, query)), daemon=True).start()
+    time.sleep(0.5)
+    assert heard.empty()
+
+    released = httpx.patch(
+        f"{live}/waits/{asked['id']}",
+        json={"status": "released", "answer": "Blue"},
+        headers=agent_board["admin"],
+    )
+    assert released.status_code == 200, released.text
+    answer = heard.get(timeout=15)
+
+    assert [(c["change"], c["status"]) for c in answer["changes"]] == [("released", "released")]
+
+
+def test_the_poll_form_obeys_the_stream_s_access_rules(live: str) -> None:
+    refused = httpx.get(f"{live}/events/expectations?wait=0")
+
+    assert refused.status_code in (401, 403)

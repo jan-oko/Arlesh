@@ -13,11 +13,21 @@
 //!   then follows the stream. The first read the server makes happens before the response starts,
 //!   so a change after the client sees the response is always an event.
 //!
+//! * **`/events/expectations?after=<revision>&epoch=<epoch>&wait=<seconds>`** is the same
+//!   changes as one JSON answer, for a client that cannot hold a stream open (a hook with a plain
+//!   request and no streaming). It answers `{ revision, epoch, changes }` as soon as a change past
+//!   `after` exists, or with no changes once `wait` seconds (25 by default, 30 at most) have
+//!   passed; the client polls again with the `revision` it got. With no `after`, another run's
+//!   `epoch`, or an `after` the server's short log no longer reaches, it answers
+//!   `{ revision, epoch, changes: [], reset: true }` at once: read the waits (`get_many`), then
+//!   poll from that revision. `wait=0` answers without waiting.
+//!
 //! A host that cannot hear every write (the desktop app, where a window's own writes announce
 //! nothing here) sets [`EventStreams::poll`], and the wait stream reads again on that interval
 //! as well as on each announced change.
 
 mod feed;
+mod log;
 pub mod rules;
 #[cfg(test)]
 mod tests;
@@ -40,6 +50,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time::{timeout, Instant};
 
 pub use feed::ChangeFeed;
+pub use log::{Reading, WaitLog, WaitLogs};
 use rules::{admitted, changes, WaitEvent, WaitState};
 
 use super::{ids::full_id, lookup::Board};
@@ -61,6 +72,8 @@ pub struct EventStreams {
     /// Reads the waits again this often even when no write was announced, for a host that hears
     /// of only some writes. `None` for a host that hears of all of them.
     pub poll: Option<Duration>,
+    /// What the long-poll form of the wait stream answers from. Leave it at its default.
+    pub logs: WaitLogs,
 }
 
 #[derive(Clone)]
@@ -73,7 +86,7 @@ struct Served {
 pub fn routes(factory: SessionFactory, streams: EventStreams) -> axum::Router {
     axum::Router::new()
         .route("/events/changes", get(changes_stream))
-        .route("/events/expectations", get(expectations_stream))
+        .route("/events/expectations", get(expectations))
         .with_state(Served { factory, streams })
 }
 
@@ -231,10 +244,121 @@ fn board_changed(feed: &ChangeFeed, revision: u64) -> Bytes {
 
 // ---- /events/expectations ----
 
+/// How long a long poll waits when it names no `wait`, and the longest it may be asked to.
+const DEFAULT_WAIT: u64 = 25;
+const MAX_WAIT: u64 = 30;
+
 #[derive(Deserialize)]
 struct ExpectationsQuery {
     #[serde(default)]
     agentic: bool,
+    /// The revision the client has heard up to. Its presence, or `wait`'s, selects the long poll.
+    after: Option<u64>,
+    epoch: Option<String>,
+    wait: Option<u64>,
+}
+
+/// `GET /events/expectations`: the stream, or with `after` or `wait` the long poll.
+async fn expectations(
+    State(served): State<Served>,
+    Query(query): Query<ExpectationsQuery>,
+    headers: HeaderMap,
+) -> Result<Response, StatusCode> {
+    if query.after.is_some() || query.wait.is_some() {
+        expectations_poll(served, query, headers).await
+    } else {
+        expectations_stream(served, query, headers).await
+    }
+}
+
+#[derive(Serialize)]
+struct PollAnswer<'a> {
+    revision: u64,
+    epoch: &'a str,
+    changes: Vec<WaitEventData<'a>>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    reset: bool,
+}
+
+fn json_answer(answer: &PollAnswer<'_>) -> Response {
+    let body = serde_json::to_string(answer).unwrap_or_else(|_| "{}".to_owned());
+    let mut response = Response::new(Body::from(body));
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_static("application/json"),
+    );
+    headers.insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("no-store"),
+    );
+    response
+}
+
+/// The long poll: answers as soon as a change past `after` exists, or empty once `wait` seconds
+/// have passed. A client with no usable cursor (none, another run's, or one the log no longer
+/// reaches) is told to read the waits afresh (`reset`), and polls again from the revision it got.
+async fn expectations_poll(
+    served: Served,
+    query: ExpectationsQuery,
+    headers: HeaderMap,
+) -> Result<Response, StatusCode> {
+    guard(&headers)?;
+    let feed = &served.streams.feed;
+    let epoch = feed.epoch();
+    let log = served.streams.logs.of(query.agentic);
+    let deadline =
+        Instant::now() + Duration::from_secs(query.wait.unwrap_or(DEFAULT_WAIT).min(MAX_WAIT));
+    let cursor = query
+        .after
+        .filter(|after| *after > 0 && query.epoch.as_deref() == Some(epoch));
+    let mut seen = feed.revision();
+    loop {
+        let reading = log
+            .poll(
+                &served.factory,
+                query.agentic,
+                feed,
+                cursor.unwrap_or_default(),
+            )
+            .await
+            .map_err(|error| {
+                tracing::warn!(error = %error, "could not read the waits for a long poll");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let (revision, stamped, reset) = match reading {
+            Reading::Stale(revision) => (revision, Vec::new(), true),
+            Reading::Events(revision, _) if cursor.is_none() => (revision, Vec::new(), true),
+            Reading::Events(revision, stamped) => (revision, stamped, false),
+        };
+        if reset || !stamped.is_empty() || remaining.is_zero() {
+            let changes = stamped
+                .iter()
+                .map(|(stamp, event)| WaitEventData {
+                    change: event.change,
+                    wait: &event.wait,
+                    deleted: event.deleted(),
+                    revision: *stamp,
+                    epoch,
+                })
+                .collect();
+            return Ok(json_answer(&PollAnswer {
+                revision,
+                epoch,
+                changes,
+                reset,
+            }));
+        }
+        // Wake on the next write, or on the poll interval of a host that hears of only some.
+        let tick = served
+            .streams
+            .poll
+            .map_or(remaining, |poll| remaining.min(poll));
+        if let Ok(reached) = timeout(tick, feed.after(seen)).await {
+            seen = reached;
+        }
+    }
 }
 
 struct Watching {
@@ -258,8 +382,8 @@ async fn read_waits(
 }
 
 async fn expectations_stream(
-    State(served): State<Served>,
-    Query(query): Query<ExpectationsQuery>,
+    served: Served,
+    query: ExpectationsQuery,
     headers: HeaderMap,
 ) -> Result<Response, StatusCode> {
     guard(&headers)?;

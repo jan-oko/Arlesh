@@ -81,6 +81,7 @@ pub(crate) async fn serve(
     let streams = EventStreams {
         feed: shared.changes.clone(),
         poll: None,
+        ..EventStreams::default()
     };
     let app = mcp::router(
         factory,

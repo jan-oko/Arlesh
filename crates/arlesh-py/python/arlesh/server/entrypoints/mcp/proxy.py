@@ -100,12 +100,25 @@ class ExpectationsProxyRouter(APIRouter):
         self._mcp = mcp
         self.get("", response_class=StreamingResponse)(self._stream)
 
-    async def _stream(self, request: Request, agentic: bool = False) -> StreamingResponse:
+    async def _stream(
+        self,
+        request: Request,
+        agentic: bool = False,
+        after: int | None = None,
+        epoch: str | None = None,
+        wait: int | None = None,
+    ) -> StreamingResponse:
         """``wait-changed`` for each change to a wait, as Server-Sent Events: its ids, the Task's,
         its status, whether it is archived or deleted, and the revision. ``agentic=true`` keeps
         only the waits an agent raised. No history is kept: read the waits you follow
-        (``arlesh_waits.get_many``) after you connect."""
-        del agentic  # forwarded with the rest of the query string
+        (``arlesh_waits.get_many``) after you connect.
+
+        With ``after`` (the revision heard up to, from the last answer), ``epoch`` or ``wait``
+        (seconds, 25 by default, 30 at most) it is a long poll instead: one JSON answer,
+        ``{revision, epoch, changes}``, as soon as a change past ``after`` exists or once ``wait``
+        has passed. ``{..., changes: [], reset: true}`` means there is no cursor to resume from
+        (none, another run's epoch, or one too old): read the waits, then poll from ``revision``."""
+        del agentic, after, epoch, wait  # forwarded with the rest of the query string
         return await self._mcp.forward_beside(request, "/events/expectations")
 
 

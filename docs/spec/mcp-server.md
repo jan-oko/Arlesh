@@ -574,7 +574,7 @@ its reasons are in [ADR 0013](../adr/0013-notifying-agents-when-a-wait-resolves.
 server's side. The notifier itself is the `arlesh-notify` Claude Code mod (`plugins/arlesh-notify/`),
 which an agent's session may or may not have.
 
-**Two event streams**, Server-Sent Events, on the MCP endpoint's own origin (beside `/mcp` in
+**Two event streams**, Server-Sent Events (and the wait stream's long-poll form, below), on the MCP endpoint's own origin (beside `/mcp` in
 Standalone; behind the client's bearer token in Client mode, by the same proxy), under the same
 rules: a loopback `Host` only, and any request carrying an `Origin` refused.
 
@@ -589,6 +589,17 @@ rules: a loopback `Host` only, and any request carrying an `Origin` refused.
   wait's title or note is no event.** The server keeps no history: the first read is made before
   the response starts, so a change after the client has the response is always an event, and a
   client that reconnects reads the waits it follows once (`get_many`) to catch up.
+- `GET /events/expectations?after=<revision>&epoch=<epoch>&wait=<seconds>[&agentic=true]`: the same
+  changes as **one JSON answer**, for a client that cannot hold a stream open (the mod's
+  `$.http.fetch` resolves only once the body is read). It answers
+  `{"revision", "epoch", "changes": [<the wait-changed data above>]}` as soon as a change stamped
+  after `after` exists, else with no changes once `wait` seconds have passed (25 by default, 30 at
+  most; `wait=0` answers at once). The client polls again with the `revision` it got, one request at
+  a time. With `after` missing or 0, an `epoch` that is not this run's, or an `after` the server's
+  short log (the last 1000 changes) no longer reaches, it answers
+  `{"revision", "epoch", "changes": [], "reset": true}` at once: read the waits (`get_many`), then
+  poll from that `revision`. The server keeps the log lazily, per filter, and only once a poll asks;
+  the stream is unchanged. Same access rules as the stream.
 
 The app reads the waits again every 2 seconds as well as on each agent write, since a window's own
 writes do not announce to the endpoint; `arlesh-server` hears of every write and does not poll.
