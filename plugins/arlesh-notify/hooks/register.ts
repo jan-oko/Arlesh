@@ -43,7 +43,7 @@ function serially<T>(job: () => Promise<T>): Promise<T> {
 export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    server = await readServer($)
+    server = await readServer($).catch(() => undefined)
     if (!following) {
       following = true
       void follow($)
@@ -54,7 +54,7 @@ export const register: Register = (on) => {
   // The one line that says notifications are on: only when the server answered a quick request.
   on('classic.SessionStart', async ($, e, next) => {
     const started = await next(e)
-    server ??= await readServer($)
+    server ??= await readServer($).catch(() => undefined)
     if (server === undefined || !(await reachable($, server))) return started
     return { ...started, additionalContext: [...(started.additionalContext ?? []), NOTES] }
   })
@@ -146,14 +146,17 @@ async function follow($: Engine): Promise<void> {
   let cursor: Cursor | undefined
   let failures = 0
   for (;;) {
-    server ??= await readServer($)
-    if (server === undefined) {
-      await $.clock.sleep(NO_SERVER_RETRY_MS)
-      continue
-    }
-    const connection = server
-    const started = await $.clock.now()
+    let started = 0
+    // The whole iteration is guarded: whatever rejects (reading the configuration included), the
+    // loop backs off and goes on, for the session's life.
     try {
+      server ??= await readServer($)
+      if (server === undefined) {
+        await $.clock.sleep(NO_SERVER_RETRY_MS)
+        continue
+      }
+      const connection = server
+      started = await $.clock.now()
       const answered = await $.http.fetch(pollUrl(originOf(connection.url), cursor, wait), {
         headers: connection.headers,
       })
@@ -170,15 +173,19 @@ async function follow($: Engine): Promise<void> {
       cursor = { revision: answer.revision, epoch: answer.epoch }
     } catch (error) {
       failures += 1
-      wait = nextWait(wait, error, (await $.clock.now()) - started)
-      $.ui.log(`arlesh-notify: the poll failed: ${String(error)}`, { to: 'debug' })
-      if (failures === SURFACE_AFTER) {
-        $.ui.log(
-          'arlesh-notify: cannot reach Arlesh; notifications are paused and it keeps trying.',
-        )
+      try {
+        wait = nextWait(wait, error, started === 0 ? Infinity : (await $.clock.now()) - started)
+        $.ui.log(`arlesh-notify: the poll failed: ${String(error)}`, { to: 'debug' })
+        if (failures === SURFACE_AFTER) {
+          $.ui.log(
+            'arlesh-notify: cannot reach Arlesh; notifications are paused and it keeps trying.',
+          )
+        }
+        server = undefined // read the configuration again: the URL or token may have changed
+        await $.clock.sleep(backoff)
+      } catch {
+        // Even the bookkeeping failed: the loop still goes on.
       }
-      server = undefined // read the configuration again: the URL or token may have changed
-      await $.clock.sleep(backoff)
       backoff = Math.min(backoff * 2, BACKOFF_MAX_MS)
     }
   }

@@ -52,3 +52,42 @@ test('a call that failed records nothing', async ($, on) => {
 
   expect(stored['watch:s1']).toBeUndefined()
 })
+
+test('the poll loop survives the configuration failing to read, and recovers', async ($, on) => {
+  const clock = mock.clock(on)
+  let rootCalls = 0
+  let fetches = 0
+  on('session.start', () => ({ cwd: '/r' }))
+  on('session.root', () => {
+    rootCalls += 1
+    if (rootCalls <= 2) throw new Error('no root yet')
+    return { value: '/r' }
+  })
+  on('env.get', () => ({ value: '/home/u' }))
+  on('fs.read', (_, e) =>
+    e.path === '/r/.mcp.json'
+      ? { value: JSON.stringify({ mcpServers: { arlesh: { url: 'http://127.0.0.1:4747/mcp' } } }) }
+      : (() => {
+          throw new Error('no such file')
+        })(),
+  )
+  on('http.fetch', async () => {
+    fetches += 1
+    await clock.sleep(25_000) // the server holds the poll
+    return {
+      value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ revision: 1, epoch: 'e', changes: [], reset: true }) },
+    }
+  })
+  on('store.get', () => ({ value: undefined }))
+  on('session.id', () => ({ value: 's1' }))
+
+  await $.session.start({ cwd: '/r', surface: null, isInteractive: false })
+  await clock.settle()
+  expect(fetches).toBe(0)
+
+  await clock.advance(1_000)
+  await clock.settle()
+
+  expect(rootCalls).toBeGreaterThan(2)
+  expect(fetches).toBeGreaterThan(0)
+})
