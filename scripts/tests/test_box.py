@@ -716,6 +716,9 @@ for i, a in enumerate(args):
         envs[args[i + 1]] = os.environ.get(args[i + 1], "")
 with open(os.environ["FAKE_GH_DIR"] + "/keytool.log", "a") as log:
     log.write(json.dumps({"argv": args, "envs": envs}) + "\\n")
+if args[0] == "-list":
+    print("Keystore type: " + os.environ.get("FAKE_KEYTOOL_TYPE", "PKCS12"))
+    sys.exit(0)
 open(args[args.index("-keystore") + 1], "w").write("KEYSTORE:" + " ".join(args))
 """
 
@@ -1066,25 +1069,28 @@ class KeystoreRotate(CiFixture):
         with mock.patch.object(box, "repo_root", lambda: self.wt):
             box.keystore_rotate_password()
 
-    def test_changes_both_passwords_by_env_and_sets_both_secrets(self) -> None:
-        ks, old = self.make_keystore()
-        self.rotate()
-        pw = box.parse_env_file(box.env_file().read_text())[box.BOX_PASSWORD_ENV]
-        self.assertNotEqual(pw, old)
-        store, key = self.keytool_calls()
-        self.assertEqual(store["argv"][0], "-storepasswd")
-        self.assertEqual(key["argv"][0], "-keypasswd")
-        self.assertIn("-alias", key["argv"])
-        for call in (store, key):
+    def check_env_only(self, calls: list[dict[str, Any]], old: str, pw: str) -> None:
+        for call in calls:
             argv = call["argv"]
-            self.assertIn("-new:env", argv)
             for value in (old, pw):
                 self.assertNotIn(value, " ".join(argv))
             for plain in ("-storepass", "-keypass", "-new"):
                 self.assertNotIn(plain, argv)  # only the :env forms
-            self.assertEqual(call["envs"][box.NEW_PASSWORD_ENV], pw)
+
+    def test_a_pkcs12_store_changes_its_one_password_and_sets_both_secrets(
+        self,
+    ) -> None:
+        ks, old = self.make_keystore()
+        self.rotate()
+        pw = box.parse_env_file(box.env_file().read_text())[box.BOX_PASSWORD_ENV]
+        self.assertNotEqual(pw, old)
+        calls = self.keytool_calls()
+        self.assertEqual([c["argv"][0] for c in calls], ["-list", "-storepasswd"])
+        store = calls[1]
+        self.assertIn("-new:env", store["argv"])
+        self.assertEqual(store["envs"][box.NEW_PASSWORD_ENV], pw)
         self.assertEqual(store["envs"][box.BOX_PASSWORD_ENV], old)
-        self.assertEqual(key["envs"][box.BOX_PASSWORD_ENV], old)
+        self.check_env_only(calls, old, pw)
         self.assertEqual(
             base64.b64decode(
                 (self.gh_dir / "secret.ARLESH_BOX_KEYSTORE_B64.txt").read_text()
@@ -1095,6 +1101,24 @@ class KeystoreRotate(CiFixture):
             (self.gh_dir / "secret.ARLESH_BOX_KEYSTORE_PASSWORD.txt").read_text(), pw
         )
         self.assertEqual(len((self.gh_dir / "secret.args").read_text().splitlines()), 2)
+
+    def test_a_jks_store_also_changes_the_key_password(self) -> None:
+        _, old = self.make_keystore()
+        os.environ["FAKE_KEYTOOL_TYPE"] = "jks"
+        try:
+            self.rotate()
+        finally:
+            del os.environ["FAKE_KEYTOOL_TYPE"]
+        pw = box.parse_env_file(box.env_file().read_text())[box.BOX_PASSWORD_ENV]
+        calls = self.keytool_calls()
+        self.assertEqual(
+            [c["argv"][0] for c in calls], ["-list", "-storepasswd", "-keypasswd"]
+        )
+        key = calls[2]
+        self.assertIn("-alias", key["argv"])
+        self.assertEqual(key["envs"][box.NEW_PASSWORD_ENV], pw)
+        self.assertEqual(key["envs"][box.BOX_PASSWORD_ENV], old)
+        self.check_env_only(calls, old, pw)
 
     def test_a_failed_upload_changes_nothing_locally(self) -> None:
         ks, _ = self.make_keystore()
@@ -2216,3 +2240,40 @@ class EnvFileTests(IsolatedEnv):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("keytool"), "needs a JDK's keytool")
+class KeystoreRotateRealKeytool(unittest.TestCase):
+    """The rotation against the real keytool, on a throwaway PKCS12 store (the JDK default)."""
+
+    def run_keytool(self, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["keytool", *args],
+            env={**os.environ, **env},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_a_pkcs12_store_opens_with_the_new_value_only(self) -> None:
+        old, new = secrets.token_urlsafe(18), secrets.token_urlsafe(18)
+        with tempfile.TemporaryDirectory() as tmp:
+            ks = Path(tmp) / "box.keystore"
+            made = self.run_keytool(
+                "-genkeypair", "-keystore", str(ks), "-alias", box.BOX_KEY_ALIAS,
+                "-keyalg", "RSA", "-keysize", "2048", "-validity", "2", "-dname", "CN=box-test",
+                "-storepass:env", "A", "-keypass:env", "A",
+                A=old,
+            )  # fmt: skip
+            self.assertEqual(made.returncode, 0, made.stderr)
+            box.rotate_keystore_password(ks, old, new)
+            opened = self.run_keytool(
+                "-certreq", "-keystore", str(ks), "-alias", box.BOX_KEY_ALIAS,
+                "-storepass:env", "A", "-keypass:env", "A",
+                A=new,
+            )  # fmt: skip
+            self.assertEqual(opened.returncode, 0, opened.stderr)
+            refused = self.run_keytool(
+                "-list", "-keystore", str(ks), "-storepass:env", "A", A=old
+            )
+            self.assertNotEqual(refused.returncode, 0)

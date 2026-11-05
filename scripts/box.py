@@ -2213,15 +2213,47 @@ def keystore_init(force: bool) -> None:
     )
 
 
+def keystore_type(ks: Path, password: str) -> str:
+    """The store type keytool reports for `ks` (`PKCS12`, `JKS`, ...), upper-cased."""
+    listed = capture(
+        [
+            "keytool",
+            "-list",
+            "-keystore",
+            str(ks),
+            *keytool_pass("-storepass", BOX_PASSWORD_ENV),
+        ],
+        env={BOX_PASSWORD_ENV: password},
+    )
+    if listed.returncode != 0:
+        raise die(
+            f"keytool could not open {ks} with {BOX_PASSWORD_ENV}: "
+            f"{listed.stderr.strip() or listed.stdout.strip()}. Nothing was changed."
+        )
+    for line in listed.stdout.splitlines():
+        name, _, value = line.partition(":")
+        if name.strip().lower() == "keystore type":
+            return value.strip().upper()
+    return "PKCS12"
+
+
 def rotate_keystore_password(copy: Path, old: str, new: str) -> None:
-    """Change the store and key password of `copy` (same key), from `old` to `new`."""
-    steps = (
+    """Change the store and key password of `copy` (same key), from `old` to `new`.
+
+    A PKCS12 store (keytool's default since JDK 9, and what `keystore init` makes) has one
+    password for the store and its keys: `-storepasswd` changes both, and keytool refuses
+    `-keypasswd` on it. Only a JKS store needs the key's password changed separately.
+    """
+    steps = [
         ["-storepasswd", "-keystore", str(copy), *keytool_pass("-storepass", BOX_PASSWORD_ENV),
          *keytool_pass("-new", NEW_PASSWORD_ENV)],
-        ["-keypasswd", "-keystore", str(copy), "-alias", BOX_KEY_ALIAS,
-         *keytool_pass("-storepass", NEW_PASSWORD_ENV), *keytool_pass("-keypass", BOX_PASSWORD_ENV),
-         *keytool_pass("-new", NEW_PASSWORD_ENV)],
-    )  # fmt: skip
+    ]  # fmt: skip
+    if keystore_type(copy, old) == "JKS":
+        steps.append(
+            ["-keypasswd", "-keystore", str(copy), "-alias", BOX_KEY_ALIAS,
+             *keytool_pass("-storepass", NEW_PASSWORD_ENV), *keytool_pass("-keypass", BOX_PASSWORD_ENV),
+             *keytool_pass("-new", NEW_PASSWORD_ENV)]
+        )  # fmt: skip
     for step in steps:
         done = capture(
             ["keytool", *step], env={BOX_PASSWORD_ENV: old, NEW_PASSWORD_ENV: new}
