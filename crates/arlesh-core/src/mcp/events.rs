@@ -28,6 +28,8 @@
 
 mod feed;
 mod log;
+#[cfg(test)]
+mod routes_tests;
 pub mod rules;
 #[cfg(test)]
 mod tests;
