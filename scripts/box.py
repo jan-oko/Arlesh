@@ -13,6 +13,7 @@
             [--local | --ci] [--reinstall] [--local-seed]
     box keystore init [--force]
     box keystore rotate-password
+    box keystore migrate [-y]
     box stop [branch ... | all]
     box clean [branch ... | all]
     box prune [<target>] [-y | --dry-run]
@@ -88,14 +89,19 @@ unpushed tree it is an error. Without an authenticated gh, `run` builds locally 
 
 Signing: every box APK, local or CI, is signed with ONE box-only keystore, so they update one
 another. `keystore init` creates $XDG_CONFIG_HOME/arlesh/box.keystore (alias arlesh-box, 10000 days; a
-debug-grade key for com.atai.arlesh.box.* only) under a random password kept beside it in
-box.keystore.password (mode 600), and uploads both as repo secrets with `gh secret set`:
-ARLESH_BOX_KEYSTORE_B64 and ARLESH_BOX_KEYSTORE_PASSWORD (it refuses to replace an existing
-keystore without --force; replacing means reinstalling every box app). `keystore rotate-password`
-moves a keystore made with the old fixed password onto a random one, keeping the same key. Local builds sign with it
-when it exists, else with ~/.android/debug.keystore and a notice. CI (bundles.yml box mode) signs
-with the secret when set, else with a fresh key and a warning. On INSTALL_FAILED_UPDATE_INCOMPATIBLE
-`run` stops and offers `--reinstall`, which uninstalls first (the token is re-provisioned).
+debug-grade key for com.atai.arlesh.box.* only) under a random password generated in memory. The
+password lives only in the environment: it is written to box.env as ARLESH_BOX_KEYSTORE_PASSWORD
+(file mode 600, an existing line updated in place, the value never printed) and set, with the
+keystore (base64), as the repo secrets ARLESH_BOX_KEYSTORE_B64 and ARLESH_BOX_KEYSTORE_PASSWORD with
+`gh secret set` (values on stdin). keytool and apksigner are given the variable's name
+(`-storepass:env`, `env:`), never its value and never a file. `init` refuses to replace an existing
+keystore without --force; replacing means reinstalling every box app. `keystore rotate-password`
+gives the existing key a new random password (the old one from the environment) and updates box.env
+and the secret. `keystore migrate [-y]` moves a password out of the old box.keystore.password file
+into box.env and deletes the file. An Android build needs the keystore and the variable; without
+them it stops and says so. CI (bundles.yml box mode) signs with the repo secrets. On
+INSTALL_FAILED_UPDATE_INCOMPATIBLE `run` stops and offers `--reinstall`, which uninstalls first (the
+token is re-provisioned).
 
 Seeding: a new branch database (the server's, and the desktop instance's) starts as a copy of the
 production database, which lives on the arlesh-server. `seed set <url>` keeps the server's URL in
@@ -148,7 +154,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
@@ -171,11 +177,8 @@ TOKEN_EXTRA = "arlesh_box_token"
 BOX_KEY_ALIAS = "arlesh-box"
 BOX_KEY_VALIDITY_DAYS = 10000
 BOX_KEYSTORE_SECRET = "ARLESH_BOX_KEYSTORE_B64"
-BOX_PASSWORD_SECRET = "ARLESH_BOX_KEYSTORE_PASSWORD"
-DEBUG_KEY_ALIAS = "androiddebugkey"
-# The Android SDK's documented convention: the debug keystore's passwords are the alias without
-# its "debugkey" suffix. Handed to keytool and apksigner through the environment, never argv.
-ANDROID_DEBUG_STOREPASS_ENV = "ARLESH_BOX_DEBUG_STOREPASS"
+BOX_PASSWORD_ENV = "ARLESH_BOX_KEYSTORE_PASSWORD"
+BOX_PASSWORD_SECRET = BOX_PASSWORD_ENV  # the repo secret has the variable's name
 BUNDLES_WORKFLOW = "bundles.yml"
 AUTO, LOCAL, CI = "auto", "local", "ci"
 
@@ -2028,11 +2031,6 @@ def am_start_argv(serial: str, package: str, url: str, token: str) -> list[str]:
 # ---- Android: tooling and device ------------------------------------------------------------------
 
 
-def debug_keystore() -> Path:
-    value = os.environ.get("ARLESH_BOX_KEYSTORE")
-    return Path(value) if value else home() / ".android" / "debug.keystore"
-
-
 def android_env() -> None:
     sdk = os.environ.get("ANDROID_HOME", "")
     ndk = os.environ.get("ANDROID_NDK_HOME", "")
@@ -2066,27 +2064,6 @@ def build_tool(tool: str) -> Path:
     if not dirs or not os.access(dirs[-1] / tool, os.X_OK):
         raise die(f"No '{tool}' under {root}. Install build-tools with sdkmanager.")
     return dirs[-1] / tool
-
-
-def ensure_debug_keystore() -> None:
-    ks = debug_keystore()
-    if ks.is_file():
-        return
-    need_cmd("keytool", "It ships with the JDK.")
-    ks.parent.mkdir(parents=True, exist_ok=True)
-    made = capture(
-        [
-            "keytool", "-genkeypair", "-keystore", str(ks),
-            *keytool_pass("-storepass", DEBUG_PASS_SOURCE),
-            *keytool_pass("-keypass", DEBUG_PASS_SOURCE),
-            "-alias", DEBUG_KEY_ALIAS, "-keyalg", "RSA", "-keysize", "2048", "-validity", "10000",
-            "-dname", "CN=Android Debug,O=Android,C=US",
-        ],
-        env=DEBUG_PASS_ENV,
-    )  # fmt: skip
-    if made.returncode != 0:
-        raise die(f"Could not create {ks}.")
-    note(f"created {ks}")
 
 
 ADB_TLS = "_adb-tls-connect._tcp"
@@ -2496,67 +2473,57 @@ class Firebase:
 #
 # One box-only keystore signs every box APK, local or CI, so a CI build installs over a local one and
 # back. It lives at $XDG_CONFIG_HOME/arlesh/box.keystore and, base64, in the repo secret
-# ARLESH_BOX_KEYSTORE_B64 (made by `box keystore init`). Its random password sits beside it in
-# box.keystore.password (mode 600) and in ARLESH_BOX_KEYSTORE_PASSWORD. It is a debug-grade key, good
-# for com.atai.arlesh.box.* only, but a password in the repo is still a leak, so none is written
-# here: keytool and apksigner read the password from a file or the environment, never from argv.
+# ARLESH_BOX_KEYSTORE_B64 (made by `box keystore init`). Its random password lives only in the
+# environment: ARLESH_BOX_KEYSTORE_PASSWORD, from box.env locally and from the repo secret of the same
+# name in CI. keytool and apksigner are handed the variable's name (`-storepass:env`, `env:`), never
+# its value, so it is on no command line and in no file besides box.env.
 
-PassSource = tuple[str, str]  # ("file", path) or ("env", variable name)
+NEW_PASSWORD_ENV = (
+    BOX_PASSWORD_ENV + "_NEW"
+)  # rotate-password: the variable holding the new one
 
 
 def box_keystore() -> Path:
     return xdg("XDG_CONFIG_HOME", ".config") / "arlesh" / "box.keystore"
 
 
-def box_password_file() -> Path:
+def legacy_password_file() -> Path:
+    """Where earlier versions kept the password: a file beside the keystore."""
     return box_keystore().with_name(box_keystore().name + ".password")
 
 
-DEBUG_PASS_SOURCE: PassSource = ("env", ANDROID_DEBUG_STOREPASS_ENV)
-DEBUG_PASS_ENV = {ANDROID_DEBUG_STOREPASS_ENV: DEBUG_KEY_ALIAS.removesuffix("debugkey")}
-
-
-def keytool_pass(option: str, source: PassSource) -> list[str]:
-    """`-storepass:file PATH` / `-storepass:env NAME`: keytool's argv-safe forms."""
-    return [f"{option}:{source[0]}", source[1]]
-
-
-def apksigner_pass(source: PassSource) -> str:
-    """`file:PATH` / `env:NAME`: apksigner's argv-safe forms."""
-    return f"{source[0]}:{source[1]}"
+def keytool_pass(option: str, variable: str) -> list[str]:
+    """`-storepass:env NAME`: keytool reads the value from that environment variable."""
+    return [f"{option}:env", variable]
 
 
 @dataclass(frozen=True)
 class Signing:
     keystore: Path
     alias: str
-    password: PassSource
-    shared: bool  # the box keystore, as opposed to the debug-keystore fallback
-    env: Mapping[str, str] = field(
-        default_factory=dict
-    )  # what `password` reads, if env
+
+
+def missing_password_message() -> str:
+    hint = ""
+    if legacy_password_file().is_file():
+        hint = f" The old password file {legacy_password_file()} can be moved there with `{CMD} keystore migrate`."
+    return (
+        f"{BOX_PASSWORD_ENV} is not set. Put it in {env_file()} (`{CMD} keystore init` does that "
+        f"for a new keystore).{hint}"
+    )
 
 
 def choose_signing() -> Signing:
-    """The shared box keystore when it exists, else the debug keystore (made if missing)."""
+    """The box keystore and its password from the environment; an Android build has no other."""
     shared = box_keystore()
-    if shared.is_file():
-        pwfile = box_password_file()
-        if not pwfile.is_file():
-            raise die(
-                f"{shared} has no password file ({pwfile}). Run `{CMD} keystore rotate-password` "
-                f"if it was made before passwords were random, or `{CMD} keystore init --force` "
-                "to make a new one (every installed box app then has to be reinstalled)."
-            )
-        return Signing(shared, BOX_KEY_ALIAS, ("file", str(pwfile)), True)
-    ensure_debug_keystore()
-    note(
-        f"signing with {debug_keystore()}: CI and local builds are not update-compatible "
-        f"until you run `{CMD} keystore init`."
-    )
-    return Signing(
-        debug_keystore(), DEBUG_KEY_ALIAS, DEBUG_PASS_SOURCE, False, DEBUG_PASS_ENV
-    )
+    if not shared.is_file():
+        raise die(
+            f"There is no box keystore at {shared}. Run `{CMD} keystore init` to create it "
+            f"(it also puts {BOX_PASSWORD_ENV} in {env_file()})."
+        )
+    if not os.environ.get(BOX_PASSWORD_ENV):
+        raise die(missing_password_message())
+    return Signing(shared, BOX_KEY_ALIAS)
 
 
 def origin_repo(cwd: Path) -> str:
@@ -2568,12 +2535,26 @@ def origin_repo(cwd: Path) -> str:
     return found.group(1)
 
 
-def write_secret_file(path: Path, text: str) -> None:
-    """Write `text` to `path`, created with mode 600 so it is never readable by others."""
-    path.unlink(missing_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w") as f:
-        f.write(text)
+def set_env_value(key: str, value: str) -> None:
+    """Set `key=value` in box.env: update its line in place, else append; the file is mode 600."""
+    path = env_file()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        lines = []
+    line_for = re.compile(rf"^\s*(?:export\s+)?{re.escape(key)}\s*=")
+    entry = f"{key}={value}"
+    if any(line_for.match(line) for line in lines):
+        lines = [entry if line_for.match(line) else line for line in lines]
+    else:
+        lines.append(entry)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fresh = path.with_name(path.name + ".new")
+    fresh.unlink(missing_ok=True)
+    fd = os.open(fresh, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    os.replace(fresh, path)
 
 
 def set_secret(repo: str, name: str, value: str) -> None:
@@ -2602,11 +2583,12 @@ def require_gh_and_keytool() -> str:
     return origin_repo(repo_root())
 
 
-def install_keystore(fresh: Path, fresh_pw: Path) -> None:
-    """Move a finished keystore and its password file into place."""
+def finish_keystore(fresh: Path, password: str) -> None:
+    """Record the password in box.env, then move the finished keystore into place."""
+    set_env_value(BOX_PASSWORD_ENV, password)
     fresh.chmod(0o600)
-    os.replace(fresh_pw, box_password_file())
     os.replace(fresh, box_keystore())
+    legacy_password_file().unlink(missing_ok=True)
 
 
 def keystore_init(force: bool) -> None:
@@ -2624,53 +2606,75 @@ def keystore_init(force: bool) -> None:
         )
     ks.parent.mkdir(parents=True, exist_ok=True)
     fresh = ks.with_name(ks.name + ".new")
-    fresh_pw = box_password_file().with_name(box_password_file().name + ".new")
     fresh.unlink(missing_ok=True)
     password = secrets.token_urlsafe(24)
-    write_secret_file(fresh_pw, password)
     try:
-        source: PassSource = ("file", str(fresh_pw))
         made = capture([
             "keytool", "-genkeypair", "-keystore", str(fresh),
-            *keytool_pass("-storepass", source), *keytool_pass("-keypass", source),
+            *keytool_pass("-storepass", BOX_PASSWORD_ENV), *keytool_pass("-keypass", BOX_PASSWORD_ENV),
             "-alias", BOX_KEY_ALIAS, "-keyalg", "RSA", "-keysize", "2048",
             "-validity", str(BOX_KEY_VALIDITY_DAYS), "-dname", "CN=Arlesh Box,O=Arlesh,C=US",
-        ])  # fmt: skip
+        ], env={BOX_PASSWORD_ENV: password})  # fmt: skip
         if made.returncode != 0 or not fresh.is_file():
             raise die(f"keytool could not create the keystore: {made.stderr.strip()}")
-        # Upload before replacing the local files, so a failed upload leaves the old set intact.
+        # Upload before replacing the local keystore, so a failed upload leaves the old one intact.
         publish_keystore(repo, fresh, password)
+        finish_keystore(fresh, password)
     except BoxError:
         fresh.unlink(missing_ok=True)
-        fresh_pw.unlink(missing_ok=True)
         raise
-    install_keystore(fresh, fresh_pw)
-    print(f"created {ks} and its password file, and set the secrets {BOX_KEYSTORE_SECRET} and "
-          f"{BOX_PASSWORD_SECRET} on {repo}.")  # fmt: skip
+    print(f"created {ks}, put {BOX_PASSWORD_ENV} in {env_file()} (mode 600), and set the secrets "
+          f"{BOX_KEYSTORE_SECRET} and {BOX_PASSWORD_SECRET} on {repo}.")  # fmt: skip
     print(
         f"alias {BOX_KEY_ALIAS}: bundles.yml's box mode and local builds now sign with the same key."
     )
 
 
-def legacy_box_password() -> str:
-    """The fixed password keystores had before they got random ones: the alias itself.
+def keystore_type(ks: Path, password: str) -> str:
+    """The store type keytool reports for `ks` (`PKCS12`, `JKS`, ...), upper-cased."""
+    listed = capture(
+        [
+            "keytool",
+            "-list",
+            "-keystore",
+            str(ks),
+            *keytool_pass("-storepass", BOX_PASSWORD_ENV),
+        ],
+        env={BOX_PASSWORD_ENV: password},
+    )
+    if listed.returncode != 0:
+        raise die(
+            f"keytool could not open {ks} with {BOX_PASSWORD_ENV}: "
+            f"{listed.stderr.strip() or listed.stdout.strip()}. Nothing was changed."
+        )
+    for line in listed.stdout.splitlines():
+        name, _, value = line.partition(":")
+        if name.strip().lower() == "keystore type":
+            return value.strip().upper()
+    return "PKCS12"
 
-    Only `keystore rotate-password` may use it, to move such a keystore off it. Signing never does.
+
+def rotate_keystore_password(copy: Path, old: str, new: str) -> None:
+    """Change the store and key password of `copy` (same key), from `old` to `new`.
+
+    A PKCS12 store (keytool's default since JDK 9, and what `keystore init` makes) has one
+    password for the store and its keys: `-storepasswd` changes both, and keytool refuses
+    `-keypasswd` on it. Only a JKS store needs the key's password changed separately.
     """
-    return BOX_KEY_ALIAS
-
-
-def rotate_keystore_password(copy: Path, old: PassSource, new: PassSource) -> None:
-    """Change the store and key password of `copy` (same key), from `old` to `new`."""
-    steps = (
-        ["-storepasswd", "-keystore", str(copy), *keytool_pass("-storepass", old),
-         *keytool_pass("-new", new)],
-        ["-keypasswd", "-keystore", str(copy), "-alias", BOX_KEY_ALIAS,
-         *keytool_pass("-storepass", new), *keytool_pass("-keypass", old),
-         *keytool_pass("-new", new)],
-    )  # fmt: skip
+    steps = [
+        ["-storepasswd", "-keystore", str(copy), *keytool_pass("-storepass", BOX_PASSWORD_ENV),
+         *keytool_pass("-new", NEW_PASSWORD_ENV)],
+    ]  # fmt: skip
+    if keystore_type(copy, old) == "JKS":
+        steps.append(
+            ["-keypasswd", "-keystore", str(copy), "-alias", BOX_KEY_ALIAS,
+             *keytool_pass("-storepass", NEW_PASSWORD_ENV), *keytool_pass("-keypass", BOX_PASSWORD_ENV),
+             *keytool_pass("-new", NEW_PASSWORD_ENV)]
+        )  # fmt: skip
     for step in steps:
-        done = capture(["keytool", *step])
+        done = capture(
+            ["keytool", *step], env={BOX_PASSWORD_ENV: old, NEW_PASSWORD_ENV: new}
+        )
         if done.returncode != 0:
             raise die(
                 f"keytool {step[0]} failed: {done.stderr.strip() or done.stdout.strip()}. "
@@ -2679,38 +2683,64 @@ def rotate_keystore_password(copy: Path, old: PassSource, new: PassSource) -> No
 
 
 def keystore_rotate_password() -> None:
-    """Move a keystore made with the old fixed password onto a random one, keeping its key."""
+    """Give the existing key a new random password (old one from the environment)."""
     ks = box_keystore()
-    pwfile = box_password_file()
     if not ks.is_file():
         raise die(f"There is no box keystore at {ks}. Run `{CMD} keystore init`.")
-    if pwfile.exists():
-        raise die(f"{pwfile} exists: the box keystore already has its own password.")
+    old = os.environ.get(BOX_PASSWORD_ENV, "")
+    if not old:
+        raise die(missing_password_message())
     repo = require_gh_and_keytool()
     fresh = ks.with_name(ks.name + ".new")
-    fresh_pw = pwfile.with_name(pwfile.name + ".new")
     fresh.unlink(missing_ok=True)
     password = secrets.token_urlsafe(24)
-    write_secret_file(fresh_pw, password)
     shutil.copyfile(ks, fresh)
     try:
-        with tempfile.TemporaryDirectory(prefix="box-ks-") as tmp:
-            old_file = Path(tmp) / "old"
-            write_secret_file(old_file, legacy_box_password())
-            rotate_keystore_password(
-                fresh, ("file", str(old_file)), ("file", str(fresh_pw))
-            )
+        rotate_keystore_password(fresh, old, password)
         publish_keystore(repo, fresh, password)
+        finish_keystore(fresh, password)
     except BoxError:
         fresh.unlink(missing_ok=True)
-        fresh_pw.unlink(missing_ok=True)
         raise
-    install_keystore(fresh, fresh_pw)
     print(
         f"changed the store and key password of {ks} (same key, so installed box apps still update)."
     )
-    print(f"wrote the new password to {pwfile} (mode 600) and set the secrets "
+    print(f"put the new {BOX_PASSWORD_ENV} in {env_file()} (mode 600) and set the secrets "
           f"{BOX_KEYSTORE_SECRET} and {BOX_PASSWORD_SECRET} on {repo}.")  # fmt: skip
+
+
+def keystore_migrate(yes: bool) -> None:
+    """Move the password out of the old file beside the keystore into box.env, then delete the file."""
+    legacy = legacy_password_file()
+    if not legacy.is_file():
+        print(f"nothing to migrate: {legacy} does not exist.")
+        return
+    value = legacy.read_text(encoding="utf-8").strip()
+    if not value:
+        raise die(
+            f"{legacy} is empty; delete it and run `{CMD} keystore rotate-password`."
+        )
+    current = os.environ.get(BOX_PASSWORD_ENV)
+    if current and current != value:
+        raise die(
+            f"{BOX_PASSWORD_ENV} is already set to something else; remove {legacy} yourself "
+            "once you know which one opens the keystore."
+        )
+    if not yes:
+        if not interactive():
+            raise die("Not a terminal; pass -y to migrate without asking.")
+        answer = ask(
+            f"Move the password from {legacy} into {env_file()} and delete the file? [y/N] "
+        )
+        if answer.strip().lower() not in ("y", "yes"):
+            print("aborted; nothing changed.")
+            return
+    set_env_value(BOX_PASSWORD_ENV, value)
+    legacy.unlink()
+    print(f"moved the password into {env_file()} and deleted {legacy}.")
+    print(
+        f"CI keeps its own copy in the repo secret {BOX_PASSWORD_SECRET}; nothing to change there."
+    )
 
 
 # ---- Android: CI builds ----------------------------------------------------------------------------
@@ -3007,10 +3037,8 @@ def build_android(name: str, wt: Path, firebase: bool) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     run_cmd(
         [str(apksigner), "sign", "--ks", str(signing.keystore), "--ks-key-alias", signing.alias,
-         "--ks-pass", apksigner_pass(signing.password),
-         "--key-pass", apksigner_pass(signing.password),
+         "--ks-pass", f"env:{BOX_PASSWORD_ENV}", "--key-pass", f"env:{BOX_PASSWORD_ENV}",
          "--out", str(out), str(unsigned)],
-        env=dict(signing.env),
         what="apksigner",
     )  # fmt: skip
     print(f"=== {name}: built {out} ({out.stat().st_size / 1e6:.0f}M) ===")
@@ -3735,6 +3763,8 @@ def cmd_devices(args: argparse.Namespace) -> None:
 def cmd_keystore(args: argparse.Namespace) -> None:
     if args.keystore_cmd == "rotate-password":
         keystore_rotate_password()
+    elif args.keystore_cmd == "migrate":
+        keystore_migrate(args.yes)
     else:
         keystore_init(args.force)
 
@@ -3852,14 +3882,22 @@ def build_parser() -> argparse.ArgumentParser:
     ks = sub.add_parser("keystore", help="the shared box signing key")
     ksub = ks.add_subparsers(dest="keystore_cmd", required=True, parser_class=Parser)
     init = ksub.add_parser(
-        "init", help="create the box keystore and upload it as a repo secret for CI"
+        "init",
+        help="create the box keystore, keep its password in box.env, and set the repo secrets for CI",
     )
     init.add_argument(
         "--force", action="store_true", help="replace an existing keystore"
     )
     ksub.add_parser(
         "rotate-password",
-        help="move a keystore made with the old fixed password onto a random one (same key)",
+        help="give the existing key a new random password (the old one from the environment)",
+    )
+    migrate = ksub.add_parser(
+        "migrate",
+        help="move the password from the old file beside the keystore into box.env",
+    )
+    migrate.add_argument(
+        "-y", "--yes", action="store_true", help="apply without asking"
     )
     ks.set_defaults(fn=cmd_keystore)
 
