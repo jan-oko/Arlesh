@@ -1,1 +1,3 @@
 .claude-plugin/types/
+# Claude Code writes it when it loads the mod
+tsconfig.json

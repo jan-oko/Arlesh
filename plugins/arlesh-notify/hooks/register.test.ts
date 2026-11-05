@@ -1,7 +1,8 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-test('a wait asked in the session is recorded under the session, with the sub-agent that asked', async ($, on) => {
-  const stored: Record<string, unknown> = {}
+const asked = { full_id: 'w-full', short_id: 'w1', status: 'pending', archival: 'live' }
+
+function storeTo(on: Parameters<typeof mock.clock>[0], stored: Record<string, unknown>) {
   mock.clock(on)
   on('store.get', (_, e) => ({ value: stored[e.key] }))
   on('store.set', (_, e) => {
@@ -12,9 +13,12 @@ test('a wait asked in the session is recorded under the session, with the sub-ag
   on('agent.list', () => ({
     value: [{ id: 'a1', description: 'Fix CI', type: 'general-purpose', status: 'running', parentId: 'main-ish' }],
   }))
-  on('tool.call', () => ({
-    result: { structuredContent: { full_id: 'w-full', short_id: 'w1', status: 'pending', archival: 'live' } },
-  }))
+}
+
+test('a wait asked in the session is recorded when the hook sees the result as the string the model reads', async ($, on) => {
+  const stored: Record<string, unknown> = {}
+  storeTo(on, stored)
+  on('tool.call', () => ({ result: JSON.stringify(asked), text: JSON.stringify(asked) }))
 
   await $.tool.call({
     tool: 'mcp__Arlesh__arlesh_waits',
@@ -27,4 +31,24 @@ test('a wait asked in the session is recorded under the session, with the sub-ag
   expect(stored['watch:s1']).toMatchObject({
     'w-full': { shortId: 'w1', taskShortId: '9a1', via: { agentId: 'a1', description: 'Fix CI' } },
   })
+})
+
+test('a wait is recorded from an object result too', async ($, on) => {
+  const stored: Record<string, unknown> = {}
+  storeTo(on, stored)
+  on('tool.call', () => ({ result: { structuredContent: asked } }))
+
+  await $.tool.call({ tool: 'mcp__Arlesh__arlesh_waits', operation: 'ask', task_id: '9a1', title: 'Which?' })
+
+  expect(stored['watch:s1']).toMatchObject({ 'w-full': { shortId: 'w1', taskShortId: '9a1' } })
+})
+
+test('a call that failed records nothing', async ($, on) => {
+  const stored: Record<string, unknown> = {}
+  storeTo(on, stored)
+  on('tool.call', () => ({ result: JSON.stringify(asked), text: JSON.stringify(asked), isError: true }))
+
+  await $.tool.call({ tool: 'mcp__Arlesh__arlesh_waits', operation: 'ask', task_id: '9a1', title: 'Which?' })
+
+  expect(stored['watch:s1']).toBeUndefined()
 })

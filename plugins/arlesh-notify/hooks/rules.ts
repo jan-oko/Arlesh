@@ -61,16 +61,24 @@ export function routeTo(via: Via | undefined, agents: readonly AgentLite[]): Tar
   return { kind: 'session' }
 }
 
-/** What a notification says: where to look, never the answer itself. */
+/** Whether the message names the sub-agent: it does whenever it goes to anyone else than it. */
+export function namesRaiser(target: Target, via: Via | undefined): boolean {
+  return via !== undefined && !(target.kind === 'agent' && !target.byProxy)
+}
+
+/**
+ * What a notification says: where to look, never the answer itself. `named` says the sub-agent
+ * that raised the wait by its description, for when the pointer does not go to that sub-agent.
+ */
 export function notificationText(
   wait: { shortId: string; taskShortId: string },
   change: Change,
   via: Via | undefined,
-  byProxy: boolean,
+  named: boolean,
 ): string {
-  const named = byProxy && via !== undefined ? ` The sub-agent "${via.description}" raised it.` : ''
+  const naming = named && via !== undefined ? ` The sub-agent "${via.description}" raised it.` : ''
   return (
     `Arlesh notification: wait ${wait.shortId} on Task ${wait.taskShortId} changed ` +
-    `(${change === 'deleted' ? 'gone' : change}); read it with \`arlesh_waits.get\`.${named}`
+    `(${change === 'deleted' ? 'gone' : change}); read it with \`arlesh_waits.get\`.${naming}`
   )
 }

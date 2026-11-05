@@ -2,16 +2,17 @@ import type { Register, EngineInterface } from 'claude-code'
 
 import { forget, prune, remember, revive, type Book, type Entry } from './book'
 import {
-  curlConfig,
   expandVariables,
-  expectationsUrl,
+  mainCheckoutOf,
+  originOf,
   pickServer,
+  projectServers,
   type ServerEntry,
 } from './config'
 import { isRecord, parseJson, text } from './json'
-import { currentFrom, currentFromEvent, waitsFrom, type Current } from './results'
-import { changeBetween, notificationText, routeTo, type Change, type Via } from './rules'
-import { createSseParser } from './sse'
+import { nextWait, parsePoll, pollUrl, WAIT_START_S, type Cursor } from './poll'
+import { currentFrom, waitsFrom, type Current } from './results'
+import { changeBetween, namesRaiser, notificationText, routeTo, type Change, type Via } from './rules'
 
 type Engine = EngineInterface
 
@@ -23,10 +24,13 @@ const NOTES =
 const BACKOFF_FIRST_MS = 1_000
 const BACKOFF_MAX_MS = 30_000
 const NO_SERVER_RETRY_MS = 30_000
+/** Failures in a row before the transcript is told once that Arlesh cannot be reached. */
+const SURFACE_AFTER = 3
 const SUBMIT_RETRY_MS = 3_000
 const SUBMIT_TRIES = 20
 
 let server: ServerEntry | undefined
+let following = false
 let queue: Promise<unknown> = Promise.resolve()
 
 /** Runs `job` after every earlier one: the book is read, changed and written in turn. */
@@ -40,27 +44,29 @@ export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     server = await readServer($)
-    if (server !== undefined) void follow($)
+    if (!following) {
+      following = true
+      void follow($)
+    }
     return started
   })
 
-  // The one line that says notifications are on: only when there is a server to follow.
-  on('prompt.compose', async ($, e, next) => {
-    const composed = await next(e)
+  // The one line that says notifications are on: only when the server answered a quick request.
+  on('classic.SessionStart', async ($, e, next) => {
+    const started = await next(e)
     server ??= await readServer($)
-    if (server === undefined) return composed
-    return {
-      sections: [...composed.sections, { id: 'arlesh-notify:on', text: NOTES, scope: 'session' }],
-    }
+    if (server === undefined || !(await reachable($, server))) return started
+    return { ...started, additionalContext: [...(started.additionalContext ?? []), NOTES] }
   })
 
   // Every wait the session asks, raises or watches is recorded, whoever in it did.
   on('tool.call', { tool: /^mcp__.+__arlesh_waits$/ }, async ($, e, next) => {
     const ran = await next(e)
     try {
-      if (ran.deny !== undefined) return ran
+      if (ran.deny !== undefined || ran.isError === true) return ran
       const input: Record<string, unknown> = { ...e }
-      const refs = waitsFrom(input['operation'], ran.result, text(input, 'task_id'))
+      // `next(e)` gives the result as the string the model reads, holding the JSON.
+      const refs = waitsFrom(input['operation'], ran.result ?? ran.text, text(input, 'task_id'))
       if (refs.length === 0) return ran
       const via = await viaOf($, input['agentId'])
       await serially(async () => {
@@ -84,15 +90,17 @@ export const register: Register = (on) => {
   }).catch(($, e, next) => next(e))
 }
 
-/** The `Arlesh` entry of the MCP configuration the session reads, headers expanded. */
+/**
+ * The `Arlesh` entry of the MCP configuration the session reads, headers expanded. A git
+ * worktree without a local-scope entry of its own uses the main checkout's, as Claude Code does.
+ */
 async function readServer($: Engine): Promise<ServerEntry | undefined> {
   const root = await $.session.root()
   const home = await $.env.get('HOME')
   const sources: unknown[] = []
   const user = home === undefined ? undefined : await readJson($, `${home}/.claude.json`)
-  if (isRecord(user) && isRecord(user['projects'])) {
-    const project = user['projects'][root]
-    if (isRecord(project)) sources.push(project['mcpServers'])
+  if (isRecord(user)) {
+    sources.push(projectServers(user['projects'], root, await mainCheckout($, root)))
   }
   const shared = await readJson($, `${root}/.mcp.json`)
   if (isRecord(shared)) sources.push(shared['mcpServers'])
@@ -106,43 +114,73 @@ async function readServer($: Engine): Promise<ServerEntry | undefined> {
   return { ...found, url: await expandVariables(found.url, (v) => environment($, v)), headers }
 }
 
-/** Holds the wait stream open for the session's life, and catches up on every connect. */
+/** The main checkout of the git worktree at `root`, if it is one. */
+async function mainCheckout($: Engine, root: string): Promise<string | undefined> {
+  const dotGit = await readText($, `${root}/.git`)
+  const gitdir = dotGit?.split('\n')[0]?.replace(/^gitdir:/, '').trim()
+  if (gitdir === undefined || gitdir === '') return undefined
+  return mainCheckoutOf(dotGit, await readText($, `${gitdir}/commondir`))
+}
+
+/** One quick request (`wait=0`): does the server answer? */
+async function reachable($: Engine, connection: ServerEntry): Promise<boolean> {
+  try {
+    const answered = await $.http.fetch(pollUrl(originOf(connection.url), undefined, 0), {
+      headers: connection.headers,
+    })
+    return answered.ok
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Polls the server for the session's life, one request at a time: each is held open by the
+ * server until a wait changes or `wait` seconds pass, and the next one resumes from the cursor
+ * it answered. With no cursor, or after the server restarted, it reads the watched waits
+ * (`catchUp`) before polling on.
+ */
 async function follow($: Engine): Promise<void> {
   let backoff = BACKOFF_FIRST_MS
+  let wait = WAIT_START_S
+  let cursor: Cursor | undefined
+  let failures = 0
   for (;;) {
-    server = await readServer($)
+    server ??= await readServer($)
     if (server === undefined) {
       await $.clock.sleep(NO_SERVER_RETRY_MS)
       continue
     }
     const connection = server
-    const parser = createSseParser()
+    const started = await $.clock.now()
     try {
-      const stream = $.process.spawn({
-        argv: [
-          'curl', '--silent', '--show-error', '--fail', '--no-buffer',
-          '--connect-timeout', '10', '--speed-limit', '1', '--speed-time', '60',
-          '--config', '-',
-        ],
-        input: curlConfig(expectationsUrl(connection.url), connection.headers),
+      const answered = await $.http.fetch(pollUrl(originOf(connection.url), cursor, wait), {
+        headers: connection.headers,
       })
-      for await (const piece of stream) {
-        if (piece.stream !== 'stdout') continue
-        for (const event of parser.feed(piece.text)) {
-          if (event.comment === 'connected') {
-            backoff = BACKOFF_FIRST_MS
-            await serially(() => catchUp($, connection))
-          } else if (event.name === 'wait-changed') {
-            const current = currentFromEvent(event.data)
-            if (current !== undefined) await serially(() => apply($, [current]))
-          }
-        }
+      if (!answered.ok) throw new Error(`the server answered ${answered.status}`)
+      const answer = parsePoll(answered.text)
+      if (answer === undefined) throw new Error('the server answered something else than a poll')
+      backoff = BACKOFF_FIRST_MS
+      failures = 0
+      if (answer.reset || cursor === undefined || cursor.epoch !== answer.epoch) {
+        await serially(() => catchUp($, connection))
+      } else if (answer.changes.length > 0) {
+        await serially(() => apply($, answer.changes))
       }
+      cursor = { revision: answer.revision, epoch: answer.epoch }
     } catch (error) {
-      $.ui.log(`arlesh-notify: the stream ended: ${String(error)}`, { to: 'debug' })
+      failures += 1
+      wait = nextWait(wait, error, (await $.clock.now()) - started)
+      $.ui.log(`arlesh-notify: the poll failed: ${String(error)}`, { to: 'debug' })
+      if (failures === SURFACE_AFTER) {
+        $.ui.log(
+          'arlesh-notify: cannot reach Arlesh; notifications are paused and it keeps trying.',
+        )
+      }
+      server = undefined // read the configuration again: the URL or token may have changed
+      await $.clock.sleep(backoff)
+      backoff = Math.min(backoff * 2, BACKOFF_MAX_MS)
     }
-    await $.clock.sleep(backoff)
-    backoff = Math.min(backoff * 2, BACKOFF_MAX_MS)
   }
 }
 
@@ -187,12 +225,7 @@ async function deliver($: Engine, entry: Entry, change: Change): Promise<void> {
     ...(agent.parentId === undefined ? {} : { parentId: agent.parentId }),
   }))
   const target = routeTo(entry.via, agents)
-  const message = notificationText(
-    entry,
-    change,
-    entry.via,
-    target.kind === 'agent' && target.byProxy,
-  )
+  const message = notificationText(entry, change, entry.via, namesRaiser(target, entry.via))
   if (target.kind === 'agent') {
     try {
       await $.session.send({ to: { agentId: target.agentId }, text: message })
@@ -235,12 +268,17 @@ async function saveBook($: Engine, book: Book): Promise<void> {
   await $.store.set(await storeKey($), book)
 }
 
-async function readJson($: Engine, path: string): Promise<unknown> {
+async function readText($: Engine, path: string): Promise<string | undefined> {
   try {
-    return parseJson(await $.fs.read(path))
+    return await $.fs.read(path)
   } catch {
     return undefined
   }
+}
+
+async function readJson($: Engine, path: string): Promise<unknown> {
+  const source = await readText($, path)
+  return source === undefined ? undefined : parseJson(source)
 }
 
 /** An environment variable's value; `$.env.get` takes only literal names, so ask `printenv`. */

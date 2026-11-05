@@ -1,10 +1,10 @@
 import { expect, test } from 'claude-code/testing'
 
 import { KEEP_MS, forget, prune, remember, revive, type Entry } from './book'
-import { curlConfig, expandVariables, expectationsUrl, pickServer } from './config'
-import { currentFrom, currentFromEvent, waitsFrom } from './results'
-import { changeBetween, notificationText, routeTo } from './rules'
-import { createSseParser } from './sse'
+import { expandVariables, mainCheckoutOf, originOf, pickServer, projectServers } from './config'
+import { nextWait, parsePoll, pollUrl } from './poll'
+import { currentFrom, currentFromChange, waitsFrom } from './results'
+import { changeBetween, namesRaiser, notificationText, routeTo } from './rules'
 
 const pending = { status: 'pending', archived: false } as const
 const released = { status: 'released', archived: false } as const
@@ -28,6 +28,9 @@ test('a notification points at the wait and never quotes it', () => {
   expect(
     notificationText(wait, 'released', { agentId: 'a1', description: 'Fix CI' }, true),
   ).toContain('The sub-agent "Fix CI" raised it.')
+  expect(notificationText(wait, 'released', { agentId: 'a1', description: 'Fix CI' }, false)).not.toContain(
+    'sub-agent',
+  )
 })
 
 test('a notification goes to the raising sub-agent while it runs, else to its parent, else the session', () => {
@@ -52,6 +55,15 @@ test('a notification goes to the raising sub-agent while it runs, else to its pa
   expect(routeTo(via, [done('child', 'parent'), done('parent')])).toEqual({ kind: 'session' })
   expect(routeTo(via, [])).toEqual({ kind: 'session' })
   expect(routeTo(undefined, [running('child')])).toEqual({ kind: 'session' })
+})
+
+test('the sub-agent is named whenever the pointer goes to anyone but it', () => {
+  const via = { agentId: 'child', description: 'Fix CI' }
+
+  expect(namesRaiser({ kind: 'session' }, via)).toBe(true)
+  expect(namesRaiser({ kind: 'agent', agentId: 'parent', byProxy: true }, via)).toBe(true)
+  expect(namesRaiser({ kind: 'agent', agentId: 'child', byProxy: false }, via)).toBe(false)
+  expect(namesRaiser({ kind: 'session' }, undefined)).toBe(false)
 })
 
 test('the book keeps who first asked, forgets, and drops what is a month old', () => {
@@ -87,13 +99,57 @@ test('the server is the Arlesh entry, found by its name in any case, with its he
   expect(pickServer([{ Arlesh: { command: 'npx' } }])).toBeUndefined()
 })
 
-test('the wait stream is on the origin of /mcp', () => {
-  expect(expectationsUrl('http://127.0.0.1:4747/mcp')).toBe(
-    'http://127.0.0.1:4747/events/expectations?agentic=true',
+test('the long poll is on the origin of /mcp, and resumes from the cursor', () => {
+  expect(originOf('http://127.0.0.1:4747/mcp')).toBe('http://127.0.0.1:4747')
+  expect(originOf('https://box.example/arlesh/mcp/')).toBe('https://box.example/arlesh')
+  expect(pollUrl('http://h', undefined, 25)).toBe('http://h/events/expectations?agentic=true&wait=25')
+  expect(pollUrl('http://h', { revision: 7, epoch: 'a b' }, 5)).toBe(
+    'http://h/events/expectations?agentic=true&after=7&epoch=a%20b&wait=5',
   )
-  expect(expectationsUrl('https://box.example/arlesh/mcp/')).toBe(
-    'https://box.example/arlesh/events/expectations?agentic=true',
-  )
+})
+
+test('a poll answer is read with its changes, its reset and its cursor', () => {
+  const change = { wait_id: 'w', short_id: 's', task_short_id: 't', status: 'released', archived: false }
+
+  expect(parsePoll(JSON.stringify({ revision: 3, epoch: 'e', changes: [change, { nonsense: 1 }] }))).toEqual({
+    revision: 3,
+    epoch: 'e',
+    reset: false,
+    changes: [{ waitId: 'w', state: { status: 'released', archived: false, shortId: 's', taskShortId: 't' } }],
+  })
+  expect(parsePoll('{"revision":1,"epoch":"e","changes":[],"reset":true}')?.reset).toBe(true)
+  expect(parsePoll('{"revision":"1","epoch":"e"}')).toBeUndefined()
+  expect(parsePoll('<html>')).toBeUndefined()
+})
+
+test('the wait halves on a timeout-like failure before the server could answer, to a floor', () => {
+  const timeout = new Error('Request timed out')
+
+  expect(nextWait(25, timeout, 10_000)).toBe(12)
+  expect(nextWait(12, timeout, 3_000)).toBe(6)
+  expect(nextWait(6, timeout, 1_000)).toBe(5)
+  expect(nextWait(5, timeout, 1_000)).toBe(5)
+  expect(nextWait(25, timeout, 25_000)).toBe(25)
+  expect(nextWait(25, new Error('connection refused'), 100)).toBe(25)
+})
+
+test('a worktree without an entry of its own uses the main checkout\'s', () => {
+  const projects = { '/repo': { mcpServers: { arlesh: { url: 'http://h/mcp' } } }, '/repo-wt': {} }
+
+  expect(projectServers(projects, '/repo-wt', '/repo')).toEqual({ arlesh: { url: 'http://h/mcp' } })
+  expect(projectServers(projects, '/repo', undefined)).toEqual({ arlesh: { url: 'http://h/mcp' } })
+  expect(projectServers(projects, '/elsewhere', undefined)).toBeUndefined()
+  expect(
+    projectServers({ ...projects, '/repo-wt': { mcpServers: { own: {} } } }, '/repo-wt', '/repo'),
+  ).toEqual({ own: {} })
+})
+
+test('the main checkout is the parent of the git common directory of a linked worktree', () => {
+  expect(mainCheckoutOf('gitdir: /repo/.git/worktrees/wt\n', '../..\n')).toBe('/repo')
+  expect(mainCheckoutOf('gitdir: /repo/.git/worktrees/wt', '/repo/.git')).toBe('/repo')
+  expect(mainCheckoutOf('gitdir: /srv/repo.git/worktrees/wt', '../..')).toBeUndefined()
+  expect(mainCheckoutOf(undefined, '../..')).toBeUndefined()
+  expect(mainCheckoutOf('ref: refs/heads/x', '../..')).toBeUndefined()
 })
 
 test('variables expand as .mcp.json expands them', async () => {
@@ -102,24 +158,6 @@ test('variables expand as .mcp.json expands them', async () => {
   expect(await expandVariables('Bearer ${TOKEN}', lookup)).toBe('Bearer <token>')
   expect(await expandVariables('${NOPE:-fallback}/x', lookup)).toBe('fallback/x')
   expect(await expandVariables('plain', lookup)).toBe('plain')
-})
-
-test('the curl config escapes values and keeps the token off the command line', () => {
-  const config = curlConfig('http://h/e', { Authorization: 'Bearer "<token>"\\' })
-
-  expect(config).toContain('url = "http://h/e"')
-  expect(config).toContain('header = "Accept: text/event-stream"')
-  expect(config).toContain('header = "Authorization: Bearer \\"<token>\\"\\\\"')
-})
-
-test('the stream is parsed across pieces, with comments and CRLF', () => {
-  const parser = createSseParser()
-
-  expect(parser.feed(': conn')).toEqual([])
-  expect(parser.feed('ected\n\nid: e:1\nevent: wait-chan')).toEqual([{ comment: 'connected' }])
-  expect(parser.feed('ged\r\ndata: {"a":1}\r\n\r\n')).toEqual([
-    { id: 'e:1', name: 'wait-changed', data: '{"a":1}' },
-  ])
 })
 
 test('a wait an agent asks, raises or watches is read off the tool result', () => {
@@ -146,6 +184,11 @@ test('a wait an agent asks, raises or watches is read off the tool result', () =
   ])
   expect(waitsFrom('release', asked, undefined)).toEqual([])
   expect(waitsFrom('ask', { isError: true, structuredContent: {} }, undefined)).toEqual([])
+  // `next(e)` in a tool.call hook gives the JSON the model reads, as a string.
+  expect(waitsFrom('ask', JSON.stringify(asked.structuredContent), '9a1')).toEqual([
+    { waitId: 'w-full', shortId: 'w1', taskShortId: '9a1', status: 'pending', archived: false },
+  ])
+  expect(waitsFrom('ask', 'Error: not permitted', '9a1')).toEqual([])
 })
 
 test('a catch-up read says which waits are gone', () => {
@@ -164,10 +207,10 @@ test('a catch-up read says which waits are gone', () => {
   ])
 })
 
-test('an event for a deleted wait is gone, and one without ids is ignored', () => {
-  const data = JSON.stringify({ wait_id: 'w', short_id: 's', task_short_id: 't', status: 'pending', archived: false, deleted: true })
+test('a change for a deleted wait is gone, and one without ids is ignored', () => {
+  const change = { wait_id: 'w', short_id: 's', task_short_id: 't', status: 'pending', archived: false, deleted: true }
 
-  expect(currentFromEvent(data)).toEqual({ waitId: 'w', state: null })
-  expect(currentFromEvent('{}')).toBeUndefined()
-  expect(currentFromEvent(undefined)).toBeUndefined()
+  expect(currentFromChange(change)).toEqual({ waitId: 'w', state: null })
+  expect(currentFromChange({})).toBeUndefined()
+  expect(currentFromChange(undefined)).toBeUndefined()
 })

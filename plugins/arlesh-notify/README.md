@@ -18,19 +18,25 @@ claude --plugin-dir plugins/arlesh-notify
 ```
 
 It needs an `Arlesh` HTTP server in the session's MCP configuration (`.mcp.json`, or your user or
-local config), Arlesh running (the desktop app, or `arlesh-server`), and `curl` on the machine. It
-has no settings: it follows the same URL with the same headers the session's MCP connection uses.
+local config; in a git worktree the main checkout's local entry counts, as for Claude Code), and
+Arlesh running (the desktop app, or `arlesh-server`). It has no settings: it follows the same URL
+with the same headers the session's MCP connection uses, and needs nothing else on the machine.
 
 ## What it does
 
 - Records every wait the session passes through `arlesh_waits.ask`, `raise` or `watch`, per session
   (kept in the mod's store for 30 days, so a restart or `claude --resume` still watches them).
-- Holds `/events/expectations?agentic=true` open with `curl`, and on every (re)connect reads the
-  watched waits once (`arlesh_waits.get_many`) to catch up on what changed while it was away.
+- Long-polls `/events/expectations?agentic=true&after=<revision>&wait=25` with `$.http.fetch`, one
+  request at a time: the server answers as soon as a wait changes, else empty after the wait. With
+  no cursor, or after the server restarted, it reads the watched waits once
+  (`arlesh_waits.get_many`) to catch up on what changed while it was away. If requests time out
+  early the wait is halved, down to 5 seconds. After three failures in a row it says once in the
+  transcript that Arlesh cannot be reached, and keeps trying with a backoff.
 - Wakes the session with the pointer message. A sub-agent that raised the wait gets it while it is
-  running; once it has finished, the agent that spawned it does, with the sub-agent named.
-- Tells the model, in the system prompt, "Arlesh notifications are on in this session" (only when an
-  `Arlesh` server is configured).
+  running; once it has finished, the agent that spawned it does, else the session, with the
+  sub-agent named either way. A sub-agent is also notified of a release it made itself.
+- Tells the model, at session start, "Arlesh notifications are on in this session" (added to the
+  session-start context, and only after one quick request to the server succeeded).
 
 ## Try it
 

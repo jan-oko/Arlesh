@@ -34,10 +34,9 @@ export function pickServer(sources: readonly unknown[]): ServerEntry | undefined
   return undefined
 }
 
-/** The wait stream on the same origin as the MCP endpoint at `mcpUrl`. */
-export function expectationsUrl(mcpUrl: string): string {
-  const origin = mcpUrl.replace(/[?#].*$/, '').replace(/\/mcp\/?$/, '').replace(/\/$/, '')
-  return `${origin}/events/expectations?agentic=true`
+/** The origin the MCP endpoint at `mcpUrl` is on, with any path in front of `/mcp` kept. */
+export function originOf(mcpUrl: string): string {
+  return mcpUrl.replace(/[?#].*$/, '').replace(/\/mcp\/?$/, '').replace(/\/$/, '')
 }
 
 /** `${NAME}` and `${NAME:-fallback}` in `value`, as `.mcp.json` expands them. */
@@ -59,15 +58,44 @@ export async function expandVariables(
 }
 
 /**
- * The config curl reads from its standard input, so a token never shows in the process list.
- * Quotes and backslashes in a value are escaped as curl's config format asks.
+ * The MCP servers Claude Code applies to a session in `root`: the local-scope entry of the
+ * project at `root`, else (a git worktree has none of its own) the one of the main checkout.
  */
-export function curlConfig(url: string, headers: Record<string, string>): string {
-  const quoted = (value: string) =>
-    `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, '')}"`
-  const lines = [`url = ${quoted(url)}`, `header = ${quoted('Accept: text/event-stream')}`]
-  for (const [name, value] of Object.entries(headers)) {
-    lines.push(`header = ${quoted(`${name}: ${value}`)}`)
+export function projectServers(
+  projects: unknown,
+  root: string,
+  mainCheckout: string | undefined,
+): unknown {
+  if (!isRecord(projects)) return undefined
+  for (const path of [root, mainCheckout]) {
+    const project = path === undefined ? undefined : projects[path]
+    if (isRecord(project) && isRecord(project['mcpServers'])) return project['mcpServers']
   }
-  return lines.join('\n') + '\n'
+  return undefined
+}
+
+/**
+ * The main checkout a linked git worktree belongs to, from the `.git` file in the worktree
+ * (`gitdir: <main>/.git/worktrees/<name>`) and that directory's `commondir` file (`../..`).
+ * `undefined` for a plain checkout, or one whose common directory is not a `.git` folder.
+ */
+export function mainCheckoutOf(
+  dotGit: string | undefined,
+  commondir: string | undefined,
+): string | undefined {
+  const line = dotGit?.split('\n')[0]?.trim()
+  if (line === undefined || !line.startsWith('gitdir:') || commondir === undefined) return undefined
+  const gitdir = line.slice('gitdir:'.length).trim()
+  const common = normalize(commondir.trim().startsWith('/') ? commondir.trim() : `${gitdir}/${commondir.trim()}`)
+  return common.endsWith('/.git') ? common.slice(0, -'/.git'.length) || '/' : undefined
+}
+
+function normalize(path: string): string {
+  const parts: string[] = []
+  for (const part of path.split('/')) {
+    if (part === '' || part === '.') continue
+    if (part === '..') parts.pop()
+    else parts.push(part)
+  }
+  return `/${parts.join('/')}`
 }

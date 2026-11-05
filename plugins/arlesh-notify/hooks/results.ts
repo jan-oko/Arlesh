@@ -9,8 +9,13 @@ export interface WaitRef extends Seen {
   taskShortId: string | undefined
 }
 
-/** The payload of an MCP tool result: its structured content, else the JSON in its text. */
+/**
+ * The payload of an MCP tool result. A `tool.call` hook's `next(e)` gives the result as the
+ * string the model reads, holding the JSON; `$.mcp.call` gives an object, with its structured
+ * content or its text blocks. An error result carries no payload.
+ */
 export function payloadOf(result: unknown): unknown {
+  if (typeof result === 'string') return parseJson(result)
   if (!isRecord(result)) return undefined
   if (result['isError'] === true) return undefined
   if (result['structuredContent'] !== undefined) return result['structuredContent']
@@ -92,14 +97,13 @@ export function currentFrom(asked: readonly string[], result: unknown): Current[
   return answers
 }
 
-/** A `wait-changed` event's data. */
-export function currentFromEvent(data: string | undefined): Current | undefined {
-  const parsed = data === undefined ? undefined : parseJson(data)
-  if (!isRecord(parsed)) return undefined
-  const waitId = text(parsed, 'wait_id')
-  const shortId = text(parsed, 'short_id')
-  const taskShortId = text(parsed, 'task_short_id')
+/** One change as the server sends it (`wait-changed` data, a long poll's `changes` entry). */
+export function currentFromChange(change: unknown): Current | undefined {
+  if (!isRecord(change)) return undefined
+  const waitId = text(change, 'wait_id')
+  const shortId = text(change, 'short_id')
+  const taskShortId = text(change, 'task_short_id')
   if (waitId === undefined || shortId === undefined || taskShortId === undefined) return undefined
-  if (parsed['deleted'] === true) return { waitId, state: null }
-  return { waitId, state: { ...seen(parsed), shortId, taskShortId } }
+  if (change['deleted'] === true) return { waitId, state: null }
+  return { waitId, state: { ...seen(change), shortId, taskShortId } }
 }
