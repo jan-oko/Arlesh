@@ -445,6 +445,7 @@ the last card of a page, with more cards one page on, read as the end of the Ste
 - `Ctrl+Z` / `Ctrl+Shift+Z` — undo and redo
 - `Ctrl+O`, `Shift+Escape`, `Ctrl+Escape`, `Alt+F`, `Ctrl+F` — [global bindings](tabs.md): they act on the
   tab's subtree root and filter set, which every view shares
+- `Alt+S` in the `Ctrl+O` search starts the highlighted row — see [*Mindmap View*](mindmap-view.md).
 
 **`Ctrl+S` shows this view**, from wherever you are — see the switcher in [Tabs](tabs.md). It was
 held for Steps from the moment the switcher was designed, which is the scheme working as intended:

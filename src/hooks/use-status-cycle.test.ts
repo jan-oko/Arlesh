@@ -5,6 +5,7 @@ import { stepTaskStatus } from "@/api/node-gestures";
 import type { StatusStepOutcome } from "@/api/node-gestures";
 import { updateGoal } from "@/api/goals";
 import type { Goal } from "@/api/goals";
+import { updateTask } from "@/api/tasks";
 import type { Task } from "@/api/tasks";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
@@ -20,6 +21,10 @@ import type { ModeStatus } from "@/api/client-mode";
 vi.mock("@/api/node-gestures", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/node-gestures")>()),
   stepTaskStatus: vi.fn(),
+}));
+vi.mock("@/api/tasks", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/tasks")>()),
+  updateTask: vi.fn(),
 }));
 vi.mock("@/api/goals", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/goals")>()),
@@ -127,6 +132,26 @@ describe("useStatusCycle: a press is shown at once and sent through the lane", (
     act(() => { result.current.cycleStatus("task-5"); });
 
     expect(patchedFields()).toEqual([{ status: "doing", taskStatus: agentic("doing") }]);
+  });
+
+  it("sets a Task to the status it is told, shown at once and sent as an edit", async () => {
+    const held = deferred<Task>();
+    vi.mocked(updateTask).mockReturnValue(held.promise);
+    const { result } = setup([todo("task-5")]);
+
+    act(() => { result.current.setTaskStatus("task-5", ordinary("in_progress")); });
+
+    expect(patchedFields()).toEqual([{ status: "in_progress", taskStatus: ordinary("in_progress") }]);
+    expect(updateTask).toHaveBeenCalledWith(5, { status: ordinary("in_progress") });
+    await act(async () => { held.resolve(IN_PROGRESS); await held.promise; });
+    expect(lane()[0]?.state).toBe("answered");
+  });
+
+  it("leaves a node that is not a Task alone", () => {
+    const { result } = setup([node("goal-2", { kind: "goal", status: "active" })]);
+    act(() => { result.current.setTaskStatus("goal-2", ordinary("in_progress")); });
+    expect(updateTask).not.toHaveBeenCalled();
+    expect(lane()).toEqual([]);
   });
 
   it("toggles a Goal between active and achieved through the lane", () => {
