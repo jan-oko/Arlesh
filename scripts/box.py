@@ -57,12 +57,34 @@ with `box devices add`; leave it out to reuse the last one. Devices live in
 $XDG_CONFIG_HOME/arlesh/box-devices.json, never in the repo; build stamps live in
 $XDG_STATE_HOME/arlesh/box/.
 
-Desktop: every branch compiles into the ONE shared target directory of the main checkout, and only
-the per-branch binary is kept. A debug Tauri build loads its frontend from tauri.conf.json's
+Desktop: every branch compiles into the ONE shared target directory of the main checkout (see Shared
+target below), and only the per-branch binary is kept. A debug Tauri build loads its frontend from tauri.conf.json's
 `devUrl`, so each instance has its own Vite dev server on its own port. The window title, the port
 and the GTK app id are baked in at build time, so tauri.conf.json is patched for the length of the
 build and restored, also when the build fails or is signalled. XDG_DATA_HOME / XDG_CONFIG_HOME point
 at a per-instance directory, which isolates the database, localStorage and persisted state.
+
+Shared target, and why it is safe: worktrees' workspace crates get the SAME cargo unit hashes (cargo
+hashes workspace paths relative to the root), and cargo judges a path crate fresh by comparing source
+mtimes with the build's dep-info. A worktree whose files are older than another's artifacts is
+therefore reported `Fresh` and links the other branch's code: a server running with another branch's
+native module and schema, or an APK of the wrong branch (seen: `Finished` in 0.2 s, no `push_call`).
+Box keeps the one target, because the dependencies are ~14G of debug artifacts and disk is the
+constraint (per-worktree targets would cost that per branch, and `clean` and `prune` would have to
+delete them too), and makes the workspace crates provably the branch's own instead: every cargo build
+box runs (desktop, server bindings, Android) is wrapped in `owned_target`. It drops cargo's records
+of the workspace crates (their `.fingerprint/` and `build/` dirs, every profile and target triple,
+never a dependency's) unless this worktree compiled them last and nothing has written them since;
+`<target>/.arlesh-box-members` holds the owner and a signature of those records, so a plain `cargo`
+run in another worktree is caught too. Cost: switching branches recompiles the workspace crates
+(about a minute for the server, more for Tauri) and no extra disk. The frontend is not shared (each
+worktree has its own node_modules, Vite server and dist), and the per-branch binary and APK are
+copied out of the target right after the build, so a "build is current" stamp never points at
+another branch's artifact.
+
+Notifications: after an install, before every launch, box grants a box app POST_NOTIFICATIONS
+(`pm grant`, box packages only, never the release app) so its first launch registers its push token.
+A device or package without that permission gets a note and the run goes on.
 
 Android: the package is com.atai.arlesh.box.<branch> and the label "Arlesh (<branch>)", so it
 installs beside the real app; build.gradle.kts and strings.xml are patched for the build and
@@ -844,6 +866,87 @@ def record_built(os_name: str, branch: str, stamp: str) -> None:
     update_state(lambda s: s["built"][os_name].__setitem__(branch, stamp))
 
 
+# ---- The shared cargo target: whose workspace crates are in it ----------------------------
+
+OWNER_FILE = ".arlesh-box-members"
+
+
+def workspace_members(wt: Path) -> list[str]:
+    """Names of the workspace's own crates (never their dependencies), from `cargo metadata`."""
+    res = capture(
+        ["cargo", "metadata", "--no-deps", "--format-version", "1", "--offline"], cwd=wt
+    )
+    if res.returncode != 0:
+        raise die(f"cargo metadata failed in {wt}; box cannot tell which crates are the branch's own.")
+    return sorted(pkg["name"] for pkg in json.loads(res.stdout)["packages"])
+
+
+def member_dirs(target: Path, members: Sequence[str]) -> list[Path]:
+    """Cargo's per-unit records of the workspace crates in every profile and target triple.
+
+    Both `<profile>/` and `<triple>/<profile>/` are covered. The name must be followed by exactly a
+    16-digit hash, so `arlesh-core-extra` is not mistaken for `arlesh-core`.
+    """
+    names = re.compile(rf"(?:{'|'.join(map(re.escape, members))})-[0-9a-f]{{16}}")
+    found: list[Path] = []
+    for pattern in ("*/.fingerprint", "*/*/.fingerprint", "*/build", "*/*/build"):
+        for parent in target.glob(pattern):
+            found += [d for d in parent.iterdir() if names.fullmatch(d.name)]
+    return sorted(found)
+
+
+def members_signature(target: Path, members: Sequence[str]) -> str:
+    """Hash of what cargo last wrote for the workspace crates (cargo's own re-checks excluded)."""
+    digest = hashlib.sha256()
+    for unit in member_dirs(target, members):
+        for path in sorted(p for p in unit.rglob("*") if p.is_file()):
+            if path.name == "invoked.timestamp":
+                continue  # rewritten by every cargo run, even one that found everything fresh
+            stat = path.stat()
+            digest.update(f"{path.relative_to(target)} {stat.st_mtime_ns} {stat.st_size}\0".encode())
+    return digest.hexdigest()
+
+
+def read_owner(target: Path) -> dict[str, str]:
+    try:
+        data = json.loads((target / OWNER_FILE).read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+@contextlib.contextmanager
+def owned_target(wt: Path, target: Path) -> Iterator[None]:
+    """Around a cargo build of `wt` in the shared `target`: its workspace crates are its own.
+
+    Worktrees share one target, and their crates get identical cargo unit hashes (workspace paths
+    are hashed relative to the root). Cargo then judges them fresh by mtime alone, so a worktree
+    whose files are older than another's build artifacts is never recompiled and runs the other
+    branch's code. Before a build, the workspace crates' fingerprints are dropped unless this
+    worktree was the last to compile them and nothing has written them since; cargo then rebuilds
+    them and keeps every dependency. After the build (also a failed one), the new owner is recorded.
+    """
+    members = workspace_members(wt)
+    owner = read_owner(target)
+    mine = owner.get("worktree") == str(wt.resolve()) and owner.get(
+        "signature"
+    ) == members_signature(target, members)
+    if not mine:
+        units = member_dirs(target, members)
+        for unit in units:
+            shutil.rmtree(unit)
+        note(
+            f"shared target: rebuilding the workspace crates for {wt.name} "
+            f"({len(units)} stale records dropped; dependencies are kept)"
+        )
+    try:
+        yield
+    finally:
+        target.mkdir(parents=True, exist_ok=True)
+        record = {"worktree": str(wt.resolve()), "signature": members_signature(target, members)}
+        atomic_write(target / OWNER_FILE, json.dumps(record) + "\n")
+
+
 # ---- Patching tracked files for the length of a build ------------------------------------
 
 
@@ -1511,19 +1614,20 @@ def build_desktop(name: str, wt: Path) -> None:
         # window. Instances turn it off so they open beside the main app and each other.
         data.setdefault("app", {})["enableGTKAppId"] = False
         conf.write_text(json.dumps(data, indent=2))
-        run_cmd(
-            [
-                "cargo",
-                "build",
-                "--manifest-path",
-                "src-tauri/Cargo.toml",
-                "--bin",
-                "arlesh",
-            ],
-            cwd=wt,
-            env={"CARGO_TARGET_DIR": str(target)},
-            what=f"{name}: cargo build",
-        )
+        with owned_target(wt, target):
+            run_cmd(
+                [
+                    "cargo",
+                    "build",
+                    "--manifest-path",
+                    "src-tauri/Cargo.toml",
+                    "--bin",
+                    "arlesh",
+                ],
+                cwd=wt,
+                env={"CARGO_TARGET_DIR": str(target)},
+                what=f"{name}: cargo build",
+            )
     binary = target / "debug" / "arlesh"
     if not os.access(binary, os.X_OK):
         raise die(f"Expected a binary at {binary} and found none.")
@@ -1702,12 +1806,13 @@ def build_server(name: str) -> None:
         env=env,
         what=f"{name}: uv sync",
     )
-    run_cmd(
-        ["uv", "run", "--no-sync", "maturin", "develop", "--uv", "--locked"],
-        cwd=pydir,
-        env=env,
-        what=f"{name}: maturin develop",
-    )
+    with owned_target(worktree_path(name), shared_target()):
+        run_cmd(
+            ["uv", "run", "--no-sync", "maturin", "develop", "--uv", "--locked"],
+            cwd=pydir,
+            env=env,
+            what=f"{name}: maturin develop",
+        )
 
 
 def seed_server(name: str) -> None:
@@ -3023,7 +3128,7 @@ def build_android(name: str, wt: Path, firebase: bool) -> None:
             )
 
     print(f"\n=== {name}: android apk {package} ({label}) ===", flush=True)
-    with patched([gradle, strings]):
+    with patched([gradle, strings]), owned_target(wt, target):
         apply_android_patch(gradle, strings, package, label)
         # Rebuilt from scratch, so an older APK is never mistaken for this one.
         shutil.rmtree(app_dir / "build" / "outputs" / "apk", ignore_errors=True)
@@ -3074,11 +3179,32 @@ def install_android(name: str, serial: str, reinstall: bool = False) -> None:
     print(f"installed {box_package(name)} on {serial}")
 
 
+NOTIFICATIONS_PERMISSION = "android.permission.POST_NOTIFICATIONS"
+
+
+def grant_notifications(serial: str, package: str) -> None:
+    """Allow a box app to post notifications, so its first launch registers for push.
+
+    Box packages only, never the release app. A device or package without the permission (an
+    Android before 13, a build whose manifest lacks it) gets a note, and the run goes on.
+    """
+    if not package.startswith(f"{BOX_PACKAGE_PREFIX}."):
+        raise die(f"Refusing to grant {NOTIFICATIONS_PERMISSION} to {package}: not a box package.")
+    res = capture(["adb", "-s", serial, "shell", "pm", "grant", package, NOTIFICATIONS_PERMISSION])
+    detail = (res.stdout + res.stderr).strip()
+    if res.returncode == 0 and not detail:
+        print(f"granted {NOTIFICATIONS_PERMISSION} to {package}")
+        return
+    first_line = detail.splitlines()[-1] if detail else f"exit {res.returncode}"
+    note(f"note: {NOTIFICATIONS_PERMISSION} not granted to {package} ({first_line}); continuing.")
+
+
 def launch_android(
     name: str, serial: str, bound: tuple[str, str] | None = None
 ) -> None:
     """Launch the box app; with `bound` (url, token), restart it handed that connection."""
     package = box_package(name)
+    grant_notifications(serial, package)  # before the launch, so the first one registers for push
     if bound:
         # A running app has read its mode already: start it afresh so it reads the provision.
         capture(["adb", "-s", serial, "shell", "am", "force-stop", package])

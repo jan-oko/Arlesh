@@ -648,8 +648,8 @@ class LaunchBound(unittest.TestCase):
 
         with mock.patch.object(box, "capture", fake_capture):
             box.launch_android("b", "s:1", ("http://h:1", "tok"))
-        self.assertEqual(calls[0][-3:], ["am", "force-stop", "com.atai.arlesh.box.b"])
-        self.assertIn("--es arlesh_box_token tok", calls[1][-1])
+        self.assertEqual(calls[1][-3:], ["am", "force-stop", "com.atai.arlesh.box.b"])
+        self.assertIn("--es arlesh_box_token tok", calls[2][-1])
 
     def test_unbound_launch_uses_the_launcher_intent(self) -> None:
         calls: list[list[str]] = []
@@ -660,8 +660,8 @@ class LaunchBound(unittest.TestCase):
 
         with mock.patch.object(box, "capture", fake_capture):
             box.launch_android("b", "s:1")
-        self.assertEqual(len(calls), 1)
-        self.assertIn("monkey", calls[0])
+        self.assertEqual(len(calls), 2)
+        self.assertIn("monkey", calls[1])
 
     def test_an_am_error_is_a_failure_without_the_token(self) -> None:
         with (
@@ -676,6 +676,152 @@ class LaunchBound(unittest.TestCase):
         ):
             box.launch_android("b", "s:1", ("http://h:1", "SECRET"))
         self.assertNotIn("SECRET", str(ctx.exception))
+
+
+HASH = "0123456789abcdef"
+
+
+def make_member_artifacts(target: Path, profile: str, name: str, hash_: str) -> Path:
+    """A fake cargo fingerprint and build-script dir for workspace crate `name`."""
+    fingerprint = target / profile / ".fingerprint" / f"{name}-{hash_}"
+    fingerprint.mkdir(parents=True)
+    (fingerprint / "lib-x").write_text("fingerprint")
+    (fingerprint / "invoked.timestamp").write_text("")
+    (target / profile / "build" / f"{name}-{hash_}").mkdir(parents=True)
+    return fingerprint
+
+
+class SharedTargetOwnership(IsolatedEnv):
+    """Worktrees share one cargo target; cargo's fingerprints cannot tell their crates apart."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.target = self.tmp / "target"
+        self.target.mkdir()
+        self.wt_a, self.wt_b = self.tmp / "a", self.tmp / "b"
+        patcher = mock.patch.object(box, "workspace_members", lambda wt: ["arlesh-core", "arlesh"])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.dependency = make_member_artifacts(self.target, "debug", "serde", HASH)
+
+    @property
+    def core(self) -> Path:
+        return self.target / "debug" / ".fingerprint" / f"arlesh-core-{HASH}"
+
+    def build(self, wt: Path) -> str:
+        """A cargo run: compiles the crate only where no fingerprint says it is fresh."""
+        with box.owned_target(wt, self.target):
+            if not self.core.exists():
+                make_member_artifacts(self.target, "debug", "arlesh-core", HASH)
+                (self.core / "lib-x").write_text(f"compiled in {wt.name}")
+            return (self.core / "lib-x").read_text()
+
+    def test_the_first_use_of_a_target_compiles_the_members(self) -> None:
+        make_member_artifacts(self.target, "debug", "arlesh-core", HASH)
+        (self.core / "lib-x").write_text("unknown origin")
+        self.assertEqual(self.build(self.wt_a), "compiled in a")
+
+    def test_the_dependencies_are_never_touched(self) -> None:
+        self.build(self.wt_a)
+        self.build(self.wt_b)
+        self.assertTrue(self.dependency.exists())
+
+    def test_the_same_worktree_building_again_keeps_its_fingerprints(self) -> None:
+        self.build(self.wt_a)
+        self.assertEqual(self.build(self.wt_a), "compiled in a")
+        self.assertEqual((self.core / "lib-x").read_text(), "compiled in a")
+
+    def test_another_worktree_gets_the_members_rebuilt(self) -> None:
+        self.build(self.wt_a)
+        self.assertEqual(self.build(self.wt_b), "compiled in b")
+
+    def test_alternating_worktrees_rebuild_each_time(self) -> None:
+        got = [self.build(wt) for wt in (self.wt_a, self.wt_b, self.wt_a, self.wt_b)]
+        self.assertEqual(got, ["compiled in a", "compiled in b", "compiled in a", "compiled in b"])
+
+    def test_a_build_outside_box_invalidates_the_owner(self) -> None:
+        self.build(self.wt_a)
+        (self.core / "lib-x").write_text("a cargo run in some other worktree")
+        self.assertEqual(self.build(self.wt_a), "compiled in a")
+
+    def test_a_fresh_check_by_cargo_does_not_invalidate_the_owner(self) -> None:
+        self.build(self.wt_a)
+        (self.core / "invoked.timestamp").write_text("touched")
+        self.assertEqual(self.build(self.wt_a), "compiled in a")
+        self.assertEqual(box.read_owner(self.target)["worktree"], str(self.wt_a.resolve()))
+        (self.core / "lib-x").write_text("kept")
+        self.assertEqual(self.build(self.wt_a), "compiled in a")
+
+    def test_a_crate_whose_name_starts_with_a_members_is_left_alone(self) -> None:
+        other = make_member_artifacts(self.target, "debug", "arlesh-core-extra", HASH)
+        self.build(self.wt_a)
+        self.assertTrue(other.exists())
+
+    def test_every_profile_and_target_triple_is_covered(self) -> None:
+        android = make_member_artifacts(self.target, "aarch64-linux-android/release", "arlesh", HASH)
+        self.build(self.wt_a)
+        self.assertFalse(android.exists())
+
+    def test_the_build_scripts_outputs_go_too(self) -> None:
+        script = self.target / "debug" / "build" / f"arlesh-core-{HASH}"
+        script.mkdir(parents=True)
+        with box.owned_target(self.wt_a, self.target):
+            self.assertFalse(script.exists())
+
+    def test_a_failed_build_still_records_who_compiled(self) -> None:
+        with self.assertRaises(RuntimeError), box.owned_target(self.wt_a, self.target):
+            make_member_artifacts(self.target, "debug", "arlesh-core", HASH)
+            (self.core / "lib-x").write_text("partial, from a")
+            raise RuntimeError("compile error")
+        self.assertEqual(self.build(self.wt_a), "partial, from a")
+        self.assertEqual(self.build(self.wt_b), "compiled in b")
+
+
+class NotificationGrant(unittest.TestCase):
+    def run_grant(self, out: str, code: int = 0, package: str = "com.atai.arlesh.box.b") -> list[list[str]]:
+        calls: list[list[str]] = []
+
+        def fake_capture(cmd, cwd=None):  # type: ignore[no-untyped-def]
+            calls.append(list(cmd))
+            return FakeProc(out, code)
+
+        with mock.patch.object(box, "capture", fake_capture):
+            box.grant_notifications("s:1", package)
+        return calls
+
+    def test_grants_post_notifications_to_the_box_package(self) -> None:
+        calls = self.run_grant("")
+        self.assertEqual(
+            calls,
+            [["adb", "-s", "s:1", "shell", "pm", "grant", "com.atai.arlesh.box.b",
+              "android.permission.POST_NOTIFICATIONS"]],
+        )
+
+    def test_never_touches_the_release_app(self) -> None:
+        with self.assertRaises(box.BoxError):
+            self.run_grant("", package="com.atai.arlesh")
+
+    def test_an_unknown_permission_is_a_note_not_a_failure(self) -> None:
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.run_grant("Exception occurred while executing 'grant':\nUnknown permission: android.permission.POST_NOTIFICATIONS\n")
+        self.assertIn("POST_NOTIFICATIONS", err.getvalue())
+
+    def test_a_nonzero_exit_is_a_note_not_a_failure(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.run_grant("", code=255)
+
+    def test_launch_grants_before_it_starts_the_app(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_capture(cmd, cwd=None):  # type: ignore[no-untyped-def]
+            calls.append(list(cmd))
+            return FakeProc()
+
+        with mock.patch.object(box, "capture", fake_capture):
+            box.launch_android("b", "s:1")
+        self.assertIn("grant", calls[0])
+        self.assertIn("monkey", calls[1])
 
 
 FAKE_GH = """#!__PY__
