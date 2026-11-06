@@ -13,7 +13,6 @@ from arlesh.server.entrypoints.fastapi.app import ArleshServer
 from arlesh.server.entrypoints.fastapi.config import ServerConfig
 from arlesh.server.ports.pairing.database_pairing_store import DatabasePairingStore
 from arlesh.server.ports.tokens.database_token_store import DatabaseTokenStore
-from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from typer.testing import CliRunner
 
 runner = CliRunner()
@@ -138,19 +137,6 @@ def test_a_second_token_or_an_unknown_revoke_fails_plainly(tmp_path: Path) -> No
 
 def test_token_without_a_database_is_a_usage_error() -> None:
     assert runner.invoke(app, ["token", "list"]).exit_code == 2
-
-
-def test_an_old_token_file_is_carried_into_the_database_once(tmp_path: Path) -> None:
-    database = tmp_path / "arlesh.db"
-    old = FileTokenStore.beside(database)
-    token = old.add("phone")
-
-    listed = runner.invoke(app, ["token", "list", "--db", str(database)])
-
-    assert listed.stdout.startswith("phone\t")
-    assert DatabaseTokenStore(database).client_for(token) == "phone"
-    assert not old.path.exists()
-    assert old.path.with_name("arlesh.db.tokens.imported").exists()
 
 
 def test_a_database_url_names_the_database(

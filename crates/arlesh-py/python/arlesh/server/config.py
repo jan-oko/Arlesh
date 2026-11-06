@@ -8,6 +8,8 @@ The database can instead be named by a URL, as a container expects: ``ARLESH_DAT
 a file holding the URL, for a secret mounted as a file. ``--db`` and ``ARLESH_DATABASE__PATH``
 are the shorthand and win over both. An empty variable counts as unset, so a container can blank the
 image's default ``ARLESH_DATABASE_URL`` to use the file. SQLite is the only scheme for now.
+
+``ARLESH_BACKUP_TOKEN`` switches on ``GET /backup`` (a database snapshot, for the administrator).
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from arlesh.server.entrypoints.fastapi.config import ServerConfig
@@ -46,6 +48,10 @@ class Config(BaseSettings):
     """A Firebase service-account key to push notifications to phones with:
     ``ARLESH_FCM_CREDENTIALS_FILE`` (in a container, a mounted secret). Without it the server runs
     and sends no pushes."""
+
+    backup_token: SecretStr | None = None
+    """``ARLESH_BACKUP_TOKEN``: the administrator's secret for ``GET /backup``. Unset, there is no
+    such route. Separate from the device tokens, which do not grant it."""
 
     model_config = SettingsConfigDict(
         env_prefix="ARLESH_", env_nested_delimiter="__", env_ignore_empty=True

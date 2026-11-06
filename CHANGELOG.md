@@ -12,6 +12,15 @@ Arlesh is a personal app in live preview with no release cycle, so new entries c
 ### Added
 - **The server ships as a container image and as wheels.** Every release now publishes `ghcr.io/jan-oko/arlesh-server` (linux/amd64 and linux/arm64, running as a non-root user with its database on a `/data` volume) and Python wheels for linux x86_64 and aarch64, beside the desktop and Android builds. See Running the server in the Client mode spec for a `docker run` and a compose file.
 
+- **`GET /backup` on the server.** Set `ARLESH_BACKUP_TOKEN` in the server's environment (a
+  container's `environment:`, say) and the server streams a consistent snapshot of its SQLite
+  database, with `Authorization: Bearer <that token>`, as `arlesh-YYYY-MM-DD.db`. It is the
+  administrator's, kept apart from the device tokens: a paired device's token does not open it, and
+  without the variable the route does not exist. The snapshot is taken with SQLite's backup API on a
+  read-only connection, so it does not hold up the server's writes or touch the live database.
+
+- **Python: `Arlesh(backend=…)` works against a server.** A script can pick the app's own backend: `arlesh.Arlesh(backend=arlesh.HttpBackend(url, token=token))` talks to an `arlesh-server` as the app's Client mode does (revision stamps, gzip, TLS, the version check, and the last board read-only while the server is away), and `arlesh.SqliteBackend(path, client=…)` opens a local file as before. `async for change in board.changes()` follows the board, and `arlesh.pairing` turns a PIN into a token. `arlesh.open` and `arlesh-server` are unchanged.
+
 - **Pair a device with a PIN.** On a new phone or computer, enter the server's address and a name for the device and tap Connect: it shows a six-digit PIN. Approve the PIN with `arlesh-server pin approve <pin>` on the server, or in Settings → Devices → Approve a device on a device that is already connected, and the new device receives its own token and restarts connected. Names are unique (a clash gets a `-2` suffix), a PIN works once for ten minutes, and five wrong guesses cancel it.
 - **Devices page.** Settings → Devices lists the devices on the server with when each was last seen, and revokes any of them except the one you are using.
 

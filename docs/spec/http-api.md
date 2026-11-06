@@ -44,6 +44,12 @@ service manager. The flags can also come from the environment, as `ARLESH_DATABA
   the only scheme for now (Postgres comes later, through portable SQL). `--db` and
   `ARLESH_DATABASE__PATH` stay as the shorthand and win over the URL.
 
+- **The backup endpoint.** `ARLESH_BACKUP_TOKEN` switches on `GET /backup`, an administrator's
+  route for pulling a consistent snapshot of the database (see *Backup*). Unset, the route does not
+  exist (404). Set it in the container's environment (a compose file's `environment:`, or the NAS
+  app's variables) beside `ARLESH_DATABASE_URL`; there is no deployment guide or compose example in
+  this repository yet, so this is where the variable is recorded.
+
 - **Address.** It listens on `127.0.0.1:4750` by default. `--host` opts in to a LAN or Tailscale
   address.
 - **TLS** is optional, through `--tls-cert` and `--tls-key`, which must be given together.
@@ -52,6 +58,27 @@ service manager. The flags can also come from the environment, as `ARLESH_DATABA
   serves plain HTTP on an address other than loopback.
 - **The database** is opened for writing at startup, and migrated if it is behind. A missing file
   is created. A schema newer than the build is refused.
+
+## Backup: `GET /backup`
+
+The production database lives on the server, so anything that needs a copy of it (the box tool
+seeding a branch from real data, an off-site backup) asks the server.
+
+- **Admin-only, by its own secret.** The route exists only when the server is started with
+  `ARLESH_BACKUP_TOKEN`; without it, 404. The request carries `Authorization: Bearer <that
+  token>`, compared in constant time; missing or wrong is 401 (`WWW-Authenticate: Bearer`). A
+  device's pairing token does **not** open it, and the backup token opens nothing else. It is
+  open without a device token and rate limited per address, like `/pair`. This is a deliberate
+  split: a copy of the database is every Task's content, more than any one device should be
+  able to take.
+- **How the snapshot is taken.** Python's `sqlite3` online backup API over a read-only connection
+  to the configured database file, in a worker thread, 256 pages at a time. It reads where the
+  Rust core would, never writes to the live database, and in WAL mode does not block the
+  server's writers for long. It was chosen over a Rust binding because the bindings expose no
+  backup and the server already owns the file path; over `VACUUM INTO` because that holds a read
+  transaction for the whole copy. The copy goes into a temporary file, is streamed as
+  `application/vnd.sqlite3` with `Content-Disposition: attachment; filename=arlesh-YYYY-MM-DD.db`,
+  and is deleted afterwards. The file is a plain, whole database (not WAL).
 
 ## Tokens and client identity
 
@@ -78,11 +105,9 @@ one, so revoke it first. The table is read on every request, so a revoke takes e
 without a restart.
 
 The table is reached through the bindings, never Python's own `sqlite3`: two copies of SQLite in one
-process do not see each other's locks, and the WAL is corrupted under them. Tokens used to live in
-`<db>.tokens` beside the database. The first time the server or a `token` command runs, that file's
-tokens are moved into the table and the file is renamed `<db>.tokens.imported`, so a token revoked
-later cannot come back from it. Reading the table migrates the database if it is behind, so the
-server reads it at startup only when nothing holds the database (or it was forced).
+process do not see each other's locks, and the WAL is corrupted under them.
+Reading the table migrates the database if it is behind, so the server reads it at startup only
+when nothing holds the database (or it was forced).
 
 **The token decides the client.** The client is the name the undo journal records on every write
 (see [Undo](undo.md), *Clients, and a second writer*), so a request cannot write under another
@@ -266,6 +291,11 @@ installs the `arlesh-server` command. Its layout follows the user's Librarian pr
   abstract class listing every operation. `arlesh.SqliteDatabase` is its implementation, the
   Rust core over the SQLite file, which `arlesh.open` returns. The server depends on the port
   only. Its composition root injects the implementation, and its unit tests inject a fake.
+  Through [ADR 0016](../adr/0016-shared-backend-crate-and-python-backends.md) the same port also
+  has an `arlesh.Arlesh` façade over the `HttpBackend` of the `arlesh-backend` crate. The server
+  stays on SQLite only: `Board.open` over an `HttpBackend` would be a relay, which could loop back
+  on itself and would stamp every device's writes as its own client.
+  See [Client Mode](client-mode.md#the-backend-crate-and-python).
 - **`business_logic/board.py`**: the `Board` holds which open database a request reads and writes
   through. It takes the hold, keeps one write-open per client, and serves each client's MCP
   endpoint from that client's write-open. It is handed an `open_as(client)` answering the
@@ -289,8 +319,7 @@ installs the `arlesh-server` command. Its layout follows the user's Librarian pr
     is an injected httpx client, so it needs no port of its own.
 - **`ports/tokens/`**: the server's own way out, the token table. `TokenStore` is the port and
   `DatabaseTokenStore` the adapter over the `server_tokens` table (through the bindings'
-  `token_call`); the tests' fake is the second adapter. `FileTokenStore` is kept only to read an
-  old `<db>.tokens` file once.
+  `token_call`); the tests' fake is the second adapter.
 - **`ports/pairing/`**: `PairingStore` and `DatabasePairingStore` over `pairing_pins`, through the
   same `token_call`. The rules (PIN, lifetime, attempts, names) are `business_logic/pairing.py`,
   over the two ports and a clock, so they are unit-tested with no database.

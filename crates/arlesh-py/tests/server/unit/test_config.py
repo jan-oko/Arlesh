@@ -94,6 +94,21 @@ def test_the_fcm_credentials_file_is_optional_and_comes_from_the_environment(
     assert Config().fcm_credentials_file == Path("/run/secrets/arlesh-fcm.json")
 
 
+def test_the_backup_token_comes_from_its_variable_and_is_off_without_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ARLESH_DATABASE__PATH", "/data/arlesh.db")
+    monkeypatch.delenv("ARLESH_BACKUP_TOKEN", raising=False)
+    assert Config().backup_token is None
+
+    monkeypatch.setenv("ARLESH_BACKUP_TOKEN", "admin-secret")
+
+    token = Config().backup_token
+    assert token is not None
+    assert token.get_secret_value() == "admin-secret"
+    assert "admin-secret" not in repr(Config())
+
+
 def test_an_empty_url_is_unset_so_a_url_file_can_replace_an_image_default(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

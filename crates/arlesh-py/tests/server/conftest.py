@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import socket
+import threading
+import time
 import warnings
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
@@ -13,6 +16,7 @@ from typing import Any
 
 import arlesh
 import pytest
+import uvicorn
 from arlesh.server.business_logic.board import Board
 from arlesh.server.entrypoints.cli.app import holder, opener
 from arlesh.server.entrypoints.fastapi.app import ArleshServer
@@ -147,3 +151,22 @@ def day(date: str) -> dict[str, Any]:
 def one_day() -> Callable[[str], dict[str, Any]]:
     """A one-Day Time Scope, by its date."""
     return day
+
+
+@pytest.fixture
+def live(start: Start) -> Iterator[str]:
+    """The server, listening on a loopback port; its base URL."""
+    app: ArleshServer = start()
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 20
+    while not server.started:
+        assert time.monotonic() < deadline, "the server did not start"
+        time.sleep(0.05)
+    yield f"http://127.0.0.1:{port}"
+    server.should_exit = True
+    thread.join(timeout=20)

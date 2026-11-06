@@ -10,16 +10,31 @@
     box devices list
     box devices rm <name>
     box run <branch> [<target>] [--server <branch> | --standalone] [--no-firebase] [--force] [--stale-ok]
-            [--local | --ci] [--reinstall]
+            [--local | --ci] [--reinstall] [--local-seed]
     box keystore init [--force]
     box keystore rotate-password
+    box keystore migrate [-y]
     box stop [branch ... | all]
     box clean [branch ... | all]
     box prune [<target>] [-y | --dry-run]
-    box server start <branch> [--public]
+    box server start <branch> [--public] [--local-seed]
     box server stop [branch ... | all]
     box server token <branch> <arlesh-server token args...>
     box server pin <branch> approve <pin> [--name <device>] | list
+    box seed set <url>            (the backup token is read from stdin or a prompt, never argv)
+    box seed show
+    box reseed <branch> [-y]
+
+`list` is driven by the open PRs (`gh pr list` on origin's repo): one row per open-PR branch with its
+worktree, sync with origin, builds and installs, server and app; below a separator, `dev`, `master`
+and any worktree with no open PR ("prunable"). Without an authenticated gh it shows the worktrees.
+`prune` prints its plan, then asks `Proceed? [y/N]`; `-y` applies without asking, `--dry-run` only
+prints, and with no terminal and no `-y` it exits non-zero rather than wait. It removes each worktree whose branch has
+no open PR, never the main checkout, `dev`, `master`, the current directory's worktree, or one with
+uncommitted or unpushed work: it stops that branch's server and app, drops its Firebase app and
+device installs, runs `git worktree remove` (no --force), and deletes the local branch only when it
+is merged into origin/dev or origin/master or its PR was merged. Remote branches are never touched.
+Orphaned box apps are pruned as before. Without gh, only the apps are pruned.
 
 `list` is driven by the open PRs (`gh pr list` on origin's repo): one row per open-PR branch with its
 worktree, sync with origin, builds and installs, server and app; below a separator, `dev`, `master`
@@ -42,12 +57,34 @@ with `box devices add`; leave it out to reuse the last one. Devices live in
 $XDG_CONFIG_HOME/arlesh/box-devices.json, never in the repo; build stamps live in
 $XDG_STATE_HOME/arlesh/box/.
 
-Desktop: every branch compiles into the ONE shared target directory of the main checkout, and only
-the per-branch binary is kept. A debug Tauri build loads its frontend from tauri.conf.json's
+Desktop: every branch compiles into the ONE shared target directory of the main checkout (see Shared
+target below), and only the per-branch binary is kept. A debug Tauri build loads its frontend from tauri.conf.json's
 `devUrl`, so each instance has its own Vite dev server on its own port. The window title, the port
 and the GTK app id are baked in at build time, so tauri.conf.json is patched for the length of the
 build and restored, also when the build fails or is signalled. XDG_DATA_HOME / XDG_CONFIG_HOME point
 at a per-instance directory, which isolates the database, localStorage and persisted state.
+
+Shared target, and why it is safe: worktrees' workspace crates get the SAME cargo unit hashes (cargo
+hashes workspace paths relative to the root), and cargo judges a path crate fresh by comparing source
+mtimes with the build's dep-info. A worktree whose files are older than another's artifacts is
+therefore reported `Fresh` and links the other branch's code: a server running with another branch's
+native module and schema, or an APK of the wrong branch (seen: `Finished` in 0.2 s, no `push_call`).
+Box keeps the one target, because the dependencies are ~14G of debug artifacts and disk is the
+constraint (per-worktree targets would cost that per branch, and `clean` and `prune` would have to
+delete them too), and makes the workspace crates provably the branch's own instead: every cargo build
+box runs (desktop, server bindings, Android) is wrapped in `owned_target`. It drops cargo's records
+of the workspace crates (their `.fingerprint/` and `build/` dirs, every profile and target triple,
+never a dependency's) unless this worktree compiled them last and nothing has written them since;
+`<target>/.arlesh-box-members` holds the owner and a signature of those records, so a plain `cargo`
+run in another worktree is caught too. Cost: switching branches recompiles the workspace crates
+(about a minute for the server, more for Tauri) and no extra disk. The frontend is not shared (each
+worktree has its own node_modules, Vite server and dist), and the per-branch binary and APK are
+copied out of the target right after the build, so a "build is current" stamp never points at
+another branch's artifact.
+
+Notifications: after an install, before every launch, box grants a box app POST_NOTIFICATIONS
+(`pm grant`, box packages only, never the release app) so its first launch registers its push token.
+A device or package without that permission gets a note and the run goes on.
 
 Android: the package is com.atai.arlesh.box.<branch> and the label "Arlesh (<branch>)", so it
 installs beside the real app; build.gradle.kts and strings.xml are patched for the build and
@@ -74,17 +111,39 @@ unpushed tree it is an error. Without an authenticated gh, `run` builds locally 
 
 Signing: every box APK, local or CI, is signed with ONE box-only keystore, so they update one
 another. `keystore init` creates $XDG_CONFIG_HOME/arlesh/box.keystore (alias arlesh-box, 10000 days; a
-debug-grade key for com.atai.arlesh.box.* only) under a random password kept beside it in
-box.keystore.password (mode 600), and uploads both as repo secrets with `gh secret set`:
-ARLESH_BOX_KEYSTORE_B64 and ARLESH_BOX_KEYSTORE_PASSWORD (it refuses to replace an existing
-keystore without --force; replacing means reinstalling every box app). `keystore rotate-password`
-moves a keystore made with the old fixed password onto a random one, keeping the same key. Local builds sign with it
-when it exists, else with ~/.android/debug.keystore and a notice. CI (bundles.yml box mode) signs
-with the secret when set, else with a fresh key and a warning. On INSTALL_FAILED_UPDATE_INCOMPATIBLE
-`run` stops and offers `--reinstall`, which uninstalls first (the token is re-provisioned).
+debug-grade key for com.atai.arlesh.box.* only) under a random password generated in memory. The
+password lives only in the environment: it is written to box.env as ARLESH_BOX_KEYSTORE_PASSWORD
+(file mode 600, an existing line updated in place, the value never printed) and set, with the
+keystore (base64), as the repo secrets ARLESH_BOX_KEYSTORE_B64 and ARLESH_BOX_KEYSTORE_PASSWORD with
+`gh secret set` (values on stdin). keytool and apksigner are given the variable's name
+(`-storepass:env`, `env:`), never its value and never a file. `init` refuses to replace an existing
+keystore without --force; replacing means reinstalling every box app. `keystore rotate-password`
+gives the existing key a new random password (the old one from the environment) and updates box.env
+and the secret. `keystore migrate [-y]` moves a password out of the old box.keystore.password file
+into box.env and deletes the file. An Android build needs the keystore and the variable; without
+them it stops and says so. CI (bundles.yml box mode) signs with the repo secrets. On
+INSTALL_FAILED_UPDATE_INCOMPATIBLE `run` stops and offers `--reinstall`, which uninstalls first (the
+token is re-provisioned).
+
+Seeding: a new branch database (the server's, and the desktop instance's) starts as a copy of the
+production database, which lives on the arlesh-server. `seed set <url>` writes the server's URL
+and the admin backup token (the server's ARLESH_BACKUP_TOKEN) into box.env as ARLESH_BOX_SEED_URL
+and ARLESH_BACKUP_TOKEN (a variable already set in the shell wins), and
+`seed show` says what is set without printing the token. When both are set, a seeding downloads
+`GET <url>/backup` once per box invocation (cached in $XDG_STATE_HOME/arlesh/box/seed/, removed at
+exit) and uses it for both seeds; a failed download stops with the reason, and `--local-seed` (on
+`run` and `server start`) uses the local desktop copy instead. Unconfigured, the local copy is used,
+with a note. `reseed <branch>` downloads a fresh snapshot, stops that branch's server and
+instance, replaces their databases (the old ones stay as `<db>.prev`), and starts again what was
+running; it asks `Proceed? [y/N]` (`-y` skips). A snapshot whose newest applied migration is above
+the branch's newest file in crates/arlesh-core/migrations/ gets a warning: the branch is older than
+the server, and its app will refuse that database. Box only ever GETs from the server.
+A seed carries no credentials: on the seed copy only (never the source), before anything uses it,
+box empties the tables holding the server's device tokens and pairing PINs (server_tokens,
+pairing_pins), in a fresh seed and in `reseed`. Box issues its own tokens for the apps it binds.
 
 Servers: `server start <branch>` runs arlesh-server from that worktree's own venv, on its own port,
-over a read-only `.backup` copy of the real database. `run` on desktop connects the instance to its
+over a seed database (see Seeding). `run` on desktop connects the instance to its
 own branch's server (started if it is not up) unless --server picks another or --standalone uses
 none. An Android `run` does the same, over a server that listens publicly (restarted public, with a
 notice, if it was on loopback): the URL the phone can reach (tailnet or LAN) and a token are handed
@@ -96,8 +155,10 @@ pairing real (non-box) devices.
 from __future__ import annotations
 
 import argparse
+import atexit
 import base64
 import contextlib
+import getpass
 import hashlib
 import ipaddress
 import json
@@ -115,7 +176,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
@@ -128,6 +189,7 @@ DESKTOP = "desktop"
 ANDROID = "android"
 OSES = (ANDROID, DESKTOP)
 CMD = "npm run box --"
+LOCAL_SEED_HELP = "seed from the local desktop database, not the server"
 LOOPBACK = "127.0.0.1"
 PUBLIC = "0.0.0.0"
 STOP_GRACE_SECONDS = 10.0  # SIGTERM, then this long, then SIGKILL
@@ -137,11 +199,8 @@ TOKEN_EXTRA = "arlesh_box_token"
 BOX_KEY_ALIAS = "arlesh-box"
 BOX_KEY_VALIDITY_DAYS = 10000
 BOX_KEYSTORE_SECRET = "ARLESH_BOX_KEYSTORE_B64"
-BOX_PASSWORD_SECRET = "ARLESH_BOX_KEYSTORE_PASSWORD"
-DEBUG_KEY_ALIAS = "androiddebugkey"
-# The Android SDK's documented convention: the debug keystore's passwords are the alias without
-# its "debugkey" suffix. Handed to keytool and apksigner through the environment, never argv.
-ANDROID_DEBUG_STOREPASS_ENV = "ARLESH_BOX_DEBUG_STOREPASS"
+BOX_PASSWORD_ENV = "ARLESH_BOX_KEYSTORE_PASSWORD"
+BOX_PASSWORD_SECRET = BOX_PASSWORD_ENV  # the repo secret has the variable's name
 BUNDLES_WORKFLOW = "bundles.yml"
 AUTO, LOCAL, CI = "auto", "local", "ci"
 
@@ -807,6 +866,87 @@ def record_built(os_name: str, branch: str, stamp: str) -> None:
     update_state(lambda s: s["built"][os_name].__setitem__(branch, stamp))
 
 
+# ---- The shared cargo target: whose workspace crates are in it ----------------------------
+
+OWNER_FILE = ".arlesh-box-members"
+
+
+def workspace_members(wt: Path) -> list[str]:
+    """Names of the workspace's own crates (never their dependencies), from `cargo metadata`."""
+    res = capture(
+        ["cargo", "metadata", "--no-deps", "--format-version", "1", "--offline"], cwd=wt
+    )
+    if res.returncode != 0:
+        raise die(f"cargo metadata failed in {wt}; box cannot tell which crates are the branch's own.")
+    return sorted(pkg["name"] for pkg in json.loads(res.stdout)["packages"])
+
+
+def member_dirs(target: Path, members: Sequence[str]) -> list[Path]:
+    """Cargo's per-unit records of the workspace crates in every profile and target triple.
+
+    Both `<profile>/` and `<triple>/<profile>/` are covered. The name must be followed by exactly a
+    16-digit hash, so `arlesh-core-extra` is not mistaken for `arlesh-core`.
+    """
+    names = re.compile(rf"(?:{'|'.join(map(re.escape, members))})-[0-9a-f]{{16}}")
+    found: list[Path] = []
+    for pattern in ("*/.fingerprint", "*/*/.fingerprint", "*/build", "*/*/build"):
+        for parent in target.glob(pattern):
+            found += [d for d in parent.iterdir() if names.fullmatch(d.name)]
+    return sorted(found)
+
+
+def members_signature(target: Path, members: Sequence[str]) -> str:
+    """Hash of what cargo last wrote for the workspace crates (cargo's own re-checks excluded)."""
+    digest = hashlib.sha256()
+    for unit in member_dirs(target, members):
+        for path in sorted(p for p in unit.rglob("*") if p.is_file()):
+            if path.name == "invoked.timestamp":
+                continue  # rewritten by every cargo run, even one that found everything fresh
+            stat = path.stat()
+            digest.update(f"{path.relative_to(target)} {stat.st_mtime_ns} {stat.st_size}\0".encode())
+    return digest.hexdigest()
+
+
+def read_owner(target: Path) -> dict[str, str]:
+    try:
+        data = json.loads((target / OWNER_FILE).read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+@contextlib.contextmanager
+def owned_target(wt: Path, target: Path) -> Iterator[None]:
+    """Around a cargo build of `wt` in the shared `target`: its workspace crates are its own.
+
+    Worktrees share one target, and their crates get identical cargo unit hashes (workspace paths
+    are hashed relative to the root). Cargo then judges them fresh by mtime alone, so a worktree
+    whose files are older than another's build artifacts is never recompiled and runs the other
+    branch's code. Before a build, the workspace crates' fingerprints are dropped unless this
+    worktree was the last to compile them and nothing has written them since; cargo then rebuilds
+    them and keeps every dependency. After the build (also a failed one), the new owner is recorded.
+    """
+    members = workspace_members(wt)
+    owner = read_owner(target)
+    mine = owner.get("worktree") == str(wt.resolve()) and owner.get(
+        "signature"
+    ) == members_signature(target, members)
+    if not mine:
+        units = member_dirs(target, members)
+        for unit in units:
+            shutil.rmtree(unit)
+        note(
+            f"shared target: rebuilding the workspace crates for {wt.name} "
+            f"({len(units)} stale records dropped; dependencies are kept)"
+        )
+    try:
+        yield
+    finally:
+        target.mkdir(parents=True, exist_ok=True)
+        record = {"worktree": str(wt.resolve()), "signature": members_signature(target, members)}
+        atomic_write(target / OWNER_FILE, json.dumps(record) + "\n")
+
+
 # ---- Patching tracked files for the length of a build ------------------------------------
 
 
@@ -1022,6 +1162,406 @@ def ensure_node_modules(wt: Path) -> None:
     stamp_file.write_text(want)
 
 
+# ---- Seeding ----------------------------------------------------------------------------------
+
+SEED_URL_ENV = "ARLESH_BOX_SEED_URL"
+SEED_TOKEN_ENV = "ARLESH_BACKUP_TOKEN"
+SQLITE_MAGIC = b"SQLite format 3\x00"
+PREV_SUFFIXES = ("", "-wal", "-shm")
+# Every table holding a login credential (migrations 0097 and 0098): the device/server token hashes
+# and the pairing PINs with their approval state. A seed carries none of them.
+CREDENTIAL_TABLES = ("server_tokens", "pairing_pins")
+
+
+def seed_url_file() -> Path:
+    """Where an earlier box kept the URL; read as a fallback, removed by `seed set`."""
+    return xdg("XDG_CONFIG_HOME", ".config") / "arlesh" / "box-seed-url"
+
+
+def seed_token_file() -> Path:
+    """Where an earlier box kept the token; read as a fallback, removed by `seed set`."""
+    return xdg("XDG_CONFIG_HOME", ".config") / "arlesh" / "box-seed.token"
+
+
+def seed_dir() -> Path:
+    return state_dir() / "seed"
+
+
+@dataclass
+class SeedState:
+    """What this invocation decided about seeding: forced local, and the snapshot once fetched."""
+
+    local: bool = False
+    snapshot: Path | None = None
+
+
+SEED = SeedState()
+
+
+@dataclass(frozen=True)
+class SeedSource:
+    url: str
+    token: str = field(repr=False)
+
+
+def read_text(path: Path) -> str | None:
+    try:
+        return path.read_text().strip() or None
+    except OSError:
+        return None
+
+
+def seed_url() -> tuple[str | None, str]:
+    """The configured server URL and where it came from (`env`, `file`, or `unset`)."""
+    env = os.environ.get(SEED_URL_ENV, "").strip()
+    if env:
+        return env.rstrip("/"), "env"
+    stored = read_text(seed_url_file())
+    return (stored.rstrip("/"), "file") if stored else (None, "unset")
+
+
+def seed_token() -> tuple[str | None, str]:
+    env = os.environ.get(SEED_TOKEN_ENV, "").strip()
+    if env:
+        return env, "env"
+    stored = read_text(seed_token_file())
+    return (stored, "file") if stored else (None, "unset")
+
+
+def seed_source() -> SeedSource | None:
+    """The server to seed from; None when none is configured (the local copy is used)."""
+    url, _ = seed_url()
+    token, _ = seed_token()
+    if url is None and token is None:
+        return None
+    if url is None or token is None:
+        missing = "URL" if url is None else "backup token"
+        raise die(
+            f"The seed server's {missing} is not set. Run `{CMD} seed set <url>` "
+            f"(or set {SEED_URL_ENV} and {SEED_TOKEN_ENV}), or pass --local-seed."
+        )
+    return SeedSource(url, token)
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow a redirect: the backup token must go only where the URL says."""
+
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
+def download_snapshot(source: SeedSource, dest: Path) -> None:
+    """GET `<url>/backup` into `dest` (mode 600), checking it is a SQLite file. The only request
+    box makes to the server; it never writes there."""
+    request = urllib.request.Request(
+        f"{source.url}/backup",
+        headers={"Authorization": f"Bearer {source.token}"},
+        method="GET",
+    )
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    part = dest.with_name(dest.name + ".part")
+    try:
+        with urllib.request.build_opener(_NoRedirect).open(
+            request, timeout=120
+        ) as response:
+            part.unlink(missing_ok=True)
+            fd = os.open(part, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as out:
+                shutil.copyfileobj(response, out, 1 << 20)
+        with part.open("rb") as f:
+            if f.read(len(SQLITE_MAGIC)) != SQLITE_MAGIC:
+                raise die(f"{source.url}/backup did not answer a SQLite database.")
+        os.replace(part, dest)
+    except urllib.error.HTTPError as exc:
+        raise die(seed_http_message(source.url, exc.code)) from None
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        reason = getattr(exc, "reason", exc)
+        raise die(
+            f"Cannot download the seed from {source.url}/backup: {reason}. "
+            "Fix it, or pass --local-seed to use the local copy."
+        ) from None
+    finally:
+        part.unlink(missing_ok=True)
+
+
+def seed_http_message(url: str, code: int) -> str:
+    why = {
+        401: "the backup token was refused (it is the server's ARLESH_BACKUP_TOKEN, not a device token)",
+        404: "the server has no /backup (ARLESH_BACKUP_TOKEN is not set on it, or it is too old)",
+        429: "too many attempts; try again later",
+    }.get(code, f"HTTP {code}")
+    return (
+        f"Cannot download the seed from {url}/backup: {why}. "
+        "Fix it, or pass --local-seed to use the local copy."
+    )
+
+
+def seed_snapshot() -> Path | None:
+    """The server snapshot to seed from, downloaded once per invocation; None means the local copy."""
+    if SEED.local:
+        return None
+    if SEED.snapshot is not None:
+        return SEED.snapshot
+    source = seed_source()
+    if source is None:
+        return None
+    path = seed_dir() / f"snapshot-{os.getpid()}.db"
+    print(f"    downloading the seed from {source.url} …", flush=True)
+    download_snapshot(source, path)
+    atexit.register(path.unlink, missing_ok=True)
+    SEED.snapshot = path
+    return path
+
+
+def newest_applied_migration(db: Path) -> int | None:
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        try:
+            row = con.execute(
+                "SELECT MAX(version) FROM _sqlx_migrations WHERE success = 1"
+            ).fetchone()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return None
+    return int(row[0]) if row and row[0] is not None else None
+
+
+def newest_branch_migration(wt: Path) -> int | None:
+    found = [
+        int(m.group(1))
+        for f in (wt / "crates" / "arlesh-core" / "migrations").glob("*.sql")
+        if (m := re.match(r"(\d+)_", f.name))
+    ]
+    return max(found) if found else None
+
+
+def schema_warning(name: str, applied: int | None, branch: int | None) -> str | None:
+    if applied is None or branch is None or applied <= branch:
+        return None
+    return (
+        f"!! {name}: the seed is at migration {applied:04d} but this branch's newest is "
+        f"{branch:04d}: this branch is older than the server, and the app will refuse "
+        "the database. Rebase the branch (or use --local-seed)."
+    )
+
+
+def warn_if_older(snapshot: Path, wt: Path, name: str) -> None:
+    message = schema_warning(
+        name, newest_applied_migration(snapshot), newest_branch_migration(wt)
+    )
+    if message:
+        note(message)
+
+
+def scrub_credentials(db: Path) -> list[str]:
+    """Empty every credential table in the seed copy `db` (never the source), then vacuum with
+    secure_delete so the removed rows are not left in free pages. Returns the tables it cleared;
+    a table the seed's schema predates is skipped."""
+    con = sqlite3.connect(db)
+    try:
+        con.execute("PRAGMA journal_mode = DELETE")
+        con.execute("PRAGMA secure_delete = ON")
+        present = {
+            name
+            for (name,) in con.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        cleared = [t for t in CREDENTIAL_TABLES if t in present]
+        for table in cleared:
+            con.execute(f"DELETE FROM {table}")
+        con.commit()
+        con.execute("VACUUM")
+    finally:
+        con.close()
+    return cleared
+
+
+def copy_local_db(dest: Path) -> None:
+    """A consistent copy of the local database through a read-only connection."""
+    src = sqlite3.connect(f"file:{real_db()}?mode=ro", uri=True)
+    try:
+        dst = sqlite3.connect(dest)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+
+
+def seed_database(dest: Path, wt: Path, name: str) -> None:
+    """Create `dest` from the server snapshot, else (unconfigured or --local-seed) the local copy."""
+    snapshot = seed_snapshot()
+    if snapshot is not None:
+        part = dest.with_name(dest.name + ".seed")
+        shutil.copyfile(snapshot, part)
+        scrub_credentials(part)
+        os.replace(part, dest)
+        print(
+            f"    seeded from the server snapshot ({seed_url()[0]}), credentials removed"
+        )
+        warn_if_older(snapshot, wt, name)
+    elif real_db().is_file():
+        note(
+            f"    seed is local ({real_db()}); `{CMD} seed set <url>` seeds from the server"
+        )
+        part = dest.with_name(dest.name + ".seed")
+        copy_local_db(part)
+        scrub_credentials(part)
+        os.replace(part, dest)
+        print(f"    seeded from {real_db()} (read-only), credentials removed")
+    else:
+        note(f"    no seed: no server configured and no local database at {real_db()}")
+
+
+def keep_previous(db: Path) -> None:
+    """Move `db` and its WAL files aside as `<file>.prev`, replacing an earlier `.prev`."""
+    for suffix in PREV_SUFFIXES:
+        old = db.with_name(db.name + suffix)
+        prev = db.with_name(db.name + suffix + ".prev")
+        if old.exists():
+            os.replace(old, prev)
+        else:
+            prev.unlink(missing_ok=True)
+
+
+def replace_with_snapshot(db: Path, snapshot: Path) -> None:
+    keep_previous(db)
+    part = db.with_name(db.name + ".seed")
+    shutil.copyfile(snapshot, part)
+    scrub_credentials(part)
+    os.replace(part, db)
+
+
+def instance_db(name: str) -> Path:
+    return instance_dir(name) / "data" / "com.atai.arlesh" / "arlesh.db"
+
+
+def instance_bound_to(name: str, server: str) -> bool:
+    """Whether the instance's mode.json points at `server`'s URL."""
+    try:
+        mode = json.loads(
+            (instance_dir(name) / "data" / "com.atai.arlesh" / "mode.json").read_text()
+        )
+    except (OSError, ValueError):
+        return False
+    return (
+        isinstance(mode, dict)
+        and mode.get("mode") == "client"
+        and mode.get("url") == f"http://127.0.0.1:{server_port_for(server)}"
+    )
+
+
+def pidfile_alive(pidfile: Path) -> bool:
+    pid = read_pid(pidfile)
+    return pid is not None and pid_alive(pid)
+
+
+def cmd_reseed(args: argparse.Namespace) -> None:
+    """Replace a branch's databases with a fresh server snapshot, restarting what was running."""
+    name = dir_name(args.branch)
+    wt = worktree_path(name)
+    candidates = {"server": server_db(name), "desktop instance": instance_db(name)}
+    targets = {label: db for label, db in candidates.items() if db.is_file()}
+    if not targets:
+        raise die(
+            f"'{name}' has no database to reseed yet; `{CMD} run {args.branch}` seeds it."
+        )
+    SEED.local = False
+    if seed_source() is None:
+        raise die(
+            f"Nothing to reseed from: run `{CMD} seed set <url>` first "
+            f"(or set {SEED_URL_ENV} and {SEED_TOKEN_ENV})."
+        )
+    snapshot = (
+        seed_snapshot()
+    )  # before anything is stopped: a failed download changes nothing
+    if snapshot is None:
+        raise die("No seed snapshot.")
+    has_app = "desktop instance" in targets
+    server_was = "server" in targets and server_running(name)
+    host = server_host(name)
+    app_was = has_app and pidfile_alive(instance_dir(name) / "run.pid")
+    vite_was = has_app and pidfile_alive(instance_dir(name) / "vite.pid")
+    print(f"reseed {name} from {seed_url()[0]}:")
+    for label, db in targets.items():
+        print(
+            f"  replace the {label} database {db} (the old one stays as {db.name}.prev)"
+        )
+    if server_was:
+        print("  the server is stopped and started again")
+    if app_was:
+        print("  the app is stopped and started again")
+    if not args.yes:
+        if not interactive():
+            raise die("Not reseeding without a terminal: re-run with -y.")
+        if ask("Proceed? [y/N] ").strip().lower() not in ("y", "yes"):
+            print("aborted; nothing changed.")
+            return
+    if has_app:
+        stop_instance(name)
+    if "server" in targets:
+        stop_server(name)
+    for db in targets.values():
+        replace_with_snapshot(db, snapshot)
+        print(f"  replaced {db}")
+    warn_if_older(snapshot, wt, name)
+    if "server" in targets:
+        note(
+            f"  tokens issued by '{name}' server are gone with its old database: instances "
+            f"and phones connected to it need `{CMD} run` again to get new ones."
+        )
+    if server_was:
+        server_start(name, host)
+    if has_app and (app_was or vite_was):
+        if server_was and instance_bound_to(name, name):
+            connect_instance(name, name, "desktop")
+        start_vite(name, wt)
+        if app_was:
+            launch_desktop(name)
+
+
+def cmd_seed(args: argparse.Namespace) -> None:
+    if args.seed_cmd == "set":
+        seed_set(args.url)
+    else:
+        seed_show()
+
+
+def seed_set(url: str) -> None:
+    if not re.match(r"https?://[^/\s]+", url):
+        raise UsageError(f"{url!r} is not an http(s) URL.")
+    if sys.stdin.isatty():
+        token = getpass.getpass("Backup token (the server's ARLESH_BACKUP_TOKEN): ")
+    else:
+        token = sys.stdin.read()
+    token = token.strip() or (seed_token()[0] or "")
+    if not token:
+        raise die("No token given and none stored: nothing saved.")
+    # Both live in box.env, the local environment box loads at startup (mode 600).
+    for key, value in ((SEED_URL_ENV, url.rstrip("/")), (SEED_TOKEN_ENV, token)):
+        set_env_value(key, value)
+        os.environ[key] = value
+    seed_url_file().unlink(missing_ok=True)
+    seed_token_file().unlink(missing_ok=True)
+    print(
+        f"seed server: {url.rstrip('/')} ({SEED_URL_ENV} and {SEED_TOKEN_ENV} in {env_file()})"
+    )
+
+
+def seed_show() -> None:
+    url, url_from = seed_url()
+    token, token_from = seed_token()
+    print(f"url:   {f'{url}  [{url_from}]' if url else '(not set)'}")
+    print(f"token: {f'set  [{token_from}]' if token else '(not set)'}")
+    if url and token:
+        print("seeding from the server (--local-seed uses the local copy instead)")
+    else:
+        print(f"seeding from the local copy {real_db()}")
+
+
 # ---- Desktop instances ----------------------------------------------------------------------------
 
 
@@ -1074,19 +1614,20 @@ def build_desktop(name: str, wt: Path) -> None:
         # window. Instances turn it off so they open beside the main app and each other.
         data.setdefault("app", {})["enableGTKAppId"] = False
         conf.write_text(json.dumps(data, indent=2))
-        run_cmd(
-            [
-                "cargo",
-                "build",
-                "--manifest-path",
-                "src-tauri/Cargo.toml",
-                "--bin",
-                "arlesh",
-            ],
-            cwd=wt,
-            env={"CARGO_TARGET_DIR": str(target)},
-            what=f"{name}: cargo build",
-        )
+        with owned_target(wt, target):
+            run_cmd(
+                [
+                    "cargo",
+                    "build",
+                    "--manifest-path",
+                    "src-tauri/Cargo.toml",
+                    "--bin",
+                    "arlesh",
+                ],
+                cwd=wt,
+                env={"CARGO_TARGET_DIR": str(target)},
+                what=f"{name}: cargo build",
+            )
     binary = target / "debug" / "arlesh"
     if not os.access(binary, os.X_OK):
         raise die(f"Expected a binary at {binary} and found none.")
@@ -1097,9 +1638,8 @@ def build_desktop(name: str, wt: Path) -> None:
     shutil.copy2(binary, inst / "arlesh.new")
     os.replace(inst / "arlesh.new", inst / "arlesh")
     db = inst / "data" / "com.atai.arlesh" / "arlesh.db"
-    if not db.exists() and real_db().is_file():
-        shutil.copy2(real_db(), db)
-        print(f"    seeded from {real_db()}")
+    if not db.exists():
+        seed_database(db, wt, name)
     size = (inst / "arlesh").stat().st_size / 1e6
     print(f"=== {name}: ready ({size:.0f}M, port {port}, {free_gb()}G free) ===")
 
@@ -1266,31 +1806,22 @@ def build_server(name: str) -> None:
         env=env,
         what=f"{name}: uv sync",
     )
-    run_cmd(
-        ["uv", "run", "--no-sync", "maturin", "develop", "--uv", "--locked"],
-        cwd=pydir,
-        env=env,
-        what=f"{name}: maturin develop",
-    )
+    with owned_target(worktree_path(name), shared_target()):
+        run_cmd(
+            ["uv", "run", "--no-sync", "maturin", "develop", "--uv", "--locked"],
+            cwd=pydir,
+            env=env,
+            what=f"{name}: maturin develop",
+        )
 
 
 def seed_server(name: str) -> None:
-    """A read-only snapshot of the real database, once: the real file is never written."""
+    """The server's database, once: the server snapshot, or a read-only copy of the local one."""
     db = server_db(name)
     if db.exists():
         return
     db.parent.mkdir(parents=True, exist_ok=True)
-    if real_db().is_file():
-        src = sqlite3.connect(f"file:{real_db()}?mode=ro", uri=True)
-        try:
-            dst = sqlite3.connect(db)
-            try:
-                src.backup(dst)
-            finally:
-                dst.close()
-        finally:
-            src.close()
-        print(f"    seeded from {real_db()} (read-only)")
+    seed_database(db, worktree_path(name), name)
 
 
 def server_host(name: str) -> str:
@@ -1611,11 +2142,6 @@ def am_start_argv(serial: str, package: str, url: str, token: str) -> list[str]:
 # ---- Android: tooling and device ------------------------------------------------------------------
 
 
-def debug_keystore() -> Path:
-    value = os.environ.get("ARLESH_BOX_KEYSTORE")
-    return Path(value) if value else home() / ".android" / "debug.keystore"
-
-
 def android_env() -> None:
     sdk = os.environ.get("ANDROID_HOME", "")
     ndk = os.environ.get("ANDROID_NDK_HOME", "")
@@ -1649,27 +2175,6 @@ def build_tool(tool: str) -> Path:
     if not dirs or not os.access(dirs[-1] / tool, os.X_OK):
         raise die(f"No '{tool}' under {root}. Install build-tools with sdkmanager.")
     return dirs[-1] / tool
-
-
-def ensure_debug_keystore() -> None:
-    ks = debug_keystore()
-    if ks.is_file():
-        return
-    need_cmd("keytool", "It ships with the JDK.")
-    ks.parent.mkdir(parents=True, exist_ok=True)
-    made = capture(
-        [
-            "keytool", "-genkeypair", "-keystore", str(ks),
-            *keytool_pass("-storepass", DEBUG_PASS_SOURCE),
-            *keytool_pass("-keypass", DEBUG_PASS_SOURCE),
-            "-alias", DEBUG_KEY_ALIAS, "-keyalg", "RSA", "-keysize", "2048", "-validity", "10000",
-            "-dname", "CN=Android Debug,O=Android,C=US",
-        ],
-        env=DEBUG_PASS_ENV,
-    )  # fmt: skip
-    if made.returncode != 0:
-        raise die(f"Could not create {ks}.")
-    note(f"created {ks}")
 
 
 ADB_TLS = "_adb-tls-connect._tcp"
@@ -2079,67 +2584,57 @@ class Firebase:
 #
 # One box-only keystore signs every box APK, local or CI, so a CI build installs over a local one and
 # back. It lives at $XDG_CONFIG_HOME/arlesh/box.keystore and, base64, in the repo secret
-# ARLESH_BOX_KEYSTORE_B64 (made by `box keystore init`). Its random password sits beside it in
-# box.keystore.password (mode 600) and in ARLESH_BOX_KEYSTORE_PASSWORD. It is a debug-grade key, good
-# for com.atai.arlesh.box.* only, but a password in the repo is still a leak, so none is written
-# here: keytool and apksigner read the password from a file or the environment, never from argv.
+# ARLESH_BOX_KEYSTORE_B64 (made by `box keystore init`). Its random password lives only in the
+# environment: ARLESH_BOX_KEYSTORE_PASSWORD, from box.env locally and from the repo secret of the same
+# name in CI. keytool and apksigner are handed the variable's name (`-storepass:env`, `env:`), never
+# its value, so it is on no command line and in no file besides box.env.
 
-PassSource = tuple[str, str]  # ("file", path) or ("env", variable name)
+NEW_PASSWORD_ENV = (
+    BOX_PASSWORD_ENV + "_NEW"
+)  # rotate-password: the variable holding the new one
 
 
 def box_keystore() -> Path:
     return xdg("XDG_CONFIG_HOME", ".config") / "arlesh" / "box.keystore"
 
 
-def box_password_file() -> Path:
+def legacy_password_file() -> Path:
+    """Where earlier versions kept the password: a file beside the keystore."""
     return box_keystore().with_name(box_keystore().name + ".password")
 
 
-DEBUG_PASS_SOURCE: PassSource = ("env", ANDROID_DEBUG_STOREPASS_ENV)
-DEBUG_PASS_ENV = {ANDROID_DEBUG_STOREPASS_ENV: DEBUG_KEY_ALIAS.removesuffix("debugkey")}
-
-
-def keytool_pass(option: str, source: PassSource) -> list[str]:
-    """`-storepass:file PATH` / `-storepass:env NAME`: keytool's argv-safe forms."""
-    return [f"{option}:{source[0]}", source[1]]
-
-
-def apksigner_pass(source: PassSource) -> str:
-    """`file:PATH` / `env:NAME`: apksigner's argv-safe forms."""
-    return f"{source[0]}:{source[1]}"
+def keytool_pass(option: str, variable: str) -> list[str]:
+    """`-storepass:env NAME`: keytool reads the value from that environment variable."""
+    return [f"{option}:env", variable]
 
 
 @dataclass(frozen=True)
 class Signing:
     keystore: Path
     alias: str
-    password: PassSource
-    shared: bool  # the box keystore, as opposed to the debug-keystore fallback
-    env: Mapping[str, str] = field(
-        default_factory=dict
-    )  # what `password` reads, if env
+
+
+def missing_password_message() -> str:
+    hint = ""
+    if legacy_password_file().is_file():
+        hint = f" The old password file {legacy_password_file()} can be moved there with `{CMD} keystore migrate`."
+    return (
+        f"{BOX_PASSWORD_ENV} is not set. Put it in {env_file()} (`{CMD} keystore init` does that "
+        f"for a new keystore).{hint}"
+    )
 
 
 def choose_signing() -> Signing:
-    """The shared box keystore when it exists, else the debug keystore (made if missing)."""
+    """The box keystore and its password from the environment; an Android build has no other."""
     shared = box_keystore()
-    if shared.is_file():
-        pwfile = box_password_file()
-        if not pwfile.is_file():
-            raise die(
-                f"{shared} has no password file ({pwfile}). Run `{CMD} keystore rotate-password` "
-                f"if it was made before passwords were random, or `{CMD} keystore init --force` "
-                "to make a new one (every installed box app then has to be reinstalled)."
-            )
-        return Signing(shared, BOX_KEY_ALIAS, ("file", str(pwfile)), True)
-    ensure_debug_keystore()
-    note(
-        f"signing with {debug_keystore()}: CI and local builds are not update-compatible "
-        f"until you run `{CMD} keystore init`."
-    )
-    return Signing(
-        debug_keystore(), DEBUG_KEY_ALIAS, DEBUG_PASS_SOURCE, False, DEBUG_PASS_ENV
-    )
+    if not shared.is_file():
+        raise die(
+            f"There is no box keystore at {shared}. Run `{CMD} keystore init` to create it "
+            f"(it also puts {BOX_PASSWORD_ENV} in {env_file()})."
+        )
+    if not os.environ.get(BOX_PASSWORD_ENV):
+        raise die(missing_password_message())
+    return Signing(shared, BOX_KEY_ALIAS)
 
 
 def origin_repo(cwd: Path) -> str:
@@ -2151,12 +2646,26 @@ def origin_repo(cwd: Path) -> str:
     return found.group(1)
 
 
-def write_secret_file(path: Path, text: str) -> None:
-    """Write `text` to `path`, created with mode 600 so it is never readable by others."""
-    path.unlink(missing_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w") as f:
-        f.write(text)
+def set_env_value(key: str, value: str) -> None:
+    """Set `key=value` in box.env: update its line in place, else append; the file is mode 600."""
+    path = env_file()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        lines = []
+    line_for = re.compile(rf"^\s*(?:export\s+)?{re.escape(key)}\s*=")
+    entry = f"{key}={value}"
+    if any(line_for.match(line) for line in lines):
+        lines = [entry if line_for.match(line) else line for line in lines]
+    else:
+        lines.append(entry)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fresh = path.with_name(path.name + ".new")
+    fresh.unlink(missing_ok=True)
+    fd = os.open(fresh, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    os.replace(fresh, path)
 
 
 def set_secret(repo: str, name: str, value: str) -> None:
@@ -2185,11 +2694,12 @@ def require_gh_and_keytool() -> str:
     return origin_repo(repo_root())
 
 
-def install_keystore(fresh: Path, fresh_pw: Path) -> None:
-    """Move a finished keystore and its password file into place."""
+def finish_keystore(fresh: Path, password: str) -> None:
+    """Record the password in box.env, then move the finished keystore into place."""
+    set_env_value(BOX_PASSWORD_ENV, password)
     fresh.chmod(0o600)
-    os.replace(fresh_pw, box_password_file())
     os.replace(fresh, box_keystore())
+    legacy_password_file().unlink(missing_ok=True)
 
 
 def keystore_init(force: bool) -> None:
@@ -2207,53 +2717,75 @@ def keystore_init(force: bool) -> None:
         )
     ks.parent.mkdir(parents=True, exist_ok=True)
     fresh = ks.with_name(ks.name + ".new")
-    fresh_pw = box_password_file().with_name(box_password_file().name + ".new")
     fresh.unlink(missing_ok=True)
     password = secrets.token_urlsafe(24)
-    write_secret_file(fresh_pw, password)
     try:
-        source: PassSource = ("file", str(fresh_pw))
         made = capture([
             "keytool", "-genkeypair", "-keystore", str(fresh),
-            *keytool_pass("-storepass", source), *keytool_pass("-keypass", source),
+            *keytool_pass("-storepass", BOX_PASSWORD_ENV), *keytool_pass("-keypass", BOX_PASSWORD_ENV),
             "-alias", BOX_KEY_ALIAS, "-keyalg", "RSA", "-keysize", "2048",
             "-validity", str(BOX_KEY_VALIDITY_DAYS), "-dname", "CN=Arlesh Box,O=Arlesh,C=US",
-        ])  # fmt: skip
+        ], env={BOX_PASSWORD_ENV: password})  # fmt: skip
         if made.returncode != 0 or not fresh.is_file():
             raise die(f"keytool could not create the keystore: {made.stderr.strip()}")
-        # Upload before replacing the local files, so a failed upload leaves the old set intact.
+        # Upload before replacing the local keystore, so a failed upload leaves the old one intact.
         publish_keystore(repo, fresh, password)
+        finish_keystore(fresh, password)
     except BoxError:
         fresh.unlink(missing_ok=True)
-        fresh_pw.unlink(missing_ok=True)
         raise
-    install_keystore(fresh, fresh_pw)
-    print(f"created {ks} and its password file, and set the secrets {BOX_KEYSTORE_SECRET} and "
-          f"{BOX_PASSWORD_SECRET} on {repo}.")  # fmt: skip
+    print(f"created {ks}, put {BOX_PASSWORD_ENV} in {env_file()} (mode 600), and set the secrets "
+          f"{BOX_KEYSTORE_SECRET} and {BOX_PASSWORD_SECRET} on {repo}.")  # fmt: skip
     print(
         f"alias {BOX_KEY_ALIAS}: bundles.yml's box mode and local builds now sign with the same key."
     )
 
 
-def legacy_box_password() -> str:
-    """The fixed password keystores had before they got random ones: the alias itself.
+def keystore_type(ks: Path, password: str) -> str:
+    """The store type keytool reports for `ks` (`PKCS12`, `JKS`, ...), upper-cased."""
+    listed = capture(
+        [
+            "keytool",
+            "-list",
+            "-keystore",
+            str(ks),
+            *keytool_pass("-storepass", BOX_PASSWORD_ENV),
+        ],
+        env={BOX_PASSWORD_ENV: password},
+    )
+    if listed.returncode != 0:
+        raise die(
+            f"keytool could not open {ks} with {BOX_PASSWORD_ENV}: "
+            f"{listed.stderr.strip() or listed.stdout.strip()}. Nothing was changed."
+        )
+    for line in listed.stdout.splitlines():
+        name, _, value = line.partition(":")
+        if name.strip().lower() == "keystore type":
+            return value.strip().upper()
+    return "PKCS12"
 
-    Only `keystore rotate-password` may use it, to move such a keystore off it. Signing never does.
+
+def rotate_keystore_password(copy: Path, old: str, new: str) -> None:
+    """Change the store and key password of `copy` (same key), from `old` to `new`.
+
+    A PKCS12 store (keytool's default since JDK 9, and what `keystore init` makes) has one
+    password for the store and its keys: `-storepasswd` changes both, and keytool refuses
+    `-keypasswd` on it. Only a JKS store needs the key's password changed separately.
     """
-    return BOX_KEY_ALIAS
-
-
-def rotate_keystore_password(copy: Path, old: PassSource, new: PassSource) -> None:
-    """Change the store and key password of `copy` (same key), from `old` to `new`."""
-    steps = (
-        ["-storepasswd", "-keystore", str(copy), *keytool_pass("-storepass", old),
-         *keytool_pass("-new", new)],
-        ["-keypasswd", "-keystore", str(copy), "-alias", BOX_KEY_ALIAS,
-         *keytool_pass("-storepass", new), *keytool_pass("-keypass", old),
-         *keytool_pass("-new", new)],
-    )  # fmt: skip
+    steps = [
+        ["-storepasswd", "-keystore", str(copy), *keytool_pass("-storepass", BOX_PASSWORD_ENV),
+         *keytool_pass("-new", NEW_PASSWORD_ENV)],
+    ]  # fmt: skip
+    if keystore_type(copy, old) == "JKS":
+        steps.append(
+            ["-keypasswd", "-keystore", str(copy), "-alias", BOX_KEY_ALIAS,
+             *keytool_pass("-storepass", NEW_PASSWORD_ENV), *keytool_pass("-keypass", BOX_PASSWORD_ENV),
+             *keytool_pass("-new", NEW_PASSWORD_ENV)]
+        )  # fmt: skip
     for step in steps:
-        done = capture(["keytool", *step])
+        done = capture(
+            ["keytool", *step], env={BOX_PASSWORD_ENV: old, NEW_PASSWORD_ENV: new}
+        )
         if done.returncode != 0:
             raise die(
                 f"keytool {step[0]} failed: {done.stderr.strip() or done.stdout.strip()}. "
@@ -2262,38 +2794,64 @@ def rotate_keystore_password(copy: Path, old: PassSource, new: PassSource) -> No
 
 
 def keystore_rotate_password() -> None:
-    """Move a keystore made with the old fixed password onto a random one, keeping its key."""
+    """Give the existing key a new random password (old one from the environment)."""
     ks = box_keystore()
-    pwfile = box_password_file()
     if not ks.is_file():
         raise die(f"There is no box keystore at {ks}. Run `{CMD} keystore init`.")
-    if pwfile.exists():
-        raise die(f"{pwfile} exists: the box keystore already has its own password.")
+    old = os.environ.get(BOX_PASSWORD_ENV, "")
+    if not old:
+        raise die(missing_password_message())
     repo = require_gh_and_keytool()
     fresh = ks.with_name(ks.name + ".new")
-    fresh_pw = pwfile.with_name(pwfile.name + ".new")
     fresh.unlink(missing_ok=True)
     password = secrets.token_urlsafe(24)
-    write_secret_file(fresh_pw, password)
     shutil.copyfile(ks, fresh)
     try:
-        with tempfile.TemporaryDirectory(prefix="box-ks-") as tmp:
-            old_file = Path(tmp) / "old"
-            write_secret_file(old_file, legacy_box_password())
-            rotate_keystore_password(
-                fresh, ("file", str(old_file)), ("file", str(fresh_pw))
-            )
+        rotate_keystore_password(fresh, old, password)
         publish_keystore(repo, fresh, password)
+        finish_keystore(fresh, password)
     except BoxError:
         fresh.unlink(missing_ok=True)
-        fresh_pw.unlink(missing_ok=True)
         raise
-    install_keystore(fresh, fresh_pw)
     print(
         f"changed the store and key password of {ks} (same key, so installed box apps still update)."
     )
-    print(f"wrote the new password to {pwfile} (mode 600) and set the secrets "
+    print(f"put the new {BOX_PASSWORD_ENV} in {env_file()} (mode 600) and set the secrets "
           f"{BOX_KEYSTORE_SECRET} and {BOX_PASSWORD_SECRET} on {repo}.")  # fmt: skip
+
+
+def keystore_migrate(yes: bool) -> None:
+    """Move the password out of the old file beside the keystore into box.env, then delete the file."""
+    legacy = legacy_password_file()
+    if not legacy.is_file():
+        print(f"nothing to migrate: {legacy} does not exist.")
+        return
+    value = legacy.read_text(encoding="utf-8").strip()
+    if not value:
+        raise die(
+            f"{legacy} is empty; delete it and run `{CMD} keystore rotate-password`."
+        )
+    current = os.environ.get(BOX_PASSWORD_ENV)
+    if current and current != value:
+        raise die(
+            f"{BOX_PASSWORD_ENV} is already set to something else; remove {legacy} yourself "
+            "once you know which one opens the keystore."
+        )
+    if not yes:
+        if not interactive():
+            raise die("Not a terminal; pass -y to migrate without asking.")
+        answer = ask(
+            f"Move the password from {legacy} into {env_file()} and delete the file? [y/N] "
+        )
+        if answer.strip().lower() not in ("y", "yes"):
+            print("aborted; nothing changed.")
+            return
+    set_env_value(BOX_PASSWORD_ENV, value)
+    legacy.unlink()
+    print(f"moved the password into {env_file()} and deleted {legacy}.")
+    print(
+        f"CI keeps its own copy in the repo secret {BOX_PASSWORD_SECRET}; nothing to change there."
+    )
 
 
 # ---- Android: CI builds ----------------------------------------------------------------------------
@@ -2567,7 +3125,7 @@ def build_android(name: str, wt: Path, firebase: bool) -> None:
             )
 
     print(f"\n=== {name}: android apk {package} ({label}) ===", flush=True)
-    with patched([gradle, strings]):
+    with patched([gradle, strings]), owned_target(wt, target):
         apply_android_patch(gradle, strings, package, label)
         # Rebuilt from scratch, so an older APK is never mistaken for this one.
         shutil.rmtree(app_dir / "build" / "outputs" / "apk", ignore_errors=True)
@@ -2587,10 +3145,8 @@ def build_android(name: str, wt: Path, firebase: bool) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     run_cmd(
         [str(apksigner), "sign", "--ks", str(signing.keystore), "--ks-key-alias", signing.alias,
-         "--ks-pass", apksigner_pass(signing.password),
-         "--key-pass", apksigner_pass(signing.password),
+         "--ks-pass", f"env:{BOX_PASSWORD_ENV}", "--key-pass", f"env:{BOX_PASSWORD_ENV}",
          "--out", str(out), str(unsigned)],
-        env=dict(signing.env),
         what="apksigner",
     )  # fmt: skip
     print(f"=== {name}: built {out} ({out.stat().st_size / 1e6:.0f}M) ===")
@@ -2620,11 +3176,32 @@ def install_android(name: str, serial: str, reinstall: bool = False) -> None:
     print(f"installed {box_package(name)} on {serial}")
 
 
+NOTIFICATIONS_PERMISSION = "android.permission.POST_NOTIFICATIONS"
+
+
+def grant_notifications(serial: str, package: str) -> None:
+    """Allow a box app to post notifications, so its first launch registers for push.
+
+    Box packages only, never the release app. A device or package without the permission (an
+    Android before 13, a build whose manifest lacks it) gets a note, and the run goes on.
+    """
+    if not package.startswith(f"{BOX_PACKAGE_PREFIX}."):
+        raise die(f"Refusing to grant {NOTIFICATIONS_PERMISSION} to {package}: not a box package.")
+    res = capture(["adb", "-s", serial, "shell", "pm", "grant", package, NOTIFICATIONS_PERMISSION])
+    detail = (res.stdout + res.stderr).strip()
+    if res.returncode == 0 and not detail:
+        print(f"granted {NOTIFICATIONS_PERMISSION} to {package}")
+        return
+    first_line = detail.splitlines()[-1] if detail else f"exit {res.returncode}"
+    note(f"note: {NOTIFICATIONS_PERMISSION} not granted to {package} ({first_line}); continuing.")
+
+
 def launch_android(
     name: str, serial: str, bound: tuple[str, str] | None = None
 ) -> None:
     """Launch the box app; with `bound` (url, token), restart it handed that connection."""
     package = box_package(name)
+    grant_notifications(serial, package)  # before the launch, so the first one registers for push
     if bound:
         # A running app has read its mode already: start it afresh so it reads the provision.
         capture(["adb", "-s", serial, "shell", "am", "force-stop", package])
@@ -3315,6 +3892,8 @@ def cmd_devices(args: argparse.Namespace) -> None:
 def cmd_keystore(args: argparse.Namespace) -> None:
     if args.keystore_cmd == "rotate-password":
         keystore_rotate_password()
+    elif args.keystore_cmd == "migrate":
+        keystore_migrate(args.yes)
     else:
         keystore_init(args.force)
 
@@ -3426,19 +4005,28 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="uninstall the app first (after a signature mismatch); box re-provisions the token (android)",
     )
+    run.add_argument("--local-seed", action="store_true", help=LOCAL_SEED_HELP)
     run.set_defaults(fn=cmd_run)
 
     ks = sub.add_parser("keystore", help="the shared box signing key")
     ksub = ks.add_subparsers(dest="keystore_cmd", required=True, parser_class=Parser)
     init = ksub.add_parser(
-        "init", help="create the box keystore and upload it as a repo secret for CI"
+        "init",
+        help="create the box keystore, keep its password in box.env, and set the repo secrets for CI",
     )
     init.add_argument(
         "--force", action="store_true", help="replace an existing keystore"
     )
     ksub.add_parser(
         "rotate-password",
-        help="move a keystore made with the old fixed password onto a random one (same key)",
+        help="give the existing key a new random password (the old one from the environment)",
+    )
+    migrate = ksub.add_parser(
+        "migrate",
+        help="move the password from the old file beside the keystore into box.env",
+    )
+    migrate.add_argument(
+        "-y", "--yes", action="store_true", help="apply without asking"
     )
     ks.set_defaults(fn=cmd_keystore)
 
@@ -3484,6 +4072,7 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument(
         "--public", action="store_true", help="listen on 0.0.0.0 (LAN and tailnet URLs)"
     )
+    start.add_argument("--local-seed", action="store_true", help=LOCAL_SEED_HELP)
     stp = ssub.add_parser("stop")
     stp.add_argument("branches", nargs="*")
     for cmd in ("token", "pin"):
@@ -3491,6 +4080,22 @@ def build_parser() -> argparse.ArgumentParser:
         c.add_argument("branch")
         c.add_argument("rest", nargs=argparse.REMAINDER)
     srv.set_defaults(fn=cmd_server)
+
+    seed = sub.add_parser("seed", help="where new branch databases are seeded from")
+    seedsub = seed.add_subparsers(dest="seed_cmd", required=True, parser_class=Parser)
+    sset = seedsub.add_parser(
+        "set", help="set the server URL; the backup token comes from stdin or a prompt"
+    )
+    sset.add_argument("url")
+    seedsub.add_parser("show", help="what is configured (never prints the token)")
+    seed.set_defaults(fn=cmd_seed)
+
+    reseed = sub.add_parser(
+        "reseed", help="replace a branch's databases with a fresh server snapshot"
+    )
+    reseed.add_argument("branch")
+    reseed.add_argument("-y", "--yes", action="store_true", help="do not ask first")
+    reseed.set_defaults(fn=cmd_reseed)
     return p
 
 
@@ -3505,6 +4110,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         load_env_file()
         args = parse_args(sys.argv[1:] if argv is None else argv)
+        SEED.local = bool(getattr(args, "local_seed", False))
         args.fn(args)
     except UsageError as exc:
         note(str(exc))

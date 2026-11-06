@@ -350,10 +350,10 @@ How the presets read them:
 - **Spec:** [Filtering Logic](spec/filtering-logic.md), [Mindmap § status preset](spec/mindmap-view.md).
 
 ### The conformance pair
-- **Is:** every rule the frontend must answer per render or per pointer move is written twice — in a Rust `rules` module, which is the definition, and as a TypeScript copy — and one shared case file under `conformance/` runs against both ([ADR 0010](adr/0010-business-rules-layer.md)). The pinned copies are the presets, the Archived, Backlog and Delegated pills and the List View's pills (`preset-filters.json`), the list sections (`list-sections.json`), the Zen View's contents and locked presets (`zen-contents.json`), the parenting table (`parenting.json`), the status models' conversion (`task-status.json`), the status step, `Alt+Enter`, the Compound refusal and the verdict (`task-gestures.json`, added by [ADR 0012](adr/0012-optimistic-own-field-rendering.md)), the Habit fold (`habit-fold.json`), the cooldown options (`cooldown.json`), the cycle grid (`flow-cycles.json`), the Plan View's triage, refusal and sections (`plan-triage.json`), and scope keys, windows, labels and the day boundary (`scope-keys.json`).
+- **Is:** every rule the frontend must answer per render or per pointer move has one definition, in a Rust `rules` module, and reaches the frontend one of two ways: a TypeScript copy pinned by a shared case file under `conformance/`, run against both ends ([ADR 0010](adr/0010-business-rules-layer.md)), or — for the rules the optimistic lane predicts a write with — the Rust rule itself, compiled to wasm from the `arlesh-rules` crate (`arlesh-rules-wasm`, `src/wasm/rules.ts`; [ADR 0012](adr/0012-optimistic-own-field-rendering.md) decision 13), with the same corpus replayed through the wasm. The wasm-backed rules are the status step, `Alt+Enter`, the Compound refusal and the verdict (`task-gestures.json`), the parenting table (`parenting.json`), and the Plan View's triage, refusal and take-out (`plan-triage.json`). The pinned TypeScript copies are the presets, the Archived, Backlog and Delegated pills and the List View's pills (`preset-filters.json`), the list sections (`list-sections.json`), the Zen View's contents and locked presets (`zen-contents.json`), the status models' conversion (`task-status.json`), the Habit fold (`habit-fold.json`), the cooldown options (`cooldown.json`), the cycle grid (`flow-cycles.json`), the Plan View's sections (`plan-triage.json`), and scope keys, windows, labels and the day boundary (`scope-keys.json`).
 - **Why:** the views filter and draw on every keystroke without a round trip, and the corpora keep the copies honest; everything else the frontend reads from the backend instead.
 - **Without:** the agent's board and yours drift apart silently.
-- **Lives:** `conformance/`, run by the `*-conformance.test.ts` files beside each TypeScript copy and by the Rust tests under `src-tauri/tests/`.
+- **Lives:** `conformance/`, run by the `*-conformance.test.ts` files beside each TypeScript copy or wasm call and by the Rust tests under `src-tauri/tests/`; the wasm lives in `crates/arlesh-rules`, `crates/arlesh-rules-wasm` and `src/wasm/`.
 - **Spec:** [Filtering Logic § Where the definition lives](spec/filtering-logic.md).
 
 ### Pills and the focus exemption
@@ -408,7 +408,7 @@ How the presets read them:
   - People and the knowledge base stay Standalone-only.
 - **Why:** one board shared by several devices, with the app above the port unchanged.
 - **Without:** a second app for the server, or every component taught about HTTP; devices that each hold a different board.
-- **Lives:** `src-tauri/src/backend/` (`sqlite/`, `http/`), `src-tauri/src/client_mode/`, `conformance/client-mode.json`; ADR 0011.
+- **Lives:** `crates/arlesh-backend/` (`sqlite/`, `http/`), `src-tauri/src/client_mode/`, `conformance/client-mode.json`; ADR 0011.
 - **Spec:** [Client Mode](spec/client-mode.md).
 
 ### Pending writes

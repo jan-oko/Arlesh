@@ -698,7 +698,7 @@ describe("switching the kind by its letter", () => {
     await act(async () => { fireEvent.keyDown(window, { code: "KeyM" }); });
     await settle();
     expect(useViewStore.getState().planScopeKind).toBe("week");
-    expect(resolveScope).toHaveBeenCalledWith({ kind: "day", date: "2026-09-21" });
+    expect(updateTask).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ plan: { start_id: { kind: "day", date: "2026-09-21" }, end_id: { kind: "day", date: "2026-09-21" } } }));
   });
 
   it("does nothing while a text field has the keyboard", async () => {
@@ -786,7 +786,7 @@ describe("splitting the planned pane by subscope", () => {
     await act(async () => { fireEvent.keyDown(window, { code: "Digit2" }); });
     await settle();
     // The second bucket of the week being filled is Monday the 21st.
-    expect(resolveScope).toHaveBeenCalledWith({ kind: "day", date: "2026-09-21" });
+    expect(updateTask).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ plan: { start_id: { kind: "day", date: "2026-09-21" }, end_id: { kind: "day", date: "2026-09-21" } } }));
     expect(updateTask).toHaveBeenCalled();
   });
 
@@ -799,11 +799,11 @@ describe("splitting the planned pane by subscope", () => {
     // W is Wednesday's alone; T and S each name two days of the week and so name none.
     await act(async () => { fireEvent.keyDown(window, { code: "KeyT" }); });
     await settle();
-    expect(resolveScope).not.toHaveBeenCalledWith(expect.objectContaining({ kind: "day" }));
+    expect(updateTask).not.toHaveBeenCalled();
 
     await act(async () => { fireEvent.keyDown(window, { code: "KeyW" }); });
     await settle();
-    expect(resolveScope).toHaveBeenCalledWith({ kind: "day", date: "2026-09-23" });
+    expect(updateTask).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ plan: { start_id: { kind: "day", date: "2026-09-23" }, end_id: { kind: "day", date: "2026-09-23" } } }));
   });
 });
 
@@ -1115,7 +1115,7 @@ describe("on a phone", () => {
       await renderPlanView();
       await holdAndDrag(cardElement("task-5"), () => tile(1));
       await settle();
-      expect(resolveScope).toHaveBeenCalledWith({ kind: "day", date: "2026-09-21" });
+      expect(updateTask).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ plan: { start_id: { kind: "day", date: "2026-09-21" }, end_id: { kind: "day", date: "2026-09-21" } } }));
       expect(updateTask).toHaveBeenCalled();
     });
 
@@ -1326,7 +1326,7 @@ describe("the phone's split planned pane", () => {
       expect(tiles()[2]?.className).not.toContain("tileOver");
       fireEvent.touchEnd(cardElement("task-5"), { touches: [], changedTouches: [at(cardElement("task-5"), 100, 150)] });
       await settle();
-      expect(resolveScope).toHaveBeenCalledWith({ kind: "day", date: "2026-09-21" });
+      expect(updateTask).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ plan: { start_id: { kind: "day", date: "2026-09-21" }, end_id: { kind: "day", date: "2026-09-21" } } }));
       expect(updateTask).toHaveBeenCalledWith(5, expect.anything());
       expect(document.querySelector("[data-plan-overlay]")).toBeNull();
     });
@@ -1398,7 +1398,7 @@ describe("the phone's split planned pane", () => {
       expect(tiles().every((tile) => tile.getAttribute("aria-disabled") === "false")).toBe(true);
       await act(async () => { fireEvent.click(tiles()[1] ?? document.body); });
       await settle();
-      expect(resolveScope).toHaveBeenCalledWith({ kind: "day", date: "2026-09-21" });
+      expect(updateTask).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ plan: { start_id: { kind: "day", date: "2026-09-21" }, end_id: { kind: "day", date: "2026-09-21" } } }));
       expect(updateTask).toHaveBeenCalledWith(5, expect.anything());
       expect(screen.queryByRole("dialog")).toBeNull();
     });
