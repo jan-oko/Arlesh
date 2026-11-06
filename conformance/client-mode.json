@@ -345,6 +345,18 @@
     "duplicate_flow_item": [
       "POST /flow-items/{item_type}/{id}/duplicate"
     ],
+    "list_agents": [
+      "GET /agents"
+    ],
+    "issue_agent_pin": [
+      "POST /agents/pins"
+    ],
+    "apply_agent_action": [
+      "POST /agents/{id}/action"
+    ],
+    "set_agent_account_locked": [
+      "PUT /agent-accounts/lock"
+    ],
     "agent_capacity": [
       "GET /capacity"
     ],

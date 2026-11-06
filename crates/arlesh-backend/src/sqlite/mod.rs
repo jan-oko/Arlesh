@@ -9,6 +9,7 @@ use arlesh_core::{
 };
 
 mod access;
+mod agents;
 mod block_reasons;
 mod capacity;
 mod commitments;
