@@ -1213,7 +1213,7 @@ mod agent_waits {
     }
 
     /// One `GET` answered whole: the connection is asked to close, so the body ends it.
-    async fn get(address: std::net::SocketAddr, target: &str) -> String {
+    async fn http_get(address: std::net::SocketAddr, target: &str) -> String {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
         let request =
@@ -1246,7 +1246,7 @@ mod agent_waits {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, routes).await });
-        let baseline = get(address, "/events/expectations?agentic=true&wait=0").await;
+        let baseline = http_get(address, "/events/expectations?agentic=true&wait=0").await;
         let field = |name: &str| {
             let after = baseline.split_once(&format!("\"{name}\":")).unwrap().1;
             after
@@ -1263,7 +1263,7 @@ mod agent_waits {
             .execute(&pool)
             .await
             .unwrap();
-        let heard = get(
+        let heard = http_get(
             address,
             &format!("/events/expectations?agentic=true&after={revision}&epoch={epoch}&wait=5"),
         )
