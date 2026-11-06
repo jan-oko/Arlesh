@@ -9,7 +9,7 @@ import { updateTask } from "@/api/tasks";
 import type { Task } from "@/api/tasks";
 import type { MindmapNode } from "@/utils/tree-layout";
 import { fixtureRowId } from "@/test/node-fixture";
-import { deferred, lane, patchedFields } from "@/test/lane-helpers";
+import { deferred, lane, patchedFields, settleLane } from "@/test/lane-helpers";
 import { agentic, ordinary } from "@/utils/status-mapping";
 import { useClientModeStore } from "@/stores/use-client-mode-store";
 import { usePendingWritesStore } from "@/stores/use-pending-writes-store";
@@ -145,6 +145,26 @@ describe("useStatusCycle: a press is shown at once and sent through the lane", (
     expect(updateTask).toHaveBeenCalledWith(5, { status: ordinary("in_progress") });
     await act(async () => { held.resolve(IN_PROGRESS); await held.promise; });
     expect(lane()[0]?.state).toBe("answered");
+  });
+
+  it("says so when setting a status takes a Backlogged Task out of the Backlog", async () => {
+    vi.mocked(updateTask).mockResolvedValue({ ...IN_PROGRESS, archival: "live" });
+    const { result, showToast } = setup([todo("task-5", { backlogged: true })]);
+
+    act(() => { result.current.setTaskStatus("task-5", ordinary("in_progress")); });
+    await settleLane();
+
+    expect(showToast).toHaveBeenCalledWith({ nodeId: "task-5", message: "warnings:backlogClearedByStart" });
+  });
+
+  it("says nothing about the Backlog for a Task that was not in it", async () => {
+    vi.mocked(updateTask).mockResolvedValue(IN_PROGRESS);
+    const { result, showToast } = setup([todo("task-5")]);
+
+    act(() => { result.current.setTaskStatus("task-5", ordinary("in_progress")); });
+    await settleLane();
+
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   it("leaves a node that is not a Task alone", () => {

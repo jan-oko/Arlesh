@@ -183,11 +183,17 @@ export function useStatusCycle({ findNode, showToast }: Options): StatusCycle {
         label: "status change",
         patch: { kind: "fields", fields: { status: status.status, taskStatus: status } },
         refuseReadOnly: refuseReadOnly(nodeId),
-        send: async (confirmed) =>
-          writtenWith(taskAnswerFields(await updateTask(rowIdAtSend(node), { status }, ...acknowledged(confirmed)))),
+        send: async (confirmed) => {
+          const written = await updateTask(rowIdAtSend(node), { status }, ...acknowledged(confirmed));
+          // The writer takes a set-aside Task out of the Backlog; say so, as the status keys do.
+          if (node.backlogged === true && written.archival === "live") {
+            showToast({ nodeId, message: t("warnings:backlogClearedByStart") });
+          }
+          return writtenWith(taskAnswerFields(written));
+        },
       });
     },
-    [findNode, submit, refuseReadOnly],
+    [findNode, submit, refuseReadOnly, showToast, t],
   );
 
   return { cycleStatus, toggleStarted, setTaskStatus, occurrencePrompt, confirmOccurrence, cancelOccurrence };
