@@ -78,11 +78,9 @@ one, so revoke it first. The table is read on every request, so a revoke takes e
 without a restart.
 
 The table is reached through the bindings, never Python's own `sqlite3`: two copies of SQLite in one
-process do not see each other's locks, and the WAL is corrupted under them. Tokens used to live in
-`<db>.tokens` beside the database. The first time the server or a `token` command runs, that file's
-tokens are moved into the table and the file is renamed `<db>.tokens.imported`, so a token revoked
-later cannot come back from it. Reading the table migrates the database if it is behind, so the
-server reads it at startup only when nothing holds the database (or it was forced).
+process do not see each other's locks, and the WAL is corrupted under them.
+Reading the table migrates the database if it is behind, so the server reads it at startup only
+when nothing holds the database (or it was forced).
 
 **The token decides the client.** The client is the name the undo journal records on every write
 (see [Undo](undo.md), *Clients, and a second writer*), so a request cannot write under another
@@ -293,8 +291,7 @@ installs the `arlesh-server` command. Its layout follows the user's Librarian pr
     is an injected httpx client, so it needs no port of its own.
 - **`ports/tokens/`**: the server's own way out, the token table. `TokenStore` is the port and
   `DatabaseTokenStore` the adapter over the `server_tokens` table (through the bindings'
-  `token_call`); the tests' fake is the second adapter. `FileTokenStore` is kept only to read an
-  old `<db>.tokens` file once.
+  `token_call`); the tests' fake is the second adapter.
 - **`ports/pairing/`**: `PairingStore` and `DatabasePairingStore` over `pairing_pins`, through the
   same `token_call`. The rules (PIN, lifetime, attempts, names) are `business_logic/pairing.py`,
   over the two ports and a clock, so they are unit-tested with no database.

@@ -6,7 +6,7 @@
 // baseline.rs). N is the number in baseline/version.txt. Left alone, every migration added since
 // would run on top of the baseline in every new database, and the cost this baseline exists to
 // remove would creep back one migration at a time. So when a migration lands on master the master
-// bot (.github/workflows/master-bot.yml) moves N to the newest migration and regenerates the
+// bot (.github/workflows/bot.yml) moves N to the newest migration and regenerates the
 // schema. Nobody re-cuts by hand, and a branch never does: a re-cut in a branch conflicts with
 // every other branch that adds a migration.
 //

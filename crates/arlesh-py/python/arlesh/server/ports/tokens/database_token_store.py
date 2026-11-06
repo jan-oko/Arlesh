@@ -18,7 +18,6 @@ from typing import Any
 
 from arlesh import _native
 from arlesh.errors import ArleshError, from_native
-from arlesh.server.ports.tokens.file_token_store import FileTokenStore
 from arlesh.server.ports.tokens.token_store import (
     ClientAlreadyHasToken,
     IssuedToken,
@@ -84,21 +83,6 @@ class DatabaseTokenStore(TokenStore):
             self._call("touch", client=client, seen_at=datetime.now().isoformat(timespec="seconds"))
         except ArleshError:
             self._touched.pop(client, None)
-
-    def carry_over(self, old: FileTokenStore) -> list[str]:
-        """Moves the tokens of an old ``<db>.tokens`` file into the table, and answers the clients
-        it moved. A client the table already has keeps its token there. The file is renamed to
-        ``<db>.tokens.imported`` afterwards, so it is read only once and a token revoked later
-        cannot come back from it."""
-        if not old.path.exists():
-            return []
-        moved = [
-            client
-            for client, digest, created in old.digests()
-            if self._record(client, digest, created)
-        ]
-        old.path.rename(old.path.with_name(old.path.name + ".imported"))
-        return moved
 
     def _record(self, client: str, digest: str, created: datetime) -> bool:
         return bool(self._call("add", client=client, sha256=digest, created_at=created.isoformat()))
