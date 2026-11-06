@@ -1,5 +1,22 @@
 import type { Register, EngineInterface } from 'claude-code'
 
+import {
+  agentName,
+  attachArguments,
+  attachedFrom,
+  contextBlock,
+  doorPort,
+  doorUrl,
+  isNotAttached,
+  parseClaim,
+  parsePin,
+  reportedFrom,
+  shouldReport,
+  usageWindows,
+  type Limit,
+  type Reported,
+  type Standing,
+} from './attach'
 import { forget, prune, remember, revive, type Book, type Entry } from './book'
 import {
   expandVariables,
@@ -32,6 +49,11 @@ const SUBMIT_TRIES = 20
 let server: ServerEntry | undefined
 let following = false
 let queue: Promise<unknown> = Promise.resolve()
+/** How this session stands with Arlesh's agents: attached as whom, or why not. */
+let standing: Standing | undefined
+/** An attach in flight, so two triggers do not attach twice. */
+let attaching: Promise<Standing> | undefined
+let lastReport: Reported | undefined
 
 /** Runs `job` after every earlier one: the book is read, changed and written in turn. */
 function serially<T>(job: () => Promise<T>): Promise<T> {
@@ -56,8 +78,31 @@ export const register: Register = (on) => {
     const started = await next(e)
     server ??= await readServer($).catch(() => undefined)
     if (server === undefined || !(await reachable($, server))) return started
-    return { ...started, additionalContext: [...(started.additionalContext ?? []), NOTES] }
+    // Attached before the context is composed, with no action from the agent.
+    const now = await attach($, server)
+    void reportUsage($, undefined)
+    return {
+      ...started,
+      additionalContext: [...(started.additionalContext ?? []), NOTES, contextBlock(now)],
+    }
   })
+
+  // The plan limits the session is under, reported for its account whenever one moves.
+  on('session.measure', async ($, e, next) => {
+    const result = await next(e)
+    void reportUsage($, e.rateLimits)
+    return result
+  })
+
+  // A server that lost the binding (it restarted) turns the session away: attach again.
+  on('tool.call', { tool: /^mcp__.+__arlesh_[a-z_]+$/ }, async ($, e, next) => {
+    const ran = await next(e)
+    if (!e.tool.endsWith('__arlesh_agents') && isNotAttached(ran.result ?? ran.text)) {
+      standing = undefined
+      void attach($, server ?? (await readServer($).catch(() => undefined)))
+    }
+    return ran
+  }).catch(($, e, next) => next(e))
 
   // Every wait the session asks, raises or watches is recorded, whoever in it did.
   on('tool.call', { tool: /^mcp__.+__arlesh_waits$/ }, async ($, e, next) => {
@@ -293,4 +338,87 @@ async function environment($: Engine, name: string): Promise<string | undefined>
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return undefined
   const ran = await $.process.run(['printenv', name])
   return ran.exitCode === 0 ? ran.stdout.replace(/\n$/, '') : undefined
+}
+
+/** Attaches the session once at a time, and remembers how it stands. Never throws. */
+function attach($: Engine, connection: ServerEntry | undefined): Promise<Standing> {
+  if (standing?.kind === 'attached') return Promise.resolve(standing)
+  attaching ??= (async () => {
+    try {
+      standing =
+        connection === undefined
+          ? { kind: 'unattached', reason: 'the Arlesh server is not configured' }
+          : await attachTo($, connection)
+    } catch (error) {
+      $.ui.log(`arlesh-notify: could not attach: ${String(error)}`, { to: 'debug' })
+      standing = { kind: 'unattached', reason: 'attaching failed' }
+    }
+    return standing
+  })().finally(() => {
+    attaching = undefined
+  })
+  return attaching
+}
+
+async function attachTo($: Engine, connection: ServerEntry): Promise<Standing> {
+  const sessionId = await $.session.id()
+  const key = `agent:${sessionId}`
+  const stored = await $.store.get(key)
+  const token = isRecord(stored) ? text(stored, 'token') : undefined
+  const name = agentName(await $.session.cwd(), sessionId)
+  const account = (await environment($, 'ARLESH_ACCOUNT')) || 'default'
+  const subtree = parseClaim(await environment($, 'ARLESH_CLAIM'))
+  if (token !== undefined) {
+    const back = attachedFrom(
+      await $.mcp.call(connection.name, 'arlesh_agents', attachArguments({ sessionId, token, name, account })),
+    )
+    if (back !== undefined) {
+      return { kind: 'attached', name: back.name, claim: back.claim, automatic: true }
+    }
+    await $.store.set(key, undefined) // the agent was removed: a PIN makes a new one
+  }
+  const port = doorPort(await environment($, 'ARLESH_DOOR_PORT'))
+  let pin: string | undefined
+  try {
+    const door = await $.http.fetch(doorUrl(originOf(connection.url), port), { method: 'POST' })
+    pin = door.ok ? parsePin(door.text) : undefined
+  } catch {
+    pin = undefined
+  }
+  if (pin === undefined) {
+    return { kind: 'unattached', reason: 'no PIN door answered: is the Arlesh app running?' }
+  }
+  const made = attachedFrom(
+    await $.mcp.call(
+      connection.name,
+      'arlesh_agents',
+      attachArguments({ sessionId, pin, name, account, ...(subtree === undefined ? {} : { subtree }) }),
+    ),
+  )
+  if (made === undefined) return { kind: 'unattached', reason: 'the server refused the PIN' }
+  if (made.token !== undefined) await $.store.set(key, { token: made.token, savedAt: await $.clock.now() })
+  return {
+    kind: 'attached',
+    name: made.name,
+    claim: made.claim,
+    ...(made.claimRefused === undefined ? {} : { claimRefused: made.claimRefused }),
+    automatic: true,
+  }
+}
+
+/** Tells the server how much of the plan limits is used, when that moved. Never throws. */
+async function reportUsage($: Engine, given: readonly Limit[] | undefined): Promise<void> {
+  try {
+    if (standing?.kind !== 'attached' || server === undefined) return
+    const limits = given ?? (await $.session.usage()).rateLimits
+    const now = await $.clock.now()
+    if (!shouldReport(lastReport, limits, now)) return
+    lastReport = reportedFrom(limits, now)
+    await $.mcp.call(server.name, 'arlesh_agents', {
+      operation: 'report_usage',
+      windows: usageWindows(limits),
+    })
+  } catch (error) {
+    $.ui.log(`arlesh-notify: could not report usage: ${String(error)}`, { to: 'debug' })
+  }
 }
