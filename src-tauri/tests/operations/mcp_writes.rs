@@ -1235,10 +1235,13 @@ mod agent_waits {
         use arlesh_lib::mcp::events::{self, ChangeFeed, EventStreams};
         let (pool, _app, _mcp, id) = raised(true).await;
         // The app polls: its windows write without announcing to the endpoint.
+        let feed = ChangeFeed::new();
+        // A cursor of 0 is no cursor, so the board has moved once before the poll begins.
+        feed.bump();
         let routes = events::routes(
             helpers::session_factory(&pool),
             EventStreams {
-                feed: ChangeFeed::new(),
+                feed,
                 poll: Some(std::time::Duration::from_millis(100)),
                 ..EventStreams::default()
             },
