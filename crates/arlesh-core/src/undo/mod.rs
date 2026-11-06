@@ -95,6 +95,10 @@ use statement::{Replay, SqlValue, Statement};
 /// * `server_tokens` — `arlesh-server`'s bearer tokens (migration 0097): issuing or revoking one
 ///   is not a board edit, and no Ctrl+Z may bring a revoked token back.
 /// * `pairing_pins` — the server's pending device pairings (migration 0098): the same reason.
+/// * `agents`, `agent_pins`, `agent_pin_failures`, `agent_accounts`, `agent_account_usage` and
+///   `connect_tokens` — the agents, their Claims, PINs and accounts' usage (migration 0101):
+///   attaching, claiming or locking an agent is not a board edit, and no Ctrl+Z may revoke an
+///   Agent or give a Claim back.
 ///
 /// `sqlite_*` and `_sqlx_migrations` are infrastructure rather than board data and are excluded by
 /// name wherever tables are enumerated; they are not listed here because nothing about them is a
@@ -108,6 +112,12 @@ pub const EXCLUDED_TABLES: &[&str] = &[
     "undo_journal",
     "server_tokens",
     "pairing_pins",
+    "agents",
+    "agent_pins",
+    "agent_pin_failures",
+    "agent_accounts",
+    "agent_account_usage",
+    "connect_tokens",
 ];
 
 /// How many Gestures the journal keeps before the oldest are dropped.

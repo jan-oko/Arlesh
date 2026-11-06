@@ -179,6 +179,11 @@ impl<M: SessionMode> Db<M> {
         AccessOperator::new(self.connection())
     }
 
+    /// Agents: their Claims, PINs and accounts' usage, and the server's connect token.
+    pub fn agents(&mut self) -> crate::agents::AgentOperator<'_> {
+        crate::agents::AgentOperator::new(self.connection())
+    }
+
     /// Block reasons — the reasons a task or goal is blocked.
     pub fn block_reasons(&mut self) -> BlockReasonOperator<'_> {
         BlockReasonOperator::new(self.connection())

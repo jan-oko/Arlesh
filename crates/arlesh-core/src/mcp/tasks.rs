@@ -112,7 +112,7 @@ impl ArleshMcp {
         };
         let now = self.now();
         let board =
-            attempt!(Board::read(&mut db, now, self.capacity.get().await.at_capacity).await);
+            attempt!(self.board(&mut db, now).await);
 
         let write = match operation {
             TasksOperation::Get { id } => return get(&mut db, &board, &id).await,

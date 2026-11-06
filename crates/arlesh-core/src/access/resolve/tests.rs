@@ -423,3 +423,15 @@ fn every_node_that_is_not_a_root_already_may_be_made_one() {
     );
     assert_eq!(root_candidates(&[], &nodes).len(), 3);
 }
+
+#[test]
+fn a_read_only_map_keeps_what_is_readable_and_writes_nothing() {
+    let map = AccessMap::resolve(&board(), &[domain(2)]).read_only();
+
+    assert!(map.can_read(task(100)));
+    assert!(!map.can_write(task(100)), "an Agentic task is read-only now");
+    assert_eq!(map.level(task(100)), AccessLevel::Read);
+    assert!(!map.may_create_task_under(goal(10)));
+    assert!(!map.may_create_task_under_occurrence(goal(10), false, None));
+    assert!(!map.can_read(task(110)), "outside the root stays invisible");
+}

@@ -19,7 +19,7 @@
 # as a failing test rather than as silently unjournaled rows.
 set -euo pipefail
 
-EXCLUDED="undo_context undo_journal server_tokens pairing_pins"
+EXCLUDED="undo_context undo_journal server_tokens pairing_pins agents agent_pins agent_pin_failures agent_accounts agent_account_usage connect_tokens"
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 migrations="$repository_root/crates/arlesh-core/migrations"

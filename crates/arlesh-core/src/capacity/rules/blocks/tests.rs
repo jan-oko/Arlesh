@@ -109,7 +109,7 @@ fn sorted(mut ids: Vec<NodeId>) -> Vec<NodeId> {
 #[test]
 fn it_blocks_every_agentic_task_not_yet_done_own_flag_or_inherited() {
     assert_eq!(
-        sorted(blocked_tasks(Rows::of(&board()))),
+        sorted(blocked_tasks(Rows::of(&board()), &true.into())),
         sorted(vec![20.into(), 21.into(), 31.into()])
     );
 }
@@ -117,7 +117,7 @@ fn it_blocks_every_agentic_task_not_yet_done_own_flag_or_inherited() {
 #[test]
 fn off_it_adds_nothing() {
     let mut load = board();
-    apply(&mut load, false);
+    apply(&mut load, &false.into());
     assert!(load.block_reasons.is_empty());
 }
 
@@ -133,7 +133,7 @@ fn on_it_adds_one_derived_reason_per_blocked_task_after_its_own() {
         until: None,
     });
 
-    apply(&mut load, true);
+    apply(&mut load, &true.into());
 
     let derived: Vec<&BlockReason> = load
         .block_reasons
@@ -158,7 +158,7 @@ fn an_agentic_wait_is_not_blocked() {
     wait.agentic = true;
     wait.status = ExpectationStatus::Pending;
     load.expectations.push(wait);
-    apply(&mut load, true);
+    apply(&mut load, &true.into());
     assert!(load
         .block_reasons
         .iter()
@@ -193,7 +193,7 @@ fn find<'forest>(forest: &'forest [FactNode], id: &str) -> Option<&'forest FactN
 #[test]
 fn the_filters_read_a_capacity_blocked_task_as_blocked() {
     let mut load = board();
-    apply(&mut load, true);
+    apply(&mut load, &true.into());
 
     let forest = facts::forest(&load);
 
@@ -208,7 +208,7 @@ fn the_filters_read_a_capacity_blocked_task_as_blocked() {
 #[test]
 fn a_derived_reason_is_marked_on_the_wire_and_a_stored_one_is_not() {
     let mut load = board();
-    apply(&mut load, true);
+    apply(&mut load, &true.into());
     let wire = serde_json::to_value(&load.block_reasons[0]).unwrap();
     assert_eq!(wire["derived"], "agent_capacity");
     assert_eq!(wire["reason"], AGENT_CAPACITY_REASON);
@@ -225,4 +225,51 @@ fn a_derived_reason_is_marked_on_the_wire_and_a_stored_one_is_not() {
         .unwrap()
         .get("derived")
         .is_none());
+}
+
+#[test]
+fn an_agent_at_capacity_blocks_only_the_agentic_tasks_inside_its_claim() {
+    let claim = crate::access::model::NodeKey::new(crate::access::model::NodeTable::Goal, 30);
+    let blocking = Blocking {
+        global: false,
+        subtrees: vec![claim],
+    };
+
+    assert_eq!(
+        sorted(blocked_tasks(Rows::of(&board()), &blocking)),
+        sorted(vec![31.into()])
+    );
+}
+
+#[test]
+fn a_claim_on_a_task_blocks_that_task_and_everything_below_it() {
+    let claim = crate::access::model::NodeKey::new(crate::access::model::NodeTable::Task, 20);
+    let blocking = Blocking {
+        global: false,
+        subtrees: vec![claim],
+    };
+
+    assert_eq!(
+        sorted(blocked_tasks(Rows::of(&board()), &blocking)),
+        sorted(vec![20.into(), 21.into(), 31.into()])
+    );
+}
+
+#[test]
+fn a_claim_on_a_domain_blocks_what_hangs_under_it() {
+    let claim = crate::access::model::NodeKey::new(crate::access::model::NodeTable::Domain, 2);
+    let blocking = Blocking {
+        global: false,
+        subtrees: vec![claim],
+    };
+
+    assert_eq!(
+        sorted(blocked_tasks(Rows::of(&board()), &blocking)),
+        sorted(vec![20.into(), 21.into(), 31.into()])
+    );
+}
+
+#[test]
+fn no_claim_and_no_lock_blocks_nothing() {
+    assert!(blocked_tasks(Rows::of(&board()), &Blocking::default()).is_empty());
 }

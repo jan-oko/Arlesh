@@ -56,25 +56,25 @@ impl ArleshMcp {
             Err(error) => return result::failed(error),
         };
 
-        let map = attempt!(crate::access::access_map(&mut db).await);
+        let map = attempt!(self.caller_map(&mut db).await);
 
         match operation {
             FlowsOperation::Get { id } => {
-                let id = found!(stored_row(&mut db, &id, "flow", self.now()).await);
+                let id = found!(stored_row(&mut db, &map, &id, "flow", self.now()).await);
                 if !access::reads(&map, "flow", id) {
                     return access::refuse("flow", id, AccessLevel::Read);
                 }
                 result::respond(db.flows().get(FlowId(id)).await)
             }
             FlowsOperation::Recurrence { flow_id } => {
-                let flow_id = found!(stored_row(&mut db, &flow_id, "flow", self.now()).await);
+                let flow_id = found!(stored_row(&mut db, &map, &flow_id, "flow", self.now()).await);
                 if !access::reads(&map, "flow", flow_id) {
                     return access::refuse("flow", flow_id, AccessLevel::Read);
                 }
                 result::respond(db.flows().get_recurrence(FlowId(flow_id)).await)
             }
             FlowsOperation::CompletionCount { flow_id } => {
-                let flow_id = found!(stored_row(&mut db, &flow_id, "flow", self.now()).await);
+                let flow_id = found!(stored_row(&mut db, &map, &flow_id, "flow", self.now()).await);
                 if !access::reads(&map, "flow", flow_id) {
                     return access::refuse("flow", flow_id, AccessLevel::Read);
                 }
@@ -84,7 +84,7 @@ impl ArleshMcp {
                 let mut refs: Vec<TargetRef> = Vec::with_capacity(nodes.len());
                 for node in nodes {
                     let node_id = found!(
-                        stored_row(&mut db, &node.node_id, &node.node_type, self.now()).await
+                        stored_row(&mut db, &map, &node.node_id, &node.node_type, self.now()).await
                     );
                     if !access::reads(&map, &node.node_type, node_id) {
                         return access::refuse(&node.node_type, node_id, AccessLevel::Read);

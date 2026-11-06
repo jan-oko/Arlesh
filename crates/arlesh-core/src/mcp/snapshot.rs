@@ -78,12 +78,12 @@ impl ArleshMcp {
 
         // The agent capacity lock blocks Agentic work here exactly as it does on the user's board:
         // its reasons ride in `block_reasons`, and Start and Unblock read them as they read any.
-        let at_capacity = self.capacity.get().await.at_capacity;
-        let mut load = match crate::mindmap::load_blocked(&mut db, now, at_capacity).await {
+        let blocking = attempt!(self.blocking(&mut db, now).await);
+        let mut load = match crate::mindmap::load_blocked(&mut db, now, blocking).await {
             Ok(load) => load,
             Err(error) => return result::failed(error),
         };
-        let map = attempt!(crate::access::access_map(&mut db).await);
+        let map = attempt!(self.caller_map(&mut db).await);
 
         // Short ids are worked out over everything the MCP can see, before any filter or query
         // narrows it: a node goes by one short id however it is asked for.

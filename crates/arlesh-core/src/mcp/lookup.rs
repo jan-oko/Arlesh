@@ -19,6 +19,7 @@ use crate::{
         model::{NodeKey, NodeTable},
         resolve::AccessMap,
     },
+    capacity::blocks::Blocking,
     database::session::{Db, Transactional},
     error::AppError,
     mindmap::model::MindmapLoad,
@@ -52,16 +53,26 @@ pub(super) struct Board {
 }
 
 impl Board {
-    /// Reads the board at `now`, inside the caller's transaction, blocked by the agent capacity
-    /// lock when `at_capacity` — before the roots cut it, since whether a Task reads as Agentic
+    /// Reads the board at `now`, inside the caller's transaction, as the user's MCP roots open it,
+    /// blocked as `blocking` says — before the roots cut it, since whether a Task reads as Agentic
     /// can come from above them.
     pub async fn read(
         db: &mut Db<Transactional>,
         now: NaiveDateTime,
-        at_capacity: bool,
+        blocking: impl Into<Blocking>,
     ) -> Result<Self, AppError> {
-        let mut load = crate::mindmap::load_blocked(db, now, at_capacity).await?;
         let map = crate::access::access_map(db).await?;
+        Self::read_with(db, now, blocking, map).await
+    }
+
+    /// [`Board::read`], cut to `map` rather than to the user's roots: an Agent's Claim.
+    pub async fn read_with(
+        db: &mut Db<Transactional>,
+        now: NaiveDateTime,
+        blocking: impl Into<Blocking>,
+        map: AccessMap,
+    ) -> Result<Self, AppError> {
+        let mut load = crate::mindmap::load_blocked(db, now, blocking).await?;
         access::restrict_snapshot(&mut load, &map);
         let people = db.people().list().await?;
         super::delegation::label_waits(&mut load, &people);
@@ -188,13 +199,14 @@ fn named<'names>(
 /// against the board like any other; a Habit occurrence is refused, having no row.
 pub(super) async fn stored_row(
     db: &mut Db<Transactional>,
+    map: &AccessMap,
     id: &NodeIdParam,
     node_type: &str,
     now: NaiveDateTime,
 ) -> Result<i64, Answer> {
     let text = id.text();
     // Only names are resolved here, and a block changes no name.
-    let board = match Board::read(db, now, false).await {
+    let board = match Board::read_with(db, now, false, map.clone()).await {
         Ok(board) => board,
         Err(error) => return Err(result::failed(error)),
     };
