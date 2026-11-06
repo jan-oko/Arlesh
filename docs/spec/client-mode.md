@@ -444,25 +444,24 @@ key** (decided with the user, 2026-11-02):
   locally (`--ci` there is an error).
 - *Signing.* `keystore init` generates a box-only keystore at `$XDG_CONFIG_HOME/arlesh/box.keystore`
   (alias `arlesh-box`, 10000 days; a debug-grade key for `com.atai.arlesh.box.*`) under a random
-  password (`secrets.token_urlsafe(24)`). No password is written in the repo: it is stored locally
-  beside the keystore, in `box.keystore.password` (mode 600), and the command uploads two repo
-  secrets with `gh secret set`, values on stdin: `ARLESH_BOX_KEYSTORE_B64` (the keystore, base64)
-  and `ARLESH_BOX_KEYSTORE_PASSWORD`. keytool and apksigner receive the password only as
-  `-storepass:file` / `--ks-pass file:` (or `env:`), so it appears in no process list, and the
-  command never prints it. It refuses to replace an existing keystore without `--force`, and warns
-  that replacing the key means every installed box app has to be reinstalled. GitHub secrets cannot
-  be read back, so CI can sign with them but no one can fetch them from there: the local files are
-  the copy of record. A keystore made before passwords were random has a fixed one; `keystore
-  rotate-password` moves it onto a random one with `keytool -storepasswd` and `-keypasswd` (the same
-  key, so installed box apps stay update-compatible), writes the password file and re-uploads both
-  secrets. Only that command knows the old value; normal signing never falls back to it, and with
-  the keystore but no password file it stops and says to run `rotate-password` (or `init`). Local
-  builds sign with the keystore when it exists, else with `~/.android/debug.keystore` (its password
-  is the SDK's documented one, passed by environment variable) and a notice that CI and local
-  builds are not update-compatible until `keystore init`. `bundles.yml` in box mode signs with the
-  secrets when set (only the signing step reads them, through a file, nothing echoes them); the
-  keystore secret without the password secret fails with a message naming the fix; with neither,
-  it uses a fresh `keytool` key under a password generated in the job, and a `::warning::`.
+  password (`secrets.token_urlsafe(24)`) made in memory. The password lives only in the
+  environment, as `ARLESH_BOX_KEYSTORE_PASSWORD`: locally in `box.env` (which box loads at startup;
+  created with mode 600, an existing line updated in place, the value never printed) and in CI as a
+  repo secret of the same name. The command also sets two repo secrets with `gh secret set`, values on
+  stdin: `ARLESH_BOX_KEYSTORE_B64` (the keystore, base64) and `ARLESH_BOX_KEYSTORE_PASSWORD`. keytool
+  and apksigner are given the variable's name (`-storepass:env`, `--ks-pass env:`), never its value
+  and never a file, so it is on no command line. `init` refuses to replace an existing keystore
+  without `--force`, and warns that replacing the key means every installed box app has to be
+  reinstalled. GitHub secrets cannot be read back, so `box.env` is the copy of record. `keystore
+  rotate-password` gives the existing key a new random password with `keytool -storepasswd` and
+  `-keypasswd` (the same key, so installed box apps stay update-compatible; the old password comes
+  from the environment), then updates `box.env` and both secrets. `keystore migrate [-y]` moves a
+  password out of the old `box.keystore.password` file into `box.env` and deletes the file, after a
+  prompt. There is no other source: an Android build without the box keystore, or without the
+  variable, stops and says to run `keystore init` or to put the variable in `box.env`; there is no
+  fallback to `~/.android/debug.keystore`. `bundles.yml` in box mode needs both repo secrets (only
+  the signing step reads them, the password through its environment; nothing echoes them) and fails
+  with a message naming the fix when either is missing.
 - *Mismatch.* `adb install` failing with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` stops `run` with a
   message that names the cause and offers `--reinstall`, which uninstalls the box app first (box
   re-provisions the token anyway). Nothing is uninstalled without the flag.
@@ -542,9 +541,45 @@ run without `uv run --script`'s `VIRTUAL_ENV`, which made uv warn on every start
 (started if it is not up; the first start in a fresh worktree builds arlesh-py and says so).
 `--server <other>` picks another branch's server and `--standalone` opts out: the desktop instance
 runs on the local board, the Android build opens unbound on its connect screen. A server runs its
-worktree's own code (its bindings built into that worktree's venv) on its own port, over a copy of
-the real database taken read-only (`sqlite3` backup API, opened `mode=ro`), seeded once and kept.
-`list` shows the servers and targets too.
+worktree's own code (its bindings built into that worktree's venv) on its own port, over a seed
+database, seeded once and kept (*Seeding from the server*, below). `list` shows the servers and
+targets too.
+
+**Seeding from the server.** The production database lives on the arlesh-server, so a local desktop
+copy goes stale and box seeds from the server instead, through `GET /backup`
+([HTTP Server](http-api.md), *Backup*): an admin-only route behind `ARLESH_BACKUP_TOKEN`, which box
+only ever reads from.
+
+- `box seed set <url>` reads the backup token from stdin (or a hidden prompt on a terminal, never an
+  argument) and writes it and the URL into `box.env` as `ARLESH_BACKUP_TOKEN` and
+  `ARLESH_BOX_SEED_URL`, like the keystore password: the local environment box loads at startup, where
+  a variable already set in the shell wins. The files an earlier box kept (`box-seed-url`,
+  `box-seed.token`) are still read and are removed by the next `seed set`. `box seed show` says what is set and where from, and never
+  prints the token.
+- When both are set, the first seeding of an invocation downloads the snapshot into
+  `$XDG_STATE_HOME/arlesh/box/seed/` (mode 0600, removed when box exits) and both seeds, the server's
+  database and the desktop instance's, copy from it. A download that fails (unreachable, 401 for a
+  wrong token, 404 for a server with no `/backup`, an answer that is not SQLite) stops with that
+  reason and changes nothing; a redirect is not followed, so the token goes only where the URL says.
+  `--local-seed` (on `run` and `server start`) uses the local desktop copy instead. With nothing
+  configured the local copy is used, with a one-line note that the seed is local.
+- `box reseed <branch> [-y]` downloads a fresh snapshot first, then (after `Proceed? [y/N]`; `-y`
+  skips it, and with no terminal and no `-y` it refuses) stops that branch's server and desktop
+  instance, moves each database aside as `<db>.prev` (with its WAL files; an earlier `.prev` is
+  replaced), puts the snapshot in its place and starts again what was running. The server's tokens
+  were in the old database, so a restarted desktop instance bound to that server is given a new one;
+  other apps and phones connected to it need `run` again.
+- **A seed carries no credentials.** Production's login tokens must not live in a branch's databases,
+  so box empties, on the seed copy only (never the source, and before any instance or server opens
+  it), every table that holds a credential: `server_tokens` (the device/server token hashes) and
+  `pairing_pins` (pairing PINs and their approval state). It does so for a server snapshot, for the
+  local-copy fallback and in `reseed`, then vacuums with `secure_delete` so no row lingers in free
+  pages. A seed whose schema predates a table skips it. Box issues its own tokens for the apps it
+  binds (`token add` on the branch's server), so a seeded server starts with none and provisioning
+  works as for a fresh one.
+- **Schema check.** If the snapshot's newest applied migration (`_sqlx_migrations`) is above the
+  branch's newest file in `crates/arlesh-core/migrations/`, box warns that the branch is older than the
+  server and that its app will refuse the database.
 
 **The token's client name is the box device name**: the registry name (`pixel`), or `desktop` for
 this machine, reduced to the server's name alphabet. A client holds one token and its text is never
