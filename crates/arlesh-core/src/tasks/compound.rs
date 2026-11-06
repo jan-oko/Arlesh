@@ -17,7 +17,7 @@ use crate::{
 
 use super::{
     error::TaskError,
-    model::{TaskId, UpdateTaskRequest},
+    model::{Status, TaskId, UpdateTaskRequest},
     rules::{ancestry::AncestryIndex, compound::settle_in, gestures::SubItems},
     scope_rules,
 };
@@ -96,23 +96,39 @@ fn read_sub_items(load: &MindmapLoad, id: &NodeId) -> SubItems {
     )
 }
 
-/// What the sub-items of the Task `id` say about it, read off the board as a load serves it: the
-/// floor they make it read at, and how many counted items are not Done. `None` when the board does
-/// not hold the Task.
+/// A Task as the board serves it, and what its sub-items say about it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Served {
+    /// The status the board shows: derived where the Task reads from its sub-items.
+    pub status: Status,
+    /// What its sub-items say.
+    pub sub_items: SubItems,
+}
+
+/// The Task `id` as a load serves it — what it reads, and what its sub-items say. A press cycles
+/// from what the Task **reads**, not from the status it stores. `None` when the board does not
+/// hold the Task.
 #[tracing::instrument(skip(db))]
-pub async fn sub_items(
+pub async fn serve(
     db: &mut Db<Transactional>,
     id: &NodeId,
     now: NaiveDateTime,
-) -> Result<Option<SubItems>, AppError> {
+) -> Result<Option<Served>, AppError> {
     let load = crate::mindmap::load(db, now).await?;
-    let held = load.tasks.iter().any(|task| task.id == *id);
-    Ok(held.then(|| read_sub_items(&load, id)))
+    Ok(load
+        .tasks
+        .iter()
+        .find(|task| task.id == *id)
+        .map(|task| Served {
+            status: task.status,
+            sub_items: read_sub_items(&load, id),
+        }))
 }
 
 /// Refuses setting the Task `id` Done while a counted sub-item is not ([`TaskError::OpenSubItems`]).
 /// A Task that already reads Done is left as it is: nothing changes retroactively, so a parent
-/// already Done with an open child stays Done, and writing Done again to it is no change.
+/// already Done with an open child stays Done, and writing Done again to it is no change. A
+/// Compound Task is refused any status by [`TaskError::CompoundStatus`] instead.
 #[tracing::instrument(skip(db))]
 pub async fn require_closed(
     db: &mut Db<Transactional>,
@@ -123,7 +139,8 @@ pub async fn require_closed(
     let Some(task) = load.tasks.iter().find(|task| task.id == *id) else {
         return Ok(());
     };
-    if task.status.is_done() {
+    // A Compound Task has no status to write at all; its own refusal says so.
+    if task.status.is_done() || task.compound {
         return Ok(());
     }
     match read_sub_items(&load, id).open {

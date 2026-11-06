@@ -15,7 +15,9 @@ use crate::{
     tasks::{
         compound,
         model::{Commitment, Task, TaskAgentic, UpdateCommitmentRequest, UpdateTaskRequest},
-        rules::gestures::{self, BacklogCleared, StatusRefusal, StatusStep, VerdictPress},
+        rules::gestures::{
+            self, BacklogCleared, StatusRefusal, StatusStep, SubItems, VerdictPress,
+        },
     },
 };
 
@@ -53,16 +55,21 @@ pub async fn step_status(
     let before = write::task(db, id, now)
         .await
         .map_err(WireError::from_error)?;
-    // What the sub-items say, read off the board. A Habit occurrence is not refused for open ones:
-    // its own guard asks first and names what closing it would leave behind.
-    let mut sub_items = compound::sub_items(db, id, now)
+    // A press cycles from what the Task **reads** — the board's status, which a parent raises to
+    // what its sub-items say — and is held to what they say.
+    let served = compound::serve(db, id, now)
         .await
-        .map_err(WireError::from_error)?
-        .unwrap_or_default();
+        .map_err(WireError::from_error)?;
+    let (current, mut sub_items) = served.map_or_else(
+        || (before.status, SubItems::default()),
+        |served| (served.status, served.sub_items),
+    );
+    // A Habit occurrence is not refused for open sub-items: its own guard asks first and names
+    // what closing it would leave behind.
     if matches!(id, NodeId::Derived(_)) {
         sub_items.open = 0;
     }
-    let next = match gestures::status_after(step, before.status, before.compound, sub_items) {
+    let next = match gestures::status_after(step, current, before.compound, sub_items) {
         Ok(next) => next,
         Err(reason) => return Ok(StatusStepOutcome::Refused { reason }),
     };

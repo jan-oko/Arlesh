@@ -201,10 +201,7 @@ describe("useStatusCycle: refusals", () => {
     act(() => { result.current.cycleStatus("task-5"); });
 
     await waitFor(() => expect(lane()).toEqual([]));
-    expect(showToast).toHaveBeenCalledWith({
-      nodeId: "task-5",
-      message: "This task still has open sub-items. Finish or archive them first, then set it done.",
-    });
+    expect(showToast).toHaveBeenCalledWith({ nodeId: "task-5", message: "warnings:openSubItemsRefused" });
   });
 
   it("rolls back and says why when the write is rejected", async () => {

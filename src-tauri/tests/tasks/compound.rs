@@ -503,3 +503,234 @@ async fn the_board_serves_a_compound_block_with_its_derived_reason() {
         .unwrap();
     assert_eq!(reason.reason, arlesh_lib::tasks::compound::blocked::REASON);
 }
+
+// A parent that is not Compound reads what its sub-items say (Task b10).
+
+/// An ordinary Task under the project, its stored status To Do.
+async fn parent(pool: &sqlx::SqlitePool, project: i64) -> i64 {
+    new_task(
+        pool,
+        CreateTaskRequest {
+            title: "A parent".into(),
+            parent_type: "project".into(),
+            parent_id: project.into(),
+            ..Default::default()
+        },
+    )
+    .await
+}
+
+fn status_request(status: TaskStatus) -> UpdateTaskRequest {
+    UpdateTaskRequest {
+        status: Some(arlesh_lib::tasks::model::Status::Ordinary(status)),
+        ..Default::default()
+    }
+}
+
+fn open_sub_items(refused: &Result<Task, AppError>) -> Option<usize> {
+    match refused {
+        Err(AppError::Task(TaskError::OpenSubItems { open })) => Some(*open),
+        _ => None,
+    }
+}
+
+#[tokio::test]
+async fn a_parent_reads_in_progress_from_its_child_while_its_stored_status_stays() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let parent = parent(&pool, project).await;
+    child(&pool, parent, TaskStatus::InProgress).await;
+    child(&pool, parent, TaskStatus::Todo).await;
+
+    let load = board(&pool).await;
+    assert!(!row(&load, parent).compound);
+    assert_eq!(row(&load, parent).status.as_str(), "in_progress");
+    assert_eq!(stored_status(&pool, parent).await, "todo");
+}
+
+#[tokio::test]
+async fn a_parent_cannot_be_set_done_while_a_sub_item_is_open() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let parent = parent(&pool, project).await;
+    child(&pool, parent, TaskStatus::Done).await;
+    child(&pool, parent, TaskStatus::Todo).await;
+
+    let refused = write_task(&pool, parent, status_request(TaskStatus::Done)).await;
+    assert_eq!(open_sub_items(&refused), Some(1));
+    assert_eq!(stored_status(&pool, parent).await, "todo");
+}
+
+#[tokio::test]
+async fn a_parent_is_set_done_once_every_sub_item_is() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let parent = parent(&pool, project).await;
+    let step = child(&pool, parent, TaskStatus::Todo).await;
+
+    assert!(write_task(&pool, parent, status_request(TaskStatus::Done))
+        .await
+        .is_err());
+    write_task(&pool, step, status_request(TaskStatus::Done))
+        .await
+        .unwrap();
+    write_task(&pool, parent, status_request(TaskStatus::Done))
+        .await
+        .unwrap();
+    assert_eq!(
+        row(&board(&pool).await, parent).status.as_str(),
+        "done",
+        "a parent never reads Done by itself, but it can be set so once nothing is open"
+    );
+}
+
+#[tokio::test]
+async fn a_backlogged_child_holds_its_parent_open_and_an_archived_one_does_not() {
+    use arlesh_lib::tasks::model::TaskArchival;
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let parent = parent(&pool, project).await;
+    let aside = child(&pool, parent, TaskStatus::Todo).await;
+    let set_archival = |archival| UpdateTaskRequest {
+        archival: Some(archival),
+        ..Default::default()
+    };
+
+    write_task(&pool, aside, set_archival(TaskArchival::Backlog))
+        .await
+        .unwrap();
+    let refused = write_task(&pool, parent, status_request(TaskStatus::Done)).await;
+    assert_eq!(open_sub_items(&refused), Some(1));
+
+    write_task(&pool, aside, set_archival(TaskArchival::Archived))
+        .await
+        .unwrap();
+    write_task(&pool, parent, status_request(TaskStatus::Done))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_pending_wait_holds_its_parent_open() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let parent = parent(&pool, project).await;
+    let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+    arlesh_lib::tasks::create_expectation(
+        &mut db,
+        arlesh_lib::tasks::model::CreateExpectationRequest {
+            title: "Waiting".into(),
+            parent_type: "task".into(),
+            parent_id: parent.into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    db.commit().await.unwrap();
+
+    let refused = write_task(&pool, parent, status_request(TaskStatus::Done)).await;
+    assert_eq!(open_sub_items(&refused), Some(1));
+}
+
+#[tokio::test]
+async fn a_parent_already_done_stays_done_over_an_open_child() {
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let parent = parent(&pool, project).await;
+    write_task(&pool, parent, status_request(TaskStatus::Done))
+        .await
+        .unwrap();
+    child(&pool, parent, TaskStatus::Todo).await;
+
+    assert_eq!(row(&board(&pool).await, parent).status.as_str(), "done");
+    // Writing Done again is no change, so it is not refused.
+    write_task(&pool, parent, status_request(TaskStatus::Done))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn an_agentic_parent_is_not_derived_but_is_refused_done_over_an_open_child() {
+    use arlesh_lib::tasks::model::{AgenticStatus, Status, TaskAgentic};
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let parent = new_task(
+        &pool,
+        CreateTaskRequest {
+            title: "Agentic parent".into(),
+            parent_type: "project".into(),
+            parent_id: project.into(),
+            agentic: Some(TaskAgentic::Yes),
+            ..Default::default()
+        },
+    )
+    .await;
+    new_task(
+        &pool,
+        CreateTaskRequest {
+            title: "Step".into(),
+            parent_type: "task".into(),
+            parent_id: parent.into(),
+            status: Some(Status::Agentic(AgenticStatus::Doing)),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let load = board(&pool).await;
+    assert_eq!(
+        row(&load, parent).status,
+        Status::Agentic(AgenticStatus::Todo),
+        "an Agentic Task's status says who holds it, so its sub-items do not move it"
+    );
+    let refused = write_task(
+        &pool,
+        parent,
+        UpdateTaskRequest {
+            status: Some(Status::Agentic(AgenticStatus::Done)),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert_eq!(open_sub_items(&refused), Some(1));
+}
+
+#[tokio::test]
+async fn a_press_over_open_sub_items_is_refused_and_one_that_cannot_lower_is_too() {
+    use arlesh_lib::tasks::{
+        gestures::{step_status, StatusStepOutcome},
+        rules::gestures::{StatusRefusal, StatusStep},
+    };
+    let pool = helpers::test_pool().await;
+    let project = make_project(&pool).await;
+    let parent = parent(&pool, project).await;
+    child(&pool, parent, TaskStatus::InProgress).await;
+
+    let press = |step| {
+        let pool = pool.clone();
+        async move {
+            let mut db = helpers::session_factory(&pool).begin().await.unwrap();
+            let outcome = step_status(&mut db, &NodeId::Stored(parent), step, false, at(NOW))
+                .await
+                .unwrap();
+            db.commit().await.unwrap();
+            outcome
+        }
+    };
+    // It reads In Progress from its child: Enter would set it Done over the open one...
+    assert!(matches!(
+        press(StatusStep::Advance).await,
+        StatusStepOutcome::Refused {
+            reason: StatusRefusal::OpenSubItems
+        }
+    ));
+    // ...and Alt+Enter would pause it below what the child makes it read.
+    assert!(matches!(
+        press(StatusStep::Alt).await,
+        StatusStepOutcome::Refused {
+            reason: StatusRefusal::BelowSubItems
+        }
+    ));
+    assert_eq!(stored_status(&pool, parent).await, "todo");
+}
